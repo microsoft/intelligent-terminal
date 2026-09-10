@@ -75,6 +75,10 @@ chat.tool_kind.other: "Инструмент"
 input.placeholder.connected: "Попитайте каквото и да е, / за команди.."  # {Locked="/"}
 input.placeholder.connecting: "свързване..."
 input.placeholder.disconnected: "прекъснато"
+input.queue.status: "На опашка [%{count}]: %{items}"
+input.queue.status_full: "Опашката е пълна [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter поставя черновата на опашка · Esc първо изчиства черновата"
+input.queue.hint_without_draft: "Esc премахва най-новия поставен на опашка вход"
 # Summary of attached images; keep 📎 and %{items} verbatim.
 input.image_attachments: "📎 Изображения: %{items}"  # {Locked="📎","%{items}"}
 
@@ -175,6 +179,7 @@ system.stopped_max_tokens: "Отговорът беше отрязан след 
 system.stopped_max_turn_requests: "Агентът спря след достигане на лимита си от заявки за този ход."
 system.stopped_refusal: "Агентът отказа да продължи с тази заявка."
 system.agent_busy: "Агентът е зает в този раздел — изчакайте текущата подкана да завърши."
+system.input_queue_full: "Опашката в този раздел е пълна. Изчакайте свободно място или изчистете черновата си и натиснете Esc, за да премахнете най-новия поставен на опашка вход."
 # Image paste messages; "agent" refers to an AI agent. Keep Enter and %{label} verbatim.
 system.image_clipboard_empty: "Няма изображение в клипборда за поставяне."
 system.image_not_supported: "Този агент не поддържа въвеждане на изображения."

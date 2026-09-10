@@ -75,6 +75,10 @@ chat.tool_kind.other: "সঁজুলি"
 input.placeholder.connected: "যিকোনো কথা সুধিব, / কমাণ্ডৰ বাবে.."  # {Locked="/"}
 input.placeholder.connecting: "সংযোগ হৈ আছে..."
 input.placeholder.disconnected: "বিচ্ছিন্ন"
+input.queue.status: "শাৰীবদ্ধ [%{count}]: %{items}"
+input.queue.status_full: "শাৰী পূৰ্ণ [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter এ খচৰা শাৰীবদ্ধ কৰে · Esc এ প্ৰথমে খচৰা মচে"
+input.queue.hint_without_draft: "Esc এ সৰ্বশেষ শাৰীবদ্ধ ইনপুট আঁতৰায়"
 # Summary of attached images; keep 📎 and %{items} verbatim.
 input.image_attachments: "📎 ছবিসমূহ: %{items}"  # {Locked="📎","%{items}"}
 
@@ -179,6 +183,7 @@ system.stopped_max_tokens: "মডেলৰ আউটপুট সীমাত �
 system.stopped_max_turn_requests: "এই পালিৰ বাবে অনুৰোধ সীমাত উপনীত হোৱাৰ পিছত এজেণ্টটো বন্ধ হ’ল।"
 system.stopped_refusal: "এজেণ্টে এই অনুৰোধটো আগবঢ়াই নিয়াত অমান্তি হ’ল।"
 system.agent_busy: "এই টেবত Agent ব্যস্ত — বৰ্তমানৰ প্ৰম্প্ট শেষ হোৱালৈ অপেক্ষা কৰক।"
+system.input_queue_full: "এই টেবত শাৰী পূৰ্ণ। এটা স্থান খালী হোৱালৈ অপেক্ষা কৰক, অথবা আপোনাৰ খচৰা মচি Esc টিপি সৰ্বশেষ শাৰীবদ্ধ ইনপুট আঁতৰাওক।"
 # Image paste messages; "agent" refers to an AI agent. Keep Enter and %{label} verbatim.
 system.image_clipboard_empty: "পেষ্ট কৰিবলৈ ক্লিপব’ৰ্ডত কোনো ছবি নাই।"
 system.image_not_supported: "এই এজেণ্টে ছবি ইনপুট সমৰ্থন নকৰে।"

@@ -75,6 +75,10 @@ chat.tool_kind.other: "Công cụ"
 input.placeholder.connected: "Hỏi bất cứ điều gì, / cho lệnh.."  # {Locked="/"}
 input.placeholder.connecting: "đang kết nối..."
 input.placeholder.disconnected: "đã ngắt kết nối"
+input.queue.status: "Đang xếp hàng [%{count}]: %{items}"
+input.queue.status_full: "Hàng đợi đã đầy [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter đưa bản nháp vào hàng đợi · Esc xóa bản nháp trước"
+input.queue.hint_without_draft: "Esc xóa mục nhập được xếp hàng mới nhất"
 input.image_attachments: "📎 Hình ảnh: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
@@ -165,6 +169,7 @@ system.stopped_max_tokens: "Phản hồi đã bị cắt sau khi đạt đến g
 system.stopped_max_turn_requests: "Tác nhân đã dừng sau khi đạt đến giới hạn yêu cầu cho lượt này."
 system.stopped_refusal: "Tác nhân đã từ chối tiếp tục với yêu cầu này."
 system.agent_busy: "Tác nhân đang bận trên tab này — hãy đợi lời nhắc hiện tại hoàn tất."
+system.input_queue_full: "Hàng đợi trên tab này đã đầy. Hãy chờ có chỗ trống hoặc xóa bản nháp rồi nhấn Esc để xóa mục nhập được xếp hàng mới nhất."
 system.image_clipboard_empty: "Không có hình ảnh trong bảng tạm để dán."
 system.image_not_supported: "Tác nhân này không hỗ trợ nhập hình ảnh."
 system.image_pasted: "Đã đính kèm hình ảnh (%{label}). Nhấn Enter để gửi."  # {Locked="%{label}","Enter"}

@@ -75,6 +75,10 @@ chat.tool_kind.other: "Ferramenta"
 input.placeholder.connected: "Pergunte o que quiser, / para comandos.."  # {Locked="/"}
 input.placeholder.connecting: "A ligar..."
 input.placeholder.disconnected: "Desligado"
+input.queue.status: "Em fila [%{count}]: %{items}"
+input.queue.status_full: "Fila cheia [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter põe o rascunho em fila · Esc limpa primeiro o rascunho"
+input.queue.hint_without_draft: "Esc remove a entrada em fila mais recente"
 input.image_attachments: "📎 Imagens: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Janela de comandos (src/ui/command_popup.rs) ─────────────────────────────────
@@ -165,6 +169,7 @@ system.stopped_max_tokens: "A resposta foi cortada após atingir o limite de sa�
 system.stopped_max_turn_requests: "O agente parou após atingir o limite de pedidos para esta vez."
 system.stopped_refusal: "O agente recusou continuar com este pedido."
 system.agent_busy: "O agente está ocupado neste separador — aguarde que a solicitação atual termine."
+system.input_queue_full: "A fila neste separador está cheia. Aguarde por uma vaga ou limpe o rascunho e prima Esc para remover a entrada em fila mais recente."
 system.image_clipboard_empty: "Não há nenhuma imagem na área de transferência para colar."
 system.image_not_supported: "Este agente não suporta entrada de imagem."
 system.image_pasted: "Imagem anexada (%{label}). Prima Enter para enviar."  # {Locked="%{label}","Enter"}

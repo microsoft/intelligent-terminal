@@ -75,6 +75,10 @@ chat.tool_kind.other: "Tresna"
 input.placeholder.connected: "Galdetu edozer, / komandoetarako.."  # {Locked="/"}
 input.placeholder.connecting: "konektatzen..."
 input.placeholder.disconnected: "deskonektatuta"
+input.queue.status: "Ilaran [%{count}]: %{items}"
+input.queue.status_full: "Ilara beteta [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter-ek zirriborroa ilaran jartzen du · Esc-k lehenik zirriborroa garbitzen du"
+input.queue.hint_without_draft: "Esc-k ilarako sarrera berriena kentzen du"
 input.image_attachments: "📎 Irudiak: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Komandoen popup-a (src/ui/command_popup.rs) ─────────────────────────────────
@@ -165,6 +169,7 @@ system.stopped_max_tokens: "Erantzuna eten egin da modeloaren irteera-muga gaind
 system.stopped_max_turn_requests: "Agentea gelditu egin da txanda honetako eskaera-muga gainditu ondoren."
 system.stopped_refusal: "Agenteak eskaera honekin jarraitzeari uko egin dio."
 system.agent_busy: "Agentea lanpetuta dago fitxa honetan — itxaron uneko gonbita amaitu arte."
+system.input_queue_full: "Fitxa honetako ilara beteta dago. Itxaron leku bat libre geratu arte edo garbitu zirriborroa eta sakatu Esc ilarako sarrera berriena kentzeko."
 system.image_clipboard_empty: "Ez dago irudirik arbelean itsasteko."
 system.image_not_supported: "Agente honek ez du irudi-sarrerarik onartzen."
 system.image_pasted: "Irudia erantsi da (%{label}). Sakatu Enter bidaltzeko."  # {Locked="%{label}","Enter"}

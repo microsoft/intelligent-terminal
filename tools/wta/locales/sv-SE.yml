@@ -75,6 +75,10 @@ chat.tool_kind.other: "Verktyg"
 input.placeholder.connected: "Fråga vad som helst, / för kommandon.."  # {Locked="/"}
 input.placeholder.connecting: "ansluter..."
 input.placeholder.disconnected: "frånkopplad"
+input.queue.status: "I kö [%{count}]: %{items}"
+input.queue.status_full: "Kön är full [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter lägger utkastet i kö · Esc rensar först utkastet"
+input.queue.hint_without_draft: "Esc tar bort den senaste köade inmatningen"
 input.image_attachments: "📎 Bilder: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
@@ -165,6 +169,7 @@ system.stopped_max_tokens: "Svaret avbröts efter att modellens utdatagräns nå
 system.stopped_max_turn_requests: "Agenten stoppade efter att ha nått sin begäransgräns för den här omgången."
 system.stopped_refusal: "Agenten avböjde att fortsätta med den här begäran."
 system.agent_busy: "Agenten är upptagen på den här fliken — vänta tills den aktuella prompten är klar."
+system.input_queue_full: "Kön på den här fliken är full. Vänta på en ledig plats, eller rensa utkastet och tryck Esc för att ta bort den senaste köade inmatningen."
 system.image_clipboard_empty: "Ingen bild i urklipp att klistra in."
 system.image_not_supported: "Den här agenten stöder inte bildinmatning."
 system.image_pasted: "Bild bifogad (%{label}). Tryck på Enter för att skicka."  # {Locked="%{label}","Enter"}

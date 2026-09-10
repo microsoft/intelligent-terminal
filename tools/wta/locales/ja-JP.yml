@@ -71,6 +71,10 @@ chat.tool_kind.other: "ツール"
 input.placeholder.connected: "何でも聞いてください。/ でコマンド.."  # {Locked="/"}
 input.placeholder.connecting: "接続中..."
 input.placeholder.disconnected: "切断済み"
+input.queue.status: "キュー済み [%{count}]: %{items}"
+input.queue.status_full: "キュー満杯 [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter で下書きをキューに追加 · Esc で先に下書きを消去"
+input.queue.hint_without_draft: "Esc で最新のキュー済み入力を削除"
 input.image_attachments: "📎 画像: %{items}"  # {Locked="📎","%{items}"}
 
 # ── コマンド ポップアップ (src/ui/command_popup.rs) ─────────────────────────────────
@@ -161,6 +165,7 @@ system.stopped_max_tokens: "モデルの出力上限に達したため、応答�
 system.stopped_max_turn_requests: "このターンの要求上限に達したため、エージェントが停止しました。"
 system.stopped_refusal: "エージェントはこの要求の続行を拒否しました。"
 system.agent_busy: "このタブではエージェントが処理中です — 現在のプロンプトが完了するまでお待ちください。"
+system.input_queue_full: "このタブのキューは満杯です。空きができるまで待つか、下書きを消去して Esc を押し、最新のキュー済み入力を削除してください。"
 system.image_clipboard_empty: "貼り付ける画像がクリップボードにありません。"
 system.image_not_supported: "このエージェントは画像入力をサポートしていません。"
 system.image_pasted: "画像を添付しました (%{label})。Enter を押して送信してください。"  # {Locked="%{label}","Enter"}

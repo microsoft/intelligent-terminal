@@ -75,6 +75,10 @@ chat.tool_kind.other: "כלי"
 input.placeholder.connected: "שאל כל דבר, / לפקודות.."  # {Locked="/"}
 input.placeholder.connecting: "מתחבר..."
 input.placeholder.disconnected: "מנותק"
+input.queue.status: "בתור [%{count}]: %{items}"
+input.queue.status_full: "התור מלא [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter מוסיף את הטיוטה לתור · Esc מנקה קודם את הטיוטה"
+input.queue.hint_without_draft: "Esc מסיר את הקלט האחרון שבתור"
 input.image_attachments: "📎 תמונות: %{items}"  # {Locked="📎","%{items}"}
 
 # ── חלון פקודות מוקפץ (src/ui/command_popup.rs) ─────────────────────────────────
@@ -178,6 +182,7 @@ system.stopped_max_tokens: "התגובה נקטעה לאחר שהגיעה למג
 system.stopped_max_turn_requests: "הסוכן נעצר לאחר שהגיע למגבלת הבקשות שלו לתור זה."
 system.stopped_refusal: "הסוכן סירב להמשיך בבקשה זו."
 system.agent_busy: "הסוכן עסוק בכרטיסיה זו — המתן עד שההנחיה הנוכחית תסתיים."
+system.input_queue_full: "התור בלשונית הזו מלא. המתן למקום פנוי, או נקה את הטיוטה שלך ולחץ Esc כדי להסיר את הקלט האחרון שבתור."
 system.image_clipboard_empty: "אין תמונה בלוח להדבקה."
 system.image_not_supported: "סוכן זה אינו תומך בקלט תמונה."
 system.image_pasted: "התמונה צורפה (%{label}). לחץ Enter כדי לשלוח."  # {Locked="%{label}","Enter"}

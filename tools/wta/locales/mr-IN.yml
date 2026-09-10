@@ -75,6 +75,10 @@ chat.tool_kind.other: "साधन"
 input.placeholder.connected: "काहीही विचारा, / कमांडसाठी.."  # {Locked="/"}
 input.placeholder.connecting: "कनेक्ट होत आहे..."
 input.placeholder.disconnected: "डिस्कनेक्ट"
+input.queue.status: "रांगेत [%{count}]: %{items}"
+input.queue.status_full: "रांग भरली आहे [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter मसुदा रांगेत ठेवतो · Esc आधी मसुदा साफ करतो"
+input.queue.hint_without_draft: "Esc सर्वात नवीन रांगेतला इनपुट काढतो"
 input.image_attachments: "📎 प्रतिमा: %{items}"  # {Locked="%{items}"} {Locked="📎"}
 
 # ── कमांड पॉपअप (src/ui/command_popup.rs) ─────────────────────────────────
@@ -178,6 +182,7 @@ system.stopped_max_tokens: "मॉडेलची आउटपुट मर्�
 system.stopped_max_turn_requests: "या फेरीसाठी आपली विनंती मर्यादा गाठल्यानंतर एजंट थांबला."
 system.stopped_refusal: "एजंटने ही विनंती सुरू ठेवण्यास नकार दिला."
 system.agent_busy: "या टॅबवर Agent व्यस्त आहे — सध्याचा प्रॉम्प्ट पूर्ण होईपर्यंत प्रतीक्षा करा."
+system.input_queue_full: "या टॅबवरील रांग भरली आहे. जागा मोकळी होईपर्यंत थांबा, किंवा तुमचा मसुदा साफ करून सर्वात नवीन रांगेतला इनपुट काढण्यासाठी Esc दाबा."
 system.image_clipboard_empty: "पेस्ट करण्यासाठी क्लिपबोर्डवर कोणतीही प्रतिमा नाही."
 system.image_not_supported: "हा एजंट प्रतिमा इनपुटला समर्थन देत नाही."
 system.image_pasted: "प्रतिमा जोडली (%{label}). पाठवण्यासाठी Enter दाबा."  # {Locked="%{label}","Enter"}

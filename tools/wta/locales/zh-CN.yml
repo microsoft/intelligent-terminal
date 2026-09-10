@@ -71,6 +71,10 @@ chat.tool_kind.other: "工具"
 input.placeholder.connected: "随意提问，/ 查看命令.."  # {Locked="/"}
 input.placeholder.connecting: "连接中..."
 input.placeholder.disconnected: "已断开"
+input.queue.status: "已排队 [%{count}]: %{items}"
+input.queue.status_full: "队列已满 [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter 将草稿加入队列 · Esc 先清除草稿"
+input.queue.hint_without_draft: "Esc 移除最新的排队输入"
 input.image_attachments: "📎 图片: %{items}"  # {Locked="📎","%{items}"}
 
 # ── 命令弹出窗口 (src/ui/command_popup.rs) ─────────────────────────────────
@@ -161,6 +165,7 @@ system.stopped_max_tokens: "达到模型的输出上限后，回复被截断。"
 system.stopped_max_turn_requests: "达到本轮的请求上限后，智能体已停止。"
 system.stopped_refusal: "智能体拒绝继续处理此请求。"
 system.agent_busy: "智能体正忙于此标签页 — 请等待当前提示完成。"
+system.input_queue_full: "此标签页上的队列已满。请等待空位，或清除草稿后按 Esc 移除最新的排队输入。"
 system.image_clipboard_empty: "剪贴板上没有可粘贴的图片。"
 system.image_not_supported: "此智能体不支持图像输入。"
 system.image_pasted: "已附加图片（%{label}）。按 Enter 发送。"  # {Locked="%{label}","Enter"}

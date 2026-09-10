@@ -75,6 +75,10 @@ chat.tool_kind.other: "Rīks"
 input.placeholder.connected: "Jautājiet jebko, / komandām.."  # {Locked="/"}
 input.placeholder.connecting: "savienojas..."
 input.placeholder.disconnected: "atvienots"
+input.queue.status: "Rindā [%{count}]: %{items}"
+input.queue.status_full: "Rinda ir pilna [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter ievieto melnrakstu rindā · Esc vispirms notīra melnrakstu"
+input.queue.hint_without_draft: "Esc noņem jaunāko rindā ievietoto ievadi"
 input.image_attachments: "📎 Attēli: %{items}"  # {Locked="%{items}"} {Locked="📎"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
@@ -165,6 +169,7 @@ system.stopped_max_tokens: "Atbilde tika apcirsta pēc modeļa izvades ierobežo
 system.stopped_max_turn_requests: "Aģents apstājās pēc tā pieprasījumu ierobežojuma sasniegšanas šim gājienam."
 system.stopped_refusal: "Aģents atteicās turpināt šo pieprasījumu."
 system.agent_busy: "Aģents šajā cilnē ir aizņemts — uzgaidiet, līdz pašreizējā uzvedne tiek pabeigta."
+system.input_queue_full: "Šīs cilnes rinda ir pilna. Pagaidiet brīvu vietu vai notīriet melnrakstu un nospiediet Esc, lai noņemtu jaunāko rindā ievietoto ievadi."
 system.image_clipboard_empty: "Starpliktuvē nav attēla, ko ielīmēt."
 system.image_not_supported: "Šis aģents neatbalsta attēlu ievadi."
 system.image_pasted: "Attēls pievienots (%{label}). Nospiediet Enter, lai nosūtītu."  # {Locked="%{label}","Enter"}

@@ -75,6 +75,10 @@ chat.tool_kind.other: "Araç"
 input.placeholder.connected: "Herhangi bir şey sorun, / komutlar için.."  # {Locked="/"}
 input.placeholder.connecting: "bağlanıyor..."
 input.placeholder.disconnected: "bağlantı kesildi"
+input.queue.status: "Sırada [%{count}]: %{items}"
+input.queue.status_full: "Kuyruk dolu [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter taslağı kuyruğa alır · Esc önce taslağı temizler"
+input.queue.hint_without_draft: "Esc en yeni kuyruktaki girdiyi kaldırır"
 input.image_attachments: "📎 Görseller: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
@@ -178,6 +182,7 @@ system.stopped_max_tokens: "Modelin çıktı sınırına ulaşıldıktan sonra y
 system.stopped_max_turn_requests: "Aracı, bu tur için istek sınırına ulaştıktan sonra durdu."
 system.stopped_refusal: "Aracı, bu isteği sürdürmeyi reddetti."
 system.agent_busy: "Aracı bu sekmede meşgul — geçerli istemin bitmesini bekleyin."
+system.input_queue_full: "Bu sekmedeki kuyruk dolu. Bir boş yer bekleyin veya taslağınızı temizleyip en yeni kuyruktaki girdiyi kaldırmak için Esc tuşuna basın."
 system.image_clipboard_empty: "Yapıştırılacak panoda görsel yok."
 system.image_not_supported: "Bu aracı görsel girişini desteklemiyor."
 system.image_pasted: "Görsel eklendi (%{label}). Göndermek için Enter tuşuna basın."  # {Locked="%{label}","Enter"}

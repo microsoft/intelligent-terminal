@@ -75,6 +75,10 @@ chat.tool_kind.other: "Ferramenta"
 input.placeholder.connected: "Pregunteu el que vullgueu, / per a ordes.."  # {Locked="/"}
 input.placeholder.connecting: "connectant..."
 input.placeholder.disconnected: "desconnectat"
+input.queue.status: "En cua [%{count}]: %{items}"
+input.queue.status_full: "Cua plena [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter posa l'esborrany en cua · Esc primer esborra l'esborrany"
+input.queue.hint_without_draft: "Esc elimina l'entrada en cua més recent"
 # Summary of attached images; keep 📎 and %{items} verbatim.
 input.image_attachments: "📎 Imatges: %{items}"  # {Locked="📎","%{items}"}
 
@@ -166,6 +170,7 @@ system.stopped_max_tokens: "La resposta s'ha tallat en arribar al límit d'eixid
 system.stopped_max_turn_requests: "L'agent s'ha parat en arribar al seu límit de sol·licituds per a este torn."
 system.stopped_refusal: "L'agent ha rebutjat continuar amb esta sol·licitud."
 system.agent_busy: "L’agent està ocupat en esta pestanya — espereu que acabe la indicació actual."
+system.input_queue_full: "La cua d'esta pestanya està plena. Espereu que hi haja lloc o esborreu l'esborrany i premeu Esc per a eliminar l'entrada en cua més recent."
 # Image paste messages; "agent" refers to an AI agent. Keep Enter and %{label} verbatim.
 system.image_clipboard_empty: "No hi ha cap imatge al porta-retalls per a enganxar."
 system.image_not_supported: "Este agent no admet l'entrada d'imatges."

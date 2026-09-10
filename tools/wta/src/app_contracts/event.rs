@@ -178,6 +178,9 @@ pub enum AppEvent {
         prompt_id: u64,
         started: bool,
     },
+    DrainInputQueue {
+        tab_id: String,
+    },
     TimingMetric {
         session_id: String,
         note: String,

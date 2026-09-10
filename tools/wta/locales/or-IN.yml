@@ -75,6 +75,10 @@ chat.tool_kind.other: "ଉପକରଣ"
 input.placeholder.connected: "କିଛି ବି ପଚାରନ୍ତୁ, / କମାଣ୍ଡ ପାଇଁ.."  # {Locked="/"}
 input.placeholder.connecting: "ସଂଯୋଗ ହେଉଛି..."
 input.placeholder.disconnected: "ବିଚ୍ଛିନ୍ନ"
+input.queue.status: "ଧାରରେ [%{count}]: %{items}"
+input.queue.status_full: "ଧାର ପୂର୍ଣ୍ଣ [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter ଡ୍ରାଫ୍ଟକୁ ଧାରରେ ରଖେ · Esc ପ୍ରଥମେ ଡ୍ରାଫ୍ଟକୁ ସଫା କରେ"
+input.queue.hint_without_draft: "Esc ସବୁଠାରୁ ନୂଆ ଧାରବଦ୍ଧ ଇନପୁଟକୁ ହଟାଏ"
 input.image_attachments: "📎 ଛବିଗୁଡ଼ିକ: %{items}"  # {Locked="%{items}"} {Locked="📎"}
 
 # ── କମାଣ୍ଡ ପପଅପ୍ (src/ui/command_popup.rs) ─────────────────────────────────
@@ -178,6 +182,7 @@ system.stopped_max_tokens: "ମଡେଲର ଆଉଟପୁଟ୍ ସୀମା�
 system.stopped_max_turn_requests: "ଏହି ପାଳି ପାଇଁ ଅନୁରୋଧ ସୀମାରେ ପହଞ୍ଚିବା ପରେ ଏଜେଣ୍ଟ ବନ୍ଦ ହୋଇଗଲା।"
 system.stopped_refusal: "ଏଜେଣ୍ଟ ଏହି ଅନୁରୋଧ ଜାରି ରଖିବାକୁ ମନା କଲା।"
 system.agent_busy: "ଏହି ଟ୍ୟାବରେ Agent ବ୍ୟସ୍ତ — ବର୍ତ୍ତମାନ ପ୍ରମ୍ପ୍ଟ ଶେଷ ହେବା ପର୍ଯ୍ୟନ୍ତ ଅପେକ୍ଷା କରନ୍ତୁ।"
+system.input_queue_full: "ଏହି ଟ୍ୟାବର ଧାର ପୂର୍ଣ୍ଣ। ଖାଲି ସ୍ଥାନ ପାଇଁ ଅପେକ୍ଷା କରନ୍ତୁ, କିମ୍ବା ନିଜର ଡ୍ରାଫ୍ଟକୁ ସଫା କରି ସବୁଠାରୁ ନୂଆ ଧାରବଦ୍ଧ ଇନପୁଟକୁ ହଟାଇବା ପାଇଁ Esc ଦବାନ୍ତୁ।"
 system.image_clipboard_empty: "ପେଷ୍ଟ କରିବାକୁ କ୍ଲିପ୍‌ବୋର୍ଡରେ କୌଣସି ଛବି ନାହିଁ।"
 system.image_not_supported: "ଏହି ଏଜେଣ୍ଟ ଛବି ଇନ୍‌ପୁଟ୍ ସମର୍ଥନ କରେ ନାହିଁ।"
 system.image_pasted: "ଛବି ସଂଲଗ୍ନ ହୋଇଛି (%{label})। ପଠାଇବାକୁ Enter ଦବାନ୍ତୁ।"  # {Locked="%{label}","Enter"}

@@ -75,6 +75,10 @@ chat.tool_kind.other: "Verkfæri"
 input.placeholder.connected: "Spurðu hvað sem er, / fyrir skipanir.."  # {Locked="/"}
 input.placeholder.connecting: "tengist..."
 input.placeholder.disconnected: "aftengt"
+input.queue.status: "Í biðröð [%{count}]: %{items}"
+input.queue.status_full: "Biðröðin er full [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter setur uppkastið í biðröð · Esc hreinsar fyrst uppkastið"
+input.queue.hint_without_draft: "Esc fjarlægir nýjasta inntakið í biðröðinni"
 input.image_attachments: "📎 Myndir: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
@@ -165,6 +169,7 @@ system.stopped_max_tokens: "Svarið var skorið af eftir að úttaksmörkum lík
 system.stopped_max_turn_requests: "Umboðsmaðurinn stöðvaðist eftir að beiðnamörkum hans fyrir þessa umferð var náð."
 system.stopped_refusal: "Umboðsmaðurinn neitaði að halda áfram með þessa beiðni."
 system.agent_busy: "Agentinn er upptekinn á þessum flipa — bíddu þar til núverandi kvaðning lýkur."
+system.input_queue_full: "Biðröðin á þessum flipa er full. Bíddu eftir lausu sæti, eða hreinsaðu uppkastið þitt og ýttu á Esc til að fjarlægja nýjasta inntakið í biðröðinni."
 system.image_clipboard_empty: "Engin mynd er á klemmuspjaldinu til að líma inn."
 system.image_not_supported: "Þessi agent styður ekki myndinntak."
 system.image_pasted: "Mynd viðhengd (%{label}). Ýttu á Enter til að senda."  # {Locked="%{label}","Enter"}

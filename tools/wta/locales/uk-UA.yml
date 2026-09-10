@@ -75,6 +75,10 @@ chat.tool_kind.other: "Інструмент"
 input.placeholder.connected: "Запитайте будь-що, / для команд.."  # {Locked="/"}
 input.placeholder.connecting: "Підключення..."
 input.placeholder.disconnected: "Від'єднано"
+input.queue.status: "У черзі [%{count}]: %{items}"
+input.queue.status_full: "Черга заповнена [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter ставить чернетку в чергу · Esc спочатку очищає чернетку"
+input.queue.hint_without_draft: "Esc видаляє найновіший елемент у черзі"
 input.image_attachments: "📎 Зображення: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Спливаюче вікно команд (src/ui/command_popup.rs) ─────────────────────────────────
@@ -174,6 +178,7 @@ system.stopped_max_tokens: "Відповідь було обрізано піс�
 system.stopped_max_turn_requests: "Агент зупинився після досягнення ліміту запитів для цього ходу."
 system.stopped_refusal: "Агент відмовився продовжувати цей запит."
 system.agent_busy: "Агент зайнятий на цій вкладці — дочекайтеся завершення поточного запиту."
+system.input_queue_full: "Черга на цій вкладці заповнена. Зачекайте на вільне місце або очистьте чернетку й натисніть Esc, щоб видалити найновіший елемент у черзі."
 system.image_clipboard_empty: "У буфері обміну немає зображення для вставлення."
 system.image_not_supported: "Цей агент не підтримує введення зображень."
 system.image_pasted: "Зображення вкладено (%{label}). Натисніть Enter, щоб надіслати."  # {Locked="%{label}","Enter"}

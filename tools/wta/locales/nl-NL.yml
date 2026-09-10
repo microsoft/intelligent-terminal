@@ -75,6 +75,10 @@ chat.tool_kind.other: "Hulpprogramma"
 input.placeholder.connected: "Stel een vraag, / voor opdrachten.."  # {Locked="/"}
 input.placeholder.connecting: "Verbinden..."
 input.placeholder.disconnected: "Verbroken"
+input.queue.status: "In wachtrij [%{count}]: %{items}"
+input.queue.status_full: "Wachtrij vol [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter zet het concept in de wachtrij · Esc wist eerst het concept"
+input.queue.hint_without_draft: "Esc verwijdert de nieuwste invoer in de wachtrij"
 input.image_attachments: "📎 Afbeeldingen: %{items}"  # {Locked="%{items}"} {Locked="📎"}
 
 # ── Opdrachtpopup (src/ui/command_popup.rs) ─────────────────────────────────
@@ -165,6 +169,7 @@ system.stopped_max_tokens: "Het antwoord is afgekapt nadat de uitvoerlimiet van 
 system.stopped_max_turn_requests: "De agent is gestopt nadat de aanvraaglimiet voor deze beurt was bereikt."
 system.stopped_refusal: "De agent heeft geweigerd door te gaan met deze aanvraag."
 system.agent_busy: "De agent is bezig op dit tabblad — wacht tot de huidige prompt is voltooid."
+system.input_queue_full: "De wachtrij op dit tabblad is vol. Wacht op een vrije plek, of wis uw concept en druk op Esc om de nieuwste invoer in de wachtrij te verwijderen."
 system.image_clipboard_empty: "Geen afbeelding op het klembord om te plakken."
 system.image_not_supported: "Deze agent ondersteunt geen afbeeldingsinvoer."
 system.image_pasted: "Afbeelding bijgevoegd (%{label}). Druk op Enter om te verzenden."  # {Locked="%{label}","Enter"}

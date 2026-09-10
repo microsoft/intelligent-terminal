@@ -88,6 +88,15 @@ input.placeholder.connected: "Ask anything, / for commands.."  # {Locked="/"}
 input.placeholder.connecting: "connecting..."
 # Input box placeholder when agent is disconnected
 input.placeholder.disconnected: "disconnected"
+# Status row shown above the input while one or more prepared prompts are
+# queued behind the current turn. %{items} is a compact preview list (for
+# example "B • C" or "[image: image-1.png]"). The count is the FIFO length.
+input.queue.status: "Queued [%{count}]: %{items}"  # {Locked="%{count}","%{items}"}
+# Status row shown above the input when the per-tab prepared-input queue has
+# reached capacity. %{capacity} is the hard queue limit.
+input.queue.status_full: "Queue full [%{count}/%{capacity}]: %{items}"  # {Locked="%{count}","%{capacity}","%{items}"}
+input.queue.hint_with_draft: "Enter queues draft · Esc clears draft first"  # Shown beside the queued-input status while the input box still contains unsent draft text or images. {Locked="Enter","Esc"}
+input.queue.hint_without_draft: "Esc removes newest queued input"  # Shown beside the queued-input status when the draft is empty. {Locked="Esc"}
 # Title shown on the input box border when one or more clipboard images are
 # queued to send with the next prompt (Alt+V). %{items} is a comma-separated
 # list like "[1] screenshot, [2] photo.png".
@@ -250,6 +259,7 @@ system.stopped_max_tokens: "The response was cut off after reaching the model's 
 system.stopped_max_turn_requests: "The agent stopped after reaching its request limit for this turn."
 system.stopped_refusal: "The agent declined to continue with this request."
 system.agent_busy: "Agent is busy on this tab — wait for the current prompt to finish."  # Shown when the user presses Enter to submit a new prompt while the agent is still processing the previous one on the same tab.
+system.input_queue_full: "Queue full on this tab. Wait for a slot, or clear your draft and press Esc to remove the newest queued input."  # Shown when the user presses Enter after the visible per-tab prepared-input queue has reached capacity. If a retained draft is still present, Esc clears that draft first; otherwise it removes the newest queued input. {Locked="Esc"}
 # Shown when the user presses Alt+V but the clipboard holds no image.
 system.image_clipboard_empty: "No image on the clipboard to paste."
 # Shown when the user presses Alt+V but the connected agent doesn't accept image input.

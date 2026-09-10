@@ -75,6 +75,10 @@ chat.tool_kind.other: "Alat"
 input.placeholder.connected: "Pitajte bilo što, / za naredbe.."  # {Locked="/"}
 input.placeholder.connecting: "povezivanje..."
 input.placeholder.disconnected: "prekinuta veza"
+input.queue.status: "U redu čekanja [%{count}]: %{items}"
+input.queue.status_full: "Red čekanja je pun [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter stavlja skicu u red čekanja · Esc prvo briše skicu"
+input.queue.hint_without_draft: "Esc uklanja najnoviji unos u redu čekanja"
 input.image_attachments: "📎 Slike: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
@@ -174,6 +178,7 @@ system.stopped_max_tokens: "Odgovor je odrezan nakon dosezanja izlaznog ogranič
 system.stopped_max_turn_requests: "Agent se zaustavio nakon dosezanja ograničenja zahtjeva za ovaj potez."
 system.stopped_refusal: "Agent je odbio nastaviti s ovim zahtjevom."
 system.agent_busy: "Agent je zauzet na ovoj kartici — pričekajte da se trenutni upit dovrši."
+system.input_queue_full: "Red čekanja na ovoj kartici je pun. Pričekajte slobodno mjesto ili izbrišite skicu i pritisnite Esc da uklonite najnoviji unos u redu čekanja."
 system.image_clipboard_empty: "Na međuspremniku nema slike za lijepljenje."
 system.image_not_supported: "Ovaj agent ne podržava unos slika."
 system.image_pasted: "Slika je priložena (%{label}). Pritisnite Enter za slanje."  # {Locked="%{label}","Enter"}

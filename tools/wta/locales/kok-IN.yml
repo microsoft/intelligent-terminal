@@ -75,6 +75,10 @@ chat.tool_kind.other: "साधन"
 input.placeholder.connected: "कितेंय विचारात, / कमांडां खातीर.."  # {Locked="/"}
 input.placeholder.connecting: "जोडटा..."
 input.placeholder.disconnected: "वेगळो जालो"
+input.queue.status: "रांगेत [%{count}]: %{items}"
+input.queue.status_full: "रांग भरली [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter मसुदो रांगेत घालता · Esc आदल्या हातान मसुदो साफ करता"
+input.queue.hint_without_draft: "Esc सगळ्यात नवं रांगेतलें इनपुट काडता"
 input.image_attachments: "📎 प्रतिमा: %{items}"  # {Locked="📎","%{items}"}
 
 # ── कमांड पॉपअप (src/ui/command_popup.rs) ─────────────────────────────────
@@ -178,6 +182,7 @@ system.stopped_max_tokens: "मॉडेलाची आउटपूट मर�
 system.stopped_max_turn_requests: "ह्या फेऱ्याखातीर आपली विनवणी मर्यादा गाठल्या उपरांत एजंट थांबलो."
 system.stopped_refusal: "एजंटान ही विनवणी फुडें व्हरपाक न्हयकार दिलो."
 system.agent_busy: "एजंट ह्या टॅबाचेर व्यस्त आसा — सद्याचो प्रॉम्प्ट सोंप मेरेन रावात."
+system.input_queue_full: "ह्या टॅबाचेर रांग भरली आसा. जागो मेळेपर्यंत वाट पळयात, वा तुमचो मसुदो साफ करून सगळ्यात नवं रांगेतलें इनपुट काडपाक Esc दाबात."
 system.image_clipboard_empty: "पेस्ट करपाक क्लिपबोर्डाचेर कसलीच प्रतिमा ना."
 system.image_not_supported: "हो एजंट प्रतिमा इनपुटाक समर्थन दिना."
 system.image_pasted: "प्रतिमा जोडल्या (%{label}). धाडपाक Enter दामात."  # {Locked="%{label}","Enter"}

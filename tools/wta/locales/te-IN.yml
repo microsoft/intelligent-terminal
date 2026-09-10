@@ -75,6 +75,10 @@ chat.tool_kind.other: "సాధనం"
 input.placeholder.connected: "ఏదైనా అడగండి, / కమాండ్‌ల కోసం.."  # {Locked="/"}
 input.placeholder.connecting: "కనెక్ట్ అవుతోంది..."
 input.placeholder.disconnected: "డిస్‌కనెక్ట్"
+input.queue.status: "వరుసలో [%{count}]: %{items}"
+input.queue.status_full: "వరుస నిండింది [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter డ్రాఫ్ట్‌ను వరుసలో ఉంచుతుంది · Esc ముందుగా డ్రాఫ్ట్‌ను తుడిచేస్తుంది"
+input.queue.hint_without_draft: "Esc తాజా క్యూ చేసిన ఇన్‌పుట్‌ను తొలగిస్తుంది"
 input.image_attachments: "📎 చిత్రాలు: %{items}"  # {Locked="📎","%{items}"}
 
 # ── కమాండ్ పాపప్ (src/ui/command_popup.rs) ─────────────────────────────────
@@ -178,6 +182,7 @@ system.stopped_max_tokens: "మోడల్ అవుట్‌పుట్ ప�
 system.stopped_max_turn_requests: "ఈ వంతు కోసం దాని అభ్యర్థన పరిమితిని చేరుకున్న తర్వాత ఏజెంట్ ఆగిపోయింది."
 system.stopped_refusal: "ఈ అభ్యర్థనను కొనసాగించడానికి ఏజెంట్ నిరాకరించింది."
 system.agent_busy: "ఈ ట్యాబ్‌లో Agent బిజీగా ఉంది — ప్రస్తుత ప్రాంప్ట్ పూర్తయ్యే వరకు వేచి ఉండండి."
+system.input_queue_full: "ఈ ట్యాబ్‌లో వరుస నిండింది. ఖాళీ స్థానం కోసం వేచి ఉండండి, లేదా మీ డ్రాఫ్ట్‌ను తుడిచేసి తాజా క్యూ చేసిన ఇన్‌పుట్‌ను తొలగించడానికి Esc నొక్కండి."
 system.image_clipboard_empty: "అతికించడానికి క్లిప్‌బోర్డ్‌లో చిత్రం లేదు."
 system.image_not_supported: "ఈ ఏజెంట్ చిత్రం ఇన్‌పుట్‌కు మద్దతు ఇవ్వదు."
 system.image_pasted: "చిత్రం జోడించబడింది (%{label}). పంపడానికి Enter నొక్కండి."  # {Locked="%{label}","Enter"}

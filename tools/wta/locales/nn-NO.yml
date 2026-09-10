@@ -75,6 +75,10 @@ chat.tool_kind.other: "Verktøy"
 input.placeholder.connected: "Spør om kva som helst, / for kommandoar.."  # {Locked="/"}
 input.placeholder.connecting: "koplar til..."
 input.placeholder.disconnected: "fråkopla"
+input.queue.status: "I kø [%{count}]: %{items}"
+input.queue.status_full: "Køen er full [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter set kladden i kø · Esc tømmer først kladden"
+input.queue.hint_without_draft: "Esc fjernar den nyaste kølagde inndata"
 input.image_attachments: "📎 Bilete: %{items}"  # {Locked="%{items}"} {Locked="📎"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
@@ -165,6 +169,7 @@ system.stopped_max_tokens: "Svaret blei avkorta etter at utdatagrensa til modell
 system.stopped_max_turn_requests: "Agenten stoppa etter at førespurnadsgrensa for denne runden blei nådd."
 system.stopped_refusal: "Agenten avviste å halde fram med denne førespurnaden."
 system.agent_busy: "Agenten er oppteken i denne fana — vent til gjeldande ledetekst er ferdig."
+system.input_queue_full: "Køen på denne fana er full. Vent på ledig plass, eller tøm kladden og trykk Esc for å fjerne den nyaste kølagde inndata."
 system.image_clipboard_empty: "Det finst ikkje noko bilete på utklippstavla å lime inn."
 system.image_not_supported: "Denne agenten støttar ikkje bileteinndata."
 system.image_pasted: "Bilete lagt ved (%{label}). Trykk Enter for å sende."  # {Locked="%{label}","Enter"}

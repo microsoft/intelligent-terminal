@@ -75,6 +75,10 @@ chat.tool_kind.other: "Strumento"
 input.placeholder.connected: "Chiedi qualsiasi cosa, / per i comandi.."  # {Locked="/"}
 input.placeholder.connecting: "Connessione in corso..."
 input.placeholder.disconnected: "Disconnesso"
+input.queue.status: "In coda [%{count}]: %{items}"
+input.queue.status_full: "Coda piena [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter mette la bozza in coda · Esc prima cancella la bozza"
+input.queue.hint_without_draft: "Esc rimuove l'input in coda più recente"
 input.image_attachments: "📎 Immagini: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Popup dei comandi (src/ui/command_popup.rs) ─────────────────────────────────
@@ -165,6 +169,7 @@ system.stopped_max_tokens: "La risposta è stata troncata dopo aver raggiunto il
 system.stopped_max_turn_requests: "L'agente si è fermato dopo aver raggiunto il limite di richieste per questo turno."
 system.stopped_refusal: "L'agente ha rifiutato di continuare con questa richiesta."
 system.agent_busy: "L’agente è occupato in questa scheda — attendere il completamento del prompt corrente."
+system.input_queue_full: "La coda in questa scheda è piena. Attendi che si liberi uno spazio, oppure cancella la bozza e premi Esc per rimuovere l'input in coda più recente."
 system.image_clipboard_empty: "Nessuna immagine negli Appunti da incollare."
 system.image_not_supported: "Questo agente non supporta l'input di immagini."
 system.image_pasted: "Immagine allegata (%{label}). Premi Enter per inviare."  # {Locked="%{label}","Enter"}

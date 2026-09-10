@@ -458,6 +458,7 @@ impl App {
             tab.finish_active_prompt(prompt_id);
             tab.turn = TurnState::Idle;
             self.project_tab_state(&target_tab);
+            self.schedule_input_queue_drain_for_tab(&target_tab);
             return;
         }
 
@@ -476,6 +477,7 @@ impl App {
         {
             self.project_tab_state(&target_tab);
         }
+        self.schedule_input_queue_drain_for_tab(&target_tab);
     }
 
     pub fn turn_close(&mut self, session_id: &str) {
@@ -651,7 +653,7 @@ impl App {
         };
     }
 
-    fn turn_close_finalize_chat(&mut self, session_id: &str) {
+    pub(super) fn turn_close_finalize_chat(&mut self, session_id: &str) {
         let response_chars = self
             .session_tab(session_id)
             .active_agent_text()
@@ -664,9 +666,14 @@ impl App {
         );
         let tab = self.session_tab_mut(session_id);
         let prompt = tab.turn.prompt().cloned().expect("prompt set");
+        let prompt_label = if prompt.autofix.is_some() {
+            t!("chat.autofix_prompt_label").into_owned()
+        } else {
+            prompt.text.clone()
+        };
         let details = tab.take_current_turn_details();
         tab.completed_turns.push(CompletedTurn {
-            prompt: prompt.text.clone(),
+            prompt: prompt_label,
             details,
             expanded: true,
             trailing_marker: None,
@@ -730,7 +737,7 @@ impl App {
 
     /// Helper called at every turn-close path. Clears the animation phase and
     /// first-visible-activity latch.
-    fn turn_clear_agent_activity(&mut self, session_id: &str) {
+    pub(super) fn turn_clear_agent_activity(&mut self, session_id: &str) {
         let tab = self.session_tab_mut(session_id);
         tab.activity_frame = 0;
         tab.finish_thought();
@@ -854,6 +861,7 @@ impl App {
         // card had pinned. The C++ side falls back to source-of-agent.
         let target_tab = self.tab_for_session(session_id);
         self.recompute_chip_override(&target_tab);
+        self.schedule_input_queue_drain(session_id);
     }
 
     /// Cancel the in-flight turn for a session and request cancellation from
@@ -898,6 +906,11 @@ impl App {
                 tab.cancel_active_prompt(prompt_id);
             }
         }
+        let completed_recommendation_session = self.tab_sessions.get(target_tab).and_then(|tab| {
+            (tab.turn.recommendations().is_some() && tab.turn.accepts_new_prompt())
+                .then(|| tab.session_id.clone())
+                .flatten()
+        });
         let direct_proposal_id = self
             .tab_sessions
             .get(target_tab)
@@ -1037,6 +1050,9 @@ impl App {
         // state; release whatever the helper had pinned. C++ falls back to
         // source-of-agent driven rendering.
         self.recompute_chip_override(target_tab);
+        if completed_recommendation_session.is_some() {
+            self.schedule_input_queue_drain_for_tab(target_tab);
+        }
     }
 
     pub(super) fn settle_prompt_cancellation(&mut self, prompt_id: u64, started: bool) {
@@ -1069,6 +1085,7 @@ impl App {
             tab.turn = TurnState::Idle;
         }
         self.project_tab_state(&target_tab);
+        self.schedule_input_queue_drain_for_tab(&target_tab);
     }
 
     pub(super) fn settle_retired_transport_prompts(&mut self) {

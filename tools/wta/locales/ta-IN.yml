@@ -75,6 +75,10 @@ chat.tool_kind.other: "கருவி"
 input.placeholder.connected: "எதையும் கேளுங்கள், / கட்டளைகளுக்கு.."  # {Locked="/"}
 input.placeholder.connecting: "இணைக்கப்படுகிறது..."
 input.placeholder.disconnected: "துண்டிக்கப்பட்டது"
+input.queue.status: "வரிசையில் [%{count}]: %{items}"
+input.queue.status_full: "வரிசை நிரம்பியது [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter வரைவைக் வரிசையில் சேர்க்கிறது · Esc முதலில் வரைவைக் அழிக்கிறது"
+input.queue.hint_without_draft: "Esc சமீபத்திய வரிசைப்படுத்தப்பட்ட உள்ளீட்டை நீக்குகிறது"
 input.image_attachments: "📎 படங்கள்: %{items}"  # {Locked="📎","%{items}"}
 
 # ── கட்டளை பாப்அப் (src/ui/command_popup.rs) ─────────────────────────────────
@@ -178,6 +182,7 @@ system.stopped_max_tokens: "மாதிரியின் வெளியீட
 system.stopped_max_turn_requests: "இந்த முறைக்கான கோரிக்கை வரம்பை எட்டிய பிறகு முகவர் நிறுத்தப்பட்டார்."
 system.stopped_refusal: "இந்தக் கோரிக்கையைத் தொடர முகவர் மறுத்துவிட்டார்."
 system.agent_busy: "இந்தத் தாவலில் Agent பிஸியாக உள்ளது — தற்போதைய prompt முடியும் வரை காத்திருக்கவும்."
+system.input_queue_full: "இந்த தாவலில் வரிசை நிரம்பியுள்ளது. இடம் காலியாகும் வரை காத்திருக்கவும், அல்லது உங்கள் வரைவைக் அழித்து சமீபத்திய வரிசைப்படுத்தப்பட்ட உள்ளீட்டை நீக்க Esc அழுத்தவும்."
 system.image_clipboard_empty: "ஒட்டுவதற்கு கிளிப்போர்டில் படம் இல்லை."
 system.image_not_supported: "இந்த ஏஜெண்ட் பட உள்ளீட்டை ஆதரிக்காது."
 system.image_pasted: "படம் இணைக்கப்பட்டது (%{label}). அனுப்ப Enter அழுத்தவும்."  # {Locked="%{label}","Enter"}

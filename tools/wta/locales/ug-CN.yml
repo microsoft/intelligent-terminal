@@ -77,6 +77,10 @@ input.placeholder.connected: "ئىختىيارچە سوراڭ، / بۇيرۇقل
 input.placeholder.connecting: "باغلىنىۋاتىدۇ..."
 # Input box placeholder when agent is disconnected
 input.placeholder.disconnected: "ئۈزۈلدى"
+input.queue.status: "ئۆچرەتتە [%{count}]: %{items}"
+input.queue.status_full: "ئۆچرەت تولدى [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter لايىھىنى ئۆچرەتكە قوشىدۇ · Esc ئالدى بىلەن لايىھىنى تازىلايدۇ"
+input.queue.hint_without_draft: "Esc ئەڭ يېڭى ئۆچرەتلەنگەن كىرگۈزۈشنى ئۆچۈرىدۇ"
 input.image_attachments: "📎 رەسىملەر: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────────────────────────────────────
@@ -186,6 +190,7 @@ system.stopped_max_tokens: "ئىنكاس مودېلنىڭ چىقىرىش چېك�
 system.stopped_max_turn_requests: "ۋاكالەتچى بۇ نۆۋەتتىكى ئىلتىماس چېكىگە يەتكەندىن كېيىن توختىدى."
 system.stopped_refusal: "ۋاكالەتچى بۇ ئىلتىماسنى داۋاملاشتۇرۇشنى رەت قىلدى."
 system.agent_busy: "بۇ بەتكۈچتە Agent ئالدىراش — ھازىرقى prompt تاماملانغۇچە كۈتۈڭ."
+system.input_queue_full: "بۇ بەتكۈچتىكى ئۆچرەت تولدى. بوش ئورۇننى كۈتۈڭ ياكى لايىھىڭىزنى تازىلاپ Esc نى بېسىپ ئەڭ يېڭى ئۆچرەتلەنگەن كىرگۈزۈشنى ئۆچۈرۈڭ."
 system.image_clipboard_empty: "چاپلاش ئۈچۈن چاپلاش تاختىسىدا رەسىم يوق."
 system.image_not_supported: "بۇ AI ئاگېنتى رەسىم كىرگۈزۈشنى قوللىمايدۇ."
 system.image_pasted: "رەسىم قوشۇلدى (%{label}). ئەۋەتىش ئۈچۈن Enter بېسىڭ."  # {Locked="%{label}","Enter"}

@@ -75,6 +75,10 @@ chat.tool_kind.other: "መሣሪያ"
 input.placeholder.connected: "Ask anything, / for commands.."  # {Locked="/"}
 input.placeholder.connecting: "connecting..."
 input.placeholder.disconnected: "disconnected"
+input.queue.status: "በወረፋ [%{count}]: %{items}"
+input.queue.status_full: "ወረፋው ሞልቷል [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter ረቂቁን ወደ ወረፋ ያስገባል · Esc መጀመሪያ ረቂቁን ያጸዳል"
+input.queue.hint_without_draft: "Esc በቅርብ የተወረፈውን ግቤት ያስወግዳል"
 # Summary of attached images; keep 📎 and %{items} verbatim.
 input.image_attachments: "📎 ምስሎች: %{items}"  # {Locked="📎","%{items}"}
 
@@ -166,6 +170,7 @@ system.stopped_max_tokens: "ምላሹ የሞዴሉ የውፅዓት ገደብ ላ
 system.stopped_max_turn_requests: "ወኪሉ ለዚህ ዙር የጥያቄ ገደቡ ላይ ከደረሰ በኋላ ቆሟል።"
 system.stopped_refusal: "ወኪሉ በዚህ ጥያቄ መቀጠል አልፈለገም።"
 system.agent_busy: "Agent በዚህ ትር ላይ በስራ ላይ ነው — የአሁኑ ጥያቄ እስኪያልቅ ይጠብቁ።"
+system.input_queue_full: "በዚህ ትር ላይ ወረፋው ሞልቷል። ቦታ እስኪኖር ይጠብቁ፣ ወይም ረቂቁን አጥፉና Esc ተጫኑ በቅርብ የተወረፈውን ግቤት ለማስወገድ።"
 # Image paste messages; "agent" refers to an AI agent. Keep Enter and %{label} verbatim.
 system.image_clipboard_empty: "በቅንጥብ ሰሌዳው ላይ ለመለጠፍ ምስል የለም።"
 system.image_not_supported: "ይህ agent የምስል ግቤትን አይደግፍም።"

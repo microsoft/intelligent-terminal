@@ -75,6 +75,10 @@ chat.tool_kind.other: "Εργαλείο"
 input.placeholder.connected: "Ρωτήστε οτιδήποτε, / για εντολές.."  # {Locked="/"}
 input.placeholder.connecting: "σύνδεση..."
 input.placeholder.disconnected: "αποσυνδέθηκε"
+input.queue.status: "Σε ουρά [%{count}]: %{items}"
+input.queue.status_full: "Η ουρά είναι πλήρης [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Το Enter βάζει το πρόχειρο στην ουρά · Το Esc καθαρίζει πρώτα το πρόχειρο"
+input.queue.hint_without_draft: "Το Esc αφαιρεί τη νεότερη καταχωρημένη είσοδο"
 # Summary of attached images; keep 📎 and %{items} verbatim.
 input.image_attachments: "📎 Εικόνες: %{items}"  # {Locked="📎","%{items}"}
 
@@ -166,6 +170,7 @@ system.stopped_max_tokens: "Η απάντηση περικόπηκε μετά τ
 system.stopped_max_turn_requests: "Ο πράκτορας σταμάτησε μετά την επίτευξη του ορίου αιτημάτων για αυτόν τον γύρο."
 system.stopped_refusal: "Ο πράκτορας αρνήθηκε να συνεχίσει με αυτό το αίτημα."
 system.agent_busy: "Ο agent είναι απασχολημένος σε αυτήν την καρτέλα — περιμένετε να ολοκληρωθεί η τρέχουσα προτροπή."
+system.input_queue_full: "Η ουρά σε αυτή την καρτέλα είναι πλήρης. Περιμένετε να αδειάσει θέση ή καθαρίστε το πρόχειρό σας και πατήστε Esc για να αφαιρέσετε τη νεότερη καταχωρημένη είσοδο."
 # Image paste messages; "agent" refers to an AI agent. Keep Enter and %{label} verbatim.
 system.image_clipboard_empty: "Δεν υπάρχει εικόνα στο πρόχειρο για επικόλληση."
 system.image_not_supported: "Αυτός ο παράγοντας δεν υποστηρίζει είσοδο εικόνας."

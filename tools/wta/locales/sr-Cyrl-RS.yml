@@ -75,6 +75,10 @@ chat.tool_kind.other: "Алат"
 input.placeholder.connected: "Питајте било шта, / за команде.."  # {Locked="/"}
 input.placeholder.connecting: "повезивање..."
 input.placeholder.disconnected: "прекинута веза"
+input.queue.status: "У реду [%{count}]: %{items}"
+input.queue.status_full: "Ред је пун [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter ставља нацрт у ред · Esc прво брише нацрт"
+input.queue.hint_without_draft: "Esc уклања најновији унос у реду"
 input.image_attachments: "📎 Слике: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
@@ -174,6 +178,7 @@ system.stopped_max_tokens: "Одговор је одсечен након дос
 system.stopped_max_turn_requests: "Агент се зауставио након достизања ограничења захтева за овај потез."
 system.stopped_refusal: "Агент је одбио да настави са овим захтевом."
 system.agent_busy: "Агент је заузет на овој картици — сачекајте да се тренутни упит заврши."
+system.input_queue_full: "Ред на овој картици је пун. Сачекајте слободно место или обришите нацрт и притисните Esc да уклоните најновији унос у реду."
 system.image_clipboard_empty: "Нема слике у међуспремнику за лепљење."
 system.image_not_supported: "Овај агент не подржава унос слика."
 system.image_pasted: "Слика је приложена (%{label}). Притисните Enter за слање."  # {Locked="%{label}","Enter"}

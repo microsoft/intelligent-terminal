@@ -75,6 +75,10 @@ chat.tool_kind.other: "उपकरण"
 input.placeholder.connected: "जेसुकै सोध्नुहोस्, / कमाण्डहरूका लागि.."  # {Locked="/"}
 input.placeholder.connecting: "जडान हुँदैछ..."
 input.placeholder.disconnected: "विच्छेद"
+input.queue.status: "क्युएमा [%{count}]: %{items}"
+input.queue.status_full: "क्यु भरिएको छ [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter ले मस्यौदालाई क्युएमा राख्छ · Esc ले पहिले मस्यौदा खाली गर्छ"
+input.queue.hint_without_draft: "Esc ले सबैभन्दा नयाँ क्युए गरिएको इनपुट हटाउँछ"
 input.image_attachments: "📎 छविहरू: %{items}"  # {Locked="%{items}"} {Locked="📎"}
 
 # ── कमाण्ड पपअप (src/ui/command_popup.rs) ─────────────────────────────────
@@ -178,6 +182,7 @@ system.stopped_max_tokens: "मोडेलको आउटपुट सीम�
 system.stopped_max_turn_requests: "यस पटकको अनुरोध सीमामा पुगेपछि एजेन्ट रोकियो।"
 system.stopped_refusal: "एजेन्टले यो अनुरोध जारी राख्न अस्वीकार गर्‍यो।"
 system.agent_busy: "यो ट्याबमा Agent व्यस्त छ — हालको प्रम्प्ट समाप्त नभएसम्म पर्खनुहोस्।"
+system.input_queue_full: "यो ट्याबको क्यु भरिएको छ। खाली ठाउँ पर्खनुहोस्, वा आफ्नो मस्यौदा खाली गरेर सबैभन्दा नयाँ क्युए गरिएको इनपुट हटाउन Esc थिच्नुहोस्।"
 system.image_clipboard_empty: "टाँस्नका लागि क्लिपबोर्डमा कुनै छवि छैन।"
 system.image_not_supported: "यो एजेन्टले छवि इनपुट समर्थन गर्दैन।"
 system.image_pasted: "छवि संलग्न गरियो (%{label})। पठाउन Enter थिच्नुहोस्।"  # {Locked="%{label}","Enter"}

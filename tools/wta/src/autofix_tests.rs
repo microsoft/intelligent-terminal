@@ -230,11 +230,43 @@ fn busy_same_pane_reemit_does_not_resubmit() {
     );
 }
 
-/// Single-flight, different pane: a failure in a *different* pane while the
-/// tab already has an autofix turn in flight is dropped — the originally armed
-/// pane stays armed and the new pane is not adopted.
 #[test]
-fn busy_different_pane_is_dropped() {
+fn completed_same_pane_autofix_can_submit_again() {
+    let mut app = test_app();
+    let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = prompt_tx;
+    app.state = ConnectionState::Connected;
+    app.autofix_enabled = true;
+    let pane = "pane-completed";
+    app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.into());
+    app.session_to_tab
+        .insert(DEFAULT_TAB_ID.into(), DEFAULT_TAB_ID.into());
+
+    app.maybe_trigger_autofix(&failure_notification(pane, Some(DEFAULT_TAB_ID)));
+    prompt_rx.try_recv().expect("first autofix submitted");
+    let first_generation = app.current_tab().autofix.generation;
+
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: DEFAULT_TAB_ID.into(),
+    });
+    assert!(app.current_tab().turn.accepts_new_prompt());
+
+    app.maybe_trigger_autofix(&failure_notification(pane, Some(DEFAULT_TAB_ID)));
+
+    let second = prompt_rx
+        .try_recv()
+        .expect("completed autofix must not dedupe a new failure");
+    assert!(second.is_autofix());
+    assert_eq!(
+        app.current_tab().autofix.generation,
+        first_generation.wrapping_add(1)
+    );
+}
+
+/// A failure in a different pane joins the per-tab FIFO without replacing the
+/// active autofix singleton.
+#[test]
+fn busy_different_pane_is_queued() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     app.autofix_enabled = true;
@@ -250,7 +282,7 @@ fn busy_different_pane_is_dropped() {
     );
     let gen_after_first = app.tab_mut(tab).autofix.generation;
 
-    // Different pane while A's turn is in flight → dropped.
+    // Different pane while A's turn is in flight joins the queue.
     app.maybe_trigger_autofix(&failure_notification(pane_b, Some(tab)));
     assert_eq!(
         app.tab_mut(tab).autofix.pane_id.as_deref(),
@@ -260,7 +292,12 @@ fn busy_different_pane_is_dropped() {
     assert_eq!(
         app.tab_mut(tab).autofix.generation,
         gen_after_first,
-        "different-pane re-trigger while busy must not submit a new turn"
+        "enqueueing must not mutate the active autofix generation"
+    );
+    assert_eq!(app.tab_mut(tab).pending_inputs.len(), 1);
+    assert_eq!(
+        app.tab_mut(tab).pending_inputs[0].autofix_target_pane(),
+        Some(pane_b)
     );
 }
 

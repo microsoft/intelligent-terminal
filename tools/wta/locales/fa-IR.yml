@@ -75,6 +75,10 @@ chat.tool_kind.other: "ابزار"
 input.placeholder.connected: "هرچیزی بپرسید، / برای دستورات.."  # {Locked="/"}
 input.placeholder.connecting: "در حال اتصال..."
 input.placeholder.disconnected: "قطع شده"
+input.queue.status: "در صف [%{count}]: %{items}"
+input.queue.status_full: "صف پر است [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter پیش‌نویس را در صف قرار می‌دهد · Esc ابتدا پیش‌نویس را پاک می‌کند"
+input.queue.hint_without_draft: "Esc جدیدترین ورودی صف‌شده را حذف می‌کند"
 input.image_attachments: "📎 تصاویر: %{items}"  # {Locked="📎","%{items}"}
 
 # ── پنجره بازشو دستورات (src/ui/command_popup.rs) ─────────────────────────────────
@@ -178,6 +182,7 @@ system.stopped_max_tokens: "پاسخ پس از رسیدن به حد خروجی �
 system.stopped_max_turn_requests: "عامل پس از رسیدن به حد درخواست خود برای این نوبت متوقف شد."
 system.stopped_refusal: "عامل از ادامه‌دادن این درخواست خودداری کرد."
 system.agent_busy: "عامل در این زبانه مشغول است — منتظر بمانید تا درخواست فعلی تمام شود."
+system.input_queue_full: "صف در این زبانه پر است. منتظر خالی شدن یک جایگاه بمانید، یا پیش‌نویس خود را پاک کنید و Esc را فشار دهید تا جدیدترین ورودی صف‌شده حذف شود."
 system.image_clipboard_empty: "هیچ تصویری برای جای‌گذاری در کلیپ‌بورد نیست."
 system.image_not_supported: "این عامل هوش مصنوعی از ورودی تصویر پشتیبانی نمی‌کند."
 system.image_pasted: "تصویر پیوست شد (%{label}). برای ارسال، Enter را فشار دهید."  # {Locked="%{label}","Enter"}

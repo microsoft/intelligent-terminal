@@ -75,6 +75,10 @@ chat.tool_kind.other: "Alat"
 input.placeholder.connected: "Tanya apa sahaja, / untuk arahan.."  # {Locked="/"}
 input.placeholder.connecting: "menyambung..."
 input.placeholder.disconnected: "terputus"
+input.queue.status: "Dalam giliran [%{count}]: %{items}"
+input.queue.status_full: "Giliran penuh [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter meletakkan draf dalam giliran · Esc membersihkan draf terlebih dahulu"
+input.queue.hint_without_draft: "Esc membuang input beratur yang terbaru"
 input.image_attachments: "📎 Imej: %{items}"  # {Locked="%{items}"} {Locked="📎"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
@@ -165,6 +169,7 @@ system.stopped_max_tokens: "Respons telah dipotong selepas mencapai had output m
 system.stopped_max_turn_requests: "Ejen berhenti selepas mencapai had permintaannya untuk giliran ini."
 system.stopped_refusal: "Ejen enggan meneruskan permintaan ini."
 system.agent_busy: "Ejen sedang sibuk pada tab ini — tunggu prompt semasa selesai."
+system.input_queue_full: "Giliran pada tab ini penuh. Tunggu ruang kosong, atau kosongkan draf anda dan tekan Esc untuk membuang input beratur yang terbaru."
 system.image_clipboard_empty: "Tiada imej pada papan klip untuk ditampal."
 system.image_not_supported: "Ejen ini tidak menyokong input imej."
 system.image_pasted: "Imej dilampirkan (%{label}). Tekan Enter untuk menghantar."  # {Locked="%{label}","Enter"}

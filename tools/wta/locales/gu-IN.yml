@@ -75,6 +75,10 @@ chat.tool_kind.other: "સાધન"
 input.placeholder.connected: "કંઈ પણ પૂછો, / કમાન્ડ માટે.."  # {Locked="/"}
 input.placeholder.connecting: "કનેક્ટ થઈ રહ્યું છે..."
 input.placeholder.disconnected: "ડિસ્કનેક્ટ"
+input.queue.status: "કતારમાં [%{count}]: %{items}"
+input.queue.status_full: "કતાર ભરાઈ ગઈ [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter ડ્રાફ્ટને કતારમાં મૂકે છે · Esc પહેલા ડ્રાફ્ટ સાફ કરે છે"
+input.queue.hint_without_draft: "Esc સૌથી નવી કતારબદ્ધ ઇનપુટ દૂર કરે છે"
 input.image_attachments: "📎 છબીઓ: %{items}"  # {Locked="📎","%{items}"}
 
 # ── કમાન્ડ પૉપઅપ (src/ui/command_popup.rs) ─────────────────────────────────
@@ -178,6 +182,7 @@ system.stopped_max_tokens: "મોડેલની આઉટપુટ મર્�
 system.stopped_max_turn_requests: "આ વારા માટેની વિનંતી મર્યાદા સુધી પહોંચ્યા પછી એજન્ટ અટકી ગયો."
 system.stopped_refusal: "એજન્ટે આ વિનંતી ચાલુ રાખવાનો ઇનકાર કર્યો."
 system.agent_busy: "આ ટેબ પર Agent વ્યસ્ત છે — હાલનો પ્રોમ્પ્ટ પૂર્ણ થાય ત્યાં સુધી રાહ જુઓ."
+system.input_queue_full: "આ ટૅબમાં કતાર ભરાઈ ગઈ છે. જગ્યા ખાલી થાય ત્યાં સુધી રાહ જુઓ, અથવા તમારો ડ્રાફ્ટ સાફ કરીને સૌથી નવી કતારબદ્ધ ઇનપુટ દૂર કરવા Esc દબાવો."
 system.image_clipboard_empty: "પેસ્ટ કરવા માટે ક્લિપબોર્ડ પર કોઈ છબી નથી."
 system.image_not_supported: "આ એજન્ટ છબી ઇનપુટને સપોર્ટ કરતો નથી."
 system.image_pasted: "છબી જોડાઈ (%{label}). મોકલવા માટે Enter દબાવો."  # {Locked="%{label}","Enter"}

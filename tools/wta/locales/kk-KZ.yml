@@ -75,6 +75,10 @@ chat.tool_kind.other: "Құрал"
 input.placeholder.connected: "Кез келген сұрақ қойыңыз, / командалар үшін.."  # {Locked="/"}
 input.placeholder.connecting: "қосылуда..."
 input.placeholder.disconnected: "ажыратылды"
+input.queue.status: "Кезекте [%{count}]: %{items}"
+input.queue.status_full: "Кезек толы [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter нобайды кезекке қояды · Esc алдымен нобайды тазартады"
+input.queue.hint_without_draft: "Esc кезектегі ең жаңа енгізуді өшіреді"
 input.image_attachments: "📎 Суреттер: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
@@ -178,6 +182,7 @@ system.stopped_max_tokens: "Жауап модельдің шығыс шегін�
 system.stopped_max_turn_requests: "Агент осы кезек үшін сұраныс шегіне жеткеннен кейін тоқтады."
 system.stopped_refusal: "Агент бұл сұранысты жалғастырудан бас тартты."
 system.agent_busy: "Агент осы қойыншада бос емес — ағымдағы сұрау аяқталғанын күтіңіз."
+system.input_queue_full: "Бұл қойындыдағы кезек толы. Бос орын ашылғанын күтіңіз немесе нобайыңызды тазалап, кезектегі ең жаңа енгізуді өшіру үшін Esc пернесін басыңыз."
 system.image_clipboard_empty: "Қою үшін алмасу буферінде сурет жоқ."
 system.image_not_supported: "Бұл агент кескін енгізуді қолдамайды."
 system.image_pasted: "Сурет тіркелді (%{label}). Жіберу үшін Enter басыңыз."  # {Locked="%{label}","Enter"}

@@ -75,6 +75,10 @@ chat.tool_kind.other: "Työkalu"
 input.placeholder.connected: "Kysy mitä tahansa, / komennoille.."  # {Locked="/"}
 input.placeholder.connecting: "yhdistetään..."
 input.placeholder.disconnected: "yhteys katkaistu"
+input.queue.status: "Jonossa [%{count}]: %{items}"
+input.queue.status_full: "Jono täynnä [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter lisää luonnoksen jonoon · Esc tyhjentää ensin luonnoksen"
+input.queue.hint_without_draft: "Esc poistaa uusimman jonoon asetetun syötteen"
 input.image_attachments: "📎 Kuvat: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
@@ -165,6 +169,7 @@ system.stopped_max_tokens: "Vastaus katkaistiin mallin tulostusrajan saavuttamis
 system.stopped_max_turn_requests: "Agentti pysähtyi saavutettuaan tämän vuoron pyyntörajan."
 system.stopped_refusal: "Agentti kieltäytyi jatkamasta tätä pyyntöä."
 system.agent_busy: "Agentti on varattu tässä välilehdessä — odota, että nykyinen kehote valmistuu."
+system.input_queue_full: "Tämän välilehden jono on täynnä. Odota vapautuvaa paikkaa tai tyhjennä luonnoksesi ja paina Esc poistaaksesi uusimman jonoon asetetun syötteen."
 system.image_clipboard_empty: "Leikepöydällä ei ole liitettävää kuvaa."
 system.image_not_supported: "Tämä agentti ei tue kuvasyötettä."
 system.image_pasted: "Kuva liitetty (%{label}). Lähetä painamalla Enter."  # {Locked="%{label}","Enter"}

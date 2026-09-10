@@ -79,13 +79,20 @@ fn agent_command_on_enter(input: &str, selected: Option<&AvailableAgent>) -> Opt
 mod attachments;
 mod autofix;
 mod input_edit;
+mod input_queue;
+mod input_submission;
 mod tab_state;
 mod turn_state;
 use autofix::*;
+use input_queue::*;
+use input_submission::*;
 
 pub use crate::turn_context::TurnContext;
 #[cfg(test)]
 use input_edit::{next_word_boundary, prev_word_boundary, INPUT_HISTORY_MAX_ENTRIES};
+pub(crate) use input_queue::PendingInputQueueSnapshot;
+#[cfg(test)]
+pub(crate) use input_queue::INPUT_QUEUE_CAPACITY;
 pub use tab_state::{
     ChatMessage, CompletedTurn, ConfigPickerState, NoticeKind, PermissionState,
     RecommendationFocus, TabSession, ToolCallContent, ToolCallKind, ToolCallLocation,
@@ -1367,9 +1374,8 @@ pub struct App {
     /// pane (we ask WT to do it; ConPty then SIGKILLs us). Cleared on any
     /// other key, on prompt activity, or after the window elapses.
     pub close_pane_armed_at: Option<std::time::Instant>,
-    /// Transient one-line hint rendered at the bottom of the chat area
-    /// (localized via `system.close_pane_hint`). Auto-clears at the
-    /// recorded deadline.
+    /// Transient localized one-line hint rendered at the bottom of the chat
+    /// area. Auto-clears at the recorded deadline.
     pub transient_hint: Option<(String, std::time::Instant)>,
     /// Mirror of master's authoritative live-session set, pushed via
     /// ACP `intellterm.wta/session_*` ext-notifications. session management Enter
@@ -1399,6 +1405,8 @@ struct InitialYoloControlOwner {
 /// enough that the user can react after seeing the hint; short enough that
 /// a stale arm doesn't bite the next time they want to clear input.
 pub const CLOSE_PANE_ARM_WINDOW: std::time::Duration = std::time::Duration::from_millis(1500);
+pub const INPUT_QUEUE_FULL_HINT_WINDOW: std::time::Duration =
+    std::time::Duration::from_millis(1500);
 pub const SELECTION_COPIED_HINT_WINDOW: std::time::Duration =
     std::time::Duration::from_millis(1500);
 
@@ -3824,6 +3832,7 @@ impl App {
         self.pending_yolo_session_tabs.clear();
         let active_tab_id = self.active_tab_key().to_string();
         for tab in self.tab_sessions.values_mut() {
+            tab.clear_pending_inputs();
             tab.clear_chat_history();
             tab.invalidate_active_prompt_attachment();
             tab.usage = None;
@@ -4796,6 +4805,7 @@ impl App {
             AppEvent::UserMessageReplayChunk { .. } => "user_message_replay_chunk",
             AppEvent::AgentMessageEnd { .. } => "agent_message_end",
             AppEvent::PromptCancellationSettled { .. } => "prompt_cancellation_settled",
+            AppEvent::DrainInputQueue { .. } => "drain_input_queue",
             AppEvent::TimingMetric { .. } => "timing_metric",
             AppEvent::ToolCall { .. } => "tool_call",
             AppEvent::ToolCallUpdate { .. } => "tool_call_update",
@@ -5717,7 +5727,9 @@ impl App {
         }
         match commands::classify(&self.current_tab().input) {
             ParseOutcome::Command(cmd) => {
-                self.current_tab_mut().clear_input();
+                if cmd.kind != CommandKind::Fix {
+                    self.current_tab_mut().clear_input();
+                }
                 self.handle_slash_command(cmd);
                 true
             }
@@ -5794,6 +5806,14 @@ impl App {
 
     /// `/clear` — wipe the active tab's chat history and completed turns.
     fn cmd_clear(&mut self) {
+        let tab_id = self.active_tab_key().to_string();
+        if self
+            .tab_sessions
+            .get(&tab_id)
+            .is_some_and(|tab| tab.turn.recommendations().is_some())
+        {
+            self.turn_cancel_for_tab(&tab_id);
+        }
         let tab = self.current_tab_mut();
         tab.clear_chat_history();
         tab.clear_completed_turns();
@@ -5865,6 +5885,7 @@ impl App {
             self.session_commands.remove(&session_id);
         }
         let tab = self.current_tab_mut();
+        tab.clear_pending_inputs();
         tab.clear_chat_history();
         tab.usage = None;
         tab.usage_staleness = crate::usage::UsageStaleness::default();
@@ -5900,37 +5921,15 @@ impl App {
     /// armed — that UI is tied to a specific failing pane, and a command typed
     /// into the agent pane surfaces its result there directly.
     ///
-    /// Refuses while a turn is in flight; the user should `/stop` first.
-    fn cmd_fix(&mut self, in_flight: bool, hint: String) {
-        if in_flight {
-            let tab = self.current_tab_mut();
-            tab.messages.push(ChatMessage::warning(
-                t!("system.busy_use_stop").into_owned(),
-            ));
-            tab.scroll_to_bottom();
-            return;
-        }
-
+    fn cmd_fix(&mut self, _in_flight: bool, hint: String) {
         let target_tab_id = self
             .tab_id
             .clone()
             .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
-        if self.prompt_reconfiguration_pending_for_tab(&target_tab_id) {
-            let tab = self.tab_mut(&target_tab_id);
-            tab.messages
-                .push(ChatMessage::warning(t!("system.agent_busy").into_owned()));
-            tab.scroll_to_bottom();
-            return;
-        }
-
-        // Bump generation so any stale in-flight autofix response is dropped,
-        // and clear a leftover suggestion — mirrors `maybe_trigger_autofix`.
-        let generation = {
-            let tab = self.tab_mut(&target_tab_id);
-            tab.autofix.generation = tab.autofix.generation.wrapping_add(1);
-            tab.autofix.suggested_pane_id = None;
-            tab.autofix.generation
-        };
+        let draft_backup = self.input_queue_is_full(&target_tab_id).then(|| {
+            let tab = self.current_tab();
+            (tab.input.clone(), tab.cursor_pos, tab.attachments.clone())
+        });
 
         let source_pane_id = self.source_session_id.clone();
         let pane_context = PaneContext {
@@ -5940,35 +5939,69 @@ impl App {
             cwd: None,
             source_pane_id: source_pane_id.clone(),
         };
-
-        let hint = hint.trim().to_string();
-        let prompt = PromptSubmission::new_autofix(hint.clone(), Some(pane_context))
-            .with_byok(self.current_model_is_byok())
-            .with_agent_id(self.current_agent_id.clone());
-        let submitted = SubmittedPrompt {
-            id: prompt.id,
-            text: prompt.text.clone(),
-            submitted_at_unix_s: prompt.submitted_at_unix_s,
-            context: TurnContext {
-                // Normally captured when the helper starts. If unavailable,
-                // the ACP client resolves the active source and late-binds it.
-                target_pane_id: source_pane_id,
-            },
-            autofix: Some(AutofixContext { generation }),
+        let generation = self.reserve_autofix_generation(&target_tab_id);
+        let is_byok = self.current_model_is_byok();
+        let agent_id = self.current_agent_id.clone();
+        let (display_text, text, images) = if self.current_tab().input.is_empty() {
+            let hint = hint.trim().to_string();
+            let display = if hint.is_empty() {
+                "/fix".to_string()
+            } else {
+                format!("/fix {hint}")
+            };
+            (display, hint, Vec::new())
+        } else {
+            let tab = self.current_tab_mut();
+            let display = std::mem::take(&mut tab.input);
+            let (command_text, images) = tab.attachments.take_for_submission(display.clone());
+            tab.cursor_pos = 0;
+            tab.refresh_command_popup();
+            let text = match commands::classify(&command_text) {
+                ParseOutcome::Command(parsed) if parsed.kind == CommandKind::Fix => parsed.rest,
+                _ => hint,
+            };
+            (display, text.trim().to_string(), images)
         };
+        let result = self.gate_input(
+            &target_tab_id,
+            InputEnvelope {
+                text,
+                display_text,
+                images,
+                pane_context,
+                turn_context: TurnContext {
+                    // Normally captured when the helper starts. If unavailable,
+                    // the ACP client resolves the active source and late-binds it.
+                    target_pane_id: source_pane_id,
+                },
+                agent_command: false,
+                autofix: Some(AutofixInputMetadata {
+                    text_kind: crate::protocol::acp::client::AutofixTextKind::UserRequest,
+                    context: AutofixContext { generation },
+                    arm_trigger_echo: false,
+                }),
+                is_byok,
+                agent_id,
+            },
+        );
+        if result == InputGateResult::Full {
+            if let Some((input, cursor_pos, attachments)) = draft_backup {
+                let tab = self.current_tab_mut();
+                tab.input = input;
+                tab.cursor_pos = cursor_pos;
+                tab.attachments = attachments;
+                tab.refresh_command_popup();
+            }
+            self.show_input_queue_full_hint();
+            return;
+        }
         tracing::info!(
             target: "slash_cmd",
             tab_id = %target_tab_id,
             generation,
-            has_hint = !hint.is_empty(),
-            "dispatching /fix",
+            queued = result == InputGateResult::Queued,
+            "accepted /fix",
         );
-        self.turn_submit_prompt_for_tab_with_cancellation(
-            &target_tab_id,
-            submitted,
-            prompt.cancellation_token(),
-        );
-        let _ = self.prompt_tx.send(prompt);
     }
 
     /// Late-bind a manual `/fix`'s target pane. The working pane is resolved
@@ -6216,6 +6249,7 @@ impl App {
         self.session_commands.clear();
         self.session_id.clear();
         for (_, tab) in self.tab_sessions.iter_mut() {
+            tab.clear_pending_inputs();
             tab.clear_chat_history();
             tab.invalidate_active_prompt_attachment();
             tab.usage = None;
@@ -6677,6 +6711,7 @@ impl App {
             tab.config_picker = ConfigPickerState::Closed;
             tab.config_pending_id = None;
             tab.native_yolo_config_pending = false;
+            tab.clear_pending_inputs();
             tab.clear_chat_history();
             tab.invalidate_active_prompt_attachment();
             tab.usage = None;
@@ -7169,6 +7204,10 @@ mod slash_command_tests;
 #[cfg(test)]
 #[path = "autofix_tests.rs"]
 mod autofix_tests;
+
+#[cfg(test)]
+#[path = "input_queue_tests.rs"]
+mod input_queue_tests;
 
 #[cfg(test)]
 #[path = "app_tests.rs"]

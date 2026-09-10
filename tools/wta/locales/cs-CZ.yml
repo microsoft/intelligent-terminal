@@ -75,6 +75,10 @@ chat.tool_kind.other: "Nástroj"
 input.placeholder.connected: "Zeptejte se na cokoli, / pro příkazy.."  # {Locked="/"}
 input.placeholder.connecting: "připojování..."
 input.placeholder.disconnected: "odpojeno"
+input.queue.status: "Ve frontě [%{count}]: %{items}"
+input.queue.status_full: "Fronta je plná [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter zařadí koncept do fronty · Esc nejprve vymaže koncept"
+input.queue.hint_without_draft: "Esc odebere nejnovější vstup ve frontě"
 # Summary of attached images; keep 📎 and %{items} verbatim.
 input.image_attachments: "📎 Obrázky: %{items}"  # {Locked="📎","%{items}"}
 
@@ -175,6 +179,7 @@ system.stopped_max_tokens: "Odpověď byla oříznuta po dosažení výstupního
 system.stopped_max_turn_requests: "Agent se zastavil po dosažení limitu požadavků pro toto kolo."
 system.stopped_refusal: "Agent odmítl pokračovat v tomto požadavku."
 system.agent_busy: "Agent je na této kartě zaneprázdněn — počkejte, až aktuální výzva skončí."
+system.input_queue_full: "Fronta na této kartě je plná. Počkejte na uvolnění místa, nebo vymažte koncept a stisknutím Esc odeberte nejnovější vstup ve frontě."
 # Image paste messages; "agent" refers to an AI agent. Keep Enter and %{label} verbatim.
 system.image_clipboard_empty: "Ve schránce není žádný obrázek k vložení."
 system.image_not_supported: "Tento agent nepodporuje vstup obrázků."

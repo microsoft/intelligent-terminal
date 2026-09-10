@@ -71,6 +71,10 @@ chat.tool_kind.other: "도구"
 input.placeholder.connected: "무엇이든 물어보세요, / 명령어.."  # {Locked="/"}
 input.placeholder.connecting: "연결 중..."
 input.placeholder.disconnected: "연결 끊김"
+input.queue.status: "대기열에 있음 [%{count}]: %{items}"
+input.queue.status_full: "대기열 가득 참 [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter로 초안을 대기열에 넣음 · Esc로 먼저 초안 지움"
+input.queue.hint_without_draft: "Esc로 가장 최근 대기열 입력 제거"
 input.image_attachments: "📎 이미지: %{items}"  # {Locked="📎","%{items}"}
 
 # ── 명령어 팝업 (src/ui/command_popup.rs) ─────────────────────────────────
@@ -161,6 +165,7 @@ system.stopped_max_tokens: "모델의 출력 한도에 도달하여 응답이 �
 system.stopped_max_turn_requests: "이 턴의 요청 한도에 도달하여 에이전트가 중지되었습니다."
 system.stopped_refusal: "에이전트가 이 요청을 계속하기를 거부했습니다."
 system.agent_busy: "이 탭에서 에이전트가 사용 중입니다 — 현재 프롬프트가 완료될 때까지 기다리세요."
+system.input_queue_full: "이 탭의 대기열이 가득 찼습니다. 자리가 날 때까지 기다리거나, 초안을 지우고 Esc를 눌러 가장 최근 대기열 입력을 제거하세요."
 system.image_clipboard_empty: "붙여넣을 클립보드 이미지가 없습니다."
 system.image_not_supported: "이 에이전트는 이미지 입력을 지원하지 않습니다."
 system.image_pasted: "이미지가 첨부되었습니다(%{label}). 보내려면 Enter 키를 누르세요."  # {Locked="%{label}","Enter"}

@@ -75,6 +75,10 @@ chat.tool_kind.other: "Værktøj"
 input.placeholder.connected: "Spørg om hvad som helst, / for kommandoer.."  # {Locked="/"}
 input.placeholder.connecting: "forbinder..."
 input.placeholder.disconnected: "afbrudt"
+input.queue.status: "I kø [%{count}]: %{items}"
+input.queue.status_full: "Køen er fuld [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter sætter kladden i kø · Esc rydder først kladden"
+input.queue.hint_without_draft: "Esc fjerner det nyeste input i køen"
 # Summary of attached images; keep 📎 and %{items} verbatim.
 input.image_attachments: "📎 Billeder: %{items}"  # {Locked="📎","%{items}"}
 
@@ -166,6 +170,7 @@ system.stopped_max_tokens: "Svaret blev afkortet, da modellens outputgrænse ble
 system.stopped_max_turn_requests: "Agenten stoppede, da dens anmodningsgrænse for denne tur blev nået."
 system.stopped_refusal: "Agenten afviste at fortsætte med denne anmodning."
 system.agent_busy: "Agenten er optaget på denne fane — vent på, at den aktuelle prompt afsluttes."
+system.input_queue_full: "Køen er fuld på denne fane. Vent på en ledig plads, eller ryd kladden og tryk Esc for at fjerne det nyeste input i køen."
 # Image paste messages; "agent" refers to an AI agent. Keep Enter and %{label} verbatim.
 system.image_clipboard_empty: "Der er intet billede i udklipsholderen at indsætte."
 system.image_not_supported: "Denne agent understøtter ikke billedinput."
