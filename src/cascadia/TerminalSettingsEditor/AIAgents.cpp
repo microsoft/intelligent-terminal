@@ -17,6 +17,44 @@ using namespace winrt::Microsoft::Terminal::Settings::Model;
 
 namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 {
+    static void _FormatInlineShortcuts(const TextBlock& textBlock, std::wstring_view text)
+    {
+        constexpr std::wstring_view promptShortcut{ L"Alt+Shift+/" };
+        constexpr std::wstring_view directShortcut{ L"Alt+Shift+B" };
+        const FontFamily codeFont{ L"Cascadia Mono, Consolas" };
+        const auto inlines = textBlock.Inlines();
+        inlines.Clear();
+        const auto append = [&](const std::wstring_view value, const bool code) {
+            if (!value.empty())
+            {
+                Run run;
+                run.Text(winrt::hstring{ value });
+                if (code)
+                {
+                    run.FontFamily(codeFont);
+                }
+                inlines.Append(run);
+            }
+        };
+
+        while (!text.empty())
+        {
+            const auto promptPos = text.find(promptShortcut);
+            const auto directPos = text.find(directShortcut);
+            const auto pos = std::min(promptPos, directPos);
+            if (pos == std::wstring_view::npos)
+            {
+                append(text, false);
+                break;
+            }
+
+            const auto shortcut = promptPos <= directPos ? promptShortcut : directShortcut;
+            append(text.substr(0, pos), false);
+            append(shortcut, true);
+            text.remove_prefix(pos + shortcut.size());
+        }
+    }
+
     static void _AlignInlineLinkText(const TextBlock& text)
     {
         for (auto parent = VisualTreeHelper::GetParent(text);
@@ -120,6 +158,28 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         CustomProviderBaseUrlBox().MaxWidth(width);
         CustomProviderModelIdBox().MaxWidth(width);
         CustomProviderApiKeyBox().MaxWidth(width);
+    }
+
+    void AIAgents::DelegateAgent_Loaded(const IInspectable& sender, const RoutedEventArgs&)
+    {
+        const auto container = sender.as<Editor::SettingContainer>();
+        const auto description = container.HelpText();
+        std::vector<DependencyObject> children{ container };
+        for (size_t i = 0; i < children.size(); ++i)
+        {
+            const auto child = children[i];
+            if (const auto text = child.try_as<TextBlock>(); text && text.Name() == L"HelpTextBlock")
+            {
+                _FormatInlineShortcuts(text, description);
+                return;
+            }
+            const auto count = VisualTreeHelper::GetChildrenCount(child);
+            for (int32_t index = 0; index < count; ++index)
+            {
+                children.emplace_back(VisualTreeHelper::GetChild(child, index));
+            }
+        }
+        LOG_HR(E_UNEXPECTED);
     }
 
     void AIAgents::CustomAgentRemove_Loaded(

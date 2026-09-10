@@ -2861,8 +2861,9 @@
     <comment>{Locked="CLI"} Header for the agent CLI selector in Settings &gt; Agents &gt; Command palette. Here "agent" means an AI intelligent agent (e.g. Copilot, Claude, Gemini), not a proxy or human agent. CLI means command-line interface.</comment>
   </data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
-    <value>선호하는 에이전트 CLI로 새 탭을 만들고, 선택적으로 프롬프트와 활성 창의 컨텍스트를 포함합니다. Alt+Shift+/를 누르면 프롬프트 모드로 명령 팔레트를 열고, Alt+Shift+B를 누르면 초기 프롬프트 없이 실행합니다.</value>
-    <comment>{Locked="CLI","Alt+Shift+/","Alt+Shift+B"} Help text for the agent CLI selector in Settings &gt; Agents &gt; Command palette. "Agent" means an AI intelligent agent, not a proxy or human agent. "Active pane" is the currently focused terminal pane, not the entire tab; its output is included as context only when a nonempty initial prompt is supplied. Alt+Shift+/ opens the command palette in prompt mode. Alt+Shift+B launches the interactive CLI without an initial prompt or collected pane context; it still waits for user input. Keep CLI, Alt+Shift+/, and Alt+Shift+B unchanged.</comment>
+    <value>선호하는 에이전트 CLI로 새 탭을 만들고, 선택적으로 프롬프트와 활성 창의 컨텍스트를 포함합니다.
+Alt+Shift+/: 프롬프트 모드로 명령 팔레트 열기; Alt+Shift+B: 초기 프롬프트 없이 새 탭에서 대화형 CLI를 실행하고 사용자 입력 기다리기</value>
+    <comment>{Locked="CLI","Alt+Shift+/","Alt+Shift+B"} Help text for the agent CLI selector in Settings &gt; Agents &gt; Command palette. "Agent" means an AI intelligent agent, not a proxy or human agent. "Active pane" is the focused terminal pane, not the whole tab; its output is included as context only with a nonempty initial prompt. Preserve exactly one explicit line break before Alt+Shift+/ and keep both shortcuts on the second logical line; natural visual wrapping is allowed. Do not add backticks or font markup: the UI formats the shortcut tokens as real monospace runs using its Markdown code font. Alt+Shift+B opens an interactive CLI in a new tab without an initial prompt or collected pane context; the CLI still waits for user input. Keep CLI, Alt+Shift+/, and Alt+Shift+B unchanged.</comment>
   </data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve">
     <value>실패한 명령에 대한 수정 사항 자동 제안</value>

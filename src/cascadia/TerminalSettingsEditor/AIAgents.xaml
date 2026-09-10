@@ -511,7 +511,8 @@
 
             <!--  Agent (delegate / on-demand CLI)  -->
             <local:SettingContainer x:Name="DelegateAgent"
-                                    x:Uid="AIAgents_DelegateAgent">
+                                    x:Uid="AIAgents_DelegateAgent"
+                                    Loaded="DelegateAgent_Loaded">
                 <!--  Vertical Margin — same rationale as the AcpAgent
                       container above: when a custom delegate agent is
                       selected the content grows past the SettingContainer's

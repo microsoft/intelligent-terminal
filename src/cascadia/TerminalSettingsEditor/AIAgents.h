@@ -25,6 +25,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void CustomProviderForm_SizeChanged(
             const winrt::Windows::Foundation::IInspectable& sender,
             const winrt::Windows::UI::Xaml::SizeChangedEventArgs& e);
+        void DelegateAgent_Loaded(
+            const winrt::Windows::Foundation::IInspectable& sender,
+            const winrt::Windows::UI::Xaml::RoutedEventArgs& e);
 
         static double InstalledOpacity(bool isInstalled) { return isInstalled ? 1.0 : 0.4; }
         static bool NotBool(bool value) { return !value; }
