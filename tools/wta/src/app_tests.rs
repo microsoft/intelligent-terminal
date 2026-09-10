@@ -15334,6 +15334,8 @@ fn render_large_mixed_chat_keeps_latest_content_and_width_correct() {
 
 #[test]
 fn repeated_deep_scroll_reuses_intermediate_turn_heights() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     for index in 0..200 {
