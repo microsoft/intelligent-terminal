@@ -123,7 +123,7 @@ mod tests {
     }
 
     #[test]
-    fn provider_command_policy_values_preserve_placeholder_and_are_not_mojibake() {
+    fn provider_command_policy_values_drop_yolo_preserve_placeholder_and_are_not_mojibake() {
         let dir = locales_dir();
         let mut failures = Vec::new();
 
@@ -135,7 +135,11 @@ mod tests {
             let Some(value) = provider_command_policy_value(&path) else {
                 continue;
             };
+            let contains_legacy_yolo_token = value
+                .split(|character: char| !character.is_ascii_alphanumeric())
+                .any(|token| token == "Yolo");
             if !value.contains("%{command}")
+                || contains_legacy_yolo_token
                 || value
                     .chars()
                     .any(|character| ('\u{2500}'..='\u{259f}').contains(&character))
