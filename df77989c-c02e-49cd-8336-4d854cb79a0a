@@ -1,0 +1,96 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+	<meta http-equiv="X-UA-Compatible" content="IE=Edge">
+	<link rel="modulepreload" href="https://content.powerapps.com/resource/uci-infra-web/scripts/app.ad7ba20309950bceef62b1714ea09c58.js" >
+	<link rel="preconnect" href="https://apps.powerapps.com">
+
+	<script type="text/javascript" nomodule src="https://content.powerapps.com/resource/uci-infra-web/scripts/es6-shim.min.8426d2fdbd2c86157ca7fe7a3c3650db.js" crossorigin></script>
+	<script type="text/javascript" nomodule src="https://content.powerapps.com/resource/uci-infra-web/scripts/es7-shim.min.d36662b920b6dc3597a8e1ee58ac20c7.js" crossorigin></script>
+	<script type="text/javascript" nomodule src="https://content.powerapps.com/resource/uci-infra-web/scripts/fetch.umd.b371793a1525ed0f3d886cd48dfc6b3a.js" crossorigin></script>
+	<script type="text/javascript">
+		var __public_path__ = "https://content.powerapps.com/resource/uci-infra-web/";
+		
+		// Load pointer polyfill if necessary
+		if (!window.PointerEvent)
+		{
+			var pep = document.createElement("script"); pep.async = false;
+			pep.src = "https://content.powerapps.com/resource/uci-infra-web/scripts/pep.5ed3fa08b132080b27a69d953a17b755.js";
+			pep.crossOrigin = "anonymous";
+			document.head.appendChild(pep);
+		}
+	</script>
+	<script defer src="/uclient/scripts/cdnEndpointCheck.js?v=1.4.12338-2608.2" ></script>
+
+	<script type="text/javascript">
+		var VERSION_DECIDER = 'Microservice'
+		var VERSION_NUMERIC_VALUE = "1.4.12338-2608.2";
+		var LAST_BUILD_TIME = "Thu, 03 Sep 2026 21:18:01 GMT";
+	</script>
+
+	<style data-fela-type="RULE" type="text/css"></style>
+	<title>Microsoft Dynamics 365</title>
+	<meta name="viewport" id="viewport-meta" content="width=device-width, initial-scale=1.0, maximum-scale=2.0, viewport-fit=cover">
+	<meta name="apple-mobile-web-app-status-bar-style" content="default">
+	<meta name="apple-mobile-web-app-capable" content="yes">
+
+	<link rel="icon" type="image/x-icon" href="https://content.powerapps.com/resource/uci-infra-web/resources/images/favicon.e8fc3549b3b1319d4b1a2c8d760e9cd6.ico" />
+	<link rel="apple-touch-icon" sizes="76x76" href="https://content.powerapps.com/resource/uci-infra-web/resources/images/76x76.84973bb590658fc85cfa054bd11538bc.png" />
+	<link rel="apple-touch-icon" sizes="120x120" href="https://content.powerapps.com/resource/uci-infra-web/resources/images/120x120.492cc1d9c39954148ff4782cad8941e3.png" />
+	<link rel="apple-touch-icon" sizes="152x152" href="https://content.powerapps.com/resource/uci-infra-web/resources/images/152x152.57fc268de3d0cbb6f3e22204bd993044.png" />
+	<link rel="apple-touch-icon" sizes="180x180" href="https://content.powerapps.com/resource/uci-infra-web/resources/images/180x180.49d500f678970310f4b5171b47edb694.png" />
+
+	<script type="text/javascript">
+		/* Preload parameters injected at runtime */
+		var __preload = {"org":"unqe5dff004567643bd88cb9ed81b609","orgId":"e5dff004-5676-43bd-88cb-9ed81b609642","serverRequestId":"7ed559c9-b2e0-4a55-b4e1-75bb6c2d7925","serverVersion":"9.2.26082.160","userId":"a508e997-76f9-ec11-bb3d-0022481cf464","aadObjectId":"6de15468-bf46-4e69-94dc-1642787e002d","aadTenantId":"103c2da2-2b49-464d-b809-7e352b9e402b","aadLoginHint":"jmarrujo91@payasyouearn.onmicrosoft.com","isExternalUser":false,"isLiveId":true,"isReliableOfflineTelemetryEnabled":true,"isSkipNavigatorOnlineCheckEnabled":false,"isDelayTelemetryEnabled":false,"isSkipStackTraceOnWarnTelemetryEnabled":true,"isWorkerThreadTelemetryOptimizationEnabled":false,"isPreserveWebViewStateEnabled":true,"isPersistReduxStoreEnabled":true,"isPrefetchControlsCdnMetadataEnabled":true,"isReactReduxConnectFunctionOverrideEnabled":true,"isPalBootstrapperNonBlockingEnabled":true,"isRTL":false,"isAppGeneratedByPlanDesigner":false,"localizedStrings":{"labels":{"errorWaitingMessage":"We are experiencing some errors while trying to load the application...","errorFailedMessage":"Application failed to load","errorDetailsLabel":"Show details","errorCode":"Error Code","sessionId":"Session Id","activityId":"Activity Id","requestId":"Request Id","timestamp":"Timestamp","Button_Label_OK":"OK","loading":"Loading..."},"errors":{"UnknownError":{"errorTitle":"Error","errorMessage":"Something has gone wrong. Check technical details for more details."},"Status404":{"errorTitle":"Not Found","errorMessage":"The requested resource does not exist on the server."},"Status500":{"errorTitle":"Internal Server Error","errorMessage":"An error has occurred on the server."}}}};
+		/* Preload calls */
+		/* Earlier retrieve form data */
+		!function(){function e(){for(var e="0123456789abcdef",t="",n=0;n<36;n++)if(14===n)t+="4";else if(8===n||13===n||18===n||23===n)t+="-";else if(19===n){var r=Math.floor(16*Math.random());t+=e.substr(3&r|8,1)}else t+=e.substr(Math.floor(16*Math.random()),1);return t}function t(e){if(o)return o.searchParams.get(e);var t=i.indexOf(e+"=");if(t>-1){var n=e.length+1,r=i.indexOf("&",t),a=i.indexOf("#",t);r=r>-1?r:i.length,a=a>-1?a:i.length;var s=Math.min(r,a);return i.substring(t+n,s)}return null}function n(){return window.location.hostname}var r;function a(e,t){return new Promise(function(n,r){var a=new XMLHttpRequest;a.open("GET",e),window.__preload&&(window.__preload.aadObjectId&&a.setRequestHeader("x-ms-sw-objectid",window.__preload.aadObjectId),window.__preload.aadTenantId&&a.setRequestHeader("x-ms-sw-tenantid",window.__preload.aadTenantId),a.setRequestHeader("x-ms-correlation-id",window.__preload.initialActivityId)),t&&t.forEach(function(e,t){a.setRequestHeader(t,e)}),a.onreadystatechange=function(){if(4===a.readyState){var t=function(){return Promise.resolve(JSON.parse(a.responseText))},r=200===a.status;n({ok:r,status:a.status,statusText:a.statusText,json:t,text:t,url:e})}},a.send()})}
+/**
+ * @license Copyright (c) Microsoft Corporation. All rights reserved.
+ */
+window.ApplicationCodeExecuteStart=performance&&performance.now&&performance.now(),window.__preload.initialActivityId=e(),function(e){e[e.Browser=1]="Browser",e[e.MobileApplication=2]="MobileApplication",e[e.MailApp=3]="MailApp"}(r||(r={})),window.clientApiGlobalStoreManager=void 0;var i=window.location.href,o=window.URL?new URL(i):null,s=t("appid"),c=function(e){var t=parseInt(e,10);if(!isNaN(t))switch(t){case r.Browser:return"Browser";case r.MobileApplication:return"MobileApplication";case r.MailApp:return"MailApp"}return""}(t("clienthost")),d=n().substr(n().indexOf(".")),u=new Date;u.setTime(u.getTime()-864e5),document.cookie="CrmNativeAuth=;domain="+d+";expires="+u+";path=/";var l=[{etn:"account",entitySetName:"accounts"},{etn:"contact",entitySetName:"contacts"},{etn:"incident",entitySetName:"incidents"},{etn:"lead",entitySetName:"leads"},{etn:"opportunity",entitySetName:"opportunities"}];var f,p=window;function w(e,t,n,r){void 0===r&&(r=!0);var a=t;fetch(e,function(e){return void 0===e&&(e=!0),{headers:{"Content-Type":"application/json",Prefer:'odata.include-annotations="*"',"x-ms-sw-skipcache":"1","MSCRM.ReturnNotifications":e?"true":"false"}}}(r)).then(function(e){200===e.status&&(p.__Prefetched_formData[a][n]=e,0===n&&e.clone().json().then(function(e){window.__fastBlocks=window.__fastBlocks||{},window.__fastBlocks.preloadData=e}))})}if(s&&"null"!==s){var _=t("org")||window.__preload&&window.__preload.org,v=(!!t("liveid")||!(!window.__preload||!window.__preload.isLiveId)?(f=i.split("/")).length>=2?f[0]+"//"+f[2]:null:"/"+_)+"/api/data/v9.0/",m=function(){var e="GetClientMetadata(ClientMetadataQuery=@ClientMetadataQuery)?@ClientMetadataQuery={%22MetadataType%22:null,%22MetadataSubtype%22:null,%22EntityLogicalName%22:null,%22MetadataId%22:null,%22MetadataNames%22:[],%22GetDefault%22:false,%22DependencyDepth%22:%22UserContext%22,%22ChangedAfter%22:null,%22Exclude%22:[],%22AppId%22:%22".concat(s,"%22}&rde=1");return a(v+e,new Map([["ClientHost",c],["x-ms-metadatareductionlevel","2"],["x-ms-gcm-object","true"]]))},h=function(){var n;try{if(!(window.caches&&o&&performance&&performance.now))return;if(!S("PersistReduxStore",function(){return window.__preload&&window.__preload.isPersistReduxStoreEnabled}))return;var r=JSON.parse(localStorage.getItem("uci-state-hint")),a=r&&r[s],i=function(e){if("undefined"==typeof SharedWorker)return!1;var t=g("PersistReduxStoreV2",!0);if(void 0!==t)return t;return!!e}(a&&a.useV2);if(window.__uciPersistedState={isSupportedApp:a?a.isSupportedApp:void 0,v2:i},i){if(!a||!a.isSupportedApp)return}else{if(!(C()&&a&&a.isSupportedApp&&a.persistedForms))return;var c=I(),d=t("formid")||a.formDefaults&&a.formDefaults[c];if(!a.persistedForms.some(function(e){return e.entityName===c&&e.formId===d}))return}var u="https://uci-state/",l=performance.now(),f=i?u+s+"/":a.cachedByFormId?u+s+"/"+(t("formid")||(null===(n=a.formDefaults)||void 0===n?void 0:n[I()])):u+s+"/",p=i?(w=f,new Promise(function(t){var n,r,a,i=!1,o=function(e){i||(i=!0,void 0!==n&&clearTimeout(n),r&&a&&a.removeEventListener("message",r),t(e))};try{var s=new SharedWorker("/uclient/scripts/statepersistenceworker.js",{name:"uci-state-persistence"});a=s.port,window.__uciStatePersistenceWorker={worker:s,port:a};var c="preload-"+e();r=function(e){var t=e.data;if("ready"===t.type)a.postMessage({type:"retrieveState",cacheKey:w,requestId:c});else if("retrieveStateResult"===t.type&&t.requestId===c)if(t.data)try{o(JSON.parse(t.data))}catch(e){o(null)}else o(null)},a.addEventListener("message",r),a.start(),n=setTimeout(function(){return o(null)},3e3)}catch(e){o(null)}})):function(e,t){return window.caches.open(e).then(function(e){return e.match(t)}).then(function(e){return e&&e.ok?e.json():null}).catch(function(){return null})}(u,new URL(f));return window.__uciPersistedState={promise:p,startTime:l,isSupportedApp:!0,controlCdnVersion:a.controlCdnVersion,v2:i},p}catch(e){}var w}(),y=h?h.then(function(e){return e&&e.userContext?{isPersistedUserContext:!0,userContext:e.userContext}:m()}):m(),M=a(v+"EntityDefinitions?$select=IsActivity,IsVisibleInMobileClient,ObjectTypeCode,LogicalName,DisplayName,DisplayCollectionName,ActivityTypeMask&$filter=IsActivity%20eq%20true");window.__uciServerPreload={userContext:y,activityFlags:M},function(e){var n=!1;try{n="true"===localStorage.getItem("RetrieveFormDataEarlyEnabled")}catch(e){}if(p.fetch&&o&&n&&C()){var r=void 0;p.__preload&&(r=p.__preload.userId);var a=I(),i=function(e){if(e)for(var t=0;t<l.length;t++)if(l[t].etn===e)return l[t].entitySetName;return null}(a),s=t("id");if(a&&s&&i&&r){var c="".concat(a,"_").concat(s),d="".concat(i,"(").concat(s,")");p.__Prefetched_formData={},p.__Prefetched_formData[c]=[],w("".concat(e).concat(d),c,0),w(e+"systemusers("+r+')/Microsoft.Dynamics.CRM.RetrievePrincipalAccess(Target=@Target)?@Target={"@odata.id":"'+d+'"}',c,1),w(e+'RetrieveProcessControlData(Target=@Target,ProcessId=@ProcessId,ProcessInstanceId=@ProcessInstanceId)?@Target={"@odata.id":"'+d+'"}&@ProcessId=null&@ProcessInstanceId=null',c,2)}}}(v),function(){try{if(p.fetch&&o&&p.__public_path__&&-1!==p.__public_path__.indexOf("uci-infra"))if(S("PrefetchControlsCdnMetadata",function(){return window.__preload&&window.__preload.isPrefetchControlsCdnMetadataEnabled})){var e="".concat(p.__public_path__).concat(p.VERSION_NUMERIC_VALUE,"/controlsMetadata.json");fetch(e).then(function(e){200===e.status&&e.json().then(function(e){p.__Prefetched_ControlsCdnMetadata=e})})}}catch(e){}}()}function g(e,n){var r=t("flags");if(r)for(var a=r.split(","),i=0;i<a.length;i++){var o=a[i].split("=");if(2===o.length&&o[0]&&o[1])if(o[0]==="FCB."+e)return o[1].toLowerCase()===(n?"true":"false")}}function S(e,t){var n=g(e,!0);return n||!1===n?n:t()}function C(){return"entityrecord"===t("pagetype")}function I(){return t("etn")}}();
+	</script>
+
+	<!-- css -->
+	<link href="https://content.powerapps.com/resource/uci-infra-web/resources/styles/Styles.12fe7f41a6291f2e86b05f1b62b47642.css" rel="stylesheet" type="text/css" />
+</head>
+<body>
+	<div id="error-app-loading-indicator">
+		<div id="app-loading-indicator" class="indeterminateProgressRing">
+			<div class="progressDot"></div>
+			<div class="progressDot"></div>
+			<div class="progressDot"></div>
+			<div class="progressDot"></div>
+			<div class="progressDot"></div>
+		</div>
+		<div id="errorPopup-container"></div>
+		<div id="errorLoadingMessage" style="opacity: 0"></div>
+	</div>
+
+	<script type="text/javascript" nomodule src="https://content.powerapps.com/resource/uci-infra-web/scripts/es5/vendor.d2cd2967f9c751c87b3d267508a97712.js" crossorigin></script>
+	<script type="module" src="https://content.powerapps.com/resource/uci-infra-web/scripts/vendor.271fd7a90512b7c0794a9538f3b97246.js" crossorigin></script>
+	<script type="text/javascript" nomodule src="https://content.powerapps.com/resource/uci-infra-web/scripts/es5/corejs.ccfd4c5d5b0b072f928e7c3a4c9d11ac.js" crossorigin></script>
+	<script type="module" src="https://content.powerapps.com/resource/uci-infra-web/scripts/corejs.d36f6827c4dfcae79203c131d96c4554.js" crossorigin></script>
+
+	<script type="text/javascript" src="https://content.powerapps.com/resource/uci-infra-web/scripts/MicrosoftAjax.2f5ba9a661042029a2bd7dcb1a82ca84.js" crossorigin></script>
+
+	<div id="shell-container" style="display: flex; overflow: hidden"></div>
+
+	<script type="text/javascript">
+		var SERVER_VERSION_VALUE = "9100000000";
+		var CLIENT_VERSION_VALUE = "9000000000";
+		!function(){var e,r,n=[];window.onerror=function e(){n.push(arguments);var r=document.createElement("script");r.src="https://content.powerapps.com/resource/uci-infra-web/scripts/errorHandlers.0e8747b804dffdaa5b5a78ae66917514.js",r.onload=function(){if(window.onerror!==e)for(var r=0,o=n;r<o.length;r++){var a=o[r];window.onerror.apply(null,a)}},document.head.appendChild(r)},e=window.__preload&&window.__preload.localizedStrings&&window.__preload.localizedStrings.labels,r=document.getElementById("errorLoadingMessage"),e&&r&&(r.setAttribute("aria-live","assertive"),r.setAttribute("role","alert"),r.innerText=e.loading||"Loading...")}();
+		!function(){var e=document.getElementById("shell-container");if(e&&window.caches&&window.URL){var t=new URL(window.location.href),n=t.searchParams.get("appid"),a=t.searchParams.get("pagetype"),o=t.searchParams.get("etn"),i={},r={};if(window.__fastBlocks=Object.assign(window.__fastBlocks||{},{cacheKey:"fast-block",featureEnabledKey:"NoJSBootEnabled",html:i,definitions:r,getFastBlockCacheKey:u,render:h}),"entityrecord"===a&&-1!==["account","contact","lead","opportunity","incident"].indexOf(o)){var c,d,l=t.searchParams.get("navbar"),f=l&&"off"===l.toLowerCase(),s={},m={html:`<div id="fast-block-shell" style="width:100%;display:flex;flex-direction:column"><div data-fast-block-edge="topBar"></div><div style="display:flex;flex-direction:row"><div data-fast-block-edge="sitemap"></div><div style="display:flex;flex-direction:column"><div data-fast-block-edge="${o}-formHeader"></div><div data-fast-block-edge="${o}-mainForm"></div></div><div data-fast-block-edge="farpane"></div></div></div>`,connections:[{name:"topBar"},{name:"sitemap"},{name:"".concat(o,"-formHeader"),after:"sitemap"},{name:"".concat(o,"-mainForm"),after:"".concat(o,"-formHeader")},{name:"farpane"}]};r.shell=m,r.form={html:`<div style="display:flex;flex-direction:column"><div data-fast-block-edge="${o}-formHeader"></div><div data-fast-block-edge="${o}-mainForm"></div></div>`,connections:[{name:"".concat(o,"-formHeader")},{name:"".concat(o,"-mainForm"),after:"".concat(o,"-formHeader")}]},window.__fastBlocks.isEnabled=new Promise(function(e){return d=e}),caches.open(window.__fastBlocks.cacheKey).then(function(e){return(c=e).match(window.__fastBlocks.featureEnabledKey)}).then(function(t){var n=m&&t&&t.ok;d(n),n&&(v(e,m.html,!0),h(e,m.connections))})}}function u(e){return"".concat(n,"/").concat(e)}function v(e,t,n){void 0===n&&(n=!1);var a=document.createElement("template");a.innerHTML=t,n?e.appendChild(a.content.firstChild):e.attachShadow({mode:"open"}).appendChild(a.content.firstChild)}function h(e,t){if(e&&t){for(var n={},a=function(t){var a=t.name,o=t.after;n[a]=function(e){var t=s[e];if(t)return t;if(f&&("topBar"===e||"sitemap"===e))return Promise.resolve(null);var n=c.match(u(e)).then(function(e){return e&&e.ok?e.text():null});return s[e]=n,n}(a).then(function(e){return i[a]=e,o?n[o]?n[o].then(function(){return e}):null:e}).then(function(t){if(!t)return null;for(var n=0,o=Array.from(e.querySelectorAll("[data-fast-block-edge='".concat(a,"']"))).filter(function(e){return!e.hasChildNodes()});n<o.length;n++)v(o[n],t)})},r=0,d=t;r<d.length;r++)a(d[r]);Promise.all(Object.values(n)).then(function(){window.__fastBlocks.isEnabled&&window.__fastBlocks.isEnabled.then(function(e){var t,n,a;if(e){var i="".concat(o,"-mainForm"),r=(null===(t=document.querySelector('[data-fast-block-edge="'.concat(i,'"]')))||void 0===t?void 0:t.shadowRoot)||(null===(n=document.querySelector("#".concat(i)))||void 0===n?void 0:n.shadowRoot),c=window.__fastBlocks.preloadData;for(var d in c)if(-1===d.indexOf("@")){var l=null===(a=null==r?void 0:r.querySelector('[data-id="'.concat(d,'"]')))||void 0===a?void 0:a.querySelector("span");l&&c[d]&&("string"==typeof c[d]||"number"==typeof c[d])?l.textContent=c[d].toString():delete c[d]}}})})}}}();
+	</script>
+
+	<script type="text/javascript" nomodule src="https://content.powerapps.com/resource/uci-infra-web/scripts/es5/webpack.a7918fa4bde6f5f025fa4459804c115c.js" crossorigin id="webpack-runtime"></script>
+	<script type="module" src="https://content.powerapps.com/resource/uci-infra-web/scripts/webpack.9068af35828f200971dc4ed6217956cf.js" crossorigin id="webpack-runtime"></script>
+	<script type="text/javascript" nomodule src="https://content.powerapps.com/resource/uci-infra-web/scripts/es5/app.3a2505e27a74b64ce4309525460137e1.js" crossorigin></script>
+	<script type="module" src="https://content.powerapps.com/resource/uci-infra-web/scripts/app.ad7ba20309950bceef62b1714ea09c58.js" crossorigin></script>
+
+	<div id="PortalRoot" role="presentation"></div>
+</body>
+</html>
