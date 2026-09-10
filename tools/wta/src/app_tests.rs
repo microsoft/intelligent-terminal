@@ -11278,6 +11278,8 @@ fn copilot_login_failure_without_reason_shows_generic_message() {
 /// guidance. Regression guard for the "error on the first line" report.
 #[test]
 fn render_auth_copilot_failure_shows_reason_and_guidance_at_bottom() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let mut app = test_app();
     app.mode = AppMode::Auth;
     app.auth = Some(AuthState {
