@@ -174,9 +174,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         const auto textBlockHidden = HelpText().empty();
         if (const auto& child{ GetTemplateChild(L"HelpTextBlock") })
         {
-            if (const auto& textBlock{ child.try_as<Controls::TextBlock>() })
+            if (const auto& helpTextElement{ child.try_as<FrameworkElement>() })
             {
-                textBlock.Visibility(textBlockHidden ? Visibility::Collapsed : Visibility::Visible);
+                helpTextElement.Visibility(textBlockHidden ? Visibility::Collapsed : Visibility::Visible);
             }
         }
     }

@@ -3,6 +3,7 @@
 
 #include "pch.h"
 
+#include <limits>
 #include <winrt/Windows.UI.Xaml.Documents.h>
 
 #include "AIAgents.h"
