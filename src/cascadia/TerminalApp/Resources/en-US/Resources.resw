@@ -1321,6 +1321,10 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Agent sessions: {0}</value>
     <comment>Title shown in the agent pane title bar when the session-management view is active. {0} is replaced with the AI agent display name and the environment it runs in, for example "Copilot · Debian".</comment>
   </data>
+  <data name="AgentPane_SessionsDisabledHint.Text" xml:space="preserve">
+    <value>For the best session management experience, turn on Sessions in Settings &gt; Agents.</value>
+    <comment>Subtle hint below the agent sessions title, shown only in session management when Sessions is off and policy permits changes. Navigation is Settings &gt; Agents, then turn on Sessions. Match the displayed labels: Settings uses SettingsMenuItem/SettingsTab, Agents uses Nav_AIAgents.Content, and Sessions uses AIAgents_SessionManagement.Header, including fallback labels where a locale has no translation. Turning Sessions off only prevents hook updates; existing hooks and session functionality can keep working. Do not imply that tracking, data refresh, or functionality stops.</comment>
+  </data>
   <data name="AgentPane_SwitchAgentAutomationName" xml:space="preserve">
     <value>Switch agent</value>
     <comment>Accessibility (screen reader) name for the agent-bar button that opens a menu to pick which AI agent runs in this tab. In this context, agent refers to an AI agent, not a human representative.</comment>

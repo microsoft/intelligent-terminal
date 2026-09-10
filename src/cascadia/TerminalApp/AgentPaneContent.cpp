@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cwctype>
+#include <limits>
 #include <winrt/Windows.UI.Xaml.Automation.h>
 #include <winrt/Windows.UI.Xaml.Media.h>
 
@@ -63,7 +64,7 @@ namespace winrt::TerminalApp::implementation
         InitializeComponent();
 
         // The wta TermControl is owned by the inner TerminalPaneContent.
-        // Its GetRoot() returns the TermControl itself; pin it into our row 1.
+        // Its GetRoot() returns the TermControl itself; pin it below the chrome.
         if (_inner)
         {
             InnerContent().Content(_inner.GetRoot());
@@ -128,6 +129,7 @@ namespace winrt::TerminalApp::implementation
         _isSessionsView = active;
         _refreshLabel();
         _refreshLogo();
+        _refreshSessionsHint();
         StateChanged.raise(*this, nullptr);
     }
 
@@ -283,6 +285,27 @@ namespace winrt::TerminalApp::implementation
         AgentLogo().Visibility(Visibility::Visible);
     }
 
+    void AgentPaneContent::_refreshSessionsHint()
+    {
+        SessionsHintRoot().Visibility(_isSessionsView && _canEnableSessions ? Visibility::Visible : Visibility::Collapsed);
+    }
+
+    float AgentPaneContent::_chromeHeight()
+    {
+        auto height = 36.0f;
+        const auto hint = SessionsHintRoot();
+        if (hint.Visibility() == Visibility::Visible)
+        {
+            // Measure at the current width so wrapped translations also count
+            // toward the pane minimum and terminal-grid snapping.
+            const auto width = static_cast<float>(ActualWidth());
+            const auto unconstrained = std::numeric_limits<float>::max();
+            hint.Measure({ width > 0 ? width : unconstrained, unconstrained });
+            height += hint.DesiredSize().Height;
+        }
+        return height;
+    }
+
 #pragma region IPaneContent forwarding
     winrt::Windows::UI::Xaml::FrameworkElement AgentPaneContent::GetRoot()
     {
@@ -291,6 +314,10 @@ namespace winrt::TerminalApp::implementation
 
     void AgentPaneContent::UpdateSettings(const CascadiaSettings& settings)
     {
+        const auto globals = settings.GlobalSettings();
+        _canEnableSessions = !globals.AgentSessionManagementEnabled() && !globals.IsAgentSessionHooksPolicyLocked();
+        _refreshSessionsHint();
+
         if (const auto& impl = winrt::get_self<implementation::TerminalPaneContent>(_inner))
         {
             impl->UpdateSettings(settings);
@@ -316,14 +343,15 @@ namespace winrt::TerminalApp::implementation
         // The responsive TUI's hard floor is seven rows: input(3),
         // activity(1), chat(1), and a compact recommendation(2). Reserve
         // six additional grid rows beyond TermControl's existing one-row
-        // minimum, plus the fixed 36px agent bar.
+        // minimum, plus the agent bar and any visible sessions hint.
+        const auto chromeHeight = _chromeHeight();
         if (const auto& impl = winrt::get_self<implementation::TerminalPaneContent>(_inner))
         {
             const auto inner = impl->MinimumSize();
             const auto rowHeight = std::max(1.0f, impl->GridUnitSize().Height);
-            return { inner.Width, inner.Height + (6.0f * rowHeight) + 36.0f };
+            return { inner.Width, inner.Height + (6.0f * rowHeight) + chromeHeight };
         }
-        return { 1, 43.0f };
+        return { 1, 7.0f + chromeHeight };
     }
 
     void AgentPaneContent::Focus(winrt::Windows::UI::Xaml::FocusState reason)
@@ -471,11 +499,12 @@ namespace winrt::TerminalApp::implementation
         if (const auto& impl = winrt::get_self<implementation::TerminalPaneContent>(_inner))
         {
             // Snapping is computed against the terminal grid; account for the
-            // 36px we steal off the top before delegating, then add it back.
+            // chrome above it before delegating, then add it back.
             if (direction == TerminalApp::PaneSnapDirection::Height)
             {
-                const auto adjusted = std::max(0.0f, sizeToSnap - 36.0f);
-                return impl->SnapDownToGrid(direction, adjusted) + 36.0f;
+                const auto chromeHeight = _chromeHeight();
+                const auto adjusted = std::max(0.0f, sizeToSnap - chromeHeight);
+                return impl->SnapDownToGrid(direction, adjusted) + chromeHeight;
             }
             return impl->SnapDownToGrid(direction, sizeToSnap);
         }
