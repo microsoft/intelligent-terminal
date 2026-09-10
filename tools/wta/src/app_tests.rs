@@ -8422,6 +8422,8 @@ fn auth_error_routes_to_signin_not_connection_lost() {
 #[test]
 fn soft_stop_appends_system_line_without_changing_state() {
     use crate::protocol::acp::soft_stop::SoftStopReason;
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     bind_test_session(&mut app, DEFAULT_TAB_ID);
@@ -8465,6 +8467,8 @@ fn soft_stop_appends_system_line_without_changing_state() {
 #[test]
 fn soft_stop_reasons_map_to_distinct_localized_lines() {
     use crate::protocol::acp::soft_stop::SoftStopReason;
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     for (reason, key) in [
         (SoftStopReason::MaxTokens, "system.stopped_max_tokens"),
         (
@@ -11139,6 +11143,8 @@ fn render_auth_screen_shows_agent_name() {
 /// hint. Lifts `ui/agents_view.rs` (reached via `View::Agents`).
 #[test]
 fn render_sessions_view_shows_footer_hint() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     app.current_tab_mut().current_view = View::Agents;
@@ -11160,6 +11166,10 @@ fn render_sessions_view_shows_footer_hint() {
 /// sign-in footer. Covers the `else` arm of `ui/auth.rs`.
 #[test]
 fn render_auth_sign_in_card() {
+    // Pin English through rendering and assertions: wide-glyph buffer padding
+    // breaks substring matches against the original localized strings.
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let mut app = test_app();
     app.mode = AppMode::Auth;
     app.auth = Some(AuthState {
@@ -11247,6 +11257,8 @@ fn copilot_login_failure_surfaces_reason() {
 /// a generic localized message rather than nothing.
 #[test]
 fn copilot_login_failure_without_reason_shows_generic_message() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let mut app = test_app();
     app.mode = AppMode::Auth;
     app.auth = Some(AuthState {
@@ -12103,6 +12115,8 @@ fn duplicate_reconnect_ready_does_not_erase_active_preflight() {
 /// options stay hidden.
 #[test]
 fn render_setup_installing_hides_stale_options() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let mut app = test_app();
     app.mode = AppMode::Setup;
     app.state = ConnectionState::Disconnected;
@@ -12173,6 +12187,8 @@ fn render_setup_install_error() {
 /// connection-state input row.
 #[test]
 fn render_setup_reconnecting_hides_install_content() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let mut app = test_app();
     app.mode = AppMode::Setup;
     app.state = ConnectionState::Connecting("Reconnecting...".into());
@@ -12211,6 +12227,8 @@ fn render_setup_reconnecting_hides_install_content() {
 #[test]
 fn alt_v_without_image_capability_shows_not_supported_message() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     app.agent_supports_image = false;
@@ -12466,6 +12484,8 @@ fn image_attachment_ctrl_c_clears_image_only_draft_without_arming_close() {
 #[test]
 fn render_recommendation_card_shows_command() {
     use crate::coordinator::{RecommendationChoice, RecommendationSet, RecommendedAction};
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     app.current_tab_mut().turn = TurnState::Surfaced {
@@ -13875,6 +13895,8 @@ fn right_click_copies_and_clears_ctrl_a_selection() {
         KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
     };
 
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let _clipboard_guard = crate::clipboard_image::CLIPBOARD_TEST_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -13988,6 +14010,8 @@ fn completed_turn_user_input_multi_click_preserves_turn_state_and_text_selection
 fn right_click_copies_and_clears_text_selection() {
     use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let _clipboard_guard = crate::clipboard_image::CLIPBOARD_TEST_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -14630,6 +14654,8 @@ fn clicking_completed_tool_header_toggles_only_that_tool() {
 
 #[test]
 fn adjacent_successful_reads_render_as_one_compact_group() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     app.current_tab_mut().messages = [
@@ -14667,6 +14693,8 @@ fn adjacent_successful_reads_render_as_one_compact_group() {
 
 #[test]
 fn generic_read_group_lists_visible_targets_and_remaining_count() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     app.current_tab_mut().messages = ["first.rs", "second.rs", "third.rs", "fourth.rs"]
@@ -14936,6 +14964,8 @@ fn restart_connection_stage_is_localized_and_preserves_draft() {
 /// `ui/chat.rs` + `ui/layout.rs`.
 #[test]
 fn render_chat_welcome_hint() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     app.show_welcome_hint = true;
@@ -15039,6 +15069,8 @@ fn resuming_pane_shows_connection_stage_then_resume_until_load_completes() {
 
 #[test]
 fn resuming_pane_does_not_paint_the_first_run_welcome() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     // A restored conversation is not a first run, so the hint must be gone by
     // the time the replayed history lands. `load_session` can arrive after the
     // connect that already decided this was a first run, so the handler has to
@@ -19035,6 +19067,8 @@ fn thinking_is_pinned_one_row_above_input() {
     const WIDTH: u16 = 80;
     const HEIGHT: u16 = 24;
 
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     submit_test_prompt(&mut app, "inspect");
