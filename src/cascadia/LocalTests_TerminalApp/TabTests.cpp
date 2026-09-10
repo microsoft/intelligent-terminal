@@ -21,6 +21,7 @@
 #include "../UnitTests_Control/MockControlSettings.h"
 #include "CppWinrtTailored.h"
 
+#include <cmath>
 #include <winrt/Windows.UI.Xaml.Automation.h>
 
 using namespace Microsoft::Console;
@@ -4859,6 +4860,18 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Visible, hint.Visibility());
             VERIFY_IS_FALSE(text.Text().empty());
             VERIFY_ARE_EQUAL(TextWrapping::Wrap, text.TextWrapping());
+
+            const auto foreground = text.Foreground().as<winrt::Windows::UI::Xaml::Media::SolidColorBrush>();
+            const auto color = foreground.Color();
+            const winrt::Windows::UI::Color footerColor{ 255, 0x8b, 0x8b, 0x8b };
+            VERIFY_ARE_EQUAL(footerColor, color);
+            const auto opacity = text.Opacity() * foreground.Opacity() * color.A / 255.0;
+            VERIFY_IS_TRUE(opacity > 0.0 && opacity < 1.0);
+            for (const auto background : { 12.0, 255.0 })
+            {
+                const auto blended = opacity * color.R + (1.0 - opacity) * background;
+                VERIFY_IS_TRUE(std::abs(blended - background) < std::abs(footerColor.R - background));
+            }
 
             // Working hooks can still report status while Sessions is off.
             impl->SetAgentSessionId(L"existing-session");

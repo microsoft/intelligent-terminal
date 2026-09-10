@@ -115,12 +115,13 @@
                 Padding="10,8"
                 Background="{Binding Background, ElementName=AgentBarRoot}"
                 Visibility="Collapsed">
+            <!--  Fade the session footer's gray further into either theme's background.  -->
             <TextBlock x:Name="SessionsDisabledHintText"
                        x:Uid="AgentPane_SessionsDisabledHint"
                        FontFamily="Segoe UI Variable, Segoe UI"
                        FontSize="12"
-                       Foreground="{Binding Foreground, ElementName=AgentLabelText}"
-                       Opacity="0.75"
+                       Foreground="#FF8B8B8B"
+                       Opacity="0.65"
                        TextWrapping="Wrap" />
         </Border>
 
