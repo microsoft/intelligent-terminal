@@ -14792,40 +14792,51 @@ fn clicking_completed_read_group_expands_every_member() {
 
 #[test]
 fn pending_tool_in_completed_turn_keeps_clickable_status_marker() {
-    let mut app = test_app();
-    app.state = ConnectionState::Connected;
-    app.current_tab_mut().completed_turns.push(CompletedTurn {
-        prompt: "Interrupted turn".into(),
-        details: vec![ChatMessage::ToolCall {
-            id: "pending-tool".into(),
-            query: None,
-            title: "Pending operation".into(),
-            status: "Pending".into(),
-            kind: ToolCallKind::Other,
-            location: None,
-            location_is_command: false,
-            cwd: None,
-            output: None,
-            exit_code: None,
-            content: Vec::new(),
-            locations: Vec::new(),
-        }],
-        expanded: true,
-        trailing_marker: None,
-    });
+    let _locale = crate::test_support::lock_locale();
+    for locale in ["en-US", "zh-CN", "ja-JP", "ar-SA"] {
+        rust_i18n::set_locale(locale);
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.current_tab_mut().completed_turns.push(CompletedTurn {
+            prompt: "Interrupted turn".into(),
+            details: vec![ChatMessage::ToolCall {
+                id: "pending-tool".into(),
+                query: None,
+                title: "Pending operation".into(),
+                status: "Pending".into(),
+                kind: ToolCallKind::Other,
+                location: None,
+                location_is_command: false,
+                cwd: None,
+                output: None,
+                exit_code: None,
+                content: Vec::new(),
+                locations: Vec::new(),
+            }],
+            expanded: true,
+            trailing_marker: None,
+        });
 
-    let rendered = render_to_text(&mut app, 80, 16);
-    assert!(rendered.contains("● Tool · Pending operation"));
-    let hit = app
-        .completed_turn_hits
-        .iter()
-        .find(|hit| matches!(hit.kind, CompletedTurnHitKind::ToolCall { detail_index: 0 }))
-        .expect("pending tool header hit must exist");
-    let rendered_marker = rendered
-        .lines()
-        .nth(hit.row as usize)
-        .and_then(|line| line.chars().nth(hit.start_column as usize));
-    assert_eq!(rendered_marker, Some('●'));
+        let buffer = render_to_buffer(&mut app, 80, 16);
+        let hit = app
+            .completed_turn_hits
+            .iter()
+            .find(|hit| matches!(hit.kind, CompletedTurnHitKind::ToolCall { detail_index: 0 }))
+            .expect("pending tool header hit must exist");
+        // Hit coordinates are terminal cells, not character offsets in translated text.
+        assert_eq!(
+            buffer[(hit.start_column, hit.row)].symbol(),
+            "●",
+            "{locale}: the pending status marker must start the clickable header"
+        );
+        let header: String = (hit.start_column..hit.end_column)
+            .map(|column| buffer[(column, hit.row)].symbol())
+            .collect();
+        assert!(
+            header.contains("Pending operation"),
+            "{locale}: the clickable header must contain the tool's title: {header:?}"
+        );
+    }
 }
 
 #[test]
