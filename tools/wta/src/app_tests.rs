@@ -13734,6 +13734,38 @@ mod input_undo_tests {
     }
 
     #[test]
+    fn stashed_draft_typing_stays_closed_across_tab_transfer() {
+        let mut app = test_app();
+        app.switch_tab_session("before".into());
+        app.current_tab_mut().record_input_history("historical");
+        type_text(&mut app, "first");
+        key(&mut app, KeyCode::Up, KeyModifiers::NONE);
+        assert_eq!(app.current_tab().input, "historical");
+        app.rename_tab_session("before", "after", Some("window"));
+        key(&mut app, KeyCode::Down, KeyModifiers::NONE);
+        assert_eq!(app.current_tab().input, "first");
+        type_text(&mut app, " second");
+        undo(&mut app);
+        assert_eq!(app.current_tab().input, "first");
+        undo(&mut app);
+        assert!(app.current_tab().input.is_empty());
+    }
+
+    #[test]
+    fn animation_ticks_skip_input_owner_snapshots() {
+        assert!(!app_events::needs_input_owner_tracking(&AppEvent::Tick));
+        assert!(!app_events::needs_input_owner_tracking(
+            &AppEvent::RevealTick
+        ));
+        assert!(app_events::needs_input_owner_tracking(
+            &AppEvent::CancelUserInputRequest {
+                request_id: "question".into(),
+                session_id: DEFAULT_TAB_ID.into(),
+            }
+        ));
+    }
+
+    #[test]
     fn editing_recalled_text_starts_a_fresh_chain() {
         let mut app = test_app();
         app.current_tab_mut().record_input_history("historical");

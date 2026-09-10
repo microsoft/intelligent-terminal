@@ -7,6 +7,13 @@
 
 use super::*;
 
+pub(super) fn needs_input_owner_tracking(event: &AppEvent) -> bool {
+    !matches!(
+        event,
+        AppEvent::Key(_) | AppEvent::Tick | AppEvent::RevealTick
+    )
+}
+
 pub(super) const AUTH_RECOVERY_CONNECTION_TIMEOUT: std::time::Duration =
     std::time::Duration::from_secs(8);
 // SharedWta grants retirement 16 seconds before replacing the master. Allow
@@ -440,8 +447,8 @@ impl App {
 
     pub(super) fn handle_event(&mut self, event: AppEvent) {
         // Async cards can take and release draft ownership without a key/focus event.
-        // The key path already handles its own boundaries without this allocation.
-        let owners: Vec<_> = if matches!(&event, AppEvent::Key(_)) {
+        // Keys handle their own boundaries; animation ticks cannot change the input owner.
+        let owners: Vec<_> = if !needs_input_owner_tracking(&event) {
             Vec::new()
         } else {
             let focused = self.chat_input_context_has_focus();
