@@ -72,6 +72,24 @@ function Test-FreShowing {
     process { Test-UiElementExists -App $App -Selector 'WelcomePage' -TimeoutSec 3 }
 }
 
+function Test-FreProgressOrder {
+    <# Verify that stable FRE progress log events appear in the requested order. #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Log,
+        [Parameter(Mandatory)][string[]]$Events
+    )
+
+    $offset = 0
+    foreach ($progressEvent in $Events) {
+        $needle = "[FRE] Progress: $progressEvent"
+        $index = $Log.IndexOf($needle, $offset, [System.StringComparison]::Ordinal)
+        if ($index -lt 0) { return $false }
+        $offset = $index + $needle.Length
+    }
+    return $true
+}
+
 # ── Execution-policy control (deterministic FRE EP-block coverage) ────────────
 # The FRE Save probes each PowerShell host's execution policy and blocks shell
 # integration when it refuses unsigned local scripts (Restricted/AllSigned). These

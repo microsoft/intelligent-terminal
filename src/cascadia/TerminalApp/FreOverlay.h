@@ -200,14 +200,34 @@ namespace winrt::TerminalApp::implementation
         // Perform the full save + install flow asynchronously.
         winrt::Windows::Foundation::IAsyncAction _SaveAndInstallAsync();
 
+        enum class ProgressStep
+        {
+            Setup = 0,
+            Agent = 1,
+            ErrorDetection = 2,
+            Sessions = 3,
+        };
+
+        enum class ProgressResult
+        {
+            Completed,
+            Warning,
+            Failed,
+        };
+
+        // Presentation-only observers for the current FRE save flow. These
+        // helpers never decide which work runs or how failures are handled.
+        void _BeginProgressAttempt(const winrt::hstring& agentId);
+        void _BeginProgressStep(ProgressStep step);
+        void _FinishProgressStep(ProgressStep step, ProgressResult result);
+
         // Flip the overlay between "saving / installing in progress" and
         // "idle / editable" states. While saving: a modal SavingOverlay
-        // covers the settings form with a centered ProgressRing +
-        // "Setting up..." text, the form underneath is disabled
-        // (blocks keyboard too — pointer is caught by the overlay's
-        // Background), and the Save button is disabled. On error or
-        // completion the inverse is applied so the user can edit and
-        // retry (or click Save again).
+        // covers the settings form with the progressive setup checklist,
+        // the form underneath is disabled (blocks keyboard too — pointer
+        // is caught by the overlay's Background), and the Save button is
+        // disabled. On error or completion the inverse is applied so the
+        // user can edit and retry (or click Save again).
         void _SetSavingState(bool saving);
     };
 }
