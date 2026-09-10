@@ -1094,9 +1094,14 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    void TerminalPage::_OnFreCompleted(const winrt::TerminalApp::FreOverlay& /*sender*/,
+    void TerminalPage::_OnFreCompleted(const winrt::TerminalApp::FreOverlay& sender,
                                        const winrt::Windows::Foundation::IInspectable& /*args*/)
     {
+        if (const auto impl = winrt::get_self<implementation::FreOverlay>(sender))
+        {
+            _pendingFreAutoInstallCopilot = impl->ShouldAutoInstallCopilotAfterCompletion();
+        }
+
         // Hide the FRE overlay
         if (auto overlay = FreOverlayElement())
         {
@@ -2920,6 +2925,10 @@ namespace winrt::TerminalApp::implementation
         if (tabId.empty())
         {
             return;
+        }
+        if (_freAutoInstallTargetTabId == tabId)
+        {
+            _freAutoInstallTargetTabId = {};
         }
 
         Json::Value tabParams;
@@ -5305,8 +5314,8 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        _PrewarmAgentPanesAfterStartup();
         _CompletePendingFreAgentPaneVisibility();
+        _PrewarmAgentPanesAfterStartup();
     }
 
     // Give the tabs that skipped their own pre-warm — because a replay was in
@@ -5349,10 +5358,12 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        // Consume the one-shot request before any pane operation can re-enter
-        // page state. FRE must not become a permanent obligation that reopens a
-        // pane the user later closes.
+        // Consume the visibility request before any pane operation can re-enter
+        // page state. The separate installation request is either reserved to
+        // this focused tab or expired below.
         _pendingFreEnsureAgentPaneVisible = false;
+        const bool requestAutoInstall = std::exchange(_pendingFreAutoInstallCopilot, false);
+        _freAutoInstallTargetTabId = {};
 
         if (_tabs.Size() == 0)
         {
@@ -5381,7 +5392,22 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
+        if (requestAutoInstall)
+        {
+            const auto binding = _ResolveAgentPaneSettingsBindingForTab(focusedTab);
+            if (binding.followsGlobalAcpModel &&
+                binding.agentId == L"copilot" &&
+                binding.agentSource == L"host")
+            {
+                _freAutoInstallTargetTabId = focusedTab->StableId();
+            }
+        }
+
         _OpenOrReuseAgentPane(false, L"FirstRunExperience");
+        if (!_freAutoInstallTargetTabId.empty() && !focusedTab->FindAgentPane())
+        {
+            _freAutoInstallTargetTabId = {};
+        }
     }
 
     safe_void_coroutine TerminalPage::CreateTabFromConnection(ITerminalConnection connection)
@@ -6756,6 +6782,21 @@ namespace winrt::TerminalApp::implementation
                     const std::string_view view = impl->IsSessionsView() ? "sessions" : "chat";
                     const bool paneOpen = !tabImpl->HasStashedAgentPane();
                     _RequestAgentStateForTab(tabImpl, view, paneOpen);
+
+                    if (!_freAutoInstallTargetTabId.empty() &&
+                        tabImpl->StableId() == _freAutoInstallTargetTabId)
+                    {
+                        if (agentId == L"copilot")
+                        {
+                            Json::Value installParams;
+                            installParams["tab_id"] = winrt::to_string(tabImpl->StableId());
+                            installParams["agent_id"] = "copilot";
+                            _agentPaneLog(
+                                "OnAgentStatusChanged: delivering one-shot FRE Copilot install request");
+                            _RaiseProtocolEvent("fre_auto_install_selected_agent", installParams);
+                        }
+                        _freAutoInstallTargetTabId = {};
+                    }
                 }
             }
         };

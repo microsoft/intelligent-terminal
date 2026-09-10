@@ -586,6 +586,8 @@ namespace winrt::TerminalApp::implementation
         uint32_t _startupActionReplayDepth{ 0 };
         bool _startupStructureSettleQueued{ false };
         bool _pendingFreEnsureAgentPaneVisible{ false };
+        bool _pendingFreAutoInstallCopilot{ false };
+        winrt::hstring _freAutoInstallTargetTabId;
         // Tabs that skipped their own pre-warm because a replay was in flight.
         // Drained when the outermost replay finishes. Recording the tabs —
         // rather than re-scanning every tab in the window — is what keeps an

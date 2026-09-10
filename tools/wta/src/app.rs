@@ -1042,6 +1042,7 @@ pub struct App {
     next_agent_install_request_id: u64,
     pending_agent_install: Option<PendingAgentInstall>,
     agent_binding_generation: u64,
+    pub(crate) auto_install_selected_agent: bool,
     /// Set after login completes — consumed by main loop to spawn ACP client.
     pub pending_acp_start: bool,
     /// Set by LoginComplete success — consumed once by try_start_acp to pass
@@ -1088,6 +1089,7 @@ pub struct App {
     /// Whether startup/preflight results from the original boot connection
     /// may still affect presentation.
     initial_startup_presentation_eligible: bool,
+    initial_preflight_completed: bool,
     /// Set when a replacement/rebind/restart makes later terminal events from
     /// the boot client stale rather than failures of the active connection.
     initial_transport_superseded: bool,
@@ -1435,6 +1437,7 @@ impl App {
             next_agent_install_request_id: 0,
             pending_agent_install: None,
             agent_binding_generation: 0,
+            auto_install_selected_agent: false,
             needs_post_login_authenticate: false,
             auth_recovery_generation: 0,
             auth_recovery_state: AuthRecoveryState::Idle,
@@ -1451,6 +1454,7 @@ impl App {
             agent_reconnect_state: AgentReconnectState::Idle,
             suppress_next_failed_client_error: false,
             initial_startup_presentation_eligible: true,
+            initial_preflight_completed: false,
             initial_transport_superseded: false,
             current_agent_source: crate::agent_source::AgentSource::Host,
             allowed_agent_ids: Vec::new(),
@@ -4175,51 +4179,7 @@ impl App {
                 self.request_agent_source_picker();
             }
             SetupOption::Install { agent_id, .. } => {
-                if let Some(setup) = self.setup.as_ref() {
-                    if setup.is_busy() {
-                        return;
-                    }
-                }
-                if let Some(setup) = self.setup.as_mut() {
-                    setup.phase = SetupPhase::Installing;
-                }
-                self.close_agent_picker();
-                self.agent_source_probe_generation =
-                    self.agent_source_probe_generation.wrapping_add(1);
-                self.next_agent_install_request_id =
-                    self.next_agent_install_request_id.wrapping_add(1);
-                let request_id = self.next_agent_install_request_id;
-                self.pending_agent_install = Some(PendingAgentInstall {
-                    request_id,
-                    agent_id: agent_id.clone(),
-                    binding_generation: self.agent_binding_generation,
-                    agent_source: self.current_agent_source.clone(),
-                });
-                // Spawn async winget install via agent_check
-                if let Some(ref tx) = self.event_tx {
-                    let tx = tx.clone();
-                    let id = agent_id.clone();
-                    tokio::task::spawn_local(async move {
-                        let result = crate::agent_check::install(&id, |_line| {
-                            // Could send log lines as events, but keep simple for now
-                        })
-                        .await;
-                        tracing::info!(agent = %id, ?result, "agent install completed");
-                        let _ = tx.send(AppEvent::AgentInstallComplete {
-                            request_id,
-                            agent_id: id,
-                            outcome: result,
-                        });
-                    });
-                } else {
-                    self.pending_agent_install = None;
-                    if let Some(setup) = self.setup.as_mut() {
-                        setup.phase = SetupPhase::Failed {
-                            kind: SetupFailureKind::Install,
-                            message: "The installer could not be started.".to_string(),
-                        };
-                    }
-                }
+                self.start_agent_install(agent_id);
             }
             SetupOption::SignIn {
                 agent_id,
@@ -4270,6 +4230,70 @@ impl App {
                 }
             }
         }
+    }
+
+    pub(crate) fn start_agent_install(&mut self, agent_id: String) {
+        if self.setup.as_ref().is_some_and(SetupState::is_busy) {
+            return;
+        }
+        if let Some(setup) = self.setup.as_mut() {
+            setup.phase = SetupPhase::Installing;
+        }
+        self.close_agent_picker();
+        self.agent_source_probe_generation = self.agent_source_probe_generation.wrapping_add(1);
+        self.next_agent_install_request_id = self.next_agent_install_request_id.wrapping_add(1);
+        let request_id = self.next_agent_install_request_id;
+        self.pending_agent_install = Some(PendingAgentInstall {
+            request_id,
+            agent_id: agent_id.clone(),
+            binding_generation: self.agent_binding_generation,
+            agent_source: self.current_agent_source.clone(),
+        });
+        if let Some(ref tx) = self.event_tx {
+            let tx = tx.clone();
+            tokio::task::spawn_local(async move {
+                let result = crate::agent_check::install(&agent_id, |_line| {}).await;
+                tracing::info!(agent = %agent_id, ?result, "agent install completed");
+                let _ = tx.send(AppEvent::AgentInstallComplete {
+                    request_id,
+                    agent_id,
+                    outcome: result,
+                });
+            });
+        } else {
+            self.pending_agent_install = None;
+            if let Some(setup) = self.setup.as_mut() {
+                setup.phase = SetupPhase::Failed {
+                    kind: SetupFailureKind::Install,
+                    message: "The installer could not be started.".to_string(),
+                };
+            }
+        }
+    }
+
+    pub(crate) fn try_start_fre_auto_install(&mut self) -> bool {
+        if !self.auto_install_selected_agent || self.pending_agent_install.is_some() {
+            return false;
+        }
+        let install_agent = self.setup.as_ref().and_then(|setup| {
+            if setup.is_busy() {
+                return None;
+            }
+            setup.options.iter().find_map(|option| match option {
+                SetupOption::Install { agent_id, .. }
+                    if agent_id.eq_ignore_ascii_case("copilot") =>
+                {
+                    Some(agent_id.clone())
+                }
+                _ => None,
+            })
+        });
+        let Some(agent_id) = install_agent else {
+            return false;
+        };
+        self.auto_install_selected_agent = false;
+        self.start_agent_install(agent_id);
+        true
     }
 
     /// Key used for lookup into `tab_sessions`. Falls back to

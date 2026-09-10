@@ -10323,6 +10323,176 @@ fn diagnostic_setup_options_route_auth_by_agent() {
     );
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn fre_auto_install_hint_starts_missing_copilot_install() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut app = test_app();
+            let (event_tx, _event_rx) = tokio::sync::mpsc::unbounded_channel();
+            app.set_event_tx(event_tx);
+            app.tab_id = Some("fre-tab".into());
+            app.current_agent_id = "copilot".into();
+            app.mode = AppMode::Setup;
+            app.preflight_setup_active = true;
+            app.setup = Some(SetupState {
+                reason: SetupReason::AgentMissing,
+                selected_index: 0,
+                preflight: PreflightResult::passed_for_custom_agent("copilot"),
+                phase: SetupPhase::Ready,
+                options: vec![SetupOption::Install {
+                    agent_id: "copilot".into(),
+                    display_name: "GitHub Copilot".into(),
+                }],
+                title: "setup".into(),
+                subtitle: "sub".into(),
+            });
+
+            app.handle_event(AppEvent::WtEvent {
+                method: "fre_auto_install_selected_agent".into(),
+                pane_id: String::new(),
+                tab_id: Some("fre-tab".into()),
+                params: json!({
+                    "tab_id": "fre-tab",
+                    "agent_id": "copilot",
+                }),
+            });
+
+            assert!(!app.auto_install_selected_agent);
+            assert_eq!(app.mode, AppMode::Setup);
+            assert!(matches!(
+                app.setup.as_ref().map(|setup| &setup.phase),
+                Some(SetupPhase::Installing)
+            ));
+            assert!(matches!(
+                app.pending_agent_install.as_ref(),
+                Some(PendingAgentInstall { agent_id, .. }) if agent_id == "copilot"
+            ));
+        })
+        .await;
+}
+
+#[test]
+fn missing_copilot_without_fre_hint_remains_manual() {
+    let mut app = test_app();
+    app.mode = AppMode::Setup;
+    app.preflight_setup_active = true;
+    app.setup = Some(SetupState {
+        reason: SetupReason::AgentMissing,
+        selected_index: 0,
+        preflight: PreflightResult::passed_for_custom_agent("copilot"),
+        phase: SetupPhase::Ready,
+        options: vec![SetupOption::Install {
+            agent_id: "copilot".into(),
+            display_name: "GitHub Copilot".into(),
+        }],
+        title: "setup".into(),
+        subtitle: "sub".into(),
+    });
+
+    assert!(app.pending_agent_install.is_none());
+    assert!(matches!(
+        app.setup.as_ref().map(|setup| &setup.phase),
+        Some(SetupPhase::Ready)
+    ));
+}
+
+#[test]
+fn duplicate_startup_preflight_does_not_replace_active_install() {
+    let mut app = test_app();
+    app.current_agent_id = "copilot".into();
+    app.mode = AppMode::Setup;
+    app.pending_agent_install = Some(PendingAgentInstall {
+        request_id: 7,
+        agent_id: "copilot".into(),
+        binding_generation: app.agent_binding_generation,
+        agent_source: app.current_agent_source.clone(),
+    });
+    app.setup = Some(SetupState {
+        reason: SetupReason::AgentMissing,
+        selected_index: 0,
+        preflight: PreflightResult::passed_for_custom_agent("copilot"),
+        phase: SetupPhase::Installing,
+        options: Vec::new(),
+        title: "installing".into(),
+        subtitle: "sub".into(),
+    });
+
+    app.handle_event(AppEvent::PreflightComplete(PreflightResult {
+        agent_id: "copilot".into(),
+        display_name: "GitHub Copilot".into(),
+        cli_status: CheckStatus::Failed("Not found on PATH".into()),
+        cli_path: None,
+        auth_status: CheckStatus::Skipped,
+        install_hint: "Install GitHub Copilot".into(),
+        install_url: String::new(),
+        auth_hint: String::new(),
+    }));
+
+    assert!(matches!(
+        app.pending_agent_install.as_ref(),
+        Some(PendingAgentInstall { request_id: 7, .. })
+    ));
+    assert!(matches!(
+        app.setup.as_ref().map(|setup| &setup.phase),
+        Some(SetupPhase::Installing)
+    ));
+}
+
+#[test]
+fn fre_auto_install_event_is_ignored_for_wsl() {
+    let mut app = test_app();
+    app.tab_id = Some("fre-tab".into());
+    app.current_agent_id = "copilot".into();
+    app.current_agent_source = crate::agent_source::AgentSource::Wsl {
+        distro: "Ubuntu".into(),
+    };
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "fre_auto_install_selected_agent".into(),
+        pane_id: String::new(),
+        tab_id: Some("fre-tab".into()),
+        params: json!({
+            "tab_id": "fre-tab",
+            "agent_id": "copilot",
+        }),
+    });
+
+    assert!(!app.auto_install_selected_agent);
+    assert!(app.pending_agent_install.is_none());
+}
+
+#[test]
+fn late_fre_auto_install_event_is_consumed_after_passed_preflight() {
+    let mut app = test_app();
+    app.tab_id = Some("fre-tab".into());
+    app.current_agent_id = "copilot".into();
+
+    app.handle_event(AppEvent::PreflightComplete(PreflightResult {
+        agent_id: "copilot".into(),
+        display_name: "GitHub Copilot".into(),
+        cli_status: CheckStatus::Passed,
+        cli_path: Some("copilot.exe".into()),
+        auth_status: CheckStatus::Skipped,
+        install_hint: String::new(),
+        install_url: String::new(),
+        auth_hint: String::new(),
+    }));
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "fre_auto_install_selected_agent".into(),
+        pane_id: String::new(),
+        tab_id: Some("fre-tab".into()),
+        params: json!({
+            "tab_id": "fre-tab",
+            "agent_id": "copilot",
+        }),
+    });
+
+    assert!(app.initial_preflight_completed);
+    assert!(!app.auto_install_selected_agent);
+    assert!(app.pending_agent_install.is_none());
+}
+
 #[test]
 fn stale_install_completion_does_not_mutate_current_setup() {
     let mut app = test_app();

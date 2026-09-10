@@ -2039,6 +2039,19 @@ impl App {
                     );
                     return;
                 }
+                if self.pending_agent_install.is_some()
+                    || self
+                        .setup
+                        .as_ref()
+                        .is_some_and(|setup| matches!(&setup.phase, SetupPhase::Installing))
+                {
+                    tracing::debug!(
+                        target: "preflight",
+                        agent = %result.agent_id,
+                        "ignoring duplicate startup preflight during agent installation"
+                    );
+                    return;
+                }
                 tracing::info!(
                     target: "preflight",
                     agent = %result.agent_id,
@@ -2046,8 +2059,14 @@ impl App {
                     auth_status = ?result.auth_status,
                     "preflight result received"
                 );
+                self.initial_preflight_completed = true;
                 if !result.all_passed() {
                     self.show_preflight_setup(result);
+                    if self.auto_install_selected_agent && !self.try_start_fre_auto_install() {
+                        self.auto_install_selected_agent = false;
+                    }
+                } else {
+                    self.auto_install_selected_agent = false;
                 }
             }
             AppEvent::AgentReconnectPreflightComplete {
@@ -2274,6 +2293,37 @@ impl App {
                 // single per-event breadcrumb stays at debug in main.rs
                 // (`wt_event_rx: received event`).
                 tracing::trace!(target: "autofix", method = %method, pane_id = %pane_id, tab_id = ?tab_id, self_pane_id = ?self.pane_id, "WtEvent");
+
+                if method == "fre_auto_install_selected_agent" {
+                    let targets_this_helper = tab_id
+                        .as_deref()
+                        .is_some_and(|target| self.tab_id.as_deref() == Some(target));
+                    if !targets_this_helper
+                        || !matches!(
+                            self.current_agent_source,
+                            crate::agent_source::AgentSource::Host
+                        )
+                        || !self.current_agent_id.eq_ignore_ascii_case("copilot")
+                    {
+                        return;
+                    }
+                    if self.pending_agent_install.is_some()
+                        || self.setup.as_ref().is_some_and(SetupState::is_busy)
+                    {
+                        self.auto_install_selected_agent = false;
+                        return;
+                    }
+                    self.auto_install_selected_agent = true;
+                    if self.try_start_fre_auto_install() {
+                        tracing::info!(
+                            target: "preflight",
+                            "starting one-shot FRE-requested agent installation"
+                        );
+                    } else if self.initial_preflight_completed {
+                        self.auto_install_selected_agent = false;
+                    }
+                    return;
+                }
 
                 // Hook bridge events: fire-and-forget into the agent registry
                 // so the agent session view stays current. Unrelated to autofix /

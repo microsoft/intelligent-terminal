@@ -169,6 +169,7 @@ namespace winrt::TerminalApp::implementation
 
     void FreOverlay::Initialize(const winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings& settings)
     {
+        _autoInstallCopilotAfterCompletion = false;
         _settings = settings;
         const auto& globals = _settings.GlobalSettings();
         _agentSelectionExplicitlyChanged = false;
@@ -1339,6 +1340,7 @@ namespace winrt::TerminalApp::implementation
     IAsyncAction FreOverlay::_SaveAndInstallAsync()
     {
         auto weak = get_weak();
+        _autoInstallCopilotAfterCompletion = false;
         // Capture the dispatcher while we're definitely on the UI thread.
         // After any subsequent `co_await` that resumes on a background
         // thread (e.g. _WingetInstallAsync, _InstallHooksAsync), calling
@@ -1649,6 +1651,7 @@ namespace winrt::TerminalApp::implementation
             if (!self) co_return;
 
             _agentPaneLog("[FRE] Completed — raising Completed event");
+            _autoInstallCopilotAfterCompletion = agentId == L"copilot";
             // Restore the editable state before raising Completed so that
             // if anything keeps the overlay alive a moment longer, it
             // doesn't appear stuck in the "saving" visual.
@@ -1668,6 +1671,7 @@ namespace winrt::TerminalApp::implementation
     void FreOverlay::_OnCloseButtonClick(const IInspectable& /*sender*/,
                                          const RoutedEventArgs& /*args*/)
     {
+        _autoInstallCopilotAfterCompletion = false;
         Completed.raise(*this, nullptr);
     }
 
