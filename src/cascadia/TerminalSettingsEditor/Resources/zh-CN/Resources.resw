@@ -2862,7 +2862,7 @@
   </data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
     <value>使用你首选的智能体 CLI 创建新选项卡，并可选择附带提示词和活动窗格的上下文。
-Alt+Shift+/ 在智能体提示模式下打开命令面板；Alt+Shift+B 在新选项卡中启动交互式 CLI，不提供初始提示词。</value>
+Alt+Shift+/ 输入提示词；Alt+Shift+B 不带初始提示词启动。</value>
     <comment>{Locked="CLI","Alt+Shift+/","Alt+Shift+B"} Agent CLI help in Settings &gt; Agents. Keep exactly one line break between the description and the shortcut reference. The UI renders the hotkeys with the same keycap style as Settings &gt; Actions. Start the description after each shortcut with lowercase where the language uses case. Context comes from the active pane; launching without an initial prompt is still interactive. Separate each hotkey and its description with a space, not a colon.</comment>
   </data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve">

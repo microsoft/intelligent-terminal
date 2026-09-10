@@ -2862,7 +2862,7 @@
   </data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
     <value>선호하는 에이전트 CLI로 새 탭을 만들고, 선택적으로 프롬프트와 활성 창의 컨텍스트를 포함합니다.
-Alt+Shift+/ 프롬프트 모드로 명령 팔레트 열기; Alt+Shift+B 초기 프롬프트 없이 새 탭에서 대화형 CLI를 실행하고 사용자 입력 기다리기</value>
+Alt+Shift+/ 프롬프트 입력; Alt+Shift+B 초기 프롬프트 없이 실행</value>
     <comment>{Locked="CLI","Alt+Shift+/","Alt+Shift+B"} Agent CLI help in Settings &gt; Agents. Keep exactly one line break between the description and the shortcut reference. The UI renders the hotkeys with the same keycap style as Settings &gt; Actions. Start the description after each shortcut with lowercase where the language uses case. Context comes from the active pane; launching without an initial prompt is still interactive. Separate each hotkey and its description with a space, not a colon.</comment>
   </data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve">

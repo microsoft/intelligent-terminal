@@ -2855,7 +2855,7 @@
   </data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
     <value>Crie uma nova guia com a CLI do agente de sua preferência, incluindo opcionalmente um prompt e o contexto do painel ativo.
-Alt+Shift+/ abra a paleta de comandos no modo de prompt; Alt+Shift+B inicie em uma nova guia sem um prompt inicial.</value>
+Alt+Shift+/ insira um prompt; Alt+Shift+B inicie sem um prompt inicial.</value>
     <comment>{Locked="CLI","Alt+Shift+/","Alt+Shift+B"} Agent CLI help in Settings &gt; Agents. Keep exactly one line break between the description and the shortcut reference. The UI renders the hotkeys with the same keycap style as Settings &gt; Actions. Start the description after each shortcut with lowercase where the language uses case. Context comes from the active pane; launching without an initial prompt is still interactive. Separate each hotkey and its description with a space, not a colon.</comment>
   </data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve">

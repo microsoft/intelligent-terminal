@@ -774,7 +774,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
     <value>Create a new tab with your preferred agent CLI, optionally including a prompt and context from the active pane.
-Alt+Shift+/ open the command palette in prompt mode; Alt+Shift+B launch in a new tab without an initial prompt.</value>
+Alt+Shift+/ enter a prompt; Alt+Shift+B launch without an initial prompt.</value>
     <comment>{Locked="CLI","Alt+Shift+/","Alt+Shift+B"} Agent CLI help in Settings &gt; Agents. Keep exactly one line break between the description and the shortcut reference. The UI renders the hotkeys with the same keycap style as Settings &gt; Actions. Start the description after each shortcut with lowercase where the language uses case. Context comes from the active pane; launching without an initial prompt is still interactive. Separate each hotkey and its description with a space, not a colon.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandlingTitle.Text" xml:space="preserve">
