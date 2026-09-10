@@ -61,6 +61,7 @@ chat.turn_canceled: "[(çåñçéĺéð!!)]"
 chat.turn_executed: "[→ éẋéçûţéð: %{title}!!]"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "[Ŕûñ!!]"
+chat.tool_kind.insert: "[Îñśéŕţ!!!]"
 chat.tool_kind.read: "[Ŕéåð!!]"
 chat.tool_kind.search: "[Ŝéåŕçĥ!!]"
 chat.tool_kind.edit: "[Éðïţ!!]"
@@ -133,8 +134,25 @@ agents.status.idle: "[Îďĺé!!]"
 layout.welcome_hint: "[(Ctrl+Shift+. ţö śĥöŵ/ĥïďé åğéñţ ṗåñé • Ctrl+Shift+/ ţö śĥöŵ/ĥïďé åğéñţ śéśśïöñ)!!!! !!!! !!!! !!!!]"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
-connection.starting: "[Ŝţåŕţïñğ åğéñţ...!!]"
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "[Þŕéþåŕïñğ åğéñţ çöññéçţïöñ...!!!! !!!!]"
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "[Ŕéśţåŕţïñğ åğéñţ...!!!!]"
 connection.reconnecting: "[Ŕéçöññéçţïñğ...!!]"
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "[Çöññéçţïñğ ţö ĺöçåĺ çööŕđïñåţöŕ...!!!! !!!!]"
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "[Ïñïţïåĺïžïñğ åğéñţ çöññéçţïöñ...!!!! !!!!]"
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "[Åûţĥéñţïçåţïñğ ŵïţĥ åğéñţ...!!!! !!!!]"
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "[Ŕéåđïñğ śéśśïöñ ĺïśţ...!!!!]"
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "[Çŕéåţïñğ åğéñţ śéśśïöñ...!!!!]"
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "[Ŝéţţïñğ śéśśïöñ ḿöđéĺ: %{model}...!!!! !!!!]"  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (ŕéśûḿïñğ %{session_id})"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "[Çöññéçţïñğ ţö åğéñţ…!!]"
 connection.lost: "[Çöññéçţïöñ ţö ţĥé åğéñţ ŵåś ĺöśţ. Ţýṗé /restart ţö ŕéçöññéçţ.!!]"  # {Locked="/restart"}
 
@@ -248,5 +266,6 @@ config_picker.title: "[Śéśśïöñ çöñƒïğûŕåţïöñ (↑ ↓ • En
 system.no_config_options: "[Ţĥé çöññéçţéď åğéñţ ďïď ñöţ åďṽéŕţïśé åñÿ çöñƒïğûŕåƀĺé śéśśïöñ öṗţïöñś.!!!! !!!! !!!! !!!! !!!!]"
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "[ƒåïĺéď ţö ûṗďåţé %{option}: %{error}!!!! !!!! !!!!]"
+system.yolo_disable_pending: "[ţĥé ṗŕöṽïďéŕ ĥåś ñöţ åçķñöŵĺéďğéď ţĥé ŕéǫûïŕéď ñöñṗŕïṽïĺéğéď śéśśïöñ śţåţé!!!! !!!! !!!! !!!!]"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: [Yolo ḿöďé ïś ďïśåƀĺéď ƀÿ ÿöûŕ öŕğåñïžåţïöñ'ś ṗöĺïçÿ.!!!! !!!! !!!!]"  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "[Ûñķñöŵñ ḿöďéĺ %{model} — ţÿṗé /model ţö śéé ţĥé åṽåïĺåƀĺé ĺïśţ.!!!! !!!! !!!! !!!!]"  # {Locked="%{model}","/model"}

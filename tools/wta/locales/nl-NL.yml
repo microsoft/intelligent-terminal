@@ -59,6 +59,7 @@ chat.turn_canceled: "(geannuleerd)"
 chat.turn_executed: "→ uitgevoerd: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "Uitvoeren"
+chat.tool_kind.insert: "Invoegen"
 chat.tool_kind.read: "Lezen"
 chat.tool_kind.search: "Zoeken"
 chat.tool_kind.edit: "Bewerken"
@@ -131,8 +132,25 @@ agents.status.idle: "Inactief"
 layout.welcome_hint: "  (Ctrl+Shift+. om het agentdeelvenster te tonen/verbergen • Ctrl+Shift+/ om de agentsessie te tonen/verbergen)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Verbindingsstatus ────────────────────────────────────────────────────────────
-connection.starting: "Agent starten..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "Verbinding met de agent voorbereiden..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "Agent opnieuw starten..."
 connection.reconnecting: "Opnieuw verbinden..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "Verbinding maken met de lokale coördinator..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "Verbinding met de agent initialiseren..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "Gebruiker bij de agent verifiëren..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "Sessielijst lezen..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "Agentsessie maken..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "Sessiemodel instellen: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (%{session_id} hervatten)"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "Verbinding maken met agent…"
 connection.lost: "De verbinding met de agent is verbroken. Typ /restart om opnieuw verbinding te maken."  # {Locked="/restart"}
 
@@ -247,5 +265,6 @@ config_picker.title: "Sessieconfiguratie (↑ ↓ • Enter • Esc)"
 system.no_config_options: "De verbonden agent heeft geen configureerbare sessie-opties geadverteerd."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Bijwerken van %{option} is mislukt: %{error}"
+system.yolo_disable_pending: "de leverancier van de AI-agent heeft niet bevestigd dat de sessie zich in de vereiste niet-geprivilegieerde status bevindt"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Yolo-modus is uitgeschakeld door het beleid van uw organisatie."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Onbekend model %{model} — typ /model om de beschikbare lijst te zien."  # {Locked="%{model}","/model"}

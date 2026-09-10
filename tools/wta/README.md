@@ -42,6 +42,15 @@ Terminal over the COM protocol; `resolve-command` inspects the user's real,
 shell-context-selected sources (active working directory, host PATH and, for
 PowerShell, the profile-loaded command environment).
 
+Autofix sends the failing command's context without pre-querying similar command
+names. Its prompt advertises `wta resolve-command` for agent-initiated diagnosis,
+using the failing pane's shell and working directory. Command enumeration is
+uncached and runs only when requested; there is no background refresh or
+startup/tab-selection prewarming. Query failures or unsupported shell contexts
+are not evidence that a command is missing. The prompt directs agents to propose
+obvious typos in familiar commands (such as `gti status` -> `git status`) without
+lookup, while using local evidence for unfamiliar commands or ambiguous corrections.
+
 The packaged app registers `wta.exe` as an App Execution Alias. Before spawning
 the host agent, WTA puts the current package family's alias directory first on
 `PATH`; unpackaged builds use the running binary's directory. Agent prompts can
@@ -126,11 +135,32 @@ shell, so any pane-launched process — including wta and wtcli — inherits it.
 Tool rows keep a localized type label such as **Run**, **Read**, **Search**, or
 **Edit** visible across pending, running, and completed states. Consecutive
 successful Read, Search, Edit, and Delete calls collapse into one summary row;
-click that row to inspect each call. While a turn is in flight, ACP thought
-chunks update a temporary **Think** row alongside visible answers; when the
-provider is silent, the row remains as `Think · …` until the turn ends.
+click that row to inspect each call. ACP thought chunks appear in an expanded
+**Think** block with muted italic text and a left rule. Each thinking phase
+automatically collapses when an answer or tool activity starts, thinking ends,
+or the turn completes or is canceled. Click its header to reopen it, including
+in completed history. Ctrl+O toggles thinking in the selected history turn, or
+the active/latest turn when none is selected. Phase duration is measured locally;
+replayed thinking has no duration because ACP does not supply historical timing.
+Each block retains the latest 4,000 Unicode characters. No thought text is
+invented when a provider is silent. Synthetic waiting feedback uses only the
+shimmering Thinking indicator above the input box, never a transcript row.
 Expanded Edit details show bounded line-level `+`/`-` hunks computed from ACP
-snapshots.
+snapshots. Tool headers and groups can be expanded during the active turn as well
+as in history. Expanded Search details wrap the provider's `rawInput.query`
+(or its title when no query is supplied) and any returned text results. WTA
+does not reconstruct queries or results omitted by the provider. Queries retain
+the first 4,000 Unicode characters, all scrollable when expanded. Text results show
+up to 12 wrapped lines, with `…` for omitted text. Expansion follows the tool
+into completed history.
+
+Chat follows new output while you are at the bottom. Scrolling up preserves your
+reading position as text streams, tools update, and turns finish; scrolling back
+to the bottom resumes following. Sending a prompt or clearing/loading a session
+still resets the view. Streaming thinking retains its latest 4,000 characters;
+your reading position follows the same retained text even when older text is
+trimmed. If the text you were reading is removed or a thinking block collapses,
+the view clamps to surviving content.
 
 | Key | Action |
 |-----|--------|
@@ -138,8 +168,9 @@ snapshots.
 | Ctrl+C | Copy selected text; otherwise cancel streaming / quit |
 | Up / Down | Browse prompt input history |
 | Mouse wheel | Scroll chat (hold Alt to scroll one line) |
-| Click a completed tool header | Expand or collapse that tool's details |
-| Ctrl+O | Expand or collapse all completed tool details |
+| Click a tool header | Expand or collapse that tool's details, live or completed |
+| Click a thinking header | Expand or collapse that block, live or completed |
+| Ctrl+O | Expand or collapse thinking in the selected/latest turn (or the active turn), and all live and completed tool details |
 | Mouse drag | Select a continuous text range |
 | Double / triple click | Select a word / line |
 | PageUp / PageDown | Scroll chat |
@@ -147,6 +178,22 @@ snapshots.
 | Shift+PageUp/Down | Scroll debug panel |
 | Y / N | Quick allow/reject on permission dialog |
 | Up / Down / Enter | Navigate permission options |
+
+WTA automatically selects **Allow once** only when the tool matches the exact MCP
+server currently bound to that ACP session by master. Master overwrites provider
+metadata with that identity on each forwarded permission request and tool update;
+correlated calls must match the session, call ID, and current server identity.
+Terminal actions still require their action-card confirmation, and
+`request_user_input` still presents its question. Foreign or missing identities
+(even with the same tool name or server-name prefix) and requests without an
+**Allow once** option keep the normal permission dialog. WTA does not grant
+persistent approval automatically.
+
+Pending and replayed command suggestions show only the command, without assuming
+Run or Insert. After the user chooses, history uses the localized
+`Run: <command>` or `Insert: <command>` label. Cancelling retains the command with
+a localized cancellation status on the same line, not on the conversation title.
+History has no suggestion counts, numbering, or recommendation checkmarks.
 
 ## Debug Panel
 
@@ -252,6 +299,20 @@ the CLI helpers directly with the packaged `wta` app execution alias.
 4. Press F12 to open the debug panel and see all protocol traffic
 5. Interact with the agent -- watch requests/responses flow in real time
 6. Use `wta list-panes`, `wta capture-pane` etc. in another pane for debugging
+
+While connecting, the chat activity row shows WTA's current operation: preparing
+the agent connection, connecting to the local coordinator, initializing the
+connection, refreshing user authentication after login (when supported), reading
+the coordinator's session registry snapshot, creating a session, or setting its
+model (when requested). Initialization and creation include local preparation
+and registration, not just waiting on the agent. `/restart` first shows
+"Restarting agent" while old sessions retire. These are local operation
+boundaries, not agent-reported progress: they do not expose internal MCP or
+model-catalog loading, and reading the registry does not fetch agent history.
+A queued session restore shows the actual connection stage first, followed by
+short resume context; once connected, it shows only "Resuming session" until
+the load completes. The pane does not become connected earlier, and these labels
+do not reduce startup time.
 
 ### Adding a new WT protocol method
 

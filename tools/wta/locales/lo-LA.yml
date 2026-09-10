@@ -59,6 +59,7 @@ chat.turn_canceled: "(ຍົກເລີກແລ້ວ)"
 chat.turn_executed: "→ ດໍາເນີນການແລ້ວ: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "ດໍາເນີນການ"
+chat.tool_kind.insert: "ແຊກ"
 chat.tool_kind.read: "ອ່ານ"
 chat.tool_kind.search: "ຄົ້ນຫາ"
 chat.tool_kind.edit: "ແກ້ໄຂ"
@@ -131,8 +132,25 @@ agents.status.idle: "Idle"
 layout.welcome_hint: "(Ctrl+Shift+. ສະແດງ/ເຊື່ອງແຜງ agent • Ctrl+Shift+/ ສະແດງ/ເຊື່ອງພາກສ່ວນ agent)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
-connection.starting: "ກຳລັງເລີ່ມ agent..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "ກຳລັງກະກຽມການເຊື່ອມຕໍ່ agent..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "ກຳລັງເລີ່ມ agent ໃໝ່..."
 connection.reconnecting: "ກຳລັງເຊື່ອມຕໍ່ໃໝ່..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "ກຳລັງເຊື່ອມຕໍ່ກັບຕົວປະສານງານໃນເຄື່ອງ..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "ກຳລັງກຳນົດຄ່າເບື້ອງຕົ້ນຂອງການເຊື່ອມຕໍ່ agent..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "ກຳລັງຢືນຢັນການເຂົ້າສູ່ລະບົບກັບ agent..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "ກຳລັງອ່ານລາຍການເຊດຊັນ..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "ກຳລັງສ້າງເຊດຊັນ agent..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "ກຳລັງຕັ້ງຄ່າໂມເດລເຊດຊັນ: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (ກຳລັງສືບຕໍ່ %{session_id})"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "ກຳລັງເຊື່ອມຕໍ່ຫາ agent…"
 connection.lost: "ການເຊື່ອມຕໍ່ຫາ agent ຂາດຫາຍໄປ. ພິມ /restart ເພື່ອເຊື່ອມຕໍ່ໃໝ່."  # {Locked="/restart"}
 
@@ -247,5 +265,6 @@ config_picker.title: "ການກຳນົດຄ່າເຊດຊັນ (↑ �
 system.no_config_options: "ຕົວແທນທີ່ເຊື່ອມຕໍ່ບໍ່ໄດ້ໂຄສະນາຕົວເລືອກເຊດຊັນທີ່ກຳນົດຄ່າໄດ້."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "ອັບເດດ %{option} ລົ້ມເຫຼວ: %{error}"
+system.yolo_disable_pending: "ຜູ້ໃຫ້ບໍລິການ AI agent ຍັງບໍ່ໄດ້ຢືນຢັນວ່າເຊດຊັນຢູ່ໃນສະຖານະທີ່ບໍ່ມີສິດພິເສດຕາມທີ່ກຳນົດ"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Yolo mode ຖືກປິດໂດຍນະໂຍບາຍຂອງອົງກອນຂອງທ່ານ."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "ບໍ່ຮູ້ຈັກແບບຈຳລອງ %{model} — ພິມ /model ເພື່ອເບິ່ງລາຍການທີ່ມີ."  # {Locked="%{model}","/model"}

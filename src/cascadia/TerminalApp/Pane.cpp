@@ -110,7 +110,8 @@ INewContentArgs Pane::GetTerminalArgsForPane(BuildStartupKind kind) const
     // it — so it serializes like any other pane. Record that it was toggled
     // away in the content type it already carries, rather than spending a
     // separate persisted field on one bit.
-    if (kind == BuildStartupKind::Persist && _isAgentPane && _hidden)
+    if ((kind == BuildStartupKind::Persist || kind == BuildStartupKind::Content || kind == BuildStartupKind::MovePane) &&
+        _isAgentPane && _hidden)
     {
         if (const auto terminalArgs = args.try_as<winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs>())
         {
@@ -1636,13 +1637,8 @@ void Pane::_CloseChild(const bool closeFirst)
         // Revoke our own routing token on the agent pane first so the
         // Closed.raise below doesn't re-enter _CloseChildRoutine on us.
         remainingChild->Closed(remainingChildClosedToken);
-        // Fire the agent pane's Closed for any *other* subscribers — most
-        // importantly the `SharedWta::ReleasePane` handler registered at
-        // agent-pane creation (TerminalPage.cpp). Without this, the WTA
-        // shared-master refcount leaks every time this branch tears down
-        // an agent pane (the `_RemoveTab` walk-the-tree compensation can't
-        // see it either, since we null the child pointers below before
-        // Tab::Closed bubbles up).
+        // Notify other UI subscribers. Content close above owns resource
+        // retirement independently of the pane-tree event routing.
         remainingChild->Closed.raise(nullptr, nullptr);
         _firstChild = nullptr;
         _secondChild = nullptr;
@@ -2013,6 +2009,7 @@ void Pane::_setPaneContent(IPaneContent content, std::optional<uint32_t> content
     if (content)
     {
         _content = std::move(content);
+        _isAgentPane = static_cast<bool>(_content.try_as<AgentPaneContent>());
         _contentId = contentId;
         _closeRequestedRevoker = _content.CloseRequested(winrt::auto_revoke, [this](auto&&, auto&&) { Close(); });
     }
@@ -2596,6 +2593,7 @@ std::pair<std::shared_ptr<Pane>, std::shared_ptr<Pane>> Pane::_Split(SplitDirect
     }
 
     _splitState = actualSplitType;
+    _isAgentPane = false;
     _desiredSplitPosition = 1.0f - splitSize;
     _secondChild = newPane;
     // If we want the new pane to be the first child, swap the children

@@ -397,18 +397,39 @@ impl App {
     /// active tab's cached snapshot, synthesize a `WtNotification` from
     /// it, and replay through `trigger_autofix_inner` with `forced=true`
     /// so the auto-suggest off gate is bypassed and the LLM call fires.
-    pub(super) fn handle_autofix_execute_from_detected(&mut self) {
+    pub(super) fn handle_autofix_execute_from_detected(
+        &mut self,
+        requested_pane_id: &str,
+        requested_tab_id: Option<&str>,
+    ) {
         let active_tab = self.active_tab_key().to_string();
+        if requested_pane_id.is_empty()
+            || requested_tab_id.is_some_and(|tab| tab != active_tab)
+            || self
+                .owner_tab_id
+                .as_deref()
+                .is_some_and(|owner| owner != active_tab)
+        {
+            tracing::debug!(
+                target: "autofix",
+                requested_pane_id,
+                requested_tab_id,
+                active_tab,
+                "ignoring detected Autofix action: target is missing or tab does not match"
+            );
+            return;
+        }
         let snapshot = self.current_tab().autofix.bar_snapshot.clone();
         let (pane_id, summary) = match snapshot {
             AutofixBarSnapshot::Detected {
                 pane_id, summary, ..
-            } => (pane_id, summary),
+            } if pane_id == requested_pane_id => (pane_id, summary),
             other => {
                 tracing::info!(
                     target: "autofix",
+                    requested_pane_id,
                     state = ?other,
-                    "autofix_execute_from_detected: bar not in Detected state — ignoring",
+                    "autofix_execute_from_detected: no matching Detected pane — ignoring",
                 );
                 return;
             }

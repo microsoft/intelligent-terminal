@@ -88,6 +88,14 @@ Describe 'Feature §0 FRE execution-policy verdict (deterministic, via registry)
                 $surfaced | Should -BeTrue -Because "a real EP block must surface the shell-integration problem"
                 # ...and the FRE must NOT have completed.
                 $log = Get-ItLogText -App $app -Name 'terminal-agent-pane.log' -SinceStart
+                Test-FreProgressOrder -Log $log -Events @(
+                    'setup=running'
+                    'setup=completed'
+                    'agent=running'
+                    'agent=completed'
+                    'error-detection=running'
+                    'error-detection=failed'
+                ) | Should -BeTrue -Because 'the checklist must mark the real shell-integration policy failure'
                 $log | Should -Not -Match 'Completed — raising Completed event'
                 Get-FreCompleted -App $app | Should -BeFalse
             }

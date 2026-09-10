@@ -19,9 +19,9 @@
     # PR #505 provider-native Yolo. Publishable mappings are zero-token only. Real model/tool
     # acceptance intentionally stays local-only and therefore has no release-report mapping.
     'Yolo setting persists'             = 'Feature provider-native Yolo with Copilot\.Yolo setting persists'
-    'Settings explains OpenCode Yolo compatibility' = 'Feature Settings Yolo provider compatibility\.Settings warns that OpenCode Yolo remains interactive'
-    'Settings explains Gemini Yolo restrictions' = 'Feature Settings Yolo provider compatibility\.Settings explains Gemini workspace trust dependency'
-    'AllowYoloMode policy blocks Yolo'  = 'Feature AllowYoloMode policy\.AllowYoloMode policy blocks Yolo'
+    'Settings hides unsupported automatic approval and forces it off' = 'Settings hides unsupported automatic approval and forces it off'
+    'Settings explains Gemini automatic approval restrictions' = 'Settings explains Gemini automatic approval restrictions'
+    'AllowYoloMode hides automatic approval and turns it off' = 'AllowYoloMode hides automatic approval and turns it off'
     'Esc/back navigation works'         = 'Esc/back navigation works|TRIGGERS the selected option'
     # §2/§5 WT accelerators + delegation palette (Feature.AgentHotkeys) — driven via window-level
     # OS keystrokes (Send-WtWindowKey), which reach WT's keybinding layer (the conpty path can't).
@@ -105,7 +105,7 @@
     # §0 FRE flow
     'FRE can be skipped or closed safely' = 'FRE can be closed safely'
     'FRE privacy / help links work'     = 'FRE privacy / help link'
-    'FRE save progress works'           = 'FRE save progress'
+    'FRE save progress works'           = 'Session management on installs agent hooks \(FRE Save\)'
 
     # §4 session view switching
     # 'Ended state is correct' (C121-adjacent) — see below.

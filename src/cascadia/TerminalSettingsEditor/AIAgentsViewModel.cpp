@@ -377,6 +377,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     {
         namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
 
+        _GlobalSettings.ClearAgentPaneYoloModeIfUnavailableDefault();
+
         // Refresh PATH from the Windows registry so SearchPathW can find
         // CLIs installed after Terminal launched (e.g. WinGet\Links).
         try
@@ -1221,7 +1223,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             _isAddingCustomAcpAgent = true;
             _editingCustomAcpAgentId = L"";
             _customAcpCommand = L"";
-            _NotifyChanges(L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"CustomAcpCommand", L"ShowAcpModel", L"CustomModelProviderUnsupportedMessage", L"ShowOpenCodeYoloWarning", L"ShowGeminiYoloInfo");
+            _NotifyChanges(L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"CustomAcpCommand", L"ShowAcpModel", L"CustomModelProviderUnsupportedMessage", L"AgentPaneYoloMode", L"CanEnableAgentPaneYoloMode", L"AgentPaneYoloModeVisibility", L"ShowGeminiYoloInfo");
             return;
         }
         auto idStr = winrt::to_string(value.Id());
@@ -1239,7 +1241,11 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                                    L"CustomAcpCommand",
                                    L"CustomAcpCommandPreview",
                                    L"ShowAcpModel",
-                                   L"CustomModelProviderUnsupportedMessage");
+                                   L"CustomModelProviderUnsupportedMessage",
+                                   L"AgentPaneYoloMode",
+                                   L"CanEnableAgentPaneYoloMode",
+                                   L"AgentPaneYoloModeVisibility",
+                                   L"ShowGeminiYoloInfo");
                 }
                 return;
             }
@@ -1265,7 +1271,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                            L"AcpModel",
                            L"CurrentAcpModelEntry",
                            L"CustomModelProviderUnsupportedMessage",
-                           L"ShowOpenCodeYoloWarning",
+                           L"AgentPaneYoloMode",
+                           L"CanEnableAgentPaneYoloMode",
+                           L"AgentPaneYoloModeVisibility",
                            L"ShowGeminiYoloInfo");
             return;
         }
@@ -1279,7 +1287,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                                L"CustomAcpCommand",
                                L"ShowAcpModel",
                                L"CustomModelProviderUnsupportedMessage",
-                               L"ShowOpenCodeYoloWarning",
+                               L"AgentPaneYoloMode",
+                               L"CanEnableAgentPaneYoloMode",
+                               L"AgentPaneYoloModeVisibility",
                                L"ShowGeminiYoloInfo");
             }
             return;
@@ -1290,6 +1300,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             _editingCustomAcpAgentId = L"";
             _GlobalSettings.AcpCustomCommand(L"");
             _GlobalSettings.AcpAgent(value.Id());
+            _GlobalSettings.ClearAgentPaneYoloModeIfUnavailableDefault();
             // Native model ids are agent-specific; the shared BYOK selection
             // is stored separately and survives agent switches.
             _GlobalSettings.AcpModel(L"");
@@ -1302,7 +1313,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                            L"ShowAcpModelTextBox",
                            L"AcpModel",
                            L"CustomModelProviderUnsupportedMessage",
-                           L"ShowOpenCodeYoloWarning",
+                           L"AgentPaneYoloMode",
+                           L"CanEnableAgentPaneYoloMode",
+                           L"AgentPaneYoloModeVisibility",
                            L"ShowGeminiYoloInfo");
         }
     }
@@ -1451,7 +1464,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             winrt::single_threaded_vector<Model::AcpModelInfo>().GetView(),
             L"");
         _TriggerAcpModelProbe();
-        _NotifyChanges(L"CurrentAcpAgent", L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"ShowAcpModel", L"CustomAcpCommandPreview", L"AcpModel", L"CustomModelProviderUnsupportedMessage", L"ShowOpenCodeYoloWarning", L"ShowGeminiYoloInfo");
+        _NotifyChanges(L"CurrentAcpAgent", L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"ShowAcpModel", L"CustomAcpCommandPreview", L"AcpModel", L"CustomModelProviderUnsupportedMessage", L"AgentPaneYoloMode", L"CanEnableAgentPaneYoloMode", L"AgentPaneYoloModeVisibility", L"ShowGeminiYoloInfo");
     }
 
     void AIAgentsViewModel::SaveCustomDelegateAgent()
@@ -1491,7 +1504,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                            L"CustomAcpCommand",
                            L"ShowAcpModel",
                            L"CustomModelProviderUnsupportedMessage",
-                           L"ShowOpenCodeYoloWarning",
+                           L"AgentPaneYoloMode",
+                           L"CanEnableAgentPaneYoloMode",
+                           L"AgentPaneYoloModeVisibility",
                            L"ShowGeminiYoloInfo");
             return;
         }
@@ -1502,7 +1517,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                        L"CurrentAcpAgent",
                        L"ShowAcpModel",
                        L"CustomModelProviderUnsupportedMessage",
-                       L"ShowOpenCodeYoloWarning",
+                       L"AgentPaneYoloMode",
+                       L"CanEnableAgentPaneYoloMode",
+                       L"AgentPaneYoloModeVisibility",
                        L"ShowGeminiYoloInfo");
     }
 
@@ -1566,7 +1583,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                            L"CustomAcpCommand",
                            L"ShowAcpModel",
                            L"CustomModelProviderUnsupportedMessage",
-                           L"ShowOpenCodeYoloWarning",
+                           L"AgentPaneYoloMode",
+                           L"CanEnableAgentPaneYoloMode",
+                           L"AgentPaneYoloModeVisibility",
                            L"ShowGeminiYoloInfo");
         }
     }
@@ -1691,13 +1710,13 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     {
         // Reject writes when org policy blocks yolo mode (the toggle is
         // disabled in that case, but guard against races).
-        if (_GlobalSettings.IsYoloModePolicyLocked())
+        if (!CanEnableAgentPaneYoloMode())
         {
             return;
         }
         if (_GlobalSettings.AgentPaneYoloMode() == value) return;
         _GlobalSettings.AgentPaneYoloMode(value);
-        _NotifyChanges(L"HasAgentPaneYoloMode", L"AgentPaneYoloMode", L"ShowOpenCodeYoloWarning", L"ShowGeminiYoloInfo");
+        _NotifyChanges(L"HasAgentPaneYoloMode", L"AgentPaneYoloMode", L"AgentPaneYoloModeVisibility", L"ShowGeminiYoloInfo");
     }
 
     bool AIAgentsViewModel::HasAgentPaneYoloMode() const
@@ -1705,9 +1724,17 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         return _GlobalSettings.HasAgentPaneYoloMode();
     }
 
-    bool AIAgentsViewModel::ShowOpenCodeYoloWarning() const
+    bool AIAgentsViewModel::CanEnableAgentPaneYoloMode() const
     {
-        return _YoloSettingsNotice() == ::Microsoft::Terminal::Settings::Model::AgentRegistry::YoloSettingsNotice::Unavailable;
+        return !(_isAddingCustomAcpAgent && _editingCustomAcpAgentId.empty()) &&
+               _GlobalSettings.CanEnableAgentPaneYoloMode();
+    }
+
+    winrt::Windows::UI::Xaml::Visibility AIAgentsViewModel::AgentPaneYoloModeVisibility() const
+    {
+        return CanEnableAgentPaneYoloMode() ?
+                   winrt::Windows::UI::Xaml::Visibility::Visible :
+                   winrt::Windows::UI::Xaml::Visibility::Collapsed;
     }
 
     bool AIAgentsViewModel::ShowGeminiYoloInfo() const

@@ -29,6 +29,7 @@ namespace winrt::TerminalApp::implementation
 
         // Initialize with settings to populate controls.
         void Initialize(const winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings& settings);
+        void UpdateSettings(const winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings& settings);
 
         // Event — sender must be the WinRT projected type.
         til::typed_event<winrt::TerminalApp::FreOverlay, winrt::Windows::Foundation::IInspectable> Completed;
@@ -44,10 +45,10 @@ namespace winrt::TerminalApp::implementation
                                 const winrt::Windows::UI::Xaml::RoutedEventArgs& args);
         void _OnCloseButtonClick(const winrt::Windows::Foundation::IInspectable& sender,
                                  const winrt::Windows::UI::Xaml::RoutedEventArgs& args);
-        void _OnSettingsFormScrollerSizeChanged(const winrt::Windows::Foundation::IInspectable& sender,
-                                                const winrt::Windows::UI::Xaml::SizeChangedEventArgs& args);
         void _OnAgentSelectionChanged(const winrt::Windows::Foundation::IInspectable& sender,
                                       const winrt::Windows::UI::Xaml::Controls::SelectionChangedEventArgs& args);
+        void _OnSettingsFormScrollerSizeChanged(const winrt::Windows::Foundation::IInspectable& sender,
+                                                const winrt::Windows::UI::Xaml::SizeChangedEventArgs& args);
 
         // No-op kept for IDL compatibility.
         void ResetDragOffset();
@@ -139,6 +140,8 @@ namespace winrt::TerminalApp::implementation
         // probe, so Save/error paths cannot block the UI on process startup.
         void _PopulateAgentComboBox(bool preserveCurrentSelection);
         void _UpdateAgentProbeWarning();
+        winrt::hstring _SelectedAgentId();
+        void _UpdateAutomaticApprovalState();
 
         static bool _IsWingetInstalled();
 
@@ -190,14 +193,34 @@ namespace winrt::TerminalApp::implementation
         // Perform the full save + install flow asynchronously.
         winrt::Windows::Foundation::IAsyncAction _SaveAndInstallAsync();
 
+        enum class ProgressStep
+        {
+            Setup = 0,
+            Agent = 1,
+            ErrorDetection = 2,
+            Sessions = 3,
+        };
+
+        enum class ProgressResult
+        {
+            Completed,
+            Warning,
+            Failed,
+        };
+
+        // Presentation-only observers for the current FRE save flow. These
+        // helpers never decide which work runs or how failures are handled.
+        void _BeginProgressAttempt(const winrt::hstring& agentId);
+        void _BeginProgressStep(ProgressStep step);
+        void _FinishProgressStep(ProgressStep step, ProgressResult result);
+
         // Flip the overlay between "saving / installing in progress" and
         // "idle / editable" states. While saving: a modal SavingOverlay
-        // covers the settings form with a centered ProgressRing +
-        // "Setting up..." text, the form underneath is disabled
-        // (blocks keyboard too — pointer is caught by the overlay's
-        // Background), and the Save button is disabled. On error or
-        // completion the inverse is applied so the user can edit and
-        // retry (or click Save again).
+        // covers the settings form with the progressive setup checklist,
+        // the form underneath is disabled (blocks keyboard too — pointer
+        // is caught by the overlay's Background), and the Save button is
+        // disabled. On error or completion the inverse is applied so the
+        // user can edit and retry (or click Save again).
         void _SetSavingState(bool saving);
     };
 }

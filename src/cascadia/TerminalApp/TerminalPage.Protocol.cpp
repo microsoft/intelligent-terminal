@@ -72,6 +72,56 @@ namespace winrt::TerminalApp::implementation
         return {};
     }
 
+    // These snapshot helpers are synchronous and must be called on the UI thread.
+    static std::shared_ptr<Pane> _getProtocolSourcePane(const winrt::com_ptr<Tab>& tab)
+    {
+        auto pane = tab->GetActivePane();
+        if (pane && pane->IsAgentPane())
+        {
+            if (const auto rootPane = tab->GetRootPane())
+            {
+                rootPane->WalkTree([&](const auto& candidate) {
+                    if (candidate->IsSourceOfAgentPane())
+                    {
+                        pane = candidate;
+                    }
+                });
+            }
+        }
+        return pane;
+    }
+
+    static Protocol::PaneInfo _getProtocolPaneInfo(const std::shared_ptr<Pane>& pane)
+    {
+        Protocol::PaneInfo info{};
+        info.IsAgentPane = pane->IsAgentPane();
+        info.Pid = _getPidFromPane(pane);
+
+        TerminalApp::TerminalPaneContent termContent{ nullptr };
+        if (const auto terminal = pane->GetContent().try_as<TerminalApp::TerminalPaneContent>())
+        {
+            termContent = terminal;
+        }
+        else if (const auto agent = pane->GetContent().try_as<TerminalApp::AgentPaneContent>())
+        {
+            termContent = agent.GetTerminalContent();
+        }
+        if (termContent)
+        {
+            info.Title = termContent.Title();
+            const auto profile = termContent.GetProfile();
+            info.Profile = profile ? profile.Name() : L"";
+        }
+
+        if (const auto control = pane->GetTerminalControl())
+        {
+            info.Cwd = control.WorkingDirectory();
+            info.Shell = control.ShellName();
+            info.ShellVersion = control.ShellVersion();
+        }
+        return info;
+    }
+
     uint32_t TerminalPage::TabCount() const
     {
         return [this]() -> IAsyncOperation<uint32_t> {
@@ -113,54 +163,151 @@ namespace winrt::TerminalApp::implementation
         if (!tabImpl)
             co_return result;
 
-        const auto activePane = tabImpl->GetActivePane();
-        if (!activePane)
+        const auto effectivePane = _getProtocolSourcePane(tabImpl);
+        if (!effectivePane)
             co_return result;
 
-        // If the active pane is an agent pane, return the source pane instead.
-        // "Active" in the protocol means "the pane the user is working in".
-        auto effectivePane = activePane;
-        if (activePane->IsAgentPane())
-        {
-            const auto rootPane = tabImpl->GetRootPane();
-            if (rootPane)
-            {
-                rootPane->WalkTree([&](const auto& pane) {
-                    if (pane->IsSourceOfAgentPane())
-                        effectivePane = pane;
-                });
-            }
-        }
-
+        result = _getProtocolPaneInfo(effectivePane);
         result.SessionId = _getSessionIdFromPane(effectivePane);
         result.TabId = focusedTabIdx.value();
         result.IsActive = true;
-        result.IsAgentPane = effectivePane->IsAgentPane();
+        co_return result;
+    }
 
-        TerminalApp::TerminalPaneContent termContent{ nullptr };
-        if (const auto t = effectivePane->GetContent().try_as<TerminalApp::TerminalPaneContent>())
+    // Keep UI-owned references in the caller's apartment; only immutable text
+    // and limits cross into the background operation.
+    static IAsyncOperation<Protocol::PaneContext> _buildBoundedPaneContext(
+        hstring text,
+        int32_t maxLines,
+        int32_t maxCharacters,
+        bool lastCommand)
+    {
+        co_await winrt::resume_background();
+
+        const auto utf8 = winrt::to_string(text);
+        const auto bounded = lastCommand
+            ? ProtocolParsing::BuildBoundedCommand(utf8, maxLines, maxCharacters)
+            : ProtocolParsing::BuildBoundedBufferTail(utf8, maxLines, maxCharacters);
+        Protocol::PaneContext result{};
+        result.Content = winrt::to_hstring(bounded.content);
+        result.LineCount = bounded.lineCount;
+        result.Truncated = bounded.truncated;
+        co_return result;
+    }
+
+    IAsyncOperation<Protocol::PaneContext> TerminalPage::GetProtocolPaneContext(
+        winrt::guid sourceSessionId,
+        bool hasExplicitSource,
+        int32_t maxLines,
+        int32_t maxCharacters)
+    {
+        auto strong = get_strong();
+        co_await wil::resume_foreground(Dispatcher());
+
+        Protocol::PaneContext result{};
+        std::shared_ptr<Pane> targetPane;
+        uint32_t targetTabIndex = 0;
+
+        if (hasExplicitSource)
         {
-            termContent = t;
+            for (uint32_t tabIndex = 0; tabIndex < _tabs.Size() && !targetPane; ++tabIndex)
+            {
+                const auto tabImpl = _GetTabImpl(_tabs.GetAt(tabIndex));
+                const auto rootPane = tabImpl ? tabImpl->GetRootPane() : nullptr;
+                if (rootPane)
+                {
+                    targetPane = rootPane->FindPaneBySessionId(sourceSessionId);
+                    if (targetPane)
+                    {
+                        targetTabIndex = tabIndex;
+                    }
+                }
+            }
         }
-        else if (const auto a = effectivePane->GetContent().try_as<TerminalApp::AgentPaneContent>())
+        else if (const auto focusedTabIndex = _GetFocusedTabIndex())
         {
-            termContent = a.GetTerminalContent();
-        }
-        if (termContent)
-        {
-            result.Title = termContent.Title();
-            const auto profile = termContent.GetProfile();
-            result.Profile = profile ? profile.Name() : L"";
+            targetTabIndex = focusedTabIndex.value();
+            if (const auto tabImpl = _GetTabImpl(_tabs.GetAt(targetTabIndex)))
+            {
+                targetPane = _getProtocolSourcePane(tabImpl);
+            }
         }
 
-        if (const auto termControl = effectivePane->GetTerminalControl())
+        const auto sessionId = targetPane ? _getSessionIdFromPane(targetPane) : winrt::guid{};
+        if (!targetPane || sessionId == winrt::guid{} || targetPane->IsAgentPane())
         {
-            result.Cwd = termControl.WorkingDirectory();
-            result.Shell = termControl.ShellName();
-            result.ShellVersion = termControl.ShellVersion();
+            co_return result;
         }
 
-        result.Pid = _getPidFromPane(effectivePane);
+        auto paneInfo = _getProtocolPaneInfo(targetPane);
+        paneInfo.SessionId = sessionId;
+        paneInfo.TabId = targetTabIndex;
+
+        if (const auto tabImpl = _GetTabImpl(_tabs.GetAt(targetTabIndex)))
+        {
+            const auto activePane = tabImpl->GetActivePane();
+            paneInfo.IsActive = activePane && activePane->IsAgentPane()
+                ? targetPane->IsSourceOfAgentPane()
+                : activePane == targetPane;
+        }
+
+        const auto termControl = targetPane->GetTerminalControl();
+        if (!termControl)
+        {
+            co_return result;
+        }
+
+        paneInfo.Rows = termControl.ViewHeight();
+        paneInfo.Columns = termControl.ViewWidth();
+        result.Pane = paneInfo;
+
+        if (maxLines == 0 || maxCharacters == 0)
+        {
+            result.OutputSource = L"metadata_only";
+            co_return result;
+        }
+
+        hstring lastCommand;
+        try
+        {
+            lastCommand = termControl.ReadLastPromptBounded(maxLines + 1, maxCharacters + 1);
+        }
+        catch (...)
+        {
+            LOG_CAUGHT_EXCEPTION();
+            result.FallbackReason = L"last_command_error";
+        }
+
+        if (!lastCommand.empty())
+        {
+            const auto bounded = co_await _buildBoundedPaneContext(
+                lastCommand,
+                maxLines,
+                maxCharacters,
+                true);
+            result.Content = bounded.Content;
+            result.OutputSource = L"last_command";
+            result.LineCount = bounded.LineCount;
+            result.Truncated = bounded.Truncated;
+            result.HasMarks = true;
+            co_return result;
+        }
+
+        result.OutputSource = L"buffer_tail";
+        if (result.FallbackReason.empty())
+        {
+            result.FallbackReason = L"marks_unavailable";
+        }
+        const auto bufferTail = termControl.ReadBufferTail(maxLines + 1, maxCharacters + maxLines + 2);
+
+        const auto bounded = co_await _buildBoundedPaneContext(
+            bufferTail,
+            maxLines,
+            maxCharacters,
+            false);
+        result.Content = bounded.Content;
+        result.LineCount = bounded.LineCount;
+        result.Truncated = bounded.Truncated;
         co_return result;
     }
 
@@ -232,38 +379,17 @@ namespace winrt::TerminalApp::implementation
                 if (sid == winrt::guid{})
                     return; // Skip non-terminal panes
 
-                Protocol::PaneInfo info{};
+                auto info = _getProtocolPaneInfo(pane);
                 info.SessionId = sid;
                 info.TabId = tabIdx;
-                info.IsAgentPane = pane->IsAgentPane();
                 info.IsActive = activeIsAgent
                     ? pane->IsSourceOfAgentPane()
                     : (activePane == pane);
-                info.Pid = _getPidFromPane(pane);
 
-                TerminalApp::TerminalPaneContent termContent{ nullptr };
-                if (const auto t = pane->GetContent().try_as<TerminalApp::TerminalPaneContent>())
+                if (const auto termControl = pane->GetTerminalControl())
                 {
-                    termContent = t;
-                }
-                else if (const auto a = pane->GetContent().try_as<TerminalApp::AgentPaneContent>())
-                {
-                    termContent = a.GetTerminalContent();
-                }
-                if (termContent)
-                {
-                    info.Title = termContent.Title();
-                    const auto profile = termContent.GetProfile();
-                    info.Profile = profile ? profile.Name() : L"";
-
-                    if (const auto termControl = pane->GetTerminalControl())
-                    {
-                        info.Rows = termControl.ViewHeight();
-                        info.Columns = 0;
-                        info.Cwd = termControl.WorkingDirectory();
-                        info.Shell = termControl.ShellName();
-                        info.ShellVersion = termControl.ShellVersion();
-                    }
+                    info.Rows = termControl.ViewHeight();
+                    info.Columns = termControl.ViewWidth();
                 }
 
                 panes.Append(info);

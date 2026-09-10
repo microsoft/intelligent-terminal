@@ -59,6 +59,7 @@ chat.turn_canceled: "(రద్దు చేయబడింది)"
 chat.turn_executed: "→ అమలు చేయబడింది: %{title}"
 # స్థితి గుర్తు తర్వాత, విషయానికి ముందు చూపే శాశ్వత సాధన-వర్గ లేబుళ్లు.
 chat.tool_kind.run: "అమలు"
+chat.tool_kind.insert: "చొప్పించండి"
 chat.tool_kind.read: "చదవడం"
 chat.tool_kind.search: "శోధన"
 chat.tool_kind.edit: "సవరణ"
@@ -144,8 +145,25 @@ agents.status.idle: "నిష్క్రియం"
 layout.welcome_hint: "  (Ctrl+Shift+. ఏజెంట్ పేన్ చూపించు/దాచు • Ctrl+Shift+/ ఏజెంట్ సెషన్ చూపించు/దాచు)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── కనెక్షన్ స్థితి ────────────────────────────────────────────────────────
-connection.starting: "ఏజెంట్ ప్రారంభమవుతోంది..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "ఏజెంట్ కనెక్షన్‌ను సిద్ధం చేస్తోంది..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "ఏజెంట్‌ను పునఃప్రారంభిస్తోంది..."
 connection.reconnecting: "మళ్ళీ కనెక్ట్ అవుతోంది..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "స్థానిక సమన్వయకర్తకు కనెక్ట్ అవుతోంది..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "ఏజెంట్ కనెక్షన్‌ను ప్రారంభీకరిస్తోంది..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "ఏజెంట్‌తో వినియోగదారు లాగిన్‌ను ప్రామాణీకరిస్తోంది..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "సెషన్‌ల జాబితాను చదువుతోంది..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "ఏజెంట్ సెషన్‌ను సృష్టిస్తోంది..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "సెషన్ మోడల్‌ను సెట్ చేస్తోంది: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (%{session_id} కొనసాగిస్తోంది)"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "ఏజెంట్‌కు కనెక్ట్ అవుతోంది…"
 connection.lost: "ఏజెంట్‌తో కనెక్షన్ కోల్పోయింది. మళ్లీ కనెక్ట్ చేయడానికి /restart అని టైప్ చేయండి."  # {Locked="/restart"}
 
@@ -248,5 +266,6 @@ config_picker.title: "సెషన్ కాన్ఫిగరేషన్ (↑ 
 system.no_config_options: "కనెక్ట్ చేయబడిన ఏజెంట్ కాన్ఫిగర్ చేయదగిన సెషన్ ఎంపికలను ప్రచారం చేయలేదు."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option}ను నవీకరించడం విఫలమైంది: %{error}"
+system.yolo_disable_pending: "ప్రత్యేకాధికార మోడ్ నిలిపివేయబడి ఉండాల్సిన సెషన్ స్థితిని ఏజెంట్ ప్రదాత ఇంకా నిర్ధారించలేదు"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: మీ సంస్థ విధానం వల్ల Yolo mode నిలిపివేయబడింది."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "తెలియని మోడల్ %{model} — అందుబాటులో ఉన్న జాబితాను చూడటానికి /model టైప్ చేయండి."  # {Locked="%{model}","/model"}

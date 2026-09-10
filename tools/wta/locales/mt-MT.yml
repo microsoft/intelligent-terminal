@@ -59,6 +59,7 @@ chat.turn_canceled: "(ikkanċellat)"
 chat.turn_executed: "→ ġie eżegwit: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "Ħaddem"
+chat.tool_kind.insert: "Daħħal"
 chat.tool_kind.read: "Aqra"
 chat.tool_kind.search: "Fittex"
 chat.tool_kind.edit: "Editja"
@@ -131,8 +132,25 @@ agents.status.idle: "Inattiv"
 layout.welcome_hint: "  (Ctrl+Shift+. biex turi/taħbi l-pannell tal-aġent • Ctrl+Shift+/ biex turi/taħbi s-sessjoni tal-aġent)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Stat tal-konnessjoni ────────────────────────────────────────────────────────
-connection.starting: "L-aġent qed jibda..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "Qed jipprepara l-konnessjoni mal-aġent..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "Qed jerġa' jibda l-aġent..."
 connection.reconnecting: "Qed jerġa' jikkonnettja..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "Qed jikkonnettja mal-koordinatur lokali..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "Qed jinizjalizza l-konnessjoni mal-aġent..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "Qed jawtentika l-utent mal-aġent..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "Qed jaqra l-lista tas-sessjonijiet..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "Qed joħloq sessjoni tal-aġent..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "Qed jistabbilixxi l-mudell tas-sessjoni: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (qed ikompli %{session_id})"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "Qed tikkonnettja mal-aġent…"
 connection.lost: "Il-konnessjoni mal-aġent intilfet. Ittajpja /restart biex terġa' tikkonnettja."  # {Locked="/restart"}
 
@@ -246,5 +264,6 @@ config_picker.title: "Konfigurazzjoni tas-sessjoni (↑ ↓ • Enter • Esc)"
 system.no_config_options: "L-aġent konness ma rreklama l-ebda għażla ta’ sessjoni konfigurabbli."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Naqas milli jaġġorna %{option}: %{error}"
+system.yolo_disable_pending: "il-fornitur tal-aġent għadu ma kkonfermax l-istat meħtieġ tas-sessjoni mingħajr privileġġi"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Il-modalità Yolo hija diżattivata mill-politika tal-organizzazzjoni tiegħek."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Mudell mhux magħruf %{model} — ittajpja /model biex tara l-lista disponibbli."  # {Locked="%{model}","/model"}

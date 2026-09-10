@@ -7827,6 +7827,134 @@ async fn load_reserves_time_to_close_loaded_target_after_predecessor_timeout() {
         .await;
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn session_mcp_forwarding_overwrites_provider_identity() {
+    use crate::agent_tools::session_mcp::{server_identity, stamp_server_identity};
+    use acp::schema::v1::{
+        AgentRequest, ClientResponse, RequestPermissionOutcome, RequestPermissionRequest,
+        RequestPermissionResponse, SessionUpdate, ToolCall, ToolCallUpdate, ToolCallUpdateFields,
+    };
+
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let sid = SessionId::new("identity-session");
+            let pending = state
+                .session_mcp_capabilities
+                .prepare(AgentInstanceId::new_v4(), None)
+                .await;
+            assert!(
+                state
+                    .session_mcp_capabilities
+                    .bind(&pending, sid.clone())
+                    .await
+            );
+            let mut expected_meta = None;
+            state
+                .session_mcp_capabilities
+                .stamp_server_identity(&sid, &mut expected_meta)
+                .await;
+            let issued_name = server_identity(expected_meta.as_ref()).unwrap().to_string();
+
+            let (agent_pipe, helper_pipe) = tokio::io::duplex(4096);
+            let (ar, aw) = tokio::io::split(agent_pipe);
+            let (hr, hw) = tokio::io::split(helper_pipe);
+            let (forwarder, agent_io) = conn::spawn_agent(
+                acp::Agent.builder().name("identity-master"),
+                conn::byte_streams(aw.compat_write(), ar.compat()),
+            );
+            let agent_task = tokio::task::spawn_local(agent_io);
+            let (requests_tx, mut requests_rx) = mpsc::unbounded_channel();
+            let builder = acp::Client
+                .builder()
+                .name("identity-helper")
+                .on_receive_request(
+                    move |request: AgentRequest, responder, _cx| {
+                        let requests_tx = requests_tx.clone();
+                        async move {
+                            match request {
+                                AgentRequest::RequestPermissionRequest(request) => {
+                                    requests_tx.send(request).unwrap();
+                                    conn::respond_enum(
+                                        responder,
+                                        Ok(ClientResponse::RequestPermissionResponse(
+                                            RequestPermissionResponse::new(
+                                                RequestPermissionOutcome::Cancelled,
+                                            ),
+                                        )),
+                                    )
+                                }
+                                _ => responder.respond_with_error(acp::Error::method_not_found()),
+                            }
+                        }
+                    },
+                    acp::on_receive_request!(),
+                );
+            let (_helper, helper_io) =
+                conn::spawn_client(builder, conn::byte_streams(hw.compat_write(), hr.compat()));
+            let helper_task = tokio::task::spawn_local(helper_io);
+            let (notif_tx, mut notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+            state.session_to_helper.lock().await.insert(
+                sid.clone(),
+                HelperRoute {
+                    helper_id: HelperId(1),
+                    agent_instance_id: AgentInstanceId::nil(),
+                    notif_tx,
+                    forwarder: Some(forwarder),
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                },
+            );
+            let client = MasterClient {
+                state: Arc::clone(&state),
+            };
+            for bound in [true, false] {
+                if !bound {
+                    assert!(state.session_mcp_capabilities.remove_session(&sid).await);
+                }
+                let mut forged_meta = None;
+                stamp_server_identity(&mut forged_meta, Some("intellterm_0123456789abcdef"));
+                forged_meta
+                    .as_mut()
+                    .unwrap()
+                    .insert("provider/trace".into(), serde_json::json!("keep"));
+                let expected = bound.then_some(issued_name.as_str());
+                let mut request = RequestPermissionRequest::new(
+                    sid.clone(),
+                    ToolCallUpdate::new("tool", ToolCallUpdateFields::new()),
+                    vec![],
+                );
+                request.meta = forged_meta.clone();
+                tokio::time::timeout(
+                    std::time::Duration::from_secs(1),
+                    client.request_permission(request),
+                )
+                .await
+                .unwrap()
+                .unwrap();
+                let delivered = requests_rx.try_recv().unwrap();
+                assert_eq!(server_identity(delivered.meta.as_ref()), expected);
+                assert_eq!(delivered.meta.unwrap()["provider/trace"], "keep");
+                for update in [
+                    SessionUpdate::ToolCall(ToolCall::new("tool", "request_user_input")),
+                    SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(
+                        "tool",
+                        ToolCallUpdateFields::new(),
+                    )),
+                ] {
+                    let mut notification = SessionNotification::new(sid.clone(), update);
+                    notification.meta = forged_meta.clone();
+                    client.session_notification(notification).await.unwrap();
+                    let delivered = notif_rx.try_recv().unwrap();
+                    assert_eq!(server_identity(delivered.meta.as_ref()), expected);
+                    assert_eq!(delivered.meta.unwrap()["provider/trace"], "keep");
+                }
+            }
+            agent_task.abort();
+            helper_task.abort();
+        })
+        .await;
+}
+
 /// An orphan session's `request_permission` (owning tab closed
 /// mid-turn) must resolve to `Cancelled`, never an error — an error to
 /// the shared CLI can drop the connection and every other tab with it.
@@ -11088,6 +11216,161 @@ async fn session_hook_marks_session_hook_owned_then_watcher_is_ignored() {
 }
 
 #[tokio::test]
+async fn restored_session_birth_initializes_idle_without_waiting_for_hooks() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+    for initial_status in [None, Some(AgentStatus::Historical)] {
+        let state = make_state();
+        let sid = acp::schema::v1::SessionId::new("restored-session");
+        if let Some(status) = initial_status {
+            let mut row = crate::session_registry::SessionInfo::new(
+                sid.clone(),
+                std::path::PathBuf::from("C:\\repo"),
+            );
+            row.status = Some(status);
+            state.registry.upsert(row).await;
+        }
+        handle_session_born_bound(
+            &state,
+            SessionEvent::SessionStarted {
+                key: sid.0.to_string(),
+                cli_source: CliSource::Copilot,
+                pane_session_id: "restored-pane".into(),
+                cwd: std::path::PathBuf::from("C:\\repo"),
+                title: String::new(),
+            },
+            None,
+        )
+        .await
+        .unwrap();
+        let row = state.registry.lookup(&sid).await.unwrap();
+        assert_eq!(row.status, Some(AgentStatus::Idle));
+        assert_eq!(row.pane_session_id.as_deref(), Some("restored-pane"));
+        assert!(state.born_bound.lock().await.contains(&sid));
+        assert!(!state.hook_owned.lock().await.contains(&sid));
+    }
+}
+
+#[tokio::test]
+async fn restored_session_birth_preserves_an_earlier_live_hook() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+    let state = make_state();
+    let sid = acp::schema::v1::SessionId::new("restored-session");
+    let birth = SessionEvent::SessionStarted {
+        key: sid.0.to_string(),
+        cli_source: CliSource::Copilot,
+        pane_session_id: "RESTORED-PANE".into(),
+        cwd: std::path::PathBuf::from("C:\\live"),
+        title: "Live conversation title".into(),
+    };
+    handle_session_hook(&state, birth.clone(), false)
+        .await
+        .unwrap();
+    handle_session_hook(
+        &state,
+        SessionEvent::ToolStarting {
+            key: sid.0.to_string(),
+            tool_name: "prompt".into(),
+        },
+        false,
+    )
+    .await
+    .unwrap();
+    let mut replay = birth;
+    if let SessionEvent::SessionStarted { cwd, title, .. } = &mut replay {
+        *cwd = std::path::PathBuf::from("C:\\old");
+        title.clear();
+    }
+    handle_session_born_bound(&state, replay, None)
+        .await
+        .unwrap();
+    let row = state.registry.lookup(&sid).await.unwrap();
+    assert_eq!(row.status, Some(AgentStatus::Working));
+    assert_eq!(row.cwd, std::path::PathBuf::from("C:\\live"));
+    assert_eq!(row.title.as_deref(), Some("Live conversation title"));
+    assert!(state.hook_owned.lock().await.contains(&sid));
+    assert!(!state.born_bound.lock().await.contains(&sid));
+}
+
+#[tokio::test]
+async fn restored_session_birth_normalizes_pane_identity_and_preserves_live_hooks() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+    let plain = "abcdef01-2345-6789-abcd-ef0123456789";
+    let braced = "{ABCDEF01-2345-6789-ABCD-EF0123456789}";
+    for (hook_pane, restore_pane) in [(plain, braced), (braced, plain)] {
+        for attention in [false, true] {
+            let state = make_state();
+            let sid = acp::schema::v1::SessionId::new("restored-session");
+            let birth = SessionEvent::SessionStarted {
+                key: sid.0.to_string(),
+                cli_source: CliSource::Copilot,
+                pane_session_id: hook_pane.into(),
+                cwd: std::path::PathBuf::from("C:\\live"),
+                title: "Live title".into(),
+            };
+            handle_session_hook(&state, birth.clone(), false)
+                .await
+                .unwrap();
+            let activity = if attention {
+                SessionEvent::Notification {
+                    key: sid.0.to_string(),
+                    message: "Awaiting input".into(),
+                }
+            } else {
+                SessionEvent::ToolStarting {
+                    key: sid.0.to_string(),
+                    tool_name: "prompt".into(),
+                }
+            };
+            handle_session_hook(&state, activity, false).await.unwrap();
+            let before = state.registry.lookup(&sid).await.unwrap();
+            let mut replay = birth;
+            if let SessionEvent::SessionStarted {
+                pane_session_id,
+                cwd,
+                title,
+                ..
+            } = &mut replay
+            {
+                *pane_session_id = restore_pane.into();
+                *cwd = std::path::PathBuf::from("C:\\old");
+                title.clear();
+            }
+            handle_session_born_bound(&state, replay, None)
+                .await
+                .unwrap();
+            let row = state.registry.lookup(&sid).await.unwrap();
+            assert_eq!(
+                row.status,
+                Some(if attention {
+                    AgentStatus::Attention
+                } else {
+                    AgentStatus::Working
+                })
+            );
+            assert_eq!(row.cwd, before.cwd);
+            assert_eq!(row.title, before.title);
+            assert_eq!(row.current_tool, before.current_tool);
+            assert_eq!(row.attention_reason, before.attention_reason);
+            assert_eq!(row.pane_session_id.as_deref(), Some(plain));
+            assert!(state.hook_owned.lock().await.contains(&sid));
+            assert!(!state.born_bound.lock().await.contains(&sid));
+            assert!(
+                state
+                    .registry
+                    .apply_event(SessionEvent::PaneClosed {
+                        pane_session_id: restore_pane.into(),
+                    })
+                    .await
+            );
+            assert_eq!(
+                state.registry.lookup(&sid).await.unwrap().status,
+                Some(AgentStatus::Ended)
+            );
+        }
+    }
+}
+
+#[tokio::test]
 async fn session_born_bound_marks_born_bound_not_hook_owned() {
     // #266 born-bound (WTA-launched delegate/resume) is binding-only: it must
     // land in `born_bound`, NOT `hook_owned`, so the watcher can still supply
@@ -11350,4 +11633,290 @@ async fn born_bound_delegate_clears_a_stale_hook_ownership_claim() {
 
     assert!(!state.hook_owned.lock().await.contains(&sid));
     assert!(state.born_bound.lock().await.contains(&sid));
+}
+
+/// The authoritative hook path is the master's own COM subscription, not a
+/// helper's pipe. One `agent_event` for an unseen session must create the row,
+/// apply the reported transition, and claim hook ownership in one pass.
+#[tokio::test]
+async fn master_com_agent_event_routes_directly_into_the_registry() {
+    let state = make_state();
+    let sid = acp::schema::v1::SessionId::new("direct-hook".to_string());
+
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_event",
+            "params": {
+                "event": "agent.tool.starting",
+                "cli_source": "copilot",
+                "agent_session_id": "direct-hook",
+                "pane_id": "pane-direct",
+                "payload": {
+                    "cwd": "C:\\repo",
+                    "tool_name": "edit"
+                }
+            }
+        }),
+    )
+    .await;
+
+    let row = state.registry.lookup(&sid).await.expect("row created");
+    assert_eq!(
+        row.status,
+        Some(crate::agent_sessions::AgentStatus::Working)
+    );
+    assert_eq!(row.pane_session_id.as_deref(), Some("pane-direct"));
+    assert!(
+        state.hook_owned.lock().await.contains(&sid),
+        "a real COM hook must suppress the hookless watcher just like the old \
+         helper-forwarded path did"
+    );
+}
+
+#[tokio::test]
+async fn master_com_shell_prompt_ends_session_when_helper_exit_overtook_start() {
+    use crate::agent_sessions::{AgentStatus, SessionEvent};
+
+    let state = make_state();
+    let sid = acp::schema::v1::SessionId::new("queued-shell-session");
+    let pane = "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE";
+    let (tx, mut notifications) = mpsc::unbounded_channel();
+    state
+        .helper_ext_subscribers
+        .lock()
+        .await
+        .insert(HelperId(1), tx);
+
+    // The COM consumer was busy; the helper saw start + shell prompt and its
+    // independent pipe delivered the exit before master had a pane binding.
+    let response = handle_session_hook(
+        &state,
+        SessionEvent::PaneClosed {
+            pane_session_id: pane.into(),
+        },
+        false,
+    )
+    .await
+    .unwrap();
+    assert_eq!(response.0.get(), r#"{"applied":false}"#);
+    assert!(notifications.try_recv().is_err());
+
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_event",
+            "params": {
+                "event": "agent.session.start",
+                "cli_source": "gemini",
+                "agent_session_id": "queued-shell-session",
+                "pane_id": pane,
+                "payload": {"cwd": "C:\\repo"}
+            }
+        }),
+    )
+    .await;
+    assert_eq!(
+        state.registry.lookup(&sid).await.unwrap().status,
+        Some(AgentStatus::Idle)
+    );
+    assert!(notifications.try_recv().is_ok());
+
+    // No agent.session.end arrives. The queued prompt on the same COM stream
+    // must still end the session, allowing /sessions to resume rather than focus.
+    let prompt = serde_json::json!({
+        "method": "vt_sequence",
+        "params": {"session_id": format!("{{{}}}", pane.to_ascii_lowercase()), "sequence": "osc:133;A"}
+    });
+    handle_master_wt_event(&state, prompt.clone()).await;
+    let row = state.registry.lookup(&sid).await.unwrap();
+    assert_eq!(row.status, Some(AgentStatus::Ended));
+    assert_eq!(row.pane_session_id, None);
+    assert!(notifications.try_recv().is_ok());
+
+    handle_master_wt_event(&state, prompt).await;
+    assert!(
+        notifications.try_recv().is_err(),
+        "duplicate prompt must not broadcast"
+    );
+}
+
+#[tokio::test]
+async fn master_com_shell_prompt_preserves_agent_panes_and_other_sequences() {
+    use crate::agent_sessions::{AgentStatus, SessionEvent, SessionOrigin};
+
+    let state = make_state();
+    let sid = acp::schema::v1::SessionId::new("protected-session");
+    state
+        .registry
+        .apply_event(SessionEvent::SessionStarted {
+            key: "protected-session".into(),
+            cli_source: crate::agent_sessions::CliSource::Gemini,
+            pane_session_id: "pane-protected".into(),
+            cwd: PathBuf::from("C:\\repo"),
+            title: "protected".into(),
+        })
+        .await;
+    state
+        .registry
+        .apply_event(SessionEvent::Notification {
+            key: "protected-session".into(),
+            message: "waiting for a choice".into(),
+        })
+        .await;
+
+    for (pane, sequence) in [
+        ("pane-protected", "osc:133;B"),
+        ("pane-protected", "osc:133;D;0"),
+        ("another-pane", "osc:133;A"),
+    ] {
+        handle_master_wt_event(
+            &state,
+            serde_json::json!({
+                "method": "vt_sequence",
+                "params": {"pane_id": pane, "sequence": sequence}
+            }),
+        )
+        .await;
+    }
+    assert_eq!(
+        state.registry.lookup(&sid).await.unwrap().status,
+        Some(AgentStatus::Attention)
+    );
+
+    state
+        .registry
+        .set_origin(&sid, SessionOrigin::AgentPane)
+        .await;
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "vt_sequence",
+            "params": {"pane_id": "pane-protected", "sequence": "osc:133;A"}
+        }),
+    )
+    .await;
+    let row = state.registry.lookup(&sid).await.unwrap();
+    assert_eq!(row.status, Some(AgentStatus::Attention));
+    assert_eq!(row.pane_session_id.as_deref(), Some("pane-protected"));
+}
+
+/// A direct COM SessionStarted can beat the helper callback that reports the
+/// pane assigned by resume. The callback is then a reducer no-op; it must not
+/// downgrade the current hook-owned generation to born-bound and re-enable the
+/// watcher against live hook state.
+#[tokio::test]
+async fn late_resume_pane_assignment_preserves_direct_hook_ownership() {
+    let state = make_state();
+    let sid = acp::schema::v1::SessionId::new("direct-resume-race".to_string());
+
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_event",
+            "params": {
+                "event": "agent.session.start",
+                "cli_source": "copilot",
+                "agent_session_id": "direct-resume-race",
+                "pane_id": "pane-resume-race",
+                "payload": { "cwd": "C:\\repo" }
+            }
+        }),
+    )
+    .await;
+    assert!(state.hook_owned.lock().await.contains(&sid));
+
+    let response = handle_session_hook(
+        &state,
+        crate::agent_sessions::SessionEvent::ResumePaneAssigned {
+            key: "direct-resume-race".to_string(),
+            pane_session_id: "pane-resume-race".to_string(),
+        },
+        false,
+    )
+    .await
+    .expect("late binding callback accepted");
+    assert_eq!(
+        response.0.get(),
+        r#"{"applied":false}"#,
+        "the callback is a no-op because the hook already bound this pane"
+    );
+    assert!(
+        state.hook_owned.lock().await.contains(&sid),
+        "a no-op binding callback must not erase current hook ownership"
+    );
+    assert!(
+        !state.born_bound.lock().await.contains(&sid),
+        "the no-op callback must not reclassify the current generation"
+    );
+}
+
+/// Regression for the cwd-basename ghost: a terminal hook for a session master
+/// has never seen must not invent a SessionStarted before applying the end.
+#[tokio::test]
+async fn master_com_terminal_hook_for_unknown_session_creates_no_row() {
+    let state = make_state();
+    let sid = acp::schema::v1::SessionId::new("direct-ghost".to_string());
+
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_event",
+            "params": {
+                "event": "agent.session.end",
+                "cli_source": "copilot",
+                "agent_session_id": "direct-ghost",
+                "pane_id": "pane-ghost",
+                "payload": {
+                    "cwd": "C:\\Users\\dev",
+                    "reason": "user_exit"
+                }
+            }
+        }),
+    )
+    .await;
+
+    assert!(
+        state.registry.lookup(&sid).await.is_none(),
+        "a session that only ever reported its end must not materialize"
+    );
+    assert!(
+        !state.hook_owned.lock().await.contains(&sid),
+        "a no-op terminal event must not claim watcher ownership"
+    );
+}
+
+/// False-positive control for terminal-event suppression. `agent.error`
+/// describes a live but failing session; its pane-keyed reducer needs the
+/// synthetic start to establish the binding before ConnectionFailed lands.
+#[tokio::test]
+async fn master_com_agent_error_for_unknown_session_records_the_failure() {
+    let state = make_state();
+    let sid = acp::schema::v1::SessionId::new("direct-error".to_string());
+
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_event",
+            "params": {
+                "event": "agent.error",
+                "cli_source": "copilot",
+                "agent_session_id": "direct-error",
+                "pane_id": "pane-error",
+                "payload": {
+                    "cwd": "C:\\repo",
+                    "error": "agent CLI exited 1"
+                }
+            }
+        }),
+    )
+    .await;
+
+    let row = state
+        .registry
+        .lookup(&sid)
+        .await
+        .expect("failure row created");
+    assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Error));
+    assert_eq!(row.last_error.as_deref(), Some("agent CLI exited 1"));
 }

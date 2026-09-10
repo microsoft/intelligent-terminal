@@ -108,6 +108,89 @@ fn suggestion_off_emits_detected_without_submitting_turn() {
     );
 }
 
+fn detected_helper(tab: &str, pane: &str) -> App {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.autofix_enabled = false;
+    app.owner_tab_id = Some(tab.to_string());
+    app.tab_id = Some(tab.to_string());
+    app.maybe_trigger_autofix(&failure_notification(pane, Some(tab)));
+    assert!(matches!(
+        app.current_tab().autofix.bar_snapshot,
+        AutofixBarSnapshot::Detected { .. }
+    ));
+    app
+}
+
+fn detected_action(pane: &str, tab: Option<&str>) -> AppEvent {
+    AppEvent::WtEvent {
+        method: "autofix_execute_from_detected".to_string(),
+        pane_id: pane.to_string(),
+        tab_id: tab.map(str::to_string),
+        params: serde_json::json!({}),
+    }
+}
+
+#[test]
+fn detected_action_only_submits_on_the_target_helper() {
+    let mut a = detected_helper("tab-a", "pane-a");
+    let mut b = detected_helper("tab-b", "pane-b");
+    for app in [&mut a, &mut b] {
+        app.handle_event(detected_action("pane-b", Some("tab-b")));
+    }
+    assert!(a.current_tab().turn.is_idle());
+    assert!(matches!(
+        a.current_tab().autofix.bar_snapshot,
+        AutofixBarSnapshot::Detected { .. }
+    ));
+    assert!(!b.current_tab().turn.is_idle());
+    assert_eq!(b.current_tab().autofix.pane_id.as_deref(), Some("pane-b"));
+    let generation = b.current_tab().autofix.generation;
+    b.handle_event(detected_action("pane-b", Some("tab-b")));
+    assert_eq!(b.current_tab().autofix.generation, generation);
+}
+
+#[test]
+fn detected_action_rejects_missing_stale_and_cross_tab_targets() {
+    for (pane, tab) in [
+        ("", Some("tab-a")),
+        ("", None),
+        ("pane-old-split", Some("tab-a")),
+        ("pane-a", Some("tab-b")),
+        ("pane-a", Some("")),
+    ] {
+        let mut app = detected_helper("tab-a", "pane-a");
+        app.handle_event(detected_action(pane, tab));
+        assert!(app.current_tab().turn.is_idle(), "{pane:?} {tab:?}");
+        assert!(matches!(
+            app.current_tab().autofix.bar_snapshot,
+            AutofixBarSnapshot::Detected { .. }
+        ));
+    }
+}
+
+#[test]
+fn legacy_detected_action_without_tab_still_requires_matching_pane() {
+    let mut a = detected_helper("tab-a", "pane-a");
+    let mut b = detected_helper("tab-b", "pane-b");
+    a.handle_event(detected_action("pane-b", None));
+    b.handle_event(detected_action("pane-b", None));
+    assert!(a.current_tab().turn.is_idle());
+    assert!(!b.current_tab().turn.is_idle());
+}
+
+#[test]
+fn detected_action_does_not_replay_after_source_pane_closes() {
+    let mut app = detected_helper("tab-a", "pane-a");
+    app.handle_event(closed_event("pane-a", "tab-a"));
+    app.handle_event(detected_action("pane-a", Some("tab-a")));
+    assert!(app.current_tab().turn.is_idle());
+    assert!(matches!(
+        app.current_tab().autofix.bar_snapshot,
+        AutofixBarSnapshot::Idle
+    ));
+}
+
 /// Single-flight, same pane: re-triggering autofix for the *same* failing pane
 /// while a turn is already in flight must re-emit the bar state only — it must
 /// not bump the generation or submit a second turn (the agent is already

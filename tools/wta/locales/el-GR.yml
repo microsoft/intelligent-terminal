@@ -59,6 +59,7 @@ chat.turn_canceled: "(ακυρώθηκε)"
 chat.turn_executed: "→ εκτελέστηκε: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "Εκτέλεση"
+chat.tool_kind.insert: "Εισαγωγή"
 chat.tool_kind.read: "Ανάγνωση"
 chat.tool_kind.search: "Αναζήτηση"
 chat.tool_kind.edit: "Επεξεργασία"
@@ -132,8 +133,25 @@ agents.status.idle: "Αδρανής"
 layout.welcome_hint: "  (Ctrl+Shift+. για εμφάνιση/απόκρυψη πλαισίου παράγοντα • Ctrl+Shift+/ για εμφάνιση/απόκρυψη συνεδρίας παράγοντα)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
-connection.starting: "Εκκίνηση παράγοντα..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "Προετοιμασία σύνδεσης με τον πράκτορα τεχνητής νοημοσύνης..."
 connection.reconnecting: "Επανασύνδεση..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "Επανεκκίνηση του πράκτορα τεχνητής νοημοσύνης..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "Σύνδεση με τον τοπικό συντονιστή..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "Αρχικοποίηση σύνδεσης με τον πράκτορα τεχνητής νοημοσύνης..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "Έλεγχος ταυτότητας χρήστη στον πράκτορα τεχνητής νοημοσύνης..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "Ανάγνωση της λίστας συνεδριών..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "Δημιουργία συνεδρίας του πράκτορα τεχνητής νοημοσύνης..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "Ορισμός μοντέλου συνεδρίας: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (συνέχιση %{session_id})"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "Σύνδεση με τον παράγοντα…"
 connection.lost: "Η σύνδεση με τον παράγοντα χάθηκε. Πληκτρολογήστε /restart για επανασύνδεση."  # {Locked="/restart"}
 
@@ -248,5 +266,6 @@ config_picker.title: "Διαμόρφωση περιόδου λειτουργία
 system.no_config_options: "Ο συνδεδεμένος παράγοντας δεν διαφήμισε καμία διαμορφώσιμη επιλογή περιόδου λειτουργίας."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Αποτυχία ενημέρωσης του %{option}: %{error}"
+system.yolo_disable_pending: "ο πάροχος του πράκτορα τεχνητής νοημοσύνης δεν έχει επιβεβαιώσει ότι η συνεδρία βρίσκεται στην απαιτούμενη κατάσταση χωρίς προνόμια"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Η λειτουργία Yolo είναι απενεργοποιημένη από την πολιτική του οργανισμού σας."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Άγνωστο μοντέλο %{model} — πληκτρολογήστε /model για να δείτε τη διαθέσιμη λίστα."  # {Locked="%{model}","/model"}

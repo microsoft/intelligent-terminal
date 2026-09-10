@@ -91,7 +91,7 @@ pub use tab_state::{
     RecommendationFocus, TabSession, ToolCallContent, ToolCallKind, ToolCallLocation,
     ToolCallOutput, UserInputState, View,
 };
-pub(crate) use tab_state::{CompletedTurnViewportAnchor, DEFAULT_TAB_ID};
+pub(crate) use tab_state::{ChatReadingPosition, CompletedTurnViewportAnchor, DEFAULT_TAB_ID};
 pub use turn_state::{AutofixContext, ChunkKind, SubmittedPrompt, TurnOutcome, TurnState};
 
 // ─── MVP sessions origin filter ────────────────────────────────────────────────────
@@ -111,6 +111,12 @@ pub use turn_state::{AutofixContext, ChunkKind, SubmittedPrompt, TurnOutcome, Tu
 // `App::sessions_origin_filter`.
 const MVP_SESSIONS_ORIGIN_FILTER: crate::agent_sessions::OriginFilter =
     crate::agent_sessions::OriginFilter::ShellOnly;
+
+/// A session event the helper itself originates and sends to master (resume
+/// bookkeeping, pane lifecycle). Agent CLI hooks are NOT queued here: master
+/// subscribes to the COM broadcast and routes them itself, so one hook produces
+/// one master-side apply regardless of helper count.
+pub type QueuedSessionHook = crate::agent_sessions::SessionEvent;
 
 /// Resolve the `/sessions` origin filter for this process.
 ///
@@ -476,6 +482,205 @@ pub const CONSUMED_PAYLOAD_KEYS: &[&str] = &[
 /// from the degraded payload and the notification loses its question text.
 pub const CONSUMED_TOOL_INPUT_KEYS: &[&str] = &["question", "prompt", "message"];
 
+/// Registry facts the `agent_event` decision needs.
+///
+/// The caller resolves these against whichever registry it owns — the helper's
+/// synchronous `AgentSessionRegistry`, or master's async trait-object registry
+/// via a snapshot — which keeps [`plan_agent_event`] itself pure.
+#[derive(Debug, Clone)]
+pub struct AgentEventFacts {
+    /// Key the event resolves to, already through the pane / cli fallbacks.
+    pub key: String,
+    /// Whether a row already exists for `key`.
+    pub session_known: bool,
+}
+
+/// What one `agent_event` implies.
+#[derive(Debug, Default)]
+pub struct AgentEventPlan {
+    /// Session events to apply, in emit order. Empty when the hook is
+    /// deliberately ignored (tool completions, `idle_prompt` notifications).
+    pub events: Vec<crate::agent_sessions::SessionEvent>,
+    /// Set when a real `agent.session.started` should supersede any
+    /// `pane:`-keyed placeholder previously minted for this pane.
+    pub supersedes_pane_placeholders: bool,
+}
+
+/// Translate one `agent_event` payload into the session events it implies.
+///
+/// Pure by construction. Master and the helper own different registries — an
+/// async trait object versus a synchronous struct — but they must agree
+/// *exactly* on what a hook means, so the taxonomy lives here instead of being
+/// written twice and drifting: which events map to which transition, when a
+/// synthetic start is warranted, and how a user-input tool call splits into a
+/// tool event plus the notification the prompt UI renders.
+pub fn plan_agent_event(
+    event: &str,
+    payload: &serde_json::Value,
+    pane_session_id: &str,
+    cli_source: &crate::agent_sessions::CliSource,
+    facts: &AgentEventFacts,
+) -> AgentEventPlan {
+    use crate::agent_sessions::SessionEvent;
+    use std::path::PathBuf;
+
+    let mut plan = AgentEventPlan::default();
+    let key = facts.key.clone();
+
+    let cwd = payload
+        .get("cwd")
+        .and_then(|v| v.as_str())
+        .map(PathBuf::from)
+        .unwrap_or_default();
+    let synth_title = if facts.session_known {
+        String::new()
+    } else {
+        cwd.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string()
+    };
+
+    // A synthetic start is only meaningful for events that imply the session is
+    // still running — they need a row to land on. Terminal events describe a
+    // session that is already over, so fabricating a start for one WTA has
+    // never seen materializes a permanent `Ended` row titled after the cwd
+    // basename (repro: an abandoned CLI session's `agent.session.end` produced
+    // a row titled after its working directory in `/sessions` that no reconcile
+    // pass can ever prune, because `is_stale_host_history_row` only prunes ids
+    // the agent itself listed and later stopped listing).
+    //
+    // `agent.error` is deliberately NOT excluded: it reports a session that is
+    // still live but failing, and its `ConnectionFailed` reducer resolves the
+    // row through the pane binding. Without the synthetic start there is no
+    // such binding, so a first-observed connection failure would silently
+    // no-op instead of surfacing as `Error`.
+    let needs_synthetic_start = !matches!(
+        event,
+        "agent.session.started"
+            | "agent.session.start"
+            | "agent.session.stopped"
+            | "agent.session.end"
+    ) && !facts.session_known;
+    if needs_synthetic_start {
+        plan.events.push(SessionEvent::SessionStarted {
+            key: key.clone(),
+            cli_source: cli_source.clone(),
+            pane_session_id: pane_session_id.to_string(),
+            cwd: cwd.clone(),
+            title: synth_title.clone(),
+        });
+    }
+
+    plan.supersedes_pane_placeholders =
+        matches!(event, "agent.session.started" | "agent.session.start");
+
+    let primary = match event {
+        "agent.session.started" | "agent.session.start" => SessionEvent::SessionStarted {
+            key,
+            cli_source: cli_source.clone(),
+            pane_session_id: pane_session_id.to_string(),
+            cwd,
+            title: synth_title,
+        },
+        "agent.tool.starting" => {
+            let tool_name = payload
+                .get("tool_name")
+                .or_else(|| payload.get("toolName"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if crate::agent_sessions::is_user_input_tool(&tool_name) {
+                // A user-input tool is two facts: the agent started a tool, and
+                // it is now blocked on the user. Both must land, so the tool
+                // event is emitted alongside the notification the prompt UI
+                // renders.
+                plan.events.push(SessionEvent::ToolStarting {
+                    key: key.clone(),
+                    tool_name,
+                });
+                let message = payload
+                    .get("tool_input")
+                    .and_then(|ti| {
+                        ti.get("question")
+                            .or_else(|| ti.get("prompt"))
+                            .or_else(|| ti.get("message"))
+                    })
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("waiting for user input")
+                    .to_string();
+                SessionEvent::Notification { key, message }
+            } else {
+                SessionEvent::ToolStarting { key, tool_name }
+            }
+        }
+        "agent.prompt.submit" => SessionEvent::ToolStarting {
+            key,
+            tool_name: "prompt".to_string(),
+        },
+        // Tool completion does NOT end the turn. Copilot and Gemini fire a
+        // `tool.finished` per tool — often several per turn, in parallel
+        // batches — but the agent keeps working until it emits `agent.stop`.
+        // Mapping each completion to `ToolCompleted` made multi-tool turns
+        // flicker to Idle and sit there during the agent's between-tool
+        // thinking. The arm stays so an older installed bundle that still
+        // emits them is ignored rather than mis-routed.
+        "agent.tool.completed" | "agent.tool.finished" | "agent.tool.failed" => {
+            plan.events.clear();
+            return plan;
+        }
+        "agent.stop" | "agent.subagent.stop" => SessionEvent::ToolCompleted { key },
+        "agent.notification" => {
+            // Claude's `Notification` hook covers two cases. `permission_prompt`
+            // is genuinely Attention: nothing proceeds until the user acts.
+            // `idle_prompt` fires *after* `agent.stop` already moved the row to
+            // Idle, so treating it as Attention would park every session at
+            // "waiting for your input" between turns. Unknown types stay
+            // Attention on purpose — over-reporting costs a stale badge the
+            // next event clears, under-reporting loses a permission request.
+            let notification_type = payload
+                .get("notification_type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if notification_type == "idle_prompt" {
+                plan.events.clear();
+                return plan;
+            }
+            SessionEvent::Notification {
+                key,
+                message: payload
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+            }
+        }
+        "agent.session.stopped" | "agent.session.end" => SessionEvent::SessionStopped {
+            key,
+            reason: payload
+                .get("reason")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+        },
+        "agent.error" => SessionEvent::ConnectionFailed {
+            pane_session_id: pane_session_id.to_string(),
+            reason: payload
+                .get("error")
+                .and_then(|v| v.as_str())
+                .or_else(|| payload.get("message").and_then(|v| v.as_str()))
+                .unwrap_or("agent error")
+                .to_string(),
+        },
+        _ => {
+            plan.events.clear();
+            return plan;
+        }
+    };
+    plan.events.push(primary);
+    plan
+}
+
 /// Route a parsed `agent_event` payload into the AgentSessionRegistry.
 ///
 /// `pane_session_id` is the **WT pane GUID** ($env:WT_SESSION in the
@@ -485,6 +690,13 @@ pub const CONSUMED_TOOL_INPUT_KEYS: &[&str] = &["question", "prompt", "message"]
 /// `asid` local) and is what we use as the registry key when known —
 /// see the module-level docs in `agent_sessions.rs` for the
 /// distinction.
+///
+/// This maintains **helper-local** state only: the pane→session binding the
+/// OSC 133;A agent-exit heuristic and the autofix target logic read
+/// synchronously. The authoritative registry lives in master, which routes the
+/// same COM broadcast itself — see `handle_master_wt_event`. Nothing here is
+/// forwarded, so N helpers observing one hook produce one master-side apply
+/// rather than N.
 ///
 /// Returns `true` if the registry was updated and the UI should redraw.
 #[allow(dead_code)]
@@ -496,6 +708,8 @@ pub fn route_agent_event_to_registry(
     route_agent_event_to_registry_with_hook_sink(reg, pane_session_id, params, |_| {})
 }
 
+/// As [`route_agent_event_to_registry`], but reports every event it applied.
+/// The sink is an observation point for tests — it is not a publish path.
 pub fn route_agent_event_to_registry_with_hook_sink<F>(
     reg: &mut crate::agent_sessions::AgentSessionRegistry,
     pane_session_id: &str,
@@ -505,8 +719,7 @@ pub fn route_agent_event_to_registry_with_hook_sink<F>(
 where
     F: FnMut(crate::agent_sessions::SessionEvent),
 {
-    use crate::agent_sessions::{CliSource, SessionEvent};
-    use std::path::PathBuf;
+    use crate::agent_sessions::CliSource;
 
     let event = params.get("event").and_then(|v| v.as_str()).unwrap_or("");
     if !event.starts_with("agent.") {
@@ -604,183 +817,21 @@ where
         .get("payload")
         .cloned()
         .unwrap_or(serde_json::Value::Null);
-    let cwd = payload
-        .get("cwd")
-        .and_then(|v| v.as_str())
-        .map(PathBuf::from)
-        .unwrap_or_default();
-    let cwd_label = cwd
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("")
-        .to_string();
 
-    let session_known = reg.has_session(&key);
-    let synth_title: String = if session_known {
-        String::new()
-    } else {
-        cwd_label.clone()
+    let facts = AgentEventFacts {
+        key: key.clone(),
+        session_known: reg.has_session(&key),
     };
-    // A `pane:<guid>` key means we couldn't resolve a real ACP session id
-    // from the event payload (broken hook, race between hook arrival and
-    // `new_session` reaching master, etc.) AND the cli-source fallback
-    // above (`most_recent_live_session_for_cli`) didn't find a live
-    // session to attach to. Keep the local placeholder for helper
-    // bookkeeping (so `is_agent_pane(pane_id)` works for the OSC 133;A
-    // handler) but DO NOT publish these to master — master only ever
-    // learns about real ACP sessions via `new_session`/`load_session`,
-    // and feeding it synthetic rows produces duplicate session management entries that
-    // shadow the real session (one with the real sid, one with `pane:`
-    // key, both pointing at the same agent — see PR B debug session log
-    // around 2026-05-28T00:30 for the user-visible repro).
-    let needs_synthetic_start = event != "agent.session.started" && !session_known;
-    if needs_synthetic_start {
-        let synthetic_event = SessionEvent::SessionStarted {
-            key: key.clone(),
-            cli_source: cli_source.clone(),
-            pane_session_id: pane_session_id.to_string(),
-            cwd: cwd.clone(),
-            title: synth_title.clone(),
-        };
-        reg.apply(synthetic_event.clone());
-        if !key_is_synthetic {
-            hook_sink(synthetic_event);
-        }
-    }
+    let plan = plan_agent_event(event, &payload, pane_session_id, &cli_source, &facts);
 
-    if event == "agent.session.started" && !asid.is_empty() {
+    // A real `agent.session.started` supersedes any `pane:`-keyed placeholder
+    // minted for this pane while the id was still unknown.
+    if plan.supersedes_pane_placeholders && !asid.is_empty() {
         reg.drop_synthetic_for_pane(pane_session_id);
     }
 
-    let ev = match event {
-        "agent.session.started" | "agent.session.start" => SessionEvent::SessionStarted {
-            key,
-            cli_source,
-            pane_session_id: pane_session_id.to_string(),
-            cwd,
-            title: synth_title,
-        },
-        "agent.tool.starting" => {
-            let tool_name = payload
-                .get("tool_name")
-                .or_else(|| payload.get("toolName"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            if crate::agent_sessions::is_user_input_tool(&tool_name) {
-                let tool_event = SessionEvent::ToolStarting {
-                    key: key.clone(),
-                    tool_name,
-                };
-                reg.apply(tool_event.clone());
-                hook_sink(tool_event);
-                let message = payload
-                    .get("tool_input")
-                    .and_then(|ti| {
-                        ti.get("question")
-                            .or_else(|| ti.get("prompt"))
-                            .or_else(|| ti.get("message"))
-                    })
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("waiting for user input")
-                    .to_string();
-                SessionEvent::Notification { key, message }
-            } else {
-                SessionEvent::ToolStarting { key, tool_name }
-            }
-        }
-        "agent.prompt.submit" => SessionEvent::ToolStarting {
-            key,
-            tool_name: "prompt".to_string(),
-        },
-        // Tool completion does NOT end the turn. Copilot and Gemini fire a
-        // `tool.finished` per tool — often several per turn, in parallel
-        // batches — but the agent keeps working (thinking, streaming text,
-        // running the next tool) until it emits `agent.stop`. Mapping each
-        // `tool.finished` to `ToolCompleted` made multi-tool turns flicker to
-        // Idle and, worse, sit at Idle during the agent's between-tool thinking
-        // (Copilot fires only one `prompt.submit` + one `agent.stop` per user
-        // request, with many tool pairs in between). So ignore tool completions
-        // here and let `agent.stop` own the turn-end → Idle, mirroring the
-        // watcher's turn-based `classify_copilot` / `classify_codex`, which also
-        // ignore `tool.execution_complete`.
-        //
-        // Because these are dropped, no bundle subscribes them any more: each
-        // one cost a shell spawn (~400ms under PowerShell) plus a COM round
-        // trip, per tool call, to be discarded here. Copilot's `PostToolUse` /
-        // `PostToolUseFailure`, Gemini's `AfterTool`, and OpenCode's
-        // `tool.execute.after` were all removed. The arm stays so an older
-        // installed bundle that still emits them is ignored rather than
-        // mis-routed.
-        "agent.tool.completed" | "agent.tool.finished" | "agent.tool.failed" => {
-            return reg.take_dirty();
-        }
-        "agent.stop" | "agent.subagent.stop" => SessionEvent::ToolCompleted { key },
-        "agent.notification" => {
-            // Not every notification means "the agent is blocked on you".
-            // Claude's `Notification` hook covers two cases, distinguished by
-            // `notification_type`:
-            //
-            //   * `permission_prompt` — the agent wants approval for a tool.
-            //     Genuinely Attention: nothing proceeds until the user acts.
-            //   * `idle_prompt` — the agent already finished its turn and has
-            //     simply been sitting at an empty prompt for 60s. It fires
-            //     *after* `agent.stop` has correctly moved the row to Idle, so
-            //     treating it as Attention parks every session at "Claude is
-            //     waiting for your input" between turns.
-            //
-            // Drop `idle_prompt` and let `agent.stop` keep ownership of the
-            // turn-end transition, the same division of labour the tool
-            // completion arm above relies on. Deliberately *not* mapped to
-            // Idle: an unanswered `permission_prompt` also goes idle after
-            // 60s, and demoting that row would hide a pending approval.
-            //
-            // Unknown types stay Attention on purpose. Over-reporting costs a
-            // stale badge the next event clears; under-reporting loses a
-            // permission request with no other signal that it happened.
-            let notification_type = payload
-                .get("notification_type")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            if notification_type == "idle_prompt" {
-                return reg.take_dirty();
-            }
-            SessionEvent::Notification {
-                key,
-                message: payload
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string(),
-            }
-        }
-        "agent.session.stopped" | "agent.session.end" => SessionEvent::SessionStopped {
-            key,
-            reason: payload
-                .get("reason")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
-        },
-        "agent.error" => SessionEvent::ConnectionFailed {
-            pane_session_id: pane_session_id.to_string(),
-            reason: payload
-                .get("error")
-                .and_then(|v| v.as_str())
-                .or_else(|| payload.get("message").and_then(|v| v.as_str()))
-                .unwrap_or("agent error")
-                .to_string(),
-        },
-        _ => return reg.take_dirty(),
-    };
-
-    reg.apply(ev.clone());
-    // Same synthetic-key gate as the SessionStarted placeholder above:
-    // events keyed by `pane:<guid>` are helper-local bookkeeping only
-    // and must NOT be published to master. Their session_id is fake
-    // and would land in master's registry as a duplicate row alongside
-    // the real ACP session.
-    if !key_is_synthetic {
+    for ev in plan.events {
+        reg.apply(ev.clone());
         hook_sink(ev);
     }
 
@@ -1151,6 +1202,7 @@ pub struct App {
     /// `--yolo-mode`. Helper-owned policy is shared with the ACP client and
     /// the global default is hot-updatable.
     yolo_state: crate::app_contracts::SharedYoloState,
+    initial_yolo_control_owner: Option<InitialYoloControlOwner>,
     next_yolo_reconcile_id: u64,
     pending_yolo_reconciles: HashMap<u64, (HashSet<String>, bool)>,
     pending_yolo_session_tabs: HashSet<String>,
@@ -1167,6 +1219,7 @@ pub struct App {
     pub(crate) completed_turn_hits: Vec<CompletedTurnHitRegion>,
     pub(crate) pressed_completed_turn: Option<PressedCompletedTurn>,
     pub(crate) last_completed_turn_click: Option<CompletedTurnClickRecord>,
+    last_permission_snapshot: Option<(String, Option<String>)>,
     pub(crate) input_dialog_area: Option<Rect>,
     pub(crate) pressed_input_dialog_tab: Option<String>,
     pub(crate) completed_turn_action_links: Vec<crate::action_links::CompletedTurnActionLink>,
@@ -1249,7 +1302,7 @@ pub struct App {
     /// no-op outside the integration loop.
     agent_event_tx: Option<mpsc::UnboundedSender<AppEvent>>,
     /// Helper-mode fire-and-forget publisher for `intellterm.wta/session_hook`.
-    session_hook_tx: Option<mpsc::UnboundedSender<crate::agent_sessions::SessionEvent>>,
+    session_hook_tx: Option<mpsc::UnboundedSender<QueuedSessionHook>>,
     /// Hot-updatable delegate config, shared with the recommendation
     /// executor (`run_recommendation_executor`). Rebuilt in place on an
     /// `agent_config_changed` settings event so the configured delegate
@@ -1334,6 +1387,12 @@ pub struct App {
     pub alive_loaded: std::sync::Arc<std::sync::atomic::AtomicBool>,
     pub proposal_channels:
         Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct InitialYoloControlOwner {
+    session_id: String,
+    owner: crate::app_contracts::YoloControlOwner,
 }
 
 /// How long the close-pane arm (localized via `system.close_pane_hint`) stays live. Long
@@ -1499,6 +1558,7 @@ impl App {
             completed_turn_hits: Vec::new(),
             pressed_completed_turn: None,
             last_completed_turn_click: None,
+            last_permission_snapshot: None,
             input_dialog_area: None,
             pressed_input_dialog_tab: None,
             completed_turn_action_links: Vec::new(),
@@ -1544,6 +1604,7 @@ impl App {
             ),
             shell_mgr,
             yolo_state,
+            initial_yolo_control_owner: None,
         }
     }
 
@@ -1890,10 +1951,7 @@ impl App {
         self.agent_event_tx = Some(tx);
     }
 
-    pub fn set_session_hook_tx(
-        &mut self,
-        tx: mpsc::UnboundedSender<crate::agent_sessions::SessionEvent>,
-    ) {
+    pub fn set_session_hook_tx(&mut self, tx: mpsc::UnboundedSender<QueuedSessionHook>) {
         self.session_hook_tx = Some(tx);
     }
 
@@ -1912,6 +1970,21 @@ impl App {
         self.delegate_base_agent_cmd = base_agent_cmd;
         self.acp_model = acp_model.filter(|s| !s.trim().is_empty());
         self.follows_global_acp_model = follows_global_acp_model;
+    }
+
+    pub fn set_initial_yolo_control_owner(
+        &mut self,
+        session_id: Option<&str>,
+        owner: Option<crate::app_contracts::YoloControlOwner>,
+    ) {
+        self.initial_yolo_control_owner = session_id
+            .map(str::trim)
+            .filter(|session_id| !session_id.is_empty())
+            .zip(owner)
+            .map(|(session_id, owner)| InitialYoloControlOwner {
+                session_id: session_id.to_string(),
+                owner,
+            });
     }
 
     pub fn set_host_catalog_ready(&mut self, ready: bool) {
@@ -2971,6 +3044,8 @@ impl App {
     ///      tab's primary pane GUID to the row even for hook-less CLIs
     ///      (Gemini), allowing a later `PaneClosed` to transition the
     ///      row back to Ended.
+    ///      Host resumes also publish the known agent/session/pane identity to
+    ///      Terminal's persistence map, independently of CLI hooks or banners.
     fn dispatch_resume(&mut self, s: &crate::agent_sessions::AgentSession) {
         let cli_id = match known_cli_id(&s.cli_source) {
             Some(id) => id,
@@ -3113,18 +3188,35 @@ impl App {
         // tab's primary pane in the same shape as `split-pane --json`,
         // so the existing helper handles both.
         let cb_key = key.clone();
+        let cb_location = s.location.clone();
         let event_tx = self.agent_event_tx.clone();
-        let on_pane_id: Option<Box<dyn FnOnce(String) + Send + 'static>> = match event_tx {
-            Some(tx) => Some(Box::new(move |pane_session_id| {
-                let _ = tx.send(AppEvent::AgentSessionEvent(
-                    crate::agent_sessions::SessionEvent::ResumePaneAssigned {
-                        key: cb_key,
-                        pane_session_id,
-                    },
-                ));
-            })),
-            None => None,
-        };
+        let on_pane_id: Option<Box<dyn FnOnce(String) + Send + 'static>> =
+            Some(Box::new(move |pane_session_id| {
+                if let Some(binding) = crate::wt_protocol_events::resumed_pane_binding_event(
+                    cli_id,
+                    &cb_key,
+                    &pane_session_id,
+                    &cb_location,
+                ) {
+                    send_wt_protocol_event(binding);
+                }
+                if let Some(tx) = event_tx {
+                    if tx
+                        .send(AppEvent::AgentSessionEvent(
+                            crate::agent_sessions::SessionEvent::ResumePaneAssigned {
+                                key: cb_key,
+                                pane_session_id,
+                            },
+                        ))
+                        .is_err()
+                    {
+                        tracing::warn!(
+                            target: "agents_view",
+                            "resumed pane could not be reported to the helper event loop"
+                        );
+                    }
+                }
+            }));
         crate::shell::wt_channel::spawn_wtcli_split_then_focus_with_callback(&argv, on_pane_id);
 
         tracing::info!(
@@ -3687,6 +3779,7 @@ impl App {
         self.custom_model_selection
             .clone_from(&request.custom_model_selection);
         self.pending_session_load = None;
+        self.initial_yolo_control_owner = None;
         self.reset_agent_scoped_state();
     }
 
@@ -3765,33 +3858,62 @@ impl App {
         self.publish_agent_status();
     }
 
-    fn pending_session_load_for_reconnect(&self) -> Option<(LoadSessionForTab, Option<bool>)> {
+    fn pending_session_load_for_reconnect(
+        &self,
+    ) -> Option<(
+        LoadSessionForTab,
+        Option<bool>,
+        crate::app_contracts::YoloControlOwner,
+    )> {
         let pending = self.pending_session_load.as_ref()?;
         let tab = self.tab_sessions.get(&pending.tab_id)?;
         (tab.loading_session
             && tab.loading_target_session_id.as_deref() == Some(pending.session_id.as_str()))
-        .then(|| (pending.clone(), tab.meaningful_conversation_before_load))
+        .then(|| {
+            let owner = self
+                .yolo_state
+                .lock()
+                .unwrap()
+                .owner(&pending.session_id)
+                .unwrap_or(crate::app_contracts::YoloControlOwner::ProviderRestored);
+            (
+                pending.clone(),
+                tab.meaningful_conversation_before_load,
+                owner,
+            )
+        })
     }
 
     fn restore_pending_session_load(
         &mut self,
         pending: LoadSessionForTab,
         prior_meaningful: Option<bool>,
+        owner: crate::app_contracts::YoloControlOwner,
     ) {
         self.pending_session_load = Some(pending.clone());
-        let tab = self.tab_mut(&pending.tab_id);
-        tab.loading_session = true;
-        tab.loading_target_session_id = Some(pending.session_id);
-        tab.has_meaningful_conversation = true;
-        tab.meaningful_conversation_before_load = prior_meaningful;
+        {
+            let tab = self.tab_mut(&pending.tab_id);
+            tab.loading_session = true;
+            tab.loading_target_session_id = Some(pending.session_id.clone());
+            tab.has_meaningful_conversation = true;
+            tab.meaningful_conversation_before_load = prior_meaningful;
+        }
+        self.yolo_state
+            .lock()
+            .unwrap()
+            .mark_owner(pending.session_id, owner);
     }
 
     fn begin_pending_agent_reconnect_preflight(&mut self) -> Option<AgentReconnectRequest> {
-        let latest = match &self.agent_reconnect_state {
-            AgentReconnectState::Disconnecting(latest) => latest.clone(),
-            _ => return None,
+        let latest = match std::mem::take(&mut self.agent_reconnect_state) {
+            AgentReconnectState::Disconnecting(latest) => latest,
+            state => {
+                self.agent_reconnect_state = state;
+                return None;
+            }
         };
         self.pending_session_load = None;
+        self.initial_yolo_control_owner = None;
         self.reset_agent_scoped_state();
         self.agent_reconnect_state = AgentReconnectState::Preflighting(latest.clone());
         if let Some(tx) = self.event_tx.clone() {
@@ -4441,6 +4563,7 @@ impl App {
                     let should_redraw = self.event_requires_redraw(&event);
                     let handle_started = std::time::Instant::now();
                     self.handle_event(event);
+                    self.log_permission_snapshot();
                     ui_trace::log_slow("ui_event_handle", handle_started.elapsed(), || {
                         format!("event={} {}", event_name, self.trace_state())
                     });
@@ -4488,6 +4611,7 @@ impl App {
                         )
                     });
 
+                    self.log_permission_snapshot();
                     if should_redraw_now {
                         let draw_started = std::time::Instant::now();
                         self.draw_frame(terminal)?;
@@ -4537,6 +4661,7 @@ impl App {
     fn draw_frame(&mut self, terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<()> {
         let total_started = std::time::Instant::now();
 
+        self.log_permission_snapshot();
         let mut frame = terminal.get_frame();
 
         let render_started = std::time::Instant::now();
@@ -4586,6 +4711,34 @@ impl App {
         Ok(())
     }
 
+    fn log_permission_snapshot(&mut self) {
+        let tab = self.current_tab();
+        let snapshot = (
+            tab.session_id.clone().unwrap_or_default(),
+            tab.permission
+                .front()
+                .filter(|permission| {
+                    permission
+                        .responder
+                        .as_ref()
+                        .is_some_and(|sender| !sender.is_closed())
+                        && (tab.turn.can_service_agent_request() || tab.loading_session)
+                })
+                .map(|permission| permission.tool_call_id.clone()),
+        );
+        if self.last_permission_snapshot.as_ref() != Some(&snapshot) {
+            tracing::info!(
+                target: "permission_ui",
+                snapshot = %serde_json::json!({
+                    "session_id": snapshot.0,
+                    "tool_call_id": snapshot.1,
+                }),
+                "current permission"
+            );
+            self.last_permission_snapshot = Some(snapshot);
+        }
+    }
+
     fn event_name(event: &AppEvent) -> &'static str {
         match event {
             AppEvent::Key(_) => "key",
@@ -4603,6 +4756,7 @@ impl App {
             AppEvent::UsageCleared { .. } => "usage_cleared",
             AppEvent::ModelConfigUpdated { .. } => "model_config_updated",
             AppEvent::RuntimeYoloReconcileCompleted { .. } => "runtime_yolo_reconcile_completed",
+            AppEvent::YoloControlOwnerChanged { .. } => "yolo_control_owner_changed",
             AppEvent::ModelSetCompleted { .. } => "model_set_completed",
             AppEvent::ModelSetFailed { .. } => "model_set_failed",
             AppEvent::SessionConfigUpdated { .. } => "session_config_updated",
@@ -4756,7 +4910,7 @@ impl App {
             },
         });
         let tab = self.current_tab_mut();
-        tab.messages.retain(|m| !matches!(m, ChatMessage::Error(_)));
+        tab.retain_current_messages(|m| !matches!(m, ChatMessage::Error(_)));
     }
 
     fn handle_agent_paste_text(&mut self, params: &serde_json::Value) {
@@ -4939,8 +5093,20 @@ impl App {
 pub(crate) enum CompletedTurnHitKind {
     Triangle,
     UserInput,
+    Thought {
+        id: tab_state::ThoughtId,
+        detail_index: usize,
+        active: bool,
+    },
     ToolCall {
         detail_index: usize,
+    },
+    ActiveToolCall {
+        detail_index: usize,
+    },
+    ActiveToolGroup {
+        first_detail_index: usize,
+        detail_count: usize,
     },
     ToolGroup {
         first_detail_index: usize,
@@ -4967,6 +5133,7 @@ impl CompletedTurnHitRegion {
 pub(crate) struct PressedCompletedTurn {
     pub(crate) tab_id: String,
     pub(crate) hit: CompletedTurnHitRegion,
+    pub(crate) active_tool_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -5500,6 +5667,8 @@ impl App {
                 if candidate.completion_behavior().prepares_free_text() {
                     let tab = self.current_tab_mut();
                     tab.input = format!("/{name} ");
+                    tab.input_all_selected = false;
+                    tab.input_vertical_goal = None;
                     tab.cursor_pos = tab.input.len();
                     tab.refresh_command_popup();
                     return true;
@@ -5507,6 +5676,8 @@ impl App {
                 if matches!(candidate, crate::ui::CommandCandidate::Agent(_)) {
                     let tab = self.current_tab_mut();
                     tab.input = format!("/{name}");
+                    tab.input_all_selected = false;
+                    tab.input_vertical_goal = None;
                     tab.cursor_pos = tab.input.len();
                     tab.refresh_command_popup();
                     return false;
@@ -5873,41 +6044,53 @@ impl App {
 
     pub(crate) fn apply_runtime_yolo_config(
         &mut self,
-        global_default: Option<bool>,
+        automatic_target: Option<bool>,
         policy_blocked: Option<bool>,
     ) {
-        if global_default.is_none() && policy_blocked.is_none() {
+        if automatic_target.is_none() && policy_blocked.is_none() {
             return;
         }
 
-        let (current_global, current_blocked) = {
+        let (current_target, current_blocked) = {
             let state = self.yolo_state.lock().unwrap();
-            (state.global_default(), state.policy_blocked())
+            (state.automatic_target(), state.policy_blocked())
         };
-        let global_default = global_default.unwrap_or(current_global);
+        let automatic_target = automatic_target.unwrap_or(current_target);
         let policy_blocked = policy_blocked.unwrap_or(current_blocked);
-        if global_default == current_global && policy_blocked == current_blocked {
+        if automatic_target == current_target && policy_blocked == current_blocked {
             return;
         }
 
         {
             let mut state = self.yolo_state.lock().unwrap();
-            state.update_runtime(global_default, policy_blocked);
+            state.update_runtime(automatic_target, policy_blocked);
         }
 
-        let sessions = {
-            let state = self.yolo_state.lock().unwrap();
-            self.session_to_tab
+        let (sessions, affected_tabs) = {
+            let mut state = self.yolo_state.lock().unwrap();
+            let mut affected_tabs = HashSet::new();
+            let sessions = self
+                .session_to_tab
                 .iter()
                 .filter(|(_, tab_id)| !self.pending_yolo_session_tabs.contains(*tab_id))
-                .map(|(session_id, _)| {
-                    (
+                .filter_map(|(session_id, tab_id)| {
+                    let enabled = state.automatic_directive(session_id).target()?;
+                    state.mark_automatic_if_unowned_or_automatic(session_id.clone());
+                    affected_tabs.insert(tab_id.clone());
+                    Some((
                         agent_client_protocol::schema::v1::SessionId::new(session_id.clone()),
-                        state.effective(session_id),
-                    )
+                        enabled,
+                    ))
                 })
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>();
+            (sessions, affected_tabs)
         };
+        if sessions.is_empty() {
+            return;
+        }
+        for tab_id in affected_tabs {
+            self.project_tab_state(&tab_id);
+        }
         let fail_closed = policy_blocked || sessions.iter().any(|(_, enabled)| !enabled);
         let reconcile_id = self.begin_yolo_reconcile(&sessions, fail_closed);
         let sent = self.master_request_tx.send(
@@ -5927,7 +6110,14 @@ impl App {
     }
 
     fn reconcile_session_yolo(&mut self, session_id: &str) {
-        let enabled = self.yolo_state.lock().unwrap().effective(session_id);
+        let enabled = {
+            let mut state = self.yolo_state.lock().unwrap();
+            let Some(enabled) = state.automatic_directive(session_id).target() else {
+                return;
+            };
+            state.mark_automatic_if_unowned_or_automatic(session_id);
+            enabled
+        };
         let fail_closed = !enabled;
         let sessions = vec![(
             agent_client_protocol::schema::v1::SessionId::new(session_id.to_string()),
@@ -6005,7 +6195,7 @@ impl App {
     fn cmd_restart(&mut self) {
         self.initial_startup_presentation_eligible = false;
         self.initial_transport_superseded = true;
-        self.state = ConnectionState::Connecting("Restarting agent...".to_string());
+        self.state = ConnectionState::Connecting(t!("connection.restarting").into_owned());
         self.pending_session_load = None;
         self.session_to_tab.clear();
         self.session_model_configs.clear();
@@ -6028,6 +6218,7 @@ impl App {
             self.project_tab_state(&tab_id);
         }
         self.yolo_state.lock().unwrap().clear_sessions();
+        self.initial_yolo_control_owner = None;
         self.pending_yolo_reconciles.clear();
         self.pending_yolo_session_tabs.clear();
         if self
@@ -6043,6 +6234,13 @@ impl App {
             crate::wt_protocol_events::send(crate::wt_protocol_events::restart_agent_stack_event());
         }
         self.publish_agent_status();
+    }
+
+    fn invalidate_input_layout(&mut self) {
+        self.input_dialog_area = None;
+        for tab in self.tab_sessions.values_mut() {
+            tab.input_vertical_goal = None;
+        }
     }
 
     /// Width of the main area (chat / recs / perm / input) — matches the
@@ -6693,70 +6891,66 @@ fn linux_cwd_arg(cwd: &std::path::Path) -> Option<String> {
 #[path = "app_turn.rs"]
 mod app_turn;
 
-/// Render a parsed `RecommendationSet` as the agent's "reply" text in chat.
-///
-/// Recommendation responses arrive as JSON; storing the raw JSON in a completed
-/// turn means re-expanding the prompt header reveals raw JSON instead of a
-/// CLI-style answer. This builds a single line per choice that mirrors what the
-/// recommendation cards show, prefixed with `✓` for the recommended one.
-fn format_recommendations_for_chat(set: &RecommendationSet) -> String {
+fn format_recommendation_choice_for_chat(
+    choice: &RecommendationChoice,
+    command_label: Option<&str>,
+) -> String {
     use crate::coordinator::{OpenTarget, RecommendedAction};
 
-    let header = if set.choices.len() == 1 {
-        "Suggested 1 option:".to_string()
-    } else {
-        format!("Suggested {} options:", set.choices.len())
-    };
-    let mut out = header;
+    choice
+        .actions
+        .iter()
+        .find_map(|action| match action {
+            RecommendedAction::Send { input, .. } => Some(match command_label {
+                Some(label) => format!("{label}: {input}"),
+                None => input.clone(),
+            }),
+            RecommendedAction::OpenAndSend {
+                target,
+                input,
+                agent,
+                ..
+            } => {
+                let where_ = match target {
+                    OpenTarget::Tab => "new tab",
+                    OpenTarget::Panel => "new panel",
+                };
+                let label = agent.as_deref().unwrap_or("agent");
+                Some(format!("Open {} and run {}: {}", where_, label, input))
+            }
+            RecommendedAction::Open {
+                target, cwd, title, ..
+            } => {
+                let kind = match target {
+                    OpenTarget::Tab => "tab",
+                    OpenTarget::Panel => "panel",
+                };
+                Some(match (title.as_deref(), cwd.as_deref()) {
+                    (Some(t), Some(c)) if !t.is_empty() && !c.is_empty() => {
+                        format!("Open new {} ({}) in {}", kind, t, c)
+                    }
+                    (Some(t), _) if !t.is_empty() => format!("Open new {} ({})", kind, t),
+                    (_, Some(c)) if !c.is_empty() => format!("Open new {} in {}", kind, c),
+                    _ => format!("Open new empty {}", kind),
+                })
+            }
+        })
+        .unwrap_or_else(|| choice.title.clone())
+}
 
-    for choice in &set.choices {
-        let action_text = choice
-            .actions
-            .iter()
-            .find_map(|action| match action {
-                RecommendedAction::Send { input, .. } => Some(format!("Run: {}", input)),
-                RecommendedAction::OpenAndSend {
-                    target,
-                    input,
-                    agent,
-                    ..
-                } => {
-                    let where_ = match target {
-                        OpenTarget::Tab => "new tab",
-                        OpenTarget::Panel => "new panel",
-                    };
-                    let label = agent.as_deref().unwrap_or("agent");
-                    Some(format!("Open {} and run {}: {}", where_, label, input))
-                }
-                RecommendedAction::Open {
-                    target, cwd, title, ..
-                } => {
-                    let kind = match target {
-                        OpenTarget::Tab => "tab",
-                        OpenTarget::Panel => "panel",
-                    };
-                    Some(match (title.as_deref(), cwd.as_deref()) {
-                        (Some(t), Some(c)) if !t.is_empty() && !c.is_empty() => {
-                            format!("Open new {} ({}) in {}", kind, t, c)
-                        }
-                        (Some(t), _) if !t.is_empty() => format!("Open new {} ({})", kind, t),
-                        (_, Some(c)) if !c.is_empty() => format!("Open new {} in {}", kind, c),
-                        _ => format!("Open new empty {}", kind),
-                    })
-                }
-            })
-            .unwrap_or_else(|| choice.title.clone());
-
-        let marker = if set.recommended_choice == Some(choice.choice) {
-            "✓"
-        } else {
-            " "
-        };
-        out.push('\n');
-        out.push_str(&format!("  {} {}. {}", marker, choice.choice, action_text));
-    }
-
-    out
+/// Render pending or replayed recommendations as plain action lines, not raw JSON.
+fn format_recommendations_for_chat(set: &RecommendationSet, action_status: Option<&str>) -> String {
+    set.choices
+        .iter()
+        .map(|choice| {
+            let action = format_recommendation_choice_for_chat(choice, None);
+            match action_status {
+                Some(status) => format!("{action} {status}"),
+                None => action,
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[path = "app_status_projection.rs"]

@@ -59,6 +59,7 @@ chat.turn_canceled: "(റദ്ദാക്കി)"
 chat.turn_executed: "→ നടപ്പിലാക്കി: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "പ്രവർത്തിപ്പിക്കുക"
+chat.tool_kind.insert: "ചേര്‍ക്കുക"
 chat.tool_kind.read: "വായിക്കുക"
 chat.tool_kind.search: "തിരയുക"
 chat.tool_kind.edit: "തിരുത്തുക"
@@ -144,8 +145,25 @@ agents.status.idle: "നിഷ്ക്രിയം"
 layout.welcome_hint: "  (Ctrl+Shift+. ഏജന്റ് പേന്‍ കാണിക്കുക/മറയ്ക്കുക • Ctrl+Shift+/ ഏജന്റ് സെഷന്‍ കാണിക്കുക/മറയ്ക്കുക)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── കണക്ഷന്‍ നില ────────────────────────────────────────────────────────
-connection.starting: "ഏജന്റ് ആരംഭിക്കുന്നു..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "ഏജന്റുമായുള്ള കണക്ഷൻ തയ്യാറാക്കുന്നു..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "ഏജന്റ് പുനരാരംഭിക്കുന്നു..."
 connection.reconnecting: "വീണ്ടും കണക്ട് ചെയ്യുന്നു..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "ലോക്കൽ കോർഡിനേറ്ററുമായി ബന്ധിപ്പിക്കുന്നു..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "ഏജന്റുമായുള്ള കണക്ഷന്റെ പ്രാരംഭ സജ്ജീകരണം നടത്തുന്നു..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "ഏജന്റിലേക്കുള്ള ലോഗിൻ പ്രാമാണീകരിക്കുന്നു..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "സെഷൻ പട്ടിക വായിക്കുന്നു..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "ഏജന്റ് സെഷൻ സൃഷ്ടിക്കുന്നു..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "സെഷൻ മോഡൽ സജ്ജമാക്കുന്നു: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (%{session_id} തുടരുന്നു)"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "ഏജന്റുമായി കണക്റ്റ് ചെയ്യുന്നു…"
 connection.lost: "ഏജന്റുമായുള്ള കണക്ഷൻ നഷ്ടപ്പെട്ടു. വീണ്ടും കണക്റ്റ് ചെയ്യാൻ /restart ടൈപ്പ് ചെയ്യുക."  # {Locked="/restart"}
 
@@ -248,5 +266,6 @@ config_picker.title: "സെഷൻ കോൺഫിഗറേഷൻ (↑ ↓ • E
 system.no_config_options: "ബന്ധിപ്പിച്ച ഏജന്റ് കോൺഫിഗർ ചെയ്യാവുന്ന സെഷൻ ഓപ്ഷനുകളൊന്നും പരസ്യപ്പെടുത്തിയില്ല."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} അപ്‌ഡേറ്റ് ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു: %{error}"
+system.yolo_disable_pending: "പ്രത്യേകാധികാര മോഡ് പ്രവർത്തനരഹിതമായിരിക്കേണ്ട സെഷൻ നില ഏജന്റ് ദാതാവ് ഇതുവരെ സ്ഥിരീകരിച്ചിട്ടില്ല"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: നിങ്ങളുടെ സംഘടനയുടെ നയം കാരണം Yolo mode പ്രവർത്തനരഹിതമാണ്."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "അറിയാത്ത മോഡൽ %{model} — ലഭ്യമായ പട്ടിക കാണാൻ /model ടൈപ്പ് ചെയ്യുക."  # {Locked="%{model}","/model"}

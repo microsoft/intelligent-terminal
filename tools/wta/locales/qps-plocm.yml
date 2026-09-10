@@ -59,6 +59,7 @@ chat.turn_canceled: "[!! (cancel_ed) !!]"
 chat.turn_executed: "[!! → execu_ted: %{title} !!]"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "[!! Ru_n !!]"
+chat.tool_kind.insert: "[!! Ins_ert !!]"
 chat.tool_kind.read: "[!! Re_ad !!]"
 chat.tool_kind.search: "[!! Sea_rch !!]"
 chat.tool_kind.edit: "[!! Ed_it !!]"
@@ -131,8 +132,25 @@ agents.status.idle: "[!! Idl_e !!]"
 layout.welcome_hint: "[!!   (C_trl+Shift+. to show/hide agent pane • Ctrl+Shift+/ to show/hide agent session) !!]"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
-connection.starting: "[!! Sta_rting agent... !!]"
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "\u202e[!! Pre_paring agent connection... !!]\u202c"
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "\u202e[!! Res_tarting agent... !!]\u202c"
 connection.reconnecting: "[!! Rec_onnecting... !!]"
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "\u202e[!! Conn_ecting to local coordinator... !!]\u202c"
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "\u202e[!! Ini_tializing agent connection... !!]\u202c"
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "\u202e[!! Auth_enticating with agent... !!]\u202c"
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "\u202e[!! Rea_ding session list... !!]\u202c"
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "\u202e[!! Cre_ating agent session... !!]\u202c"
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "\u202e[!! Set_ting session model: \u202c%{model}\u202e... !!]\u202c"  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} \u202e(res_uming \u202c%{session_id}\u202e)\u202c"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "[!! Conn_ecting to agent… !!]"
 connection.lost: "[!! Conn_ection to the agent was lost. Type /restart to reconnect. !!]"  # {Locked="/restart"}
 
@@ -245,5 +263,6 @@ config_picker.title: "[!! Ses_sion configuration (↑ ↓ • Enter • Esc) !!]
 system.no_config_options: "[!! The_ connected agent did not advertise any configurable session options. !!]"
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "[!! Fai_led to update %{option}: %{error} !!]"
+system.yolo_disable_pending: "[!! the_ provider has not acknowledged the required nonprivileged session state !!]"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: [!! Yolo mode is dis_abled by your org_anization's policy. !!]"  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "[!! Unk_nown model %{model} — type /model to see the available list. !!]"  # {Locked="%{model}","/model"}

@@ -28,13 +28,17 @@ namespace winrt::TerminalApp::implementation
         ControlInteractivity content{ settings, unfocusedAppearance, connection };
         content.Closed({ get_weak(), &ContentManager::_closedHandler });
 
-        _content.emplace(content.Id(), content);
+        {
+            std::lock_guard lock{ _mutex };
+            _content.emplace(content.Id(), content);
+        }
 
         return content;
     }
 
     ControlInteractivity ContentManager::TryLookupCore(uint64_t id)
     {
+        std::lock_guard lock{ _mutex };
         const auto it = _content.find(id);
         return it != _content.end() ? it->second : ControlInteractivity{ nullptr };
     }
@@ -54,6 +58,7 @@ namespace winrt::TerminalApp::implementation
         if (const auto& content{ sender.try_as<winrt::Microsoft::Terminal::Control::ControlInteractivity>() })
         {
             const auto& contentId{ content.Id() };
+            std::lock_guard lock{ _mutex };
             _content.erase(contentId);
         }
     }
