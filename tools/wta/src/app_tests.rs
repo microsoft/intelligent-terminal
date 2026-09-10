@@ -13655,6 +13655,36 @@ mod input_undo_tests {
     }
 
     #[test]
+    fn image_insertion_and_selection_replacement_roundtrip() {
+        for selected in [false, true] {
+            let image = crate::clipboard_image::PastedImage {
+                data_base64: "AA==".into(),
+                mime_type: "image/png".into(),
+                label: "screenshot".into(),
+            };
+            let mut app = test_app();
+            app.current_tab_mut().insert_input_str("original draft");
+            if selected {
+                key(&mut app, KeyCode::Char('a'), KeyModifiers::CONTROL);
+            }
+            app.current_tab_mut().insert_image_attachment(image.clone());
+            let inserted = app.current_tab().input.clone();
+            undo(&mut app);
+            assert_eq!(app.current_tab().input, "original draft");
+            assert_eq!(app.current_tab().cursor_pos, "original draft".len());
+            assert_eq!(app.current_tab().input_all_selected, selected);
+            assert!(app.current_tab().attachments.is_empty());
+            redo(&mut app);
+            assert_eq!(app.current_tab().input, inserted);
+            assert_eq!(
+                app.current_tab().attachments.images().collect::<Vec<_>>(),
+                vec![&image]
+            );
+            assert_eq!(app.current_tab().attachments.token_ranges().count(), 1);
+        }
+    }
+
+    #[test]
     fn new_edit_discards_redo_but_noop_deletion_does_not() {
         let mut app = test_app();
         type_text(&mut app, "old");
@@ -13935,6 +13965,31 @@ mod input_undo_tests {
             request_id: "stale".into(),
             session_id: "stale".into(),
         });
+        type_text(&mut app, " second");
+        undo(&mut app);
+        assert!(app.current_tab().input.is_empty());
+    }
+
+    #[test]
+    fn background_owner_changes_do_not_split_active_typing() {
+        let mut app = test_app();
+        begin_user_input_test(&mut app);
+        type_text(&mut app, "background");
+        app.switch_tab_session("active".into());
+        type_text(&mut app, "first");
+        let (responder, _response) = tokio::sync::oneshot::channel();
+        app.handle_event(AppEvent::UserInputRequest {
+            request_id: "background question".into(),
+            session_id: DEFAULT_TAB_ID.into(),
+            request: crate::agent_tools::user_input::UserInputRequest {
+                question: "Continue?".into(),
+                choices: vec!["Yes".into()],
+                allow_freeform: false,
+            },
+            responder,
+        });
+        assert_eq!(app.tab_sessions[DEFAULT_TAB_ID].user_input.len(), 1);
+        assert!(app.current_tab().user_input.is_empty());
         type_text(&mut app, " second");
         undo(&mut app);
         assert!(app.current_tab().input.is_empty());

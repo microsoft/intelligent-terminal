@@ -447,31 +447,28 @@ impl App {
 
     pub(super) fn handle_event(&mut self, event: AppEvent) {
         // Async cards can take and release draft ownership without a key/focus event.
-        // Keys handle their own boundaries; animation ticks cannot change the input owner.
-        let owners: Vec<_> = if !needs_input_owner_tracking(&event) {
-            Vec::new()
-        } else {
-            let focused = self.chat_input_context_has_focus();
+        // Typing targets only the active tab; switching/renaming closes the affected groups.
+        let owned_input = if needs_input_owner_tracking(&event) {
             self.tab_sessions
-                .iter()
-                .filter(|(_, tab)| tab.input_undo_group_is_open())
-                .map(|(id, tab)| {
-                    (
-                        id.clone(),
-                        focused && tab.current_view == View::Chat && tab.input_has_nav_focus(),
-                    )
+                .get(self.active_tab_key())
+                .filter(|tab| tab.input_undo_group_is_open())
+                .map(|tab| {
+                    self.chat_input_context_has_focus()
+                        && tab.current_view == View::Chat
+                        && tab.input_has_nav_focus()
                 })
-                .collect()
+        } else {
+            None
         };
         self.handle_event_inner(event);
-        let focused = self.chat_input_context_has_focus();
-        for (id, owned_input) in owners {
-            if let Some(tab) = self.tab_sessions.get_mut(&id) {
-                let owns_input =
-                    focused && tab.current_view == View::Chat && tab.input_has_nav_focus();
-                if owned_input != owns_input {
-                    tab.break_input_undo_group();
-                }
+        if let Some(owned_input) = owned_input {
+            let owns_input = self.tab_sessions.get(self.active_tab_key()).map(|tab| {
+                self.chat_input_context_has_focus()
+                    && tab.current_view == View::Chat
+                    && tab.input_has_nav_focus()
+            });
+            if owns_input.is_some_and(|owns_input| owned_input != owns_input) {
+                self.current_tab_mut().break_input_undo_group();
             }
         }
     }
