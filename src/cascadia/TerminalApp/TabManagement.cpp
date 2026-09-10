@@ -598,15 +598,8 @@ namespace winrt::TerminalApp::implementation
     // already emitted it with its split geometry, and
     // `AgentPaneContent::GetNewTerminalArgs` already replaced its live helper
     // command line with the stable resume form.
-    //
-    // Returns what it saw on the way through, which is what
-    // `AgentLayoutSaved` reports: this pass is already the one place that
-    // classifies every persisted action as agent pane, stashed agent pane,
-    // or agent-bearing shell pane.
-    TerminalPage::_AgentLayoutCounts TerminalPage::_StampAgentResumeCommandlines(std::vector<ActionAndArgs>& actions)
+    void TerminalPage::_StampAgentResumeCommandlines(std::vector<ActionAndArgs>& actions)
     {
-        _AgentLayoutCounts counts;
-
         const auto getTerminalArgs = [](const ActionAndArgs& action) -> NewTerminalArgs {
             INewContentArgs contentArgs{ nullptr };
             if (const auto args = action.Args().try_as<NewTabArgs>())
@@ -635,14 +628,6 @@ namespace winrt::TerminalApp::implementation
             // conversation a second time as a plain shell.
             if (::Microsoft::Terminal::AgentPaneRestore::IsPaneType(terminalArgs.Type()))
             {
-                if (::Microsoft::Terminal::AgentPaneRestore::StashedPaneType == std::wstring_view{ terminalArgs.Type() })
-                {
-                    counts.stashedAgentPanes++;
-                }
-                else
-                {
-                    counts.agentPanes++;
-                }
                 continue;
             }
 
@@ -670,15 +655,8 @@ namespace winrt::TerminalApp::implementation
             if (!resume.empty())
             {
                 terminalArgs.Commandline(resume);
-                counts.resumableShellPanes++;
-            }
-            else
-            {
-                counts.droppedBindings++;
             }
         }
-
-        return counts;
     }
 
     void TerminalPage::_SaveWorkspaceIfNeeded()

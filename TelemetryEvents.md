@@ -28,8 +28,6 @@ Terminal-specific events:
 |---|---|---|
 | `AgentPaneOpened` | An agent pane is created, restored, or opened into a requested view. Closing or stashing the pane does not emit this event. | `TriggerSource`, `Branding` |
 | `AgentPaneRestoreCompleted` | A saved window layout describes an agent pane and Terminal finishes rebuilding it. | `Result`, `HasSessionId`, `HasAgentIdentity`, `IsCustomAgent`, `Stashed`, `View` (`chat` or `sessions`), `HasSavedPosition` |
-| `AgentPanePrewarmAfterStartup` | Pre-warm deferred for the duration of a startup replay is drained. Not emitted when nothing was deferred. | `DeferredTabCount`, `PrewarmedTabCount`, `SkippedTabCount` |
-| `AgentLayoutSaved` | A window layout carrying agent state is persisted. Saves with no agent panes and no resumable shell panes do not emit this event. | `TabCount`, `AgentPaneCount`, `StashedAgentPaneCount`, `ResumableShellPaneCount`, `DroppedBindingCount` |
 | `AgentSessionBindingChanged` | A shell pane gains or loses the agent session that makes it resumable. | `Source` (`HookProtocol` or `VtInBand`), `Agent`, `Bound` |
 | `AgentShellPaneResumed` | A restored shell pane relaunches its agent CLI to resume a conversation. | `Agent`, `BufferRestoreSuppressed` |
 | `CommandPaletteDispatchedAgentPrompt` | A foreground or background agent prompt is submitted through the Command Palette. | `IsBackgroundMode` |
@@ -44,11 +42,9 @@ Current `AgentPaneOpened.TriggerSource` values are `Action`,
 saved agent is no longer permitted by the `AllowedAgents` policy, which the
 restore re-applies), or `Failed`.
 
-`AgentLayoutSaved.DroppedBindingCount` counts panes that held an agent
-session no resume command line could be spelled for; those panes come back
-as the plain shell they will be. `AgentShellPaneResumed.BufferRestoreSuppressed`
-is always true — a resumed pane's saved scrollback is deliberately not
-seeded, because the CLI replays its own transcript.
+`AgentShellPaneResumed.BufferRestoreSuppressed` is always true — a resumed
+pane's saved scrollback is deliberately not seeded, because the CLI replays
+its own transcript.
 
 No session identifier, command line, working directory, or session title is
 included in any of these events. `Agent` is reduced to the same controlled

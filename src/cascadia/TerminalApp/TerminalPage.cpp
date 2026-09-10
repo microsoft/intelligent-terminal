@@ -5545,43 +5545,18 @@ namespace winrt::TerminalApp::implementation
         }
 
         auto pending = std::exchange(_tabsAwaitingPrewarm, {});
-        const auto deferredCount = gsl::narrow_cast<uint32_t>(pending.size());
-        uint32_t prewarmedCount = 0;
-        uint32_t skippedCount = 0;
         for (const auto& weakTab : pending)
         {
             const auto tabImpl = weakTab.get();
             if (!tabImpl || !_GetTabIndex(*tabImpl) || tabImpl->FindAgentPane() || tabImpl->AgentPrewarmSuppressed())
             {
-                skippedCount++;
                 continue;
             }
 
             _agentPaneLog(
                 std::string{ "_PrewarmAgentPanesAfterStartup: pre-warming stashed agent pane on tab " } +
                 winrt::to_string(tabImpl->StableId()));
-            if (_AutoCreateHiddenAgentPaneShared(tabImpl, /*intoSessionsView*/ false, /*autoStash*/ true))
-            {
-                prewarmedCount++;
-            }
-        }
-
-        // Deferring pre-warm is what keeps a blank helper from racing a
-        // persisted agent pane into the same tab. The counts are how a tab
-        // that ended up with two agent panes — or with none — becomes
-        // visible: `Deferred` must always equal `Prewarmed + Skipped +
-        // failures`.
-        if (deferredCount != 0)
-        {
-            TraceLoggingWrite(
-                g_hTerminalAppProvider,
-                "AgentPanePrewarmAfterStartup",
-                TraceLoggingDescription("Event emitted when pre-warm deferred by a startup replay is drained"),
-                TraceLoggingValue(deferredCount, "DeferredTabCount"),
-                TraceLoggingValue(prewarmedCount, "PrewarmedTabCount"),
-                TraceLoggingValue(skippedCount, "SkippedTabCount"),
-                TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
-                TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+            _AutoCreateHiddenAgentPaneShared(tabImpl, /*intoSessionsView*/ false, /*autoStash*/ true);
         }
     }
 
@@ -9014,9 +8989,7 @@ namespace winrt::TerminalApp::implementation
         {
             return nullptr;
         }
-
         std::vector<ActionAndArgs> actions;
-        _AgentLayoutCounts agentCounts;
 
         for (auto tab : _tabs)
         {
@@ -9025,7 +8998,7 @@ namespace winrt::TerminalApp::implementation
             // identity out of the agent pane.
             _RefreshAgentRestoreIdentity(t);
             auto tabActions = t->BuildStartupActions(BuildStartupKind::Persist);
-            agentCounts.Add(_StampAgentResumeCommandlines(tabActions));
+            _StampAgentResumeCommandlines(tabActions);
             actions.insert(actions.end(), std::make_move_iterator(tabActions.begin()), std::make_move_iterator(tabActions.end()));
         }
 
@@ -9033,25 +9006,6 @@ namespace winrt::TerminalApp::implementation
         if (actions.empty())
         {
             return nullptr;
-        }
-
-        // Reported only when there is agent state to lose. Every save path
-        // funnels through here, including the five-minute crash-protection
-        // timer, so an unconditional event would be mostly windows that have
-        // never opened an agent pane.
-        if (agentCounts.Any())
-        {
-            TraceLoggingWrite(
-                g_hTerminalAppProvider,
-                "AgentLayoutSaved",
-                TraceLoggingDescription("Event emitted when a persisted window layout carries agent state"),
-                TraceLoggingValue(tabCount, "TabCount"),
-                TraceLoggingValue(agentCounts.agentPanes, "AgentPaneCount"),
-                TraceLoggingValue(agentCounts.stashedAgentPanes, "StashedAgentPaneCount"),
-                TraceLoggingValue(agentCounts.resumableShellPanes, "ResumableShellPaneCount"),
-                TraceLoggingValue(agentCounts.droppedBindings, "DroppedBindingCount"),
-                TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
-                TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
         }
 
         // if the focused tab was not the last tab, restore that
