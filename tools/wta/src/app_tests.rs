@@ -12192,14 +12192,41 @@ fn render_setup_reconnecting_hides_install_content() {
 
     let text = render_to_text(&mut app, 80, 30);
     assert!(
-        text.contains("Connecting to agent...") && text.contains("connecting"),
+        text.contains("Reconnecting...")
+            && text.contains("Connecting to agent...")
+            && text.contains("connecting"),
         "reconnecting and input connection status must both remain visible; rendered:\n{text}"
     );
     assert!(
         !text.contains("STALE_AGENT_NOT_FOUND_XYZ")
+            && !text.contains("Starting GitHub Copilot")
             && !text.contains("Install GitHub Copilot")
             && !text.contains("Try again"),
         "reconnecting must hide stale install content; rendered:\n{text}"
+    );
+}
+
+#[test]
+fn render_setup_reconnecting_copilot_keeps_specific_title() {
+    let mut app = test_app();
+    app.mode = AppMode::Setup;
+    app.state = ConnectionState::Connecting("Reconnecting...".into());
+    app.setup = Some(SetupState {
+        reason: SetupReason::AgentMissing,
+        selected_index: 0,
+        preflight: PreflightResult::passed_for_custom_agent("copilot"),
+        phase: SetupPhase::Reconnecting,
+        options: Vec::new(),
+        title: "STALE_AGENT_NOT_FOUND_XYZ".into(),
+        subtitle: "sub".into(),
+    });
+
+    let text = render_to_text(&mut app, 80, 30);
+    assert!(
+        text.contains("Starting GitHub Copilot")
+            && text.contains("Connecting to agent...")
+            && !text.contains("STALE_AGENT_NOT_FOUND_XYZ"),
+        "Copilot reconnects must retain the product-specific title; rendered:\n{text}"
     );
 }
 
