@@ -77,6 +77,13 @@ agents, WSL availability, hook or policy provisioning, and interactive-desktop i
 Unavailable external prerequisites may be skipped; product failures must remain failures.
 Manual release-sign-off items are not credited by unrelated unit or protocol checks.
 
+For **PR validation** of `Feature.AgentInputUndoRedo`, build/deploy the intended source revision
+and set `ITE2E_EXPECTED_WTA_SHA256` from that build's receipt before running the suite. Verify
+source-to-package freshness as well; copying the hash from an arbitrary installed binary is not
+proof of its source revision. The suite records the actual package and hash in `package.json`.
+An intentional Store/production baseline run may omit the expected hash, but its results must
+not be presented as validation of unshipped PR code.
+
 Token-consuming simulated-real-user tests are deliberately excluded from this publishable suite
 and from CI. They live only in the feature's dev-only local validation harness and run manually
 against an exact deployed publish package with explicitly available provider quota.

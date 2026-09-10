@@ -38,6 +38,8 @@ Describe 'Feature: agent input undo and redo' -Tag 'Feature', 'AgentInputUndoRed
         $package = Get-ItTestPackage
         $script:targetApp = Resolve-ItApp -Package $package
         $binaryHash = (Get-FileHash -LiteralPath $script:targetApp.WtaPath -Algorithm SHA256).Hash
+        # PR validation supplies the intended source-built hash. Intentional production/baseline
+        # runs may omit it; their results describe the recorded package, not the current checkout.
         if ($env:ITE2E_EXPECTED_WTA_SHA256) {
             $binaryHash | Should -Be $env:ITE2E_EXPECTED_WTA_SHA256 -Because 'the deployed WTA must match the explicitly selected revision'
         }
