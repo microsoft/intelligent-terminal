@@ -27,7 +27,7 @@ Terminal-specific events:
 | Event | Trigger | Fields |
 |---|---|---|
 | `AgentPaneOpened` | An agent pane is created, restored, or opened into a requested view. Closing or stashing the pane does not emit this event. | `TriggerSource`, `Branding` |
-| `DurableSessionRestore` | Terminal restores an agent pane or agent CLI shell pane from a saved window layout. | `Route` (`AgentPane` or `ShellPane`), `Success` |
+| `DurableSessionRestore` | Terminal restores a saved agent pane from a saved window layout. | `Success` |
 | `CommandPaletteDispatchedAgentPrompt` | A foreground or background agent prompt is submitted through the Command Palette. | `IsBackgroundMode` |
 | `DelegateInvoked` | Terminal successfully launches `wta delegate`. | `TriggerSource` (`CommandPalette` or `Action`) |
 | `ErrorDetected` | Terminal receives the first auto-detected error state for a pane. | `Branding` |

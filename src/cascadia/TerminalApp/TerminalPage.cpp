@@ -1610,8 +1610,7 @@ namespace winrt::TerminalApp::implementation
         TraceLoggingWrite(
             g_hTerminalAppProvider,
             "DurableSessionRestore",
-            TraceLoggingDescription("Event emitted when Terminal restores an agent-bearing pane from a saved layout"),
-            TraceLoggingValue("AgentPane", "Route"),
+            TraceLoggingDescription("Event emitted when Terminal restores an agent pane from a saved layout"),
             TraceLoggingBoolean(restored, "Success"),
             TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
             TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
@@ -11196,14 +11195,6 @@ namespace winrt::TerminalApp::implementation
                 _pendingRestoredSessionBindings.insert_or_assign(
                     sessionId,
                     _PendingRestoredSessionBinding{ winrt::hstring{ target.sessionId }, winrt::hstring{ target.agent }, newTerminalArgs.StartingDirectory() });
-                TraceLoggingWrite(
-                    g_hTerminalAppProvider,
-                    "DurableSessionRestore",
-                    TraceLoggingDescription("Event emitted when Terminal restores an agent-bearing pane from a saved layout"),
-                    TraceLoggingValue("ShellPane", "Route"),
-                    TraceLoggingBoolean(true, "Success"),
-                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
-                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
             }
         }
 
