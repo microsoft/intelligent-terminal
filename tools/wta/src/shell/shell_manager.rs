@@ -611,6 +611,24 @@ impl ShellManager {
         self.wt()?.request("read_pane_output", params).await
     }
 
+    /// Resolve an explicit source pane, or the effective active pane when no
+    /// source is provided, and capture bounded context in one wtcli request.
+    pub async fn wt_get_pane_context(
+        &self,
+        pane_id: Option<&str>,
+        max_lines: u32,
+        max_chars: usize,
+    ) -> anyhow::Result<serde_json::Value> {
+        let mut params = serde_json::json!({
+            "max_lines": max_lines,
+            "max_chars": max_chars,
+        });
+        if let Some(pane_id) = pane_id {
+            params["session_id"] = pane_id.into();
+        }
+        self.wt()?.request("get_pane_context", params).await
+    }
+
     /// Switch focus to a pane (switching tab if needed).
     pub async fn wt_focus_pane(&self, pane_id: &str) -> anyhow::Result<serde_json::Value> {
         self.wt()?

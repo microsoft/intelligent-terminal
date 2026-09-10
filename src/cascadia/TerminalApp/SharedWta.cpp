@@ -6,6 +6,7 @@
 
 #include <mutex>
 #include <string>
+#include <utility>
 
 #include "../WinRTUtils/inc/WtExeUtils.h"
 #include "../inc/WtaProcess.h"
@@ -467,7 +468,7 @@ namespace winrt::TerminalApp::implementation::details
 
     bool UnexpectedExitRecoveryPolicy::ShouldRespawn(
         const Generation generation,
-        const size_t refCount,
+        const size_t activeRefCount,
         const bool spawnSuppressed,
         const bool hasCachedArgs) noexcept
     {
@@ -480,16 +481,94 @@ namespace winrt::TerminalApp::implementation::details
         // The replacement is intentionally not armed, so another unexpected
         // exit cannot create an unbounded respawn loop.
         Retire();
-        return refCount > 0 && !spawnSuppressed && hasCachedArgs;
+        return activeRefCount > 0 && !spawnSuppressed && hasCachedArgs;
     }
 }
 
 namespace winrt::TerminalApp::implementation
 {
+    SharedWtaLease::SharedWtaLease(SharedWta& owner) noexcept :
+        _owner{ &owner },
+        _active{ true }
+    {
+    }
+
+    SharedWtaLease::SharedWtaLease(SharedWtaLease&& other) noexcept :
+        _owner{ std::exchange(other._owner, nullptr) },
+        _active{ std::exchange(other._active, false) }
+    {
+    }
+
+    SharedWtaLease& SharedWtaLease::operator=(SharedWtaLease&& other) noexcept
+    {
+        if (this != &other)
+        {
+            Reset();
+            _owner = std::exchange(other._owner, nullptr);
+            _active = std::exchange(other._active, false);
+        }
+        return *this;
+    }
+
+    SharedWtaLease::~SharedWtaLease() noexcept
+    {
+        Reset();
+    }
+
+    SharedWtaLease::operator bool() const noexcept
+    {
+        return _owner != nullptr;
+    }
+
+    void SharedWtaLease::Reset() noexcept
+    {
+        if (const auto owner = std::exchange(_owner, nullptr))
+        {
+            owner->_ReleaseLease(std::exchange(_active, false));
+        }
+    }
+
+    SharedWtaLease SharedWtaLease::_TakeForRetirement() noexcept
+    {
+        if (_owner && _active)
+        {
+            _owner->_RetireLease();
+            _active = false;
+        }
+        return std::move(*this);
+    }
+
+    void SharedWtaLease::Retire() noexcept
+    {
+        if (!_owner)
+        {
+            return;
+        }
+
+        // Mark cleanup-only before coroutine allocation or suspension. The
+        // coroutine owns this same reference, not a newly acquired one.
+        auto retiring = _TakeForRetirement();
+        try
+        {
+            _ReleaseAfterSessionClose(std::move(retiring));
+        }
+        CATCH_LOG()
+    }
+
+    winrt::fire_and_forget SharedWtaLease::_ReleaseAfterSessionClose(SharedWtaLease lease)
+    {
+        try
+        {
+            co_await winrt::resume_after(WtaSessionCloseGracePeriod);
+        }
+        CATCH_LOG()
+        lease.Reset();
+    }
+
     SharedWta& SharedWta::Instance()
     {
         // Initialization remains thread-safe, but this process singleton must
-        // outlive delayed ReleasePaneAfterSessionClose coroutines. At process
+        // outlive delayed lease-retirement coroutines. At process
         // exit Windows closes the Job handle, preserving KILL_ON_JOB_CLOSE
         // cleanup for the master and its descendants.
         static auto* const s_instance = new SharedWta;
@@ -588,55 +667,61 @@ namespace winrt::TerminalApp::implementation
         return _masterPipeName;
     }
 
-    bool SharedWta::AcquirePane(const std::wstring_view wtaPath,
-                                std::span<const std::wstring> extraArgs,
-                                std::span<const std::pair<std::wstring, std::wstring>> environment)
+    SharedWtaLease SharedWta::AcquirePane(const std::wstring_view wtaPath,
+                                          std::span<const std::wstring> extraArgs,
+                                          std::span<const std::pair<std::wstring, std::wstring>> environment)
     {
         if (wtaPath.empty())
         {
-            return false;
+            return {};
         }
 
         std::lock_guard lock{ _mtx };
         if (_spawnSuppressed)
         {
-            return false;
+            return {};
         }
 
-        // A new pane request after an unexpected master exit starts a fresh
-        // master. Existing helpers do not reconnect; they exit when the old
-        // pipe closes, so this cannot restore or cross-bind their sessions.
+        // A new pane request can start a fresh master after the bounded
+        // automatic recovery attempt is exhausted.
         if (!_process.is_valid())
         {
             if (!_SpawnLocked(wtaPath, extraArgs, environment))
             {
-                return false;
+                return {};
             }
         }
-        ++_refCount;
-        return true;
+        return _AcquireLeaseLocked();
     }
 
-    void SharedWta::ReleasePane()
+    SharedWtaLease SharedWta::_AcquireLeaseLocked() noexcept
     {
-        std::lock_guard lock{ _mtx };
-        if (_refCount == 0)
+        ++_refCount;
+        ++_activeRefCount;
+        return SharedWtaLease{ *this };
+    }
+
+    void SharedWta::_ReleaseLease(const bool active) noexcept
+    {
+        try
         {
-            return;
-        }
-        if (--_refCount == 0)
-        {
-            if (_process.is_valid())
+            std::lock_guard lock{ _mtx };
+            if (active)
+            {
+                --_activeRefCount;
+            }
+            if (--_refCount == 0 && _process.is_valid())
             {
                 _CleanupLocked();
             }
         }
+        CATCH_LOG()
     }
 
-    winrt::fire_and_forget SharedWta::ReleasePaneAfterSessionClose()
+    void SharedWta::_RetireLease() noexcept
     {
-        co_await winrt::resume_after(WtaSessionCloseGracePeriod);
-        Instance().ReleasePane();
+        std::lock_guard lock{ _mtx };
+        --_activeRefCount;
     }
 
     bool SharedWta::Restart()
@@ -1001,7 +1086,8 @@ namespace winrt::TerminalApp::implementation
         // Runs on a Win32 thread-pool thread. wta has exited (crash,
         // OOM, manual kill). Retained helpers reconnect to the stable pipe,
         // so give the current explicitly-spawned generation one automatic
-        // replacement while pane references remain.
+        // replacement while active pane leases remain. Cleanup-only leases
+        // retain the old master for session close but must not respawn it.
         std::lock_guard lock{ _mtx };
 
         // Claiming also retires the current generation. A callback queued
@@ -1040,7 +1126,7 @@ namespace winrt::TerminalApp::implementation
 
         if (_unexpectedExitRecovery.ShouldRespawn(
                 generation,
-                _refCount,
+                _activeRefCount,
                 _spawnSuppressed,
                 !_cachedWtaPath.empty()))
         {

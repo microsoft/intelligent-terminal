@@ -212,8 +212,12 @@ function Wait-TerminalActionProposal {
         `propose-terminal-actions`; the session-bound MCP path either renders the
         recommendation card directly or first presents the provider's normal permission
         UI. With -ReturnOnPermission, the latter returns Mode=Permission without selecting
-        an option; the caller must simulate an explicit user choice.
-        Use -PaneSessionId to pin the rendered MCP card when several tabs have helpers.
+        an option; the caller must simulate an explicit user choice. This also recognizes
+        the on-demand command resolver's permission before a proposal exists, but not
+        unrelated agent-owned tool permissions.
+        Pins one live pane and reads only its helper's current-session diagnostics.
+        Rendered recommendation cards work with both legacy CLI and MCP transports.
+        Permission detection requires the permission_ui diagnostics from the tested WTA build.
     #>
     [CmdletBinding()] param(
         [Parameter(Mandatory, ValueFromPipeline)]$App,
@@ -222,23 +226,46 @@ function Wait-TerminalActionProposal {
         [string]$PaneSessionId
     )
     process {
+        $target = Wait-Until -TimeoutSec $TimeoutSec -IntervalSec 0.5 -Because 'the target agent pane' -Condition {
+            Get-AgentPaneSession -App $App -PaneSessionId $PaneSessionId
+        }
+        $pinnedPaneId = $target.PaneSessionId
         Wait-Until -TimeoutSec $TimeoutSec -IntervalSec 0.5 -Because 'a pending terminal-action proposal' -Condition {
-            $log = Get-ItLogText -App $App -Name 'wta-main_helper-*.log' -SinceStart
-            if ($log -match 'proposal_permission:.*armed=true') {
-                $candidate = Get-PendingTerminalActionProposal
-                if (-not $candidate) { return $null }
-                Start-Sleep -Milliseconds 500
-                return Get-CimInstance Win32_Process -Filter "ProcessId = $($candidate.ProcessId)" -ErrorAction SilentlyContinue |
-                    Where-Object { $_.CommandLine -match '(?i)(?:^|\s)propose-terminal-actions(?:\s|$)' }
-            }
-            $paneText = Get-AgentPaneText -App $App -MaxLines 60 -PaneSessionId $PaneSessionId
+            $session = Get-AgentPaneSession -App $App -PaneSessionId $pinnedPaneId
+            if (-not $session) { return $null }
+            $paneText = Get-AgentPaneText -App $App -MaxLines 60 -PaneSessionId $pinnedPaneId
+            # Both transports render the same confirmation card. A globally newest
+            # legacy CLI process is not proof of a proposal in this target pane.
             if ($paneText -match (Get-RecommendationCardRegex)) {
                 return [pscustomobject]@{ Mode = 'Mcp'; Ready = $true }
             }
-            if ($ReturnOnPermission -and
-                $log -match 'session_mcp_permission:.*validating session MCP permission before user selection' -and
-                $paneText -match '\[Y(?:\]|/)') {
-                return [pscustomobject]@{ Mode = 'Permission'; Ready = $false }
+            if ($ReturnOnPermission -and $paneText -match '\[Y(?:\]|/)') {
+                # Replay the pinned helper's complete state, including requests
+                # already pending at entry. Snapshots replace, rather than accumulate,
+                # queue-front identity and explicitly clear it on every lifecycle exit.
+                $log = Get-ItLogText -App $App -Name "wta-main_helper-$($session.HelperProcessId).log"
+                $requests = @{}
+                $current = $null
+                foreach ($line in ($log -split '\r?\n')) {
+                    if ($line -notmatch 'permission_ui:.*\b(request|snapshot)=(\{.*\})\s*$') { continue }
+                    $kind = $Matches[1]
+                    $record = $Matches[2] | ConvertFrom-JsonSafe
+                    if (-not $record) { continue }
+                    if ($kind -eq 'snapshot') { $current = $record }
+                    elseif ($record.session_id -eq $session.AcpSessionId) {
+                        $requests[[string]$record.tool_call_id] = $record.kind
+                    }
+                }
+                if ($current -and $current.session_id -eq $session.AcpSessionId -and
+                    $current.tool_call_id -and
+                    $requests[[string]$current.tool_call_id] -in @('command_lookup', 'session_mcp')) {
+                    return [pscustomobject]@{
+                        Mode = 'Permission'; Ready = $false
+                        PaneSessionId = $pinnedPaneId
+                        AcpSessionId = $session.AcpSessionId
+                        ToolCallId = $current.tool_call_id
+                    }
+                }
             }
             $null
         }

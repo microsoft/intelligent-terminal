@@ -23,4 +23,4 @@ pub use model::AcpModelInfo;
 pub use permission::PermOption;
 pub use plan::{PlanEntry, PlanEntryStatus};
 pub use preflight::{CheckStatus, PreflightResult};
-pub use yolo::{SharedYoloState, YoloState};
+pub use yolo::{AutomaticYoloDirective, SharedYoloState, YoloControlOwner, YoloState};

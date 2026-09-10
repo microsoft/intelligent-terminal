@@ -37,6 +37,12 @@ namespace ControlUnitTests
         TEST_METHOD(TestClearScreen);
         TEST_METHOD(TestClearAll);
         TEST_METHOD(TestReadEntireBuffer);
+        TEST_METHOD(TestReadBufferTail);
+        TEST_METHOD(TestReadLastPromptBoundedNoOutput);
+        TEST_METHOD(TestReadLastPromptBoundedSkipsUnfinished);
+        TEST_METHOD(TestReadLastPromptBoundedWrapAndLimits);
+        TEST_METHOD(TestReadLastPromptBoundedUnicode);
+        TEST_METHOD(TestReadLastPromptBoundedInvalidLimits);
 
         TEST_METHOD(TestSelectCommandSimple);
         TEST_METHOD(TestSelectOutputSimple);
@@ -129,6 +135,14 @@ namespace ControlUnitTests
 #endif
         VERIFY_IS_TRUE(core->_initializedTerminal);
         VERIFY_ARE_EQUAL(30, core->_terminal->GetViewport().Width());
+        const auto state = core.as<Control::ICoreState>();
+        VERIFY_ARE_EQUAL(30, state.ViewWidth());
+        VERIFY_ARE_EQUAL(20, state.ViewHeight());
+
+        core->SizeChanged(450, 380);
+        VERIFY_ARE_EQUAL(50, core->_terminal->GetViewport().Width());
+        VERIFY_ARE_EQUAL(50, state.ViewWidth());
+        VERIFY_ARE_EQUAL(20, state.ViewHeight());
     }
 
     void ControlCoreTests::TestAdjustAcrylic()
@@ -369,9 +383,44 @@ namespace ControlUnitTests
                          core->ReadEntireBuffer());
     }
 
-    static void _writePrompt(const winrt::com_ptr<MockConnection>& conn, const std::wstring_view& path)
+    void ControlCoreTests::TestReadBufferTail()
     {
-        conn->WriteInput(winrt_wstring_to_array_view(L"\x1b]133;D\x7"));
+        auto [settings, conn] = _createSettingsAndConnection();
+        auto core = createCore(*settings, *conn);
+        VERIFY_IS_NOT_NULL(core);
+        _standardInit(core);
+
+        for (auto i = 0; i < 200; ++i)
+        {
+            conn->WriteInput(winrt_wstring_to_array_view(fmt::format(L"line-{:03}\r\n", i)));
+        }
+
+        VERIFY_ARE_EQUAL(L"line-199\r\n", core->ReadBufferTail(1, 100));
+        VERIFY_ARE_EQUAL(
+            L"line-197\r\nline-198\r\nline-199\r\n",
+            core->ReadBufferTail(3, 100));
+        VERIFY_ARE_EQUAL(L"-199\r\n", core->ReadBufferTail(10, 6));
+
+        VERIFY_THROWS_SPECIFIC(
+            core->ReadBufferTail(0, 100),
+            wil::ResultException,
+            [](const wil::ResultException& e) { return e.GetErrorCode() == E_INVALIDARG; });
+        VERIFY_THROWS_SPECIFIC(
+            core->ReadBufferTail(1, 0),
+            wil::ResultException,
+            [](const wil::ResultException& e) { return e.GetErrorCode() == E_INVALIDARG; });
+
+        auto [unicodeSettings, unicodeConn] = _createSettingsAndConnection();
+        auto unicodeCore = createCore(*unicodeSettings, *unicodeConn);
+        VERIFY_IS_NOT_NULL(unicodeCore);
+        _standardInit(unicodeCore);
+        unicodeConn->WriteInput(winrt_wstring_to_array_view(L"A\U0001F366B\r\n"));
+        VERIFY_ARE_EQUAL(L"\U0001F366B\r\n", unicodeCore->ReadBufferTail(1, 4));
+    }
+
+    static void _writePrompt(const winrt::com_ptr<MockConnection>& conn, const std::wstring_view& path, const std::optional<int32_t> exitCode = std::nullopt)
+    {
+        conn->WriteInput(winrt_wstring_to_array_view(exitCode ? fmt::format(L"\x1b]133;D;{}\x7", *exitCode) : L"\x1b]133;D\x7"));
         conn->WriteInput(winrt_wstring_to_array_view(L"\x1b]133;A\x7"));
         conn->WriteInput(winrt_wstring_to_array_view(L"\x1b]9;9;"));
         conn->WriteInput(winrt_wstring_to_array_view(path));
@@ -380,6 +429,129 @@ namespace ControlUnitTests
         conn->WriteInput(winrt_wstring_to_array_view(path));
         conn->WriteInput(winrt_wstring_to_array_view(L"> "));
         conn->WriteInput(winrt_wstring_to_array_view(L"\x1b]133;B\x7"));
+    }
+
+    void ControlCoreTests::TestReadLastPromptBoundedNoOutput()
+    {
+        auto [settings, conn] = _createSettingsAndConnection();
+        auto core = createCore(*settings, *conn);
+        _standardInit(core);
+
+        VERIFY_IS_TRUE(core->ReadLastPromptBounded(10, 100).empty());
+        _writePrompt(conn, L"");
+        conn->WriteInput(winrt_wstring_to_array_view(L"cd\x1b]133;C\x7"));
+        VERIFY_IS_TRUE(core->ReadLastPromptBounded(10, 100).empty());
+        conn->WriteInput(winrt_wstring_to_array_view(L"\x1b]133;D;0\x7"));
+
+        const auto marks = core->_terminal->GetMarkExtents();
+        VERIFY_ARE_EQUAL(size_t{ 1 }, marks.size());
+        VERIFY_IS_TRUE(marks.back().HasCommand());
+        VERIFY_IS_FALSE(marks.back().outputEnd.has_value());
+        VERIFY_IS_TRUE(marks.back().data.exitCode.has_value());
+        VERIFY_ARE_EQUAL(L"cd", core->ReadLastPromptBounded(10, 100));
+        VERIFY_ARE_EQUAL(L"c", core->ReadLastPromptBounded(1, 1));
+        VERIFY_ARE_EQUAL(L"cd", core->ReadLastPromptBounded(1, 2));
+    }
+
+    void ControlCoreTests::TestReadLastPromptBoundedSkipsUnfinished()
+    {
+        auto [settings, conn] = _createSettingsAndConnection();
+        auto core = createCore(*settings, *conn);
+        _standardInit(core);
+
+        _writePrompt(conn, L"");
+        conn->WriteInput(winrt_wstring_to_array_view(L"cd\x1b]133;C\x7\x1b]133;D;0\x7\r\n"));
+        _writePrompt(conn, L"", 0);
+        conn->WriteInput(winrt_wstring_to_array_view(L"sleep\x1b]133;C\x7 streaming"));
+
+        const auto marks = core->_terminal->GetMarkExtents();
+        VERIFY_ARE_EQUAL(size_t{ 2 }, marks.size());
+        VERIFY_IS_TRUE(marks.back().HasCommand());
+        VERIFY_IS_TRUE(marks.back().HasOutput());
+        VERIFY_IS_FALSE(marks.back().data.exitCode.has_value());
+        VERIFY_IS_TRUE(marks.front().data.exitCode.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"cd" }, std::wstring{ core->ReadLastPromptBounded(10, 100) });
+
+        conn->WriteInput(winrt_wstring_to_array_view(L"\x1b]133;D;7\x7"));
+        VERIFY_ARE_EQUAL(L"sleep streaming", core->ReadLastPromptBounded(10, 100));
+    }
+
+    void ControlCoreTests::TestReadLastPromptBoundedWrapAndLimits()
+    {
+        auto [settings, conn] = _createSettingsAndConnection();
+        auto core = createCore(*settings, *conn);
+        _standardInit(core);
+
+        _writePrompt(conn, L"");
+        const std::wstring command(25, L'C');
+        conn->WriteInput(winrt_wstring_to_array_view(command));
+        conn->WriteInput(winrt_wstring_to_array_view(L"\x1b]133;C\x7\r\nout\r\nend\x1b]133;D;0\x7"));
+
+        const auto& buffer = core->_terminal->GetTextBuffer();
+        VERIFY_IS_TRUE(buffer.GetRowByOffset(0).WasWrapForced());
+        VERIFY_IS_FALSE(buffer.GetRowByOffset(1).WasWrapForced());
+        VERIFY_IS_FALSE(buffer.GetRowByOffset(2).WasWrapForced());
+
+        // The seven-column prompt leaves 23 command cells on row 0.
+        // Non-final hard-break rows retain their unused cells in this reader.
+        const auto firstLine = command + std::wstring(28, L' ');
+        const auto secondLine = L"out" + std::wstring(27, L' ');
+        VERIFY_ARE_EQUAL(hstring{ firstLine }, core->ReadLastPromptBounded(1, 1000));
+        VERIFY_ARE_EQUAL(hstring{ firstLine + L"\n" + secondLine }, core->ReadLastPromptBounded(2, 1000));
+        VERIFY_ARE_EQUAL(hstring{ firstLine + L"\n" + secondLine + L"\n" L"end" }, core->ReadLastPromptBounded(3, 1000));
+
+        VERIFY_ARE_EQUAL(hstring{ std::wstring(23, L'C') }, core->ReadLastPromptBounded(3, 23));
+        VERIFY_ARE_EQUAL(hstring{ std::wstring(24, L'C') }, core->ReadLastPromptBounded(3, 24));
+        const auto firstLineLength = static_cast<int32_t>(firstLine.size());
+        VERIFY_ARE_EQUAL(hstring{ firstLine }, core->ReadLastPromptBounded(2, firstLineLength));
+        VERIFY_ARE_EQUAL(hstring{ firstLine + L"\n" }, core->ReadLastPromptBounded(2, firstLineLength + 1));
+        VERIFY_ARE_EQUAL(hstring{ firstLine + L"\no" }, core->ReadLastPromptBounded(2, firstLineLength + 2));
+        VERIFY_ARE_EQUAL(hstring{ firstLine }, core->ReadLastPromptBounded(1, firstLineLength + 1));
+    }
+
+    void ControlCoreTests::TestReadLastPromptBoundedUnicode()
+    {
+        auto [settings, conn] = _createSettingsAndConnection();
+        auto core = createCore(*settings, *conn);
+        _standardInit(core);
+
+        _writePrompt(conn, L"");
+        conn->WriteInput(winrt_wstring_to_array_view(L"A\U0001F366B\x1b]133;C\x7\x1b]133;D;0\x7"));
+        VERIFY_ARE_EQUAL(L"A", core->ReadLastPromptBounded(1, 1));
+        VERIFY_ARE_EQUAL(L"A\U0001F366", core->ReadLastPromptBounded(1, 2));
+        VERIFY_ARE_EQUAL(L"A\U0001F366B", core->ReadLastPromptBounded(1, 3));
+        VERIFY_ARE_EQUAL(L"A\U0001F366B", core->ReadLastPromptBounded(1, 4));
+
+        conn->WriteInput(winrt_wstring_to_array_view(L"\r\n"));
+        _writePrompt(conn, L"");
+        const std::wstring prefix(22, L'A');
+        conn->WriteInput(winrt_wstring_to_array_view(prefix + L"\U0001F366B\x1b]133;C\x7\x1b]133;D;0\x7"));
+
+        const auto& row = core->_terminal->GetTextBuffer().GetRowByOffset(1);
+        VERIFY_IS_TRUE(row.WasWrapForced());
+        VERIFY_IS_TRUE(row.WasDoubleBytePadded());
+        VERIFY_ARE_EQUAL(hstring{ prefix }, core->ReadLastPromptBounded(1, 22));
+        VERIFY_ARE_EQUAL(hstring{ prefix + L"\U0001F366" }, core->ReadLastPromptBounded(1, 23));
+        VERIFY_ARE_EQUAL(hstring{ prefix + L"\U0001F366B" }, core->ReadLastPromptBounded(1, 24));
+    }
+
+    void ControlCoreTests::TestReadLastPromptBoundedInvalidLimits()
+    {
+        auto [settings, conn] = _createSettingsAndConnection();
+        auto core = createCore(*settings, *conn);
+        _standardInit(core);
+
+        for (const auto limit : { 0, -1 })
+        {
+            VERIFY_THROWS_SPECIFIC(
+                core->ReadLastPromptBounded(limit, 100),
+                wil::ResultException,
+                [](const wil::ResultException& e) { return e.GetErrorCode() == E_INVALIDARG; });
+            VERIFY_THROWS_SPECIFIC(
+                core->ReadLastPromptBounded(10, limit),
+                wil::ResultException,
+                [](const wil::ResultException& e) { return e.GetErrorCode() == E_INVALIDARG; });
+        }
     }
 
     void ControlCoreTests::TestSelectCommandSimple()

@@ -94,6 +94,20 @@ pub(super) struct InputHistory {
 }
 
 impl TabSession {
+    pub fn select_all_input(&mut self) {
+        self.input_vertical_goal = None;
+        self.input_all_selected = !self.input.is_empty();
+        self.cursor_pos = self.input.len();
+    }
+
+    pub fn delete_input_selection(&mut self) -> bool {
+        if !self.input_all_selected {
+            return false;
+        }
+        self.clear_input();
+        true
+    }
+
     pub fn clear_input(&mut self) {
         self.reset_input_history_navigation();
         self.input.clear();
@@ -111,6 +125,7 @@ impl TabSession {
     }
 
     pub fn insert_input_char(&mut self, ch: char) {
+        self.delete_input_selection();
         self.reset_input_history_navigation();
         let inserted = TextEditor::new(&mut self.input, &mut self.cursor_pos).insert_char(ch);
         self.attachments
@@ -122,6 +137,7 @@ impl TabSession {
         if text.is_empty() {
             return;
         }
+        self.delete_input_selection();
         self.reset_input_history_navigation();
         if let Some(inserted) =
             TextEditor::new(&mut self.input, &mut self.cursor_pos).insert_str(text)
@@ -133,6 +149,7 @@ impl TabSession {
     }
 
     pub fn insert_image_attachment(&mut self, image: crate::clipboard_image::PastedImage) {
+        self.delete_input_selection();
         self.reset_input_history_navigation();
         self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
         self.attachments
@@ -141,6 +158,9 @@ impl TabSession {
     }
 
     pub fn delete_before_cursor(&mut self) {
+        if self.delete_input_selection() {
+            return;
+        }
         self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
         if self.cursor_pos == 0 {
             return;
@@ -163,6 +183,9 @@ impl TabSession {
     }
 
     pub fn delete_word_before_cursor(&mut self) {
+        if self.delete_input_selection() {
+            return;
+        }
         self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
         if self.cursor_pos == 0 {
             return;
@@ -180,6 +203,9 @@ impl TabSession {
     }
 
     pub fn delete_at_cursor(&mut self) {
+        if self.delete_input_selection() {
+            return;
+        }
         self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
         if self.cursor_pos >= self.input.len() {
             return;
@@ -202,6 +228,11 @@ impl TabSession {
     }
 
     pub fn move_cursor_left(&mut self) {
+        self.input_vertical_goal = None;
+        if self.input_all_selected {
+            self.move_cursor_home();
+            return;
+        }
         if let Some(cursor_pos) = self.attachments.cursor_left(self.cursor_pos) {
             self.cursor_pos = cursor_pos;
         } else {
@@ -210,6 +241,11 @@ impl TabSession {
     }
 
     pub fn move_cursor_right(&mut self) {
+        self.input_vertical_goal = None;
+        if self.input_all_selected {
+            self.move_cursor_end();
+            return;
+        }
         if let Some(cursor_pos) = self.attachments.cursor_right(self.cursor_pos) {
             self.cursor_pos = cursor_pos;
         } else {
@@ -218,21 +254,66 @@ impl TabSession {
     }
 
     pub fn move_cursor_word_left(&mut self) {
+        self.input_vertical_goal = None;
+        if self.input_all_selected {
+            self.move_cursor_home();
+            return;
+        }
         TextEditor::new(&mut self.input, &mut self.cursor_pos).move_word_left();
         self.cursor_pos = self.attachments.snap_cursor_left(self.cursor_pos);
     }
 
     pub fn move_cursor_word_right(&mut self) {
+        self.input_vertical_goal = None;
+        if self.input_all_selected {
+            self.move_cursor_end();
+            return;
+        }
         TextEditor::new(&mut self.input, &mut self.cursor_pos).move_word_right();
         self.cursor_pos = self.attachments.snap_cursor_right(self.cursor_pos);
     }
 
     pub fn move_cursor_home(&mut self) {
+        self.input_vertical_goal = None;
+        self.input_all_selected = false;
         TextEditor::new(&mut self.input, &mut self.cursor_pos).move_home();
     }
 
     pub fn move_cursor_end(&mut self) {
+        self.input_vertical_goal = None;
+        self.input_all_selected = false;
         TextEditor::new(&mut self.input, &mut self.cursor_pos).move_end();
+    }
+
+    pub fn move_cursor_vertical(&mut self, input_width: u16, upward: bool) -> bool {
+        if self.input_all_selected {
+            if upward {
+                self.move_cursor_home();
+            } else {
+                self.move_cursor_end();
+            }
+            return true;
+        }
+        let preferred = self
+            .input_vertical_goal
+            .filter(|(width, _)| *width == input_width)
+            .map(|(_, column)| column);
+        let Some((position, column)) = crate::ui::adjacent_input_cursor(
+            &self.input,
+            self.cursor_pos,
+            input_width,
+            upward,
+            preferred,
+        ) else {
+            return false;
+        };
+        self.cursor_pos = if upward {
+            self.attachments.snap_cursor_left(position)
+        } else {
+            self.attachments.snap_cursor_right(position)
+        };
+        self.input_vertical_goal = Some((input_width, column));
+        true
     }
 
     pub(super) fn record_input_history(&mut self, input: &str) {
@@ -263,6 +344,8 @@ impl TabSession {
     }
 
     pub(super) fn navigate_input_history_older(&mut self) {
+        self.input_vertical_goal = None;
+        self.input_all_selected = false;
         if self.input_history.entries.is_empty() {
             return;
         }
@@ -286,6 +369,8 @@ impl TabSession {
     }
 
     pub(super) fn navigate_input_history_newer(&mut self) {
+        self.input_vertical_goal = None;
+        self.input_all_selected = false;
         let Some(index) = self.input_history.selected else {
             return;
         };
@@ -311,6 +396,8 @@ impl TabSession {
     }
 
     pub(super) fn reset_input_history_navigation(&mut self) {
+        self.input_vertical_goal = None;
+        self.input_all_selected = false;
         self.input_history.selected = None;
         self.input_history.draft = None;
     }

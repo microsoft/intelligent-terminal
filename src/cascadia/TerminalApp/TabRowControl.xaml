@@ -55,7 +55,7 @@
                           Glyph="&#xEA18;"
                           Visibility="{x:Bind ShowElevationShield, Mode=OneWay}" />
 
-                <!--  Workspace/windows button  -->
+                <!--  Keep this button collapsed regardless of showWorkspacesButton until the workspace feature is generally available.  -->
                 <Button x:Name="WorkspaceDropdown"
                         x:Uid="WorkspaceDropdown"
                         Margin="4,0,0,4"
@@ -63,7 +63,7 @@
                         VerticalAlignment="Stretch"
                         Background="Transparent"
                         BorderThickness="0"
-                        Visibility="{x:Bind ShowWorkspacesButton, Mode=OneWay}">
+                        Visibility="Collapsed">
                     <Button.Content>
                         <StackPanel Orientation="Horizontal"
                                     Spacing="8">

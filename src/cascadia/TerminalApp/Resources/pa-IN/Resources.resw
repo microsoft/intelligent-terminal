@@ -238,6 +238,36 @@
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>ਸੈੱਟ ਅੱਪ ਹੋ ਰਿਹਾ ਹੈ...</value>
   </data>
+  <data name="FreOverlay_HookingUpAgent" xml:space="preserve">
+    <value>{0} ਨੂੰ ਤੁਹਾਡੇ ਏਜੰਟ ਪੈਨ ਨਾਲ ਕਨੈਕਟ ਕੀਤਾ ਜਾ ਰਿਹਾ ਹੈ...</value>
+    <comment>Progress text shown while preparing the selected AI agent. {0} is the localized agent display name, for example "GitHub Copilot". In this context, "agent" refers to an AI agent, not a human representative.</comment>
+  </data>
+  <data name="FreOverlay_HookingUpAgentFallback" xml:space="preserve">
+    <value>ਤੁਹਾਡੇ ਏਜੰਟ ਪੈਨ ਨੂੰ ਕਨੈਕਟ ਕੀਤਾ ਜਾ ਰਿਹਾ ਹੈ...</value>
+    <comment>Progress text shown while preparing an AI agent when its display name is unavailable. In this context, "agent" refers to an AI agent, not a human representative.</comment>
+  </data>
+  <data name="FreOverlay_TurningOnErrorDetection" xml:space="preserve">
+    <value>ਗਲਤੀ ਖੋਜ ਚਾਲੂ ਕੀਤੀ ਜਾ ਰਹੀ ਹੈ...</value>
+  </data>
+  <data name="FreOverlay_TurningOnSessions" xml:space="preserve">
+    <value>ਸੈਸ਼ਨ ਚਾਲੂ ਕੀਤੇ ਜਾ ਰਹੇ ਹਨ...</value>
+  </data>
+  <data name="FreOverlay_ProgressCompleted" xml:space="preserve">
+    <value>ਪੂਰਾ ਹੋਇਆ</value>
+    <comment>Accessible status for a completed step in the FRE setup progress checklist.</comment>
+  </data>
+  <data name="FreOverlay_ProgressWarning" xml:space="preserve">
+    <value>ਚੇਤਾਵਨੀ ਨਾਲ ਪੂਰਾ ਹੋਇਆ</value>
+    <comment>Accessible status for a non-blocking warning in the FRE setup progress checklist.</comment>
+  </data>
+  <data name="FreOverlay_ProgressFailed" xml:space="preserve">
+    <value>ਅਸਫਲ ਹੋਇਆ</value>
+    <comment>Accessible status for a failed step in the FRE setup progress checklist.</comment>
+  </data>
+  <data name="FreOverlay_ProgressAccessibleStatus" xml:space="preserve">
+    <value>{0}, {1}</value>
+    <comment>Accessible name for a completed FRE setup step. {0} is the step label and {1} is its result, such as "Completed" or "Failed".</comment>
+  </data>
   <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
     <value>Windows Package Manager ਨੀਤੀ ਦੁਆਰਾ {0} ਦੀ ਇੰਸਟਾਲੇਸ਼ਨ ਬਲੌਕ ਕੀਤੀ ਗਈ। ਜੇਕਰ ਤੁਸੀਂ ਪ੍ਰਬੰਧਿਤ ਡਿਵਾਈਸ 'ਤੇ ਹੋ, ਤਾਂ ਆਪਣੇ IT ਐਡਮਿਨ ਨਾਲ ਸੰਪਰਕ ਕਰੋ।</value>
     <comment>FRE setup error. {0} is the package display name. Shown when winget reports BlockedByPolicy or an equivalent policy-related HRESULT.</comment>

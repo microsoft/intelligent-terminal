@@ -248,13 +248,51 @@
                                 </StackPanel>
                                 <ComboBox x:Name="AgentComboBox" Grid.Column="1"
                                           MinWidth="220"
-                                          VerticalAlignment="Center">
+                                          VerticalAlignment="Center"
+                                          SelectionChanged="_OnAgentSelectionChanged">
                                     <ComboBox.ItemTemplate>
                                         <DataTemplate x:DataType="local:FreAgentEntry">
                                             <TextBlock Text="{x:Bind DisplayLabel}" />
                                         </DataTemplate>
                                     </ComboBox.ItemTemplate>
                                 </ComboBox>
+                            </Grid>
+                        </Border>
+
+                        <!--  Automatic approval. Copy comes from the SettingsEditor
+                              resource scope so Settings and FRE cannot drift.  -->
+                        <Border x:Name="AutomaticApprovalSetting"
+                                AutomationProperties.AutomationId="AutomaticApprovalSetting"
+                                Background="{ThemeResource ExpanderHeaderBackground}"
+                                BorderBrush="{ThemeResource ExpanderHeaderBorderBrush}"
+                                BorderThickness="{ThemeResource ExpanderHeaderBorderThickness}"
+                                CornerRadius="{ThemeResource ControlCornerRadius}"
+                                MinHeight="64"
+                                Padding="16,12"
+                                Visibility="Collapsed">
+                            <Grid ColumnSpacing="24">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Spacing="2">
+                                    <TextBlock x:Name="AutomaticApprovalTitle"
+                                               FontSize="14"
+                                               FontWeight="SemiBold"
+                                               Foreground="White" />
+                                    <TextBlock x:Name="AutomaticApprovalDescription"
+                                               FontSize="12"
+                                               Foreground="#99FFFFFF"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ToggleSwitch x:Name="AutomaticApprovalToggle"
+                                              Grid.Column="1"
+                                              AutomationProperties.AutomationId="AutomaticApprovalToggle"
+                                              HorizontalAlignment="Right"
+                                              IsEnabled="False"
+                                              IsOn="False"
+                                              MinWidth="0"
+                                              VerticalAlignment="Center" />
                             </Grid>
                         </Border>
 
@@ -387,47 +425,176 @@
                     </StackPanel>
                 </ScrollViewer>
 
-                <!--  "Saving / installing in progress" overlay. Sits in
-                      the same Grid cell as SettingsFormScroller and is
-                      rendered after it, so it z-stacks on top. While
-                      visible:
-                        - The opaque-ish Background blocks pointer input
-                          to the form below.
-                        - SettingsFormScroller.IsEnabled is also set to
-                          false in code, which blocks keyboard input
-                          (overlays don't intercept keyboard on their
-                          own — focus would still tab into the form).
-                        - The centered ProgressRing + "Setting up..."
-                          label gives the user an unmissable signal that
-                          a long-running operation is happening.
-                      Collapsed when idle so it doesn't intercept input
-                      or paint pixels.  -->
+                <!--
+                    "Saving / installing in progress" overlay. Sits in
+                    the same Grid cell as SettingsFormScroller and is
+                    rendered after it, so it z-stacks on top. While
+                    visible:
+                    - The opaque-ish Background blocks pointer input
+                      to the form below.
+                    - SettingsFormScroller.IsEnabled is also set to
+                      false in code, which blocks keyboard input
+                      (overlays don't intercept keyboard on their
+                      own — focus would still tab into the form).
+                    - One persistent ProgressRing moves through the
+                      rows as setup advances. Completed rows retain
+                      their result glyph.
+                    Collapsed when idle so it doesn't intercept input
+                    or paint pixels.
+                -->
                 <Border x:Name="SavingOverlay"
                         Grid.Row="1"
+                        Padding="32"
                         Background="#CC1E1E1E"
                         Visibility="Collapsed">
-                    <!--  Background is the same RGB as RootGrid (#FF1E1E1E
-                          on line 31) with 80 % alpha, by design: the
-                          overlay reads as "FRE dims itself" rather than
-                          an independent panel. Keep these two in sync
-                          if the FRE backdrop ever changes — extracting
-                          both into shared SolidColorBrush resources is
-                          left for a broader FRE theming pass.  -->
-                    <StackPanel Orientation="Vertical"
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center"
-                                Spacing="16">
-                        <mux:ProgressRing x:Name="SavingProgressRing"
-                                          Width="48" Height="48"
-                                          IsTabStop="True"
-                                          IsActive="False" />
-                        <TextBlock x:Name="SavingStatusText"
-                                   FontFamily="Segoe UI Variable Text, Segoe UI"
-                                   FontSize="14"
-                                   Foreground="White"
-                                   HorizontalAlignment="Center"
-                                   AutomationProperties.LiveSetting="Polite" />
-                    </StackPanel>
+                    <!--
+                        Background is the same RGB as RootGrid (#FF1E1E1E
+                        on line 31) with 80 % alpha, by design: the
+                        overlay reads as "FRE dims itself" rather than
+                        an independent panel. Keep these two in sync
+                        if the FRE backdrop ever changes — extracting
+                        both into shared SolidColorBrush resources is
+                        left for a broader FRE theming pass.
+                    -->
+                    <Grid MinHeight="216"
+                          MaxWidth="560"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center">
+                        <Grid x:Name="SavingProgressGrid"
+                              VerticalAlignment="Top">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="48" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <Grid x:Name="SetupProgressRow"
+                                  Grid.Row="0"
+                                  Grid.ColumnSpan="2"
+                                  MinHeight="48"
+                                  Margin="0,0,0,8"
+                                  Visibility="Collapsed">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="48" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon x:Name="SetupProgressIcon"
+                                          Grid.Column="0"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                          FontSize="18"
+                                          Foreground="White"
+                                          Visibility="Collapsed" />
+                                <TextBlock x:Name="SavingStatusText"
+                                           Grid.Column="1"
+                                           Margin="16,0,0,0"
+                                           VerticalAlignment="Center"
+                                           FontFamily="Segoe UI Variable Text, Segoe UI"
+                                           FontSize="14"
+                                           Foreground="White"
+                                           TextWrapping="Wrap" />
+                            </Grid>
+
+                            <Grid x:Name="AgentProgressRow"
+                                  Grid.Row="1"
+                                  Grid.ColumnSpan="2"
+                                  MinHeight="48"
+                                  Margin="0,0,0,8"
+                                  Visibility="Collapsed">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="48" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon x:Name="AgentProgressIcon"
+                                          Grid.Column="0"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                          FontSize="18"
+                                          Foreground="White"
+                                          Visibility="Collapsed" />
+                                <TextBlock x:Name="AgentProgressText"
+                                           Grid.Column="1"
+                                           Margin="16,0,0,0"
+                                           VerticalAlignment="Center"
+                                           FontFamily="Segoe UI Variable Text, Segoe UI"
+                                           FontSize="14"
+                                           Foreground="White"
+                                           TextWrapping="Wrap" />
+                            </Grid>
+
+                            <Grid x:Name="ErrorDetectionProgressRow"
+                                  Grid.Row="2"
+                                  Grid.ColumnSpan="2"
+                                  MinHeight="48"
+                                  Margin="0,0,0,8"
+                                  Visibility="Collapsed">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="48" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon x:Name="ErrorDetectionProgressIcon"
+                                          Grid.Column="0"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                          FontSize="18"
+                                          Foreground="White"
+                                          Visibility="Collapsed" />
+                                <TextBlock x:Name="ErrorDetectionProgressText"
+                                           Grid.Column="1"
+                                           Margin="16,0,0,0"
+                                           VerticalAlignment="Center"
+                                           FontFamily="Segoe UI Variable Text, Segoe UI"
+                                           FontSize="14"
+                                           Foreground="White"
+                                           TextWrapping="Wrap" />
+                            </Grid>
+
+                            <Grid x:Name="SessionsProgressRow"
+                                  Grid.Row="3"
+                                  Grid.ColumnSpan="2"
+                                  MinHeight="48"
+                                  Visibility="Collapsed">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="48" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon x:Name="SessionsProgressIcon"
+                                          Grid.Column="0"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                          FontSize="18"
+                                          Foreground="White"
+                                          Visibility="Collapsed" />
+                                <TextBlock x:Name="SessionsProgressText"
+                                           Grid.Column="1"
+                                           Margin="16,0,0,0"
+                                           VerticalAlignment="Center"
+                                           FontFamily="Segoe UI Variable Text, Segoe UI"
+                                           FontSize="14"
+                                           Foreground="White"
+                                           TextWrapping="Wrap" />
+                            </Grid>
+
+                            <mux:ProgressRing x:Name="SavingProgressRing"
+                                              Grid.Row="0"
+                                              Grid.Column="0"
+                                              Width="48"
+                                              Height="48"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              IsActive="False"
+                                              IsTabStop="True" />
+                        </Grid>
+                    </Grid>
                 </Border>
 
                 <!--  Bottom: Error text + Save Button  -->
@@ -478,10 +645,10 @@
                     </StackPanel>
                     <!--  Save button. Disabled while a save/install is
                           in progress; the SavingOverlay above the form
-                          carries the spinner + status text. Label
-                          stays "Save" (via x:Uid) — no in-button text
-                          swap is needed since the overlay communicates
-                          the in-progress state.  -->
+                          carries the progressive checklist. The
+                          "Get Started" label stays unchanged — no
+                          in-button text swap is needed since the overlay
+                          communicates the in-progress state.  -->
                     <Button x:Uid="FreOverlay_SaveButton"
                             x:Name="SaveButton"
                             Grid.Column="1"

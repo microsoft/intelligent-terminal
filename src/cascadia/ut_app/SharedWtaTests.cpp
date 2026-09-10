@@ -5,10 +5,24 @@
 
 #include "../TerminalApp/SharedWta.h"
 
+#include <type_traits>
+#include <utility>
+
 using namespace WEX::Logging;
 using namespace WEX::TestExecution;
 using namespace WEX::Common;
 using namespace winrt::TerminalApp::implementation;
+
+static_assert(std::is_nothrow_default_constructible_v<SharedWtaLease>);
+static_assert(std::is_nothrow_move_constructible_v<SharedWtaLease>);
+static_assert(std::is_nothrow_move_assignable_v<SharedWtaLease>);
+static_assert(std::is_nothrow_destructible_v<SharedWtaLease>);
+static_assert(!std::is_copy_constructible_v<SharedWtaLease>);
+static_assert(!std::is_copy_assignable_v<SharedWtaLease>);
+static_assert(!std::is_convertible_v<SharedWtaLease, bool>);
+static_assert(noexcept(static_cast<bool>(std::declval<const SharedWtaLease&>())));
+static_assert(noexcept(std::declval<SharedWtaLease&>().Reset()));
+static_assert(noexcept(std::declval<SharedWtaLease&>().Retire()));
 
 namespace TerminalAppUnitTests
 {
@@ -112,6 +126,22 @@ namespace TerminalAppUnitTests
     {
         TEST_CLASS(SharedWtaTests);
 
+        TEST_METHOD(EmptyLeaseOperationsAreNoOps);
+        TEST_METHOD(FailedAcquireDoesNotOwnReferences);
+        TEST_METHOD(LeaseMovePreservesActiveOwnership);
+        TEST_METHOD(RepeatedResetCannotReleaseSiblingLease);
+        TEST_METHOD(LeaseDestructionReleasesOwnReference);
+        TEST_METHOD(LeaseMoveAssignmentReleasesPreviousOwner);
+        TEST_METHOD(LeaseMoveAssignmentPreservesRetiringState);
+        TEST_METHOD(LeaseSelfMovePreservesOwnership);
+        TEST_METHOD(RetirementConsumesActiveLeaseAndRetainsReference);
+        TEST_METHOD(RetiringLeaseCannotRequestCrashRecovery);
+        TEST_METHOD(ActiveSiblingStillAllowsBoundedCrashRecovery);
+        TEST_METHOD(CreationRollbackDuringUnwindPreservesSibling);
+        TEST_METHOD(FailedAcquirePreservesActiveAndRetiringReferences);
+        TEST_METHOD(GraceCompletionAndReplacementAcquisitionPreserveOwnership);
+        TEST_METHOD(OverlappingRetirementsExpireOutOfOrder);
+        TEST_METHOD(DrainingExitCannotRecoverWhenActiveDemandReturns);
         TEST_METHOD(EmptyEnvironmentOverridesInheritParent);
         TEST_METHOD(ValidEnvironmentOverridesCloneAndReplace);
         TEST_METHOD(MixedInvalidEnvironmentOverridesFail);
@@ -144,7 +174,333 @@ namespace TerminalAppUnitTests
         TEST_METHOD(CloseSupersedesPendingRebuild);
         TEST_METHOD(RestartSuppressionClearsBeforeReopen);
         TEST_METHOD(RepeatedRestartRequestsAreCoalescedOnCompletion);
+
+        static SharedWtaLease _AcquireLease(SharedWta& owner)
+        {
+            // Exercise the production accounting without spawning a master
+            // or touching the process singleton.
+            std::lock_guard lock{ owner._mtx };
+            return owner._AcquireLeaseLocked();
+        }
     };
+
+    void SharedWtaTests::EmptyLeaseOperationsAreNoOps()
+    {
+        SharedWtaLease lease;
+        VERIFY_IS_FALSE(static_cast<bool>(lease));
+        lease.Reset();
+        lease.Retire();
+        SharedWtaLease moved{ std::move(lease) };
+        VERIFY_IS_FALSE(static_cast<bool>(lease));
+        VERIFY_IS_FALSE(static_cast<bool>(moved));
+        moved.Reset();
+        moved.Retire();
+    }
+
+    void SharedWtaTests::FailedAcquireDoesNotOwnReferences()
+    {
+        SharedWta owner;
+        VERIFY_IS_FALSE(static_cast<bool>(owner.AcquirePane(L"")));
+        VERIFY_ARE_EQUAL(size_t{ 0 }, owner._refCount);
+        VERIFY_ARE_EQUAL(size_t{ 0 }, owner._activeRefCount);
+
+        owner._spawnSuppressed = true;
+        VERIFY_IS_FALSE(static_cast<bool>(owner.AcquirePane(L"unused-wta.exe")));
+        VERIFY_ARE_EQUAL(size_t{ 0 }, owner._refCount);
+        VERIFY_ARE_EQUAL(size_t{ 0 }, owner._activeRefCount);
+        VERIFY_IS_FALSE(owner.IsRunning());
+    }
+
+    void SharedWtaTests::LeaseMovePreservesActiveOwnership()
+    {
+        SharedWta owner;
+        auto source = _AcquireLease(owner);
+        VERIFY_IS_TRUE(static_cast<bool>(source));
+        VERIFY_ARE_EQUAL(size_t{ 1 }, owner._refCount);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, owner._activeRefCount);
+
+        SharedWtaLease destination{ std::move(source) };
+        source.Reset();
+        source.Retire();
+        VERIFY_IS_FALSE(static_cast<bool>(source));
+        VERIFY_IS_TRUE(static_cast<bool>(destination));
+        VERIFY_ARE_EQUAL(size_t{ 1 }, owner._refCount);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, owner._activeRefCount);
+
+        destination.Reset();
+        VERIFY_ARE_EQUAL(size_t{ 0 }, owner._refCount);
+        VERIFY_ARE_EQUAL(size_t{ 0 }, owner._activeRefCount);
+    }
+
+    void SharedWtaTests::RepeatedResetCannotReleaseSiblingLease()
+    {
+        SharedWta owner;
+        auto first = _AcquireLease(owner);
+        auto sibling = _AcquireLease(owner);
+        VERIFY_ARE_EQUAL(size_t{ 2 }, owner._refCount);
+        VERIFY_ARE_EQUAL(size_t{ 2 }, owner._activeRefCount);
+
+        first.Reset();
+        first.Reset();
+        first.Retire();
+        VERIFY_IS_FALSE(static_cast<bool>(first));
+        VERIFY_IS_TRUE(static_cast<bool>(sibling));
+        VERIFY_ARE_EQUAL(size_t{ 1 }, owner._refCount);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, owner._activeRefCount);
+
+        sibling.Reset();
+        VERIFY_ARE_EQUAL(size_t{ 0 }, owner._refCount);
+        VERIFY_ARE_EQUAL(size_t{ 0 }, owner._activeRefCount);
+    }
+
+    void SharedWtaTests::LeaseDestructionReleasesOwnReference()
+    {
+        SharedWta owner;
+        auto sibling = _AcquireLease(owner);
+        {
+            auto lease = _AcquireLease(owner);
+            VERIFY_IS_TRUE(static_cast<bool>(lease));
+            VERIFY_ARE_EQUAL(size_t{ 2 }, owner._refCount);
+        }
+        VERIFY_IS_TRUE(static_cast<bool>(sibling));
+        VERIFY_ARE_EQUAL(size_t{ 1 }, owner._refCount);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, owner._activeRefCount);
+    }
+
+    void SharedWtaTests::LeaseMoveAssignmentReleasesPreviousOwner()
+    {
+        SharedWta firstOwner;
+        SharedWta secondOwner;
+        auto destination = _AcquireLease(firstOwner);
+        auto source = _AcquireLease(secondOwner);
+
+        destination = std::move(source);
+        VERIFY_IS_FALSE(static_cast<bool>(source));
+        VERIFY_IS_TRUE(static_cast<bool>(destination));
+        VERIFY_ARE_EQUAL(size_t{ 0 }, firstOwner._refCount);
+        VERIFY_ARE_EQUAL(size_t{ 0 }, firstOwner._activeRefCount);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, secondOwner._refCount);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, secondOwner._activeRefCount);
+
+        destination = SharedWtaLease{};
+        VERIFY_IS_FALSE(static_cast<bool>(destination));
+        VERIFY_ARE_EQUAL(size_t{ 0 }, secondOwner._refCount);
+        VERIFY_ARE_EQUAL(size_t{ 0 }, secondOwner._activeRefCount);
+    }
+
+    void SharedWtaTests::LeaseSelfMovePreservesOwnership()
+    {
+        SharedWta owner;
+        auto lease = _AcquireLease(owner);
+        auto& alias = lease;
+        lease = std::move(alias);
+
+        VERIFY_IS_TRUE(static_cast<bool>(lease));
+        VERIFY_ARE_EQUAL(size_t{ 1 }, owner._refCount);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, owner._activeRefCount);
+    }
+
+    void SharedWtaTests::LeaseMoveAssignmentPreservesRetiringState()
+    {
+        SharedWta owner;
+        auto destination = _AcquireLease(owner);
+        auto source = _AcquireLease(owner);
+        auto retiring = source._TakeForRetirement();
+
+        destination = std::move(retiring);
+        VERIFY_IS_FALSE(static_cast<bool>(retiring));
+        VERIFY_IS_TRUE(static_cast<bool>(destination));
+        VERIFY_ARE_EQUAL(size_t{ 1 }, owner._refCount);
+        VERIFY_ARE_EQUAL(size_t{ 0 }, owner._activeRefCount);
+
+        destination.Reset();
+        VERIFY_ARE_EQUAL(size_t{ 0 }, owner._refCount);
+        VERIFY_ARE_EQUAL(size_t{ 0 }, owner._activeRefCount);
+    }
+
+    void SharedWtaTests::RetirementConsumesActiveLeaseAndRetainsReference()
+    {
+        SharedWta owner;
+        auto lease = _AcquireLease(owner);
+        auto sibling = _AcquireLease(owner);
+        {
+            // Capture the exact ownership transition used before scheduling
+            // the grace timer, then expire it deterministically at scope exit.
+            auto retiring = lease._TakeForRetirement();
+            VERIFY_IS_FALSE(static_cast<bool>(lease));
+            VERIFY_IS_TRUE(static_cast<bool>(retiring));
+            VERIFY_ARE_EQUAL(size_t{ 2 }, owner._refCount);
+            VERIFY_ARE_EQUAL(size_t{ 1 }, owner._activeRefCount);
+
+            lease.Reset();
+            lease.Retire();
+            auto retained = retiring._TakeForRetirement();
+            VERIFY_IS_FALSE(static_cast<bool>(retiring));
+            VERIFY_IS_TRUE(static_cast<bool>(retained));
+            VERIFY_ARE_EQUAL(size_t{ 2 }, owner._refCount);
+            VERIFY_ARE_EQUAL(size_t{ 1 }, owner._activeRefCount);
+        }
+        VERIFY_IS_TRUE(static_cast<bool>(sibling));
+        VERIFY_ARE_EQUAL(size_t{ 1 }, owner._refCount);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, owner._activeRefCount);
+    }
+
+    void SharedWtaTests::RetiringLeaseCannotRequestCrashRecovery()
+    {
+        SharedWta owner;
+        auto lease = _AcquireLease(owner);
+        auto retiring = lease._TakeForRetirement();
+        VERIFY_ARE_EQUAL(size_t{ 1 }, owner._refCount);
+        VERIFY_ARE_EQUAL(size_t{ 0 }, owner._activeRefCount);
+
+        owner._unexpectedExitRecovery.Arm(7);
+        VERIFY_IS_FALSE(owner._unexpectedExitRecovery.ShouldRespawn(7, owner._activeRefCount, false, true));
+
+        retiring.Reset();
+        retiring.Reset();
+        VERIFY_ARE_EQUAL(size_t{ 0 }, owner._refCount);
+        VERIFY_ARE_EQUAL(size_t{ 0 }, owner._activeRefCount);
+    }
+
+    void SharedWtaTests::ActiveSiblingStillAllowsBoundedCrashRecovery()
+    {
+        SharedWta owner;
+        auto first = _AcquireLease(owner);
+        auto retiring = first._TakeForRetirement();
+        auto active = _AcquireLease(owner);
+        SharedWtaLease transferred{ std::move(active) };
+        VERIFY_IS_TRUE(static_cast<bool>(transferred));
+        VERIFY_ARE_EQUAL(size_t{ 2 }, owner._refCount);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, owner._activeRefCount);
+
+        owner._unexpectedExitRecovery.Arm(7);
+        VERIFY_IS_TRUE(owner._unexpectedExitRecovery.ShouldRespawn(7, owner._activeRefCount, false, true));
+        VERIFY_IS_FALSE(owner._unexpectedExitRecovery.ShouldRespawn(7, owner._activeRefCount, false, true));
+
+        transferred.Reset();
+        VERIFY_ARE_EQUAL(size_t{ 1 }, owner._refCount);
+        VERIFY_ARE_EQUAL(size_t{ 0 }, owner._activeRefCount);
+        owner._unexpectedExitRecovery.Arm(8);
+        VERIFY_IS_FALSE(owner._unexpectedExitRecovery.ShouldRespawn(8, owner._activeRefCount, false, true));
+    }
+
+    void SharedWtaTests::CreationRollbackDuringUnwindPreservesSibling()
+    {
+        SharedWta owner;
+        auto sibling = _AcquireLease(owner);
+        const auto create = [&]() {
+            auto acquired = _AcquireLease(owner);
+            SharedWtaLease creatingPane{ std::move(acquired) };
+            THROW_HR(E_ABORT);
+        };
+
+        VERIFY_THROWS(create(), wil::ResultException);
+        VERIFY_IS_TRUE(static_cast<bool>(sibling));
+        VERIFY_ARE_EQUAL(size_t{ 1 }, owner._refCount);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, owner._activeRefCount);
+        sibling.Reset();
+        VERIFY_ARE_EQUAL(size_t{ 0 }, owner._refCount);
+        VERIFY_ARE_EQUAL(size_t{ 0 }, owner._activeRefCount);
+    }
+
+    void SharedWtaTests::FailedAcquirePreservesActiveAndRetiringReferences()
+    {
+        SharedWta owner;
+        auto active = _AcquireLease(owner);
+        auto closing = _AcquireLease(owner);
+        auto retiring = closing._TakeForRetirement();
+        auto failed = owner.AcquirePane(L"");
+        failed.Reset();
+        failed.Retire();
+        owner._spawnSuppressed = true;
+        failed = owner.AcquirePane(L"unused-wta.exe");
+        failed.Reset();
+        failed.Retire();
+
+        VERIFY_IS_FALSE(static_cast<bool>(failed));
+        VERIFY_IS_TRUE(static_cast<bool>(active));
+        VERIFY_IS_TRUE(static_cast<bool>(retiring));
+        VERIFY_ARE_EQUAL(size_t{ 2 }, owner._refCount);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, owner._activeRefCount);
+        VERIFY_IS_FALSE(owner.IsRunning());
+    }
+
+    void SharedWtaTests::GraceCompletionAndReplacementAcquisitionPreserveOwnership()
+    {
+        // Exercise both serialized outcomes of grace completion racing with
+        // replacement acquisition, without starting the real grace timer.
+        for (const bool expireFirst : { false, true })
+        {
+            SharedWta owner;
+            auto closing = _AcquireLease(owner);
+            auto retiring = closing._TakeForRetirement();
+            if (expireFirst)
+            {
+                retiring.Reset();
+                VERIFY_ARE_EQUAL(size_t{ 0 }, owner._refCount);
+            }
+            auto replacement = _AcquireLease(owner);
+            retiring.Reset();
+            retiring.Reset();
+            closing.Retire();
+            VERIFY_IS_TRUE(static_cast<bool>(replacement));
+            VERIFY_ARE_EQUAL(size_t{ 1 }, owner._refCount);
+            VERIFY_ARE_EQUAL(size_t{ 1 }, owner._activeRefCount);
+
+            owner._unexpectedExitRecovery.Arm(9);
+            VERIFY_IS_TRUE(owner._unexpectedExitRecovery.ShouldRespawn(9, owner._activeRefCount, false, true));
+            replacement.Reset();
+            VERIFY_ARE_EQUAL(size_t{ 0 }, owner._refCount);
+            VERIFY_ARE_EQUAL(size_t{ 0 }, owner._activeRefCount);
+        }
+    }
+
+    void SharedWtaTests::OverlappingRetirementsExpireOutOfOrder()
+    {
+        SharedWta owner;
+        auto first = _AcquireLease(owner);
+        auto firstRetiring = first._TakeForRetirement();
+        auto second = _AcquireLease(owner);
+        auto secondRetiring = second._TakeForRetirement();
+        auto third = _AcquireLease(owner);
+        auto thirdRetiring = third._TakeForRetirement();
+        VERIFY_ARE_EQUAL(size_t{ 3 }, owner._refCount);
+        VERIFY_ARE_EQUAL(size_t{ 0 }, owner._activeRefCount);
+
+        secondRetiring.Reset();
+        firstRetiring.Reset();
+        secondRetiring.Reset();
+        VERIFY_IS_TRUE(static_cast<bool>(thirdRetiring));
+        VERIFY_ARE_EQUAL(size_t{ 1 }, owner._refCount);
+        VERIFY_ARE_EQUAL(size_t{ 0 }, owner._activeRefCount);
+        owner._unexpectedExitRecovery.Arm(10);
+        VERIFY_IS_FALSE(owner._unexpectedExitRecovery.ShouldRespawn(10, owner._activeRefCount, false, true));
+
+        thirdRetiring.Reset();
+        VERIFY_ARE_EQUAL(size_t{ 0 }, owner._refCount);
+        VERIFY_ARE_EQUAL(size_t{ 0 }, owner._activeRefCount);
+    }
+
+    void SharedWtaTests::DrainingExitCannotRecoverWhenActiveDemandReturns()
+    {
+        SharedWta owner;
+        auto closing = _AcquireLease(owner);
+        auto retiring = closing._TakeForRetirement();
+        owner._unexpectedExitRecovery.Arm(10);
+        VERIFY_IS_FALSE(owner._unexpectedExitRecovery.ShouldRespawn(10, owner._activeRefCount, false, true));
+
+        auto replacement = _AcquireLease(owner);
+        VERIFY_IS_TRUE(static_cast<bool>(replacement));
+        VERIFY_ARE_EQUAL(size_t{ 2 }, owner._refCount);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, owner._activeRefCount);
+        VERIFY_IS_FALSE(owner._unexpectedExitRecovery.ShouldRespawn(10, owner._activeRefCount, false, true));
+
+        owner._unexpectedExitRecovery.Arm(11);
+        retiring.Reset();
+        VERIFY_IS_FALSE(owner._unexpectedExitRecovery.ShouldRespawn(10, owner._activeRefCount, false, true));
+        VERIFY_IS_TRUE(owner._unexpectedExitRecovery.ShouldRespawn(11, owner._activeRefCount, false, true));
+        VERIFY_IS_FALSE(owner._unexpectedExitRecovery.ShouldRespawn(11, owner._activeRefCount, false, true));
+    }
 
     void SharedWtaTests::EmptyEnvironmentOverridesInheritParent()
     {

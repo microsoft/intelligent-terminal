@@ -238,6 +238,36 @@
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>സജ്ജമാക്കുന്നു...</value>
   </data>
+  <data name="FreOverlay_HookingUpAgent" xml:space="preserve">
+    <value>{0} നിങ്ങളുടെ ഏജന്റ് പെയ്നിലേക്ക് ബന്ധിപ്പിക്കുന്നു...</value>
+    <comment>Progress text shown while preparing the selected AI agent. {0} is the localized agent display name, for example "GitHub Copilot". In this context, "agent" refers to an AI agent, not a human representative.</comment>
+  </data>
+  <data name="FreOverlay_HookingUpAgentFallback" xml:space="preserve">
+    <value>നിങ്ങളുടെ ഏജന്റ് പെയ്ൻ ബന്ധിപ്പിക്കുന്നു...</value>
+    <comment>Progress text shown while preparing an AI agent when its display name is unavailable. In this context, "agent" refers to an AI agent, not a human representative.</comment>
+  </data>
+  <data name="FreOverlay_TurningOnErrorDetection" xml:space="preserve">
+    <value>പിശക് കണ്ടെത്തൽ പ്രവർത്തനക്ഷമമാക്കുന്നു...</value>
+  </data>
+  <data name="FreOverlay_TurningOnSessions" xml:space="preserve">
+    <value>സെഷനുകൾ പ്രവർത്തനക്ഷമമാക്കുന്നു...</value>
+  </data>
+  <data name="FreOverlay_ProgressCompleted" xml:space="preserve">
+    <value>പൂർത്തിയായി</value>
+    <comment>Accessible status for a completed step in the FRE setup progress checklist.</comment>
+  </data>
+  <data name="FreOverlay_ProgressWarning" xml:space="preserve">
+    <value>മുന്നറിയിപ്പോടെ പൂർത്തിയായി</value>
+    <comment>Accessible status for a non-blocking warning in the FRE setup progress checklist.</comment>
+  </data>
+  <data name="FreOverlay_ProgressFailed" xml:space="preserve">
+    <value>പരാജയപ്പെട്ടു</value>
+    <comment>Accessible status for a failed step in the FRE setup progress checklist.</comment>
+  </data>
+  <data name="FreOverlay_ProgressAccessibleStatus" xml:space="preserve">
+    <value>{0}, {1}</value>
+    <comment>Accessible name for a completed FRE setup step. {0} is the step label and {1} is its result, such as "Completed" or "Failed".</comment>
+  </data>
   <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
     <value>Windows Package Manager പോളിസി {0} ഇൻസ്റ്റാളേഷൻ തടഞ്ഞു. നിങ്ങൾ മാനേജുചെയ്യുന്ന ഉപകരണത്തിലാണ് എങ്കിൽ, നിങ്ങളുടെ IT അഡ്മിനുമായി ബന്ധപ്പെടുക.</value>
     <comment>FRE setup error. {0} is the package display name. Shown when winget reports BlockedByPolicy or an equivalent policy-related HRESULT.</comment>

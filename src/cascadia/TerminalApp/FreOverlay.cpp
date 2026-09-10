@@ -15,6 +15,8 @@
 #include "ShellIntegrationSweep.h"
 #include "WindowsPackageManagerFactory.h"
 
+#include <ScopedResourceLoader.h>
+#include <winrt/Windows.Storage.h>
 #include <winrt/Windows.UI.Xaml.Documents.h>
 #include <limits>
 #include <mutex>
@@ -38,10 +40,225 @@ namespace winrt::TerminalApp::implementation
     {
         InitializeComponent();
 
-        // Seed the overlay's status text from the existing localized
-        // resource (reused here rather than adding a new .Text key
-        // across every locale).
         SavingStatusText().Text(RS_(L"FreOverlay_SettingUp"));
+        ErrorDetectionProgressText().Text(RS_(L"FreOverlay_TurningOnErrorDetection"));
+        SessionsProgressText().Text(RS_(L"FreOverlay_TurningOnSessions"));
+    }
+
+    void FreOverlay::_BeginProgressAttempt(const winrt::hstring& agentId)
+    {
+        _agentPaneLog("[FRE] Progress: attempt=started");
+
+        SavingStatusText().Text(RS_(L"FreOverlay_SettingUp"));
+        ErrorDetectionProgressText().Text(RS_(L"FreOverlay_TurningOnErrorDetection"));
+        SessionsProgressText().Text(RS_(L"FreOverlay_TurningOnSessions"));
+
+        winrt::hstring agentName;
+        namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+        for (const auto& agent : Reg::FilteredAcpAgents())
+        {
+            if (agent.id == agentId)
+            {
+                agentName = winrt::hstring{ agent.displayName };
+                break;
+            }
+        }
+
+        if (agentName.empty())
+        {
+            AgentProgressText().Text(RS_(L"FreOverlay_HookingUpAgentFallback"));
+        }
+        else
+        {
+            try
+            {
+                AgentProgressText().Text(winrt::hstring{ fmt::format(
+                    fmt::runtime(std::wstring{ RS_(L"FreOverlay_HookingUpAgent") }),
+                    std::wstring_view{ agentName }) });
+            }
+            catch (const fmt::format_error&)
+            {
+                LOG_CAUGHT_EXCEPTION();
+                AgentProgressText().Text(RS_(L"FreOverlay_HookingUpAgentFallback"));
+            }
+        }
+
+        const std::array rows{
+            SetupProgressRow(),
+            AgentProgressRow(),
+            ErrorDetectionProgressRow(),
+            SessionsProgressRow(),
+        };
+        const std::array icons{
+            SetupProgressIcon(),
+            AgentProgressIcon(),
+            ErrorDetectionProgressIcon(),
+            SessionsProgressIcon(),
+        };
+        for (const auto& row : rows)
+        {
+            row.Visibility(Visibility::Collapsed);
+            Automation::AutomationProperties::SetName(row, {});
+        }
+        for (const auto& icon : icons)
+        {
+            icon.Visibility(Visibility::Collapsed);
+            icon.Glyph({});
+        }
+
+        Grid::SetRow(SavingProgressRing(), static_cast<int32_t>(ProgressStep::Setup));
+        Automation::AutomationProperties::SetName(SavingProgressRing(), SavingStatusText().Text());
+    }
+
+    void FreOverlay::_BeginProgressStep(const ProgressStep step)
+    {
+        FrameworkElement row{ nullptr };
+        TextBlock text{ nullptr };
+        FontIcon icon{ nullptr };
+        std::string_view stepName;
+
+        switch (step)
+        {
+        case ProgressStep::Setup:
+            row = SetupProgressRow();
+            text = SavingStatusText();
+            icon = SetupProgressIcon();
+            stepName = "setup";
+            break;
+        case ProgressStep::Agent:
+            row = AgentProgressRow();
+            text = AgentProgressText();
+            icon = AgentProgressIcon();
+            stepName = "agent";
+            break;
+        case ProgressStep::ErrorDetection:
+            row = ErrorDetectionProgressRow();
+            text = ErrorDetectionProgressText();
+            icon = ErrorDetectionProgressIcon();
+            stepName = "error-detection";
+            break;
+        case ProgressStep::Sessions:
+            row = SessionsProgressRow();
+            text = SessionsProgressText();
+            icon = SessionsProgressIcon();
+            stepName = "sessions";
+            break;
+        }
+
+        if (!row || !text || !icon)
+        {
+            return;
+        }
+
+        icon.Visibility(Visibility::Collapsed);
+        row.Visibility(Visibility::Visible);
+        Grid::SetRow(SavingProgressRing(), static_cast<int32_t>(step));
+        Automation::AutomationProperties::SetName(SavingProgressRing(), text.Text());
+        _agentPaneLog("[FRE] Progress: " + std::string{ stepName } + "=running");
+
+        if (step != ProgressStep::Setup)
+        {
+            if (auto peer = Automation::Peers::FrameworkElementAutomationPeer::FromElement(SaveButton()))
+            {
+                peer.RaiseNotificationEvent(
+                    Automation::Peers::AutomationNotificationKind::Other,
+                    Automation::Peers::AutomationNotificationProcessing::MostRecent,
+                    text.Text(),
+                    L"FreProgressStepAnnouncement");
+            }
+        }
+    }
+
+    void FreOverlay::_FinishProgressStep(const ProgressStep step, const ProgressResult result)
+    {
+        FrameworkElement row{ nullptr };
+        TextBlock text{ nullptr };
+        FontIcon icon{ nullptr };
+        std::string_view stepName;
+
+        switch (step)
+        {
+        case ProgressStep::Setup:
+            row = SetupProgressRow();
+            text = SavingStatusText();
+            icon = SetupProgressIcon();
+            stepName = "setup";
+            break;
+        case ProgressStep::Agent:
+            row = AgentProgressRow();
+            text = AgentProgressText();
+            icon = AgentProgressIcon();
+            stepName = "agent";
+            break;
+        case ProgressStep::ErrorDetection:
+            row = ErrorDetectionProgressRow();
+            text = ErrorDetectionProgressText();
+            icon = ErrorDetectionProgressIcon();
+            stepName = "error-detection";
+            break;
+        case ProgressStep::Sessions:
+            row = SessionsProgressRow();
+            text = SessionsProgressText();
+            icon = SessionsProgressIcon();
+            stepName = "sessions";
+            break;
+        }
+
+        if (!row || !text || !icon)
+        {
+            return;
+        }
+
+        winrt::hstring resultText;
+        std::string_view resultName;
+        switch (result)
+        {
+        case ProgressResult::Completed:
+            icon.Glyph(L"\xE73E");
+            resultText = RS_(L"FreOverlay_ProgressCompleted");
+            resultName = "completed";
+            break;
+        case ProgressResult::Warning:
+            icon.Glyph(L"\xE7BA");
+            resultText = RS_(L"FreOverlay_ProgressWarning");
+            resultName = "warning";
+            break;
+        case ProgressResult::Failed:
+            icon.Glyph(L"\xE711");
+            resultText = RS_(L"FreOverlay_ProgressFailed");
+            resultName = "failed";
+            break;
+        }
+
+        icon.Visibility(Visibility::Visible);
+        _agentPaneLog("[FRE] Progress: " + std::string{ stepName } + "=" + std::string{ resultName });
+        winrt::hstring accessibleStatus{ text.Text() };
+        try
+        {
+            accessibleStatus = winrt::hstring{ fmt::format(
+                fmt::runtime(std::wstring{ RS_(L"FreOverlay_ProgressAccessibleStatus") }),
+                std::wstring_view{ text.Text() },
+                std::wstring_view{ resultText }) };
+        }
+        catch (const fmt::format_error&)
+        {
+            LOG_CAUGHT_EXCEPTION();
+        }
+        Automation::AutomationProperties::SetName(row, accessibleStatus);
+
+        // A warning is non-blocking, so the overlay may close immediately if
+        // there is no later step. Announce it without delaying completion.
+        if (result == ProgressResult::Warning)
+        {
+            if (auto peer = Automation::Peers::FrameworkElementAutomationPeer::FromElement(SaveButton()))
+            {
+                peer.RaiseNotificationEvent(
+                    Automation::Peers::AutomationNotificationKind::Other,
+                    Automation::Peers::AutomationNotificationProcessing::ImportantMostRecent,
+                    accessibleStatus,
+                    L"FreProgressWarningAnnouncement");
+            }
+        }
     }
 
     // ── Detection helpers ───────────────────────────────────────────────
@@ -118,48 +335,102 @@ namespace winrt::TerminalApp::implementation
 
         const auto allowedAgents = Reg::FilteredAcpAgents();
         const auto availableAgents = ::Microsoft::Terminal::AgentAvailability::ProbeHostAgentIds();
-        auto items = AgentComboBox().Items();
-        items.Clear();
-        int32_t selectedIndex = 0;
-        int32_t idx = 0;
-
-        for (const auto& a : allowedAgents)
         {
-            const bool installed = availableAgents.contains(std::wstring{ a.id });
-            const bool isCopilot = (a.id == L"copilot");
+            _refreshingAgentComboBox = true;
+            const auto resetRefreshing = wil::scope_exit([&]() noexcept {
+                _refreshingAgentComboBox = false;
+            });
+            auto items = AgentComboBox().Items();
+            items.Clear();
+            int32_t selectedIndex = 0;
+            int32_t idx = 0;
 
-            // Show Copilot always + detected agents only
-            if (!isCopilot && !installed)
-                continue;
-
-            auto entry = winrt::make<FreAgentEntry>();
-            entry.Id(winrt::hstring{ a.id });
-
-            if (isCopilot && !installed)
+            for (const auto& a : allowedAgents)
             {
-                entry.DisplayLabel(winrt::hstring{ std::wstring(a.displayName) + std::wstring(RS_(L"FreOverlay_AgentStatusWillInstall")) });
-            }
-            else
-            {
-                entry.DisplayLabel(winrt::hstring{ std::wstring(a.displayName) + std::wstring(RS_(L"FreOverlay_AgentStatusInstalled")) });
+                const bool installed = availableAgents.contains(std::wstring{ a.id });
+                const bool isCopilot = (a.id == L"copilot");
+
+                // Show Copilot always + detected agents only
+                if (!isCopilot && !installed)
+                    continue;
+
+                auto entry = winrt::make<FreAgentEntry>();
+                entry.Id(winrt::hstring{ a.id });
+
+                if (isCopilot && !installed)
+                {
+                    entry.DisplayLabel(winrt::hstring{ std::wstring(a.displayName) + std::wstring(RS_(L"FreOverlay_AgentStatusWillInstall")) });
+                }
+                else
+                {
+                    entry.DisplayLabel(winrt::hstring{ std::wstring(a.displayName) + std::wstring(RS_(L"FreOverlay_AgentStatusInstalled")) });
+                }
+
+                items.Append(entry);
+
+                if (a.id == selectedId)
+                {
+                    selectedIndex = idx;
+                }
+                idx++;
             }
 
-            items.Append(entry);
-
-            if (a.id == selectedId)
+            if (items.Size() > 0)
             {
-                selectedIndex = idx;
+                AgentComboBox().SelectedIndex(selectedIndex);
             }
-            idx++;
+        }
+        _UpdateAutomaticApprovalState();
+    }
+
+    winrt::hstring FreOverlay::_SelectedAgentId()
+    {
+        if (const auto selected = AgentComboBox().SelectedItem())
+        {
+            if (const auto entry = selected.try_as<winrt::TerminalApp::FreAgentEntry>())
+            {
+                return entry.Id();
+            }
+        }
+        return {};
+    }
+
+    void FreOverlay::_UpdateAutomaticApprovalState()
+    {
+        if (!_settings)
+        {
+            return;
         }
 
-        if (items.Size() > 0)
+        const auto canEnable = _settings.GlobalSettings().CanEnableAgentPaneYoloModeForAgent(
+            _SelectedAgentId());
+        const auto toggle = AutomaticApprovalToggle();
+        if (!canEnable)
         {
-            AgentComboBox().SelectedIndex(selectedIndex);
+            toggle.IsOn(false);
+        }
+        toggle.IsEnabled(canEnable);
+        AutomaticApprovalSetting().Visibility(
+            canEnable ? Visibility::Visible : Visibility::Collapsed);
+    }
+
+    void FreOverlay::_OnAgentSelectionChanged(
+        const IInspectable& /*sender*/,
+        const SelectionChangedEventArgs& /*args*/)
+    {
+        if (!_refreshingAgentComboBox)
+        {
+            _UpdateAutomaticApprovalState();
         }
     }
 
     // ── Initialize ──────────────────────────────────────────────────────
+
+    void FreOverlay::UpdateSettings(const winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings& settings)
+    {
+        _settings = settings;
+        _UpdateAutomaticApprovalState();
+    }
 
     void FreOverlay::Initialize(const winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings& settings)
     {
@@ -203,6 +474,15 @@ namespace winrt::TerminalApp::implementation
         WelcomeSubtitleLink().Text(RS_(L"FreOverlay_WelcomeSubtitleLink"));
         SettingsSubtitlePrefix().Text(RS_(L"FreOverlay_SettingsSubtitlePrefix"));
         SettingsSubtitleLink().Text(RS_(L"FreOverlay_SettingsSubtitleLink"));
+        {
+            const ScopedResourceLoader settingsResources{
+                L"Microsoft.Terminal.Settings.Editor/Resources"
+            };
+            AutomaticApprovalTitle().Text(
+                settingsResources.GetLocalizedString(L"AIAgents_YoloMode/Header"));
+            AutomaticApprovalDescription().Text(
+                settingsResources.GetLocalizedString(L"AIAgents_YoloMode/HelpText"));
+        }
         // Split the description on "ACP" (locked token) so it can be rendered as an inline Hyperlink.
         {
             const auto descStr = RS_(L"FreOverlay_AgentDescription/Text");
@@ -227,6 +507,9 @@ namespace winrt::TerminalApp::implementation
         ShowTokenUsageAndCostToggle().OffContent(winrt::box_value(RS_(L"FreOverlay_ToggleOff")));
         SessionManagementToggle().OnContent(winrt::box_value(RS_(L"FreOverlay_ToggleOn")));
         SessionManagementToggle().OffContent(winrt::box_value(RS_(L"FreOverlay_ToggleOff")));
+        AutomaticApprovalToggle().OnContent(winrt::box_value(RS_(L"FreOverlay_ToggleOn")));
+        AutomaticApprovalToggle().OffContent(winrt::box_value(RS_(L"FreOverlay_ToggleOff")));
+        AutomaticApprovalToggle().IsOn(globals.EffectiveAgentPaneYoloMode());
 
         // Populate agent ComboBox using GPO-filtered list — only agents
         // permitted by policy are shown. Each entry's status label reflects the
@@ -306,22 +589,16 @@ namespace winrt::TerminalApp::implementation
         Automation::AutomationProperties::SetName(
             ShowTokenUsageAndCostToggle(), RS_(L"FreOverlay_ShowTokenUsageAndCostLabel/Text"));
         Automation::AutomationProperties::SetName(
+            AutomaticApprovalToggle(), AutomaticApprovalTitle().Text());
+        Automation::AutomationProperties::SetName(
             SessionManagementToggle(), RS_(L"FreOverlay_SessionLabel/Text"));
         Automation::AutomationProperties::SetName(
             AgentComboBox(), RS_(L"FreOverlay_AgentLabel/Text"));
         Automation::AutomationProperties::SetName(
             PanePositionComboBox(), RS_(L"FreOverlay_PanePositionLabel/Text"));
 
-        // Give the SavingProgressRing a localized accessible Name so
-        // Narrator announces "Setting up Intelligent Terminal, busy"
-        // when focus lands on it during a save/install (and the same
-        // readout on Caps+Tab mid-install). _SetSavingState defers
-        // the ring.Focus() call via Dispatcher().RunAsync(Low) so it
-        // fires after IsActive(true) and the visibility change have
-        // been laid out — the announcement combines this Name with
-        // the "busy" state from the active spinner in a single
-        // readout. Without this Name, Narrator would just read
-        // "ProgressRing".
+        // Seed the SavingProgressRing's accessible name. The progress
+        // helpers update it to the current step before moving the ring.
         Automation::AutomationProperties::SetName(
             SavingProgressRing(), RS_(L"FreOverlay_SettingUp"));
 
@@ -1201,7 +1478,6 @@ namespace winrt::TerminalApp::implementation
         return Kind::Generic;
     }
 
-
     // ── Hooks install helper ────────────────────────────────────────────
 
     IAsyncOperation<bool> FreOverlay::_InstallHooksAsync(winrt::hstring agentId)
@@ -1210,6 +1486,31 @@ namespace winrt::TerminalApp::implementation
 
         co_await winrt::resume_background();
 
+        // Deterministic packaged-E2E fault injection. Package identity gates
+        // this to Dev-branded MSIX builds in both Debug and Release; Store,
+        // Preview, Canary, and unpackaged builds never inspect the marker.
+        UINT32 familyLength = 0;
+        if (GetCurrentPackageFamilyName(&familyLength, nullptr) == ERROR_INSUFFICIENT_BUFFER && familyLength != 0)
+        {
+            std::wstring familyName(familyLength, L'\0');
+            if (GetCurrentPackageFamilyName(&familyLength, familyName.data()) == ERROR_SUCCESS)
+            {
+                familyName.resize(::wcslen(familyName.c_str()));
+                if (familyName.starts_with(L"IntelligentTerminal_"))
+                {
+                    const auto failureMarker =
+                        std::filesystem::path{ winrt::Windows::Storage::ApplicationData::Current().LocalFolder().Path().c_str() } /
+                        L"fre-e2e-hooks-failure";
+                    std::error_code ec;
+                    if (std::filesystem::exists(failureMarker, ec) && !ec)
+                    {
+                        _agentPaneLog("[FRE] E2E: forcing hooks install failure");
+                        co_return false;
+                    }
+                }
+            }
+        }
+
         namespace Wta = ::Microsoft::Terminal::WtaProcess;
 
         const auto wtaPath = Wta::ResolveWtaExePath();
@@ -1217,8 +1518,7 @@ namespace winrt::TerminalApp::implementation
         // are discoverable by the hooks installer.
         auto envBlock = Wta::BuildExtendedPathEnvBlock();
         auto args = L"hooks install --cli " + id;
-        co_return Wta::RunWtaAndWait(wtaPath, args, 60'000,
-                                     envBlock.empty() ? nullptr : envBlock.data());
+        co_return Wta::RunWtaAndWait(wtaPath, args, 60'000, envBlock.empty() ? nullptr : envBlock.data());
     }
 
     // ── Save + install flow ─────────────────────────────────────────────
@@ -1466,6 +1766,9 @@ namespace winrt::TerminalApp::implementation
         {
             const auto& globals = _settings.GlobalSettings();
             globals.AcpAgent(agentId);
+            globals.AgentPaneYoloMode(AutomaticApprovalToggle().IsOn());
+            globals.ClearAgentPaneYoloModeIfUnavailableDefault();
+            globals.ClearAgentPaneYoloModeIfPolicyBlocked();
             globals.DelegateAgent(agentId);
             globals.AutoErrorDetectionEnabled(errorDetectionEnabled);
             globals.AutoFixEnabled(autoFixEnabled);
@@ -1486,10 +1789,14 @@ namespace winrt::TerminalApp::implementation
         }
 
         // 2. Enter the "saving" state: disable the form, raise the
-        // SavingOverlay (with spinner + "Setting up..."), disable the
-        // Save button. Hide any previous error.
+        // SavingOverlay, disable the Save button, and start the progressive
+        // checklist. Hide any previous error.
+        _BeginProgressAttempt(agentId);
+        _BeginProgressStep(ProgressStep::Setup);
         _SetSavingState(true);
         ErrorPanel().Visibility(Visibility::Collapsed);
+        _FinishProgressStep(ProgressStep::Setup, ProgressResult::Completed);
+        _BeginProgressStep(ProgressStep::Agent);
 
         // 3. Install prerequisites if needed (blocking — cannot proceed without these)
         const bool needsCopilot = (agentId == L"copilot") && !_IsAgentInstalled(L"copilot");
@@ -1500,6 +1807,7 @@ namespace winrt::TerminalApp::implementation
             + " needsNode=" + (needsNode ? "y" : "n")
             + " detect=" + (errorDetectionEnabled ? "on" : "off")
             + " autoFix=" + (autoFixEnabled ? "on" : "off")
+            + " automaticApproval=" + (AutomaticApprovalToggle().IsOn() ? "on" : "off")
             + " tokenUsageAndCost=" + (ShowTokenUsageAndCostToggle().IsOn() ? "on" : "off")
             + " hooks=" + (SessionManagementToggle().IsOn() ? "on" : "off"));
 
@@ -1524,6 +1832,7 @@ namespace winrt::TerminalApp::implementation
             if (!_IsWingetInstalled())
             {
                 _agentPaneLog("[FRE] winget not found on PATH");
+                _FinishProgressStep(ProgressStep::Agent, ProgressResult::Failed);
                 _ShowProblem(FreProblemKind::WingetMissing);
                 co_return;
             }
@@ -1583,6 +1892,7 @@ namespace winrt::TerminalApp::implementation
                 // populated by _WingetInstallAsync on this same instance;
                 // safe to read here because the Copilot install awaited
                 // above is the only writer in this sequential chain.
+                _FinishProgressStep(ProgressStep::Agent, ProgressResult::Failed);
                 _ShowWingetProblem(FreWingetPackage::Copilot,
                                    kind,
                                    _lastWingetHr,
@@ -1604,6 +1914,7 @@ namespace winrt::TerminalApp::implementation
                           std::string(kind == FreWingetFailureKind::Success ? "ok" : "FAILED"));
             if (kind != FreWingetFailureKind::Success)
             {
+                _FinishProgressStep(ProgressStep::Agent, ProgressResult::Failed);
                 _ShowWingetProblem(FreWingetPackage::Node,
                                    kind,
                                    _lastWingetHr,
@@ -1642,7 +1953,9 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        // 4+5. Install hooks and shell integration. Run both, collect any
+        _FinishProgressStep(ProgressStep::Agent, ProgressResult::Completed);
+
+        // 4+5. Install shell integration and hooks. Run both, collect any
         // failures, then surface only the highest-priority one (see
         // _ShowProblem). Lower-priority failures are left enabled so the next
         // Save retries them.
@@ -1650,40 +1963,14 @@ namespace winrt::TerminalApp::implementation
         bool shellIntegFailed = false;
         bool shellIntegEpBlocked = false;
 
-        // 4. Hooks — skip if GPO blocks it or settings unavailable.
-        if (SessionManagementToggle().IsOn() &&
-            _settings &&
-            !_settings.GlobalSettings().IsAgentSessionHooksPolicyLocked())
-        {
-            auto self = weak.get();
-            if (!self) co_return;
-
-            _agentPaneLog("[FRE] Installing hooks for " + winrt::to_string(agentId));
-            bool hooksOk = co_await _InstallHooksAsync(agentId);
-            // Helper internally does co_await winrt::resume_background(),
-            // so the continuation may resume on a thread-pool thread.
-            // Hop back to the UI thread before the subsequent
-            // XAML access and any later _ShowProblem call. Without this,
-            // XAML access from the thread pool throws RPC_E_WRONG_THREAD,
-            // which IAsyncAction swallows — the SavingOverlay would then be
-            // stuck with no error surfaced.
-            co_await winrt::resume_foreground(dispatcher);
-            self = weak.get();
-            if (!self) co_return;
-
-            _agentPaneLog("[FRE] Hooks install: " + std::string(hooksOk ? "ok" : "FAILED"));
-            if (!hooksOk)
-            {
-                hooksFailed = true;
-            }
-        }
-
-        // 5. Shell integration — only when error detection is enabled.
+        // 4. Shell integration — only when error detection is enabled.
         if (errorDetectionEnabled)
         {
             auto self = weak.get();
-            if (!self) co_return;
+            if (!self)
+                co_return;
 
+            _BeginProgressStep(ProgressStep::ErrorDetection);
             _agentPaneLog("[FRE] Installing shell integration");
 
             // Snapshot WSL distros AND non-WSL shell presence on the UI
@@ -1752,6 +2039,58 @@ namespace winrt::TerminalApp::implementation
                     shellIntegEpBlocked = true;
                 }
             }
+
+            bool shellIntegWarning = !bashResult.success;
+            for (const auto& [_, result] : wslResults)
+            {
+                if (!result.success)
+                {
+                    shellIntegWarning = true;
+                    break;
+                }
+            }
+
+            co_await winrt::resume_foreground(dispatcher);
+            self = weak.get();
+            if (!self)
+                co_return;
+
+            _FinishProgressStep(
+                ProgressStep::ErrorDetection,
+                shellIntegFailed  ? ProgressResult::Failed :
+                shellIntegWarning ? ProgressResult::Warning :
+                                    ProgressResult::Completed);
+        }
+
+        // 5. Hooks — skip if GPO blocks it or settings unavailable.
+        if (SessionManagementToggle().IsOn() &&
+            _settings &&
+            !_settings.GlobalSettings().IsAgentSessionHooksPolicyLocked())
+        {
+            auto self = weak.get();
+            if (!self)
+                co_return;
+
+            _BeginProgressStep(ProgressStep::Sessions);
+            _agentPaneLog("[FRE] Installing hooks for " + winrt::to_string(agentId));
+            bool hooksOk = co_await _InstallHooksAsync(agentId);
+            // Helper internally does co_await winrt::resume_background(),
+            // so the continuation may resume on a thread-pool thread.
+            // Hop back to the UI thread before the subsequent
+            // XAML access and any later _ShowProblem call. Without this,
+            // XAML access from the thread pool throws RPC_E_WRONG_THREAD,
+            // which IAsyncAction swallows — the SavingOverlay would then be
+            // stuck with no error surfaced.
+            co_await winrt::resume_foreground(dispatcher);
+            self = weak.get();
+            if (!self)
+                co_return;
+
+            _agentPaneLog("[FRE] Hooks install: " + std::string(hooksOk ? "ok" : "FAILED"));
+            hooksFailed = !hooksOk;
+            _FinishProgressStep(
+                ProgressStep::Sessions,
+                hooksOk ? ProgressResult::Completed : ProgressResult::Failed);
         }
 
         // Surface only the highest-priority failure. Shell integration outranks
@@ -1828,10 +2167,9 @@ namespace winrt::TerminalApp::implementation
     //   unlike IsHitTestVisible, which is pointer-only and would leave
     //   Tab / Space / arrows working on the form mid-install.
     // - The SavingOverlay (a semi-opaque Border sitting in the same
-    //   Grid cell as the form, z-stacked on top) gives the visual: a
-    //   centered ProgressRing + "Setting up..." status text. Its
-    //   Background also catches any stray pointer input the disabled
-    //   form might still surface.
+    //   Grid cell as the form, z-stacked on top) shows the progressive
+    //   setup checklist. Its Background also catches any stray pointer
+    //   input the disabled form might still surface.
     // - The Save button is gated separately so an Enter keypress can't
     //   re-fire the click while we're already saving.
     void FreOverlay::_SetSavingState(bool saving)
@@ -1910,15 +2248,11 @@ namespace winrt::TerminalApp::implementation
                 });
 
             // Narrator: the deferred focus above will eventually fire a
-            // focus event with the ProgressRing's Name ("Setting up
-            // Intelligent Terminal", set in Initialize via SetName) +
-            // its "busy" state. RaiseNotificationEvent ensures the
-            // user hears something immediately, before that deferred
-            // focus lands. Together: an early notification on entry,
-            // and a meaningful Caps+Tab readout (or focus-changed
-            // announcement on re-entry) once focus is parked on the
-            // ring. Uses SaveButton as the peer source (matches the
-            // FRE welcome pattern in TerminalPage::_ShowFreOverlay)
+            // focus event with the ProgressRing's current step Name and
+            // its "busy" state. RaiseNotificationEvent ensures the user
+            // hears "Setting up..." immediately, before that deferred
+            // focus lands. Uses SaveButton as the peer source (matches
+            // the FRE welcome pattern in TerminalPage::_ShowFreOverlay)
             // because UserControl peers don't propagate notifications
             // to Narrator reliably; a concrete focusable Control does.
             if (auto peer = Automation::Peers::FrameworkElementAutomationPeer::FromElement(SaveButton()))

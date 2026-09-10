@@ -44,6 +44,7 @@
     </ClInclude>
     <ClInclude Include="AppCommandlineArgs.h" />
     <ClInclude Include="Commandline.h" />
+    <ClInclude Include="ContentTransfer.h" />
     <ClInclude Include="DebugTapConnection.h" />
     <ClInclude Include="Jumplist.h" />
     <ClInclude Include="FilteredCommand.h">
