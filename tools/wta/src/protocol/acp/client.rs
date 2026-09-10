@@ -5739,7 +5739,7 @@ async fn dispatch_prompt_body(
             tracing::warn!(
                 target: "yolo",
                 session_id = %prompt_session_id_str,
-                "AllowYoloMode blocked provider command /{}",
+                "AllowAutomaticApproval blocked provider command /{}",
                 command_name
             );
             let message = provider_command_blocked_by_policy(command_name);
@@ -6008,7 +6008,7 @@ async fn dispatch_prompt_body(
                             tracing::warn!(
                                 target: "yolo",
                                 session_id = %prompt_session_id_str,
-                                "AllowYoloMode blocked provider command /{}",
+                                "AllowAutomaticApproval blocked provider command /{}",
                                 command_name
                             );
                             (

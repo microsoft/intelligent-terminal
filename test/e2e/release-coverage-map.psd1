@@ -21,7 +21,7 @@
     'Yolo setting persists'             = 'Feature provider-native Yolo with Copilot\.Yolo setting persists'
     'Settings hides unsupported automatic approval and forces it off' = 'Settings hides unsupported automatic approval and forces it off'
     'Settings explains Gemini automatic approval restrictions' = 'Settings explains Gemini automatic approval restrictions'
-    'AllowYoloMode hides automatic approval and turns it off' = 'AllowYoloMode hides automatic approval and turns it off'
+    'AllowAutomaticApproval hides automatic approval and turns it off' = 'AllowAutomaticApproval hides automatic approval and turns it off'
     'Esc/back navigation works'         = 'Esc/back navigation works|TRIGGERS the selected option'
     # §2/§5 WT accelerators + delegation palette (Feature.AgentHotkeys) — driven via window-level
     # OS keystrokes (Send-WtWindowKey), which reach WT's keybinding layer (the conpty path can't).

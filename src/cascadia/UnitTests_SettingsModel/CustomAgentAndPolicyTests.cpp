@@ -835,7 +835,7 @@ namespace SettingsModelUnitTests
 
     void CustomAgentAndPolicyTests::EffectiveAgentPaneYoloModeFalseWhenPolicyBlocked()
     {
-        // The AllowYoloMode admin policy overrides the user's toggle: even
+        // The AllowAutomaticApproval admin policy overrides the user's toggle: even
         // with the setting on, a Blocked policy must force the effective
         // value to false, matching the AutoFix policy-gate pattern above.
         const auto settings = MakeSettings(R"("agentPane.yoloMode": true)");
@@ -950,7 +950,7 @@ namespace SettingsModelUnitTests
             static_cast<LSTATUS>(ERROR_SUCCESS),
             RegSetValueExW(
                 policyKey.get(),
-                L"AllowYoloMode",
+                L"AllowAutomaticApproval",
                 0,
                 REG_DWORD,
                 reinterpret_cast<const BYTE*>(&blocked),
@@ -1032,7 +1032,7 @@ namespace SettingsModelUnitTests
             static_cast<LSTATUS>(ERROR_SUCCESS),
             RegSetValueExW(
                 policyKey.get(),
-                L"AllowYoloMode",
+                L"AllowAutomaticApproval",
                 0,
                 REG_DWORD,
                 reinterpret_cast<const BYTE*>(&blocked),

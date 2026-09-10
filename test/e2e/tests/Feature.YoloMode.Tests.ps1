@@ -325,9 +325,9 @@ Describe 'Feature Settings automatic approval availability' -ForEach $script:Pac
             Invoke-SettingsNav -App $app -NavItem 'AIAgentsNavItem' | Out-Null
 
             Wait-UiElement -App $app -Selector 'GeminiYoloCompatibilityInfoBar' -TimeoutSec 15 | Out-Null
-            $title = Get-WtReswTextRegex -Key 'AIAgents_YoloGeminiInfo.Title'
+            $message = Get-WtReswTextRegex -Key 'AIAgents_YoloGeminiInfo.Message'
             (Get-UiTree -App $app -Selector 'GeminiYoloCompatibilityInfoBar' -Depth 4) |
-                Should -Match $title -Because 'the informational notice must describe Gemini workspace trust'
+                Should -Match $message -Because 'the informational notice must describe Gemini workspace trust'
             Test-UiElementExists -App $app -Selector 'AgentPaneYoloModeToggle' -TimeoutSec 8 |
                 Should -BeTrue -Because 'Gemini automatic approval remains visible'
             Test-UiElementEnabled -App $app -Selector 'AgentPaneYoloModeToggle' |
@@ -339,13 +339,13 @@ Describe 'Feature Settings automatic approval availability' -ForEach $script:Pac
     }
 }
 
-Describe 'Feature AllowYoloMode policy' -ForEach $script:PackageCase -Tag 'Feature' -Skip:(-not $script:Ready) {
+Describe 'Feature AllowAutomaticApproval policy' -ForEach $script:PackageCase -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
     }
 
-    It 'AllowYoloMode hides automatic approval and turns it off' -Skip:(-not $script:policyReady) {
-        $prior = Set-WtAgentPolicy -Policy @{ AllowYoloMode = 'Allowed' }
+    It 'AllowAutomaticApproval hides automatic approval and turns it off' -Skip:(-not $script:policyReady) {
+        $prior = Set-WtAgentPolicy -Policy @{ AllowAutomaticApproval = 'Allowed' }
         $app = $null
         try {
             $app = Start-Terminal -Package $Package -PassFre $true -Settings @{
@@ -360,7 +360,7 @@ Describe 'Feature AllowYoloMode policy' -ForEach $script:PackageCase -Tag 'Featu
             }) | Should -BeTrue -Because 'the allowed policy must permit the persisted global-on setting'
 
             Initialize-LogOffsets -App $app | Out-Null
-            Set-WtAgentPolicy -Policy @{ AllowYoloMode = 'Blocked' } | Out-Null
+            Set-WtAgentPolicy -Policy @{ AllowAutomaticApproval = 'Blocked' } | Out-Null
             (Test-Until -TimeoutSec 15 -IntervalSec 0.5 -Condition {
                 (Get-WtSettingsObject -App $app).'agentPane.yoloMode' -eq $false
             }) | Should -BeTrue -Because 'a policy block must clear the persisted Yolo preference'
@@ -383,7 +383,7 @@ Describe 'Feature AllowYoloMode policy' -ForEach $script:PackageCase -Tag 'Featu
             $blockedLog = Wait-Until -TimeoutSec 15 -IntervalSec 0.5 `
                 -Because 'the helper to record that policy suppressed the provider command before ACP' -Condition {
                     $log = Get-ItLogText -App $app -Name 'wta-main_helper-*.log' -SinceStart
-                    if ($log -match 'AllowYoloMode blocked provider command /allow_all') { $log }
+                    if ($log -match 'AllowAutomaticApproval blocked provider command /allow_all') { $log }
                 }
             $blockedLog | Should -Not -Match 'sending Agent command verbatim' `
                 -Because 'a policy-blocked provider command must not cross the ACP prompt boundary'

@@ -21,7 +21,7 @@ per-agent-pane status badge.
   later automatic Settings reconciliation.
 - Keep provider identity and ACP session routing authoritative across tabs,
   windows, and shared Agent CLI processes.
-- Apply `AllowYoloMode` policy changes to live sessions and fail closed when a
+- Apply `AllowAutomaticApproval` policy changes to live sessions and fail closed when a
   disable cannot be confirmed.
 - Keep every ordinary ACP permission option under explicit user control.
 - Preserve the separate confirmation boundary for terminal action proposals.
@@ -41,7 +41,7 @@ per-agent-pane status badge.
 ## Architecture
 
 ```text
-settings.json / Settings UI / AllowYoloMode
+settings.json / Settings UI / AllowAutomaticApproval
   -> GlobalAppSettings::EffectiveAgentPaneYoloMode()
   -> TerminalPage default/current-provider decision
   -> helper startup, rebind_agent, and agent_config_changed
@@ -125,7 +125,7 @@ mode manually while policy allows it.
 
 Loading an existing ACP session is different from creating a new session. Its
 provider-native state is treated as provider-restored and automatic Settings
-logic does not mutate it while policy allows. `AllowYoloMode=0` still forces
+logic does not mutate it while policy allows. `AllowAutomaticApproval=0` still forces
 the loaded session Off before prompts proceed.
 
 ### Commands and configuration
@@ -136,7 +136,7 @@ and is forwarded as an ordinary provider command; WTA must not reserve or mute
 it.
 
 GitHub Copilot's provider-owned `/allow_all` command is a reviewed privileged
-entry point. WTA forwards it only while `AllowYoloMode` permits Yolo. Other
+entry point. WTA forwards it only while `AllowAutomaticApproval` permits Yolo. Other
 Copilot commands and same-named commands from custom or non-Copilot providers
 remain ordinary provider commands.
 
@@ -240,7 +240,7 @@ failure instead of waiting once per session.
 
 ## Administrative policy
 
-`AllowYoloMode` overrides and clears the stored preference. When policy blocks
+`AllowAutomaticApproval` overrides and clears the stored preference. When policy blocks
 Yolo mode:
 
 - `EffectiveAgentPaneYoloMode()` returns `false`.
@@ -290,7 +290,7 @@ that cannot prove restoration fails closed.
 When an authoritative config update removes a recognized privileged selector,
 the current `/config` publication removes it as well. The helper retains only
 its session-scoped control identity until teardown so a stale UI selection
-cannot fall through the generic config path and bypass `AllowYoloMode`; the
+cannot fall through the generic config path and bypass `AllowAutomaticApproval`; the
 removed selector is not treated as a valid reversible capability.
 
 ## Permission and terminal-action boundaries
