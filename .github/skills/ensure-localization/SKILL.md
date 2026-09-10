@@ -135,7 +135,7 @@ $bundles = [System.Collections.Generic.List[object]]::new()
 
 foreach ($target in $targets) {
     if ($target -isnot [hashtable]) {
-        throw 'Batch rows must be hashtables; use ConvertFrom-Json -AsHashtable for JSON input.'
+        throw 'Batch rows must be hash tables; use ConvertFrom-Json -AsHashtable for JSON input.'
     }
     if ($null -eq $target.RequiredKeys -or @($target.RequiredKeys).Count -eq 0) {
         throw 'Each scoped batch row must define a non-empty RequiredKeys array.'

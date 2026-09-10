@@ -80,6 +80,7 @@ gantt
 gfm
 ghe
 Ghostty
+GHAW
 github
 githubnext
 godbolt

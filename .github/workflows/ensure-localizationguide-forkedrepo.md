@@ -445,7 +445,7 @@ keys to `Test-PlaceholderParity`, `Test-LockedContent`, and
 `Test-PseudoLocale`. Missing comparable entries stay with
 `Test-RequiredKeys`; dependent checks across absent entries are genuine
 `BLOCKED` outcomes and must not be manufactured into the final guide report.
-Perform this review independently from the caller's proposed key list: rederive
+Perform this review independently from the caller's proposed key list: derive again
 the expected keys from the original patch, audit all shipped localized
 counterparts implicated by that scope, and fail `PASS` when any expected key
 block is mismatched or omitted.
