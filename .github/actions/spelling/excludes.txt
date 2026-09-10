@@ -125,7 +125,7 @@ Resources/(?!en)
 ^tools/wta/cgmanifest\.json$
 ^XamlStyler\.json$
 ^\.clang-format$
-^\.github/actions/spelling/
+^\.github/
 ^\.github/skills/upstream-sync/
 ^\.github/workflows/spelling\d*\.yml$
 ^\.vsconfig$
