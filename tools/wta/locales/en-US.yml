@@ -1,6 +1,7 @@
 # ── File-level locks ─────────────────────────────────────────────────────────
 # {Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name
 # "Agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human representative or proxy
+# Smoke-test fixture comment for localization controller skip validation.
 
 # Setup screen titles
 setup.title.agent_missing: "Agent not found"
