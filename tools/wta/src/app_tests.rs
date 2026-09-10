@@ -13445,6 +13445,472 @@ fn input_vertical_non_input_scroll_resets_column_intent() {
     assert_eq!(app.current_tab().cursor_pos, 1);
 }
 
+mod input_undo_tests {
+    use super::*;
+
+    fn key(app: &mut App, code: KeyCode, modifiers: KeyModifiers) {
+        app.handle_event(AppEvent::Key(KeyEvent::new(code, modifiers)));
+    }
+
+    fn type_text(app: &mut App, text: &str) {
+        for ch in text.chars() {
+            key(app, KeyCode::Char(ch), KeyModifiers::NONE);
+        }
+    }
+
+    fn undo(app: &mut App) {
+        key(app, KeyCode::Char('z'), KeyModifiers::CONTROL);
+    }
+
+    fn redo(app: &mut App) {
+        key(app, KeyCode::Char('y'), KeyModifiers::CONTROL);
+    }
+
+    #[test]
+    fn contiguous_typing_is_one_edit() {
+        let mut app = test_app();
+        type_text(&mut app, "hello");
+        undo(&mut app);
+        assert!(app.current_tab().input.is_empty());
+        assert_eq!(app.current_tab().cursor_pos, 0);
+        redo(&mut app);
+        assert_eq!(app.current_tab().input, "hello");
+        assert_eq!(app.current_tab().cursor_pos, 5);
+    }
+
+    #[test]
+    fn direct_key_dispatch_uses_the_same_undo_owner() {
+        let mut app = test_app();
+        type_text(&mut app, "hello");
+        app.handle_key(KeyEvent::new(KeyCode::Char('z'), KeyModifiers::CONTROL));
+        assert!(app.current_tab().input.is_empty());
+        app.handle_key(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::CONTROL));
+        assert_eq!(app.current_tab().input, "hello");
+    }
+
+    #[test]
+    fn cursor_roundtrip_breaks_the_typing_group() {
+        let mut app = test_app();
+        type_text(&mut app, "first");
+        key(&mut app, KeyCode::Left, KeyModifiers::NONE);
+        key(&mut app, KeyCode::Right, KeyModifiers::NONE);
+        type_text(&mut app, " second");
+        undo(&mut app);
+        assert_eq!(app.current_tab().input, "first");
+        undo(&mut app);
+        assert!(app.current_tab().input.is_empty());
+        redo(&mut app);
+        redo(&mut app);
+        assert_eq!(app.current_tab().input, "first second");
+    }
+
+    #[test]
+    fn insertion_in_the_middle_restores_both_sides_and_the_caret() {
+        let mut app = test_app();
+        app.current_tab_mut().insert_input_str("left right");
+        key(&mut app, KeyCode::Home, KeyModifiers::NONE);
+        for _ in 0..5 {
+            key(&mut app, KeyCode::Right, KeyModifiers::NONE);
+        }
+        type_text(&mut app, "new ");
+        undo(&mut app);
+        assert_eq!(app.current_tab().input, "left right");
+        assert_eq!(app.current_tab().cursor_pos, 5);
+        redo(&mut app);
+        assert_eq!(app.current_tab().input, "left new right");
+        assert_eq!(app.current_tab().cursor_pos, 9);
+    }
+
+    #[test]
+    fn altgr_text_is_not_an_undo_chord() {
+        let mut app = test_app();
+        type_text(&mut app, "draft");
+        key(
+            &mut app,
+            KeyCode::Char('z'),
+            KeyModifiers::CONTROL | KeyModifiers::ALT,
+        );
+        assert_eq!(app.current_tab().input, concat!("draft", "z"));
+        undo(&mut app);
+        assert!(app.current_tab().input.is_empty());
+    }
+
+    #[test]
+    fn selection_replacement_restores_one_complete_draft() {
+        let original = concat!("original", "\n", "\u{4e2d}\u{6587}");
+        let mut app = test_app();
+        app.current_tab_mut().insert_input_str(original);
+        key(&mut app, KeyCode::Char('a'), KeyModifiers::CONTROL);
+        type_text(&mut app, "new");
+        assert_eq!(app.current_tab().input, "new");
+        undo(&mut app);
+        assert_eq!(app.current_tab().input, original);
+        assert!(app.current_tab().input_all_selected);
+        assert_eq!(app.current_tab().cursor_pos, original.len());
+        redo(&mut app);
+        assert_eq!(app.current_tab().input, "new");
+        assert!(!app.current_tab().input_all_selected);
+    }
+
+    #[test]
+    fn selected_deletion_and_cut_are_atomic() {
+        for deletion in [
+            Some((KeyCode::Backspace, KeyModifiers::NONE)),
+            Some((KeyCode::Delete, KeyModifiers::NONE)),
+            Some((KeyCode::Backspace, KeyModifiers::CONTROL)),
+            None,
+        ] {
+            let mut app = test_app();
+            app.current_tab_mut().insert_input_str("keep this draft");
+            key(&mut app, KeyCode::Char('a'), KeyModifiers::CONTROL);
+            if let Some((code, modifiers)) = deletion {
+                key(&mut app, code, modifiers);
+            } else {
+                assert!(app.copy_input_selection(true, |_| Ok(())));
+            }
+            assert!(app.current_tab().input.is_empty());
+            undo(&mut app);
+            assert_eq!(app.current_tab().input, "keep this draft");
+            assert!(app.current_tab().input_all_selected);
+            redo(&mut app);
+            assert!(app.current_tab().input.is_empty());
+        }
+    }
+
+    #[test]
+    fn failed_cut_does_not_create_an_edit() {
+        let mut app = test_app();
+        type_text(&mut app, "keep");
+        key(&mut app, KeyCode::Char('a'), KeyModifiers::CONTROL);
+        assert!(app.copy_input_selection(true, |_| {
+            Err(std::io::Error::other("clipboard unavailable"))
+        }));
+        assert_eq!(app.current_tab().input, "keep");
+        undo(&mut app);
+        assert!(app.current_tab().input.is_empty());
+        redo(&mut app);
+        assert_eq!(app.current_tab().input, "keep");
+    }
+
+    #[test]
+    fn accepted_paste_and_unicode_deletion_roundtrip() {
+        let mut app = test_app();
+        app.current_tab_mut().pane_open = true;
+        app.current_tab_mut().paste_pending = true;
+        app.insert_agent_paste_text(DEFAULT_TAB_ID, 0, concat!("\u{4e2d}", "\r\n", "caf\u{e9}"));
+        let expected = concat!("\u{4e2d}", "\n", "caf\u{e9}");
+        assert_eq!(app.current_tab().input, expected);
+        undo(&mut app);
+        assert!(app.current_tab().input.is_empty());
+        redo(&mut app);
+        assert_eq!(app.current_tab().input, expected);
+        key(&mut app, KeyCode::Backspace, KeyModifiers::NONE);
+        assert_eq!(app.current_tab().input, concat!("\u{4e2d}", "\n", "caf"));
+        undo(&mut app);
+        assert_eq!(app.current_tab().input, expected);
+        assert_eq!(app.current_tab().cursor_pos, expected.len());
+    }
+
+    #[test]
+    fn stale_paste_does_not_change_the_edit_chain() {
+        let mut app = test_app();
+        type_text(&mut app, "draft");
+        app.current_tab_mut().pane_open = true;
+        app.current_tab_mut().paste_generation = 2;
+        app.insert_agent_paste_text(DEFAULT_TAB_ID, 1, "stale");
+        undo(&mut app);
+        assert!(app.current_tab().input.is_empty());
+        redo(&mut app);
+        assert_eq!(app.current_tab().input, "draft");
+    }
+
+    #[test]
+    fn image_deletion_restores_token_and_payload() {
+        let image = crate::clipboard_image::PastedImage {
+            data_base64: "AA==".into(),
+            mime_type: "image/png".into(),
+            label: "screenshot".into(),
+        };
+        let mut app = test_app();
+        let tab = app.current_tab_mut();
+        tab.insert_input_str("before ");
+        tab.insert_image_attachment(image.clone());
+        tab.insert_input_str(" after");
+        let original = tab.input.clone();
+        let token = tab.attachments.token_ranges().next().unwrap();
+        tab.cursor_pos = token.end;
+        tab.delete_before_cursor();
+        assert_eq!(tab.input, "before  after");
+        assert!(tab.attachments.is_empty());
+        undo(&mut app);
+        assert_eq!(app.current_tab().input, original);
+        assert_eq!(app.current_tab().cursor_pos, token.end);
+        assert_eq!(
+            app.current_tab().attachments.images().collect::<Vec<_>>(),
+            vec![&image]
+        );
+        redo(&mut app);
+        assert_eq!(app.current_tab().input, "before  after");
+        assert!(app.current_tab().attachments.is_empty());
+    }
+
+    #[test]
+    fn new_edit_discards_redo_but_noop_deletion_does_not() {
+        let mut app = test_app();
+        type_text(&mut app, "old");
+        undo(&mut app);
+        key(&mut app, KeyCode::Backspace, KeyModifiers::NONE);
+        key(&mut app, KeyCode::Left, KeyModifiers::NONE);
+        redo(&mut app);
+        assert_eq!(app.current_tab().input, "old");
+        undo(&mut app);
+        type_text(&mut app, "new");
+        redo(&mut app);
+        assert_eq!(app.current_tab().input, "new");
+    }
+
+    #[test]
+    fn selecting_copying_and_moving_preserve_redo() {
+        let mut app = test_app();
+        app.current_tab_mut().insert_input_str("base");
+        app.current_tab_mut().insert_input_str(" suffix");
+        undo(&mut app);
+        key(&mut app, KeyCode::Char('a'), KeyModifiers::CONTROL);
+        assert!(app.copy_input_selection(false, |_| Ok(())));
+        key(&mut app, KeyCode::Left, KeyModifiers::NONE);
+        redo(&mut app);
+        assert_eq!(app.current_tab().input, "base suffix");
+        assert_eq!(app.current_tab().cursor_pos, "base suffix".len());
+    }
+
+    #[test]
+    fn idle_draft_clearing_is_undoable() {
+        for (code, modifiers) in [
+            (KeyCode::Esc, KeyModifiers::NONE),
+            (KeyCode::Char('c'), KeyModifiers::CONTROL),
+        ] {
+            let mut app = test_app();
+            type_text(&mut app, "draft");
+            key(&mut app, code, modifiers);
+            assert!(app.current_tab().input.is_empty());
+            undo(&mut app);
+            assert_eq!(app.current_tab().input, "draft");
+            assert!(app.close_pane_armed_at.is_none());
+            redo(&mut app);
+            assert!(app.current_tab().input.is_empty());
+        }
+    }
+
+    #[test]
+    fn submission_is_not_an_undoable_edit() {
+        let mut app = test_app();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.prompt_tx = tx;
+        app.state = ConnectionState::Connected;
+        type_text(&mut app, "submitted");
+        key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+        assert_eq!(rx.try_recv().unwrap().text, "submitted");
+        assert!(app.current_tab().input.is_empty());
+        undo(&mut app);
+        redo(&mut app);
+        assert!(app.current_tab().input.is_empty());
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn history_browsing_preserves_the_original_draft_edits() {
+        let mut app = test_app();
+        app.current_tab_mut().record_input_history("submitted");
+        type_text(&mut app, "draft");
+        app.current_tab_mut().insert_input_str(" pasted");
+        key(&mut app, KeyCode::Up, KeyModifiers::NONE);
+        assert_eq!(app.current_tab().input, "submitted");
+        key(&mut app, KeyCode::Down, KeyModifiers::NONE);
+        assert_eq!(app.current_tab().input, "draft pasted");
+        undo(&mut app);
+        assert_eq!(app.current_tab().input, "draft");
+        undo(&mut app);
+        assert!(app.current_tab().input.is_empty());
+    }
+
+    #[test]
+    fn editing_recalled_text_starts_a_fresh_chain() {
+        let mut app = test_app();
+        app.current_tab_mut().record_input_history("historical");
+        type_text(&mut app, "original");
+        key(&mut app, KeyCode::Up, KeyModifiers::NONE);
+        type_text(&mut app, " change");
+        undo(&mut app);
+        assert_eq!(app.current_tab().input, "historical");
+        assert!(!app.current_tab().input_history_is_browsing());
+        undo(&mut app);
+        assert_eq!(app.current_tab().input, "historical");
+        redo(&mut app);
+        assert_eq!(app.current_tab().input, "historical change");
+    }
+
+    #[test]
+    fn non_input_owners_do_not_consume_draft_history() {
+        for context in ["history", "card", "help", "model", "agents", "unfocused"] {
+            let mut app = test_app();
+            type_text(&mut app, "draft");
+            match context {
+                "history" => {
+                    app.current_tab_mut().completed_turns.push(CompletedTurn {
+                        prompt: "old turn".into(),
+                        details: Vec::new(),
+                        expanded: false,
+                        trailing_marker: None,
+                    });
+                    app.current_tab_mut().select_completed_turn(0);
+                }
+                "card" => stage_surfaced_recommendation(
+                    &mut app,
+                    vec![send_choice("pane-A", "ls")],
+                    0,
+                    None,
+                ),
+                "help" => app.help_overlay_visible = true,
+                "model" => app.current_tab_mut().model_picker_open = true,
+                "agents" => app.current_tab_mut().current_view = View::Agents,
+                "unfocused" => app.pane_focused = false,
+                _ => unreachable!(),
+            }
+            undo(&mut app);
+            assert_eq!(app.current_tab().input, "draft", "{context} after undo");
+            redo(&mut app);
+            assert_eq!(app.current_tab().input, "draft", "{context}");
+        }
+    }
+
+    #[test]
+    fn redo_chord_does_not_approve_a_permission_card() {
+        let mut app = test_app();
+        type_text(&mut app, "draft");
+        app.current_tab_mut()
+            .permission
+            .push_back(perm_with("permission"));
+        redo(&mut app);
+        assert_eq!(app.current_tab().permission.len(), 1);
+        assert_eq!(app.current_tab().input, "draft");
+    }
+
+    #[test]
+    fn histories_are_per_tab_and_switching_breaks_typing_groups() {
+        let mut app = test_app();
+        app.switch_tab_session("first".into());
+        type_text(&mut app, "first");
+        app.switch_tab_session("second".into());
+        type_text(&mut app, "second");
+        app.switch_tab_session("first".into());
+        type_text(&mut app, " change");
+        undo(&mut app);
+        assert_eq!(app.current_tab().input, "first");
+        assert_eq!(app.tab_sessions["second"].input, "second");
+        app.switch_tab_session("second".into());
+        undo(&mut app);
+        assert!(app.current_tab().input.is_empty());
+        assert_eq!(app.tab_sessions["first"].input, "first");
+    }
+
+    #[test]
+    fn focus_roundtrip_breaks_typing_groups() {
+        let mut app = test_app();
+        type_text(&mut app, "first");
+        app.handle_event(AppEvent::FocusChanged(false));
+        app.handle_event(AppEvent::FocusChanged(true));
+        type_text(&mut app, " second");
+        undo(&mut app);
+        assert_eq!(app.current_tab().input, "first");
+    }
+
+    #[test]
+    fn view_roundtrip_breaks_typing_groups_without_a_key() {
+        let mut app = test_app();
+        type_text(&mut app, "draft");
+        app.open_agents_view_for_tab(DEFAULT_TAB_ID.to_string());
+        app.close_agents_view_for_tab(DEFAULT_TAB_ID);
+        type_text(&mut app, " change");
+        undo(&mut app);
+        assert_eq!(app.current_tab().input, "draft");
+    }
+
+    #[test]
+    fn visibility_change_breaks_typing_groups_without_a_focus_event() {
+        let mut app = test_app();
+        app.current_tab_mut().pane_open = true;
+        type_text(&mut app, "first");
+        for open in [false, true] {
+            app.handle_event(AppEvent::WtEvent {
+                method: "set_agent_state".into(),
+                pane_id: String::new(),
+                tab_id: Some(DEFAULT_TAB_ID.into()),
+                params: json!({ "tab_id": DEFAULT_TAB_ID, "pane_open": open }),
+            });
+        }
+        type_text(&mut app, " second");
+        undo(&mut app);
+        assert_eq!(app.current_tab().input, "first");
+    }
+
+    #[test]
+    fn visibility_echo_does_not_break_the_typing_group() {
+        let mut app = test_app();
+        app.current_tab_mut().pane_open = true;
+        type_text(&mut app, "first");
+        app.handle_event(AppEvent::WtEvent {
+            method: "set_agent_state".into(),
+            pane_id: String::new(),
+            tab_id: Some(DEFAULT_TAB_ID.into()),
+            params: json!({ "tab_id": DEFAULT_TAB_ID, "pane_open": true, "view": "chat" }),
+        });
+        type_text(&mut app, " second");
+        undo(&mut app);
+        assert!(app.current_tab().input.is_empty());
+    }
+
+    #[test]
+    fn undo_restores_the_matching_command_popup() {
+        let mut app = test_app();
+        type_text(&mut app, "/he");
+        assert!(app.command_popup_visible());
+        key(&mut app, KeyCode::Char('a'), KeyModifiers::CONTROL);
+        type_text(&mut app, "replacement");
+        assert!(!app.command_popup_visible());
+        undo(&mut app);
+        assert_eq!(app.current_tab().input, "/he");
+        assert!(app.command_popup_visible());
+        redo(&mut app);
+        assert!(!app.command_popup_visible());
+    }
+
+    #[test]
+    fn session_reset_keeps_text_but_discards_old_edits() {
+        let mut app = test_app();
+        type_text(&mut app, "first");
+        app.current_tab_mut().insert_input_str(" second");
+        app.current_tab_mut().clear_chat_history();
+        undo(&mut app);
+        assert_eq!(app.current_tab().input, "first second");
+    }
+
+    #[test]
+    fn edit_history_has_no_prompt_history_step_cap() {
+        let mut app = test_app();
+        for _ in 0..151 {
+            app.current_tab_mut().insert_input_str("x");
+        }
+        for _ in 0..151 {
+            undo(&mut app);
+        }
+        assert!(app.current_tab().input.is_empty());
+        for _ in 0..151 {
+            redo(&mut app);
+        }
+        assert_eq!(app.current_tab().input, "x".repeat(151));
+    }
+}
+
 #[test]
 fn input_selection_deletes_entire_draft() {
     for key in [

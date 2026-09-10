@@ -56,6 +56,11 @@ impl App {
     }
 
     pub(super) fn handle_key(&mut self, key: KeyEvent) {
+        let typing_key = matches!(key.code, KeyCode::Char(ch) if !ch.is_control())
+            && modifiers_allow_text_input(key.modifiers);
+        if !typing_key || !self.chat_input_has_edit_focus() {
+            self.current_tab_mut().break_input_undo_group();
+        }
         let input_vertical_key = key.modifiers.is_empty()
             && matches!(key.code, KeyCode::Up | KeyCode::Down)
             && self.mode == AppMode::Chat
@@ -98,6 +103,20 @@ impl App {
         }
         if is_ctrl_c && self.mode == AppMode::Chat {
             self.handle_global_ctrl_c();
+            return;
+        }
+
+        if key.modifiers == KeyModifiers::CONTROL
+            && matches!(key.code, KeyCode::Char('z' | 'Z' | 'y' | 'Y'))
+        {
+            if self.chat_input_has_edit_focus() {
+                self.text_selection.clear();
+                if matches!(key.code, KeyCode::Char('z' | 'Z')) {
+                    self.current_tab_mut().undo_input();
+                } else {
+                    self.current_tab_mut().redo_input();
+                }
+            }
             return;
         }
 
@@ -921,6 +940,8 @@ impl App {
                     let is_byok = self.current_model_is_byok();
                     let agent_id = self.current_agent_id.clone();
                     let tab = self.current_tab_mut();
+                    // Release historical image references before transferring the payloads.
+                    tab.reset_input_undo_history();
                     let display_text = std::mem::take(&mut tab.input);
                     let (text, images) = tab.attachments.take_for_submission(display_text.clone());
                     tab.record_input_history(&text);

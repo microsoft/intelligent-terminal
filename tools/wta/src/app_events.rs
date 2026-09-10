@@ -304,7 +304,7 @@ impl App {
         tab.completed_turn_selection_visible_pending = click.previous_selection_pending;
     }
 
-    fn chat_input_has_edit_focus(&self) -> bool {
+    pub(super) fn chat_input_has_edit_focus(&self) -> bool {
         self.mode == AppMode::Chat
             && self.pane_focused
             && self.current_tab().current_view == View::Chat
@@ -317,11 +317,14 @@ impl App {
         cut: bool,
         copy: impl FnOnce(&str) -> std::io::Result<()>,
     ) -> bool {
-        let tab = self.current_tab();
-        if !self.chat_input_has_edit_focus() || !tab.input_all_selected || tab.input.is_empty() {
+        if !self.chat_input_has_edit_focus()
+            || !self.current_tab().input_all_selected
+            || self.current_tab().input.is_empty()
+        {
             return false;
         }
-        match copy(&tab.input) {
+        self.current_tab_mut().break_input_undo_group();
+        match copy(&self.current_tab().input) {
             Ok(()) => {
                 if cut {
                     self.current_tab_mut().delete_input_selection();
@@ -434,6 +437,14 @@ impl App {
     }
 
     pub(super) fn handle_event(&mut self, event: AppEvent) {
+        let breaks_typing = match &event {
+            AppEvent::Mouse(mouse) => mouse.kind != crossterm::event::MouseEventKind::Moved,
+            AppEvent::FocusChanged(_) | AppEvent::Resize(_, _) => true,
+            _ => false,
+        };
+        if breaks_typing {
+            self.current_tab_mut().break_input_undo_group();
+        }
         match event {
             AppEvent::Key(key) => {
                 self.cancel_completed_turn_click();
@@ -461,6 +472,7 @@ impl App {
                     return;
                 }
                 if is_copy && self.copy_text_selection() {
+                    self.current_tab_mut().break_input_undo_group();
                     return;
                 }
                 if matches!(key.code, KeyCode::Char('x'))
@@ -473,6 +485,7 @@ impl App {
                     && self.chat_input_has_edit_focus()
                     && self.current_tab().input_all_selected
                 {
+                    self.current_tab_mut().break_input_undo_group();
                     self.current_tab_mut().input_all_selected = false;
                     return;
                 }
@@ -3396,6 +3409,9 @@ impl App {
                             "applying pane_open"
                         );
                         let tab = self.tab_mut(&target_tab);
+                        if tab.pane_open != open {
+                            tab.break_input_undo_group();
+                        }
                         if !open {
                             tab.invalidate_pending_paste();
                         }

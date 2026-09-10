@@ -166,6 +166,8 @@ the view clamps to surviving content.
 |-----|--------|
 | Type + Enter | Send prompt to agent |
 | Ctrl+C | Copy selected text; otherwise cancel streaming / quit |
+| Ctrl+Z | Undo the latest edit in the focused chat draft |
+| Ctrl+Y | Redo an undone draft edit |
 | Up / Down | Browse prompt input history |
 | Mouse wheel | Scroll chat (hold Alt to scroll one line) |
 | Click a tool header | Expand or collapse that tool's details, live or completed |
@@ -177,6 +179,15 @@ the view clamps to surviving content.
 | F12 | Toggle debug panel (pipe traffic viewer) |
 | Shift+PageUp/Down | Scroll debug panel |
 | Y / N | Quick allow/reject on permission dialog |
+
+Draft undo groups contiguous typing; paste, cut, selection replacement, deletion,
+and idle draft clearing are separate edits. Cursor, selection, focus, and view
+changes separate typing groups without adding text edits. A new edit after undo
+discards redo. Each tab keeps its own in-memory edit history, without a fixed step
+limit; this is separate from submitted prompt history and screen scrollback.
+Browsing prompt history preserves the original draft's edit chain, while editing
+a recalled prompt starts a fresh chain. Submission and session reset discard the
+old edit history: undo does not reverse submitted agent or tool actions.
 | Up / Down / Enter | Navigate permission options |
 
 WTA automatically selects **Allow once** only when the tool matches the exact MCP

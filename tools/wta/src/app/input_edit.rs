@@ -86,15 +86,174 @@ impl<'a> TextEditor<'a> {
     }
 }
 
+#[derive(Clone)]
+struct InputEditState {
+    cursor_pos: usize,
+    selected: bool,
+    attachments: super::attachments::PendingAttachments,
+}
+
+struct InputEdit {
+    start: usize,
+    removed: String,
+    inserted: String,
+    before: InputEditState,
+    after: InputEditState,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum InputEditKind {
+    Typing,
+    Other,
+}
+
+#[derive(Default)]
+pub(super) struct InputEditHistory {
+    undo: Vec<InputEdit>,
+    redo: Vec<InputEdit>,
+    typing_open: bool,
+}
+
+impl InputEditHistory {
+    fn record(&mut self, edit: InputEdit, kind: InputEditKind) {
+        self.redo.clear();
+        if kind == InputEditKind::Typing && self.typing_open && edit.removed.is_empty() {
+            if let Some(previous) = self.undo.last_mut() {
+                if previous.start + previous.inserted.len() == edit.start
+                    && previous.after.cursor_pos == edit.before.cursor_pos
+                    && !edit.before.selected
+                {
+                    previous.inserted.push_str(&edit.inserted);
+                    previous.after = edit.after;
+                    return;
+                }
+            }
+        }
+        self.undo.push(edit);
+        self.typing_open = kind == InputEditKind::Typing;
+    }
+}
+
+#[derive(Default)]
+pub(super) struct InputHistoryDraft {
+    input: String,
+    cursor_pos: usize,
+    attachments: super::attachments::PendingAttachments,
+    edits: InputEditHistory,
+}
+
 #[derive(Default)]
 pub(super) struct InputHistory {
     pub(super) entries: VecDeque<String>,
     pub(super) selected: Option<usize>,
-    pub(super) draft: Option<(String, usize, super::attachments::PendingAttachments)>,
+    pub(super) draft: Option<InputHistoryDraft>,
 }
 
 impl TabSession {
+    pub(super) fn break_input_undo_group(&mut self) {
+        self.input_edits.typing_open = false;
+    }
+
+    pub(super) fn reset_input_undo_history(&mut self) {
+        self.input_edits = InputEditHistory::default();
+    }
+
+    fn input_edit_state(&self) -> InputEditState {
+        InputEditState {
+            cursor_pos: clamp_cursor_to_boundary(&self.input, self.cursor_pos),
+            selected: self.input_all_selected,
+            attachments: self.attachments.clone(),
+        }
+    }
+
+    fn input_replacement_range(&mut self) -> Range<usize> {
+        self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
+        if self.input_all_selected {
+            0..self.input.len()
+        } else {
+            self.cursor_pos..self.cursor_pos
+        }
+    }
+
+    fn replace_input_range(&mut self, range: Range<usize>, text: &str, kind: InputEditKind) {
+        if range.is_empty() && text.is_empty() {
+            return;
+        }
+        let before = self.input_edit_state();
+        let removed = self.input[range.clone()].to_owned();
+        self.reset_input_history_navigation();
+        self.cursor_pos = range.start;
+        if let Some(deleted) =
+            TextEditor::new(&mut self.input, &mut self.cursor_pos).delete_range(range.clone())
+        {
+            self.attachments.on_text_deleted(deleted);
+        }
+        if let Some(inserted) =
+            TextEditor::new(&mut self.input, &mut self.cursor_pos).insert_str(text)
+        {
+            self.attachments
+                .on_text_inserted(inserted.start, inserted.len());
+        }
+        self.refresh_command_popup();
+        let after = self.input_edit_state();
+        self.input_edits.record(
+            InputEdit {
+                start: range.start,
+                removed,
+                inserted: text.to_owned(),
+                before,
+                after,
+            },
+            kind,
+        );
+    }
+
+    fn replay_input_edit(&mut self, edit: &InputEdit, redo: bool) -> bool {
+        let (expected, replacement, state) = if redo {
+            (&edit.removed, &edit.inserted, &edit.after)
+        } else {
+            (&edit.inserted, &edit.removed, &edit.before)
+        };
+        let range = edit.start..edit.start + expected.len();
+        if self.input.get(range.clone()) != Some(expected.as_str()) {
+            tracing::error!(target: "input_undo", "discarding stale input edit history");
+            return false;
+        }
+        self.input.replace_range(range, replacement);
+        self.reset_input_history_navigation();
+        self.cursor_pos = clamp_cursor_to_boundary(&self.input, state.cursor_pos);
+        self.input_all_selected = state.selected && !self.input.is_empty();
+        self.attachments = state.attachments.clone();
+        self.refresh_command_popup();
+        true
+    }
+
+    pub(super) fn undo_input(&mut self) {
+        self.break_input_undo_group();
+        let Some(edit) = self.input_edits.undo.pop() else {
+            return;
+        };
+        if self.replay_input_edit(&edit, false) {
+            self.input_edits.redo.push(edit);
+        } else {
+            self.reset_input_undo_history();
+        }
+    }
+
+    pub(super) fn redo_input(&mut self) {
+        self.break_input_undo_group();
+        let Some(edit) = self.input_edits.redo.pop() else {
+            return;
+        };
+        if self.replay_input_edit(&edit, true) {
+            self.input_edits.undo.push(edit);
+        } else {
+            self.reset_input_undo_history();
+        }
+    }
+
     pub fn select_all_input(&mut self) {
+        self.break_input_undo_group();
         self.input_vertical_goal = None;
         self.input_all_selected = !self.input.is_empty();
         self.cursor_pos = self.input.len();
@@ -109,52 +268,74 @@ impl TabSession {
     }
 
     pub fn clear_input(&mut self) {
-        self.reset_input_history_navigation();
-        self.input.clear();
-        self.cursor_pos = 0;
-        self.attachments.clear();
-        self.refresh_command_popup();
+        self.break_input_undo_group();
+        if self.input.is_empty() {
+            self.reset_input_history_navigation();
+            self.cursor_pos = 0;
+            self.attachments.clear();
+            self.refresh_command_popup();
+        } else {
+            self.replace_input_range(0..self.input.len(), "", InputEditKind::Other);
+        }
+    }
+
+    pub(super) fn discard_input(&mut self) {
+        self.clear_input();
+        self.reset_input_undo_history();
     }
 
     pub fn replace_input(&mut self, input: String) {
-        self.reset_input_history_navigation();
-        self.input = input;
-        self.cursor_pos = self.input.len();
-        self.attachments.clear();
-        self.refresh_command_popup();
+        if input.is_empty() {
+            self.clear_input();
+        } else {
+            self.replace_input_range(0..self.input.len(), &input, InputEditKind::Other);
+        }
     }
 
     pub fn insert_input_char(&mut self, ch: char) {
-        self.delete_input_selection();
-        self.reset_input_history_navigation();
-        let inserted = TextEditor::new(&mut self.input, &mut self.cursor_pos).insert_char(ch);
-        self.attachments
-            .on_text_inserted(inserted.start, inserted.len());
-        self.refresh_command_popup();
+        let range = self.input_replacement_range();
+        let mut encoded = [0; 4];
+        let kind = if ch.is_control() {
+            InputEditKind::Other
+        } else {
+            InputEditKind::Typing
+        };
+        self.replace_input_range(range, ch.encode_utf8(&mut encoded), kind);
     }
 
     pub fn insert_input_str(&mut self, text: &str) {
         if text.is_empty() {
             return;
         }
-        self.delete_input_selection();
-        self.reset_input_history_navigation();
-        if let Some(inserted) =
-            TextEditor::new(&mut self.input, &mut self.cursor_pos).insert_str(text)
-        {
-            self.attachments
-                .on_text_inserted(inserted.start, inserted.len());
-        }
-        self.refresh_command_popup();
+        let range = self.input_replacement_range();
+        self.replace_input_range(range, text, InputEditKind::Other);
     }
 
     pub fn insert_image_attachment(&mut self, image: crate::clipboard_image::PastedImage) {
-        self.delete_input_selection();
+        let range = self.input_replacement_range();
+        let before = self.input_edit_state();
+        let removed = self.input[range.clone()].to_owned();
         self.reset_input_history_navigation();
-        self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
+        self.cursor_pos = range.start;
+        if let Some(deleted) =
+            TextEditor::new(&mut self.input, &mut self.cursor_pos).delete_range(range.clone())
+        {
+            self.attachments.on_text_deleted(deleted);
+        }
         self.attachments
             .insert_image(&mut self.input, &mut self.cursor_pos, image);
         self.refresh_command_popup();
+        let after = self.input_edit_state();
+        self.input_edits.record(
+            InputEdit {
+                start: range.start,
+                removed,
+                inserted: self.input[range.start..self.cursor_pos].to_owned(),
+                before,
+                after,
+            },
+            InputEditKind::Other,
+        );
     }
 
     pub fn delete_before_cursor(&mut self) {
@@ -166,20 +347,10 @@ impl TabSession {
             return;
         }
 
-        self.reset_input_history_navigation();
-        if self
-            .attachments
-            .remove_before_cursor(&mut self.input, &mut self.cursor_pos)
-        {
-            self.refresh_command_popup();
-            return;
-        }
-        if let Some(deleted) =
-            TextEditor::new(&mut self.input, &mut self.cursor_pos).delete_before_cursor()
-        {
-            self.attachments.on_text_deleted(deleted);
-        }
-        self.refresh_command_popup();
+        let range = self.attachments.expand_deletion_range(
+            prev_char_boundary(&self.input, self.cursor_pos)..self.cursor_pos,
+        );
+        self.replace_input_range(range, "", InputEditKind::Other);
     }
 
     pub fn delete_word_before_cursor(&mut self) {
@@ -190,16 +361,10 @@ impl TabSession {
         if self.cursor_pos == 0 {
             return;
         }
-        self.reset_input_history_navigation();
         let range = self.attachments.expand_deletion_range(
             prev_word_boundary(&self.input, self.cursor_pos)..self.cursor_pos,
         );
-        if let Some(deleted) =
-            TextEditor::new(&mut self.input, &mut self.cursor_pos).delete_range(range)
-        {
-            self.attachments.on_text_deleted(deleted);
-        }
-        self.refresh_command_popup();
+        self.replace_input_range(range, "", InputEditKind::Other);
     }
 
     pub fn delete_at_cursor(&mut self) {
@@ -211,23 +376,14 @@ impl TabSession {
             return;
         }
 
-        self.reset_input_history_navigation();
-        if self
-            .attachments
-            .remove_at_cursor(&mut self.input, self.cursor_pos)
-        {
-            self.refresh_command_popup();
-            return;
-        }
-        if let Some(deleted) =
-            TextEditor::new(&mut self.input, &mut self.cursor_pos).delete_at_cursor()
-        {
-            self.attachments.on_text_deleted(deleted);
-        }
-        self.refresh_command_popup();
+        let range = self.attachments.expand_deletion_range(
+            self.cursor_pos..next_char_boundary(&self.input, self.cursor_pos),
+        );
+        self.replace_input_range(range, "", InputEditKind::Other);
     }
 
     pub fn move_cursor_left(&mut self) {
+        self.break_input_undo_group();
         self.input_vertical_goal = None;
         if self.input_all_selected {
             self.move_cursor_home();
@@ -241,6 +397,7 @@ impl TabSession {
     }
 
     pub fn move_cursor_right(&mut self) {
+        self.break_input_undo_group();
         self.input_vertical_goal = None;
         if self.input_all_selected {
             self.move_cursor_end();
@@ -254,6 +411,7 @@ impl TabSession {
     }
 
     pub fn move_cursor_word_left(&mut self) {
+        self.break_input_undo_group();
         self.input_vertical_goal = None;
         if self.input_all_selected {
             self.move_cursor_home();
@@ -264,6 +422,7 @@ impl TabSession {
     }
 
     pub fn move_cursor_word_right(&mut self) {
+        self.break_input_undo_group();
         self.input_vertical_goal = None;
         if self.input_all_selected {
             self.move_cursor_end();
@@ -274,18 +433,21 @@ impl TabSession {
     }
 
     pub fn move_cursor_home(&mut self) {
+        self.break_input_undo_group();
         self.input_vertical_goal = None;
         self.input_all_selected = false;
         TextEditor::new(&mut self.input, &mut self.cursor_pos).move_home();
     }
 
     pub fn move_cursor_end(&mut self) {
+        self.break_input_undo_group();
         self.input_vertical_goal = None;
         self.input_all_selected = false;
         TextEditor::new(&mut self.input, &mut self.cursor_pos).move_end();
     }
 
     pub fn move_cursor_vertical(&mut self, input_width: u16, upward: bool) -> bool {
+        self.break_input_undo_group();
         if self.input_all_selected {
             if upward {
                 self.move_cursor_home();
@@ -317,6 +479,7 @@ impl TabSession {
     }
 
     pub(super) fn record_input_history(&mut self, input: &str) {
+        self.reset_input_undo_history();
         self.reset_input_history_navigation();
         if input.is_empty() {
             return;
@@ -344,6 +507,7 @@ impl TabSession {
     }
 
     pub(super) fn navigate_input_history_older(&mut self) {
+        self.break_input_undo_group();
         self.input_vertical_goal = None;
         self.input_all_selected = false;
         if self.input_history.entries.is_empty() {
@@ -352,15 +516,17 @@ impl TabSession {
         let index = match self.input_history.selected {
             Some(index) => (index + 1).min(self.input_history.entries.len() - 1),
             None => {
-                self.input_history.draft = Some((
-                    self.input.clone(),
-                    self.cursor_pos,
-                    std::mem::take(&mut self.attachments),
-                ));
+                self.input_history.draft = Some(InputHistoryDraft {
+                    input: self.input.clone(),
+                    cursor_pos: self.cursor_pos,
+                    attachments: std::mem::take(&mut self.attachments),
+                    edits: std::mem::take(&mut self.input_edits),
+                });
                 0
             }
         };
         self.input_history.selected = Some(index);
+        self.reset_input_undo_history();
         self.input = self.input_history.entries[index].clone();
         self.cursor_pos = self.input.len();
         self.command_popup_candidates.clear();
@@ -369,19 +535,21 @@ impl TabSession {
     }
 
     pub(super) fn navigate_input_history_newer(&mut self) {
+        self.break_input_undo_group();
         self.input_vertical_goal = None;
         self.input_all_selected = false;
         let Some(index) = self.input_history.selected else {
             return;
         };
         if index == 0 {
-            let (draft, cursor_pos, attachments) =
-                self.input_history.draft.take().unwrap_or_default();
-            self.input = draft;
-            self.attachments = attachments;
-            self.cursor_pos = clamp_cursor_to_boundary(&self.input, cursor_pos);
+            let draft = self.input_history.draft.take().unwrap_or_default();
+            self.input = draft.input;
+            self.attachments = draft.attachments;
+            self.input_edits = draft.edits;
+            self.cursor_pos = clamp_cursor_to_boundary(&self.input, draft.cursor_pos);
             self.input_history.selected = None;
         } else {
+            self.reset_input_undo_history();
             let next = index - 1;
             self.input_history.selected = Some(next);
             self.input = self.input_history.entries[next].clone();
@@ -403,8 +571,11 @@ impl TabSession {
     }
 
     pub(super) fn clear_history_draft_attachments(&mut self) {
-        if let Some((input, cursor_pos, attachments)) = self.input_history.draft.as_mut() {
-            attachments.remove_tokens_from_input(input, cursor_pos);
+        if let Some(draft) = self.input_history.draft.as_mut() {
+            draft
+                .attachments
+                .remove_tokens_from_input(&mut draft.input, &mut draft.cursor_pos);
+            draft.edits = InputEditHistory::default();
         }
     }
 
