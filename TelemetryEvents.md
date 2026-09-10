@@ -75,6 +75,7 @@ content variant additionally restores ordinary terminal scrollback.
 |---|---|---|
 | `AcpInitializeComplete` | An ACP `initialize` attempt completes or times out. | `DurationMs`, `Success`, `Route`, `FailureKind`, `AcpErrorCode` |
 | `AcpNewSessionComplete` | An ACP `session/new` attempt completes or times out. | `SessionId` (empty on failure), `DurationMs`, `Success`, `Route`, `FailureKind`, `AcpErrorCode` |
+| `AcpLoadSessionComplete` | An ACP `session/load` attempt completes or times out, covering both durable agent-pane restore and an explicit resume from the session view. | `DurationMs`, `Success`, `FailureKind`, `AcpErrorCode` |
 | `AgentColdStartComplete` | A newly spawned agent process finishes or fails its ACP initialization. Warm process-pool reuse does not emit this event. | `AgentId`, `Source`, `DurationMs`, `Success`, `FailureKind` |
 
 ACP lifecycle durations use monotonic clocks. `FailureKind` is empty on success;
