@@ -1302,7 +1302,9 @@ fn policy_blocks_privileged_mode_for_gemini() {
             .await
             .unwrap_err();
 
-        assert!(error.to_string().contains("policy"));
+        let message = error.to_string();
+        assert!(message.contains("automatic approval"));
+        assert!(!message.contains("Yolo"));
         assert!(actions.lock().unwrap().is_empty());
     });
 }
