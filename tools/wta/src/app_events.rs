@@ -2537,7 +2537,7 @@ impl App {
                 if method == "fre_auto_install_selected_agent" {
                     let targets_this_helper = tab_id
                         .as_deref()
-                        .is_some_and(|target| self.tab_id.as_deref() == Some(target));
+                        .is_some_and(|target| self.agent_routing_tab_id() == Some(target));
                     if !targets_this_helper
                         || !matches!(
                             self.current_agent_source,

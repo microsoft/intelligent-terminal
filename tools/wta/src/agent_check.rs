@@ -477,7 +477,7 @@ pub fn recheck_agent(agent_id: &str) -> AgentStatus {
 }
 
 pub fn is_install_uncertain(agent_id: &str) -> bool {
-    const UNCERTAINTY_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(2 * 60);
+    const UNCERTAINTY_WINDOW: std::time::Duration = std::time::Duration::from_secs(2 * 60);
 
     let Some(path) = install_uncertainty_path(agent_id) else {
         return false;
@@ -489,7 +489,7 @@ pub fn is_install_uncertain(agent_id: &str) -> bool {
         .modified()
         .ok()
         .and_then(|modified| modified.elapsed().ok())
-        .is_none_or(|age| age < UNCERTAINTY_COOLDOWN);
+        .is_none_or(|age| age < UNCERTAINTY_WINDOW);
     if !still_active {
         clear_install_uncertainty(agent_id);
     }

@@ -3720,15 +3720,24 @@ impl App {
             self.current_agent_source,
             crate::agent_source::AgentSource::Host
         ) {
-            let tab_id = self.tab_id.as_deref().or_else(|| {
+            crate::wt_protocol_events::send(
+                crate::wt_protocol_events::agent_availability_changed_event(
+                    agent_id,
+                    self.agent_routing_tab_id(),
+                ),
+            );
+        }
+    }
+
+    fn agent_routing_tab_id(&self) -> Option<&str> {
+        self.owner_tab_id
+            .as_deref()
+            .or_else(|| {
                 self.deferred_acp
                     .as_ref()
                     .and_then(|params| params.owner_tab_id.as_deref())
-            });
-            crate::wt_protocol_events::send(
-                crate::wt_protocol_events::agent_availability_changed_event(agent_id, tab_id),
-            );
-        }
+            })
+            .or(self.tab_id.as_deref())
     }
 
     fn reconnect_confirmed_available_agent(&mut self, agent_id: &str) {
@@ -4014,6 +4023,7 @@ impl App {
             )
             .into_owned(),
         });
+        self.publish_agent_status();
     }
 
     pub fn set_event_tx(&mut self, tx: mpsc::UnboundedSender<AppEvent>) {
@@ -4331,6 +4341,9 @@ impl App {
                                 t!("connection.reconnecting").into_owned(),
                             );
                             self.preflight_setup_active = false;
+                            if let Some(setup) = self.setup.as_mut() {
+                                setup.phase = SetupPhase::Reconnecting;
+                            }
                             if self.deferred_acp.is_some() {
                                 self.pending_acp_start = true;
                             }
