@@ -229,6 +229,7 @@ namespace winrt::TerminalApp::implementation
         // and hides the agent logo. Driven by TerminalPage::OnAgentStateChanged
         // (the single writer for view-derived UI state).
         bool _isSessionsView{ false };
+        bool _canEnableSessions{ false };
         winrt::hstring _agentSessionId{};
         winrt::hstring _agentSessionOwner{};
         winrt::hstring _yoloControlOwner{};
@@ -275,6 +276,8 @@ namespace winrt::TerminalApp::implementation
 
         void _refreshLabel();
         void _refreshLogo();
+        void _refreshSessionsHint();
+        float _chromeHeight();
     };
 }
 

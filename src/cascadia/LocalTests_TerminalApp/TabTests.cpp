@@ -21,6 +21,7 @@
 #include "../UnitTests_Control/MockControlSettings.h"
 #include "CppWinrtTailored.h"
 
+#include <cmath>
 #include <winrt/Windows.UI.Xaml.Automation.h>
 
 using namespace Microsoft::Console;
@@ -343,6 +344,9 @@ namespace TerminalAppLocalTests
         TEST_METHOD(AgentPaneIndicatorsRefreshAfterNonActivePaneClose);
         TEST_METHOD(PendingAgentOpenSurvivesStartupProjection);
         TEST_METHOD(InitialSessionsViewSurvivesStartupProjection);
+        TEST_METHOD(SessionsDisabledHintFollowsViewAndSettings);
+        TEST_METHOD(SessionsDisabledHintUpdatesWhileStashed);
+        TEST_METHOD(SessionsDisabledHintWrapsAndPreservesTerminalGrid);
         TEST_METHOD(AgentReadyRuntimeConfigIncludesCurrentYoloState);
 
         TEST_METHOD(NextMRUTab);
@@ -4832,6 +4836,155 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(protocolEvents[0]["params"]["view"].asString() == "sessions");
             VERIFY_IS_TRUE(protocolEvents[0]["params"]["pane_open"].asBool());
             page->ProtocolVtSequenceReceived(token);
+        });
+    }
+
+    void TabTests::SessionsDisabledHintFollowsViewAndSettings()
+    {
+        auto page = _commonSetup();
+
+        TestOnUIThread([&]() {
+            const auto globals = page->_settings.GlobalSettings();
+            VERIFY_IS_FALSE(globals.IsAgentSessionHooksPolicyLocked());
+            globals.AgentSessionManagementEnabled(false);
+            const auto pane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
+            const auto content = pane->GetContent().as<winrt::TerminalApp::AgentPaneContent>();
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(content);
+            const auto root = impl->GetRoot();
+            const auto hint = root.FindName(L"SessionsHintRoot").as<Border>();
+            const auto text = root.FindName(L"SessionsDisabledHintText").as<TextBlock>();
+            const auto terminal = impl->GetTermControl();
+
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, hint.Visibility());
+            impl->SetSessionsView(true);
+            VERIFY_ARE_EQUAL(Visibility::Visible, hint.Visibility());
+            VERIFY_IS_FALSE(text.Text().empty());
+            VERIFY_ARE_EQUAL(TextWrapping::Wrap, text.TextWrapping());
+
+            const auto foreground = text.Foreground().as<winrt::Windows::UI::Xaml::Media::SolidColorBrush>();
+            const auto color = foreground.Color();
+            const winrt::Windows::UI::Color footerColor{ 255, 0x8b, 0x8b, 0x8b };
+            VERIFY_ARE_EQUAL(footerColor, color);
+            const auto opacity = text.Opacity() * foreground.Opacity() * color.A / 255.0;
+            VERIFY_IS_TRUE(opacity > 0.0 && opacity < 1.0);
+            for (const auto background : { 12.0, 255.0 })
+            {
+                const auto blended = opacity * color.R + (1.0 - opacity) * background;
+                VERIFY_IS_TRUE(std::abs(blended - background) < std::abs(footerColor.R - background));
+            }
+
+            // Working hooks can still report status while Sessions is off.
+            impl->SetAgentSessionId(L"existing-session");
+            impl->UpdateAgentStatus(L"Copilot", L"v1", L"model", L"connected", L"Windows");
+            VERIFY_ARE_EQUAL(Visibility::Visible, hint.Visibility());
+
+            globals.AgentSessionManagementEnabled(true);
+            impl->UpdateSettings(page->_settings);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, hint.Visibility());
+            globals.AgentSessionManagementEnabled(false);
+            impl->UpdateSettings(page->_settings);
+            VERIFY_ARE_EQUAL(Visibility::Visible, hint.Visibility());
+
+            impl->SetSessionsView(false);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, hint.Visibility());
+            impl->SetSessionsView(true);
+            impl->SetSessionsView(true);
+            VERIFY_ARE_EQUAL(Visibility::Visible, hint.Visibility());
+            VERIFY_IS_TRUE(impl->GetTermControl() == terminal);
+            VERIFY_IS_TRUE(impl->AgentSessionId() == L"existing-session");
+            VERIFY_IS_TRUE(impl->IsAgentConnected());
+        });
+    }
+
+    void TabTests::SessionsDisabledHintUpdatesWhileStashed()
+    {
+        auto page = _commonSetup();
+
+        TestOnUIThread([&]() {
+            const auto globals = page->_settings.GlobalSettings();
+            VERIFY_IS_FALSE(globals.IsAgentSessionHooksPolicyLocked());
+            globals.AgentSessionManagementEnabled(false);
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto pane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
+            pane->IsAgentPane(true);
+            page->_SplitPane(tab, SplitDirection::Left, 0.5f, pane);
+            const auto content = tab->FindAgentPaneContent();
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(content);
+            const auto hint = impl->GetRoot().FindName(L"SessionsHintRoot").as<Border>();
+            impl->SetSessionsView(true);
+            VERIFY_ARE_EQUAL(Visibility::Visible, hint.Visibility());
+
+            tab->StashAgentPane();
+            VERIFY_IS_TRUE(tab->HasStashedAgentPane());
+            globals.AgentSessionManagementEnabled(true);
+            tab->UpdateSettings(page->_settings);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, hint.Visibility());
+            VERIFY_IS_TRUE(tab->RestoreStashedAgentPane(SplitDirection::Left));
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, hint.Visibility());
+
+            tab->StashAgentPane();
+            globals.AgentSessionManagementEnabled(false);
+            tab->UpdateSettings(page->_settings);
+            VERIFY_IS_TRUE(tab->RestoreStashedAgentPane(SplitDirection::Left));
+            VERIFY_ARE_EQUAL(Visibility::Visible, hint.Visibility());
+            VERIFY_IS_TRUE(tab->FindAgentPaneContent() == content);
+            VERIFY_IS_TRUE(impl->IsSessionsView());
+        });
+    }
+
+    void TabTests::SessionsDisabledHintWrapsAndPreservesTerminalGrid()
+    {
+        auto page = _commonSetup();
+
+        TestOnUIThread([&]() {
+            const auto globals = page->_settings.GlobalSettings();
+            VERIFY_IS_FALSE(globals.IsAgentSessionHooksPolicyLocked());
+            globals.AgentSessionManagementEnabled(false);
+            const auto pane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
+            pane->IsAgentPane(true);
+            page->_SplitPane(page->_GetFocusedTabImpl(), SplitDirection::Left, 0.5f, pane);
+            const auto content = pane->GetContent().as<winrt::TerminalApp::AgentPaneContent>();
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(content);
+            const auto root = impl->GetRoot();
+            const auto hint = root.FindName(L"SessionsHintRoot").as<Border>();
+            const auto inner = root.FindName(L"InnerContent").as<ContentPresenter>();
+            const auto terminal = winrt::get_self<winrt::TerminalApp::implementation::TerminalPaneContent>(impl->GetTerminalContent());
+            const auto layout = [&](const float width) {
+                root.Width(width);
+                root.Height(600);
+                root.UpdateLayout();
+                VERIFY_ARE_EQUAL(width, static_cast<float>(root.ActualWidth()));
+            };
+
+            layout(900);
+            const auto baselineMinimum = impl->MinimumSize();
+            impl->SetSessionsView(true);
+            layout(900);
+            const auto wideHeight = hint.ActualHeight();
+            VERIFY_IS_TRUE(wideHeight > 0.0);
+
+            layout(200);
+            VERIFY_IS_TRUE(hint.ActualHeight() > wideHeight);
+            const auto hintHeight = hint.DesiredSize().Height;
+            VERIFY_ARE_EQUAL(baselineMinimum.Height + hintHeight, impl->MinimumSize().Height);
+            VERIFY_ARE_EQUAL(baselineMinimum.Width, impl->MinimumSize().Width);
+            const auto hintTop = hint.TransformToVisual(root).TransformPoint({ 0, 0 }).Y;
+            const auto innerTop = inner.TransformToVisual(root).TransformPoint({ 0, 0 }).Y;
+            VERIFY_ARE_EQUAL(36.0f, hintTop);
+            VERIFY_ARE_EQUAL(hintTop + hintHeight, innerTop);
+
+            const auto chromeHeight = 36.0f + hintHeight;
+            VERIFY_ARE_EQUAL(
+                terminal->SnapDownToGrid(PaneSnapDirection::Height, 600.0f - chromeHeight) + chromeHeight,
+                impl->SnapDownToGrid(PaneSnapDirection::Height, 600.0f));
+            VERIFY_ARE_EQUAL(
+                terminal->SnapDownToGrid(PaneSnapDirection::Width, 200.0f),
+                impl->SnapDownToGrid(PaneSnapDirection::Width, 200.0f));
+
+            impl->SetSessionsView(false);
+            layout(200);
+            VERIFY_ARE_EQUAL(baselineMinimum.Height, impl->MinimumSize().Height);
+            VERIFY_ARE_EQUAL(36.0f, inner.TransformToVisual(root).TransformPoint({ 0, 0 }).Y);
         });
     }
 

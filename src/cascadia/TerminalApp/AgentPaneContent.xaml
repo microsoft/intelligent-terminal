@@ -13,6 +13,7 @@
     <Grid x:Name="Root">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -109,9 +110,24 @@
             </Grid>
         </Border>
 
+        <Border x:Name="SessionsHintRoot"
+                Grid.Row="1"
+                Padding="10,8"
+                Background="{Binding Background, ElementName=AgentBarRoot}"
+                Visibility="Collapsed">
+            <!--  Fade the session footer's gray further into either theme's background.  -->
+            <TextBlock x:Name="SessionsDisabledHintText"
+                       x:Uid="AgentPane_SessionsDisabledHint"
+                       FontFamily="Segoe UI Variable, Segoe UI"
+                       FontSize="12"
+                       Foreground="#FF8B8B8B"
+                       Opacity="0.65"
+                       TextWrapping="Wrap" />
+        </Border>
+
         <!--  ========= Inner content (the wta TermControl, set in code-behind) =========  -->
         <ContentPresenter x:Name="InnerContent"
-                          Grid.Row="1"
+                          Grid.Row="2"
                           HorizontalAlignment="Stretch"
                           VerticalAlignment="Stretch" />
     </Grid>
