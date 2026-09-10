@@ -1431,7 +1431,7 @@ namespace winrt::TerminalApp::implementation
                 {
                     const auto failureMarker =
                         std::filesystem::path{ winrt::Windows::Storage::ApplicationData::Current().LocalFolder().Path().c_str() } /
-                        L"ite2e-fre-hooks-failure";
+                        L"fre-e2e-hooks-failure";
                     std::error_code ec;
                     if (std::filesystem::exists(failureMarker, ec) && !ec)
                     {

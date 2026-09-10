@@ -32,7 +32,7 @@ Describe 'Feature §0 FRE session-management hook install' -Tag 'Feature' -Skip:
         # Snapshot the real copilot config so install/uninstall during these tests is reverted.
         $script:cfgBackup = Backup-CopilotConfig
         $script:epBackup = Set-WtExecutionPolicy -Value RemoteSigned
-        $script:failureMarker = Join-Path (Resolve-ItApp -Package Dev).LocalStateDir 'ite2e-fre-hooks-failure'
+        $script:failureMarker = Join-Path (Resolve-ItApp -Package Dev).LocalStateDir 'fre-e2e-hooks-failure'
         Remove-Item -LiteralPath $script:failureMarker -Force -ErrorAction SilentlyContinue
     }
     AfterAll {
