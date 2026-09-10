@@ -97,8 +97,10 @@
     </ResourceDictionary.ThemeDictionaries>
 
     <DataTemplate x:Key="KeyChordLabelTemplate">
-        <Border Style="{ThemeResource KeyChordBorderStyle}">
-            <TextBlock Style="{ThemeResource KeyChordTextBlockStyle}"
+        <Border Padding="4,2"
+                Style="{ThemeResource KeyChordBorderStyle}">
+            <TextBlock FontSize="12"
+                       Style="{ThemeResource KeyChordTextBlockStyle}"
                        TextWrapping="WrapWholeWords" />
         </Border>
     </DataTemplate>
