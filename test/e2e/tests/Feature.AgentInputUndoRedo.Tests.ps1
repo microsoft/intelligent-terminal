@@ -78,7 +78,7 @@ Describe 'Feature: agent input undo and redo' -Tag 'Feature', 'AgentInputUndoRed
         }
         $fixture = Join-Path $script:fixtureDir 'Mock ACP Chat Agent.ps1'
         Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..\fixtures\Mock-AcpChatAgent.ps1') -Destination $fixture
-        $invocation = "& '$($fixture.Replace("'", "''"))' -LogPath '$($script:fixtureLog.Replace("'", "''"))'"
+        $invocation = "& '$($fixture.Replace("'", "''"))' -LogPath '$($script:fixtureLog.Replace("'", "''"))' -SupportsImages"
         $command = "pwsh -NoProfile -EncodedCommand $([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($invocation)))"
         $script:originalClipboard = Get-ClipboardSnapshot
         $script:clipboardSaved = $true
@@ -130,11 +130,11 @@ Describe 'Feature: agent input undo and redo' -Tag 'Feature', 'AgentInputUndoRed
         } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:evidenceDir 'target.json') -Encoding utf8NoBOM
 
         $script:sendKey = {
-            param([int]$Vk, [switch]$Ctrl, [int]$Repeat = 1)
+            param([int]$Vk, [switch]$Ctrl, [switch]$Alt, [int]$Repeat = 1)
             [uint32]$windowPid = 0
             [void][ItE2E.TestWindowKeyboardLayout]::GetWindowThreadProcessId([IntPtr][int64]$script:app.Hwnd, [ref]$windowPid)
             if ($windowPid -ne $script:app.Pid) { throw 'Physical-key target no longer belongs to the test-owned process.' }
-            Send-WtWindowKey -App $script:app -Vk $Vk -Ctrl:$Ctrl -Repeat $Repeat -RequireForeground | Out-Null
+            Send-WtWindowKey -App $script:app -Vk $Vk -Ctrl:$Ctrl -Alt:$Alt -Repeat $Repeat -RequireForeground | Out-Null
         }
         $script:capture = {
             Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 500
@@ -350,6 +350,62 @@ Describe 'Feature: agent input undo and redo' -Tag 'Feature', 'AgentInputUndoRed
         & $script:assertText -Expected $draft -Name 'unicode-edit-undone'
         & $script:sendKey -Vk 0x59 -Ctrl
         & $script:assertText -Expected $edited -Name 'unicode-edit-redone'
+    }
+
+    It 'Agent draft image undo and redo restore the pasted payload' -Tag 'AgentInputUndoRedoImage' {
+        Add-Type -AssemblyName System.Drawing
+        $imagePath = Join-Path $script:fixtureDir 'undo-image.png'
+        $bitmap = [Drawing.Bitmap]::new(2, 2)
+        try {
+            $bitmap.SetPixel(0, 0, [Drawing.Color]::Red)
+            $bitmap.SetPixel(1, 0, [Drawing.Color]::Green)
+            $bitmap.SetPixel(0, 1, [Drawing.Color]::Blue)
+            $bitmap.SetPixel(1, 1, [Drawing.Color]::Yellow)
+            $bitmap.Save($imagePath, [Drawing.Imaging.ImageFormat]::Png)
+        }
+        finally { $bitmap.Dispose() }
+        $imageHash = (Get-FileHash -LiteralPath $imagePath -Algorithm SHA256).Hash
+        $imageLength = (Get-Item -LiteralPath $imagePath).Length
+
+        foreach ($mode in @('insert', 'replace')) {
+            & $script:clearDraft
+            $marker = "SCROLL_TURN_00_$([guid]::NewGuid().ToString('N'))"
+            $prefix = "$marker "
+            & $script:pasteText -Text $prefix
+            if ($mode -eq 'replace') { & $script:sendKey -Vk 0x41 -Ctrl }
+            & (Get-Module ItE2E) {
+                param($path)
+                Invoke-ClipboardSta -ScriptBlock {
+                    param($imageFile)
+                    Add-Type -AssemblyName System.Windows.Forms
+                    $files = [Collections.Specialized.StringCollection]::new()
+                    [void]$files.Add($imageFile)
+                    [Windows.Forms.Clipboard]::SetFileDropList($files)
+                } -ArgumentList @($path)
+            } $imagePath | Out-Null
+            & $script:sendKey -Vk 0x56 -Alt
+            Test-Until -TimeoutSec 10 -IntervalSec 0.2 -Condition {
+                (& $script:capture) -match '\[image: undo-image\.png\]'
+            } | Should -BeTrue -Because 'physical Alt+V must read the image file from the real OS clipboard'
+            $withImage = if ($mode -eq 'replace') { '[image: undo-image.png]' }
+            else { "${prefix}[image: undo-image.png]" }
+            & $script:assertText -Expected $withImage -Name "image-$mode-before-undo"
+            & $script:sendKey -Vk 0x5A -Ctrl
+            & $script:assertText -Expected $prefix -Name "image-$mode-undone"
+            & $script:sendKey -Vk 0x59 -Ctrl
+            & $script:assertText -Expected $withImage -Name "image-$mode-redone"
+            & $script:sendKey -Vk 0x27
+            & $script:pasteText -Text " $marker"
+            & $script:sendKey -Vk 0x0D
+            $script:imageAck = "ACK_$marker"
+            Test-Until -TimeoutSec 10 -IntervalSec 0.2 -Condition {
+                (& $script:capture) -match [regex]::Escape($script:imageAck)
+            } | Should -BeTrue -Because 'the deterministic ACP fixture must receive the restored attachment'
+            $expected = [regex]::Escape("image|$marker|image/png|$imageLength|$imageHash") + '$'
+            @(Get-Content -LiteralPath $script:fixtureLog | Where-Object { $_ -match $expected }).Count |
+                Should -Be 1 -Because 'redo must restore the exact original image bytes, not only token-shaped text'
+            & $script:saveEvidence -Name "image-$mode-payload-confirmed"
+        }
     }
 
     It 'Agent draft edits invalidate redo but copy and caret movement do not' -Tag 'AgentInputUndoRedoBranches' {
