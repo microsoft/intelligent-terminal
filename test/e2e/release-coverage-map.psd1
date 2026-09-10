@@ -105,7 +105,7 @@
     # §0 FRE flow
     'FRE can be skipped or closed safely' = 'FRE can be closed safely'
     'FRE privacy / help links work'     = 'FRE privacy / help link'
-    'FRE save progress works'           = 'FRE save progress'
+    'FRE save progress works'           = 'Session management on installs agent hooks \(FRE Save\)'
 
     # §4 session view switching
     # 'Ended state is correct' (C121-adjacent) — see below.
