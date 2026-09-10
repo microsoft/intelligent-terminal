@@ -90,7 +90,7 @@ pub use tab_state::{
     RecommendationFocus, TabSession, ToolCallContent, ToolCallKind, ToolCallLocation,
     ToolCallOutput, UserInputState, View,
 };
-pub(crate) use tab_state::{CompletedTurnViewportAnchor, DEFAULT_TAB_ID};
+pub(crate) use tab_state::{ChatReadingPosition, CompletedTurnViewportAnchor, DEFAULT_TAB_ID};
 pub use turn_state::{AutofixContext, ChunkKind, SubmittedPrompt, TurnOutcome, TurnState};
 
 // ─── MVP sessions origin filter ────────────────────────────────────────────────────
@@ -1339,6 +1339,8 @@ struct InitialYoloControlOwner {
 /// enough that the user can react after seeing the hint; short enough that
 /// a stale arm doesn't bite the next time they want to clear input.
 pub const CLOSE_PANE_ARM_WINDOW: std::time::Duration = std::time::Duration::from_millis(1500);
+pub const INPUT_QUEUE_FULL_HINT_WINDOW: std::time::Duration =
+    std::time::Duration::from_millis(1500);
 pub const SELECTION_COPIED_HINT_WINDOW: std::time::Duration =
     std::time::Duration::from_millis(1500);
 
@@ -4745,7 +4747,7 @@ impl App {
             },
         });
         let tab = self.current_tab_mut();
-        tab.messages.retain(|m| !matches!(m, ChatMessage::Error(_)));
+        tab.retain_current_messages(|m| !matches!(m, ChatMessage::Error(_)));
     }
 
     fn handle_agent_paste_text(&mut self, params: &serde_json::Value) {
@@ -5503,6 +5505,7 @@ impl App {
                     let tab = self.current_tab_mut();
                     tab.input = format!("/{name} ");
                     tab.input_all_selected = false;
+                    tab.input_vertical_goal = None;
                     tab.cursor_pos = tab.input.len();
                     tab.refresh_command_popup();
                     return true;
@@ -5511,6 +5514,7 @@ impl App {
                     let tab = self.current_tab_mut();
                     tab.input = format!("/{name}");
                     tab.input_all_selected = false;
+                    tab.input_vertical_goal = None;
                     tab.cursor_pos = tab.input.len();
                     tab.refresh_command_popup();
                     return false;
@@ -6089,6 +6093,13 @@ impl App {
             crate::wt_protocol_events::send(crate::wt_protocol_events::restart_agent_stack_event());
         }
         self.publish_agent_status();
+    }
+
+    fn invalidate_input_layout(&mut self) {
+        self.input_dialog_area = None;
+        for tab in self.tab_sessions.values_mut() {
+            tab.input_vertical_goal = None;
+        }
     }
 
     /// Width of the main area (chat / recs / perm / input) — matches the

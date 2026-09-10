@@ -117,11 +117,25 @@ impl App {
             context: turn_context,
             autofix: autofix.map(|metadata| metadata.context),
         };
+        // Auto-drained queued prompts should not steal a manual reading position.
+        // Restore the pre-submit scroll offset after the generic submit reset so
+        // chat anchoring can keep the same surviving history row in view.
+        let preserved_reading = queued.then(|| {
+            self.tab_sessions.get(tab_id).and_then(|tab| {
+                (tab.chat_scroll.offset > 0)
+                    .then(|| (tab.chat_scroll.offset, tab.chat_reading_position))
+            })
+        });
         self.turn_submit_prompt_for_tab_with_cancellation(
             tab_id,
             submitted,
             prompt.cancellation_token(),
         );
+        if let Some((offset, reading_position)) = preserved_reading.flatten() {
+            let tab = self.tab_mut(tab_id);
+            tab.chat_scroll.offset = offset;
+            tab.chat_reading_position = reading_position;
+        }
         let _ = self.prompt_tx.send(prompt);
 
         if let Some((summary, pane_id)) = failure_autofix {

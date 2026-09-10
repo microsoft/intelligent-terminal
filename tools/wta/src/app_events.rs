@@ -439,6 +439,7 @@ impl App {
                 self.cancel_completed_turn_click();
                 if !self.chat_input_has_edit_focus() && !self.current_tab().paste_pending {
                     self.current_tab_mut().input_all_selected = false;
+                    self.current_tab_mut().input_vertical_goal = None;
                 }
                 let is_select_all = matches!(key.code, KeyCode::Char('a'))
                     && key.modifiers == KeyModifiers::CONTROL;
@@ -479,6 +480,7 @@ impl App {
                 self.handle_key(key);
                 if !self.chat_input_has_edit_focus() && !self.current_tab().paste_pending {
                     self.current_tab_mut().input_all_selected = false;
+                    self.current_tab_mut().input_vertical_goal = None;
                 }
             }
             AppEvent::Mouse(mouse) => match mouse.kind {
@@ -524,6 +526,7 @@ impl App {
                 }
                 crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
                     self.current_tab_mut().input_all_selected = false;
+                    self.current_tab_mut().input_vertical_goal = None;
                     self.text_selection.handle_mouse(mouse);
                     let click_count = self.text_selection.click_count().unwrap_or(1);
                     if click_count > 1 {
@@ -746,6 +749,9 @@ impl App {
             AppEvent::Resize(w, h) => {
                 self.cancel_completed_turn_click();
                 self.text_selection.clear();
+                if w != self.terminal_cols {
+                    self.invalidate_input_layout();
+                }
                 self.terminal_cols = w;
                 self.terminal_rows = h;
             }
@@ -757,6 +763,7 @@ impl App {
                 self.pane_focused = focused;
                 if !focused {
                     self.current_tab_mut().input_all_selected = false;
+                    self.current_tab_mut().input_vertical_goal = None;
                 }
             }
             AppEvent::ConnectionStage(stage) => {
@@ -1414,7 +1421,6 @@ impl App {
             AppEvent::TabSystemMessage { tab_id, message } => {
                 let tab = self.tab_mut(&tab_id);
                 tab.messages.push(ChatMessage::info(message));
-                tab.scroll_to_bottom();
             }
             AppEvent::PromptTemplateLoaded { name } => {
                 self.prompt_name = Some(name);
@@ -1430,7 +1436,6 @@ impl App {
                 let tab = self.tab_mut(&tab_id);
                 tab.messages
                     .push(ChatMessage::warning(t!("system.agent_busy").into_owned()));
-                tab.scroll_to_bottom();
             }
             AppEvent::TabRenamed {
                 old_tab_id,
@@ -1594,7 +1599,7 @@ impl App {
                     });
                     // Clear error messages
                     let tab = self.current_tab_mut();
-                    tab.messages.retain(|m| !matches!(m, ChatMessage::Error(_)));
+                    tab.retain_current_messages(|m| !matches!(m, ChatMessage::Error(_)));
                 } else {
                     if !session_survives {
                         self.state = ConnectionState::Failed(message.clone());
@@ -1761,7 +1766,7 @@ impl App {
                     ConnectionState::Connecting(t!("connection.reconnecting").into_owned());
                 {
                     let tab = self.current_tab_mut();
-                    tab.messages.retain(|m| !matches!(m, ChatMessage::Error(_)));
+                    tab.retain_current_messages(|m| !matches!(m, ChatMessage::Error(_)));
                 }
                 // (ii) Request a fresh master CLI. The long-lived shared CLI
                 // cached its unauthenticated state at spawn and `authenticate`
@@ -1881,14 +1886,12 @@ impl App {
                 } else {
                     tab.messages.push(warning);
                 }
-                tab.scroll_to_bottom();
                 if finalize_empty_turn {
                     self.turn_close_finalize_chat(&session_id);
                 }
             }
             AppEvent::ExecutionInfo(message) => {
                 self.push_execution_info(message);
-                self.current_tab_mut().scroll_to_bottom();
             }
             AppEvent::AgentThoughtChunk { session_id, text } => {
                 if let Some(tab) = self.session_tab_mut_if_current(&session_id) {
@@ -2031,7 +2034,6 @@ impl App {
                     content,
                     locations,
                 });
-                tab.scroll_to_bottom();
             }
             AppEvent::ToolCallUpdate {
                 session_id,
@@ -2184,9 +2186,7 @@ impl App {
                 if tab.loading_session {
                     tab.flush_replay_user_buffer();
                 }
-                tab.messages.retain(
-                    |message| !matches!(message, ChatMessage::ToolCall { id: message_id, .. } if message_id == &id),
-                );
+                tab.hide_tool_call(&id);
             }
             AppEvent::Plan {
                 session_id,
@@ -2215,7 +2215,6 @@ impl App {
                     }
                 }
                 tab.messages.push(ChatMessage::Plan(entries));
-                tab.scroll_to_bottom();
             }
             AppEvent::PermissionRequest {
                 session_id,

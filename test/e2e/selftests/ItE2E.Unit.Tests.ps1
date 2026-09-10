@@ -6,6 +6,18 @@ BeforeAll {
     Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
 }
 
+Describe 'Window keyboard-layout guard' -Tag 'Unit' {
+    BeforeAll {
+        . (Join-Path $PSScriptRoot '..\tests\helpers\TestWindowKeyboardLayout.ps1')
+    }
+
+    It 'rejects a window not owned by the test application before changing its layout' {
+        {
+            Enable-TestWindowEnglishKeyboardLayout -App ([pscustomobject]@{ Hwnd = 0; Pid = 1 })
+        } | Should -Throw '*Keyboard-layout target does not belong to the test window*'
+    }
+}
+
 Describe 'Invoke-Native' -Tag 'Unit' {
     It 'captures stdout and a zero exit code' {
         $r = Invoke-Native -FilePath 'cmd.exe' -Arguments @('/c', 'echo', 'hello-ite2e')
