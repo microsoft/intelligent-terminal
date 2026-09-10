@@ -304,12 +304,14 @@ impl App {
         tab.completed_turn_selection_visible_pending = click.previous_selection_pending;
     }
 
+    fn chat_input_context_has_focus(&self) -> bool {
+        self.mode == AppMode::Chat && self.pane_focused && !self.help_overlay_visible
+    }
+
     pub(super) fn chat_input_has_edit_focus(&self) -> bool {
-        self.mode == AppMode::Chat
-            && self.pane_focused
+        self.chat_input_context_has_focus()
             && self.current_tab().current_view == View::Chat
             && self.current_tab().input_has_nav_focus()
-            && !self.help_overlay_visible
     }
 
     pub(super) fn copy_input_selection(
@@ -437,6 +439,37 @@ impl App {
     }
 
     pub(super) fn handle_event(&mut self, event: AppEvent) {
+        // Async cards can take and release draft ownership without a key/focus event.
+        // The key path already handles its own boundaries without this allocation.
+        let owners: Vec<_> = if matches!(&event, AppEvent::Key(_)) {
+            Vec::new()
+        } else {
+            let focused = self.chat_input_context_has_focus();
+            self.tab_sessions
+                .iter()
+                .filter(|(_, tab)| tab.input_undo_group_is_open())
+                .map(|(id, tab)| {
+                    (
+                        id.clone(),
+                        focused && tab.current_view == View::Chat && tab.input_has_nav_focus(),
+                    )
+                })
+                .collect()
+        };
+        self.handle_event_inner(event);
+        let focused = self.chat_input_context_has_focus();
+        for (id, owned_input) in owners {
+            if let Some(tab) = self.tab_sessions.get_mut(&id) {
+                let owns_input =
+                    focused && tab.current_view == View::Chat && tab.input_has_nav_focus();
+                if owned_input != owns_input {
+                    tab.break_input_undo_group();
+                }
+            }
+        }
+    }
+
+    fn handle_event_inner(&mut self, event: AppEvent) {
         let breaks_typing = match &event {
             AppEvent::Mouse(mouse) => mouse.kind != crossterm::event::MouseEventKind::Moved,
             AppEvent::FocusChanged(_) | AppEvent::Resize(_, _) => true,

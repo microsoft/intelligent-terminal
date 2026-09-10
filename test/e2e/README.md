@@ -9,7 +9,7 @@ Design rationale is captured in the inline notes below and in each suite's heade
 The `tests/` folder implements the `[E2E]` items from
 `doc/release-check-list.md` that are automatable on one machine. Copilot drives
 the baseline suites, while the agent matrix covers other installed and
-authenticated ACP agents. Current status (run on the Store package):
+authenticated ACP agents. Available suites (results depend on the selected package and revision):
 
 | Suite (file) | Covers | Cases |
 |---|---|---|
@@ -66,21 +66,16 @@ authenticated ACP agents. Current status (run on the Store package):
 | `Feature.AgentChat.Tests.ps1` / `Feature.AgentPopup.Tests.ps1` | agent chat + `/` popup/menu interaction | 1 + 3 |
 | `Feature.AgentPaneMove.Tests.ps1` | PR #429: `/move` stays per-tab, preserves global position, and restores agent input focus | 1 |
 
-**Coverage: 155 of 157 automatable `[E2E]` checklist items are implemented.**
-**Test status: 135 baseline feature cases pass + 3 documented skips** (`wta sessions list` is
-identity-gated — see `Feature.SessionList.Tests.ps1`), plus 2 PR #481 WSL-backend cases and 2
-PR #488 delegate-source cases that run only when a runnable distro (and, for the #481 chat
-case, an installed+authenticated native agent) is available. The 155 implemented checklist
-items map to the baseline cases plus the deterministic settings/persistence assertions. The
-remaining new items are the two profile agent picker UIs; they stay explicit E2E work rather
-than being falsely credited by the JSON-level runtime tests. Other
-environment-dependent items are tracked and auto-skipped when their prerequisite is absent:
-**other agent CLIs** (`Feature.AgentMatrix.Tests.ps1` now covers Claude/Codex/Gemini chat,
-auth-gated per CLI — each Context runs only when that CLI is installed *and* authenticated,
-else skips); custom agents; multi-window drag; hook/CLI install; policy locks; IME/paste; WSL
-autofix (needs a dev build with OSC 9001 ShellType + a running distro); WT window-level
-keyboard accelerators (command palette / Delegate `Alt+Shift+B` / pane hotkeys — not
-injectable via UIA/send-keys in this harness); and manual release-sign-off gates.
+**Coverage and results are tracked by stable checklist IDs and generated release reports.**
+The suite table describes available cases, not a blanket pass result for every package or
+environment. Use `Invoke-ItE2EReport.ps1` and its full or incremental release report for the
+selected revision's actual passed, failed, skipped and remaining checklist items.
+`Feature.AgentInputUndoRedo` adds five deterministic cases mapped to C318-C322.
+
+Environment-dependent suites declare their prerequisites, including installed/authenticated
+agents, WSL availability, hook or policy provisioning, and interactive-desktop input support.
+Unavailable external prerequisites may be skipped; product failures must remain failures.
+Manual release-sign-off items are not credited by unrelated unit or protocol checks.
 
 Token-consuming simulated-real-user tests are deliberately excluded from this publishable suite
 and from CI. They live only in the feature's dev-only local validation harness and run manually

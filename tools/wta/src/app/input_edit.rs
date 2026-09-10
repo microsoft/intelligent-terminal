@@ -150,6 +150,10 @@ pub(super) struct InputHistory {
 }
 
 impl TabSession {
+    pub(super) fn input_undo_group_is_open(&self) -> bool {
+        self.input_edits.typing_open
+    }
+
     pub(super) fn break_input_undo_group(&mut self) {
         self.input_edits.typing_open = false;
     }

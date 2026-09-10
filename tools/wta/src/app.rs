@@ -6528,6 +6528,7 @@ impl App {
                 }
             }
             entry.invalidate_pending_paste();
+            entry.break_input_undo_group();
             self.tab_sessions.insert(new_tab_id.to_string(), entry);
             true
         } else {

@@ -3,7 +3,16 @@
 # Mock ACP supplies readiness and submission/history boundaries without model requests.
 # AgentSelectAll and AgentInputNavigation retain the broader focus, selection and row protections.
 
-Describe 'Feature: agent input undo and redo' -Tag 'Feature', 'AgentInputUndoRedo' {
+BeforeDiscovery {
+    $script:Ready = [bool](
+        (Get-Command Get-AppxPackage -ErrorAction SilentlyContinue) -and
+        (Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }) -and
+        (Get-Command pwsh -ErrorAction SilentlyContinue) -and
+        (Get-Command winapp -ErrorAction SilentlyContinue)
+    )
+}
+
+Describe 'Feature: agent input undo and redo' -Tag 'Feature', 'AgentInputUndoRedo' -Skip:(-not $script:Ready) {
     BeforeAll {
         . (Join-Path $PSScriptRoot 'helpers\TestWindowKeyboardLayout.ps1')
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force

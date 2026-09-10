@@ -13522,7 +13522,7 @@ mod input_undo_tests {
     }
 
     #[test]
-    fn altgr_text_is_not_an_undo_chord() {
+    fn control_alt_text_is_not_an_undo_chord() {
         let mut app = test_app();
         type_text(&mut app, "draft");
         key(
@@ -13814,6 +13814,22 @@ mod input_undo_tests {
     }
 
     #[test]
+    fn tab_rename_breaks_typing_without_losing_history() {
+        let mut app = test_app();
+        app.switch_tab_session("before".into());
+        type_text(&mut app, "first");
+        app.rename_tab_session("before", "after", Some("window"));
+        type_text(&mut app, " second");
+        undo(&mut app);
+        assert_eq!(app.current_tab().input, "first");
+        undo(&mut app);
+        assert!(app.current_tab().input.is_empty());
+        redo(&mut app);
+        redo(&mut app);
+        assert_eq!(app.current_tab().input, "first second");
+    }
+
+    #[test]
     fn focus_roundtrip_breaks_typing_groups() {
         let mut app = test_app();
         type_text(&mut app, "first");
@@ -13822,6 +13838,74 @@ mod input_undo_tests {
         type_text(&mut app, " second");
         undo(&mut app);
         assert_eq!(app.current_tab().input, "first");
+    }
+
+    #[test]
+    fn async_input_owner_roundtrip_splits_typing() {
+        let mut app = test_app();
+        begin_user_input_test(&mut app);
+        type_text(&mut app, "first");
+        let (responder, _response) = tokio::sync::oneshot::channel();
+        app.handle_event(AppEvent::UserInputRequest {
+            request_id: "question".into(),
+            session_id: DEFAULT_TAB_ID.into(),
+            request: crate::agent_tools::user_input::UserInputRequest {
+                question: "Continue?".into(),
+                choices: vec!["Yes".into()],
+                allow_freeform: false,
+            },
+            responder,
+        });
+        assert!(!app.current_tab().input_has_nav_focus());
+        app.handle_event(AppEvent::CancelUserInputRequest {
+            request_id: "question".into(),
+            session_id: DEFAULT_TAB_ID.into(),
+        });
+        assert!(app.current_tab().input_has_nav_focus());
+        assert_eq!(app.current_tab().input, "first");
+        type_text(&mut app, " second");
+        undo(&mut app);
+        assert_eq!(app.current_tab().input, "first");
+    }
+
+    #[test]
+    fn async_permission_owner_roundtrip_splits_typing() {
+        let mut app = test_app();
+        begin_user_input_test(&mut app);
+        type_text(&mut app, "first");
+        let (responder, _response) = tokio::sync::oneshot::channel();
+        app.handle_event(AppEvent::PermissionRequest {
+            session_id: DEFAULT_TAB_ID.into(),
+            tool_call_id: "permission".into(),
+            description: "Confirm".into(),
+            title: "Confirm".into(),
+            kind_label: None,
+            target: None,
+            target_is_command: false,
+            options: perm_with("permission").options,
+            responder,
+        });
+        assert!(!app.current_tab().input_has_nav_focus());
+        app.turn_cancel(DEFAULT_TAB_ID);
+        assert!(app.current_tab().input_has_nav_focus());
+        assert_eq!(app.current_tab().input, "first");
+        type_text(&mut app, " second");
+        undo(&mut app);
+        assert_eq!(app.current_tab().input, "first");
+    }
+
+    #[test]
+    fn async_updates_without_owner_changes_keep_typing_grouped() {
+        let mut app = test_app();
+        type_text(&mut app, "first");
+        app.handle_event(AppEvent::SystemMessage("status update".into()));
+        app.handle_event(AppEvent::CancelUserInputRequest {
+            request_id: "stale".into(),
+            session_id: "stale".into(),
+        });
+        type_text(&mut app, " second");
+        undo(&mut app);
+        assert!(app.current_tab().input.is_empty());
     }
 
     #[test]

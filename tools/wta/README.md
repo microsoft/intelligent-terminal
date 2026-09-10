@@ -179,6 +179,7 @@ the view clamps to surviving content.
 | F12 | Toggle debug panel (pipe traffic viewer) |
 | Shift+PageUp/Down | Scroll debug panel |
 | Y / N | Quick allow/reject on permission dialog |
+| Up / Down / Enter | Navigate permission options |
 
 Draft undo groups contiguous typing; paste, cut, selection replacement, deletion,
 and idle draft clearing are separate edits. Cursor, selection, focus, and view
@@ -188,7 +189,6 @@ limit; this is separate from submitted prompt history and screen scrollback.
 Browsing prompt history preserves the original draft's edit chain, while editing
 a recalled prompt starts a fresh chain. Submission and session reset discard the
 old edit history: undo does not reverse submitted agent or tool actions.
-| Up / Down / Enter | Navigate permission options |
 
 WTA automatically selects **Allow once** only when the tool matches the exact MCP
 server currently bound to that ACP session by master. Master overwrites provider
