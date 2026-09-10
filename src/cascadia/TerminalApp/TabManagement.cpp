@@ -244,7 +244,8 @@ namespace winrt::TerminalApp::implementation
             // Read now, not in the callback: by the time the low-priority tick
             // runs, the replay may have finished even though this tab's own
             // agent pane is still queued behind it.
-            const auto deferPrewarm = _startupActionReplayDepth > 0;
+            const auto deferPrewarm =
+                _startupActionReplayDepth > 0 || _pendingFreEnsureAgentPaneVisible;
             if (deferPrewarm)
             {
                 // Queue synchronously. The low-priority callback below runs

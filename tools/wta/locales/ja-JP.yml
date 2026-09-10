@@ -1,6 +1,8 @@
 # セットアップ画面タイトル
 setup.title.agent_missing: "エージェントが見つかりません"
 setup.title.agent_error: "エージェントへの接続に失敗しました"
+setup.title.installing_copilot: "GitHub Copilot をインストールしています"
+setup.title.starting_copilot: "GitHub Copilot を起動しています"
 setup.title.not_available: "エージェントを利用できません"
 setup.title.sign_in: "サインインが必要です"
 
@@ -9,15 +11,22 @@ setup.subtitle.copilot_missing: "エージェント \"%{agent}\" がインスト
 setup.subtitle.agent_missing: "エージェント \"%{agent}\" がインストールされていません。手動で再インストールしてから再試行してください。エージェントを切り替えるにはインテリジェント ターミナル Settings > Agent に移動してください。"
 setup.subtitle.copilot_auth: "エージェント \"%{agent}\" には認証が必要です。以下の手順に従ってサインインしてください。エージェントを切り替えるにはインテリジェント ターミナル Settings > Agent に移動してください。"
 setup.subtitle.agent_auth: "エージェント \"%{agent}\" には認証が必要です。エージェントからサインインし、下の \"サインイン済み\" を選択してください。エージェントを切り替えるにはインテリジェント ターミナル Settings > Agent に移動してください。"
+setup.subtitle.connection_failed: "%{agent} を起動できませんでした。"
 
 setup.option.install: "%{agent} をインストール"
 setup.option.install_hint: "（自動的にインストールされます）"
 setup.option.signin: "%{agent} にサインイン"
 setup.option.retry_detection: "再試行"
 setup.option.retry_auth: "サインイン済み — 再接続を試行"
+setup.option.retry_connection: "もう一度接続を試す"
 setup.status.installing: "インストール中..."
+setup.status.installing_copilot_cli: "GitHub Copilot CLI をインストールしています..."
+setup.status.connecting_agent: "エージェントに接続しています..."
 setup.status.install_failed: "インストール失敗: "
 setup.status.installing_winget: " winget 経由でインストール中..."
+setup.error.install_start_failed: "インストーラーを開始できませんでした。再試行するには、\"再試行\" を選択してください。"
+setup.error.install_timed_out: "インストールがタイムアウトしました。別のインストールを開始する前に、\"再試行\" を選択してください。"
+setup.error.install_detection_timed_out: "インストールは完了しましたが、Copilot はまだ表示されません。もう一度確認するには、\"再試行\" を選択してください。"
 
 # ── 認証フロー (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - 略語、翻訳不要

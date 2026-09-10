@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Ni chanfuwyd yr asiant"
 setup.title.agent_error: "Methwyd â chysylltu â'r asiant"
+setup.title.installing_copilot: "Yn gosod GitHub Copilot"
+setup.title.starting_copilot: "Yn cychwyn GitHub Copilot"
 setup.title.not_available: "Nid yw'r asiant ar gael"
 setup.title.sign_in: "Mae angen mewngofnodi"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Nid yw eich asiant \"%{agent}\" wedi'i osod. Di
 setup.subtitle.agent_missing: "Nid yw eich asiant \"%{agent}\" wedi'i osod. Ailosodwch ef â llaw, yna ceisiwch eto. I newid asiantau, ewch i Terfynell Ddeallus Settings > Agent."
 setup.subtitle.copilot_auth: "Mae eich asiant \"%{agent}\" angen dilysu. Dilynwch y camau isod i fewngofnodi. I newid asiantau, ewch i Terfynell Ddeallus Settings > Agent."
 setup.subtitle.agent_auth: "Mae eich asiant \"%{agent}\" angen dilysu. Mewngofnodwch drwy'r asiant, yna dewiswch \"Rwyf wedi mewngofnodi\" isod. I newid asiantau, ewch i Terfynell Ddeallus Settings > Agent."
+setup.subtitle.connection_failed: "Nid oedd modd cychwyn %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(Bydd yn cael ei osod yn awtomatig)"
 setup.option.signin: "Mewngofnodi i %{agent}"
 setup.option.retry_detection: "Ceisiwch eto"
 setup.option.retry_auth: "Rwyf wedi mewngofnodi — ceisiwch gysylltu eto"
+setup.option.retry_connection: "Ceisiwch gysylltu eto"
 setup.status.installing: "Yn gosod..."
+setup.status.installing_copilot_cli: "Yn gosod GitHub Copilot CLI..."
+setup.status.connecting_agent: "Yn cysylltu â'r asiant..."
 setup.status.install_failed: "Methodd y gosodiad: "
 setup.status.installing_winget: " Yn gosod drwy winget..."
+setup.error.install_start_failed: "Nid oedd modd cychwyn y gosodwr. Dewiswch \"Ceisiwch eto\" i roi cynnig arall arni."
+setup.error.install_timed_out: "Daeth amser y gosodiad i ben. Dewiswch \"Ceisiwch eto\" cyn dechrau gosodiad arall."
+setup.error.install_detection_timed_out: "Mae'r gosodiad wedi gorffen, ond nid yw Copilot yn weladwy eto. Dewiswch \"Ceisiwch eto\" i wirio eto."
 
 # ── Llif dilysu (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, defnydd cyffredin ar draws lleoleiddiadau Microsoft

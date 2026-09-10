@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Ejen AI tidak ditemui"
 setup.title.agent_error: "Sambungan ejen AI gagal"
+setup.title.installing_copilot: "Memasang GitHub Copilot"
+setup.title.starting_copilot: "Memulakan GitHub Copilot"
 setup.title.not_available: "Ejen AI tidak tersedia"
 setup.title.sign_in: "Log masuk diperlukan"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Ejen AI \"%{agent}\" anda belum dipasang. Ikuti
 setup.subtitle.agent_missing: "Ejen AI \"%{agent}\" anda belum dipasang. Sila pasang semula secara manual, kemudian cuba lagi. Untuk menukar ejen AI, pergi ke Terminal Pintar Settings > Agent."
 setup.subtitle.copilot_auth: "Ejen AI \"%{agent}\" anda memerlukan pengesahan. Ikuti langkah di bawah untuk log masuk. Untuk menukar ejen AI, pergi ke Terminal Pintar Settings > Agent."
 setup.subtitle.agent_auth: "Ejen AI \"%{agent}\" anda memerlukan pengesahan. Sila log masuk melalui ejen AI, kemudian pilih \"Saya telah log masuk\" di bawah. Untuk menukar ejen AI, pergi ke Terminal Pintar Settings > Agent."
+setup.subtitle.connection_failed: "Kami tidak dapat memulakan %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(Akan dipasang secara automatik)"
 setup.option.signin: "Log masuk ke %{agent}"
 setup.option.retry_detection: "Cuba lagi"
 setup.option.retry_auth: "Saya telah log masuk — cuba sambung kembali"
+setup.option.retry_connection: "Cuba sambung semula"
 setup.status.installing: "Memasang..."
+setup.status.installing_copilot_cli: "Memasang GitHub Copilot CLI..."
+setup.status.connecting_agent: "Menyambung kepada ejen AI..."
 setup.status.install_failed: "Pemasangan gagal: "
 setup.status.installing_winget: " Memasang melalui winget..."
+setup.error.install_start_failed: "Pemasang tidak dapat dimulakan. Pilih \"Cuba lagi\" untuk mencuba semula."
+setup.error.install_timed_out: "Pemasangan tamat masa. Pilih \"Cuba lagi\" sebelum memulakan pemasangan lain."
+setup.error.install_detection_timed_out: "Pemasangan selesai, tetapi Copilot masih belum kelihatan. Pilih \"Cuba lagi\" untuk menyemak semula."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations

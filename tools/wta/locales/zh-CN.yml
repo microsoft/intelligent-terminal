@@ -1,6 +1,8 @@
 # 设置界面标题
 setup.title.agent_missing: "未找到智能体"
 setup.title.agent_error: "智能体连接失败"
+setup.title.installing_copilot: "正在安装 GitHub Copilot"
+setup.title.starting_copilot: "正在启动 GitHub Copilot"
 setup.title.not_available: "智能体不可用"
 setup.title.sign_in: "需要登录"
 
@@ -9,15 +11,22 @@ setup.subtitle.copilot_missing: "您的智能体 \"%{agent}\" 尚未安装。请
 setup.subtitle.agent_missing: "您的智能体 \"%{agent}\" 尚未安装。请手动重新安装，然后重试。如需切换智能体，请前往智能终端 Settings > Agent。"
 setup.subtitle.copilot_auth: "您的智能体 \"%{agent}\" 需要身份验证。请按照以下步骤登录。如需切换智能体，请前往智能终端 Settings > Agent。"
 setup.subtitle.agent_auth: "您的智能体 \"%{agent}\" 需要身份验证。请通过智能体登录，然后选择下方的 \"我已登录\"。如需切换智能体，请前往智能终端 Settings > Agent。"
+setup.subtitle.connection_failed: "无法启动 %{agent}。"
 
 setup.option.install: "安装 %{agent}"
 setup.option.install_hint: "（将自动安装）"
 setup.option.signin: "登录 %{agent}"
 setup.option.retry_detection: "重试"
 setup.option.retry_auth: "我已登录 — 重试连接"
+setup.option.retry_connection: "重试连接"
 setup.status.installing: "安装中..."
+setup.status.installing_copilot_cli: "正在安装 GitHub Copilot CLI..."
+setup.status.connecting_agent: "正在连接智能体..."
 setup.status.install_failed: "安装失败："
 setup.status.installing_winget: " 正在通过 winget 安装..."
+setup.error.install_start_failed: "无法启动安装程序。选择“重试”以重试。"
+setup.error.install_timed_out: "安装超时。请先选择“重试”，再开始另一次安装。"
+setup.error.install_detection_timed_out: "安装已完成，但 Copilot 尚未显示。选择“重试”以再次检查。"
 
 # ── 认证流程 (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - 缩写，不翻译

@@ -263,6 +263,7 @@ namespace winrt::TerminalApp::implementation
         Windows::Foundation::IAsyncOperation<bool> FocusProtocolPane(winrt::guid sessionId);
         void OnAutofixStateChanged(hstring eventJson);
         void OnAgentStatusChanged(hstring eventJson);
+        void OnAgentAvailabilityChanged(hstring eventJson);
         void OnAgentSwitchRequested(hstring eventJson);
         void OnCloseAgentPaneRequested(hstring eventJson);
         void OnDefaultPasteRequested(hstring eventJson);
@@ -592,6 +593,10 @@ namespace winrt::TerminalApp::implementation
         // between actions, and a flag would let that inner batch clear the
         // suppression out from under the outer one.
         uint32_t _startupActionReplayDepth{ 0 };
+        bool _startupStructureSettleQueued{ false };
+        bool _pendingFreEnsureAgentPaneVisible{ false };
+        bool _pendingFreAutoInstallCopilot{ false };
+        winrt::hstring _freAutoInstallTargetTabId;
         // Tabs that skipped their own pre-warm because a replay was in flight.
         // Drained when the outermost replay finishes. Recording the tabs —
         // rather than re-scanning every tab in the window — is what keeps an
@@ -753,7 +758,10 @@ namespace winrt::TerminalApp::implementation
                                               std::wstring_view initialYoloControlOwner = {});
         winrt::hstring _GetAgentPaneIdentity(Tab* tab) const;
         winrt::hstring _GetAgentPaneCustomCommand(Tab* tab) const;
+        void _ScheduleStartupStructureSettled() noexcept;
+        void _OnStartupStructureSettled();
         void _PrewarmAgentPanesAfterStartup();
+        void _CompletePendingFreAgentPaneVisibility();
         // Rebuild an agent pane from a persisted layout entry. `contentArgs`
         // carries only the stable resume command line; everything runtime-bound
         // (the master pipe, the owner ids, the resolved CLI path) is

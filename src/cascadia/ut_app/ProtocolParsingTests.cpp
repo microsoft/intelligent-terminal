@@ -15,6 +15,7 @@ namespace TerminalAppUnitTests
         TEST_CLASS(ProtocolParsingTests);
 
         TEST_METHOD(DefaultPasteRequestUsesDirectRoute);
+        TEST_METHOD(AgentAvailabilityUsesDirectRoute);
         TEST_METHOD(AgentSessionsRetiredUsesDirectRoute);
         TEST_METHOD(RestartRequestIdentityIsStampedOnce);
         TEST_METHOD(BoundedCommandPreservesUtf8Characters);
@@ -54,6 +55,17 @@ namespace TerminalAppUnitTests
 
         VERIFY_ARE_EQUAL(SendEventRoute::DefaultPaste, route);
         VERIFY_ARE_EQUAL("request_default_paste", event["method"].asString());
+    }
+
+    void ProtocolParsingTests::AgentAvailabilityUsesDirectRoute()
+    {
+        Json::Value event;
+        const auto route = ClassifySendEvent(
+            R"({"type":"event","method":"agent_availability_changed","params":{"agent_id":"copilot","tab_id":"tab-a"}})",
+            event);
+
+        VERIFY_ARE_EQUAL(SendEventRoute::AgentAvailability, route);
+        VERIFY_ARE_EQUAL("copilot", event["params"]["agent_id"].asString());
     }
 
     void ProtocolParsingTests::AgentSessionsRetiredUsesDirectRoute()

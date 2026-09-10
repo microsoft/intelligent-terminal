@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Agenti ei leitud"
 setup.title.agent_error: "Agendiga ühenduse loomine nurjus"
+setup.title.installing_copilot: "Rakenduse GitHub Copilot installimine"
+setup.title.starting_copilot: "Rakenduse GitHub Copilot käivitamine"
 setup.title.not_available: "Agent pole saadaval"
 setup.title.sign_in: "Sisselogimine nõutav"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Teie agent \"%{agent}\" pole installitud. Järg
 setup.subtitle.agent_missing: "Teie agent \"%{agent}\" pole installitud. Installige see käsitsi uuesti ja proovige seejärel uuesti. Agendi vahetamiseks avage Nutikas Terminal Settings > Agent."
 setup.subtitle.copilot_auth: "Teie agent \"%{agent}\" nõuab autentimist. Järgige allolevaid juhiseid sisselogimiseks. Agendi vahetamiseks avage Nutikas Terminal Settings > Agent."
 setup.subtitle.agent_auth: "Teie agent \"%{agent}\" nõuab autentimist. Logige sisse agendi kaudu ja valige seejärel allpool \"Olen sisse loginud\". Agendi vahetamiseks avage Nutikas Terminal Settings > Agent."
+setup.subtitle.connection_failed: "Agent %{agent} ei käivitunud."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(Installitakse automaatselt)"
 setup.option.signin: "Logi sisse teenusesse %{agent}"
 setup.option.retry_detection: "Proovi uuesti"
 setup.option.retry_auth: "Olen sisse loginud — proovi uuesti ühendust luua"
+setup.option.retry_connection: "Proovi uuesti ühendust luua"
 setup.status.installing: "Installimine..."
+setup.status.installing_copilot_cli: "GitHub Copilot CLI installimine..."
+setup.status.connecting_agent: "Agendiga ühenduse loomine..."
 setup.status.install_failed: "Installimine nurjus: "
 setup.status.installing_winget: " Installimine winget kaudu..."
+setup.error.install_start_failed: "Installiprogrammi ei saanud käivitada. Uuesti proovimiseks valige \"Proovi uuesti\"."
+setup.error.install_timed_out: "Installimine aegus. Enne uue installimise alustamist valige \"Proovi uuesti\"."
+setup.error.install_detection_timed_out: "Installimine on lõpule jõudnud, kuid Copilot pole veel nähtav. Uuesti kontrollimiseks valige \"Proovi uuesti\"."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations

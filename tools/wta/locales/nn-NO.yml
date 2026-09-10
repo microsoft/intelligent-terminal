@@ -2,6 +2,8 @@
 # {Locked="Intelligent Terminal"} - product name, do not translate
 setup.title.agent_missing: "Agenten vart ikkje funnen"
 setup.title.agent_error: "Tilkoplinga til agenten mislukkast"
+setup.title.installing_copilot: "Installerer GitHub Copilot"
+setup.title.starting_copilot: "Startar GitHub Copilot"
 setup.title.not_available: "Agenten er ikkje tilgjengeleg"
 setup.title.sign_in: "Pålogging er påkravd"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Agenten din \"%{agent}\" er ikkje installert. F
 setup.subtitle.agent_missing: "Agenten din \"%{agent}\" er ikkje installert. Installer han på nytt manuelt, og prøv deretter igjen. For å byte agent, gå til Intelligent Terminal Settings > Agent."
 setup.subtitle.copilot_auth: "Agenten din \"%{agent}\" krev autentisering. Følg stega nedanfor for å logge inn. For å byte agent, gå til Intelligent Terminal Settings > Agent."
 setup.subtitle.agent_auth: "Agenten din \"%{agent}\" krev autentisering. Logg inn via agenten, og vel deretter \"Eg har logga inn\" nedanfor. For å byte agent, gå til Intelligent Terminal Settings > Agent."
+setup.subtitle.connection_failed: "Vi kunne ikkje starte %{agent}."
 
 # {Locked="Intelligent Terminal"}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(Vert installert automatisk)"
 setup.option.signin: "Logg inn på %{agent}"
 setup.option.retry_detection: "Prøv igjen"
 setup.option.retry_auth: "Eg har logga inn — prøv å kople til igjen"
+setup.option.retry_connection: "Prøv å kople til igjen"
 setup.status.installing: "Installerer..."
+setup.status.installing_copilot_cli: "Installerer GitHub Copilot CLI..."
+setup.status.connecting_agent: "Koplar til agenten..."
 setup.status.install_failed: "Installasjonen mislukkast: "
 setup.status.installing_winget: " Installerer via winget..."
+setup.error.install_start_failed: "Installasjonsprogrammet kunne ikkje startast. Vel \"Prøv igjen\" for å prøve på nytt."
+setup.error.install_timed_out: "Tidsavbrot under installasjonen. Vel \"Prøv igjen\" før du startar ein ny installasjon."
+setup.error.install_detection_timed_out: "Installasjonen er fullført, men Copilot er ikkje synleg enno. Vel \"Prøv igjen\" for å kontrollere på nytt."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations

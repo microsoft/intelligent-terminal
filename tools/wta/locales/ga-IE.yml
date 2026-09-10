@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Nír aimsíodh an gníomhaire"
 setup.title.agent_error: "Theip ar cheangal an ghníomhaire"
+setup.title.installing_copilot: "GitHub Copilot á shuiteáil"
+setup.title.starting_copilot: "GitHub Copilot á thosú"
 setup.title.not_available: "Níl an gníomhaire ar fáil"
 setup.title.sign_in: "Sínigh isteach riachtanach"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Níl do ghníomhaire \"%{agent}\" suiteáilte. 
 setup.subtitle.agent_missing: "Níl do ghníomhaire \"%{agent}\" suiteáilte. Athshuiteáil de láimh é, ansin bain triail eile as. Chun gníomhairí a athrú, téigh go Teirminéal Cliste Settings > Agent."
 setup.subtitle.copilot_auth: "Teastaíonn fíordheimhniú ó do ghníomhaire \"%{agent}\". Lean na céimeanna thíos chun síniú isteach. Chun gníomhairí a athrú, téigh go Teirminéal Cliste Settings > Agent."
 setup.subtitle.agent_auth: "Teastaíonn fíordheimhniú ó do ghníomhaire \"%{agent}\". Sínigh isteach tríd an ngníomhaire, ansin roghnaigh \"Tá mé sínithe isteach\" thíos. Chun gníomhairí a athrú, téigh go Teirminéal Cliste Settings > Agent."
+setup.subtitle.connection_failed: "Níorbh fhéidir %{agent} a thosú."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(Suiteálfar go huathoibríoch)"
 setup.option.signin: "Sínigh isteach chuig %{agent}"
 setup.option.retry_detection: "Bain triail eile as"
 setup.option.retry_auth: "Tá mé sínithe isteach — bain triail eile as ceangal"
+setup.option.retry_connection: "Bain triail eile as ceangal"
 setup.status.installing: "Á shuiteáil..."
+setup.status.installing_copilot_cli: "GitHub Copilot CLI á shuiteáil..."
+setup.status.connecting_agent: "Ag ceangal leis an ngníomhaire..."
 setup.status.install_failed: "Theip ar shuiteáil: "
 setup.status.installing_winget: " Á shuiteáil trí winget..."
+setup.error.install_start_failed: "Níorbh fhéidir an suiteálaí a thosú. Roghnaigh \"Bain triail eile as\" chun triail eile a bhaint as."
+setup.error.install_timed_out: "Chuaigh an tsuiteáil thar am. Roghnaigh \"Bain triail eile as\" sula dtosaíonn tú suiteáil eile."
+setup.error.install_detection_timed_out: "Críochnaíodh an tsuiteáil, ach níl Copilot le feiceáil fós. Roghnaigh \"Bain triail eile as\" chun seiceáil arís."
 
 # ── Sreabhadh fíordheimhnithe (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acrainm, úsáid choitianta i logánú Microsoft

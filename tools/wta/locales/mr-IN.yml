@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "एजंट आढळला नाही"
 setup.title.agent_error: "एजंट कनेक्शन अयशस्वी झाले"
+setup.title.installing_copilot: "GitHub Copilot इंस्टॉल होत आहे"
+setup.title.starting_copilot: "GitHub Copilot सुरू होत आहे"
 setup.title.not_available: "एजंट उपलब्ध नाही"
 setup.title.sign_in: "साइन इन आवश्यक आहे"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "तुमचा एजंट \"%{agent}\" इ�
 setup.subtitle.agent_missing: "तुमचा एजंट \"%{agent}\" इंस्टॉल केलेला नाही. कृपया व्यक्तिचलितपणे पुन्हा इंस्टॉल करा, नंतर पुन्हा प्रयत्न करा. एजंट बदलण्यासाठी इंटेलिजंट टर्मिनल Settings > Agent वर जा."
 setup.subtitle.copilot_auth: "तुमच्या एजंट \"%{agent}\" ला प्रमाणीकरण आवश्यक आहे. साइन इन करण्यासाठी खालील चरणांचे अनुसरण करा. एजंट बदलण्यासाठी इंटेलिजंट टर्मिनल Settings > Agent वर जा."
 setup.subtitle.agent_auth: "आपल्या एजंट \"%{agent}\" ला प्रमाणीकरण आवश्यक आहे. कृपया एजंटद्वारे साइन इन करा, मग खाली \"मी साइन इन केले\" निवडा. एजंट बदलण्यासाठी इंटेलिजंट टर्मिनल Settings > Agent वर जा."
+setup.subtitle.connection_failed: "आम्हाला %{agent} सुरू करता आले नाही."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(आपोआप इंस्टॉल केले 
 setup.option.signin: "%{agent} मध्ये साइन इन करा"
 setup.option.retry_detection: "पुन्हा प्रयत्न करा"
 setup.option.retry_auth: "मी साइन इन केले — पुन्हा कनेक्ट करण्याचा प्रयत्न करा"
+setup.option.retry_connection: "पुन्हा कनेक्ट करण्याचा प्रयत्न करा"
 setup.status.installing: "इंस्टॉल होत आहे..."
+setup.status.installing_copilot_cli: "GitHub Copilot CLI इंस्टॉल होत आहे..."
+setup.status.connecting_agent: "एजंटशी कनेक्ट होत आहे..."
 setup.status.install_failed: "इंस्टॉल अयशस्वी: "
 setup.status.installing_winget: " winget द्वारे इंस्टॉल होत आहे..."
+setup.error.install_start_failed: "इंस्टॉलर सुरू करता आला नाही. पुन्हा प्रयत्न करण्यासाठी \"पुन्हा प्रयत्न करा\" निवडा."
+setup.error.install_timed_out: "इंस्टॉलेशनची वेळ संपली. दुसरे इंस्टॉलेशन सुरू करण्यापूर्वी \"पुन्हा प्रयत्न करा\" निवडा."
+setup.error.install_detection_timed_out: "इंस्टॉलेशन पूर्ण झाले, परंतु Copilot अद्याप दिसत नाही. पुन्हा तपासण्यासाठी \"पुन्हा प्रयत्न करा\" निवडा."
 
 # ── प्रमाणीकरण प्रवाह (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - संक्षिप्त रूप, Microsoft स्थानिकीकरणांमध्ये सामान्य वापर

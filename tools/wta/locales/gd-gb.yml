@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Cha deach an àidseant a lorg"
 setup.title.agent_error: "Dh'fhàillig ceangal an àidseant"
+setup.title.installing_copilot: "A' stàladh GitHub Copilot"
+setup.title.starting_copilot: "A' tòiseachadh GitHub Copilot"
 setup.title.not_available: "Chan eil an àidseant ri fhaighinn"
 setup.title.sign_in: "Feumaidh tu clàradh a-steach"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Chan eil an àidseant agad \"%{agent}\" air a s
 setup.subtitle.agent_missing: "Chan eil an àidseant agad \"%{agent}\" air a stàladh. Ath-stàlaich e le làimh, an uair sin feuch a-rithist. Airson àidseant atharrachadh, rach gu Tèirmineal Glic Settings > Agent."
 setup.subtitle.copilot_auth: "Feumaidh an àidseant agad \"%{agent}\" dearbhadh. Lean na ceumannan gu h-ìosal gus clàradh a-steach. Airson àidseant atharrachadh, rach gu Tèirmineal Glic Settings > Agent."
 setup.subtitle.agent_auth: "Feumaidh an àidseant agad \"%{agent}\" dearbhadh. Clàraich a-steach tron àidseant, an uair sin tagh \"Chlàraich mi a-steach\" gu h-ìosal. Airson àidseant atharrachadh, rach gu Tèirmineal Glic Settings > Agent."
+setup.subtitle.connection_failed: "Cha b' urrainn dhuinn %{agent} a thòiseachadh."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(Thèid a stàladh gu fèin-obrachail)"
 setup.option.signin: "Clàraich a-steach gu %{agent}"
 setup.option.retry_detection: "Feuch a-rithist"
 setup.option.retry_auth: "Chlàraich mi a-steach — feuch ceangal a-rithist"
+setup.option.retry_connection: "Feuch ri ceangal a-rithist"
 setup.status.installing: "Ga stàladh..."
+setup.status.installing_copilot_cli: "A' stàladh GitHub Copilot CLI..."
+setup.status.connecting_agent: "A' ceangal ris an àidseant..."
 setup.status.install_failed: "Dh'fhàillig an stàladh: "
 setup.status.installing_winget: " Ga stàladh tro winget..."
+setup.error.install_start_failed: "Cha b' urrainn dhuinn an stàlaichear a thòiseachadh. Tagh \"Feuch a-rithist\" gus feuchainn a-rithist."
+setup.error.install_timed_out: "Dh'fhalbh an ùine air an stàladh. Tagh \"Feuch a-rithist\" mus tòisich thu stàladh eile."
+setup.error.install_detection_timed_out: "Tha an stàladh deiseil, ach chan eil Copilot ri fhaicinn fhathast. Tagh \"Feuch a-rithist\" gus dearbhadh a-rithist."
 
 # ── Sruth dearbhaidh (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - giorrachadh, cleachdadh cumanta tarsainn ionadaileachaidhean Microsoft

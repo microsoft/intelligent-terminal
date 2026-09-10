@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "عامل هوش مصنوعی یافت نشد"
 setup.title.agent_error: "اتصال به عامل هوش مصنوعی ناموفق بود"
+setup.title.installing_copilot: "در حال نصب GitHub Copilot"
+setup.title.starting_copilot: "در حال راه‌اندازی GitHub Copilot"
 setup.title.not_available: "عامل هوش مصنوعی در دسترس نیست"
 setup.title.sign_in: "ورود به سیستم لازم است"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "عامل هوش مصنوعی \"%{agent}\" نص�
 setup.subtitle.agent_missing: "عامل هوش مصنوعی \"%{agent}\" نصب نشده است. لطفاً آن را به صورت دستی دوباره نصب کنید، سپس دوباره تلاش کنید. برای تغییر عامل‌های هوش مصنوعی، به پایانه هوشمند Settings > Agent بروید."
 setup.subtitle.copilot_auth: "عامل هوش مصنوعی \"%{agent}\" نیاز به احراز هویت دارد. مراحل زیر را برای ورود دنبال کنید. برای تغییر عامل‌های هوش مصنوعی، به پایانه هوشمند Settings > Agent بروید."
 setup.subtitle.agent_auth: "عامل هوش مصنوعی \"%{agent}\" نیاز به احراز هویت دارد. لطفاً از طریق عامل هوش مصنوعی وارد شوید، سپس \"وارد شدم\" را در زیر انتخاب کنید. برای تغییر عامل‌های هوش مصنوعی، به پایانه هوشمند Settings > Agent بروید."
+setup.subtitle.connection_failed: "نتوانستیم %{agent} را راه‌اندازی کنیم."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(به صورت خودکار نصب خواهد شد)"
 setup.option.signin: "ورود به %{agent}"
 setup.option.retry_detection: "دوباره تلاش کنید"
 setup.option.retry_auth: "وارد شدم — دوباره اتصال را امتحان کنید"
+setup.option.retry_connection: "دوباره برای اتصال تلاش کنید"
 setup.status.installing: "در حال نصب..."
+setup.status.installing_copilot_cli: "در حال نصب GitHub Copilot CLI..."
+setup.status.connecting_agent: "در حال اتصال به عامل هوش مصنوعی..."
 setup.status.install_failed: "نصب ناموفق بود: "
 setup.status.installing_winget: " در حال نصب از طریق winget..."
+setup.error.install_start_failed: "راه‌اندازی برنامه نصب ممکن نبود. برای تلاش مجدد، \"دوباره تلاش کنید\" را انتخاب کنید."
+setup.error.install_timed_out: "مهلت نصب به پایان رسید. پیش از شروع نصب دیگری، \"دوباره تلاش کنید\" را انتخاب کنید."
+setup.error.install_detection_timed_out: "نصب به پایان رسید، اما Copilot هنوز نمایش داده نمی‌شود. برای بررسی مجدد، \"دوباره تلاش کنید\" را انتخاب کنید."
 
 # ── جریان احراز هویت (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - مخفف، استفاده رایج در بومی‌سازی‌های Microsoft

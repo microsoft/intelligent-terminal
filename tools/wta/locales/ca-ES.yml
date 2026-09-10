@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "No s'ha trobat l'agent"
 setup.title.agent_error: "No s'ha pogut connectar amb l'agent"
+setup.title.installing_copilot: "S'està instal·lant GitHub Copilot"
+setup.title.starting_copilot: "S'està iniciant GitHub Copilot"
 setup.title.not_available: "L'agent no està disponible"
 setup.title.sign_in: "Cal iniciar la sessió"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "El vostre agent \"%{agent}\" no està instal·l
 setup.subtitle.agent_missing: "El vostre agent \"%{agent}\" no està instal·lat. Reinstal·leu-lo manualment i torneu-ho a provar. Per canviar d'agent, aneu a Terminal Intel·ligent Settings > Agent."
 setup.subtitle.copilot_auth: "El vostre agent \"%{agent}\" requereix autenticació. Seguiu els passos següents per iniciar la sessió. Per canviar d'agent, aneu a Terminal Intel·ligent Settings > Agent."
 setup.subtitle.agent_auth: "El vostre agent \"%{agent}\" requereix autenticació. Inicieu la sessió mitjançant l'agent i seleccioneu \"He iniciat la sessió\" a continuació. Per canviar d'agent, aneu a Terminal Intel·ligent Settings > Agent."
+setup.subtitle.connection_failed: "No s'ha pogut iniciar %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(S'instal·larà automàticament)"
 setup.option.signin: "Inicia la sessió a %{agent}"
 setup.option.retry_detection: "Torna-ho a provar"
 setup.option.retry_auth: "He iniciat la sessió — prova de connectar de nou"
+setup.option.retry_connection: "Torneu a provar de connectar-vos"
 setup.status.installing: "S'està instal·lant..."
+setup.status.installing_copilot_cli: "S'està instal·lant GitHub Copilot CLI..."
+setup.status.connecting_agent: "S'està connectant amb l'agent..."
 setup.status.install_failed: "Error en la instal·lació: "
 setup.status.installing_winget: " S'està instal·lant mitjançant winget..."
+setup.error.install_start_failed: "No s'ha pogut iniciar l'instal·lador. Seleccioneu \"Torna-ho a provar\" per tornar-ho a provar."
+setup.error.install_timed_out: "S'ha esgotat el temps d'espera de la instal·lació. Seleccioneu \"Torna-ho a provar\" abans d'iniciar una altra instal·lació."
+setup.error.install_detection_timed_out: "La instal·lació ha finalitzat, però Copilot encara no és visible. Seleccioneu \"Torna-ho a provar\" per comprovar-ho de nou."
 
 # ── Flux d'autenticació (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acrònim, ús comú en les localitzacions de Microsoft

@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Agente non trovato"
 setup.title.agent_error: "Connessione all'agente non riuscita"
+setup.title.installing_copilot: "Installazione di GitHub Copilot"
+setup.title.starting_copilot: "Avvio di GitHub Copilot"
 setup.title.not_available: "Agente non disponibile"
 setup.title.sign_in: "Accesso richiesto"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "L'agente \"%{agent}\" non è installato. Segui 
 setup.subtitle.agent_missing: "L'agente \"%{agent}\" non è installato. Reinstallalo manualmente, quindi riprova. Per cambiare agente, vai a Impostazioni di Terminale Intelligente > Agente."
 setup.subtitle.copilot_auth: "L'agente \"%{agent}\" richiede l'autenticazione. Segui i passaggi seguenti per accedere. Per cambiare agente, vai a Impostazioni di Terminale Intelligente > Agente."
 setup.subtitle.agent_auth: "L'agente \"%{agent}\" richiede l'autenticazione. Accedi tramite l'agente, quindi seleziona \"Ho effettuato l'accesso\" di seguito. Per cambiare agente, vai a Impostazioni di Terminale Intelligente > Agente."
+setup.subtitle.connection_failed: "Non è stato possibile avviare %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(Verrà installato automaticamente)"
 setup.option.signin: "Accedi a %{agent}"
 setup.option.retry_detection: "Riprova"
 setup.option.retry_auth: "Ho effettuato l'accesso — riprova a connetterti"
+setup.option.retry_connection: "Riprova a connetterti"
 setup.status.installing: "Installazione in corso..."
+setup.status.installing_copilot_cli: "Installazione di GitHub Copilot CLI..."
+setup.status.connecting_agent: "Connessione all'agente..."
 setup.status.install_failed: "Installazione non riuscita: "
 setup.status.installing_winget: " Installazione tramite winget..."
+setup.error.install_start_failed: "Non è stato possibile avviare il programma di installazione. Seleziona \"Riprova\" per riprovare."
+setup.error.install_timed_out: "Il tempo per l'installazione è scaduto. Seleziona \"Riprova\" prima di avviare un'altra installazione."
+setup.error.install_detection_timed_out: "L'installazione è terminata, ma Copilot non è ancora visibile. Seleziona \"Riprova\" per verificare di nuovo."
 
 # ── Flusso di autenticazione (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - abbreviazione, non tradurre

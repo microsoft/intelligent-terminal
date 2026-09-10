@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Agent fannst ekki"
 setup.title.agent_error: "Tenging við agent mistókst"
+setup.title.installing_copilot: "Uppsetning GitHub Copilot"
+setup.title.starting_copilot: "Ræsing GitHub Copilot"
 setup.title.not_available: "Agent er ekki tiltækur"
 setup.title.sign_in: "Innskráning nauðsynleg"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Agentinn þinn \"%{agent}\" er ekki uppsettur. 
 setup.subtitle.agent_missing: "Agentinn þinn \"%{agent}\" er ekki uppsettur. Settu hann upp aftur handvirkt og reyndu svo aftur. Til að skipta um agent, farðu í Snjallútstöð Settings > Agent."
 setup.subtitle.copilot_auth: "Agentinn þinn \"%{agent}\" krefst auðkenningar. Fylgdu skrefunum hér að neðan til að skrá þig inn. Til að skipta um agent, farðu í Snjallútstöð Settings > Agent."
 setup.subtitle.agent_auth: "Agentinn þinn \"%{agent}\" krefst auðkenningar. Skráðu þig inn í gegnum agentinn og veldu svo \"Ég hef skráð mig inn\" hér að neðan. Til að skipta um agent, farðu í Snjallútstöð Settings > Agent."
+setup.subtitle.connection_failed: "Ekki tókst að ræsa %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(Verður sett upp sjálfkrafa)"
 setup.option.signin: "Skrá inn á %{agent}"
 setup.option.retry_detection: "Reyndu aftur"
 setup.option.retry_auth: "Ég hef skráð mig inn — reyndu að tengjast aftur"
+setup.option.retry_connection: "Reyndu að tengjast aftur"
 setup.status.installing: "Set upp..."
+setup.status.installing_copilot_cli: "Uppsetning GitHub Copilot CLI..."
+setup.status.connecting_agent: "Tenging við agent..."
 setup.status.install_failed: "Uppsetning mistókst: "
 setup.status.installing_winget: " Set upp í gegnum winget..."
+setup.error.install_start_failed: "Ekki var hægt að ræsa uppsetningarforritið. Veldu \"Reyndu aftur\" til að reyna aftur."
+setup.error.install_timed_out: "Uppsetningin rann út á tíma. Veldu \"Reyndu aftur\" áður en önnur uppsetning er hafin."
+setup.error.install_detection_timed_out: "Uppsetningu er lokið en Copilot sést ekki enn. Veldu \"Reyndu aftur\" til að athuga aftur."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations

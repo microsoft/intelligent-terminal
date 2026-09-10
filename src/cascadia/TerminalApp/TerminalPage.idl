@@ -164,6 +164,7 @@ namespace TerminalApp
         // Called by the COM server on the UI thread; the page forwards the values
         // to the AgentPaneContent so the XAML agent bar can refresh.
         void OnAgentStatusChanged(String eventJson);
+        void OnAgentAvailabilityChanged(String eventJson);
 
         // Inbound event from `/agent` carrying
         // {method:"switch_agent",params:{window_id,tab_id,agent_id}}.

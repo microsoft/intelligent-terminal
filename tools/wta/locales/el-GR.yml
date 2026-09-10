@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Δεν βρέθηκε ο παράγοντας"
 setup.title.agent_error: "Η σύνδεση με τον παράγοντα απέτυχε"
+setup.title.installing_copilot: "Εγκατάσταση του GitHub Copilot"
+setup.title.starting_copilot: "Εκκίνηση του GitHub Copilot"
 setup.title.not_available: "Ο παράγοντας δεν είναι διαθέσιμος"
 setup.title.sign_in: "Απαιτείται σύνδεση"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Ο παράγοντάς σας \"%{agent}\" δ�
 setup.subtitle.agent_missing: "Ο παράγοντάς σας \"%{agent}\" δεν είναι εγκατεστημένος. Εγκαταστήστε τον ξανά χειροκίνητα και δοκιμάστε ξανά. Για αλλαγή παράγοντα, μεταβείτε στο Έξυπνο Τερματικό Settings > Agent."
 setup.subtitle.copilot_auth: "Ο παράγοντάς σας \"%{agent}\" απαιτεί έλεγχο ταυτότητας. Ακολουθήστε τα παρακάτω βήματα για να συνδεθείτε. Για αλλαγή παράγοντα, μεταβείτε στο Έξυπνο Τερματικό Settings > Agent."
 setup.subtitle.agent_auth: "Ο παράγοντάς σας \"%{agent}\" απαιτεί έλεγχο ταυτότητας. Συνδεθείτε μέσω του παράγοντα και επιλέξτε \"Έχω συνδεθεί\" παρακάτω. Για αλλαγή παράγοντα, μεταβείτε στο Έξυπνο Τερματικό Settings > Agent."
+setup.subtitle.connection_failed: "Δεν ήταν δυνατή η εκκίνηση του %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(Θα εγκατασταθεί αυτόματα)"
 setup.option.signin: "Σύνδεση στο %{agent}"
 setup.option.retry_detection: "Δοκιμάστε ξανά"
 setup.option.retry_auth: "Έχω συνδεθεί — δοκιμάστε ξανά τη σύνδεση"
+setup.option.retry_connection: "Δοκιμάστε να συνδεθείτε ξανά"
 setup.status.installing: "Εγκατάσταση..."
+setup.status.installing_copilot_cli: "Εγκατάσταση του GitHub Copilot CLI..."
+setup.status.connecting_agent: "Σύνδεση με τον παράγοντα..."
 setup.status.install_failed: "Η εγκατάσταση απέτυχε: "
 setup.status.installing_winget: " Εγκατάσταση μέσω winget..."
+setup.error.install_start_failed: "Δεν ήταν δυνατή η εκκίνηση του προγράμματος εγκατάστασης. Επιλέξτε \"Δοκιμάστε ξανά\" για να προσπαθήσετε ξανά."
+setup.error.install_timed_out: "Η εγκατάσταση έληξε λόγω λήξης χρονικού ορίου. Επιλέξτε \"Δοκιμάστε ξανά\" πριν ξεκινήσετε άλλη εγκατάσταση."
+setup.error.install_detection_timed_out: "Η εγκατάσταση ολοκληρώθηκε, αλλά το Copilot δεν είναι ακόμα ορατό. Επιλέξτε \"Δοκιμάστε ξανά\" για να ελέγξετε ξανά."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations

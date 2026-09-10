@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Agent tapılmadı"
 setup.title.agent_error: "Agent bağlantısı uğursuz oldu"
+setup.title.installing_copilot: "GitHub Copilot quraşdırılır"
+setup.title.starting_copilot: "GitHub Copilot başladılır"
 setup.title.not_available: "Agent əlçatan deyil"
 setup.title.sign_in: "Daxil olma tələb olunur"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Agentiniz \"%{agent}\" quraşdırılmayıb. Qur
 setup.subtitle.agent_missing: "Agentiniz \"%{agent}\" quraşdırılmayıb. Lütfən əllə yenidən quraşdırın, sonra yenidən cəhd edin. Agenti dəyişmək üçün Ağıllı Terminal Settings > Agent-ə keçin."
 setup.subtitle.copilot_auth: "Agentiniz \"%{agent}\" kimlik doğrulaması tələb edir. Daxil olmaq üçün aşağıdakı addımları izləyin. Agenti dəyişmək üçün Ağıllı Terminal Settings > Agent-ə keçin."
 setup.subtitle.agent_auth: "Agentiniz \"%{agent}\" kimlik doğrulaması tələb edir. Lütfən agent vasitəsilə daxil olun, sonra aşağıda \"Daxil oldum\" seçin. Agenti dəyişmək üçün Ağıllı Terminal Settings > Agent-ə keçin."
+setup.subtitle.connection_failed: "%{agent} başladıla bilmədi."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(Avtomatik quraşdırılacaq)"
 setup.option.signin: "%{agent} daxil ol"
 setup.option.retry_detection: "Yenidən cəhd edin"
 setup.option.retry_auth: "Daxil oldum — yenidən qoşulmağa cəhd edin"
+setup.option.retry_connection: "Yenidən qoşulmağa cəhd edin"
 setup.status.installing: "Quraşdırılır..."
+setup.status.installing_copilot_cli: "GitHub Copilot CLI quraşdırılır..."
+setup.status.connecting_agent: "Agentə qoşulur..."
 setup.status.install_failed: "Quraşdırma uğursuz oldu: "
 setup.status.installing_winget: " winget vasitəsilə quraşdırılır..."
+setup.error.install_start_failed: "Quraşdırıcını başlatmaq mümkün olmadı. Yenidən cəhd etmək üçün \"Yenidən cəhd edin\" seçin."
+setup.error.install_timed_out: "Quraşdırma vaxtı bitdi. Başqa quraşdırmaya başlamazdan əvvəl \"Yenidən cəhd edin\" seçin."
+setup.error.install_detection_timed_out: "Quraşdırma tamamlandı, lakin Copilot hələ görünmür. Yenidən yoxlamaq üçün \"Yenidən cəhd edin\" seçin."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations

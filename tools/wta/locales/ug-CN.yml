@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "AI ئاگېنتى تېپىلمىدى"
 setup.title.agent_error: "AI ئاگېنتى بىلەن باغلىنىش مەغلۇب بولدى"
+setup.title.installing_copilot: "GitHub Copilot ئورنىتىلىۋاتىدۇ"
+setup.title.starting_copilot: "GitHub Copilot قوزغىتىلىۋاتىدۇ"
 setup.title.not_available: "AI ئاگېنتى ئىشلەتكىلى ئەمەس"
 setup.title.sign_in: "كىرىش تەلەپ قىلىنىدۇ"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "سىزنىڭ AI ئاگېنتىڭىز \"%{agent}
 setup.subtitle.agent_missing: "سىزنىڭ AI ئاگېنتىڭىز \"%{agent}\" ئورنىتىلمىغان. قولدا قايتا ئورنىتىپ سىناڭ. AI ئاگېنتىنى الماشتۇرۇش ئۈچۈن ئەقلىي تېرمىنال Settings > Agent قا كىرىڭ."
 setup.subtitle.copilot_auth: "سىزنىڭ AI ئاگېنتىڭىز \"%{agent}\" تونۇقتۇرۇش تەلەپ قىلىدۇ. كىرىش ئۈچۈن تۆۋەندىكى قەدەملەرنى بېسىڭ. AI ئاگېنتىنى الماشتۇرۇش ئۈچۈن ئەقلىي تېرمىنال Settings > Agent قا كىرىڭ."
 setup.subtitle.agent_auth: "سىزنىڭ AI ئاگېنتىڭىز \"%{agent}\" تونۇقتۇرۇش تەلەپ قىلىدۇ. AI ئاگېنتى ئارقىلىق كىرىپ تۆۋەندە \"كىردىم\" نى تاللاڭ. AI ئاگېنتىنى الماشتۇرۇش ئۈچۈن ئەقلىي تېرمىنال Settings > Agent قا كىرىڭ."
+setup.subtitle.connection_failed: "%{agent} نى قوزغىتالمىدۇق."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(ئاپتوماتىك ئورنىتىلىدۇ)"
 setup.option.signin: "%{agent} غا كىرىش"
 setup.option.retry_detection: "قايتا سىناڭ"
 setup.option.retry_auth: "كىردىم — قايتا ئۇلاشنى سىناڭ"
+setup.option.retry_connection: "قايتا باغلاشنى سىناڭ"
 setup.status.installing: "ئورنىتىلىۋاتىدۇ..."
+setup.status.installing_copilot_cli: "GitHub Copilot CLI ئورنىتىلىۋاتىدۇ..."
+setup.status.connecting_agent: "AI ئاگېنتىغا باغلىنىۋاتىدۇ..."
 setup.status.install_failed: "ئورنىتىش مەغلۇب بولدى: "
 setup.status.installing_winget: " winget ئارقىلىق ئورنىتىلىۋاتىدۇ..."
+setup.error.install_start_failed: "ئورناتقۇچنى قوزغاتقىلى بولمىدى. قايتا سىناش ئۈچۈن \"قايتا سىناڭ\" نى تاللاڭ."
+setup.error.install_timed_out: "ئورنىتىش ۋاقتى ئۆتۈپ كەتتى. باشقا ئورنىتىشنى باشلاشتىن بۇرۇن \"قايتا سىناڭ\" نى تاللاڭ."
+setup.error.install_detection_timed_out: "ئورنىتىش تاماملاندى، ئەمما Copilot تېخى كۆرۈنمىدى. قايتا تەكشۈرۈش ئۈچۈن \"قايتا سىناڭ\" نى تاللاڭ."
 
 # ── Auth flow (src/ui/auth.rs) ────────────────────────────────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations

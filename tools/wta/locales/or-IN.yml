@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "ଏଜେଣ୍ଟ ମିଳିଲା ନାହିଁ"
 setup.title.agent_error: "ଏଜେଣ୍ଟ ସଂଯୋଗ ବିଫଳ ହେଲା"
+setup.title.installing_copilot: "GitHub Copilot ଇନ୍‌ଷ୍ଟଲ୍ ହେଉଛି"
+setup.title.starting_copilot: "GitHub Copilot ଆରମ୍ଭ ହେଉଛି"
 setup.title.not_available: "ଏଜେଣ୍ଟ ଉପಲବ୍ଧ ନାହିଁ"
 setup.title.sign_in: "ସାଇନ୍ ଇନ୍ ଆବଶ୍ୟକ"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "ଆପଣଙ୍କ ଏଜେଣ୍ଟ \"%{agent
 setup.subtitle.agent_missing: "ଆପଣଙ୍କ ଏଜେଣ୍ଟ \"%{agent}\" ଇନ୍‌ଷ୍ଟଲ୍ ହୋଇନାହିଁ। ଦୟାକରି ଏହାକୁ ମାନୁଆଲୀ ପୁଣି ଇନ୍‌ଷ୍ଟଲ୍ କରନ୍ତୁ, ତାପରେ ପୁଣି ଚେଷ୍ଟା କରନ୍ତୁ। ଏଜେଣ୍ଟ ବଦଳାଇବା ପାଇଁ ଇଣ୍ଟେଲିଜେଣ୍ଟ ଟର୍ମିନାଲ Settings > Agent କୁ ଯାଆନ୍ତୁ।"
 setup.subtitle.copilot_auth: "ଆପଣଙ୍କ ଏଜେଣ୍ଟ \"%{agent}\" ପ୍ରମାଣୀକରଣ ଆବଶ୍ୟକ କରେ। ସାଇନ୍ ଇନ୍ କରିବା ପାଇଁ ନିମ୍ନ ପଦକ୍ଷେପଗୁଡ଼ିକ ଅନୁସରଣ କରନ୍ତୁ। ଏଜେଣ୍ଟ ବଦଳାଇବା ପାଇଁ ଇଣ୍ଟେଲିଜେଣ୍ଟ ଟର୍ମିନାଲ Settings > Agent କୁ ଯାଆନ୍ତୁ।"
 setup.subtitle.agent_auth: "ଆପଣଙ୍କ ଏଜେଣ୍ଟ \"%{agent}\" ପାଇଁ ପ୍ରମାଣୀକରଣ ଆବଶ୍ୟକ। ଦୟାକରି ଏଜେଣ୍ଟ ମାଧ୍ୟମରେ ସାଇନ୍ ଇନ୍ କରନ୍ତୁ, ତାପରେ ତଳେ \"ମୁଁ ସାଇନ୍ ଇନ୍ କରିଛି\" ବାଛନ୍ତୁ। ଏଜେଣ୍ଟ ବଦଳାଇବାକୁ ଇଣ୍ଟେଲିଜେଣ୍ଟ ଟର୍ମିନାଲ Settings > Agent କୁ ଯାଆନ୍ତୁ।"
+setup.subtitle.connection_failed: "ଆମେ %{agent} ଆରମ୍ଭ କରିପାରିଲୁ ନାହିଁ।"
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(ସ୍ୱୟଂଚାଳିତ ଭାବରେ ଇ�
 setup.option.signin: "%{agent} ରେ ସାଇନ୍ ଇନ୍ କରନ୍ତୁ"
 setup.option.retry_detection: "ପୁନଃ ଚେଷ୍ଟା କରନ୍ତୁ"
 setup.option.retry_auth: "ମୁଁ ସାଇନ୍ ଇନ୍ କରିଛି — ପୁନଃ ସଂଯୋଗ କରିବାକୁ ଚେଷ୍ଟା କରନ୍ତୁ"
+setup.option.retry_connection: "ପୁନଃ ସଂଯୋଗ କରିବାକୁ ଚେଷ୍ଟା କରନ୍ତୁ"
 setup.status.installing: "ଇନ୍‌ଷ୍ଟଲ୍ ହେଉଛି..."
+setup.status.installing_copilot_cli: "GitHub Copilot CLI ଇନ୍‌ଷ୍ଟଲ୍ ହେଉଛି..."
+setup.status.connecting_agent: "ଏଜେଣ୍ଟ ସହିତ ସଂଯୋଗ ହେଉଛି..."
 setup.status.install_failed: "ଇନ୍‌ଷ୍ଟଲ୍ ବିଫଳ: "
 setup.status.installing_winget: " winget ମାଧ୍ୟମରେ ଇନ୍‌ଷ୍ଟଲ୍ ହେଉଛି..."
+setup.error.install_start_failed: "ଇନ୍‌ଷ୍ଟଲର୍ ଆରମ୍ଭ କରାଯାଇପାରିଲା ନାହିଁ। ପୁଣି ଚେଷ୍ଟା କରିବାକୁ \"ପୁନଃ ଚେଷ୍ଟା କରନ୍ତୁ\" ବାଛନ୍ତୁ।"
+setup.error.install_timed_out: "ଇନ୍‌ଷ୍ଟଲେସନ୍‌ର ସମୟ ସମାପ୍ତ ହେଲା। ଅନ୍ୟ ଏକ ଇନ୍‌ଷ୍ଟଲେସନ୍ ଆରମ୍ଭ କରିବା ପୂର୍ବରୁ \"ପୁନଃ ଚେଷ୍ଟା କରନ୍ତୁ\" ବାଛନ୍ତୁ।"
+setup.error.install_detection_timed_out: "ଇନ୍‌ଷ୍ଟଲେସନ୍ ସମ୍ପୂର୍ଣ୍ଣ ହୋଇଛି, କିନ୍ତୁ Copilot ଏପର୍ଯ୍ୟନ୍ତ ଦୃଶ୍ୟମାନ ନୁହେଁ। ପୁଣି ଯାଞ୍ଚ କରିବାକୁ \"ପୁନଃ ଚେଷ୍ଟା କରନ୍ତୁ\" ବାଛନ୍ତୁ।"
 
 # ── ପ୍ରମାଣୀକରଣ ପ୍ରବାହ (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - ସଂକ୍ଷିପ୍ତ ରୂପ, Microsoft ସ୍ଥାନୀୟକରଣରେ ସାଧାରଣ ବ୍ୟବହାର

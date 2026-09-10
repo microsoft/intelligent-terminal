@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Агент не знайдено"
 setup.title.agent_error: "Не вдалося підключитися до агента"
+setup.title.installing_copilot: "Інсталяція GitHub Copilot"
+setup.title.starting_copilot: "Запуск GitHub Copilot"
 setup.title.not_available: "Агент недоступний"
 setup.title.sign_in: "Потрібен вхід"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Ваш агент \"%{agent}\" не встан�
 setup.subtitle.agent_missing: "Ваш агент \"%{agent}\" не встановлено. Перевстановіть його вручну та повторіть спробу. Щоб змінити агента, перейдіть до Інтелектуальний Термінал Settings > Agent."
 setup.subtitle.copilot_auth: "Ваш агент \"%{agent}\" потребує автентифікації. Виконайте наведені нижче кроки для входу. Щоб змінити агента, перейдіть до Інтелектуальний Термінал Settings > Agent."
 setup.subtitle.agent_auth: "Ваш агент \"%{agent}\" потребує автентифікації. Увійдіть через агента та виберіть \"Я увійшов\" нижче. Щоб змінити агента, перейдіть до Інтелектуальний Термінал Settings > Agent."
+setup.subtitle.connection_failed: "Не вдалося запустити %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(Буде встановлено автоматич�
 setup.option.signin: "Увійти в %{agent}"
 setup.option.retry_detection: "Спробувати знову"
 setup.option.retry_auth: "Я увійшов — спробувати підключитися знову"
+setup.option.retry_connection: "Спробувати підключитися знову"
 setup.status.installing: "Встановлення..."
+setup.status.installing_copilot_cli: "Інсталяція GitHub Copilot CLI..."
+setup.status.connecting_agent: "Підключення до агента..."
 setup.status.install_failed: "Помилка встановлення: "
 setup.status.installing_winget: " Встановлення через winget..."
+setup.error.install_start_failed: "Не вдалося запустити інсталятор. Виберіть \"Спробувати знову\", щоб повторити спробу."
+setup.error.install_timed_out: "Час очікування інсталяції минув. Перш ніж запускати іншу інсталяцію, виберіть \"Спробувати знову\"."
+setup.error.install_detection_timed_out: "Інсталяцію завершено, але Copilot ще не відображається. Виберіть \"Спробувати знову\", щоб перевірити ще раз."
 
 # ── Потік автентифікації (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - абревіатура, не перекладати

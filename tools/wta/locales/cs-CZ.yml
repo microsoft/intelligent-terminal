@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Agenta se nepodařilo najít"
 setup.title.agent_error: "Připojení k agentovi se nezdařilo"
+setup.title.installing_copilot: "Instalace GitHub Copilot"
+setup.title.starting_copilot: "Spouštění GitHub Copilot"
 setup.title.not_available: "Agent není k dispozici"
 setup.title.sign_in: "Vyžadováno přihlášení"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Váš agent \"%{agent}\" není nainstalován. P
 setup.subtitle.agent_missing: "Váš agent \"%{agent}\" není nainstalován. Přeinstalujte ho ručně a zkuste to znovu. Chcete-li přepnout agenta, přejděte do Inteligentní Terminál Settings > Agent."
 setup.subtitle.copilot_auth: "Váš agent \"%{agent}\" vyžaduje ověření. Postupujte podle níže uvedených kroků a přihlaste se. Chcete-li přepnout agenta, přejděte do Inteligentní Terminál Settings > Agent."
 setup.subtitle.agent_auth: "Váš agent \"%{agent}\" vyžaduje ověření. Přihlaste se přes agenta a pak vyberte \"Přihlásil/a jsem se\" níže. Chcete-li přepnout agenta, přejděte do Inteligentní Terminál Settings > Agent."
+setup.subtitle.connection_failed: "Nepodařilo se spustit agenta %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(Bude nainstalován automaticky)"
 setup.option.signin: "Přihlásit se k %{agent}"
 setup.option.retry_detection: "Zkusit znovu"
 setup.option.retry_auth: "Přihlásil/a jsem se — zkusit se znovu připojit"
+setup.option.retry_connection: "Zkusit se znovu připojit"
 setup.status.installing: "Instalace..."
+setup.status.installing_copilot_cli: "Instalace GitHub Copilot CLI..."
+setup.status.connecting_agent: "Připojování k agentovi..."
 setup.status.install_failed: "Instalace se nezdařila: "
 setup.status.installing_winget: " Instalace přes winget..."
+setup.error.install_start_failed: "Instalační program se nepodařilo spustit. Výběrem možnosti \"Zkusit znovu\" akci zopakujte."
+setup.error.install_timed_out: "Časový limit instalace vypršel. Před spuštěním další instalace vyberte \"Zkusit znovu\"."
+setup.error.install_detection_timed_out: "Instalace byla dokončena, ale Copilot ještě není viditelný. Výběrem možnosti \"Zkusit znovu\" proveďte novou kontrolu."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations

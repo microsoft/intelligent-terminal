@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "აგენტი ვერ მოიძებნა"
 setup.title.agent_error: "აგენტთან კავშირი ვერ შედგა"
+setup.title.installing_copilot: "GitHub Copilot პროგრამის ინსტალაცია"
+setup.title.starting_copilot: "GitHub Copilot პროგრამის გაშვება"
 setup.title.not_available: "აგენტი მიუწვდომელია"
 setup.title.sign_in: "საჭიროა შესვლა"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "თქვენი აგენტი \"%{agent
 setup.subtitle.agent_missing: "თქვენი აგენტი \"%{agent}\" არ არის დაინსტალირებული. ხელით ხელახლა დააინსტალირეთ და სცადეთ თავიდან. აგენტის შესაცვლელად გადადით ჭკვიანი ტერმინალი Settings > Agent-ში."
 setup.subtitle.copilot_auth: "თქვენი აგენტი \"%{agent}\" მოითხოვს ავთენტიფიკაციას. შესასვლელად მიჰყევით ქვემოთ მოცემულ ნაბიჯებს. აგენტის შესაცვლელად გადადით ჭკვიანი ტერმინალი Settings > Agent-ში."
 setup.subtitle.agent_auth: "თქვენი აგენტი \"%{agent}\" მოითხოვს ავთენტიფიკაციას. შედით აგენტით და შემდეგ აირჩიეთ \"შევედი\" ქვემოთ. აგენტის შესაცვლელად გადადით ჭკვიანი ტერმინალი Settings > Agent-ში."
+setup.subtitle.connection_failed: "%{agent}-ის გაშვება ვერ მოხერხდა."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(ავტომატურად დაინს�
 setup.option.signin: "შესვლა %{agent}-ში"
 setup.option.retry_detection: "სცადეთ თავიდან"
 setup.option.retry_auth: "შევედი — კავშირის ხელახლა სცადეთ"
+setup.option.retry_connection: "კავშირის ხელახლა ცდა"
 setup.status.installing: "ინსტალაცია..."
+setup.status.installing_copilot_cli: "GitHub Copilot CLI პროგრამის ინსტალაცია..."
+setup.status.connecting_agent: "აგენტთან დაკავშირება..."
 setup.status.install_failed: "ინსტალაცია ვერ მოხერხდა: "
 setup.status.installing_winget: " winget-ით ინსტალაცია..."
+setup.error.install_start_failed: "ინსტალატორის გაშვება ვერ მოხერხდა. ხელახლა საცდელად აირჩიეთ \"სცადეთ თავიდან\"."
+setup.error.install_timed_out: "ინსტალაციის დრო ამოიწურა. სხვა ინსტალაციის დაწყებამდე აირჩიეთ \"სცადეთ თავიდან\"."
+setup.error.install_detection_timed_out: "ინსტალაცია დასრულდა, მაგრამ Copilot ჯერ არ ჩანს. ხელახლა შესამოწმებლად აირჩიეთ \"სცადეთ თავიდან\"."
 
 # ── ავთენტიფიკაციის პროცესი (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - აბრევიატურა, Microsoft-ის ლოკალიზაციებში გავრცელებული გამოყენება

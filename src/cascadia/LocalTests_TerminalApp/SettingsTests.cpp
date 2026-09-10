@@ -5,6 +5,7 @@
 
 #include "../inc/AgentYoloPolicy.h"
 #include "../TerminalApp/TerminalPage.h"
+#include "../inc/AgentAvailability.h"
 #include "../UnitTests_SettingsModel/TestUtils.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 
@@ -75,6 +76,11 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TestElevateArg);
         TEST_METHOD(TestAgentSettingsChangeClassification);
         TEST_METHOD(TestAgentHooksReconciliationClassification);
+        TEST_METHOD(TestHostAgentSnapshotParsing);
+        TEST_METHOD(TestHostAgentSnapshotRejectsInvalidPayload);
+        TEST_METHOD(TestFreAgentCandidatesFromKnownSnapshot);
+        TEST_METHOD(TestFreAgentCandidatesFromUnknownProbe);
+        TEST_METHOD(TestFreAgentSelectionDecision);
         TEST_METHOD(TestAgentSettingsFocusGate);
         TEST_METHOD(TestAgentPaneRebindCapability);
         TEST_METHOD(TestAgentPaneSwitchCapability);
@@ -1754,6 +1760,191 @@ namespace TerminalAppLocalTests
         VERIFY_ARE_EQUAL(
             Scope::None,
             Page::_ClassifyAgentHooksReconciliation(turnedOff, switchedWhileDisabled));
+    }
+
+    void SettingsTests::TestHostAgentSnapshotParsing()
+    {
+        using namespace ::Microsoft::Terminal::AgentAvailability;
+
+        constexpr std::string_view payload = R"({
+            "agents": [
+                { "id": "copilot", "display_name": "GitHub Copilot" }
+            ],
+            "availability": [
+                {
+                    "id": "copilot",
+                    "display_name": "GitHub Copilot",
+                    "native_cli_found": true,
+                    "launch_ready": true,
+                    "requires_npx": false
+                },
+                {
+                    "id": "claude",
+                    "display_name": "Claude",
+                    "native_cli_found": true,
+                    "launch_ready": false,
+                    "requires_npx": true
+                },
+                {
+                    "id": "codex",
+                    "display_name": "Codex",
+                    "native_cli_found": false,
+                    "launch_ready": false,
+                    "requires_npx": true
+                },
+                {
+                    "id": "gemini",
+                    "display_name": "Gemini",
+                    "native_cli_found": false,
+                    "launch_ready": false,
+                    "requires_npx": false
+                },
+                {
+                    "id": "opencode",
+                    "display_name": "OpenCode",
+                    "native_cli_found": false,
+                    "launch_ready": false,
+                    "requires_npx": false
+                }
+            ],
+            "npx_found": false
+        })";
+
+        const auto snapshot = ParseHostAgentSnapshot(payload);
+        VERIFY_IS_TRUE(snapshot.has_value());
+        VERIFY_IS_FALSE(snapshot->npxFound);
+        VERIFY_ARE_EQUAL(static_cast<size_t>(2), snapshot->availability.size());
+
+        const auto copilot = snapshot->availability.find(L"copilot");
+        VERIFY_IS_TRUE(copilot != snapshot->availability.end());
+        VERIFY_IS_TRUE(copilot->second.nativeCliFound);
+        VERIFY_IS_TRUE(copilot->second.launchReady);
+        VERIFY_IS_FALSE(copilot->second.requiresNpx);
+
+        const auto claude = snapshot->availability.find(L"claude");
+        VERIFY_IS_TRUE(claude != snapshot->availability.end());
+        VERIFY_IS_TRUE(claude->second.nativeCliFound);
+        VERIFY_IS_FALSE(claude->second.launchReady);
+        VERIFY_IS_TRUE(claude->second.requiresNpx);
+
+        const auto strictIds = ParseHostAgentIds(payload);
+        VERIFY_ARE_EQUAL(static_cast<size_t>(1), strictIds.size());
+        VERIFY_IS_TRUE(strictIds.contains(L"copilot"));
+    }
+
+    void SettingsTests::TestHostAgentSnapshotRejectsInvalidPayload()
+    {
+        using namespace ::Microsoft::Terminal::AgentAvailability;
+
+        VERIFY_IS_FALSE(ParseHostAgentSnapshot("{}").has_value());
+        VERIFY_IS_FALSE(ParseHostAgentSnapshot(R"({
+            "availability": [{
+                "id": "copilot",
+                "native_cli_found": true,
+                "launch_ready": true,
+                "requires_npx": false
+            }],
+            "npx_found": false
+        })")
+                            .has_value());
+        VERIFY_IS_FALSE(ParseHostAgentSnapshot(R"({
+            "availability": [
+                { "id": "copilot", "native_cli_found": true, "launch_ready": true, "requires_npx": false },
+                { "id": "copilot", "native_cli_found": true, "launch_ready": true, "requires_npx": false },
+                { "id": "claude", "native_cli_found": true, "launch_ready": false, "requires_npx": true },
+                { "id": "codex", "native_cli_found": false, "launch_ready": false, "requires_npx": true },
+                { "id": "gemini", "native_cli_found": false, "launch_ready": false, "requires_npx": false },
+                { "id": "opencode", "native_cli_found": false, "launch_ready": false, "requires_npx": false }
+            ],
+            "npx_found": false
+        })")
+                            .has_value());
+        VERIFY_IS_FALSE(ParseHostAgentSnapshot(R"({
+            "availability": [
+                { "id": "copilot", "native_cli_found": false, "launch_ready": true, "requires_npx": false },
+                { "id": "claude", "native_cli_found": true, "launch_ready": false, "requires_npx": true },
+                { "id": "codex", "native_cli_found": false, "launch_ready": false, "requires_npx": true },
+                { "id": "gemini", "native_cli_found": false, "launch_ready": false, "requires_npx": false },
+                { "id": "opencode", "native_cli_found": false, "launch_ready": false, "requires_npx": false }
+            ],
+            "npx_found": false
+        })")
+                            .has_value());
+    }
+
+    void SettingsTests::TestFreAgentCandidatesFromKnownSnapshot()
+    {
+        using namespace ::Microsoft::Terminal::AgentAvailability;
+        namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+
+        HostAgentSnapshot snapshot;
+        snapshot.availability.emplace(L"copilot", HostAgentAvailability{ false, false, false });
+        snapshot.availability.emplace(L"claude", HostAgentAvailability{ true, false, true });
+        snapshot.availability.emplace(L"codex", HostAgentAvailability{ false, false, true });
+        snapshot.availability.emplace(L"gemini", HostAgentAvailability{ true, true, false });
+        snapshot.availability.emplace(L"opencode", HostAgentAvailability{ false, false, false });
+
+        const std::vector<Reg::BuiltinAgent> allowed{ Reg::BuiltinAcpAgents.begin(), Reg::BuiltinAcpAgents.end() };
+        const auto candidates = BuildFreAgentCandidates(allowed, snapshot, L"codex", L"codex");
+
+        VERIFY_ARE_EQUAL(static_cast<size_t>(3), candidates.size());
+        VERIFY_IS_TRUE(Reg::AgentIdEquals(candidates[0].id, L"copilot"));
+        VERIFY_IS_TRUE(Reg::AgentIdEquals(candidates[1].id, L"claude"));
+        VERIFY_IS_TRUE(Reg::AgentIdEquals(candidates[2].id, L"gemini"));
+    }
+
+    void SettingsTests::TestFreAgentCandidatesFromUnknownProbe()
+    {
+        using namespace ::Microsoft::Terminal::AgentAvailability;
+        namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+
+        const std::vector<Reg::BuiltinAgent> allowed{ Reg::BuiltinAcpAgents.begin(), Reg::BuiltinAcpAgents.end() };
+        const auto preferred = BuildFreAgentCandidates(allowed, std::nullopt, L"CoDeX", L"claude");
+        VERIFY_ARE_EQUAL(static_cast<size_t>(3), preferred.size());
+        VERIFY_IS_TRUE(Reg::AgentIdEquals(preferred[0].id, L"codex"));
+        VERIFY_IS_TRUE(Reg::AgentIdEquals(preferred[1].id, L"claude"));
+        VERIFY_IS_TRUE(Reg::AgentIdEquals(preferred[2].id, L"copilot"));
+
+        const std::vector<Reg::BuiltinAgent> geminiOnly{ Reg::BuiltinAcpAgents[3] };
+        const auto policyFallback = BuildFreAgentCandidates(geminiOnly, std::nullopt, L"codex", L"custom:local");
+        VERIFY_ARE_EQUAL(static_cast<size_t>(1), policyFallback.size());
+        VERIFY_IS_TRUE(Reg::AgentIdEquals(policyFallback[0].id, L"gemini"));
+
+        const std::vector<Reg::BuiltinAgent> none;
+        VERIFY_IS_TRUE(BuildFreAgentCandidates(none, std::nullopt, L"copilot", L"copilot").empty());
+    }
+
+    void SettingsTests::TestFreAgentSelectionDecision()
+    {
+        using namespace ::Microsoft::Terminal::AgentAvailability;
+        namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+
+        const std::vector<Reg::BuiltinAgent> allowed{ Reg::BuiltinAcpAgents.begin(), Reg::BuiltinAcpAgents.end() };
+
+        const auto untouchedBuiltin = DecideFreAgentSelection(allowed, L"claude", L"CLAUDE", false);
+        VERIFY_IS_FALSE(untouchedBuiltin.persistSelection);
+        VERIFY_ARE_EQUAL(std::wstring{ L"claude" }, untouchedBuiltin.setupAgentId);
+
+        const auto untouchedCustomFallback = DecideFreAgentSelection(allowed, L"copilot", L"custom:local", false);
+        VERIFY_IS_FALSE(untouchedCustomFallback.persistSelection);
+        VERIFY_IS_TRUE(untouchedCustomFallback.setupAgentId.empty());
+
+        const auto explicitFallback = DecideFreAgentSelection(allowed, L"copilot", L"custom:local", true);
+        VERIFY_IS_TRUE(explicitFallback.persistSelection);
+        VERIFY_ARE_EQUAL(std::wstring{ L"copilot" }, explicitFallback.setupAgentId);
+
+        const std::vector<Reg::BuiltinAgent> geminiOnly{ Reg::BuiltinAcpAgents[3] };
+        const auto blocked = DecideFreAgentSelection(geminiOnly, L"copilot", L"", true);
+        VERIFY_IS_FALSE(blocked.persistSelection);
+        VERIFY_IS_TRUE(blocked.setupAgentId.empty());
+
+        VERIFY_IS_FALSE(NeedsFreNodeBootstrap(std::nullopt, L"claude"));
+        HostAgentSnapshot snapshot;
+        snapshot.npxFound = false;
+        snapshot.availability.emplace(L"claude", HostAgentAvailability{ true, false, true });
+        VERIFY_IS_TRUE(NeedsFreNodeBootstrap(snapshot, L"CLAUDE"));
+        snapshot.npxFound = true;
+        VERIFY_IS_FALSE(NeedsFreNodeBootstrap(snapshot, L"claude"));
     }
 
     void SettingsTests::TestAgentSettingsFocusGate()

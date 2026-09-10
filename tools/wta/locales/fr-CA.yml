@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Agent introuvable"
 setup.title.agent_error: "Impossible de se connecter à l'agent"
+setup.title.installing_copilot: "Installation de GitHub Copilot"
+setup.title.starting_copilot: "Démarrage de GitHub Copilot"
 setup.title.not_available: "Agent non disponible"
 setup.title.sign_in: "Connexion requise"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Votre agent « %{agent} » n'est pas installé.
 setup.subtitle.agent_missing: "Votre agent « %{agent} » n'est pas installé. Veuillez le réinstaller manuellement, puis réessayer. Pour changer d'agent, allez dans les paramètres Terminal Intelligent > Agent."
 setup.subtitle.copilot_auth: "Votre agent « %{agent} » nécessite une authentification. Suivez les étapes ci-dessous pour vous connecter. Pour changer d'agent, allez dans les paramètres Terminal Intelligent > Agent."
 setup.subtitle.agent_auth: "Votre agent « %{agent} » nécessite une authentification. Veuillez vous connecter via l'agent, puis sélectionnez « Je me suis connecté » ci-dessous. Pour changer d'agent, allez dans les paramètres Terminal Intelligent > Agent."
+setup.subtitle.connection_failed: "Nous n'avons pas pu démarrer %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(Sera installé automatiquement)"
 setup.option.signin: "Se connecter à %{agent}"
 setup.option.retry_detection: "Réessayer"
 setup.option.retry_auth: "Je me suis connecté — réessayer de se connecter"
+setup.option.retry_connection: "Réessayer de se connecter"
 setup.status.installing: "Installation en cours..."
+setup.status.installing_copilot_cli: "Installation de GitHub Copilot CLI..."
+setup.status.connecting_agent: "Connexion à l'agent..."
 setup.status.install_failed: "Échec de l'installation : "
 setup.status.installing_winget: " Installation via winget..."
+setup.error.install_start_failed: "Le programme d'installation n'a pas pu démarrer. Sélectionnez « Réessayer » pour réessayer."
+setup.error.install_timed_out: "Le délai d'attente de l'installation a expiré. Sélectionnez « Réessayer » avant de démarrer une autre installation."
+setup.error.install_detection_timed_out: "L'installation est terminée, mais Copilot n'est pas encore visible. Sélectionnez « Réessayer » pour vérifier de nouveau."
 
 # ── Flux d'authentification (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - abréviation, ne pas traduire

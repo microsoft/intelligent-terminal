@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Agenttia ei löytynyt"
 setup.title.agent_error: "Yhteys agenttiin epäonnistui"
+setup.title.installing_copilot: "Asennetaan GitHub Copilot"
+setup.title.starting_copilot: "Käynnistetään GitHub Copilot"
 setup.title.not_available: "Agentti ei ole käytettävissä"
 setup.title.sign_in: "Kirjautuminen vaaditaan"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Agenttiasi \"%{agent}\" ei ole asennettu. Asenn
 setup.subtitle.agent_missing: "Agenttiasi \"%{agent}\" ei ole asennettu. Asenna se uudelleen manuaalisesti ja yritä sitten uudelleen. Vaihtaaksesi agenttia siirry kohtaan Älykäs Pääte Settings > Agent."
 setup.subtitle.copilot_auth: "Agenttisi \"%{agent}\" vaatii todennuksen. Kirjaudu sisään seuraamalla alla olevia ohjeita. Vaihtaaksesi agenttia siirry kohtaan Älykäs Pääte Settings > Agent."
 setup.subtitle.agent_auth: "Agenttisi \"%{agent}\" vaatii todennuksen. Kirjaudu sisään agentin kautta ja valitse sitten alta \"Olen kirjautunut sisään\". Vaihtaaksesi agenttia siirry kohtaan Älykäs Pääte Settings > Agent."
+setup.subtitle.connection_failed: "Agenttia \"%{agent}\" ei voitu käynnistää."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(Asennetaan automaattisesti)"
 setup.option.signin: "Kirjaudu sisään palveluun %{agent}"
 setup.option.retry_detection: "Yritä uudelleen"
 setup.option.retry_auth: "Olen kirjautunut sisään — yritä yhdistää uudelleen"
+setup.option.retry_connection: "Yritä yhdistää uudelleen"
 setup.status.installing: "Asennetaan..."
+setup.status.installing_copilot_cli: "Asennetaan GitHub Copilot CLI..."
+setup.status.connecting_agent: "Yhdistetään agenttiin..."
 setup.status.install_failed: "Asennus epäonnistui: "
 setup.status.installing_winget: " Asennetaan winget-paketinhallinnan kautta..."
+setup.error.install_start_failed: "Asennusohjelmaa ei voitu käynnistää. Valitse \"Yritä uudelleen\" yrittääksesi uudelleen."
+setup.error.install_timed_out: "Asennus aikakatkaistiin. Valitse \"Yritä uudelleen\" ennen uuden asennuksen aloittamista."
+setup.error.install_detection_timed_out: "Asennus valmistui, mutta Copilot ei ole vielä näkyvissä. Valitse \"Yritä uudelleen\" tarkistaaksesi uudelleen."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations

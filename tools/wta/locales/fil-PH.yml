@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Hindi nahanap ang agent"
 setup.title.agent_error: "Nabigo ang koneksyon sa agent"
+setup.title.installing_copilot: "Ini-install ang GitHub Copilot"
+setup.title.starting_copilot: "Sinisimulan ang GitHub Copilot"
 setup.title.not_available: "Hindi available ang agent"
 setup.title.sign_in: "Kailangang mag-sign in"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Ang agent mong \"%{agent}\" ay hindi pa naka-in
 setup.subtitle.agent_missing: "Ang agent mong \"%{agent}\" ay hindi pa naka-install. Mangyaring i-install nang manu-mano, pagkatapos ay subukang muli. Para magpalit ng agent, pumunta sa Matalinong Terminal Settings > Agent."
 setup.subtitle.copilot_auth: "Ang agent mong \"%{agent}\" ay nangangailangan ng authentication. Sundin ang mga hakbang sa ibaba para mag-sign in. Para magpalit ng agent, pumunta sa Matalinong Terminal Settings > Agent."
 setup.subtitle.agent_auth: "Ang agent mong \"%{agent}\" ay nangangailangan ng authentication. Mangyaring mag-sign in sa pamamagitan ng agent, pagkatapos ay piliin ang \"Naka-sign in na ako\" sa ibaba. Para magpalit ng agent, pumunta sa Matalinong Terminal Settings > Agent."
+setup.subtitle.connection_failed: "Hindi namin masimulan ang %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(Awtomatikong mai-install)"
 setup.option.signin: "Mag-sign in sa %{agent}"
 setup.option.retry_detection: "Subukang muli"
 setup.option.retry_auth: "Naka-sign in na ako — subukang kumonekta muli"
+setup.option.retry_connection: "Subukang kumonekta muli"
 setup.status.installing: "Ini-install..."
+setup.status.installing_copilot_cli: "Ini-install ang GitHub Copilot CLI..."
+setup.status.connecting_agent: "Kumokonekta sa agent..."
 setup.status.install_failed: "Nabigo ang pag-install: "
 setup.status.installing_winget: " Ini-install sa pamamagitan ng winget..."
+setup.error.install_start_failed: "Hindi masimulan ang installer. Piliin ang \"Subukang muli\" para subukang muli."
+setup.error.install_timed_out: "Nag-time out ang pag-install. Piliin ang \"Subukang muli\" bago magsimula ng panibagong pag-install."
+setup.error.install_detection_timed_out: "Tapos na ang pag-install, pero hindi pa nakikita ang Copilot. Piliin ang \"Subukang muli\" para suriin muli."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations

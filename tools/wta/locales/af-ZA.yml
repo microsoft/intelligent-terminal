@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Agent nie gevind nie"
 setup.title.agent_error: "Agentverbinding het misluk"
+setup.title.installing_copilot: "GitHub Copilot word tans geïnstalleer"
+setup.title.starting_copilot: "GitHub Copilot word tans begin"
 setup.title.not_available: "Agent is nie beskikbaar nie"
 setup.title.sign_in: "Aanmelding vereis"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Jou agent \"%{agent}\" is nie geïnstalleer nie
 setup.subtitle.agent_missing: "Jou agent \"%{agent}\" is nie geïnstalleer nie. Herinstalleer dit handmatig en probeer weer. Om van agent te wissel, gaan na Intelligente Terminaal Settings > Agent."
 setup.subtitle.copilot_auth: "Jou agent \"%{agent}\" vereis stawing. Volg die stappe hieronder om aan te meld. Om van agent te wissel, gaan na Intelligente Terminaal Settings > Agent."
 setup.subtitle.agent_auth: "Jou agent \"%{agent}\" vereis stawing. Meld aan via die agent en kies dan \"Ek het aangemeld\" hieronder. Om van agent te wissel, gaan na Intelligente Terminaal Settings > Agent."
+setup.subtitle.connection_failed: "Kon %{agent} nie begin nie."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(Sal outomaties geïnstalleer word)"
 setup.option.signin: "Meld aan by %{agent}"
 setup.option.retry_detection: "Probeer weer"
 setup.option.retry_auth: "Ek het aangemeld — probeer weer koppel"
+setup.option.retry_connection: "Probeer weer koppel"
 setup.status.installing: "Installeer tans..."
+setup.status.installing_copilot_cli: "GitHub Copilot CLI word geïnstalleer..."
+setup.status.connecting_agent: "Koppel tans aan agent..."
 setup.status.install_failed: "Installasie het misluk: "
 setup.status.installing_winget: " Installeer tans via winget..."
+setup.error.install_start_failed: "Die installeerder kon nie begin word nie. Kies \"Probeer weer\" om weer te probeer."
+setup.error.install_timed_out: "Die installasie het die tydlimiet oorskry. Kies \"Probeer weer\" voordat jy 'n ander installasie begin."
+setup.error.install_detection_timed_out: "Die installasie is voltooi, maar Copilot is nog nie sigbaar nie. Kies \"Probeer weer\" om weer na te gaan."
 
 # ── Stawingsvloei (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - akroniem, algemene gebruik in Microsoft-lokaliserings

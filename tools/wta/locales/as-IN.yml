@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "এজেণ্ট পোৱা নগল"
 setup.title.agent_error: "এজেণ্ট সংযোগ বিফল হল"
+setup.title.installing_copilot: "GitHub Copilot ইনষ্টল কৰা হৈছে"
+setup.title.starting_copilot: "GitHub Copilot আৰম্ভ কৰা হৈছে"
 setup.title.not_available: "এজেণ্ট উপলব্ধ নহয়"
 setup.title.sign_in: "চাইন ইন প্ৰয়োজন"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "আপোনাৰ এজেণ্ট \"%{agent
 setup.subtitle.agent_missing: "আপোনাৰ এজেণ্ট \"%{agent}\" ইনষ্টল কৰা হোৱা নাই। অনুগ্ৰহ কৰি ইয়াক হাতেৰে পুনৰ ইনষ্টল কৰক, তাৰ পিছত পুনৰ চেষ্টা কৰক। এজেণ্ট সলনি কৰিবলৈ ইন্টেলিজেন্ট টাৰ্মিনেল Settings > Agent লৈ যাওক।"
 setup.subtitle.copilot_auth: "আপোনাৰ এজেণ্ট \"%{agent}\" ৰ প্ৰমাণীকৰণ প্ৰয়োজন। চাইন ইন কৰিবলৈ তলৰ পদক্ষেপসমূহ অনুসৰণ কৰক। এজেণ্ট সলনি কৰিবলৈ ইন্টেলিজেন্ট টাৰ্মিনেল Settings > Agent লৈ যাওক।"
 setup.subtitle.agent_auth: "আপোনাৰ এজেণ্ট \"%{agent}\"-ৰ প্ৰমাণীকৰণৰ প্ৰয়োজন। অনুগ্ৰহ কৰি এজেণ্টৰ জৰিয়তে ছাইন ইন কৰক, তাৰ পিছত তলত \"মই চাইন ইন কৰিলোঁ\" নিৰ্বাচন কৰক। এজেণ্ট সলাবলৈ ইন্টেলিজেন্ট টাৰ্মিনেল Settings > Agent লৈ যাওক।"
+setup.subtitle.connection_failed: "আমি %{agent} আৰম্ভ কৰিব নোৱাৰিলোঁ।"
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(স্বয়ংক্ৰিয়ভাৱে �
 setup.option.signin: "%{agent} ত চাইন ইন কৰক"
 setup.option.retry_detection: "পুনৰ চেষ্টা কৰক"
 setup.option.retry_auth: "মই চাইন ইন কৰিলোঁ — পুনৰ সংযোগ কৰিবলৈ চেষ্টা কৰক"
+setup.option.retry_connection: "পুনৰ সংযোগ কৰিবলৈ চেষ্টা কৰক"
 setup.status.installing: "ইনষ্টল হৈ আছে..."
+setup.status.installing_copilot_cli: "GitHub Copilot CLI ইনষ্টল হৈ আছে..."
+setup.status.connecting_agent: "এজেণ্টৰ সৈতে সংযোগ হৈ আছে..."
 setup.status.install_failed: "ইনষ্টল বিফল: "
 setup.status.installing_winget: " winget ৰ জৰিয়তে ইনষ্টল হৈ আছে..."
+setup.error.install_start_failed: "ইনষ্টলাৰ আৰম্ভ কৰিব পৰা নগ'ল। পুনৰ চেষ্টা কৰিবলৈ \"পুনৰ চেষ্টা কৰক\" নিৰ্বাচন কৰক।"
+setup.error.install_timed_out: "ইনষ্টলেশ্যনৰ সময়সীমা উকলিল। আন এটা ইনষ্টলেশ্যন আৰম্ভ কৰাৰ আগতে \"পুনৰ চেষ্টা কৰক\" নিৰ্বাচন কৰক।"
+setup.error.install_detection_timed_out: "ইনষ্টলেশ্যন সম্পূৰ্ণ হৈছে, কিন্তু Copilot এতিয়াও দৃশ্যমান নহয়। পুনৰ পৰীক্ষা কৰিবলৈ \"পুনৰ চেষ্টা কৰক\" নিৰ্বাচন কৰক।"
 
 # ── প্ৰমাণীকৰণ প্ৰবাহ (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - সংক্ষিপ্ত ৰূপ, Microsoft স্থানীয়কৰণত সাধাৰণ ব্যৱহাৰ

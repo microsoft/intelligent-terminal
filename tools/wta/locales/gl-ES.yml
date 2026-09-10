@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Non se atopou o axente"
 setup.title.agent_error: "Non se puido conectar co axente"
+setup.title.installing_copilot: "Instalando GitHub Copilot"
+setup.title.starting_copilot: "Iniciando GitHub Copilot"
 setup.title.not_available: "O axente non está dispoñible"
 setup.title.sign_in: "Cómpre iniciar sesión"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "O seu axente \"%{agent}\" non está instalado. 
 setup.subtitle.agent_missing: "O seu axente \"%{agent}\" non está instalado. Reinstáleo manualmente e volva tentalo. Para cambiar de axente, vaia a Terminal Intelixente Settings > Agent."
 setup.subtitle.copilot_auth: "O seu axente \"%{agent}\" require autenticación. Siga os pasos seguintes para iniciar sesión. Para cambiar de axente, vaia a Terminal Intelixente Settings > Agent."
 setup.subtitle.agent_auth: "O seu axente \"%{agent}\" require autenticación. Inicie sesión a través do axente e seleccione \"Xa iniciei sesión\" a continuación. Para cambiar de axente, vaia a Terminal Intelixente Settings > Agent."
+setup.subtitle.connection_failed: "Non se puido iniciar %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(Instalarase automaticamente)"
 setup.option.signin: "Iniciar sesión en %{agent}"
 setup.option.retry_detection: "Tentar de novo"
 setup.option.retry_auth: "Xa iniciei sesión — tentar conectar de novo"
+setup.option.retry_connection: "Tentar conectar de novo"
 setup.status.installing: "Instalando..."
+setup.status.installing_copilot_cli: "Instalando GitHub Copilot CLI..."
+setup.status.connecting_agent: "Conectando co axente..."
 setup.status.install_failed: "Erro na instalación: "
 setup.status.installing_winget: " Instalando mediante winget..."
+setup.error.install_start_failed: "Non se puido iniciar o instalador. Seleccione \"Tentar de novo\" para tentalo de novo."
+setup.error.install_timed_out: "Esgotouse o tempo de espera da instalación. Seleccione \"Tentar de novo\" antes de iniciar outra instalación."
+setup.error.install_detection_timed_out: "A instalación rematou, pero Copilot aínda non está visible. Seleccione \"Tentar de novo\" para comprobalo de novo."
 
 # ── Fluxo de autenticación (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acrónimo, uso común nas localizacións de Microsoft

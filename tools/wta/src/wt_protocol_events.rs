@@ -98,6 +98,18 @@ pub(crate) fn restart_agent_stack_event_with_id(request_id: &str) -> String {
     .to_string()
 }
 
+pub(crate) fn agent_availability_changed_event(agent_id: &str, tab_id: Option<&str>) -> String {
+    serde_json::json!({
+        "type": "event",
+        "method": "agent_availability_changed",
+        "params": {
+            "agent_id": agent_id,
+            "tab_id": tab_id,
+        },
+    })
+    .to_string()
+}
+
 #[cfg(not(test))]
 fn publisher_sender() -> &'static std::sync::mpsc::Sender<String> {
     static SENDER: std::sync::OnceLock<std::sync::mpsc::Sender<String>> =
@@ -318,6 +330,18 @@ mod tests {
                 .unwrap();
 
         assert_eq!(event["params"]["request_id"], "auth-recovery-1");
+    }
+
+    #[test]
+    fn availability_event_routes_to_the_installing_tab() {
+        let event: serde_json::Value = serde_json::from_str(
+            &super::agent_availability_changed_event("copilot", Some("tab-a")),
+        )
+        .unwrap();
+
+        assert_eq!(event["method"], "agent_availability_changed");
+        assert_eq!(event["params"]["agent_id"], "copilot");
+        assert_eq!(event["params"]["tab_id"], "tab-a");
     }
 
     #[test]

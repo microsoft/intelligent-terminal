@@ -51,7 +51,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 ### FRE agent selection
 
-- [x] `C015` `[UT✓]` `[E2E]` **Copilot without install:** Copilot appears as an available/default choice, is labeled as needing install, and the setup path installs or clearly explains how to install it. _(UT: `is_cli_available_handles_empty_string` / `is_cli_available_returns_false_for_obviously_bogus_name` drive the availability check that labels a CLI as needing install; the FRE agent picker (Feature.FreAgentSetup) shows Copilot as a choice. The actual install action requires a real uninstalled Copilot, which stays MANUAL.)_
+- [ ] `C015` `[UT✓]` `[E2E]` **Copilot without install:** Copilot remains an available/default FRE choice, FRE completes without installing it, and the Agent pane offers bounded install plus manual Recheck. _(UT: `host_agent_probe_keeps_strict_agents_and_adds_fre_availability` preserves strict launch readiness while exposing FRE availability; `diagnostic_setup_options_route_auth_by_agent` covers Install + Recheck. A real uninstalled Copilot install remains MANUAL.)_
 - [ ] `C016` `[UT~]` `[E2E]` **Copilot preinstalled:** Copilot appears as installed; saving does not reinstall unnecessarily; opening the agent pane uses Copilot successfully.
 - [ ] `C017` `[UT~]` `[E2E]` **Non-Copilot agents appear when installed:** Claude/Codex/Gemini appear as selectable only when installed; selecting one saves correctly and can connect in agent-pane mode; Node/npx requirement guidance appears when relevant.
 - [ ] `C018` `[UT~]` `[E2E]` **Unavailable non-Copilot agents:** Claude/Codex/Gemini that are not installed do not appear as broken selectable options.

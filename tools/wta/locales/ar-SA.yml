@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "لم يتم العثور على عامل الذكاء الاصطناعي"
 setup.title.agent_error: "فشل الاتصال بعامل الذكاء الاصطناعي"
+setup.title.installing_copilot: "جارٍ تثبيت GitHub Copilot"
+setup.title.starting_copilot: "جارٍ بدء GitHub Copilot"
 setup.title.not_available: "عامل الذكاء الاصطناعي غير متوفر"
 setup.title.sign_in: "تسجيل الدخول مطلوب"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "عامل الذكاء الاصطناعي \"%{ag
 setup.subtitle.agent_missing: "عامل الذكاء الاصطناعي \"%{agent}\" غير مثبّت. يُرجى إعادة تثبيته يدويًا، ثم أعد المحاولة. لتبديل عوامل الذكاء الاصطناعي، انتقل إلى الوحدة الطرفية الذكية Settings > Agent."
 setup.subtitle.copilot_auth: "يتطلب عامل الذكاء الاصطناعي \"%{agent}\" المصادقة. اتبع الخطوات أدناه لتسجيل الدخول. لتبديل عوامل الذكاء الاصطناعي، انتقل إلى الوحدة الطرفية الذكية Settings > Agent."
 setup.subtitle.agent_auth: "يتطلب عامل الذكاء الاصطناعي \"%{agent}\" المصادقة. يُرجى تسجيل الدخول عبر عامل الذكاء الاصطناعي، ثم حدد \"لقد سجّلت الدخول\" أدناه. لتبديل عوامل الذكاء الاصطناعي، انتقل إلى الوحدة الطرفية الذكية Settings > Agent."
+setup.subtitle.connection_failed: "تعذر بدء تشغيل %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(سيتم التثبيت تلقائيًا)"
 setup.option.signin: "تسجيل الدخول إلى %{agent}"
 setup.option.retry_detection: "حاول مرة أخرى"
 setup.option.retry_auth: "لقد سجّلت الدخول — حاول الاتصال مرة أخرى"
+setup.option.retry_connection: "حاول الاتصال مرة أخرى"
 setup.status.installing: "جارٍ التثبيت..."
+setup.status.installing_copilot_cli: "جارٍ تثبيت GitHub Copilot CLI..."
+setup.status.connecting_agent: "جارٍ الاتصال بعامل الذكاء الاصطناعي..."
 setup.status.install_failed: "فشل التثبيت: "
 setup.status.installing_winget: " جارٍ التثبيت عبر winget..."
+setup.error.install_start_failed: "تعذر بدء تشغيل برنامج التثبيت. حدد \"حاول مرة أخرى\" لإعادة المحاولة."
+setup.error.install_timed_out: "انتهت مهلة التثبيت. حدد \"حاول مرة أخرى\" قبل بدء عملية تثبيت أخرى."
+setup.error.install_detection_timed_out: "اكتمل التثبيت، ولكن Copilot غير ظاهر بعد. حدد \"حاول مرة أخرى\" للتحقق مرة أخرى."
 
 # ── تدفق المصادقة (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - اختصار، استخدام شائع في عمليات الترجمة من Microsoft

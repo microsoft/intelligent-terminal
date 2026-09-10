@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Agen AI tidak ditemukan"
 setup.title.agent_error: "Koneksi agen AI gagal"
+setup.title.installing_copilot: "Memasang GitHub Copilot"
+setup.title.starting_copilot: "Memulai GitHub Copilot"
 setup.title.not_available: "Agen AI tidak tersedia"
 setup.title.sign_in: "Perlu masuk"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Agen AI \"%{agent}\" Anda belum diinstal. Ikuti
 setup.subtitle.agent_missing: "Agen AI \"%{agent}\" Anda belum diinstal. Silakan instal ulang secara manual, lalu coba lagi. Untuk mengganti agen AI, buka Terminal Cerdas Settings > Agent."
 setup.subtitle.copilot_auth: "Agen AI \"%{agent}\" Anda memerlukan autentikasi. Ikuti langkah-langkah di bawah untuk masuk. Untuk mengganti agen AI, buka Terminal Cerdas Settings > Agent."
 setup.subtitle.agent_auth: "Agen AI \"%{agent}\" Anda memerlukan autentikasi. Silakan masuk melalui agen AI, lalu pilih \"Saya sudah masuk\" di bawah. Untuk mengganti agen AI, buka Terminal Cerdas Settings > Agent."
+setup.subtitle.connection_failed: "Kami tidak dapat memulai %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(Akan diinstal secara otomatis)"
 setup.option.signin: "Masuk ke %{agent}"
 setup.option.retry_detection: "Coba lagi"
 setup.option.retry_auth: "Saya sudah masuk — coba sambungkan kembali"
+setup.option.retry_connection: "Coba sambungkan lagi"
 setup.status.installing: "Menginstal..."
+setup.status.installing_copilot_cli: "Menginstal GitHub Copilot CLI..."
+setup.status.connecting_agent: "Menghubungkan ke agen AI..."
 setup.status.install_failed: "Instalasi gagal: "
 setup.status.installing_winget: " Menginstal melalui winget..."
+setup.error.install_start_failed: "Penginstal tidak dapat dimulai. Pilih \"Coba lagi\" untuk mencoba kembali."
+setup.error.install_timed_out: "Waktu penginstalan habis. Pilih \"Coba lagi\" sebelum memulai penginstalan lain."
+setup.error.install_detection_timed_out: "Penginstalan selesai, tetapi Copilot belum terlihat. Pilih \"Coba lagi\" untuk memeriksa kembali."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations

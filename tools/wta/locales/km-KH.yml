@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "រកមិនឃើញ AI អេជេន្ត់"
 setup.title.agent_error: "ការតភ្ជាប់ទៅ AI អេជេន្ត់បានបរាជ័យ"
+setup.title.installing_copilot: "កំពុងតំឡើង GitHub Copilot"
+setup.title.starting_copilot: "កំពុងចាប់ផ្តើម GitHub Copilot"
 # Title when the configured AI agent is not available
 setup.title.not_available: "AI អេជេន្ត់មិនអាចប្រើបាន"
 # Title when authentication is required
@@ -12,6 +14,7 @@ setup.subtitle.copilot_missing: "AI អេជេន្ត់របស់អ្�
 setup.subtitle.agent_missing: "AI អេជេន្ត់របស់អ្នក \"%{agent}\" មិនត្រូវបានតំឡើងទេ។ សូមតំឡើងដោយដៃឡើងវិញ រួចសាកល្បង។ ដើម្បីប្តូរ AI អេជេន្ត់ សូមទៅ ស្ថានីយឆ្លាតវៃ Settings > Agent។"
 setup.subtitle.copilot_auth: "AI អេជេន្ត់របស់អ្នក \"%{agent}\" ត្រូវការផ្ទៀងផ្ទាត់។ សូមធ្វើតាមជំហានខាងក្រោមដើម្បីចូល។ ដើម្បីប្តូរ AI អេជេន្ត់ សូមទៅ ស្ថានីយឆ្លាតវៃ Settings > Agent។"
 setup.subtitle.agent_auth: "AI អេជេន្ត់របស់អ្នក \"%{agent}\" ត្រូវការផ្ទៀងផ្ទាត់។ សូមចូលតាមរយៈ AI អេជេន្ត់ រួចជ្រើសរើស \"ខ្ញុំបានចូលហើយ\" ខាងក្រោម។ ដើម្បីប្តូរ AI អេជេន្ត់ សូមទៅ ស្ថានីយឆ្លាតវៃ Settings > Agent។"
+setup.subtitle.connection_failed: "យើងមិនអាចចាប់ផ្តើម %{agent} បានទេ។"
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -20,9 +23,15 @@ setup.option.install_hint: "(នឹងត្រូវបានតំឡើងដ
 setup.option.signin: "ចូល %{agent}"
 setup.option.retry_detection: "សាកល្បងម្តងទៀត"
 setup.option.retry_auth: "ខ្ញុំបានចូលហើយ — សាកល្បងតភ្ជាប់ម្តងទៀត"
+setup.option.retry_connection: "សាកល្បងតភ្ជាប់ម្តងទៀត"
 setup.status.installing: "កំពុងតំឡើង..."
+setup.status.installing_copilot_cli: "កំពុងតំឡើង GitHub Copilot CLI..."
+setup.status.connecting_agent: "កំពុងតភ្ជាប់ទៅ AI អេជេន្ត់..."
 setup.status.install_failed: "ការតំឡើងបរាជ័យ: "
 setup.status.installing_winget: " កំពុងតំឡើងតាមរយៈ winget..."
+setup.error.install_start_failed: "មិនអាចចាប់ផ្តើមកម្មវិធីតំឡើងបានទេ។ ជ្រើសរើស \"សាកល្បងម្តងទៀត\" ដើម្បីសាកល្បងឡើងវិញ។"
+setup.error.install_timed_out: "ការតំឡើងអស់ពេល។ ជ្រើសរើស \"សាកល្បងម្តងទៀត\" មុនពេលចាប់ផ្តើមការតំឡើងផ្សេងទៀត។"
+setup.error.install_detection_timed_out: "ការតំឡើងបានបញ្ចប់ ប៉ុន្តែ Copilot មិនទាន់បង្ហាញនៅឡើយទេ។ ជ្រើសរើស \"សាកល្បងម្តងទៀត\" ដើម្បីពិនិត្យម្តងទៀត។"
 
 # ── Auth flow (src/ui/auth.rs) ────────────────────────────────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations

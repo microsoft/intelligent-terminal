@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Agent topilmadi"
 setup.title.agent_error: "Agentga ulanish amalga oshmadi"
+setup.title.installing_copilot: "GitHub Copilot oʻrnatilmoqda"
+setup.title.starting_copilot: "GitHub Copilot ishga tushirilmoqda"
 setup.title.not_available: "Agent mavjud emas"
 setup.title.sign_in: "Tizimga kirish talab qilinadi"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Agentingiz \"%{agent}\" oʻrnatilmagan. Oʻrnat
 setup.subtitle.agent_missing: "Agentingiz \"%{agent}\" oʻrnatilmagan. Iltimos, qoʻlda qayta oʻrnating, keyin qayta urinib koʻring. Agentni almashtirish uchun Aqlli terminal Settings > Agent boʻlimiga oʻting."
 setup.subtitle.copilot_auth: "Agentingiz \"%{agent}\" autentifikatsiyani talab qiladi. Tizimga kirish uchun quyidagi qadamlarni bajaring. Agentni almashtirish uchun Aqlli terminal Settings > Agent boʻlimiga oʻting."
 setup.subtitle.agent_auth: "Agentingiz \"%{agent}\" autentifikatsiyani talab qiladi. Iltimos, agent orqali tizimga kiring, keyin pastda \"Men tizimga kirdim\" ni tanlang. Agentni almashtirish uchun Aqlli terminal Settings > Agent boʻlimiga oʻting."
+setup.subtitle.connection_failed: "%{agent} ishga tushirilmadi."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(Avtomatik oʻrnatiladi)"
 setup.option.signin: "%{agent} tizimga kirish"
 setup.option.retry_detection: "Qayta urinib koʻring"
 setup.option.retry_auth: "Men tizimga kirdim — qayta ulanib koʻring"
+setup.option.retry_connection: "Qayta ulanib koʻring"
 setup.status.installing: "Oʻrnatilmoqda..."
+setup.status.installing_copilot_cli: "GitHub Copilot CLI oʻrnatilmoqda..."
+setup.status.connecting_agent: "Agentga ulanilmoqda..."
 setup.status.install_failed: "Oʻrnatish amalga oshmadi: "
 setup.status.installing_winget: " winget orqali oʻrnatilmoqda..."
+setup.error.install_start_failed: "Oʻrnatuvchini ishga tushirib boʻlmadi. Qayta urinish uchun \"Qayta urinib koʻring\" bandini tanlang."
+setup.error.install_timed_out: "Oʻrnatish vaqti tugadi. Boshqa oʻrnatishni boshlashdan oldin \"Qayta urinib koʻring\" bandini tanlang."
+setup.error.install_detection_timed_out: "Oʻrnatish tugadi, ammo Copilot hali koʻrinmayapti. Qayta tekshirish uchun \"Qayta urinib koʻring\" bandini tanlang."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations

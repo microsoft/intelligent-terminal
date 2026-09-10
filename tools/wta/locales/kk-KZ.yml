@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Агент табылмады"
 setup.title.agent_error: "Агентке қосылу сәтсіз аяқталды"
+setup.title.installing_copilot: "GitHub Copilot орнатылуда"
+setup.title.starting_copilot: "GitHub Copilot іске қосылуда"
 setup.title.not_available: "Агент қолжетімсіз"
 setup.title.sign_in: "Жүйеге кіру қажет"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Сіздің \"%{agent}\" агентіңіз о
 setup.subtitle.agent_missing: "Сіздің \"%{agent}\" агентіңіз орнатылмаған. Қолмен қайта орнатып, қайталап көріңіз. Агентті ауыстыру үшін Зияткер терминал Settings > Agent бөліміне өтіңіз."
 setup.subtitle.copilot_auth: "Сіздің \"%{agent}\" агентіңіз аутентификацияны талап етеді. Жүйеге кіру үшін төмендегі қадамдарды орындаңыз. Агентті ауыстыру үшін Зияткер терминал Settings > Agent бөліміне өтіңіз."
 setup.subtitle.agent_auth: "Сіздің \"%{agent}\" агентіңіз аутентификацияны талап етеді. Агент арқылы жүйеге кіріп, төменде \"Мен кірдім\" таңдаңыз. Агентті ауыстыру үшін Зияткер терминал Settings > Agent бөліміне өтіңіз."
+setup.subtitle.connection_failed: "%{agent} іске қосылмады."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(Автоматты түрде орнатылады)
 setup.option.signin: "%{agent} жүйеге кіру"
 setup.option.retry_detection: "Қайталап көріңіз"
 setup.option.retry_auth: "Мен кірдім — қайта қосылып көріңіз"
+setup.option.retry_connection: "Қайта қосылып көріңіз"
 setup.status.installing: "Орнатылуда..."
+setup.status.installing_copilot_cli: "GitHub Copilot CLI орнатылуда..."
+setup.status.connecting_agent: "Агентке қосылуда..."
 setup.status.install_failed: "Орнату сәтсіз: "
 setup.status.installing_winget: " winget арқылы орнатылуда..."
+setup.error.install_start_failed: "Орнатушыны іске қосу мүмкін болмады. Қайталап көру үшін \"Қайталап көріңіз\" пәрменін таңдаңыз."
+setup.error.install_timed_out: "Орнату уақыты аяқталды. Басқа орнатуды бастамас бұрын \"Қайталап көріңіз\" пәрменін таңдаңыз."
+setup.error.install_detection_timed_out: "Орнату аяқталды, бірақ Copilot әлі көрінбейді. Қайта тексеру үшін \"Қайталап көріңіз\" пәрменін таңдаңыз."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations

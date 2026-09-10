@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "הסוכן לא נמצא"
 setup.title.agent_error: "החיבור לסוכן נכשל"
+setup.title.installing_copilot: "מתקין את GitHub Copilot"
+setup.title.starting_copilot: "מפעיל את GitHub Copilot"
 setup.title.not_available: "הסוכן אינו זמין"
 setup.title.sign_in: "נדרשת כניסה"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "הסוכן \"%{agent}\" אינו מותקן. ב
 setup.subtitle.agent_missing: "הסוכן \"%{agent}\" אינו מותקן. התקן אותו מחדש באופן ידני ולאחר מכן נסה שוב. כדי להחליף סוכנים, עבור אל מסוף חכם Settings > Agent."
 setup.subtitle.copilot_auth: "הסוכן \"%{agent}\" דורש אימות. בצע את השלבים שלהלן כדי להיכנס. כדי להחליף סוכנים, עבור אל מסוף חכם Settings > Agent."
 setup.subtitle.agent_auth: "הסוכן \"%{agent}\" דורש אימות. היכנס דרך הסוכן ולאחר מכן בחר \"נכנסתי\" למטה. כדי להחליף סוכנים, עבור אל מסוף חכם Settings > Agent."
+setup.subtitle.connection_failed: "לא הצלחנו להפעיל את %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(יותקן באופן אוטומטי)"
 setup.option.signin: "היכנס אל %{agent}"
 setup.option.retry_detection: "נסה שוב"
 setup.option.retry_auth: "נכנסתי — נסה להתחבר שוב"
+setup.option.retry_connection: "נסה להתחבר שוב"
 setup.status.installing: "מתקין..."
+setup.status.installing_copilot_cli: "מתקין את GitHub Copilot CLI..."
+setup.status.connecting_agent: "מתחבר לסוכן..."
 setup.status.install_failed: "ההתקנה נכשלה: "
 setup.status.installing_winget: " מתקין באמצעות winget..."
+setup.error.install_start_failed: "לא ניתן היה להפעיל את תוכנית ההתקנה. בחר \"נסה שוב\" כדי לנסות שוב."
+setup.error.install_timed_out: "תם הזמן הקצוב להתקנה. בחר \"נסה שוב\" לפני שתתחיל התקנה נוספת."
+setup.error.install_detection_timed_out: "ההתקנה הסתיימה, אך Copilot עדיין אינו גלוי. בחר \"נסה שוב\" כדי לבדוק שוב."
 
 # ── זרימת אימות (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - ראשי תיבות, שימוש נפוץ בלוקליזציות של Microsoft

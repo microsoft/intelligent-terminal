@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "ਏਜੰਟ ਨਹੀਂ ਮਿਲਿਆ"
 setup.title.agent_error: "ਏਜੰਟ ਕਨੈਕਸ਼ਨ ਅਸਫਲ ਹੋ ਗਿਆ"
+setup.title.installing_copilot: "GitHub Copilot ਇੰਸਟਾਲ ਹੋ ਰਿਹਾ ਹੈ"
+setup.title.starting_copilot: "GitHub Copilot ਸ਼ੁਰੂ ਹੋ ਰਿਹਾ ਹੈ"
 setup.title.not_available: "ਏਜੰਟ ਉਪਲਬਧ ਨਹੀਂ ਹੈ"
 setup.title.sign_in: "ਸਾਈਨ ਇਨ ਲੋੜੀਂਦਾ ਹੈ"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "ਤੁਹਾਡਾ ਏਜੰਟ \"%{agent}\" �
 setup.subtitle.agent_missing: "ਤੁਹਾਡਾ ਏਜੰਟ \"%{agent}\" ਇੰਸਟਾਲ ਨਹੀਂ ਹੈ। ਕਿਰਪਾ ਕਰਕੇ ਹੱਥੀਂ ਮੁੜ-ਇੰਸਟਾਲ ਕਰੋ, ਫਿਰ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ। ਏਜੰਟ ਬਦਲਣ ਲਈ ਇੰਟੈਲੀਜੈਂਟ ਟਰਮੀਨਲ Settings > Agent 'ਤੇ ਜਾਓ।"
 setup.subtitle.copilot_auth: "ਤੁਹਾਡੇ ਏਜੰਟ \"%{agent}\" ਨੂੰ ਪ੍ਰਮਾਣਿਕਤਾ ਦੀ ਲੋੜ ਹੈ। ਸਾਈਨ ਇਨ ਕਰਨ ਲਈ ਹੇਠਾਂ ਦਿੱਤੇ ਕਦਮਾਂ ਦੀ ਪਾਲਣਾ ਕਰੋ। ਏਜੰਟ ਬਦਲਣ ਲਈ ਇੰਟੈਲੀਜੈਂਟ ਟਰਮੀਨਲ Settings > Agent 'ਤੇ ਜਾਓ।"
 setup.subtitle.agent_auth: "ਤੁਹਾਡੇ ਏਜੰਟ \"%{agent}\" ਨੂੰ ਪ੍ਰਮਾਣੀਕਰਨ ਦੀ ਲੋੜ ਹੈ। ਕਿਰਪਾ ਕਰਕੇ ਏਜੰਟ ਰਾਹੀਂ ਸਾਈਨ ਇਨ ਕਰੋ, ਫਿਰ ਹੇਠਾਂ \"ਮੈਂ ਸਾਈਨ ਇਨ ਕਰ ਲਿਆ\" ਚੁਣੋ। ਏਜੰਟ ਬਦਲਣ ਲਈ Settings ਤੇ ਜਾਓ।"
+setup.subtitle.connection_failed: "ਅਸੀਂ %{agent} ਨੂੰ ਸ਼ੁਰੂ ਨਹੀਂ ਕਰ ਸਕੇ।"
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(ਆਪਣੇ ਆਪ ਇੰਸਟਾਲ ਹੋ ਜ�
 setup.option.signin: "%{agent} ਵਿੱਚ ਸਾਈਨ ਇਨ ਕਰੋ"
 setup.option.retry_detection: "ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ"
 setup.option.retry_auth: "ਮੈਂ ਸਾਈਨ ਇਨ ਕਰ ਲਿਆ — ਦੁਬਾਰਾ ਕਨੈਕਟ ਕਰਨ ਦੀ ਕੋਸ਼ਿਸ਼ ਕਰੋ"
+setup.option.retry_connection: "ਦੁਬਾਰਾ ਕਨੈਕਟ ਕਰਨ ਦੀ ਕੋਸ਼ਿਸ਼ ਕਰੋ"
 setup.status.installing: "ਇੰਸਟਾਲ ਹੋ ਰਿਹਾ ਹੈ..."
+setup.status.installing_copilot_cli: "GitHub Copilot CLI ਇੰਸਟਾਲ ਹੋ ਰਿਹਾ ਹੈ..."
+setup.status.connecting_agent: "ਏਜੰਟ ਨਾਲ ਕਨੈਕਟ ਹੋ ਰਿਹਾ ਹੈ..."
 setup.status.install_failed: "ਇੰਸਟਾਲ ਅਸਫਲ: "
 setup.status.installing_winget: " winget ਰਾਹੀਂ ਇੰਸਟਾਲ ਹੋ ਰਿਹਾ ਹੈ..."
+setup.error.install_start_failed: "ਇੰਸਟਾਲਰ ਸ਼ੁਰੂ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਿਆ। ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰਨ ਲਈ \"ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ\" ਚੁਣੋ।"
+setup.error.install_timed_out: "ਇੰਸਟਾਲੇਸ਼ਨ ਦਾ ਸਮਾਂ ਸਮਾਪਤ ਹੋ ਗਿਆ। ਕੋਈ ਹੋਰ ਇੰਸਟਾਲੇਸ਼ਨ ਸ਼ੁਰੂ ਕਰਨ ਤੋਂ ਪਹਿਲਾਂ \"ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ\" ਚੁਣੋ।"
+setup.error.install_detection_timed_out: "ਇੰਸਟਾਲੇਸ਼ਨ ਪੂਰੀ ਹੋ ਗਈ ਹੈ, ਪਰ Copilot ਹਾਲੇ ਦਿਖਾਈ ਨਹੀਂ ਦੇ ਰਿਹਾ। ਦੁਬਾਰਾ ਜਾਂਚ ਕਰਨ ਲਈ \"ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ\" ਚੁਣੋ।"
 
 # ── ਪ੍ਰਮਾਣਿਕਤਾ ਪ੍ਰਵਾਹ (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - ਸੰਖੇਪ ਰੂਪ, Microsoft ਸਥਾਨਿਕੀਕਰਨਾਂ ਵਿੱਚ ਸਾਧਾਰਨ ਵਰਤੋਂ

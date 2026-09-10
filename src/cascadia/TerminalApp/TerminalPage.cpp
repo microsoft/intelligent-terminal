@@ -1105,9 +1105,14 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    void TerminalPage::_OnFreCompleted(const winrt::TerminalApp::FreOverlay& /*sender*/,
-                                       const winrt::Windows::Foundation::IInspectable& args)
+    void TerminalPage::_OnFreCompleted(const winrt::TerminalApp::FreOverlay& sender,
+                                       const winrt::Windows::Foundation::IInspectable& /*args*/)
     {
+        if (const auto impl = winrt::get_self<implementation::FreOverlay>(sender))
+        {
+            _pendingFreAutoInstallCopilot = impl->ShouldAutoInstallCopilotAfterCompletion();
+        }
+
         // Hide the FRE overlay
         if (auto overlay = FreOverlayElement())
         {
@@ -1133,9 +1138,11 @@ namespace winrt::TerminalApp::implementation
             LOG_CAUGHT_EXCEPTION();
         }
 
-        // Execute deferred startup actions — tab creation was postponed
-        // until FRE completed so that the ConptyConnection picks up any
-        // PATH changes from winget installs (see _OnFirstLayout deferral).
+        // Execute deferred startup actions — tab creation was postponed until
+        // FRE completed so a blocking Node bootstrap can update PATH first.
+        // Agent-pane visibility is settled after the outermost startup replay;
+        // opening it here can race a later persisted-pane restore.
+        _pendingFreEnsureAgentPaneVisible = true;
         if (_deferredStartupConnection)
         {
             CreateTabFromConnection(std::move(_deferredStartupConnection));
@@ -1148,22 +1155,7 @@ namespace winrt::TerminalApp::implementation
         {
             // No deferred actions — open a default tab.
             _OpenNewTab(nullptr);
-        }
-
-        // If no tabs were created (e.g. deferred actions only launched an
-        // elevated profile), close the window.
-        if (_tabs.Size() == 0)
-        {
-            CloseWindowRequested.raise(*this, nullptr);
-            return;
-        }
-
-        // Now create the agent pane on the freshly-created tab.
-        if (const auto tab = _GetFocusedTabImpl())
-        {
-            const auto initialAuthAgent = winrt::unbox_value_or<winrt::hstring>(args, L"");
-            _OpenOrReuseAgentPane(false, L"FirstRunExperience", std::wstring_view{ initialAuthAgent });
-            // Focus is set in the Initialized callback once the pane is ready.
+            _ScheduleStartupStructureSettled();
         }
     }
 
@@ -3030,6 +3022,10 @@ namespace winrt::TerminalApp::implementation
         if (tabId.empty())
         {
             return;
+        }
+        if (_freAutoInstallTargetTabId == tabId)
+        {
+            _freAutoInstallTargetTabId = {};
         }
 
         Json::Value tabParams;
@@ -5381,6 +5377,10 @@ namespace winrt::TerminalApp::implementation
             {
                 --_startupActionReplayDepth;
             }
+            if (_startupActionReplayDepth == 0)
+            {
+                _ScheduleStartupStructureSettled();
+            }
         });
 
         for (size_t i = 0; i < actions.size(); ++i)
@@ -5395,55 +5395,6 @@ namespace winrt::TerminalApp::implementation
         }
 
         clearReplaying.reset();
-        // Only the outermost replay drains the queue: an inner batch handed to
-        // this window by `ExecuteCommandline` may still be nested inside a
-        // startup replay whose agent panes are queued behind it.
-        if (_startupActionReplayDepth == 0)
-        {
-            for (const auto& tabId : std::exchange(_tabsAwaitingRestoredBindings, {}))
-            {
-                if (const auto tab = _FindTabByStableId(tabId))
-                {
-                    _ReplayRestoredSessionBindings(tab);
-                }
-            }
-
-            // Not inline. Pre-warm only spawns the helper if the agent pane
-            // gets a real layout pass first: `TermControl::_InitializeTerminal`
-            // bails while the SwapChainPanel still measures zero, and
-            // `_AutoCreateHiddenAgentPaneShared` stashes the pane straight
-            // after — pulling it out of the tree before it can ever be
-            // measured again. Nothing has been laid out at the moment a replay
-            // finishes, so a pane pre-warmed here would come back with no
-            // helper, no conpty, and a `ControlCore` still holding the
-            // composition scale of 0 it was constructed with.
-            //
-            // `_InitializeTab` defers its own pre-warm to a low-priority tick
-            // for exactly this reason. Match it, so a tab that skipped that
-            // tick because a replay was in flight gets an equally settled one.
-            //
-            // There is deliberately no inline fallback if the tick cannot be
-            // scheduled. Running the drain inline is the timing this moved
-            // away from, so it would hand the tab a stashed pane with no
-            // helper behind it rather than no pane at all — a worse outcome,
-            // and one the user cannot see to correct. `TryEnqueue` only fails
-            // once the queue is shutting down, where a freshly spawned helper
-            // would outlive the window that asked for it anyway.
-            const auto dispatcher = winrt::Windows::System::DispatcherQueue::GetForCurrentThread();
-            const auto queued = dispatcher &&
-                                dispatcher.TryEnqueue(winrt::Windows::System::DispatcherQueuePriority::Low,
-                                                      [weakSelf = get_weak()]() {
-                                                          if (const auto self{ weakSelf.get() })
-                                                          {
-                                                              self->_PrewarmAgentPanesAfterStartup();
-                                                          }
-                                                      });
-            if (!queued)
-            {
-                _agentPaneLog("_ProcessStartupActions: could not queue the agent pane pre-warm drain; "
-                              "tabs awaiting pre-warm keep their helper until one is opened");
-            }
-        }
 
         // GH#6586: now that we're done processing all startup commands,
         // focus the active control. This will work as expected for both
@@ -5455,6 +5406,63 @@ namespace winrt::TerminalApp::implementation
                 content.Focus(FocusState::Programmatic);
             }
         }
+    }
+
+    void TerminalPage::_ScheduleStartupStructureSettled() noexcept
+    {
+        if (_startupStructureSettleQueued)
+        {
+            return;
+        }
+
+        try
+        {
+            const auto dispatcher = winrt::Windows::System::DispatcherQueue::GetForCurrentThread();
+            if (!dispatcher)
+            {
+                return;
+            }
+
+            _startupStructureSettleQueued = true;
+            const auto queued = dispatcher.TryEnqueue(
+                winrt::Windows::System::DispatcherQueuePriority::Low,
+                [weakSelf = get_weak()]() {
+                    if (const auto self{ weakSelf.get() })
+                    {
+                        self->_startupStructureSettleQueued = false;
+                        self->_OnStartupStructureSettled();
+                    }
+                });
+            if (!queued)
+            {
+                _startupStructureSettleQueued = false;
+                _agentPaneLog("_ScheduleStartupStructureSettled: dispatcher is shutting down");
+            }
+        }
+        catch (...)
+        {
+            _startupStructureSettleQueued = false;
+            LOG_CAUGHT_EXCEPTION();
+        }
+    }
+
+    void TerminalPage::_OnStartupStructureSettled()
+    {
+        if (_startupActionReplayDepth > 0)
+        {
+            return;
+        }
+
+        for (const auto& tabId : std::exchange(_tabsAwaitingRestoredBindings, {}))
+        {
+            if (const auto tab = _FindTabByStableId(tabId))
+            {
+                _ReplayRestoredSessionBindings(tab);
+            }
+        }
+
+        _CompletePendingFreAgentPaneVisibility();
+        _PrewarmAgentPanesAfterStartup();
     }
 
     // Give the tabs that skipped their own pre-warm — because a replay was in
@@ -5490,9 +5498,71 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void TerminalPage::_CompletePendingFreAgentPaneVisibility()
+    {
+        if (!_pendingFreEnsureAgentPaneVisible || _startupActionReplayDepth > 0)
+        {
+            return;
+        }
+
+        // Consume the visibility request before any pane operation can re-enter
+        // page state. The separate installation request is either reserved to
+        // this focused tab or expired below.
+        _pendingFreEnsureAgentPaneVisible = false;
+        const bool requestAutoInstall = std::exchange(_pendingFreAutoInstallCopilot, false);
+        _freAutoInstallTargetTabId = {};
+
+        if (_tabs.Size() == 0)
+        {
+            CloseWindowRequested.raise(*this, nullptr);
+            return;
+        }
+
+        const auto focusedTab = _GetFocusedTabImpl();
+        if (!focusedTab)
+        {
+            return;
+        }
+
+        if (const auto existingPane = focusedTab->FindAgentPane())
+        {
+            if (existingPane->IsHidden())
+            {
+                const auto splitDirection = _AgentPanePositionToSplitDirection(
+                    focusedTab->EffectiveAgentPanePosition(_settings.GlobalSettings().AgentPanePosition()));
+                if (focusedTab->RestoreStashedAgentPane(splitDirection))
+                {
+                    _RequestAgentStateForTab(focusedTab, std::nullopt, /*pane_open*/ true);
+                    _UpdateBottomBarState();
+                }
+            }
+            return;
+        }
+
+        if (requestAutoInstall)
+        {
+            const auto binding = _ResolveAgentPaneSettingsBindingForTab(focusedTab);
+            if (binding.followsGlobalAcpModel &&
+                binding.agentId == L"copilot" &&
+                binding.agentSource == L"host")
+            {
+                _freAutoInstallTargetTabId = focusedTab->StableId();
+            }
+        }
+
+        _OpenOrReuseAgentPane(false, L"FirstRunExperience");
+        if (!_freAutoInstallTargetTabId.empty() && !focusedTab->FindAgentPane())
+        {
+            _freAutoInstallTargetTabId = {};
+        }
+    }
+
     safe_void_coroutine TerminalPage::CreateTabFromConnection(ITerminalConnection connection)
     {
         const auto strong = get_strong();
+        auto settleStartupStructure = wil::scope_exit([this]() noexcept {
+            _ScheduleStartupStructureSettled();
+        });
 
         // This is the exact same logic as in ProcessStartupActions.
         if (_tabs.Size() > 0)
@@ -6630,6 +6700,7 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
+
         const auto& params = evt["params"];
         if (!params.isObject())
         {
@@ -6878,6 +6949,21 @@ namespace winrt::TerminalApp::implementation
                     const std::string_view view = impl->IsSessionsView() ? "sessions" : "chat";
                     const bool paneOpen = !tabImpl->HasStashedAgentPane();
                     _RequestAgentStateForTab(tabImpl, view, paneOpen);
+
+                    if (!_freAutoInstallTargetTabId.empty() &&
+                        tabImpl->StableId() == _freAutoInstallTargetTabId)
+                    {
+                        if (agentId == L"copilot")
+                        {
+                            Json::Value installParams;
+                            installParams["tab_id"] = winrt::to_string(tabImpl->StableId());
+                            installParams["agent_id"] = "copilot";
+                            _agentPaneLog(
+                                "OnAgentStatusChanged: delivering one-shot FRE Copilot install request");
+                            _RaiseProtocolEvent("fre_auto_install_selected_agent", installParams);
+                        }
+                        _freAutoInstallTargetTabId = {};
+                    }
                 }
             }
         };
@@ -6924,6 +7010,58 @@ namespace winrt::TerminalApp::implementation
     //
     // Future per-tab UI state plugs in as another field on `params` —
     // parse it here, update its mirror, no new IDL route or handler needed.
+    void TerminalPage::OnAgentAvailabilityChanged(hstring eventJson)
+    {
+        Json::Value evt;
+        Json::CharReaderBuilder rb;
+        std::istringstream ss(winrt::to_string(eventJson));
+        std::string errs;
+        if (!Json::parseFromStream(rb, ss, &evt, &errs))
+        {
+            return;
+        }
+
+        const auto& params = evt["params"];
+        if (!params.isObject() ||
+            !params["agent_id"].isString() ||
+            !params["tab_id"].isString())
+        {
+            return;
+        }
+
+        const auto agentId = winrt::to_hstring(params["agent_id"].asString());
+        const auto tabId = winrt::to_hstring(params["tab_id"].asString());
+        const auto tab = _FindTabByStableId(tabId);
+        if (agentId.empty() || tabId.empty() || !tab)
+        {
+            return;
+        }
+
+        const auto& globals = _settings.GlobalSettings();
+        if (!globals.EffectiveAgentSessionManagementEnabled())
+        {
+            return;
+        }
+
+        namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+        const auto binding = _ResolveAgentPaneSettingsBindingForTab(tab);
+        if (!Reg::AgentIdEquals(binding.agentId, agentId))
+        {
+            return;
+        }
+        const auto allowed = std::ranges::any_of(Reg::FilteredAcpAgents(), [&](const auto& agent) {
+            return Reg::AgentIdEquals(agent.id, agentId);
+        });
+        if (!allowed)
+        {
+            return;
+        }
+
+        _ReconcileAgentHooksAsync(
+            AgentHooksReconciliationScope::SelectedAgent,
+            std::wstring{ agentId });
+    }
+
     void TerminalPage::OnAgentStateChanged(hstring eventJson)
     {
         Json::Value evt;

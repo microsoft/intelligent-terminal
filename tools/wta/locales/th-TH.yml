@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "ไม่พบเอเจนต์"
 setup.title.agent_error: "การเชื่อมต่อเอเจนต์ล้มเหลว"
+setup.title.installing_copilot: "กำลังติดตั้ง GitHub Copilot"
+setup.title.starting_copilot: "กำลังเริ่ม GitHub Copilot"
 setup.title.not_available: "เอเจนต์ไม่พร้อมใช้งาน"
 setup.title.sign_in: "ต้องลงชื่อเข้าใช้"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "เอเจนต์ \"%{agent}\" ของค
 setup.subtitle.agent_missing: "เอเจนต์ \"%{agent}\" ของคุณยังไม่ได้ติดตั้ง กรุณาติดตั้งใหม่ด้วยตนเอง แล้วลองอีกครั้ง หากต้องการสลับเอเจนต์ ให้ไปที่ เทอร์มินัลอัจฉริยะ Settings > Agent"
 setup.subtitle.copilot_auth: "เอเจนต์ \"%{agent}\" ของคุณต้องการการยืนยันตัวตน ทำตามขั้นตอนด้านล่างเพื่อลงชื่อเข้าใช้ หากต้องการสลับเอเจนต์ ให้ไปที่ เทอร์มินัลอัจฉริยะ Settings > Agent"
 setup.subtitle.agent_auth: "เอเจนต์ \"%{agent}\" ของคุณต้องการการยืนยันตัวตน กรุณาลงชื่อเข้าใช้ผ่านเอเจนต์ แล้วเลือก \"ลงชื่อเข้าใช้แล้ว\" ด้านล่าง หากต้องการสลับเอเจนต์ ให้ไปที่ เทอร์มินัลอัจฉริยะ Settings > Agent"
+setup.subtitle.connection_failed: "เราไม่สามารถเริ่ม %{agent} ได้"
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(จะติดตั้งโดยอัตโน
 setup.option.signin: "ลงชื่อเข้าใช้ %{agent}"
 setup.option.retry_detection: "ลองอีกครั้ง"
 setup.option.retry_auth: "ลงชื่อเข้าใช้แล้ว — ลองเชื่อมต่อใหม่"
+setup.option.retry_connection: "ลองเชื่อมต่ออีกครั้ง"
 setup.status.installing: "กำลังติดตั้ง..."
+setup.status.installing_copilot_cli: "กำลังติดตั้ง GitHub Copilot CLI..."
+setup.status.connecting_agent: "กำลังเชื่อมต่อกับเอเจนต์..."
 setup.status.install_failed: "ติดตั้งล้มเหลว: "
 setup.status.installing_winget: " กำลังติดตั้งผ่าน winget..."
+setup.error.install_start_failed: "ไม่สามารถเริ่มโปรแกรมติดตั้งได้ เลือก \"ลองอีกครั้ง\" เพื่อลองใหม่"
+setup.error.install_timed_out: "หมดเวลาการติดตั้ง เลือก \"ลองอีกครั้ง\" ก่อนเริ่มการติดตั้งอื่น"
+setup.error.install_detection_timed_out: "ติดตั้งเสร็จแล้ว แต่ยังไม่เห็น Copilot เลือก \"ลองอีกครั้ง\" เพื่อตรวจสอบอีกครั้ง"
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations

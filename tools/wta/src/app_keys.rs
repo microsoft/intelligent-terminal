@@ -279,9 +279,7 @@ impl App {
                                     install_url: String::new(),
                                     auth_hint: profile.auth_hint.to_string(),
                                 },
-                                install_in_progress: false,
-                                install_log: Vec::new(),
-                                install_error: None,
+                                phase: SetupPhase::Ready,
                                 options,
                                 title: t!("setup.title.sign_in").into_owned(),
                                 subtitle: if profile.id == "copilot" {

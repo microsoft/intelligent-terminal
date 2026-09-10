@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Агент табылмады"
 setup.title.agent_error: "Агентка тоташу уңышсыз булды"
+setup.title.installing_copilot: "GitHub Copilot урнатыла"
+setup.title.starting_copilot: "GitHub Copilot эшләтеп җибәрелә"
 setup.title.not_available: "Агент мөмкин түгел"
 setup.title.sign_in: "Керү таләп ителә"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Сезнең \"%{agent}\" агентыгыз у
 setup.subtitle.agent_missing: "Сезнең \"%{agent}\" агентыгыз урнатылмаган. Зинһар, кулдан яңадан урнатыгыз, аннан яңадан тырышыгыз. Агентны алыштыру өчен Акыллы терминал Settings > Agent бүлегенә күчегез."
 setup.subtitle.copilot_auth: "Сезнең \"%{agent}\" агентыгыз аутентификация таләп итә. Керү өчен түбәндәге адымнарны үтәгез. Агентны алыштыру өчен Акыллы терминал Settings > Agent бүлегенә күчегез."
 setup.subtitle.agent_auth: "Сезнең \"%{agent}\" агентыгыз аутентификация таләп итә. Зинһар, агент аша керегез, аннан түбәндә \"Мин кердем\" сайлагыз. Агентны алыштыру өчен Акыллы терминал Settings > Agent бүлегенә күчегез."
+setup.subtitle.connection_failed: "%{agent} эшләтеп җибәреп булмады."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(Автоматик рәвештә урнатыла�
 setup.option.signin: "%{agent} керү"
 setup.option.retry_detection: "Яңадан тырышыгыз"
 setup.option.retry_auth: "Мин кердем — яңадан тоташырга тырышыгыз"
+setup.option.retry_connection: "Яңадан тоташырга тырышыгыз"
 setup.status.installing: "Урнатыла..."
+setup.status.installing_copilot_cli: "GitHub Copilot CLI урнатыла..."
+setup.status.connecting_agent: "Агентка тоташу..."
 setup.status.install_failed: "Урнату уңышсыз: "
 setup.status.installing_winget: " winget аша урнатыла..."
+setup.error.install_start_failed: "Урнаштыргычны эшләтеп җибәреп булмады. Кабатлау өчен \"Яңадан тырышыгыз\" сайлагыз."
+setup.error.install_timed_out: "Урнаштыру вакыты бетте. Башка урнаштыруны башлар алдыннан \"Яңадан тырышыгыз\" сайлагыз."
+setup.error.install_detection_timed_out: "Урнаштыру тәмамланды, ләкин Copilot әлегә күренми. Кабат тикшерү өчен \"Яңадан тырышыгыз\" сайлагыз."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations

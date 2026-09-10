@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Агент није пронађен"
 setup.title.agent_error: "Повезивање са агентом није успело"
+setup.title.installing_copilot: "Инсталирање GitHub Copilot"
+setup.title.starting_copilot: "Покретање GitHub Copilot"
 setup.title.not_available: "Агент није доступан"
 setup.title.sign_in: "Потребна је пријава"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Ваш агент \"%{agent}\" није инс�
 setup.subtitle.agent_missing: "Ваш агент \"%{agent}\" није инсталиран. Поново га ручно инсталирајте, па покушајте поново. За промену агента идите у Интелигентни Терминал Settings > Agent."
 setup.subtitle.copilot_auth: "Ваш агент \"%{agent}\" захтева аутентификацију. Пратите кораке испод да бисте се пријавили. За промену агента идите у Интелигентни Терминал Settings > Agent."
 setup.subtitle.agent_auth: "Ваш агент \"%{agent}\" захтева аутентификацију. Пријавите се преко агента, па изаберите \"Пријавио/ла сам се\" испод. За промену агента идите у Интелигентни Терминал Settings > Agent."
+setup.subtitle.connection_failed: "Нисмо могли да покренемо %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(Биће инсталирано аутоматск�
 setup.option.signin: "Пријави се у %{agent}"
 setup.option.retry_detection: "Покушај поново"
 setup.option.retry_auth: "Пријавио/ла сам се — покушај поново да се повежеш"
+setup.option.retry_connection: "Покушај поново да се повежеш"
 setup.status.installing: "Инсталирање..."
+setup.status.installing_copilot_cli: "Инсталирање GitHub Copilot CLI..."
+setup.status.connecting_agent: "Повезивање са агентом..."
 setup.status.install_failed: "Инсталација није успела: "
 setup.status.installing_winget: " Инсталирање преко winget..."
+setup.error.install_start_failed: "Инсталациони програм није могао да се покрене. Изаберите \"Покушај поново\" да бисте покушали поново."
+setup.error.install_timed_out: "Време за инсталацију је истекло. Изаберите \"Покушај поново\" пре покретања друге инсталације."
+setup.error.install_detection_timed_out: "Инсталација је завршена, али Copilot још није видљив. Изаберите \"Покушај поново\" за поновну проверу."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations

@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "ஏஜெண்ட் கிடைக்கவில்லை"
 setup.title.agent_error: "ஏஜெண்ட் இணைப்பு தோல்வியடைந்தது"
+setup.title.installing_copilot: "GitHub Copilot நிறுவப்படுகிறது"
+setup.title.starting_copilot: "GitHub Copilot தொடங்கப்படுகிறது"
 setup.title.not_available: "ஏஜெண்ட் கிடைக்கவில்லை"
 setup.title.sign_in: "உள்நுழைவு தேவை"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "உங்கள் ஏஜெண்ட் \"%{ag
 setup.subtitle.agent_missing: "உங்கள் ஏஜெண்ட் \"%{agent}\" நிறுவப்படவில்லை. தயவுசெய்து கைமுறையாக மீண்டும் நிறுவி, மீண்டும் முயற்சிக்கவும். முகவரை மாற்ற அறிவாண் முனையம் Settings > Agent-க்குச் செல்லுங்கள்."
 setup.subtitle.copilot_auth: "உங்கள் ஏஜெண்ட் \"%{agent}\"-க்கு அங்கீகாரம் தேவை. உள்நுழைய கீழே உள்ள படிகளைப் பின்பற்றுங்கள். முகவரை மாற்ற அறிவாண் முனையம் Settings > Agent-க்குச் செல்லுங்கள்."
 setup.subtitle.agent_auth: "உங்கள் எஜென்ட் \"%{agent}\" அங்கீகாரம் தேவைப்படுகிறது. எஜென்ட்டின் மூலம் உள்நுழைந்து, பின்னர் கீழே \"நான் உள்நுழைந்துவிட்டேன்\" என்பதைத் தேர்ந்தெடுக்கவும். எஜென்ட்களை மாற்ற, Settings-க்கு செல்லவும்."
+setup.subtitle.connection_failed: "%{agent}-ஐத் தொடங்க முடியவில்லை."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(தானாக நிறுவப்படும�
 setup.option.signin: "%{agent}-ல் உள்நுழையவும்"
 setup.option.retry_detection: "மீண்டும் முயற்சிக்கவும்"
 setup.option.retry_auth: "நான் உள்நுழைந்துவிட்டேன் — மீண்டும் இணைக்க முயற்சிக்கவும்"
+setup.option.retry_connection: "மீண்டும் இணைக்க முயற்சிக்கவும்"
 setup.status.installing: "நிறுவப்படுகிறது..."
+setup.status.installing_copilot_cli: "GitHub Copilot CLI நிறுவப்படுகிறது..."
+setup.status.connecting_agent: "ஏஜெண்டுடன் இணைக்கப்படுகிறது..."
 setup.status.install_failed: "நிறுவல் தோல்வி: "
 setup.status.installing_winget: " winget வழியாக நிறுவப்படுகிறது..."
+setup.error.install_start_failed: "நிறுவியைத் தொடங்க முடியவில்லை. மீண்டும் முயற்சிக்க \"மீண்டும் முயற்சிக்கவும்\" என்பதைத் தேர்ந்தெடுக்கவும்."
+setup.error.install_timed_out: "நிறுவலுக்கான நேரம் முடிந்தது. மற்றொரு நிறுவலைத் தொடங்குவதற்கு முன் \"மீண்டும் முயற்சிக்கவும்\" என்பதைத் தேர்ந்தெடுக்கவும்."
+setup.error.install_detection_timed_out: "நிறுவல் முடிந்தது, ஆனால் Copilot இன்னும் தெரியவில்லை. மீண்டும் சரிபார்க்க \"மீண்டும் முயற்சிக்கவும்\" என்பதைத் தேர்ந்தெடுக்கவும்."
 
 # ── அங்கீகாரப் போக்கு (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - சுருக்கம், Microsoft உள்ளூர்மயமாக்கல்களில் பொதுவான பயன்பாடு

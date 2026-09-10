@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Aģents nav atrasts"
 setup.title.agent_error: "Neizdevās izveidot savienojumu ar aģentu"
+setup.title.installing_copilot: "GitHub Copilot instalēšana"
+setup.title.starting_copilot: "GitHub Copilot startēšana"
 setup.title.not_available: "Aģents nav pieejams"
 setup.title.sign_in: "Nepieciešama pierakstīšanās"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Jūsu aģents \"%{agent}\" nav instalēts. Izpi
 setup.subtitle.agent_missing: "Jūsu aģents \"%{agent}\" nav instalēts. Pārinstalējiet to manuāli un mēģiniet vēlreiz. Lai mainītu aģentu, dodieties uz Viedais Terminālis Settings > Agent."
 setup.subtitle.copilot_auth: "Jūsu aģents \"%{agent}\" pieprasa autentifikāciju. Izpildiet tālāk norādītās darbības, lai pierakstītos. Lai mainītu aģentu, dodieties uz Viedais Terminālis Settings > Agent."
 setup.subtitle.agent_auth: "Jūsu aģents \"%{agent}\" pieprasa autentifikāciju. Pierakstieties, izmantojot aģentu, un izvēlieties \"Esmu pierakstījies\" zemāk. Lai mainītu aģentu, dodieties uz Viedais Terminālis Settings > Agent."
+setup.subtitle.connection_failed: "Neizdevās startēt %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(Tiks instalēts automātiski)"
 setup.option.signin: "Pierakstīties %{agent}"
 setup.option.retry_detection: "Mēģināt vēlreiz"
 setup.option.retry_auth: "Esmu pierakstījies — mēģināt savienoties vēlreiz"
+setup.option.retry_connection: "Mēģināt vēlreiz izveidot savienojumu"
 setup.status.installing: "Instalē..."
+setup.status.installing_copilot_cli: "Instalē GitHub Copilot CLI..."
+setup.status.connecting_agent: "Veido savienojumu ar aģentu..."
 setup.status.install_failed: "Instalēšana neizdevās: "
 setup.status.installing_winget: " Instalē, izmantojot winget..."
+setup.error.install_start_failed: "Neizdevās palaist instalēšanas programmu. Lai mēģinātu vēlreiz, atlasiet \"Mēģināt vēlreiz\"."
+setup.error.install_timed_out: "Instalēšanai iestājās taimauts. Pirms citas instalēšanas sākšanas atlasiet \"Mēģināt vēlreiz\"."
+setup.error.install_detection_timed_out: "Instalēšana ir pabeigta, bet Copilot vēl nav redzams. Lai pārbaudītu vēlreiz, atlasiet \"Mēģināt vēlreiz\"."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations

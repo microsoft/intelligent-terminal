@@ -5,6 +5,8 @@
 # Setup screen titles
 setup.title.agent_missing: "Ագենտը չի գտնվել"
 setup.title.agent_error: "Ագենտին միանալը ձախողվել է"
+setup.title.installing_copilot: "GitHub Copilot ծրագրի տեղադրում"
+setup.title.starting_copilot: "GitHub Copilot ծրագրի գործարկում"
 # Title when the configured AI agent is not available
 setup.title.not_available: "Ագենտը հասանելի չէ"
 # Title when authentication is required
@@ -15,15 +17,22 @@ setup.subtitle.copilot_missing: "Ձեր \"%{agent}\" ագենտը տեղադրվ
 setup.subtitle.agent_missing: "Ձեր \"%{agent}\" ագենտը տեղադրված չէ։ Խնդրում ենք ձեռքով վերատեղադրել և կրկին փորձել։ Ագենտը փոխելու համար անցեք Խելացի տերմինալ Settings > Agent։"
 setup.subtitle.copilot_auth: "Ձեր \"%{agent}\" ագենտը պահանջում է նույնականացում։ Մուտք գործելու համար հետեվեք ստորեվ նշված քայլերին։ Ագենտը փոխելու համար անցեք Խելացի տերմինալ Settings > Agent։"
 setup.subtitle.agent_auth: "Ձեր \"%{agent}\" ագենտը պահանջում է նույնականացում։ Մուտք գործեք ագենտի միջոցով, ապա ընտրեք ստորև \"Մուտք եմ գործել\"։ Ագենտը փոխելու համար անցեք Խելացի տերմինալ Settings > Agent։"
+setup.subtitle.connection_failed: "Չհաջողվեց գործարկել %{agent}-ը։"
 
 setup.option.install: "Տեղադրել %{agent}"
 setup.option.install_hint: "(Կտեղադրվի ինքնաշխատորեն)"
 setup.option.signin: "Մուտք գործել %{agent}"
 setup.option.retry_detection: "Կրկին փորձել"
 setup.option.retry_auth: "Մուտք եմ գործել — կրկին միանալ"
+setup.option.retry_connection: "Կրկին փորձել միանալ"
 setup.status.installing: "Տեղադրվում է..."
+setup.status.installing_copilot_cli: "GitHub Copilot CLI գործիքի տեղադրում..."
+setup.status.connecting_agent: "Միացում գործակալին..."
 setup.status.install_failed: "Տեղադրումը ձախողվեց՝ "
 setup.status.installing_winget: " Տեղադրում winget-ի միջոցով..."
+setup.error.install_start_failed: "Չհաջողվեց գործարկել տեղադրիչը։ Կրկին փորձելու համար ընտրեք «Կրկին փորձել»։"
+setup.error.install_timed_out: "Տեղադրման ժամանակը սպառվեց։ Այլ տեղադրում սկսելուց առաջ ընտրեք «Կրկին փորձել»։"
+setup.error.install_detection_timed_out: "Տեղադրումն ավարտվեց, սակայն Copilot դեռ տեսանելի չէ։ Կրկին ստուգելու համար ընտրեք «Կրկին փորձել»։"
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations

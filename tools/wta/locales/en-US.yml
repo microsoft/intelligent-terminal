@@ -5,6 +5,8 @@
 # Setup screen titles
 setup.title.agent_missing: "Agent not found"
 setup.title.agent_error: "Agent connection failed"
+setup.title.installing_copilot: "Installing GitHub Copilot"  # Setup title shown while installing the Copilot CLI. {Locked="GitHub Copilot"}
+setup.title.starting_copilot: "Starting GitHub Copilot"  # Setup title shown while reconnecting after installation. {Locked="GitHub Copilot"}
 # Title when the configured AI agent is not available
 setup.title.not_available: "Agent not available"
 # Title when authentication is required
@@ -15,6 +17,7 @@ setup.subtitle.copilot_missing: "Your agent \"%{agent}\" is not installed. Follo
 setup.subtitle.agent_missing: "Your agent \"%{agent}\" is not installed. Please install it manually, then try again. To switch agents, go to Intelligent Terminal Settings > Agent."
 setup.subtitle.copilot_auth: "Your agent \"%{agent}\" requires authentication. Follow the steps below to sign in. To switch agents, go to Intelligent Terminal Settings > Agent."
 setup.subtitle.agent_auth: "Your agent \"%{agent}\" requires authentication. Please sign in via the agent, then select \"I've signed in\" below. To switch agents, go to Intelligent Terminal Settings > Agent."
+setup.subtitle.connection_failed: "We couldn't start %{agent}."  # Connection failure shown for an AI agent; %{agent} is its display name.
 
 # Button label on setup screen — install the selected agent via winget
 setup.option.install: "Install %{agent}"
@@ -23,9 +26,15 @@ setup.option.signin: "Sign in to %{agent}"
 # Button label on setup screen — retry agent detection after manual install
 setup.option.retry_detection: "Try again"
 setup.option.retry_auth: "I've signed in — try connecting again"
+setup.option.retry_connection: "Try connecting again"  # Button label that retries a failed AI-agent connection.
 setup.status.installing: "Installing..."
+setup.status.installing_copilot_cli: "Installing GitHub Copilot CLI..."  # Busy status shown during installation. {Locked="GitHub Copilot","CLI"}
+setup.status.connecting_agent: "Connecting to agent..."  # Busy status shown while connecting to an AI agent.
 setup.status.install_failed: "Install failed: "
 setup.status.installing_winget: " Installing via winget..."
+setup.error.install_start_failed: "The installer could not be started. Select \"Try again\" to retry."  # Error shown when the background installer task cannot start.
+setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."  # Error shown when the Copilot CLI installation exceeds its time limit. {Locked="Copilot","CLI"}
+setup.error.install_detection_timed_out: "Installation finished, but Copilot is not visible yet. Select \"Try again\" to check again."  # Error shown when Copilot cannot be detected after installation. {Locked="Copilot"}
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 auth.agent_selected: "Agent %{name} is selected"

@@ -131,6 +131,12 @@ pub enum AppEvent {
         failure: crate::protocol::acp::failure::AgentFailure,
         message: String,
     },
+    /// A non-authentication failure from the helper's initial ACP connection.
+    /// It belongs to startup/setup diagnostics, not the conversation history.
+    InitialAgentStartupFailed {
+        failure: crate::protocol::acp::failure::AgentFailure,
+        message: String,
+    },
     /// The helper's pipe to wta-master closed. A retained helper reconnects
     /// its existing immutable binding over the stable pipe.
     MasterDisconnected,
@@ -266,7 +272,11 @@ pub enum AppEvent {
         tab_id: Option<String>,
         params: serde_json::Value,
     },
-    AgentInstallComplete,
+    AgentInstallComplete {
+        request_id: u64,
+        agent_id: String,
+        outcome: crate::agent_check::AgentInstallOutcome,
+    },
     LoginProgress {
         device_code: String,
         verify_url: String,

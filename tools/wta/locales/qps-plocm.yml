@@ -2,6 +2,8 @@
 # {Locked="Intelligent Terminal"} - product name, do not translate
 setup.title.agent_missing: "[!! Age_nt not found !!]"
 setup.title.agent_error: "[!! Age_nt connection failed !!]"
+setup.title.installing_copilot: "[!! Ins_talling GitHub Copilot !!]"
+setup.title.starting_copilot: "[!! Sta_rting GitHub Copilot !!]"
 setup.title.not_available: "[!! Age_nt not available !!]"
 setup.title.sign_in: "[!! Sig_n in required !!]"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "[!! You_r agent \"%{agent}\" is not installed. 
 setup.subtitle.agent_missing: "[!! You_r agent \"%{agent}\" is not installed. Please install it manually, then try again. To switch agents, go to Intelligent Terminal Settings > Agent. !!]"
 setup.subtitle.copilot_auth: "[!! You_r agent \"%{agent}\" requires authentication. Follow the steps below to sign in. To switch agents, go to Intelligent Terminal Settings > Agent. !!]"
 setup.subtitle.agent_auth: "[!! You_r agent \"%{agent}\" requires authentication. Please sign in via the agent, then select \"I've_ signed in\" below. To switch agents, go to Intelligent Terminal Settings > Agent. !!]"
+setup.subtitle.connection_failed: "[!! We_ couldn't start %{agent}. !!]"
 
 # {Locked="Intelligent Terminal"}, {Locked="Settings"}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "[!! (Wi_ll be installed automatically) !!]"
 setup.option.signin: "[!! Sig_n in to %{agent} !!]"
 setup.option.retry_detection: "[!! Try_ again !!]"
 setup.option.retry_auth: "[!! I've_ signed in — try connecting again !!]"
+setup.option.retry_connection: "[!! Try_ connecting again !!]"
 setup.status.installing: "[!! Ins_talling... !!]"
+setup.status.installing_copilot_cli: "[!! Ins_talling GitHub Copilot CLI... !!]"
+setup.status.connecting_agent: "[!! Con_necting to agent... !!]"
 setup.status.install_failed: "[!! Ins_tall failed:  !!]"
 setup.status.installing_winget: "[!!  In_stalling via winget... !!]"
+setup.error.install_start_failed: "[!! The_ installer could not be started. Select \"Try again\" to retry. !!]"
+setup.error.install_timed_out: "[!! The_ installation timed out. Select \"Try again\" before starting another installation. !!]"
+setup.error.install_detection_timed_out: "[!! Ins_tallation finished, but Copilot is not visible yet. Select \"Try again\" to check again. !!]"
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations
