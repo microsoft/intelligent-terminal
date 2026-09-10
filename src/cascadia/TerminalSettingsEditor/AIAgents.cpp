@@ -77,7 +77,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
     }
 
-    static void _UpdateCustomAgentRemoveVisibility(const Button& button)
+    static void _UpdateCustomAgentActionVisibility(const Button& button)
     {
         const auto entry = button.DataContext().try_as<Editor::AgentEntry>();
         bool isInExpandedList = false;
@@ -182,12 +182,60 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         LOG_HR(E_UNEXPECTED);
     }
 
-    void AIAgents::CustomAgentRemove_Loaded(
+    void AIAgents::CustomAgentEdit_Click(const IInspectable& sender, const RoutedEventArgs&)
+    {
+        const auto button = sender.as<Button>();
+        const auto entry = button.DataContext().try_as<Editor::AgentEntry>();
+        const auto viewModel = ViewModel();
+        if (!entry || entry.RemoveButtonVisibility() != Visibility::Visible)
+        {
+            LOG_HR(E_INVALIDARG);
+            return;
+        }
+        if (viewModel.IsCustomAgentPolicyLocked())
+        {
+            LOG_HR(E_ACCESSDENIED);
+            return;
+        }
+
+        ComboBox owner{ nullptr };
+        for (auto parent = VisualTreeHelper::GetParent(button);
+             parent;
+             parent = VisualTreeHelper::GetParent(parent))
+        {
+            if (const auto item = parent.try_as<ComboBoxItem>())
+            {
+                owner = ItemsControl::ItemsControlFromItemContainer(item).try_as<ComboBox>();
+                break;
+            }
+        }
+        if (!owner || (owner != AcpAgentComboBox() && owner != DelegateAgentComboBox()))
+        {
+            LOG_HR(E_UNEXPECTED);
+            return;
+        }
+
+        owner.IsDropDownOpen(false);
+        if (owner == AcpAgentComboBox())
+        {
+            viewModel.CurrentAcpAgent(entry);
+            viewModel.EditCustomAcpAgent();
+            CustomAcpCommandBox().Focus(FocusState::Programmatic);
+        }
+        else
+        {
+            viewModel.CurrentDelegateAgent(entry);
+            viewModel.EditCustomDelegateAgent();
+            CustomDelegateCommandBox().Focus(FocusState::Programmatic);
+        }
+    }
+
+    void AIAgents::CustomAgentAction_Loaded(
         const IInspectable& sender,
         const RoutedEventArgs&)
     {
         const auto button = sender.as<Button>();
-        _UpdateCustomAgentRemoveVisibility(button);
+        _UpdateCustomAgentActionVisibility(button);
 
         // ComboBox may reuse an expanded item's template for the collapsed
         // selection after Save. Register once per template instance and use
@@ -199,7 +247,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             button.LayoutUpdated([weakButton](const auto&, const auto&) {
                 if (const auto button = weakButton.get())
                 {
-                    _UpdateCustomAgentRemoveVisibility(button);
+                    _UpdateCustomAgentActionVisibility(button);
                 }
             });
         }

@@ -26,15 +26,29 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <TextBlock VerticalAlignment="Center"
                                Text="{x:Bind DisplayLabel}"
                                Opacity="{x:Bind local:AIAgents.InstalledOpacity(IsInstalled)}" />
                     <Button Grid.Column="1"
-                            x:Uid="AIAgents_CustomAgentRemove"
+                            x:Uid="Actions_EditButton"
                             Margin="8,0,0,0"
+                            AutomationProperties.AutomationId="CustomAgentEditButton"
+                            AutomationProperties.Name="{Binding Path=(ToolTipService.ToolTip), RelativeSource={RelativeSource Self}}"
+                            Click="CustomAgentEdit_Click"
+                            Loaded="CustomAgentAction_Loaded"
+                            Style="{StaticResource ExtraSmallButtonStyle}"
+                            Visibility="Collapsed">
+                        <FontIcon FontSize="12"
+                                  Glyph="&#xE70F;" />
+                    </Button>
+                    <Button Grid.Column="2"
+                            x:Uid="AIAgents_CustomAgentRemove"
+                            Margin="4,0,0,0"
+                            AutomationProperties.AutomationId="CustomAgentRemoveButton"
                             Click="{x:Bind Remove}"
-                            Loaded="CustomAgentRemove_Loaded"
+                            Loaded="CustomAgentAction_Loaded"
                             Style="{StaticResource ExtraSmallButtonStyle}"
                             Visibility="Collapsed">
                         <FontIcon FontSize="12"
@@ -174,12 +188,6 @@
                                Visibility="{x:Bind ViewModel.IsAgentPolicyLocked, Mode=OneWay}"
                                Opacity="0.6"
                                Margin="0,4,0,0" />
-                    <Button x:Name="CustomAcpAgentEditButton"
-                            Margin="0,8,0,0"
-                            HorizontalAlignment="Right"
-                            Click="{x:Bind ViewModel.EditCustomAcpAgent}"
-                            Content="Edit"
-                            Visibility="{x:Bind ViewModel.IsCustomAcpAgentSelected, Mode=OneWay}" />
                     <!--  Editable panel (adding new or editing existing)  -->
                     <StackPanel Orientation="Vertical"
                                 Visibility="{x:Bind ViewModel.IsAddingCustomAcpAgent, Mode=OneWay}"
@@ -528,12 +536,6 @@
                                Visibility="{x:Bind ViewModel.IsAgentPolicyLocked, Mode=OneWay}"
                                Opacity="0.6"
                                Margin="0,4,0,0" />
-                    <Button x:Name="CustomDelegateAgentEditButton"
-                            Margin="0,8,0,0"
-                            HorizontalAlignment="Right"
-                            Click="{x:Bind ViewModel.EditCustomDelegateAgent}"
-                            Content="Edit"
-                            Visibility="{x:Bind ViewModel.IsCustomDelegateAgentSelected, Mode=OneWay}" />
                     <StackPanel Orientation="Vertical"
                                 Visibility="{x:Bind ViewModel.IsAddingCustomDelegateAgent, Mode=OneWay}"
                                 Margin="0,8,0,0"
