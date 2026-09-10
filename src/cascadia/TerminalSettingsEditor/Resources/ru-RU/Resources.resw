@@ -2855,8 +2855,8 @@
   </data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
     <value>Создайте новую вкладку с CLI предпочитаемого агента, при необходимости добавив начальный запрос и контекст из активной панели.
-Alt+Shift+/: открыть палитру команд в режиме запроса; Alt+Shift+B: запустить в новой вкладке без начального запроса.</value>
-    <comment>{Locked="CLI","Alt+Shift+/","Alt+Shift+B"} Agent CLI help in Settings &gt; Agents. Keep exactly one line break between the description and the shortcut reference. The UI renders the hotkeys with the same keycap style as Settings &gt; Actions. Start the description after each shortcut colon with lowercase where the language uses case. Context comes from the active pane; launching without an initial prompt is still interactive.</comment>
+Alt+Shift+/ открыть палитру команд в режиме запроса; Alt+Shift+B запустить в новой вкладке без начального запроса.</value>
+    <comment>{Locked="CLI","Alt+Shift+/","Alt+Shift+B"} Agent CLI help in Settings &gt; Agents. Keep exactly one line break between the description and the shortcut reference. The UI renders the hotkeys with the same keycap style as Settings &gt; Actions. Start the description after each shortcut with lowercase where the language uses case. Context comes from the active pane; launching without an initial prompt is still interactive. Separate each hotkey and its description with a space, not a colon.</comment>
   </data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve">
     <value>Автоматически предлагать исправления для команд с ошибками</value>

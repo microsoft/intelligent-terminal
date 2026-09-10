@@ -745,8 +745,8 @@
     <comment>{Locked="CLI"} Header for the agent CLI selector in Settings &gt; Agents &gt; Command palette. Here "agent" means an AI intelligent agent (e.g. Copilot, Claude, Gemini), not a proxy or human agent. CLI means command-line interface.</comment>
   </data><data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
     <value>Направите нову картицу са жељеним CLI агентом, уз могућност укључивања упита и контекста из активног панела.
-Alt+Shift+/: отворите палету команди у режиму упита; Alt+Shift+B: покрените интерактивни CLI у новој картици без почетног упита.</value>
-    <comment>{Locked="CLI","Alt+Shift+/","Alt+Shift+B"} Agent CLI help in Settings &gt; Agents. Keep exactly one line break between the description and the shortcut reference. The UI renders the hotkeys with the same keycap style as Settings &gt; Actions. Start the description after each shortcut colon with lowercase where the language uses case. Context comes from the active pane; launching without an initial prompt is still interactive.</comment>
+Alt+Shift+/ отворите палету команди у режиму упита; Alt+Shift+B покрените интерактивни CLI у новој картици без почетног упита.</value>
+    <comment>{Locked="CLI","Alt+Shift+/","Alt+Shift+B"} Agent CLI help in Settings &gt; Agents. Keep exactly one line break between the description and the shortcut reference. The UI renders the hotkeys with the same keycap style as Settings &gt; Actions. Start the description after each shortcut with lowercase where the language uses case. Context comes from the active pane; launching without an initial prompt is still interactive. Separate each hotkey and its description with a space, not a colon.</comment>
   </data><data name="AIAgents_AutoFix.Header" xml:space="preserve">
     <value>Аутоматски предложи исправке за неуспеле команде</value>
     <comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment>
