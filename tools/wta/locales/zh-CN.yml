@@ -24,8 +24,9 @@ setup.status.installing_copilot_cli: "正在安装 GitHub Copilot CLI..."
 setup.status.connecting_agent: "正在连接智能体..."
 setup.status.install_failed: "安装失败："
 setup.status.installing_winget: " 正在通过 winget 安装..."
-setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."
-setup.error.install_detection_timed_out: "Installation finished, but Copilot is not visible yet. Select \"Try again\" to check again."
+setup.error.install_start_failed: "无法启动安装程序。选择“重试”以重试。"
+setup.error.install_timed_out: "安装超时。请先选择“重试”，再开始另一次安装。"
+setup.error.install_detection_timed_out: "安装已完成，但 Copilot 尚未显示。选择“重试”以再次检查。"
 
 # ── 认证流程 (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - 缩写，不翻译

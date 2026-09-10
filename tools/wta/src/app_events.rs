@@ -3816,8 +3816,7 @@ impl App {
                         crate::agent_check::AgentInstallOutcome::Installed
                         | crate::agent_check::AgentInstallOutcome::AlreadyAvailable => (
                             SetupFailureKind::Detection,
-                            t!("setup.error.install_failed", agent = agent_id.as_str())
-                                .into_owned(),
+                            t!("setup.error.install_detection_timed_out").into_owned(),
                         ),
                     };
                     setup.phase = SetupPhase::Failed { kind, message };

@@ -64,6 +64,53 @@ mod tests {
             .map(|value| value.trim_matches('"').to_string())
     }
 
+    fn locale_value(path: &Path, key: &str) -> Option<String> {
+        let body = std::fs::read_to_string(path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+        body.lines()
+            .find_map(|line| line.strip_prefix(&format!("{key}: ")))
+            .and_then(|value| value.split("  #").next())
+            .map(|value| value.trim_matches('"').to_string())
+    }
+
+    fn collect_rust_files(dir: &Path, files: &mut Vec<PathBuf>) {
+        for entry in std::fs::read_dir(dir).expect("read Rust source directory") {
+            let path = entry.expect("source entry").path();
+            if path.is_dir() {
+                collect_rust_files(&path, files);
+            } else if path.extension().and_then(|extension| extension.to_str()) == Some("rs") {
+                files.push(path);
+            }
+        }
+    }
+
+    fn literal_translation_keys(body: &str) -> BTreeSet<String> {
+        let mut keys = BTreeSet::new();
+        let mut search_from = 0;
+        while let Some(relative_offset) = body[search_from..].find("t!(\"") {
+            let macro_offset = search_from + relative_offset;
+            let preceded_by_identifier = body[..macro_offset]
+                .chars()
+                .next_back()
+                .is_some_and(|character| character.is_ascii_alphanumeric() || character == '_');
+            let value_start = macro_offset + 4;
+            let Some(relative_end) = body[value_start..].find('"') else {
+                break;
+            };
+            let candidate = &body[value_start..value_start + relative_end];
+            if !preceded_by_identifier
+                && !candidate.is_empty()
+                && candidate.chars().all(|character| {
+                    character.is_ascii_alphanumeric() || character == '_' || character == '.'
+                })
+            {
+                keys.insert(candidate.to_string());
+            }
+            search_from = value_start + relative_end + 1;
+        }
+        keys
+    }
+
     #[test]
     fn every_locale_has_all_en_us_keys() {
         let dir = locales_dir();
@@ -119,6 +166,70 @@ mod tests {
              string):\n{}",
             failures.len(),
             failures.join("\n")
+        );
+    }
+
+    #[test]
+    fn every_literal_translation_key_used_by_rust_exists_in_en_us() {
+        let catalog = keys_of(&locales_dir().join("en-US.yml"));
+        let mut source_files = Vec::new();
+        collect_rust_files(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+            &mut source_files,
+        );
+
+        let mut missing = Vec::new();
+        for path in source_files {
+            let body = std::fs::read_to_string(&path)
+                .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+            for key in literal_translation_keys(&body) {
+                if !catalog.contains(&key) {
+                    missing.push(format!("{}: {key}", path.display()));
+                }
+            }
+        }
+
+        assert!(
+            missing.is_empty(),
+            "literal t!() keys missing from en-US.yml:\n{}",
+            missing.join("\n")
+        );
+    }
+
+    #[test]
+    fn setup_install_localizations_preserve_runtime_and_locked_tokens() {
+        let mut failures = Vec::new();
+        for entry in std::fs::read_dir(locales_dir()).expect("read locales dir") {
+            let path = entry.expect("locale entry").path();
+            if path.extension().and_then(|extension| extension.to_str()) != Some("yml") {
+                continue;
+            }
+            let name = path.file_name().unwrap().to_string_lossy();
+            let connection_failed =
+                locale_value(&path, "setup.subtitle.connection_failed").unwrap_or_default();
+            let installing =
+                locale_value(&path, "setup.title.installing_copilot").unwrap_or_default();
+            let starting = locale_value(&path, "setup.title.starting_copilot").unwrap_or_default();
+            let installing_cli =
+                locale_value(&path, "setup.status.installing_copilot_cli").unwrap_or_default();
+            let detection_timed_out =
+                locale_value(&path, "setup.error.install_detection_timed_out").unwrap_or_default();
+
+            if !connection_failed.contains("%{agent}")
+                || !installing.contains("GitHub Copilot")
+                || !starting.contains("GitHub Copilot")
+                || !installing_cli.contains("GitHub Copilot")
+                || !installing_cli.contains("CLI")
+                || !detection_timed_out.contains("Copilot")
+            {
+                failures.push(name.to_string());
+            }
+        }
+
+        assert!(
+            failures.is_empty(),
+            "setup install localization lost a placeholder or locked token in: {}",
+            failures.join(", ")
         );
     }
 

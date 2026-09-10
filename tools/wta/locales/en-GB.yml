@@ -27,6 +27,7 @@ setup.status.installing_copilot_cli: "Installing GitHub Copilot CLI..."
 setup.status.connecting_agent: "Connecting to agent..."
 setup.status.install_failed: "Install failed: "
 setup.status.installing_winget: " Installing via winget..."
+setup.error.install_start_failed: "The installer could not be started. Select \"Try again\" to retry."
 setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."
 setup.error.install_detection_timed_out: "Installation finished, but Copilot is not visible yet. Select \"Try again\" to check again."
 

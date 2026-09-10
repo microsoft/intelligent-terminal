@@ -4387,7 +4387,7 @@ impl App {
             if let Some(setup) = self.setup.as_mut() {
                 setup.phase = SetupPhase::Failed {
                     kind: SetupFailureKind::Install,
-                    message: "The installer could not be started.".to_string(),
+                    message: t!("setup.error.install_start_failed").into_owned(),
                 };
             }
         }
