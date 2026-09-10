@@ -126,13 +126,10 @@ Resources/(?!en)
 ^XamlStyler\.json$
 ^\.clang-format$
 ^\.github/
-^\.github/skills/upstream-sync/
-^\.github/workflows/spelling\d*\.yml$
 ^\.vsconfig$
 ^\Qbuild/config/release.gdnbaselines\E$
 ^\Qdep/WinAppDriver/EULA.rtf\E$
 ^\Qdoc/reference/windows-terminal-logo.ans\E$
-^\Q.github/instructions/agent-skills.instructions.md\E$
 ^\Qsrc/cascadia/ut_app/FzfTests.cpp\E$
 ^\Qsrc/host/ft_host/chafa.txt\E$
 ^\Qsrc/host/ft_host/Host.Tests.Feature.rc\E$
@@ -143,4 +140,3 @@ Resources/(?!en)
 ^\Qsrc/tools/lnkd/lnkd.bat\E$
 ^\Qsrc/tools/pixels/pixels.bat\E$
 ^test/e2e/
-^\.github/skills/store-listing-localizer/
