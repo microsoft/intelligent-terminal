@@ -50,9 +50,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         .border_style(border_style)
         .style(Style::new().bg(theme::INPUT_BG))
         .padding(Padding::new(INPUT_LEFT_PAD, 0, 0, 0));
-    let text_width = area
-        .width
-        .saturating_sub(INPUT_LEFT_PAD + 2 + INPUT_PROMPT_WIDTH);
+    let text_width = input_text_width(area.width);
     let viewport = input_viewport_with_max_rows(
         &tab.input,
         tab.cursor_pos,
@@ -175,11 +173,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 pub(crate) fn input_height(input: &str, cursor_pos: usize, total_width: u16) -> u16 {
-    let viewport = input_viewport(
-        input,
-        cursor_pos,
-        total_width.saturating_sub(INPUT_LEFT_PAD + 2 + INPUT_PROMPT_WIDTH),
-    );
+    let viewport = input_viewport(input, cursor_pos, input_text_width(total_width));
     (viewport.visible_lines.len() as u16 + 2).clamp(INPUT_MIN_HEIGHT, INPUT_MAX_HEIGHT)
 }
 
@@ -298,6 +292,63 @@ pub(crate) fn input_viewport(input: &str, cursor_pos: usize, total_width: u16) -
     input_viewport_with_max_rows(input, cursor_pos, total_width, INPUT_MAX_INNER_ROWS)
 }
 
+fn input_text_width(total_width: u16) -> u16 {
+    total_width
+        .saturating_sub(INPUT_LEFT_PAD + 2 + INPUT_PROMPT_WIDTH)
+        .max(1)
+}
+
+pub(crate) fn adjacent_input_cursor(
+    input: &str,
+    cursor_pos: usize,
+    total_width: u16,
+    upward: bool,
+    preferred_column: Option<usize>,
+) -> Option<(usize, usize)> {
+    let width = usize::from(input_text_width(total_width));
+    let cursor_pos = clamp_cursor_to_boundary(input, cursor_pos);
+    // Keep a trailing caret row reachable during an established vertical sequence,
+    // without inventing an initial Down target for a full-width single visible row.
+    let layout_cursor = if preferred_column.is_some() {
+        input.len()
+    } else {
+        cursor_pos
+    };
+    let wrapped = wrap_input(input, layout_cursor, width);
+    let row = wrapped
+        .line_starts
+        .partition_point(|start| *start <= cursor_pos)
+        .saturating_sub(1);
+    let in_line = cursor_pos
+        .saturating_sub(wrapped.line_starts[row])
+        .min(wrapped.lines[row].len());
+    let column = preferred_column.unwrap_or_else(|| {
+        wrapped.lines[row][..in_line]
+            .chars()
+            .map(char_display_width)
+            .sum()
+    });
+    let target_row = if upward {
+        row.checked_sub(1)?
+    } else {
+        row.checked_add(1)?
+    };
+    let line = wrapped.lines.get(target_row)?;
+    let start = wrapped.line_starts[target_row];
+    let mut position = start;
+    let mut display_column = 0;
+    for (offset, ch) in line.char_indices() {
+        let next_column = display_column + char_display_width(ch);
+        // A full-row end would put the caret on the next row or behind the border.
+        if next_column > column || next_column >= width {
+            break;
+        }
+        position = start + offset + ch.len_utf8();
+        display_column = next_column;
+    }
+    Some((position, column))
+}
+
 fn input_viewport_with_max_rows(
     input: &str,
     cursor_pos: usize,
@@ -365,6 +416,9 @@ fn wrap_input(input: &str, cursor_pos: usize, max_width: usize) -> WrappedInput 
             lines.push(String::new());
             line_starts.push(idx);
             col = 0;
+            if idx == cursor_pos {
+                cursor = Some((row, col));
+            }
         }
 
         lines[row].push(ch);
@@ -480,6 +534,12 @@ mod tests {
         assert_eq!(viewport.cursor_col, 0);
         // inner width 8 (= 13 - 5 borders/pad/prefix): 2 rows + 2 borders.
         assert_eq!(input_height("abcdefgh", 8, 13), 4);
+    }
+
+    #[test]
+    fn input_vertical_soft_wrap_boundary_uses_the_next_row() {
+        let viewport = input_viewport("alpha bravo delta echo", 12, 6);
+        assert_eq!((viewport.cursor_row, viewport.cursor_col), (2, 0));
     }
 
     #[test]

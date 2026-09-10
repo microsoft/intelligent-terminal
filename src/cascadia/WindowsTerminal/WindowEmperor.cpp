@@ -325,7 +325,7 @@ void WindowEmperor::CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs args
     auto* const addedHost = host.get();
     {
         std::lock_guard lock{ _windowsMutex };
-        _windows.emplace_back(std::move(host));
+        _windows.emplace_back(host);
     }
     // A window exists now, so this process owns the persisted layout and there
     // is nothing left to defer.
@@ -361,6 +361,9 @@ void WindowEmperor::CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs args
         }
     }
 
+    // Startup layout can run before Initialize returns. Do not acknowledge
+    // a transfer until this host is counted, registered, and in COM fan-out.
+    addedHost->Logic().ContentTransferReceiverReady();
 }
 
 // Public entry point used by in-process callers (e.g. AppHost reacting to a

@@ -402,7 +402,8 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 #ifndef NDEBUG
             if (_dispatcher)
             {
-                // _closing isn't atomic and may only be accessed from the main thread.
+                // Normal core access remains dispatcher-bound. Close() may also
+                // retire exclusively owned, abandoned content on a worker.
                 //
                 // Though, the unit tests don't actually run in TAEF's main
                 // thread, so we don't care when we're running in tests.
@@ -452,7 +453,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         uint16_t _lastHoveredId{ 0 };
         std::atomic<bool> _initializedTerminal{ false };
         bool _isReadOnly{ false };
-        bool _closing{ false };
+        std::atomic<bool> _closing{ false };
 
         struct StashedColorScheme
         {

@@ -4431,6 +4431,16 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                                     restart_required: false,
                                 });
                             } else {
+                                let owner_changed = client_state
+                                    .yolo_state
+                                    .lock()
+                                    .unwrap()
+                                    .mark_manual_if_allowed(session_id.to_string());
+                                if owner_changed {
+                                    let _ = event_tx.send(AppEvent::YoloControlOwnerChanged {
+                                        session_id: session_id.to_string(),
+                                    });
+                                }
                                 let _ = event_tx.send(AppEvent::SessionConfigSetCompleted {
                                     session_id: session_id.to_string(),
                                     config_id,
@@ -5581,22 +5591,20 @@ async fn dispatch_prompt_body(
             let (available_models, current_model_id) =
                 crate::protocol::acp::model_select::models_from_new_session(&new_session);
             record_native_yolo(&new_session, &client_task.state);
-            let enabled = client_task
-                .state
-                .yolo_state
-                .lock()
-                .unwrap()
-                .effective(new_sid.0.as_ref());
+            let enabled = {
+                let mut state = client_task.state.yolo_state.lock().unwrap();
+                state.remove_session(new_sid.0.as_ref());
+                let enabled = state
+                    .automatic_directive(new_sid.0.as_ref())
+                    .target()
+                    .expect("a freshly-created session must have an automatic target");
+                state.mark_client_reconciled(new_sid.to_string(), enabled);
+                enabled
+            };
             let yolo_operation = client_task
                 .state
                 .native_yolo
                 .reserve_operation(new_sid.clone(), enabled);
-            client_task
-                .state
-                .yolo_state
-                .lock()
-                .unwrap()
-                .mark_client_reconciled(new_sid.to_string(), enabled);
             tab_to_session_task
                 .lock()
                 .await
@@ -5636,12 +5644,12 @@ async fn dispatch_prompt_body(
                 // As with config/reconcile, an ordinary ACP rejection
                 // cannot attest that a requested disable left privileged mode.
                 let restart_required = !enabled || error.restart_required();
-                let policy_blocked = client_task
+                let policy_blocked = !client_task
                     .state
                     .yolo_state
                     .lock()
                     .unwrap()
-                    .policy_blocked();
+                    .can_user_request_enable();
                 let error = error.to_string();
                 tracing::warn!(
                     target: "yolo",
@@ -5688,12 +5696,12 @@ async fn dispatch_prompt_body(
         return;
     }
 
-    let policy_blocked = client_task
+    let policy_blocked = !client_task
         .state
         .yolo_state
         .lock()
         .unwrap()
-        .policy_blocked();
+        .can_user_request_enable();
     if client_task
         .state
         .native_yolo
@@ -5716,12 +5724,12 @@ async fn dispatch_prompt_body(
         return;
     }
 
-    if client_task
+    if !client_task
         .state
         .yolo_state
         .lock()
         .unwrap()
-        .policy_blocked()
+        .can_user_request_enable()
     {
         if let Some(command_name) = client_task
             .state
@@ -5845,6 +5853,10 @@ async fn dispatch_prompt_body(
         .native_yolo
         .privileged_agent_command(&prompt.text)
         .map(str::to_string);
+    let prompt_yolo_generation = client_task
+        .state
+        .native_yolo
+        .session_generation(&prompt_session_id);
     let yolo_state = Arc::clone(&client_task.state.yolo_state);
     let native_yolo = Arc::clone(&client_task.state.native_yolo);
     let final_yolo_safety_error = Arc::new(Mutex::new(None::<(String, &'static str)>));
@@ -5863,6 +5875,7 @@ async fn dispatch_prompt_body(
     let telemetry_is_agent_command = prompt.is_agent_command();
     let prompt_started = Arc::new(AtomicBool::new(false));
     let cancelled_at_send = Arc::new(AtomicBool::new(false));
+    let yolo_state_for_guard = Arc::clone(&yolo_state);
     let prompt_fut = conn_task.prompt_if(
         acp::schema::v1::PromptRequest::new(prompt_session_id.clone(), content),
         {
@@ -5877,8 +5890,13 @@ async fn dispatch_prompt_body(
                     cancelled_at_send.store(true, Ordering::Release);
                     return false;
                 }
-                let policy_blocked = yolo_state.lock().unwrap().policy_blocked();
-                let provider_command_blocked = privileged_agent_command.is_some() && policy_blocked;
+                let can_user_request_enable = yolo_state_for_guard
+                    .lock()
+                    .unwrap()
+                    .can_user_request_enable();
+                let policy_blocked = !can_user_request_enable;
+                let provider_command_blocked =
+                    privileged_agent_command.is_some() && !can_user_request_enable;
                 let yolo_safety_error = if provider_command_blocked {
                     None
                 } else if native_yolo
@@ -6017,6 +6035,34 @@ async fn dispatch_prompt_body(
                     let result = result.map(|response| {
                         response.expect("prompt guard returns None only when policy blocks")
                     });
+                    let accepted_privileged_command = privileged_agent_command.is_some()
+                        && result.as_ref().is_ok_and(|response| {
+                            response.stop_reason == acp::schema::v1::StopReason::EndTurn
+                        });
+                    if accepted_privileged_command {
+                        let session_is_current = {
+                            let sessions = tab_to_session_task.lock().await;
+                            let current_tab =
+                                resolve_tab_alias(&tab_aliases_task, &tab_key_task);
+                            sessions.get(&current_tab) == Some(&prompt_session_id)
+                        } && client_task
+                            .state
+                            .native_yolo
+                            .session_generation(&prompt_session_id)
+                            == prompt_yolo_generation;
+                        if session_is_current {
+                            let owner_changed = yolo_state
+                                .lock()
+                                .unwrap()
+                                .mark_manual_if_allowed(prompt_session_id_str.clone());
+                            if owner_changed {
+                                let _ =
+                                    event_tx_task.send(AppEvent::YoloControlOwnerChanged {
+                                        session_id: prompt_session_id_str.clone(),
+                                    });
+                            }
+                        }
+                    }
                     // Peek the successful turn's stop_reason (the response is consumed
                     // by `complete_prompt_request`). A soft stop is not an error; the
                     // Err arm is classified separately by `from_acp_error`.

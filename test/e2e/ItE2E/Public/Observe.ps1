@@ -67,20 +67,26 @@ function Start-WtEventListener {
         Start a background `wtcli listen --json` and buffer parsed events into a
         synchronized list. Start this BEFORE the action you want to observe.
     .OUTPUTS
-        Listener object: @{ Process; Events; Reg; App }
+        Listener object: @{ Process; Events; Reg; SourceId; App; SubscriptionReady }
+    .PARAMETER WaitForReady
+        Wait for wtcli to confirm Subscribe before returning. The internal readiness
+        marker is removed from the buffered events so callers see only product events.
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory, ValueFromPipeline)]$App,
         [string]$EventFilter,
         [string]$SessionId,
-        [switch]$SkipAuthenticate
+        [switch]$SkipAuthenticate,
+        [switch]$WaitForReady
     )
     process {
         if (-not $App.ComClsid) { Resolve-WtComClsid -App $App | Out-Null }
         $args = @('--json')
         if ($SkipAuthenticate) { $args += '--skip-authenticate' }
         $args += 'listen'
+        $readyToken = [guid]::NewGuid().ToString('N')
+        if ($WaitForReady) { $args += @('--ready-token', $readyToken) }
         if ($SessionId) { $args += @('-t', $SessionId) }
         if ($EventFilter) { $args += @('--event', $EventFilter) }
 
@@ -104,9 +110,27 @@ function Start-WtEventListener {
         # deterministically (don't rely on the auto-generated job name).
         $sourceId = "ItE2E.WtEventListener.$([guid]::NewGuid())"
         $reg = Register-ObjectEvent -InputObject $p -EventName OutputDataReceived -Action $handler -MessageData $events -SourceIdentifier $sourceId
-        [void]$p.Start(); $p.BeginOutputReadLine(); $p.BeginErrorReadLine()
+        $listener = [pscustomobject]@{
+            Process = $p; Events = $events; Reg = $reg; SourceId = $sourceId; App = $App
+            SubscriptionReady = $false
+        }
+        try {
+            [void]$p.Start(); $p.BeginOutputReadLine(); $p.BeginErrorReadLine()
+            if ($WaitForReady) {
+                $ready = Wait-WtEvent -Listener $listener -TimeoutSec 10 -Predicate ({
+                    $_.PSObject.Properties.Name -contains '_wtcli' -and
+                    $_._wtcli -eq 'listener_ready' -and $_.token -eq $readyToken
+                }.GetNewClosure())
+                [void]$events.Remove($ready)
+                $listener.SubscriptionReady = $true
+            }
+        }
+        catch {
+            Stop-WtEventListener -Listener $listener
+            throw
+        }
         Write-ItLog -Level INFO -Message "Event listener started (filter='$EventFilter' session='$SessionId')."
-        [pscustomobject]@{ Process = $p; Events = $events; Reg = $reg; SourceId = $sourceId; App = $App }
+        $listener
     }
 }
 

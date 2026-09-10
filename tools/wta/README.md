@@ -154,6 +154,14 @@ the first 4,000 Unicode characters, all scrollable when expanded. Text results s
 up to 12 wrapped lines, with `…` for omitted text. Expansion follows the tool
 into completed history.
 
+Chat follows new output while you are at the bottom. Scrolling up preserves your
+reading position as text streams, tools update, and turns finish; scrolling back
+to the bottom resumes following. Sending a prompt or clearing/loading a session
+still resets the view. Streaming thinking retains its latest 4,000 characters;
+your reading position follows the same retained text even when older text is
+trimmed. If the text you were reading is removed or a thinking block collapses,
+the view clamps to surviving content.
+
 | Key | Action |
 |-----|--------|
 | Type + Enter | Send prompt to agent |

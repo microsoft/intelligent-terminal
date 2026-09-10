@@ -140,7 +140,7 @@ void AppHost::_HandleCommandlineArgs(const winrt::TerminalApp::WindowRequestedAr
     }
     else if (const auto content = windowArgs.Content(); !content.empty())
     {
-        _windowLogic.SetStartupContent(content, windowArgs.InitialBounds());
+        _windowLogic.SetStartupContent(content, windowArgs.InitialBounds(), windowArgs.TransferId());
         _launchShowWindowCommand = SW_NORMAL;
     }
     else if (const auto actions = windowArgs.StartupActions(); actions && actions.Size() > 0)
@@ -1352,6 +1352,7 @@ winrt::TerminalApp::TerminalWindow AppHost::Logic()
 void AppHost::_handleMoveContent(const winrt::Windows::Foundation::IInspectable& /*sender*/,
                                  winrt::TerminalApp::RequestMoveContentArgs args)
 {
+    const auto keepAlive = shared_from_this();
     winrt::Windows::Foundation::IReference<winrt::Windows::Foundation::Rect> windowBoundsReference{ nullptr };
 
     if (args.WindowPosition() && _window)
@@ -1429,11 +1430,13 @@ void AppHost::_handleMoveContent(const winrt::Windows::Foundation::IInspectable&
 
     if (target)
     {
-        target->_windowLogic.AttachContent(args.Content(), args.TabIndex());
+        target->_windowLogic.AttachContent(args.Content(), args.TabIndex(), args.TransferId());
     }
     else
     {
-        _windowManager->CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs{ sanitizedWindowName, args.Content(), windowBoundsReference });
+        const auto windowArgs = winrt::TerminalApp::WindowRequestedArgs{ sanitizedWindowName, args.Content(), windowBoundsReference };
+        windowArgs.TransferId(args.TransferId());
+        _windowManager->CreateNewWindow(windowArgs);
     }
 }
 

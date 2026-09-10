@@ -25,6 +25,7 @@ pub(crate) struct HelperConfig {
     pub(crate) owner_window_id: Option<String>,
     pub(crate) initial_load_session_id: Option<String>,
     pub(crate) initial_load_cwd: Option<String>,
+    pub(crate) initial_yolo_control_owner: Option<crate::app_contracts::YoloControlOwner>,
     pub(crate) start_stashed: bool,
 }
 
