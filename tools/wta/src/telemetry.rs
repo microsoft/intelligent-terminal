@@ -161,15 +161,10 @@ pub fn log_acp_new_session_complete(
 /// durable agent-pane restore and an explicit resume from the session view;
 /// the event deliberately does not distinguish those callers.
 ///
-/// `duration_ms` is monotonic. `failure_kind` is empty on success,
-/// `Timeout` when no response arrived before the local timeout, or
-/// `AcpError` when the agent returned a JSON-RPC/ACP error.
-pub fn log_acp_load_session_complete(
-    duration_ms: f64,
-    success: bool,
-    failure_kind: &str,
-    acp_error_code: i32,
-) {
+/// `duration_ms` is monotonic. The event intentionally records only
+/// completion latency and success so it remains independent of which layer
+/// enforced a timeout or returned an ACP error.
+pub fn log_acp_load_session_complete(duration_ms: f64, success: bool) {
     let success_i32: i32 = if success { 1 } else { 0 };
     tlg::write_event!(
         AGENT_PROVIDER,
@@ -178,8 +173,6 @@ pub fn log_acp_load_session_complete(
         keyword(MICROSOFT_KEYWORD_MEASURES),
         f64("DurationMs", &duration_ms),
         bool32("Success", &success_i32),
-        str8("FailureKind", failure_kind),
-        i32("AcpErrorCode", &acp_error_code),
         u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_PERFORMANCE),
     );
 }

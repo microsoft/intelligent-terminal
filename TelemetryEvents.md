@@ -27,7 +27,6 @@ Terminal-specific events:
 | Event | Trigger | Fields |
 |---|---|---|
 | `AgentPaneOpened` | An agent pane is created, restored, or opened into a requested view. Closing or stashing the pane does not emit this event. | `TriggerSource`, `Branding` |
-| `DurableSessionRestore` | Terminal restores a saved agent pane from a saved window layout. | `Success` |
 | `CommandPaletteDispatchedAgentPrompt` | A foreground or background agent prompt is submitted through the Command Palette. | `IsBackgroundMode` |
 | `DelegateInvoked` | Terminal successfully launches `wta delegate`. | `TriggerSource` (`CommandPalette` or `Action`) |
 | `ErrorDetected` | Terminal receives the first auto-detected error state for a pane. | `Branding` |
@@ -75,7 +74,7 @@ content variant additionally restores ordinary terminal scrollback.
 |---|---|---|
 | `AcpInitializeComplete` | An ACP `initialize` attempt completes or times out. | `DurationMs`, `Success`, `Route`, `FailureKind`, `AcpErrorCode` |
 | `AcpNewSessionComplete` | An ACP `session/new` attempt completes or times out. | `SessionId` (empty on failure), `DurationMs`, `Success`, `Route`, `FailureKind`, `AcpErrorCode` |
-| `AcpLoadSessionComplete` | An ACP `session/load` attempt completes or times out, covering both durable agent-pane restore and an explicit resume from the session view. | `DurationMs`, `Success`, `FailureKind`, `AcpErrorCode` |
+| `AcpLoadSessionComplete` | An ACP `session/load` attempt completes, covering both durable agent-pane restore and an explicit resume from the session view. | `DurationMs`, `Success` |
 | `AgentColdStartComplete` | A newly spawned agent process finishes or fails its ACP initialization. Warm process-pool reuse does not emit this event. | `AgentId`, `Source`, `DurationMs`, `Success`, `FailureKind` |
 
 ACP lifecycle durations use monotonic clocks. `FailureKind` is empty on success;

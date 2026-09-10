@@ -4631,12 +4631,9 @@ fn dispatch_load_session_with_aliases(
         // keeps us from hanging forever if the agent never responds.
         let load_started = std::time::Instant::now();
         let load_result = tokio::time::timeout(timeout, conn.load_session(load_req)).await;
-        let (failure_kind, acp_error_code) = timeout_result_failure_fields(&load_result);
         crate::telemetry::log_acp_load_session_complete(
             elapsed_ms_since(load_started),
             matches!(load_result, Ok(Ok(_))),
-            failure_kind,
-            acp_error_code,
         );
 
         match load_result {

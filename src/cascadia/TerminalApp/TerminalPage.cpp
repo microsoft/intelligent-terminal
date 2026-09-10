@@ -1596,25 +1596,17 @@ namespace winrt::TerminalApp::implementation
             tab->AgentPanePositionOverride(savedPosition);
         }
 
-        const auto restored = _AutoCreateHiddenAgentPaneShared(tab,
-                                                               intoSessionsView,
-                                                               /*autoStash*/ stashed,
-                                                               winrt::to_string(fields.sessionId),
-                                                               winrt::to_string(contentArgs.StartingDirectory()),
-                                                               {},
-                                                               winrt::to_string(fields.view),
-                                                               std::wstring_view{ savedPosition },
-                                                               splitSize,
-                                                               /*focusPane*/ !stashed,
-                                                               std::wstring_view{ fields.yoloControlOwner });
-        TraceLoggingWrite(
-            g_hTerminalAppProvider,
-            "DurableSessionRestore",
-            TraceLoggingDescription("Event emitted when Terminal restores an agent pane from a saved layout"),
-            TraceLoggingBoolean(restored, "Success"),
-            TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
-            TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
-        return restored;
+        return _AutoCreateHiddenAgentPaneShared(tab,
+                                                intoSessionsView,
+                                                /*autoStash*/ stashed,
+                                                winrt::to_string(fields.sessionId),
+                                                winrt::to_string(contentArgs.StartingDirectory()),
+                                                {},
+                                                winrt::to_string(fields.view),
+                                                std::wstring_view{ savedPosition },
+                                                splitSize,
+                                                /*focusPane*/ !stashed,
+                                                std::wstring_view{ fields.yoloControlOwner });
     }
 
     // Resolve the effective delegate agent name from structured settings.
