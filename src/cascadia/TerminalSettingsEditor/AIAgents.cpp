@@ -17,41 +17,84 @@ using namespace winrt::Microsoft::Terminal::Settings::Model;
 
 namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 {
-    static void _FormatInlineShortcuts(const TextBlock& textBlock, std::wstring_view text)
+    static void _FormatInlineShortcuts(const RichTextBlock& textBlock, std::wstring_view text, const DataTemplate& keyChordTemplate)
     {
         constexpr std::wstring_view promptShortcut{ L"Alt+Shift+/" };
         constexpr std::wstring_view directShortcut{ L"Alt+Shift+B" };
-        const FontFamily codeFont{ L"Cascadia Mono, Consolas" };
-        const auto inlines = textBlock.Inlines();
-        inlines.Clear();
-        const auto append = [&](const std::wstring_view value, const bool code) {
-            if (!value.empty())
-            {
-                Run run;
-                run.Text(winrt::hstring{ value });
-                if (code)
-                {
-                    run.FontFamily(codeFont);
-                }
-                inlines.Append(run);
-            }
-        };
-
+        textBlock.Blocks().Clear();
         while (!text.empty())
         {
-            const auto promptPos = text.find(promptShortcut);
-            const auto directPos = text.find(directShortcut);
-            const auto pos = std::min(promptPos, directPos);
-            if (pos == std::wstring_view::npos)
+            const auto newline = text.find(L'\n');
+            auto line = text.substr(0, newline);
+            Paragraph paragraph;
+            const auto inlines = paragraph.Inlines();
+            const auto appendText = [&](const std::wstring_view value) {
+                if (!value.empty())
+                {
+                    Run run;
+                    run.Text(winrt::hstring{ value });
+                    inlines.Append(run);
+                }
+            };
+            while (!line.empty())
             {
-                append(text, false);
-                break;
+                const auto promptPos = line.find(promptShortcut);
+                const auto directPos = line.find(directShortcut);
+                const auto pos = std::min(promptPos, directPos);
+                if (pos == std::wstring_view::npos)
+                {
+                    appendText(line);
+                    break;
+                }
+
+                const auto shortcut = promptPos <= directPos ? promptShortcut : directShortcut;
+                appendText(line.substr(0, pos));
+                const auto badge = keyChordTemplate.LoadContent().as<Border>();
+                const auto label = badge.Child().as<TextBlock>();
+                label.Text(winrt::hstring{ shortcut });
+                // Establish the font metrics before the rich-text layout consumes the keycap.
+                badge.Measure({ std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity() });
+                const auto align = [weakBadge = make_weak(badge), weakParagraph = make_weak(paragraph)](const auto&, const auto&) {
+                    const auto badge = weakBadge.get();
+                    const auto paragraph = weakParagraph.get();
+                    if (badge && paragraph)
+                    {
+                        const auto label = badge.Child().as<TextBlock>();
+                        const auto padding = badge.Padding();
+                        const auto stroke = badge.BorderThickness();
+                        const auto textHeight = label.ActualHeight() > 0 ? label.ActualHeight() : label.DesiredSize().Height;
+                        auto margin = badge.Margin();
+                        const auto bottom = std::min(0.0, label.BaselineOffset() - textHeight - padding.Bottom - stroke.Bottom);
+                        if (margin.Bottom != bottom)
+                        {
+                            margin.Bottom = bottom;
+                            badge.Margin(margin);
+                        }
+                        // Reserve the entire keycap height when shortcut text wraps.
+                        const auto height = textHeight + padding.Top + padding.Bottom + stroke.Top + stroke.Bottom;
+                        if (paragraph.LineHeight() != height)
+                        {
+                            paragraph.LineHeight(height);
+                        }
+                    }
+                };
+                badge.Loaded(align);
+                badge.SizeChanged(align);
+                label.Loaded(align);
+                label.SizeChanged(align);
+                align(nullptr, nullptr);
+                InlineUIContainer inlineBadge;
+                inlineBadge.Child(badge);
+                inlines.Append(inlineBadge);
+                line.remove_prefix(pos + shortcut.size());
             }
 
-            const auto shortcut = promptPos <= directPos ? promptShortcut : directShortcut;
-            append(text.substr(0, pos), false);
-            append(shortcut, true);
-            text.remove_prefix(pos + shortcut.size());
+            textBlock.Blocks().Append(paragraph);
+            if (newline == std::wstring_view::npos)
+            {
+                break;
+            }
+            text.remove_prefix(newline + 1);
         }
     }
 
@@ -160,26 +203,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         CustomProviderApiKeyBox().MaxWidth(width);
     }
 
-    void AIAgents::DelegateAgent_Loaded(const IInspectable& sender, const RoutedEventArgs&)
+    void AIAgents::DelegateAgentHelp_Loaded(const IInspectable& sender, const RoutedEventArgs&)
     {
-        const auto container = sender.as<Editor::SettingContainer>();
-        const auto description = container.HelpText();
-        std::vector<DependencyObject> children{ container };
-        for (size_t i = 0; i < children.size(); ++i)
-        {
-            const auto child = children[i];
-            if (const auto text = child.try_as<TextBlock>(); text && text.Name() == L"HelpTextBlock")
-            {
-                _FormatInlineShortcuts(text, description);
-                return;
-            }
-            const auto count = VisualTreeHelper::GetChildrenCount(child);
-            for (int32_t index = 0; index < count; ++index)
-            {
-                children.emplace_back(VisualTreeHelper::GetChild(child, index));
-            }
-        }
-        LOG_HR(E_UNEXPECTED);
+        const auto text = sender.as<RichTextBlock>();
+        const auto description = unbox_value<winrt::hstring>(text.Tag());
+        const auto keyChordTemplate = Resources().Lookup(box_value(L"KeyChordLabelTemplate")).as<DataTemplate>();
+        _FormatInlineShortcuts(text, description, keyChordTemplate);
     }
 
     void AIAgents::CustomAgentEdit_Click(const IInspectable& sender, const RoutedEventArgs&)
