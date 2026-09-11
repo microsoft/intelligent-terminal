@@ -10,6 +10,8 @@
 #include <json/json.h>
 #include <til/io.h>
 #include "../TerminalProtocol/ProtocolParsing.h"
+#include "../TerminalProtocol/ProtocolActivation.h"
+#include "../TerminalApp/AgentPaneLog.h"
 
 #include <algorithm>
 #include <thread>
@@ -31,6 +33,7 @@ static DWORD g_comRegistration = 0;
 static std::shared_mutex g_mtx;
 static std::thread g_comMtaThread;
 static wil::unique_event g_comMtaStop;
+static GUID g_endpointClsid{};
 
 // Static instance tracking for event delivery to COM clients
 std::mutex TerminalProtocolComServer::s_instancesMutex;
@@ -58,15 +61,20 @@ try
 
     g_comMtaThread = std::thread([&ready, &regHr]() {
         auto coInit = wil::CoInitializeEx(COINIT_MULTITHREADED);
+        Microsoft::Terminal::Protocol::Activation::ProxyRegistration proxy;
+        Microsoft::Terminal::Protocol::Activation::RunningFactoryRegistration runningFactory;
+        TOKEN_ELEVATION elevation{};
+        DWORD tokenSize{};
 
         // Classic-COM class factory (WRL) — marshaled via the OpenConsoleProxy
         // proxy/stub, not WinRT MBM.
         const auto factory = Make<SimpleClassFactory<TerminalProtocolComServer>>();
-        if (!factory)
+        regHr = proxy.Initialize({ __uuidof(ITerminalProtocol), __uuidof(ITerminalProtocolEventSink) });
+        if (SUCCEEDED(regHr) && !factory)
         {
             regHr = E_OUTOFMEMORY;
         }
-        else
+        else if (SUCCEEDED(regHr))
         {
             ComPtr<IUnknown> unk;
             regHr = factory.As(&unk);
@@ -79,12 +87,40 @@ try
                     REGCLS_MULTIPLEUSE,
                     &g_comRegistration);
             }
+            if (SUCCEEDED(regHr) &&
+                !GetTokenInformation(GetCurrentProcessToken(), TokenElevation, &elevation, sizeof(elevation), &tokenSize))
+            {
+                regHr = HRESULT_FROM_WIN32(GetLastError());
+            }
+            if (SUCCEEDED(regHr))
+            {
+                g_endpointClsid = __uuidof(TerminalProtocolComServer);
+                if (elevation.TokenIsElevated)
+                {
+                    regHr = runningFactory.Initialize(factory.Get());
+                }
+                if (SUCCEEDED(regHr) && elevation.TokenIsElevated)
+                {
+                    g_endpointClsid = runningFactory.Clsid();
+                }
+            }
         }
 
+        winrt::TerminalApp::implementation::_agentPaneLog(fmt::format(
+            "WT protocol registration: pid={} elevated={} result=0x{:08X} endpoint={}",
+            GetCurrentProcessId(),
+            elevation.TokenIsElevated,
+            static_cast<uint32_t>(regHr),
+            winrt::to_string(winrt::to_hstring(g_endpointClsid))));
         ready.SetEvent();
 
         // Keep this MTA thread alive so the COM registration stays active.
         WaitForSingleObject(g_comMtaStop.get(), INFINITE);
+        if (g_comRegistration)
+        {
+            LOG_IF_FAILED(CoRevokeClassObject(g_comRegistration));
+            g_comRegistration = 0;
+        }
     });
 
     ready.wait();
@@ -93,16 +129,14 @@ try
 }
 CATCH_RETURN()
 
+GUID TerminalProtocolComServer::s_EndpointClsid() noexcept
+{
+    return g_endpointClsid;
+}
+
 HRESULT TerminalProtocolComServer::s_StopListening()
 {
     std::unique_lock lock{ g_mtx };
-
-    HRESULT result = S_OK;
-    if (g_comRegistration)
-    {
-        result = CoRevokeClassObject(g_comRegistration);
-        g_comRegistration = 0;
-    }
 
     // Signal the MTA thread to exit
     if (g_comMtaStop)
@@ -114,7 +148,7 @@ HRESULT TerminalProtocolComServer::s_StopListening()
         g_comMtaThread.join();
     }
 
-    return result;
+    return S_OK;
 }
 
 TerminalProtocolComServer::~TerminalProtocolComServer()

@@ -7,6 +7,7 @@
 #include "Formatting.h"
 #include "wtcli_functions.h"
 #include "../../cascadia/TerminalProtocol/ProtocolParsing.h"
+#include "../../cascadia/TerminalProtocol/ProtocolActivation.h"
 
 // Classic-COM Terminal protocol. Generated from
 // src/host/proxy/ITerminalProtocol.idl; found via the OpenConsoleProxy IntDir
@@ -101,8 +102,17 @@ static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticate
         return nullptr;
     }
 
+    static Microsoft::Terminal::Protocol::Activation::ProxyRegistration proxy;
+    static const auto proxyHr = proxy.Initialize({ __uuidof(ITerminalProtocol), __uuidof(ITerminalProtocolEventSink) });
+    if (FAILED(proxyHr))
+    {
+        if (!quiet)
+            fprintf(stderr, "[wtcli] Protocol proxy initialization failed: 0x%08X\n", static_cast<uint32_t>(proxyHr));
+        return nullptr;
+    }
+
     winrt::com_ptr<ITerminalProtocol> server;
-    auto hr = CoCreateInstance(cls, nullptr, CLSCTX_LOCAL_SERVER, __uuidof(ITerminalProtocol), server.put_void());
+    auto hr = Microsoft::Terminal::Protocol::Activation::CreateInstance(cls, __uuidof(ITerminalProtocol), server.put_void());
     if (FAILED(hr))
     {
         if (!quiet)

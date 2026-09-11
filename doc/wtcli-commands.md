@@ -1,12 +1,23 @@
 # wtcli Command Reference
 
 `wtcli` is the CLI client for the Windows Terminal Protocol. It looks up the
-running Terminal via the `WT_COM_CLSID` environment variable, calls
-`CoCreateInstance(CLSCTX_LOCAL_SERVER)` to obtain `IProtocolServer`, and
-exposes a tmux-style command surface over its IDL methods.
+running Terminal via the `WT_COM_CLSID` environment variable and exposes a
+tmux-style command surface over the classic COM `ITerminalProtocol` interface.
+Normal hosts use manifest-based `CoCreateInstance(CLSCTX_LOCAL_SERVER)`.
+Administrator hosts publish an instance-specific class factory in the Running
+Object Table (ROT), so elevated pane children can connect even when their
+application/package identities differ. `wtcli` creates a separate protocol
+object for each connection through that factory. Windows' user, desktop, and
+integrity-level checks remain in force; a non-elevated client cannot use an
+administrator host's endpoint. `WT_COM_CLSID` is routing metadata, not a secret.
+
+Both endpoints register the adjacent `OpenConsoleProxy.dll` inside their own
+process, including the callback interface used by `listen`. This does not
+write COM registry entries or require `regsvr32`. Do not copy the administrator
+endpoint into persistent settings: it expires when that Terminal process exits.
 
 - Source: `src/tools/wtcli/main.cpp`
-- IDL: `src/cascadia/TerminalProtocol/TerminalProtocol.idl`
+- COM IDL: `src/host/proxy/ITerminalProtocol.idl`
 - Primary in-tree caller: `tools/wta/src/shell/wt_channel/cli_channel.rs` (and
   `tools/wta/src/app.rs` for `publish`).
 

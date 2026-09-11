@@ -63,7 +63,7 @@ Key security claim post-revert: shell input is **not** held behind a separate ca
 
 | Channel | Endpoints | Transport | Security control today |
 |---|---|---|---|
-| **C-COM** | `wtcli` / direct COM caller <-> WT | COM `IProtocolServer` (`CLSCTX_LOCAL_SERVER`) | Observed Windows packaged-COM / terminal activation behavior before method execution. Local testing denied ordinary external callers and arbitrary same-package callers while allowing Intelligent Terminal pane children. This is a platform dependency, not an application-level authorization check implemented by `IProtocolServer`. `WT_COM_CLSID` is a branding-routing hint only, not a secret or gate. Carries all WT control, including `SendInput`. |
+| **C-COM** | `wtcli` / direct COM caller <-> WT | COM `ITerminalProtocol`; normal class activation or elevated running factory | Normal hosts retain packaged-COM class activation. Elevated hosts use the user/desktop/integrity-scoped ROT factory described in section 3.1, without restricting callers by package/application identity. These are platform boundaries, not authorization checks in protocol methods. `WT_COM_CLSID` is non-secret routing metadata: a branding CLSID for normal hosts or an instance-specific factory GUID for elevated hosts. Carries all WT control, including `SendInput`. |
 | **C-ACP** | Agent-pane WTA <-> ACP Agent CLI | JSON-RPC over parent-created stdio pipes | No separate auth. The Agent CLI is intentionally trusted with its stdio handles and inherits normal environment unless WTA explicitly removes variables. |
 | **C-MCP** | Agent CLI -> WTA proposal MCP | Stateless Streamable HTTP. Host Agents connect to Windows loopback directly. WSL Agents connect to a distro-local loopback relay, which byte-forwards through a fixed encoded Windows PowerShell interop process to master's Windows-loopback listener. | Per-ACP-session capability, presented by its holder and hashed master-side; independent non-sensitive server names prevent cross-session Agent configuration overwrite but grant no authority; capability-to-SessionId-to-Helper routing; loopback-only listeners; Host/Origin, framing, size, timeout, and concurrency validation. The relay forwards the capability in request bytes, never in its command line, limits pre-forward connections, and exits when its master-owned stdin pipe closes. Capabilities survive Helper orphan/rebind only while their exact Agent CLI instance remains alive. |
 | **C-HOOK** | Agent CLI hook bridge -> `wtcli` / COM -> WTA subscribers | Third-party CLI hook system launches `wtcli agent-hook` directly, which reads stdin and calls COM `SendEvent`; WTA receives events through `wtcli --json listen` / COM callbacks | Plugin-manager installation plus observed COM activation behavior. Hook payloads are untrusted and legacy `agent_event` broadcasts are not source-bound or subscriber-filtered today. This channel does not carry `send_input`. |
@@ -242,10 +242,22 @@ For supported CLI sessions where hooks are installed, manifest-driven hook syste
 | **WT <-> pane shell** | ConPTY stdin/stdout | ConPTY process isolation. WT injects terminal metadata such as `WT_SESSION`, `WT_PROFILE_ID`, and sometimes `WT_COM_CLSID`. |
 | **Agent-pane WTA <-> ACP Agent CLI** | ACP stdio | Parent-created pipes. The Agent CLI is semi-trusted and inherits normal environment unless scrubbed; COM exposure from a compromised Agent CLI is therefore in scope. |
 | **Agent CLI hook bridge** | Hook JSON -> `wtcli agent-hook` -> COM `SendEvent` -> WTA event listener | Third-party CLI plugin / extension registration plus observed COM activation behavior. Hook payloads are untrusted input, can be spoofed by any COM-allowed sender today, and must not be treated as proof of agent identity or user approval. |
-| **WT <-> COM callers** | `IProtocolServer` calls | Observed platform COM activation behavior. `IProtocolServer` itself does not implement meaningful caller authorization today; the practical allowed attacker context observed so far is a process launched inside an Intelligent Terminal pane. |
+| **WT <-> COM callers** | `IProtocolServer` calls | Normal packaged-COM activation or elevated ROT access checks as described below. Protocol methods do not implement additional caller authorization. |
 | **All <-> filesystem** | settings, logs, and Agent CLI hook configuration / bundles | NTFS ACLs. Package-local storage affects location, not privilege isolation. |
 
 COM caller restriction in this document means the observed Windows packaged-COM activation behavior for the current package and registration, not a security decision made by `IProtocolServer` methods. Keep regression coverage for ordinary external callers, arbitrary same-package callers, pane children, and cross-integrity callers.
+
+Administrator hosts now publish an instance-specific class factory in the
+Running Object Table (ROT). This deliberately removes the elevated
+application-identity lookup restriction that prevented pane children and WTA
+from connecting across packaged/unpackaged contexts. Same-user elevated
+callers that can access that ROT entry may activate the protocol; package or
+application identity is not an authorization boundary on this path. The
+registration does not use `ROTFLAGS_ALLOWANYCLIENT`, modify registry ACLs, or
+relax COM access security. Non-elevated callers must remain unable to obtain
+an administrator host's factory even when given its endpoint GUID. Normal
+hosts retain manifest-based activation. Both sides load the co-located proxy
+and register its interface mappings process-locally.
 
 ### 3.2 Assets
 
@@ -294,7 +306,7 @@ LLM / Agent CLI
 
 | Step | Guarantee |
 |---|---|
-| WTA -> WT | None beyond the COM gate. `CliChannel` shells out to `wtcli`, which calls `CoCreateInstance(WT_COM_CLSID)` and invokes `SendInput`. |
+| WTA -> WT | None beyond the COM gate. `CliChannel` shells out to `wtcli`, which uses normal class activation or the elevated running factory selected by `WT_COM_CLSID`, then invokes `SendInput`. |
 | Target routing | `session_id` must parse as a non-empty GUID and match a pane by `Pane::FindPaneBySessionId`. There is no source-pane binding; any authorized COM caller can target any pane in the owning `TerminalPage` whose session GUID it knows. |
 | Final write | `ControlCore` honors read-only mode before writing to the connection (`src/cascadia/TerminalControl/ControlCore.cpp`, `SendInput` / `_sendInputToConnection`). |
 
