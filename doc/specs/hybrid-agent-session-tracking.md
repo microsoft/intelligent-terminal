@@ -224,7 +224,10 @@ callback. This acknowledgment still does not imply that ACP loading succeeded.
 Missing routing metadata is rejected rather than broadcast. A
 helper without its owning window/tab identity reports a local error before
 publishing the request. A
-host/helper update must keep this private routing contract in sync. A
+host/helper update must keep this private routing contract in sync. This is
+intentional: compatibility with the legacy `ResumeDispatched` session hook
+does not permit owner-less tab-creation requests. Pending completion uses the
+same owning tab identity as the outbound event, not a transient focused tab. A
 30-second post-completion grace period bounds duplicate suppression when no
 binding arrives, so a lost creation/load acknowledgement cannot block retries
 forever. Closing an observed binding clears its pending resume immediately,

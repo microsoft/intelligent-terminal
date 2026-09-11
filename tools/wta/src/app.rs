@@ -3420,11 +3420,17 @@ impl App {
         key: &str,
     ) -> Box<dyn FnOnce(anyhow::Result<Option<String>>) + Send + 'static> {
         let request_id = uuid::Uuid::new_v4();
+        let tab_id = self
+            .agent_routing_tab_id()
+            .filter(|id| !id.is_empty())
+            .unwrap_or_else(|| self.active_tab_key())
+            .to_string();
+        self.tab_mut(&tab_id);
         self.pending_session_resumes.insert(
             key.to_string(),
             PendingSessionResume {
                 request_id,
-                tab_id: self.active_tab_key().to_string(),
+                tab_id,
                 closed_panes: HashSet::new(),
                 completed_at: None,
             },

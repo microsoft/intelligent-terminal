@@ -7805,6 +7805,7 @@ fn agent_pane_resume_without_owner_route_fails_before_publish() {
         app.set_agent_event_tx(tx);
         let row = seed_resume_row(&mut app, AgentStatus::Historical, SessionOrigin::AgentPane);
         app.activate_agent_session_routed(&row);
+        let invoking_tab = app.pending_session_resumes[&row.key].tab_id.clone();
         assert!(crate::wt_protocol_events::take_test_published_events().is_empty());
         app.handle_event(rx.try_recv().expect("missing route must report completion"));
         assert!(!app.pending_session_resumes.contains_key(&row.key));
@@ -7813,7 +7814,7 @@ fn agent_pane_resume_without_owner_route_fails_before_publish() {
             AgentStatus::Historical
         );
         assert!(
-            matches!(app.current_tab().messages.last(), Some(ChatMessage::Error(message)) if message.contains("owning window_id and tab_id"))
+            matches!(app.tab_sessions[&invoking_tab].messages.last(), Some(ChatMessage::Error(message)) if message.contains("owning window_id and tab_id"))
         );
     }
 }
@@ -7831,6 +7832,7 @@ fn agent_pane_resume_event_preserves_owning_window_and_tab() {
     app.agent_supports_load_session = true;
     let row = seed_resume_row(&mut app, AgentStatus::Historical, SessionOrigin::AgentPane);
     app.activate_agent_session_routed(&row);
+    assert_eq!(app.pending_session_resumes[&row.key].tab_id, "source-tab");
 
     let event = crate::wt_protocol_events::take_test_published_events()
         .into_iter()
@@ -7840,6 +7842,33 @@ fn agent_pane_resume_event_preserves_owning_window_and_tab() {
     assert_eq!(event["params"]["window_id"], "7");
     assert_eq!(event["params"]["tab_id"], "source-tab");
     assert_eq!(event["params"]["session_id"], row.key);
+}
+
+#[test]
+fn agent_pane_resume_failure_uses_owner_instead_of_active_tab() {
+    use crate::agent_sessions::{AgentStatus, SessionOrigin};
+
+    let mut app = test_app();
+    app.owner_tab_id = Some("source-tab".into());
+    app.window_id = Some("7".into());
+    app.tab_id = Some("other-tab".into());
+    app.tab_mut("other-tab");
+    app.agent_supports_load_session = true;
+    let row = seed_resume_row(&mut app, AgentStatus::Historical, SessionOrigin::AgentPane);
+    app.activate_agent_session_routed(&row);
+    let request_id = app.pending_session_resumes[&row.key].request_id;
+    app.handle_event(AppEvent::SessionResumeCompleted {
+        key: row.key,
+        request_id,
+        result: Err("owner-routed publish failure".into()),
+    });
+
+    assert!(
+        matches!(app.tab_sessions["source-tab"].messages.last(), Some(ChatMessage::Error(message)) if message.contains("owner-routed publish failure"))
+    );
+    assert!(!app.tab_sessions["other-tab"].messages.iter().any(|message| {
+        matches!(message, ChatMessage::Error(text) if text.contains("owner-routed publish failure"))
+    }));
 }
 
 #[test]
