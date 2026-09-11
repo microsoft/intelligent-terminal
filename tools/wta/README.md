@@ -114,11 +114,19 @@ WTA discovers Windows Terminal via the `WT_COM_CLSID` environment variable. WT
 sets this in its own environment at startup and propagates it to every conpty
 shell, so any pane-launched process — including wta and wtcli — inherits it.
 
+`WT_COM_CLSID` retains its fixed package value and normal activation behavior.
+Hook delivery has a separate `WT_COM_HOOK_CLSID`, automatically inherited from
+Terminal and valid only for that process's lifetime. Native hooks and legacy
+`send-event` notifications with `agent.` topics use only this address, without
+falling back to package activation. Late shutdown hooks cannot restart Terminal;
+ordinary COM clients are not subject to a headless-server timeout.
+
 ## Environment Variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `WT_COM_CLSID` | Yes* | Stringified GUID of WT's `TerminalProtocolComServer` COM class |
+| `WT_COM_HOOK_CLSID` | Hooks only* | Process-lifetime COM address for non-activating hook delivery |
 | `WTA_LOG` | No | Rust tracing filter, such as `debug` or `trace` |
 
 \* Set automatically by WT when it spawns a conpty child. If you launch `wta` from outside WT, run `eval "$(wta set-env)"` to copy the value over (only useful when you've previously captured it from a WT shell).

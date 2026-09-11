@@ -170,6 +170,16 @@ always exits successfully. The shared ACP process has no `WT_SESSION`, so its
 redundant hooks are dropped and cannot be incorrectly attributed to the active
 shell pane.
 
+`WT_COM_CLSID` keeps its existing fixed package value. Terminal additionally
+injects `WT_COM_HOOK_CLSID`, a separate registration valid only for the lifetime
+of the process that launched the pane. The native bridge uses only this hook
+address, without falling back to the package CLSID. After that Terminal exits,
+a late hook cannot reconnect to another Terminal or launch a background
+`-Embedding` process; the native bridge stays quiet and exits successfully.
+Normal agent exits while Terminal is still open continue to deliver
+`agent.session.end`; the event is not globally suppressed. Cached legacy
+`send-event` hook scripts also use the hook endpoint for `agent.` topics.
+
 **The `command` field must stay shell-agnostic.** Each CLI decides for itself
 which shell interprets that string. That choice is undocumented, differs per
 CLI, and we guessed it wrong twice — so the bundle assumes nothing and ships one

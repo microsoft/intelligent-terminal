@@ -9,7 +9,7 @@ BeforeDiscovery { $script:Ready = [bool](Get-AppxPackage | Where-Object { $_.Nam
 Describe 'Feature: wtcli publish stdin transport' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -State @{ persistedWindowLayouts = @() }
         if ($env:ITE2E_WTCLI_PATH) {
             $script:app.WtcliPath = (Resolve-Path $env:ITE2E_WTCLI_PATH).Path
         }

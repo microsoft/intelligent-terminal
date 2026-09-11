@@ -66,7 +66,8 @@ TerminalProtocolComServer : public Microsoft::WRL::RuntimeClass<
     // Static setup — must be called before s_StartListening().
     static void s_setEmperor(WindowEmperor* emperor) noexcept;
 
-    static HRESULT s_StartListening();
+    static HRESULT s_StartListening(REFCLSID hookClsid);
+    [[nodiscard]] static HRESULT s_StopHookListening() noexcept;
     static HRESULT s_StopListening();
 
     // Re-runs per-window page event registration after a new AppHost is added.

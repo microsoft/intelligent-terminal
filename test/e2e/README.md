@@ -14,7 +14,7 @@ authenticated ACP agents. Current status (run on the Store package):
 | Suite (file) | Covers | Cases |
 |---|---|---|
 | `Feature.Packaging.Tests.ps1` | §9 packaging/protocol (incl. WT_COM_CLSID injected into pane shells) + §10 logging + log retention/cleanup | 18 |
-| `Feature.HeadlessStartup.Tests.ps1` | §9 package-specific COM startup: measured five-second expiry, repeated activation, saved-layout preservation, timely interactive restore/cancellation, intentional headless compatibility, and ordinary direct startup; deterministic ACP, no model quota | 5 |
+| `Feature.HeadlessStartup.Tests.ps1` | §9 fixed normal COM identity plus process-bound ROT hook endpoint: live native/legacy delivery, missing/stale-key non-fallback, saved-layout safety, restart isolation, explicit headless clients/generic topics, and ordinary/deferred restore; deterministic ACP, no model quota | 6 |
 | `Feature.WtcliPublishStdin.Tests.ps1` | PR #652: WTA/wtcli stdin transport delivers command-line-limit-sized events intact and preserves positional compatibility | 3 |
 | `Feature.Settings.Tests.ps1` | §1 Settings>AI Agents + §0 FRE settings/positions/auto-error/session-mgmt | 18 |
 | `Feature.FreFlow.Tests.ps1` | §0 FRE overlay click-through (Next→Save, privacy link, close-safety) | 5 |
@@ -115,15 +115,20 @@ does not modify the user's PowerShell profile or consume model quota.
 
 `Feature.HeadlessStartup` must run unelevated with **all windows/background
 processes of the selected package already closed**; setup refuses to terminate
-pre-existing processes. It uses the package-local `wtcli.exe` and manifest CLSID,
-not an alias or a synthetic `-Embedding` launch. Set
-`ITE2E_EXPECTED_TERMINAL_SHA256` to the deployed feature build's
-`WindowsTerminal.exe` SHA-256 when validating a fix. Unique artifacts record the
-package/hash, activation PID/command line, measured process lifetimes and PID-scoped
-timer intervals, restored window state, and fixture logs. Settings, state, and
-existing persisted scrollback are backed up and verified byte-for-byte after
-restoration. No WinApp CLI, agent
-authentication, or provider quota is needed by this suite.
+pre-existing processes. Explicit activation uses the package-local `wtcli.exe`
+and manifest CLSID. Real shells and the ACP child must retain that exact fixed
+`WT_COM_CLSID`. Hook cases capture their distinct `WT_COM_HOOK_CLSID`, exercise
+the private ROT factory, and reuse that actual hook identity after shutdown and
+restart. Missing/invalid hook keys must never fall back to the valid normal key.
+No alias or synthetic `-Embedding` launch substitutes for those boundaries. Set
+`ITE2E_EXPECTED_TERMINAL_SHA256` and `ITE2E_EXPECTED_WTCLI_SHA256` to the deployed
+feature build's binary hashes when validating a fix. Unique artifacts record the
+package/hashes, fixed normal and process-bound hook identities, hook results,
+process-only absence observations, headless client lifetime, restored window
+state, and fixture logs.
+Settings, state, and existing persisted scrollback are backed up and verified
+byte-for-byte after restoration. No WinApp CLI, agent authentication, or provider
+quota is needed by this suite.
 
 Three planes, all built on self-verifying primitives:
 
@@ -396,6 +401,12 @@ Describe 'Agent pane' -Tag 'Live' {
 FRE complete, applies your settings, launches the app, brings COM online (probes the
 per-brand `WT_COM_CLSID`), and resolves the window HWND. `Stop-Terminal` closes it and
 restores the backup.
+
+Protocol-only suites can pass `-State @{ persistedWindowLayouts = @() }` to
+avoid restoring the user's Settings tab or other saved layout. These state
+overrides are applied after backup and before activation; teardown restores the
+original bytes. Layout-restoration tests should supply their own saved fixture
+instead of clearing it.
 
 > **Picking the build**: pass `-Package Dev` / `-Package Store` — see
 > [Choosing the build](#choosing-the-build-dev-vs-store). Launch is package-specific

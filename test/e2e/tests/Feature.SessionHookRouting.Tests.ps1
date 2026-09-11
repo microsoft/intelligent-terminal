@@ -22,7 +22,7 @@ BeforeDiscovery {
 Describe 'Feature: session hook fan-out routing' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -State @{ persistedWindowLayouts = @() }
 
         # Extra tabs, NOT agent panes. Every eligible tab pre-warms a stashed helper,
         # and a stashed helper is already connected to master and already subscribed

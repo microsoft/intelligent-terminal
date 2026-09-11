@@ -17,6 +17,7 @@
 
 #include <wrl/module.h>
 #include <wil/resource.h>
+#include <oleauto.h>
 
 using namespace Microsoft::WRL;
 
@@ -28,9 +29,19 @@ namespace Protocol = winrt::Microsoft::Terminal::Protocol;
 WindowEmperor* TerminalProtocolComServer::s_emperor = nullptr;
 
 static DWORD g_comRegistration = 0;
+static DWORD g_hookRegistration = 0;
 static std::shared_mutex g_mtx;
 static std::thread g_comMtaThread;
 static wil::unique_event g_comMtaStop;
+
+static HRESULT RevokeHookRegistrationUnderLock() noexcept
+{
+    if (const auto registration = std::exchange(g_hookRegistration, 0))
+    {
+        return RevokeActiveObject(registration, nullptr);
+    }
+    return S_OK;
+}
 
 // Static instance tracking for event delivery to COM clients
 std::mutex TerminalProtocolComServer::s_instancesMutex;
@@ -41,7 +52,7 @@ void TerminalProtocolComServer::s_setEmperor(WindowEmperor* emperor) noexcept
     s_emperor = emperor;
 }
 
-HRESULT TerminalProtocolComServer::s_StartListening()
+HRESULT TerminalProtocolComServer::s_StartListening(REFCLSID hookClsid)
 try
 {
     std::unique_lock lock{ g_mtx };
@@ -56,7 +67,7 @@ try
     wil::unique_event ready(wil::EventOptions::ManualReset);
     HRESULT regHr = S_OK;
 
-    g_comMtaThread = std::thread([&ready, &regHr]() {
+    g_comMtaThread = std::thread([&ready, &regHr, hookClsid]() {
         auto coInit = wil::CoInitializeEx(COINIT_MULTITHREADED);
 
         // Classic-COM class factory (WRL) — marshaled via the OpenConsoleProxy
@@ -78,6 +89,21 @@ try
                     CLSCTX_LOCAL_SERVER,
                     REGCLS_MULTIPLEUSE,
                     &g_comRegistration);
+                if (SUCCEEDED(regHr))
+                {
+                    // Hooks use a separate, runtime-only address so a late
+                    // lifecycle event cannot launch a replacement Terminal.
+                    regHr = RegisterActiveObject(
+                        unk.Get(),
+                        hookClsid,
+                        ACTIVEOBJECT_STRONG,
+                        &g_hookRegistration);
+                    if (FAILED(regHr))
+                    {
+                        LOG_IF_FAILED(CoRevokeClassObject(g_comRegistration));
+                        g_comRegistration = 0;
+                    }
+                }
             }
         }
 
@@ -93,9 +119,19 @@ try
 }
 CATCH_RETURN()
 
+HRESULT TerminalProtocolComServer::s_StopHookListening() noexcept
+try
+{
+    std::unique_lock lock{ g_mtx };
+    return RevokeHookRegistrationUnderLock();
+}
+CATCH_RETURN()
+
 HRESULT TerminalProtocolComServer::s_StopListening()
 {
     std::unique_lock lock{ g_mtx };
+
+    const auto hookResult = RevokeHookRegistrationUnderLock();
 
     HRESULT result = S_OK;
     if (g_comRegistration)
@@ -114,7 +150,7 @@ HRESULT TerminalProtocolComServer::s_StopListening()
         g_comMtaThread.join();
     }
 
-    return result;
+    return FAILED(hookResult) ? hookResult : result;
 }
 
 TerminalProtocolComServer::~TerminalProtocolComServer()

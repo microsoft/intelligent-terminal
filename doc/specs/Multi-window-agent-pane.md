@@ -39,18 +39,27 @@ WT (one process, N windows)
 Per agent pane: 1 conpty + 1 helper process. Per Terminal: 1 master + 1
 agent CLI. **N panes ⇒ N helpers + 1 master + 1 agent CLI.**
 
-### Headless COM activation lifetime
+### Hook delivery after shutdown
 
-A late `wtcli` call (including an agent lifecycle hook) can activate
-`WindowsTerminal.exe -Embedding` after the last window closes. COM activation
-does not restore or overwrite the saved window layout. If no window is created
-within five seconds, the headless process exits, unless a message box is still
-open or `compatibility.allowHeadless` explicitly enables background operation.
-Window creation suspends expiry while initialization/restoration is in progress;
-the first successfully created window cancels the startup timer. An interactive
-activation still restores the deferred layout through the normal startup path.
-The timer bounds an otherwise unused COM server's lifetime; it does not prevent
-a later COM call from activating another server.
+`WT_COM_CLSID` retains its fixed per-brand value and existing activation behavior.
+The protocol factory also has a separate process-lifetime registration, injected
+as `WT_COM_HOOK_CLSID` into panes, WSL, helpers, and agent children. This hook
+CLSID identifies a factory in the Running Object Table, not a package or registry
+activation entry. Hook clients use `GetActiveObject` to obtain that existing
+factory, and shutdown revokes its publication before exiting.
+
+`wtcli agent-hook` and legacy `send-event` notifications with an `agent.` topic
+use only the hook address, with no fallback to `WT_COM_CLSID`. After their
+owning Terminal exits, they fail to connect without launching an `-Embedding`
+replacement or attaching to a newly opened Terminal. Native hooks remain quiet
+and successful on failure, while an agent exiting inside a live Terminal still
+sends its normal lifecycle events. Cached legacy hook bundles benefit from the
+same bridge behavior without being rewritten.
+
+There is no headless startup timeout. Ordinary COM clients and non-hook `wtcli`
+commands keep their existing activation behavior and can keep serving clients
+without a window. Deferred layouts remain untouched until a normal interactive
+activation restores them; `compatibility.allowHeadless` is unchanged.
 
 ## Design history
 
