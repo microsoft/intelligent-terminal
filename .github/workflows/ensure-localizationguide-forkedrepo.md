@@ -361,7 +361,7 @@ post-steps:
 
 timeout-minutes: 15
 
-max-ai-credits: 150
+max-ai-credits: 200
 
 max-daily-ai-credits: 750
 
@@ -395,13 +395,19 @@ removed; use local `git show` and `git diff` to inspect them, then follow
 - exact original patch inspection with
   `git diff --no-ext-diff --unified=3 ${{ github.event.inputs.comparison_base_sha }} ${{ github.event.inputs.expected_head_sha }} -- <resource paths>` before choosing scoped keys or targets; treat `--stat`, `--name-only`, `--name-status`, `--numstat`, `git status`, and worktree-only diffs as supporting signals only, and keep reading if the patch output truncates until every relevant hunk is covered
 
-Materialize trusted file bytes in the workspace only as needed.
-You own the git inspection, scope discovery, final checker rerun, final report
-write, and the one allowed safe output for this read-only workflow.
-Derive the precise source-added or updated keys, values, and surrounding
-context from that original patch, preserve that scope through the final rerun,
-and do not replace it with guessed keys from unchanged source lines, file
-prefixes, samples, or PR summaries.
+Derive this workflow's scope only from English source-authority additions,
+updates, or deletions in that original patch. Expand additions or updates to
+every shipped localized counterpart that should carry the affected keys.
+Expand removals to stale localized counterpart review for the removed keys or
+files. Localized-only edits or deletions do not independently create guidance
+scope.
+
+Materialize trusted file bytes in the workspace only as needed. You own the git
+inspection, scope discovery, final checker rerun, final report write, and the
+one allowed safe output for this read-only workflow. Preserve the exact
+English-derived keys, values, and surrounding context through the final rerun;
+do not replace them with guesses from unchanged source lines, file prefixes,
+samples, or PR summaries.
 
 ## Output contract
 
@@ -445,10 +451,11 @@ keys to `Test-PlaceholderParity`, `Test-LockedContent`, and
 `Test-PseudoLocale`. Missing comparable entries stay with
 `Test-RequiredKeys`; dependent checks across absent entries are genuine
 `BLOCKED` outcomes and must not be manufactured into the final guide report.
-Perform this review independently from the caller's proposed key list: derive again
-the expected keys from the original patch, audit all shipped localized
-counterparts implicated by that scope, and fail `PASS` when any expected key
-block is mismatched or omitted.
+Perform this review independently from the caller's proposed key list: derive
+again the expected keys from the original patch, treat only English
+source-authority additions, updates, or deletions as scope-creating, audit all
+shipped localized counterparts implicated by that scope, and fail `PASS` when
+any expected key block in that scope is mismatched or omitted.
 
 The comment must:
 

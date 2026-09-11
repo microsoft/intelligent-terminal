@@ -1,5 +1,5 @@
-# gh-aw-metadata: {"schema_version":"v4","frontmatter_hash":"dc8b16257799a743f6c07bb5b879d617200ace65947aeec8dbf57867b0669325","body_hash":"1d68c0f5cef1c5ed668ab3775a1c8dc39adcb0912a3ef3faf0271321f2a35ba4","compiler_version":"v0.87.10","strict":true,"agent_id":"copilot","engine_versions":{"copilot":"1.0.80"}}
-# gh-aw-manifest: {"version":1,"secrets":["GH_AW_DEFAULT_OTLP_HEADERS","GH_AW_GITHUB_MCP_SERVER_TOKEN","GH_AW_GITHUB_TOKEN","GITHUB_TOKEN"],"actions":[{"repo":"actions/cache/restore","sha":"55cc8345863c7cc4c66a329aec7e433d2d1c52a9","version":"v6.1.0"},{"repo":"actions/cache/save","sha":"55cc8345863c7cc4c66a329aec7e433d2d1c52a9","version":"v6.1.0"},{"repo":"actions/checkout","sha":"3d3c42e5aac5ba805825da76410c181273ba90b1","version":"v7.0.1"},{"repo":"actions/download-artifact","sha":"3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c","version":"v8.0.1"},{"repo":"actions/github-script","sha":"3a2844b7e9c422d3c10d287c895573f7108da1b3","version":"v9.0.0"},{"repo":"actions/upload-artifact","sha":"043fb46d1a93c77aae656e7c1c64a875d1fc6a0a","version":"v7.0.1"},{"repo":"github/gh-aw-actions/setup","sha":"bc8c008a419c5b7a29df6f5641edd35fd1c6ea85","version":"v0.87.10"}],"containers":[{"image":"ghcr.io/github/gh-aw-firewall/agent:0.28.10","digest":"sha256:c01e6d16d11ea4f2a46cc023a9f402224a3b3861b026818eec0dc586d7e6918e","pinned_image":"ghcr.io/github/gh-aw-firewall/agent:0.28.10@sha256:c01e6d16d11ea4f2a46cc023a9f402224a3b3861b026818eec0dc586d7e6918e"},{"image":"ghcr.io/github/gh-aw-firewall/api-proxy:0.28.10","digest":"sha256:c3a18aebb8251339117ea998296315de17bada366f8d03919b3348ea71112e64","pinned_image":"ghcr.io/github/gh-aw-firewall/api-proxy:0.28.10@sha256:c3a18aebb8251339117ea998296315de17bada366f8d03919b3348ea71112e64"},{"image":"ghcr.io/github/gh-aw-firewall/squid:0.28.10","digest":"sha256:c06076f7aca95df713e0748c44d80c0a3c2538fad67bfdd04296d45158e083e6","pinned_image":"ghcr.io/github/gh-aw-firewall/squid:0.28.10@sha256:c06076f7aca95df713e0748c44d80c0a3c2538fad67bfdd04296d45158e083e6"},{"image":"ghcr.io/github/gh-aw-mcpg:v0.4.14","digest":"sha256:b2f0c2b2f17b5fbe809e5bb99dc185b6ddd70df25295dc63a6d526350334eff5","pinned_image":"ghcr.io/github/gh-aw-mcpg:v0.4.14@sha256:b2f0c2b2f17b5fbe809e5bb99dc185b6ddd70df25295dc63a6d526350334eff5"},{"image":"ghcr.io/github/gh-aw-node","digest":"sha256:bac2192f6374d6262116399b34fc5e143d576f82719e90a18261cae7480f4d4e","pinned_image":"ghcr.io/github/gh-aw-node@sha256:bac2192f6374d6262116399b34fc5e143d576f82719e90a18261cae7480f4d4e"},{"image":"ghcr.io/github/github-mcp-server:v1.11.0","digest":"sha256:fbec75de11c255213fa08d80fb166abe73d851fff631c51c0079872967720699","pinned_image":"ghcr.io/github/github-mcp-server:v1.11.0@sha256:fbec75de11c255213fa08d80fb166abe73d851fff631c51c0079872967720699"}],"mcp_servers":[{"name":"github","tools":["get_commit","get_file_contents","get_latest_release","get_me","get_pull_request","get_pull_request_comments","get_pull_request_diff","get_pull_request_files","get_pull_request_review_comments","get_pull_request_reviews","get_pull_request_status","get_release_by_tag","get_tag","issue_read","list_branches","list_commits","list_issue_types","list_issues","list_pull_requests","list_releases","list_starred_repositories","list_tags","pull_request_read","search_code","search_issues","search_pull_requests","search_repositories"]},{"name":"safeoutputs","tools":["add_comment","missing_data","missing_tool","noop","push_to_pull_request_branch"]}]}
+# gh-aw-metadata: {"schema_version":"v4","frontmatter_hash":"89b33d50b317d831a28316876de48f2002d65c560e7dbd3bd71a5f05d668ba21","body_hash":"b32e996691bdbd88c9d986e7521d75c1e6a2abdd4fb4588f1a581244e8472902","compiler_version":"v0.87.10","strict":true,"agent_id":"copilot","engine_versions":{"copilot":"1.0.80"}}
+# gh-aw-manifest: {"version":1,"secrets":["GH_AW_DEFAULT_OTLP_HEADERS","GH_AW_GITHUB_MCP_SERVER_TOKEN","GH_AW_GITHUB_TOKEN","GITHUB_TOKEN"],"actions":[{"repo":"actions/cache/restore","sha":"55cc8345863c7cc4c66a329aec7e433d2d1c52a9","version":"v6.1.0"},{"repo":"actions/cache/save","sha":"55cc8345863c7cc4c66a329aec7e433d2d1c52a9","version":"v6.1.0"},{"repo":"actions/checkout","sha":"3d3c42e5aac5ba805825da76410c181273ba90b1","version":"v7.0.1"},{"repo":"actions/download-artifact","sha":"3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c","version":"v8.0.1"},{"repo":"actions/github-script","sha":"3a2844b7e9c422d3c10d287c895573f7108da1b3","version":"v9.0.0"},{"repo":"actions/upload-artifact","sha":"043fb46d1a93c77aae656e7c1c64a875d1fc6a0a","version":"v7.0.1"},{"repo":"github/gh-aw-actions/setup","sha":"bc8c008a419c5b7a29df6f5641edd35fd1c6ea85","version":"bc8c008a419c5b7a29df6f5641edd35fd1c6ea85"}],"containers":[{"image":"ghcr.io/github/gh-aw-firewall/agent:0.28.10","digest":"sha256:c01e6d16d11ea4f2a46cc023a9f402224a3b3861b026818eec0dc586d7e6918e","pinned_image":"ghcr.io/github/gh-aw-firewall/agent:0.28.10@sha256:c01e6d16d11ea4f2a46cc023a9f402224a3b3861b026818eec0dc586d7e6918e"},{"image":"ghcr.io/github/gh-aw-firewall/api-proxy:0.28.10","digest":"sha256:c3a18aebb8251339117ea998296315de17bada366f8d03919b3348ea71112e64","pinned_image":"ghcr.io/github/gh-aw-firewall/api-proxy:0.28.10@sha256:c3a18aebb8251339117ea998296315de17bada366f8d03919b3348ea71112e64"},{"image":"ghcr.io/github/gh-aw-firewall/squid:0.28.10","digest":"sha256:c06076f7aca95df713e0748c44d80c0a3c2538fad67bfdd04296d45158e083e6","pinned_image":"ghcr.io/github/gh-aw-firewall/squid:0.28.10@sha256:c06076f7aca95df713e0748c44d80c0a3c2538fad67bfdd04296d45158e083e6"},{"image":"ghcr.io/github/gh-aw-mcpg:v0.4.14","digest":"sha256:b2f0c2b2f17b5fbe809e5bb99dc185b6ddd70df25295dc63a6d526350334eff5","pinned_image":"ghcr.io/github/gh-aw-mcpg:v0.4.14@sha256:b2f0c2b2f17b5fbe809e5bb99dc185b6ddd70df25295dc63a6d526350334eff5"},{"image":"ghcr.io/github/gh-aw-node","digest":"sha256:bac2192f6374d6262116399b34fc5e143d576f82719e90a18261cae7480f4d4e","pinned_image":"ghcr.io/github/gh-aw-node@sha256:bac2192f6374d6262116399b34fc5e143d576f82719e90a18261cae7480f4d4e"},{"image":"ghcr.io/github/github-mcp-server:v1.11.0","digest":"sha256:fbec75de11c255213fa08d80fb166abe73d851fff631c51c0079872967720699","pinned_image":"ghcr.io/github/github-mcp-server:v1.11.0@sha256:fbec75de11c255213fa08d80fb166abe73d851fff631c51c0079872967720699"}],"mcp_servers":[{"name":"github","tools":["get_commit","get_file_contents","get_latest_release","get_me","get_pull_request","get_pull_request_comments","get_pull_request_diff","get_pull_request_files","get_pull_request_review_comments","get_pull_request_reviews","get_pull_request_status","get_release_by_tag","get_tag","issue_read","list_branches","list_commits","list_issue_types","list_issues","list_pull_requests","list_releases","list_starred_repositories","list_tags","pull_request_read","search_code","search_issues","search_pull_requests","search_repositories"]},{"name":"safeoutputs","tools":["missing_data","missing_tool","noop","push_to_pull_request_branch"]}]}
 # This file was automatically generated by gh-aw (v0.87.10). DO NOT EDIT. To debug this workflow, load the skill at https://github.com/github/gh-aw/blob/main/debug.md
 #
 #    ___                   _   _
@@ -45,7 +45,7 @@
 #   - actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
 #   - actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0 (source v9)
 #   - actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-#   - github/gh-aw-actions/setup@bc8c008a419c5b7a29df6f5641edd35fd1c6ea85 # v0.87.10
+#   - github/gh-aw-actions/setup@bc8c008a419c5b7a29df6f5641edd35fd1c6ea85
 #
 # Container images used:
 #   - ghcr.io/github/gh-aw-firewall/agent:0.28.10@sha256:c01e6d16d11ea4f2a46cc023a9f402224a3b3861b026818eec0dc586d7e6918e
@@ -148,7 +148,7 @@ jobs:
     steps:
       - name: Setup Scripts
         id: setup
-        uses: github/gh-aw-actions/setup@bc8c008a419c5b7a29df6f5641edd35fd1c6ea85 # v0.87.10
+        uses: github/gh-aw-actions/setup@bc8c008a419c5b7a29df6f5641edd35fd1c6ea85
         with:
           destination: ${{ runner.temp }}/gh-aw/actions
           job-name: ${{ github.job }}
@@ -312,7 +312,7 @@ jobs:
           GH_AW_GITHUB_RUN_ID: ${{ github.run_id }}
           GH_AW_GITHUB_WORKSPACE: ${{ github.workspace }}
           GH_AW_PROMPT_CONTENT_0000: "<system>\n"
-          GH_AW_PROMPT_CONTENT_0001: "<safe-output-tools>\nTools: add_comment, push_to_pull_request_branch, missing_tool, missing_data, noop\n"
+          GH_AW_PROMPT_CONTENT_0001: "<safe-output-tools>\nTools: push_to_pull_request_branch, missing_tool, missing_data, noop\n"
           GH_AW_PROMPT_CONTENT_0002: "</safe-output-tools>\n"
           GH_AW_PROMPT_CONTENT_0003: "<github-context>\nThe following GitHub context information is available for this workflow:\n{{#if github.actor}}\n- **actor**: __GH_AW_GITHUB_ACTOR__\n{{/if}}\n{{#if github.repository}}\n- **repository**: __GH_AW_GITHUB_REPOSITORY__\n{{/if}}\n{{#if github.workspace}}\n- **workspace**: __GH_AW_GITHUB_WORKSPACE__\n{{/if}}\n{{#if github.event.issue.number || (github.aw.context.item_type == 'issue' && github.aw.context.item_number)}}\n- **issue-number**: #__GH_AW_EXPR_802A9F6A__\n{{/if}}\n{{#if github.event.discussion.number || (github.aw.context.item_type == 'discussion' && github.aw.context.item_number)}}\n- **discussion-number**: #__GH_AW_EXPR_1A3A194A__\n{{/if}}\n{{#if github.event.pull_request.number || (github.aw.context.item_type == 'pull_request' && github.aw.context.item_number)}}\n- **pull-request-number**: #__GH_AW_EXPR_463A214A__\n{{/if}}\n{{#if github.event.comment.id || github.aw.context.comment_id}}\n- **comment-id**: __GH_AW_EXPR_FF1D34CE__\n{{/if}}\n{{#if github.run_id}}\n- **workflow-run-id**: __GH_AW_GITHUB_RUN_ID__\n{{/if}}\n- **checkouts**: The following repositories have been checked out and are available in the workspace:\n  - repo `__GH_AW_GITHUB_REPOSITORY__` → `$GITHUB_WORKSPACE` (cwd) [full history, all branches available as remote-tracking refs]\n  - **Note**: If a branch you need is not in the list above and is not listed as an additional fetched ref, it has NOT been checked out. For private repositories you cannot fetch it. If the branch is required and not available, exit with an error and ask the user to add it to the `fetch:` option of the `checkout:` configuration (e.g., `fetch: [\"refs/pulls/open/*\"]` for all open PR refs, or `fetch: [\"main\", \"feature/my-branch\"]` for specific branches).\n  - **Warning: No git credentials are available to the agent.** Credentials are\n    intentionally removed after the checkout step for security. This means any git\n    operation that needs to authenticate to the remote will fail. In private repositories, that includes:\n    - `git fetch`, `git pull`, `git clone`, and `git push` (direct push, not via safe-output tools)\n    - Checking out or switching to a remote branch that is not already fetched\n    - Deepening a shallow clone (`git fetch --unshallow`)\n    - On-demand blob fetches in partial/blobless clones (operations on files not in the initial checkout)\n    Do NOT attempt to configure credentials, run `git credential fill`, or modify `.gitconfig` —\n    authentication will not succeed. If you encounter credential prompts or authentication errors,\n    stop immediately and report the limitation rather than spending turns trying to work around it.\n</github-context>\n\n"
           GH_AW_PROMPT_CONTENT_0004: "</system>\n"
@@ -472,7 +472,7 @@ jobs:
     steps:
       - name: Setup Scripts
         id: setup
-        uses: github/gh-aw-actions/setup@bc8c008a419c5b7a29df6f5641edd35fd1c6ea85 # v0.87.10
+        uses: github/gh-aw-actions/setup@bc8c008a419c5b7a29df6f5641edd35fd1c6ea85
         with:
           destination: ${{ runner.temp }}/gh-aw/actions
           job-name: ${{ github.job }}
@@ -597,7 +597,7 @@ jobs:
         env:
           GH_AW_FILE_ROOT: "${{ runner.temp }}/gh-aw"
           GH_AW_FILE_CONFIG: "{\"files\":[{\"path\":\"safeoutputs/config.json\",\"content_env\":\"GH_AW_SAFE_OUTPUTS_CONFIG\"}]}"
-          GH_AW_SAFE_OUTPUTS_CONFIG: "{\"add_comment\":{\"hide_older_comments\":true,\"max\":1,\"target\":\"${{ github.event.inputs.pr_number }}\"},\"create_report_incomplete_issue\":{},\"missing_data\":{},\"missing_tool\":{},\"noop\":{\"max\":1,\"report-as-issue\":\"false\"},\"push_to_pull_request_branch\":{\"allowed_files\":[\"src/cascadia/**/Resources/*.resw\",\"src/cascadia/**/Resources/**/*.resw\",\"tools/wta/locales/*.yml\"],\"base_branch\":\"${{ github.event.inputs.expected_head_sha }}\",\"excluded_files\":[\"src/cascadia/**/Resources/*.resw\",\"src/cascadia/**/Resources/en-US/*.resw\",\"tools/wta/locales/en-US.yml\"],\"fallback_as_pull_request\":false,\"if_no_changes\":\"error\",\"max_patch_size\":4096,\"protect_top_level_dot_folders\":true,\"protected_files\":[\"package.json\",\"bun.lockb\",\"bunfig.toml\",\"deno.json\",\"deno.jsonc\",\"deno.lock\",\"global.json\",\"NuGet.Config\",\"Directory.Packages.props\",\"mix.exs\",\"mix.lock\",\"go.mod\",\"go.sum\",\"stack.yaml\",\"stack.yaml.lock\",\"pom.xml\",\"build.gradle\",\"build.gradle.kts\",\"settings.gradle\",\"settings.gradle.kts\",\"gradle.properties\",\"package-lock.json\",\"yarn.lock\",\"pnpm-lock.yaml\",\"npm-shrinkwrap.json\",\"requirements.txt\",\"Pipfile\",\"Pipfile.lock\",\"pyproject.toml\",\"setup.py\",\"setup.cfg\",\"Gemfile\",\"Gemfile.lock\",\"uv.lock\",\"CODEOWNERS\",\"DESIGN.md\",\"README.md\",\"CONTRIBUTING.md\",\"CHANGELOG.md\",\"SECURITY.md\",\"CODE_OF_CONDUCT.md\",\"AGENTS.md\"],\"protected_files_policy\":\"blocked\"},\"report_incomplete\":{}}"
+          GH_AW_SAFE_OUTPUTS_CONFIG: "{\"create_report_incomplete_issue\":{},\"missing_data\":{},\"missing_tool\":{},\"noop\":{\"max\":1,\"report-as-issue\":\"false\"},\"push_to_pull_request_branch\":{\"allowed_files\":[\"src/cascadia/**/Resources/*.resw\",\"src/cascadia/**/Resources/**/*.resw\",\"tools/wta/locales/*.yml\"],\"base_branch\":\"${{ github.event.inputs.expected_head_sha }}\",\"excluded_files\":[\"src/cascadia/**/Resources/*.resw\",\"src/cascadia/**/Resources/en-US/*.resw\",\"tools/wta/locales/en-US.yml\"],\"fallback_as_pull_request\":false,\"if_no_changes\":\"error\",\"max_patch_size\":4096,\"protect_top_level_dot_folders\":true,\"protected_files\":[\"package.json\",\"bun.lockb\",\"bunfig.toml\",\"deno.json\",\"deno.jsonc\",\"deno.lock\",\"global.json\",\"NuGet.Config\",\"Directory.Packages.props\",\"mix.exs\",\"mix.lock\",\"go.mod\",\"go.sum\",\"stack.yaml\",\"stack.yaml.lock\",\"pom.xml\",\"build.gradle\",\"build.gradle.kts\",\"settings.gradle\",\"settings.gradle.kts\",\"gradle.properties\",\"package-lock.json\",\"yarn.lock\",\"pnpm-lock.yaml\",\"npm-shrinkwrap.json\",\"requirements.txt\",\"Pipfile\",\"Pipfile.lock\",\"pyproject.toml\",\"setup.py\",\"setup.cfg\",\"Gemfile\",\"Gemfile.lock\",\"uv.lock\",\"CODEOWNERS\",\"DESIGN.md\",\"README.md\",\"CONTRIBUTING.md\",\"CHANGELOG.md\",\"SECURITY.md\",\"CODE_OF_CONDUCT.md\",\"AGENTS.md\"],\"protected_files_policy\":\"blocked\"},\"report_incomplete\":{}}"
         with:
           script: |
             const path = require('path');
@@ -610,55 +610,12 @@ jobs:
         env:
           GH_AW_TOOLS_META_JSON: |
             {
-              "description_suffixes": {
-                "add_comment": " CONSTRAINTS: Maximum 1 comment(s) can be added. Target: ${GH_AW_GITHUB_EVENT_INPUTS_PR_NUMBER}. Supports reply_to_id for discussion threading."
-              },
+              "description_suffixes": {},
               "repo_params": {},
               "dynamic_tools": []
             }
           GH_AW_VALIDATION_JSON: |
             {
-              "add_comment": {
-                "defaultMax": 1,
-                "fields": {
-                  "body": {
-                    "required": true,
-                    "type": "string",
-                    "sanitize": true,
-                    "maxLength": 65000
-                  },
-                  "comment_id": {
-                    "optionalPositiveInteger": true
-                  },
-                  "item_number": {
-                    "issueOrPRNumber": true
-                  },
-                  "pr": {
-                    "issueOrPRNumber": true
-                  },
-                  "pr_number": {
-                    "issueOrPRNumber": true
-                  },
-                  "reply_to_id": {
-                    "type": "string",
-                    "maxLength": 256
-                  },
-                  "repo": {
-                    "type": "string",
-                    "maxLength": 256
-                  },
-                  "target": {
-                    "type": "string",
-                    "enum": [
-                      "status"
-                    ]
-                  },
-                  "temporary_id": {
-                    "type": "string",
-                    "pattern": "^#?aw_[A-Za-z0-9_]{3,12}$"
-                  }
-                }
-              },
               "missing_data": {
                 "defaultMax": 20,
                 "fields": {
@@ -756,7 +713,6 @@ jobs:
                 }
               }
             }
-          GH_AW_GITHUB_EVENT_INPUTS_PR_NUMBER: ${{ github.event.inputs.pr_number }}
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
@@ -1192,7 +1148,7 @@ jobs:
           EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
           LOCALIZATION_REPORT_MODE: repair
         name: Validate final localization checker report
-        run: "set -euo pipefail\nnode <<'NODE'\nconst fs = require('fs');\nconst path = require('path');\nconst { execFileSync } = require('child_process');\nconst root = '/tmp/gh-aw';\nconst mode = process.env.LOCALIZATION_REPORT_MODE;\nconst fail = message => { console.error(`::error::Final localization checker report rejected: ${message}`); process.exit(1); };\nconst isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);\n\nconst readJson = filename => {\n  const filenamePath = path.join(root, filename);\n  let stat;\n  try { stat = fs.lstatSync(filenamePath); } catch { fail(`${filename} is missing`); }\n  if (stat.isSymbolicLink() || !stat.isFile() || stat.size < 2 || stat.size > 1024 * 1024) {\n    fail(`${filename} must be a regular file within the size limit`);\n  }\n  let realRoot;\n  let realFile;\n  try {\n    realRoot = fs.realpathSync(root);\n    realFile = fs.realpathSync(filenamePath);\n  } catch {\n    fail(`${filename} could not be resolved`);\n  }\n  if (path.dirname(realFile) !== realRoot || path.basename(realFile) !== filename) {\n    fail(`${filename} resolved outside the fixed runtime location`);\n  }\n  try { return JSON.parse(fs.readFileSync(filenamePath, 'utf8')); }\n  catch { fail(`${filename} is not valid JSON`); }\n};\n\nconst report = readJson('localization-final-checks.json');\nif (!isObject(report) || report.version !== 1 || report.mode !== mode || !Array.isArray(report.bundles) || report.bundles.length === 0) {\n  fail('the report envelope is incomplete or has the wrong mode');\n}\n\nconst exitCodes = { PASS: 0, FIXABLE: 20, BLOCKED: 30, INVALID_INPUT: 64 };\nconst checks = new Set([\n  'Test-ResourceSyntax', 'Test-RequiredKeys', 'Test-PlaceholderParity',\n  'Test-LockedContent', 'Test-ResourceEncoding', 'Test-PseudoLocale'\n]);\nconst resultStatuses = new Set(['PASS', 'FIXABLE', 'BLOCKED']);\nconst statuses = report.bundles.map((bundle, index) => {\n  if (!isObject(bundle) || !checks.has(bundle.check)) {\n    fail(`bundle ${index + 1} has an unknown check`);\n  }\n  if (!Object.hasOwn(exitCodes, bundle.status) || bundle.exitCode !== exitCodes[bundle.status]) {\n    fail(`bundle ${index + 1} has an invalid status or exit code`);\n  }\n  if (!Array.isArray(bundle.results) || bundle.results.length === 0 ||\n      bundle.results.some(result => !isObject(result) || !resultStatuses.has(result.status))) {\n    fail(`bundle ${index + 1} does not contain valid checker results`);\n  }\n  const actual = new Set(bundle.results.map(result => result.status));\n  const derived = actual.has('BLOCKED') ? 'BLOCKED' : actual.has('FIXABLE') ? 'FIXABLE' : 'PASS';\n  if (bundle.status !== derived) {\n    fail(`bundle ${index + 1} aggregate status does not match its results`);\n  }\n  return derived;\n});\n\nif (statuses.some(status => status !== 'PASS')) {\n  fail('repair requires every final checker bundle to be PASS');\n}\n\nconst queuedOutput = readJson('agent_output.json');\nif (!isObject(queuedOutput) || !Array.isArray(queuedOutput.items) ||\n    (queuedOutput.errors !== undefined && !Array.isArray(queuedOutput.errors))) {\n  fail('the ingested agent output envelope is invalid');\n}\nif (queuedOutput.errors?.length) {\n  fail('agent output ingestion reported validation errors');\n}\n\nconst queuedTypes = queuedOutput.items.map(item => isObject(item) ? item.type : undefined);\nif (queuedTypes.some(type => typeof type !== 'string' || type.length === 0)) {\n  fail('queued output contains an invalid native type');\n}\nconst blockedTypes = new Set(['report_incomplete', 'missing_tool', 'missing_data']);\nif (queuedTypes.some(type => blockedTypes.has(type))) {\n  fail('queued output contains a blocked native outcome');\n}\n\nconst addCommentCount = queuedTypes.filter(type => type === 'add_comment').length;\nconst pushCount = queuedTypes.filter(type => type === 'push_to_pull_request_branch').length;\nif (queuedTypes.length !== 1 || !((pushCount === 1 && addCommentCount === 0) || (pushCount === 0 && addCommentCount === 1))) {\n  fail('repair PASS requires exactly one queued branch push or visible no-change comment');\n}\nif (addCommentCount === 1) {\n  const head = process.env.EXPECTED_HEAD_SHA;\n  if (!/^[0-9a-f]{40}$/.test(head || '')) fail('repairs not published check received an invalid expected head SHA');\n  const paths = [\n    ':(glob)src/cascadia/**/Resources/*.resw',\n    ':(glob)src/cascadia/**/Resources/**/*.resw',\n    ':(glob)tools/wta/locales/*.yml'\n  ];\n  let dirty;\n  try {\n    dirty = Buffer.concat([\n      execFileSync('git', ['diff', '--name-only', '-z', '--no-ext-diff', '--no-textconv', head, '--', ...paths], { timeout: 15000, maxBuffer: 1024 * 1024 }),\n      execFileSync('git', ['ls-files', '--others', '-z', '--', ...paths], { timeout: 15000, maxBuffer: 1024 * 1024 })\n    ]);\n  } catch (error) { fail(`repairs not published check failed: ${error.message}`); }\n  if (dirty.length !== 0) fail('repairs not published: a no-change comment cannot discard working localization repairs');\n}\nNODE\n"
+        run: "set -euo pipefail\nnode <<'NODE'\nconst fs = require('fs');\nconst path = require('path');\nconst { execFileSync } = require('child_process');\nconst root = '/tmp/gh-aw';\nconst mode = process.env.LOCALIZATION_REPORT_MODE;\nconst fail = message => { console.error(`::error::Final localization checker report rejected: ${message}`); process.exit(1); };\nconst isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);\n\nconst readJson = filename => {\n  const filenamePath = path.join(root, filename);\n  let stat;\n  try { stat = fs.lstatSync(filenamePath); } catch { fail(`${filename} is missing`); }\n  if (stat.isSymbolicLink() || !stat.isFile() || stat.size < 2 || stat.size > 1024 * 1024) {\n    fail(`${filename} must be a regular file within the size limit`);\n  }\n  let realRoot;\n  let realFile;\n  try {\n    realRoot = fs.realpathSync(root);\n    realFile = fs.realpathSync(filenamePath);\n  } catch {\n    fail(`${filename} could not be resolved`);\n  }\n  if (path.dirname(realFile) !== realRoot || path.basename(realFile) !== filename) {\n    fail(`${filename} resolved outside the fixed runtime location`);\n  }\n  try { return JSON.parse(fs.readFileSync(filenamePath, 'utf8')); }\n  catch { fail(`${filename} is not valid JSON`); }\n};\n\nconst report = readJson('localization-final-checks.json');\nif (!isObject(report) || report.version !== 1 || report.mode !== mode || !Array.isArray(report.bundles) || report.bundles.length === 0) {\n  fail('the report envelope is incomplete or has the wrong mode');\n}\n\nconst exitCodes = { PASS: 0, FIXABLE: 20, BLOCKED: 30, INVALID_INPUT: 64 };\nconst checks = new Set([\n  'Test-ResourceSyntax', 'Test-RequiredKeys', 'Test-PlaceholderParity',\n  'Test-LockedContent', 'Test-ResourceEncoding', 'Test-PseudoLocale'\n]);\nconst resultStatuses = new Set(['PASS', 'FIXABLE', 'BLOCKED']);\nconst statuses = report.bundles.map((bundle, index) => {\n  if (!isObject(bundle) || !checks.has(bundle.check)) {\n    fail(`bundle ${index + 1} has an unknown check`);\n  }\n  if (!Object.hasOwn(exitCodes, bundle.status) || bundle.exitCode !== exitCodes[bundle.status]) {\n    fail(`bundle ${index + 1} has an invalid status or exit code`);\n  }\n  if (!Array.isArray(bundle.results) || bundle.results.length === 0 ||\n      bundle.results.some(result => !isObject(result) || !resultStatuses.has(result.status))) {\n    fail(`bundle ${index + 1} does not contain valid checker results`);\n  }\n  const actual = new Set(bundle.results.map(result => result.status));\n  const derived = actual.has('BLOCKED') ? 'BLOCKED' : actual.has('FIXABLE') ? 'FIXABLE' : 'PASS';\n  if (bundle.status !== derived) {\n    fail(`bundle ${index + 1} aggregate status does not match its results`);\n  }\n  return derived;\n});\n\nif (statuses.some(status => status !== 'PASS')) {\n  fail('repair requires every final checker bundle to be PASS');\n}\n\nconst queuedOutput = readJson('agent_output.json');\nif (!isObject(queuedOutput) || !Array.isArray(queuedOutput.items) ||\n    (queuedOutput.errors !== undefined && !Array.isArray(queuedOutput.errors))) {\n  fail('the ingested agent output envelope is invalid');\n}\nif (queuedOutput.errors?.length) {\n  fail('agent output ingestion reported validation errors');\n}\n\nconst queuedTypes = queuedOutput.items.map(item => isObject(item) ? item.type : undefined);\nif (queuedTypes.some(type => typeof type !== 'string' || type.length === 0)) {\n  fail('queued output contains an invalid native type');\n}\nconst blockedTypes = new Set(['report_incomplete', 'missing_tool', 'missing_data']);\nif (queuedTypes.some(type => blockedTypes.has(type))) {\n  fail('queued output contains a blocked native outcome');\n}\n\nif (queuedTypes.some(type => !['push_to_pull_request_branch', 'noop'].includes(type))) {\n  fail('repair PASS permits only a queued branch push or noop acknowledgement');\n}\n\nconst noopCount = queuedTypes.filter(type => type === 'noop').length;\nconst pushCount = queuedTypes.filter(type => type === 'push_to_pull_request_branch').length;\nif (queuedTypes.length !== 1 || !((pushCount === 1 && noopCount === 0) || (pushCount === 0 && noopCount === 1))) {\n  fail('repair PASS requires exactly one queued branch push or noop acknowledgement');\n}\nif (noopCount === 1) {\n  const head = process.env.EXPECTED_HEAD_SHA;\n  if (!/^[0-9a-f]{40}$/.test(head || '')) fail('repairs not published check received an invalid expected head SHA');\n  const paths = [\n    ':(glob)src/cascadia/**/Resources/*.resw',\n    ':(glob)src/cascadia/**/Resources/**/*.resw',\n    ':(glob)tools/wta/locales/*.yml'\n  ];\n  let dirty;\n  try {\n    dirty = Buffer.concat([\n      execFileSync('git', ['diff', '--name-only', '-z', '--no-ext-diff', '--no-textconv', head, '--', ...paths], { timeout: 15000, maxBuffer: 1024 * 1024 }),\n      execFileSync('git', ['ls-files', '--others', '-z', '--', ...paths], { timeout: 15000, maxBuffer: 1024 * 1024 })\n    ]);\n  } catch (error) { fail(`repairs not published check failed: ${error.message}`); }\n  if (dirty.length !== 0) fail('repairs not published: a noop acknowledgement cannot discard working localization repairs');\n}\nNODE\n"
         shell: bash
       - name: Upload final localization checker report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -1258,7 +1214,6 @@ jobs:
       actions: read
       contents: write
       issues: write
-      pull-requests: write
     concurrency:
       group: "gh-aw-conclusion-ensure-localization-${{ github.run_id }}"
       cancel-in-progress: false
@@ -1273,7 +1228,7 @@ jobs:
     steps:
       - name: Setup Scripts
         id: setup
-        uses: github/gh-aw-actions/setup@bc8c008a419c5b7a29df6f5641edd35fd1c6ea85 # v0.87.10
+        uses: github/gh-aw-actions/setup@bc8c008a419c5b7a29df6f5641edd35fd1c6ea85
         with:
           destination: ${{ runner.temp }}/gh-aw/actions
           job-name: ${{ github.job }}
@@ -1552,7 +1507,7 @@ jobs:
     steps:
       - name: Setup Scripts
         id: setup
-        uses: github/gh-aw-actions/setup@bc8c008a419c5b7a29df6f5641edd35fd1c6ea85 # v0.87.10
+        uses: github/gh-aw-actions/setup@bc8c008a419c5b7a29df6f5641edd35fd1c6ea85
         with:
           destination: ${{ runner.temp }}/gh-aw/actions
           job-name: ${{ github.job }}
@@ -1841,7 +1796,6 @@ jobs:
     permissions:
       contents: write
       issues: write
-      pull-requests: write
     timeout-minutes: 45
     env:
       GH_AW_AGENT_AIC: ${{ needs.agent.outputs.aic }}
@@ -1861,8 +1815,6 @@ jobs:
     outputs:
       code_push_failure_count: ${{ steps.process_safe_outputs.outputs.code_push_failure_count }}
       code_push_failure_errors: ${{ steps.process_safe_outputs.outputs.code_push_failure_errors }}
-      comment_id: ${{ steps.process_safe_outputs.outputs.comment_id }}
-      comment_url: ${{ steps.process_safe_outputs.outputs.comment_url }}
       create_discussion_error_count: ${{ steps.process_safe_outputs.outputs.create_discussion_error_count }}
       create_discussion_errors: ${{ steps.process_safe_outputs.outputs.create_discussion_errors }}
       process_safe_outputs_items_applied: ${{ steps.process_safe_outputs.outputs.items_applied }}
@@ -1880,7 +1832,7 @@ jobs:
     steps:
       - name: Setup Scripts
         id: setup
-        uses: github/gh-aw-actions/setup@bc8c008a419c5b7a29df6f5641edd35fd1c6ea85 # v0.87.10
+        uses: github/gh-aw-actions/setup@bc8c008a419c5b7a29df6f5641edd35fd1c6ea85
         with:
           destination: ${{ runner.temp }}/gh-aw/actions
           job-name: ${{ github.job }}
@@ -1950,7 +1902,7 @@ jobs:
           GH_AW_ALLOWED_DOMAINS: "api.snapcraft.io,archive.ubuntu.com,azure.archive.ubuntu.com,crl.geotrust.com,crl.globalsign.com,crl.identrust.com,crl.sectigo.com,crl.thawte.com,crl.usertrust.com,crl.verisign.com,crl3.digicert.com,crl4.digicert.com,crls.ssl.com,json-schema.org,json.schemastore.org,keyserver.ubuntu.com,learn.microsoft.com,ocsp.digicert.com,ocsp.geotrust.com,ocsp.globalsign.com,ocsp.identrust.com,ocsp.sectigo.com,ocsp.ssl.com,ocsp.thawte.com,ocsp.usertrust.com,ocsp.verisign.com,packagecloud.io,packages.cloud.google.com,packages.microsoft.com,ppa.launchpad.net,s.symcb.com,s.symcd.com,security.ubuntu.com,ts-crl.ws.symantec.com,ts-ocsp.ws.symantec.com,www.googleapis.com"
           GITHUB_SERVER_URL: ${{ github.server_url }}
           GITHUB_API_URL: ${{ github.api_url }}
-          GH_AW_SAFE_OUTPUTS_HANDLER_CONFIG: "{\"add_comment\":{\"hide_older_comments\":true,\"max\":1,\"target\":\"${{ github.event.inputs.pr_number }}\"},\"create_report_incomplete_issue\":{},\"missing_data\":{},\"missing_tool\":{},\"noop\":{\"max\":1,\"report-as-issue\":\"false\"},\"push_to_pull_request_branch\":{\"allowed_files\":[\"src/cascadia/**/Resources/*.resw\",\"src/cascadia/**/Resources/**/*.resw\",\"tools/wta/locales/*.yml\"],\"base_branch\":\"${{ github.event.inputs.expected_head_sha }}\",\"excluded_files\":[\"src/cascadia/**/Resources/*.resw\",\"src/cascadia/**/Resources/en-US/*.resw\",\"tools/wta/locales/en-US.yml\"],\"fallback_as_pull_request\":false,\"if_no_changes\":\"error\",\"max_patch_size\":4096,\"protect_top_level_dot_folders\":true,\"protected_files\":[\"package.json\",\"bun.lockb\",\"bunfig.toml\",\"deno.json\",\"deno.jsonc\",\"deno.lock\",\"global.json\",\"NuGet.Config\",\"Directory.Packages.props\",\"mix.exs\",\"mix.lock\",\"go.mod\",\"go.sum\",\"stack.yaml\",\"stack.yaml.lock\",\"pom.xml\",\"build.gradle\",\"build.gradle.kts\",\"settings.gradle\",\"settings.gradle.kts\",\"gradle.properties\",\"package-lock.json\",\"yarn.lock\",\"pnpm-lock.yaml\",\"npm-shrinkwrap.json\",\"requirements.txt\",\"Pipfile\",\"Pipfile.lock\",\"pyproject.toml\",\"setup.py\",\"setup.cfg\",\"Gemfile\",\"Gemfile.lock\",\"uv.lock\",\"CODEOWNERS\",\"DESIGN.md\",\"README.md\",\"CONTRIBUTING.md\",\"CHANGELOG.md\",\"SECURITY.md\",\"CODE_OF_CONDUCT.md\",\"AGENTS.md\"],\"protected_files_policy\":\"blocked\"},\"report_incomplete\":{}}"
+          GH_AW_SAFE_OUTPUTS_HANDLER_CONFIG: "{\"create_report_incomplete_issue\":{},\"missing_data\":{},\"missing_tool\":{},\"noop\":{\"max\":1,\"report-as-issue\":\"false\"},\"push_to_pull_request_branch\":{\"allowed_files\":[\"src/cascadia/**/Resources/*.resw\",\"src/cascadia/**/Resources/**/*.resw\",\"tools/wta/locales/*.yml\"],\"base_branch\":\"${{ github.event.inputs.expected_head_sha }}\",\"excluded_files\":[\"src/cascadia/**/Resources/*.resw\",\"src/cascadia/**/Resources/en-US/*.resw\",\"tools/wta/locales/en-US.yml\"],\"fallback_as_pull_request\":false,\"if_no_changes\":\"error\",\"max_patch_size\":4096,\"protect_top_level_dot_folders\":true,\"protected_files\":[\"package.json\",\"bun.lockb\",\"bunfig.toml\",\"deno.json\",\"deno.jsonc\",\"deno.lock\",\"global.json\",\"NuGet.Config\",\"Directory.Packages.props\",\"mix.exs\",\"mix.lock\",\"go.mod\",\"go.sum\",\"stack.yaml\",\"stack.yaml.lock\",\"pom.xml\",\"build.gradle\",\"build.gradle.kts\",\"settings.gradle\",\"settings.gradle.kts\",\"gradle.properties\",\"package-lock.json\",\"yarn.lock\",\"pnpm-lock.yaml\",\"npm-shrinkwrap.json\",\"requirements.txt\",\"Pipfile\",\"Pipfile.lock\",\"pyproject.toml\",\"setup.py\",\"setup.cfg\",\"Gemfile\",\"Gemfile.lock\",\"uv.lock\",\"CODEOWNERS\",\"DESIGN.md\",\"README.md\",\"CONTRIBUTING.md\",\"CHANGELOG.md\",\"SECURITY.md\",\"CODE_OF_CONDUCT.md\",\"AGENTS.md\"],\"protected_files_policy\":\"blocked\"},\"report_incomplete\":{}}"
           GH_AW_CI_TRIGGER_TOKEN: ${{ '' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
