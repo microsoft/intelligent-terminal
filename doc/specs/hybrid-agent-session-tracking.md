@@ -456,7 +456,7 @@ of the live states.
 
 ## Diagnostics
 
-`wta-main_master.log` (`target: "session_watcher"`):
+`wta-main_master*.log` (`target: "session_watcher"`):
 
 - `refreshed live IT pane set panes={…}` — the COM-walked live pane set.
 - `watcher liveness gate decision … resolved_pane=… gated=… live_pane_count=…

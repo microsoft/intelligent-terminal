@@ -161,15 +161,21 @@ path helpers; do not hard-code `%TEMP%` or a bare LocalAppData path.
 
 Primary logs are:
 
-- `wta-main_master.log`
-- `wta-main_helper-{pid}.log`
-- `wta-cli.log`
-- `wta-delegate.log`
-- `wta-probe.log`
-- `wta-install-hooks.log`
+- `wta-main_master.<UTC-date>.log`
+- `wta-main_helper-{pid}.<UTC-date>.log`
+- `wta-cli.<UTC-date>.log`
+- `wta-delegate.<UTC-date>.log`
+- `wta-probe.<UTC-date>.log`
+- `wta-install-hooks.<UTC-date>.log`
+- `wta-panic.<UTC-date>.log`
 - `wta-ensure-host.log`
 - `wta-acp-debug.log`
 - `terminal-agent-pane.log`
+
+Rust WTA streams with dated names rotate daily and retain up to three matching
+files. If a daily writer cannot initialize, that stream uses the fixed
+`wta-<stream>.log` name in the same directory. Per-PID helper logs are also
+reclaimed after three days.
 
 Use `WTA_LOG=debug` or `WTA_LOG=trace` for additional Rust tracing. See
 `tools/wta/README.md` for current diagnostics and CLI usage.

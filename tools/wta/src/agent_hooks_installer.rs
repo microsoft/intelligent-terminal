@@ -1468,7 +1468,7 @@ fn install_for_gemini(_home: &Path) -> InstallOutcome {
     // `--consent` does NOT cover ("Do you trust the files in this
     // folder? [y/N]"). Without this, the install hangs on stdin and
     // a scoped Terminal reconciliation attempt times out at 60s
-    // (issue: install_for_gemini timed out in wta-install-hooks.log
+    // (issue: install_for_gemini timed out in wta-install-hooks.<date>.log
     // after Claude + Copilot succeeded). The `--skip-trust` flag is
     // top-level only and isn't accepted on the `extensions install`
     // subcommand, so we use the env-var form Gemini documents for
@@ -1652,7 +1652,7 @@ pub fn status() -> StatusReport {
 /// `run_hooks_install` to avoid spawning `claude`/`gemini` query
 /// subprocesses when the install was scoped to a single CLI — those
 /// spawns are ~1-3s of Node startup each (verified in
-/// `wta-install-hooks.log` against a `--cli copilot` install) and add
+/// `wta-install-hooks.<date>.log` against a `--cli copilot` install) and add
 /// nothing to the verification of a Copilot-only install.
 ///
 /// CLIs that aren't `scope.includes(...)`d get a stub `CliStatus`
@@ -1852,7 +1852,7 @@ fn copilot_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) 
     // ~2.8s (serial — each is a cold Node CLI startup) to ~1.5s on a
     // dev box; the peak memory cost is ~150 MB extra for the brief
     // window both Node processes are live. The two `tracing::info!`
-    // lines they emit may interleave in `wta-install-hooks.log` (each
+    // lines they emit may interleave in `wta-install-hooks.<date>.log` (each
     // line stays atomic — `tracing` synchronizes per-event), but the
     // log payload is unambiguous because each carries its own
     // `args=` field.
@@ -3255,7 +3255,7 @@ fn spawn_plugin_cli_query(
 ///     in `run_plugin_cli_capture`), so without an explicit log here
 ///     a thread panic would silently fall through to the filesystem
 ///     fallback and we'd never know the parallel-status code regressed.
-///     Log it at warn so it surfaces in `wta-install-hooks.log` next
+///     Log it at warn so it surfaces in `wta-install-hooks.<date>.log` next
 ///     to the surrounding `agent_hooks` events.
 ///
 /// `exe` and `args` are echoed into the log so an operator reading
@@ -4876,8 +4876,11 @@ fn upgrade_one_cli(
         // stderr; threading that string back through five `bool`-returning
         // upgrade paths would be a bigger change than the report is worth.
         Err(format!(
-            "{} hook upgrade failed; see wta-install-hooks.log",
-            cli.name()
+            "{} hook upgrade failed; see {}",
+            cli.name(),
+            crate::logging::log_dir()
+                .join("wta-install-hooks*.log")
+                .display()
         ))
     }
 }

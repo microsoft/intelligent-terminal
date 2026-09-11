@@ -3999,7 +3999,7 @@ pub async fn run_master_mode(config: MasterConfig, pipe_name: String) -> Result<
     // Every master-side failure (named-pipe create/connect, agent CLI spawn,
     // ACP initialize timeout/failure, accept-loop shutdown) funnels through
     // here. Log with target=master so connection failures are always present
-    // in wta-main_master.log, greppable alongside the success-path traces.
+    // in wta-main_master*.log, greppable alongside the success-path traces.
     if let Err(err) = &result {
         tracing::error!(target: "master", error = ?err, "wta-master exiting with error");
     }

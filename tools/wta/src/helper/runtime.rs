@@ -335,7 +335,8 @@ async fn run_acp_tui_mode(
         // failures to wta-master propagate up to here). `process::exit` below
         // bypasses both `main()`'s catch-all and any caller's wrapper, so log
         // it here before exiting — it lands in this process's log file
-        // (wta-main_helper-{pid}.log in helper mode).
+        // (`wta-main_helper-{pid}.<UTC-date>.log`, or its fixed-name fallback,
+        // in helper mode).
         tracing::error!(error = ?e, "wta TUI exiting with error");
         eprintln!("Error: {e:?}");
         // Flush the file appender — process::exit skips the guard drop.

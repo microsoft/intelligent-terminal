@@ -449,11 +449,12 @@ If Session management is off, turn it on to retry automatic reconciliation.
 
 > [!TIP]
 > If `wta hooks install` still fails, diagnostics are written to
-> `wta-install-hooks.log` under the Intelligent Terminal package's log
-> directory:
+> `wta-install-hooks*.log` under the Intelligent Terminal package's log
+> directory. This is normally `wta-install-hooks.<UTC-date>.log`; the fixed
+> `wta-install-hooks.log` name is used if daily logging cannot initialize.
 >
 > ```text
-> %LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalCache\Local\IntelligentTerminal\logs\<version>\wta-install-hooks.log
+> %LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalCache\Local\IntelligentTerminal\logs\<version>\wta-install-hooks*.log
 > ```
 >
 > The most common causes of failure are: the agent CLI was not on

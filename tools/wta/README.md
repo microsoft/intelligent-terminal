@@ -216,16 +216,22 @@ packaged (or bare `%LOCALAPPDATA%\IntelligentTerminal\logs\` unpackaged):
 
 | File | Contents |
 |------|----------|
-| `wta-main_master.log` | `wta-master`: agent CLI pool, pipe accept loop, per-helper routing |
-| `wta-main_helper-{pid}.log` | each `wta-helper`: pipe connect, ACP init, prompts, agent responses, TUI lifecycle |
-| `wta-cli.log` | short-lived CLI helpers (`list-*`, `capture-pane`, `listen`, `sessions`) |
+| `wta-main_master.<UTC-date>.log` | `wta-master`: agent CLI pool, pipe accept loop, per-helper routing |
+| `wta-main_helper-{pid}.<UTC-date>.log` | each `wta-helper`: pipe connect, ACP init, prompts, agent responses, TUI lifecycle |
+| `wta-cli.<UTC-date>.log` | short-lived CLI helpers (`list-*`, `capture-pane`, `listen`, `sessions`) |
 | `terminal-agent-pane.log` | Agent-pane chrome (C++ TerminalApp side) |
 | `wta-ensure-host.log` | Background host startup / COM connection / SharedWta lifecycle |
 | `wta-acp-debug.log` | ACP protocol debug trace |
-| `wta-delegate.log` | `?<prompt>` delegation flow |
-| `wta-probe.log` | Agent/model/session capability probes |
-| `wta-install-hooks.log` | Hook installation and upgrade diagnostics |
+| `wta-delegate.<UTC-date>.log` | `?<prompt>` delegation flow |
+| `wta-probe.<UTC-date>.log` | Agent/model/session capability probes |
+| `wta-install-hooks.<UTC-date>.log` | Hook installation and upgrade diagnostics |
+| `wta-panic.<UTC-date>.log` | Synchronous panic backstop when the normal buffered record may not flush |
 | `hook-trace.log` | Shell-hook event diagnostics |
+
+Rust WTA streams with dated names rotate daily and retain up to three matching
+files. If a daily writer cannot initialize, that stream uses the fixed
+`wta-<stream>.log` name in the same directory. Per-PID helper logs are also
+reclaimed after three days.
 
 Set `WTA_LOG=debug` for verbose output (debug builds default to `debug`, release
 to `info`). The F12 debug panel in the TUI shows protocol traffic live without
@@ -327,7 +333,8 @@ Default logs record failures without requiring `WTA_LOG=debug`:
   and why pane selection failed (for example, `active_agent_without_source`,
   `selected_pane_has_no_session`, or `explicit_source_unresolved`). Exceptions from
   the page-context query are logged once at the COM boundary with their HRESULT.
-- `wta-main_helper-{pid}.log`: `pane_context_unavailable` reasons distinguish
+- `wta-main_helper-{pid}.<UTC-date>.log` (or the fixed
+  `wta-main_helper-{pid}.log` fallback): `pane_context_unavailable` reasons distinguish
   protocol failure, an agent pane, and unresolved legacy lookup.
   `pane_context_response_contract_error` records invalid responses.
   `prompt_has_no_bound_pane` identifies the affected helper/prompt;

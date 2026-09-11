@@ -74,13 +74,10 @@ Describe 'Feature §0 FRE session-management hook install' -Tag 'Feature' -Skip:
             ) | Should -BeTrue -Because 'the FRE checklist must enter Error Detection before Sessions and preserve completed rows'
             $freLog | Should -Match '\[FRE\] Progress: error-detection=(completed|warning)' -Because 'the hooks happy path requires non-blocking shell integration'
 
-            # Hook logs are available: the install writes its decisions to the WTA hook log.
-            $logDir = Get-ItLogDir -App $app
-            if ($logDir) {
-                $hookLog = Join-Path $logDir 'wta-install-hooks.log'
-                Test-Path $hookLog | Should -BeTrue -Because 'hook install decisions must be recorded in wta-install-hooks.log'
-                (Get-Item $hookLog).Length | Should -BeGreaterThan 0
-            }
+            # Hook logs are available: the install writes current-run decisions to the WTA hook log.
+            $hookLog = Get-ItLogText -App $app -Name 'wta-install-hooks.log' -SinceStart
+            $hookLog | Should -Not -BeNullOrEmpty -Because 'current-run hook install decisions must be recorded in the dated or fallback hook log'
+            $hookLog | Should -Match '(?i)hook|copilot|plugin' -Because 'the current-run hook log must contain hook-install evidence'
         }
         finally { Stop-Terminal -App $app }
     }
