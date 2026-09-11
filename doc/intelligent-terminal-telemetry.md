@@ -24,7 +24,7 @@ established separately. See [privacy information](../PRIVACY.md).
 - [Counting and correlation](#counting-and-correlation)
 - [Retired events and settings filtering](#retired-events-and-settings-filtering)
 - [Privacy and collection boundaries](#privacy-and-collection-boundaries)
-- [Source and verification references](#source-and-verification-references)
+- [Source references](#source-references)
 
 ## Measurement guide
 
@@ -592,7 +592,7 @@ do not mean a local collector cannot capture it. Retention, sampling,
 backend routing, and user/device identity enrichment are not specified by
 these event definitions.
 
-## Source and verification references
+## Source references
 
 | Contract | Source |
 |---|---|
@@ -612,9 +612,5 @@ these event definitions.
 | Settings definitions | [MTSMSettings.h](../src/cascadia/TerminalSettingsModel/MTSMSettings.h) |
 | OSS metadata | [ProjectTelemetry.h](../dep/telemetry/ProjectTelemetry.h) |
 
-[Historical ETW verification](../TelemetryEvents.md)
-records event and payload observations, including the source-build limits
-of those captures. It is evidence about those runs, not a guarantee of
-current end-to-end routing or backend ingestion.
 The [inherited Terminal/OpenConsole inventory](../TelemetryEvents.md#inherited-windows-terminal--openconsole-reference)
 is retained separately and is pinned to its historical source revision.
