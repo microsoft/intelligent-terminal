@@ -37,9 +37,7 @@ namespace winrt::TerminalApp::implementation
     {
         InitializeComponent();
 
-        // Seed the overlay's status text from the existing localized
-        // resource (reused here rather than adding a new .Text key
-        // across every locale).
+        // Seed the overlay's default save/install status.
         SavingStatusText().Text(RS_(L"FreOverlay_SettingUp"));
     }
 
@@ -162,6 +160,9 @@ namespace winrt::TerminalApp::implementation
 
     void FreOverlay::Initialize(const winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings& settings)
     {
+        _shellIntegrationPreferenceSnapshot.reset();
+        _operationInFlight = false;
+        ExecutionPolicyActionPanel().Visibility(Visibility::Collapsed);
         _settings = settings;
         const auto& globals = _settings.GlobalSettings();
 
@@ -332,6 +333,8 @@ namespace winrt::TerminalApp::implementation
         // "ProgressRing".
         Automation::AutomationProperties::SetName(
             SavingProgressRing(), RS_(L"FreOverlay_SettingUp"));
+        Automation::AutomationProperties::SetHelpText(
+            EnableExecutionPolicyButton(), RS_(L"FreOverlay_EnableExecutionPolicyHelpText"));
 
         // ── Pre-warm winget source cache ───────────────────────────────
         // While the user reads the Welcome + Settings pages (typically
@@ -1201,6 +1204,7 @@ namespace winrt::TerminalApp::implementation
         static constexpr std::wstring_view baseUrl{ L"https://aka.ms/intelligent-terminal-dependency" };
 
         std::wstring url{ baseUrl };
+        ExecutionPolicyActionPanel().Visibility(Visibility::Collapsed);
 
         // RS_ requires string literals (the resource keys are extracted at
         // build time), so set the message per-branch rather than via a
@@ -1214,6 +1218,14 @@ namespace winrt::TerminalApp::implementation
         case FreProblemKind::ShellIntegrationExecutionPolicy:
             ErrorText().Text(RS_(L"FreOverlay_InstallErrorShellIntegrationExecutionPolicy"));
             url += L"#41-powershell";
+            if (!_shellIntegrationPreferenceSnapshot)
+            {
+                _shellIntegrationPreferenceSnapshot = ShellIntegrationPreferenceSnapshot{
+                    AutoDetectToggle().IsOn(),
+                    AutoErrorToggle().IsOn(),
+                };
+            }
+            ExecutionPolicyActionPanel().Visibility(Visibility::Visible);
             // Same remediation as generic shell-integration failure: turn
             // off error detection so the user can save and continue. Once
             // they fix execution policy they can re-enable it from Settings.
@@ -1264,6 +1276,7 @@ namespace winrt::TerminalApp::implementation
     {
         static constexpr std::wstring_view baseUrl{ L"https://aka.ms/intelligent-terminal-dependency" };
         std::wstring url{ baseUrl };
+        ExecutionPolicyActionPanel().Visibility(Visibility::Collapsed);
 
         // Per-package: URL anchor + display name. The display name is a
         // localized resource (Copilot's name doesn't translate, but
@@ -1403,10 +1416,17 @@ namespace winrt::TerminalApp::implementation
         // after hearing the error). The user can Shift+Tab back to
         // SaveButton if they want to retry instead.
         _SetSavingState(false);
-        ErrorHelpLink().Focus(FocusState::Programmatic);
+        if (ExecutionPolicyActionPanel().Visibility() == Visibility::Visible)
+        {
+            EnableExecutionPolicyButton().Focus(FocusState::Programmatic);
+        }
+        else
+        {
+            ErrorHelpLink().Focus(FocusState::Programmatic);
+        }
     }
 
-    IAsyncAction FreOverlay::_SaveAndInstallAsync()
+    IAsyncAction FreOverlay::_SaveAndInstallCoreAsync()
     {
         auto weak = get_weak();
         // Capture the dispatcher while we're definitely on the UI thread.
@@ -1420,6 +1440,13 @@ namespace winrt::TerminalApp::implementation
         const auto dispatcher = Dispatcher();
 
         // 1. Read selections on the UI thread
+        // A manual re-enable supersedes the snapshot captured before the
+        // policy error forced these controls off.
+        if (_shellIntegrationPreferenceSnapshot && AutoDetectToggle().IsOn())
+        {
+            _shellIntegrationPreferenceSnapshot.reset();
+        }
+
         winrt::hstring agentId;
         if (const auto selected = AgentComboBox().SelectedItem())
         {
@@ -1761,10 +1788,166 @@ namespace winrt::TerminalApp::implementation
 
     // ── Button handlers ─────────────────────────────────────────────────
 
+    IAsyncAction FreOverlay::_SaveAndInstallAsync()
+    {
+        if (_operationInFlight)
+        {
+            co_return;
+        }
+
+        _operationInFlight = true;
+        auto weak = get_weak();
+        const auto dispatcher = Dispatcher();
+        SavingStatusText().Text(RS_(L"FreOverlay_SettingUp"));
+        Automation::AutomationProperties::SetName(
+            SavingProgressRing(), RS_(L"FreOverlay_SettingUp"));
+
+        bool failed = false;
+        try
+        {
+            co_await _SaveAndInstallCoreAsync();
+        }
+        catch (...)
+        {
+            LOG_CAUGHT_EXCEPTION();
+            failed = true;
+        }
+
+        co_await winrt::resume_foreground(dispatcher);
+        if (auto self = weak.get())
+        {
+            if (failed)
+            {
+                self->_SetSavingState(false);
+            }
+            self->_operationInFlight = false;
+        }
+    }
+
+    IAsyncAction FreOverlay::_EnableExecutionPolicyAsync()
+    {
+        namespace PowerShell = ::Microsoft::Terminal::ShellIntegration::Powershell;
+
+        if (_operationInFlight)
+        {
+            co_return;
+        }
+
+        _operationInFlight = true;
+        auto weak = get_weak();
+        const auto dispatcher = Dispatcher();
+        SavingStatusText().Text(RS_(L"FreOverlay_EnablingExecutionPolicy"));
+        Automation::AutomationProperties::SetName(
+            SavingProgressRing(), RS_(L"FreOverlay_EnablingExecutionPolicy"));
+        _SetSavingState(true);
+
+        bool succeeded = false;
+        try
+        {
+            co_await winrt::resume_background();
+
+            const auto pwshBefore = PowerShell::ProbeExecutionPolicy(
+                ::Microsoft::Terminal::ShellIntegration::Target::Pwsh);
+            const auto winPsBefore = PowerShell::ProbeExecutionPolicy(
+                ::Microsoft::Terminal::ShellIntegration::Target::WindowsPowerShell);
+
+            const auto logProbe = [](const char* phase, const char* host, const PowerShell::ExecutionPolicyProbeResult& result) {
+                _agentPaneLog(std::string{ "[FRE] EP remediation " } + phase + " " + host +
+                              " status=" + std::to_string(static_cast<int>(result.status)) +
+                              " policy='" + winrt::to_string(winrt::hstring{ result.policy }) + "'" +
+                              " timeout=" + (result.process.timedOut ? "1" : "0") +
+                              " error=" + std::to_string(result.process.error) +
+                              " exit=" + std::to_string(result.process.exitCode));
+            };
+            logProbe("pre", "pwsh", pwshBefore);
+            logProbe("pre", "winPs", winPsBefore);
+
+            if (PowerShell::CanAttemptExecutionPolicyRemediation(pwshBefore, winPsBefore))
+            {
+                if (pwshBefore.status == PowerShell::ExecutionPolicyStatus::Blocked)
+                {
+                    const auto setter = PowerShell::EnableRemoteSignedForCurrentUser(pwshBefore);
+                    _agentPaneLog("[FRE] EP remediation set pwsh launched=" +
+                                  std::string(setter.launched ? "1" : "0") +
+                                  " timeout=" + (setter.timedOut ? "1" : "0") +
+                                  " error=" + std::to_string(setter.error) +
+                                  " exit=" + std::to_string(setter.exitCode));
+                }
+                if (winPsBefore.status == PowerShell::ExecutionPolicyStatus::Blocked)
+                {
+                    const auto setter = PowerShell::EnableRemoteSignedForCurrentUser(winPsBefore);
+                    _agentPaneLog("[FRE] EP remediation set winPs launched=" +
+                                  std::string(setter.launched ? "1" : "0") +
+                                  " timeout=" + (setter.timedOut ? "1" : "0") +
+                                  " error=" + std::to_string(setter.error) +
+                                  " exit=" + std::to_string(setter.exitCode));
+                }
+
+                const auto pwshAfter = PowerShell::ProbeExecutionPolicy(
+                    ::Microsoft::Terminal::ShellIntegration::Target::Pwsh);
+                const auto winPsAfter = PowerShell::ProbeExecutionPolicy(
+                    ::Microsoft::Terminal::ShellIntegration::Target::WindowsPowerShell);
+                logProbe("post", "pwsh", pwshAfter);
+                logProbe("post", "winPs", winPsAfter);
+                succeeded = PowerShell::ExecutionPolicyRemediationSucceeded(pwshAfter, winPsAfter);
+            }
+            else
+            {
+                _agentPaneLog("[FRE] EP remediation aborted: inconclusive preflight");
+            }
+        }
+        catch (...)
+        {
+            LOG_CAUGHT_EXCEPTION();
+        }
+
+        co_await winrt::resume_foreground(dispatcher);
+        auto self = weak.get();
+        if (!self)
+        {
+            co_return;
+        }
+
+        if (!succeeded || !_shellIntegrationPreferenceSnapshot)
+        {
+            _agentPaneLog("[FRE] EP remediation failed");
+            _SetSavingState(false);
+            EnableExecutionPolicyButton().Focus(FocusState::Programmatic);
+            _operationInFlight = false;
+            co_return;
+        }
+
+        _agentPaneLog("[FRE] EP remediation succeeded");
+        const auto snapshot = *_shellIntegrationPreferenceSnapshot;
+        AutoDetectToggle().IsOn(snapshot.autoDetectionEnabled);
+        _UpdateSuggestionEnabledState();
+        AutoErrorToggle().IsOn(snapshot.autoFixEnabled);
+        if (_settings)
+        {
+            _settings.GlobalSettings().AutoErrorDetectionEnabled(snapshot.autoDetectionEnabled);
+            _settings.GlobalSettings().AutoFixEnabled(snapshot.autoFixEnabled);
+        }
+        _shellIntegrationPreferenceSnapshot.reset();
+
+        ErrorPanel().Visibility(Visibility::Collapsed);
+        SavingStatusText().Text(RS_(L"FreOverlay_SettingUp"));
+        Automation::AutomationProperties::SetName(
+            SavingProgressRing(), RS_(L"FreOverlay_SettingUp"));
+        _agentPaneLog("[FRE] EP remediation complete; waiting for explicit Save");
+        _SetSavingState(false);
+        _operationInFlight = false;
+    }
+
     void FreOverlay::_OnSaveButtonClick(const IInspectable& /*sender*/,
                                         const RoutedEventArgs& /*args*/)
     {
         _SaveAndInstallAsync();
+    }
+
+    void FreOverlay::_OnEnableExecutionPolicyClick(const IInspectable& /*sender*/,
+                                                   const RoutedEventArgs& /*args*/)
+    {
+        _EnableExecutionPolicyAsync();
     }
 
     void FreOverlay::_OnCloseButtonClick(const IInspectable& /*sender*/,
@@ -1809,7 +1992,8 @@ namespace winrt::TerminalApp::implementation
         auto overlay = SavingOverlay();
         auto ring = SavingProgressRing();
         auto save = SaveButton();
-        if (!scroller || !overlay || !ring || !save)
+        auto enablePolicy = EnableExecutionPolicyButton();
+        if (!scroller || !overlay || !ring || !save || !enablePolicy)
         {
             return;
         }
@@ -1843,6 +2027,7 @@ namespace winrt::TerminalApp::implementation
             ring.IsActive(true);
             scroller.IsEnabled(false);
             save.IsEnabled(false);
+            enablePolicy.IsEnabled(false);
 
             // Move focus to the ProgressRing AFTER the synchronous
             // layout work completes. Calling ring.Focus() right after
@@ -1890,7 +2075,7 @@ namespace winrt::TerminalApp::implementation
                 peer.RaiseNotificationEvent(
                     Automation::Peers::AutomationNotificationKind::Other,
                     Automation::Peers::AutomationNotificationProcessing::ImportantMostRecent,
-                    RS_(L"FreOverlay_SettingUp"),
+                    SavingStatusText().Text(),
                     L"FreSavingAnnouncement");
             }
         }
@@ -1898,6 +2083,7 @@ namespace winrt::TerminalApp::implementation
         {
             scroller.IsEnabled(true);
             save.IsEnabled(true);
+            enablePolicy.IsEnabled(true);
             overlay.Visibility(Visibility::Collapsed);
             ring.IsActive(false);
             // Park focus on Save so a keyboard user (typically after an

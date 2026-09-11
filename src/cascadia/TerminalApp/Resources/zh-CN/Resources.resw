@@ -1332,4 +1332,20 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>智能体 · 连接中</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="FreOverlay_EnableExecutionPolicyButton.Content" xml:space="preserve">
+    <value>立即启用</value>
+    <comment>Label for a button that changes the current user PowerShell execution policy to RemoteSigned. {Locked=&quot;PowerShell&quot;,&quot;RemoteSigned&quot;}</comment>
+  </data>
+  <data name="FreOverlay_EnableExecutionPolicyDisclosure.Text" xml:space="preserve">
+    <value>将当前用户的 PowerShell 执行策略更改为 RemoteSigned。无需管理员权限。</value>
+    <comment>Visible disclosure beside the execution-policy remediation button. It explains the persistent CurrentUser change and that elevation is not required. {Locked=&quot;PowerShell&quot;,&quot;RemoteSigned&quot;}</comment>
+  </data>
+  <data name="FreOverlay_EnableExecutionPolicyHelpText" xml:space="preserve">
+    <value>将当前用户的 PowerShell 执行策略更改为 RemoteSigned。无需管理员权限。</value>
+    <comment>Screen-reader help text for the execution-policy remediation button. {Locked=&quot;PowerShell&quot;,&quot;RemoteSigned&quot;}</comment>
+  </data>
+  <data name="FreOverlay_EnablingExecutionPolicy" xml:space="preserve">
+    <value>正在启用 PowerShell 错误检测...</value>
+    <comment>Progress message shown while Intelligent Terminal changes and verifies the PowerShell execution policy. {Locked=&quot;PowerShell&quot;}</comment>
+  </data>
 </root>

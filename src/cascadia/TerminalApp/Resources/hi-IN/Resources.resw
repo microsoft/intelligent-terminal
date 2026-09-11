@@ -382,4 +382,20 @@
     <value>एजेंट · कनेक्ट हो रहा है</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="FreOverlay_EnableExecutionPolicyButton.Content" xml:space="preserve">
+    <value>अभी सक्षम करें</value>
+    <comment>Label for a button that changes the current user PowerShell execution policy to RemoteSigned. {Locked=&quot;PowerShell&quot;,&quot;RemoteSigned&quot;}</comment>
+  </data>
+  <data name="FreOverlay_EnableExecutionPolicyDisclosure.Text" xml:space="preserve">
+    <value>वर्तमान उपयोगकर्ता की PowerShell निष्पादन नीति को RemoteSigned में बदलता है। व्यवस्थापक पहुँच की आवश्यकता नहीं है।</value>
+    <comment>Visible disclosure beside the execution-policy remediation button. It explains the persistent CurrentUser change and that elevation is not required. {Locked=&quot;PowerShell&quot;,&quot;RemoteSigned&quot;}</comment>
+  </data>
+  <data name="FreOverlay_EnableExecutionPolicyHelpText" xml:space="preserve">
+    <value>वर्तमान उपयोगकर्ता की PowerShell निष्पादन नीति को RemoteSigned में बदलता है। व्यवस्थापक पहुँच की आवश्यकता नहीं है।</value>
+    <comment>Screen-reader help text for the execution-policy remediation button. {Locked=&quot;PowerShell&quot;,&quot;RemoteSigned&quot;}</comment>
+  </data>
+  <data name="FreOverlay_EnablingExecutionPolicy" xml:space="preserve">
+    <value>PowerShell त्रुटि पहचान सक्षम की जा रही है...</value>
+    <comment>Progress message shown while Intelligent Terminal changes and verifies the PowerShell execution policy. {Locked=&quot;PowerShell&quot;}</comment>
+  </data>
 </root>

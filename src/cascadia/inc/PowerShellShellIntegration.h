@@ -15,10 +15,212 @@
 
 #include "ShellIntegrationCommon.h"
 
+#include <algorithm>
+
 namespace Microsoft::Terminal::ShellIntegration::Powershell
 {
+    enum class ExecutionPolicyStatus
+    {
+        Absent,
+        Allowed,
+        Blocked,
+        Unknown,
+    };
+
+    struct PowerShellProcessResult
+    {
+        bool launched{ false };
+        bool timedOut{ false };
+        DWORD error{ ERROR_SUCCESS };
+        DWORD exitCode{ STILL_ACTIVE };
+        std::wstring output;
+    };
+
+    struct ExecutionPolicyProbeResult
+    {
+        Target target{ Target::Pwsh };
+        ExecutionPolicyStatus status{ ExecutionPolicyStatus::Unknown };
+        std::wstring executablePath;
+        std::wstring policy;
+        PowerShellProcessResult process;
+    };
+
     namespace details
     {
+        inline constexpr std::wstring_view QueryExecutionPolicyArguments{
+            L"-NoProfile -NonInteractive -Command Get-ExecutionPolicy"
+        };
+        inline constexpr std::wstring_view EnableRemoteSignedArguments{
+            L"-NoProfile -NonInteractive -Command Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force"
+        };
+
+        inline std::wstring ParseExecutionPolicyOutput(std::string_view raw)
+        {
+            std::wstring result;
+            for (const char c : raw)
+            {
+                if (c == '\r' || c == '\n')
+                {
+                    if (!result.empty())
+                    {
+                        break;
+                    }
+                    continue;
+                }
+                if (c >= 'A' && c <= 'Z')
+                {
+                    result.push_back(static_cast<wchar_t>(c + 0x20));
+                }
+                else if (c >= 'a' && c <= 'z')
+                {
+                    result.push_back(static_cast<wchar_t>(c));
+                }
+            }
+            return result;
+        }
+
+        inline PowerShellProcessResult RunPowerShellCommand(LPCWSTR exe,
+                                                            std::wstring_view arguments,
+                                                            DWORD timeoutMs = 20000) noexcept
+        {
+            PowerShellProcessResult result;
+            try
+            {
+                SECURITY_ATTRIBUTES sa{};
+                sa.nLength = sizeof(sa);
+                sa.bInheritHandle = TRUE;
+
+                HANDLE rawRead = nullptr;
+                HANDLE rawWrite = nullptr;
+                if (!CreatePipe(&rawRead, &rawWrite, &sa, 0))
+                {
+                    result.error = GetLastError();
+                    return result;
+                }
+                wil::unique_handle readEnd{ rawRead };
+                wil::unique_handle writeEnd{ rawWrite };
+                if (!SetHandleInformation(readEnd.get(), HANDLE_FLAG_INHERIT, 0))
+                {
+                    result.error = GetLastError();
+                    return result;
+                }
+
+                wil::unique_handle nullInput{
+                    CreateFileW(L"NUL",
+                                GENERIC_READ,
+                                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                &sa,
+                                OPEN_EXISTING,
+                                FILE_ATTRIBUTE_NORMAL,
+                                nullptr)
+                };
+                if (!nullInput)
+                {
+                    result.error = GetLastError();
+                    return result;
+                }
+
+                STARTUPINFOW si{};
+                si.cb = sizeof(si);
+                si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+                si.wShowWindow = SW_HIDE;
+                si.hStdOutput = writeEnd.get();
+                si.hStdError = writeEnd.get();
+                si.hStdInput = nullInput.get();
+
+                std::wstring cmdLine{ L"\"" };
+                cmdLine += exe;
+                cmdLine += L"\" ";
+                cmdLine += arguments;
+
+                PROCESS_INFORMATION pi{};
+                if (!CreateProcessW(exe,
+                                    cmdLine.data(),
+                                    nullptr,
+                                    nullptr,
+                                    TRUE,
+                                    CREATE_NO_WINDOW,
+                                    nullptr,
+                                    nullptr,
+                                    &si,
+                                    &pi))
+                {
+                    result.error = GetLastError();
+                    return result;
+                }
+                result.launched = true;
+                wil::unique_handle process{ pi.hProcess };
+                wil::unique_handle thread{ pi.hThread };
+
+                writeEnd.reset();
+                nullInput.reset();
+
+                std::string raw;
+                const auto drainAvailableOutput = [&]() {
+                    for (;;)
+                    {
+                        DWORD available = 0;
+                        if (!PeekNamedPipe(readEnd.get(), nullptr, 0, nullptr, &available, nullptr) || available == 0)
+                        {
+                            break;
+                        }
+
+                        char buf[256];
+                        DWORD bytesRead = 0;
+                        const DWORD toRead = std::min<DWORD>(available, sizeof(buf));
+                        if (!ReadFile(readEnd.get(), buf, toRead, &bytesRead, nullptr) || bytesRead == 0)
+                        {
+                            break;
+                        }
+                        if (raw.size() < 4096)
+                        {
+                            raw.append(buf, std::min<size_t>(bytesRead, 4096 - raw.size()));
+                        }
+                    }
+                };
+
+                const auto start = GetTickCount64();
+                DWORD waitResult = WAIT_TIMEOUT;
+                for (;;)
+                {
+                    drainAvailableOutput();
+                    waitResult = WaitForSingleObject(process.get(), 25);
+                    if (waitResult == WAIT_OBJECT_0)
+                    {
+                        break;
+                    }
+                    if (waitResult == WAIT_FAILED)
+                    {
+                        result.error = GetLastError();
+                        break;
+                    }
+                    if (GetTickCount64() - start >= timeoutMs)
+                    {
+                        result.timedOut = true;
+                        break;
+                    }
+                }
+
+                if (waitResult != WAIT_OBJECT_0)
+                {
+                    TerminateProcess(process.get(), 1);
+                    WaitForSingleObject(process.get(), 1000);
+                }
+                drainAvailableOutput();
+
+                if (!GetExitCodeProcess(process.get(), &result.exitCode))
+                {
+                    result.error = GetLastError();
+                }
+                result.output = ParseExecutionPolicyOutput(raw);
+            }
+            catch (...)
+            {
+                result.error = ERROR_UNHANDLED_EXCEPTION;
+            }
+            return result;
+        }
+
         // Runs `<exe> -NoProfile -NonInteractive -Command Get-ExecutionPolicy`
         // synchronously and returns the lowercased effective policy name from
         // stdout (e.g. "restricted"), or an EMPTY string if it could not be
@@ -43,116 +245,30 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
         // would set the Process scope and override the value we're trying to read.
         inline std::wstring QueryExecutionPolicy(LPCWSTR exe, bool* outTimedOut = nullptr) noexcept
         {
+            std::wstring resolved{ exe };
+            if (resolved.find_first_of(L"\\/") == std::wstring::npos)
+            {
+                wchar_t buffer[MAX_PATH]{};
+                const DWORD resolvedLen = SearchPathW(nullptr, exe, nullptr, MAX_PATH, buffer, nullptr);
+                if (resolvedLen == 0 || resolvedLen >= MAX_PATH)
+                {
+                    if (outTimedOut)
+                    {
+                        *outTimedOut = false;
+                    }
+                    return {};
+                }
+                resolved.assign(buffer, resolvedLen);
+            }
+
+            const auto result = RunPowerShellCommand(
+                resolved.c_str(),
+                QueryExecutionPolicyArguments);
             if (outTimedOut)
             {
-                *outTimedOut = false;
+                *outTimedOut = result.timedOut;
             }
-            // This is a best-effort helper: any failure (CreateProcess, pipe,
-            // read hang, OOM, …) must fail-open by returning an empty string
-            // so the caller treats the policy as "not blocking" rather than
-            // crashing the Terminal over a diagnostic probe.
-            try
-            {
-                SECURITY_ATTRIBUTES sa{};
-                sa.nLength = sizeof(sa);
-                sa.bInheritHandle = TRUE;
-
-                HANDLE rawRead = nullptr;
-                HANDLE rawWrite = nullptr;
-                if (!CreatePipe(&rawRead, &rawWrite, &sa, 0))
-                {
-                    return {};
-                }
-                wil::unique_handle readEnd{ rawRead };
-                wil::unique_handle writeEnd{ rawWrite };
-                SetHandleInformation(readEnd.get(), HANDLE_FLAG_INHERIT, 0);
-
-                STARTUPINFOW si{};
-                si.cb = sizeof(si);
-                si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
-                si.wShowWindow = SW_HIDE;
-                si.hStdOutput = writeEnd.get();
-                si.hStdError = writeEnd.get();
-                si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
-
-                std::wstring cmdLine{ L"\"" };
-                cmdLine += exe;
-                cmdLine += L"\" -NoProfile -NonInteractive -Command Get-ExecutionPolicy";
-
-                PROCESS_INFORMATION pi{};
-                if (!CreateProcessW(nullptr,
-                                    cmdLine.data(),
-                                    nullptr,
-                                    nullptr,
-                                    TRUE,
-                                    CREATE_NO_WINDOW,
-                                    nullptr,
-                                    nullptr,
-                                    &si,
-                                    &pi))
-                {
-                    return {};
-                }
-                wil::unique_handle process{ pi.hProcess };
-                wil::unique_handle thread{ pi.hThread };
-
-                writeEnd.reset();
-
-                constexpr DWORD timeoutMs = 20000;
-                const DWORD waitResult = WaitForSingleObject(process.get(), timeoutMs);
-                if (waitResult != WAIT_OBJECT_0)
-                {
-                    // The child didn't exit on its own — either it timed out, or the
-                    // wait itself failed (WAIT_FAILED / unexpected). In BOTH cases the
-                    // child may still be running and still holds the pipe's write end,
-                    // so the ReadFile below would block forever waiting for EOF — kill
-                    // it first so the read returns promptly and we fail open. Only a
-                    // real WAIT_TIMEOUT is reported as a timeout; a wait failure is an
-                    // inconclusive probe (empty result), not a timeout.
-                    if (waitResult == WAIT_TIMEOUT && outTimedOut)
-                    {
-                        *outTimedOut = true;
-                    }
-                    TerminateProcess(process.get(), 1);
-                    WaitForSingleObject(process.get(), 1000);
-                }
-
-                std::string raw;
-                char buf[256];
-                DWORD bytesRead = 0;
-                while (raw.size() < 4096 &&
-                       ReadFile(readEnd.get(), buf, sizeof(buf), &bytesRead, nullptr) &&
-                       bytesRead > 0)
-                {
-                    raw.append(buf, bytesRead);
-                }
-
-                std::wstring result;
-                for (const char c : raw)
-                {
-                    if (c == '\r' || c == '\n')
-                    {
-                        if (!result.empty())
-                        {
-                            break;
-                        }
-                        continue;
-                    }
-                    if (c >= 'A' && c <= 'Z')
-                    {
-                        result.push_back(static_cast<wchar_t>(c + 0x20));
-                    }
-                    else if (c >= 'a' && c <= 'z')
-                    {
-                        result.push_back(static_cast<wchar_t>(c));
-                    }
-                }
-                return result;
-            }
-            catch (...)
-            {
-                return {};
-            }
+            return result.output;
         }
 
         inline bool PolicyNameBlocksUnsignedScripts(std::wstring_view name) noexcept
@@ -169,6 +285,26 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
             // RemoteSigned/Unrestricted/Bypass") contradicted them by treating "",
             // "undefined" and unknown values as blocking.
             return name == L"restricted" || name == L"allsigned";
+        }
+
+        inline ExecutionPolicyStatus ClassifyExecutionPolicy(std::wstring_view policy) noexcept
+        {
+            if (policy.empty())
+            {
+                return ExecutionPolicyStatus::Unknown;
+            }
+            if (PolicyNameBlocksUnsignedScripts(policy))
+            {
+                return ExecutionPolicyStatus::Blocked;
+            }
+            if (policy == L"remotesigned" ||
+                policy == L"unrestricted" ||
+                policy == L"bypass" ||
+                policy == L"undefined")
+            {
+                return ExecutionPolicyStatus::Allowed;
+            }
+            return ExecutionPolicyStatus::Unknown;
         }
 
         // Body-line recognizer for orphan-marker recovery — matches the
@@ -236,6 +372,102 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
         }
     }
 
+    inline ExecutionPolicyProbeResult ProbeExecutionPolicy(Target target) noexcept
+    {
+        ExecutionPolicyProbeResult result;
+        result.target = target;
+
+        if (target == Target::WindowsPowerShell)
+        {
+            wchar_t system32[MAX_PATH]{};
+            const UINT system32Len = GetSystemDirectoryW(system32, MAX_PATH);
+            if (system32Len == 0 || system32Len >= MAX_PATH)
+            {
+                result.process.error = system32Len == 0 ? GetLastError() : ERROR_INSUFFICIENT_BUFFER;
+                return result;
+            }
+            result.executablePath.assign(system32, system32Len);
+            result.executablePath += L"\\WindowsPowerShell\\v1.0\\powershell.exe";
+
+            const auto attributes = GetFileAttributesW(result.executablePath.c_str());
+            if (attributes == INVALID_FILE_ATTRIBUTES)
+            {
+                const auto error = GetLastError();
+                result.process.error = error;
+                result.status = error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND ?
+                                    ExecutionPolicyStatus::Absent :
+                                    ExecutionPolicyStatus::Unknown;
+                return result;
+            }
+        }
+        else
+        {
+            wchar_t buffer[MAX_PATH]{};
+            SetLastError(ERROR_SUCCESS);
+            const DWORD resolvedLen = SearchPathW(nullptr, L"pwsh.exe", nullptr, MAX_PATH, buffer, nullptr);
+            if (resolvedLen == 0)
+            {
+                const auto error = GetLastError();
+                result.process.error = error;
+                result.status = error == ERROR_SUCCESS ||
+                                        error == ERROR_FILE_NOT_FOUND ||
+                                        error == ERROR_PATH_NOT_FOUND ||
+                                        error == ERROR_ENVVAR_NOT_FOUND ?
+                                    ExecutionPolicyStatus::Absent :
+                                    ExecutionPolicyStatus::Unknown;
+                return result;
+            }
+            if (resolvedLen >= MAX_PATH)
+            {
+                result.process.error = ERROR_INSUFFICIENT_BUFFER;
+                return result;
+            }
+            result.executablePath.assign(buffer, resolvedLen);
+        }
+
+        result.process = details::RunPowerShellCommand(
+            result.executablePath.c_str(),
+            details::QueryExecutionPolicyArguments);
+        result.policy = result.process.output;
+        result.status = result.process.launched &&
+                                !result.process.timedOut &&
+                                result.process.exitCode == ERROR_SUCCESS ?
+                            details::ClassifyExecutionPolicy(result.policy) :
+                            ExecutionPolicyStatus::Unknown;
+        return result;
+    }
+
+    inline PowerShellProcessResult EnableRemoteSignedForCurrentUser(const ExecutionPolicyProbeResult& probe) noexcept
+    {
+        if (probe.status != ExecutionPolicyStatus::Blocked || probe.executablePath.empty())
+        {
+            PowerShellProcessResult result;
+            result.error = ERROR_INVALID_STATE;
+            return result;
+        }
+
+        return details::RunPowerShellCommand(
+            probe.executablePath.c_str(),
+            details::EnableRemoteSignedArguments);
+    }
+
+    inline bool CanAttemptExecutionPolicyRemediation(const ExecutionPolicyProbeResult& pwsh,
+                                                     const ExecutionPolicyProbeResult& windowsPowerShell) noexcept
+    {
+        return pwsh.status != ExecutionPolicyStatus::Unknown &&
+               windowsPowerShell.status != ExecutionPolicyStatus::Unknown;
+    }
+
+    inline bool ExecutionPolicyRemediationSucceeded(const ExecutionPolicyProbeResult& pwsh,
+                                                    const ExecutionPolicyProbeResult& windowsPowerShell) noexcept
+    {
+        const auto allowedOrAbsent = [](ExecutionPolicyStatus status) {
+            return status == ExecutionPolicyStatus::Allowed ||
+                   status == ExecutionPolicyStatus::Absent;
+        };
+        return allowedOrAbsent(pwsh.status) && allowedOrAbsent(windowsPowerShell.status);
+    }
+
     // True when the effective PowerShell execution policy for `target` refuses
     // to run unsigned local scripts. Asks PowerShell itself rather than walking
     // the registry / Group Policy hives — `Get-ExecutionPolicy` returns the
@@ -264,62 +496,16 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
         {
             *outTimedOut = false;
         }
-        // Resolve the host to a FULL path and probe THAT exact binary (not the bare
-        // name), so a PATH change between resolution and the probe can't make us run a
-        // different executable, and so the probe isn't susceptible to PATH-order
-        // hijacking. If the host can't be resolved to a trustworthy path we fail open
-        // (return false): a missing/unresolvable host — e.g. pwsh.exe on machines
-        // without PowerShell 7 — must not false-positive as "EP blocked". A PRESENT
-        // host whose probe comes back empty/inconclusive (which can happen in the
-        // packaged-app context) ALSO does not block: only a definitively restrictive
-        // policy (Restricted/AllSigned) does — see PolicyNameBlocksUnsignedScripts.
-        std::wstring resolved;
-        if (target == Target::WindowsPowerShell)
-        {
-            // Windows PowerShell ships in the OS at a FIXED system location, so pin it
-            // to %SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe instead of
-            // trusting PATH — exactly as WslDistroGenerator pins wsl.exe to System32
-            // (GH#11096) to defeat path hijacking of a system binary.
-            wchar_t system32[MAX_PATH]{};
-            const UINT system32Len = GetSystemDirectoryW(system32, MAX_PATH);
-            if (system32Len == 0 || system32Len >= MAX_PATH)
-            {
-                return false;
-            }
-            resolved.assign(system32, system32Len);
-            resolved += L"\\WindowsPowerShell\\v1.0\\powershell.exe";
-            // A genuinely absent system powershell.exe (extremely unusual) fails open.
-            if (GetFileAttributesW(resolved.c_str()) == INVALID_FILE_ATTRIBUTES)
-            {
-                return false;
-            }
-        }
-        else
-        {
-            // PowerShell 7 (pwsh.exe) is an optional third-party install with no fixed
-            // location, so it must be resolved via PATH.
-            wchar_t buffer[MAX_PATH]{};
-            const DWORD resolvedLen = SearchPathW(nullptr, L"pwsh.exe", nullptr, MAX_PATH, buffer, nullptr);
-            if (resolvedLen == 0 || resolvedLen >= MAX_PATH)
-            {
-                // Not on PATH (resolvedLen == 0), or path too long for the buffer
-                // (resolvedLen >= MAX_PATH leaves `buffer` unfilled/truncated).
-                return false;
-            }
-            resolved.assign(buffer, resolvedLen);
-        }
-        bool timedOut = false;
-        auto policy = details::QueryExecutionPolicy(resolved.c_str(), &timedOut);
-        const bool blocked = details::PolicyNameBlocksUnsignedScripts(policy);
+        auto result = ProbeExecutionPolicy(target);
         if (outTimedOut)
         {
-            *outTimedOut = timedOut;
+            *outTimedOut = result.process.timedOut;
         }
         if (outPolicy)
         {
-            *outPolicy = std::move(policy);
+            *outPolicy = std::move(result.policy);
         }
-        return blocked;
+        return result.status == ExecutionPolicyStatus::Blocked;
     }
 
     // Discover the PowerShell $PROFILE path.

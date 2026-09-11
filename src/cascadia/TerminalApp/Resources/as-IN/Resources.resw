@@ -383,4 +383,20 @@
     <value>এজেণ্ট · সংযোগ হৈ আছে</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="FreOverlay_EnableExecutionPolicyButton.Content" xml:space="preserve">
+    <value>এতিয়াই সক্ষম কৰক</value>
+    <comment>Label for a button that changes the current user PowerShell execution policy to RemoteSigned. {Locked=&quot;PowerShell&quot;,&quot;RemoteSigned&quot;}</comment>
+  </data>
+  <data name="FreOverlay_EnableExecutionPolicyDisclosure.Text" xml:space="preserve">
+    <value>বৰ্তমানৰ ব্যৱহাৰকাৰীৰ PowerShell এক্সিকিউচন নীতি RemoteSigned লৈ সলনি কৰে। প্ৰশাসক অভিগমৰ প্ৰয়োজন নহয়।</value>
+    <comment>Visible disclosure beside the execution-policy remediation button. It explains the persistent CurrentUser change and that elevation is not required. {Locked=&quot;PowerShell&quot;,&quot;RemoteSigned&quot;}</comment>
+  </data>
+  <data name="FreOverlay_EnableExecutionPolicyHelpText" xml:space="preserve">
+    <value>বৰ্তমানৰ ব্যৱহাৰকাৰীৰ PowerShell এক্সিকিউচন নীতি RemoteSigned লৈ সলনি কৰে। প্ৰশাসক অভিগমৰ প্ৰয়োজন নহয়।</value>
+    <comment>Screen-reader help text for the execution-policy remediation button. {Locked=&quot;PowerShell&quot;,&quot;RemoteSigned&quot;}</comment>
+  </data>
+  <data name="FreOverlay_EnablingExecutionPolicy" xml:space="preserve">
+    <value>PowerShell ত্ৰুটি চিনাক্তকৰণ সক্ষম কৰা হৈছে...</value>
+    <comment>Progress message shown while Intelligent Terminal changes and verifies the PowerShell execution policy. {Locked=&quot;PowerShell&quot;}</comment>
+  </data>
 </root>

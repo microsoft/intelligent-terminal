@@ -578,13 +578,34 @@
                           bottom row stays compact.  -->
                     <StackPanel x:Name="ErrorPanel"
                                 Grid.Column="0"
-                                HorizontalAlignment="Left" VerticalAlignment="Center"
-                                MaxWidth="440" Spacing="2"
+                                HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                                Margin="0,0,24,0" Spacing="2"
                                 Visibility="Collapsed">
                         <TextBlock x:Name="ErrorText"
                                    Foreground="#FFFF6B6B" FontSize="13"
                                    TextWrapping="Wrap"
                                    AutomationProperties.LiveSetting="Assertive" />
+                        <Grid x:Name="ExecutionPolicyActionPanel"
+                              ColumnSpacing="12"
+                              Visibility="Collapsed">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Button x:Uid="FreOverlay_EnableExecutionPolicyButton"
+                                    x:Name="EnableExecutionPolicyButton"
+                                    Grid.Column="0"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Click="_OnEnableExecutionPolicyClick" />
+                            <TextBlock x:Uid="FreOverlay_EnableExecutionPolicyDisclosure"
+                                       x:Name="EnableExecutionPolicyDisclosure"
+                                       Grid.Column="1"
+                                       FontSize="12"
+                                       Foreground="#FFD0D0D0"
+                                       VerticalAlignment="Center"
+                                       TextWrapping="Wrap" />
+                        </Grid>
                         <TextBlock FontSize="12" TextWrapping="Wrap">
                             <Hyperlink x:Name="ErrorHelpLink"
                                        NavigateUri="https://aka.ms/intelligent-terminal-dependency"

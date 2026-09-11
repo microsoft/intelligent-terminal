@@ -1293,4 +1293,20 @@ Für alle verfügbaren Optionen führen Sie 'wt new-tab --help' aus.</value>
     <value>Agent · Verbindung wird hergestellt</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="FreOverlay_EnableExecutionPolicyButton.Content" xml:space="preserve">
+    <value>Jetzt aktivieren</value>
+    <comment>Label for a button that changes the current user PowerShell execution policy to RemoteSigned. {Locked=&quot;PowerShell&quot;,&quot;RemoteSigned&quot;}</comment>
+  </data>
+  <data name="FreOverlay_EnableExecutionPolicyDisclosure.Text" xml:space="preserve">
+    <value>Ändert die PowerShell-Ausführungsrichtlinie des aktuellen Benutzers in RemoteSigned. Administratorzugriff ist nicht erforderlich.</value>
+    <comment>Visible disclosure beside the execution-policy remediation button. It explains the persistent CurrentUser change and that elevation is not required. {Locked=&quot;PowerShell&quot;,&quot;RemoteSigned&quot;}</comment>
+  </data>
+  <data name="FreOverlay_EnableExecutionPolicyHelpText" xml:space="preserve">
+    <value>Ändert die PowerShell-Ausführungsrichtlinie des aktuellen Benutzers in RemoteSigned. Administratorzugriff ist nicht erforderlich.</value>
+    <comment>Screen-reader help text for the execution-policy remediation button. {Locked=&quot;PowerShell&quot;,&quot;RemoteSigned&quot;}</comment>
+  </data>
+  <data name="FreOverlay_EnablingExecutionPolicy" xml:space="preserve">
+    <value>PowerShell-Fehlererkennung wird aktiviert...</value>
+    <comment>Progress message shown while Intelligent Terminal changes and verifies the PowerShell execution policy. {Locked=&quot;PowerShell&quot;}</comment>
+  </data>
 </root>

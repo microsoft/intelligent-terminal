@@ -41,12 +41,9 @@ BeforeDiscovery {
     # CurrentUser scope these tests force, making the FRE verdict non-deterministic — skip the
     # whole suite when one is in effect rather than assert against an uncontrollable policy.
     $script:EpControllable = Test-WtExecutionPolicyControllable
-    # The not-blocked case additionally needs pwsh (if present) to not independently block,
-    # since the FRE blocks when EITHER host blocks and we only control WinPS via the registry.
-    $script:PwshBlocks = Test-WtPwshBlocksShellIntegration
 }
 
-Describe 'Feature §0 FRE execution-policy verdict (deterministic, via registry)' -Tag 'Feature' -Skip:(-not ($script:DevReady -and $script:EpControllable)) {
+Describe 'Feature §0 FRE execution-policy remediation' -Tag 'Feature' -Skip:(-not ($script:DevReady -and $script:EpControllable)) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         # Safety-net snapshot so the machine's policy is restored even if a test
@@ -66,7 +63,7 @@ Describe 'Feature §0 FRE execution-policy verdict (deterministic, via registry)
         if ($script:epSnapshot) { Restore-WtExecutionPolicy -State $script:epSnapshot }
     }
 
-    It 'Restricted policy -> FRE probe reads it and BLOCKS; FRE does not complete' {
+    It 'Restricted policy -> Enable now remediates and completes FRE' {
         $st = Set-WtExecutionPolicy -Value Restricted
         try {
             $app = Start-TerminalFre -Package Dev
@@ -90,13 +87,25 @@ Describe 'Feature §0 FRE execution-policy verdict (deterministic, via registry)
                 $log = Get-ItLogText -App $app -Name 'terminal-agent-pane.log' -SinceStart
                 $log | Should -Not -Match 'Completed — raising Completed event'
                 Get-FreCompleted -App $app | Should -BeFalse
+
+                Test-UiElementExists -App $app -Selector 'EnableExecutionPolicyButton' -TimeoutSec 10 | Should -BeTrue
+                Test-UiElementExists -App $app -Selector 'ErrorHelpLink' -TimeoutSec 10 | Should -BeTrue
+                Invoke-UiElement -App $app -Selector 'EnableExecutionPolicyButton' -TimeoutSec 15 | Out-Null
+                Test-Until -TimeoutSec 60 -IntervalSec 2 -Condition {
+                    (Get-ItLogText -App $app -Name 'terminal-agent-pane.log' -SinceStart) -match 'EP remediation complete; waiting for explicit Save'
+                } | Should -BeTrue -Because 'Enable now should set RemoteSigned and wait for the user'
+                Get-FreCompleted -App $app | Should -BeFalse -Because 'Enable now must not implicitly save'
+
+                Invoke-UiElement -App $app -Selector 'SaveButton' -TimeoutSec 15 | Out-Null
+                Test-Until -TimeoutSec 90 -IntervalSec 2 -Condition { Get-FreCompleted -App $app } |
+                    Should -BeTrue -Because 'the explicit Save should complete FRE after remediation'
             }
             finally { Stop-Terminal -App $app }
         }
         finally { Restore-WtExecutionPolicy -State $st }
     }
 
-    It 'AllSigned policy -> FRE probe reads it and BLOCKS; FRE does not complete' {
+    It 'AllSigned policy -> Enable now remediates and completes FRE' {
         # AllSigned is the *other* blocking policy (it refuses unsigned local scripts
         # just like Restricted). Forcing it via HKCU outranks LocalMachine, so the
         # winPs probe deterministically reads 'allsigned' regardless of the machine's
@@ -118,13 +127,23 @@ Describe 'Feature §0 FRE execution-policy verdict (deterministic, via registry)
                 $log = Get-ItLogText -App $app -Name 'terminal-agent-pane.log' -SinceStart
                 $log | Should -Not -Match 'Completed — raising Completed event'
                 Get-FreCompleted -App $app | Should -BeFalse
+
+                Invoke-UiElement -App $app -Selector 'EnableExecutionPolicyButton' -TimeoutSec 15 | Out-Null
+                Test-Until -TimeoutSec 60 -IntervalSec 2 -Condition {
+                    (Get-ItLogText -App $app -Name 'terminal-agent-pane.log' -SinceStart) -match 'EP remediation complete; waiting for explicit Save'
+                } | Should -BeTrue -Because 'Enable now should remediate AllSigned and wait for the user'
+                Get-FreCompleted -App $app | Should -BeFalse -Because 'Enable now must not implicitly save'
+
+                Invoke-UiElement -App $app -Selector 'SaveButton' -TimeoutSec 15 | Out-Null
+                Test-Until -TimeoutSec 90 -IntervalSec 2 -Condition { Get-FreCompleted -App $app } |
+                    Should -BeTrue -Because 'the explicit Save should complete FRE after remediation'
             }
             finally { Stop-Terminal -App $app }
         }
         finally { Restore-WtExecutionPolicy -State $st }
     }
 
-    It 'RemoteSigned policy -> FRE probe reads it and does NOT block (winPs=ok)' -Skip:($script:PwshBlocks) {
+    It 'RemoteSigned policy -> FRE probe reads it and does NOT block' {
         # RemoteSigned permits *local* unsigned scripts, so our $PROFILE block runs
         # and the probe must NOT block shell integration.
         $st = Set-WtExecutionPolicy -Value RemoteSigned

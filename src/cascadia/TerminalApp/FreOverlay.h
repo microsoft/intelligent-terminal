@@ -7,6 +7,7 @@
 #include "FreOverlay.g.h"
 
 #include <mutex>
+#include <optional>
 
 namespace winrt::TerminalApp::implementation
 {
@@ -39,6 +40,8 @@ namespace winrt::TerminalApp::implementation
                                 const winrt::Windows::UI::Xaml::RoutedEventArgs& args);
         void _OnSaveButtonClick(const winrt::Windows::Foundation::IInspectable& sender,
                                 const winrt::Windows::UI::Xaml::RoutedEventArgs& args);
+        void _OnEnableExecutionPolicyClick(const winrt::Windows::Foundation::IInspectable& sender,
+                                           const winrt::Windows::UI::Xaml::RoutedEventArgs& args);
         void _OnCloseButtonClick(const winrt::Windows::Foundation::IInspectable& sender,
                                  const winrt::Windows::UI::Xaml::RoutedEventArgs& args);
         void _OnAgentSelectionChanged(const winrt::Windows::Foundation::IInspectable& sender,
@@ -195,8 +198,25 @@ namespace winrt::TerminalApp::implementation
         static winrt::Windows::Foundation::IAsyncOperation<bool> _InstallHooksAsync(winrt::hstring agentId);
 
 
-        // Perform the full save + install flow asynchronously.
+        // Guarded entry point for the Save button.
         winrt::Windows::Foundation::IAsyncAction _SaveAndInstallAsync();
+
+        // Perform the full save + install flow. Callers must hold the
+        // per-overlay operation guard.
+        winrt::Windows::Foundation::IAsyncAction _SaveAndInstallCoreAsync();
+
+        // Strictly remediate PowerShell execution policy and restore the
+        // user's selections. The user explicitly starts Save afterward.
+        winrt::Windows::Foundation::IAsyncAction _EnableExecutionPolicyAsync();
+
+        struct ShellIntegrationPreferenceSnapshot
+        {
+            bool autoDetectionEnabled{ false };
+            bool autoFixEnabled{ false };
+        };
+
+        std::optional<ShellIntegrationPreferenceSnapshot> _shellIntegrationPreferenceSnapshot;
+        bool _operationInFlight{ false };
 
         // Flip the overlay between "saving / installing in progress" and
         // "idle / editable" states. While saving: a modal SavingOverlay

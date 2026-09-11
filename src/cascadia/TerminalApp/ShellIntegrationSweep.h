@@ -202,12 +202,12 @@ namespace winrt::TerminalApp::implementation::ShellIntegrationSweep
         // no I/O); the logging lives here, at the app layer, next to the existing
         // [FRE] shell-integration logging — not buried in the shared inc/ header.
         const auto probeExecutionPolicyBlocked = [](SI::Target t, const char* label) {
-            std::wstring policy;
-            bool timedOut = false;
-            const bool blocked = SI::ExecutionPolicyBlocksShellIntegration(t, &policy, &timedOut);
+            const auto probe = SI::Powershell::ProbeExecutionPolicy(t);
+            const bool blocked = probe.status == SI::Powershell::ExecutionPolicyStatus::Blocked;
             _agentPaneLog(std::string{ "[FRE] EP probe " } + label +
-                          " policy='" + winrt::to_string(winrt::hstring{ policy }) + "'" +
-                          " timedOut=" + (timedOut ? "1" : "0") +
+                          " policy='" + winrt::to_string(winrt::hstring{ probe.policy }) + "'" +
+                          " status=" + std::to_string(static_cast<int>(probe.status)) +
+                          " timedOut=" + (probe.process.timedOut ? "1" : "0") +
                           " -> " + (blocked ? "BLOCKED" : "not-blocked"));
             return blocked;
         };

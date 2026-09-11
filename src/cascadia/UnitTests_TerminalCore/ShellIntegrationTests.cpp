@@ -92,6 +92,11 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(QueryExecutionPolicy_NonexistentExe_ReturnsEmpty);
     TEST_METHOD(QueryExecutionPolicy_ParsesStdoutAndLowercases);
     TEST_METHOD(QueryExecutionPolicy_TrimsWhitespaceAndStopsAtFirstLine);
+    TEST_METHOD(ExecutionPolicyStatus_ClassifiesBlockedAllowedAndUnknown);
+    TEST_METHOD(ExecutionPolicyRemediation_PreflightRejectsUnknown);
+    TEST_METHOD(ExecutionPolicyRemediation_SucceedsOnlyWhenEveryHostAllowedOrAbsent);
+    TEST_METHOD(ExecutionPolicyRemediation_UsesCurrentUserRemoteSignedCommand);
+    TEST_METHOD(EnableRemoteSigned_RejectsNonBlockedProbeWithoutLaunching);
 
     // ResolvePowerShellHostInstall — pure install/EP verdict for one PS host.
     // Guards the regression where profile-gating silently skipped the
@@ -1001,6 +1006,70 @@ void ShellIntegrationTests::QueryExecutionPolicy_TrimsWhitespaceAndStopsAtFirstL
     const auto first = details::QueryExecutionPolicy(L"powershell.exe");
     const auto second = details::QueryExecutionPolicy(L"powershell.exe");
     VERIFY_ARE_EQUAL(first, second, L"QueryExecutionPolicy must be deterministic for the same host");
+}
+
+void ShellIntegrationTests::ExecutionPolicyStatus_ClassifiesBlockedAllowedAndUnknown()
+{
+    using namespace Powershell;
+
+    VERIFY_ARE_EQUAL(ExecutionPolicyStatus::Blocked, Powershell::details::ClassifyExecutionPolicy(L"restricted"));
+    VERIFY_ARE_EQUAL(ExecutionPolicyStatus::Blocked, Powershell::details::ClassifyExecutionPolicy(L"allsigned"));
+    VERIFY_ARE_EQUAL(ExecutionPolicyStatus::Allowed, Powershell::details::ClassifyExecutionPolicy(L"remotesigned"));
+    VERIFY_ARE_EQUAL(ExecutionPolicyStatus::Allowed, Powershell::details::ClassifyExecutionPolicy(L"undefined"));
+    VERIFY_ARE_EQUAL(ExecutionPolicyStatus::Unknown, Powershell::details::ClassifyExecutionPolicy(L""));
+    VERIFY_ARE_EQUAL(ExecutionPolicyStatus::Unknown, Powershell::details::ClassifyExecutionPolicy(L"unexpected"));
+}
+
+void ShellIntegrationTests::ExecutionPolicyRemediation_PreflightRejectsUnknown()
+{
+    using namespace Powershell;
+
+    ExecutionPolicyProbeResult pwsh;
+    pwsh.status = ExecutionPolicyStatus::Blocked;
+    ExecutionPolicyProbeResult winPs;
+    winPs.status = ExecutionPolicyStatus::Unknown;
+
+    VERIFY_IS_FALSE(CanAttemptExecutionPolicyRemediation(pwsh, winPs));
+
+    winPs.status = ExecutionPolicyStatus::Absent;
+    VERIFY_IS_TRUE(CanAttemptExecutionPolicyRemediation(pwsh, winPs));
+}
+
+void ShellIntegrationTests::ExecutionPolicyRemediation_SucceedsOnlyWhenEveryHostAllowedOrAbsent()
+{
+    using namespace Powershell;
+
+    ExecutionPolicyProbeResult pwsh;
+    pwsh.status = ExecutionPolicyStatus::Allowed;
+    ExecutionPolicyProbeResult winPs;
+    winPs.status = ExecutionPolicyStatus::Absent;
+    VERIFY_IS_TRUE(ExecutionPolicyRemediationSucceeded(pwsh, winPs));
+
+    winPs.status = ExecutionPolicyStatus::Blocked;
+    VERIFY_IS_FALSE(ExecutionPolicyRemediationSucceeded(pwsh, winPs));
+
+    winPs.status = ExecutionPolicyStatus::Unknown;
+    VERIFY_IS_FALSE(ExecutionPolicyRemediationSucceeded(pwsh, winPs));
+}
+
+void ShellIntegrationTests::ExecutionPolicyRemediation_UsesCurrentUserRemoteSignedCommand()
+{
+    VERIFY_ARE_EQUAL(
+        std::wstring_view{ L"-NoProfile -NonInteractive -Command Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force" },
+        Powershell::details::EnableRemoteSignedArguments);
+}
+
+void ShellIntegrationTests::EnableRemoteSigned_RejectsNonBlockedProbeWithoutLaunching()
+{
+    using namespace Powershell;
+
+    ExecutionPolicyProbeResult probe;
+    probe.status = ExecutionPolicyStatus::Allowed;
+    probe.executablePath = L"definitely-not-a-real-binary-zzzzz.exe";
+
+    const auto result = EnableRemoteSignedForCurrentUser(probe);
+    VERIFY_IS_FALSE(result.launched);
+    VERIFY_ARE_EQUAL(static_cast<DWORD>(ERROR_INVALID_STATE), result.error);
 }
 
 // ─── ResolvePowerShellHostInstall ─────────────────────────────────────────────
