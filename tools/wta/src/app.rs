@@ -2184,17 +2184,26 @@ impl App {
     /// this helper owns. No-op on an empty/whitespace model — an empty
     /// override means "agent default", which `set_session_model` can't
     /// express.
-    fn send_session_model(&self, session_id: Option<String>, model: String, pane_override: bool) {
+    fn send_session_model(
+        &self,
+        session_id: Option<String>,
+        model: String,
+        pane_override: bool,
+    ) -> bool {
         if model.trim().is_empty() {
-            return;
+            return false;
         }
-        let _ = self.master_request_tx.send(
+        let result = self.master_request_tx.send(
             crate::protocol::acp::client::MasterExtRequest::SetSessionModel {
                 session_id: session_id.map(agent_client_protocol::schema::v1::SessionId::new),
                 model,
                 pane_override,
             },
         );
+        if result.is_err() {
+            tracing::warn!(target: "acp", "model selection channel closed");
+        }
+        result.is_ok()
     }
 
     /// The model a given tab should run on: its explicit per-pane override

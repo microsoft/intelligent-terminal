@@ -110,6 +110,7 @@
     <ClInclude Include="EnumMappings.h">
       <DependentUpon>EnumMappings.idl</DependentUpon>
     </ClInclude>
+    <ClInclude Include="SettingsTelemetry.h" />
     <ClInclude Include="SettingsTypes.h" />
     <ClInclude Include="TerminalSettingsSerializationHelpers.h" />
     <ClInclude Include="TerminalWarnings.h">

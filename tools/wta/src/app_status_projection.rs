@@ -7,6 +7,70 @@
 use super::*;
 
 impl App {
+    pub(super) fn publish_session_started(&mut self, target_tab: &str, loaded: bool) {
+        let Some(tab) = self.tab_sessions.get(target_tab) else {
+            return;
+        };
+        let Some(session_id) = tab.session_id.as_deref().filter(|id| !id.is_empty()) else {
+            return;
+        };
+        if tab.loading_session
+            || tab.telemetry_model_pending.as_deref() == Some(session_id)
+            || (!loaded && tab.last_telemetry_session_id.as_deref() == Some(session_id))
+        {
+            return;
+        }
+
+        // Use confirmed session state, not the active tab's model picker.
+        let model_id = self
+            .session_model_configs
+            .get(session_id)
+            .and_then(|(_, model)| model.as_deref());
+        // A BYOK-bound process may report provider-native model IDs on load.
+        let model_source = if self.selected_custom_model_id().is_some()
+            || model_id.is_some_and(|id| {
+                self.custom_model_catalog.iter().any(|model| {
+                    model.selection_id == id
+                        || format!("intelligent-terminal/{}", model.model_id) == id
+                })
+            }) {
+            "byok"
+        } else if model_id.is_some() {
+            "provider"
+        } else {
+            "unknown"
+        };
+        let (automatic_yolo, yolo_policy_blocked, yolo_control_owner) = {
+            let state = self.yolo_state.lock().unwrap();
+            (
+                state.automatic_directive(session_id).target(),
+                state.policy_blocked(),
+                state.owner(session_id),
+            )
+        };
+        let delegate_agent_id = self
+            .delegate_agents
+            .as_ref()
+            .and_then(|agents| agents.lock().unwrap().first().map(|agent| agent.id.clone()));
+        let mut event = build_agent_state_changed_event(target_tab, tab, yolo_control_owner);
+        event["params"]["session_started"] = serde_json::json!({
+            "start_id": uuid::Uuid::new_v4().to_string(),
+            "session_id": session_id,
+            "start_kind": if loaded { "Load" } else { "New" },
+            "agent_id": self.current_agent_id,
+            "agent_source": self.current_agent_source.kind(),
+            "delegate_agent_id": delegate_agent_id,
+            "model_source": model_source,
+            "autofix_enabled": self.autofix_enabled,
+            "automatic_yolo": automatic_yolo,
+            "yolo_policy_blocked": yolo_policy_blocked,
+            "yolo_control_owner": yolo_control_owner.map(crate::app_contracts::YoloControlOwner::as_wire),
+        });
+        let session_id = session_id.to_string();
+        self.tab_mut(target_tab).last_telemetry_session_id = Some(session_id);
+        send_wt_protocol_event(event.to_string());
+    }
+
     /// Push the current agent status (name / version / model / connection state)
     /// to the host so a XAML-rendered agent bar can update itself. The COM
     /// server special-cases `method == "agent_status"` and dispatches it
@@ -165,4 +229,220 @@ pub(super) fn build_agent_state_changed_event(
             "usage": usage,
         }
     })
+}
+
+#[cfg(test)]
+mod session_telemetry_tests {
+    use super::*;
+    use crate::app::tests::{test_app, test_app_with_master_rx};
+
+    fn starts() -> Vec<serde_json::Value> {
+        crate::wt_protocol_events::take_test_published_events()
+            .iter()
+            .map(|event| serde_json::from_str::<serde_json::Value>(event).unwrap())
+            .filter_map(|event| event.pointer("/params/session_started").cloned())
+            .collect()
+    }
+
+    fn connected(id: &str, ready: bool) -> AppEvent {
+        AppEvent::AgentConnected {
+            name: "Copilot".into(),
+            model: None,
+            version: None,
+            session_id: id.into(),
+            available_models: vec![],
+            current_model_id: Some("provider-model".into()),
+            load_session_supported: true,
+            image_supported: false,
+            session_capabilities_ready: ready,
+        }
+    }
+
+    fn attached(tab: &str, id: &str) -> AppEvent {
+        AppEvent::SessionAttached {
+            tab_id: tab.into(),
+            session_id: id.into(),
+            prompt_id: None,
+            available_models: vec![],
+            current_model_id: Some("provider-model".into()),
+        }
+    }
+
+    #[test]
+    fn session_telemetry_bootstrap_emits_once_not_on_projection_or_handshake_only() {
+        let _locale = crate::test_support::lock_locale();
+        let _capture = crate::wt_protocol_events::capture_test_published_events();
+        let mut app = test_app();
+        app.handle_event(connected("pending-load", false));
+        assert!(starts().is_empty());
+        app.handle_event(connected("created", true));
+        let snapshots = starts();
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0]["start_kind"], "New");
+        assert_eq!(snapshots[0]["session_id"], "created");
+        assert!(uuid::Uuid::parse_str(snapshots[0]["start_id"].as_str().unwrap()).is_ok());
+        app.project_active_tab_state();
+        app.handle_event(connected("created", true));
+        assert!(starts().is_empty());
+    }
+
+    #[test]
+    fn session_telemetry_load_only_emits_for_successful_target_and_counts_reload() {
+        let _locale = crate::test_support::lock_locale();
+        let _capture = crate::wt_protocol_events::capture_test_published_events();
+        let mut app = test_app();
+        for _ in 0..2 {
+            let tab = app.tab_mut(DEFAULT_TAB_ID);
+            tab.loading_session = true;
+            tab.loading_target_session_id = Some("saved".into());
+            app.handle_event(attached(DEFAULT_TAB_ID, "unrelated"));
+            app.publish_session_started(DEFAULT_TAB_ID, true);
+            assert!(starts().is_empty());
+            app.handle_event(attached(DEFAULT_TAB_ID, "saved"));
+            let snapshots = starts();
+            assert_eq!(snapshots.len(), 1);
+            assert_eq!(snapshots[0]["start_kind"], "Load");
+            assert_eq!(snapshots[0]["session_id"], "saved");
+            app.handle_event(attached(DEFAULT_TAB_ID, "saved"));
+            assert!(starts().is_empty());
+        }
+    }
+
+    #[test]
+    fn session_telemetry_waits_for_tab_model_selection_and_uses_confirmed_value() {
+        let _locale = crate::test_support::lock_locale();
+        let _capture = crate::wt_protocol_events::capture_test_published_events();
+        let (mut app, _requests) = test_app_with_master_rx();
+        app.tab_mut("background").model_override = Some("custom:chosen".into());
+        app.custom_model_catalog = vec![CustomModelCatalogEntry {
+            selection_id: "custom:chosen".into(),
+            model_id: "private-model".into(),
+            ..Default::default()
+        }];
+        app.handle_event(attached("background", "new-session"));
+        assert!(starts().is_empty());
+        app.handle_event(AppEvent::ModelSetCompleted {
+            session_id: "new-session".into(),
+            model: "custom:chosen".into(),
+            pane_override: false,
+        });
+        let snapshots = starts();
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0]["model_source"], "byok");
+        assert!(!snapshots[0].to_string().contains("private-model"));
+        assert!(!snapshots[0].to_string().contains("custom:chosen"));
+    }
+
+    #[test]
+    fn session_telemetry_failed_model_selection_reports_previous_provider_model() {
+        let _locale = crate::test_support::lock_locale();
+        let _capture = crate::wt_protocol_events::capture_test_published_events();
+        let (mut app, _requests) = test_app_with_master_rx();
+        app.acp_model = Some("custom:unavailable".into());
+        app.handle_event(attached(DEFAULT_TAB_ID, "created"));
+        assert!(starts().is_empty());
+        app.handle_event(AppEvent::ModelSetFailed {
+            session_id: "created".into(),
+            model: "custom:unavailable".into(),
+            pane_override: false,
+            message: "not supported".into(),
+        });
+        let snapshots = starts();
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0]["model_source"], "provider");
+    }
+
+    #[test]
+    fn session_telemetry_closed_model_channel_does_not_leave_snapshot_pending() {
+        let _locale = crate::test_support::lock_locale();
+        let _capture = crate::wt_protocol_events::capture_test_published_events();
+        let mut app = test_app();
+        app.acp_model = Some("unavailable-model".into());
+        app.handle_event(attached(DEFAULT_TAB_ID, "created"));
+        let snapshots = starts();
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0]["model_source"], "provider");
+        assert!(app
+            .tab_mut(DEFAULT_TAB_ID)
+            .telemetry_model_pending
+            .is_none());
+    }
+
+    #[test]
+    fn session_telemetry_load_clears_pending_model_and_preserves_byok_binding() {
+        let _locale = crate::test_support::lock_locale();
+        let _capture = crate::wt_protocol_events::capture_test_published_events();
+        let (mut app, _requests) = test_app_with_master_rx();
+        app.acp_model = Some("custom:chosen".into());
+        app.custom_model_selection = Some("custom:chosen".into());
+        app.custom_model_catalog = vec![CustomModelCatalogEntry {
+            selection_id: "custom:chosen".into(),
+            model_id: "private-model".into(),
+            ..Default::default()
+        }];
+        app.handle_event(attached(DEFAULT_TAB_ID, "created"));
+        assert!(starts().is_empty());
+        let tab = app.tab_mut(DEFAULT_TAB_ID);
+        tab.loading_session = true;
+        tab.loading_target_session_id = Some("saved".into());
+        app.handle_event(attached(DEFAULT_TAB_ID, "saved"));
+        let snapshots = starts();
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0]["start_kind"], "Load");
+        assert_eq!(snapshots[0]["model_source"], "byok");
+        app.handle_event(AppEvent::ModelSetCompleted {
+            session_id: "created".into(),
+            model: "custom:chosen".into(),
+            pane_override: false,
+        });
+        assert!(starts().is_empty());
+    }
+
+    #[test]
+    fn session_telemetry_policy_and_restored_owner_are_not_global_yolo_defaults() {
+        let _locale = crate::test_support::lock_locale();
+        let _capture = crate::wt_protocol_events::capture_test_published_events();
+        let mut app = test_app();
+        app.current_agent_source = crate::agent_source::AgentSource::Wsl {
+            distro: "private-distro".into(),
+        };
+        app.autofix_enabled = true;
+        app.tab_mut(DEFAULT_TAB_ID).session_id = Some("session".into());
+        {
+            let mut state = app.yolo_state.lock().unwrap();
+            state.update_runtime(true, true);
+            state.mark_manual("session");
+        }
+        app.publish_session_started(DEFAULT_TAB_ID, false);
+        let snapshots = starts();
+        assert_eq!(snapshots[0]["automatic_yolo"], false);
+        assert_eq!(snapshots[0]["yolo_policy_blocked"], true);
+        assert_eq!(snapshots[0]["agent_source"], "wsl");
+        assert_eq!(snapshots[0]["autofix_enabled"], true);
+        assert!(!snapshots[0].to_string().contains("private-distro"));
+
+        {
+            let mut state = app.yolo_state.lock().unwrap();
+            state.update_runtime(true, false);
+            state.mark_provider_restored("session");
+        }
+        app.publish_session_started(DEFAULT_TAB_ID, true);
+        let snapshots = starts();
+        assert!(snapshots[0]["automatic_yolo"].is_null());
+        assert_eq!(snapshots[0]["yolo_control_owner"], "provider-restored");
+    }
+
+    #[test]
+    fn session_telemetry_deduplication_moves_with_tab_state() {
+        let _locale = crate::test_support::lock_locale();
+        let _capture = crate::wt_protocol_events::capture_test_published_events();
+        let mut app = test_app();
+        app.tab_mut("old").session_id = Some("session".into());
+        app.publish_session_started("old", false);
+        assert_eq!(starts().len(), 1);
+        let tab = app.tab_sessions.remove("old").unwrap();
+        app.tab_sessions.insert("new".into(), tab);
+        app.publish_session_started("new", false);
+        assert!(starts().is_empty());
+    }
 }

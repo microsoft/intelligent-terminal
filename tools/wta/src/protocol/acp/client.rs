@@ -3682,6 +3682,9 @@ pub async fn run_acp_client_over_pipe(
                             .unwrap_or_default();
                         session_config =
                             crate::protocol::acp::session_config::select_options(&config_options);
+                        current_model_id.get_or_insert_with(|| requested_model.clone());
+                    } else {
+                        current_model_id = Some(requested_model.clone());
                     }
                     startup_probe.log(&format!(
                         "ACP session model set to {} (over pipe)",
@@ -3698,6 +3701,7 @@ pub async fn run_acp_client_over_pipe(
                         "Gemini startup model {} already applied by launch command",
                         requested_model
                     ));
+                    current_model_id = Some(requested_model.clone());
                 }
                 Err(error) => {
                     return Err(anyhow::anyhow!(

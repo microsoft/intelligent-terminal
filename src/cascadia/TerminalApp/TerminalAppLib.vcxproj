@@ -93,6 +93,7 @@
   <!-- ========================= Headers ======================== -->
   <ItemGroup>
     <ClInclude Include="App.base.h" />
+    <ClInclude Include="AgentSessionTelemetry.h" />
     <ClInclude Include="AppCommandlineArgs.h" />
     <ClInclude Include="Commandline.h" />
     <ClInclude Include="CommandPaletteItems.h" />

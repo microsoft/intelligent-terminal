@@ -1,23 +1,48 @@
-# Windows Terminal telemetry events
+# Intelligent Terminal telemetry events
 
-> **Note:** This file is **inherited from upstream Windows Terminal**
-> ([`microsoft/terminal`](https://github.com/microsoft/terminal)) and
-> documents the telemetry events emitted by the underlying Windows Terminal
-> / OpenConsole code that Intelligent Terminal forks from.
->
-> Intelligent Terminal-specific events are summarized below. See
-> [`PRIVACY.md`](./PRIVACY.md) for privacy information and how to disable
-> telemetry.
+The first section inventories Intelligent Terminal's event definitions and
+production emission paths. The second preserves the inherited Windows
+Terminal / OpenConsole reference. See [`PRIVACY.md`](./PRIVACY.md) for privacy
+information and telemetry controls.
 
 ## Intelligent Terminal-specific events
 
-Intelligent Terminal events use controlled categories and aggregate
+Dedicated Intelligent Terminal events use controlled categories and aggregate
 measurements. They do not include prompts, responses, terminal contents, API
 keys, credential identifiers, custom endpoint URLs, model identifiers, custom
 agent names, or custom agent command lines.
 
 Agent identifiers are limited to `copilot`, `claude`, `codex`, `gemini`, and
-`opencode`; every other identifier is reported as `custom`.
+`opencode`; custom/unknown identifiers are bucketed as `custom`. The session
+snapshot additionally uses `none` for an absent delegate. Correlation fields
+such as ACP `SessionId` and pane `PaneId` are opaque identifiers, not content.
+
+There are **22 dedicated event definitions**: 5 App events, 14 WTA events,
+and 3 Settings Editor diagnostic ETW events. The former three AI-specific
+Settings Model census events are retired. The inherited `ActionDispatched`
+event can still describe AI actions; it is not a dedicated event.
+
+`MICROSOFT_KEYWORD_MEASURES` and privacy tags describe event metadata, not
+proof of backend ingestion. Collection also depends on the build's telemetry
+header, enabled ETW sessions, and deployment policy. The OSS fallback header
+uses stub metadata. Likewise, an ETW event without a telemetry keyword can
+still be captured by a collector; do not equate it with an impossible upload.
+
+### Common wire metadata
+
+The event tables enumerate **business fields**. The dedicated events also
+include the following payload metadata, which is not repeated in each table:
+
+| Field | Type | Meaning | Observed in the Debug capture |
+|---|---|---|---|
+| `PartA_PrivTags` | UInt64 | Privacy classification supplied by the build's telemetry header | `0` |
+
+Provider name/GUID, process/thread IDs, timestamp, level, and keyword belong
+to the ETW event header, not the business payload. The 2026-09-11 capture used
+the OSS [telemetry header](./dep/telemetry/ProjectTelemetry.h), so keyword was
+`0x0` and `PartA_PrivTags` was `0`. These stub values do not mean collection
+failed: the events were decoded from the ETL. They also do not establish
+Microsoft backend ingestion.
 
 ### Provider: Microsoft.Windows.Terminal.App
 
@@ -29,38 +54,99 @@ Terminal-specific events:
 | `AgentPaneOpened` | An agent pane is created, restored, or opened into a requested view. Closing or stashing the pane does not emit this event. | `TriggerSource`, `Branding` |
 | `CommandPaletteDispatchedAgentPrompt` | A foreground or background agent prompt is submitted through the Command Palette. | `IsBackgroundMode` |
 | `DelegateInvoked` | Terminal successfully launches `wta delegate`. | `TriggerSource` (`CommandPalette` or `Action`) |
-| `ErrorDetected` | Terminal receives the first auto-detected error state for a pane. | `Branding` |
+| `ErrorDetected` | Terminal receives `autofix_state` with state `pending`. This is not a deduplicated count of unique errors; the literal `detected` state does not emit it. | `Branding` |
+| `AgentSessionStarted` | A helper reports successful ACP session creation or load, with any initial model override settled. | Settings snapshot below |
 
 Current `AgentPaneOpened.TriggerSource` values are `Action`,
 `SessionsAction`, `Autofix`, `FirstRunExperience`, `AgentSwitch`,
 `BottomBarToggle`, `BottomBarSessions`, `SettingsReload`, and `FocusAction`.
 
-### Provider: Microsoft.Windows.Terminal.Setting.Model
+#### `AgentSessionStarted`: per-session settings snapshot
 
-These census events are emitted from the effective settings during settings
-load:
+This event belongs to `Microsoft.Windows.Terminal.App`, with measures keyword
+and `PDT_ProductAndServiceUsage`. The helper supplies confirmed session
+identity and runtime agent state through `agent_state_changed.session_started`;
+the owning Terminal tab supplies effective host settings. This avoids treating
+a settings-file load or a switch toggle as a session start.
 
-| Event | Trigger | Fields and controlled values |
-|---|---|---|
-| `AgentProviderConfigured` | Emitted once for the effective ACP agent and once for the effective delegate agent when configured. | `ProviderType` (`AcpAgent` or `DelegateAgent`), `ProviderId`, `Branding`, `Distribution`. Unknown and custom provider IDs are reported as `custom`. |
-| `CustomModelProviderConfigured` | Emitted once for each configured BYOK/custom model provider. | `HasApiKey` (a credential reference is configured), `ApiKeyRequired` (the provider requires a key), `Branding`, `Distribution`. No provider, endpoint, model, credential, or key value is included. |
-| `IntelligentFeatureConfigured` | Emitted once for each supported Intelligent Terminal setting using its effective value. | `FeatureName`, `FeatureValue`, `Branding`, `Distribution` |
+The wire payload contains **24 business fields plus `PartA_PrivTags`**.
+The observed-value column comes from the 2026-09-11 live ETW capture; values
+are examples, not defaults or a test of every allowed value. Correlation IDs
+are omitted below rather than publishing actual session identifiers.
 
-`IntelligentFeatureConfigured` currently reports:
+| Field | Type | Meaning / controlled values | Observed value |
+|---|---|---|---|
+| `StartId` | String | New random UUID for this successful start/load; event-level deduplication key | Unique UUID per event |
+| `SessionId` | String | ACP session identifier, not `WT_SESSION`; reused when the same saved session is loaded again | ACP session UUID |
+| `StartKind` | String | `New` or `Load`; `Load` covers both ACP session-view resume and saved-layout restore when ACP load succeeds | `New`; `Load` not captured |
+| `AgentId` | String | Actually connected agent category | `copilot` |
+| `AgentSource` | String | `host`, `wsl`, or `unknown`; no distribution name | `host` |
+| `DelegateAgentId` | String | Helper's current resolved delegate category, or `none` | `copilot` |
+| `ModelSource` | String | `byok`, `provider`, or `unknown`; helper's active BYOK process binding or confirmed session model category, not a model identifier or inventory of configured providers | `provider` |
+| `AutoErrorDetection` | Bool | Policy-aware host effective setting | `true` |
+| `AutoFix` | Bool | Helper runtime autofix switch AND policy-aware host effective setting | `false` |
+| `AgentSessionManagement` | Bool | Policy-aware host effective setting | `true` |
+| `AgentPanePosition` | WideString | Owning tab's effective `left`, `right`, `up`, or `bottom`; otherwise `unknown` | `bottom` |
+| `ShowTokenUsageAndCost` | Bool | Current usage/cost UI setting | `true` |
+| `VerticalTabs` | Bool | Current tab layout is vertical | `false` |
+| `FirstWindowPreference` | String | `defaultProfile`, `persistedLayout`, or `persistedLayoutAndContent` | `defaultProfile` |
+| `AutomaticYolo` | String | `enabled` / `disabled` automatic reconciliation target, or `provider` when no automatic directive applies | `disabled` |
+| `YoloPolicyBlocked` | Bool | Helper runtime policy prohibits requesting YOLO enablement | `false` |
+| `YoloControlOwner` | String | `automatic`, `manual`, `provider-restored`, or `unknown` | `automatic` |
+| `CoordinatorConfigured` | Bool | Configured legacy coordinator switch; not evidence a coordinator is running | `false` |
+| `ReadConfirmationConfigured` | WideString | Configured read-operation value: `auto`, `prompt`, or `unknown` | `auto` |
+| `CreateConfirmationConfigured` | WideString | Configured create-operation value: `auto`, `prompt`, or `unknown` | `auto` |
+| `InputConfirmationConfigured` | WideString | Configured input-operation value: `auto`, `prompt`, or `unknown` | `auto` |
+| `SessionMcpConfirmation` | String | `user`: session MCP mutations follow their existing user-confirmed action path | `user` |
+| `Branding` | UInt8 | 0 other/development, 1 Canary, 2 Preview, 3 Release | `0` |
+| `Distribution` | UInt8 | 0 other/unpackaged, 1 portable, 2 packaged; packaged does not mean Store-installed | `2` |
 
-| `FeatureName` | `FeatureValue` |
-|---|---|
-| `AutoErrorDetection` | `true` or `false` |
-| `AutoFix` | `true` or `false` |
-| `AgentSessionManagement` | Effective `true` or `false` value after policy is applied |
-| `AgentPanePosition` | The controlled pane-position setting value |
-| `QuotaUsage` | `true` or `false` |
-| `VerticalTabs` | `true` or `false` |
-| `FirstWindowPreference` | `defaultProfile`, `persistedLayout`, or `persistedLayoutAndContent` |
+Emission rules:
 
-Durable session restoration is inactive when `FirstWindowPreference` is
-`defaultProfile`. Either persisted-layout value enables restoration; the
-content variant additionally restores ordinary terminal scrollback.
+- Successful initial connections, lazy-created sessions, `/new`, and successful
+  loads are covered. Re-loading the same saved session emits a fresh `StartId`.
+- A handshake-only bootstrap used before initial load, failed creation/load,
+  and ordinary state projections do not emit a snapshot. Duplicate attach
+  notifications for an already-reported new session are suppressed.
+- For a fresh session with a tab/global model override, emission waits for the
+  model-set result. A failed override reports the prior confirmed model, not
+  the requested value. Loaded sessions retain their restored model; a
+  BYOK-bound process remains `byok` even if the agent returns a provider-native
+  model identifier for the restored session.
+- The tab-owned deduplication marker follows tab state through renaming/moves.
+  Opening, closing, or stashing an existing pane and changing a setting do not
+  create another snapshot.
+- This is a successful-session population, including pre-warmed sessions;
+  it does not measure users who never establish a helper ACP session. A helper
+  without the owning Terminal host cannot emit this host-provider event.
+  Provider-native `Cli` resume is not an ACP load and does not itself emit it.
+
+`AutomaticYolo` describes configuration intent and ownership, **not confirmed
+provider-native permission mode**. The three `*ConfirmationConfigured` fields
+are deliberately labelled configured: the legacy `aiIntegration.confirmation.*`
+settings are not enforced by the current runtime operation paths. They must
+not be interpreted as active security policy. This change does not introduce
+or remove confirmation behavior.
+
+Sources: [helper projection](./tools/wta/src/app_status_projection.rs),
+[session lifecycle](./tools/wta/src/app_events.rs),
+[host consumer](./src/cascadia/TerminalApp/TerminalPage.cpp),
+[boundary allowlists](./src/cascadia/TerminalApp/AgentSessionTelemetry.h), and
+[authoritative settings](./src/cascadia/TerminalSettingsModel/MTSMSettings.h).
+
+#### Retired settings telemetry
+
+`AgentProviderConfigured`, `CustomModelProviderConfigured`, and
+`IntelligentFeatureConfigured` are no longer emitted. Use `AgentSessionStarted`
+for session-level configuration analysis instead of combining a settings-load
+census with subsequent sessions. Its BYOK category intentionally does not
+report unused configured providers or credential-reference state.
+
+AI-specific setting keys are also excluded from the inherited
+`JsonSettingsChanged` and `UISettingsChanged` events. Other Terminal settings
+retain their existing behavior; in particular `tabLayout` and
+`firstWindowPreference` remain ordinary Terminal settings. AI action dispatch
+telemetry is unaffected.
 
 ### Provider: Microsoft.Windows.Terminal.WTA
 
@@ -82,20 +168,37 @@ ACP RPC failures use `AcpError` or `Timeout`. Cold-start failures use
 `SpawnFailed`, `InitializeFailed`, or `Timeout`. `AgentColdStartComplete.Source`
 is `Host` or `Wsl`.
 
+`Route` identifies the instrumented RPC layer, not a distinct logical session.
+In the live capture, four new sessions produced eight
+`AcpNewSessionComplete` events: one `MasterForward` event and one
+`HelperPipeStartup` or `HelperPipeNewSessionForTab` event per session.
+Filter by route when analyzing RPC timings; do not count all of these events
+as separate sessions. Use `AgentSessionStarted` for logical successful
+starts/loads, with `StartId` as the event deduplication key.
+
 #### Agent turns and autofix
 
 | Event | Trigger | Fields |
 |---|---|---|
 | `AgentPromptSent` | WTA dispatches a prompt to an agent over ACP, including manual and automatic autofix prompts. | `SessionId`, `PromptLengthBytes`, `IsAutofix`, `IsByok`, `AgentId`, `TemplateKind`, `Route` (`AcpDispatch`) |
 | `AgentResponseFirstToken` | The first user-visible response chunk arrives. | `SessionId`, `FirstTokenLatencyMs`, `ChunkLengthBytes`, `AgentId` |
-| `AgentResponseComplete` | The ACP prompt request completes. | `SessionId`, `TotalDurationMs`, `TotalResponseBytes`, `Success`, `IsByok`, `AgentId` |
+| `AgentResponseComplete` | The ACP prompt request completes. | `SessionId`, `TotalDurationMs`, `Success`, `IsByok`, `AgentId` |
 | `ErrorDetected` | WTA's classifier identifies an actionable or critical pane error. | `Severity`, `Method`, `PaneId` |
-| `ErrorFixResolved` | The next command after an attempted fix succeeds in the same pane. | `PaneId`, `TimeSinceFixMs`, `AgentId` |
 
 Prompt and response text is never included. Length fields contain byte counts
-only. `IsByok` is captured for the specific prompt so live model changes are
-attributed correctly. `TotalResponseBytes` is currently unpopulated and
-retained for schema compatibility.
+only, not UI character counts; `PromptLengthBytes` describes the constructed
+ACP dispatch prompt, not just the user's typed text. `IsByok` is captured for
+the specific prompt so live model changes are attributed correctly. The
+always-zero `TotalResponseBytes` field has been
+removed; do not interpret historical zero values as empty responses.
+
+`ErrorFixResolved` is retired. Its old timestamp started when autofix
+**analysis** was submitted, not when a fix was executed. Execution paths clear
+that timestamp; the old event could instead fire when a later prompt-start or
+exit-zero merely cleared the pending UI. Neither signal establishes that an
+applied fix succeeded. UI clearing is unchanged, but it no longer emits a
+success-shaped metric. No current event provides a reliable automatic
+fix-success rate or time-to-fix; those require execution-correlated tracking.
 
 #### Commands, sessions, delegation, MCP, and hooks
 
@@ -105,13 +208,86 @@ retained for schema compatibility.
 | `SessionsViewOpened` | The Agent Session View is opened. | None |
 | `SessionResumeInvoked` | A resume operation is dispatched from Agent Session View. | `Route` (`AgentPane` for ACP `session/load`, or `Cli` for provider-native CLI resume), `AgentId` |
 | `DelegateInvoked` | An agent recommendation invokes the configured delegate through WTA. | `TriggerSource` (`Agent`) |
-| `SessionMcpToolCalled` | A session MCP function is invoked. | `ToolName`: `terminal_send`, `terminal_open`, `terminal_open_and_send`, `request_user_input`, or `unknown` |
+| `SessionMcpToolCalled` | A session MCP function is invoked. | `ToolName`: `run_command_in_current_shell`, `create_workspace`, `delegate_task_in_new_workspace`, `request_user_input`, or `unknown` |
 | `HookOperationCompleted` | Hook installation or uninstallation finishes for one supported CLI. | `Operation` (`Install` or `Uninstall`), `Cli` (`copilot`, `claude`, `gemini`, `codex`, or `opencode`), `Outcome` |
 
 Install outcomes are `installed`, `skipped`, or `failed`. Uninstall outcomes
 are `succeeded`, `skipped`, or `failed`.
 
-This document enumerates every **true telemetry event** in the Windows Terminal codebase under `src\` — i.e., every `TraceLoggingWrite(...)` call site whose argument list contains one of the Microsoft telemetry keywords (`MICROSOFT_KEYWORD_MEASURES`, `MICROSOFT_KEYWORD_TELEMETRY`, or `MICROSOFT_KEYWORD_CRITICAL_DATA`) and is therefore reported to Microsoft.
+The MCP allowlist now uses the canonical registered tool names instead of the
+obsolete `terminal_send` / `terminal_open` / `terminal_open_and_send` aliases.
+Historical `unknown` buckets cannot be retroactively attributed to a tool.
+
+`SlashCommandInvoked` records built-in dispatch attempts before command guards,
+not successful completion. Busy `/new` and idle `/stop` still count; merely
+browsing autocomplete does not. ACP agent-provided slash commands instead
+produce `AgentPromptSent` with `TemplateKind=AgentCommand`; their names and
+arguments are not recorded. An unknown slash command may proceed as an ordinary
+prompt. `/fix` and `/sessions` can also produce downstream prompt/view events.
+
+Sources: [WTA schemas](./tools/wta/src/telemetry.rs),
+[turn accounting](./tools/wta/src/protocol/acp/turn_metrics.rs),
+[slash dispatch](./tools/wta/src/app.rs), and
+[session MCP](./tools/wta/src/agent_tools/session_mcp.rs).
+
+### Additional Settings Editor ETW probes
+
+`AcpModelProbeStarted`, `AcpModelProbeDiscarded`, and `AcpModelProbeCompleted`
+are diagnostic events on the Settings Editor provider. They do not explicitly
+set a telemetry keyword; all use level `Info` and
+`PDT_ProductAndServicePerformance`.
+
+| Event | Trigger | Fields |
+|---|---|---|
+| `AcpModelProbeStarted` | A clean catalog probe begins | `AgentId`, `CacheRevision` |
+| `AcpModelProbeDiscarded` | A newer generation supersedes its result | `AgentId` |
+| `AcpModelProbeCompleted` | The current probe returns | `AgentId`, `Succeeded`, `ModelCount` |
+
+Custom agents are bucketed as `custom`. No probe command or model identifier
+is included. See [AI settings](./src/cascadia/TerminalSettingsEditor/AIAgentsViewModel.cpp).
+
+### Live ETW field verification (2026-09-11)
+
+A local Debug capture collected the App, WTA, and Settings Model providers
+at verbose level with all keywords enabled. It contained **46 events:
+44 product events and 2 trace infrastructure events, with 0 events lost**.
+This was an actual application/helper run, not an injected telemetry payload
+or unit-test event sink.
+
+| Event / check | Count | Observed field result |
+|---|---|---|
+| `AgentSessionStarted` | 4 | All 24 business fields and `PartA_PrivTags` decoded; one `New` snapshot per distinct session, with unique `StartId` values and matching configured settings |
+| `AcpInitializeComplete` | 2 | `DurationMs`, `Success`, `Route`, `FailureKind`, `AcpErrorCode` |
+| `AcpNewSessionComplete` | 8 | `SessionId`, `DurationMs`, `Success`, `Route`, `FailureKind`, `AcpErrorCode`; two instrumented layers per logical session |
+| `AgentColdStartComplete` | 1 | `AgentId`, `Source`, `DurationMs`, `Success`, `FailureKind` |
+| `AgentPromptSent` | 2 | `SessionId`, `PromptLengthBytes`, `IsAutofix`, `IsByok`, `AgentId`, `TemplateKind`, `Route`; observed `TemplateKind=Planner`, `Route=AcpDispatch` |
+| `AgentResponseFirstToken` | 1 | `SessionId`, `FirstTokenLatencyMs`, `ChunkLengthBytes`, `AgentId` |
+| `AgentResponseComplete` | 2 | `SessionId`, `TotalDurationMs`, `Success`, `IsByok`, `AgentId`; `TotalResponseBytes` absent |
+| `SessionMcpToolCalled` | 1 | `ToolName=run_command_in_current_shell`; the harmless command was confirmed and executed through the normal action path |
+| `SlashCommandInvoked` | 4 | `CommandName` values `help`, `new`, `new`, `stop`; idle `/stop` still counted as a dispatch attempt |
+| Retired AI census events and `ErrorFixResolved` | 0 | None observed during the exercised startup/turn/action paths |
+| `JsonSettingsChanged` | 3 | Retained `Setting` values `global.tabLayout`, `global.warning.confirmOnClose`, and `profile.hidden`; AI keys absent in this sample |
+
+Every dedicated event observed above also carried `PartA_PrivTags=0`.
+The smoke prompt, reply marker, and command text were absent from the decoded
+telemetry payloads. User settings remained unchanged.
+
+**Resume validation did not pass.** A production
+`resume_in_new_agent_tab` control request created a new tab and a fresh ACP
+session rather than reaching `session/load`. Consequently the capture
+contained neither `AcpLoadSessionComplete` nor `AgentSessionStarted` with
+`StartKind=Load`. The source-defined load fields and lifecycle rules above
+must not be read as successful live verification of that path; it requires
+another capture after the resume flow is corrected. Other agent providers, BYOK,
+WSL, and policy/override combinations were not exercised in this sample.
+
+## Inherited Windows Terminal / OpenConsole reference
+
+The following historical inventory covers `TraceLoggingWrite(...)` call sites
+whose arguments contain a Microsoft telemetry keyword
+(`MICROSOFT_KEYWORD_MEASURES`, `MICROSOFT_KEYWORD_TELEMETRY`, or
+`MICROSOFT_KEYWORD_CRITICAL_DATA`). A keyword alone does not establish upload
+or ingestion.
 
 Events grouped by their `TRACELOGGING_DEFINE_PROVIDER`. Diagnostic-only ETW traces tagged with `TIL_KEYWORD_TRACE` (`UiaTracing.cpp`, `parser/tracing.cpp`, most of `host/tracing.cpp`, the server `*Dispatchers.cpp`, `VtIo.cpp`, `VtInputThread.cpp`, etc.) are excluded.
 

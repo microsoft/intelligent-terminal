@@ -5,6 +5,7 @@
 
 #include "../TerminalSettingsModel/ColorScheme.h"
 #include "../TerminalSettingsModel/CascadiaSettings.h"
+#include "../TerminalSettingsModel/SettingsTelemetry.h"
 #include "../TerminalSettingsModel/resource.h"
 #include "JsonTestClass.h"
 #include "TestUtils.h"
@@ -65,6 +66,10 @@ namespace SettingsModelUnitTests
         TEST_METHOD(ModifyColorSchemeAndRoundtrip);
         TEST_METHOD(FixupUserSettingsDetectsChanges);
         TEST_METHOD(FixupCommandlinePatching);
+        TEST_METHOD(AISettingsTelemetryFilterGlobalKeys);
+        TEST_METHOD(AISettingsTelemetryFilterProfileKeys);
+        TEST_METHOD(AISettingsTelemetryFilterBoundaries);
+        TEST_METHOD(AISettingsTelemetryFilterChangeLog);
 
     private:
         // Method Description:
@@ -103,6 +108,143 @@ namespace SettingsModelUnitTests
             return json;
         }
     };
+
+    void SerializationTests::AISettingsTelemetryFilterGlobalKeys()
+    {
+        constexpr std::string_view keys[]{
+            "acpAgent",
+            "acpModel",
+            "acpCustomCommand",
+            "acpCustomCommands",
+            "delegateAgent",
+            "delegateModel",
+            "delegateCustomCommand",
+            "delegateCustomCommands",
+            "customModelSelection",
+            "customModelProviders",
+            "autoErrorDetectionEnabled",
+            "autoFixEnabled",
+            "agentSessionManagementEnabled",
+            "showTokenUsageAndCost",
+            "agentPanePosition",
+            "agentPane.yoloMode",
+            "aiIntegration.coordinator.enabled",
+            "aiIntegration.coordinator.commandline",
+            "aiIntegration.coordinator.profile",
+            "aiIntegration.confirmation.readOperations",
+            "aiIntegration.confirmation.createOperations",
+            "aiIntegration.confirmation.inputOperations",
+        };
+        for (const auto key : keys)
+        {
+            const auto change = std::string{ "global." } + std::string{ key };
+            VERIFY_IS_TRUE(implementation::IsAISettingChange(change));
+            VERIFY_IS_FALSE(implementation::IsAISettingChange(change + "Other"));
+            VERIFY_IS_FALSE(implementation::IsAISettingChange(std::string{ "action." } + std::string{ key }));
+            VERIFY_IS_FALSE(implementation::IsAISettingChange(std::string{ "theme." } + std::string{ key }));
+        }
+    }
+
+    void SerializationTests::AISettingsTelemetryFilterProfileKeys()
+    {
+        for (const auto context : { "profile.", "profileDefaults." })
+        {
+            for (const auto key : { "agentPaneBackend", "commandPaletteAgent" })
+            {
+                const auto change = std::string{ context } + key;
+                VERIFY_IS_TRUE(implementation::IsAISettingChange(change));
+                VERIFY_IS_FALSE(implementation::IsAISettingChange(change + "Other"));
+                VERIFY_IS_FALSE(implementation::IsAISettingChange(change + ".nested"));
+                VERIFY_IS_FALSE(implementation::IsAISettingChange(std::string{ context } + "appearance." + key));
+                VERIFY_IS_FALSE(implementation::IsAISettingChange(std::string{ "action." } + key));
+            }
+        }
+    }
+
+    void SerializationTests::AISettingsTelemetryFilterBoundaries()
+    {
+        for (const auto change : {
+                 "global.customModelProviders.models.id",
+                 "global.customModelProviders.0.apiKeyCredential",
+                 "global.customModelProviders[0].baseUrl",
+                 "global.customModelProviders[0].models[0].name" })
+        {
+            VERIFY_IS_TRUE(implementation::IsAISettingChange(change));
+        }
+        for (const auto change : {
+                 "",
+                 "global",
+                 "global.",
+                 "global.tabLayout",
+                 "global.tabLayoutVerticalWidth",
+                 "global.firstWindowPreference",
+                 "global.copyOnSelect",
+                 "global.newTabMenu.action",
+                 "global.theme.dark",
+                 "global.acp",
+                 "global.delegate",
+                 "global.agentPane",
+                 "global.aiIntegration",
+                 "global.aiIntegration.coordinator.enabledOther",
+                 "global.customModelProvidersOther.apiKeyCredential",
+                 "global.agentPaneBackend",
+                 "profile.commandline",
+                 "profile.appearance.colorScheme",
+                 "profile.font.face",
+                 "profileDefaults.historySize",
+                 "profileDefaults.font.size",
+                 "profileExtra.agentPaneBackend",
+                 "profileDefaultsExtra.commandPaletteAgent",
+                 "theme.global.acpAgent",
+                 "action.toggleAgentPane",
+                 "action.global.customModelProviders[0].baseUrl",
+                 "globalOther.acpAgent" })
+        {
+            VERIFY_IS_FALSE(implementation::IsAISettingChange(change));
+        }
+    }
+
+    void SerializationTests::AISettingsTelemetryFilterChangeLog()
+    {
+        const auto globals = implementation::GlobalAppSettings::FromJson(VerifyParseSucceeded(R"({
+            "acpAgent": "claude",
+            "customModelProviders": [],
+            "tabLayout": "vertical",
+            "firstWindowPreference": "persistedLayout"
+        })"));
+        const auto profile = implementation::Profile::FromJson(VerifyParseSucceeded(R"({
+            "agentPaneBackend": "codex",
+            "commandPaletteAgent": "gemini",
+            "historySize": 1234
+        })"));
+
+        // Exercise JSON changes and subsequent UI setter changes through the same filter.
+        for (const auto uiChange : { false, true })
+        {
+            if (uiChange)
+            {
+                globals->AutoFixEnabled(true);
+                globals->CopyOnSelect(true);
+                profile->AgentPaneBackend(L"copilot");
+            }
+            std::set<std::string> changes;
+            globals->LogSettingChanges(changes, "global");
+            profile->LogSettingChanges(changes, "profile");
+            profile->LogSettingChanges(changes, "profileDefaults");
+            VERIFY_IS_TRUE(changes.contains("global.acpAgent"));
+            VERIFY_IS_TRUE(changes.contains("global.customModelProviders"));
+            VERIFY_IS_TRUE(changes.contains("profile.agentPaneBackend"));
+            VERIFY_IS_TRUE(changes.contains("profileDefaults.commandPaletteAgent"));
+
+            std::erase_if(changes, implementation::IsAISettingChange);
+            VERIFY_ARE_EQUAL(uiChange ? size_t{ 5 } : size_t{ 4 }, changes.size());
+            VERIFY_IS_TRUE(changes.contains("global.tabLayout"));
+            VERIFY_IS_TRUE(changes.contains("global.firstWindowPreference"));
+            VERIFY_IS_TRUE(changes.contains("profile.historySize"));
+            VERIFY_IS_TRUE(changes.contains("profileDefaults.historySize"));
+            VERIFY_ARE_EQUAL(uiChange, changes.contains("global.copyOnSelect"));
+        }
+    }
 
     void SerializationTests::GlobalSettings()
     {
