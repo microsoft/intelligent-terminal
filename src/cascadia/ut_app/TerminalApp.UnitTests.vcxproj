@@ -115,7 +115,7 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
 
-  <Target Name="CopyTerminalProtocolProxy" AfterTargets="Build">
+  <Target Name="CopyTerminalProtocolProxy" AfterTargets="Build" Condition="'$(Configuration)'!='Fuzzing'">
     <Copy SourceFiles="$(OpenConsoleCommonOutDir)OpenConsoleProxy.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
   </Target>
 </Project>

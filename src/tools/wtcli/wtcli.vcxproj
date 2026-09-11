@@ -48,7 +48,7 @@
   </ItemGroup>
   <Import Project="$(OpenConsoleDir)src\cppwinrt.build.post.props" />
   <Import Project="$(OpenConsoleDir)src\common.nugetversions.targets" />
-  <Target Name="CopyTerminalProtocolProxy" AfterTargets="Build">
+  <Target Name="CopyTerminalProtocolProxy" AfterTargets="Build" Condition="'$(Configuration)'!='Fuzzing'">
     <Copy SourceFiles="$(OpenConsoleCommonOutDir)OpenConsoleProxy.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
   </Target>
 </Project>

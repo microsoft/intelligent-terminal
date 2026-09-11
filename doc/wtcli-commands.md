@@ -19,6 +19,8 @@ Both endpoints register the adjacent `OpenConsoleProxy.dll` inside their own
 process, including the callback interface used by `listen`. This does not
 write COM registry entries or require `regsvr32`. Do not copy the administrator
 endpoint into persistent settings: it expires when that Terminal process exits.
+The `Fuzzing` configuration builds `OpenConsoleProxy` as a static library and
+skips the runtime DLL copy; normal application configurations still require it.
 
 - Source: `src/tools/wtcli/main.cpp`
 - COM IDL: `src/host/proxy/ITerminalProtocol.idl`
