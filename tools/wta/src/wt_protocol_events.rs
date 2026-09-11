@@ -1,5 +1,12 @@
 /// Publish raw JSON events to Windows Terminal in submission order.
 pub fn send(json_payload: String) {
+    send_with_callback(json_payload, None);
+}
+
+type PublishCallback = Box<dyn FnOnce(anyhow::Result<()>) + Send + 'static>;
+
+/// Report transport completion, not just acceptance into the publisher queue.
+pub fn send_with_callback(json_payload: String, on_complete: Option<PublishCallback>) {
     #[cfg(test)]
     {
         TEST_PUBLISHED_EVENTS.with(|capture| {
@@ -10,10 +17,52 @@ pub fn send(json_payload: String) {
                 events.push_back(json_payload);
             }
         });
+        if let Some(callback) = on_complete {
+            callback(Ok(()));
+        }
     }
 
     #[cfg(not(test))]
-    let _ = publisher_sender().send(json_payload);
+    {
+        let job = PublishJob {
+            json_payload,
+            on_complete,
+        };
+        match publisher_sender() {
+            Ok(sender) => {
+                if let Err(error) = sender.send(job) {
+                    error
+                        .0
+                        .complete(Err(anyhow::anyhow!("WT event publisher stopped")));
+                }
+            }
+            Err(error) => job.complete(Err(error)),
+        }
+    }
+}
+
+struct PublishJob {
+    json_payload: String,
+    on_complete: Option<PublishCallback>,
+}
+
+impl PublishJob {
+    fn complete(self, result: anyhow::Result<()>) {
+        if let Err(error) = &result {
+            let method = serde_json::from_str::<serde_json::Value>(&self.json_payload)
+                .ok()
+                .and_then(|event| event.get("method")?.as_str().map(str::to_owned));
+            tracing::warn!(
+                target: "wt_protocol",
+                event_method = ?method,
+                error = %format!("{error:#}"),
+                "wtcli publish failed"
+            );
+        }
+        if let Some(callback) = self.on_complete {
+            callback(result);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -111,21 +160,24 @@ pub(crate) fn agent_availability_changed_event(agent_id: &str, tab_id: Option<&s
 }
 
 #[cfg(not(test))]
-fn publisher_sender() -> &'static std::sync::mpsc::Sender<String> {
-    static SENDER: std::sync::OnceLock<std::sync::mpsc::Sender<String>> =
+fn publisher_sender() -> anyhow::Result<&'static std::sync::mpsc::Sender<PublishJob>> {
+    static SENDER: std::sync::OnceLock<std::io::Result<std::sync::mpsc::Sender<PublishJob>>> =
         std::sync::OnceLock::new();
-    SENDER.get_or_init(|| {
-        let (tx, rx) = std::sync::mpsc::channel::<String>();
-        std::thread::Builder::new()
-            .name("wt-event-publisher".into())
-            .spawn(move || {
-                while let Ok(payload) = rx.recv() {
-                    publish_blocking(&payload);
-                }
-            })
-            .expect("spawn wt-event-publisher thread");
-        tx
-    })
+    SENDER
+        .get_or_init(|| {
+            let (tx, rx) = std::sync::mpsc::channel::<PublishJob>();
+            std::thread::Builder::new()
+                .name("wt-event-publisher".into())
+                .spawn(move || {
+                    while let Ok(job) = rx.recv() {
+                        let result = publish_blocking(&job.json_payload);
+                        job.complete(result);
+                    }
+                })?;
+            Ok(tx)
+        })
+        .as_ref()
+        .map_err(|error| anyhow::anyhow!("failed to start WT event publisher: {error}"))
 }
 
 fn publish_command(exe: &std::path::Path) -> std::process::Command {
@@ -149,12 +201,27 @@ enum PublishError {
     MissingStdin,
     Write(std::io::Error),
     Wait(std::io::Error),
+    Exit(std::process::ExitStatus),
 }
+
+impl std::fmt::Display for PublishError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Spawn(error) => write!(f, "failed to start wtcli publish: {error}"),
+            Self::MissingStdin => write!(f, "wtcli publish stdin was not piped"),
+            Self::Write(error) => write!(f, "failed writing wtcli publish payload: {error}"),
+            Self::Wait(error) => write!(f, "failed waiting for wtcli publish: {error}"),
+            Self::Exit(status) => write!(f, "wtcli publish failed ({status})"),
+        }
+    }
+}
+
+impl std::error::Error for PublishError {}
 
 fn execute_publish(
     command: &mut std::process::Command,
     json_payload: &[u8],
-) -> Result<std::process::ExitStatus, PublishError> {
+) -> Result<(), PublishError> {
     use std::io::Write;
 
     let mut child = command.spawn().map_err(PublishError::Spawn)?;
@@ -168,78 +235,76 @@ fn execute_publish(
         return Err(error);
     }
 
-    child.wait().map_err(PublishError::Wait)
+    let status = child.wait().map_err(PublishError::Wait)?;
+    if !status.success() {
+        return Err(PublishError::Exit(status));
+    }
+    Ok(())
 }
 
 #[cfg(not(test))]
-fn publish_blocking(json_payload: &str) {
+fn publish_blocking(json_payload: &str) -> anyhow::Result<()> {
     let exe = std::env::current_exe()
         .ok()
         .and_then(|path| path.parent().map(|directory| directory.join("wtcli.exe")))
         .filter(|path| path.exists())
         .unwrap_or_else(|| std::path::PathBuf::from("wtcli.exe"));
-    let payload_bytes = json_payload.len();
-    let event_method_cache = std::sync::OnceLock::new();
-    let event_method = || {
-        event_method_cache.get_or_init(|| {
-            serde_json::from_str::<serde_json::Value>(json_payload)
-                .ok()
-                .and_then(|event| event.get("method")?.as_str().map(str::to_owned))
-                .unwrap_or_else(|| "<unknown>".to_owned())
-        })
-    };
     let mut command = publish_command(&exe);
-    match execute_publish(&mut command, json_payload.as_bytes()) {
-        Ok(status) if !status.success() => {
-            tracing::warn!(
-                target: "wt_protocol",
-                ?status,
-                payload_bytes,
-                event_method = event_method(),
-                "wtcli publish failed"
-            );
-        }
-        Err(PublishError::Spawn(error)) => {
-            tracing::warn!(
-                target: "wt_protocol",
-                %error,
-                payload_bytes,
-                event_method = event_method(),
-                "failed to start wtcli publish"
-            );
-        }
-        Err(PublishError::MissingStdin) => {
-            tracing::warn!(
-                target: "wt_protocol",
-                payload_bytes,
-                event_method = event_method(),
-                "wtcli publish stdin was not piped"
-            );
-        }
-        Err(PublishError::Write(error)) => {
-            tracing::warn!(
-                target: "wt_protocol",
-                %error,
-                payload_bytes,
-                event_method = event_method(),
-                "failed writing wtcli publish payload"
-            );
-        }
-        Err(PublishError::Wait(error)) => {
-            tracing::warn!(
-                target: "wt_protocol",
-                %error,
-                payload_bytes,
-                event_method = event_method(),
-                "failed waiting for wtcli publish"
-            );
-        }
-        _ => {}
-    }
+    execute_publish(&mut command, json_payload.as_bytes()).map_err(Into::into)
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn resume_publish_reports_transport_failures_to_callback() {
+        use std::process::{Command, Stdio};
+
+        let mut missing = Command::new(format!("missing-wtcli-{}.exe", uuid::Uuid::new_v4()));
+        missing.stdin(Stdio::piped());
+        let mut exited = Command::new("cmd.exe");
+        exited.args(["/D", "/C", "exit /b 1"]).stdin(Stdio::piped());
+        let mut no_stdin = Command::new("cmd.exe");
+        no_stdin
+            .args(["/D", "/C", "exit /b 0"])
+            .stdin(Stdio::null());
+        let mut closed_stdin = Command::new("cmd.exe");
+        closed_stdin
+            .args(["/D", "/C", "exit /b 0"])
+            .stdin(Stdio::piped());
+
+        for (mut command, payload, expected) in [
+            (missing, Vec::new(), "failed to start wtcli publish"),
+            (exited, Vec::new(), "wtcli publish failed"),
+            (no_stdin, Vec::new(), "stdin was not piped"),
+            (
+                closed_stdin,
+                vec![b'x'; 1024 * 1024],
+                "failed writing wtcli publish",
+            ),
+        ] {
+            let result = super::execute_publish(&mut command, &payload).map_err(Into::into);
+            let (tx, rx) = std::sync::mpsc::channel();
+            super::PublishJob {
+                json_payload: r#"{"method":"resume_in_new_agent_tab"}"#.into(),
+                on_complete: Some(Box::new(move |result| tx.send(result).unwrap())),
+            }
+            .complete(result);
+            let error = rx.recv().unwrap().unwrap_err();
+            assert!(error.to_string().contains(expected), "{error:#}");
+        }
+    }
+
+    #[test]
+    fn resume_publish_reports_success_to_callback() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        super::PublishJob {
+            json_payload: r#"{"method":"resume_in_new_agent_tab"}"#.into(),
+            on_complete: Some(Box::new(move |result| tx.send(result).unwrap())),
+        }
+        .complete(Ok(()));
+        assert!(rx.recv().unwrap().is_ok());
+    }
+
     #[test]
     fn test_event_capture_is_opt_in() {
         super::take_test_published_events();
@@ -383,12 +448,11 @@ mod tests {
             "x".repeat(128 * 1024)
         );
 
-        let status = super::execute_publish(&mut command, payload.as_bytes())
+        super::execute_publish(&mut command, payload.as_bytes())
             .expect("fake wtcli process must accept the payload and observe EOF");
         let captured = std::fs::read(&capture_path).expect("fake wtcli must capture stdin");
         let _ = std::fs::remove_file(&capture_path);
 
-        assert!(status.success());
         assert_eq!(captured, payload.as_bytes());
     }
 }

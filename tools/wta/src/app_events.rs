@@ -2389,6 +2389,11 @@ impl App {
                 self.agent_sessions.apply(ev);
                 self.publish_session_hook(hook_event);
             }
+            AppEvent::SessionResumeCompleted {
+                key,
+                request_id,
+                result,
+            } => self.handle_session_resume_completed(key, request_id, result),
             AppEvent::AliveSnapshotLoaded(items) => {
                 let count = items.len();
                 tracing::info!(

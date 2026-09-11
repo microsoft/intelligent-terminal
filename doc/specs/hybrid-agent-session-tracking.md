@@ -153,7 +153,7 @@ The master keeps **two disjoint** ownership sets (`master/mod.rs`):
 
 `handle_session_hook` routes each inbound event: a binding-only event (the
 dedicated `intellterm.wta/session_born_bound` method, or a
-`ResumeDispatched`/`ResumePaneAssigned` resume-binding event) → `born_bound`
+`ResumePaneAssigned` resume-binding event, or legacy `ResumeDispatched`) → `born_bound`
 (and drops any stale `hook_owned` claim — see below); anything else (a real
 hook / ACP event) → `hook_owned` (and, if the session was born-bound, drops it
 from `born_bound` — a real hook **takes over**).
@@ -198,12 +198,26 @@ already owns the live, vetted binding).
 This covers all born-bound CLIs (**Copilot / Claude / Gemini**); Codex has no
 `--session-id`, is never born-bound, and is naturally excluded.
 
-**Resume.** `/sessions` resume publishes `ResumeDispatched` / `ResumePaneAssigned`
-over the generic `session_hook` method (not the born-bound method). These are
-the hook-free resume binding, so `handle_session_hook` records them in
+**Resume.** `/sessions` shell resume publishes `ResumePaneAssigned` over the
+generic `session_hook` method only after `wtcli new-tab` succeeds and returns a
+valid pane GUID. That single reducer event promotes and binds the row atomically;
+dispatching a command alone never changes Historical/Ended to Idle. This is
+the hook-free resume binding, so `handle_session_hook` records it in
 `born_bound` rather than `hook_owned` — without this, a resumed session would be
 treated as hook-owned and its row would sit at `Idle` forever even as the watcher
 saw activity.
+
+The initiating helper deduplicates in-flight requests separately from master's
+authoritative liveness, including while a successful binding awaits the next
+master snapshot. Creation and agent-tab event publishing report transport errors
+back to the invoking tab, which returns to chat to show the localized error.
+Failures leave the original row retryable and cannot undo a concurrent real
+session binding. Publishing `resume_in_new_agent_tab` successfully is only a
+transport acknowledgement: ACP's actual binding establishes liveness. A
+30-second post-completion grace period bounds duplicate suppression when no
+binding arrives, so a lost creation/load acknowledgement cannot block retries
+forever. Late pane callbacks cannot replace an already-live session's binding
+or take its hook ownership.
 
 **Resume pane ownership.** `ResumePaneAssigned` marks the row's pane binding
 `born_bound_pane` (`session_registry.rs`). WTA creates the resume pane and binds

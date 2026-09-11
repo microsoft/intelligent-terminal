@@ -588,6 +588,7 @@ pub struct SessionResumeDispatchedResponse {
     pub current_status: String,
 }
 
+#[cfg(test)]
 pub fn build_session_resume_dispatched_request(
     sid: &acp::schema::v1::SessionId,
 ) -> acp::schema::v1::ExtRequest {
@@ -603,12 +604,6 @@ pub fn parse_session_resume_dispatched_params(
     raw: &serde_json::value::RawValue,
 ) -> Result<SessionResumeDispatchedParams, serde_json::Error> {
     serde_json::from_str::<SessionResumeDispatchedParams>(raw.get())
-}
-
-pub fn parse_session_resume_dispatched_response(
-    raw: &serde_json::value::RawValue,
-) -> Result<SessionResumeDispatchedResponse, serde_json::Error> {
-    serde_json::from_str::<SessionResumeDispatchedResponse>(raw.get())
 }
 
 // ─── intellterm.wta/session_focus ────────────────────────────────────────────
@@ -1890,6 +1885,17 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             pane_session_id,
         } => {
             let sid = acp::schema::v1::SessionId::new(key);
+            let Some(entry) = state.sessions.get(&sid) else {
+                return false;
+            };
+            if entry.pane_session_id.is_some()
+                && !matches!(
+                    entry.status,
+                    Some(AgentStatus::Historical | AgentStatus::Ended)
+                )
+            {
+                return false;
+            }
             if let Some(prev_sid) = state.active_by_pane.get(&pane_session_id).cloned() {
                 if prev_sid != sid {
                     let _ = end_entry(state, &prev_sid, now);
@@ -1907,6 +1913,12 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
                 }
             }
             entry.pane_session_id = Some(pane_session_id.clone());
+            if matches!(
+                entry.status,
+                Some(AgentStatus::Historical | AgentStatus::Ended)
+            ) {
+                entry.status = Some(AgentStatus::Idle);
+            }
             entry.last_activity_at_ms = Some(now);
             // WTA created this pane and bound it before the agent CLI started,
             // so until the CLI's own hook confirms the binding, no other
@@ -3159,11 +3171,6 @@ mod tests {
             born_bound_pane: false,
         })
         .await;
-        reg.apply_event(crate::agent_sessions::SessionEvent::ResumeDispatched {
-            key: "sid".into(),
-        })
-        .await;
-
         let changed = reg
             .apply_event(crate::agent_sessions::SessionEvent::ResumePaneAssigned {
                 key: "sid".into(),
@@ -3180,7 +3187,7 @@ mod tests {
         assert_eq!(row.pane_session_id.as_deref(), Some("new-pane"));
     }
 
-    /// Seed a `/sessions` resume: a historical row promoted to Idle and bound
+    /// Seed a `/sessions` resume: a historical row atomically promoted and bound
     /// to a freshly-spawned pane by WTA itself, before the CLI has started.
     async fn seed_resumed_pane(reg: &InMemoryRegistry, key: &str, pane: &str) {
         let mut info = SessionInfo::new(
@@ -3190,8 +3197,6 @@ mod tests {
         info.status = Some(crate::agent_sessions::AgentStatus::Historical);
         info.cli_source = Some(crate::agent_sessions::CliSource::Copilot);
         reg.upsert(info).await;
-        reg.apply_event(crate::agent_sessions::SessionEvent::ResumeDispatched { key: key.into() })
-            .await;
         reg.apply_event(crate::agent_sessions::SessionEvent::ResumePaneAssigned {
             key: key.into(),
             pane_session_id: pane.into(),

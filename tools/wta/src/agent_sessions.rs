@@ -356,7 +356,9 @@ pub enum SessionEvent {
     PaneClosed {
         pane_session_id: String,
     },
-    /// Optimistic transition: a resume command for this key was just dispatched.
+    /// Legacy optimistic transition retained for older helper protocol callers.
+    /// Current dispatchers wait for successful creation and use ResumePaneAssigned.
+    /// A resume command for this key was just dispatched.
     /// Bumps a Historical/Ended row to Idle so a rapid second Enter on the same
     /// row doesn't dispatch another `wtcli split-pane` and create a duplicate
     /// pane while we wait for the new pane's SessionStarted hook to arrive.
@@ -365,7 +367,7 @@ pub enum SessionEvent {
     ResumeDispatched {
         key: AgentKey,
     },
-    /// Bind a freshly-spawned resume pane's GUID to its session row, BEFORE
+    /// Promote and bind a successfully-created resume pane to its session row, BEFORE
     /// any SessionStarted hook fires. Sourced from the JSON output of
     /// `wtcli --json split-pane`. Necessary for CLIs without hooks (Gemini
     /// today, plus any future CLI we don't yet have a bridge for) so that
@@ -801,6 +803,15 @@ impl AgentSessionRegistry {
                 key,
                 pane_session_id,
             } => {
+                // A real hook or another resume may have bound this session
+                // while pane creation was in flight. A late callback cannot
+                // replace that binding or evict another row from its pane.
+                let Some(entry) = self.sessions.get(&key) else {
+                    return;
+                };
+                if entry.pane_session_id.is_some() && entry.liveness() == LivenessState::Live {
+                    return;
+                }
                 // Same orphan-handover as SessionStarted: if another session
                 // currently holds this pane, demote it first. In practice
                 // ResumePaneAssigned binds a freshly-created pane, so this
@@ -848,6 +859,9 @@ impl AgentSessionRegistry {
                         );
                     }
                     entry.pane_session_id = Some(pane_session_id.clone());
+                    if matches!(entry.status, AgentStatus::Historical | AgentStatus::Ended) {
+                        entry.status = AgentStatus::Idle;
+                    }
                     entry.last_activity_at = now;
                     self.active_by_pane.insert(pane_session_id, key);
                     self.dirty = true;
@@ -2172,9 +2186,8 @@ mod tests {
     #[test]
     fn resume_pane_assigned_binds_pane_so_pane_closed_demotes_row() {
         // The Gemini-without-hooks scenario: user presses Enter on a
-        // Historical Gemini row, dispatch_resume fires ResumeDispatched
-        // (Historical -> Idle), and `wtcli split-pane`'s callback delivers
-        // the new pane GUID via ResumePaneAssigned. When the user later
+        // Historical Gemini row, and `wtcli new-tab`'s successful callback
+        // promotes and binds the row via ResumePaneAssigned. When the user later
         // closes the resumed pane, PaneClosed must demote the row to Ended
         // (empty status), matching Copilot/Claude behavior.
         let mut reg = AgentSessionRegistry::new();
@@ -2196,13 +2209,6 @@ mod tests {
             origin: SessionOrigin::default(),
             location: SessionLocation::Host,
         }]);
-        reg.apply(SessionEvent::ResumeDispatched { key: k("g") });
-        assert_eq!(
-            reg.sessions.get(&k("g")).unwrap().status,
-            AgentStatus::Idle,
-            "ResumeDispatched promotes Historical -> Idle"
-        );
-
         // Split-pane callback fires: bind the new pane.
         reg.apply(SessionEvent::ResumePaneAssigned {
             key: k("g"),
@@ -2216,7 +2222,7 @@ mod tests {
         assert_eq!(
             s.status,
             AgentStatus::Idle,
-            "binding does not change status"
+            "successful binding promotes Historical to Idle"
         );
         assert_eq!(
             reg.active_by_pane
@@ -2266,9 +2272,7 @@ mod tests {
     }
 
     #[test]
-    fn resume_pane_assigned_rebinds_when_pane_differs() {
-        // If for some reason the row has a stale pane GUID (previous resume
-        // never closed cleanly), accept the new one and clean up the map.
+    fn resume_pane_assigned_preserves_concurrent_real_binding() {
         let mut reg = AgentSessionRegistry::new();
         reg.apply(SessionEvent::SessionStarted {
             key: k("c"),
@@ -2282,13 +2286,13 @@ mod tests {
             pane_session_id: pane("new"),
         });
         let s = reg.sessions.get(&k("c")).unwrap();
-        assert_eq!(s.pane_session_id.as_deref(), Some(pane("new").as_str()));
+        assert_eq!(s.pane_session_id.as_deref(), Some(pane("old").as_str()));
         assert!(
-            reg.active_by_pane.get(&pane("old")).is_none(),
-            "old pane mapping must be cleaned up"
+            reg.active_by_pane.get(&pane("new")).is_none(),
+            "late success cannot replace a real session's pane"
         );
         assert_eq!(
-            reg.active_by_pane.get(&pane("new")).map(String::as_str),
+            reg.active_by_pane.get(&pane("old")).map(String::as_str),
             Some(k("c").as_str())
         );
     }

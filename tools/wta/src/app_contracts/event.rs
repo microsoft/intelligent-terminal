@@ -306,6 +306,12 @@ pub enum AppEvent {
         result: PreflightResult,
     },
     AgentSessionEvent(crate::agent_sessions::SessionEvent),
+    SessionResumeCompleted {
+        key: String,
+        request_id: uuid::Uuid,
+        /// None acknowledges event publication only; Some contains a created pane.
+        result: Result<Option<String>, String>,
+    },
     AliveSnapshotLoaded(Vec<crate::session_registry::SessionInfo>),
     AliveSessionAdded(crate::session_registry::SessionInfo),
     AliveSessionRemoved(agent_client_protocol::schema::v1::SessionId),
