@@ -182,6 +182,8 @@ jobs:
 
   safe_outputs:
     if: needs.agent.result == 'success'
+    permissions:
+      pull-requests: read
 
 safe-outputs:
 
@@ -214,14 +216,6 @@ safe-outputs:
     if-no-changes: error
 
     fallback-as-pull-request: false
-
-  add-comment:
-
-    target: '${{ github.event.inputs.pr_number }}'
-
-    max: 1
-
-    hide-older-comments: true
 
 
 
@@ -343,12 +337,16 @@ post-steps:
         fail('queued output contains a blocked native outcome');
       }
 
-      const addCommentCount = queuedTypes.filter(type => type === 'add_comment').length;
-      const pushCount = queuedTypes.filter(type => type === 'push_to_pull_request_branch').length;
-      if (queuedTypes.length !== 1 || !((pushCount === 1 && addCommentCount === 0) || (pushCount === 0 && addCommentCount === 1))) {
-        fail('repair PASS requires exactly one queued branch push or visible no-change comment');
+      if (queuedTypes.some(type => !['push_to_pull_request_branch', 'noop'].includes(type))) {
+        fail('repair PASS permits only a queued branch push or noop acknowledgement');
       }
-      if (addCommentCount === 1) {
+
+      const noopCount = queuedTypes.filter(type => type === 'noop').length;
+      const pushCount = queuedTypes.filter(type => type === 'push_to_pull_request_branch').length;
+      if (queuedTypes.length !== 1 || !((pushCount === 1 && noopCount === 0) || (pushCount === 0 && noopCount === 1))) {
+        fail('repair PASS requires exactly one queued branch push or noop acknowledgement');
+      }
+      if (noopCount === 1) {
         const head = process.env.EXPECTED_HEAD_SHA;
         if (!/^[0-9a-f]{40}$/.test(head || '')) fail('repairs not published check received an invalid expected head SHA');
         const paths = [
@@ -363,7 +361,7 @@ post-steps:
             execFileSync('git', ['ls-files', '--others', '-z', '--', ...paths], { timeout: 15000, maxBuffer: 1024 * 1024 })
           ]);
         } catch (error) { fail(`repairs not published check failed: ${error.message}`); }
-        if (dirty.length !== 0) fail('repairs not published: a no-change comment cannot discard working localization repairs');
+        if (dirty.length !== 0) fail('repairs not published: a noop acknowledgement cannot discard working localization repairs');
       }
       NODE
 
@@ -410,16 +408,27 @@ Verify `git rev-parse HEAD` equals
 - exact original patch inspection with
   `git diff --no-ext-diff --unified=3 ${{ github.event.inputs.comparison_base_sha }} ${{ github.event.inputs.expected_head_sha }} -- <resource paths>` before choosing scoped keys or targets; treat `--stat`, `--name-only`, `--name-status`, `--numstat`, `git status`, and worktree-only diffs as supporting signals only, and keep reading if the patch output truncates until every relevant hunk is covered
 
-Repair only localized targets. Keep source authority read-only and finish with
-the required independent review. Invoke the registered
-`localization-review-gate` agent after the final checks and require its explicit
-`PASS` before requesting any branch write. The root repair agent owns all git
-inspection, scope discovery, edits, the final checker rerun, and writing
-`/tmp/gh-aw/localization-final-checks.json`; do not delegate those steps.
-Derive the precise source-added or updated keys, values, and surrounding
-context from that original patch, preserve that scope through the final rerun,
-and do not replace it with guessed keys from unchanged source lines, file
-prefixes, samples, or PR summaries.
+Derive this workflow's scope only from English source-authority additions,
+updates, or deletions in that original patch. Expand additions or updates to
+every shipped localized counterpart that should carry the affected keys.
+Expand removals to stale localized counterpart cleanup for the removed keys or
+files. Localized-only edits or deletions do not independently create repair
+scope. If the original patch yields no English-derived scope, keep the run
+read-only and do not promote localized-only edits into repair scope just to
+manufacture work. When the fixed non-empty final report still needs checker
+evidence for that no-scope conclusion, run syntax and encoding checks on the
+immutable pre-change source-authority snapshots associated with the patch.
+Use those bundles as historical evidence only, not as proof of the current tree.
+
+Repair only localized targets in that English-derived scope. Keep source
+authority read-only and finish with the required independent review. Invoke the
+registered `localization-review-gate` agent after the final checks and require
+its explicit `PASS` before requesting any branch write. The root repair agent
+owns all git inspection, scope discovery, edits, the final checker rerun, and
+writing `/tmp/gh-aw/localization-final-checks.json`; do not delegate those
+steps. Preserve the exact English-derived keys, values, and surrounding context
+through the final rerun; do not replace them with guesses from unchanged source
+lines, file prefixes, samples, or PR summaries.
 
 ## Output contract
 
@@ -437,6 +446,13 @@ requires final `PASS` bundles and exactly one successful outcome:
   `.github/skills/ensure-localization/scripts/localization_checks.ps1` once in
   one `pwsh` process, collect the actual function-return bundles, and write the
   envelope with PowerShell file operations before any safe output.
+- If the English-derived scope is deletion-only and the current tree no longer
+  contains one or more removed source/target files, materialize immutable
+  pre-deletion snapshots for exactly those files and run syntax and encoding
+  checks on those snapshots so the report still contains actual
+  checker bundles. Treat those bundles as historical evidence only, and use
+  explicit git inspection separately to prove the live tree really removed the
+  files.
 - The native gate validates report shape and output mechanics only; it does not
   prove that you preserved the original patch scope. Your own git evidence and
   independent review must establish that.
@@ -457,19 +473,13 @@ requires final `PASS` bundles and exactly one successful outcome:
   output call. Give that reviewer the comparison base, immutable head, exact
   repaired file list, and an explicit requirement to independently re-derive
   expected keys from the original patch instead of from your selected-key list.
-- Before emitting any comment, inspect the actual native `add_comment` schema
-  or help that the runtime exposes. Then call that native tool directly with
-  inline arguments only: explicit `pr_number`
-  `${{ github.event.inputs.pr_number }}` plus the final `body`. Do not stage a
-  temp file, heredoc, shell-composed script, `target=triggering`, or `noop`
-  substitute for a required visible comment.
-
-- No edit: one visible `PASS` / no-change `add-comment` naming checked files.
+- No edit: one `noop` acknowledgement after the final `PASS` rerun and
+  independent review confirm no localized repairs were necessary.
 - Edited: one focused commit whose subject
   ends with `[localization-expert]`, then use `push-to-pull-request-branch`.
 
 Do not claim success for source-only, blocked, invalid, or excluded changes. No
-`noop`, extra output, extra commit, or source-authority edit.
+extra output, extra commit, or source-authority edit.
 
 ## agent: `localization-review-gate`
 {{#runtime-import .github/agents/localization-reviewer.agent.md}}
@@ -478,7 +488,8 @@ Caller contract for this reviewer: pass the comparison base, immutable head,
 the exact repaired or reviewed resource paths, and the current repair summary.
 Require the reviewer to inspect the original
 `git diff --no-ext-diff --unified=3 <comparison-base> <immutable-head> -- <resource paths>`
-content independently, audit all shipped localized counterparts implicated by
-that patch scope, and fail `PASS` when any expected key block is mismatched or
-omitted.
+content independently, treat only English source-authority additions, updates,
+or deletions as scope-creating, audit all shipped localized counterparts
+implicated by that scope, and fail `PASS` when any expected key block in that
+scope is mismatched or omitted.
 ## end agent: `localization-review-gate`

@@ -361,7 +361,7 @@ post-steps:
 
 timeout-minutes: 15
 
-max-ai-credits: 150
+max-ai-credits: 200
 
 max-daily-ai-credits: 750
 
@@ -395,13 +395,24 @@ removed; use local `git show` and `git diff` to inspect them, then follow
 - exact original patch inspection with
   `git diff --no-ext-diff --unified=3 ${{ github.event.inputs.comparison_base_sha }} ${{ github.event.inputs.expected_head_sha }} -- <resource paths>` before choosing scoped keys or targets; treat `--stat`, `--name-only`, `--name-status`, `--numstat`, `git status`, and worktree-only diffs as supporting signals only, and keep reading if the patch output truncates until every relevant hunk is covered
 
-Materialize trusted file bytes in the workspace only as needed.
-You own the git inspection, scope discovery, final checker rerun, final report
-write, and the one allowed safe output for this read-only workflow.
-Derive the precise source-added or updated keys, values, and surrounding
-context from that original patch, preserve that scope through the final rerun,
-and do not replace it with guessed keys from unchanged source lines, file
-prefixes, samples, or PR summaries.
+Derive this workflow's scope only from English source-authority additions,
+updates, or deletions in that original patch. Expand additions or updates to
+every shipped localized counterpart that should carry the affected keys.
+Expand removals to stale localized counterpart review for the removed keys or
+files. Localized-only edits or deletions do not independently create guidance
+scope. If the original patch yields no English-derived scope, keep the run
+read-only and do not promote localized-only edits into guidance scope just to
+manufacture work. When the fixed non-empty final report still needs checker
+evidence for that no-scope conclusion, run syntax and encoding checks on the
+immutable pre-change source-authority snapshots associated with the patch.
+Use those bundles as historical evidence only, not as proof of the current tree.
+
+Materialize trusted file bytes in the workspace only as needed. You own the git
+inspection, scope discovery, final checker rerun, final report write, and the
+one allowed safe output for this read-only workflow. Preserve the exact
+English-derived keys, values, and surrounding context through the final rerun;
+do not replace them with guesses from unchanged source lines, file prefixes,
+samples, or PR summaries.
 
 ## Output contract
 
@@ -426,6 +437,20 @@ one `pwsh` process, collect the actual function-return bundles, and write the
 envelope with PowerShell file operations before emitting either `add-comment` or
 `noop`.
 
+If the English-derived scope is deletion-only and the current tree no longer
+contains one or more removed source/target files, materialize immutable
+pre-deletion snapshots for exactly those files and run syntax and encoding
+checks on those snapshots so the report still contains actual
+checker bundles. Treat those bundles as historical evidence only, and use
+explicit git inspection separately to prove the live tree really removed the
+files.
+
+If an English-source deletion leaves obsolete localized counterparts in the
+current tree, report that cleanup in the guidance comment even when historical
+syntax and encoding bundles are `PASS`. Use `noop` only when the scoped cleanup
+is complete and the review finds no other in-scope issues. Localized-only
+deletions still do not independently create guidance scope.
+
 The native gate validates report shape and output mechanics only; it does not
 prove that you preserved the original patch scope. Your own git evidence must
 establish that.
@@ -445,10 +470,11 @@ keys to `Test-PlaceholderParity`, `Test-LockedContent`, and
 `Test-PseudoLocale`. Missing comparable entries stay with
 `Test-RequiredKeys`; dependent checks across absent entries are genuine
 `BLOCKED` outcomes and must not be manufactured into the final guide report.
-Perform this review independently from the caller's proposed key list: derive again
-the expected keys from the original patch, audit all shipped localized
-counterparts implicated by that scope, and fail `PASS` when any expected key
-block is mismatched or omitted.
+Perform this review independently from the caller's proposed key list: derive
+again the expected keys from the original patch, treat only English
+source-authority additions, updates, or deletions as scope-creating, audit all
+shipped localized counterparts implicated by that scope, and fail `PASS` when
+any expected key block in that scope is mismatched or omitted.
 
 The comment must:
 
