@@ -7438,6 +7438,107 @@ fn resume_success_binds_and_deduplicates_until_authoritative_snapshot() {
 }
 
 #[test]
+fn resumed_pane_close_clears_pending_and_allows_immediate_retry() {
+    use crate::agent_sessions::{AgentStatus, SessionEvent, SessionOrigin};
+
+    for creation_completed in [false, true] {
+        let mut app = test_app();
+        let row = seed_resume_row(&mut app, AgentStatus::Historical, SessionOrigin::Unknown);
+        app.activate_agent_session_routed(&row);
+        let request_id = app.pending_session_resumes[&row.key].request_id;
+        if creation_completed {
+            app.handle_event(AppEvent::SessionResumeCompleted {
+                key: row.key.clone(),
+                request_id,
+                result: Ok(Some("quick-pane".into())),
+            });
+        } else {
+            app.handle_event(AppEvent::AgentSessionEvent(SessionEvent::SessionStarted {
+                key: row.key.clone(),
+                cli_source: row.cli_source.clone(),
+                pane_session_id: "quick-pane".into(),
+                cwd: row.cwd.clone(),
+                title: row.title.clone(),
+            }));
+        }
+        app.handle_event(AppEvent::AgentSessionEvent(SessionEvent::PaneClosed {
+            pane_session_id: "QUICK-PANE".into(),
+        }));
+
+        assert!(!app.pending_session_resumes.contains_key(&row.key));
+        if !creation_completed {
+            app.handle_event(AppEvent::SessionResumeCompleted {
+                key: row.key.clone(),
+                request_id,
+                result: Ok(Some("quick-pane".into())),
+            });
+        }
+        let ended = app.agent_sessions.get(&row.key).unwrap().clone();
+        assert_eq!(ended.status, AgentStatus::Ended);
+        assert!(ended.pane_session_id.is_none());
+        app.last_dispatched_command = None;
+        app.activate_agent_session_routed(&ended);
+        assert_eq!(
+            app.last_dispatched_command.as_ref().unwrap().kind,
+            DispatchedCommandKind::NewTabResume
+        );
+        assert_ne!(app.pending_session_resumes[&row.key].request_id, request_id);
+    }
+}
+
+#[tokio::test]
+async fn resume_master_removal_clears_only_an_observed_binding() {
+    use crate::agent_sessions::{AgentStatus, SessionOrigin};
+
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            for bound in [false, true] {
+                let mut app = test_app();
+                let row =
+                    seed_resume_row(&mut app, AgentStatus::Historical, SessionOrigin::Unknown);
+                app.activate_agent_session_routed(&row);
+                let request_id = app.pending_session_resumes[&row.key].request_id;
+                if bound {
+                    app.handle_event(AppEvent::SessionResumeCompleted {
+                        key: row.key.clone(),
+                        request_id,
+                        result: Ok(Some("quick-pane".into())),
+                    });
+                }
+                app.handle_event(AppEvent::AliveSessionRemoved(
+                    agent_client_protocol::schema::v1::SessionId::new(row.key.clone()),
+                ));
+                assert_eq!(app.pending_session_resumes.contains_key(&row.key), !bound);
+            }
+        })
+        .await;
+}
+
+#[test]
+fn resume_stop_clears_only_an_observed_binding() {
+    use crate::agent_sessions::{AgentStatus, SessionEvent, SessionOrigin};
+
+    for bound in [false, true] {
+        let mut app = test_app();
+        let row = seed_resume_row(&mut app, AgentStatus::Historical, SessionOrigin::Unknown);
+        app.activate_agent_session_routed(&row);
+        let request_id = app.pending_session_resumes[&row.key].request_id;
+        if bound {
+            app.handle_event(AppEvent::SessionResumeCompleted {
+                key: row.key.clone(),
+                request_id,
+                result: Ok(Some("quick-pane".into())),
+            });
+        }
+        app.handle_event(AppEvent::AgentSessionEvent(SessionEvent::SessionStopped {
+            key: row.key.clone(),
+            reason: "user_exit".into(),
+        }));
+        assert_eq!(app.pending_session_resumes.contains_key(&row.key), !bound);
+    }
+}
+
+#[test]
 fn resume_publish_success_does_not_claim_a_live_session_and_missing_binding_can_retry() {
     use crate::agent_sessions::{AgentStatus, SessionOrigin};
 

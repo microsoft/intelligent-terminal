@@ -216,7 +216,9 @@ session binding. Publishing `resume_in_new_agent_tab` successfully is only a
 transport acknowledgement: ACP's actual binding establishes liveness. A
 30-second post-completion grace period bounds duplicate suppression when no
 binding arrives, so a lost creation/load acknowledgement cannot block retries
-forever. Late pane callbacks cannot replace an already-live session's binding
+forever. Closing an observed binding clears its pending resume immediately,
+including when the CLI exits before the next master snapshot. Later completion
+for that cancelled request is ignored. Late pane callbacks cannot replace an already-live session's binding
 or take its hook ownership. They also cannot displace a different live session
 that already owns the returned pane. Stale index cleanup must preserve any
 other session's valid binding.

@@ -419,8 +419,33 @@ impl App {
         Some(request)
     }
 
+    fn apply_session_registry_event(&mut self, event: crate::agent_sessions::SessionEvent) {
+        use crate::agent_sessions::SessionEvent;
+        let closing_key = match &event {
+            SessionEvent::PaneClosed { pane_session_id } => {
+                self.agent_sessions.key_for_pane(pane_session_id)
+            }
+            SessionEvent::SessionStopped { key, .. } => self
+                .agent_sessions
+                .get(key)
+                .filter(|row| row.pane_session_id.is_some())
+                .map(|_| key.clone()),
+            _ => None,
+        };
+        self.agent_sessions.apply(event);
+        if let Some(key) = closing_key {
+            if self
+                .agent_sessions
+                .get(&key)
+                .is_none_or(|row| row.pane_session_id.is_none())
+            {
+                self.pending_session_resumes.remove(&key);
+            }
+        }
+    }
+
     fn register_born_bound_session(&mut self, event: crate::agent_sessions::SessionEvent) {
-        self.agent_sessions.apply(event.clone());
+        self.apply_session_registry_event(event.clone());
         if self
             .master_request_tx
             .send(crate::protocol::acp::client::MasterExtRequest::SessionBornBound { event })
@@ -2386,7 +2411,7 @@ impl App {
                     "AgentSessionEvent posted from background callback"
                 );
                 let hook_event = ev.clone();
-                self.agent_sessions.apply(ev);
+                self.apply_session_registry_event(ev);
                 self.publish_session_hook(hook_event);
             }
             AppEvent::SessionResumeCompleted {
@@ -2461,8 +2486,16 @@ impl App {
                 // `apply_alive_pane_snapshot` is only called at startup
                 // and `AliveSessionRemoved` had no path into the reducer
                 // (the bug rubber-duck Finding 2 surfaced post-B-12).
+                let key = sid.0.to_string();
+                let had_binding = self
+                    .agent_sessions
+                    .get(&key)
+                    .is_some_and(|row| row.pane_session_id.is_some());
                 self.agent_sessions
                     .apply_master_session_ended(sid.0.as_ref());
+                if had_binding {
+                    self.pending_session_resumes.remove(&key);
+                }
                 let reg = std::sync::Arc::clone(&self.alive);
                 tokio::task::spawn_local(async move {
                     reg.remove(&sid).await;
@@ -3463,7 +3496,7 @@ impl App {
                             let event = crate::agent_sessions::SessionEvent::PaneClosed {
                                 pane_session_id: pane_id.clone(),
                             };
-                            self.agent_sessions.apply(event.clone());
+                            self.apply_session_registry_event(event.clone());
                             self.publish_session_hook(event);
                             tracing::info!(
                                 target: "helper_wt_event",
@@ -3482,7 +3515,7 @@ impl App {
                                 pane_session_id: pane_id.clone(),
                                 reason,
                             };
-                            self.agent_sessions.apply(event.clone());
+                            self.apply_session_registry_event(event.clone());
                             self.publish_session_hook(event);
                         }
                         _ => {}
@@ -3549,7 +3582,7 @@ impl App {
                         let event = crate::agent_sessions::SessionEvent::PaneClosed {
                             pane_session_id: pane_id.clone(),
                         };
-                        self.agent_sessions.apply(event.clone());
+                        self.apply_session_registry_event(event.clone());
                         self.publish_session_hook(event);
                     }
                 }
