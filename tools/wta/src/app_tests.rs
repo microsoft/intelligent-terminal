@@ -7580,6 +7580,7 @@ fn resume_completion_preserves_concurrent_hook_binding() {
         Err("failed after hook".into()),
         Ok(Some("late-pane".into())),
     ] {
+        let failed_attempt = result.is_err();
         let mut app = test_app();
         let row = seed_resume_row(&mut app, AgentStatus::Ended, SessionOrigin::Unknown);
         app.activate_agent_session_routed(&row);
@@ -7603,6 +7604,12 @@ fn resume_completion_preserves_concurrent_hook_binding() {
         assert_eq!(live.status, AgentStatus::Working);
         assert_eq!(live.pane_session_id.as_deref(), Some("real-pane"));
         assert_eq!(live.current_tool.as_deref(), Some("real tool"));
+        if failed_attempt {
+            assert!(
+                matches!(app.current_tab().messages.last(), Some(ChatMessage::Error(message)) if message.contains("failed after hook")),
+                "another live binding does not turn this failed attempt into success"
+            );
+        }
     }
 }
 
@@ -7735,6 +7742,30 @@ fn modified_enter_on_live_row_dispatches_nothing() {
 
 /// Class A (AgentPane origin) dead row + plain Enter:
 /// the state machine routes to ResumeInAgentPane (ACP load).
+#[test]
+fn agent_pane_resume_event_preserves_owning_window_and_tab() {
+    use crate::agent_sessions::{AgentStatus, SessionOrigin};
+
+    let _capture = crate::wt_protocol_events::capture_test_published_events();
+    let mut app = test_app();
+    app.owner_tab_id = Some("source-tab".into());
+    app.window_id = Some("7".into());
+    app.tab_id = Some("other-tab".into());
+    app.tab_mut("other-tab");
+    app.agent_supports_load_session = true;
+    let row = seed_resume_row(&mut app, AgentStatus::Historical, SessionOrigin::AgentPane);
+    app.activate_agent_session_routed(&row);
+
+    let event = crate::wt_protocol_events::take_test_published_events()
+        .into_iter()
+        .map(|value| serde_json::from_str::<serde_json::Value>(&value).unwrap())
+        .find(|value| value["method"] == "resume_in_new_agent_tab")
+        .unwrap();
+    assert_eq!(event["params"]["window_id"], "7");
+    assert_eq!(event["params"]["tab_id"], "source-tab");
+    assert_eq!(event["params"]["session_id"], row.key);
+}
+
 #[test]
 fn enter_on_class_a_dead_row_dispatches_resume_in_agent_pane() {
     use crate::agent_sessions::{CliSource, OriginFilter, SessionEvent, SessionOrigin};

@@ -3329,6 +3329,18 @@ impl App {
             "session_id".to_string(),
             serde_json::Value::String(key.clone()),
         );
+        if let Some(window_id) = self.window_id.as_ref() {
+            params.insert(
+                "window_id".to_string(),
+                serde_json::Value::String(window_id.clone()),
+            );
+        }
+        if let Some(tab_id) = self.agent_routing_tab_id() {
+            params.insert(
+                "tab_id".to_string(),
+                serde_json::Value::String(tab_id.to_string()),
+            );
+        }
         if !cwd_string.is_empty() {
             params.insert(
                 "cwd".to_string(),

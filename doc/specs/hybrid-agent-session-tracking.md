@@ -214,6 +214,10 @@ back to the invoking tab, which returns to chat to show the localized error.
 Failures leave the original row retryable and cannot undo a concurrent real
 session binding. Publishing `resume_in_new_agent_tab` successfully is only a
 transport acknowledgement: ACP's actual binding establishes liveness. A
+request includes the helper's owning window and tab IDs; the host routes to
+that window only and verifies the source tab before creating a new tab.
+Missing routing metadata is rejected rather than broadcast. A
+host/helper update must keep this private routing contract in sync. A
 30-second post-completion grace period bounds duplicate suppression when no
 binding arrives, so a lost creation/load acknowledgement cannot block retries
 forever. Closing an observed binding clears its pending resume immediately,

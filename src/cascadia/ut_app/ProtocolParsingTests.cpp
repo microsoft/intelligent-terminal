@@ -22,6 +22,8 @@ namespace TerminalAppUnitTests
         TEST_METHOD(BoundedBufferTailAppliesLineAndCharacterLimits);
         TEST_METHOD(BoundedBufferTailPreservesBlankLines);
         TEST_METHOD(CapabilitySupportDistinguishesUnsupportedFromMalformed);
+        TEST_METHOD(AgentResumeRequiresOwnerIdentity);
+        TEST_METHOD(AgentResumeTargetsOnlyItsOwnerWindow);
     };
 
     void ProtocolParsingTests::CapabilitySupportDistinguishesUnsupportedFromMalformed()
@@ -55,6 +57,45 @@ namespace TerminalAppUnitTests
 
         VERIFY_ARE_EQUAL(SendEventRoute::DefaultPaste, route);
         VERIFY_ARE_EQUAL("request_default_paste", event["method"].asString());
+    }
+
+    void ProtocolParsingTests::AgentResumeRequiresOwnerIdentity()
+    {
+        Json::Value event;
+        const auto valid = R"({"method":"resume_in_new_agent_tab","params":{"window_id":"7","tab_id":"source-tab","session_id":"history-session"}})";
+        VERIFY_ARE_EQUAL(SendEventRoute::ResumeInNewAgentTab, ClassifySendEvent(valid, event));
+        Json::StreamWriterBuilder writer;
+        for (const auto* key : { "window_id", "tab_id", "session_id" })
+        {
+            auto missing = event;
+            missing["params"].removeMember(key);
+            Json::Value parsed;
+            VERIFY_ARE_EQUAL(SendEventRoute::Invalid, ClassifySendEvent(Json::writeString(writer, missing), parsed));
+            for (const auto& invalid : { Json::Value{}, Json::Value{ "" }, Json::Value{ 7 }, Json::Value{ false } })
+            {
+                auto malformed = event;
+                malformed["params"][key] = invalid;
+                VERIFY_ARE_EQUAL(SendEventRoute::Invalid, ClassifySendEvent(Json::writeString(writer, malformed), parsed));
+            }
+        }
+        event["params"]["cwd"] = Json::objectValue;
+        VERIFY_IS_FALSE(IsValidAgentResumeRequest(event));
+    }
+
+    void ProtocolParsingTests::AgentResumeTargetsOnlyItsOwnerWindow()
+    {
+        Json::Value event;
+        VERIFY_IS_TRUE(ParseJson(
+            R"({"method":"resume_in_new_agent_tab","params":{"window_id":"7","tab_id":"source-tab","session_id":"history-session"}})", event));
+        size_t targets = 0;
+        for (const auto* window : { "1", "7", "8" })
+        {
+            targets += AgentResumeTargetsWindow(event, window) ? 1 : 0;
+        }
+        VERIFY_ARE_EQUAL(size_t{ 1 }, targets);
+        VERIFY_IS_TRUE(AgentResumeTargetsWindow(event, "7"));
+        VERIFY_IS_FALSE(AgentResumeTargetsWindow(event, "8"));
+        VERIFY_ARE_EQUAL("source-tab", event["params"]["tab_id"].asString());
     }
 
     void ProtocolParsingTests::AgentAvailabilityUsesDirectRoute()

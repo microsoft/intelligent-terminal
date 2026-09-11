@@ -31,6 +31,7 @@
 #include "AgentPaneDragStash.h"
 #include "ContentTransfer.h"
 #include "AgentPaneLog.h"
+#include "../TerminalProtocol/ProtocolParsing.h"
 #include "App.h"
 #include "DebugTapConnection.h"
 #include "FreOverlay.h"
@@ -7887,9 +7888,10 @@ namespace winrt::TerminalApp::implementation
     }
 
     // Inbound event from WTA: {method:"resume_in_new_agent_tab",
-    //                          params:{session_id, cwd}}.
+    //                          params:{window_id, tab_id, session_id, cwd}}.
     // Sent by the session view's Enter handler on a Historical/Ended row
-    // (Plan-C ResumeInAgentPane path). We:
+    // (Plan-C ResumeInAgentPane path). After validating the owning window
+    // and source tab, we:
     //   1. Create a new tab with the default profile (using the historical
     //      session's cwd as the starting directory when provided).
     //   2. Stash the (session_id, cwd) in `_pendingLoadSessions` keyed by
@@ -7907,12 +7909,8 @@ namespace winrt::TerminalApp::implementation
     // the new helper's pipe attach hadn't completed yet when the
     // broadcast fired.
     //
-    // The shared-agent-pane model means we can't actually have two
-    // independent ACP connections on one window. If the running WTA was
-    // launched with a CLI that doesn't match the historical session's
-    // origin, `session/load` will return an error that surfaces as an
-    // AgentError in the new tab's chat view (best-effort by design — see
-    // plan.md "Constraints established with user").
+    // The new tab's helper owns its ACP load. A provider load failure is
+    // surfaced in that new tab's chat view.
     void TerminalPage::OnResumeInNewAgentTabRequested(hstring eventJson)
     {
         _agentPaneLog("OnResumeInNewAgentTabRequested: received from wta");
@@ -7932,7 +7930,23 @@ namespace winrt::TerminalApp::implementation
             _agentPaneLog("OnResumeInNewAgentTabRequested: missing params object");
             return;
         }
+        if (!::Microsoft::Terminal::Protocol::Parsing::IsValidAgentResumeRequest(evt))
+        {
+            _agentPaneLog("OnResumeInNewAgentTabRequested: missing or invalid owner routing");
+            return;
+        }
+        if (!::Microsoft::Terminal::Protocol::Parsing::AgentResumeTargetsWindow(
+                evt, std::to_string(_WindowProperties.WindowId())))
+        {
+            return;
+        }
         const auto& params = evt["params"];
+        const auto sourceTab = _FindTabByStableId(winrt::to_hstring(params["tab_id"].asString()));
+        if (!sourceTab)
+        {
+            _agentPaneLog("OnResumeInNewAgentTabRequested: source tab no longer belongs to this window");
+            return;
+        }
         const std::string sessionIdStr = params.get("session_id", "").asString();
         const std::string cwdStr = params.get("cwd", "").asString();
         if (sessionIdStr.empty())

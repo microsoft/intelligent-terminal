@@ -57,6 +57,29 @@ namespace Microsoft::Terminal::Protocol::Parsing
 
     // ── SendEvent dispatch ──
 
+    inline bool IsValidAgentResumeRequest(const Json::Value& event)
+    {
+        if (!event.isObject() || !event["params"].isObject())
+        {
+            return false;
+        }
+        const auto& params = event["params"];
+        for (const auto* key : { "window_id", "tab_id", "session_id" })
+        {
+            if (!params[key].isString() || params[key].asString().empty())
+            {
+                return false;
+            }
+        }
+        return !params.isMember("cwd") || params["cwd"].isString();
+    }
+
+    inline bool AgentResumeTargetsWindow(const Json::Value& event, const std::string_view windowId)
+    {
+        return IsValidAgentResumeRequest(event) &&
+               event["params"]["window_id"].asString() == windowId;
+    }
+
     // The dispatch routes for IProtocolServer::SendEvent.
     enum class SendEventRoute
     {
@@ -83,6 +106,7 @@ namespace Microsoft::Terminal::Protocol::Parsing
     //
     // Returns Invalid when:
     //   - JSON parsing fails
+    //   - An agent-pane resume lacks valid owner/session metadata
     //   - The broadcast path is selected but params.event is missing
     inline SendEventRoute ClassifySendEvent(const std::string& eventJson, Json::Value& outEvt)
     {
@@ -131,7 +155,9 @@ namespace Microsoft::Terminal::Protocol::Parsing
             }
             if (method == "resume_in_new_agent_tab")
             {
-                return SendEventRoute::ResumeInNewAgentTab;
+                return IsValidAgentResumeRequest(outEvt) ?
+                           SendEventRoute::ResumeInNewAgentTab :
+                           SendEventRoute::Invalid;
             }
             if (method == "pane_agent_session_changed")
             {

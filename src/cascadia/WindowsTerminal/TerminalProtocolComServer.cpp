@@ -1229,10 +1229,7 @@ try
         _dispatchAgentStateChangedToPage(eventH);
         return S_OK;
     case ProtocolParsing::SendEventRoute::ResumeInNewAgentTab:
-        // Session view's Shift+Enter handler in the wta TUI. WT creates
-        // a new tab and asks wta to open an agent pane in it.
-        _dispatchResumeInNewAgentTabToPage(eventH);
-        return S_OK;
+        return _dispatchResumeInNewAgentTabToPage(eventH);
     case ProtocolParsing::SendEventRoute::PaneAgentSession:
         _dispatchPaneAgentSessionToPage(eventH);
         return S_OK;
@@ -1593,26 +1590,29 @@ void TerminalProtocolComServer::_dispatchAgentStateChangedToPage(const winrt::hs
     }
 }
 
-void TerminalProtocolComServer::_dispatchResumeInNewAgentTabToPage(const winrt::hstring& eventJson)
+HRESULT TerminalProtocolComServer::_dispatchResumeInNewAgentTabToPage(const winrt::hstring& eventJson) noexcept
+try
 {
-    if (!s_emperor)
-    {
-        return;
-    }
-    // Same fan-out shape as the other dispatchers. The shared agent pane
-    // lives in exactly one window; pages with no agent pane no-op the call
-    // (see OnResumeInNewAgentTabRequested).
+    RETURN_HR_IF_NULL(E_UNEXPECTED, s_emperor);
+    Json::Value event;
+    RETURN_HR_IF(E_INVALIDARG, !ProtocolParsing::ParseJson(winrt::to_string(eventJson), event) || !ProtocolParsing::IsValidAgentResumeRequest(event));
     for (const auto& host : s_emperor->GetWindows())
     {
+        const auto logic = host->Logic();
+        if (!logic || !ProtocolParsing::AgentResumeTargetsWindow(
+                          event, std::to_string(logic.WindowProperties().WindowId())))
+        {
+            continue;
+        }
         auto page = _getPage(host.get());
         if (!page)
         {
-            continue;
+            return RO_E_CLOSED;
         }
         const auto dispatcher = page.Dispatcher();
         if (!dispatcher)
         {
-            continue;
+            return RO_E_CLOSED;
         }
         dispatcher.RunAsync(
             winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
@@ -1623,11 +1623,14 @@ void TerminalProtocolComServer::_dispatchResumeInNewAgentTabToPage(const winrt::
                 }
                 catch (...)
                 {
-                    // Swallow: page may have been torn down during dispatch.
+                    LOG_CAUGHT_EXCEPTION();
                 }
             });
+        return S_OK;
     }
+    return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 }
+CATCH_RETURN()
 
 void TerminalProtocolComServer::_dispatchPaneAgentSessionToPage(const winrt::hstring& eventJson)
 {
