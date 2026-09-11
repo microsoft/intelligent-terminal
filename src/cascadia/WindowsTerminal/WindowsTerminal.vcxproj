@@ -89,6 +89,10 @@
     <ProjectReference Include="$(OpenConsoleDir)src\cascadia\TerminalSettingsEditor\Microsoft.Terminal.Settings.Editor.vcxproj" />
     <ProjectReference Include="$(OpenConsoleDir)src\cascadia\UIMarkdown\UIMarkdown.vcxproj" />
     <ProjectReference Include="$(OpenConsoleDir)src\types\lib\types.vcxproj" />
+    <ProjectReference Include="$(OpenConsoleDir)src\host\proxy\Host.Proxy.vcxproj">
+      <Project>{71CC9D78-BA29-4D93-946F-BEF5D9A3A6EF}</Project>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
     <ProjectReference Include="$(OpenConsoleDir)src\cascadia\WinRTUtils\WinRTUtils.vcxproj">
       <Project>{CA5CAD1A-039A-4929-BA2A-8BEB2E4106FE}</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>

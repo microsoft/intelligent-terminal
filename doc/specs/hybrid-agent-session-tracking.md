@@ -217,12 +217,15 @@ transport acknowledgement: ACP's actual binding establishes liveness. A
 30-second post-completion grace period bounds duplicate suppression when no
 binding arrives, so a lost creation/load acknowledgement cannot block retries
 forever. Late pane callbacks cannot replace an already-live session's binding
-or take its hook ownership.
+or take its hook ownership. They also cannot displace a different live session
+that already owns the returned pane. Stale index cleanup must preserve any
+other session's valid binding.
 
 **Resume pane ownership.** `ResumePaneAssigned` marks the row's pane binding
-`born_bound_pane` (`session_registry.rs`). WTA creates the resume pane and binds
-it *before* the agent CLI starts, so that pane belongs to exactly one session
-id. Copilot's `--resume` boots a throwaway bootstrap session and only switches
+`born_bound_pane` (`session_registry.rs`) when the assignment is accepted.
+Creation can establish this binding before the CLI's hook arrives; if a live
+hook owner already won that race, the late creation callback is ignored.
+Copilot's `--resume` boots a throwaway bootstrap session and only switches
 to the requested one seconds later, so its deferred `SessionStart` hook reports
 the **bootstrap** id against the resumed pane's GUID. Master's `SessionStarted`
 reducer therefore refuses the `active_by_pane` handoff when the pane's current

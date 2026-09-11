@@ -812,16 +812,19 @@ impl AgentSessionRegistry {
                 if entry.pane_session_id.is_some() && entry.liveness() == LivenessState::Live {
                     return;
                 }
-                // Same orphan-handover as SessionStarted: if another session
-                // currently holds this pane, demote it first. In practice
-                // ResumePaneAssigned binds a freshly-created pane, so this
-                // is defensive, but it preserves the invariant that
-                // `active_by_pane[p]` and `sessions[k].pane_session_id`
-                // agree for every k that thinks it owns p.
+                // A creation callback cannot take a pane already claimed by
+                // another live session. Only clean up a stale terminal owner.
                 if let Some(prev_key) = self.active_by_pane.get(&pane_session_id).cloned() {
                     if prev_key != key {
                         if let Some(prev) = self.sessions.get_mut(&prev_key) {
-                            if prev.pane_session_id.as_deref() == Some(pane_session_id.as_str()) {
+                            if prev
+                                .pane_session_id
+                                .as_deref()
+                                .is_some_and(|pane| pane_key(pane) == pane_session_id)
+                            {
+                                if prev.liveness() == LivenessState::Live {
+                                    return;
+                                }
                                 prev.status = AgentStatus::Ended;
                                 prev.pane_session_id = None;
                                 prev.current_tool = None;
@@ -841,7 +844,10 @@ impl AgentSessionRegistry {
                     // cleanly). Always rebind to the new pane.
                     if let Some(old_pane) = entry.pane_session_id.take() {
                         if old_pane != pane_session_id {
-                            self.active_by_pane.remove(&old_pane);
+                            let old_pane_key = pane_key(&old_pane);
+                            if self.active_by_pane.get(&old_pane_key) == Some(&key) {
+                                self.active_by_pane.remove(&old_pane_key);
+                            }
                             tracing::info!(
                                 target: "agent_session_registry",
                                 key = %key,
@@ -2294,6 +2300,147 @@ mod tests {
         assert_eq!(
             reg.active_by_pane.get(&pane("old")).map(String::as_str),
             Some(k("c").as_str())
+        );
+    }
+
+    #[test]
+    fn resume_pane_assigned_preserves_another_live_pane_owner() {
+        for status in [
+            AgentStatus::Idle,
+            AgentStatus::Working,
+            AgentStatus::Attention,
+            AgentStatus::Error,
+        ] {
+            let mut reg = AgentSessionRegistry::new();
+            reg.merge_historical(vec![make_historical("wanted")]);
+            reg.apply(SessionEvent::SessionStarted {
+                key: "owner".into(),
+                cli_source: CliSource::Copilot,
+                pane_session_id: "owned".into(),
+                cwd: PathBuf::from(r"C:\x"),
+                title: "owner".into(),
+            });
+            let owner = reg.sessions.get_mut("owner").unwrap();
+            owner.status = status.clone();
+            owner.pane_session_id = Some("OWNED".into());
+            let activity = owner.last_activity_at;
+            reg.take_dirty();
+
+            reg.apply(SessionEvent::ResumePaneAssigned {
+                key: "wanted".into(),
+                pane_session_id: "owned".into(),
+            });
+
+            assert!(!reg.take_dirty());
+            assert_eq!(reg.sessions["owner"].status, status);
+            assert_eq!(
+                reg.sessions["owner"].pane_session_id.as_deref(),
+                Some("OWNED")
+            );
+            assert_eq!(reg.sessions["owner"].last_activity_at, activity);
+            assert_eq!(reg.sessions["wanted"].status, AgentStatus::Historical);
+            assert!(reg.sessions["wanted"].pane_session_id.is_none());
+            assert_eq!(
+                reg.active_by_pane.get("owned").map(String::as_str),
+                Some("owner")
+            );
+        }
+    }
+
+    #[test]
+    fn resume_pane_assigned_cleans_terminal_pane_owner() {
+        for status in [AgentStatus::Historical, AgentStatus::Ended] {
+            let mut reg = AgentSessionRegistry::new();
+            reg.merge_historical(vec![make_historical("wanted")]);
+            let mut previous = make_historical("previous");
+            previous.status = status;
+            previous.pane_session_id = Some("owned".into());
+            reg.sessions.insert("previous".into(), previous);
+            reg.active_by_pane.insert("owned".into(), "previous".into());
+
+            reg.apply(SessionEvent::ResumePaneAssigned {
+                key: "wanted".into(),
+                pane_session_id: "owned".into(),
+            });
+
+            assert_eq!(reg.sessions["wanted"].status, AgentStatus::Idle);
+            assert_eq!(
+                reg.sessions["wanted"].pane_session_id.as_deref(),
+                Some("owned")
+            );
+            assert!(reg.sessions["previous"].pane_session_id.is_none());
+            assert_eq!(
+                reg.active_by_pane.get("owned").map(String::as_str),
+                Some("wanted")
+            );
+        }
+    }
+
+    #[test]
+    fn resume_pane_assigned_stale_index_preserves_other_live_binding() {
+        for stale_row_binding in [false, true] {
+            let mut reg = AgentSessionRegistry::new();
+            reg.merge_historical(vec![make_historical("wanted")]);
+            reg.apply(SessionEvent::SessionStarted {
+                key: "owner".into(),
+                cli_source: CliSource::Copilot,
+                pane_session_id: "owned".into(),
+                cwd: PathBuf::from(r"C:\x"),
+                title: "owner".into(),
+            });
+            if stale_row_binding {
+                reg.sessions.get_mut("wanted").unwrap().pane_session_id = Some("owned".into());
+            } else {
+                reg.active_by_pane.insert("new".into(), "owner".into());
+            }
+
+            reg.apply(SessionEvent::ResumePaneAssigned {
+                key: "wanted".into(),
+                pane_session_id: "new".into(),
+            });
+
+            assert_eq!(reg.sessions["owner"].status, AgentStatus::Idle);
+            assert_eq!(
+                reg.sessions["owner"].pane_session_id.as_deref(),
+                Some("owned")
+            );
+            assert_eq!(reg.sessions["wanted"].status, AgentStatus::Idle);
+            assert_eq!(
+                reg.sessions["wanted"].pane_session_id.as_deref(),
+                Some("new")
+            );
+            assert_eq!(
+                reg.active_by_pane.get("owned").map(String::as_str),
+                Some("owner")
+            );
+            assert_eq!(
+                reg.active_by_pane.get("new").map(String::as_str),
+                Some("wanted")
+            );
+        }
+    }
+
+    #[test]
+    fn resume_pane_assigned_cleans_its_stale_binding() {
+        let mut reg = AgentSessionRegistry::new();
+        let mut wanted = make_historical("wanted");
+        wanted.pane_session_id = Some("OLD".into());
+        reg.sessions.insert("wanted".into(), wanted);
+        reg.active_by_pane.insert("old".into(), "wanted".into());
+
+        reg.apply(SessionEvent::ResumePaneAssigned {
+            key: "wanted".into(),
+            pane_session_id: "new".into(),
+        });
+
+        assert!(!reg.active_by_pane.contains_key("old"));
+        assert_eq!(
+            reg.active_by_pane.get("new").map(String::as_str),
+            Some("wanted")
+        );
+        assert_eq!(
+            reg.sessions["wanted"].pane_session_id.as_deref(),
+            Some("new")
         );
     }
 

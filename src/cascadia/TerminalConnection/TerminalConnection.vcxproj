@@ -84,6 +84,10 @@
     <ProjectReference Include="..\..\winconpty\lib\winconptylib.vcxproj">
       <Project>{58a03bb2-df5a-4b66-91a0-7ef3ba01269a}</Project>
     </ProjectReference>
+    <ProjectReference Include="$(OpenConsoleDir)src\host\proxy\Host.Proxy.vcxproj">
+      <Project>{71CC9D78-BA29-4D93-946F-BEF5D9A3A6EF}</Project>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(OpenConsoleDir)src\cppwinrt.build.post.props" />
   <ItemDefinitionGroup>

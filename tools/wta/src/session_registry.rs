@@ -1898,7 +1898,21 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             }
             if let Some(prev_sid) = state.active_by_pane.get(&pane_session_id).cloned() {
                 if prev_sid != sid {
-                    let _ = end_entry(state, &prev_sid, now);
+                    if let Some(prev) = state.sessions.get(&prev_sid) {
+                        if prev
+                            .pane_session_id
+                            .as_deref()
+                            .is_some_and(|pane| pane_key(pane) == pane_session_id)
+                        {
+                            if !matches!(
+                                prev.status,
+                                Some(AgentStatus::Historical | AgentStatus::Ended)
+                            ) {
+                                return false;
+                            }
+                            let _ = end_entry(state, &prev_sid, now);
+                        }
+                    }
                 }
             }
             let Some(entry) = state.sessions.get_mut(&sid) else {
@@ -1909,7 +1923,10 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             }
             if let Some(old_pane) = entry.pane_session_id.take() {
                 if old_pane != pane_session_id {
-                    state.active_by_pane.remove(&pane_key(&old_pane));
+                    let old_pane_key = pane_key(&old_pane);
+                    if state.active_by_pane.get(&old_pane_key) == Some(&sid) {
+                        state.active_by_pane.remove(&old_pane_key);
+                    }
                 }
             }
             entry.pane_session_id = Some(pane_session_id.clone());
@@ -3185,6 +3202,168 @@ mod tests {
         assert!(changed);
         assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Idle));
         assert_eq!(row.pane_session_id.as_deref(), Some("new-pane"));
+    }
+
+    #[tokio::test]
+    async fn master_resume_pane_assigned_preserves_another_live_owner() {
+        for status in [
+            None,
+            Some(AgentStatus::Idle),
+            Some(AgentStatus::Working),
+            Some(AgentStatus::Attention),
+            Some(AgentStatus::Error),
+        ] {
+            let reg = InMemoryRegistry::new();
+            let mut wanted = info("wanted", None);
+            wanted.status = Some(AgentStatus::Historical);
+            reg.upsert(wanted.clone()).await;
+            let owner_id = acp::schema::v1::SessionId::new("owner");
+            reg.apply_event(crate::agent_sessions::SessionEvent::SessionStarted {
+                key: "owner".into(),
+                cli_source: crate::agent_sessions::CliSource::Copilot,
+                pane_session_id: "owned".into(),
+                cwd: PathBuf::from(r"C:\x"),
+                title: "owner".into(),
+            })
+            .await;
+            {
+                let mut state = reg.inner.lock().await;
+                let owner = state.sessions.get_mut(&owner_id).unwrap();
+                owner.status = status;
+                owner.pane_session_id = Some("OWNED".into());
+            }
+            let before = reg.lookup(&owner_id).await.unwrap();
+
+            assert!(
+                !reg.apply_event(crate::agent_sessions::SessionEvent::ResumePaneAssigned {
+                    key: "wanted".into(),
+                    pane_session_id: "owned".into(),
+                })
+                .await
+            );
+
+            assert_eq!(reg.lookup(&owner_id).await.unwrap(), before);
+            assert_eq!(reg.lookup(&wanted.session_id).await.unwrap(), wanted);
+            assert_eq!(
+                reg.inner.lock().await.active_by_pane.get("owned"),
+                Some(&owner_id)
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn master_resume_pane_assigned_cleans_terminal_owner() {
+        for status in [AgentStatus::Historical, AgentStatus::Ended] {
+            let reg = InMemoryRegistry::new();
+            let mut wanted = info("wanted", None);
+            wanted.status = Some(AgentStatus::Historical);
+            reg.upsert(wanted.clone()).await;
+            let mut previous = info("previous", Some("owned"));
+            previous.status = Some(status);
+            reg.upsert(previous.clone()).await;
+            reg.inner
+                .lock()
+                .await
+                .active_by_pane
+                .insert("owned".into(), previous.session_id.clone());
+
+            assert!(
+                reg.apply_event(crate::agent_sessions::SessionEvent::ResumePaneAssigned {
+                    key: "wanted".into(),
+                    pane_session_id: "owned".into(),
+                })
+                .await
+            );
+
+            let assigned = reg.lookup(&wanted.session_id).await.unwrap();
+            assert_eq!(assigned.status, Some(AgentStatus::Idle));
+            assert_eq!(assigned.pane_session_id.as_deref(), Some("owned"));
+            assert!(reg
+                .lookup(&previous.session_id)
+                .await
+                .unwrap()
+                .pane_session_id
+                .is_none());
+            assert_eq!(
+                reg.inner.lock().await.active_by_pane.get("owned"),
+                Some(&wanted.session_id)
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn master_resume_pane_assigned_stale_index_preserves_live_binding() {
+        for stale_row_binding in [false, true] {
+            let reg = InMemoryRegistry::new();
+            let mut wanted = info("wanted", None);
+            wanted.status = Some(AgentStatus::Historical);
+            reg.upsert(wanted.clone()).await;
+            let owner_id = acp::schema::v1::SessionId::new("owner");
+            reg.apply_event(crate::agent_sessions::SessionEvent::SessionStarted {
+                key: "owner".into(),
+                cli_source: crate::agent_sessions::CliSource::Copilot,
+                pane_session_id: "owned".into(),
+                cwd: PathBuf::from(r"C:\x"),
+                title: "owner".into(),
+            })
+            .await;
+            let before = reg.lookup(&owner_id).await.unwrap();
+            {
+                let mut state = reg.inner.lock().await;
+                if stale_row_binding {
+                    state
+                        .sessions
+                        .get_mut(&wanted.session_id)
+                        .unwrap()
+                        .pane_session_id = Some("owned".into());
+                } else {
+                    state.active_by_pane.insert("new".into(), owner_id.clone());
+                }
+            }
+
+            assert!(
+                reg.apply_event(crate::agent_sessions::SessionEvent::ResumePaneAssigned {
+                    key: "wanted".into(),
+                    pane_session_id: "new".into(),
+                })
+                .await
+            );
+
+            assert_eq!(reg.lookup(&owner_id).await.unwrap(), before);
+            let assigned = reg.lookup(&wanted.session_id).await.unwrap();
+            assert_eq!(assigned.status, Some(AgentStatus::Idle));
+            assert_eq!(assigned.pane_session_id.as_deref(), Some("new"));
+            let state = reg.inner.lock().await;
+            assert_eq!(state.active_by_pane.get("owned"), Some(&owner_id));
+            assert_eq!(state.active_by_pane.get("new"), Some(&wanted.session_id));
+        }
+    }
+
+    #[tokio::test]
+    async fn master_resume_pane_assigned_cleans_its_stale_binding() {
+        let reg = InMemoryRegistry::new();
+        let mut wanted = info("wanted", Some("OLD"));
+        wanted.status = Some(AgentStatus::Historical);
+        reg.upsert(wanted.clone()).await;
+        reg.inner
+            .lock()
+            .await
+            .active_by_pane
+            .insert("old".into(), wanted.session_id.clone());
+
+        assert!(
+            reg.apply_event(crate::agent_sessions::SessionEvent::ResumePaneAssigned {
+                key: "wanted".into(),
+                pane_session_id: "new".into(),
+            })
+            .await
+        );
+
+        let assigned = reg.lookup(&wanted.session_id).await.unwrap();
+        assert_eq!(assigned.pane_session_id.as_deref(), Some("new"));
+        let state = reg.inner.lock().await;
+        assert!(!state.active_by_pane.contains_key("old"));
+        assert_eq!(state.active_by_pane.get("new"), Some(&wanted.session_id));
     }
 
     /// Seed a `/sessions` resume: a historical row atomically promoted and bound
