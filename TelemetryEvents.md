@@ -1,68 +1,157 @@
-# Windows Terminal telemetry events
+# Intelligent Terminal telemetry inventory
 
-> **Note:** This file is **inherited from upstream Windows Terminal**
-> ([`microsoft/terminal`](https://github.com/microsoft/terminal)) and
-> documents the telemetry events emitted by the underlying Windows Terminal
-> / OpenConsole code that Intelligent Terminal forks from.
->
-> Intelligent Terminal-specific events are summarized below. See
-> [`PRIVACY.md`](./PRIVACY.md) for privacy information and how to disable
-> telemetry.
+This document inventories Intelligent Terminal's event definitions and emission
+paths, followed by the inherited Windows Terminal / OpenConsole event reference.
+The Intelligent Terminal section was reviewed against the working-tree source
+on **2026-09-11**. It describes instrumentation, not verified ingestion from a
+released build. See [PRIVACY.md](./PRIVACY.md) for privacy information and Windows
+diagnostic data controls.
+
+## Scope and collection status
+
+Count events by **provider + event name**, not event name alone:
+
+| Category | Provider | Event definitions |
+|---|---|---|
+| Dedicated usage telemetry | `Microsoft.Windows.Terminal.App` | 4 |
+| Dedicated settings census | `Microsoft.Windows.Terminal.Setting.Model` | 3 |
+| Dedicated usage/performance telemetry | `Microsoft.Windows.Terminal.WTA` | 14 |
+| Additional ETW diagnostics without an explicit telemetry keyword | `Microsoft.Windows.Terminal.Settings.Editor` | 3 |
+| **Total dedicated instrumentation** | **21 keyword-tagged events + 3 additional ETW events** | **24** |
+
+All 24 definitions have production call sites. `ErrorDetected` and
+`DelegateInvoked` each occur under both App and WTA, with different meanings.
+The inherited `ActionDispatched`, `JsonSettingsChanged`, and `UISettingsChanged`
+events also cover Intelligent Terminal functionality; they are not counted as
+new event definitions.
+
+**An emission call does not prove upload or backend availability.** The 21
+dedicated telemetry events explicitly use `MICROSOFT_KEYWORD_MEASURES`. Actual
+collection depends on the build's telemetry definitions, provider/session
+enablement, sampling, and Windows diagnostic data settings. WTA registers its
+provider in [main.rs](./tools/wta/src/main.rs); [build.rs](./tools/wta/build.rs)
+generates its provider metadata from the official telemetry header overlay when
+available, otherwise from the [OSS stub](./dep/telemetry/ProjectTelemetry.h).
+The stub's measures/privacy constants are zero and do not configure the
+production Microsoft collection path; local ETW tracing is a separate concern.
+
+The three Settings Editor probe events have no explicit measures keyword.
+They are listed separately rather than counted as keyword-tagged telemetry.
+Neither the presence of a privacy tag nor the absence of a keyword proves
+whether a particular ETW collector will capture them. Backend inclusion must
+be established separately.
 
 ## Intelligent Terminal-specific events
 
-Intelligent Terminal events use controlled categories and aggregate
-measurements. They do not include prompts, responses, terminal contents, API
-keys, credential identifiers, custom endpoint URLs, model identifiers, custom
-agent names, or custom agent command lines.
+The dedicated event payloads below do not include prompts, responses, terminal
+contents, API keys, credential identifiers, custom endpoint URLs, model
+identifiers, custom agent names, or custom agent command lines. This statement
+describes these event schemas, not the contents of local diagnostic logs or
+all inherited upstream events.
 
-Agent identifiers are limited to `copilot`, `claude`, `codex`, `gemini`, and
-`opencode`; every other identifier is reported as `custom`.
+Common field conventions:
+
+| Field / metadata | Meaning |
+|---|---|
+| `AgentId`, `ProviderId` | The WTA/settings-census allowlist is `copilot`, `claude`, `codex`, `gemini`, `opencode`; everything else becomes `custom`. Settings Editor probe events instead replace `custom:` IDs with `custom` and otherwise pass through the selected ID. |
+| `Branding` | Numeric build branding: `0` = other/development, `1` = Canary, `2` = Preview, `3` = Release. Only present on events whose schema lists it. |
+| `Distribution` | Numeric packaging mode: `0` = other/unpackaged, `1` = portable, `2` = packaged. It does not distinguish Store from other packaged installations. |
+| `SessionId` | ACP session identifier, not the terminal's `WT_SESSION`. Failed `session/new` attempts use an empty string. |
+| `PaneId` | Terminal pane identity used by WTA error/autofix events; not interchangeable with ACP `SessionId`. |
+| `PartA_PrivTags` | Additional `UInt64` privacy metadata on every dedicated event, omitted from the business-field tables. Usage events use `PDT_ProductAndServiceUsage`; performance events use `PDT_ProductAndServicePerformance`. |
+
+WTA strings use `str8`, booleans use `bool32`, duration/latency fields use `f64`
+milliseconds, prompt/chunk lengths use `u32` bytes, `TotalResponseBytes` uses
+`u64`, and `AcpErrorCode` uses `i32`. WTA durations are monotonic. These byte
+lengths are not model token counts.
 
 ### Provider: Microsoft.Windows.Terminal.App
 
-This existing Terminal provider emits the following Intelligent
-Terminal-specific events:
+Provider definition: [TerminalApp/init.cpp](./src/cascadia/TerminalApp/init.cpp).
+All four events use `MICROSOFT_KEYWORD_MEASURES`, usage privacy metadata, and
+the default `Verbose` level.
 
 | Event | Trigger | Fields |
 |---|---|---|
-| `AgentPaneOpened` | An agent pane is created, restored, or opened into a requested view. Closing or stashing the pane does not emit this event. | `TriggerSource`, `Branding` |
-| `CommandPaletteDispatchedAgentPrompt` | A foreground or background agent prompt is submitted through the Command Palette. | `IsBackgroundMode` |
-| `DelegateInvoked` | Terminal successfully launches `wta delegate`. | `TriggerSource` (`CommandPalette` or `Action`) |
-| `ErrorDetected` | Terminal receives the first auto-detected error state for a pane. | `Branding` |
+| `AgentPaneOpened` | `_OpenOrReuseAgentPane` creates or restores a pane, or opens an existing pane into Sessions View. | `TriggerSource`, `Branding` |
+| `CommandPaletteDispatchedAgentPrompt` | A nonempty foreground or background agent prompt is submitted through the Command Palette, before raising the corresponding request. | `IsBackgroundMode` |
+| `DelegateInvoked` | Terminal successfully creates the `wta delegate` process. This does not establish successful delegation completion. | `TriggerSource` (`CommandPalette` or `Action`) |
+| `ErrorDetected` | `OnAutofixStateChanged` receives `state="pending"`, before locating the owning tab/pane. It is not emitted for `state="detected"`. | `Branding` |
 
 Current `AgentPaneOpened.TriggerSource` values are `Action`,
 `SessionsAction`, `Autofix`, `FirstRunExperience`, `AgentSwitch`,
 `BottomBarToggle`, `BottomBarSessions`, `SettingsReload`, and `FocusAction`.
 
+`AgentPaneOpened` is not a census of all helper creation or all visibility
+changes. Hidden pre-warm, toggle-to-stash, and focus-only paths do not emit
+this event. Opening Sessions View on an already visible pane can emit it.
+
+The background Command Palette handler is currently a no-op. Therefore
+`CommandPaletteDispatchedAgentPrompt` with `IsBackgroundMode=true` measures a
+submission, not an executed background task. The C++ `ErrorDetected` call
+site has no first-occurrence/deduplication guard; do not count it as a unique
+error per pane or sum it with WTA's error event.
+
+Emission sources:
+[TerminalPage.cpp](./src/cascadia/TerminalApp/TerminalPage.cpp)
+(`_OpenOrReuseAgentPane`, `_LaunchDelegate`, `OnAutofixStateChanged`) and
+[CommandPalette.cpp](./src/cascadia/TerminalApp/CommandPalette.cpp)
+(`_dispatchAgentPrompt`).
+
 ### Provider: Microsoft.Windows.Terminal.Setting.Model
 
-These census events are emitted from the effective settings during settings
-load:
+Provider definition:
+[TerminalSettingsModel/init.cpp](./src/cascadia/TerminalSettingsModel/init.cpp).
+All three events use `MICROSOFT_KEYWORD_MEASURES`, usage privacy metadata, and
+the default `Verbose` level.
+
+These census events run in `CascadiaSettings::LogSettingChanges(true)`, using
+the loaded settings values including defaults, not just keys explicitly
+present in JSON. They do not run in the `false` branch used when saving from
+Settings UI. In non-Debug builds the function returns early if the provider is
+not enabled for measures. Repeated loads can repeat these events; event count
+is not a unique-device count.
 
 | Event | Trigger | Fields and controlled values |
 |---|---|---|
-| `AgentProviderConfigured` | Emitted once for the effective ACP agent and once for the effective delegate agent when configured. | `ProviderType` (`AcpAgent` or `DelegateAgent`), `ProviderId`, `Branding`, `Distribution`. Unknown and custom provider IDs are reported as `custom`. |
-| `CustomModelProviderConfigured` | Emitted once for each configured BYOK/custom model provider. | `HasApiKey` (a credential reference is configured), `ApiKeyRequired` (the provider requires a key), `Branding`, `Distribution`. No provider, endpoint, model, credential, or key value is included. |
-| `IntelligentFeatureConfigured` | Emitted once for each supported Intelligent Terminal setting using its effective value. | `FeatureName`, `FeatureValue`, `Branding`, `Distribution` |
+| `AgentProviderConfigured` | Once per nonempty ACP-agent setting and once per nonempty delegate-agent setting in each census invocation. | `ProviderType` (`AcpAgent` or `DelegateAgent`), `ProviderId`, `Branding`, `Distribution` |
+| `CustomModelProviderConfigured` | Once for each configured BYOK/custom model provider, whether selected or not. | `HasApiKey` (a credential reference is configured, not proof that a usable key exists), `ApiKeyRequired`, `Branding`, `Distribution` |
+| `IntelligentFeatureConfigured` | Once for each of the feature settings below; omit pane position if empty. | `FeatureName`, `FeatureValue`, `Branding`, `Distribution` |
 
 `IntelligentFeatureConfigured` currently reports:
 
-| `FeatureName` | `FeatureValue` |
-|---|---|
-| `AutoErrorDetection` | `true` or `false` |
-| `AutoFix` | `true` or `false` |
-| `AgentPanePosition` | The controlled pane-position setting value |
-| `QuotaUsage` | `true` or `false` |
-| `VerticalTabs` | `true` or `false` |
+| `FeatureName` | Setting getter | `FeatureValue` |
+|---|---|---|
+| `AutoErrorDetection` | `AutoErrorDetectionEnabled()` | String `true` or `false` |
+| `AutoFix` | `AutoFixEnabled()` | String `true` or `false` |
+| `AgentPanePosition` | `AgentPanePosition()` | Nonempty configured position string, passed through without a telemetry allowlist |
+| `QuotaUsage` | `ShowTokenUsageAndCost()` | String `true` or `false`; visibility of usage/cost UI, not consumed quota |
+| `VerticalTabs` | `TabLayout() == Vertical` | String `true` or `false` |
+
+**Configured is not necessarily runtime-effective.** The census calls
+`AcpAgent()`, `DelegateAgent()`, and `AutoFixEnabled()`, not their policy-aware
+`Effective*` equivalents. A configured agent or autofix value can differ from
+what GPO or runtime gating permits. Custom provider events contain no provider,
+endpoint, model, credential, or key value and cannot identify the selected model.
+
+Sources:
+[CascadiaSettingsSerialization.cpp](./src/cascadia/TerminalSettingsModel/CascadiaSettingsSerialization.cpp)
+(`LogSettingChanges`),
+[MTSMSettings.h](./src/cascadia/TerminalSettingsModel/MTSMSettings.h), and
+[GlobalAppSettings.cpp](./src/cascadia/TerminalSettingsModel/GlobalAppSettings.cpp)
+(`EffectiveAcpAgent`, `EffectiveDelegateAgent`, `EffectiveAutoFixEnabled`).
 
 ### Provider: Microsoft.Windows.Terminal.WTA
 
 - **GUID:** `{4cfcff80-4e6b-5bfd-8ea1-d38e1226f70b}`
 - **Keyword:** `MICROSOFT_KEYWORD_MEASURES`
 - **Level:** `Verbose`
+- **Definitions:** [telemetry.rs](./tools/wta/src/telemetry.rs), `log_*` wrappers.
+  Every business field in each wrapper is listed below.
 
 #### ACP lifecycle and performance
+
+All three events in this table use performance privacy metadata.
 
 | Event | Trigger | Fields |
 |---|---|---|
@@ -70,41 +159,208 @@ load:
 | `AcpNewSessionComplete` | An ACP `session/new` attempt completes or times out. | `SessionId` (empty on failure), `DurationMs`, `Success`, `Route`, `FailureKind`, `AcpErrorCode` |
 | `AgentColdStartComplete` | A newly spawned agent process finishes or fails its ACP initialization. Warm process-pool reuse does not emit this event. | `AgentId`, `Source`, `DurationMs`, `Success`, `FailureKind` |
 
-ACP lifecycle durations use monotonic clocks. `FailureKind` is empty on success;
-ACP RPC failures use `AcpError` or `Timeout`. Cold-start failures use
-`SpawnFailed`, `InitializeFailed`, or `Timeout`. `AgentColdStartComplete.Source`
-is `Host` or `Wsl`.
+Current production routes:
+
+| Event | `Route` values |
+|---|---|
+| `AcpInitializeComplete` | `HelperPipe`, `Probe`, `SessionsCli` |
+| `AcpNewSessionComplete` | `MasterForward`, `Probe`, `HelperPipeStartup`, `HelperPipeFallback`, `HelperPipeNewSessionForTab`, `LazyCreateOnFirstPrompt` |
+
+`HelperPipe` and `SessionsCli` initialize the connection to master, not a
+standalone agent CLI. `Probe` measures the probe's agent connection. Master
+records agent-process startup separately as `AgentColdStartComplete`.
+`MasterForward` and a helper-side `session/new` event can describe two hops of
+the same logical session creation; group/filter by route instead of adding
+them as independent user sessions.
+
+`FailureKind` is empty on success. ACP failures use `AcpError` or `Timeout`;
+`AcpErrorCode` is the ACP error's numeric code for `AcpError`, otherwise `0`.
+Helper-side errors propagated from master can be classified as `AcpError`
+even when the underlying master attempt timed out. Cold-start failures use
+`SpawnFailed`, `InitializeFailed`, or `Timeout`, with `Source=Host` or `Wsl`.
+Cold-start duration covers process spawn and initialization, not first-response
+latency or the entire pane-opening experience.
+
+Emission sources:
+[client.rs](./tools/wta/src/protocol/acp/client.rs),
+[probe.rs](./tools/wta/src/protocol/acp/probe.rs),
+[cli/sessions.rs](./tools/wta/src/cli/sessions.rs), and
+[master/mod.rs](./tools/wta/src/master/mod.rs).
 
 #### Agent turns and autofix
 
-| Event | Trigger | Fields |
-|---|---|---|
-| `AgentPromptSent` | WTA dispatches a prompt to an agent over ACP, including manual and automatic autofix prompts. | `SessionId`, `PromptLengthBytes`, `IsAutofix`, `IsByok`, `AgentId`, `TemplateKind`, `Route` (`AcpDispatch`) |
-| `AgentResponseFirstToken` | The first user-visible response chunk arrives. | `SessionId`, `FirstTokenLatencyMs`, `ChunkLengthBytes`, `AgentId` |
-| `AgentResponseComplete` | The ACP prompt request completes. | `SessionId`, `TotalDurationMs`, `TotalResponseBytes`, `Success`, `IsByok`, `AgentId` |
-| `ErrorDetected` | WTA's classifier identifies an actionable or critical pane error. | `Severity`, `Method`, `PaneId` |
-| `ErrorFixResolved` | The next command after an attempted fix succeeds in the same pane. | `PaneId`, `TimeSinceFixMs`, `AgentId` |
+| Event | Trigger | Fields | Privacy category |
+|---|---|---|---|
+| `AgentPromptSent` | WTA starts dispatching a prompt over ACP, including manual and automatic autofix prompts. | `SessionId`, `PromptLengthBytes`, `IsAutofix`, `IsByok`, `AgentId`, `TemplateKind`, `Route` (`AcpDispatch`) | Usage |
+| `AgentResponseFirstToken` | The first observed user-visible text chunk arrives, including an ephemeral thought chunk if it arrives first. | `SessionId`, `FirstTokenLatencyMs`, `ChunkLengthBytes`, `AgentId` | Performance |
+| `AgentResponseComplete` | A tracked prompt completes and has a dispatch-time monotonic timing anchor. | `SessionId`, `TotalDurationMs`, `TotalResponseBytes`, `Success`, `IsByok`, `AgentId` | Performance |
+| `ErrorDetected` | An unacknowledged classification is `Critical` or `Actionable`, after the helper's cross-tab filter. | `Severity`, `Method`, `PaneId` | Usage |
+| `ErrorFixResolved` | An armed autofix pane observes exit-zero **or an effective prompt-start** and still has an `armed_at` timestamp. | `PaneId`, `TimeSinceFixMs`, `AgentId` | Usage |
 
-Prompt and response text is never included. Length fields contain byte counts
-only. `IsByok` is captured for the specific prompt so live model changes are
-attributed correctly. `TotalResponseBytes` is currently unpopulated and
-retained for schema compatibility.
+Interpretation:
+
+- `TemplateKind` is `Planner`, `Autofix`, or `AgentCommand`.
+  `PromptLengthBytes` measures the constructed outgoing prompt text, which may
+  include template/context text, not just the user's typed input.
+- `FirstTokenLatencyMs` and `TotalDurationMs` start at ACP dispatch, not user
+  submission or pane opening. Missing timing anchors suppress these events;
+  a turn without text need not emit `AgentResponseFirstToken`.
+- `IsByok` and response-event `AgentId` are captured for the specific prompt.
+  `Success` describes the prompt operation, not answer quality or task success.
+- `TotalResponseBytes` is **currently always zero**. The master/helper
+  migration removed the stdout-read instrumentation; this field is retained
+  for schema compatibility, not a working measure of answer size.
+- WTA `ErrorDetected.Severity` is `Critical` or `Actionable`; `Method` is the
+  classified WT event method, such as `connection_state` or `vt_sequence`.
+  These are different signals from App's `state="pending"` event.
+- `ErrorFixResolved` is a **state-clearing proxy, not verified fix success**.
+  Its implementation accepts `osc:133;D;0` or a new `osc:133;A` prompt after
+  excluding the triggering prompt echo. `TimeSinceFixMs` measures time from
+  arming, not from successful execution of an agent-recommended command.
+  `AgentId` comes from the current agent at resolution time.
+
+Emission sources:
+[client.rs](./tools/wta/src/protocol/acp/client.rs) (prompt dispatch),
+[turn_metrics.rs](./tools/wta/src/protocol/acp/turn_metrics.rs)
+(`observe_first_text`, `complete`), and
+[app_events.rs](./tools/wta/src/app_events.rs) (WT event/autofix handling).
+The arming timestamp is set in [app/autofix.rs](./tools/wta/src/app/autofix.rs).
 
 #### Commands, sessions, delegation, MCP, and hooks
 
+All six events in this table use usage privacy metadata.
+
 | Event | Trigger | Fields and controlled values |
 |---|---|---|
-| `SlashCommandInvoked` | WTA dispatches a registered slash command. | `CommandName`: `help`, `clear`, `new`, `fix`, `restart`, `stop`, `sessions`, `agent`, `model`, `config`, or `move` |
-| `SessionsViewOpened` | The Agent Session View is opened. | None |
-| `SessionResumeInvoked` | A resume operation is dispatched from Agent Session View. | `Route` (`AgentPane` for ACP `session/load`, or `Cli` for provider-native CLI resume), `AgentId` |
-| `DelegateInvoked` | An agent recommendation invokes the configured delegate through WTA. | `TriggerSource` (`Agent`) |
-| `SessionMcpToolCalled` | A session MCP function is invoked. | `ToolName`: `terminal_send`, `terminal_open`, `terminal_open_and_send`, `request_user_input`, or `unknown` |
-| `HookOperationCompleted` | Hook installation or uninstallation finishes for one supported CLI. | `Operation` (`Install` or `Uninstall`), `Cli` (`copilot`, `claude`, `gemini`, `codex`, or `opencode`), `Outcome` |
+| `SlashCommandInvoked` | WTA enters dispatch for a registered slash command, before command-specific guards. Not proof the action succeeded. | `CommandName`: `help`, `clear`, `new`, `fix`, `restart`, `stop`, `sessions`, `agent`, `model`, `config`, `move` |
+| `SessionsViewOpened` | `open_agents_view_for_tab` is called. | No business fields |
+| `SessionResumeInvoked` | Sessions View selects a resume action, before executing it. Focus-only and non-resumable actions do not emit it. | `Route` (`AgentPane` for the ACP load route, `Cli` for provider-native CLI resume), `AgentId` |
+| `DelegateInvoked` | The coordinator's open-and-send operation creates a target pane with a resolved delegate runtime. It precedes completion of prompt delivery/task execution. | `TriggerSource` (`Agent`) |
+| `SessionMcpToolCalled` | Master receives a `tools/call` request past the HTTP/capability checks, before tool dispatch/validation completes. | `ToolName`: legacy allowlist `terminal_send`, `terminal_open`, `terminal_open_and_send`, `request_user_input`; anything else becomes `unknown` |
+| `HookOperationCompleted` | The CLI hook install/uninstall report is produced, once per CLI in that report, including skipped operations. | `Operation` (`Install`, `Uninstall`), `Cli` (`copilot`, `claude`, `gemini`, `codex`, `opencode`), `Outcome` |
 
-Install outcomes are `installed`, `skipped`, or `failed`. Uninstall outcomes
-are `succeeded`, `skipped`, or `failed`.
+Install outcomes are `installed`, `skipped`, or `failed`; uninstall outcomes
+are `succeeded`, `skipped`, or `failed`. `hooks status` does not emit
+`HookOperationCompleted`. These events do not measure hook listener health or
+the delivery of individual session-status updates.
 
-This document enumerates every **true telemetry event** in the Windows Terminal codebase under `src\` — i.e., every `TraceLoggingWrite(...)` call site whose argument list contains one of the Microsoft telemetry keywords (`MICROSOFT_KEYWORD_MEASURES`, `MICROSOFT_KEYWORD_TELEMETRY`, or `MICROSOFT_KEYWORD_CRITICAL_DATA`) and is therefore reported to Microsoft.
+**Current MCP name mismatch:** the advertised tools have been renamed, but
+the telemetry allowlist has not:
+
+| Actual session MCP tool | Currently emitted `ToolName` |
+|---|---|
+| `run_command_in_current_shell` | `unknown` |
+| `create_workspace` | `unknown` |
+| `delegate_task_in_new_workspace` | `unknown` |
+| `request_user_input` | `request_user_input` |
+
+The old allowlisted names are not the currently advertised tool API. There is
+no success/result field, so this event counts received calls, including calls
+that later fail, not completed terminal mutations.
+
+Emission sources:
+[app.rs](./tools/wta/src/app.rs) (slash dispatch and Sessions View),
+[commands.rs](./tools/wta/src/commands.rs) (slash registry),
+[coordinator.rs](./tools/wta/src/coordinator.rs),
+[master/session_mcp.rs](./tools/wta/src/master/session_mcp.rs), and
+[cli/hooks.rs](./tools/wta/src/cli/hooks.rs).
+Current tool names come from
+[action_proposal/schema.rs](./tools/wta/src/agent_tools/action_proposal/schema.rs)
+and [agent_tools/session_mcp.rs](./tools/wta/src/agent_tools/session_mcp.rs).
+
+### Additional ETW: Microsoft.Windows.Terminal.Settings.Editor
+
+Provider definition:
+[TerminalSettingsEditor/init.cpp](./src/cascadia/TerminalSettingsEditor/init.cpp).
+These three events use `Info` level and performance privacy metadata, but no
+explicit `TraceLoggingKeyword`. Their collection status is distinct from the
+21 measures-tagged events above.
+
+| Event | Trigger | Fields |
+|---|---|---|
+| `AcpModelProbeStarted` | Settings UI starts a clean ACP model catalog probe. | `AgentId` (wide string), `CacheRevision` (`UInt64`) |
+| `AcpModelProbeDiscarded` | A completed probe belongs to an older generation and its result is discarded. This path does not also emit `AcpModelProbeCompleted`. | `AgentId` (wide string) |
+| `AcpModelProbeCompleted` | The current-generation probe returns to the UI thread. | `AgentId` (wide string), `Succeeded` (`Bool`), `ModelCount` (`UInt32`) |
+
+`Succeeded` requires a parsed catalog with at least one model. These events
+have no duration or probe-correlation field shared across all three schemas.
+`CacheRevision` appears only on the started event. Custom-prefixed agent IDs
+are bucketed to `custom`; no model identifiers are included.
+
+Source:
+[AIAgentsViewModel.cpp](./src/cascadia/TerminalSettingsEditor/AIAgentsViewModel.cpp)
+(`_TriggerAcpModelProbe`, `_RunAcpModelProbeAsync`).
+
+### Inherited events that also cover Intelligent Terminal
+
+These are additional coverage, not new dedicated event definitions:
+
+| Event | Provider suffix | Intelligent Terminal coverage | Fields |
+|---|---|---|---|
+| `ActionDispatched` | `App` | Any action dispatched through `ShortcutActionDispatch` whose handler marks it handled, including registered AI actions. | `Action` (integer enum), `Branding` |
+| `JsonSettingsChanged` | `Setting.Model` | Setting keys gathered from the JSON-load change log, not their values. | `Setting`, `Branding`, `Distribution` |
+| `UISettingsChanged` | `Setting.Model` | Setting keys gathered when saving Settings UI, not their values. | `Setting`, `Branding`, `Distribution` |
+
+AI actions include `OpenAgentPane`, `FocusAgentPane`, `OpenAgentSessions`,
+`TriggerAutofix`, and `OpenBackgroundAgent`. A handled action does not imply
+that an asynchronous agent operation completed successfully. Decode the
+integer against the matching build's action enum.
+
+The global AI settings participating in the generic change-log mechanism
+include the following keys. `Setting` uses a context prefix, for example
+`global.acpAgent`; it never substitutes the configured value for the key.
+
+| Area | Global JSON keys |
+|---|---|
+| ACP and custom models | `acpAgent`, `acpModel`, `customModelSelection`, `customModelProviders`, `acpCustomCommand`, `acpCustomCommands` |
+| Delegation | `delegateAgent`, `delegateModel`, `delegateCustomCommand`, `delegateCustomCommands` |
+| Features and pane behavior | `autoErrorDetectionEnabled`, `autoFixEnabled`, `agentSessionManagementEnabled`, `showTokenUsageAndCost`, `agentPanePosition`, `agentPane.yoloMode` |
+| Coordinator | `aiIntegration.coordinator.enabled`, `aiIntegration.coordinator.commandline`, `aiIntegration.coordinator.profile` |
+| Confirmation | `aiIntegration.confirmation.readOperations`, `aiIntegration.confirmation.createOperations`, `aiIntegration.confirmation.inputOperations` |
+
+Generic change events are not a current-value census of these settings.
+Defaults and loaded settings are covered separately by the dedicated census
+only for the fields listed earlier.
+
+Sources:
+[ShortcutActionDispatch.cpp](./src/cascadia/TerminalApp/ShortcutActionDispatch.cpp),
+[AllShortcutActions.h](./src/cascadia/TerminalSettingsModel/AllShortcutActions.h),
+[CascadiaSettingsSerialization.cpp](./src/cascadia/TerminalSettingsModel/CascadiaSettingsSerialization.cpp),
+[GlobalAppSettings.cpp](./src/cascadia/TerminalSettingsModel/GlobalAppSettings.cpp),
+and [MTSMSettings.h](./src/cascadia/TerminalSettingsModel/MTSMSettings.h).
+
+### Known limitations and query cautions
+
+| Area | Current limitation |
+|---|---|
+| MCP tool adoption | Three current tool names collapse to `unknown`; the event has no completion/outcome field. |
+| Model catalog probes | Three ETW events lack an explicit telemetry keyword; production collection is not established by this inventory. |
+| Response volume | `TotalResponseBytes` is unpopulated (zero), not a valid answer-size metric. |
+| Autofix effectiveness | `ErrorFixResolved` can mean prompt-start/state clearing, not a successful fix. App and WTA error events have different triggers and no shared incident ID. |
+| Session/turn funnels | Helper and master can emit for the same logical session creation. Turn events have an ACP `SessionId` but no exported per-turn ID; session-only joins can mix multiple turns. |
+| Resume success | `SessionResumeInvoked` counts Sessions View dispatch decisions, not successful resume, focus-only activation, or every saved-layout restore. |
+| Runtime configuration | Census values include defaults but are not policy-aware runtime values; only five features have dedicated value census. |
+| Usage/cost | `QuotaUsage` reports whether the UI is enabled; no dedicated event here reports consumed quota, model tokens, monetary cost, or model identity. |
+| Pane lifecycle | No dedicated close/stash or complete visible-duration event. `AgentPaneOpened` is not a count of all helper starts. |
+| Background delegation | The palette submission event can fire even though its background handler is a no-op. |
+| Hook health | Install/uninstall outcomes do not report listener availability or status-update delivery. |
+
+Local `tracing` output, startup timing, ACP debug logs, and protocol/session
+notifications are not additional telemetry events merely because they contain
+timings or state changes. This inventory does not validate a deployed ETW
+session, ingestion pipeline, dashboard, or retention policy.
+
+## Inherited Windows Terminal / OpenConsole reference
+
+The reference below is the inherited upstream inventory, with source links
+pinned to the upstream commit shown below. It is retained for context, not
+presented as a fresh audit of every inherited call site in this fork.
+
+Its scope is `TraceLoggingWrite(...)` calls under `src\` that explicitly use
+one of the Microsoft telemetry keywords (`MICROSOFT_KEYWORD_MEASURES`,
+`MICROSOFT_KEYWORD_TELEMETRY`, or `MICROSOFT_KEYWORD_CRITICAL_DATA`). Such tags
+indicate intended telemetry classification, not proof that an event was
+uploaded to Microsoft.
 
 Events grouped by their `TRACELOGGING_DEFINE_PROVIDER`. Diagnostic-only ETW traces tagged with `TIL_KEYWORD_TRACE` (`UiaTracing.cpp`, `parser/tracing.cpp`, most of `host/tracing.cpp`, the server `*Dispatchers.cpp`, `VtIo.cpp`, `VtInputThread.cpp`, etc.) are excluded.
 
