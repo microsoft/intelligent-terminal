@@ -30,6 +30,11 @@
             <x:Double x:Key="StandardControlMaxWidth">1000</x:Double>
             <!--  Welcome page has two side-by-side cards (1.5× the standard width)  -->
             <x:Double x:Key="WelcomeContentMaxWidth">1500</x:Double>
+
+            <DataTemplate x:Key="FreErrorDetectionOptionTemplate">
+                <TextBlock Text="{Binding}"
+                           TextWrapping="WrapWholeWords" />
+            </DataTemplate>
         </ResourceDictionary>
     </UserControl.Resources>
 
@@ -256,10 +261,11 @@
                                                Visibility="Collapsed"
                                                AutomationProperties.LiveSetting="Polite" />
                                 </StackPanel>
-                                <ComboBox x:Name="AgentComboBox" Grid.Column="1"
-                                          MinWidth="220"
-                                          VerticalAlignment="Center"
-                                          SelectionChanged="_OnAgentSelectionChanged">
+                                <ComboBox x:Name="AgentComboBox"
+                                          Grid.Column="1"
+                                          AutomationProperties.AccessibilityView="Content"
+                                          SelectionChanged="_OnAgentSelectionChanged"
+                                          Style="{StaticResource ComboBoxSettingStyle}">
                                     <ComboBox.ItemTemplate>
                                         <DataTemplate x:DataType="local:FreAgentEntry">
                                             <TextBlock Text="{x:Bind DisplayLabel}" />
@@ -298,9 +304,10 @@
                                                FontSize="12" Foreground="#99FFFFFF"
                                                TextWrapping="Wrap" />
                                 </StackPanel>
-                                <ComboBox x:Name="PanePositionComboBox" Grid.Column="1"
-                                          MinWidth="120"
-                                          VerticalAlignment="Center" />
+                                <ComboBox x:Name="PanePositionComboBox"
+                                          Grid.Column="1"
+                                          AutomationProperties.AccessibilityView="Content"
+                                          Style="{StaticResource ComboBoxSettingStyle}" />
                             </Grid>
                         </Border>
 
@@ -332,12 +339,16 @@
                                 </StackPanel>
                                 <ComboBox x:Name="ErrorDetectionComboBox"
                                           Grid.Column="1"
-                                          MinWidth="120"
-                                          VerticalAlignment="Center">
-                                    <ComboBoxItem x:Uid="FreOverlay_ErrorDetectionDetectOption" />
+                                          AutomationProperties.AccessibilityView="Content"
+                                          Style="{StaticResource ComboBoxSettingStyle}"
+                                          Width="{StaticResource StandardBoxMinWidth}">
+                                    <ComboBoxItem x:Uid="FreOverlay_ErrorDetectionDetectOption"
+                                                  ContentTemplate="{StaticResource FreErrorDetectionOptionTemplate}" />
                                     <ComboBoxItem x:Name="ErrorDetectionAutoFixOption"
-                                                  x:Uid="FreOverlay_ErrorDetectionAutoFixOption" />
-                                    <ComboBoxItem x:Uid="FreOverlay_ErrorDetectionOffOption" />
+                                                  x:Uid="FreOverlay_ErrorDetectionAutoFixOption"
+                                                  ContentTemplate="{StaticResource FreErrorDetectionOptionTemplate}" />
+                                    <ComboBoxItem x:Uid="FreOverlay_ErrorDetectionOffOption"
+                                                  ContentTemplate="{StaticResource FreErrorDetectionOptionTemplate}" />
                                 </ComboBox>
                             </Grid>
                         </Border>

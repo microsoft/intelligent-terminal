@@ -666,30 +666,9 @@ namespace winrt::TerminalApp::implementation
         measureDescription(SessionDescriptionText());
         measureDescription(TokenUsageDescriptionText());
 
-        TextBlock optionProbe;
-        optionProbe.FontSize(errorDetectionComboBox.FontSize());
-        double longestOptionWidth = 0;
-        const auto measureOption = [&](const winrt::hstring& text) {
-            optionProbe.Text(text);
-            optionProbe.Measure(unconstrained);
-            longestOptionWidth = std::max(
-                longestOptionWidth,
-                static_cast<double>(optionProbe.DesiredSize().Width));
-        };
-        measureOption(RS_(L"FreOverlay_ErrorDetectionDetectOption/Content"));
-        measureOption(RS_(L"FreOverlay_ErrorDetectionAutoFixOption/Content"));
-        measureOption(RS_(L"FreOverlay_ErrorDetectionOffOption/Content"));
-
-        // Reserve enough room for the longest localized option plus the
-        // ComboBox padding and drop-down glyph when calculating the form width.
-        // The ComboBox itself keeps its XAML MinWidth and follows the selected
-        // option's natural width.
-        constexpr double comboBoxChromeWidth = 48;
-        const double errorDetectionWidth = longestOptionWidth + comboBoxChromeWidth;
-
         double longestControlWidth = AgentComboBox().MinWidth();
         longestControlWidth = std::max(longestControlWidth, PanePositionComboBox().MinWidth());
-        longestControlWidth = std::max(longestControlWidth, errorDetectionWidth);
+        longestControlWidth = std::max(longestControlWidth, errorDetectionComboBox.Width());
 
         constexpr double cardHorizontalPadding = 32;
         constexpr double columnSpacing = 24;
