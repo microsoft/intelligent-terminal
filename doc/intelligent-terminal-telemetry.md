@@ -348,7 +348,8 @@ Do not interpret its absence as zero latency.
 
 ### WTA.AgentResponseComplete
 
-**Trigger:** the ACP prompt request completes.
+**Trigger:** the ACP prompt request completes for a tracked turn with a
+known monotonic dispatch time.
 
 | Field | Type | Meaning / values |
 |---|---|---|
@@ -611,7 +612,7 @@ these event definitions.
 | Settings definitions | [MTSMSettings.h](../src/cascadia/TerminalSettingsModel/MTSMSettings.h) |
 | OSS metadata | [ProjectTelemetry.h](../dep/telemetry/ProjectTelemetry.h) |
 
-[Historical ETW verification](../TelemetryEvents.md#live-etw-field-verification-2026-09-11)
+[Historical ETW verification](../TelemetryEvents.md)
 records event and payload observations, including the source-build limits
 of those captures. It is evidence about those runs, not a guarantee of
 current end-to-end routing or backend ingestion.
