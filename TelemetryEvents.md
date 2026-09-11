@@ -84,7 +84,7 @@ are omitted below rather than publishing actual session identifiers.
 | `DelegateAgentId` | String | Helper's current resolved delegate category, or `none` | `copilot` |
 | `ModelSource` | String | `byok`, `provider`, or `unknown`; helper's active BYOK process binding or confirmed session model category, not a model identifier or inventory of configured providers | `provider` (new), `unknown` (load) |
 | `AutoErrorDetection` | Bool | Policy-aware host effective setting | `true` |
-| `AutoFix` | Bool | Helper runtime autofix switch AND policy-aware host effective setting | `false` |
+| `AutoFix` | Bool | Helper runtime autofix switch AND policy-aware host effective setting | `false`, `true` |
 | `AgentSessionManagement` | Bool | Policy-aware host effective setting | `true` |
 | `AgentPanePosition` | WideString | Owning tab's effective `left`, `right`, `up`, or `bottom`; otherwise `unknown` | `bottom` |
 | `ShowTokenUsageAndCost` | Bool | Current usage/cost UI setting | `true` |
@@ -302,11 +302,97 @@ values rather than assuming that the global model/YOLO preference was applied
 to a restored session. User settings remained unchanged. Existing provider
 names/GUIDs, registration, and keyword/privacy constants were not changed.
 
-Across both captures, **10 of the 22 dedicated event types** were observed.
-This verifies the load event and complete snapshot payload, not every event
-type or parameter combination. The Settings Editor provider was not enabled;
-other agent providers, BYOK, WSL, and policy/override combinations were not
-exercised. Local ETW emission does not establish backend ingestion.
+At this stage, **10 of the 22 dedicated event types** had been observed.
+The Settings Editor provider was not enabled in those first two captures.
+
+#### Completed event-type coverage
+
+Two additional completed captures exercised the remaining event types,
+including the Settings Editor provider
+`Microsoft.Windows.Terminal.Settings.Editor`
+(`{1b16317d-b594-51f8-c552-5d50572b5efc}`). This added the existing provider to
+the collector; no product provider identity or registration was changed.
+The additional runs covered **05:53:33-06:13:35 UTC** and
+**06:43:03-06:49:19 UTC**, collecting 83 and 29 events respectively.
+
+Across the **four completed captures**, all **22/22 dedicated event types**
+were observed. Every captured instance of these events passed an exact
+field-name-set check against the documented business fields plus
+`PartA_PrivTags`. The captures contain **185 total events: 177 product events
+and 8 trace infrastructure events, with 0 events lost**. An interrupted
+intermediate capture is excluded from these results.
+
+| Provider | Event | Total instances | Business fields verified |
+|---|---|---|---|
+| App | `AgentPaneOpened` | 1 | 2 |
+| App | `CommandPaletteDispatchedAgentPrompt` | 1 | 1 |
+| App | `DelegateInvoked` | 1 | 1 |
+| App | `ErrorDetected` | 3 | 1 |
+| App | `AgentSessionStarted` | 11 | 24 |
+| WTA | `AcpInitializeComplete` | 15 | 5 |
+| WTA | `AcpNewSessionComplete` | 25 | 6 |
+| WTA | `AcpLoadSessionComplete` | 1 | 2 |
+| WTA | `AgentColdStartComplete` | 3 | 5 |
+| WTA | `AgentPromptSent` | 4 | 7 |
+| WTA | `AgentResponseFirstToken` | 2 | 4 |
+| WTA | `AgentResponseComplete` | 4 | 5 |
+| WTA | `ErrorDetected` | 2 | 3 |
+| WTA | `SlashCommandInvoked` | 5 | 1 |
+| WTA | `SessionsViewOpened` | 1 | 0 |
+| WTA | `SessionResumeInvoked` | 1 | 2 |
+| WTA | `DelegateInvoked` | 1 | 1 |
+| WTA | `SessionMcpToolCalled` | 3 | 1 |
+| WTA | `HookOperationCompleted` | 1 | 3 |
+| Settings Editor | `AcpModelProbeStarted` | 5 | 2 |
+| Settings Editor | `AcpModelProbeDiscarded` | 2 | 1 |
+| Settings Editor | `AcpModelProbeCompleted` | 3 | 3 |
+
+The zero-business-field `SessionsViewOpened` event still carries
+`PartA_PrivTags`. App and WTA events with the same name are separate
+provider/event pairs, not one combined event definition.
+
+Observed operations and values:
+
+- Opening the agent pane through the bottom bar produced
+  `AgentPaneOpened(TriggerSource=BottomBarToggle, Branding=0)`.
+- A harmless real `cmd /c exit 17`, with autofix temporarily enabled,
+  produced WTA `ErrorDetected(Severity=Actionable, Method=vt_sequence)`
+  and App `ErrorDetected(Branding=0)`. A later test CLI exit also produced
+  WTA `ErrorDetected` with `Method=connection_state`.
+- Submitting a harmless foreground prompt through the real Command Palette
+  produced `CommandPaletteDispatchedAgentPrompt(IsBackgroundMode=0)` and
+  App `DelegateInvoked(TriggerSource=CommandPalette)`.
+- Confirming a harmless agent-requested new-tab delegation through the
+  normal action card produced WTA `DelegateInvoked(TriggerSource=Agent)`.
+  The additional MCP calls used `request_user_input` and
+  `delegate_task_in_new_workspace`.
+- Opening `/sessions` produced `SessionsViewOpened`. Selecting the completed
+  synthetic CLI session in that view and pressing Enter produced
+  `SessionResumeInvoked(Route=Cli, AgentId=copilot)` and launched the same
+  saved session ID. This is distinct from the earlier successful ACP load
+  smoke: that used the production `resume_in_new_agent_tab` control request.
+  Neither test establishes restart-time window/layout restoration coverage.
+- Smart hook reconciliation for the already-current Copilot installation
+  produced `HookOperationCompleted(Operation=Install, Cli=copilot,
+  Outcome=skipped)`; no forced reinstall or uninstall was used.
+- Opening AI Settings and switching its agent selection from Copilot to
+  Claude and back exercised real catalog probes. Started events included
+  `AgentId` and `CacheRevision`; completed events reported
+  `Succeeded=true` with 18 Copilot models or 6 Claude models. Rapid selection
+  changes superseded two probes, producing `AcpModelProbeDiscarded` with
+  the corresponding `AgentId`. These are observed catalog sizes, not defaults.
+
+All dedicated-event payloads were checked for the known smoke prompt,
+reply, and command markers; none were present. Retired events remained absent.
+Temporary test settings were restored byte-for-byte, and Settings UI probe
+selections were not saved. Raw traces and state backups remain local and are
+not part of the repository.
+
+This completes **event-type and payload-field coverage**, not every enum
+value, failure branch, or timing permutation. BYOK, WSL, and GPO/override
+matrices were not covered; Claude was exercised for Settings catalog probes,
+not a full chat/resume workflow. Local ETW emission and decoding do not
+establish backend ingestion.
 
 ## Inherited Windows Terminal / OpenConsole reference
 
