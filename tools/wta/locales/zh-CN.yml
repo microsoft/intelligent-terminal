@@ -262,5 +262,5 @@ system.no_config_options: "已连接的智能体未公布任何可配置的会�
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "更新 %{option} 失败：%{error}"
 system.yolo_disable_pending: "智能体提供商尚未确认所需的非特权会话状态"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
-system.provider_command_blocked_by_policy: "%{command}: Yolo 模式已被你所在组织的策略禁用。"  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: 你所在组织的策略已禁用自动批准。"  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "未知模型 %{model} — 键入 /model 查看可用列表。"  # {Locked="%{model}","/model"}

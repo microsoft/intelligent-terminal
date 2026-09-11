@@ -4629,7 +4629,12 @@ fn dispatch_load_session_with_aliases(
         // `session/load` may replay history before returning, so on large
         // session stores the call can take a while; the timeout ceiling
         // keeps us from hanging forever if the agent never responds.
+        let load_started = std::time::Instant::now();
         let load_result = tokio::time::timeout(timeout, conn.load_session(load_req)).await;
+        crate::telemetry::log_acp_load_session_complete(
+            elapsed_ms_since(load_started),
+            matches!(load_result, Ok(Ok(_))),
+        );
 
         match load_result {
             Ok(Ok(mut resp)) => {
@@ -5739,7 +5744,7 @@ async fn dispatch_prompt_body(
             tracing::warn!(
                 target: "yolo",
                 session_id = %prompt_session_id_str,
-                "AllowYoloMode blocked provider command /{}",
+                "AllowAutomaticApproval blocked provider command /{}",
                 command_name
             );
             let message = provider_command_blocked_by_policy(command_name);
@@ -6008,7 +6013,7 @@ async fn dispatch_prompt_body(
                             tracing::warn!(
                                 target: "yolo",
                                 session_id = %prompt_session_id_str,
-                                "AllowYoloMode blocked provider command /{}",
+                                "AllowAutomaticApproval blocked provider command /{}",
                                 command_name
                             );
                             (

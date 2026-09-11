@@ -267,5 +267,5 @@ system.no_config_options: "Agent được kết nối không quảng cáo bất 
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Không thể cập nhật %{option}: %{error}"
 system.yolo_disable_pending: "nhà cung cấp tác nhân AI chưa xác nhận rằng phiên đang ở trạng thái không có đặc quyền theo yêu cầu"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
-system.provider_command_blocked_by_policy: "%{command}: Chế độ Yolo bị vô hiệu hóa bởi chính sách của tổ chức của bạn."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: Phê duyệt tự động bị vô hiệu hóa bởi chính sách của tổ chức bạn."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Mô hình không xác định %{model} — nhập /model để xem danh sách khả dụng."  # {Locked="%{model}","/model"}

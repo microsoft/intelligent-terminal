@@ -3022,8 +3022,7 @@ Alt+Shift+/ insira um prompt; Alt+Shift+B inicie sem um prompt inicial.</value>
     <value>{} | {} | Compatível com OpenAI</value>
     <comment>{Locked="{}","OpenAI"} The first {} is replaced with the provider name; the second is replaced with its location.</comment>
   </data>
-  <data name="AIAgents_YoloGeminiInfo.Title" xml:space="preserve"><value>O modo Yolo do Gemini depende da confiança do workspace</value><comment>{Locked="Gemini","Yolo"} InfoBar title shown on the AI Agents settings page when global Yolo mode is on and the installed selected default provider is Gemini.</comment></data>
-  <data name="AIAgents_YoloGeminiInfo.Message" xml:space="preserve"><value>Gemini habilita o modo Yolo somente quando a confiança do workspace e a política do provedor permitem.</value><comment>{Locked="Gemini","Yolo"} InfoBar message shown on the AI Agents settings page. Workspace trust and provider policy are owned by Gemini, not by Intelligent Terminal.</comment></data>
+  <data name="AIAgents_YoloGeminiInfo.Message" xml:space="preserve"><value>A aprovação automática com Gemini é restrita a workspaces confiáveis</value><comment>{Locked="Gemini"} Single-line InfoBar message shown on the AI Agents settings page when automatic approval is on and the selected default provider is Gemini. Gemini restricts automatic approval to trusted workspaces.</comment></data>
   <data name="AIAgents_CustomAgentRemove.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Remover</value>
     <comment>Accessible name for the X button that removes a custom agent from the agent list.</comment>

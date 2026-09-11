@@ -267,5 +267,5 @@ system.no_config_options: "Prijungtas agentas nepaskelbė jokių konfigūruojam�
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Nepavyko atnaujinti %{option}: %{error}"
 system.yolo_disable_pending: "AI agento teikėjas nepatvirtino, kad seansas yra reikiamos neprivilegijuotos būsenos"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
-system.provider_command_blocked_by_policy: "%{command}: Yolo režimas išjungtas pagal jūsų organizacijos politiką."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: Automatinis patvirtinimas išjungtas pagal jūsų organizacijos politiką."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Nežinomas modelis %{model} — įveskite /model, kad pamatytumėte galimų sąrašą."  # {Locked="%{model}","/model"}

@@ -269,5 +269,5 @@ system.no_config_options: "لم يعلن عامل الذكاء الاصطناع�
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "فشل تحديث %{option}: %{error}"
 system.yolo_disable_pending: "لم يؤكد موفّر عامل الذكاء الاصطناعي أن الجلسة في الحالة المطلوبة دون امتيازات"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
-system.provider_command_blocked_by_policy: "%{command}: تم تعطيل وضع Yolo بواسطة نهج مؤسستك."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: تم تعطيل الموافقة التلقائية بواسطة سياسة مؤسستك."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "نموذج غير معروف %{model} — اكتب /model لعرض القائمة المتاحة."  # {Locked="%{model}","/model"}

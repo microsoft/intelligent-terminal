@@ -262,5 +262,5 @@ system.no_config_options: "接続されているエージェントは、構成�
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} の更新に失敗しました: %{error}"
 system.yolo_disable_pending: "エージェント プロバイダーは、必要な非特権セッション状態をまだ確認していません"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
-system.provider_command_blocked_by_policy: "%{command}: Yolo モードは組織のポリシーによって無効になっています。"  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: 組織のポリシーにより自動承認が無効になっています。"  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "不明なモデル %{model} — 利用可能な一覧を表示するには /model と入力してください。"  # {Locked="%{model}","/model"}

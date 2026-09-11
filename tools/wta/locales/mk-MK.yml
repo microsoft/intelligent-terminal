@@ -267,5 +267,5 @@ system.no_config_options: "Поврзаниот агент не рекламир
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Не успеа да се ажурира %{option}: %{error}"
 system.yolo_disable_pending: "давателот не ја потврди потребната непривилегирана состојба на сесијата"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
-system.provider_command_blocked_by_policy: "%{command}: Режимот Yolo е оневозможен од политиката на вашата организација."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: Автоматското одобрување е оневозможено од политиката на вашата организација."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Непознат модел %{model} — внесете /model за да ја видите достапната листа."  # {Locked="%{model}","/model"}

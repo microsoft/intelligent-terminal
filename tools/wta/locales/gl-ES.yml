@@ -267,5 +267,5 @@ system.no_config_options: "O agente conectado non anunciou ningunha opción de s
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Produciuse un erro ao actualizar %{option}: %{error}"
 system.yolo_disable_pending: "o provedor do axente non confirmou o estado de sesión sen privilexios requirido"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
-system.provider_command_blocked_by_policy: "%{command}: O modo Yolo está desactivado pola política da túa organización."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: A aprobación automática está desactivada pola política da túa organización."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Modelo descoñecido %{model} — escriba /model para ver a lista dispoñible."  # {Locked="%{model}","/model"}

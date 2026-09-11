@@ -268,5 +268,5 @@ system.no_config_options: "कनेक्ट केलेल्या एजं
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} अपडेट करण्यात अपयशी: %{error}"
 system.yolo_disable_pending: "एजंट प्रदात्याने विशेषाधिकार मोड बंद असलेली आवश्यक सत्र स्थिती अद्याप मान्य केलेली नाही"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
-system.provider_command_blocked_by_policy: "%{command}: तुमच्या संस्थेच्या धोरणामुळे Yolo mode अक्षम आहे."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: तुमच्या संस्थेच्या धोरणामुळे स्वयंचलित मंजुरी अक्षम केली आहे."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "अज्ञात मॉडेल %{model} — उपलब्ध यादी पाहण्यासाठी /model टाइप करा."  # {Locked="%{model}","/model"}

@@ -268,5 +268,5 @@ system.no_config_options: "కనెక్ట్ చేయబడిన ఏజె
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option}ను నవీకరించడం విఫలమైంది: %{error}"
 system.yolo_disable_pending: "ప్రత్యేకాధికార మోడ్ నిలిపివేయబడి ఉండాల్సిన సెషన్ స్థితిని ఏజెంట్ ప్రదాత ఇంకా నిర్ధారించలేదు"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
-system.provider_command_blocked_by_policy: "%{command}: మీ సంస్థ విధానం వల్ల Yolo mode నిలిపివేయబడింది."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: మీ సంస్థ విధానం వల్ల ఆటోమేటిక్ ఆమోదం నిలిపివేయబడింది."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "తెలియని మోడల్ %{model} — అందుబాటులో ఉన్న జాబితాను చూడటానికి /model టైప్ చేయండి."  # {Locked="%{model}","/model"}

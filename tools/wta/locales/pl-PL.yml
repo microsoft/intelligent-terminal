@@ -267,5 +267,5 @@ system.no_config_options: "Połączony agent nie zakomunikował żadnych konfigu
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Nie udało się zaktualizować opcji %{option}: %{error}"
 system.yolo_disable_pending: "dostawca nie potwierdził wymaganego nieuprzywilejowanego stanu sesji"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
-system.provider_command_blocked_by_policy: "%{command}: Tryb Yolo jest wyłączony przez zasady twojej organizacji."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: Automatyczne zatwierdzanie jest wyłączone przez zasady twojej organizacji."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Nieznany model %{model} — wpisz /model, aby zobaczyć dostępną listę."  # {Locked="%{model}","/model"}

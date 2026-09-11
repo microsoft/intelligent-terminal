@@ -3033,8 +3033,7 @@ Alt+Shift+/ 프롬프트 입력; Alt+Shift+B 초기 프롬프트 없이 실행</
     <value>{} | {} | OpenAI 호환</value>
     <comment>{Locked="{}","OpenAI"} The first {} is replaced with the provider name; the second is replaced with its location.</comment>
   </data>
-  <data name="AIAgents_YoloGeminiInfo.Title" xml:space="preserve"><value>Gemini Yolo 모드는 작업 영역 신뢰에 따라 달라집니다</value><comment>{Locked="Gemini","Yolo"} InfoBar title shown on the AI Agents settings page when global Yolo mode is on and the installed selected default provider is Gemini.</comment></data>
-  <data name="AIAgents_YoloGeminiInfo.Message" xml:space="preserve"><value>Gemini는 작업 영역 신뢰와 공급자 정책에서 허용하는 경우에만 Yolo 모드를 활성화합니다.</value><comment>{Locked="Gemini","Yolo"} InfoBar message shown on the AI Agents settings page. Workspace trust and provider policy are owned by Gemini, not by Intelligent Terminal.</comment></data>
+  <data name="AIAgents_YoloGeminiInfo.Message" xml:space="preserve"><value>Gemini를 사용한 자동 승인은 신뢰할 수 있는 작업 영역으로 제한됩니다</value><comment>{Locked="Gemini"} Single-line InfoBar message shown on the AI Agents settings page when automatic approval is on and the selected default provider is Gemini. Gemini restricts automatic approval to trusted workspaces.</comment></data>
   <data name="AIAgents_CustomAgentRemove.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>제거</value>
     <comment>Accessible name for the X button that removes a custom agent from the agent list.</comment>

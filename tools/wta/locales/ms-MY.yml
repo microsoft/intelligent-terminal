@@ -267,5 +267,5 @@ system.no_config_options: "Ejen yang disambungkan tidak mengiklankan sebarang pi
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Gagal mengemas kini %{option}: %{error}"
 system.yolo_disable_pending: "penyedia ejen AI belum mengesahkan bahawa sesi berada dalam keadaan tanpa keistimewaan seperti yang diperlukan"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
-system.provider_command_blocked_by_policy: "%{command}: Mod Yolo dilumpuhkan oleh dasar organisasi anda."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: Kelulusan automatik dilumpuhkan oleh dasar organisasi anda."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Model tidak diketahui %{model} — taip /model untuk melihat senarai yang tersedia."  # {Locked="%{model}","/model"}

@@ -266,5 +266,5 @@ system.no_config_options: "Níor fhógair an gníomhaire nasctha aon roghanna se
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Theip ar nuashonrú %{option}: %{error}"
 system.yolo_disable_pending: "níor dheimhnigh soláthraí an ghníomhaire staid neamhphribhléideach riachtanach an tseisiúin"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
-system.provider_command_blocked_by_policy: "%{command}: Tá mód Yolo díchumasaithe ag polasaí d’eagraíochta."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: Tá ceadú uathoibríoch díchumasaithe ag polasaí d’eagraíochta."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Samhail anaithnid %{model} — clóscríobh /model chun an liosta atá ar fáil a fheiceáil."  # {Locked="%{model}","/model"}

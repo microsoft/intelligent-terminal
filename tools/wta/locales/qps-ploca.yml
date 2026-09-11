@@ -265,5 +265,5 @@ system.no_config_options: "[!!_The connected agent did not advertise any configu
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "[!!_Failed to update %{option}: %{error}_!!]"
 system.yolo_disable_pending: "[!!_the provider has not acknowledged the required nonprivileged session state_!!]"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
-system.provider_command_blocked_by_policy: "%{command}: [!!_Yolo mode is disabled by your organization's policy._!!]"  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: [!!_Automatic approval is disabled by your organization's policy._!!]"  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "[!!_Unknown model %{model} — type /model to see the available list._!!]"  # {Locked="%{model}","/model"}

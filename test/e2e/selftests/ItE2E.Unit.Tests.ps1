@@ -112,7 +112,7 @@ Describe 'Localized WTA text matching' -Tag 'Unit' {
             [regex]::Escape('/allow_all'))
 
         $pattern | Should -Not -BeNullOrEmpty
-        "/allow_all: Yolo mode is disabled by your organization's policy." | Should -Match $pattern
+        "/allow_all: Automatic approval is disabled by your organization's policy." | Should -Match $pattern
     }
 }
 
@@ -819,12 +819,23 @@ Describe 'Yolo Settings localization contract' -Tag 'Unit' {
                 Where-Object name -eq 'AIAgents_YoloMode.HelpText' |
                 Select-Object -First 1).value |
             Should -Be 'Your agent in the agent pane runs with full permissions provided by the agent CLI'
+        @($resources.root.data |
+                Where-Object name -eq 'AIAgents_YoloGeminiInfo.Title') |
+            Should -HaveCount 0
+        [string]($resources.root.data |
+                Where-Object name -eq 'AIAgents_YoloGeminiInfo.Message' |
+                Select-Object -First 1).value |
+            Should -Be 'Automatic approval with Gemini is restricted to trusted workspaces'
     }
 
     It 'keeps every Settings locale structurally aligned' {
         $resourceRoot = Join-Path $PSScriptRoot '..\..\..\src\cascadia\TerminalSettingsEditor\Resources'
         $localeDirectories = @(Get-ChildItem -LiteralPath $resourceRoot -Directory)
-        $keys = @('AIAgents_YoloMode.Header', 'AIAgents_YoloMode.HelpText')
+        $keys = @(
+            'AIAgents_YoloMode.Header',
+            'AIAgents_YoloMode.HelpText',
+            'AIAgents_YoloGeminiInfo.Message'
+        )
         [xml]$english = Get-Content -LiteralPath (Join-Path $resourceRoot 'en-US\Resources.resw') -Raw
 
         foreach ($localeDirectory in $localeDirectories) {
@@ -848,6 +859,14 @@ Describe 'Yolo Settings localization contract' -Tag 'Unit' {
                 if ($key -eq 'AIAgents_YoloMode.HelpText') {
                     [string]$target[0].comment | Should -MatchExactly '\{Locked="CLI"\}'
                     [string]$target[0].value | Should -MatchExactly '(?<![A-Za-z])CLI(?![A-Za-z])'
+                }
+
+                if ($key -eq 'AIAgents_YoloGeminiInfo.Message') {
+                    [string]$target[0].comment | Should -MatchExactly '\{Locked="Gemini"\}'
+                    [string]$target[0].value | Should -MatchExactly '(?<![A-Za-z])Gemini(?![A-Za-z])'
+                    @($localized.root.data |
+                            Where-Object name -eq 'AIAgents_YoloGeminiInfo.Title') |
+                        Should -HaveCount 0
                 }
 
                 if ($localeDirectory.Name -notin @('en-US', 'qps-ploc', 'qps-ploca', 'qps-plocm')) {

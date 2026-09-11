@@ -266,5 +266,5 @@ system.no_config_options: "L-aġent konness ma rreklama l-ebda għażla ta’ se
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Naqas milli jaġġorna %{option}: %{error}"
 system.yolo_disable_pending: "il-fornitur tal-aġent għadu ma kkonfermax l-istat meħtieġ tas-sessjoni mingħajr privileġġi"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
-system.provider_command_blocked_by_policy: "%{command}: Il-modalità Yolo hija diżattivata mill-politika tal-organizzazzjoni tiegħek."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: L-approvazzjoni awtomatika hija diżattivata mill-politika tal-organizzazzjoni tiegħek."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Mudell mhux magħruf %{model} — ittajpja /model biex tara l-lista disponibbli."  # {Locked="%{model}","/model"}

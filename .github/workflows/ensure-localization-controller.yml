@@ -1,0 +1,696 @@
+# Single-PR-check wrapper: dispatches detached GHAW workers so internal jobs do not
+# appear on the PR; publishes result and AIC. Not an agent definition.
+
+name: Localization Review
+run-name: Localization Review for PR #${{ github.event.pull_request.number }}
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+    paths:
+      - 'src/cascadia/**/Resources/*.resw'
+      - 'src/cascadia/**/Resources/**/*.resw'
+      - 'tools/wta/locales/*.yml'
+
+permissions:
+  actions: write
+  checks: write
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: localization-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  localization-review:
+    name: Localization review
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout trusted base
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Gate localization changes
+        id: gate
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          SAME_REPO: ${{ github.event.pull_request.head.repo.id == github.repository_id }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          . (Join-Path $PWD '.github/skills/ensure-localization/scripts/localization_checks.ps1')
+
+          function Write-OutputValue {
+            param(
+              [Parameter(Mandatory)][string]$Name,
+              [Parameter(Mandatory)][string]$Value
+            )
+
+            Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value ('{0}={1}' -f $Name, $Value)
+          }
+
+          function Get-WorkflowCommitMetadata {
+            param(
+              [Parameter(Mandatory)][string]$Repository,
+              [Parameter(Mandatory)][string]$Revision
+            )
+
+            $metadataRoot = Join-Path $PWD '.localization-controller'
+            [System.IO.Directory]::CreateDirectory($metadataRoot) | Out-Null
+            $stderrPath = Join-Path $metadataRoot (('{0}.stderr.txt' -f ([guid]::NewGuid().ToString('N'))))
+            try {
+              $json = & gh api "/repos/$Repository/commits/$Revision" --header 'Accept: application/vnd.github+json' --jq '{authorLogin:(.author.login // ""), committerLogin:(.committer.login // ""), parentCount:(.parents | length), verified:(.commit.verification.verified // false)}' 2> $stderrPath
+              $exitCode = $LASTEXITCODE
+              $stderr = if (Test-Path -LiteralPath $stderrPath) { Get-Content -LiteralPath $stderrPath -Raw } else { '' }
+              if ($exitCode -ne 0) {
+                throw "gh api /repos/$Repository/commits/$Revision failed (exit $exitCode): $stderr"
+              }
+              try {
+                return ($json | ConvertFrom-Json -Depth 8)
+              } catch {
+                throw "gh api /repos/$Repository/commits/$Revision returned invalid JSON."
+              }
+            } finally {
+              Remove-Item -LiteralPath $stderrPath -Force -ErrorAction SilentlyContinue
+            }
+          }
+
+          function Export-GitBlobToFile {
+            param(
+              [Parameter(Mandatory)][string]$Revision,
+              [Parameter(Mandatory)][string]$Path,
+              [Parameter(Mandatory)][string]$Destination
+            )
+
+            $directory = Split-Path -Path $Destination -Parent
+            [System.IO.Directory]::CreateDirectory($directory) | Out-Null
+            $spec = '{0}:{1}' -f $Revision, $Path
+            & git show --no-textconv $spec 1> $Destination 2> $null
+            if ($LASTEXITCODE -eq 0) {
+              return $true
+            }
+            Remove-Item -LiteralPath $Destination -Force -ErrorAction SilentlyContinue
+            & git cat-file -e $spec 2> $null
+            if ($LASTEXITCODE -ne 0) {
+              return $false
+            }
+            throw 'git show failed for a localization snapshot.'
+          }
+
+          function Get-SemanticFingerprint {
+            param([Parameter(Mandatory)][string]$Path)
+
+            $parsed = Read-LocalizationFile -Path $Path
+            $entries = foreach ($name in ($parsed.Entries.Keys | Sort-Object)) {
+              $entry = $parsed.Entries[$name]
+              $locks = foreach ($comment in @($entry.Comments) + @($entry.InheritedTokenComments)) {
+                if (Test-ContainsLockDirective -Comment $comment) {
+                  Normalize-CommentText -Text $comment
+                }
+              }
+              [ordered]@{
+                name = $name
+                value = $entry.Value
+                locks = @($locks | Sort-Object -Unique)
+              }
+            }
+            return ([ordered]@{
+              kind = $parsed.Kind
+              hasBom = [bool]$parsed.HasBom
+              entries = @($entries)
+            } | ConvertTo-Json -Compress -Depth 8)
+          }
+
+          $scratchRoot = Join-Path $PWD '.localization-controller'
+          [System.IO.Directory]::CreateDirectory($scratchRoot) | Out-Null
+          $remoteRef = "refs/remotes/origin/localization-pr-$env:PR_NUMBER"
+          git -c credential.helper= -c 'credential.helper=!gh auth git-credential' fetch --no-tags origin "refs/pull/$env:PR_NUMBER/head:$remoteRef"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to fetch PR head refs/pull/$env:PR_NUMBER/head from origin."
+          }
+          $fetchedHead = (git rev-parse $remoteRef).Trim().ToLowerInvariant()
+          if ($fetchedHead -ne $env:HEAD_SHA.ToLowerInvariant()) {
+            throw "PR head changed before localization review started. Expected $env:HEAD_SHA, found $fetchedHead."
+          }
+          $comparisonBase = (git merge-base $env:BASE_SHA $fetchedHead).Trim().ToLowerInvariant()
+          if ([string]::IsNullOrWhiteSpace($comparisonBase)) {
+            throw "Could not resolve a merge base between $env:BASE_SHA and $env:HEAD_SHA."
+          }
+          Write-OutputValue -Name 'comparison_base_sha' -Value $comparisonBase
+
+          if ($env:SAME_REPO -eq 'true' -and (git log -1 --pretty=%s $env:HEAD_SHA) -match '\[localization-expert\]$') {
+            $commit = Get-WorkflowCommitMetadata -Repository $env:REPOSITORY -Revision $env:HEAD_SHA
+            if ($commit.authorLogin -eq 'github-actions[bot]' -and $commit.committerLogin -eq 'web-flow' -and $commit.parentCount -eq 1 -and $commit.verified -eq $true) {
+              Write-OutputValue -Name 'should_run' -Value 'false'
+              Write-OutputValue -Name 'reason' -Value 'workflow-completion'
+              Write-OutputValue -Name 'gate_status' -Value 'PASS'
+              Write-OutputValue -Name 'gate_action' -Value 'NONE'
+              Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Value (@(
+                '## Localization review'
+                ''
+                'The current head is the verified workflow localization completion commit.'
+                ''
+                '- AI Credits: **0**'
+                '- Internal GHAW run: not required'
+              ) -join "`n")
+              exit 0
+            }
+          }
+
+          $candidatePaths = @(
+            git diff --name-only --diff-filter=ACDMRT $comparisonBase $fetchedHead |
+              ForEach-Object { $_.Trim().Replace('\', '/') } |
+              Where-Object {
+                $_ -match '^src/cascadia/.+/Resources/(?:.+/)?[^/]+\.resw$' -or
+                $_ -match '^tools/wta/locales/[^/]+\.yml$'
+              }
+          )
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Failed to enumerate localization paths in the pull request diff.'
+          }
+
+          $semanticPaths = [System.Collections.Generic.List[string]]::new()
+          $blockingBundles = [System.Collections.Generic.List[object]]::new()
+          foreach ($path in $candidatePaths) {
+            $basePath = Join-Path $scratchRoot ('base/{0}' -f $path)
+            $headPath = Join-Path $scratchRoot ('head/{0}' -f $path)
+            $baseExists = Export-GitBlobToFile -Revision $comparisonBase -Path $path -Destination $basePath
+            $headExists = Export-GitBlobToFile -Revision $fetchedHead -Path $path -Destination $headPath
+
+            if ($headExists) {
+              $syntax = Test-ResourceSyntax -File $headPath
+              if ($syntax.status -ne 'PASS') {
+                $blockingBundles.Add($syntax)
+              }
+              $encoding = if ($baseExists) {
+                Test-ResourceEncoding -File $headPath -OriginalFile $basePath
+              } else {
+                Test-ResourceEncoding -File $headPath
+              }
+              if ($encoding.status -notin @('PASS', 'FIXABLE')) {
+                $blockingBundles.Add($encoding)
+              }
+              if ($syntax.status -ne 'PASS' -or $encoding.status -notin @('PASS', 'FIXABLE')) {
+                continue
+              }
+              if ($encoding.status -eq 'FIXABLE') {
+                $semanticPaths.Add($path)
+                continue
+              }
+            }
+
+            if (-not $baseExists -or -not $headExists) {
+              $semanticPaths.Add($path)
+              continue
+            }
+
+            try {
+              if ((Get-SemanticFingerprint -Path $basePath) -cne (Get-SemanticFingerprint -Path $headPath)) {
+                $semanticPaths.Add($path)
+              }
+            } catch {
+              $blockingBundles.Add([pscustomobject]@{
+                check = 'Controller-SemanticFingerprint'
+                status = 'BLOCKED'
+                results = @([pscustomobject]@{
+                  file = $path
+                  status = 'BLOCKED'
+                  message = 'The controller could not compute a semantic localization fingerprint.'
+                })
+              })
+            }
+          }
+
+          if ($blockingBundles.Count -gt 0) {
+            Write-OutputValue -Name 'should_run' -Value 'false'
+            Write-OutputValue -Name 'reason' -Value 'deterministic-file-check-failed'
+            Write-OutputValue -Name 'gate_status' -Value 'FAIL'
+            Write-OutputValue -Name 'gate_action' -Value 'NONE'
+            $blockedLines = foreach ($bundle in @($blockingBundles.ToArray())) {
+              foreach ($result in @($bundle.results)) {
+                '- ``{0}`` [{1}/{2}]: {3}' -f $result.file, $bundle.check, $result.status, $result.message
+              }
+            }
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Value (@(
+              '## Localization review'
+              ''
+              'Deterministic localization file checks failed before AI dispatch, so the controller failed closed.'
+              ''
+              "- Candidate files inspected: **$($candidatePaths.Count)**"
+              "- Blocking file-check bundles: **$($blockingBundles.Count)**"
+              '- AI Credits: **0**'
+              '- Internal GHAW run: not required'
+              ''
+              '### Blocking checks'
+              @($blockedLines)
+            ) -join "`n")
+            exit 0
+          }
+
+          if ($semanticPaths.Count -eq 0) {
+            Write-OutputValue -Name 'should_run' -Value 'false'
+            Write-OutputValue -Name 'reason' -Value 'no-semantic-change'
+            Write-OutputValue -Name 'gate_status' -Value 'PASS'
+            Write-OutputValue -Name 'gate_action' -Value 'NONE'
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Value (@(
+              '## Localization review'
+              ''
+              'No semantic customer-facing localization change was detected.'
+              ''
+              "- Candidate files inspected: **$($candidatePaths.Count)**"
+              '- AI Credits: **0**'
+              '- Internal GHAW run: not required'
+            ) -join "`n")
+            exit 0
+          }
+
+          Write-OutputValue -Name 'should_run' -Value 'true'
+          Write-OutputValue -Name 'reason' -Value 'semantic-change'
+          Write-OutputValue -Name 'gate_status' -Value 'PASS'
+          Write-OutputValue -Name 'gate_action' -Value 'CHECK'
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Value (@(
+            '## Localization review'
+            ''
+            'Semantic localization changes were detected. Dispatching the detached worker.'
+            ''
+            "- Candidate files inspected: **$($candidatePaths.Count)**"
+            "- Semantic files requiring review: **$($semanticPaths.Count)**"
+          ) -join "`n")
+
+      - name: Enforce deterministic gate outcome
+        if: steps.gate.outputs.gate_status == 'FAIL'
+        shell: bash
+        run: |
+          echo "::error::Deterministic localization file checks failed; AI dispatch was blocked."
+          exit 1
+
+      - name: Dispatch and wait for internal GHAW
+        id: worker
+        if: steps.gate.outputs.should_run == 'true'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          COMPARISON_BASE_SHA: ${{ steps.gate.outputs.comparison_base_sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          SAME_REPO: ${{ github.event.pull_request.head.repo.id == github.repository_id }}
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const sameRepo = process.env.SAME_REPO === "true";
+            const worker = sameRepo
+              ? "ensure-localization.lock.yml"
+              : "ensure-localizationguide-forkedrepo.lock.yml";
+            const dispatchId =
+              `ensure-localization-${pr.number}-${process.env.EXPECTED_HEAD_SHA}-${context.runId}-${context.runAttempt}`;
+            const baseRef = process.env.BASE_REF;
+            const startedAt = Date.now() - 5000;
+            const awContext = sameRepo ? JSON.stringify({
+              item_type: "pull_request",
+              item_number: pr.number,
+              repo: `${context.repo.owner}/${context.repo.repo}`,
+              event_type: "pull_request",
+              head_sha: process.env.EXPECTED_HEAD_SHA,
+              base_sha: process.env.EXPECTED_BASE_SHA,
+              comparison_base_sha: process.env.COMPARISON_BASE_SHA,
+              root_repo: `${context.repo.owner}/${context.repo.repo}`,
+              root_run_id: String(context.runId),
+              root_workflow_id: "ensure-localization-controller"
+            }) : JSON.stringify({
+              event_type: "workflow_dispatch",
+              source_pr_number: pr.number,
+              head_sha: process.env.EXPECTED_HEAD_SHA,
+              base_sha: process.env.EXPECTED_BASE_SHA,
+              comparison_base_sha: process.env.COMPARISON_BASE_SHA,
+              root_repo: `${context.repo.owner}/${context.repo.repo}`,
+              root_run_id: String(context.runId),
+              root_workflow_id: "ensure-localization-controller"
+            });
+
+            const inputs = {
+              dispatch_id: dispatchId,
+              pr_number: String(pr.number),
+              repo: `${context.repo.owner}/${context.repo.repo}`,
+              expected_head_sha: process.env.EXPECTED_HEAD_SHA,
+              expected_base_sha: process.env.EXPECTED_BASE_SHA,
+              comparison_base_sha: process.env.COMPARISON_BASE_SHA,
+              head_ref: process.env.HEAD_REF,
+              base_ref: process.env.BASE_REF,
+              head_repo: process.env.HEAD_REPO,
+              same_repo: String(sameRepo),
+              aw_context: awContext
+            };
+
+            const response = await github.request(
+              "POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches",
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: worker,
+                ref: baseRef,
+                inputs
+              }
+            );
+
+            let runId = response.data?.workflow_run_id;
+            let run;
+            for (let attempt = 0; !runId && attempt < 20; attempt++) {
+              await new Promise(resolve => setTimeout(resolve, 3000));
+              const runs = await github.rest.actions.listWorkflowRuns({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: worker,
+                event: "workflow_dispatch",
+                branch: baseRef,
+                per_page: 50
+              });
+              run = runs.data.workflow_runs.find(candidate =>
+                Date.parse(candidate.created_at) >= startedAt &&
+                candidate.display_title.includes(dispatchId));
+              runId = run?.id;
+            }
+            if (!runId) {
+              throw new Error(`Could not correlate dispatched ${worker} run for ${dispatchId}.`);
+            }
+
+            const deadline = Date.now() + 55 * 60 * 1000;
+            while (Date.now() < deadline) {
+              const current = await github.rest.actions.getWorkflowRun({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: runId
+              });
+              run = current.data;
+              if (run.status === "completed") {
+                let inferenceSkipped = false;
+                if ((run.conclusion || "failure") === "success") {
+                  const jobs = await github.paginate(
+                    github.rest.actions.listJobsForWorkflowRun,
+                    {
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      run_id: runId,
+                      per_page: 100
+                    }
+                  );
+                  const agentJob = jobs.find(job => job.name === "agent");
+                  const detectionJob = jobs.find(job => job.name === "detection");
+                  inferenceSkipped = Boolean(
+                    agentJob &&
+                    detectionJob &&
+                    agentJob.status === "completed" &&
+                    agentJob.conclusion === "skipped" &&
+                    detectionJob.status === "completed" &&
+                    detectionJob.conclusion === "skipped"
+                  );
+                }
+                core.setOutput("run_id", String(runId));
+                core.setOutput("run_url", run.html_url);
+                core.setOutput("conclusion", run.conclusion || "failure");
+                core.setOutput("worker", worker);
+                core.setOutput("inference_skipped", inferenceSkipped ? "true" : "false");
+                return;
+              }
+              await new Promise(resolve => setTimeout(resolve, 15000));
+            }
+            throw new Error(`Internal GHAW run ${runId} did not complete within 55 minutes.`);
+
+      - name: Report AI usage
+        id: usage
+        if: always() && steps.worker.outputs.run_id != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.worker.outputs.run_id }}
+          RUN_URL: ${{ steps.worker.outputs.run_url }}
+          WORKER_CONCLUSION: ${{ steps.worker.outputs.conclusion }}
+          INFERENCE_SKIPPED: ${{ steps.worker.outputs.inference_skipped }}
+          SAME_REPO: ${{ github.event.pull_request.head.repo.id == github.repository_id }}
+        run: |
+          set -euo pipefail
+          if [ "${INFERENCE_SKIPPED:-false}" = "true" ]; then
+            total_aic="0"
+            agent_aic="0"
+            detection_aic="0"
+            agent_input="0"
+            agent_output="0"
+            agent_cache_read="0"
+            detection_input="0"
+            detection_output="0"
+            detection_cache_read="0"
+            agent_model="not invoked"
+            detection_model="not invoked"
+          else
+            usage_dir="$RUNNER_TEMP/localization-usage"
+            rm -rf "$usage_dir"
+            mkdir -p "$usage_dir/aic" "$usage_dir/detail"
+
+            download_artifact() {
+              local name="$1"
+              local destination="$2"
+              for attempt in 1 2 3 4 5; do
+                if gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name "$name" --dir "$destination"; then
+                  return 0
+                fi
+                sleep 5
+              done
+              return 1
+            }
+
+            aic_available=false
+            detail_available=false
+            if download_artifact aic-usage-cache "$usage_dir/aic"; then
+              aic_available=true
+            fi
+            if download_artifact usage "$usage_dir/detail"; then
+              detail_available=true
+            fi
+
+            total_aic="unavailable"
+            agent_aic="unavailable"
+            detection_aic="unavailable"
+            agent_input="unavailable"
+            agent_output="unavailable"
+            agent_cache_read="unavailable"
+            detection_input="unavailable"
+            detection_output="unavailable"
+            detection_cache_read="unavailable"
+            agent_model="unavailable"
+            detection_model="unavailable"
+
+            if [ "$aic_available" = "true" ]; then
+              total_aic="$(jq -r --argjson run "$RUN_ID" 'select(.run_id == $run) | .aic' "$usage_dir/aic/agentic-workflow-usage-cache.jsonl" | tail -n 1)"
+              if [ -z "$total_aic" ] || [ "$total_aic" = "null" ]; then
+                total_aic="unavailable"
+              fi
+            fi
+
+            agent_usage="$usage_dir/detail/agent_usage.json"
+            if [ "$detail_available" = "true" ] && [ -f "$agent_usage" ]; then
+              agent_aic="$(jq -r '.ai_credits' "$agent_usage")"
+              agent_input="$(jq -r '.input_tokens' "$agent_usage")"
+              agent_output="$(jq -r '.output_tokens' "$agent_usage")"
+              agent_cache_read="$(jq -r '.cache_read_tokens' "$agent_usage")"
+              agent_model="$(jq -r '.primary_model' "$agent_usage")"
+            fi
+
+            detection_usage="$usage_dir/detail/detection/token_usage.jsonl"
+            if [ "$detail_available" = "true" ] && [ -s "$detection_usage" ]; then
+              detection_aic="$(jq -sr 'map(.ai_credits_total) | last' "$detection_usage")"
+              detection_input="$(jq -sr 'map(.input_tokens) | add' "$detection_usage")"
+              detection_output="$(jq -sr 'map(.output_tokens) | add' "$detection_usage")"
+              detection_cache_read="$(jq -sr 'map(.cache_read_tokens) | add' "$detection_usage")"
+              detection_model="$(jq -sr 'map(.model) | unique | join(", ")' "$detection_usage")"
+            fi
+          fi
+
+          {
+            echo "## Localization review"
+            echo
+            if [ "$SAME_REPO" = "true" ]; then
+              echo "- Result: **${WORKER_CONCLUSION}**"
+            else
+              echo "- Fork localization worker: **${WORKER_CONCLUSION}**"
+              echo "- This fork path runs trusted-base deterministic localization checks without editing fork code."
+              echo "- A PR comment is posted only when actionable localization findings are detected."
+              echo "- Independent language-quality review is not performed automatically in this fork path."
+            fi
+            echo "- Internal GHAW run: [${RUN_ID}](${RUN_URL})"
+            echo "- Total AI Credits: **${total_aic}**"
+            echo "- Main agent: ${agent_aic} AIC; model \`${agent_model}\`; ${agent_input} input, ${agent_output} output, ${agent_cache_read} cache-read tokens"
+            echo "- Threat detection: ${detection_aic} AIC; model \`${detection_model}\`; ${detection_input} input, ${detection_output} output, ${detection_cache_read} cache-read tokens"
+            echo
+            if [ "$SAME_REPO" = "true" ]; then
+              echo "The internal run retains all activation, agent, threat-detection, safe-output, conclusion, logs, and artifacts."
+            else
+              echo "The internal run retained the fork guidance preparation, safe-output comment delivery, logs, and artifacts."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$WORKER_CONCLUSION" = "success" ] && [ "$total_aic" = "unavailable" ]; then
+            echo "::error::The internal GHAW succeeded, but its AI Credit report was unavailable."
+            exit 1
+          fi
+          echo "total_aic=$total_aic" >> "$GITHUB_OUTPUT"
+          echo "agent_aic=$agent_aic" >> "$GITHUB_OUTPUT"
+          echo "detection_aic=$detection_aic" >> "$GITHUB_OUTPUT"
+          echo "agent_input=$agent_input" >> "$GITHUB_OUTPUT"
+          echo "agent_output=$agent_output" >> "$GITHUB_OUTPUT"
+          echo "agent_cache_read=$agent_cache_read" >> "$GITHUB_OUTPUT"
+          echo "detection_input=$detection_input" >> "$GITHUB_OUTPUT"
+          echo "detection_output=$detection_output" >> "$GITHUB_OUTPUT"
+          echo "detection_cache_read=$detection_cache_read" >> "$GITHUB_OUTPUT"
+          echo "agent_model=$agent_model" >> "$GITHUB_OUTPUT"
+          echo "detection_model=$detection_model" >> "$GITHUB_OUTPUT"
+
+      - name: Enforce internal worker success
+        if: always() && steps.gate.outputs.should_run == 'true'
+        shell: bash
+        env:
+          WORKER_CONCLUSION: ${{ steps.worker.outputs.conclusion }}
+        run: |
+          if [ "${WORKER_CONCLUSION:-failure}" != "success" ]; then
+            echo "::error::The internal localization worker did not succeed."
+            exit 1
+          fi
+
+      - name: Resolve final head for validation
+        id: resolve_final_head
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          SHOULD_RUN: ${{ steps.gate.outputs.should_run }}
+          SAME_REPO: ${{ github.event.pull_request.head.repo.id == github.repository_id }}
+        with:
+          script: |
+            const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+            const pullNumber = context.payload.pull_request.number;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const expectedHeadSha = process.env.EXPECTED_HEAD_SHA;
+            const shouldRun = process.env.SHOULD_RUN === "true";
+            const sameRepo = process.env.SAME_REPO === "true";
+
+            if (!sameRepo || !shouldRun) {
+              core.setOutput("final_head_sha", expectedHeadSha);
+              core.setOutput("create_completion_check", "false");
+              core.setOutput("verified_completion", "false");
+              return;
+            }
+
+            const noEditGraceDeadline = Date.now() + 60 * 1000;
+            const deadline = Date.now() + 5 * 60 * 1000;
+            while (Date.now() < deadline) {
+              const pull = await github.rest.pulls.get({ owner, repo, pull_number: pullNumber });
+              const currentHeadSha = pull.data.head.sha;
+
+              if (currentHeadSha === expectedHeadSha) {
+                if (Date.now() < noEditGraceDeadline) {
+                  await delay(5000);
+                  continue;
+                }
+
+                core.setOutput("final_head_sha", expectedHeadSha);
+                core.setOutput("create_completion_check", "false");
+                core.setOutput("verified_completion", "false");
+                return;
+              }
+
+              const commit = await github.rest.repos.getCommit({ owner, repo, ref: currentHeadSha });
+              const verification = commit.data.commit.verification || {};
+              const message = commit.data.commit.message || "";
+              const subject = (message.split(/\r?\n/, 1)[0] || message).trimEnd();
+              const authorLogin = commit.data.author?.login || "";
+              const committerLogin = commit.data.committer?.login || "";
+              const parentCount = commit.data.parents?.length || 0;
+              const parentSha = parentCount === 1 ? commit.data.parents[0].sha : "";
+              const verifiedCompletion =
+                subject.endsWith("[localization-expert]") &&
+                authorLogin === "github-actions[bot]" &&
+                committerLogin === "web-flow" &&
+                parentCount === 1 &&
+                parentSha === expectedHeadSha &&
+                verification.verified === true;
+
+              if (verifiedCompletion) {
+                core.setOutput("final_head_sha", currentHeadSha);
+                core.setOutput("create_completion_check", "true");
+                core.setOutput("verified_completion", "true");
+                return;
+              }
+
+              if (subject.endsWith("[localization-expert]")) {
+                await delay(5000);
+                continue;
+              }
+
+              throw new Error(`Current head ${currentHeadSha} is not a verified Localization Expert completion commit.`);
+            }
+            throw new Error(`Timed out waiting for a verified completion commit to become visible for PR #${pullNumber}.`);
+
+      - name: Create completion check on pushed head
+        if: steps.resolve_final_head.outputs.create_completion_check == 'true'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          FINAL_HEAD_SHA: ${{ steps.resolve_final_head.outputs.final_head_sha }}
+          CONTROLLER_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          WORKER_RUN_URL: ${{ steps.worker.outputs.run_url }}
+          WORKER_CONCLUSION: ${{ steps.worker.outputs.conclusion }}
+          TOTAL_AIC: ${{ steps.usage.outputs.total_aic }}
+          AGENT_AIC: ${{ steps.usage.outputs.agent_aic }}
+          DETECTION_AIC: ${{ steps.usage.outputs.detection_aic }}
+          AGENT_INPUT: ${{ steps.usage.outputs.agent_input }}
+          AGENT_OUTPUT: ${{ steps.usage.outputs.agent_output }}
+          AGENT_CACHE_READ: ${{ steps.usage.outputs.agent_cache_read }}
+          DETECTION_INPUT: ${{ steps.usage.outputs.detection_input }}
+          DETECTION_OUTPUT: ${{ steps.usage.outputs.detection_output }}
+          DETECTION_CACHE_READ: ${{ steps.usage.outputs.detection_cache_read }}
+          AGENT_MODEL: ${{ steps.usage.outputs.agent_model }}
+          DETECTION_MODEL: ${{ steps.usage.outputs.detection_model }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const pullNumber = context.payload.pull_request.number;
+            const finalHeadSha = process.env.FINAL_HEAD_SHA;
+            const pull = await github.rest.pulls.get({ owner, repo, pull_number: pullNumber });
+            if (pull.data.head.sha !== finalHeadSha) {
+              throw new Error(`Current head ${pull.data.head.sha} no longer matches validated head ${finalHeadSha}.`);
+            }
+
+            const summary = [
+              `Result: ${process.env.WORKER_CONCLUSION}`,
+              `Controller run: ${process.env.CONTROLLER_RUN_URL}`,
+              `Internal GHAW run: ${process.env.WORKER_RUN_URL}`,
+              `Total AI Credits: ${process.env.TOTAL_AIC}`,
+              `Main agent: ${process.env.AGENT_AIC} AIC; model \`${process.env.AGENT_MODEL}\`; ${process.env.AGENT_INPUT} input, ${process.env.AGENT_OUTPUT} output, ${process.env.AGENT_CACHE_READ} cache-read tokens`,
+              `Threat detection: ${process.env.DETECTION_AIC} AIC; model \`${process.env.DETECTION_MODEL}\`; ${process.env.DETECTION_INPUT} input, ${process.env.DETECTION_OUTPUT} output, ${process.env.DETECTION_CACHE_READ} cache-read tokens`,
+              '',
+              'The completion check was created after the worker report passed before writes and the workflow-authored head was verified.'
+            ].join("\n");
+
+            await github.rest.checks.create({
+              owner,
+              repo,
+              head_sha: finalHeadSha,
+              name: 'Localization review',
+              status: 'completed',
+              conclusion: 'success',
+              details_url: process.env.CONTROLLER_RUN_URL,
+              external_id: `${context.runId}`,
+              output: {
+                title: 'Localization review',
+                summary
+              }
+            });

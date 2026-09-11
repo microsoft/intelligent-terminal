@@ -268,5 +268,5 @@ system.no_config_options: "[Ţĥé çöññéçţéď åğéñţ ďïď ñöţ �
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "[ƒåïĺéď ţö ûṗďåţé %{option}: %{error}!!!! !!!! !!!!]"
 system.yolo_disable_pending: "[ţĥé ṗŕöṽïďéŕ ĥåś ñöţ åçķñöŵĺéďğéď ţĥé ŕéǫûïŕéď ñöñṗŕïṽïĺéğéď śéśśïöñ śţåţé!!!! !!!! !!!! !!!!]"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
-system.provider_command_blocked_by_policy: "%{command}: [Yolo ḿöďé ïś ďïśåƀĺéď ƀÿ ÿöûŕ öŕğåñïžåţïöñ'ś ṗöĺïçÿ.!!!! !!!! !!!!]"  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: [Åûţöḿåţïç åṗṗŕöṽåĺ ïś ďïśåƀĺéď ƀÿ ÿöûŕ öŕğåñïžåţïöñ'ś ṗöĺïçÿ.!!!! !!!! !!!!]"  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "[Ûñķñöŵñ ḿöďéĺ %{model} — ţÿṗé /model ţö śéé ţĥé åṽåïĺåƀĺé ĺïśţ.!!!! !!!! !!!! !!!!]"  # {Locked="%{model}","/model"}

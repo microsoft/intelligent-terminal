@@ -282,5 +282,5 @@ system.no_config_options: "ភ្នាក់ងារដែលបានភ្�
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "បរាជ័យក្នុងការធ្វើបច្ចុប្បន្នភាព %{option}: %{error}"
 system.yolo_disable_pending: "អ្នកផ្តល់សេវាភ្នាក់ងារ AI មិនទាន់បានបញ្ជាក់ថាវគ្គស្ថិតក្នុងស្ថានភាពគ្មានសិទ្ធិពិសេសតាមតម្រូវការនៅឡើយទេ"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
-system.provider_command_blocked_by_policy: "%{command}: Yolo mode ត្រូវបានបិទដោយគោលនយោបាយរបស់ស្ថាប័នអ្នក។"  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: ការអនុម័តដោយស្វ័យប្រវត្តិត្រូវបានបិទដោយគោលការណ៍របស់ស្ថាប័នអ្នក។"  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "មិនស្គាល់ម៉ូដែល %{model} — វាយ /model ដើម្បីមើលបញ្ជីដែលមាន។"  # {Locked="%{model}","/model"}

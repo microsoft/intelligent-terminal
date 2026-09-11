@@ -17,6 +17,7 @@
 // Events emitted from this module:
 //   - AcpInitializeComplete  (ACP initialize RPC completes)
 //   - AcpNewSessionComplete  (ACP session/new RPC completes)
+//   - AcpLoadSessionComplete (ACP session/load RPC completes)
 //   - AgentPromptSent          (WTA dispatches a prompt over ACP)
 //   - AgentResponseFirstToken  (ACP returns the first text chunk)
 //   - AgentResponseComplete    (ACP prompt request completes)
@@ -152,6 +153,26 @@ pub fn log_acp_new_session_complete(
         str8("Route", route),
         str8("FailureKind", failure_kind),
         i32("AcpErrorCode", &acp_error_code),
+        u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_PERFORMANCE),
+    );
+}
+
+/// Emitted when an ACP `session/load` RPC completes. This covers both a
+/// durable agent-pane restore and an explicit resume from the session view;
+/// the event deliberately does not distinguish those callers.
+///
+/// `duration_ms` is monotonic. The event intentionally records only
+/// completion latency and success so it remains independent of which layer
+/// enforced a timeout or returned an ACP error.
+pub fn log_acp_load_session_complete(duration_ms: f64, success: bool) {
+    let success_i32: i32 = if success { 1 } else { 0 };
+    tlg::write_event!(
+        AGENT_PROVIDER,
+        "AcpLoadSessionComplete",
+        level(Verbose),
+        keyword(MICROSOFT_KEYWORD_MEASURES),
+        f64("DurationMs", &duration_ms),
+        bool32("Success", &success_i32),
         u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_PERFORMANCE),
     );
 }

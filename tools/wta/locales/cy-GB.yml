@@ -268,5 +268,5 @@ system.no_config_options: "Nid oedd yr asiant cysylltiedig yn hysbysebu unrhyw o
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Methwyd â diupdate %{option}: %{error}"
 system.yolo_disable_pending: "nid yw'r darparwr wedi cadarnhau cyflwr gofynnol y sesiwn heb freintiau"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
-system.provider_command_blocked_by_policy: "%{command}: Mae modd Yolo wedi’i analluogi gan bolisi eich sefydliad."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: Mae cymeradwyaeth awtomatig wedi’i hanalluogi gan bolisi eich sefydliad."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Model anhysbys %{model} — teipiwch /model i weld y rhestr sydd ar gael."  # {Locked="%{model}","/model"}

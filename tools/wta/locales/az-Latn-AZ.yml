@@ -269,5 +269,5 @@ system.no_config_options: "Qoşulmuş agent heç bir konfiqurasiya edilə bilən
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} yenilənməsi uğursuz oldu: %{error}"
 system.yolo_disable_pending: "agent provayderi sessiyanın tələb olunan imtiyazsız vəziyyətini təsdiqləməyib"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
-system.provider_command_blocked_by_policy: "%{command}: Yolo rejimi təşkilatınızın siyasəti ilə deaktiv edilib."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: Avtomatik təsdiqləmə təşkilatınızın siyasəti ilə deaktiv edilib."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Naməlum model %{model} — əlçatan siyahını görmək üçün /model yazın."  # {Locked="%{model}","/model"}

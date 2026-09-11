@@ -424,7 +424,8 @@ impl NativeYoloState {
                     .can_user_request_enable()
             {
                 return Err(NativeYoloApplyError::known(
-                    "the AllowYoloMode policy blocks this privileged provider mode".to_string(),
+                    "the AllowAutomaticApproval policy blocks this privileged provider mode"
+                        .to_string(),
                 ));
             }
             let valid_transition = matches!(
@@ -648,7 +649,7 @@ impl NativeYoloState {
                     .is_some_and(|state| !state.lock().unwrap().can_user_request_enable())
             {
                 return Err(NativeYoloApplyError::known(
-                    "the AllowYoloMode policy blocks provider-native Yolo".to_string(),
+                    "the AllowAutomaticApproval policy blocks automatic approval".to_string(),
                 ));
             }
             if matches!(
