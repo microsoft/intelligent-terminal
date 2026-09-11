@@ -12226,7 +12226,9 @@ fn render_setup_reconnecting_hides_install_content() {
 }
 
 #[test]
-fn render_setup_reconnecting_copilot_keeps_specific_title() {
+fn render_setup_reconnecting_substitutes_copilot_display_name() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let mut app = test_app();
     app.mode = AppMode::Setup;
     app.state = ConnectionState::Connecting("Reconnecting...".into());
@@ -12248,7 +12250,7 @@ fn render_setup_reconnecting_copilot_keeps_specific_title() {
             && text.contains("Connecting to agent...")
             && !text.contains("Starting GitHub Copilot...")
             && !text.contains("STALE_AGENT_NOT_FOUND_XYZ"),
-        "Copilot reconnects must retain the product-specific title; rendered:\n{text}"
+        "the generic reconnect title must substitute the Copilot display name without an ellipsis; rendered:\n{text}"
     );
 }
 
