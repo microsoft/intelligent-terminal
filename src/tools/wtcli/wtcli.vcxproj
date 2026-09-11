@@ -33,13 +33,14 @@
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
-      <AdditionalDependencies>ole32.lib;WindowsApp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>ole32.lib;oleaut32.lib;WindowsApp.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
     <!-- Build dependency — OpenConsoleProxy must build first so
          ITerminalProtocol.h exists before we compile. Build-order only; the
-         proxy/stub itself is loaded at runtime via the package manifest. -->
+         proxy/stub is copied beside wtcli and registered process-locally
+         before protocol activation. -->
     <ProjectReference Include="$(OpenConsoleDir)src\host\proxy\Host.Proxy.vcxproj">
       <Project>{71CC9D78-BA29-4D93-946F-BEF5D9A3A6EF}</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
@@ -47,4 +48,7 @@
   </ItemGroup>
   <Import Project="$(OpenConsoleDir)src\cppwinrt.build.post.props" />
   <Import Project="$(OpenConsoleDir)src\common.nugetversions.targets" />
+  <Target Name="CopyTerminalProtocolProxy" AfterTargets="Build" Condition="'$(Configuration)'!='Fuzzing'">
+    <Copy SourceFiles="$(OpenConsoleCommonOutDir)OpenConsoleProxy.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
 </Project>

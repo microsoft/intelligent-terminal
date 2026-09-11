@@ -14,8 +14,8 @@
 #include "ITerminalProtocol.h"
 #include "../inc/BoundedDispatchQueue.h"
 
-// Per-brand CLSIDs — same pattern as CTerminalHandoff. Reused unchanged from the
-// previous WinRT/MBM server, so WT_COM_CLSID discovery on the client is identical.
+// Per-brand CLSIDs retained for manifest activation and older clients.
+// Elevated hosts publish an instance-specific running factory in WT_COM_CLSID.
 #if defined(WT_BRANDING_RELEASE)
 #define __CLSID_TerminalProtocolServer "A2E4F6B8-1C3D-4E5F-A6B7-C8D9E0F1A2B3"
 #elif defined(WT_BRANDING_PREVIEW)
@@ -67,6 +67,7 @@ TerminalProtocolComServer : public Microsoft::WRL::RuntimeClass<
     static void s_setEmperor(WindowEmperor* emperor) noexcept;
 
     static HRESULT s_StartListening();
+    static GUID s_EndpointClsid() noexcept;
     static HRESULT s_StopListening();
 
     // Re-runs per-window page event registration after a new AppHost is added.

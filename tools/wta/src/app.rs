@@ -118,6 +118,16 @@ const MVP_SESSIONS_ORIGIN_FILTER: crate::agent_sessions::OriginFilter =
 /// one master-side apply regardless of helper count.
 pub type QueuedSessionHook = crate::agent_sessions::SessionEvent;
 
+struct PendingSessionResume {
+    request_id: uuid::Uuid,
+    tab_id: String,
+    // Publishing an event is not proof that WT/ACP created the new session.
+    // Bound the acknowledgement grace period so a lost binding can be retried.
+    completed_at: Option<std::time::Instant>,
+}
+
+const RESUME_BINDING_GRACE: std::time::Duration = std::time::Duration::from_secs(30);
+
 /// Resolve the `/sessions` origin filter for this process.
 ///
 /// Defaults to [`MVP_SESSIONS_ORIGIN_FILTER`]. The `WTA_SESSIONS_SHOW_AGENT_PANE`
@@ -1294,13 +1304,13 @@ pub struct App {
     /// truth) and the `agents_view::render` call in `ui/layout.rs`. See
     /// [`MVP_SESSIONS_ORIGIN_FILTER`] for the gate to flip when un-MVP.
     pub sessions_origin_filter: crate::agent_sessions::OriginFilter,
-    /// Posts `AppEvent::AgentSessionEvent` from background callbacks
-    /// (split-pane callback in `dispatch_resume`) back into the main
+    /// Posts resume completion events from background callbacks back into the main
     /// event loop so they can apply to `agent_sessions` on the UI thread.
-    /// Set by `set_agent_event_tx` from main.rs after the event channel
-    /// is constructed; remains None in tests so dispatch_resume is a
-    /// no-op outside the integration loop.
+    /// Installed by helper::runtime before the input/event loop starts.
+    /// Dispatch tests leave it absent to avoid launching real tabs and drive
+    /// completion directly while exercising the same in-flight bookkeeping.
     agent_event_tx: Option<mpsc::UnboundedSender<AppEvent>>,
+    pending_session_resumes: HashMap<String, PendingSessionResume>,
     /// Helper-mode fire-and-forget publisher for `intellterm.wta/session_hook`.
     session_hook_tx: Option<mpsc::UnboundedSender<QueuedSessionHook>>,
     /// Hot-updatable delegate config, shared with the recommendation
@@ -1580,6 +1590,7 @@ impl App {
             agent_supports_image: false,
             sessions_origin_filter: resolve_sessions_origin_filter(),
             agent_event_tx: None,
+            pending_session_resumes: HashMap::new(),
             session_hook_tx: None,
             delegate_agents: None,
             delegate_base_agent_cmd: String::new(),
@@ -2901,8 +2912,8 @@ impl App {
     /// the pure-function core that closed-form maps
     /// `(origin, liveness, cli, capabilities)` to one of
     /// `Focus | ResumeInAgentPane | ResumeCliFlag | NotResumable`.
-    /// All side effects (system messages, wtcli spawn, optimistic
-    /// state flips) live on the dispatch side here
+    /// All side effects (system messages, wtcli spawn, completion
+    /// reporting) live on the dispatch side here
     /// or in the existing [`Self::dispatch_resume`] /
     /// [`Self::dispatch_resume_in_agent_pane`] helpers we call into.
     ///
@@ -2916,6 +2927,17 @@ impl App {
         use crate::session_mgmt::{
             decide_enter_action, liveness_from_status, EnterAction, NotResumableReason, RowSnapshot,
         };
+        if let Some(pending) = self.pending_session_resumes.get(&s.key) {
+            if s.pane_session_id.is_some()
+                || pending
+                    .completed_at
+                    .is_some_and(|completed| completed.elapsed() >= RESUME_BINDING_GRACE)
+            {
+                self.pending_session_resumes.remove(&s.key);
+            } else {
+                return;
+            }
+        }
         // Ambient: load_session capability is set during ACP init;
         // resume-flag support is a per-CLI profile constant — true for
         // Claude / Codex / Copilot / Gemini / OpenCode, though the exact
@@ -2968,14 +2990,12 @@ impl App {
             }
             EnterAction::ResumeInAgentPane { .. } => {
                 // dispatch_resume_in_agent_pane owns the loadSession
-                // capability gate (also re-checked),
-                // optimistic ResumeDispatched, and emit
-                // resume_in_new_agent_tab to WT.
+                // capability gate and publish resume_in_new_agent_tab to WT.
                 self.dispatch_resume_in_agent_pane(s);
             }
             EnterAction::ResumeCliFlag { .. } => {
                 // dispatch_resume owns the resume-flag check,
-                // optimistic ResumeDispatched, and new-tab spawn.
+                // in-flight deduplication, and new-tab spawn.
                 self.dispatch_resume(s);
             }
             EnterAction::NotResumable { reason } => {
@@ -3042,8 +3062,7 @@ impl App {
     /// resume flag or unknown CLI sources.
     ///
     /// Flow:
-    ///   1. Apply `ResumeDispatched` synchronously so a rapid second Enter
-    ///      on the same row no-ops while this resume is in flight.
+    ///   1. Track the in-flight request locally without claiming a live session.
     ///   2. Issue `wtcli --json new-tab -c "<cli> <flag> <key>" -d "<cwd>"`
     ///      on a background thread via
     ///      `spawn_wtcli_split_then_focus_with_callback` — the helper is
@@ -3053,7 +3072,7 @@ impl App {
     ///      and matches user expectation that resuming a historical
     ///      session is a "go open my session" action, not a "split my
     ///      workspace" action.
-    ///   3. The callback posts `AgentSessionEvent(ResumePaneAssigned{...})`
+    ///   3. The completion callback posts `SessionResumeCompleted`
     ///      through `agent_event_tx` so the registry can bind the new
     ///      tab's primary pane GUID to the row even for hook-less CLIs
     ///      (Gemini), allowing a later `PaneClosed` to transition the
@@ -3186,52 +3205,28 @@ impl App {
             argv.push("-d".to_string());
             argv.push(cwd.clone());
         }
-        // Optimistic state flip: bump Historical/Ended -> Idle so a rapid
-        // second Enter on the same row sees a non-terminal status and
-        // skips this branch (idempotent: ResumeDispatched no-ops on live
-        // rows). See `agent_sessions::SessionEvent::ResumeDispatched`.
-        let resume_event =
-            crate::agent_sessions::SessionEvent::ResumeDispatched { key: key.clone() };
-        self.agent_sessions.apply(resume_event.clone());
-        self.publish_session_hook(resume_event);
-        self.dispatch_session_resume_dispatched_rpc(&key);
-        // for hook-less CLIs (Gemini) so a future `PaneClosed` can
-        // transition the row to Ended; harmless duplicate work for
-        // Claude/Copilot whose hooks beat us to the same binding.
-        // `wtcli new-tab --json` emits a `session_id` field on the new
-        // tab's primary pane in the same shape as `split-pane --json`,
-        // so the existing helper handles both.
+        let on_complete = self.begin_session_resume(&key);
         let cb_key = key.clone();
         let cb_location = s.location.clone();
-        let event_tx = self.agent_event_tx.clone();
-        let on_pane_id: Option<Box<dyn FnOnce(String) + Send + 'static>> =
-            Some(Box::new(move |pane_session_id| {
-                if let Some(binding) = crate::wt_protocol_events::resumed_pane_binding_event(
-                    cli_id,
-                    &cb_key,
-                    &pane_session_id,
-                    &cb_location,
-                ) {
-                    send_wt_protocol_event(binding);
-                }
-                if let Some(tx) = event_tx {
-                    if tx
-                        .send(AppEvent::AgentSessionEvent(
-                            crate::agent_sessions::SessionEvent::ResumePaneAssigned {
-                                key: cb_key,
-                                pane_session_id,
-                            },
-                        ))
-                        .is_err()
-                    {
-                        tracing::warn!(
-                            target: "agents_view",
-                            "resumed pane could not be reported to the helper event loop"
-                        );
+        // Unit dispatch tests have no event loop and must not launch real tabs.
+        if self.agent_event_tx.is_some() {
+            crate::shell::wt_channel::spawn_wtcli_split_then_focus_with_callback(
+                &argv,
+                Some(Box::new(move |result| {
+                    if let Ok(pane_session_id) = &result {
+                        if let Some(binding) = crate::wt_protocol_events::resumed_pane_binding_event(
+                            cli_id,
+                            &cb_key,
+                            pane_session_id,
+                            &cb_location,
+                        ) {
+                            send_wt_protocol_event(binding);
+                        }
                     }
-                }
-            }));
-        crate::shell::wt_channel::spawn_wtcli_split_then_focus_with_callback(&argv, on_pane_id);
+                    on_complete(result.map(Some));
+                })),
+            );
+        }
 
         tracing::info!(
             target: "agents_view",
@@ -3263,9 +3258,8 @@ impl App {
     ///      the connected agent didn't advertise the `loadSession`
     ///      capability — opening a new tab would just dead-end on a
     ///      `JSON-RPC method not found` from the agent.
-    ///   2. Optimistically apply `ResumeDispatched` to bump
-    ///      Historical/Ended -> Idle so a rapid second Enter on the
-    ///      same row no-ops (shared with `dispatch_resume`).
+    ///   2. Deduplicate in-flight requests locally, retaining the authoritative
+    ///      Historical/Ended state until the new session is actually bound.
     ///   3. Emit a `resume_in_new_agent_tab` event to WT carrying the
     ///      session key + cwd. WT is responsible for:
     ///        - Creating a new tab (default profile, optionally honoring
@@ -3342,13 +3336,7 @@ impl App {
         }
         let cwd_string = valid_cwd.unwrap_or_default();
 
-        // Mirror dispatch_resume's optimistic state flip so a rapid
-        // double press doesn't double-dispatch.
-        let resume_event =
-            crate::agent_sessions::SessionEvent::ResumeDispatched { key: key.clone() };
-        self.agent_sessions.apply(resume_event.clone());
-        self.publish_session_hook(resume_event);
-        self.dispatch_session_resume_dispatched_rpc(&key);
+        let on_complete = self.begin_session_resume(&key);
 
         let mut params = serde_json::Map::new();
         params.insert(
@@ -3366,12 +3354,15 @@ impl App {
             "method": "resume_in_new_agent_tab",
             "params": params,
         });
-        send_wt_protocol_event(evt.to_string());
+        crate::wt_protocol_events::send_with_callback(
+            evt.to_string(),
+            Some(Box::new(move |result| on_complete(result.map(|()| None)))),
+        );
 
         tracing::info!(
             target: "agents_view",
             key = %s.key,
-            "dispatch_resume_in_agent_pane: resume_in_new_agent_tab event published",
+            "dispatch_resume_in_agent_pane: resume_in_new_agent_tab publish queued",
         );
 
         #[cfg(test)]
@@ -3428,15 +3419,88 @@ impl App {
         }
     }
 
-    fn dispatch_session_resume_dispatched_rpc(&mut self, sid: &str) {
-        let request_id = self.next_agents_rpc_request_id();
-        let sid = agent_client_protocol::schema::v1::SessionId::new(sid.to_string());
-        let _ = self.master_request_tx.send(
-            crate::protocol::acp::client::MasterExtRequest::SessionResumeDispatched {
+    fn begin_session_resume(
+        &mut self,
+        key: &str,
+    ) -> Box<dyn FnOnce(anyhow::Result<Option<String>>) + Send + 'static> {
+        let request_id = uuid::Uuid::new_v4();
+        self.pending_session_resumes.insert(
+            key.to_string(),
+            PendingSessionResume {
                 request_id,
-                sid,
+                tab_id: self.active_tab_key().to_string(),
+                completed_at: None,
             },
         );
+        let key = key.to_string();
+        let event_tx = self.agent_event_tx.clone();
+        Box::new(move |result| {
+            if let Some(tx) = event_tx {
+                if tx
+                    .send(AppEvent::SessionResumeCompleted {
+                        key,
+                        request_id,
+                        result: result.map_err(|error| format!("{error:#}")),
+                    })
+                    .is_err()
+                {
+                    tracing::warn!(
+                        target: "agents_view",
+                        %request_id,
+                        "resume completion could not be reported to the helper event loop"
+                    );
+                }
+            }
+        })
+    }
+
+    fn handle_session_resume_completed(
+        &mut self,
+        key: String,
+        request_id: uuid::Uuid,
+        result: Result<Option<String>, String>,
+    ) {
+        let Some(pending) = self.pending_session_resumes.get_mut(&key) else {
+            return;
+        };
+        if pending.request_id != request_id {
+            return;
+        }
+        match result {
+            Ok(pane) => {
+                pending.completed_at = Some(std::time::Instant::now());
+                if let Some(pane_session_id) = pane {
+                    // One success event atomically promotes AND binds at master.
+                    // Never send ResumeDispatched on a separate racing RPC.
+                    let event = crate::agent_sessions::SessionEvent::ResumePaneAssigned {
+                        key,
+                        pane_session_id,
+                    };
+                    self.handle_event(AppEvent::AgentSessionEvent(event));
+                }
+            }
+            Err(error) => {
+                let tab_id = pending.tab_id.clone();
+                self.pending_session_resumes.remove(&key);
+                tracing::warn!(target: "agents_view", %key, %request_id, %error, "session resume failed");
+                // Failure changes no session state: a real hook or another
+                // helper's successful binding may already have won the race.
+                if self.tab_sessions.contains_key(&tab_id) {
+                    // The picker does not render chat messages. Return only
+                    // the invoking tab to chat so the failure is visible.
+                    self.close_agents_view_for_tab(&tab_id);
+                    let tab = self.tab_mut(&tab_id);
+                    let context = t!(
+                        "connection.resuming_stage",
+                        stage = t!("agents.status.error").as_ref(),
+                        session_id = key.as_str()
+                    );
+                    tab.messages
+                        .push(ChatMessage::Error(format!("{context}\n{error}")));
+                    tab.scroll_to_bottom();
+                }
+            }
+        }
     }
 
     pub(crate) fn open_agents_view_for_tab(&mut self, tab_id: String) {
@@ -3531,6 +3595,14 @@ impl App {
                 (tab.agents_view.latest_request_id == Some(request_id)).then(|| id.clone())
             })
             .collect();
+        if !tabs.is_empty() {
+            self.pending_session_resumes.retain(|key, pending| {
+                pending.completed_at.is_none()
+                    || !sessions.iter().any(|session| {
+                        session.session_id.0.as_ref() == key && session.pane_session_id.is_some()
+                    })
+            });
+        }
         for tab_id in tabs {
             let old_selected = self
                 .tab_sessions
@@ -4836,6 +4908,7 @@ impl App {
                 "agent_reconnect_preflight_complete"
             }
             AppEvent::AgentSessionEvent(_) => "agent_session_event",
+            AppEvent::SessionResumeCompleted { .. } => "session_resume_completed",
             AppEvent::AliveSnapshotLoaded(_) => "alive_snapshot_loaded",
             AppEvent::AliveSessionAdded(_) => "alive_session_added",
             AppEvent::AliveSessionRemoved(_) => "alive_session_removed",
@@ -6527,6 +6600,11 @@ impl App {
         if self.pending_yolo_session_tabs.remove(old_tab_id) {
             self.pending_yolo_session_tabs
                 .insert(new_tab_id.to_string());
+        }
+        for pending in self.pending_session_resumes.values_mut() {
+            if pending.tab_id == old_tab_id {
+                pending.tab_id = new_tab_id.to_string();
+            }
         }
         let had_session = if let Some(mut entry) = self.tab_sessions.remove(old_tab_id) {
             // Preserve target slot's TabSession if one was lazily

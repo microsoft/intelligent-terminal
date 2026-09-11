@@ -112,7 +112,7 @@ Use the wrapper scripts — **not** the bare MSBuild command:
 
 #### ARM64 quirks
 
-- **First-pass `ITerminalHandoff.h` not found**: parallel build race — `OpenConsoleProxy` generates it but `TerminalConnection` may start before it's ready. Re-run [`_build_msix_arm64.cmd`](../_build_msix_arm64.cmd) immediately and it succeeds.
+- **Missing generated COM headers**: `OpenConsoleProxy` generates the handoff and protocol headers. Their consumers declare direct project references, so keep `BuildProjectReferences` enabled for a clean build. If deliberately disabling project references, build `src\host\proxy\Host.Proxy.vcxproj` first instead of relying on a second pass.
 - **`APPX1204: SignTool Error: The file is being used by another process`**: MSBuild's built-in auto-sign (kicked off by `<AppxPackageSigningEnabled>true</AppxPackageSigningEnabled>` inferred from PFX presence) sometimes loses a race with AV/indexer locking the freshly-produced MSIX. The MSIX is still written to disk; just run [`_sign_msix.cmd`](../_sign_msix.cmd) in Step 4 to sign it explicitly. 0.7.0.14 ARM64 hit this.
 - **Missing `Dependencies\` folder**: when MSBuild's auto-sign fails as above, it also skips staging the XAML dependency. Copy it manually from a prior successful build:
   ```powershell

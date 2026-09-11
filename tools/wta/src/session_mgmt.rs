@@ -10,7 +10,7 @@
 //!
 //! The actual dispatch (split-pane, wtcli, ACP load) lives in `app.rs`
 //! and keeps the existing guard rails (phantom-session pruning, self-
-//! focus skip, optimistic `ResumeDispatched` bumps, agent-pane
+//! focus skip, in-flight resume deduplication, agent-pane
 //! reconciliation). This module is intentionally tiny so the routing
 //! table can be exhaustively unit-tested without spinning up any
 //! runtime, futures, or mocks.

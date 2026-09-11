@@ -360,10 +360,6 @@ pub enum MasterExtRequest {
     SessionBornBound {
         event: crate::agent_sessions::SessionEvent,
     },
-    SessionResumeDispatched {
-        request_id: u64,
-        sid: acp::schema::v1::SessionId,
-    },
     SessionFocus {
         request_id: u64,
         sid: acp::schema::v1::SessionId,
@@ -4171,20 +4167,6 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                         "born-bound registration timed out"
                     ),
                 }
-            }
-            MasterExtRequest::SessionResumeDispatched { request_id, sid } => {
-                let wire = crate::session_registry::build_session_resume_dispatched_request(&sid);
-                match conn.ext_method(wire).await {
-                    Ok(resp) => {
-                        let _ = crate::session_registry::parse_session_resume_dispatched_response(
-                            &resp.0,
-                        );
-                    }
-                    Err(err) => {
-                        tracing::warn!(target: "agents_view", request_id, session_id = %sid.0, error = ?err, "session_resume_dispatched ext-request failed");
-                    }
-                }
-                let _ = event_tx.send(AppEvent::MasterMutationCompleted { request_id });
             }
             MasterExtRequest::SessionFocus { request_id, sid } => {
                 let wire = crate::session_registry::build_session_focus_request(&sid);

@@ -438,13 +438,11 @@ pub fn spawn_wtcli_split_then_focus(args: &[String]) {
 /// `connection_state: closed` → `PaneClosed` path can't transition the row
 /// to Ended when the user later closes the pane.
 ///
-/// The callback runs on the same background task that issued the split,
-/// after a successful JSON parse. It is NOT invoked when the split fails
-/// (process spawn error, non-zero exit, malformed JSON, missing
-/// `session_id`).
+/// The callback reports creation success or failure before the best-effort
+/// focus operation. A focus failure must not undo a successfully created pane.
 pub fn spawn_wtcli_split_then_focus_with_callback(
     args: &[String],
-    on_pane_id: Option<Box<dyn FnOnce(String) + Send + 'static>>,
+    on_complete: Option<Box<dyn FnOnce(anyhow::Result<String>) + Send + 'static>>,
 ) {
     let path = resolve_wtcli_path();
     let owned_args: Vec<String> = std::iter::once("--json".to_string())
@@ -452,75 +450,7 @@ pub fn spawn_wtcli_split_then_focus_with_callback(
         .collect();
 
     spawn_wtcli_task(async move {
-        let output =
-            match run_wtcli_one_shot(&path, &owned_args, true, false, WTCLI_ONE_SHOT_TIMEOUT).await
-            {
-                Ok(o) => o,
-                Err(WtcliOneShotError::Spawn(err)) => {
-                    tracing::warn!(
-                        target: "wtcli",
-                        path = %path,
-                        ?owned_args,
-                        %err,
-                        "split-pane spawn failed",
-                    );
-                    return;
-                }
-                Err(err) => {
-                    tracing::warn!(
-                        target: "wtcli",
-                        path = %path,
-                        ?owned_args,
-                        %err,
-                        "split-pane invocation failed",
-                    );
-                    return;
-                }
-            };
-
-        if !output.status.success() {
-            tracing::warn!(
-                target: "wtcli",
-                path = %path,
-                ?owned_args,
-                code = output.status.code(),
-                "split-pane exited non-zero",
-            );
-            return;
-        }
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let parsed: serde_json::Value = match serde_json::from_str(stdout.trim()) {
-            Ok(v) => v,
-            Err(err) => {
-                tracing::warn!(
-                    target: "wtcli",
-                    %err,
-                    stdout = %stdout,
-                    "split-pane stdout was not valid JSON",
-                );
-                return;
-            }
-        };
-
-        // CreationResultToJson emits `session_id` (snake_case — see
-        // src/tools/wtcli/Formatting.cpp::CreationResultToJson). Older /
-        // alternate camel-case spellings are kept as fallbacks for
-        // forward-compat. Strip braces if the GUID arrived in `{...}`
-        // form, since FocusPane resolves either form.
-        let session_id = parsed
-            .get("session_id")
-            .or_else(|| parsed.get("SessionId"))
-            .or_else(|| parsed.get("sessionId"))
-            .and_then(|v| v.as_str())
-            .map(|s| s.trim_matches(|c| c == '{' || c == '}').to_string());
-
-        let Some(session_id) = session_id else {
-            tracing::warn!(
-                target: "wtcli",
-                json = %parsed,
-                "split-pane JSON had no session_id field",
-            );
+        let Some(session_id) = create_pane_and_report(&path, &owned_args, on_complete).await else {
             return;
         };
 
@@ -529,10 +459,6 @@ pub fn spawn_wtcli_split_then_focus_with_callback(
             %session_id,
             "split-pane returned new pane GUID, issuing focus-pane",
         );
-
-        if let Some(cb) = on_pane_id {
-            cb(session_id.clone());
-        }
 
         let focus_args = vec![
             "focus-pane".to_string(),
@@ -576,6 +502,58 @@ pub fn spawn_wtcli_split_then_focus_with_callback(
             }
         }
     });
+}
+
+async fn create_pane(path: &str, args: &[String]) -> anyhow::Result<String> {
+    let output = run_wtcli_one_shot(path, args, true, true, WTCLI_ONE_SHOT_TIMEOUT)
+        .await
+        .context("wtcli pane creation invocation failed")?;
+    parse_created_pane(output)
+}
+
+async fn create_pane_and_report(
+    path: &str,
+    args: &[String],
+    on_complete: Option<Box<dyn FnOnce(anyhow::Result<String>) + Send + 'static>>,
+) -> Option<String> {
+    let result = create_pane(path, args).await;
+    let pane = result.as_ref().ok().cloned();
+    if let Err(error) = &result {
+        tracing::warn!(
+            target: "wtcli",
+            path,
+            error = %format!("{error:#}"),
+            "pane creation failed",
+        );
+    }
+    if let Some(callback) = on_complete {
+        callback(result);
+    }
+    pane
+}
+
+fn parse_created_pane(output: std::process::Output) -> anyhow::Result<String> {
+    if !output.status.success() {
+        bail!(
+            "wtcli pane creation failed ({}): {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&output.stdout).context("invalid wtcli pane creation JSON")?;
+    // CreationResultToJson uses snake_case; retain the legacy spellings.
+    let session_id = parsed
+        .get("session_id")
+        .or_else(|| parsed.get("SessionId"))
+        .or_else(|| parsed.get("sessionId"))
+        .and_then(serde_json::Value::as_str)
+        .map(|id| id.trim().trim_matches(['{', '}']).trim())
+        .filter(|id| !id.is_empty())
+        .ok_or_else(|| anyhow!("wtcli pane creation JSON has no nonempty session_id"))?;
+    Ok(uuid::Uuid::parse_str(session_id)
+        .context("wtcli pane creation returned an invalid session_id GUID")?
+        .to_string())
 }
 
 /// Channel that invokes `wtcli.exe` for protocol operations.
@@ -1197,6 +1175,81 @@ impl WtChannel for CliChannel {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn encoded_powershell_args(script: &str) -> Vec<String> {
+        let bytes: Vec<_> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
+        vec![
+            "-NoProfile".into(),
+            "-NonInteractive".into(),
+            "-EncodedCommand".into(),
+            crate::osc52::base64_encode(&bytes),
+        ]
+    }
+
+    #[tokio::test]
+    async fn resume_creation_reports_spawn_failure_to_callback() {
+        let (tx, rx) = oneshot::channel();
+        let pane = create_pane_and_report(
+            &format!("missing-wtcli-{}.exe", uuid::Uuid::new_v4()),
+            &[],
+            Some(Box::new(move |result| {
+                tx.send(result).unwrap();
+            })),
+        )
+        .await;
+        assert!(pane.is_none());
+        let error = rx.await.unwrap().unwrap_err();
+        assert!(format!("{error:#}").contains("failed to spawn wtcli"));
+    }
+
+    #[tokio::test]
+    async fn resume_creation_reports_exit_and_protocol_failures_to_callback() {
+        for (stdout, expected) in [
+            ("not-json", "invalid wtcli pane creation JSON"),
+            ("{}", "no nonempty session_id"),
+            (r#"{"session_id":null}"#, "no nonempty session_id"),
+            (r#"{"session_id":""}"#, "no nonempty session_id"),
+            (r#"{"session_id":"{}"}"#, "no nonempty session_id"),
+            (r#"{"session_id":"not-a-guid"}"#, "invalid session_id GUID"),
+            ("", "COM activation denied"),
+        ] {
+            let (tx, rx) = oneshot::channel();
+            let script = if stdout.is_empty() {
+                "[Console]::Error.Write('COM activation denied'); exit 1".to_string()
+            } else {
+                format!("[Console]::Write('{stdout}')")
+            };
+            let args = encoded_powershell_args(&script);
+            assert!(create_pane_and_report(
+                "powershell.exe",
+                &args,
+                Some(Box::new(move |result| tx.send(result).unwrap())),
+            )
+            .await
+            .is_none());
+            let error = rx.await.unwrap().unwrap_err();
+            assert!(format!("{error:#}").contains(expected), "{error:#}");
+        }
+    }
+
+    #[tokio::test]
+    async fn resume_creation_reports_success_before_focus() {
+        let expected = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+        for spelling in ["session_id", "SessionId", "sessionId"] {
+            let args = encoded_powershell_args(&format!(
+                r#"[Console]::Write('{{"{spelling}":"{{{expected}}}"}}')"#
+            ));
+            let (tx, rx) = oneshot::channel();
+            let pane = create_pane_and_report(
+                "powershell.exe",
+                &args,
+                Some(Box::new(move |result| tx.send(result).unwrap())),
+            )
+            .await;
+            assert_eq!(pane.as_deref(), Some(expected));
+            assert_eq!(rx.await.unwrap().unwrap(), expected);
+        }
+    }
 
     #[tokio::test]
     async fn get_pane_context_rejects_invalid_session_ids_before_invocation() {

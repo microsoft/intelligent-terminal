@@ -7300,6 +7300,347 @@ fn enter_on_history_row_dispatches_new_tab_with_resume() {
     );
 }
 
+fn seed_resume_row(
+    app: &mut App,
+    status: crate::agent_sessions::AgentStatus,
+    origin: crate::agent_sessions::SessionOrigin,
+) -> crate::agent_sessions::AgentSession {
+    let row = crate::agent_sessions::AgentSession {
+        key: "retry-resume".into(),
+        cli_source: crate::agent_sessions::CliSource::Copilot,
+        pane_session_id: None,
+        window_id: None,
+        tab_id: None,
+        title: "Resume regression".into(),
+        cwd: std::env::current_dir().unwrap(),
+        started_at: std::time::SystemTime::UNIX_EPOCH,
+        last_activity_at: std::time::SystemTime::UNIX_EPOCH,
+        status,
+        last_error: None,
+        current_tool: None,
+        attention_reason: None,
+        log_path: None,
+        origin,
+        location: crate::agent_sessions::SessionLocation::Host,
+    };
+    app.agent_sessions.merge_historical(vec![row.clone()]);
+    row
+}
+
+#[test]
+fn resume_failure_preserves_dead_rows_and_allows_retry_in_both_routes() {
+    use crate::agent_sessions::{AgentStatus, SessionOrigin};
+
+    for status in [AgentStatus::Historical, AgentStatus::Ended] {
+        for origin in [SessionOrigin::Unknown, SessionOrigin::AgentPane] {
+            let (mut app, mut master_rx) = test_app_with_master_rx();
+            let (tx, mut hooks) = tokio::sync::mpsc::unbounded_channel();
+            app.set_session_hook_tx(tx);
+            app.agent_supports_load_session = true;
+            app.current_tab_mut().current_view = View::Agents;
+            let row = seed_resume_row(&mut app, status.clone(), origin);
+            app.activate_agent_session_routed(&row);
+            let request_id = app.pending_session_resumes[&row.key].request_id;
+
+            app.last_dispatched_command = None;
+            app.activate_agent_session_routed(&row);
+            assert!(
+                app.last_dispatched_command.is_none(),
+                "in-flight Enter must deduplicate"
+            );
+            assert_eq!(app.agent_sessions.get(&row.key).unwrap().status, status);
+            assert!(
+                hooks.try_recv().is_err(),
+                "dispatch must not promote at master"
+            );
+            assert!(
+                master_rx.try_recv().is_err(),
+                "no racing resume-dispatched RPC"
+            );
+
+            app.tab_mut("other-tab");
+            app.tab_id = Some("other-tab".into());
+            app.handle_event(AppEvent::SessionResumeCompleted {
+                key: row.key.clone(),
+                request_id,
+                result: Err("wtcli creation/publish failed (exit 1)".into()),
+            });
+            assert!(
+                app.current_tab().messages.is_empty(),
+                "failure belongs to the invoking tab"
+            );
+            let Some(ChatMessage::Error(message)) =
+                app.tab_sessions[DEFAULT_TAB_ID].messages.last()
+            else {
+                panic!("resume failure must be shown as an error in the invoking tab");
+            };
+            assert_eq!(
+                message,
+                &format!(
+                    "Error (resuming {})\nwtcli creation/publish failed (exit 1)",
+                    row.key
+                ),
+                "failure must describe session resume, not configuration updates"
+            );
+            assert_eq!(
+                app.tab_sessions[DEFAULT_TAB_ID].current_view,
+                View::Chat,
+                "the invoking tab must show the error, not hide it behind the picker"
+            );
+            let unchanged = app.agent_sessions.get(&row.key).unwrap();
+            assert_eq!(unchanged.status, status);
+            assert!(unchanged.pane_session_id.is_none());
+            assert!(
+                hooks.try_recv().is_err(),
+                "failure must not publish fake liveness"
+            );
+
+            app.tab_id = None;
+            app.activate_agent_session_routed(&row);
+            assert!(
+                app.last_dispatched_command.is_some(),
+                "failed resume must be retryable"
+            );
+            let retry_id = app.pending_session_resumes[&row.key].request_id;
+            assert_ne!(retry_id, request_id);
+            app.handle_event(AppEvent::SessionResumeCompleted {
+                key: row.key.clone(),
+                request_id,
+                result: Err("late old failure".into()),
+            });
+            assert_eq!(app.pending_session_resumes[&row.key].request_id, retry_id);
+        }
+    }
+}
+
+#[test]
+fn resume_success_binds_and_deduplicates_until_authoritative_snapshot() {
+    use crate::agent_sessions::{AgentStatus, SessionEvent, SessionOrigin};
+
+    let mut app = test_app();
+    let (tx, mut hooks) = tokio::sync::mpsc::unbounded_channel();
+    app.set_session_hook_tx(tx);
+    let row = seed_resume_row(&mut app, AgentStatus::Historical, SessionOrigin::Unknown);
+    app.activate_agent_session_routed(&row);
+    app.handle_event(AppEvent::SessionResumeCompleted {
+        key: row.key.clone(),
+        request_id: app.pending_session_resumes[&row.key].request_id,
+        result: Ok(Some("new-pane".into())),
+    });
+    assert!(
+        matches!(hooks.try_recv(), Ok(SessionEvent::ResumePaneAssigned { key, pane_session_id }) if key == row.key && pane_session_id == "new-pane")
+    );
+    assert!(
+        hooks.try_recv().is_err(),
+        "success is a single atomic master mutation"
+    );
+    let live = app.agent_sessions.get(&row.key).unwrap().clone();
+    assert_eq!(live.status, AgentStatus::Idle);
+    assert_eq!(live.pane_session_id.as_deref(), Some("new-pane"));
+
+    app.last_dispatched_command = None;
+    app.activate_agent_session_routed(&row);
+    assert!(
+        app.last_dispatched_command.is_none(),
+        "stale master snapshot must not duplicate a successful resume"
+    );
+    app.activate_agent_session_routed(&live);
+    assert_eq!(
+        app.last_dispatched_command.unwrap().kind,
+        DispatchedCommandKind::FocusPane
+    );
+    assert!(!app.pending_session_resumes.contains_key(&row.key));
+}
+
+#[test]
+fn resumed_pane_close_clears_pending_and_allows_immediate_retry() {
+    use crate::agent_sessions::{AgentStatus, SessionEvent, SessionOrigin};
+
+    for creation_completed in [false, true] {
+        let mut app = test_app();
+        let row = seed_resume_row(&mut app, AgentStatus::Historical, SessionOrigin::Unknown);
+        app.activate_agent_session_routed(&row);
+        let request_id = app.pending_session_resumes[&row.key].request_id;
+        if creation_completed {
+            app.handle_event(AppEvent::SessionResumeCompleted {
+                key: row.key.clone(),
+                request_id,
+                result: Ok(Some("quick-pane".into())),
+            });
+        } else {
+            app.handle_event(AppEvent::AgentSessionEvent(SessionEvent::SessionStarted {
+                key: row.key.clone(),
+                cli_source: row.cli_source.clone(),
+                pane_session_id: "quick-pane".into(),
+                cwd: row.cwd.clone(),
+                title: row.title.clone(),
+            }));
+        }
+        app.handle_event(AppEvent::AgentSessionEvent(SessionEvent::PaneClosed {
+            pane_session_id: "QUICK-PANE".into(),
+        }));
+
+        assert!(!app.pending_session_resumes.contains_key(&row.key));
+        if !creation_completed {
+            app.handle_event(AppEvent::SessionResumeCompleted {
+                key: row.key.clone(),
+                request_id,
+                result: Ok(Some("quick-pane".into())),
+            });
+        }
+        let ended = app.agent_sessions.get(&row.key).unwrap().clone();
+        assert_eq!(ended.status, AgentStatus::Ended);
+        assert!(ended.pane_session_id.is_none());
+        app.last_dispatched_command = None;
+        app.activate_agent_session_routed(&ended);
+        assert_eq!(
+            app.last_dispatched_command.as_ref().unwrap().kind,
+            DispatchedCommandKind::NewTabResume
+        );
+        assert_ne!(app.pending_session_resumes[&row.key].request_id, request_id);
+    }
+}
+
+#[tokio::test]
+async fn resume_master_removal_clears_only_an_observed_binding() {
+    use crate::agent_sessions::{AgentStatus, SessionOrigin};
+
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            for bound in [false, true] {
+                let mut app = test_app();
+                let row =
+                    seed_resume_row(&mut app, AgentStatus::Historical, SessionOrigin::Unknown);
+                app.activate_agent_session_routed(&row);
+                let request_id = app.pending_session_resumes[&row.key].request_id;
+                if bound {
+                    app.handle_event(AppEvent::SessionResumeCompleted {
+                        key: row.key.clone(),
+                        request_id,
+                        result: Ok(Some("quick-pane".into())),
+                    });
+                }
+                app.handle_event(AppEvent::AliveSessionRemoved(
+                    agent_client_protocol::schema::v1::SessionId::new(row.key.clone()),
+                ));
+                assert_eq!(app.pending_session_resumes.contains_key(&row.key), !bound);
+            }
+        })
+        .await;
+}
+
+#[test]
+fn resume_stop_clears_only_an_observed_binding() {
+    use crate::agent_sessions::{AgentStatus, SessionEvent, SessionOrigin};
+
+    for bound in [false, true] {
+        let mut app = test_app();
+        let row = seed_resume_row(&mut app, AgentStatus::Historical, SessionOrigin::Unknown);
+        app.activate_agent_session_routed(&row);
+        let request_id = app.pending_session_resumes[&row.key].request_id;
+        if bound {
+            app.handle_event(AppEvent::SessionResumeCompleted {
+                key: row.key.clone(),
+                request_id,
+                result: Ok(Some("quick-pane".into())),
+            });
+        }
+        app.handle_event(AppEvent::AgentSessionEvent(SessionEvent::SessionStopped {
+            key: row.key.clone(),
+            reason: "user_exit".into(),
+        }));
+        assert_eq!(app.pending_session_resumes.contains_key(&row.key), !bound);
+    }
+}
+
+#[test]
+fn resume_publish_success_does_not_claim_a_live_session_and_missing_binding_can_retry() {
+    use crate::agent_sessions::{AgentStatus, SessionOrigin};
+
+    let mut app = test_app();
+    app.agent_supports_load_session = true;
+    let row = seed_resume_row(&mut app, AgentStatus::Historical, SessionOrigin::AgentPane);
+    app.activate_agent_session_routed(&row);
+    let request_id = app.pending_session_resumes[&row.key].request_id;
+    app.handle_event(AppEvent::SessionResumeCompleted {
+        key: row.key.clone(),
+        request_id,
+        result: Ok(None),
+    });
+    assert_eq!(
+        app.agent_sessions.get(&row.key).unwrap().status,
+        AgentStatus::Historical
+    );
+    app.last_dispatched_command = None;
+    app.activate_agent_session_routed(&row);
+    assert!(app.last_dispatched_command.is_none());
+
+    app.pending_session_resumes
+        .get_mut(&row.key)
+        .unwrap()
+        .completed_at = Some(std::time::Instant::now() - RESUME_BINDING_GRACE);
+    app.activate_agent_session_routed(&row);
+    assert!(
+        app.last_dispatched_command.is_some(),
+        "a successful publish without a binding cannot block retries forever"
+    );
+    assert_ne!(app.pending_session_resumes[&row.key].request_id, request_id);
+}
+
+#[test]
+fn resume_completion_preserves_concurrent_hook_binding() {
+    use crate::agent_sessions::{AgentStatus, SessionEvent, SessionOrigin};
+
+    for result in [
+        Err("failed after hook".into()),
+        Ok(Some("late-pane".into())),
+    ] {
+        let mut app = test_app();
+        let row = seed_resume_row(&mut app, AgentStatus::Ended, SessionOrigin::Unknown);
+        app.activate_agent_session_routed(&row);
+        app.agent_sessions.apply(SessionEvent::SessionStarted {
+            key: row.key.clone(),
+            cli_source: row.cli_source.clone(),
+            pane_session_id: "real-pane".into(),
+            cwd: row.cwd.clone(),
+            title: "real title".into(),
+        });
+        app.agent_sessions.apply(SessionEvent::ToolStarting {
+            key: row.key.clone(),
+            tool_name: "real tool".into(),
+        });
+        app.handle_event(AppEvent::SessionResumeCompleted {
+            key: row.key.clone(),
+            request_id: app.pending_session_resumes[&row.key].request_id,
+            result,
+        });
+        let live = app.agent_sessions.get(&row.key).unwrap();
+        assert_eq!(live.status, AgentStatus::Working);
+        assert_eq!(live.pane_session_id.as_deref(), Some("real-pane"));
+        assert_eq!(live.current_tool.as_deref(), Some("real tool"));
+    }
+}
+
+#[test]
+fn resume_failure_follows_invoking_tab_rename() {
+    use crate::agent_sessions::{AgentStatus, SessionOrigin};
+
+    let mut app = test_app();
+    let row = seed_resume_row(&mut app, AgentStatus::Ended, SessionOrigin::Unknown);
+    app.activate_agent_session_routed(&row);
+    let request_id = app.pending_session_resumes[&row.key].request_id;
+    app.rename_tab_session(DEFAULT_TAB_ID, "renamed-tab", Some("new-window"));
+    app.handle_event(AppEvent::SessionResumeCompleted {
+        key: row.key,
+        request_id,
+        result: Err("COM activation failed".into()),
+    });
+    assert!(
+        matches!(app.tab_sessions["renamed-tab"].messages.last(), Some(ChatMessage::Error(message)) if message.contains("COM activation failed"))
+    );
+    assert!(!app.tab_sessions.contains_key(DEFAULT_TAB_ID));
+}
+
 /// When the stored cwd no longer exists on disk (e.g. user deleted
 /// the project), `dispatch_resume` must omit `-d <cwd>` entirely so
 /// wtcli falls back to the profile's startingDirectory. Without

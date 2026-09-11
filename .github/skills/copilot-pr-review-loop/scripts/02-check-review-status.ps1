@@ -20,7 +20,8 @@
                             review", not "never reviewed")
       - ReviewAtHead       : true iff latest Copilot review's commit.oid == HeadOid
       - NoNewComments      : true iff the latest review body matches
-                             "generated no new comments" / "generated 0 comments"
+                             a recognized zero-comment summary and the review's
+                             actual inline comment count is zero
       - OpenThreadCount    : number of unresolved review threads (from all
                              reviewers); informational — convergence does
                              NOT require this to be zero
@@ -122,6 +123,20 @@ param(
     [switch]$SingleIteration
 )
 
+function Test-CopilotZeroCommentReview {
+    param(
+        [string]$Body,
+        [Nullable[int]]$CommentCount
+    )
+
+    if ($null -eq $CommentCount -or $CommentCount -ne 0) {
+        return $false
+    }
+    $legacy = '(?i)generated no new comments|generated\s+0\s+comments'
+    $current = '(?im)^\s*-?\s*\*{0,2}Comments generated:\*{0,2}\s*0\s+new\b'
+    return ($Body -match $legacy -or $Body -match $current)
+}
+
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot/_lib.ps1"
 
@@ -148,7 +163,7 @@ query($o:String!,$r:String!,$n:Int!){
     pullRequest(number:$n){
       headRefOid
       state
-      reviews(last:100){nodes{author{login} state submittedAt body commit{oid}}}
+      reviews(last:100){nodes{author{login} state submittedAt body commit{oid} comments{totalCount}}}
       reviewRequests(first:100){nodes{requestedReviewer{__typename ... on Bot{login} ... on User{login} ... on Mannequin{login}}}}
     }
   }
@@ -225,7 +240,8 @@ if ($latest) {
         $reviewAtHead = ($latestCommitOid -eq $pr.headRefOid)
     }
     $bodyText = if ($latest.body) { $latest.body } else { '' }
-    $noNewComments = ($bodyText -match '(?i)generated no new comments|generated\s+0\s+comments|reviewed\s+\d+\s+out\s+of\s+\d+\s+changed\s+files\s+in\s+this\s+pull\s+request\s+and\s+generated\s+no\s+new\s+comments')
+    $commentCount = if ($latest.comments) { $latest.comments.totalCount } else { $null }
+    $noNewComments = Test-CopilotZeroCommentReview -Body $bodyText -CommentCount $commentCount
     $bodyHead = if ($bodyText.Length -gt 300) { $bodyText.Substring(0, 300) } else { $bodyText }
 }
 

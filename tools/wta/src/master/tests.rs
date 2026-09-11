@@ -11571,27 +11571,19 @@ async fn real_hook_takes_over_born_bound_session() {
 
 #[tokio::test]
 async fn resume_binding_events_are_born_bound_not_hook_owned() {
-    // `/sessions` resume publishes ResumeDispatched / ResumePaneAssigned over
+    // `/sessions` resume publishes ResumePaneAssigned on creation success over
     // the generic session_hook method. These are the hook-free resume binding,
     // so they must record `born_bound` (watcher can supply status), NOT
     // `hook_owned` — otherwise the resumed row sits at Idle forever.
     let state = make_state();
     let sid = acp::schema::v1::SessionId::new("sid-resume".to_string());
 
-    let dispatched = crate::agent_sessions::SessionEvent::ResumeDispatched {
-        key: "sid-resume".to_string(),
-    };
-    handle_session_hook(&state, dispatched, false)
-        .await
-        .expect("resume dispatched accepted");
-    assert!(
-        state.born_bound.lock().await.contains(&sid),
-        "ResumeDispatched must be born_bound"
+    let mut history = crate::session_registry::SessionInfo::new(
+        sid.clone(),
+        std::path::PathBuf::from("C:\\repo"),
     );
-    assert!(
-        !state.hook_owned.lock().await.contains(&sid),
-        "ResumeDispatched must NOT be hook_owned"
-    );
+    history.status = Some(crate::agent_sessions::AgentStatus::Historical);
+    state.registry.upsert(history).await;
 
     let assigned = crate::agent_sessions::SessionEvent::ResumePaneAssigned {
         key: "sid-resume".to_string(),
@@ -11605,6 +11597,9 @@ async fn resume_binding_events_are_born_bound_not_hook_owned() {
         "ResumePaneAssigned must be born_bound"
     );
     assert!(!state.hook_owned.lock().await.contains(&sid));
+    let row = state.registry.lookup(&sid).await.unwrap();
+    assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Idle));
+    assert_eq!(row.pane_session_id.as_deref(), Some("pane-resume"));
 }
 
 #[tokio::test]
@@ -11631,12 +11626,24 @@ async fn resume_binding_events_clear_a_stale_hook_ownership_claim() {
         .expect("real hook accepted");
     assert!(state.hook_owned.lock().await.contains(&sid));
 
-    let dispatched = crate::agent_sessions::SessionEvent::ResumeDispatched {
+    handle_session_hook(
+        &state,
+        crate::agent_sessions::SessionEvent::SessionStopped {
+            key: "sid-rerun".to_string(),
+            reason: "exit".into(),
+        },
+        false,
+    )
+    .await
+    .unwrap();
+
+    let assigned = crate::agent_sessions::SessionEvent::ResumePaneAssigned {
         key: "sid-rerun".to_string(),
+        pane_session_id: "pane-new".to_string(),
     };
-    handle_session_hook(&state, dispatched, false)
+    handle_session_hook(&state, assigned, false)
         .await
-        .expect("resume dispatched accepted");
+        .expect("resume binding accepted");
 
     assert!(
         !state.hook_owned.lock().await.contains(&sid),
@@ -11852,48 +11859,52 @@ async fn master_com_shell_prompt_preserves_agent_panes_and_other_sequences() {
 /// watcher against live hook state.
 #[tokio::test]
 async fn late_resume_pane_assignment_preserves_direct_hook_ownership() {
-    let state = make_state();
-    let sid = acp::schema::v1::SessionId::new("direct-resume-race".to_string());
+    for callback_pane in ["pane-resume-race", "different-resume-pane"] {
+        let state = make_state();
+        let sid = acp::schema::v1::SessionId::new("direct-resume-race".to_string());
 
-    handle_master_wt_event(
-        &state,
-        serde_json::json!({
-            "method": "agent_event",
-            "params": {
-                "event": "agent.session.start",
-                "cli_source": "copilot",
-                "agent_session_id": "direct-resume-race",
-                "pane_id": "pane-resume-race",
-                "payload": { "cwd": "C:\\repo" }
-            }
-        }),
-    )
-    .await;
-    assert!(state.hook_owned.lock().await.contains(&sid));
+        handle_master_wt_event(
+            &state,
+            serde_json::json!({
+                "method": "agent_event",
+                "params": {
+                    "event": "agent.session.start",
+                    "cli_source": "copilot",
+                    "agent_session_id": "direct-resume-race",
+                    "pane_id": "pane-resume-race",
+                    "payload": { "cwd": "C:\\repo" }
+                }
+            }),
+        )
+        .await;
+        assert!(state.hook_owned.lock().await.contains(&sid));
 
-    let response = handle_session_hook(
-        &state,
-        crate::agent_sessions::SessionEvent::ResumePaneAssigned {
-            key: "direct-resume-race".to_string(),
-            pane_session_id: "pane-resume-race".to_string(),
-        },
-        false,
-    )
-    .await
-    .expect("late binding callback accepted");
-    assert_eq!(
-        response.0.get(),
-        r#"{"applied":false}"#,
-        "the callback is a no-op because the hook already bound this pane"
-    );
-    assert!(
-        state.hook_owned.lock().await.contains(&sid),
-        "a no-op binding callback must not erase current hook ownership"
-    );
-    assert!(
-        !state.born_bound.lock().await.contains(&sid),
-        "the no-op callback must not reclassify the current generation"
-    );
+        let response = handle_session_hook(
+            &state,
+            crate::agent_sessions::SessionEvent::ResumePaneAssigned {
+                key: "direct-resume-race".to_string(),
+                pane_session_id: callback_pane.to_string(),
+            },
+            false,
+        )
+        .await
+        .expect("late binding callback accepted");
+        assert_eq!(
+            response.0.get(),
+            r#"{"applied":false}"#,
+            "the callback is a no-op because the hook already bound this pane"
+        );
+        assert!(
+            state.hook_owned.lock().await.contains(&sid),
+            "a no-op binding callback must not erase current hook ownership"
+        );
+        assert!(
+            !state.born_bound.lock().await.contains(&sid),
+            "the no-op callback must not reclassify the current generation"
+        );
+        let row = state.registry.lookup(&sid).await.unwrap();
+        assert_eq!(row.pane_session_id.as_deref(), Some("pane-resume-race"));
+    }
 }
 
 /// Regression for the cwd-basename ghost: a terminal hook for a session master

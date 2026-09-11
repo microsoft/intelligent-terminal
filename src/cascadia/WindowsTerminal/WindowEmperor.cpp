@@ -1870,10 +1870,9 @@ void WindowEmperor::_initializeProtocolServer()
     TerminalProtocolComServer::s_setEmperor(this);
     if (SUCCEEDED_LOG(TerminalProtocolComServer::s_StartListening()))
     {
-        // Stringify the CLSID so child processes can discover us via CoCreateInstance.
+        // Elevated instances publish a live factory instead of the package-scoped class.
         wil::unique_cotaskmem_string clsidStr;
-        if (SUCCEEDED(StringFromCLSID(__uuidof(TerminalProtocolComServer), &clsidStr))
-            && clsidStr)
+        if (SUCCEEDED(StringFromCLSID(TerminalProtocolComServer::s_EndpointClsid(), &clsidStr)) && clsidStr)
         {
             _comClsid = clsidStr.get();
             SetEnvironmentVariableW(L"WT_COM_CLSID", _comClsid.c_str());
