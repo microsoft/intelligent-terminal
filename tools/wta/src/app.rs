@@ -121,6 +121,7 @@ pub type QueuedSessionHook = crate::agent_sessions::SessionEvent;
 struct PendingSessionResume {
     request_id: uuid::Uuid,
     tab_id: String,
+    closed_panes: HashSet<String>,
     // Publishing an event is not proof that WT/ACP created the new session.
     // Bound the acknowledgement grace period so a lost binding can be retried.
     completed_at: Option<std::time::Instant>,
@@ -3427,6 +3428,7 @@ impl App {
             PendingSessionResume {
                 request_id,
                 tab_id: self.active_tab_key().to_string(),
+                closed_panes: HashSet::new(),
                 completed_at: None,
             },
         );
@@ -3464,9 +3466,20 @@ impl App {
         if pending.request_id != request_id {
             return;
         }
+        if let Ok(Some(pane)) = &result {
+            if pending
+                .closed_panes
+                .contains(&crate::agent_sessions::pane_key(pane))
+            {
+                self.pending_session_resumes.remove(&key);
+                tracing::debug!(target: "agents_view", %key, %request_id, "ignoring resume completion for a pane already closed");
+                return;
+            }
+        }
         match result {
             Ok(pane) => {
                 pending.completed_at = Some(std::time::Instant::now());
+                pending.closed_panes.clear();
                 if let Some(pane_session_id) = pane {
                     // One success event atomically promotes AND binds at master.
                     // Never send ResumeDispatched on a separate racing RPC.

@@ -7438,6 +7438,49 @@ fn resume_success_binds_and_deduplicates_until_authoritative_snapshot() {
 }
 
 #[test]
+fn resume_close_before_assignment_does_not_revive_the_pane() {
+    use crate::agent_sessions::{AgentStatus, SessionEvent, SessionOrigin};
+
+    for closed_created_pane in [false, true] {
+        let mut app = test_app();
+        let row = seed_resume_row(&mut app, AgentStatus::Historical, SessionOrigin::Unknown);
+        app.activate_agent_session_routed(&row);
+        let request_id = app.pending_session_resumes[&row.key].request_id;
+        app.handle_event(AppEvent::AgentSessionEvent(SessionEvent::PaneClosed {
+            pane_session_id: if closed_created_pane {
+                "NEW-PANE"
+            } else {
+                "unrelated-pane"
+            }
+            .into(),
+        }));
+        app.handle_event(AppEvent::SessionResumeCompleted {
+            key: row.key.clone(),
+            request_id,
+            result: Ok(Some("new-pane".into())),
+        });
+
+        if closed_created_pane {
+            let current = app.agent_sessions.get(&row.key).unwrap();
+            assert_eq!(current.status, AgentStatus::Historical);
+            assert!(current.pane_session_id.is_none());
+            assert!(!app.pending_session_resumes.contains_key(&row.key));
+            app.activate_agent_session_routed(&row);
+            let retry = &app.pending_session_resumes[&row.key];
+            assert_ne!(retry.request_id, request_id);
+            assert!(retry.closed_panes.is_empty());
+        } else {
+            let current = app.agent_sessions.get(&row.key).unwrap();
+            assert_eq!(current.status, AgentStatus::Idle);
+            assert_eq!(current.pane_session_id.as_deref(), Some("new-pane"));
+            assert!(app.pending_session_resumes[&row.key]
+                .closed_panes
+                .is_empty());
+        }
+    }
+}
+
+#[test]
 fn resumed_pane_close_clears_pending_and_allows_immediate_retry() {
     use crate::agent_sessions::{AgentStatus, SessionEvent, SessionOrigin};
 

@@ -421,6 +421,16 @@ impl App {
 
     fn apply_session_registry_event(&mut self, event: crate::agent_sessions::SessionEvent) {
         use crate::agent_sessions::SessionEvent;
+        if let SessionEvent::PaneClosed { pane_session_id } = &event {
+            let pane = crate::agent_sessions::pane_key(pane_session_id);
+            if !pane.is_empty() {
+                for pending in self.pending_session_resumes.values_mut() {
+                    if pending.completed_at.is_none() {
+                        pending.closed_panes.insert(pane.clone());
+                    }
+                }
+            }
+        }
         let closing_key = match &event {
             SessionEvent::PaneClosed { pane_session_id } => {
                 self.agent_sessions.key_for_pane(pane_session_id)

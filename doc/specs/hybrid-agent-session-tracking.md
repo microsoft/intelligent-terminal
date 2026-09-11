@@ -227,6 +227,11 @@ or take its hook ownership. They also cannot displace a different live session
 that already owns the returned pane. Stale index cleanup must preserve any
 other session's valid binding.
 
+While creation is in flight, each pending request remembers normalized pane
+closures even if no session-to-pane binding exists yet. A later completion for
+one of those closed panes is discarded without promoting the row. These
+temporary IDs are cleared at completion and are not retained as global history.
+
 **Resume pane ownership.** `ResumePaneAssigned` marks the row's pane binding
 `born_bound_pane` (`session_registry.rs`) when the assignment is accepted.
 Creation can establish this binding before the CLI's hook arrives; if a live
