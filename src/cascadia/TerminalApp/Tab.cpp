@@ -822,8 +822,12 @@ namespace winrt::TerminalApp::implementation
         // Attempt to remove the active pane from the tree
         if (const auto pane = _rootPane->DetachPane(selectedPane))
         {
-            // Just make sure that the remaining pane is marked active
-            _UpdateActivePane(_rootPane->GetActivePane());
+            // Detaching the last terminal can close the remaining agent-only
+            // subtree, leaving no active pane while Closed removes the tab.
+            if (const auto activePane = _rootPane->GetActivePane())
+            {
+                _UpdateActivePane(activePane);
+            }
 
             return pane;
         }
