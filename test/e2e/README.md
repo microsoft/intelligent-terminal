@@ -58,12 +58,20 @@ authenticated ACP agents. Current status (run on the Store package):
 | `Feature.OpenCodeSessionResume.Tests.ps1` | PR #464: OpenCode history discovery and `--session` resume restore the prior transcript | 1 (environment-gated) |
 | `Feature.OpenCodeHooks.Tests.ps1` | PR #476: packaged hook install, shell-session lifecycle routing, picker visibility, and ACP duplicate suppression | 1 (environment-gated) |
 | `Feature.SharedAgentLifecycle.Tests.ps1` | PR #425 + ACP cleanup: closing a tab mid-turn physically closes only its session without terminating the shared agent CLI or breaking sibling tabs | 1 |
-| `Feature.AgentPaneLifetime.Tests.ps1` | Issue #841: hidden retention, split-tab cleanup, lease retirement, draining-only crash suppression, agent-first/later cross-window moves, and rejected pane-move rollback preserving both tabs and sessions; deterministic stdio fixture | 10 |
+| `Feature.AgentPaneLifetime.Tests.ps1` | Issue #841: hidden retention, split-tab cleanup, lease retirement, draining-only crash suppression, agent-first/later cross-window moves, and rejected pane-move rollback preserving both tabs and sessions; PR #938: exact saved-session resume without prewarm replacement (`SessionResume` tag), repeated independent loads, transcript restoration, and ordinary prewarm; deterministic stdio fixture | 11 |
 | `Feature.PerTabAgent.Tests.ps1` | C225-C228 + PR #487: `/agent` picker/direct selection, invalid-id safety, per-tab isolation/shared-master reuse, and global-default/override behavior | 7 |
 | `Feature.WslAgentBackend.Tests.ps1` | PR #481 profile-scoped WSL agent backend: settings hot reload, helper/master source routing, and authenticated chat | 2 (environment-gated) |
 | `Feature.DelegateSource.Tests.ps1` | PR #488 profile-scoped delegate source: strict host/WSL `wta delegate` routing with no fallback in either direction | 2 (environment-gated) |
 | `Feature.AgentChat.Tests.ps1` / `Feature.AgentPopup.Tests.ps1` | agent chat + `/` popup/menu interaction | 1 + 3 |
 | `Feature.AgentPaneMove.Tests.ps1` | PR #429: `/move` stays per-tab, preserves global position, and restores agent input focus | 1 |
+
+The `SessionResume` case in `Feature.AgentPaneLifetime` uses the opt-in persisted
+interaction fixture without provider authentication or model quota. It queries
+the live session registry through `wta sessions list --master <this run's pipe>`;
+the provenance JSONL records `session/new` only and cannot resolve resumed panes.
+Resume control requests are dispatched directly, not echoed to event listeners.
+Scoped request logs and registry snapshots remain in the suite's artifact directory;
+the disposable fixture session store is removed and ItE2E restores user settings.
 
 **Coverage: 155 of 157 automatable `[E2E]` checklist items are implemented.**
 **Test status: 135 baseline feature cases pass + 3 documented skips** (`wta sessions list` is

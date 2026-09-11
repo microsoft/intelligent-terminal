@@ -70,7 +70,7 @@ the owning Terminal tab supplies effective host settings. This avoids treating
 a settings-file load or a switch toggle as a session start.
 
 The wire payload contains **24 business fields plus `PartA_PrivTags`**.
-The observed-value column comes from the 2026-09-11 live ETW capture; values
+The observed-value column comes from the 2026-09-11 live ETW captures; values
 are examples, not defaults or a test of every allowed value. Correlation IDs
 are omitted below rather than publishing actual session identifiers.
 
@@ -78,11 +78,11 @@ are omitted below rather than publishing actual session identifiers.
 |---|---|---|---|
 | `StartId` | String | New random UUID for this successful start/load; event-level deduplication key | Unique UUID per event |
 | `SessionId` | String | ACP session identifier, not `WT_SESSION`; reused when the same saved session is loaded again | ACP session UUID |
-| `StartKind` | String | `New` or `Load`; `Load` covers both ACP session-view resume and saved-layout restore when ACP load succeeds | `New`; `Load` not captured |
+| `StartKind` | String | `New` or `Load`; `Load` covers both ACP session-view resume and saved-layout restore when ACP load succeeds | `New`, `Load` |
 | `AgentId` | String | Actually connected agent category | `copilot` |
 | `AgentSource` | String | `host`, `wsl`, or `unknown`; no distribution name | `host` |
 | `DelegateAgentId` | String | Helper's current resolved delegate category, or `none` | `copilot` |
-| `ModelSource` | String | `byok`, `provider`, or `unknown`; helper's active BYOK process binding or confirmed session model category, not a model identifier or inventory of configured providers | `provider` |
+| `ModelSource` | String | `byok`, `provider`, or `unknown`; helper's active BYOK process binding or confirmed session model category, not a model identifier or inventory of configured providers | `provider` (new), `unknown` (load) |
 | `AutoErrorDetection` | Bool | Policy-aware host effective setting | `true` |
 | `AutoFix` | Bool | Helper runtime autofix switch AND policy-aware host effective setting | `false` |
 | `AgentSessionManagement` | Bool | Policy-aware host effective setting | `true` |
@@ -90,9 +90,9 @@ are omitted below rather than publishing actual session identifiers.
 | `ShowTokenUsageAndCost` | Bool | Current usage/cost UI setting | `true` |
 | `VerticalTabs` | Bool | Current tab layout is vertical | `false` |
 | `FirstWindowPreference` | String | `defaultProfile`, `persistedLayout`, or `persistedLayoutAndContent` | `defaultProfile` |
-| `AutomaticYolo` | String | `enabled` / `disabled` automatic reconciliation target, or `provider` when no automatic directive applies | `disabled` |
+| `AutomaticYolo` | String | `enabled` / `disabled` automatic reconciliation target, or `provider` when no automatic directive applies | `disabled` (new), `provider` (load) |
 | `YoloPolicyBlocked` | Bool | Helper runtime policy prohibits requesting YOLO enablement | `false` |
-| `YoloControlOwner` | String | `automatic`, `manual`, `provider-restored`, or `unknown` | `automatic` |
+| `YoloControlOwner` | String | `automatic`, `manual`, `provider-restored`, or `unknown` | `automatic` (new), `provider-restored` (load) |
 | `CoordinatorConfigured` | Bool | Configured legacy coordinator switch; not evidence a coordinator is running | `false` |
 | `ReadConfirmationConfigured` | WideString | Configured read-operation value: `auto`, `prompt`, or `unknown` | `auto` |
 | `CreateConfirmationConfigured` | WideString | Configured create-operation value: `auto`, `prompt`, or `unknown` | `auto` |
@@ -272,14 +272,41 @@ Every dedicated event observed above also carried `PartA_PrivTags=0`.
 The smoke prompt, reply marker, and command text were absent from the decoded
 telemetry payloads. User settings remained unchanged.
 
-**Resume validation did not pass.** A production
+**The initial resume validation did not pass.** A production
 `resume_in_new_agent_tab` control request created a new tab and a fresh ACP
 session rather than reaching `session/load`. Consequently the capture
 contained neither `AcpLoadSessionComplete` nor `AgentSessionStarted` with
-`StartKind=Load`. The source-defined load fields and lifecycle rules above
-must not be read as successful live verification of that path; it requires
-another capture after the resume flow is corrected. Other agent providers, BYOK,
-WSL, and policy/override combinations were not exercised in this sample.
+`StartKind=Load`. Deferred tab prewarm created a blank helper before the old
+state-echo path could consume the pending resume target.
+
+**A follow-up capture passed after correcting resume/prewarm ownership.**
+Deferred tab initialization now consumes the requested session before ordinary
+prewarm and supplies it directly in the helper launch arguments. The same
+production control request loaded the requested saved Copilot session, and
+the restored conversation was visible in the new agent pane. Helper logs
+confirmed that its bootstrap skipped `session/new`; the ordinary startup tab
+still prewarmed a fresh session.
+
+The follow-up capture ran from **04:36:18 to 04:37:27 UTC**, with **27 events:
+25 product events and 2 trace infrastructure events, with 0 events lost**.
+
+| Event / check | Count | Observed field result |
+|---|---|---|
+| `AcpLoadSessionComplete` | 1 | `DurationMs=1856.459100` (Double), `Success=true` (Bool), `PartA_PrivTags=0` (UInt64); this event has no `SessionId` or `Route` field |
+| `AgentSessionStarted` (`StartKind=Load`) | 1 | All 24 business fields plus `PartA_PrivTags`; `SessionId` matched the requested saved session, with a new `StartId` |
+| `AgentSessionStarted` (`StartKind=New`) | 1 | All 24 business fields plus `PartA_PrivTags`, from the ordinary tab's independently prewarmed session |
+
+For the loaded snapshot, `ModelSource=unknown`, `AutomaticYolo=provider`, and
+`YoloControlOwner=provider-restored`; the table above records these actual
+values rather than assuming that the global model/YOLO preference was applied
+to a restored session. User settings remained unchanged. Existing provider
+names/GUIDs, registration, and keyword/privacy constants were not changed.
+
+Across both captures, **10 of the 22 dedicated event types** were observed.
+This verifies the load event and complete snapshot payload, not every event
+type or parameter combination. The Settings Editor provider was not enabled;
+other agent providers, BYOK, WSL, and policy/override combinations were not
+exercised. Local ETW emission does not establish backend ingestion.
 
 ## Inherited Windows Terminal / OpenConsole reference
 

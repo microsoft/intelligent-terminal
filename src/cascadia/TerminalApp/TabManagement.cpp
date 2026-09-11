@@ -320,7 +320,26 @@ namespace winrt::TerminalApp::implementation
                 // blank pre-warm cannot race the agent pane that batch is
                 // about to restore — `_PrewarmAgentPanesAfterStartup` covers
                 // whatever the replay left without one.
-                if (deferPrewarm)
+                if (auto pendingResume = self->_pendingLoadSessions.extract(newTabId); !pendingResume.empty())
+                {
+                    // A requested load owns this helper's first session. Do not
+                    // let ordinary prewarm replace it with a blank session/new.
+                    _agentPaneLog(
+                        std::string{ "_InitializeTab(deferred): resuming agent session on tab " } +
+                        winrt::to_string(newTabId));
+                    if (!self->_AutoCreateHiddenAgentPaneShared(
+                            tabImplCom,
+                            /*intoSessionsView*/ false,
+                            /*autoStash*/ false,
+                            pendingResume.mapped().sessionId,
+                            pendingResume.mapped().cwd))
+                    {
+                        _agentPaneLog(
+                            std::string{ "_InitializeTab(deferred): failed to start resumed agent pane on tab " } +
+                            winrt::to_string(newTabId));
+                    }
+                }
+                else if (deferPrewarm)
                 {
                     _agentPaneLog(
                         std::string{ "_InitializeTab(deferred): startup replay owns the agent pane for tab " } +

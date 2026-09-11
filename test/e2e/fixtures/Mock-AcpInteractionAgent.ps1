@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory)][string]$LogPath,
-    [string]$ResolverFixturePath
+    [string]$ResolverFixturePath,
+    [string]$SessionStorePath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -8,6 +9,9 @@ $ErrorActionPreference = 'Stop'
 $sessionCounter = 0
 $currentMode = 'ask'
 $sessionMcpServers = @{}
+$savedSessions = if ($SessionStorePath -and (Test-Path -LiteralPath $SessionStorePath)) {
+    Get-Content -LiteralPath $SessionStorePath -Raw | ConvertFrom-Json -AsHashtable
+} else { @{} }
 $resolverFixture = if ($ResolverFixturePath) {
     Get-Content -LiteralPath $ResolverFixturePath -Raw | ConvertFrom-Json
 }
@@ -207,15 +211,17 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
     switch ($request.method) {
         'initialize' {
             Write-FixtureLog -Message 'initialize'
+            $capabilities = @{
+                mcpCapabilities = @{ http = $true; sse = $false }
+                sessionCapabilities = @{ close = @{} }
+            }
+            if ($SessionStorePath) { $capabilities.loadSession = $true }
             Send-AcpMessage @{
                 jsonrpc = '2.0'
                 id = $request.id
                 result = @{
                     protocolVersion = 1
-                    agentCapabilities = @{
-                        mcpCapabilities = @{ http = $true; sse = $false }
-                        sessionCapabilities = @{ close = @{} }
-                    }
+                    agentCapabilities = $capabilities
                     agentInfo = @{
                         name = 'Interaction Fixture'
                         version = '1.0.0'
@@ -236,6 +242,10 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
                 ConvertTo-Json -InputObject ([string]$request.params.cwd) -Compress
             }
             Write-FixtureLog -Message "session/new-cwd|$sessionId|$cwdJson"
+            if ($SessionStorePath) {
+                $savedSessions[$sessionId] = @{ cwd = [string]$request.params.cwd; transcript = '' }
+                $savedSessions | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $SessionStorePath -Encoding utf8
+            }
             Send-AcpMessage @{
                 jsonrpc = '2.0'
                 id = $request.id
@@ -244,6 +254,34 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
                     configOptions = @(Get-SessionConfigOptions)
                 }
             }
+        }
+        'session/load' {
+            if (-not $SessionStorePath) {
+                Send-AcpMessage @{
+                    jsonrpc = '2.0'; id = $request.id
+                    error = @{ code = -32601; message = 'Method not found' }
+                }
+                break
+            }
+            $sessionId = [string]$request.params.sessionId
+            $loadEvidence = @{ sessionId = $sessionId; cwd = [string]$request.params.cwd }
+            Write-FixtureLog -Message ("session/load|" + ($loadEvidence | ConvertTo-Json -Compress))
+            if (-not $savedSessions.ContainsKey($sessionId)) {
+                Send-AcpMessage @{
+                    jsonrpc = '2.0'; id = $request.id
+                    error = @{ code = -32000; message = 'Saved fixture session not found' }
+                }
+                break
+            }
+            $sessionMcpServers[$sessionId] = @($request.params.mcpServers) | Select-Object -First 1
+            if ($savedSessions[$sessionId].transcript) {
+                Send-TextUpdate -SessionId $sessionId -Text $savedSessions[$sessionId].transcript
+            }
+            Send-AcpMessage @{
+                jsonrpc = '2.0'; id = $request.id
+                result = @{ configOptions = @(Get-SessionConfigOptions) }
+            }
+            Write-FixtureLog -Message "session/loaded|$sessionId"
         }
         'session/close' {
             Write-FixtureLog -Message "session/close|$($request.params.sessionId)"
@@ -430,6 +468,10 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
             }
             elseif ($promptText -match '(?m)^LIFETIME_(?:[0-9a-f]{12}|[0-9a-f]{32})\s*$') {
                 $marker = $Matches[0].Trim()
+                if ($SessionStorePath) {
+                    $savedSessions[$sessionId].transcript = "ACK:$marker"
+                    $savedSessions | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $SessionStorePath -Encoding utf8
+                }
                 Send-TextUpdate -SessionId $sessionId -Text "ACK:$marker"
                 Write-FixtureLog -Message "lifetime-ack|$sessionId|$marker"
                 Send-AcpMessage @{
