@@ -158,6 +158,7 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(ExecutionPolicyStatus_ClassifiesBlockedAllowedAndUnknown);
     TEST_METHOD(ExecutionPolicyRemediation_PreflightRejectsUnknown);
     TEST_METHOD(ExecutionPolicyRemediation_SucceedsOnlyWhenEveryHostAllowedOrAbsent);
+    TEST_METHOD(ExecutionPolicyProbe_BootstrapsWithoutMaskingEffectivePolicy);
     TEST_METHOD(ExecutionPolicyRemediation_UsesCurrentUserRemoteSignedCommand);
     TEST_METHOD(EnableRemoteSigned_RejectsNonBlockedProbeWithoutLaunching);
 
@@ -1319,10 +1320,24 @@ void ShellIntegrationTests::ExecutionPolicyRemediation_SucceedsOnlyWhenEveryHost
     VERIFY_IS_FALSE(ExecutionPolicyRemediationSucceeded(pwsh, windowsPowerShell));
 }
 
+void ShellIntegrationTests::ExecutionPolicyProbe_BootstrapsWithoutMaskingEffectivePolicy()
+{
+    VERIFY_ARE_EQUAL(
+        std::wstring_view{
+            L"-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "
+            L"Import-Module Microsoft.PowerShell.Security;"
+            L"Remove-Item Env:PSExecutionPolicyPreference -ErrorAction SilentlyContinue;"
+            L"Get-ExecutionPolicy" },
+        Powershell::details::QueryExecutionPolicyArguments);
+}
+
 void ShellIntegrationTests::ExecutionPolicyRemediation_UsesCurrentUserRemoteSignedCommand()
 {
     VERIFY_ARE_EQUAL(
-        std::wstring_view{ L"-NoProfile -NonInteractive -Command Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force" },
+        std::wstring_view{
+            L"-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "
+            L"Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force -ErrorAction SilentlyContinue;"
+            L"if((Get-ExecutionPolicy -Scope CurrentUser) -eq 'RemoteSigned'){exit 0}else{exit 1}" },
         Powershell::details::EnableRemoteSignedArguments);
 }
 

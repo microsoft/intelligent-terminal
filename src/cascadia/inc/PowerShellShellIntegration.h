@@ -61,10 +61,15 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
     namespace details
     {
         inline constexpr std::wstring_view QueryExecutionPolicyArguments{
-            L"-NoProfile -NonInteractive -Command Get-ExecutionPolicy"
+            L"-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "
+            L"Import-Module Microsoft.PowerShell.Security;"
+            L"Remove-Item Env:PSExecutionPolicyPreference -ErrorAction SilentlyContinue;"
+            L"Get-ExecutionPolicy"
         };
         inline constexpr std::wstring_view EnableRemoteSignedArguments{
-            L"-NoProfile -NonInteractive -Command Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force"
+            L"-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "
+            L"Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force -ErrorAction SilentlyContinue;"
+            L"if((Get-ExecutionPolicy -Scope CurrentUser) -eq 'RemoteSigned'){exit 0}else{exit 1}"
         };
 
         inline std::wstring ParseExecutionPolicyOutput(std::string_view raw)
@@ -234,12 +239,14 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
             return result;
         }
 
-        // Runs `<exe> -NoProfile -NonInteractive -Command Get-ExecutionPolicy`
-        // synchronously and returns the lowercased effective policy name from
-        // stdout (e.g. "restricted"), or an EMPTY string if it could not be
-        // determined — CreateProcess failed, the host isn't installed, or the
-        // child didn't finish within the timeout. Empty therefore means "unknown
-        // / probe failed", NOT "blocked" (the caller fails open on empty).
+        // Runs PowerShell with a Process-scope Bypass so its policy-management
+        // module remains loadable even when the effective policy is AllSigned or
+        // Restricted. After loading the module, the command removes the temporary
+        // Process override and asks PowerShell for the real effective policy,
+        // including its built-in default when every persistent scope is Undefined.
+        // Returns an EMPTY string if it could not be determined — CreateProcess
+        // failed, the host isn't installed, or the child timed out. Empty means
+        // "unknown / probe failed", NOT "blocked" (the caller fails open on empty).
         //
         // `outTimedOut`, when provided, is set to true iff the wait hit the
         // timeout (vs. a CreateProcess/pipe failure) — for diagnostic logging.
@@ -252,10 +259,8 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
         // as "blocked", false-stopping FRE completion. 20s comfortably covers a
         // loaded cold start while still bounding the FRE Save so it can't hang.
         //
-        // `-Command <expr>` runs an inline expression that is NOT subject to the
-        // .ps1 execution policy, so this works even when the answer is Restricted
-        // / AllSigned. We deliberately do NOT pass `-ExecutionPolicy` because that
-        // would set the Process scope and override the value we're trying to read.
+        // Without the bootstrap Bypass, PowerShell 7 can reject its own type-data
+        // files before Get-ExecutionPolicy is available under AllSigned.
         inline std::wstring QueryExecutionPolicy(LPCWSTR exe, bool* outTimedOut = nullptr) noexcept
         {
             std::wstring resolved{ exe };

@@ -11,6 +11,7 @@
 #   * Restricted   -> automatically changed to RemoteSigned; FRE completes
 #   * AllSigned    -> automatically changed to RemoteSigned; FRE completes
 #   * RemoteSigned -> no mutation; FRE completes
+#   * Forced remediation failure -> Hooks continue; detection is disabled; retry completes
 # The registry is always restored.
 #
 # NOT covered here, by design: the empty/"undefined"/probe-timeout fail-open path
@@ -40,6 +41,7 @@ BeforeDiscovery {
     # CurrentUser scope these tests force, making the FRE verdict non-deterministic — skip the
     # whole suite when one is in effect rather than assert against an uncontrollable policy.
     $script:EpControllable = Test-WtExecutionPolicyControllable
+    $script:HooksReady = [bool](Get-Command copilot -ErrorAction SilentlyContinue)
 }
 
 Describe 'Feature §0 FRE automatic execution-policy remediation' -Tag 'Feature' -Skip:(-not ($script:DevReady -and $script:EpControllable)) {
@@ -48,6 +50,9 @@ Describe 'Feature §0 FRE automatic execution-policy remediation' -Tag 'Feature'
         # Safety-net snapshot so the machine's policy is restored even if a test
         # throws before its own finally runs.
         $script:epSnapshot = Get-WtExecutionPolicyState
+        $script:cfgBackup = Backup-CopilotConfig
+        $script:failureMarker = Join-Path (Resolve-ItApp -Package Dev).LocalStateDir 'fre-e2e-policy-remediation-failure'
+        Remove-Item -LiteralPath $script:failureMarker -Force -ErrorAction SilentlyContinue
 
         # Drive the FRE wizard to Save. Defined in BeforeAll (not the Describe body)
         # so Pester v5 exposes the $script: scriptblock to the It blocks.
@@ -59,6 +64,8 @@ Describe 'Feature §0 FRE automatic execution-policy remediation' -Tag 'Feature'
         }
     }
     AfterAll {
+        Remove-Item -LiteralPath $script:failureMarker -Force -ErrorAction SilentlyContinue
+        if ($script:cfgBackup) { Restore-CopilotConfig -State $script:cfgBackup }
         if ($script:epSnapshot) { Restore-WtExecutionPolicy -State $script:epSnapshot }
     }
 
@@ -148,6 +155,72 @@ Describe 'Feature §0 FRE automatic execution-policy remediation' -Tag 'Feature'
                 $log | Should -Not -Match 'Showing problem: ShellIntegration'
             }
             finally { Stop-Terminal -App $app }
+        }
+        finally { Restore-WtExecutionPolicy -State $st }
+    }
+
+    It 'Remediation failure disables error detection, continues Hooks, and completes on retry' -Skip:(-not $script:HooksReady) {
+        $st = Set-WtExecutionPolicy -Value RemoteSigned
+        try {
+            $app = Start-TerminalFre -Package Dev
+            try {
+                Invoke-UiElement -App $app -Selector 'NextButton' -TimeoutSec 15 | Out-Null
+                Wait-UiElement -App $app -Selector 'SaveButton' -TimeoutSec 15 | Out-Null
+
+                if ((Get-UiElement -App $app -Selector 'SessionManagementToggle').toggleState -ne 'on') {
+                    Invoke-UiElement -App $app -Selector 'SessionManagementToggle' | Out-Null
+                }
+
+                # Start from Detect and fix so the fallback must turn off both
+                # persisted error-detection settings, not merely preserve defaults.
+                Invoke-UiElement -App $app -Selector 'ErrorDetectionComboBox' | Out-Null
+                Send-WtWindowKey -App $app -Vk 0x24 -RequireForeground | Out-Null
+                Send-WtWindowKey -App $app -Vk 0x28 -RequireForeground | Out-Null
+                Send-WtWindowKey -App $app -Vk 0x0D -RequireForeground | Out-Null
+
+                New-Item -ItemType File -Path $script:failureMarker -Force | Out-Null
+                Invoke-UiElement -App $app -Selector 'SaveButton' -TimeoutSec 15 | Out-Null
+
+                $failedButHooksCompleted = Test-Until -TimeoutSec 90 -IntervalSec 2 -Condition {
+                    $log = Get-ItLogText -App $app -Name 'terminal-agent-pane.log' -SinceStart
+                    $log -match '\[FRE\] Progress: error-detection=failed' -and
+                        $log -match '\[FRE\] Progress: sessions=completed'
+                }
+                $failedButHooksCompleted | Should -BeTrue -Because 'Hooks must finish after policy remediation blocks Shell Integration'
+
+                $firstAttemptLog = Get-ItLogText -App $app -Name 'terminal-agent-pane.log' -SinceStart
+                $firstAttemptLog | Should -Match '\[FRE\] E2E: forcing execution-policy remediation failure'
+                Test-FreProgressOrder -Log $firstAttemptLog -Events @(
+                    'error-detection=running'
+                    'error-detection=failed'
+                    'sessions=running'
+                    'sessions=completed'
+                ) | Should -BeTrue -Because 'policy failure must not prevent the later Hooks step'
+                $firstAttemptLog | Should -Match '\[FRE\] Showing problem: ShellIntegrationExecutionPolicy' `
+                    -Because 'the failure must select the policy-specific error and manual-help link'
+                Get-FreCompleted -App $app | Should -BeFalse
+
+                Remove-Item -LiteralPath $script:failureMarker -Force
+                Invoke-UiElement -App $app -Selector 'SaveButton' -TimeoutSec 15 | Out-Null
+                Test-Until -TimeoutSec 90 -IntervalSec 2 -Condition { Get-FreCompleted -App $app } |
+                    Should -BeTrue -Because 'retry with Error Detection disabled must complete FRE'
+
+                $allAttemptsLog = Get-ItLogText -App $app -Name 'terminal-agent-pane.log' -SinceStart
+                $allAttemptsLog | Should -Match '\[FRE\] Save: .*detect=on autoFix=on'
+                $allAttemptsLog | Should -Match '\[FRE\] Save: .*detect=off autoFix=off'
+                ([regex]::Matches($allAttemptsLog, '\[FRE\] Progress: attempt=started')).Count |
+                    Should -Be 2
+                ([regex]::Matches($allAttemptsLog, '\[FRE\] Progress: error-detection=running')).Count |
+                    Should -Be 1 -Because 'the retry must skip the disabled Error Detection step'
+
+                $settings = Get-WtSettingsObject -App $app
+                $settings.autoErrorDetectionEnabled | Should -BeFalse
+                $settings.autoFixEnabled | Should -BeFalse
+            }
+            finally {
+                Remove-Item -LiteralPath $script:failureMarker -Force -ErrorAction SilentlyContinue
+                Stop-Terminal -App $app
+            }
         }
         finally { Restore-WtExecutionPolicy -State $st }
     }

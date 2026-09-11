@@ -1850,8 +1850,22 @@ namespace winrt::TerminalApp::implementation
                 }
             }
 
+            auto remediationSucceeded = remediation.succeeded;
+#ifdef _DEBUG
+            const auto remediationFailureMarker =
+                std::filesystem::path{ winrt::Windows::Storage::ApplicationData::Current().LocalFolder().Path().c_str() } /
+                L"fre-e2e-policy-remediation-failure";
+            std::error_code remediationFailureMarkerError;
+            if (std::filesystem::exists(remediationFailureMarker, remediationFailureMarkerError) &&
+                !remediationFailureMarkerError)
+            {
+                _agentPaneLog("[FRE] E2E: forcing execution-policy remediation failure");
+                remediationSucceeded = false;
+            }
+#endif
+
             ShellIntegrationSweep::InstallSweepResults results{};
-            if (!remediation.succeeded)
+            if (!remediationSucceeded)
             {
                 _agentPaneLog("[FRE] EP remediation FAILED; skipping shell integration");
                 shellIntegFailed = true;
@@ -1908,7 +1922,7 @@ namespace winrt::TerminalApp::implementation
             // Bash and WSL failures are NOT counted here: users
             // without Git Bash or without (running) WSL would
             // otherwise see false-alarm errors on every FRE / Save.
-            if (!remediation.succeeded || !pwsh7Result.success || !windowsPsResult.success)
+            if (!remediationSucceeded || !pwsh7Result.success || !windowsPsResult.success)
             {
                 shellIntegFailed = true;
                 // If either host's failure was specifically the execution
@@ -1979,15 +1993,18 @@ namespace winrt::TerminalApp::implementation
         // hooks; the unshown failure stays enabled and is retried on next Save.
         if (hooksFailed || shellIntegFailed)
         {
+            const auto problemKind = shellIntegEpBlocked ? FreProblemKind::ShellIntegrationExecutionPolicy
+                                                        : shellIntegFailed ? FreProblemKind::ShellIntegration
+                                                                           : FreProblemKind::Hooks;
             _agentPaneLog("[FRE] Showing problem: "
-                + std::string(shellIntegFailed ? "ShellIntegration" : "Hooks"));
+                + std::string(problemKind == FreProblemKind::ShellIntegrationExecutionPolicy ? "ShellIntegrationExecutionPolicy" :
+                              problemKind == FreProblemKind::ShellIntegration ? "ShellIntegration" :
+                                                                               "Hooks"));
             co_await winrt::resume_foreground(dispatcher);
             auto self = weak.get();
             if (!self) co_return;
 
-            _ShowProblem(shellIntegEpBlocked ? FreProblemKind::ShellIntegrationExecutionPolicy
-                                             : shellIntegFailed ? FreProblemKind::ShellIntegration
-                                                                : FreProblemKind::Hooks);
+            _ShowProblem(problemKind);
             co_return;
         }
 

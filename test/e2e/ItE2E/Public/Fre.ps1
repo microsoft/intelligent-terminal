@@ -109,11 +109,15 @@ function Get-WtExecutionPolicyHosts {
 }
 
 function Get-WtExecutionPolicyState {
-    <# Snapshot every supported engine's CurrentUser execution policy. #>
+    <#
+        Snapshot every supported engine's CurrentUser execution policy.
+        Process-scope Bypass keeps the management cmdlet loadable even when a
+        previous test deliberately left CurrentUser at AllSigned/Restricted.
+    #>
     [CmdletBinding()] param()
     @(
         foreach ($hostInfo in Get-WtExecutionPolicyHosts) {
-            $value = & $hostInfo.Path -NoProfile -NonInteractive -Command 'Get-ExecutionPolicy -Scope CurrentUser' 2>$null
+            $value = & $hostInfo.Path -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command 'Get-ExecutionPolicy -Scope CurrentUser' 2>$null
             if ($LASTEXITCODE -ne 0 -or -not $value) {
                 throw "Failed to read CurrentUser execution policy from $($hostInfo.Path)."
             }
@@ -137,7 +141,8 @@ function Set-WtExecutionPolicy {
     $state = Get-WtExecutionPolicyState
     try {
         foreach ($entry in $state) {
-            & $entry.Path -NoProfile -NonInteractive -Command "Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy $Value -Force" 2>&1 | Out-Null
+            $command = "Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy $Value -Force -ErrorAction SilentlyContinue; if ((Get-ExecutionPolicy -Scope CurrentUser) -ne '$Value') { exit 1 }"
+            & $entry.Path -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command $command 2>&1 | Out-Null
             if ($LASTEXITCODE -ne 0) {
                 throw "Failed to set CurrentUser execution policy through $($entry.Path)."
             }
@@ -158,11 +163,12 @@ function Restore-WtExecutionPolicy {
         $failures = @()
         foreach ($entry in @($State)) {
             try {
-                & $entry.Path -NoProfile -NonInteractive -Command "Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy $($entry.Value) -Force" 2>&1 | Out-Null
+                $command = "Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy $($entry.Value) -Force -ErrorAction SilentlyContinue; if ((Get-ExecutionPolicy -Scope CurrentUser) -ne '$($entry.Value)') { exit 1 }"
+                & $entry.Path -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command $command 2>&1 | Out-Null
                 if ($LASTEXITCODE -ne 0) {
                     throw "setter exited with code $LASTEXITCODE"
                 }
-                $restored = & $entry.Path -NoProfile -NonInteractive -Command 'Get-ExecutionPolicy -Scope CurrentUser' 2>$null
+                $restored = & $entry.Path -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command 'Get-ExecutionPolicy -Scope CurrentUser' 2>$null
                 if ($LASTEXITCODE -ne 0 -or [string]$restored -ne $entry.Value) {
                     throw "verification returned '$restored'"
                 }
@@ -186,7 +192,7 @@ function Test-WtExecutionPolicyControllable {
     [CmdletBinding()] param()
     foreach ($hostInfo in Get-WtExecutionPolicyHosts) {
         try {
-            $gpo = & $hostInfo.Path -NoProfile -NonInteractive -Command 'Get-ExecutionPolicy -List | Where-Object { $_.Scope -in "MachinePolicy", "UserPolicy" -and $_.ExecutionPolicy -ne "Undefined" }' 2>$null
+            $gpo = & $hostInfo.Path -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command 'Get-ExecutionPolicy -List | Where-Object { $_.Scope -in "MachinePolicy", "UserPolicy" -and $_.ExecutionPolicy -ne "Undefined" }' 2>$null
             if ($LASTEXITCODE -ne 0 -or $gpo) { return $false }
         }
         catch {
