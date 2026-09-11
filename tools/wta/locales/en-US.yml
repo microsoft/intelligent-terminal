@@ -5,8 +5,6 @@
 # Setup screen titles
 setup.title.agent_missing: "Agent not found"
 setup.title.agent_error: "Agent connection failed"
-setup.title.installing_copilot: "Installing GitHub Copilot"  # Setup title shown while installing the Copilot CLI. {Locked="GitHub Copilot"}
-setup.title.starting_agent: "Starting %{agent}"  # Setup title shown while reconnecting to an AI agent. Keep the %{agent} placeholder.
 # Title when the configured AI agent is not available
 setup.title.not_available: "Agent not available"
 # Title when authentication is required
@@ -28,8 +26,8 @@ setup.option.retry_detection: "Try again"
 setup.option.retry_auth: "I've signed in — try connecting again"
 setup.option.retry_connection: "Try connecting again"  # Button label that retries a failed AI-agent connection.
 setup.status.installing: "Installing..."
-setup.status.installing_copilot_cli: "Installing GitHub Copilot CLI..."  # Busy status shown during installation. {Locked="GitHub Copilot","CLI"}
-setup.status.connecting_agent: "Connecting to agent..."  # Busy status shown while connecting to an AI agent.
+setup.status.installing_copilot_cli: "Installing GitHub Copilot CLI"  # Busy status shown during installation. {Locked="GitHub Copilot","CLI"}
+setup.status.connecting_agent: "Connecting %{agent}"  # Busy status shown while connecting to an AI agent. Keep the %{agent} placeholder.
 setup.status.install_failed: "Install failed: "
 setup.status.installing_winget: " Installing via winget..."
 setup.error.install_start_failed: "The installer could not be started. Select \"Try again\" to retry."  # Error shown when the background installer task cannot start.

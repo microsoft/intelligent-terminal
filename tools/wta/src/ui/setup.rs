@@ -3,10 +3,7 @@ use ratatui::widgets::Paragraph;
 
 use crate::app::{App, SetupFailureKind, SetupOption, SetupPhase};
 
-const SPINNER: &[char] = &[
-    '\u{280B}', '\u{2819}', '\u{2839}', '\u{2838}', '\u{283C}', '\u{2834}', '\u{2826}', '\u{2827}',
-    '\u{2807}', '\u{280F}',
-];
+const PROGRESS_SPINNER: &[char] = &['\u{25DC}', '\u{25DD}', '\u{25DE}', '\u{25DF}'];
 
 // Muted secondary text. Dimmed default fg (not a fixed gray) so it tracks the
 // color scheme and stays readable on light schemes (#234). Figma reference was
@@ -33,54 +30,46 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         .split(area);
     let area = padded[1];
 
-    let spinner_char = SPINNER[app.activity_frame as usize % SPINNER.len()];
-    let title = match &setup.phase {
-        SetupPhase::Installing => t!("setup.title.installing_copilot").into_owned(),
-        SetupPhase::Reconnecting => t!(
-            "setup.title.starting_agent",
-            agent = &setup.preflight.display_name
-        )
-        .into_owned(),
-        _ => setup.title.clone(),
-    };
+    let spinner_char = PROGRESS_SPINNER[app.activity_frame as usize % PROGRESS_SPINNER.len()];
     let mut lines: Vec<Line> = Vec::new();
-
-    // Title — bold, scheme default foreground, with bullet
-    lines.push(Line::from(vec![
-        Span::styled(
-            "\u{25CF} ",
-            Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(
-            title,
-            Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
-        ),
-    ]));
 
     match &setup.phase {
         SetupPhase::Installing => {
-            lines.push(Line::from(""));
             lines.push(Line::from(vec![
-                Span::raw("  "),
-                Span::styled(spinner_char.to_string(), Style::new().fg(Color::Yellow)),
                 Span::styled(
-                    format!(" {}", t!("setup.status.installing_copilot_cli")),
+                    t!("setup.status.installing_copilot_cli").into_owned(),
                     Style::new().fg(Color::Reset),
                 ),
+                Span::raw("  "),
+                Span::styled(spinner_char.to_string(), Style::new().fg(SELECTED_COLOR)),
             ]));
         }
         SetupPhase::Reconnecting => {
-            lines.push(Line::from(""));
             lines.push(Line::from(vec![
-                Span::raw("  "),
-                Span::styled(spinner_char.to_string(), Style::new().fg(Color::Yellow)),
                 Span::styled(
-                    format!(" {}", t!("setup.status.connecting_agent")),
+                    t!(
+                        "setup.status.connecting_agent",
+                        agent = &setup.preflight.display_name
+                    )
+                    .into_owned(),
                     Style::new().fg(Color::Reset),
                 ),
+                Span::raw("  "),
+                Span::styled(spinner_char.to_string(), Style::new().fg(SELECTED_COLOR)),
             ]));
         }
         SetupPhase::Ready | SetupPhase::Failed { .. } => {
+            // Title — bold, scheme default foreground, with bullet
+            lines.push(Line::from(vec![
+                Span::styled(
+                    "\u{25CF} ",
+                    Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    setup.title.clone(),
+                    Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
+                ),
+            ]));
             lines.push(Line::from(Span::styled(
                 format!("  {}", &setup.subtitle),
                 DIM_TEXT,

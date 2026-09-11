@@ -2,8 +2,6 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "ஏஜெண்ட் கிடைக்கவில்லை"
 setup.title.agent_error: "ஏஜெண்ட் இணைப்பு தோல்வியடைந்தது"
-setup.title.installing_copilot: "GitHub Copilot நிறுவப்படுகிறது"
-setup.title.starting_agent: "%{agent} தொடங்கப்படுகிறது"
 setup.title.not_available: "ஏஜெண்ட் கிடைக்கவில்லை"
 setup.title.sign_in: "உள்நுழைவு தேவை"
 
@@ -23,8 +21,8 @@ setup.option.retry_detection: "மீண்டும் முயற்சிக
 setup.option.retry_auth: "நான் உள்நுழைந்துவிட்டேன் — மீண்டும் இணைக்க முயற்சிக்கவும்"
 setup.option.retry_connection: "மீண்டும் இணைக்க முயற்சிக்கவும்"
 setup.status.installing: "நிறுவப்படுகிறது..."
-setup.status.installing_copilot_cli: "GitHub Copilot CLI நிறுவப்படுகிறது..."
-setup.status.connecting_agent: "ஏஜெண்டுடன் இணைக்கப்படுகிறது..."
+setup.status.installing_copilot_cli: "GitHub Copilot CLI நிறுவப்படுகிறது"
+setup.status.connecting_agent: "%{agent} உடன் இணைக்கப்படுகிறது"
 setup.status.install_failed: "நிறுவல் தோல்வி: "
 setup.status.installing_winget: " winget வழியாக நிறுவப்படுகிறது..."
 setup.error.install_start_failed: "நிறுவியைத் தொடங்க முடியவில்லை. மீண்டும் முயற்சிக்க \"மீண்டும் முயற்சிக்கவும்\" என்பதைத் தேர்ந்தெடுக்கவும்."

@@ -2,8 +2,6 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "ఏజెంట్ కనుగొనబడలేదు"
 setup.title.agent_error: "ఏజెంట్ కనెక్షన్ విఫలమైంది"
-setup.title.installing_copilot: "GitHub Copilot ఇన్‌స్టాల్ అవుతోంది"
-setup.title.starting_agent: "%{agent} ప్రారంభమవుతోంది"
 setup.title.not_available: "ఏజెంట్ అందుబాటులో లేదు"
 setup.title.sign_in: "సైన్ ఇన్ అవసరం"
 
@@ -23,8 +21,8 @@ setup.option.retry_detection: "మళ్లీ ప్రయత్నించం
 setup.option.retry_auth: "నేను సైన్ ఇన్ చేసాను — మళ్లీ కనెక్ట్ చేయడానికి ప్రయత్నించండి"
 setup.option.retry_connection: "మళ్లీ కనెక్ట్ చేయడానికి ప్రయత్నించండి"
 setup.status.installing: "ఇన్‌స్టాల్ అవుతోంది..."
-setup.status.installing_copilot_cli: "GitHub Copilot CLI ఇన్‌స్టాల్ అవుతోంది..."
-setup.status.connecting_agent: "ఏజెంట్‌కు కనెక్ట్ అవుతోంది..."
+setup.status.installing_copilot_cli: "GitHub Copilot CLI ఇన్‌స్టాల్ అవుతోంది"
+setup.status.connecting_agent: "%{agent}తో కనెక్ట్ అవుతోంది"
 setup.status.install_failed: "ఇన్‌స్టాల్ విఫలమైంది: "
 setup.status.installing_winget: " winget ద్వారా ఇన్‌స్టాల్ అవుతోంది..."
 setup.error.install_start_failed: "ఇన్‌స్టాలర్‌ను ప్రారంభించలేకపోయాము. మళ్లీ ప్రయత్నించడానికి \"మళ్లీ ప్రయత్నించండి\" ఎంచుకోండి."

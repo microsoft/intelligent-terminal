@@ -12143,11 +12143,14 @@ fn render_setup_installing_hides_stale_options() {
 
     let text = render_to_text(&mut app, 80, 30);
     assert!(
-        text.contains("Installing GitHub Copilot CLI..."),
-        "the setup screen must paint the requested install wording; rendered:\n{text}"
+        text.lines()
+            .any(|line| line.starts_with(" Installing GitHub Copilot CLI  ◜"))
+            && !text.contains("Installing GitHub Copilot CLI..."),
+        "the setup screen must paint the unindented install wording and spinner; rendered:\n{text}"
     );
     assert!(
         !text.contains("STALE_MISSING_TITLE_XYZ")
+            && !text.contains("● Installing GitHub Copilot")
             && !text.contains("Install GitHub Copilot")
             && !text.contains("Try again"),
         "busy setup must hide stale titles and actions; rendered:\n{text}"
@@ -12210,15 +12213,16 @@ fn render_setup_reconnecting_hides_install_content() {
 
     let text = render_to_text(&mut app, 80, 30);
     assert!(
-        text.contains("Starting x")
-            && text.contains("Connecting to agent...")
+        text.lines()
+            .any(|line| line.starts_with(" Connecting x  ◜"))
             && text.contains("connecting"),
         "reconnecting and input connection status must both remain visible; rendered:\n{text}"
     );
     assert!(
         !text.contains("STALE_AGENT_NOT_FOUND_XYZ")
             && !text.contains("Starting GitHub Copilot")
-            && !text.contains("Starting x...")
+            && !text.contains("Starting x")
+            && !text.contains("Connecting x...")
             && !text.contains("Install GitHub Copilot")
             && !text.contains("Try again"),
         "reconnecting must hide stale install content; rendered:\n{text}"
@@ -12246,12 +12250,48 @@ fn render_setup_reconnecting_substitutes_copilot_display_name() {
 
     let text = render_to_text(&mut app, 80, 30);
     assert!(
-        text.contains("Starting GitHub Copilot")
-            && text.contains("Connecting to agent...")
-            && !text.contains("Starting GitHub Copilot...")
+        text.lines()
+            .any(|line| line.starts_with(" Connecting GitHub Copilot  ◜"))
+            && !text.contains("Starting GitHub Copilot")
+            && !text.contains("Connecting GitHub Copilot...")
             && !text.contains("STALE_AGENT_NOT_FOUND_XYZ"),
-        "the generic reconnect title must substitute the Copilot display name without an ellipsis; rendered:\n{text}"
+        "the reconnect status must substitute the Copilot display name before the spinner; rendered:\n{text}"
     );
+}
+
+#[test]
+fn render_setup_busy_spinner_rotates_after_status() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+
+    for (phase, status) in [
+        (SetupPhase::Installing, "Installing GitHub Copilot CLI"),
+        (SetupPhase::Reconnecting, "Connecting GitHub Copilot"),
+    ] {
+        let mut app = test_app();
+        app.mode = AppMode::Setup;
+        let mut preflight = PreflightResult::passed_for_custom_agent("copilot");
+        preflight.display_name = "GitHub Copilot".into();
+        app.setup = Some(SetupState {
+            reason: SetupReason::AgentMissing,
+            selected_index: 0,
+            preflight,
+            phase,
+            options: Vec::new(),
+            title: "STALE_TITLE_XYZ".into(),
+            subtitle: "STALE_SUBTITLE_XYZ".into(),
+        });
+
+        for (frame, glyph) in ['◜', '◝', '◞', '◟'].into_iter().enumerate() {
+            app.activity_frame = frame as u8;
+            let text = render_to_text(&mut app, 80, 30);
+            assert!(
+                text.lines()
+                    .any(|line| line.starts_with(&format!(" {status}  {glyph}"))),
+                "busy setup frame {frame} must render {glyph} after the unindented status; rendered:\n{text}"
+            );
+        }
+    }
 }
 
 /// Alt+V when the agent did not advertise the `image` prompt capability

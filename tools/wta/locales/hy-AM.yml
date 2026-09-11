@@ -5,8 +5,6 @@
 # Setup screen titles
 setup.title.agent_missing: "Ագենտը չի գտնվել"
 setup.title.agent_error: "Ագենտին միանալը ձախողվել է"
-setup.title.installing_copilot: "GitHub Copilot ծրագրի տեղադրում"
-setup.title.starting_agent: "%{agent} ծրագրի գործարկում"
 # Title when the configured AI agent is not available
 setup.title.not_available: "Ագենտը հասանելի չէ"
 # Title when authentication is required
@@ -26,8 +24,8 @@ setup.option.retry_detection: "Կրկին փորձել"
 setup.option.retry_auth: "Մուտք եմ գործել — կրկին միանալ"
 setup.option.retry_connection: "Կրկին փորձել միանալ"
 setup.status.installing: "Տեղադրվում է..."
-setup.status.installing_copilot_cli: "GitHub Copilot CLI գործիքի տեղադրում..."
-setup.status.connecting_agent: "Միացում գործակալին..."
+setup.status.installing_copilot_cli: "GitHub Copilot CLI գործիքի տեղադրում"
+setup.status.connecting_agent: "Միացում %{agent}-ին"
 setup.status.install_failed: "Տեղադրումը ձախողվեց՝ "
 setup.status.installing_winget: " Տեղադրում winget-ի միջոցով..."
 setup.error.install_start_failed: "Չհաջողվեց գործարկել տեղադրիչը։ Կրկին փորձելու համար ընտրեք «Կրկին փորձել»։"

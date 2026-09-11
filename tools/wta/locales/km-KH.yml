@@ -2,8 +2,6 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "រកមិនឃើញ AI អេជេន្ត់"
 setup.title.agent_error: "ការតភ្ជាប់ទៅ AI អេជេន្ត់បានបរាជ័យ"
-setup.title.installing_copilot: "កំពុងតំឡើង GitHub Copilot"
-setup.title.starting_agent: "កំពុងចាប់ផ្តើម %{agent}"
 # Title when the configured AI agent is not available
 setup.title.not_available: "AI អេជេន្ត់មិនអាចប្រើបាន"
 # Title when authentication is required
@@ -25,8 +23,8 @@ setup.option.retry_detection: "សាកល្បងម្តងទៀត"
 setup.option.retry_auth: "ខ្ញុំបានចូលហើយ — សាកល្បងតភ្ជាប់ម្តងទៀត"
 setup.option.retry_connection: "សាកល្បងតភ្ជាប់ម្តងទៀត"
 setup.status.installing: "កំពុងតំឡើង..."
-setup.status.installing_copilot_cli: "កំពុងតំឡើង GitHub Copilot CLI..."
-setup.status.connecting_agent: "កំពុងតភ្ជាប់ទៅ AI អេជេន្ត់..."
+setup.status.installing_copilot_cli: "កំពុងតំឡើង GitHub Copilot CLI"
+setup.status.connecting_agent: "កំពុងតភ្ជាប់ទៅ %{agent}"
 setup.status.install_failed: "ការតំឡើងបរាជ័យ: "
 setup.status.installing_winget: " កំពុងតំឡើងតាមរយៈ winget..."
 setup.error.install_start_failed: "មិនអាចចាប់ផ្តើមកម្មវិធីតំឡើងបានទេ។ ជ្រើសរើស \"សាកល្បងម្តងទៀត\" ដើម្បីសាកល្បងឡើងវិញ។"

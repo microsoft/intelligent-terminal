@@ -2,8 +2,6 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "ଏଜେଣ୍ଟ ମିଳିଲା ନାହିଁ"
 setup.title.agent_error: "ଏଜେଣ୍ଟ ସଂଯୋଗ ବିଫଳ ହେଲା"
-setup.title.installing_copilot: "GitHub Copilot ଇନ୍‌ଷ୍ଟଲ୍ ହେଉଛି"
-setup.title.starting_agent: "%{agent} ଆରମ୍ଭ ହେଉଛି"
 setup.title.not_available: "ଏଜେଣ୍ଟ ଉପಲବ୍ଧ ନାହିଁ"
 setup.title.sign_in: "ସାଇନ୍ ଇନ୍ ଆବଶ୍ୟକ"
 
@@ -23,8 +21,8 @@ setup.option.retry_detection: "ପୁନଃ ଚେଷ୍ଟା କରନ୍ତ�
 setup.option.retry_auth: "ମୁଁ ସାଇନ୍ ଇନ୍ କରିଛି — ପୁନଃ ସଂଯୋଗ କରିବାକୁ ଚେଷ୍ଟା କରନ୍ତୁ"
 setup.option.retry_connection: "ପୁନଃ ସଂଯୋଗ କରିବାକୁ ଚେଷ୍ଟା କରନ୍ତୁ"
 setup.status.installing: "ଇନ୍‌ଷ୍ଟଲ୍ ହେଉଛି..."
-setup.status.installing_copilot_cli: "GitHub Copilot CLI ଇନ୍‌ଷ୍ଟଲ୍ ହେଉଛି..."
-setup.status.connecting_agent: "ଏଜେଣ୍ଟ ସହିତ ସଂଯୋଗ ହେଉଛି..."
+setup.status.installing_copilot_cli: "GitHub Copilot CLI ଇନ୍‌ଷ୍ଟଲ୍ ହେଉଛି"
+setup.status.connecting_agent: "%{agent} ସହିତ ସଂଯୋଗ ହେଉଛି"
 setup.status.install_failed: "ଇନ୍‌ଷ୍ଟଲ୍ ବିଫଳ: "
 setup.status.installing_winget: " winget ମାଧ୍ୟମରେ ଇନ୍‌ଷ୍ଟଲ୍ ହେଉଛି..."
 setup.error.install_start_failed: "ଇନ୍‌ଷ୍ଟଲର୍ ଆରମ୍ଭ କରାଯାଇପାରିଲା ନାହିଁ। ପୁଣି ଚେଷ୍ଟା କରିବାକୁ \"ପୁନଃ ଚେଷ୍ଟା କରନ୍ତୁ\" ବାଛନ୍ତୁ।"

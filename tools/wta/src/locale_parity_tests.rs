@@ -207,21 +207,26 @@ mod tests {
             let name = path.file_name().unwrap().to_string_lossy();
             let connection_failed =
                 locale_value(&path, "setup.subtitle.connection_failed").unwrap_or_default();
-            let installing =
-                locale_value(&path, "setup.title.installing_copilot").unwrap_or_default();
-            let starting = locale_value(&path, "setup.title.starting_agent").unwrap_or_default();
             let installing_cli =
                 locale_value(&path, "setup.status.installing_copilot_cli").unwrap_or_default();
+            let connecting =
+                locale_value(&path, "setup.status.connecting_agent").unwrap_or_default();
             let detection_timed_out =
                 locale_value(&path, "setup.error.install_detection_timed_out").unwrap_or_default();
+            let has_obsolete_busy_title = locale_value(&path, "setup.title.installing_copilot")
+                .is_some()
+                || locale_value(&path, "setup.title.starting_agent").is_some();
 
             if !connection_failed.contains("%{agent}")
-                || !installing.contains("GitHub Copilot")
-                || !starting.contains("%{agent}")
-                || starting.contains("...")
-                || starting.contains('…')
                 || !installing_cli.contains("GitHub Copilot")
                 || !installing_cli.contains("CLI")
+                || installing_cli.contains("...")
+                || installing_cli.contains('…')
+                || !connecting.contains("%{agent}")
+                || connecting.matches("%{agent}").count() != 1
+                || connecting.contains("...")
+                || connecting.contains('…')
+                || has_obsolete_busy_title
                 || !detection_timed_out.contains("Copilot")
             {
                 failures.push(name.to_string());
