@@ -282,8 +282,8 @@
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
-    <value>L-installazzjoni tal-integrazzjoni tal-qoxra falliet. Id-detezzjoni tal-iżbalji ġiet mitfija. Tista' terġa' tixgħelha u terġa' tipprova, jew issejvja biex tkompli mingħajrha.</value>
-    <comment>FRE setup error shown when shell integration cannot be installed. Error detection is turned off so setup can continue, and the user may re-enable it to retry.</comment>
+    <value>L-installazzjoni tal-integrazzjoni tal-qoxra falliet.</value>
+    <comment>FRE setup error shown when shell integration cannot be installed. Error detection remains enabled so the user can retry.</comment>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
     <value>L-installazzjoni tal-hooks tas-sessjoni falliet. Il-ġestjoni tas-sessjonijiet ġiet mitfija. Tista' terġa' tixgħelha u terġa' tipprova, jew issejvja biex tkompli mingħajrha.</value>
     <comment>{Locked="hooks"} FRE setup error shown when session hooks cannot be installed. Session management is turned off so setup can continue, and the user may re-enable it to retry.</comment>
@@ -296,8 +296,8 @@
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>Il-politika tal-eżekuzzjoni ta' PowerShell qed timblokka l-iskripts. Id-detezzjoni tal-iżbalji mitfija.</value>
-    <comment>{Locked="PowerShell"} FRE setup error shown when PowerShell execution policy prevents shell-integration scripts from running. Error detection is turned off so setup can continue.</comment>
+    <value>Il-politika tal-eżekuzzjoni ta' PowerShell qed timblokka l-iskripts.</value>
+    <comment>{Locked="PowerShell"} FRE setup error shown when automatic PowerShell execution-policy remediation does not unblock shell-integration scripts. Error detection remains enabled so the user can retry.</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Użu</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>tokens</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>

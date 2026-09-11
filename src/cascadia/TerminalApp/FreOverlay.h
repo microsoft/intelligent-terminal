@@ -104,9 +104,10 @@ namespace winrt::TerminalApp::implementation
             Generic = 6, // everything else (catalog corruption, internal error, unknown HRESULT, …)
         };
 
-        // Show a single problem: set the error message + manual-fix link, then
-        // apply that problem's remediation (toggle off the affected feature, if
-        // any) and re-enable the Save button. Does not raise Completed.
+        // Show a single problem: set the error message + manual-fix link, apply
+        // any feature-specific recovery, and re-enable the Save button. Shell
+        // integration failures preserve Error Detection so Save retries them.
+        // Does not raise Completed.
         void _ShowProblem(FreProblemKind kind);
 
         // Show a winget install failure with package-aware, failure-kind-aware

@@ -289,12 +289,12 @@
     <comment>{Locked="hooks"} FRE setup error shown when session hooks cannot be installed. Session management is turned off so setup can continue, and the user may re-enable it to retry.</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
-    <value>شیل انضمام انسٹال کرنے میں ناکامی۔ خرابی کی نشاندہی بند کر دی گئی ہے۔ آپ اسے دوبارہ فعال کر کے دوبارہ کوشش کر سکتے ہیں، یا اس کے بغیر جاری رکھنے کے لیے محفوظ کر سکتے ہیں۔</value>
-    <comment>FRE setup error shown when shell integration cannot be installed. Error detection is turned off so setup can continue, and the user may re-enable it to retry.</comment>
+    <value>شیل انضمام انسٹال کرنے میں ناکامی۔</value>
+    <comment>FRE setup error shown when shell integration cannot be installed. Error detection remains enabled so the user can retry.</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>PowerShell ایگزیکیوشن پالیسی اسکرپٹس کو بلاک کر رہی ہے۔ خرابی کی نشاندہی بند کر دی گئی۔</value>
-    <comment>{Locked="PowerShell"} FRE setup error shown when PowerShell execution policy prevents shell-integration scripts from running. Error detection is turned off so setup can continue.</comment>
+    <value>PowerShell ایگزیکیوشن پالیسی اسکرپٹس کو بلاک کر رہی ہے۔</value>
+    <comment>{Locked="PowerShell"} FRE setup error shown when automatic PowerShell execution-policy remediation does not unblock shell-integration scripts. Error detection remains enabled so the user can retry.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>Windows Package Manager (winget) انسٹال نہیں ہے یا دستیاب نہیں ہے۔ پہلے اسے انسٹال کریں، پھر دوبارہ کوشش کریں۔</value>
