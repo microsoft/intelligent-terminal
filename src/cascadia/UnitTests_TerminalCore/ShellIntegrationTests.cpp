@@ -10,12 +10,16 @@
 
 #include "pch.h"
 #include <WexTestClass.h>
-
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <string>
 #include <string_view>
+#include <thread>
+#include <vector>
 
 #include "../inc/ShellIntegration.h"
 
@@ -30,6 +34,60 @@ namespace TerminalCoreUnitTests
     class ShellIntegrationTests;
 };
 using namespace TerminalCoreUnitTests;
+
+namespace
+{
+    struct WslInstallObserverEvent
+    {
+        std::wstring commandline;
+        std::string event;
+    };
+
+    std::mutex g_wslInstallObserverMutex;
+    std::vector<WslInstallObserverEvent> g_wslInstallObserverEvents;
+
+    void ObserveWslInstall(std::wstring_view commandline, std::string_view event) noexcept
+    {
+        std::lock_guard lock{ g_wslInstallObserverMutex };
+        g_wslInstallObserverEvents.emplace_back(WslInstallObserverEvent{
+            std::wstring{ commandline },
+            std::string{ event },
+        });
+    }
+
+    size_t WslInstallObserverEventCount()
+    {
+        std::lock_guard lock{ g_wslInstallObserverMutex };
+        return g_wslInstallObserverEvents.size();
+    }
+
+    std::vector<std::string> WslInstallObserverEventsSince(std::wstring_view commandline, size_t startIndex)
+    {
+        std::vector<std::string> events;
+        std::lock_guard lock{ g_wslInstallObserverMutex };
+        for (size_t i = startIndex; i < g_wslInstallObserverEvents.size(); ++i)
+        {
+            const auto& observed = g_wslInstallObserverEvents[i];
+            if (observed.commandline == commandline)
+            {
+                events.emplace_back(observed.event);
+            }
+        }
+        return events;
+    }
+
+    void VerifyWslInstallObserverEvents(std::wstring_view commandline,
+                                        size_t startIndex,
+                                        const std::vector<std::string>& expected)
+    {
+        const auto actual = WslInstallObserverEventsSince(commandline, startIndex);
+        VERIFY_ARE_EQUAL(expected.size(), actual.size());
+        for (size_t i = 0; i < expected.size(); ++i)
+        {
+            VERIFY_ARE_EQUAL(expected[i], actual[i]);
+        }
+    }
+}
 
 class TerminalCoreUnitTests::ShellIntegrationTests final
 {
@@ -143,7 +201,7 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
 
     TEST_METHOD(Bash_InstallUninstallInstall_RoundTrip);
 
-    // ─── WSL flavor (helpers only — Install/UninstallWslBash requires real WSL) ──
+    // ─── WSL flavor (helpers only — InstallWslBash requires real WSL) ──
     TEST_METHOD(Wsl_IsSafeDistroName_AcceptsCommonNames);
     TEST_METHOD(Wsl_IsSafeDistroName_RejectsInjection);
     TEST_METHOD(Wsl_IsSafeDistroName_RejectsEmptyAndOverlong);
@@ -153,6 +211,12 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(Wsl_UncPath_BuildsExpectedFormat);
     TEST_METHOD(Wsl_StripExecTail_StripsExistingExecCommand);
     TEST_METHOD(Wsl_QualifyBareLauncher_QualifiesBareWslBash);
+
+    TEST_METHOD(Wsl_Install_DuplicateCommandlineSkipsAfterCompletion);
+    TEST_METHOD(Wsl_Install_DuplicateCommandlineSkipsWhileInFlight);
+    TEST_METHOD(Wsl_Install_DistinctCommandlinesInstallIndependently);
+    TEST_METHOD(Wsl_Install_FailureAndExceptionConsumeAttempt);
+    TEST_METHOD(Wsl_Install_DiagnosticObserver_TracksDecision);
 
     // Profile-presence gate (ShellIntegrationProfileGate.h)
     TEST_METHOD(ProfileGate_PwshSourceMatches);
@@ -265,6 +329,28 @@ private:
             }
         }
         return n;
+    }
+
+    static std::wstring _UniqueWslInstallCommandline()
+    {
+        static std::atomic<uint64_t> counter{ 0 };
+        return L"wsl.exe -d shell-integration-test-" + std::to_wstring(counter.fetch_add(1, std::memory_order_relaxed));
+    }
+
+    static InstallResult _SuccessfulWslInstall(const bool alreadyInstalled = false)
+    {
+        InstallResult result;
+        result.success = true;
+        result.alreadyInstalled = alreadyInstalled;
+        return result;
+    }
+
+    static InstallResult _FailedWslInstall(std::wstring_view message)
+    {
+        InstallResult result;
+        result.success = false;
+        result.errorMessage = std::wstring{ message };
+        return result;
     }
 };
 
@@ -1720,7 +1806,7 @@ void ShellIntegrationTests::Bash_InstallUninstallInstall_RoundTrip()
 // ═════════════════════════════════════════════════════════════════════════════
 // WSL flavor
 //
-// Install/UninstallWslBash require a real running WSL distro on the host —
+// InstallWslBash requires a real running WSL distro on the host —
 // we cover only the pure-function helpers here. The shared UNC-mediated
 // write path is already covered by the Bash_* tests; once
 // QueryWslIdentityRaw returns successfully the implementation IS
@@ -1889,6 +1975,286 @@ void ShellIntegrationTests::Wsl_QualifyBareLauncher_QualifiesBareWslBash()
     VERIFY_ARE_EQUAL(std::wstring{ L"\"C:\\X\\wsl.exe\" -d Ubuntu" },
                      QualifyBareLauncher(L"\"C:\\X\\wsl.exe\" -d Ubuntu"));
     VERIFY_ARE_EQUAL(std::wstring{ L"cmd.exe /c wsl" }, QualifyBareLauncher(L"cmd.exe /c wsl"));
+}
+
+// ───────────────────────────────────────────────────────────────────
+// Wsl::Install (GH#613) — exact-commandline gate shared by explicit install
+// flows and the lazy new-tab reconcile. Non-WSL filtering stays at the
+// callers; IsWslProfile tests below cover that recognizer.
+// ───────────────────────────────────────────────────────────────────
+
+void ShellIntegrationTests::Wsl_Install_DuplicateCommandlineSkipsAfterCompletion()
+{
+    using Microsoft::Terminal::ShellIntegration::Wsl::Install;
+
+    const auto commandline = _UniqueWslInstallCommandline();
+    size_t installCalls = 0;
+
+    const auto firstResult = Install(
+        commandline,
+        [&](std::wstring_view actualCommandline) {
+            ++installCalls;
+            VERIFY_ARE_EQUAL(commandline, std::wstring{ actualCommandline });
+            return _SuccessfulWslInstall();
+        },
+        nullptr);
+
+    const auto secondResult = Install(
+        commandline,
+        [&](std::wstring_view) {
+            ++installCalls;
+            return _SuccessfulWslInstall();
+        },
+        nullptr);
+
+    VERIFY_IS_TRUE(firstResult.success);
+    VERIFY_IS_TRUE(secondResult.success);
+    VERIFY_ARE_EQUAL(static_cast<size_t>(1), installCalls);
+    VERIFY_IS_FALSE(firstResult.alreadyInstalled);
+    VERIFY_IS_TRUE(secondResult.alreadyInstalled);
+}
+
+void ShellIntegrationTests::Wsl_Install_DuplicateCommandlineSkipsWhileInFlight()
+{
+    using Microsoft::Terminal::ShellIntegration::Wsl::Install;
+
+    const auto commandline = _UniqueWslInstallCommandline();
+    std::mutex releaseMutex;
+    std::condition_variable releaseCv;
+    bool releaseFirst{ false };
+    std::atomic<size_t> firstCalls{ 0 };
+    std::atomic<size_t> secondCalls{ 0 };
+    std::promise<void> firstEnteredPromise;
+    auto firstEnteredFuture = firstEnteredPromise.get_future();
+    std::promise<InstallResult> firstResultPromise;
+    auto firstResultFuture = firstResultPromise.get_future();
+    std::promise<InstallResult> secondResultPromise;
+    auto secondResultFuture = secondResultPromise.get_future();
+
+    std::thread firstCaller{ [&]() {
+        try
+        {
+            firstResultPromise.set_value(Install(
+                commandline,
+                [&](std::wstring_view) {
+                    ++firstCalls;
+                    firstEnteredPromise.set_value();
+                    std::unique_lock lock{ releaseMutex };
+                    releaseCv.wait(lock, [&]() noexcept { return releaseFirst; });
+                    return _SuccessfulWslInstall();
+                },
+                nullptr));
+        }
+        catch (...)
+        {
+            firstResultPromise.set_exception(std::current_exception());
+        }
+    } };
+    std::thread secondCaller;
+    const auto joinThreads = wil::scope_exit([&]() noexcept {
+        {
+            std::lock_guard lock{ releaseMutex };
+            releaseFirst = true;
+        }
+        releaseCv.notify_all();
+        if (firstCaller.joinable())
+        {
+            firstCaller.join();
+        }
+        if (secondCaller.joinable())
+        {
+            secondCaller.join();
+        }
+    });
+
+    VERIFY_ARE_EQUAL(std::future_status::ready, firstEnteredFuture.wait_for(std::chrono::seconds{ 5 }));
+
+    secondCaller = std::thread{ [&]() {
+        try
+        {
+            secondResultPromise.set_value(Install(
+                commandline,
+                [&](std::wstring_view) {
+                    ++secondCalls;
+                    return _SuccessfulWslInstall();
+                },
+                nullptr));
+        }
+        catch (...)
+        {
+            secondResultPromise.set_exception(std::current_exception());
+        }
+    } };
+
+    VERIFY_ARE_EQUAL(std::future_status::ready, secondResultFuture.wait_for(std::chrono::seconds{ 5 }));
+    const auto secondResult = secondResultFuture.get();
+
+    {
+        std::lock_guard lock{ releaseMutex };
+        releaseFirst = true;
+    }
+    releaseCv.notify_all();
+
+    VERIFY_ARE_EQUAL(std::future_status::ready, firstResultFuture.wait_for(std::chrono::seconds{ 5 }));
+    const auto firstResult = firstResultFuture.get();
+
+    VERIFY_IS_TRUE(firstResult.success);
+    VERIFY_IS_TRUE(secondResult.success);
+    VERIFY_ARE_EQUAL(static_cast<size_t>(1), firstCalls.load());
+    VERIFY_ARE_EQUAL(static_cast<size_t>(0), secondCalls.load());
+    VERIFY_IS_TRUE(secondResult.alreadyInstalled);
+}
+
+void ShellIntegrationTests::Wsl_Install_DistinctCommandlinesInstallIndependently()
+{
+    using Microsoft::Terminal::ShellIntegration::Wsl::Install;
+
+    const auto baseCommandline = _UniqueWslInstallCommandline();
+    const auto alternateCommandline = baseCommandline + L" -e bash";
+    std::vector<std::wstring> invokedCommandlines;
+
+    const auto firstResult = Install(
+        baseCommandline,
+        [&](std::wstring_view commandline) {
+            invokedCommandlines.emplace_back(commandline);
+            return _SuccessfulWslInstall();
+        },
+        nullptr);
+
+    const auto secondResult = Install(
+        alternateCommandline,
+        [&](std::wstring_view commandline) {
+            invokedCommandlines.emplace_back(commandline);
+            return _SuccessfulWslInstall();
+        },
+        nullptr);
+
+    VERIFY_IS_TRUE(firstResult.success);
+    VERIFY_IS_TRUE(secondResult.success);
+    VERIFY_ARE_EQUAL(static_cast<size_t>(2), invokedCommandlines.size());
+    VERIFY_ARE_EQUAL(baseCommandline, invokedCommandlines[0]);
+    VERIFY_ARE_EQUAL(alternateCommandline, invokedCommandlines[1]);
+}
+
+void ShellIntegrationTests::Wsl_Install_FailureAndExceptionConsumeAttempt()
+{
+    using Microsoft::Terminal::ShellIntegration::Wsl::Install;
+
+    const auto failedCommandline = _UniqueWslInstallCommandline();
+    size_t failedCalls = 0;
+
+    const auto failedResult = Install(
+        failedCommandline,
+        [&](std::wstring_view) {
+            ++failedCalls;
+            return _FailedWslInstall(L"boom");
+        },
+        nullptr);
+
+    const auto failedRetryResult = Install(
+        failedCommandline,
+        [&](std::wstring_view) {
+            ++failedCalls;
+            return _SuccessfulWslInstall();
+        },
+        nullptr);
+
+    VERIFY_IS_FALSE(failedResult.success);
+    VERIFY_ARE_EQUAL(std::wstring{ L"boom" }, failedResult.errorMessage);
+    VERIFY_IS_TRUE(failedRetryResult.alreadyInstalled);
+    VERIFY_ARE_EQUAL(static_cast<size_t>(1), failedCalls);
+
+    const auto thrownCommandline = _UniqueWslInstallCommandline();
+    size_t thrownCalls = 0;
+    bool threw = false;
+
+    try
+    {
+        (void)Install(
+            thrownCommandline,
+            [&](std::wstring_view) -> InstallResult {
+                ++thrownCalls;
+                throw std::runtime_error{ "boom" };
+            },
+            nullptr);
+    }
+    catch (const std::exception&)
+    {
+        threw = true;
+    }
+
+    const auto thrownRetryResult = Install(
+        thrownCommandline,
+        [&](std::wstring_view) {
+            ++thrownCalls;
+            return _SuccessfulWslInstall();
+        },
+        nullptr);
+
+    VERIFY_IS_TRUE(threw);
+    VERIFY_IS_TRUE(thrownRetryResult.alreadyInstalled);
+    VERIFY_ARE_EQUAL(static_cast<size_t>(1), thrownCalls);
+}
+
+void ShellIntegrationTests::Wsl_Install_DiagnosticObserver_TracksDecision()
+{
+    using Microsoft::Terminal::ShellIntegration::Wsl::Install;
+
+    const auto completedCommandline = _UniqueWslInstallCommandline();
+    const auto noChangeCommandline = _UniqueWslInstallCommandline();
+    const auto failedCommandline = _UniqueWslInstallCommandline();
+    const auto thrownCommandline = _UniqueWslInstallCommandline();
+    const auto startIndex = WslInstallObserverEventCount();
+
+    const auto completedResult = Install(
+        completedCommandline,
+        [](std::wstring_view) {
+            return _SuccessfulWslInstall();
+        },
+        &ObserveWslInstall);
+    const auto skippedResult = Install(
+        completedCommandline,
+        [](std::wstring_view) {
+            return _SuccessfulWslInstall();
+        },
+        &ObserveWslInstall);
+    const auto noChangeResult = Install(
+        noChangeCommandline,
+        [](std::wstring_view) {
+            return _SuccessfulWslInstall(true);
+        },
+        &ObserveWslInstall);
+    const auto failedResult = Install(
+        failedCommandline,
+        [](std::wstring_view) {
+            return _FailedWslInstall(L"boom");
+        },
+        &ObserveWslInstall);
+
+    bool threw = false;
+    try
+    {
+        (void)Install(
+            thrownCommandline,
+            [](std::wstring_view) -> InstallResult {
+                throw std::runtime_error{ "boom" };
+            },
+            &ObserveWslInstall);
+    }
+    catch (const std::exception&)
+    {
+        threw = true;
+    }
+
+    VERIFY_IS_TRUE(completedResult.success);
+    VERIFY_IS_TRUE(skippedResult.alreadyInstalled);
+    VERIFY_IS_TRUE(noChangeResult.alreadyInstalled);
+    VERIFY_IS_FALSE(failedResult.success);
+    VERIFY_IS_TRUE(threw);
+    VerifyWslInstallObserverEvents(completedCommandline, startIndex, { "attempt-started", "completed", "skip-already-attempted" });
+    VerifyWslInstallObserverEvents(noChangeCommandline, startIndex, { "attempt-started", "no-change" });
+    VerifyWslInstallObserverEvents(failedCommandline, startIndex, { "attempt-started", "failed" });
+    VerifyWslInstallObserverEvents(thrownCommandline, startIndex, { "attempt-started", "thrown" });
 }
 
 // ───────────────────────────────────────────────────────────────────

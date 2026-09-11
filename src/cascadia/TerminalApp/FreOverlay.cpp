@@ -1833,12 +1833,9 @@ namespace winrt::TerminalApp::implementation
             _BeginProgressStep(ProgressStep::ErrorDetection);
             _agentPaneLog("[FRE] Installing shell integration");
 
-            // Snapshot WSL distros AND non-WSL shell presence on the UI
-            // thread BEFORE resuming on a background thread —
-            // _settings.AllProfiles() is an observable vector and
-            // iterating it concurrently with a settings reload is unsafe.
-            const auto wslCommandlines = ShellIntegrationSweep::SnapshotWslCommandlines(_settings);
-            const auto shellPresence = ShellIntegrationSweep::SnapshotShellPresence(_settings);
+            const auto installShellIntegration = ShellIntegrationSweep::PrepareInstall(
+                _settings,
+                ShellIntegrationSweep::InstallTargets::All);
 
             co_await winrt::resume_background();
             // Profile-gated install: a user keeping only "Developer
@@ -1847,7 +1844,7 @@ namespace winrt::TerminalApp::implementation
             // RunInstall reports a skipped shell as
             // success-already-installed so the FRE failure verdict
             // (below) doesn't flag a missing shell as a failure.
-            const auto results = ShellIntegrationSweep::RunInstall(shellPresence, wslCommandlines);
+            const auto results = installShellIntegration();
             const auto& pwsh7Result = results.pwsh;
             const auto& windowsPsResult = results.windowsPowerShell;
             const auto& bashResult = results.bash;
