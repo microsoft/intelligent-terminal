@@ -1436,10 +1436,27 @@ namespace winrt::TerminalApp::implementation
         case FreProblemKind::ShellIntegrationExecutionPolicy:
             ErrorText().Text(RS_(L"FreOverlay_InstallErrorShellIntegrationExecutionPolicy"));
             url += L"#41-powershell";
+            // The automatic CurrentUser remediation did not unblock shell
+            // integration. Turn off error detection so the user can continue;
+            // they can re-enable it after fixing an overriding policy.
+            _SetErrorDetectionMode(ErrorDetectionMode::Off);
+            if (_settings)
+            {
+                _settings.GlobalSettings().AutoErrorDetectionEnabled(false);
+                _settings.GlobalSettings().AutoFixEnabled(false);
+            }
             break;
         case FreProblemKind::ShellIntegration:
             ErrorText().Text(RS_(L"FreOverlay_InstallErrorShellIntegration"));
             url += L"#4-shell-integration";
+            // Remediation: turn off error detection so the user can save and
+            // continue without it.
+            _SetErrorDetectionMode(ErrorDetectionMode::Off);
+            if (_settings)
+            {
+                _settings.GlobalSettings().AutoErrorDetectionEnabled(false);
+                _settings.GlobalSettings().AutoFixEnabled(false);
+            }
             break;
         case FreProblemKind::Hooks:
             ErrorText().Text(RS_(L"FreOverlay_InstallErrorHooks"));

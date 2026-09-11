@@ -288,12 +288,12 @@
     <comment>{Locked="hooks"} FRE setup error shown when session hooks cannot be installed. Session management is turned off so setup can continue, and the user may re-enable it to retry.</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
-    <value>షెల్ ఇంటిగ్రేషన్‌ను ఇన్‌స్టాల్ చేయడం విఫలమైంది.</value>
-    <comment>FRE setup error shown when shell integration cannot be installed. Error detection remains enabled so the user can retry.</comment>
+    <value>షెల్ ఇంటిగ్రేషన్‌ను ఇన్‌స్టాల్ చేయడం విఫలమైంది. లోపం గుర్తింపు ఆపివేయబడింది. మీరు దాన్ని మళ్ళీ ప్రారంభించి మళ్ళీ ప్రయత్నించవచ్చు, లేదా అది లేకుండా కొనసాగించడానికి సేవ్ చేయవచ్చు.</value>
+    <comment>FRE setup error shown when shell integration cannot be installed. Error detection is turned off so setup can continue, and the user may re-enable it to retry.</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>PowerShell ఎగ్జిక్యూషన్ విధానం స్క్రిప్ట్‌లను నిరోధిస్తోంది.</value>
-    <comment>{Locked="PowerShell"} FRE setup error shown when automatic PowerShell execution-policy remediation does not unblock shell-integration scripts. Error detection remains enabled so the user can retry.</comment>
+    <value>PowerShell ఎగ్జిక్యూషన్ విధానం స్క్రిప్ట్‌లను నిరోధిస్తోంది. లోపం గుర్తింపు ఆపివేయబడింది.</value>
+    <comment>{Locked="PowerShell"} FRE setup error shown when PowerShell execution policy prevents shell-integration scripts from running. Error detection is turned off so setup can continue.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>Windows Package Manager (winget) ఇన్‌స్టాల్ చేయబడలేదు లేదా అందుబాటులో లేదు. ముందుగా దాన్ని ఇన్‌స్టాల్ చేసి, తరువాత మళ్లీ ప్రయత్నించండి.</value>
