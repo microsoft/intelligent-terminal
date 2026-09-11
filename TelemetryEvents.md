@@ -1,9 +1,15 @@
-# Intelligent Terminal telemetry events
+# Telemetry inventory and verification (2026-09-11)
 
-The first section inventories Intelligent Terminal's event definitions and
-production emission paths. The second preserves the inherited Windows
-Terminal / OpenConsole reference. See [`PRIVACY.md`](./PRIVACY.md) for privacy
-information and telemetry controls.
+For the maintained event contract, read the
+**[Intelligent Terminal telemetry reference](./doc/intelligent-terminal-telemetry.md)**.
+It contains the complete typed schemas, trigger definitions, measurement
+rules, and privacy boundaries for all 22 dedicated events.
+
+This document preserves the source inventory and historical capture evidence
+from the telemetry implementation work, followed by the inherited Windows
+Terminal / OpenConsole reference. Capture counts and observed values below
+are evidence from specific runs, not defaults or a current release contract.
+See [`PRIVACY.md`](./PRIVACY.md) for privacy information and controls.
 
 ## Intelligent Terminal-specific events
 
