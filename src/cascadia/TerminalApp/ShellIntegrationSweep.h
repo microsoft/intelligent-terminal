@@ -303,8 +303,7 @@ namespace winrt::TerminalApp::implementation::ShellIntegrationSweep
     // and must run on a background thread. TerminalPage callers additionally
     // hold their reconcile lock to serialize against settings changes.
     inline auto PrepareInstall(const CascadiaSettings& settings,
-                               InstallTargets targets = InstallTargets::All,
-                               PowerShellPolicyCheck powerShellPolicyCheck = PowerShellPolicyCheck::Probe)
+                               InstallTargets targets = InstallTargets::All)
     {
         const auto shellPresence = SnapshotShellPresence(settings);
         auto wslCommandlines = std::vector<std::wstring>{};
@@ -313,7 +312,7 @@ namespace winrt::TerminalApp::implementation::ShellIntegrationSweep
             wslCommandlines = SnapshotWslCommandlines(settings);
         }
 
-        return [shellPresence, wslCommandlines = std::move(wslCommandlines), targets, powerShellPolicyCheck]() {
+        return [shellPresence, wslCommandlines = std::move(wslCommandlines), targets](PowerShellPolicyCheck powerShellPolicyCheck) {
             return RunInstall(shellPresence, wslCommandlines, targets, powerShellPolicyCheck);
         };
     }

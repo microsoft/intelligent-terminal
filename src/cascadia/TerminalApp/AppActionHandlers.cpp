@@ -2014,7 +2014,7 @@ namespace winrt::TerminalApp::implementation
                 // Skipped shells are reported as success-already-installed
                 // so the all-installed / any-failure UI verdict below
                 // doesn't flag a missing shell as a failure.
-                const auto results = installShellIntegration();
+                const auto results = installShellIntegration(ShellIntegrationSweep::PowerShellPolicyCheck::Probe);
 
                 // Aggregate verdict across ALL four flavors (pwsh, WinPS,
                 // bash, every WSL distro). The earlier two-flavor version

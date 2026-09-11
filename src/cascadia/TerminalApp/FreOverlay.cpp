@@ -1807,8 +1807,7 @@ namespace winrt::TerminalApp::implementation
 
             const auto installShellIntegration = ShellIntegrationSweep::PrepareInstall(
                 _settings,
-                ShellIntegrationSweep::InstallTargets::All,
-                ShellIntegrationSweep::PowerShellPolicyCheck::AlreadyVerified);
+                ShellIntegrationSweep::InstallTargets::All);
 
             co_await winrt::resume_background();
             namespace PowerShell = ::Microsoft::Terminal::ShellIntegration::Powershell;
@@ -1883,7 +1882,10 @@ namespace winrt::TerminalApp::implementation
                 // RunInstall reports a skipped shell as
                 // success-already-installed so the FRE failure verdict
                 // (below) doesn't flag a missing shell as a failure.
-                results = installShellIntegration();
+                const auto policyCheck = PowerShell::ExecutionPoliciesVerifiedForInstall(remediation) ?
+                                             ShellIntegrationSweep::PowerShellPolicyCheck::AlreadyVerified :
+                                             ShellIntegrationSweep::PowerShellPolicyCheck::Probe;
+                results = installShellIntegration(policyCheck);
             }
             const auto& pwsh7Result = results.pwsh;
             const auto& windowsPsResult = results.windowsPowerShell;

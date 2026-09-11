@@ -661,6 +661,19 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
         return allowedOrAbsent(pwsh.status) && allowedOrAbsent(windowsPowerShell.status);
     }
 
+    inline bool ExecutionPoliciesVerifiedForInstall(const ExecutionPolicyRemediationResult& remediation) noexcept
+    {
+        if (remediation.verificationAttempted)
+        {
+            return ExecutionPolicyRemediationSucceeded(
+                remediation.pwshAfter,
+                remediation.windowsPowerShellAfter);
+        }
+        return ExecutionPolicyRemediationSucceeded(
+            remediation.pwshBefore,
+            remediation.windowsPowerShellBefore);
+    }
+
     inline ExecutionPolicyRemediationResult RemediateExecutionPoliciesForCurrentUser() noexcept
     {
         ExecutionPolicyRemediationResult result;

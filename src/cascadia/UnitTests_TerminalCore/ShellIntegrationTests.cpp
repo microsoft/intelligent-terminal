@@ -162,6 +162,7 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(ExecutionPolicyStatus_ClassifiesBlockedAllowedAndUnknown);
     TEST_METHOD(ExecutionPolicyRemediation_PreflightRejectsUnknown);
     TEST_METHOD(ExecutionPolicyRemediation_SucceedsOnlyWhenEveryHostAllowedOrAbsent);
+    TEST_METHOD(ExecutionPolicyRemediation_ReusesOnlyConclusiveProbeResults);
     TEST_METHOD(ExecutionPolicyProbe_BootstrapsWithoutMaskingEffectivePolicy);
     TEST_METHOD(ExecutionPolicyRemediation_UsesCurrentUserRemoteSignedCommand);
     TEST_METHOD(EnableRemoteSigned_RejectsNonBlockedProbeWithoutLaunching);
@@ -1389,6 +1390,27 @@ void ShellIntegrationTests::ExecutionPolicyRemediation_SucceedsOnlyWhenEveryHost
 
     windowsPowerShell.status = ExecutionPolicyStatus::Unknown;
     VERIFY_IS_FALSE(ExecutionPolicyRemediationSucceeded(pwsh, windowsPowerShell));
+}
+
+void ShellIntegrationTests::ExecutionPolicyRemediation_ReusesOnlyConclusiveProbeResults()
+{
+    using namespace Powershell;
+
+    ExecutionPolicyRemediationResult remediation;
+    remediation.pwshBefore.status = ExecutionPolicyStatus::Allowed;
+    remediation.windowsPowerShellBefore.status = ExecutionPolicyStatus::Absent;
+    VERIFY_IS_TRUE(ExecutionPoliciesVerifiedForInstall(remediation));
+
+    remediation.pwshBefore.status = ExecutionPolicyStatus::Unknown;
+    VERIFY_IS_FALSE(ExecutionPoliciesVerifiedForInstall(remediation));
+
+    remediation.verificationAttempted = true;
+    remediation.pwshAfter.status = ExecutionPolicyStatus::Allowed;
+    remediation.windowsPowerShellAfter.status = ExecutionPolicyStatus::Allowed;
+    VERIFY_IS_TRUE(ExecutionPoliciesVerifiedForInstall(remediation));
+
+    remediation.windowsPowerShellAfter.status = ExecutionPolicyStatus::Unknown;
+    VERIFY_IS_FALSE(ExecutionPoliciesVerifiedForInstall(remediation));
 }
 
 void ShellIntegrationTests::ExecutionPolicyProbe_BootstrapsWithoutMaskingEffectivePolicy()
