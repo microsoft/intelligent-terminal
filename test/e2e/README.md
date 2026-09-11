@@ -9,7 +9,7 @@ Design rationale is captured in the inline notes below and in each suite's heade
 The `tests/` folder implements the `[E2E]` items from
 `doc/release-check-list.md` that are automatable on one machine. Copilot drives
 the baseline suites, while the agent matrix covers other installed and
-authenticated ACP agents. Current status (run on the Store package):
+authenticated ACP agents. Available suites (results depend on the selected package and revision):
 
 | Suite (file) | Covers | Cases |
 |---|---|---|
@@ -31,6 +31,7 @@ authenticated ACP agents. Current status (run on the Store package):
 | `Feature.AgentMouse.Tests.ps1` | PR #506 and issue #790: physical chat wheel scrolling, Ctrl+wheel zoom, draft preservation, text selection/copy, and stale-selection suppression; completed-turn full-row clicks across multiline prompts with shared keyboard selection/Enter behavior, row-end/drag guards, and input-dialog focus recovery | 7 |
 | `Feature.AgentSelectAll.Tests.ps1` | Physical Ctrl+A selects only the focused nonempty draft: exact source copy, cut/delete/replace, repeat/Esc/caret collapse, and pending-turn safety; empty input and history focus retain pane copy and stale-selection clearing. Deterministic ACP fixture; unique evidence under `ITE2E_ARTIFACT_ROOT` (default `artifacts`) | 6 |
 | `Feature.AgentInputNavigation.Tests.ps1` | Physical Up/Down edits explicit and soft-wrapped input rows, preserves preferred display columns and viewport following, collapses full-input selection safely, and retains deterministic prompt-history boundary behavior | 5 |
+| `Feature.AgentInputUndoRedo.Tests.ps1` | Physical Ctrl+Z/Ctrl+Y: grouped typing, atomic edits, multiline Unicode, real clipboard image payload restoration, redo branching, and submission/history boundaries. Deterministic ACP fixture; exact clipboard/capture evidence under `ITE2E_ARTIFACT_ROOT`; requires an English (US) layout and an unused explicitly selected package | 6 |
 | `Feature.PromptHistory.Tests.ps1` | PR #478: per-tab Up/Down prompt recall, draft restoration, and multiline preservation; PR #614: completed-turn collapse/expand rendering | 4 |
 | `Feature.CompletedTurnSelection.Tests.ps1` | Completed-turn Tab/Up/Down selection keeps focused history inside the chat viewport | 1 |
 | `Feature.AutofixPane.Tests.ps1` | Direct Helper Autofix proposal card render/insert/run/reject/target/stashed + across layout + WSL shell identity and Linux fixes | 12 (2 WSL-gated) |
@@ -65,21 +66,24 @@ authenticated ACP agents. Current status (run on the Store package):
 | `Feature.AgentChat.Tests.ps1` / `Feature.AgentPopup.Tests.ps1` | agent chat + `/` popup/menu interaction | 1 + 3 |
 | `Feature.AgentPaneMove.Tests.ps1` | PR #429: `/move` stays per-tab, preserves global position, and restores agent input focus | 1 |
 
-**Coverage: 155 of 157 automatable `[E2E]` checklist items are implemented.**
-**Test status: 135 baseline feature cases pass + 3 documented skips** (`wta sessions list` is
-identity-gated — see `Feature.SessionList.Tests.ps1`), plus 2 PR #481 WSL-backend cases and 2
-PR #488 delegate-source cases that run only when a runnable distro (and, for the #481 chat
-case, an installed+authenticated native agent) is available. The 155 implemented checklist
-items map to the baseline cases plus the deterministic settings/persistence assertions. The
-remaining new items are the two profile agent picker UIs; they stay explicit E2E work rather
-than being falsely credited by the JSON-level runtime tests. Other
-environment-dependent items are tracked and auto-skipped when their prerequisite is absent:
-**other agent CLIs** (`Feature.AgentMatrix.Tests.ps1` now covers Claude/Codex/Gemini chat,
-auth-gated per CLI — each Context runs only when that CLI is installed *and* authenticated,
-else skips); custom agents; multi-window drag; hook/CLI install; policy locks; IME/paste; WSL
-autofix (needs a dev build with OSC 9001 ShellType + a running distro); WT window-level
-keyboard accelerators (command palette / Delegate `Alt+Shift+B` / pane hotkeys — not
-injectable via UIA/send-keys in this harness); and manual release-sign-off gates.
+**Coverage and results are tracked by stable checklist IDs and generated release reports.**
+The suite table describes available cases, not a blanket pass result for every package or
+environment. Use `Invoke-ItE2EReport.ps1` and its full or incremental release report for the
+selected revision's actual passed, failed, skipped and remaining checklist items.
+`Feature.AgentInputUndoRedo` maps its deterministic editing cases to stable checklist IDs,
+including real clipboard image insertion/replacement and restored ACP payload verification.
+
+Environment-dependent suites declare their prerequisites, including installed/authenticated
+agents, WSL availability, hook or policy provisioning, and interactive-desktop input support.
+Unavailable external prerequisites may be skipped; product failures must remain failures.
+Manual release-sign-off items are not credited by unrelated unit or protocol checks.
+
+For **PR validation** of `Feature.AgentInputUndoRedo`, build/deploy the intended source revision
+and set `ITE2E_EXPECTED_WTA_SHA256` from that build's receipt before running the suite. Verify
+source-to-package freshness as well; copying the hash from an arbitrary installed binary is not
+proof of its source revision. The suite records the actual package and hash in `package.json`.
+An intentional Store/production baseline run may omit the expected hash, but its results must
+not be presented as validation of unshipped PR code.
 
 Token-consuming simulated-real-user tests are deliberately excluded from this publishable suite
 and from CI. They live only in the feature's dev-only local validation harness and run manually

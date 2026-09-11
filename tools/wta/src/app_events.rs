@@ -7,6 +7,13 @@
 
 use super::*;
 
+pub(super) fn needs_input_owner_tracking(event: &AppEvent) -> bool {
+    !matches!(
+        event,
+        AppEvent::Key(_) | AppEvent::Tick | AppEvent::RevealTick
+    )
+}
+
 pub(super) const AUTH_RECOVERY_CONNECTION_TIMEOUT: std::time::Duration =
     std::time::Duration::from_secs(8);
 // SharedWta grants retirement 16 seconds before replacing the master. Allow
@@ -304,12 +311,14 @@ impl App {
         tab.completed_turn_selection_visible_pending = click.previous_selection_pending;
     }
 
-    fn chat_input_has_edit_focus(&self) -> bool {
-        self.mode == AppMode::Chat
-            && self.pane_focused
+    fn chat_input_context_has_focus(&self) -> bool {
+        self.mode == AppMode::Chat && self.pane_focused && !self.help_overlay_visible
+    }
+
+    pub(super) fn chat_input_has_edit_focus(&self) -> bool {
+        self.chat_input_context_has_focus()
             && self.current_tab().current_view == View::Chat
             && self.current_tab().input_has_nav_focus()
-            && !self.help_overlay_visible
     }
 
     pub(super) fn copy_input_selection(
@@ -317,11 +326,14 @@ impl App {
         cut: bool,
         copy: impl FnOnce(&str) -> std::io::Result<()>,
     ) -> bool {
-        let tab = self.current_tab();
-        if !self.chat_input_has_edit_focus() || !tab.input_all_selected || tab.input.is_empty() {
+        if !self.chat_input_has_edit_focus()
+            || !self.current_tab().input_all_selected
+            || self.current_tab().input.is_empty()
+        {
             return false;
         }
-        match copy(&tab.input) {
+        self.current_tab_mut().break_input_undo_group();
+        match copy(&self.current_tab().input) {
             Ok(()) => {
                 if cut {
                     self.current_tab_mut().delete_input_selection();
@@ -434,6 +446,42 @@ impl App {
     }
 
     pub(super) fn handle_event(&mut self, event: AppEvent) {
+        // Async cards can take and release draft ownership without a key/focus event.
+        // Typing targets only the active tab; switching/renaming closes the affected groups.
+        let owned_input = if needs_input_owner_tracking(&event) {
+            self.tab_sessions
+                .get(self.active_tab_key())
+                .filter(|tab| tab.input_undo_group_is_open())
+                .map(|tab| {
+                    self.chat_input_context_has_focus()
+                        && tab.current_view == View::Chat
+                        && tab.input_has_nav_focus()
+                })
+        } else {
+            None
+        };
+        self.handle_event_inner(event);
+        if let Some(owned_input) = owned_input {
+            let owns_input = self.tab_sessions.get(self.active_tab_key()).map(|tab| {
+                self.chat_input_context_has_focus()
+                    && tab.current_view == View::Chat
+                    && tab.input_has_nav_focus()
+            });
+            if owns_input.is_some_and(|owns_input| owned_input != owns_input) {
+                self.current_tab_mut().break_input_undo_group();
+            }
+        }
+    }
+
+    fn handle_event_inner(&mut self, event: AppEvent) {
+        let breaks_typing = match &event {
+            AppEvent::Mouse(mouse) => mouse.kind != crossterm::event::MouseEventKind::Moved,
+            AppEvent::FocusChanged(_) | AppEvent::Resize(_, _) => true,
+            _ => false,
+        };
+        if breaks_typing {
+            self.current_tab_mut().break_input_undo_group();
+        }
         match event {
             AppEvent::Key(key) => {
                 self.cancel_completed_turn_click();
@@ -461,6 +509,7 @@ impl App {
                     return;
                 }
                 if is_copy && self.copy_text_selection() {
+                    self.current_tab_mut().break_input_undo_group();
                     return;
                 }
                 if matches!(key.code, KeyCode::Char('x'))
@@ -473,6 +522,7 @@ impl App {
                     && self.chat_input_has_edit_focus()
                     && self.current_tab().input_all_selected
                 {
+                    self.current_tab_mut().break_input_undo_group();
                     self.current_tab_mut().input_all_selected = false;
                     return;
                 }
@@ -3432,6 +3482,9 @@ impl App {
                             "applying pane_open"
                         );
                         let tab = self.tab_mut(&target_tab);
+                        if tab.pane_open != open {
+                            tab.break_input_undo_group();
+                        }
                         if !open {
                             tab.invalidate_pending_paste();
                         }
