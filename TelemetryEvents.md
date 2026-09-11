@@ -46,7 +46,7 @@ Provider name/GUID, process/thread IDs, timestamp, level, and keyword belong
 to the ETW event header, not the business payload. The 2026-09-11 capture used
 the OSS [telemetry header](./dep/telemetry/ProjectTelemetry.h), so keyword was
 `0x0` and `PartA_PrivTags` was `0`. These stub values do not mean collection
-failed: the events were decoded from the ETL. They also do not establish
+failed: the events were decoded from the event trace log. They also do not establish
 Microsoft backend ingestion.
 
 ### Provider: Microsoft.Windows.Terminal.App
