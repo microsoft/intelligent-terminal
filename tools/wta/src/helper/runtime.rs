@@ -984,9 +984,8 @@ async fn run_acp_app(
                 let _ = event_tx.send(app::AppEvent::PreflightComplete(preflight_result));
             }
 
-            // Wire the agent_event channel so dispatch_resume's split-pane
-            // background callback can post AgentSessionEvent (specifically
-            // ResumePaneAssigned) back into the event loop.
+            // Wire completion delivery before handling input. Resume callbacks
+            // report success or failure through SessionResumeCompleted.
             app_state.set_agent_event_tx(event_tx.clone());
 
             // Seed `app_state.tab_id` + `pane_open` from `--owner-tab-id`

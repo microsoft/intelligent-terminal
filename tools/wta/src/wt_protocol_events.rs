@@ -251,7 +251,7 @@ async fn finish_publish(
         stdin
             .flush()
             .await
-            .context("failed writing wtcli publish payload")?;
+            .context("failed flushing wtcli publish payload")?;
         drop(stdin);
         child
             .wait()
@@ -404,13 +404,17 @@ mod tests {
             .stdin(Stdio::piped());
 
         for (mut command, payload, expected) in [
-            (missing, Vec::new(), "failed to start wtcli publish"),
-            (exited, Vec::new(), "wtcli publish failed"),
-            (no_stdin, Vec::new(), "stdin was not piped"),
+            (missing, Vec::new(), &["failed to start wtcli publish"][..]),
+            (exited, Vec::new(), &["wtcli publish failed"][..]),
+            (no_stdin, Vec::new(), &["stdin was not piped"][..]),
             (
                 closed_stdin,
                 vec![b'x'; 1024 * 1024],
-                "failed writing wtcli publish",
+                // Buffered pipe I/O may observe closure during write or flush.
+                &[
+                    "failed writing wtcli publish",
+                    "failed flushing wtcli publish",
+                ][..],
             ),
         ] {
             let result =
@@ -422,7 +426,11 @@ mod tests {
             }
             .complete(result);
             let error = rx.recv().unwrap().unwrap_err();
-            assert!(error.to_string().contains(expected), "{error:#}");
+            let detail = format!("{error:#}");
+            assert!(
+                expected.iter().any(|message| detail.contains(message)),
+                "{detail}"
+            );
         }
     }
 

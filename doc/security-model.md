@@ -242,10 +242,10 @@ For supported CLI sessions where hooks are installed, manifest-driven hook syste
 | **WT <-> pane shell** | ConPTY stdin/stdout | ConPTY process isolation. WT injects terminal metadata such as `WT_SESSION`, `WT_PROFILE_ID`, and sometimes `WT_COM_CLSID`. |
 | **Agent-pane WTA <-> ACP Agent CLI** | ACP stdio | Parent-created pipes. The Agent CLI is semi-trusted and inherits normal environment unless scrubbed; COM exposure from a compromised Agent CLI is therefore in scope. |
 | **Agent CLI hook bridge** | Hook JSON -> `wtcli agent-hook` -> COM `SendEvent` -> WTA event listener | Third-party CLI plugin / extension registration plus observed COM activation behavior. Hook payloads are untrusted input, can be spoofed by any COM-allowed sender today, and must not be treated as proof of agent identity or user approval. |
-| **WT <-> COM callers** | `IProtocolServer` calls | Normal packaged-COM activation or elevated ROT access checks as described below. Protocol methods do not implement additional caller authorization. |
+| **WT <-> COM callers** | `ITerminalProtocol` calls | Normal packaged-COM activation or elevated ROT access checks as described below. Protocol methods do not implement additional caller authorization. |
 | **All <-> filesystem** | settings, logs, and Agent CLI hook configuration / bundles | NTFS ACLs. Package-local storage affects location, not privilege isolation. |
 
-COM caller restriction in this document means the observed Windows packaged-COM activation behavior for the current package and registration, not a security decision made by `IProtocolServer` methods. Keep regression coverage for ordinary external callers, arbitrary same-package callers, pane children, and cross-integrity callers.
+COM caller restriction in this document means the observed Windows packaged-COM activation behavior for the current package and registration, not a security decision made by `ITerminalProtocol` methods. Keep regression coverage for ordinary external callers, arbitrary same-package callers, pane children, and cross-integrity callers.
 
 Administrator hosts now publish an instance-specific class factory in the
 Running Object Table (ROT). This deliberately removes the elevated

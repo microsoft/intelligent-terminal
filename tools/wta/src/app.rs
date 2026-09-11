@@ -1306,9 +1306,9 @@ pub struct App {
     pub sessions_origin_filter: crate::agent_sessions::OriginFilter,
     /// Posts resume completion events from background callbacks back into the main
     /// event loop so they can apply to `agent_sessions` on the UI thread.
-    /// Set by `set_agent_event_tx` from main.rs after the event channel
-    /// is constructed; remains None in tests so dispatch_resume is a
-    /// no-op outside the integration loop.
+    /// Installed by helper::runtime before the input/event loop starts.
+    /// Dispatch tests leave it absent to avoid launching real tabs and drive
+    /// completion directly while exercising the same in-flight bookkeeping.
     agent_event_tx: Option<mpsc::UnboundedSender<AppEvent>>,
     pending_session_resumes: HashMap<String, PendingSessionResume>,
     /// Helper-mode fire-and-forget publisher for `intellterm.wta/session_hook`.
