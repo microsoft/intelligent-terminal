@@ -222,6 +222,8 @@ The COM publisher waits for this UI-side creation step, so validation and local
 tab-creation failures reach the invoking helper through the existing failure
 callback. This acknowledgment still does not imply that ACP loading succeeded.
 Missing routing metadata is rejected rather than broadcast. A
+helper without its owning window/tab identity reports a local error before
+publishing the request. A
 host/helper update must keep this private routing contract in sync. A
 30-second post-completion grace period bounds duplicate suppression when no
 binding arrives, so a lost creation/load acknowledgement cannot block retries

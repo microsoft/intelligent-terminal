@@ -818,6 +818,7 @@ impl AgentSessionRegistry {
                 }
                 // A creation callback cannot take a pane already claimed by
                 // another live session. Only clean up a stale terminal owner.
+                // pane_session_id was canonicalized in the event match above.
                 if let Some(prev_key) = self.active_by_pane.get(&pane_session_id).cloned() {
                     if prev_key != key {
                         if let Some(prev) = self.sessions.get_mut(&prev_key) {

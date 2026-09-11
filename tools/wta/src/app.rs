@@ -3324,45 +3324,42 @@ impl App {
         let cwd_string = valid_cwd.unwrap_or_default();
 
         let on_complete = self.begin_session_resume(&key);
-
-        let mut params = serde_json::Map::new();
-        params.insert(
-            "session_id".to_string(),
-            serde_json::Value::String(key.clone()),
-        );
-        if let Some(window_id) = self.window_id.as_ref() {
+        let routing = self
+            .window_id
+            .as_deref()
+            .filter(|id| !id.is_empty())
+            .zip(self.agent_routing_tab_id().filter(|id| !id.is_empty()));
+        if let Some((window_id, tab_id)) = routing {
+            let mut params = serde_json::Map::new();
+            params.insert("session_id".into(), serde_json::Value::String(key.clone()));
             params.insert(
-                "window_id".to_string(),
-                serde_json::Value::String(window_id.clone()),
+                "window_id".into(),
+                serde_json::Value::String(window_id.into()),
             );
-        }
-        if let Some(tab_id) = self.agent_routing_tab_id() {
-            params.insert(
-                "tab_id".to_string(),
-                serde_json::Value::String(tab_id.to_string()),
+            params.insert("tab_id".into(), serde_json::Value::String(tab_id.into()));
+            if !cwd_string.is_empty() {
+                params.insert("cwd".into(), serde_json::Value::String(cwd_string.clone()));
+            }
+            let evt = serde_json::json!({
+                "type": "event",
+                "method": "resume_in_new_agent_tab",
+                "params": params,
+            });
+            crate::wt_protocol_events::send_with_callback(
+                evt.to_string(),
+                Some(Box::new(move |result| on_complete(result.map(|()| None)))),
             );
-        }
-        if !cwd_string.is_empty() {
-            params.insert(
-                "cwd".to_string(),
-                serde_json::Value::String(cwd_string.clone()),
+            tracing::info!(
+                target: "agents_view",
+                key = %s.key,
+                "dispatch_resume_in_agent_pane: resume_in_new_agent_tab publish queued",
             );
+        } else {
+            tracing::warn!(target: "agents_view", %key, "agent-pane resume has no owning window/tab route");
+            on_complete(Err(anyhow::anyhow!(
+                "agent-pane resume requires a non-empty owning window_id and tab_id"
+            )));
         }
-        let evt = serde_json::json!({
-            "type": "event",
-            "method": "resume_in_new_agent_tab",
-            "params": params,
-        });
-        crate::wt_protocol_events::send_with_callback(
-            evt.to_string(),
-            Some(Box::new(move |result| on_complete(result.map(|()| None)))),
-        );
-
-        tracing::info!(
-            target: "agents_view",
-            key = %s.key,
-            "dispatch_resume_in_agent_pane: resume_in_new_agent_tab publish queued",
-        );
 
         #[cfg(test)]
         {

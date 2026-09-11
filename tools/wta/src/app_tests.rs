@@ -7786,6 +7786,39 @@ fn modified_enter_on_live_row_dispatches_nothing() {
 /// Class A (AgentPane origin) dead row + plain Enter:
 /// the state machine routes to ResumeInAgentPane (ACP load).
 #[test]
+fn agent_pane_resume_without_owner_route_fails_before_publish() {
+    use crate::agent_sessions::{AgentStatus, SessionOrigin};
+
+    for (window, tab) in [
+        (None, None),
+        (Some("7"), None),
+        (None, Some("source-tab")),
+        (Some(""), Some("source-tab")),
+        (Some("7"), Some("")),
+    ] {
+        let _capture = crate::wt_protocol_events::capture_test_published_events();
+        let mut app = test_app();
+        app.window_id = window.map(str::to_string);
+        app.owner_tab_id = tab.map(str::to_string);
+        app.agent_supports_load_session = true;
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.set_agent_event_tx(tx);
+        let row = seed_resume_row(&mut app, AgentStatus::Historical, SessionOrigin::AgentPane);
+        app.activate_agent_session_routed(&row);
+        assert!(crate::wt_protocol_events::take_test_published_events().is_empty());
+        app.handle_event(rx.try_recv().expect("missing route must report completion"));
+        assert!(!app.pending_session_resumes.contains_key(&row.key));
+        assert_eq!(
+            app.agent_sessions.get(&row.key).unwrap().status,
+            AgentStatus::Historical
+        );
+        assert!(
+            matches!(app.current_tab().messages.last(), Some(ChatMessage::Error(message)) if message.contains("owning window_id and tab_id"))
+        );
+    }
+}
+
+#[test]
 fn agent_pane_resume_event_preserves_owning_window_and_tab() {
     use crate::agent_sessions::{AgentStatus, SessionOrigin};
 
