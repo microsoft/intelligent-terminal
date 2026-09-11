@@ -1884,6 +1884,10 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             key,
             pane_session_id,
         } => {
+            if pane_session_id.is_empty() {
+                tracing::warn!(target: "session_registry", %key, "ignoring resume assignment with empty pane identity");
+                return false;
+            }
             let sid = acp::schema::v1::SessionId::new(key);
             let Some(entry) = state.sessions.get(&sid) else {
                 return false;
@@ -3364,6 +3368,25 @@ mod tests {
         let state = reg.inner.lock().await;
         assert!(!state.active_by_pane.contains_key("old"));
         assert_eq!(state.active_by_pane.get("new"), Some(&wanted.session_id));
+    }
+
+    #[tokio::test]
+    async fn master_resume_pane_assigned_rejects_empty_identity() {
+        let reg = InMemoryRegistry::new();
+        let mut wanted = info("wanted", None);
+        wanted.status = Some(AgentStatus::Historical);
+        reg.upsert(wanted.clone()).await;
+
+        assert!(
+            !reg.apply_event(crate::agent_sessions::SessionEvent::ResumePaneAssigned {
+                key: "wanted".into(),
+                pane_session_id: String::new(),
+            })
+            .await
+        );
+
+        assert_eq!(reg.lookup(&wanted.session_id).await.unwrap(), wanted);
+        assert!(reg.inner.lock().await.active_by_pane.is_empty());
     }
 
     /// Seed a `/sessions` resume: a historical row atomically promoted and bound

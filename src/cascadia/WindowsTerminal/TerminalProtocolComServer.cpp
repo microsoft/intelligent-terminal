@@ -112,10 +112,14 @@ try
             elevation.TokenIsElevated,
             static_cast<uint32_t>(regHr),
             winrt::to_string(winrt::to_hstring(g_endpointClsid))));
+        const auto registrationSucceeded = SUCCEEDED(regHr);
         ready.SetEvent();
 
         // Keep this MTA thread alive so the COM registration stays active.
-        WaitForSingleObject(g_comMtaStop.get(), INFINITE);
+        if (registrationSucceeded)
+        {
+            WaitForSingleObject(g_comMtaStop.get(), INFINITE);
+        }
         if (g_comRegistration)
         {
             LOG_IF_FAILED(CoRevokeClassObject(g_comRegistration));

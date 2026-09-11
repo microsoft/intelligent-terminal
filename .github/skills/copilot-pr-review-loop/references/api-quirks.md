@@ -74,6 +74,18 @@ exists.
 `02-check-review-status.ps1` uses `reviews(last:100)` filtered
 client-side to the Copilot reviewer login.
 
+### Zero-comment summary formats
+
+Reviews may say `generated no new comments`, `generated 0 comments`, or
+use a Markdown footer such as `**Comments generated:** 0 new`. The status
+script recognizes these formats and also requires the review's GraphQL
+`comments.totalCount` to be zero. The current-head and unanswered-thread
+checks still apply. Suppressed observations in a summary should be triaged
+separately; a zero inline-comment count is not approval of every design choice.
+
+Run `tests\Test-ReviewSummary.ps1` to check the pure summary classifier
+without authentication or GitHub API calls.
+
 ## Reply + resolve mutations — both work
 
 ```graphql

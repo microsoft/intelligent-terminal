@@ -20,6 +20,8 @@ namespace Microsoft::Terminal::Protocol::Activation
 {
     // Keep the registration alive until all protocol proxies/stubs have been
     // released, and destroy it before the owning COM apartment shuts down.
+    // Host/client bootstrap is one-shot: neither activates protocol objects
+    // after initialization fails.
     class ProxyRegistration
     {
     public:

@@ -39,7 +39,8 @@
   <ItemGroup>
     <!-- Build dependency — OpenConsoleProxy must build first so
          ITerminalProtocol.h exists before we compile. Build-order only; the
-         proxy/stub itself is loaded at runtime via the package manifest. -->
+         proxy/stub is copied beside wtcli and registered process-locally
+         before protocol activation. -->
     <ProjectReference Include="$(OpenConsoleDir)src\host\proxy\Host.Proxy.vcxproj">
       <Project>{71CC9D78-BA29-4D93-946F-BEF5D9A3A6EF}</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>

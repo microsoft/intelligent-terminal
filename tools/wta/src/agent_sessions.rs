@@ -803,6 +803,10 @@ impl AgentSessionRegistry {
                 key,
                 pane_session_id,
             } => {
+                if pane_session_id.is_empty() {
+                    tracing::warn!(target: "agent_session_registry", %key, "ignoring resume assignment with empty pane identity");
+                    return;
+                }
                 // A real hook or another resume may have bound this session
                 // while pane creation was in flight. A late callback cannot
                 // replace that binding or evict another row from its pane.
@@ -2442,6 +2446,23 @@ mod tests {
             reg.sessions["wanted"].pane_session_id.as_deref(),
             Some("new")
         );
+    }
+
+    #[test]
+    fn resume_pane_assigned_rejects_empty_identity() {
+        let mut reg = AgentSessionRegistry::new();
+        reg.merge_historical(vec![make_historical("wanted")]);
+        reg.take_dirty();
+
+        reg.apply(SessionEvent::ResumePaneAssigned {
+            key: "wanted".into(),
+            pane_session_id: String::new(),
+        });
+
+        assert!(!reg.take_dirty());
+        assert_eq!(reg.sessions["wanted"].status, AgentStatus::Historical);
+        assert!(reg.sessions["wanted"].pane_session_id.is_none());
+        assert!(reg.active_by_pane.is_empty());
     }
 
     #[test]
