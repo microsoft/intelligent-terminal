@@ -714,6 +714,13 @@ namespace SettingsModelUnitTests
             static_cast<int>(parsed->source));
         VERIFY_ARE_EQUAL(L"Ubuntu", parsed->wslDistro);
         VERIFY_ARE_EQUAL(L"copilot", parsed->agentId);
+        const auto custom = AgentPaneBackend::Parse(L"wsl:Ubuntu:custom:my-agent");
+        VERIFY_IS_TRUE(custom.has_value());
+        VERIFY_ARE_EQUAL(L"Ubuntu", custom->wslDistro);
+        VERIFY_ARE_EQUAL(L"custom:my-agent", custom->agentId);
+        VERIFY_ARE_EQUAL(
+            L"wsl:Ubuntu:custom:my-agent",
+            AgentPaneBackend::Wsl(L"Ubuntu", L"custom:my-agent"));
         VERIFY_IS_FALSE(AgentPaneBackend::Parse(L"wsl::copilot").has_value());
     }
 }

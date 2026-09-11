@@ -43,7 +43,9 @@ namespace Microsoft::Terminal::Settings::Model
             if (value.starts_with(wslPrefix))
             {
                 const auto payload = value.substr(wslPrefix.size());
-                const auto separator = payload.rfind(L':');
+                // Distro names cannot contain `:`, but custom agent ids do
+                // (`custom:<name>`).
+                const auto separator = payload.find(L':');
                 if (separator != std::wstring_view::npos &&
                     separator > 0 &&
                     separator + 1 < payload.size())
