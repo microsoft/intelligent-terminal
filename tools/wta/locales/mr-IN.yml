@@ -3,7 +3,7 @@
 setup.title.agent_missing: "एजंट आढळला नाही"
 setup.title.agent_error: "एजंट कनेक्शन अयशस्वी झाले"
 setup.title.installing_copilot: "GitHub Copilot इंस्टॉल होत आहे"
-setup.title.starting_copilot: "GitHub Copilot सुरू होत आहे"
+setup.title.starting_agent: "%{agent} सुरू होत आहे"
 setup.title.not_available: "एजंट उपलब्ध नाही"
 setup.title.sign_in: "साइन इन आवश्यक आहे"
 

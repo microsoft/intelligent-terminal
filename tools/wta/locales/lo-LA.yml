@@ -3,7 +3,7 @@
 setup.title.agent_missing: "ບໍ່ພົບ agent"
 setup.title.agent_error: "ການເຊື່ອມຕໍ່ agent ລົ້ມເຫລວ"
 setup.title.installing_copilot: "ກຳລັງຕິດຕັ້ງ GitHub Copilot"
-setup.title.starting_copilot: "ກຳລັງເລີ່ມ GitHub Copilot"
+setup.title.starting_agent: "ກຳລັງເລີ່ມ %{agent}"
 setup.title.not_available: "Agent ບໍ່ພ້ອມໃຊ້ງານ"
 setup.title.sign_in: "ຕ້ອງການເຂົ້າສູ່ລະບົບ"
 

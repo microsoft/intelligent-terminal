@@ -3,7 +3,7 @@
 setup.title.agent_missing: "Агент табылмады"
 setup.title.agent_error: "Агентке қосылу сәтсіз аяқталды"
 setup.title.installing_copilot: "GitHub Copilot орнатылуда"
-setup.title.starting_copilot: "GitHub Copilot іске қосылуда"
+setup.title.starting_agent: "%{agent} іске қосылуда"
 setup.title.not_available: "Агент қолжетімсіз"
 setup.title.sign_in: "Жүйеге кіру қажет"
 

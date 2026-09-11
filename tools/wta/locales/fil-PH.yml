@@ -3,7 +3,7 @@
 setup.title.agent_missing: "Hindi nahanap ang agent"
 setup.title.agent_error: "Nabigo ang koneksyon sa agent"
 setup.title.installing_copilot: "Ini-install ang GitHub Copilot"
-setup.title.starting_copilot: "Sinisimulan ang GitHub Copilot"
+setup.title.starting_agent: "Sinisimulan ang %{agent}"
 setup.title.not_available: "Hindi available ang agent"
 setup.title.sign_in: "Kailangang mag-sign in"
 

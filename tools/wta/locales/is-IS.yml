@@ -3,7 +3,7 @@
 setup.title.agent_missing: "Agent fannst ekki"
 setup.title.agent_error: "Tenging við agent mistókst"
 setup.title.installing_copilot: "Uppsetning GitHub Copilot"
-setup.title.starting_copilot: "Ræsing GitHub Copilot"
+setup.title.starting_agent: "Ræsing %{agent}"
 setup.title.not_available: "Agent er ekki tiltækur"
 setup.title.sign_in: "Innskráning nauðsynleg"
 

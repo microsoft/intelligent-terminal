@@ -36,7 +36,11 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     let spinner_char = SPINNER[app.activity_frame as usize % SPINNER.len()];
     let title = match &setup.phase {
         SetupPhase::Installing => t!("setup.title.installing_copilot").into_owned(),
-        SetupPhase::Reconnecting => t!("setup.title.starting_copilot").into_owned(),
+        SetupPhase::Reconnecting => t!(
+            "setup.title.starting_agent",
+            agent = &setup.preflight.display_name
+        )
+        .into_owned(),
         _ => setup.title.clone(),
     };
     let mut lines: Vec<Line> = Vec::new();

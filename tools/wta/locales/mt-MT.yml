@@ -3,7 +3,7 @@
 setup.title.agent_missing: "L-aġent ma nstabx"
 setup.title.agent_error: "Il-konnessjoni mal-aġent falliet"
 setup.title.installing_copilot: "Qed jiġi installat GitHub Copilot"
-setup.title.starting_copilot: "Qed jinbeda GitHub Copilot"
+setup.title.starting_agent: "Qed jinbeda %{agent}"
 setup.title.not_available: "L-aġent mhuwiex disponibbli"
 setup.title.sign_in: "Hemm bżonn li tidħol"
 

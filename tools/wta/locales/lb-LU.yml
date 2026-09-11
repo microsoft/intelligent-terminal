@@ -3,7 +3,7 @@
 setup.title.agent_missing: "Agent net fonnt"
 setup.title.agent_error: "Verbindung mam Agent ass gescheitert"
 setup.title.installing_copilot: "GitHub Copilot gëtt installéiert"
-setup.title.starting_copilot: "GitHub Copilot gëtt gestart"
+setup.title.starting_agent: "%{agent} gëtt gestart"
 setup.title.not_available: "Agent net disponibel"
 setup.title.sign_in: "Umeldung erfuerderlech"
 

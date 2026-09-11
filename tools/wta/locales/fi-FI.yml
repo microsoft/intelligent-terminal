@@ -3,7 +3,7 @@
 setup.title.agent_missing: "Agenttia ei löytynyt"
 setup.title.agent_error: "Yhteys agenttiin epäonnistui"
 setup.title.installing_copilot: "Asennetaan GitHub Copilot"
-setup.title.starting_copilot: "Käynnistetään GitHub Copilot"
+setup.title.starting_agent: "Käynnistetään %{agent}"
 setup.title.not_available: "Agentti ei ole käytettävissä"
 setup.title.sign_in: "Kirjautuminen vaaditaan"
 

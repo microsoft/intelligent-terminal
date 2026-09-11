@@ -3,7 +3,7 @@
 setup.title.agent_missing: "Agent nie gevind nie"
 setup.title.agent_error: "Agentverbinding het misluk"
 setup.title.installing_copilot: "GitHub Copilot word tans geïnstalleer"
-setup.title.starting_copilot: "GitHub Copilot word tans begin"
+setup.title.starting_agent: "%{agent} word tans begin"
 setup.title.not_available: "Agent is nie beskikbaar nie"
 setup.title.sign_in: "Aanmelding vereis"
 

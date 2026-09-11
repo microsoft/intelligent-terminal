@@ -3,7 +3,7 @@
 setup.title.agent_missing: "Agentas nerastas"
 setup.title.agent_error: "Nepavyko prisijungti prie agento"
 setup.title.installing_copilot: "Diegiamas GitHub Copilot"
-setup.title.starting_copilot: "Paleidžiamas GitHub Copilot"
+setup.title.starting_agent: "Paleidžiamas %{agent}"
 setup.title.not_available: "Agentas nepasiekiamas"
 setup.title.sign_in: "Reikia prisijungti"
 

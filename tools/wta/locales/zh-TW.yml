@@ -2,7 +2,7 @@
 setup.title.agent_missing: "找不到智能體"
 setup.title.agent_error: "智能體連線失敗"
 setup.title.installing_copilot: "正在安裝 GitHub Copilot"
-setup.title.starting_copilot: "正在啟動 GitHub Copilot"
+setup.title.starting_agent: "正在啟動 %{agent}"
 setup.title.not_available: "智能體無法使用"
 setup.title.sign_in: "需要登入"
 

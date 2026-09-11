@@ -3,7 +3,7 @@
 setup.title.agent_missing: "Ni chanfuwyd yr asiant"
 setup.title.agent_error: "Methwyd â chysylltu â'r asiant"
 setup.title.installing_copilot: "Yn gosod GitHub Copilot"
-setup.title.starting_copilot: "Yn cychwyn GitHub Copilot"
+setup.title.starting_agent: "Yn cychwyn %{agent}"
 setup.title.not_available: "Nid yw'r asiant ar gael"
 setup.title.sign_in: "Mae angen mewngofnodi"
 

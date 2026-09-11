@@ -3,7 +3,7 @@
 setup.title.agent_missing: "[!! Age_nt not found !!]"
 setup.title.agent_error: "[!! Age_nt connection failed !!]"
 setup.title.installing_copilot: "[!! Ins_talling GitHub Copilot !!]"
-setup.title.starting_copilot: "[!! Sta_rting GitHub Copilot !!]"
+setup.title.starting_agent: "[!! Sta_rting %{agent} !!]"
 setup.title.not_available: "[!! Age_nt not available !!]"
 setup.title.sign_in: "[!! Sig_n in required !!]"
 
