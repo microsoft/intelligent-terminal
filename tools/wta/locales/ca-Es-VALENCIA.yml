@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "No s'ha trobat l'agent"
 setup.title.agent_error: "No s'ha pogut connectar amb l'agent"
+setup.title.installing_copilot: "S'està instal·lant GitHub Copilot"
+setup.title.starting_copilot: "S'està iniciant GitHub Copilot"
 setup.title.not_available: "L'agent no està disponible"
 setup.title.sign_in: "Cal iniciar la sessió"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "El vostre agent \"%{agent}\" no està instal·l
 setup.subtitle.agent_missing: "El vostre agent \"%{agent}\" no està instal·lat. Reinstal·leu-lo manualment i torneu a provar. Per a canviar d'agent, aneu a Terminal Intel·ligent Settings > Agent."
 setup.subtitle.copilot_auth: "El vostre agent \"%{agent}\" requerix autenticació. Seguiu els passos de baix per a iniciar la sessió. Per a canviar d'agent, aneu a Terminal Intel·ligent Settings > Agent."
 setup.subtitle.agent_auth: "El vostre agent \"%{agent}\" requerix autenticació. Inicieu la sessió per mitjà de l'agent i seleccioneu \"He iniciat la sessió\" a continuació. Per a canviar d'agent, aneu a Terminal Intel·ligent Settings > Agent."
+setup.subtitle.connection_failed: "No s'ha pogut iniciar %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(S'instal·larà automàticament)"
 setup.option.signin: "Inicia la sessió en %{agent}"
 setup.option.retry_detection: "Torneu a provar"
 setup.option.retry_auth: "He iniciat la sessió — proveu de connectar de nou"
+setup.option.retry_connection: "Torneu a provar de connectar-vos"
 setup.status.installing: "S'està instal·lant..."
+setup.status.installing_copilot_cli: "S'està instal·lant GitHub Copilot CLI..."
+setup.status.connecting_agent: "S'està connectant amb l'agent..."
 setup.status.install_failed: "Error en la instal·lació: "
 setup.status.installing_winget: " S'està instal·lant per mitjà de winget..."
+setup.error.install_start_failed: "No s'ha pogut iniciar l'instal·lador. Seleccioneu \"Torneu-ho a provar\" per tornar-ho a provar."
+setup.error.install_timed_out: "S'ha esgotat el temps d'espera de la instal·lació. Seleccioneu \"Torneu-ho a provar\" abans d'iniciar una altra instal·lació."
+setup.error.install_detection_timed_out: "La instal·lació ha finalitzat, però Copilot encara no és visible. Seleccioneu \"Torneu-ho a provar\" per comprovar-ho de nou."
 
 # ── Flux d'autenticació (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acrònim, ús comú en les localitzacions de Microsoft
@@ -260,5 +269,5 @@ system.no_config_options: "L’agent connectat no ha anunciat cap opció de sess
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "No s’ha pogut actualitzar %{option}: %{error}"
 system.yolo_disable_pending: "el proveïdor no ha confirmat l’estat de sessió sense privilegis requerit"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
-system.provider_command_blocked_by_policy: "%{command}: El mode Yolo està deshabilitat per la política de la vostra organització."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: L'aprovació automàtica està deshabilitada per la política de la vostra organització."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Model desconegut %{model} — escriviu /model per a vore la llista disponible."  # {Locked="%{model}","/model"}

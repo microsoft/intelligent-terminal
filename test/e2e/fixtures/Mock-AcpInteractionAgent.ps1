@@ -428,6 +428,16 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
                     result = @{ stopReason = 'end_turn' }
                 }
             }
+            elseif ($promptText -match '(?m)^LIFETIME_(?:[0-9a-f]{12}|[0-9a-f]{32})\s*$') {
+                $marker = $Matches[0].Trim()
+                Send-TextUpdate -SessionId $sessionId -Text "ACK:$marker"
+                Write-FixtureLog -Message "lifetime-ack|$sessionId|$marker"
+                Send-AcpMessage @{
+                    jsonrpc = '2.0'
+                    id = $request.id
+                    result = @{ stopReason = 'end_turn' }
+                }
+            }
             else {
                 Send-TextUpdate -SessionId $sessionId -Text "ACK:$promptText"
                 Send-AcpMessage @{

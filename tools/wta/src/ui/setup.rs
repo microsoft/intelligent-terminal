@@ -1,7 +1,7 @@
 use ratatui::prelude::*;
 use ratatui::widgets::Paragraph;
 
-use crate::app::{App, SetupOption};
+use crate::app::{App, SetupFailureKind, SetupOption, SetupPhase};
 
 const SPINNER: &[char] = &[
     '\u{280B}', '\u{2819}', '\u{2839}', '\u{2838}', '\u{283C}', '\u{2834}', '\u{2826}', '\u{2827}',
@@ -33,6 +33,12 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         .split(area);
     let area = padded[1];
 
+    let spinner_char = SPINNER[app.activity_frame as usize % SPINNER.len()];
+    let title = match &setup.phase {
+        SetupPhase::Installing => t!("setup.title.installing_copilot").into_owned(),
+        SetupPhase::Reconnecting => t!("setup.title.starting_copilot").into_owned(),
+        _ => setup.title.clone(),
+    };
     let mut lines: Vec<Line> = Vec::new();
 
     // Title — bold, scheme default foreground, with bullet
@@ -42,40 +48,50 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
             Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
         ),
         Span::styled(
-            &setup.title,
+            title,
             Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
         ),
     ]));
 
-    // Subtitle — dim
-    lines.push(Line::from(Span::styled(
-        format!("  {}", &setup.subtitle),
-        DIM_TEXT,
-    )));
-
-    // Blank line
-    lines.push(Line::from(""));
-
-    // Info messages (e.g. "Copied to clipboard") — shown before options
-    if !setup.install_in_progress && setup.install_error.is_none() && !setup.install_log.is_empty()
-    {
-        for (i, log_line) in setup.install_log.iter().enumerate() {
-            let prefix = if i == 0 { "  \u{2714} " } else { "    " };
-            let style = if i == 0 {
-                Style::new().fg(Color::Green)
-            } else {
-                DIM_TEXT
-            };
+    match &setup.phase {
+        SetupPhase::Installing => {
+            lines.push(Line::from(""));
             lines.push(Line::from(vec![
-                Span::styled(prefix, style),
-                Span::styled(log_line.clone(), style),
+                Span::raw("  "),
+                Span::styled(spinner_char.to_string(), Style::new().fg(Color::Yellow)),
+                Span::styled(
+                    format!(" {}", t!("setup.status.installing_copilot_cli")),
+                    Style::new().fg(Color::Reset),
+                ),
             ]));
         }
-        lines.push(Line::from(""));
+        SetupPhase::Reconnecting => {
+            lines.push(Line::from(""));
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled(spinner_char.to_string(), Style::new().fg(Color::Yellow)),
+                Span::styled(
+                    format!(" {}", t!("setup.status.connecting_agent")),
+                    Style::new().fg(Color::Reset),
+                ),
+            ]));
+        }
+        SetupPhase::Ready | SetupPhase::Failed { .. } => {
+            lines.push(Line::from(Span::styled(
+                format!("  {}", &setup.subtitle),
+                DIM_TEXT,
+            )));
+            lines.push(Line::from(""));
+        }
     }
 
-    // Options list
-    let spinner_char = SPINNER[app.activity_frame as usize % SPINNER.len()];
+    if setup.is_busy() {
+        let paragraph = Paragraph::new(lines)
+            .alignment(crate::rtl::text_alignment())
+            .wrap(ratatui::widgets::Wrap { trim: false });
+        frame.render_widget(paragraph, area);
+        return;
+    }
 
     for (i, opt) in setup.options.iter().enumerate() {
         let is_selected = i == setup.selected_index;
@@ -84,19 +100,16 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
             SetupOption::ChooseAgentSource => {
                 (t!("agent_picker.title").into_owned(), String::new())
             }
-            SetupOption::Install { display_name, .. } => {
-                let status = if setup.install_in_progress {
-                    format!("  {} {}", spinner_char, t!("setup.status.installing"))
-                } else {
-                    format!("  {}", t!("setup.option.install_hint"))
-                };
-                (
-                    t!("setup.option.install", agent = display_name.as_str()).into_owned(),
-                    status,
-                )
-            }
+            SetupOption::Install { display_name, .. } => (
+                t!("setup.option.install", agent = display_name.as_str()).into_owned(),
+                format!("  {}", t!("setup.option.install_hint")),
+            ),
             SetupOption::SignIn { display_name, .. } => (
                 t!("setup.option.signin", agent = display_name.as_str()).into_owned(),
+                String::new(),
+            ),
+            SetupOption::Recheck => (
+                t!("setup.option.retry_detection").into_owned(),
                 String::new(),
             ),
             SetupOption::Retry => {
@@ -110,13 +123,13 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
                 };
                 (label, String::new())
             }
+            SetupOption::RetryConnection => (
+                t!("setup.option.retry_connection").into_owned(),
+                String::new(),
+            ),
         };
 
-        let is_installing_opt =
-            matches!(opt, SetupOption::Install { .. }) && setup.install_in_progress;
-        let status_style = if is_installing_opt {
-            Style::new().fg(Color::Yellow)
-        } else if is_selected {
+        let status_style = if is_selected {
             Style::new().fg(SELECTED_COLOR)
         } else {
             Style::new().fg(Color::Reset)
@@ -140,50 +153,17 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         }
     }
 
-    // Install progress or info messages (shown below options)
-    if setup.install_in_progress {
+    if let SetupPhase::Failed { kind, message } = &setup.phase {
         lines.push(Line::from(""));
+        let prefix = match kind {
+            SetupFailureKind::Install => t!("setup.status.install_failed").into_owned(),
+            SetupFailureKind::Detection | SetupFailureKind::Connection => String::new(),
+        };
         lines.push(Line::from(vec![
             Span::styled("  ", DIM_TEXT),
-            Span::styled(format!("{}", spinner_char), Style::new().fg(Color::Yellow)),
-            Span::styled(
-                t!("setup.status.installing_winget").into_owned(),
-                Style::new().fg(Color::Reset),
-            ),
+            Span::styled(prefix, Style::new().fg(Color::Red)),
+            Span::styled(message.clone(), Style::new().fg(Color::Red)),
         ]));
-        for log_line in setup.install_log.iter() {
-            lines.push(Line::from(vec![
-                Span::styled("    ", DIM_TEXT),
-                Span::styled(log_line.clone(), DIM_TEXT),
-            ]));
-        }
-    }
-
-    // Install error
-    if let Some(ref err) = setup.install_error {
-        lines.push(Line::from(""));
-        lines.push(Line::from(vec![
-            Span::styled("  ", DIM_TEXT),
-            Span::styled(
-                t!("setup.status.install_failed").into_owned(),
-                Style::new().fg(Color::Red),
-            ),
-            Span::styled(err.clone(), Style::new().fg(Color::Red)),
-        ]));
-        for log_line in setup
-            .install_log
-            .iter()
-            .rev()
-            .take(3)
-            .collect::<Vec<_>>()
-            .iter()
-            .rev()
-        {
-            lines.push(Line::from(vec![
-                Span::styled("    ", DIM_TEXT),
-                Span::styled((*log_line).clone(), DIM_TEXT),
-            ]));
-        }
     }
 
     let paragraph = Paragraph::new(lines)

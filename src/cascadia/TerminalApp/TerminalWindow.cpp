@@ -151,6 +151,7 @@ namespace winrt::TerminalApp::implementation
     {
         // Now that we know we can do XAML, build our page.
         _root = winrt::make_self<TerminalPage>(*_WindowProperties, _manager);
+        _root->SetStartupTransfer(_initialTransferId);
 
         // Pass in information about the initial state of the window.
         // * If we were supposed to start from serialized "content", do that,
@@ -1104,9 +1105,11 @@ namespace winrt::TerminalApp::implementation
     }
 
     void TerminalWindow::SetStartupContent(const winrt::hstring& content,
-                                           const Windows::Foundation::IReference<Windows::Foundation::Rect>& bounds)
+                                           const Windows::Foundation::IReference<Windows::Foundation::Rect>& bounds,
+                                           uint64_t transferId)
     {
         _contentBounds = bounds;
+        _initialTransferId = transferId;
 
         const auto args = _contentStringToActions(content, true);
         _initialContentArgs = wil::to_vector(args);
@@ -1313,7 +1316,7 @@ namespace winrt::TerminalApp::implementation
         return nullptr;
     }
 
-    void TerminalWindow::AttachContent(winrt::hstring content, uint32_t tabIndex)
+    bool TerminalWindow::AttachContent(winrt::hstring content, uint32_t tabIndex, uint64_t transferId)
     {
         if (_root)
         {
@@ -1329,14 +1332,23 @@ namespace winrt::TerminalApp::implementation
 
             auto args = _contentStringToActions(content, replaceFirstWithNewTab);
 
-            _root->AttachContent(std::move(args), tabIndex);
+            return _root->AttachContent(std::move(args), tabIndex, transferId);
         }
+        return false;
     }
     void TerminalWindow::SendContentToOther(winrt::TerminalApp::RequestReceiveContentArgs args)
     {
         if (_root)
         {
             _root->SendContentToOther(args);
+        }
+    }
+
+    void TerminalWindow::ContentTransferReceiverReady()
+    {
+        if (_root)
+        {
+            _root->ContentTransferReceiverReady();
         }
     }
 

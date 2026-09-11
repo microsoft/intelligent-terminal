@@ -13,11 +13,15 @@
 #include "../TerminalApp/Tab.h"
 #include "../TerminalApp/CommandPalette.h"
 #include "../TerminalApp/ContentManager.h"
+#include "../TerminalApp/ContentTransfer.h"
+#include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
+#include "../TerminalApp/TerminalSettingsCache.h"
 #include "../TerminalApp/TerminalPaneContent.h"
 #include "../inc/AgentPaneRestore.h"
 #include "../UnitTests_Control/MockControlSettings.h"
 #include "CppWinrtTailored.h"
 
+#include <cmath>
 #include <winrt/Windows.UI.Xaml.Automation.h>
 
 using namespace Microsoft::Console;
@@ -65,7 +69,17 @@ namespace TerminalAppLocalTests
         void Resize(uint32_t /*rows*/, uint32_t /*columns*/) noexcept {}
         void Close() noexcept
         {
+            _closeThreadId = GetCurrentThreadId();
             TransitionTo(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Closed);
+            ++_closeCount;
+            _closedEvent.Set();
+        }
+
+        uint32_t CloseCount() const noexcept { return _closeCount.load(); }
+        DWORD CloseThreadId() const noexcept { return _closeThreadId.load(); }
+        bool WaitForClose(DWORD timeout = 10000) const noexcept
+        {
+            return WaitForSingleObject(_closedEvent.m_handle, timeout) == WAIT_OBJECT_0;
         }
 
         void SetState(const winrt::Microsoft::Terminal::TerminalConnection::ConnectionState state) noexcept
@@ -91,10 +105,29 @@ namespace TerminalAppLocalTests
         til::typed_event<winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection, IInspectable> StateChanged;
 
     private:
+        std::atomic<uint32_t> _closeCount{ 0 };
+        std::atomic<DWORD> _closeThreadId{ 0 };
+        ::details::Event _closedEvent;
         winrt::guid _sessionId{};
         std::atomic<winrt::Microsoft::Terminal::TerminalConnection::ConnectionState> _state{
             winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::NotConnected
         };
+    };
+
+    struct TrackedAgentCore
+    {
+        explicit TrackedAgentCore(const winrt::TerminalApp::ContentManager& manager) :
+            connection{ winrt::make_self<TestConnection>(winrt::guid{ L"{6239a42c-aaaa-49a3-80bd-e8fdd045185c}" },
+                                                        winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected) }
+        {
+            const auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
+            core = manager.CreateCore(*settings, *settings, *connection);
+            core.Closed([count = closeEvents](auto&&, auto&&) { ++*count; });
+        }
+
+        winrt::com_ptr<TestConnection> connection;
+        winrt::Microsoft::Terminal::Control::ControlInteractivity core{ nullptr };
+        std::shared_ptr<std::atomic<uint32_t>> closeEvents{ std::make_shared<std::atomic<uint32_t>>(0) };
     };
 
     static std::string _formatPaneId(const winrt::guid& sessionId)
@@ -158,6 +191,45 @@ namespace TerminalAppLocalTests
 
         return nullptr;
     }
+
+    struct TransferLeafSnapshot
+    {
+        std::shared_ptr<Pane> pane;
+        winrt::TerminalApp::IPaneContent content{ nullptr };
+        winrt::Microsoft::Terminal::Control::TermControl control{ nullptr };
+        winrt::Microsoft::Terminal::Control::ControlInteractivity core{ nullptr };
+        winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection connection{ nullptr };
+        uint64_t contentId{};
+        std::shared_ptr<std::atomic<uint32_t>> closed{ std::make_shared<std::atomic<uint32_t>>(0) };
+    };
+
+    struct TransferTabSnapshot
+    {
+        winrt::com_ptr<winrt::TerminalApp::implementation::Tab> tab;
+        std::shared_ptr<Pane> root;
+        std::shared_ptr<Pane> activePane;
+        winrt::hstring stableId;
+        winrt::hstring actions;
+        std::vector<TransferLeafSnapshot> leaves;
+    };
+
+    struct ContentTransferFixture
+    {
+        winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> source;
+        winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> destination;
+        Grid host{ nullptr };
+        TransferTabSnapshot original;
+        std::vector<TransferTabSnapshot> destinationTabs;
+        winrt::TerminalApp::AgentPaneContent agent{ nullptr };
+        uint64_t agentContentId{};
+        uint64_t agentGeneration{};
+        winrt::hstring agentRestoreIdentity;
+        winrt::hstring agentCustomCommand{ L"\"C:\\Test Tools\\custom-agent.exe\" --acp" };
+        winrt::hstring agentRestoreCommandline;
+        bool hidden{};
+        std::vector<winrt::com_ptr<TestConnection>> connections;
+        std::shared_ptr<std::vector<Json::Value>> events{ std::make_shared<std::vector<Json::Value>>() };
+    };
 
     // TODO:microsoft/terminal#3838:
     // Unfortunately, these tests _WILL NOT_ work in our CI. We're waiting for
@@ -225,9 +297,45 @@ namespace TerminalAppLocalTests
         TEST_METHOD(CloseZoomedPane);
 
         TEST_METHOD(SwapPanes);
-        TEST_METHOD(BuildStartupActionsContentStashesAgentFirstPaneAsNewTab);
-        TEST_METHOD(BuildStartupActionsContentStashesAgentLaterSplitAsExistingTab);
+        TEST_METHOD(BuildStartupActionsContentPreservesAgentFirstPaneOwnership);
+        TEST_METHOD(AgentPaneTransferIdentityRoundTripsWithContent);
+        TEST_METHOD(AgentPaneTransferIdentityIsNotPersistedByDefault);
+        TEST_METHOD(BuildStartupActionsContentPreservesAgentLaterSplitOwnership);
+        TEST_METHOD(BuildStartupActionsContentPreservesHiddenAgentIdentity);
         TEST_METHOD(TransferredAgentContentFirstPaneDefersTabRekey);
+        TEST_METHOD(TransferredAgentFirstPaneCompletesHiddenTab);
+        TEST_METHOD(TransferredAgentContentRejectsStaleAndFailedAttach);
+        TEST_METHOD(AttachContentStopsAfterRejectedFirstAction);
+        TEST_METHOD(ContentTransferAgentFirstExpiryRollsBack);
+        TEST_METHOD(ContentTransferAgentLaterExpiryRollsBack);
+        TEST_METHOD(ContentTransferAgentFirstSetupFailureRollsBack);
+        TEST_METHOD(ContentTransferAgentLaterSetupFailureRollsBack);
+        TEST_METHOD(ContentTransferAgentFirstInsertionFailureRollsBack);
+        TEST_METHOD(ContentTransferAgentLaterInsertionFailureRollsBack);
+        TEST_METHOD(ContentTransferAgentFirstLaterSplitFailureRollsBack);
+        TEST_METHOD(ContentTransferAgentLaterLaterSplitFailureRollsBack);
+        TEST_METHOD(ContentTransferFirstLayoutWaitsForReceiver);
+        TEST_METHOD(ContentTransferReceiverWaitsForFirstLayout);
+        TEST_METHOD(ContentTransferExpiredStartupClosesEmptyReceiver);
+        TEST_METHOD(ContentTransferMissingMoveHandlerPreservesSource);
+        TEST_METHOD(ContentTransferRejectedWindowPreservesSource);
+        TEST_METHOD(ContentTransferReviewHiddenZoomedTabMovesToExistingPage);
+        TEST_METHOD(ContentTransferReviewHiddenZoomedTabMovesToFreshReceiver);
+        TEST_METHOD(ContentTransferReviewHiddenTabMovesWithoutZoom);
+        TEST_METHOD(ContentTransferReviewVisibleZoomedTabMoves);
+        TEST_METHOD(ContentTransferReviewHiddenZoomedNestedTabKeepsFinalFocus);
+        TEST_METHOD(ContentTransferReviewRollbackPreservesScrollOffset);
+        TEST_METHOD(ContentTransferReviewScrollOffsetWithoutTransferIsStable);
+        TEST_METHOD(ContentTransferReviewSuccessfulMovePreservesScrollOffset);
+        TEST_METHOD(ContentTransferReviewClosedAgentSuppressionMovesWithTab);
+        TEST_METHOD(ContentTransferReviewSinglePaneKeepsDestinationSuppression);
+        TEST_METHOD(ContentTransferReviewSinglePaneKeepsSuppressedDestination);
+        TEST_METHOD(ClosingAgentPaneSuppressesPrewarm);
+        TEST_METHOD(AgentPaneTeardownAllowsSynchronousRecreation);
+        TEST_METHOD(AgentPaneLifetimeMovesAndDestroysRealCoresOnce);
+        TEST_METHOD(AgentPaneLifetimeReceiveClosesRealCoreOnce);
+        TEST_METHOD(AgentPaneLifetimeFailedReceiveRetiresRealCore);
+        TEST_METHOD(AgentPaneLifetimeTimeoutRetiresOnlyAbandonedRealCore);
         TEST_METHOD(SourceTerminalPaneSkipsAgentPane);
         TEST_METHOD(TransferredAgentContentSplitPaneRetiresDestinationAgentPane);
         TEST_METHOD(TransferredAgentStatusReplaysMissedTabRekey);
@@ -236,6 +344,9 @@ namespace TerminalAppLocalTests
         TEST_METHOD(AgentPaneIndicatorsRefreshAfterNonActivePaneClose);
         TEST_METHOD(PendingAgentOpenSurvivesStartupProjection);
         TEST_METHOD(InitialSessionsViewSurvivesStartupProjection);
+        TEST_METHOD(SessionsDisabledHintFollowsViewAndSettings);
+        TEST_METHOD(SessionsDisabledHintUpdatesWhileStashed);
+        TEST_METHOD(SessionsDisabledHintWrapsAndPreservesTerminalGrid);
         TEST_METHOD(AgentReadyRuntimeConfigIncludesCurrentYoloState);
 
         TEST_METHOD(NextMRUTab);
@@ -261,15 +372,41 @@ namespace TerminalAppLocalTests
         }
 
     private:
-        void _verifyBuildStartupActionsContentStashesAgentPane(SplitDirection splitDirection,
-                                                               winrt::TerminalApp::implementation::AgentPaneDragStash::AttachDisposition expectedDisposition,
-                                                               const winrt::guid& sourceProfileGuid);
+        using TransferStage = winrt::TerminalApp::implementation::TerminalPage::ContentTransferStage;
+        static winrt::TerminalApp::implementation::SharedWtaLease _acquireIsolatedAgentLease();
+        std::unique_ptr<ContentTransferFixture> _createContentTransferFixture(bool agentFirst, bool hidden, bool freshReceiver = false, bool twoLeaves = false, std::optional<int32_t> historySize = std::nullopt);
+        void _verifyContentTransferReviewZoom(bool hidden, bool zoomed, bool freshReceiver, bool twoLeaves = true);
+        void _verifyContentTransferReviewScroll(bool transfer, bool reject = true);
+        void _verifyContentTransferReviewSuppression(bool singlePane, bool destinationSuppressed = false);
+        void _waitForContentTransferReviewUI(const std::function<bool()>& predicate);
+        TransferTabSnapshot _snapshotTransferTab(const winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& page,
+                                               const winrt::com_ptr<winrt::TerminalApp::implementation::Tab>& tab);
+        void _verifyTransferTabUnchanged(const winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& page,
+                                        const TransferTabSnapshot& snapshot);
+        void _verifyTransferRollback(const ContentTransferFixture& fixture);
+        void _verifyTransferCommitted(const ContentTransferFixture& fixture);
+        void _verifyTransferredAgentRestoreState(const ContentTransferFixture& fixture,
+                                                const winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& page,
+                                                const winrt::com_ptr<winrt::TerminalApp::implementation::Tab>& tab);
+        void _closeContentTransferFixture(ContentTransferFixture& fixture, bool verify);
+        winrt::TerminalApp::RequestMoveContentArgs _requestContentTransfer(const ContentTransferFixture& fixture);
+        void _verifyContentTransferFailure(bool agentFirst, bool hidden, TransferStage stage);
+        void _verifyContentTransferStartupGate(bool layoutFirst);
+        void _verifyContentTransferSourceRejection(bool rejectWindow);
+        NewTerminalArgs _storeOwnedAgentTransfer(
+            const winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& page,
+            const TrackedAgentCore& tracked);
+        void _verifyBuildStartupActionsContentPreservesAgentOwnership(SplitDirection splitDirection,
+                                                                     bool hidden = false);
         void _initializeTerminalPage(winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& page,
                                      CascadiaSettings initialSettings,
-                                     winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection connection = nullptr);
+                                     winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection connection = nullptr,
+                                     Grid layoutHost = nullptr);
         void _createContentManager();
         winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> _commonSetup(
-            winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection connection = nullptr);
+            winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection connection = nullptr,
+            Grid layoutHost = nullptr,
+            std::optional<int32_t> historySize = std::nullopt);
         winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> _restoreBindingsSetup();
         winrt::com_ptr<winrt::TerminalApp::implementation::WindowProperties> _windowProperties;
         winrt::com_ptr<winrt::TerminalApp::implementation::ContentManager> _contentManager;
@@ -421,6 +558,7 @@ namespace TerminalAppLocalTests
         written.view = Restore::ChatView;
         written.agentIdentity = L"wsl:Ubuntu-22.04:claude";
         written.customCommand = LR"(C:\tools\my agent\agent.exe --acp --note "hi" --trailing C:\dir\)";
+        written.yoloControlOwner = L"manual";
 
         const auto commandline = Restore::BuildPaneCommandline(LR"(C:\Program Files\wta.exe)", written);
 
@@ -440,6 +578,7 @@ namespace TerminalAppLocalTests
         VERIFY_ARE_EQUAL(written.view, read.view);
         VERIFY_ARE_EQUAL(written.agentIdentity, read.agentIdentity);
         VERIFY_ARE_EQUAL(written.customCommand, read.customCommand);
+        VERIFY_ARE_EQUAL(written.yoloControlOwner, read.yoloControlOwner);
 
         // Empty fields are simply absent rather than round-tripping as `""`.
         Restore::Fields sparse;
@@ -447,6 +586,7 @@ namespace TerminalAppLocalTests
         const auto sparseCmd = Restore::BuildPaneCommandline(L"wta.exe", sparse);
         VERIFY_IS_TRUE(sparseCmd.find(Restore::ViewFlag) == std::wstring::npos);
         VERIFY_IS_TRUE(sparseCmd.find(Restore::CustomCommandFlag) == std::wstring::npos);
+        VERIFY_IS_TRUE(sparseCmd.find(Restore::YoloControlOwnerFlag) == std::wstring::npos);
     }
 
     void TabTests::PersistedLayoutAgentSessionsReceiveRestorePaths()
@@ -1499,8 +1639,18 @@ namespace TerminalAppLocalTests
     // - <none>
     void TabTests::_initializeTerminalPage(winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& page,
                                            CascadiaSettings initialSettings,
-                                           winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection connection)
+                                           winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection connection,
+                                           Grid layoutHost)
     {
+        // A fresh TestHostApp has not completed onboarding. Its first layout
+        // otherwise defers tab creation but still raises Initialized.
+        const auto applicationState = ApplicationState::SharedInstance();
+        const auto freCompleted = applicationState.AgentFreCompleted();
+        const auto restoreFreCompleted = wil::scope_exit([&]() {
+            applicationState.AgentFreCompleted(freCompleted);
+        });
+        applicationState.AgentFreCompleted(true);
+
         // This is super wacky, but we can't just initialize the
         // com_ptr<impl::TerminalPage> in the lambda and assign it back out of
         // the lambda. We'll crash trying to get a weak_ref to the TerminalPage
@@ -1520,6 +1670,9 @@ namespace TerminalAppLocalTests
             projectedPage = winrt::TerminalApp::TerminalPage(props, contentManager);
             page.copy_from(winrt::get_self<winrt::TerminalApp::implementation::TerminalPage>(projectedPage));
             page->_settings = initialSettings;
+            // Match SetSettings' first-load cache without its external
+            // shell-integration reconciliation side effects.
+            page->_terminalSettingsCache = std::make_shared<winrt::TerminalApp::implementation::TerminalSettingsCache>(initialSettings);
         });
         VERIFY_SUCCEEDED(result);
 
@@ -1540,7 +1693,7 @@ namespace TerminalAppLocalTests
 
         Log::Comment(L"Create() the TerminalPage");
 
-        result = RunOnUIThread([&page, connection, this]() {
+        result = RunOnUIThread([&page, connection, layoutHost, this]() {
             VERIFY_IS_NOT_NULL(page);
             VERIFY_IS_NOT_NULL(page->_settings);
             page->Create();
@@ -1574,7 +1727,15 @@ namespace TerminalAppLocalTests
             auto app = ::winrt::Windows::UI::Xaml::Application::Current();
 
             winrt::TerminalApp::TerminalPage pp = *page;
-            winrt::Windows::UI::Xaml::Window::Current().Content(pp);
+            if (layoutHost)
+            {
+                layoutHost.Children().Append(pp);
+                winrt::Windows::UI::Xaml::Window::Current().Content(layoutHost);
+            }
+            else
+            {
+                winrt::Windows::UI::Xaml::Window::Current().Content(pp);
+            }
             winrt::Windows::UI::Xaml::Window::Current().Activate();
         });
         VERIFY_SUCCEEDED(result);
@@ -1590,6 +1751,7 @@ namespace TerminalAppLocalTests
             // In the real app, this isn't a problem, but doesn't happen
             // reliably in the unit tests.
             Log::Comment(L"Ensure we set the first tab as the selected one.");
+            VERIFY_ARE_EQUAL(1u, page->_tabs.Size());
             auto tab = page->_tabs.GetAt(0);
             auto tabImpl = page->_GetTabImpl(tab);
             page->_tabView.SelectedItem(tabImpl->TabViewItem());
@@ -1863,7 +2025,9 @@ namespace TerminalAppLocalTests
     // Return Value:
     // - The initialized TerminalPage, ready to use.
     winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> TabTests::_commonSetup(
-        winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection connection)
+        winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection connection,
+        Grid layoutHost,
+        std::optional<int32_t> historySize)
     {
         static constexpr std::wstring_view settingsJson0{ LR"(
         {
@@ -1973,6 +2137,11 @@ namespace TerminalAppLocalTests
         CascadiaSettings settings0{ settingsJson0, {} };
         VERIFY_IS_NOT_NULL(settings0);
 
+        if (historySize)
+        {
+            settings0.AllProfiles().GetAt(0).HistorySize(*historySize);
+        }
+
         const auto guid1 = Microsoft::Console::Utils::GuidFromString(L"{6239a42c-1111-49a3-80bd-e8fdd045185c}");
         const auto guid2 = Microsoft::Console::Utils::GuidFromString(L"{6239a42c-2222-49a3-80bd-e8fdd045185c}");
 
@@ -1985,7 +2154,7 @@ namespace TerminalAppLocalTests
         // implementation _from_ the winrt object. This seems to work, even if
         // it's weird.
         winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> page{ nullptr };
-        _initializeTerminalPage(page, settings0, connection);
+        _initializeTerminalPage(page, settings0, connection, layoutHost);
 
         auto result = RunOnUIThread([&page]() {
             VERIFY_ARE_EQUAL(1u, page->_tabs.Size());
@@ -2359,21 +2528,28 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(focusedTab->FindAgentPane() != nullptr);
             VERIFY_IS_FALSE(focusedTab->AgentSourceProfileGuid().has_value());
 
-            auto transferredSourcePane = page->_MakePane(nullptr, nullptr, nullptr);
+            auto transferredSourcePane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
             VERIFY_IS_NOT_NULL(transferredSourcePane);
             const auto transferredControl = transferredSourcePane->GetTerminalControl();
             VERIFY_IS_NOT_NULL(transferredControl);
             const auto contentId = transferredControl.ContentId();
+            const auto newTerminalArgs = transferredSourcePane->GetContent().GetNewTerminalArgs(BuildStartupKind::Content).as<NewTerminalArgs>();
+            const auto transferId = newTerminalArgs.AgentPaneTransferId();
             page->_manager.Detach(transferredControl);
+            using DragStash = winrt::TerminalApp::implementation::AgentPaneDragStash;
+            DragStash::Entry entry;
+            entry.originalTabId = oldTabId;
+            entry.sourceProfileGuid = sourceProfileGuid;
+            entry.attachDisposition = DragStash::AttachDisposition::FirstPaneOfNewTab;
+            entry.hidden = true;
+            entry.sessionsView = true;
+            entry.panePosition = L"left";
+            entry.transferId = transferId;
+            DragStash::Instance().Store(contentId, std::move(entry));
+            auto cleanup = wil::scope_exit([&]() {
+                DragStash::Instance().Take(contentId, transferId);
+            });
 
-            winrt::TerminalApp::implementation::AgentPaneDragStash::Stash(
-                contentId,
-                oldTabId,
-                sourceProfileGuid,
-                winrt::TerminalApp::implementation::AgentPaneDragStash::AttachDisposition::FirstPaneOfNewTab);
-
-            NewTerminalArgs newTerminalArgs{};
-            newTerminalArgs.ContentId(contentId);
             auto transferredPane = page->_MakeTerminalPane(newTerminalArgs, nullptr, nullptr);
             VERIFY_IS_NOT_NULL(transferredPane);
             VERIFY_IS_TRUE(transferredPane->IsAgentPane());
@@ -2384,11 +2560,1589 @@ namespace TerminalAppLocalTests
             const auto agentContent = transferredPane->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>();
             VERIFY_IS_NOT_NULL(agentContent);
             const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(agentContent);
+            VERIFY_ARE_EQUAL(contentId, transferredPane->GetTerminalControl().ContentId());
+            VERIFY_ARE_NOT_EQUAL(transferId, impl->TransferId());
+            VERIFY_IS_TRUE(impl->AwaitingTransferredTabContent());
+            VERIFY_IS_TRUE(impl->TakeHiddenAfterTransfer());
+            VERIFY_IS_FALSE(impl->TakeHiddenAfterTransfer());
+            VERIFY_IS_TRUE(impl->IsSessionsView());
+            VERIFY_IS_TRUE(impl->GetAgentPanePosition() == L"left");
+            VERIFY_IS_FALSE(DragStash::Instance().Take(contentId, transferId).has_value());
             VERIFY_IS_TRUE(impl->TakePendingRenameFromTabId() == oldTabId);
             VERIFY_IS_TRUE(impl->TransferSourceTabId() == oldTabId);
             const auto pendingSourceProfileGuid = impl->TakePendingAgentSourceProfileGuid();
             VERIFY_IS_TRUE(pendingSourceProfileGuid.has_value());
             VERIFY_IS_TRUE(pendingSourceProfileGuid.value() == sourceProfileGuid);
+        });
+    }
+
+    void TabTests::TransferredAgentFirstPaneCompletesHiddenTab()
+    {
+        auto page = _commonSetup();
+
+        TestOnUIThread([&]() {
+            using DragStash = winrt::TerminalApp::implementation::AgentPaneDragStash;
+            // A real transferred core has already completed its first layout.
+            // Attaching a never-displayed core skips that initialization.
+            auto sourcePane = page->_WrapInAgentPaneContent(page->_GetFocusedTabImpl()->DetachRoot());
+            VERIFY_IS_TRUE(sourcePane->IsAgentPane());
+            const auto args = sourcePane->GetContent().GetNewTerminalArgs(BuildStartupKind::Content).as<NewTerminalArgs>();
+            const auto contentId = args.ContentId();
+            const auto transferId = args.AgentPaneTransferId();
+            page->_manager.Detach(sourcePane->GetTerminalControl());
+            DragStash::Entry entry;
+            entry.originalTabId = L"source-tab";
+            entry.attachDisposition = DragStash::AttachDisposition::FirstPaneOfNewTab;
+            entry.hidden = true;
+            entry.sessionsView = true;
+            entry.panePosition = L"left";
+            entry.transferId = transferId;
+            DragStash::Instance().Store(contentId, std::move(entry));
+            auto cleanup = wil::scope_exit([&]() {
+                DragStash::Instance().Take(contentId, transferId);
+            });
+
+            const auto transferredPane = page->_MakeTerminalPane(args, nullptr, nullptr);
+            VERIFY_IS_NOT_NULL(transferredPane);
+            const auto agentContent = transferredPane->GetContent().as<winrt::TerminalApp::AgentPaneContent>();
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(agentContent);
+            const auto newTransferId = impl->TransferId();
+            const auto newTab = page->_GetTabImpl(page->_CreateNewTabFromPane(transferredPane));
+            VERIFY_IS_NOT_NULL(newTab);
+            VERIFY_IS_TRUE(newTab->GetRootPane() == transferredPane);
+            VERIFY_IS_TRUE(newTab->GetActivePane() == transferredPane);
+            VERIFY_IS_TRUE(impl->AwaitingTransferredTabContent());
+            VERIFY_IS_FALSE(newTab->HasStashedAgentPane());
+
+            const auto normalPane = page->_MakePane(nullptr, nullptr, nullptr);
+            const auto normalContent = normalPane->GetContent();
+            const auto normalContentId = normalPane->GetTerminalControl().ContentId();
+            page->_SplitPane(newTab, SplitDirection::Right, 0.5f, normalPane);
+
+            VERIFY_ARE_EQUAL(2, newTab->GetLeafPaneCount());
+            VERIFY_IS_FALSE(newTab->GetRootPane()->IsAgentPane());
+            const auto agentLeaf = newTab->FindAgentPane();
+            VERIFY_IS_NOT_NULL(agentLeaf);
+            VERIFY_IS_TRUE(agentLeaf != newTab->GetRootPane());
+            VERIFY_IS_TRUE(agentLeaf->GetContent() == agentContent);
+            VERIFY_ARE_EQUAL(contentId, agentLeaf->GetTerminalControl().ContentId());
+            VERIFY_IS_TRUE(newTab->HasStashedAgentPane());
+            VERIFY_IS_TRUE(agentLeaf->IsHidden());
+            VERIFY_IS_FALSE(impl->AwaitingTransferredTabContent());
+            VERIFY_IS_FALSE(impl->TakeHiddenAfterTransfer());
+            VERIFY_IS_TRUE(impl->IsSessionsView());
+            VERIFY_IS_TRUE(impl->GetAgentPanePosition() == L"left");
+            VERIFY_ARE_EQUAL(newTransferId, impl->TransferId());
+            const auto activePane = newTab->GetActivePane();
+            VERIFY_IS_NOT_NULL(activePane);
+            VERIFY_IS_FALSE(activePane->IsAgentPane());
+            VERIFY_IS_TRUE(activePane->GetContent() == normalContent);
+            VERIFY_ARE_EQUAL(normalContentId, activePane->GetTerminalControl().ContentId());
+
+            VERIFY_IS_TRUE(newTab->RestoreStashedAgentPane(SplitDirection::Left));
+            VERIFY_IS_TRUE(newTab->GetActivePane() == agentLeaf);
+            VERIFY_IS_FALSE(agentLeaf->IsHidden());
+            const auto rejectedPane = page->_MakePane(nullptr, nullptr, nullptr);
+            page->_SplitPane(newTab, SplitDirection::Right, 0.5f, rejectedPane);
+            VERIFY_ARE_EQUAL(2, newTab->GetLeafPaneCount());
+            VERIFY_IS_TRUE(newTab->FindAgentPane() == agentLeaf);
+            VERIFY_IS_TRUE(newTab->FindAgentPaneContent() == agentContent);
+            VERIFY_ARE_EQUAL(contentId, agentLeaf->GetTerminalControl().ContentId());
+            rejectedPane->Shutdown();
+        });
+    }
+
+    winrt::TerminalApp::implementation::SharedWtaLease TabTests::_acquireIsolatedAgentLease()
+    {
+        // Retirement coroutines hold a raw owner through the session-close
+        // grace period. This isolated, never-spawned owner outlives all tests.
+        static auto* const owner = new winrt::TerminalApp::implementation::SharedWta;
+        std::lock_guard lock{ owner->_mtx };
+        VERIFY_IS_FALSE(owner->_process.is_valid());
+        VERIFY_IS_TRUE(owner->_cachedWtaPath.empty());
+        VERIFY_ARE_EQUAL(size_t{ 0 }, owner->_activeRefCount);
+        return owner->_AcquireLeaseLocked();
+    }
+
+    TransferTabSnapshot TabTests::_snapshotTransferTab(
+        const winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& page,
+        const winrt::com_ptr<winrt::TerminalApp::implementation::Tab>& tab)
+    {
+        TransferTabSnapshot snapshot;
+        snapshot.tab = tab;
+        snapshot.root = tab->GetRootPane();
+        snapshot.activePane = tab->GetActivePane();
+        snapshot.stableId = tab->StableId();
+        snapshot.actions = ActionAndArgs::Serialize(winrt::single_threaded_vector<ActionAndArgs>(tab->BuildStartupActions(BuildStartupKind::Content)));
+        snapshot.root->WalkTree([&](const auto& pane) {
+            if (const auto control = pane->GetTerminalControl())
+            {
+                TransferLeafSnapshot leaf;
+                leaf.pane = pane;
+                leaf.content = pane->GetContent();
+                leaf.control = control;
+                leaf.contentId = control.ContentId();
+                leaf.connection = control.Connection();
+                leaf.core = page->_manager.TryLookupCore(leaf.contentId);
+                VERIFY_IS_NOT_NULL(leaf.core);
+                leaf.core.Closed([closed = leaf.closed](auto&&, auto&&) { ++*closed; });
+                snapshot.leaves.emplace_back(std::move(leaf));
+            }
+        });
+        return snapshot;
+    }
+
+    std::unique_ptr<ContentTransferFixture> TabTests::_createContentTransferFixture(bool agentFirst, bool hidden, bool freshReceiver, bool twoLeaves, std::optional<int32_t> historySize)
+    {
+        auto fixture = std::make_unique<ContentTransferFixture>();
+        auto cleanup = wil::scope_exit([&]() {
+            RunOnUIThread([&]() { fixture.reset(); });
+        });
+        TestOnUIThread([&]() {
+            fixture->host = Grid{};
+            fixture->host.RowDefinitions().Append(RowDefinition{});
+            fixture->host.RowDefinitions().Append(RowDefinition{});
+        });
+        fixture->source = _commonSetup(nullptr, fixture->host, historySize);
+        fixture->hidden = hidden;
+        std::vector<std::shared_ptr<::details::Event>> initialized;
+        const auto trackLayout = [&](const winrt::Microsoft::Terminal::Control::TermControl& control) {
+            const auto ready = std::make_shared<::details::Event>();
+            VERIFY_IS_TRUE(ready->IsValid());
+            control.Initialized([ready](auto&&, auto&&) { ready->Set(); });
+            initialized.push_back(ready);
+        };
+        const auto newConnection = [&]() {
+            winrt::guid id;
+            VERIFY_SUCCEEDED(CoCreateGuid(reinterpret_cast<GUID*>(&id)));
+            auto connection = winrt::make_self<TestConnection>(id, winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+            fixture->connections.push_back(connection);
+            return connection;
+        };
+        const auto waitForLayout = [&]() {
+            for (const auto& ready : initialized)
+            {
+                VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(ready->m_handle, 10000));
+            }
+            initialized.clear();
+        };
+
+        TestOnUIThread([&]() {
+            const auto& source = fixture->source;
+            const auto tab = source->_GetFocusedTabImpl();
+            tab->SuppressAgentPrewarm();
+            source->Width(1200);
+            source->Height(600);
+            source->UpdateLayout();
+            const auto primary = tab->GetActiveTerminalControl();
+            primary.Connection(*newConnection());
+
+            if (!twoLeaves)
+            {
+                const auto normal = source->_MakePane(nullptr, nullptr, *newConnection());
+                trackLayout(normal->GetTerminalControl());
+                VERIFY_IS_TRUE(source->_SplitPane(tab, SplitDirection::Right, 0.35f, normal));
+            }
+            source->UpdateLayout();
+            tab->GetRootPane()->WalkTree([&](const auto& pane) {
+                if (pane->GetTerminalControl() == primary)
+                {
+                    VERIFY_IS_TRUE(tab->FocusPane(pane->Id().value()));
+                }
+            });
+            const auto agentPane = source->_WrapInAgentPaneContent(source->_MakePane(nullptr, nullptr, *newConnection()));
+            fixture->agent = agentPane->GetContent().as<winrt::TerminalApp::AgentPaneContent>();
+            fixture->agentContentId = agentPane->GetTerminalControl().ContentId();
+            trackLayout(agentPane->GetTerminalControl());
+            VERIFY_IS_TRUE(source->_SplitPane(tab, agentFirst ? SplitDirection::Left : SplitDirection::Right, 0.4f, agentPane));
+
+            const auto properties = winrt::make<winrt::TerminalApp::implementation::WindowProperties>();
+            const winrt::TerminalApp::TerminalPage projected{ properties, source->_manager };
+            fixture->destination.copy_from(winrt::get_self<winrt::TerminalApp::implementation::TerminalPage>(projected));
+            const auto& destination = fixture->destination;
+            destination->_settings = source->_settings;
+            destination->_terminalSettingsCache = std::make_shared<winrt::TerminalApp::implementation::TerminalSettingsCache>(destination->_settings);
+            destination->Create();
+            if (freshReceiver)
+            {
+                // Drive the real first-layout handler in a deterministic order
+                // relative to the host's registration acknowledgement.
+                destination->_layoutUpdatedRevoker.revoke();
+            }
+            destination->Width(1200);
+            destination->Height(600);
+
+            Grid::SetRow(*destination, 1);
+            fixture->host.Children().Append(*destination);
+            fixture->host.UpdateLayout();
+            if (!freshReceiver)
+            {
+                const auto destinationPane = destination->_MakePane(nullptr, nullptr, *newConnection());
+                trackLayout(destinationPane->GetTerminalControl());
+                destination->_CreateNewTabFromPane(destinationPane);
+                const auto destinationTab = destination->_GetFocusedTabImpl();
+                destinationTab->SuppressAgentPrewarm();
+                const auto sibling = destination->_MakePane(nullptr, nullptr, *newConnection());
+                trackLayout(sibling->GetTerminalControl());
+                VERIFY_IS_TRUE(destination->_SplitPane(destinationTab, SplitDirection::Right, 0.5f, sibling));
+            }
+            fixture->host.UpdateLayout();
+        });
+        waitForLayout();
+
+        if (!freshReceiver)
+        {
+            TestOnUIThread([&]() {
+                const auto pane = fixture->destination->_MakePane(nullptr, nullptr, *newConnection());
+                trackLayout(pane->GetTerminalControl());
+                fixture->destination->_CreateNewTabFromPane(pane);
+                fixture->destination->_GetFocusedTabImpl()->SuppressAgentPrewarm();
+                fixture->host.UpdateLayout();
+            });
+            waitForLayout();
+        }
+
+        TestOnUIThread([&]() {
+            const auto tab = fixture->source->_GetFocusedTabImpl();
+            const auto agent = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(fixture->agent);
+            agent->AdoptLifetime({ _acquireIsolatedAgentLease(), fixture->source->_manager.TryLookupCore(fixture->agentContentId) });
+            // A real content owner is required here, not a metadata-only stash entry.
+            VERIFY_IS_TRUE(agent->HasLifetime());
+            tab->SetAgentOverride(L"custom:transfer-regression", L"transfer-model", fixture->agentCustomCommand, L"wsl", L"TransferDistro");
+            tab->AgentPanePositionOverride(winrt::hstring{ L"left" });
+            fixture->agentRestoreIdentity = fixture->source->_GetAgentPaneIdentity(tab.get());
+            VERIFY_ARE_NOT_EQUAL(fixture->source->_settings.GlobalSettings().EffectiveAcpAgent(), fixture->agentRestoreIdentity);
+            agent->SetAgentRestoreIdentity(fixture->agentRestoreIdentity, fixture->agentCustomCommand);
+            agent->SetAgentSessionOwner(fixture->agentRestoreIdentity);
+            agent->SetAgentSessionId(L"transaction-original-session");
+            agent->SetAgentRestoreExecutable(L"C:\\Test Tools\\wta-transfer.exe");
+            agent->SetSessionsView(true);
+            agent->SetAgentPanePosition(L"left");
+            fixture->agentRestoreCommandline = fixture->agent.GetNewTerminalArgs(BuildStartupKind::Persist).as<NewTerminalArgs>().Commandline();
+            tab->AgentSourceProfileGuid(fixture->source->_settings.AllProfiles().GetAt(1).Guid());
+            fixture->agentGeneration = agent->TransferId();
+            if (hidden)
+            {
+                tab->StashAgentPane();
+            }
+            else
+            {
+                // Stash already chooses a normal pane and defers its XAML focus.
+                // Do not select a different target before that callback runs.
+                tab->GetRootPane()->WalkTree([&](const auto& pane) {
+                    if (pane->GetTerminalControl() && !pane->IsAgentPane())
+                    {
+                        tab->FocusPane(pane->Id().value());
+                    }
+                });
+            }
+            VERIFY_IS_FALSE(tab->GetActivePane()->IsAgentPane());
+            fixture->original = _snapshotTransferTab(fixture->source, tab);
+            VERIFY_ARE_EQUAL(twoLeaves ? size_t{ 2 } : size_t{ 3 }, fixture->original.leaves.size());
+            const auto actions = tab->BuildStartupActions(BuildStartupKind::Content);
+            VERIFY_ARE_EQUAL(agentFirst, _getTerminalArgs(actions.front()).ContentId() == fixture->agentContentId);
+            if (!freshReceiver)
+            {
+                fixture->destination->_SelectTab(0);
+                for (const auto& destinationTab : fixture->destination->_tabs)
+                {
+                    fixture->destinationTabs.push_back(_snapshotTransferTab(fixture->destination, fixture->destination->_GetTabImpl(destinationTab)));
+                }
+                VERIFY_ARE_EQUAL(size_t{ 2 }, fixture->destinationTabs.size());
+            }
+            for (const auto& page : { fixture->source, fixture->destination })
+            {
+                page->ProtocolVtSequenceReceived([events = fixture->events](auto&&, const winrt::hstring& json) {
+                    Json::Value event;
+                    Json::CharReaderBuilder builder;
+                    std::string errors;
+                    std::istringstream stream{ winrt::to_string(json) };
+                    if (Json::parseFromStream(builder, stream, &event, &errors))
+                    {
+                        events->push_back(std::move(event));
+                    }
+                });
+            }
+        });
+        cleanup.release();
+        return fixture;
+    }
+
+    void TabTests::_verifyTransferTabUnchanged(
+        const winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& page,
+        const TransferTabSnapshot& snapshot)
+    {
+        VERIFY_IS_TRUE(page->_GetTabIndex(*snapshot.tab).has_value());
+        VERIFY_ARE_EQUAL(snapshot.stableId, snapshot.tab->StableId());
+        VERIFY_IS_TRUE(snapshot.root == snapshot.tab->GetRootPane());
+        VERIFY_IS_TRUE(snapshot.activePane == snapshot.tab->GetActivePane());
+        VERIFY_ARE_EQUAL(snapshot.actions, ActionAndArgs::Serialize(winrt::single_threaded_vector<ActionAndArgs>(snapshot.tab->BuildStartupActions(BuildStartupKind::Content))));
+        for (const auto& leaf : snapshot.leaves)
+        {
+            VERIFY_IS_TRUE(leaf.pane->GetContent() == leaf.content);
+            VERIFY_IS_TRUE(leaf.pane->GetTerminalControl() == leaf.control);
+            VERIFY_ARE_EQUAL(leaf.contentId, leaf.control.ContentId());
+            VERIFY_IS_TRUE(leaf.control.Connection() == leaf.connection);
+            VERIFY_IS_TRUE(page->_manager.TryLookupCore(leaf.contentId) == leaf.core);
+            VERIFY_IS_TRUE(leaf.control.TransferState() == winrt::Microsoft::Terminal::Control::ContentTransferState::Owned);
+            VERIFY_ARE_EQUAL(0u, leaf.closed->load());
+        }
+    }
+
+    void TabTests::_verifyTransferRollback(const ContentTransferFixture& fixture)
+    {
+        VERIFY_ARE_EQUAL(1u, fixture.source->_tabs.Size());
+        VERIFY_IS_TRUE(fixture.source->_GetFocusedTabImpl() == fixture.original.tab);
+        _verifyTransferTabUnchanged(fixture.source, fixture.original);
+        const auto agent = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(fixture.agent);
+        VERIFY_IS_TRUE(fixture.original.tab->FindAgentPaneContent() == fixture.agent);
+        VERIFY_IS_TRUE(agent->HasLifetime());
+        VERIFY_ARE_EQUAL(fixture.agentGeneration, agent->TransferId());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"transaction-original-session" }, agent->AgentSessionId());
+        VERIFY_ARE_EQUAL(fixture.agentRestoreCommandline, fixture.agent.GetNewTerminalArgs(BuildStartupKind::Persist).as<NewTerminalArgs>().Commandline());
+        VERIFY_IS_TRUE(agent->IsSessionsView());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"left" }, agent->GetAgentPanePosition());
+        VERIFY_ARE_EQUAL(fixture.hidden, fixture.original.tab->FindAgentPane()->IsHidden());
+        VERIFY_IS_TRUE(fixture.original.tab->AgentSourceProfileGuid() == fixture.source->_settings.AllProfiles().GetAt(1).Guid());
+        _verifyTransferredAgentRestoreState(fixture, fixture.source, fixture.original.tab);
+        VERIFY_ARE_EQUAL(fixture.destinationTabs.size(), static_cast<size_t>(fixture.destination->_tabs.Size()));
+        for (size_t i = 0; i < fixture.destinationTabs.size(); ++i)
+        {
+            VERIFY_IS_TRUE(fixture.destination->_tabs.GetAt(static_cast<uint32_t>(i)) == *fixture.destinationTabs[i].tab);
+            _verifyTransferTabUnchanged(fixture.destination, fixture.destinationTabs[i]);
+        }
+        if (!fixture.destinationTabs.empty())
+        {
+            VERIFY_IS_TRUE(fixture.destination->_GetFocusedTabImpl() == fixture.destinationTabs.front().tab);
+        }
+        for (const auto& connection : fixture.connections)
+        {
+            VERIFY_ARE_EQUAL(0u, connection->CloseCount());
+        }
+        for (const auto& event : *fixture.events)
+        {
+            VERIFY_ARE_NOT_EQUAL(std::string{ "tab_renamed" }, event["method"].asString());
+            VERIFY_ARE_NOT_EQUAL(std::string{ "tab_closed" }, event["method"].asString());
+            if (event["method"].asString() == "connection_state")
+            {
+                VERIFY_ARE_NOT_EQUAL(std::string{ "closed" }, event["params"]["state"].asString());
+                VERIFY_ARE_NOT_EQUAL(std::string{ "failed" }, event["params"]["state"].asString());
+            }
+        }
+    }
+
+    winrt::TerminalApp::RequestMoveContentArgs TabTests::_requestContentTransfer(const ContentTransferFixture& fixture)
+    {
+        winrt::TerminalApp::RequestMoveContentArgs request{ nullptr };
+        const auto token = fixture.source->RequestMoveContent([&](auto&&, const winrt::TerminalApp::RequestMoveContentArgs& args) {
+            VERIFY_IS_NULL(request);
+            request = args;
+        });
+        const auto revoke = wil::scope_exit([&]() { fixture.source->RequestMoveContent(token); });
+        VERIFY_IS_TRUE(fixture.source->_MoveTab(fixture.original.tab, MoveTabArgs{ L"transaction-destination", MoveTabDirection::None }));
+        VERIFY_IS_NOT_NULL(request);
+        VERIFY_ARE_NOT_EQUAL(uint64_t{ 0 }, request.TransferId());
+        VERIFY_ARE_EQUAL(fixture.original.actions, request.Content());
+        return request;
+    }
+
+    void TabTests::_verifyTransferredAgentRestoreState(
+        const ContentTransferFixture& fixture,
+        const winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& page,
+        const winrt::com_ptr<winrt::TerminalApp::implementation::Tab>& tab)
+    {
+        VERIFY_IS_TRUE(tab->HasAgentOverride());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:transfer-regression" }, tab->AgentIdOverride());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"transfer-model" }, tab->AgentModelOverride());
+        VERIFY_ARE_EQUAL(fixture.agentCustomCommand, tab->AgentCustomCommandOverride());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"wsl" }, tab->AgentSourceOverride());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"TransferDistro" }, tab->AgentWslDistroOverride());
+        VERIFY_IS_TRUE(tab->AgentPanePositionOverride().has_value());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"left" }, tab->AgentPanePositionOverride().value());
+        // Persist immediately, without any helper status replay. Refresh also
+        // verifies that the copied session owner still matches the tab override.
+        page->_RefreshAgentRestoreIdentity(tab.get());
+        const auto content = tab->FindAgentPaneContent();
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"transaction-original-session" }, content.AgentSessionId());
+        const auto args = content.GetNewTerminalArgs(BuildStartupKind::Persist).as<NewTerminalArgs>();
+        VERIFY_ARE_EQUAL(fixture.agentRestoreCommandline, args.Commandline());
+        int argc = 0;
+        const wil::unique_hlocal_ptr<PWSTR[]> argv{ CommandLineToArgvW(args.Commandline().c_str(), &argc) };
+        VERIFY_IS_NOT_NULL(argv.get());
+        VERIFY_IS_TRUE(argc > 0);
+        VERIFY_ARE_EQUAL(std::wstring{ L"C:\\Test Tools\\wta-transfer.exe" }, std::wstring{ argv.get()[0] });
+        std::vector<std::wstring> tokens;
+        for (int i = 0; i < argc; ++i)
+        {
+            tokens.emplace_back(argv.get()[i]);
+        }
+        const auto fields = ::Microsoft::Terminal::AgentPaneRestore::ParsePaneCommandline(tokens);
+        VERIFY_ARE_EQUAL(std::wstring{ L"transaction-original-session" }, fields.sessionId);
+        VERIFY_ARE_EQUAL(std::wstring{ fixture.agentRestoreIdentity }, fields.agentIdentity);
+        VERIFY_ARE_EQUAL(std::wstring{ fixture.agentCustomCommand }, fields.customCommand);
+        VERIFY_ARE_EQUAL(std::wstring{ L"sessions" }, fields.view);
+    }
+
+    void TabTests::_verifyTransferCommitted(const ContentTransferFixture& fixture)
+    {
+        VERIFY_ARE_EQUAL(0u, fixture.source->_tabs.Size());
+        VERIFY_ARE_EQUAL(fixture.destinationTabs.size() + 1, static_cast<size_t>(fixture.destination->_tabs.Size()));
+        for (const auto& tab : fixture.destinationTabs)
+        {
+            _verifyTransferTabUnchanged(fixture.destination, tab);
+        }
+        const auto moved = fixture.destination->_GetFocusedTabImpl();
+        VERIFY_ARE_NOT_EQUAL(fixture.original.stableId, moved->StableId());
+        VERIFY_ARE_EQUAL(static_cast<int>(fixture.original.leaves.size()), moved->GetLeafPaneCount());
+        std::vector<uint64_t> received;
+        moved->GetRootPane()->WalkTree([&](const auto& pane) {
+            if (const auto control = pane->GetTerminalControl())
+            {
+                const auto found = std::find_if(fixture.original.leaves.begin(), fixture.original.leaves.end(), [&](const auto& leaf) {
+                    return leaf.contentId == control.ContentId();
+                });
+                VERIFY_IS_TRUE(found != fixture.original.leaves.end());
+                VERIFY_IS_TRUE(std::find(received.begin(), received.end(), control.ContentId()) == received.end());
+                received.push_back(control.ContentId());
+                VERIFY_IS_TRUE(control.Connection() == found->connection);
+                VERIFY_ARE_EQUAL(found->connection.SessionId(), control.Connection().SessionId());
+                VERIFY_IS_TRUE(control != found->control);
+                VERIFY_IS_TRUE(found->control.TransferState() == winrt::Microsoft::Terminal::Control::ContentTransferState::Closed);
+                VERIFY_IS_TRUE(control.TransferState() == winrt::Microsoft::Terminal::Control::ContentTransferState::Owned);
+                VERIFY_IS_TRUE(fixture.destination->_manager.TryLookupCore(found->contentId) == found->core);
+                VERIFY_ARE_EQUAL(0u, found->closed->load());
+            }
+        });
+        VERIFY_ARE_EQUAL(fixture.original.leaves.size(), received.size());
+        const auto newAgent = moved->FindAgentPaneContent();
+        VERIFY_IS_NOT_NULL(newAgent);
+        VERIFY_IS_TRUE(newAgent != fixture.agent);
+        const auto newImpl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(newAgent);
+        VERIFY_IS_TRUE(newImpl->HasLifetime());
+        VERIFY_IS_FALSE(winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(fixture.agent)->HasLifetime());
+        VERIFY_ARE_EQUAL(fixture.agentContentId, newAgent.GetTermControl().ContentId());
+        VERIFY_ARE_NOT_EQUAL(fixture.agentGeneration, newImpl->TransferId());
+        VERIFY_ARE_EQUAL(fixture.hidden, moved->FindAgentPane()->IsHidden());
+        VERIFY_IS_TRUE(newImpl->IsSessionsView());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"left" }, newImpl->GetAgentPanePosition());
+        VERIFY_IS_TRUE(moved->AgentSourceProfileGuid() == fixture.source->_settings.AllProfiles().GetAt(1).Guid());
+        _verifyTransferredAgentRestoreState(fixture, fixture.destination, moved);
+        size_t renamed = 0;
+        for (const auto& event : *fixture.events)
+        {
+            VERIFY_ARE_NOT_EQUAL(std::string{ "tab_closed" }, event["method"].asString());
+            if (event["method"].asString() == "connection_state")
+            {
+                VERIFY_ARE_NOT_EQUAL(std::string{ "closed" }, event["params"]["state"].asString());
+                VERIFY_ARE_NOT_EQUAL(std::string{ "failed" }, event["params"]["state"].asString());
+            }
+            if (event["method"].asString() == "tab_renamed")
+            {
+                ++renamed;
+                VERIFY_ARE_EQUAL(winrt::to_string(fixture.original.stableId), event["params"]["old_tab_id"].asString());
+                VERIFY_ARE_EQUAL(winrt::to_string(moved->StableId()), event["params"]["new_tab_id"].asString());
+            }
+        }
+        VERIFY_ARE_EQUAL(size_t{ 1 }, renamed);
+        for (const auto& connection : fixture.connections)
+        {
+            VERIFY_ARE_EQUAL(0u, connection->CloseCount());
+        }
+    }
+
+    void TabTests::_closeContentTransferFixture(ContentTransferFixture& fixture, bool verify)
+    {
+        fixture.destination->_contentTransferTestHook = {};
+        for (const auto& page : { fixture.source, fixture.destination })
+        {
+            while (page->_tabs.Size())
+            {
+                page->_RemoveTab(page->_tabs.GetAt(0));
+            }
+        }
+        if (verify)
+        {
+            for (const auto& connection : fixture.connections)
+            {
+                VERIFY_ARE_EQUAL(1u, connection->CloseCount());
+            }
+            for (const auto& leaf : fixture.original.leaves)
+            {
+                VERIFY_ARE_EQUAL(1u, leaf.closed->load());
+                VERIFY_IS_NULL(fixture.source->_manager.TryLookupCore(leaf.contentId));
+            }
+            for (const auto& tab : fixture.destinationTabs)
+            {
+                for (const auto& leaf : tab.leaves)
+                {
+                    VERIFY_ARE_EQUAL(1u, leaf.closed->load());
+                    VERIFY_IS_NULL(fixture.destination->_manager.TryLookupCore(leaf.contentId));
+                }
+            }
+        }
+    }
+
+    void TabTests::_verifyContentTransferFailure(bool agentFirst, bool hidden, TransferStage stage)
+    {
+        auto fixture = _createContentTransferFixture(agentFirst, hidden);
+        const auto cleanup = wil::scope_exit([&]() {
+            RunOnUIThread([&]() {
+                _closeContentTransferFixture(*fixture, false);
+                fixture.reset();
+            });
+        });
+        winrt::TerminalApp::RequestMoveContentArgs request{ nullptr };
+        TestOnUIThread([&]() {
+            request = _requestContentTransfer(*fixture);
+            _verifyTransferRollback(*fixture);
+            bool faultReached = false;
+            fixture->destination->_contentTransferTestHook = [&](TransferStage current, uint64_t contentId, uint32_t actionIndex) {
+                if (current != stage ||
+                    (stage == TransferStage::ControlAttached && contentId != fixture->agentContentId) ||
+                    (stage == TransferStage::BeforeSplitInsertion && actionIndex < 2))
+                {
+                    return;
+                }
+                faultReached = true;
+                if (stage == TransferStage::BeforeClaim)
+                {
+                    winrt::TerminalApp::implementation::ContentTransfer::Expire(request.TransferId());
+                    return;
+                }
+                if (stage == TransferStage::ControlAttached)
+                {
+                    VERIFY_ARE_EQUAL(agentFirst, actionIndex == 0);
+                }
+                if (stage == TransferStage::BeforeSplitInsertion)
+                {
+                    VERIFY_IS_TRUE(fixture->destination->_GetFocusedTabImpl()->GetLeafPaneCount() >= 2);
+                }
+                winrt::throw_hresult(E_ABORT);
+            };
+            const auto clearHook = wil::scope_exit([&]() { fixture->destination->_contentTransferTestHook = {}; });
+            VERIFY_IS_FALSE(fixture->destination->AttachContent(ActionAndArgs::Deserialize(request.Content()), 1, request.TransferId()));
+            VERIFY_IS_TRUE(faultReached);
+            fixture->destination->_contentTransferTestHook = {};
+            _verifyTransferRollback(*fixture);
+            VERIFY_IS_FALSE(fixture->destination->AttachContent(ActionAndArgs::Deserialize(request.Content()), 1, request.TransferId()));
+            _verifyTransferRollback(*fixture);
+        });
+        for (const auto& connection : fixture->connections)
+        {
+            VERIFY_IS_FALSE(connection->WaitForClose(100));
+        }
+        TestOnUIThread([&]() {
+            _verifyTransferRollback(*fixture);
+            const auto retry = _requestContentTransfer(*fixture);
+            VERIFY_ARE_NOT_EQUAL(request.TransferId(), retry.TransferId());
+            winrt::TerminalApp::implementation::ContentTransfer::Expire(request.TransferId());
+            VERIFY_IS_TRUE(fixture->destination->AttachContent(ActionAndArgs::Deserialize(retry.Content()), 1, retry.TransferId()));
+            _verifyTransferCommitted(*fixture);
+            VERIFY_IS_FALSE(fixture->destination->AttachContent(ActionAndArgs::Deserialize(retry.Content()), 1, retry.TransferId()));
+            winrt::TerminalApp::implementation::ContentTransfer::Expire(request.TransferId());
+            _verifyTransferCommitted(*fixture);
+            fixture->host.UpdateLayout();
+        });
+        TestOnUIThread([&]() {
+            _verifyTransferCommitted(*fixture);
+            _closeContentTransferFixture(*fixture, true);
+        });
+    }
+
+    void TabTests::ContentTransferAgentFirstExpiryRollsBack()
+    {
+        _verifyContentTransferFailure(true, false, TransferStage::BeforeClaim);
+    }
+
+    void TabTests::ContentTransferAgentLaterExpiryRollsBack()
+    {
+        _verifyContentTransferFailure(false, true, TransferStage::BeforeClaim);
+    }
+
+    void TabTests::ContentTransferAgentFirstSetupFailureRollsBack()
+    {
+        _verifyContentTransferFailure(true, true, TransferStage::ControlAttached);
+    }
+
+    void TabTests::ContentTransferAgentLaterSetupFailureRollsBack()
+    {
+        _verifyContentTransferFailure(false, false, TransferStage::ControlAttached);
+    }
+
+    void TabTests::ContentTransferAgentFirstInsertionFailureRollsBack()
+    {
+        _verifyContentTransferFailure(true, false, TransferStage::BeforeFirstPaneInsertion);
+    }
+
+    void TabTests::ContentTransferAgentLaterInsertionFailureRollsBack()
+    {
+        _verifyContentTransferFailure(false, true, TransferStage::BeforeFirstPaneInsertion);
+    }
+
+    void TabTests::ContentTransferAgentFirstLaterSplitFailureRollsBack()
+    {
+        _verifyContentTransferFailure(true, true, TransferStage::BeforeSplitInsertion);
+    }
+
+    void TabTests::ContentTransferAgentLaterLaterSplitFailureRollsBack()
+    {
+        _verifyContentTransferFailure(false, false, TransferStage::BeforeSplitInsertion);
+    }
+
+    void TabTests::_verifyContentTransferStartupGate(bool layoutFirst)
+    {
+        auto fixture = _createContentTransferFixture(layoutFirst, true, true);
+        const auto cleanup = wil::scope_exit([&]() {
+            RunOnUIThread([&]() {
+                _closeContentTransferFixture(*fixture, false);
+                fixture.reset();
+            });
+        });
+        TestOnUIThread([&]() {
+            const auto request = _requestContentTransfer(*fixture);
+            const auto& destination = fixture->destination;
+            const auto actions = ActionAndArgs::Deserialize(request.Content());
+            destination->SetStartupActions({ actions.begin(), actions.end() });
+            destination->SetStartupTransfer(request.TransferId());
+            VERIFY_IS_TRUE(destination->_startupState == winrt::TerminalApp::implementation::StartupState::NotInitialized);
+            if (layoutFirst)
+            {
+                destination->_OnFirstLayout(nullptr, nullptr);
+                VERIFY_IS_TRUE(destination->_startupState == winrt::TerminalApp::implementation::StartupState::InStartup);
+                _verifyTransferRollback(*fixture);
+                destination->ContentTransferReceiverReady();
+            }
+            else
+            {
+                destination->ContentTransferReceiverReady();
+                VERIFY_IS_TRUE(destination->_startupState == winrt::TerminalApp::implementation::StartupState::NotInitialized);
+                _verifyTransferRollback(*fixture);
+                destination->_OnFirstLayout(nullptr, nullptr);
+            }
+            VERIFY_IS_TRUE(destination->_startupState == winrt::TerminalApp::implementation::StartupState::Initialized);
+            VERIFY_ARE_EQUAL(uint64_t{ 0 }, destination->_startupTransferId);
+            _verifyTransferCommitted(*fixture);
+            destination->ContentTransferReceiverReady();
+            destination->_OnFirstLayout(nullptr, nullptr);
+            _verifyTransferCommitted(*fixture);
+            fixture->host.UpdateLayout();
+            _closeContentTransferFixture(*fixture, true);
+        });
+    }
+
+    void TabTests::ContentTransferFirstLayoutWaitsForReceiver()
+    {
+        _verifyContentTransferStartupGate(true);
+    }
+
+    void TabTests::ContentTransferReceiverWaitsForFirstLayout()
+    {
+        _verifyContentTransferStartupGate(false);
+    }
+
+    void TabTests::ContentTransferExpiredStartupClosesEmptyReceiver()
+    {
+        auto fixture = _createContentTransferFixture(true, true, true);
+        const auto cleanup = wil::scope_exit([&]() {
+            RunOnUIThread([&]() {
+                _closeContentTransferFixture(*fixture, false);
+                fixture.reset();
+            });
+        });
+        TestOnUIThread([&]() {
+            const auto applicationState = ApplicationState::SharedInstance();
+            const auto freCompleted = applicationState.AgentFreCompleted();
+            const auto restoreFreCompleted = wil::scope_exit([&]() {
+                applicationState.AgentFreCompleted(freCompleted);
+            });
+            applicationState.AgentFreCompleted(true);
+
+            const auto request = _requestContentTransfer(*fixture);
+            const auto& destination = fixture->destination;
+            const auto actions = ActionAndArgs::Deserialize(request.Content());
+            destination->SetStartupActions({ actions.begin(), actions.end() });
+            destination->SetStartupTransfer(request.TransferId());
+
+            unsigned int closeRequests = 0;
+            const auto closeToken = destination->CloseWindowRequested([&](auto&&, auto&&) {
+                ++closeRequests;
+            });
+            const auto revokeClose = wil::scope_exit([&]() {
+                destination->CloseWindowRequested(closeToken);
+            });
+            unsigned int receiveAttempts = 0;
+            destination->_contentTransferTestHook = [&](TransferStage stage, uint64_t, uint32_t) {
+                if (stage == TransferStage::BeforeClaim)
+                {
+                    ++receiveAttempts;
+                    winrt::TerminalApp::implementation::ContentTransfer::Expire(request.TransferId());
+                }
+            };
+            const auto clearHook = wil::scope_exit([&]() { destination->_contentTransferTestHook = {}; });
+
+            destination->_OnFirstLayout(nullptr, nullptr);
+            VERIFY_IS_TRUE(destination->_startupState == winrt::TerminalApp::implementation::StartupState::InStartup);
+            VERIFY_ARE_EQUAL(0u, receiveAttempts);
+            VERIFY_ARE_EQUAL(0u, closeRequests);
+            _verifyTransferRollback(*fixture);
+
+            destination->ContentTransferReceiverReady();
+            VERIFY_ARE_EQUAL(1u, receiveAttempts);
+            VERIFY_ARE_EQUAL(1u, closeRequests);
+            VERIFY_ARE_EQUAL(0u, destination->_tabs.Size());
+            VERIFY_ARE_EQUAL(uint64_t{ 0 }, destination->_startupTransferId);
+            VERIFY_IS_TRUE(destination->_startupState == winrt::TerminalApp::implementation::StartupState::Initialized);
+            _verifyTransferRollback(*fixture);
+
+            destination->ContentTransferReceiverReady();
+            destination->_OnFirstLayout(nullptr, nullptr);
+            VERIFY_ARE_EQUAL(1u, receiveAttempts);
+            VERIFY_ARE_EQUAL(1u, closeRequests);
+            _verifyTransferRollback(*fixture);
+            _closeContentTransferFixture(*fixture, true);
+        });
+    }
+
+    void TabTests::_verifyContentTransferSourceRejection(bool rejectWindow)
+    {
+        auto fixture = _createContentTransferFixture(rejectWindow, rejectWindow);
+        const auto cleanup = wil::scope_exit([&]() {
+            RunOnUIThread([&]() {
+                _closeContentTransferFixture(*fixture, false);
+                fixture.reset();
+            });
+        });
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::RequestMoveContentArgs rejected{ nullptr };
+            if (rejectWindow)
+            {
+                const auto token = fixture->source->RequestMoveContent([&](auto&&, const winrt::TerminalApp::RequestMoveContentArgs& args) {
+                    rejected = args;
+                    winrt::throw_hresult(E_ABORT);
+                });
+                const auto revoke = wil::scope_exit([&]() { fixture->source->RequestMoveContent(token); });
+                VERIFY_IS_TRUE(fixture->source->_MoveTab(fixture->original.tab, MoveTabArgs{ L"new", MoveTabDirection::None }));
+                VERIFY_IS_NOT_NULL(rejected);
+            }
+            else
+            {
+                VERIFY_IS_TRUE(fixture->source->_MoveTab(fixture->original.tab, MoveTabArgs{ L"new", MoveTabDirection::None }));
+            }
+            _verifyTransferRollback(*fixture);
+            if (rejected)
+            {
+                // Event-handler failures do not acknowledge a transfer. Its
+                // pending deadline must expire without touching source content.
+                winrt::TerminalApp::implementation::ContentTransfer::Expire(rejected.TransferId());
+                VERIFY_IS_FALSE(fixture->destination->AttachContent(ActionAndArgs::Deserialize(rejected.Content()), 1, rejected.TransferId()));
+                _verifyTransferRollback(*fixture);
+            }
+            const auto retry = _requestContentTransfer(*fixture);
+            VERIFY_IS_TRUE(fixture->destination->AttachContent(ActionAndArgs::Deserialize(retry.Content()), 1, retry.TransferId()));
+            _verifyTransferCommitted(*fixture);
+            _closeContentTransferFixture(*fixture, true);
+        });
+    }
+
+    void TabTests::ContentTransferMissingMoveHandlerPreservesSource()
+    {
+        _verifyContentTransferSourceRejection(false);
+    }
+
+    void TabTests::ContentTransferRejectedWindowPreservesSource()
+    {
+        _verifyContentTransferSourceRejection(true);
+    }
+
+    void TabTests::_waitForContentTransferReviewUI(const std::function<bool()>& predicate)
+    {
+        ::details::Event settled;
+        DispatcherTimer timer{ nullptr };
+        winrt::event_token tick{};
+        unsigned int consecutive = 0;
+        const auto cleanup = wil::scope_exit([&]() {
+            RunOnUIThread([&]() {
+                if (timer)
+                {
+                    timer.Stop();
+                    timer.Tick(tick);
+                    timer = nullptr;
+                }
+            });
+        });
+        TestOnUIThread([&]() {
+            timer = DispatcherTimer{};
+            // Observe stable UI state across both 8ms scrollbar throttles,
+            // rather than sleeping and assuming their callbacks have run.
+            timer.Interval(std::chrono::milliseconds{ 20 });
+            tick = timer.Tick([&](auto&&, auto&&) {
+                consecutive = predicate() ? consecutive + 1 : 0;
+                if (consecutive == 3)
+                {
+                    timer.Stop();
+                    settled.Set();
+                }
+            });
+            timer.Start();
+        });
+        VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(settled.m_handle, 10000));
+    }
+
+    void TabTests::_verifyContentTransferReviewZoom(bool hidden, bool zoomed, bool freshReceiver, bool twoLeaves)
+    {
+        auto fixture = _createContentTransferFixture(true, hidden, freshReceiver, twoLeaves);
+        const auto cleanup = wil::scope_exit([&]() {
+            RunOnUIThread([&]() {
+                _closeContentTransferFixture(*fixture, false);
+                fixture.reset();
+            });
+        });
+        // Let the stash's deferred focus run before zooming its chosen shell.
+        _waitForContentTransferReviewUI([&]() {
+            const auto active = fixture->original.tab->GetActivePane();
+            return active == fixture->original.activePane && active && !active->IsAgentPane();
+        });
+        TestOnUIThread([&]() {
+            const auto tab = fixture->original.tab;
+            VERIFY_ARE_EQUAL(twoLeaves ? 2 : 3, tab->GetLeafPaneCount());
+            if (!twoLeaves)
+            {
+                // Focus outside the hidden agent's sibling so the deferred
+                // stash callback must yield to the tab's final focus action.
+                tab->GetRootPane()->WalkTree([&](const auto& pane) {
+                    if (pane->GetTerminalControl() && !pane->IsAgentPane() && pane != fixture->original.activePane)
+                    {
+                        VERIFY_IS_TRUE(tab->FocusPane(pane->Id().value()));
+                        return true;
+                    }
+                    return false;
+                });
+            }
+            VERIFY_IS_FALSE(tab->GetActivePane()->IsAgentPane());
+            VERIFY_ARE_EQUAL(hidden, tab->FindAgentPane()->IsHidden());
+            if (zoomed)
+            {
+                fixture->source->_HandleTogglePaneZoom(nullptr, ActionEventArgs{});
+            }
+            VERIFY_ARE_EQUAL(zoomed, tab->IsZoomed());
+            fixture->host.UpdateLayout();
+            fixture->original = _snapshotTransferTab(fixture->source, tab);
+            const auto actions = tab->BuildStartupActions(BuildStartupKind::Content);
+            VERIFY_IS_TRUE(actions.front().Action() == ShortcutAction::NewTab);
+            VERIFY_ARE_EQUAL(fixture->agentContentId, _getTerminalArgs(actions.front()).ContentId());
+            VERIFY_ARE_EQUAL(fixture->agentGeneration, _getTerminalArgs(actions.front()).AgentPaneTransferId());
+            if (zoomed)
+            {
+                VERIFY_IS_TRUE(actions.back().Action() == ShortcutAction::TogglePaneZoom);
+                VERIFY_IS_TRUE(actions[actions.size() - 2].Action() == ShortcutAction::FocusPane);
+                VERIFY_IS_TRUE(tab->Content() == tab->GetActivePane()->GetRootElement());
+            }
+            _verifyTransferRollback(*fixture);
+        });
+        uint64_t shellId = 0;
+        TestOnUIThread([&]() {
+            shellId = fixture->original.activePane->GetTerminalControl().ContentId();
+            const auto request = _requestContentTransfer(*fixture);
+            const auto& destination = fixture->destination;
+            if (freshReceiver)
+            {
+                const auto applicationState = ApplicationState::SharedInstance();
+                const auto freCompleted = applicationState.AgentFreCompleted();
+                const auto restore = wil::scope_exit([&]() { applicationState.AgentFreCompleted(freCompleted); });
+                applicationState.AgentFreCompleted(true);
+                const auto actions = ActionAndArgs::Deserialize(request.Content());
+                destination->SetStartupActions({ actions.begin(), actions.end() });
+                destination->SetStartupTransfer(request.TransferId());
+                destination->_OnFirstLayout(nullptr, nullptr);
+                VERIFY_IS_TRUE(destination->_startupState == winrt::TerminalApp::implementation::StartupState::InStartup);
+                _verifyTransferRollback(*fixture);
+                destination->ContentTransferReceiverReady();
+                if (fixture->source->_tabs.Size() != 0)
+                {
+                    _verifyTransferRollback(*fixture);
+                }
+                // Outcome first: a valid hidden, zoomed tab must not roll back.
+                VERIFY_ARE_EQUAL(0u, fixture->source->_tabs.Size());
+                VERIFY_IS_TRUE(destination->_startupState == winrt::TerminalApp::implementation::StartupState::Initialized);
+            }
+            else
+            {
+                const auto accepted = destination->AttachContent(ActionAndArgs::Deserialize(request.Content()), 1, request.TransferId());
+                if (!accepted)
+                {
+                    _verifyTransferRollback(*fixture);
+                }
+                VERIFY_IS_TRUE(accepted);
+            }
+            _verifyTransferCommitted(*fixture);
+            const auto moved = destination->_GetFocusedTabImpl();
+            VERIFY_ARE_EQUAL(shellId, moved->GetActiveTerminalControl().ContentId());
+            VERIFY_IS_FALSE(moved->GetActivePane()->IsAgentPane());
+            VERIFY_ARE_EQUAL(zoomed, moved->IsZoomed());
+            fixture->host.UpdateLayout();
+        });
+        _waitForContentTransferReviewUI([&]() {
+            const auto moved = fixture->destination->_GetFocusedTabImpl();
+            const auto control = moved ? moved->GetActiveTerminalControl() : nullptr;
+            const auto agent = moved ? moved->FindAgentPane() : nullptr;
+            return control && agent && control.ContentId() == shellId &&
+                   moved->IsZoomed() == zoomed && agent->IsHidden() == hidden;
+        });
+        TestOnUIThread([&]() { _closeContentTransferFixture(*fixture, true); });
+    }
+
+    void TabTests::ContentTransferReviewHiddenZoomedTabMovesToExistingPage()
+    {
+        _verifyContentTransferReviewZoom(true, true, false);
+    }
+
+    void TabTests::ContentTransferReviewHiddenZoomedTabMovesToFreshReceiver()
+    {
+        _verifyContentTransferReviewZoom(true, true, true);
+    }
+
+    void TabTests::ContentTransferReviewHiddenTabMovesWithoutZoom()
+    {
+        _verifyContentTransferReviewZoom(true, false, false);
+    }
+
+    void TabTests::ContentTransferReviewVisibleZoomedTabMoves()
+    {
+        _verifyContentTransferReviewZoom(false, true, false);
+    }
+
+    void TabTests::ContentTransferReviewHiddenZoomedNestedTabKeepsFinalFocus()
+    {
+        _verifyContentTransferReviewZoom(true, true, false, false);
+    }
+
+    void TabTests::_verifyContentTransferReviewScroll(bool transfer, bool reject)
+    {
+        auto fixture = _createContentTransferFixture(false, false, false, false, 1000);
+        const auto cleanup = wil::scope_exit([&]() {
+            RunOnUIThread([&]() {
+                _closeContentTransferFixture(*fixture, false);
+                fixture.reset();
+            });
+        });
+        winrt::Microsoft::Terminal::Control::TermControl control{ nullptr };
+        Controls::Primitives::ScrollBar scrollbar{ nullptr };
+        TestOnUIThread([&]() {
+            control = fixture->original.tab->GetActiveTerminalControl();
+            scrollbar = control.FindName(L"ScrollBar").as<Controls::Primitives::ScrollBar>();
+            const auto found = std::find_if(fixture->connections.begin(), fixture->connections.end(), [&](const auto& connection) {
+                return *connection == control.Connection();
+            });
+            VERIFY_IS_TRUE(found != fixture->connections.end());
+            std::u16string output;
+            for (unsigned int i = 0; i < 500; ++i)
+            {
+                output += u"content-transfer scrollback fixture\r\n";
+            }
+            // Feed the real terminal parser, not a shell or the echo input path.
+            (*found)->TerminalOutput.raise(winrt::array_view<const char16_t>{ output.data(), output.data() + output.size() });
+        });
+        _waitForContentTransferReviewUI([&]() {
+            return scrollbar.Maximum() > 100 && scrollbar.Value() == control.ScrollOffset() && control.ScrollOffset() > 100;
+        });
+        constexpr int expectedOffset = 37;
+        TestOnUIThread([&]() { control.ScrollViewport(expectedOffset); });
+        _waitForContentTransferReviewUI([&]() {
+            return control.ScrollOffset() == expectedOffset && scrollbar.Value() == expectedOffset;
+        });
+        TestOnUIThread([&]() {
+            fixture->original = _snapshotTransferTab(fixture->source, fixture->original.tab);
+            VERIFY_ARE_EQUAL(expectedOffset, control.ScrollOffset());
+            if (transfer)
+            {
+                const auto request = _requestContentTransfer(*fixture);
+                bool suspended = false;
+                fixture->destination->_contentTransferTestHook = [&](TransferStage stage, uint64_t, uint32_t) {
+                    if (reject && stage == TransferStage::BeforeFirstPaneInsertion)
+                    {
+                        suspended = control.TransferState() == winrt::Microsoft::Terminal::Control::ContentTransferState::Suspended;
+                        winrt::throw_hresult(E_ABORT);
+                    }
+                };
+                const auto clearHook = wil::scope_exit([&]() { fixture->destination->_contentTransferTestHook = {}; });
+                const auto accepted = fixture->destination->AttachContent(ActionAndArgs::Deserialize(request.Content()), 1, request.TransferId());
+                // Capture before layout, output, input, or another dispatcher turn
+                // can conceal the rollback's viewport mutation.
+                const auto actualOffset = control.ScrollOffset();
+                Log::Comment(NoThrowString().Format(L"Transfer viewport: before=%d after=%d", expectedOffset, actualOffset));
+                Log::Comment(NoThrowString().Format(L"Transfer accepted=%d suspended at rejection=%d", accepted, suspended));
+                VERIFY_ARE_EQUAL(!reject, accepted);
+                if (reject)
+                {
+                    VERIFY_IS_TRUE(suspended);
+                    _verifyTransferRollback(*fixture);
+                }
+                else
+                {
+                    _verifyTransferCommitted(*fixture);
+                    control = fixture->destination->_GetFocusedTabImpl()->GetActiveTerminalControl();
+                    scrollbar = control.FindName(L"ScrollBar").as<Controls::Primitives::ScrollBar>();
+                    fixture->host.UpdateLayout();
+                }
+                VERIFY_ARE_EQUAL(expectedOffset, actualOffset);
+            }
+            if (!transfer || reject)
+            {
+                _verifyTransferRollback(*fixture);
+            }
+        });
+        _waitForContentTransferReviewUI([&]() {
+            return control.ScrollOffset() == expectedOffset && scrollbar.Value() == expectedOffset;
+        });
+        TestOnUIThread([&]() {
+            VERIFY_ARE_EQUAL(expectedOffset, control.ScrollOffset());
+            if (!transfer || reject)
+            {
+                _verifyTransferRollback(*fixture);
+            }
+            _closeContentTransferFixture(*fixture, true);
+        });
+    }
+
+    void TabTests::ContentTransferReviewRollbackPreservesScrollOffset()
+    {
+        _verifyContentTransferReviewScroll(true);
+    }
+
+    void TabTests::ContentTransferReviewScrollOffsetWithoutTransferIsStable()
+    {
+        _verifyContentTransferReviewScroll(false);
+    }
+
+    void TabTests::ContentTransferReviewSuccessfulMovePreservesScrollOffset()
+    {
+        _verifyContentTransferReviewScroll(true, false);
+    }
+
+    void TabTests::_verifyContentTransferReviewSuppression(bool singlePane, bool destinationSuppressed)
+    {
+        auto fixture = _createContentTransferFixture(false, false, false, !singlePane);
+        const auto cleanup = wil::scope_exit([&]() {
+            RunOnUIThread([&]() {
+                _closeContentTransferFixture(*fixture, false);
+                fixture.reset();
+            });
+        });
+        TestOnUIThread([&]() {
+            const auto tab = fixture->original.tab;
+            tab->AllowAgentPrewarm();
+            VERIFY_IS_FALSE(tab->AgentPrewarmSuppressed());
+            // Use the real user-close handler, including pane removal, rather
+            // than just setting the suppression bit on an artificial shell tab.
+            fixture->source->_HandleClosePaneRequested(tab->FindAgentPane());
+            VERIFY_IS_TRUE(tab->AgentPrewarmSuppressed());
+        });
+        _waitForContentTransferReviewUI([&]() { return fixture->original.tab->FindAgentPane() == nullptr; });
+        TestOnUIThread([&]() {
+            const auto sourceTab = fixture->original.tab;
+            VERIFY_IS_TRUE(sourceTab->AgentPrewarmSuppressed());
+            VERIFY_IS_TRUE(sourceTab->FindAgentPane() == nullptr);
+            VERIFY_ARE_EQUAL(singlePane ? 2 : 1, sourceTab->GetLeafPaneCount());
+            fixture->original = _snapshotTransferTab(fixture->source, sourceTab);
+            const auto destinationTab = fixture->destination->_GetFocusedTabImpl();
+            if (singlePane && !destinationSuppressed)
+            {
+                destinationTab->AllowAgentPrewarm();
+            }
+            // Inspect the authoritative gate before the queued low-priority
+            // initializer. Always suppress it before yielding, including when
+            // the regression assertion fails; no real helper may be started.
+            const auto guardPrewarm = wil::scope_exit([&]() {
+                for (const auto& tab : fixture->destination->_tabs)
+                {
+                    fixture->destination->_GetTabImpl(tab)->SuppressAgentPrewarm();
+                }
+            });
+            winrt::TerminalApp::RequestMoveContentArgs request{ nullptr };
+            if (singlePane)
+            {
+                const auto token = fixture->source->RequestMoveContent([&](auto&&, const winrt::TerminalApp::RequestMoveContentArgs& args) { request = args; });
+                const auto revoke = wil::scope_exit([&]() { fixture->source->RequestMoveContent(token); });
+                MovePaneArgs args{ 0, L"transaction-destination" };
+                VERIFY_IS_TRUE(fixture->source->_MovePane(args));
+                VERIFY_IS_NOT_NULL(request);
+                VERIFY_IS_TRUE(ActionAndArgs::Deserialize(request.Content()).GetAt(0).Action() == ShortcutAction::SplitPane);
+            }
+            else
+            {
+                // A one-leaf tree is still a whole-tab operation: use _MoveTab.
+                request = _requestContentTransfer(*fixture);
+                VERIFY_IS_TRUE(ActionAndArgs::Deserialize(request.Content()).GetAt(0).Action() == ShortcutAction::NewTab);
+            }
+            VERIFY_IS_TRUE(fixture->destination->AttachContent(ActionAndArgs::Deserialize(request.Content()), 0, request.TransferId()));
+            const auto moved = fixture->destination->_GetFocusedTabImpl();
+            VERIFY_IS_TRUE(moved->FindAgentPane() == nullptr);
+            if (singlePane)
+            {
+                VERIFY_IS_TRUE(moved == destinationTab);
+                VERIFY_ARE_EQUAL(3, moved->GetLeafPaneCount());
+                VERIFY_ARE_EQUAL(1, sourceTab->GetLeafPaneCount());
+                VERIFY_IS_TRUE(sourceTab->AgentPrewarmSuppressed());
+            }
+            else
+            {
+                VERIFY_ARE_EQUAL(0u, fixture->source->_tabs.Size());
+                VERIFY_ARE_EQUAL(1, moved->GetLeafPaneCount());
+                VERIFY_ARE_EQUAL(fixture->original.leaves.front().contentId, moved->GetActiveTerminalControl().ContentId());
+                VERIFY_IS_TRUE(moved->GetActiveTerminalControl().Connection() == fixture->original.leaves.front().connection);
+            }
+            Log::Comment(NoThrowString().Format(L"Prewarm suppression: wholeTab=%d source=%d destination=%d",
+                                                !singlePane,
+                                                sourceTab->AgentPrewarmSuppressed(),
+                                                moved->AgentPrewarmSuppressed()));
+            VERIFY_ARE_EQUAL(!singlePane || destinationSuppressed, moved->AgentPrewarmSuppressed());
+        });
+    }
+
+    void TabTests::ContentTransferReviewClosedAgentSuppressionMovesWithTab()
+    {
+        _verifyContentTransferReviewSuppression(false);
+    }
+
+    void TabTests::ContentTransferReviewSinglePaneKeepsDestinationSuppression()
+    {
+        _verifyContentTransferReviewSuppression(true);
+    }
+
+    void TabTests::ContentTransferReviewSinglePaneKeepsSuppressedDestination()
+    {
+        _verifyContentTransferReviewSuppression(true, true);
+    }
+
+    void TabTests::AttachContentStopsAfterRejectedFirstAction()
+    {
+        const auto connection = winrt::make_self<TestConnection>(winrt::guid{},
+                                                                winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        auto page = _commonSetup(*connection);
+        TestOnUIThread([&]() {
+            const auto originalTab = page->_GetFocusedTabImpl();
+            const auto originalRoot = originalTab->GetRootPane();
+            const auto originalContent = originalRoot->GetContent();
+            ActionAndArgs rejected;
+            rejected.Action(ShortcutAction::NewTab);
+            rejected.Args(NewTabArgs{ NewTerminalArgs{ -1 } });
+            ActionAndArgs following;
+            following.Action(ShortcutAction::SplitPane);
+            following.Args(SplitPaneArgs{ SplitType::Duplicate });
+            auto actions = winrt::single_threaded_vector<ActionAndArgs>({ rejected, following });
+
+            page->AttachContent(actions, 0);
+
+            VERIFY_ARE_EQUAL(1u, page->_tabs.Size());
+            VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == originalTab);
+            VERIFY_ARE_EQUAL(1, originalTab->GetLeafPaneCount());
+            VERIFY_IS_TRUE(originalTab->GetRootPane() == originalRoot);
+            VERIFY_IS_TRUE(originalRoot->GetContent() == originalContent);
+            VERIFY_ARE_EQUAL(0u, connection->CloseCount());
+        });
+    }
+
+    void TabTests::TransferredAgentContentRejectsStaleAndFailedAttach()
+    {
+        auto page = _commonSetup();
+
+        TestOnUIThread([&]() {
+            using DragStash = winrt::TerminalApp::implementation::AgentPaneDragStash;
+            const auto focusedTab = page->_GetFocusedTabImpl();
+            auto destinationAgentPane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
+            destinationAgentPane->IsAgentPane(true);
+            page->_SplitPane(focusedTab, SplitDirection::Left, 0.5f, destinationAgentPane);
+
+            auto sourcePane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
+            const auto oldArgs = sourcePane->GetContent().GetNewTerminalArgs(BuildStartupKind::Content).as<NewTerminalArgs>();
+            const auto contentId = oldArgs.ContentId();
+            const auto oldTransferId = oldArgs.AgentPaneTransferId();
+            page->_manager.Detach(sourcePane->GetTerminalControl());
+            DragStash::Entry firstEntry;
+            firstEntry.attachDisposition = DragStash::AttachDisposition::FirstPaneOfNewTab;
+            firstEntry.transferId = oldTransferId;
+            DragStash::Instance().Store(contentId, std::move(firstEntry));
+            uint64_t currentTransferId = oldTransferId;
+            auto cleanup = wil::scope_exit([&]() {
+                DragStash::Instance().Take(contentId, currentTransferId);
+            });
+            auto firstReceive = page->_MakeTerminalPane(oldArgs, nullptr, nullptr);
+            VERIFY_IS_NOT_NULL(firstReceive);
+            const auto currentArgs = firstReceive->GetContent().GetNewTerminalArgs(BuildStartupKind::MovePane).as<NewTerminalArgs>();
+            currentTransferId = currentArgs.AgentPaneTransferId();
+            VERIFY_ARE_NOT_EQUAL(oldTransferId, currentTransferId);
+            VERIFY_ARE_EQUAL(contentId, currentArgs.ContentId());
+            page->_manager.Detach(firstReceive->GetTerminalControl());
+            DragStash::Entry currentEntry;
+            currentEntry.attachDisposition = DragStash::AttachDisposition::FirstPaneOfNewTab;
+            currentEntry.originalTabId = L"second-source-tab";
+            currentEntry.transferId = currentTransferId;
+            DragStash::Instance().Store(contentId, std::move(currentEntry));
+
+            VERIFY_THROWS_SPECIFIC(
+                page->_MakeTerminalPane(oldArgs, nullptr, nullptr),
+                winrt::hresult_error,
+                [](const winrt::hresult_error& error) { return error.code() == E_ILLEGAL_METHOD_CALL; });
+            const auto missingGenerationArgs = currentArgs.Copy().as<NewTerminalArgs>();
+            missingGenerationArgs.AgentPaneTransferId(0);
+            VERIFY_THROWS_SPECIFIC(
+                page->_MakeTerminalPane(missingGenerationArgs, nullptr, nullptr),
+                winrt::hresult_error,
+                [](const winrt::hresult_error& error) { return error.code() == E_ILLEGAL_METHOD_CALL; });
+
+            auto unavailablePane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
+            const auto unavailableArgs = unavailablePane->GetContent().GetNewTerminalArgs(BuildStartupKind::Content).as<NewTerminalArgs>();
+            const auto unavailableContentId = unavailableArgs.ContentId();
+            const auto unavailableTransferId = unavailableArgs.AgentPaneTransferId();
+            unavailablePane->Shutdown();
+            VERIFY_IS_NULL(page->_manager.TryLookupCore(unavailableContentId));
+            DragStash::Entry unavailableEntry;
+            unavailableEntry.transferId = unavailableTransferId;
+            DragStash::Instance().Store(unavailableContentId, std::move(unavailableEntry));
+            auto cleanupUnavailable = wil::scope_exit([&]() {
+                DragStash::Instance().Take(unavailableContentId, unavailableTransferId);
+            });
+            VERIFY_THROWS_SPECIFIC(
+                page->_MakeTerminalPane(unavailableArgs, nullptr, nullptr),
+                winrt::hresult_error,
+                [](const winrt::hresult_error& error) { return error.code() == E_INVALIDARG; });
+            VERIFY_ARE_EQUAL(unavailableContentId, unavailableArgs.ContentId());
+            VERIFY_IS_FALSE(DragStash::Instance().Take(unavailableContentId, unavailableTransferId).has_value());
+            VERIFY_IS_TRUE(focusedTab->FindAgentPane() == destinationAgentPane);
+
+            const auto finalReceive = page->_MakeTerminalPane(currentArgs, nullptr, nullptr);
+            VERIFY_IS_NOT_NULL(finalReceive);
+            VERIFY_IS_TRUE(finalReceive->IsAgentPane());
+            VERIFY_ARE_EQUAL(contentId, finalReceive->GetTerminalControl().ContentId());
+            const auto finalContent = finalReceive->GetContent().as<winrt::TerminalApp::AgentPaneContent>();
+            const auto finalImpl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(finalContent);
+            VERIFY_IS_TRUE(finalImpl->TakePendingRenameFromTabId() == L"second-source-tab");
+            VERIFY_IS_TRUE(focusedTab->FindAgentPane() == destinationAgentPane);
+            VERIFY_THROWS_SPECIFIC(
+                page->_MakeTerminalPane(currentArgs, nullptr, nullptr),
+                winrt::hresult_error,
+                [](const winrt::hresult_error& error) { return error.code() == E_ILLEGAL_METHOD_CALL; });
+            VERIFY_ARE_EQUAL(contentId, finalReceive->GetTerminalControl().ContentId());
+        });
+    }
+
+    void TabTests::ClosingAgentPaneSuppressesPrewarm()
+    {
+        auto page = _commonSetup();
+
+        TestOnUIThread([&]() {
+            const auto focusedTab = page->_GetFocusedTabImpl();
+            auto agentPane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
+            agentPane->IsAgentPane(true);
+            page->_SplitPane(focusedTab, SplitDirection::Down, 0.3f, agentPane);
+            VERIFY_IS_FALSE(focusedTab->AgentPrewarmSuppressed());
+            page->_HandleClosePaneRequested(agentPane);
+            VERIFY_IS_TRUE(focusedTab->AgentPrewarmSuppressed());
+        });
+
+        TestOnUIThread([&]() {
+            const auto focusedTab = page->_GetFocusedTabImpl();
+            VERIFY_IS_TRUE(focusedTab->FindAgentPane() == nullptr);
+            VERIFY_ARE_EQUAL(1, focusedTab->GetLeafPaneCount());
+            VERIFY_IS_TRUE(focusedTab->AgentPrewarmSuppressed());
+            page->_tabsAwaitingPrewarm.emplace_back(focusedTab->get_weak());
+            page->_PrewarmAgentPanesAfterStartup();
+            VERIFY_IS_TRUE(page->_tabsAwaitingPrewarm.empty());
+            VERIFY_IS_TRUE(focusedTab->FindAgentPane() == nullptr);
+            VERIFY_IS_TRUE(focusedTab->AgentPrewarmSuppressed());
+
+            // Model an explicit successful reopen without launching a helper.
+            focusedTab->AllowAgentPrewarm();
+            VERIFY_IS_FALSE(focusedTab->AgentPrewarmSuppressed());
+            auto replacement = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
+            replacement->IsAgentPane(true);
+            page->_SplitPane(focusedTab, SplitDirection::Down, 0.3f, replacement);
+            focusedTab->StashAgentPane();
+            VERIFY_IS_TRUE(focusedTab->HasStashedAgentPane());
+            VERIFY_IS_FALSE(focusedTab->AgentPrewarmSuppressed());
+        });
+    }
+
+    void TabTests::AgentPaneTeardownAllowsSynchronousRecreation()
+    {
+        auto page = _commonSetup();
+
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto normalContent = tab->GetRootPane()->GetContent();
+            const auto normalContentId = tab->GetRootPane()->GetTerminalControl().ContentId();
+            auto agentPane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
+            VERIFY_IS_TRUE(agentPane->IsAgentPane());
+            page->_SplitPane(tab, SplitDirection::Down, 0.3f, agentPane);
+
+            for (const bool hidden : { false, true })
+            {
+                if (hidden)
+                {
+                    tab->StashAgentPane();
+                }
+                VERIFY_ARE_EQUAL(hidden, tab->HasStashedAgentPane());
+                const auto oldContent = tab->FindAgentPaneContent();
+                VERIFY_IS_NOT_NULL(oldContent);
+                const auto oldContentId = oldContent.GetTermControl().ContentId();
+                const auto oldTransferId = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(oldContent)->TransferId();
+
+                // Rebuilds reuse the tree immediately, without a dispatcher tick
+                // to finish a close animation.
+                page->_TeardownAgentPane(tab);
+                VERIFY_IS_TRUE(tab->FindAgentPane() == nullptr);
+                VERIFY_IS_NULL(tab->FindAgentPaneContent());
+                VERIFY_ARE_EQUAL(1, tab->GetLeafPaneCount());
+                VERIFY_IS_FALSE(tab->GetRootPane()->IsAgentPane());
+                VERIFY_IS_TRUE(tab->GetRootPane()->GetContent() == normalContent);
+                VERIFY_ARE_EQUAL(normalContentId, tab->GetRootPane()->GetTerminalControl().ContentId());
+                VERIFY_IS_NULL(page->_manager.TryLookupCore(oldContentId));
+
+                const auto replacement = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
+                const auto replacementContent = replacement->GetContent().as<winrt::TerminalApp::AgentPaneContent>();
+                page->_SplitPane(tab, SplitDirection::Down, 0.3f, replacement);
+                VERIFY_ARE_EQUAL(2, tab->GetLeafPaneCount());
+                VERIFY_IS_TRUE(tab->FindAgentPane() == replacement);
+                VERIFY_IS_TRUE(tab->FindAgentPaneContent() == replacementContent);
+                VERIFY_IS_FALSE(tab->GetRootPane()->IsAgentPane());
+                VERIFY_IS_FALSE(tab->HasStashedAgentPane());
+                VERIFY_ARE_NOT_EQUAL(oldContentId, replacementContent.GetTermControl().ContentId());
+                VERIFY_ARE_NOT_EQUAL(oldTransferId, winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(replacementContent)->TransferId());
+                VERIFY_IS_FALSE(tab->AgentPrewarmSuppressed());
+            }
+        });
+    }
+
+    NewTerminalArgs TabTests::_storeOwnedAgentTransfer(
+        const winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& page,
+        const TrackedAgentCore& tracked)
+    {
+        using Lifetime = winrt::TerminalApp::implementation::AgentPaneLifetime;
+        using DragStash = winrt::TerminalApp::implementation::AgentPaneDragStash;
+        NewTerminalArgs attachArgs;
+        attachArgs.ContentId(tracked.core.Id());
+        const auto source = page->_WrapInAgentPaneContent(page->_MakeTerminalPane(attachArgs, nullptr, nullptr));
+        const auto content = source->GetContent().as<winrt::TerminalApp::AgentPaneContent>();
+        const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(content);
+        impl->AdoptLifetime(Lifetime{ {}, tracked.core });
+        const auto args = content.GetNewTerminalArgs(BuildStartupKind::Content).as<NewTerminalArgs>();
+        page->_manager.Detach(content.GetTermControl());
+        DragStash::Entry entry;
+        entry.originalTabId = L"owning-source-tab";
+        entry.attachDisposition = DragStash::AttachDisposition::FirstPaneOfNewTab;
+        entry.transferId = impl->TransferId();
+        entry.lifetime = impl->TakeLifetime();
+        DragStash::Instance().Store(args.ContentId(), std::move(entry));
+        auto abortTransfer = wil::scope_exit([&]() {
+            DragStash::Instance().Take(args.ContentId(), args.AgentPaneTransferId());
+        });
+        source->Shutdown();
+        content.Close();
+        VERIFY_ARE_EQUAL(0u, tracked.connection->CloseCount());
+        VERIFY_ARE_EQUAL(0u, tracked.closeEvents->load());
+        VERIFY_IS_TRUE(page->_manager.TryLookupCore(args.ContentId()) == tracked.core);
+        abortTransfer.release();
+        return args;
+    }
+
+    void TabTests::AgentPaneLifetimeMovesAndDestroysRealCoresOnce()
+    {
+        using Lifetime = winrt::TerminalApp::implementation::AgentPaneLifetime;
+        _createContentManager();
+        std::optional<TrackedAgentCore> retained;
+        std::optional<TrackedAgentCore> displaced;
+        std::optional<Lifetime> owner;
+        DWORD uiThreadId{};
+        TestOnUIThread([&]() {
+            uiThreadId = GetCurrentThreadId();
+            retained.emplace(*_contentManager);
+            displaced.emplace(*_contentManager);
+            Lifetime source{ {}, retained->core };
+            Lifetime moved{ std::move(source) };
+            owner.emplace(Lifetime{ {}, displaced->core });
+            *owner = std::move(moved);
+            source.Close();
+            moved.Close();
+        });
+        VERIFY_IS_TRUE(displaced->connection->WaitForClose());
+        VERIFY_ARE_EQUAL(1u, displaced->connection->CloseCount());
+        VERIFY_ARE_EQUAL(1u, displaced->closeEvents->load());
+        VERIFY_ARE_NOT_EQUAL(uiThreadId, displaced->connection->CloseThreadId());
+        TestOnUIThread([&]() {
+            VERIFY_IS_NULL(_contentManager->TryLookupCore(displaced->core.Id()));
+            VERIFY_IS_TRUE(_contentManager->TryLookupCore(retained->core.Id()) == retained->core);
+            VERIFY_ARE_EQUAL(0u, retained->connection->CloseCount());
+            VERIFY_ARE_EQUAL(0u, retained->closeEvents->load());
+            owner.reset();
+        });
+        VERIFY_IS_TRUE(retained->connection->WaitForClose());
+        TestOnUIThread([&]() {
+            VERIFY_IS_NULL(_contentManager->TryLookupCore(retained->core.Id()));
+            VERIFY_ARE_EQUAL(1u, retained->connection->CloseCount());
+            VERIFY_ARE_EQUAL(1u, retained->closeEvents->load());
+            VERIFY_ARE_NOT_EQUAL(uiThreadId, retained->connection->CloseThreadId());
+            VERIFY_ARE_EQUAL(1u, displaced->closeEvents->load());
+            retained.reset();
+            displaced.reset();
+        });
+    }
+
+    void TabTests::AgentPaneLifetimeReceiveClosesRealCoreOnce()
+    {
+        using DragStash = winrt::TerminalApp::implementation::AgentPaneDragStash;
+        const auto seed = winrt::make_self<TestConnection>(winrt::guid{},
+                                                         winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        auto page = _commonSetup(*seed);
+        std::optional<TrackedAgentCore> tracked;
+        TestOnUIThread([&]() {
+            tracked.emplace(*_contentManager);
+            const auto args = _storeOwnedAgentTransfer(page, *tracked);
+            auto cleanup = wil::scope_exit([&]() {
+                DragStash::Instance().Take(args.ContentId(), args.AgentPaneTransferId());
+            });
+            const auto received = page->_MakeTerminalPane(args, nullptr, nullptr);
+            const auto content = received->GetContent().as<winrt::TerminalApp::AgentPaneContent>();
+            VERIFY_IS_TRUE(content.GetTermControl().Connection() == *tracked->connection);
+            VERIFY_ARE_EQUAL(0u, tracked->connection->CloseCount());
+            VERIFY_IS_FALSE(DragStash::Instance().Take(args.ContentId(), args.AgentPaneTransferId()).has_value());
+            received->Shutdown();
+            content.Close();
+            received->Shutdown();
+            VERIFY_IS_NULL(page->_manager.TryLookupCore(args.ContentId()));
+        });
+        VERIFY_IS_TRUE(tracked->connection->WaitForClose());
+        VERIFY_ARE_EQUAL(1u, tracked->connection->CloseCount());
+        VERIFY_ARE_EQUAL(1u, tracked->closeEvents->load());
+        VERIFY_ARE_EQUAL(0u, seed->CloseCount());
+        TestOnUIThread([&]() { tracked.reset(); });
+    }
+
+    void TabTests::AgentPaneLifetimeFailedReceiveRetiresRealCore()
+    {
+        using DragStash = winrt::TerminalApp::implementation::AgentPaneDragStash;
+        const auto seed = winrt::make_self<TestConnection>(winrt::guid{},
+                                                         winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        auto page = _commonSetup(*seed);
+        std::optional<TrackedAgentCore> tracked;
+        DWORD uiThreadId{};
+        TestOnUIThread([&]() {
+            uiThreadId = GetCurrentThreadId();
+            tracked.emplace(*_contentManager);
+            const auto args = _storeOwnedAgentTransfer(page, *tracked);
+            auto cleanup = wil::scope_exit([&]() {
+                DragStash::Instance().Take(args.ContentId(), args.AgentPaneTransferId());
+            });
+            // The receiver cannot resolve this core, but the transfer still
+            // owns a live core registered with the source ContentManager.
+            page->_manager = winrt::make<winrt::TerminalApp::implementation::ContentManager>();
+            VERIFY_THROWS_SPECIFIC(
+                page->_MakeTerminalPane(args, nullptr, nullptr),
+                winrt::hresult_error,
+                [](const winrt::hresult_error& error) { return error.code() == E_INVALIDARG; });
+            VERIFY_IS_FALSE(DragStash::Instance().Take(args.ContentId(), args.AgentPaneTransferId()).has_value());
+        });
+        VERIFY_IS_TRUE(tracked->connection->WaitForClose());
+        TestOnUIThread([&]() {
+            VERIFY_IS_NULL(_contentManager->TryLookupCore(tracked->core.Id()));
+            VERIFY_ARE_EQUAL(1u, tracked->connection->CloseCount());
+            VERIFY_ARE_EQUAL(1u, tracked->closeEvents->load());
+            VERIFY_ARE_NOT_EQUAL(uiThreadId, tracked->connection->CloseThreadId());
+            VERIFY_ARE_EQUAL(0u, seed->CloseCount());
+            tracked.reset();
+        });
+    }
+
+    void TabTests::AgentPaneLifetimeTimeoutRetiresOnlyAbandonedRealCore()
+    {
+        using Lifetime = winrt::TerminalApp::implementation::AgentPaneLifetime;
+        using DragStash = winrt::TerminalApp::implementation::AgentPaneDragStash;
+        _createContentManager();
+        std::optional<TrackedAgentCore> abandoned;
+        std::optional<TrackedAgentCore> claimed;
+        std::optional<TrackedAgentCore> replacement;
+        std::optional<DragStash::Entry> claimedOwner;
+        std::optional<DragStash::Entry> replacementOwner;
+        DWORD uiThreadId{};
+        auto cleanup = wil::scope_exit([&]() {
+            if (abandoned)
+            {
+                DragStash::Instance().Take(abandoned->core.Id(), 1);
+            }
+            if (claimed)
+            {
+                DragStash::Instance().Take(claimed->core.Id(), 2);
+            }
+            if (replacement)
+            {
+                DragStash::Instance().Take(replacement->core.Id(), 3);
+                DragStash::Instance().Take(replacement->core.Id(), 4);
+            }
+        });
+        TestOnUIThread([&]() {
+            uiThreadId = GetCurrentThreadId();
+            abandoned.emplace(*_contentManager);
+            claimed.emplace(*_contentManager);
+            replacement.emplace(*_contentManager);
+            const auto store = [](const TrackedAgentCore& tracked, const uint64_t transferId) {
+                DragStash::Entry entry;
+                entry.transferId = transferId;
+                entry.lifetime = Lifetime{ {}, tracked.core };
+                DragStash::Instance().Store(tracked.core.Id(), std::move(entry));
+            };
+            store(*claimed, 2);
+            DragStash::ExpireAfterTimeout(claimed->core.Id(), 2);
+            claimedOwner = DragStash::Instance().Take(claimed->core.Id(), 2);
+            VERIFY_IS_TRUE(claimedOwner.has_value());
+            VERIFY_IS_FALSE(DragStash::Instance().Take(claimed->core.Id(), 2).has_value());
+
+            store(*replacement, 3);
+            DragStash::ExpireAfterTimeout(replacement->core.Id(), 3);
+            auto oldTransfer = DragStash::Instance().Take(replacement->core.Id(), 3);
+            VERIFY_IS_TRUE(oldTransfer.has_value());
+            oldTransfer->transferId = 4;
+            DragStash::Instance().Store(replacement->core.Id(), std::move(*oldTransfer));
+            VERIFY_IS_FALSE(DragStash::Instance().Take(replacement->core.Id(), 3).has_value());
+
+            // Arm the positive control last. This is the real production
+            // two-minute coroutine, not a manual Take standing in for expiry.
+            store(*abandoned, 1);
+            DragStash::ExpireAfterTimeout(abandoned->core.Id(), 1);
+            VERIFY_ARE_EQUAL(0u, claimed->connection->CloseCount());
+            VERIFY_ARE_EQUAL(0u, replacement->connection->CloseCount());
+        });
+
+        VERIFY_IS_TRUE(abandoned->connection->WaitForClose(150000));
+        // Keep both negative controls alive beyond the real timer deadline,
+        // allowing delayed thread-pool callbacks to expose an erroneous close.
+        VERIFY_IS_FALSE(claimed->connection->WaitForClose(3000));
+        VERIFY_IS_FALSE(replacement->connection->WaitForClose(3000));
+        TestOnUIThread([&]() {
+            VERIFY_ARE_EQUAL(1u, abandoned->connection->CloseCount());
+            VERIFY_ARE_EQUAL(1u, abandoned->closeEvents->load());
+            VERIFY_ARE_NOT_EQUAL(uiThreadId, abandoned->connection->CloseThreadId());
+            VERIFY_IS_NULL(_contentManager->TryLookupCore(abandoned->core.Id()));
+            VERIFY_IS_FALSE(DragStash::Instance().Take(abandoned->core.Id(), 1).has_value());
+            VERIFY_IS_TRUE(_contentManager->TryLookupCore(claimed->core.Id()) == claimed->core);
+            VERIFY_IS_TRUE(_contentManager->TryLookupCore(replacement->core.Id()) == replacement->core);
+            VERIFY_ARE_EQUAL(0u, claimed->closeEvents->load());
+            VERIFY_ARE_EQUAL(0u, replacement->closeEvents->load());
+            replacementOwner = DragStash::Instance().Take(replacement->core.Id(), 4);
+            VERIFY_IS_TRUE(replacementOwner.has_value());
+            claimedOwner.reset();
+            replacementOwner.reset();
+        });
+        VERIFY_IS_TRUE(claimed->connection->WaitForClose());
+        VERIFY_IS_TRUE(replacement->connection->WaitForClose());
+        TestOnUIThread([&]() {
+            VERIFY_IS_NULL(_contentManager->TryLookupCore(claimed->core.Id()));
+            VERIFY_IS_NULL(_contentManager->TryLookupCore(replacement->core.Id()));
+            VERIFY_ARE_EQUAL(1u, claimed->connection->CloseCount());
+            VERIFY_ARE_EQUAL(1u, replacement->connection->CloseCount());
+            VERIFY_ARE_EQUAL(1u, claimed->closeEvents->load());
+            VERIFY_ARE_EQUAL(1u, replacement->closeEvents->load());
+            abandoned.reset();
+            claimed.reset();
+            replacement.reset();
         });
     }
 
@@ -2679,9 +4433,8 @@ namespace TerminalAppLocalTests
         });
     }
 
-    void TabTests::_verifyBuildStartupActionsContentStashesAgentPane(const SplitDirection splitDirection,
-                                                                     const winrt::TerminalApp::implementation::AgentPaneDragStash::AttachDisposition expectedDisposition,
-                                                                     const winrt::guid& sourceProfileGuid)
+    void TabTests::_verifyBuildStartupActionsContentPreservesAgentOwnership(const SplitDirection splitDirection,
+                                                                           const bool hidden)
     {
         auto page = _commonSetup();
 
@@ -2690,72 +4443,131 @@ namespace TerminalAppLocalTests
             VERIFY_IS_NOT_NULL(focusedTab);
 
             const auto oldTabId = focusedTab->StableId();
+            const auto sourceProfileGuid = winrt::guid{ L"{6239a42c-7777-49a3-80bd-e8fdd045185c}" };
             focusedTab->AgentSourceProfileGuid(sourceProfileGuid);
 
             auto agentPane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
             VERIFY_IS_NOT_NULL(agentPane);
             agentPane->IsAgentPane(true);
             page->_SplitPane(focusedTab, splitDirection, 0.5f, agentPane);
+            const auto agentContent = agentPane->GetContent().as<winrt::TerminalApp::AgentPaneContent>();
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(agentContent);
+            impl->SetAgentSessionId(L"live-agent-session");
+            impl->SetSessionsView(true);
+            impl->SetAgentPanePosition(L"left");
+            if (hidden)
+            {
+                focusedTab->StashAgentPane();
+            }
 
             const auto agentContentArgs = agentPane->GetContent().GetNewTerminalArgs(BuildStartupKind::Content).try_as<NewTerminalArgs>();
             VERIFY_IS_NOT_NULL(agentContentArgs);
             const auto agentContentId = agentContentArgs.ContentId();
             VERIFY_ARE_NOT_EQUAL(0ull, agentContentId);
+            const auto transferId = impl->TransferId();
+            VERIFY_ARE_NOT_EQUAL(0ull, transferId);
+            const auto core = page->_manager.TryLookupCore(agentContentId);
+            VERIFY_IS_NOT_NULL(core);
 
-            const auto actions = focusedTab->BuildStartupActions(BuildStartupKind::Content);
-            VERIFY_IS_TRUE(actions.size() >= 2);
-            VERIFY_ARE_EQUAL(ShortcutAction::NewTab, actions.at(0).Action());
-
-            const auto newTabArgs = actions.at(0).Args().try_as<NewTabArgs>();
-            VERIFY_IS_NOT_NULL(newTabArgs);
-            const auto firstPaneArgs = newTabArgs.ContentArgs().try_as<NewTerminalArgs>();
-            VERIFY_IS_NOT_NULL(firstPaneArgs);
-
-            if (expectedDisposition == winrt::TerminalApp::implementation::AgentPaneDragStash::AttachDisposition::FirstPaneOfNewTab)
+            for (const auto kind : { BuildStartupKind::Content, BuildStartupKind::MovePane, BuildStartupKind::Content })
             {
-                VERIFY_ARE_EQUAL(agentContentId, firstPaneArgs.ContentId());
+                const auto actions = focusedTab->BuildStartupActions(kind);
+                VERIFY_IS_TRUE(actions.size() >= 2);
+                VERIFY_ARE_EQUAL(ShortcutAction::NewTab, actions.at(0).Action());
+                const auto firstPaneArgs = _getTerminalArgs(actions.at(0));
+                VERIFY_IS_NOT_NULL(firstPaneArgs);
+                NewTerminalArgs serializedAgentArgs{ nullptr };
+                if (splitDirection == SplitDirection::Left)
+                {
+                    VERIFY_ARE_EQUAL(agentContentId, firstPaneArgs.ContentId());
+                    serializedAgentArgs = firstPaneArgs;
+                }
+                else
+                {
+                    VERIFY_ARE_NOT_EQUAL(agentContentId, firstPaneArgs.ContentId());
+                    VERIFY_ARE_EQUAL(ShortcutAction::SplitPane, actions.at(1).Action());
+                    serializedAgentArgs = _getTerminalArgs(actions.at(1));
+                }
+                VERIFY_IS_NOT_NULL(serializedAgentArgs);
+                VERIFY_ARE_EQUAL(agentContentId, serializedAgentArgs.ContentId());
+                VERIFY_IS_TRUE(serializedAgentArgs.Type() == (hidden ? L"agentStashed" : L"agent"));
+                VERIFY_ARE_EQUAL(transferId, serializedAgentArgs.AgentPaneTransferId());
+                VERIFY_IS_FALSE(winrt::TerminalApp::implementation::AgentPaneDragStash::Instance().Take(agentContentId, transferId).has_value());
+                VERIFY_IS_TRUE(focusedTab->FindAgentPane() == agentPane);
+                VERIFY_IS_TRUE(focusedTab->FindAgentPaneContent() == agentContent);
+                VERIFY_IS_TRUE(page->_manager.TryLookupCore(agentContentId) == core);
+                VERIFY_ARE_EQUAL(agentContentId, agentContent.GetTermControl().ContentId());
+                VERIFY_ARE_EQUAL(hidden, focusedTab->HasStashedAgentPane());
+                VERIFY_IS_TRUE(focusedTab->StableId() == oldTabId);
+                VERIFY_IS_TRUE(focusedTab->AgentSourceProfileGuid().value() == sourceProfileGuid);
+                VERIFY_IS_TRUE(impl->AgentSessionId() == L"live-agent-session");
+                VERIFY_IS_TRUE(impl->IsSessionsView());
+                VERIFY_IS_TRUE(impl->GetAgentPanePosition() == L"left");
+                VERIFY_IS_FALSE(focusedTab->AgentPrewarmSuppressed());
             }
-            else
+            if (hidden)
             {
-                VERIFY_ARE_NOT_EQUAL(agentContentId, firstPaneArgs.ContentId());
-                VERIFY_ARE_EQUAL(ShortcutAction::SplitPane, actions.at(1).Action());
-
-                const auto splitPaneArgs = actions.at(1).Args().try_as<SplitPaneArgs>();
-                VERIFY_IS_NOT_NULL(splitPaneArgs);
-                const auto splitContentArgs = splitPaneArgs.ContentArgs().try_as<NewTerminalArgs>();
-                VERIFY_IS_NOT_NULL(splitContentArgs);
-                VERIFY_ARE_EQUAL(agentContentId, splitContentArgs.ContentId());
+                VERIFY_IS_TRUE(focusedTab->RestoreStashedAgentPane(splitDirection));
+                VERIFY_IS_FALSE(focusedTab->HasStashedAgentPane());
+                VERIFY_IS_TRUE(focusedTab->FindAgentPaneContent() == agentContent);
+                VERIFY_ARE_EQUAL(agentContentId, agentContent.GetTermControl().ContentId());
+                VERIFY_ARE_EQUAL(transferId, impl->TransferId());
+                VERIFY_IS_TRUE(impl->AgentSessionId() == L"live-agent-session");
             }
-
-            winrt::hstring stashedTabId;
-            std::optional<winrt::guid> stashedSourceProfileGuid;
-            auto actualDisposition = winrt::TerminalApp::implementation::AgentPaneDragStash::AttachDisposition::ExistingTabSplit;
-            VERIFY_IS_TRUE(winrt::TerminalApp::implementation::AgentPaneDragStash::Take(
-                agentContentId,
-                stashedTabId,
-                stashedSourceProfileGuid,
-                actualDisposition));
-            VERIFY_IS_TRUE(stashedTabId == oldTabId);
-            VERIFY_IS_TRUE(stashedSourceProfileGuid.has_value());
-            VERIFY_IS_TRUE(stashedSourceProfileGuid.value() == sourceProfileGuid);
-            VERIFY_IS_TRUE(actualDisposition == expectedDisposition);
         });
     }
 
-    void TabTests::BuildStartupActionsContentStashesAgentFirstPaneAsNewTab()
+    void TabTests::AgentPaneTransferIdentityRoundTripsWithContent()
     {
-        _verifyBuildStartupActionsContentStashesAgentPane(
-            SplitDirection::Left,
-            winrt::TerminalApp::implementation::AgentPaneDragStash::AttachDisposition::FirstPaneOfNewTab,
-            winrt::guid{ L"{6239a42c-7777-49a3-80bd-e8fdd045185c}" });
+        TestOnUIThread([]() {
+            NewTerminalArgs args;
+            args.ContentId(7);
+            args.AgentPaneTransferId(11);
+            args.SetContentType(winrt::hstring{ ::Microsoft::Terminal::AgentPaneRestore::PaneType });
+            ActionAndArgs action;
+            action.Action(ShortcutAction::NewTab);
+            action.Args(NewTabArgs{ args });
+            const auto json = ActionAndArgs::Serialize(winrt::single_threaded_vector<ActionAndArgs>({ action }));
+            const auto actions = ActionAndArgs::Deserialize(json);
+            VERIFY_ARE_EQUAL(uint32_t{ 1 }, actions.Size());
+            const auto restored = _getTerminalArgs(actions.GetAt(0));
+            VERIFY_IS_NOT_NULL(restored);
+            VERIFY_ARE_EQUAL(uint64_t{ 7 }, restored.ContentId());
+            VERIFY_ARE_EQUAL(uint64_t{ 11 }, restored.AgentPaneTransferId());
+            VERIFY_IS_TRUE(args.Equals(restored));
+            const auto copy = args.Copy().as<NewTerminalArgs>();
+            VERIFY_IS_TRUE(args.Equals(copy));
+            VERIFY_ARE_EQUAL(args.Hash(), copy.Hash());
+            copy.AgentPaneTransferId(12);
+            VERIFY_IS_FALSE(args.Equals(copy));
+        });
     }
 
-    void TabTests::BuildStartupActionsContentStashesAgentLaterSplitAsExistingTab()
+    void TabTests::AgentPaneTransferIdentityIsNotPersistedByDefault()
     {
-        _verifyBuildStartupActionsContentStashesAgentPane(
-            SplitDirection::Right,
-            winrt::TerminalApp::implementation::AgentPaneDragStash::AttachDisposition::ExistingTabSplit,
-            winrt::guid{ L"{6239a42c-8888-49a3-80bd-e8fdd045185c}" });
+        TestOnUIThread([]() {
+            NewTerminalArgs args;
+            ActionAndArgs action;
+            action.Action(ShortcutAction::NewTab);
+            action.Args(NewTabArgs{ args });
+            const auto json = winrt::to_string(ActionAndArgs::Serialize(winrt::single_threaded_vector<ActionAndArgs>({ action })));
+            VERIFY_IS_TRUE(json.find("__agentPaneTransfer") == std::string::npos);
+        });
+    }
+
+    void TabTests::BuildStartupActionsContentPreservesAgentFirstPaneOwnership()
+    {
+        _verifyBuildStartupActionsContentPreservesAgentOwnership(SplitDirection::Left);
+    }
+
+    void TabTests::BuildStartupActionsContentPreservesAgentLaterSplitOwnership()
+    {
+        _verifyBuildStartupActionsContentPreservesAgentOwnership(SplitDirection::Right);
+    }
+
+    void TabTests::BuildStartupActionsContentPreservesHiddenAgentIdentity()
+    {
+        _verifyBuildStartupActionsContentPreservesAgentOwnership(SplitDirection::Right, true);
     }
 
     void TabTests::TransferredAgentContentSplitPaneRetiresDestinationAgentPane()
@@ -2775,21 +4587,27 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(focusedTab->FindAgentPane() != nullptr);
             VERIFY_IS_FALSE(focusedTab->AgentSourceProfileGuid().has_value());
 
-            auto transferredSourcePane = page->_MakePane(nullptr, nullptr, nullptr);
+            auto transferredSourcePane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
             VERIFY_IS_NOT_NULL(transferredSourcePane);
             const auto transferredControl = transferredSourcePane->GetTerminalControl();
             VERIFY_IS_NOT_NULL(transferredControl);
             const auto contentId = transferredControl.ContentId();
+            const auto newTerminalArgs = transferredSourcePane->GetContent().GetNewTerminalArgs(BuildStartupKind::Content).as<NewTerminalArgs>();
+            const auto transferId = newTerminalArgs.AgentPaneTransferId();
             page->_manager.Detach(transferredControl);
 
-            winrt::TerminalApp::implementation::AgentPaneDragStash::Stash(
-                contentId,
-                oldTabId,
-                sourceProfileGuid,
-                winrt::TerminalApp::implementation::AgentPaneDragStash::AttachDisposition::ExistingTabSplit);
+            using DragStash = winrt::TerminalApp::implementation::AgentPaneDragStash;
+            DragStash::Entry entry;
+            entry.originalTabId = oldTabId;
+            entry.sourceProfileGuid = sourceProfileGuid;
+            entry.attachDisposition = DragStash::AttachDisposition::ExistingTabSplit;
+            entry.panePosition = L"right";
+            entry.transferId = transferId;
+            DragStash::Instance().Store(contentId, std::move(entry));
+            auto cleanup = wil::scope_exit([&]() {
+                DragStash::Instance().Take(contentId, transferId);
+            });
 
-            NewTerminalArgs newTerminalArgs{};
-            newTerminalArgs.ContentId(contentId);
             auto transferredPane = page->_MakeTerminalPane(newTerminalArgs, nullptr, nullptr);
             VERIFY_IS_NOT_NULL(transferredPane);
             VERIFY_IS_TRUE(transferredPane->IsAgentPane());
@@ -2801,6 +4619,12 @@ namespace TerminalAppLocalTests
             const auto agentContent = transferredPane->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>();
             VERIFY_IS_NOT_NULL(agentContent);
             const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(agentContent);
+            VERIFY_ARE_EQUAL(contentId, transferredPane->GetTerminalControl().ContentId());
+            VERIFY_ARE_NOT_EQUAL(transferId, impl->TransferId());
+            VERIFY_IS_FALSE(impl->AwaitingTransferredTabContent());
+            VERIFY_IS_FALSE(impl->TakeHiddenAfterTransfer());
+            VERIFY_IS_TRUE(impl->GetAgentPanePosition() == L"right");
+            VERIFY_IS_FALSE(DragStash::Instance().Take(contentId, transferId).has_value());
             VERIFY_IS_TRUE(impl->TakePendingRenameFromTabId().empty());
             VERIFY_IS_TRUE(impl->TransferSourceTabId() == oldTabId);
             VERIFY_IS_FALSE(impl->TakePendingAgentSourceProfileGuid().has_value());
@@ -2833,11 +4657,15 @@ namespace TerminalAppLocalTests
                     Json::CharReaderBuilder readerBuilder;
                     std::istringstream stream{ winrt::to_string(payload) };
                     std::string errors;
-                    if (Json::parseFromStream(readerBuilder, stream, &event, &errors))
+                    if (Json::parseFromStream(readerBuilder, stream, &event, &errors) &&
+                        (event["method"].asString() == "tab_renamed" || event["method"].asString() == "set_agent_state"))
                     {
                         protocolEvents.emplace_back(std::move(event));
                     }
                 });
+            auto revokeProtocolEvents = wil::scope_exit([&]() {
+                page->ProtocolVtSequenceReceived(token);
+            });
 
             const auto sendStatus = [&](const winrt::hstring& tabId, const char* model) {
                 Json::Value event{ Json::objectValue };
@@ -2874,12 +4702,16 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(protocolEvents[1]["params"]["pane_open"].asBool());
             VERIFY_IS_TRUE(impl->TransferSourceTabId().empty());
 
+            impl->SetAgentSessionId(L"old-session");
+            impl->SetYoloControlOwner(L"manual");
+            impl->SetAgentSessionId(L"new-session");
+            VERIFY_IS_TRUE(impl->YoloControlOwner().empty());
+
             sendStatus(focusedTab->StableId(), "model-b");
 
             VERIFY_IS_TRUE(impl->GetAgentModel() == L"model-b");
             VERIFY_ARE_EQUAL(2u, protocolEvents.size());
 
-            page->ProtocolVtSequenceReceived(token);
         });
     }
 
@@ -2916,12 +4748,19 @@ namespace TerminalAppLocalTests
             stale["type"] = "event";
             stale["method"] = "agent_state_changed";
             stale["params"]["tab_id"] = winrt::to_string(focusedTab->StableId());
+            stale["params"]["agent_session_id"] = "agent-session-1";
+            stale["params"]["yolo_control_owner"] = "manual";
             stale["params"]["view"] = "chat";
             stale["params"]["pane_open"] = false;
             Json::StreamWriterBuilder writerBuilder;
             writerBuilder["indentation"] = "";
             page->OnAgentStateChanged(winrt::to_hstring(Json::writeString(writerBuilder, stale)));
             VERIFY_IS_FALSE(focusedTab->HasStashedAgentPane());
+            const auto agentContent = focusedTab->FindAgentPaneContent();
+            VERIFY_IS_NOT_NULL(agentContent);
+            const auto agentImpl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(agentContent);
+            VERIFY_IS_TRUE(agentImpl->AgentSessionId() == L"agent-session-1");
+            VERIFY_IS_TRUE(agentImpl->YoloControlOwner() == L"manual");
 
             Json::Value ready{ Json::objectValue };
             ready["type"] = "event";
@@ -3000,6 +4839,155 @@ namespace TerminalAppLocalTests
         });
     }
 
+    void TabTests::SessionsDisabledHintFollowsViewAndSettings()
+    {
+        auto page = _commonSetup();
+
+        TestOnUIThread([&]() {
+            const auto globals = page->_settings.GlobalSettings();
+            VERIFY_IS_FALSE(globals.IsAgentSessionHooksPolicyLocked());
+            globals.AgentSessionManagementEnabled(false);
+            const auto pane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
+            const auto content = pane->GetContent().as<winrt::TerminalApp::AgentPaneContent>();
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(content);
+            const auto root = impl->GetRoot();
+            const auto hint = root.FindName(L"SessionsHintRoot").as<Border>();
+            const auto text = root.FindName(L"SessionsDisabledHintText").as<TextBlock>();
+            const auto terminal = impl->GetTermControl();
+
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, hint.Visibility());
+            impl->SetSessionsView(true);
+            VERIFY_ARE_EQUAL(Visibility::Visible, hint.Visibility());
+            VERIFY_IS_FALSE(text.Text().empty());
+            VERIFY_ARE_EQUAL(TextWrapping::Wrap, text.TextWrapping());
+
+            const auto foreground = text.Foreground().as<winrt::Windows::UI::Xaml::Media::SolidColorBrush>();
+            const auto color = foreground.Color();
+            const winrt::Windows::UI::Color footerColor{ 255, 0x8b, 0x8b, 0x8b };
+            VERIFY_ARE_EQUAL(footerColor, color);
+            const auto opacity = text.Opacity() * foreground.Opacity() * color.A / 255.0;
+            VERIFY_IS_TRUE(opacity > 0.0 && opacity < 1.0);
+            for (const auto background : { 12.0, 255.0 })
+            {
+                const auto blended = opacity * color.R + (1.0 - opacity) * background;
+                VERIFY_IS_TRUE(std::abs(blended - background) < std::abs(footerColor.R - background));
+            }
+
+            // Working hooks can still report status while Sessions is off.
+            impl->SetAgentSessionId(L"existing-session");
+            impl->UpdateAgentStatus(L"Copilot", L"v1", L"model", L"connected", L"Windows");
+            VERIFY_ARE_EQUAL(Visibility::Visible, hint.Visibility());
+
+            globals.AgentSessionManagementEnabled(true);
+            impl->UpdateSettings(page->_settings);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, hint.Visibility());
+            globals.AgentSessionManagementEnabled(false);
+            impl->UpdateSettings(page->_settings);
+            VERIFY_ARE_EQUAL(Visibility::Visible, hint.Visibility());
+
+            impl->SetSessionsView(false);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, hint.Visibility());
+            impl->SetSessionsView(true);
+            impl->SetSessionsView(true);
+            VERIFY_ARE_EQUAL(Visibility::Visible, hint.Visibility());
+            VERIFY_IS_TRUE(impl->GetTermControl() == terminal);
+            VERIFY_IS_TRUE(impl->AgentSessionId() == L"existing-session");
+            VERIFY_IS_TRUE(impl->IsAgentConnected());
+        });
+    }
+
+    void TabTests::SessionsDisabledHintUpdatesWhileStashed()
+    {
+        auto page = _commonSetup();
+
+        TestOnUIThread([&]() {
+            const auto globals = page->_settings.GlobalSettings();
+            VERIFY_IS_FALSE(globals.IsAgentSessionHooksPolicyLocked());
+            globals.AgentSessionManagementEnabled(false);
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto pane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
+            pane->IsAgentPane(true);
+            page->_SplitPane(tab, SplitDirection::Left, 0.5f, pane);
+            const auto content = tab->FindAgentPaneContent();
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(content);
+            const auto hint = impl->GetRoot().FindName(L"SessionsHintRoot").as<Border>();
+            impl->SetSessionsView(true);
+            VERIFY_ARE_EQUAL(Visibility::Visible, hint.Visibility());
+
+            tab->StashAgentPane();
+            VERIFY_IS_TRUE(tab->HasStashedAgentPane());
+            globals.AgentSessionManagementEnabled(true);
+            tab->UpdateSettings(page->_settings);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, hint.Visibility());
+            VERIFY_IS_TRUE(tab->RestoreStashedAgentPane(SplitDirection::Left));
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, hint.Visibility());
+
+            tab->StashAgentPane();
+            globals.AgentSessionManagementEnabled(false);
+            tab->UpdateSettings(page->_settings);
+            VERIFY_IS_TRUE(tab->RestoreStashedAgentPane(SplitDirection::Left));
+            VERIFY_ARE_EQUAL(Visibility::Visible, hint.Visibility());
+            VERIFY_IS_TRUE(tab->FindAgentPaneContent() == content);
+            VERIFY_IS_TRUE(impl->IsSessionsView());
+        });
+    }
+
+    void TabTests::SessionsDisabledHintWrapsAndPreservesTerminalGrid()
+    {
+        auto page = _commonSetup();
+
+        TestOnUIThread([&]() {
+            const auto globals = page->_settings.GlobalSettings();
+            VERIFY_IS_FALSE(globals.IsAgentSessionHooksPolicyLocked());
+            globals.AgentSessionManagementEnabled(false);
+            const auto pane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
+            pane->IsAgentPane(true);
+            page->_SplitPane(page->_GetFocusedTabImpl(), SplitDirection::Left, 0.5f, pane);
+            const auto content = pane->GetContent().as<winrt::TerminalApp::AgentPaneContent>();
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(content);
+            const auto root = impl->GetRoot();
+            const auto hint = root.FindName(L"SessionsHintRoot").as<Border>();
+            const auto inner = root.FindName(L"InnerContent").as<ContentPresenter>();
+            const auto terminal = winrt::get_self<winrt::TerminalApp::implementation::TerminalPaneContent>(impl->GetTerminalContent());
+            const auto layout = [&](const float width) {
+                root.Width(width);
+                root.Height(600);
+                root.UpdateLayout();
+                VERIFY_ARE_EQUAL(width, static_cast<float>(root.ActualWidth()));
+            };
+
+            layout(900);
+            const auto baselineMinimum = impl->MinimumSize();
+            impl->SetSessionsView(true);
+            layout(900);
+            const auto wideHeight = hint.ActualHeight();
+            VERIFY_IS_TRUE(wideHeight > 0.0);
+
+            layout(200);
+            VERIFY_IS_TRUE(hint.ActualHeight() > wideHeight);
+            const auto hintHeight = hint.DesiredSize().Height;
+            VERIFY_ARE_EQUAL(baselineMinimum.Height + hintHeight, impl->MinimumSize().Height);
+            VERIFY_ARE_EQUAL(baselineMinimum.Width, impl->MinimumSize().Width);
+            const auto hintTop = hint.TransformToVisual(root).TransformPoint({ 0, 0 }).Y;
+            const auto innerTop = inner.TransformToVisual(root).TransformPoint({ 0, 0 }).Y;
+            VERIFY_ARE_EQUAL(36.0f, hintTop);
+            VERIFY_ARE_EQUAL(hintTop + hintHeight, innerTop);
+
+            const auto chromeHeight = 36.0f + hintHeight;
+            VERIFY_ARE_EQUAL(
+                terminal->SnapDownToGrid(PaneSnapDirection::Height, 600.0f - chromeHeight) + chromeHeight,
+                impl->SnapDownToGrid(PaneSnapDirection::Height, 600.0f));
+            VERIFY_ARE_EQUAL(
+                terminal->SnapDownToGrid(PaneSnapDirection::Width, 200.0f),
+                impl->SnapDownToGrid(PaneSnapDirection::Width, 200.0f));
+
+            impl->SetSessionsView(false);
+            layout(200);
+            VERIFY_ARE_EQUAL(baselineMinimum.Height, impl->MinimumSize().Height);
+            VERIFY_ARE_EQUAL(36.0f, inner.TransformToVisual(root).TransformPoint({ 0, 0 }).Y);
+        });
+    }
+
     void TabTests::AgentReadyRuntimeConfigIncludesCurrentYoloState()
     {
         winrt::TerminalApp::implementation::TerminalPage::AgentRuntimeConfigSnapshot config;
@@ -3013,6 +5001,8 @@ namespace TerminalAppLocalTests
 
         VERIFY_ARE_EQUAL("tab-a", payload["tab_id"].asString());
         VERIFY_ARE_EQUAL("42", payload["window_id"].asString());
+        VERIFY_IS_TRUE(payload["automatic_yolo_target"].isBool());
+        VERIFY_IS_FALSE(payload["automatic_yolo_target"].asBool());
         VERIFY_IS_TRUE(payload["yolo_enabled"].isBool());
         VERIFY_IS_FALSE(payload["yolo_enabled"].asBool());
         VERIFY_IS_TRUE(payload["yolo_policy_blocked"].isBool());

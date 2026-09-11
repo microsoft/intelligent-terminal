@@ -2850,10 +2850,13 @@
     <value>Выберите модель, которую использует этот агент.</value>
   </data>
   <data name="AIAgents_DelegateAgent.Header" xml:space="preserve">
-    <value>Агент</value>
+    <value>CLI агента</value>
+    <comment>{Locked="CLI"} Header for the agent CLI selector in Settings &gt; Agents &gt; Command palette. Here "agent" means an AI intelligent agent (e.g. Copilot, Claude, Gemini), not a proxy or human agent. CLI means command-line interface.</comment>
   </data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
-    <value>Выберите агента, используемого для быстрых действий в палитре команд.</value>
+    <value>Создайте новую вкладку с CLI предпочитаемого агента, при необходимости добавив начальный запрос и контекст из активной панели.
+Alt+Shift+/ ввести запрос; Alt+Shift+B запустить без начального запроса.</value>
+    <comment>{Locked="CLI","Alt+Shift+/","Alt+Shift+B"} Agent CLI help in Settings &gt; Agents. Keep exactly one line break between the description and the shortcut reference. The UI renders the hotkeys with the same keycap style as Settings &gt; Actions. Start the description after each shortcut with lowercase where the language uses case. Context comes from the active pane; launching without an initial prompt is still interactive. Separate each hotkey and its description with a space, not a colon.</comment>
   </data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve">
     <value>Автоматически предлагать исправления для команд с ошибками</value>
@@ -3019,10 +3022,7 @@
     <value>{} | {} | Совместимость с OpenAI</value>
     <comment>{Locked="{}","OpenAI"} The first {} is replaced with the provider name; the second is replaced with its location.</comment>
   </data>
-  <data name="AIAgents_YoloOpenCodeWarning.Title" xml:space="preserve"><value>Режим Yolo недоступен для OpenCode</value><comment>{Locked="Yolo","OpenCode"} InfoBar title shown on the AI Agents settings page when global Yolo mode is on and the installed selected default provider is OpenCode.</comment></data>
-  <data name="AIAgents_YoloOpenCodeWarning.Message" xml:space="preserve"><value>OpenCode не объявляет о поддерживаемом собственном режиме Yolo. Запросы разрешений остаются интерактивными, даже если этот параметр включен.</value><comment>{Locked="OpenCode","Yolo"} InfoBar message shown on the AI Agents settings page. "Advertise" means the provider reports a supported native ACP session capability. "Interactive" means the user must still choose permission options manually.</comment></data>
-  <data name="AIAgents_YoloGeminiInfo.Title" xml:space="preserve"><value>Режим Yolo в Gemini зависит от доверия рабочей области</value><comment>{Locked="Gemini","Yolo"} InfoBar title shown on the AI Agents settings page when global Yolo mode is on and the installed selected default provider is Gemini.</comment></data>
-  <data name="AIAgents_YoloGeminiInfo.Message" xml:space="preserve"><value>Gemini включает режим Yolo только тогда, когда это разрешено доверием рабочей области и политикой поставщика.</value><comment>{Locked="Gemini","Yolo"} InfoBar message shown on the AI Agents settings page. Workspace trust and provider policy are owned by Gemini, not by Intelligent Terminal.</comment></data>
+  <data name="AIAgents_YoloGeminiInfo.Message" xml:space="preserve"><value>Автоматическое одобрение с Gemini ограничено доверенными рабочими областями</value><comment>{Locked="Gemini"} Single-line InfoBar message shown on the AI Agents settings page when automatic approval is on and the selected default provider is Gemini. Gemini restricts automatic approval to trusted workspaces.</comment></data>
   <data name="AIAgents_CustomAgentRemove.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Удалить</value>
     <comment>Accessible name for the X button that removes a custom agent from the agent list.</comment>

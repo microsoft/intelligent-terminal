@@ -16,13 +16,12 @@
 // ConptyConnection path) and connect to the master via the pipe
 // whose name `MasterPipeName()` exposes.
 //
-// Lifecycle model: reference-counted. Each agent pane calls
-// `AcquirePane` on creation and `ReleasePane` when it closes. The
-// first acquire spawns the master; the last release terminates it
-// via the Job Object. master crashes are detected via
-// RegisterWaitForSingleObject; state clears so the next acquire
-// respawns cleanly, reusing the same pipe name so previously-spawned
-// helpers can reconnect.
+// Lifecycle model: move-only leases. Each agent pane owns the lease
+// returned by `AcquirePane` and retires it when it closes. Retirement
+// retains cleanup-only ownership during the session-close grace period.
+// The first acquire spawns the master; the last lease release terminates
+// it via the Job Object. Unexpected exits get bounded recovery only
+// while active leases remain, reusing the pipe name so helpers reconnect.
 
 #include <atomic>
 #include <chrono>
@@ -38,6 +37,16 @@
 
 #include <wil/resource.h>
 #include <winrt/Windows.Foundation.h>
+
+namespace TerminalAppUnitTests
+{
+    class SharedWtaTests;
+}
+
+namespace TerminalAppLocalTests
+{
+    class TabTests;
+}
 
 namespace winrt::TerminalApp::implementation
 {
@@ -200,7 +209,7 @@ namespace winrt::TerminalApp::implementation
             void Retire() noexcept;
             bool ShouldRespawn(
                 Generation generation,
-                size_t refCount,
+                size_t activeRefCount,
                 bool spawnSuppressed,
                 bool hasCachedArgs) noexcept;
 
@@ -208,6 +217,39 @@ namespace winrt::TerminalApp::implementation
             Generation _armedGeneration{ 0 };
         };
     }
+
+    class SharedWta;
+
+    class SharedWtaLease
+    {
+    public:
+        SharedWtaLease() noexcept = default;
+        SharedWtaLease(const SharedWtaLease&) = delete;
+        SharedWtaLease& operator=(const SharedWtaLease&) = delete;
+        SharedWtaLease(SharedWtaLease&& other) noexcept;
+        SharedWtaLease& operator=(SharedWtaLease&& other) noexcept;
+        ~SharedWtaLease() noexcept;
+
+        explicit operator bool() const noexcept;
+
+        /// Immediately release this lease, for creation rollback.
+        void Reset() noexcept;
+
+        /// Consume this lease, synchronously removing active demand while
+        /// retaining its reference for the bounded ACP session-close window.
+        void Retire() noexcept;
+
+    private:
+        friend class SharedWta;
+        friend class ::TerminalAppUnitTests::SharedWtaTests;
+
+        explicit SharedWtaLease(SharedWta& owner) noexcept;
+        SharedWtaLease _TakeForRetirement() noexcept;
+        static winrt::fire_and_forget _ReleaseAfterSessionClose(SharedWtaLease lease);
+
+        SharedWta* _owner{ nullptr };
+        bool _active{ false };
+    };
 
     class SharedWta
     {
@@ -222,7 +264,7 @@ namespace winrt::TerminalApp::implementation
 
         /// Acquire a reference to the shared wta process. Spawns wta
         /// on the first acquire; subsequent acquires just bump an
-        /// internal counter. Returns true on success.
+        /// internal counter. Returns an owning lease, or empty on failure.
         ///
         /// `wtaPath` is the full path to wta.exe — see
         /// `TerminalPage::_DetectWtaPath()`.
@@ -242,27 +284,16 @@ namespace winrt::TerminalApp::implementation
         /// over the existing event channels
         /// (e.g. `autofix_enabled_changed`).
         ///
-        /// Every successful `AcquirePane` MUST be paired with exactly
-        /// one `ReleasePane` when the caller's agent pane closes.
-        /// When the count reaches zero the Job Object is closed,
+        /// Move the lease along with its pane during transfers. Retire it
+        /// when the pane closes; reset it only for creation rollback.
+        /// When the last lease releases, the Job Object is closed,
         /// terminating wta and every descendant it spawned.
-        bool AcquirePane(const std::wstring_view wtaPath,
-                         std::span<const std::wstring> extraArgs = {},
-                         std::span<const std::pair<std::wstring, std::wstring>> environment = {});
-
-        /// Release a previously acquired reference. Calling without a
-        /// matching `AcquirePane` is a no-op (safe to call from
-        /// teardown paths that aren't sure whether they acquired).
-        void ReleasePane();
-
-        /// Release a previously acquired reference after the bounded ACP
-        /// session-close window. Agent-pane Closed events can fire before
-        /// the owning tab publishes tab_closed, so an immediate final
-        /// release could terminate wta-master before session/close runs.
-        static winrt::fire_and_forget ReleasePaneAfterSessionClose();
+        SharedWtaLease AcquirePane(const std::wstring_view wtaPath,
+                                   std::span<const std::wstring> extraArgs = {},
+                                   std::span<const std::pair<std::wstring, std::wstring>> environment = {});
 
         /// Force-restart the wta-master process, bypassing the
-        /// `AcquirePane`/`ReleasePane` reference count. Used by the
+        /// lease reference count. Used by the
         /// `/restart` slash command and launch-configuration changes after
         /// their sessions retire. Existing panes and helpers stay alive; the
         /// replacement master listens on the same `_masterPipeName` so they
@@ -329,10 +360,18 @@ namespace winrt::TerminalApp::implementation
         std::wstring_view MasterPipeName() const noexcept;
 
     private:
+        friend class SharedWtaLease;
+        friend class ::TerminalAppUnitTests::SharedWtaTests;
+        friend class ::TerminalAppLocalTests::TabTests;
+
         SharedWta() = default;
         ~SharedWta();
 
+        void _ReleaseLease(bool active) noexcept;
+        void _RetireLease() noexcept;
+
         // All `*Locked` helpers assume the caller already holds `_mtx`.
+        SharedWtaLease _AcquireLeaseLocked() noexcept;
         bool _SpawnLocked(const std::wstring_view wtaPath,
                           std::span<const std::wstring> extraArgs,
                           std::span<const std::pair<std::wstring, std::wstring>> environment,
@@ -357,7 +396,10 @@ namespace winrt::TerminalApp::implementation
         details::ProcessWaitGenerationTracker _waitGeneration;
         details::UnexpectedExitRecoveryPolicy _unexpectedExitRecovery;
         DWORD _pid{ 0 };
+        // Total includes cleanup-only leases retained during session close;
+        // only active leases justify unexpected-exit recovery.
         size_t _refCount{ 0 };
+        size_t _activeRefCount{ 0 };
         // Generated lazily on first AcquirePane; reused across
         // master respawns within the same Terminal process so any
         // helpers spawned with stale cmdline can still find the

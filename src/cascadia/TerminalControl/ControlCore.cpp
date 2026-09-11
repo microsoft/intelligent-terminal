@@ -1892,10 +1892,10 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
     void ControlCore::Close()
     {
-        if (!_IsClosing())
+        // An abandoned, exclusively owned core can be retired after its window
+        // dispatcher is gone. Its queued callbacks must still observe closure.
+        if (!_closing.exchange(true))
         {
-            _closing = true;
-
             // Ensure Close() doesn't hang, waiting for MidiAudio to finish playing an hour long song.
             _midiAudio.BeginSkip();
         }

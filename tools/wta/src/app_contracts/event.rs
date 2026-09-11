@@ -61,6 +61,9 @@ pub enum AppEvent {
         restart_required: bool,
         result: Result<(), String>,
     },
+    YoloControlOwnerChanged {
+        session_id: String,
+    },
     ModelSetCompleted {
         session_id: String,
         model: String,
@@ -125,6 +128,12 @@ pub enum AppEvent {
     },
     AgentError {
         session_id: Option<String>,
+        failure: crate::protocol::acp::failure::AgentFailure,
+        message: String,
+    },
+    /// A non-authentication failure from the helper's initial ACP connection.
+    /// It belongs to startup/setup diagnostics, not the conversation history.
+    InitialAgentStartupFailed {
         failure: crate::protocol::acp::failure::AgentFailure,
         message: String,
     },
@@ -263,7 +272,11 @@ pub enum AppEvent {
         tab_id: Option<String>,
         params: serde_json::Value,
     },
-    AgentInstallComplete,
+    AgentInstallComplete {
+        request_id: u64,
+        agent_id: String,
+        outcome: crate::agent_check::AgentInstallOutcome,
+    },
     LoginProgress {
         device_code: String,
         verify_url: String,

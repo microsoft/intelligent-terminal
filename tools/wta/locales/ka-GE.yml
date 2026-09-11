@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "აგენტი ვერ მოიძებნა"
 setup.title.agent_error: "აგენტთან კავშირი ვერ შედგა"
+setup.title.installing_copilot: "GitHub Copilot პროგრამის ინსტალაცია"
+setup.title.starting_copilot: "GitHub Copilot პროგრამის გაშვება"
 setup.title.not_available: "აგენტი მიუწვდომელია"
 setup.title.sign_in: "საჭიროა შესვლა"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "თქვენი აგენტი \"%{agent
 setup.subtitle.agent_missing: "თქვენი აგენტი \"%{agent}\" არ არის დაინსტალირებული. ხელით ხელახლა დააინსტალირეთ და სცადეთ თავიდან. აგენტის შესაცვლელად გადადით ჭკვიანი ტერმინალი Settings > Agent-ში."
 setup.subtitle.copilot_auth: "თქვენი აგენტი \"%{agent}\" მოითხოვს ავთენტიფიკაციას. შესასვლელად მიჰყევით ქვემოთ მოცემულ ნაბიჯებს. აგენტის შესაცვლელად გადადით ჭკვიანი ტერმინალი Settings > Agent-ში."
 setup.subtitle.agent_auth: "თქვენი აგენტი \"%{agent}\" მოითხოვს ავთენტიფიკაციას. შედით აგენტით და შემდეგ აირჩიეთ \"შევედი\" ქვემოთ. აგენტის შესაცვლელად გადადით ჭკვიანი ტერმინალი Settings > Agent-ში."
+setup.subtitle.connection_failed: "%{agent}-ის გაშვება ვერ მოხერხდა."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(ავტომატურად დაინს�
 setup.option.signin: "შესვლა %{agent}-ში"
 setup.option.retry_detection: "სცადეთ თავიდან"
 setup.option.retry_auth: "შევედი — კავშირის ხელახლა სცადეთ"
+setup.option.retry_connection: "კავშირის ხელახლა ცდა"
 setup.status.installing: "ინსტალაცია..."
+setup.status.installing_copilot_cli: "GitHub Copilot CLI პროგრამის ინსტალაცია..."
+setup.status.connecting_agent: "აგენტთან დაკავშირება..."
 setup.status.install_failed: "ინსტალაცია ვერ მოხერხდა: "
 setup.status.installing_winget: " winget-ით ინსტალაცია..."
+setup.error.install_start_failed: "ინსტალატორის გაშვება ვერ მოხერხდა. ხელახლა საცდელად აირჩიეთ \"სცადეთ თავიდან\"."
+setup.error.install_timed_out: "ინსტალაციის დრო ამოიწურა. სხვა ინსტალაციის დაწყებამდე აირჩიეთ \"სცადეთ თავიდან\"."
+setup.error.install_detection_timed_out: "ინსტალაცია დასრულდა, მაგრამ Copilot ჯერ არ ჩანს. ხელახლა შესამოწმებლად აირჩიეთ \"სცადეთ თავიდან\"."
 
 # ── ავთენტიფიკაციის პროცესი (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - აბრევიატურა, Microsoft-ის ლოკალიზაციებში გავრცელებული გამოყენება
@@ -258,5 +267,5 @@ system.no_config_options: "დაკავშირებულ აგენტ�
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option}-ის განახლება ვერ შესრულდა: %{error}"
 system.yolo_disable_pending: "აგენტის პროვაიდერს არ დაუდასტურებია, რომ სესია მოთხოვნილ არაპრივილეგირებულ მდგომარეობაშია"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
-system.provider_command_blocked_by_policy: "%{command}: Yolo რეჟიმი თქვენი ორგანიზაციის პოლიტიკით გამორთულია."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: ავტომატური დადასტურება გამორთულია თქვენი ორგანიზაციის პოლიტიკით."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "უცნობი მოდელი %{model} — აკრიფეთ /model ხელმისაწვდომი სიის სანახავად."  # {Locked="%{model}","/model"}

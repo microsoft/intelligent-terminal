@@ -61,22 +61,51 @@ struct AgentSourceProbeResult {
 #[derive(serde::Serialize)]
 struct HostAgentProbeResult {
     agents: Vec<AgentSourceProbeEntry>,
+    availability: Vec<HostAgentAvailabilityEntry>,
+    npx_found: bool,
+}
+
+#[derive(serde::Serialize)]
+struct HostAgentAvailabilityEntry {
+    id: &'static str,
+    display_name: &'static str,
+    native_cli_found: bool,
+    launch_ready: bool,
+    requires_npx: bool,
 }
 
 pub(crate) fn run_host_agents() -> Result<()> {
-    let agents = crate::agent_registry::KNOWN_AGENTS
+    let npx_found = crate::agent_check::host_npx_available();
+    let availability: Vec<_> = crate::agent_registry::KNOWN_AGENTS
         .iter()
-        .filter(|profile| crate::agent_check::host_agent_available(profile.id))
-        .map(|profile| AgentSourceProbeEntry {
-            id: profile.id,
-            display_name: profile.display_name,
+        .map(|profile| {
+            let status = crate::agent_check::check_host_agent_availability(profile.id, npx_found);
+            HostAgentAvailabilityEntry {
+                id: profile.id,
+                display_name: profile.display_name,
+                native_cli_found: status.native_cli_found,
+                launch_ready: status.launch_ready,
+                requires_npx: status.requires_npx,
+            }
+        })
+        .collect();
+    let agents = availability
+        .iter()
+        .filter(|status| status.launch_ready)
+        .map(|status| AgentSourceProbeEntry {
+            id: status.id,
+            display_name: status.display_name,
         })
         .collect();
 
     println!(
         "{}",
-        serde_json::to_string(&HostAgentProbeResult { agents })
-            .context("serialize Host agent probe")?
+        serde_json::to_string(&HostAgentProbeResult {
+            agents,
+            availability,
+            npx_found,
+        })
+        .context("serialize Host agent probe")?
     );
     Ok(())
 }
@@ -233,4 +262,51 @@ pub(crate) async fn run_host_sessions(agent: &str) -> Result<()> {
     let _ = std::io::Write::flush(&mut std::io::stdout());
     crate::logging::shutdown_flush();
     std::process::exit(0);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn host_agent_probe_keeps_strict_agents_and_adds_fre_availability() {
+        let payload = serde_json::to_value(HostAgentProbeResult {
+            agents: vec![AgentSourceProbeEntry {
+                id: "copilot",
+                display_name: "GitHub Copilot",
+            }],
+            availability: vec![
+                HostAgentAvailabilityEntry {
+                    id: "copilot",
+                    display_name: "GitHub Copilot",
+                    native_cli_found: true,
+                    launch_ready: true,
+                    requires_npx: false,
+                },
+                HostAgentAvailabilityEntry {
+                    id: "claude",
+                    display_name: "Claude",
+                    native_cli_found: true,
+                    launch_ready: false,
+                    requires_npx: true,
+                },
+            ],
+            npx_found: false,
+        })
+        .expect("serialize probe result");
+
+        let strict_agents = payload["agents"].as_array().expect("strict agent list");
+        assert_eq!(strict_agents.len(), 1);
+        assert_eq!(strict_agents[0]["id"], "copilot");
+
+        let availability = payload["availability"]
+            .as_array()
+            .expect("availability list");
+        assert_eq!(availability.len(), 2);
+        assert_eq!(availability[1]["id"], "claude");
+        assert_eq!(availability[1]["native_cli_found"], true);
+        assert_eq!(availability[1]["launch_ready"], false);
+        assert_eq!(availability[1]["requires_npx"], true);
+        assert_eq!(payload["npx_found"], false);
+    }
 }

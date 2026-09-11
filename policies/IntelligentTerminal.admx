@@ -56,7 +56,7 @@
         <decimal value="0" />
       </disabledValue>
     </policy>
-    <policy name="AllowYoloMode" class="Both" displayName="$(string.AllowYoloMode)" explainText="$(string.AllowYoloModeText)" key="Software\Policies\Microsoft\IntelligentTerminal" valueName="AllowYoloMode">
+    <policy name="AllowAutomaticApproval" class="Both" displayName="$(string.AllowAutomaticApproval)" explainText="$(string.AllowAutomaticApprovalText)" key="Software\Policies\Microsoft\IntelligentTerminal" valueName="AllowAutomaticApproval">
       <parentCategory ref="IntelligentTerminal" />
       <supportedOn ref="SUPPORTED_IntelligentTerminal_AgentPolicy" />
       <enabledValue>

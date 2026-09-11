@@ -2832,8 +2832,9 @@
   <data name="AIAgents_AcpAgent.HelpText" xml:space="preserve"><value>選擇要在代理窗格中使用的代理。系統會偵測任何相容的 ACP 代理。</value><comment>Supplementary description for the agent pane setting. {Locked="ACP"}</comment></data>
   <data name="AIAgents_AcpModel.Header" xml:space="preserve"><value>模型</value><comment>Header for the setting that specifies the model used by the agent pane agent.</comment></data>
   <data name="AIAgents_AcpModel.HelpText" xml:space="preserve"><value>選擇此代理使用的模型。</value><comment>Supplementary description for the model setting.</comment></data>
-  <data name="AIAgents_DelegateAgent.Header" xml:space="preserve"><value>代理</value><comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment></data>
-  <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve"><value>選擇要在命令選擇區中用於快速動作的代理。</value><comment>Supplementary description for the command palette agent setting.</comment></data>
+  <data name="AIAgents_DelegateAgent.Header" xml:space="preserve"><value>智能體 CLI</value><comment>{Locked="CLI"} Header for the agent CLI selector in Settings > Agents > Command palette. Here "agent" means an AI intelligent agent (e.g. Copilot, Claude, Gemini), not a proxy or human agent. CLI means command-line interface.</comment></data>
+  <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve"><value>使用您偏好的智能體 CLI 建立新的索引標籤，並可選擇性地包含提問及來自使用中窗格的內容。
+Alt+Shift+/ 輸入提問；Alt+Shift+B 不帶初始提問啟動。</value><comment>{Locked="CLI","Alt+Shift+/","Alt+Shift+B"} Agent CLI help in Settings &gt; Agents. Keep exactly one line break between the description and the shortcut reference. The UI renders the hotkeys with the same keycap style as Settings &gt; Actions. Start the description after each shortcut with lowercase where the language uses case. Context comes from the active pane; launching without an initial prompt is still interactive. Separate each hotkey and its description with a space, not a colon.</comment></data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve"><value>自動為失敗的命令建議修正</value><comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment></data>
   <data name="AIAgents_AutoFix.HelpText" xml:space="preserve"><value>啟用時,AI 代理會自動分析失敗的命令並提出修正建議。停用時,失敗的命令會在狀態列中顯示可點擊的提示 — 按 Ctrl+Alt+. 或點擊提示以要求修正。</value><comment>Supplementary description for the auto-error-detection setting.</comment></data>
   <data name="AIAgents_SessionManagement.Header" xml:space="preserve">
@@ -2987,10 +2988,7 @@
     <value>{} | {} | OpenAI 相容</value>
     <comment>{Locked="{}","OpenAI"} The first {} is replaced with the provider name; the second is replaced with its location.</comment>
   </data>
-  <data name="AIAgents_YoloOpenCodeWarning.Title" xml:space="preserve"><value>Yolo 模式不適用於 OpenCode</value><comment>{Locked="Yolo","OpenCode"} InfoBar title shown on the AI Agents settings page when global Yolo mode is on and the installed selected default provider is OpenCode.</comment></data>
-  <data name="AIAgents_YoloOpenCodeWarning.Message" xml:space="preserve"><value>OpenCode 未公布受支援的原生 Yolo 模式。即使此設定已開啟，權限要求仍會保持互動式。</value><comment>{Locked="OpenCode","Yolo"} InfoBar message shown on the AI Agents settings page. "Advertise" means the provider reports a supported native ACP session capability. "Interactive" means the user must still choose permission options manually.</comment></data>
-  <data name="AIAgents_YoloGeminiInfo.Title" xml:space="preserve"><value>Gemini Yolo 模式取決於工作區信任</value><comment>{Locked="Gemini","Yolo"} InfoBar title shown on the AI Agents settings page when global Yolo mode is on and the installed selected default provider is Gemini.</comment></data>
-  <data name="AIAgents_YoloGeminiInfo.Message" xml:space="preserve"><value>只有在 Gemini 的工作區信任和提供者原則允許時，Gemini 才會啟用 Yolo 模式。</value><comment>{Locked="Gemini","Yolo"} InfoBar message shown on the AI Agents settings page. Workspace trust and provider policy are owned by Gemini, not by Intelligent Terminal.</comment></data>
+  <data name="AIAgents_YoloGeminiInfo.Message" xml:space="preserve"><value>使用 Gemini 的自動核准僅限於受信任的工作區</value><comment>{Locked="Gemini"} Single-line InfoBar message shown on the AI Agents settings page when automatic approval is on and the selected default provider is Gemini. Gemini restricts automatic approval to trusted workspaces.</comment></data>
   <data name="AIAgents_CustomAgentRemove.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>移除</value>
     <comment>Accessible name for the X button that removes a custom agent from the agent list.</comment>

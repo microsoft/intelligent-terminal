@@ -725,8 +725,8 @@ async fn run_acp_app(
 
             // Spawn the ACP client. In helper mode (`--connect-master <pipe>`)
             // master owns the agent lifecycle, so normal panes spawn the
-            // pipe-attached variant immediately. FRE-installed Copilot is the
-            // exception: `--initial-auth-agent copilot` starts on Auth and lets
+            // pipe-attached variant immediately. An explicit legacy
+            // `--initial-auth-agent copilot` request starts on Auth and lets
             // `LoginComplete` spawn the first pipe client after sign-in.
             if start_in_initial_auth {
                 tracing::info!(
@@ -809,10 +809,6 @@ async fn run_acp_app(
                                 error = %e,
                                 "run_acp_client_over_pipe failed"
                             );
-                            // Notify the App before the visible failure so a
-                            // queued Agent rebind can continue with its
-                            // latest target instead of becoming stranded.
-                            let _ = event_tx_for_pipe.send(app::AppEvent::AgentClientFailed);
                             // Recover the typed classification: an auth error
                             // attached at the handshake `new_session` site survives
                             // the `?`-collapse into `anyhow` via downcast, so it
@@ -830,11 +826,19 @@ async fn run_acp_app(
                                 } => detail.clone(),
                                 _ => format!("helper ACP transport failed: {e:#}"),
                             };
-                            let _ = event_tx_for_pipe.send(app::AppEvent::AgentError {
-                                session_id: None,
-                                failure,
-                                message,
-                            });
+                            if failure.is_auth() {
+                                let _ =
+                                    event_tx_for_pipe.send(app::AppEvent::AgentClientFailed);
+                                let _ = event_tx_for_pipe.send(app::AppEvent::AgentError {
+                                    session_id: None,
+                                    failure,
+                                    message,
+                                });
+                            } else {
+                                let _ = event_tx_for_pipe.send(
+                                    app::AppEvent::InitialAgentStartupFailed { failure, message },
+                                );
+                            }
                         }
                     }
                 });
@@ -870,6 +874,10 @@ async fn run_acp_app(
             let mut app_state = app::App::new(prompt_tx, recommendation_tx, permission_tx, new_session_tx, load_session_tx, drop_session_tx, rename_session_tx, restart_tx, master_ext_tx, debug_capture_enabled, wt_connected, autofix_enabled, Arc::clone(&shell_mgr), Arc::clone(&yolo_state));
             app_state.set_proposal_channels(Arc::clone(&proposal_channels));
             app_state.set_allowed_agent_ids(config.allowed_agent_ids.clone());
+            app_state.set_initial_yolo_control_owner(
+                config.initial_load_session_id.as_deref(),
+                config.initial_yolo_control_owner,
+            );
             // Seed the hot-updatable runtime agent config: the shared
             // delegate runtime table, the helper's own agent_cmd (needed to
             // re-derive the delegate commandline when only the delegate
@@ -1183,9 +1191,7 @@ async fn run_acp_app(
                         install_url: String::new(),
                         auth_hint: String::new(),
                     },
-                    install_in_progress: false,
-                    install_log: Vec::new(),
-                    install_error: None,
+                    phase: app::SetupPhase::Ready,
                     options,
                     title,
                     subtitle,

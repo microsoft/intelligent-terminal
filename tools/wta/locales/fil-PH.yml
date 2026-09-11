@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Hindi nahanap ang agent"
 setup.title.agent_error: "Nabigo ang koneksyon sa agent"
+setup.title.installing_copilot: "Ini-install ang GitHub Copilot"
+setup.title.starting_copilot: "Sinisimulan ang GitHub Copilot"
 setup.title.not_available: "Hindi available ang agent"
 setup.title.sign_in: "Kailangang mag-sign in"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Ang agent mong \"%{agent}\" ay hindi pa naka-in
 setup.subtitle.agent_missing: "Ang agent mong \"%{agent}\" ay hindi pa naka-install. Mangyaring i-install nang manu-mano, pagkatapos ay subukang muli. Para magpalit ng agent, pumunta sa Matalinong Terminal Settings > Agent."
 setup.subtitle.copilot_auth: "Ang agent mong \"%{agent}\" ay nangangailangan ng authentication. Sundin ang mga hakbang sa ibaba para mag-sign in. Para magpalit ng agent, pumunta sa Matalinong Terminal Settings > Agent."
 setup.subtitle.agent_auth: "Ang agent mong \"%{agent}\" ay nangangailangan ng authentication. Mangyaring mag-sign in sa pamamagitan ng agent, pagkatapos ay piliin ang \"Naka-sign in na ako\" sa ibaba. Para magpalit ng agent, pumunta sa Matalinong Terminal Settings > Agent."
+setup.subtitle.connection_failed: "Hindi namin masimulan ang %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(Awtomatikong mai-install)"
 setup.option.signin: "Mag-sign in sa %{agent}"
 setup.option.retry_detection: "Subukang muli"
 setup.option.retry_auth: "Naka-sign in na ako — subukang kumonekta muli"
+setup.option.retry_connection: "Subukang kumonekta muli"
 setup.status.installing: "Ini-install..."
+setup.status.installing_copilot_cli: "Ini-install ang GitHub Copilot CLI..."
+setup.status.connecting_agent: "Kumokonekta sa agent..."
 setup.status.install_failed: "Nabigo ang pag-install: "
 setup.status.installing_winget: " Ini-install sa pamamagitan ng winget..."
+setup.error.install_start_failed: "Hindi masimulan ang installer. Piliin ang \"Subukang muli\" para subukang muli."
+setup.error.install_timed_out: "Nag-time out ang pag-install. Piliin ang \"Subukang muli\" bago magsimula ng panibagong pag-install."
+setup.error.install_detection_timed_out: "Tapos na ang pag-install, pero hindi pa nakikita ang Copilot. Piliin ang \"Subukang muli\" para suriin muli."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations
@@ -258,5 +267,5 @@ system.no_config_options: "Walang inianunsyong anumang pwedeng i-configure na op
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Bigo sa pag-update ng %{option}: %{error}"
 system.yolo_disable_pending: "hindi pa kinukumpirma ng tagapagbigay ng agent ang kinakailangang hindi pribilehiyadong estado ng session"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
-system.provider_command_blocked_by_policy: "%{command}: Na-disable ang Yolo mode ng patakaran ng iyong organisasyon."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: Naka-disable ang awtomatikong pag-apruba ayon sa patakaran ng iyong organisasyon."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Hindi kilalang modelo %{model} — i-type ang /model para makita ang available na listahan."  # {Locked="%{model}","/model"}

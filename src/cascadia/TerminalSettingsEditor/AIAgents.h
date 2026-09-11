@@ -13,7 +13,22 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         AIAgents();
 
         void OnNavigatedTo(const winrt::Windows::UI::Xaml::Navigation::NavigationEventArgs& e);
-        void CustomAgentRemove_Loaded(
+        void CustomAgentAction_Loaded(
+            const winrt::Windows::Foundation::IInspectable& sender,
+            const winrt::Windows::UI::Xaml::RoutedEventArgs& e);
+        void CustomAgentEdit_Click(
+            const winrt::Windows::Foundation::IInspectable& sender,
+            const winrt::Windows::UI::Xaml::RoutedEventArgs& e);
+        void InlineLinkText_Loaded(
+            const winrt::Windows::Foundation::IInspectable& sender,
+            const winrt::Windows::UI::Xaml::RoutedEventArgs& e);
+        void InlineLinkText_SizeChanged(
+            const winrt::Windows::Foundation::IInspectable& sender,
+            const winrt::Windows::UI::Xaml::SizeChangedEventArgs& e);
+        void CustomProviderForm_SizeChanged(
+            const winrt::Windows::Foundation::IInspectable& sender,
+            const winrt::Windows::UI::Xaml::SizeChangedEventArgs& e);
+        void DelegateAgentHelp_Loaded(
             const winrt::Windows::Foundation::IInspectable& sender,
             const winrt::Windows::UI::Xaml::RoutedEventArgs& e);
 

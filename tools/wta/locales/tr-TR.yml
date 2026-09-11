@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Aracı bulunamadı"
 setup.title.agent_error: "Aracı bağlantısı başarısız oldu"
+setup.title.installing_copilot: "GitHub Copilot yükleniyor"
+setup.title.starting_copilot: "GitHub Copilot başlatılıyor"
 setup.title.not_available: "Aracı kullanılamıyor"
 setup.title.sign_in: "Oturum açma gerekli"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Aracınız \"%{agent}\" yüklü değil. Yüklem
 setup.subtitle.agent_missing: "Aracınız \"%{agent}\" yüklü değil. Lütfen elle yeniden yükleyin, ardından tekrar deneyin. Aracı değiştirmek için Akıllı Terminal Settings > Agent'e gidin."
 setup.subtitle.copilot_auth: "Aracınız \"%{agent}\" kimlik doğrulama gerektiriyor. Oturum açmak için aşağıdaki adımları izleyin. Aracı değiştirmek için Akıllı Terminal Settings > Agent'e gidin."
 setup.subtitle.agent_auth: "Aracınız \"%{agent}\" kimlik doğrulama gerektiriyor. Lütfen aracı üzerinden oturum açın, ardından aşağıda \"Oturum açtım\" seçeneğini belirleyin. Aracı değiştirmek için Akıllı Terminal Settings > Agent'e gidin."
+setup.subtitle.connection_failed: "%{agent} başlatılamadı."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(Otomatik olarak yüklenecek)"
 setup.option.signin: "%{agent} oturumu aç"
 setup.option.retry_detection: "Tekrar dene"
 setup.option.retry_auth: "Oturum açtım — tekrar bağlanmayı dene"
+setup.option.retry_connection: "Tekrar bağlanmayı dene"
 setup.status.installing: "Yükleniyor..."
+setup.status.installing_copilot_cli: "GitHub Copilot CLI yükleniyor..."
+setup.status.connecting_agent: "Aracıya bağlanılıyor..."
 setup.status.install_failed: "Yükleme başarısız: "
 setup.status.installing_winget: " winget üzerinden yükleniyor..."
+setup.error.install_start_failed: "Yükleyici başlatılamadı. Yeniden denemek için \"Tekrar dene\"yi seçin."
+setup.error.install_timed_out: "Yükleme zaman aşımına uğradı. Başka bir yükleme başlatmadan önce \"Tekrar dene\"yi seçin."
+setup.error.install_detection_timed_out: "Yükleme tamamlandı ancak Copilot henüz görünmüyor. Yeniden kontrol etmek için \"Tekrar dene\"yi seçin."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations
@@ -258,5 +267,5 @@ system.no_config_options: "Bağlı aracı, yapılandırılabilir herhangi bir ot
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} güncelleştirilemedi: %{error}"
 system.yolo_disable_pending: "AI aracı sağlayıcısı oturumun gerekli ayrıcalıksız durumda olduğunu onaylamadı"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
-system.provider_command_blocked_by_policy: "%{command}: Yolo modu kuruluşunuzun ilkesi tarafından devre dışı bırakıldı."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: Otomatik onay, kuruluşunuzun ilkesi tarafından devre dışı bırakıldı."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Bilinmeyen model %{model} — kullanılabilir listeyi görmek için /model yazın."  # {Locked="%{model}","/model"}

@@ -78,6 +78,7 @@ formedness
 FTCS
 gantt
 gfm
+GHAW
 ghe
 Ghostty
 github

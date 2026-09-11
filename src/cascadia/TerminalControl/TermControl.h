@@ -50,6 +50,12 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         TermControl(IControlSettings settings, Control::IControlAppearance unfocusedAppearance, TerminalConnection::ITerminalConnection connection);
 
         static Control::TermControl NewControlByAttachingContent(Control::ControlInteractivity content);
+        static Control::TermControl PrepareControlByAttachingContent(Control::ControlInteractivity content);
+        void SuspendContentTransfer();
+        bool ResumeContentTransfer();
+        void CommitContentTransfer();
+        void CommitContentDetach();
+        Control::ContentTransferState TransferState() const noexcept;
 
         void UpdateControlSettings(Control::IControlSettings settings);
         void UpdateControlSettings(Control::IControlSettings settings, Control::IControlAppearance unfocusedAppearance);
@@ -329,7 +335,9 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         bool _showMarksInScrollbar{ false };
 
         bool _isBackgroundLight{ false };
-        bool _detached{ false };
+        using ContentState = Control::ContentTransferState;
+        ContentState _contentState{ ContentState::Owned };
+        uint64_t _transferOwningHwnd{ 0 };
         til::CoordType _searchScrollOffset = 0;
 
         Windows::Foundation::Collections::IObservableVector<Windows::UI::Xaml::Controls::ICommandBarElement> _originalPrimaryElements{ nullptr };
@@ -350,7 +358,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
                 assert(dispatcher.HasThreadAccess());
             }
 #endif
-            return _closing;
+            return _closing || _contentState == ContentState::Suspended;
         }
 
         void _initializeForAttach();

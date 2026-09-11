@@ -95,6 +95,7 @@ pub(super) struct InputHistory {
 
 impl TabSession {
     pub fn select_all_input(&mut self) {
+        self.input_vertical_goal = None;
         self.input_all_selected = !self.input.is_empty();
         self.cursor_pos = self.input.len();
     }
@@ -227,6 +228,7 @@ impl TabSession {
     }
 
     pub fn move_cursor_left(&mut self) {
+        self.input_vertical_goal = None;
         if self.input_all_selected {
             self.move_cursor_home();
             return;
@@ -239,6 +241,7 @@ impl TabSession {
     }
 
     pub fn move_cursor_right(&mut self) {
+        self.input_vertical_goal = None;
         if self.input_all_selected {
             self.move_cursor_end();
             return;
@@ -251,6 +254,7 @@ impl TabSession {
     }
 
     pub fn move_cursor_word_left(&mut self) {
+        self.input_vertical_goal = None;
         if self.input_all_selected {
             self.move_cursor_home();
             return;
@@ -260,6 +264,7 @@ impl TabSession {
     }
 
     pub fn move_cursor_word_right(&mut self) {
+        self.input_vertical_goal = None;
         if self.input_all_selected {
             self.move_cursor_end();
             return;
@@ -269,13 +274,46 @@ impl TabSession {
     }
 
     pub fn move_cursor_home(&mut self) {
+        self.input_vertical_goal = None;
         self.input_all_selected = false;
         TextEditor::new(&mut self.input, &mut self.cursor_pos).move_home();
     }
 
     pub fn move_cursor_end(&mut self) {
+        self.input_vertical_goal = None;
         self.input_all_selected = false;
         TextEditor::new(&mut self.input, &mut self.cursor_pos).move_end();
+    }
+
+    pub fn move_cursor_vertical(&mut self, input_width: u16, upward: bool) -> bool {
+        if self.input_all_selected {
+            if upward {
+                self.move_cursor_home();
+            } else {
+                self.move_cursor_end();
+            }
+            return true;
+        }
+        let preferred = self
+            .input_vertical_goal
+            .filter(|(width, _)| *width == input_width)
+            .map(|(_, column)| column);
+        let Some((position, column)) = crate::ui::adjacent_input_cursor(
+            &self.input,
+            self.cursor_pos,
+            input_width,
+            upward,
+            preferred,
+        ) else {
+            return false;
+        };
+        self.cursor_pos = if upward {
+            self.attachments.snap_cursor_left(position)
+        } else {
+            self.attachments.snap_cursor_right(position)
+        };
+        self.input_vertical_goal = Some((input_width, column));
+        true
     }
 
     pub(super) fn record_input_history(&mut self, input: &str) {
@@ -306,6 +344,7 @@ impl TabSession {
     }
 
     pub(super) fn navigate_input_history_older(&mut self) {
+        self.input_vertical_goal = None;
         self.input_all_selected = false;
         if self.input_history.entries.is_empty() {
             return;
@@ -330,6 +369,7 @@ impl TabSession {
     }
 
     pub(super) fn navigate_input_history_newer(&mut self) {
+        self.input_vertical_goal = None;
         self.input_all_selected = false;
         let Some(index) = self.input_history.selected else {
             return;
@@ -356,6 +396,7 @@ impl TabSession {
     }
 
     pub(super) fn reset_input_history_navigation(&mut self) {
+        self.input_vertical_goal = None;
         self.input_all_selected = false;
         self.input_history.selected = None;
         self.input_history.draft = None;

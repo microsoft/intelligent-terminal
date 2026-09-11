@@ -2,6 +2,8 @@
 # {Locked="Intelligent Terminal"} - product name, do not translate
 setup.title.agent_missing: "Agent not found"
 setup.title.agent_error: "Agent connection failed"
+setup.title.installing_copilot: "Installing GitHub Copilot"
+setup.title.starting_copilot: "Starting GitHub Copilot"
 setup.title.not_available: "Agent not available"
 setup.title.sign_in: "Sign in required"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Your agent \"%{agent}\" is not installed. Follo
 setup.subtitle.agent_missing: "Your agent \"%{agent}\" is not installed. Please install it manually, then try again. To switch agents, go to Intelligent Terminal Settings > Agent."
 setup.subtitle.copilot_auth: "Your agent \"%{agent}\" requires authentication. Follow the steps below to sign in. To switch agents, go to Intelligent Terminal Settings > Agent."
 setup.subtitle.agent_auth: "Your agent \"%{agent}\" requires authentication. Please sign in via the agent, then select \"I've signed in\" below. To switch agents, go to Intelligent Terminal Settings > Agent."
+setup.subtitle.connection_failed: "We couldn't start %{agent}."
 
 # {Locked="Intelligent Terminal"}
 
@@ -18,9 +21,15 @@ setup.option.install_hint: "(Will be installed automatically)"
 setup.option.signin: "Sign in to %{agent}"
 setup.option.retry_detection: "Try again"
 setup.option.retry_auth: "I've signed in — try connecting again"
+setup.option.retry_connection: "Try connecting again"
 setup.status.installing: "Installing..."
+setup.status.installing_copilot_cli: "Installing GitHub Copilot CLI..."
+setup.status.connecting_agent: "Connecting to agent..."
 setup.status.install_failed: "Install failed: "
 setup.status.installing_winget: " Installing via winget..."
+setup.error.install_start_failed: "The installer could not be started. Select \"Try again\" to retry."
+setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."
+setup.error.install_detection_timed_out: "Installation finished, but Copilot is not visible yet. Select \"Try again\" to check again."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localisations
@@ -258,5 +267,5 @@ system.no_config_options: "The connected agent did not advertise any configurabl
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Failed to update %{option}: %{error}"
 system.yolo_disable_pending: "the provider has not acknowledged the required nonprivileged session state"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
-system.provider_command_blocked_by_policy: "%{command}: Yolo mode is disabled by your organisation's policy."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: Automatic approval is disabled by your organisation’s policy."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Unknown model %{model} — type /model to see the available list."  # {Locked="%{model}","/model"}

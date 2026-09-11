@@ -1169,6 +1169,9 @@ try
     case ProtocolParsing::SendEventRoute::AgentStatus:
         _dispatchAgentStatusToPage(eventH);
         return S_OK;
+    case ProtocolParsing::SendEventRoute::AgentAvailability:
+        _dispatchAgentAvailabilityToPage(eventH);
+        return S_OK;
     case ProtocolParsing::SendEventRoute::AgentSwitch:
         _dispatchAgentSwitchToPage(eventH);
         return S_OK;
@@ -1296,6 +1299,39 @@ void TerminalProtocolComServer::_dispatchAgentStatusToPage(const winrt::hstring&
                 catch (...)
                 {
                     // Swallow: page may have been torn down during dispatch.
+                }
+            });
+    }
+}
+
+void TerminalProtocolComServer::_dispatchAgentAvailabilityToPage(const winrt::hstring& eventJson)
+{
+    if (!s_emperor)
+    {
+        return;
+    }
+
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        auto page = _getPage(host.get());
+        if (!page)
+        {
+            continue;
+        }
+        const auto dispatcher = page.Dispatcher();
+        if (!dispatcher)
+        {
+            continue;
+        }
+        dispatcher.RunAsync(
+            winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
+            [page, eventJson]() {
+                try
+                {
+                    page.OnAgentAvailabilityChanged(eventJson);
+                }
+                catch (...)
+                {
                 }
             });
     }

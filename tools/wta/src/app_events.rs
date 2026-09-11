@@ -25,6 +25,9 @@ struct AgentReconnectWire {
     custom_model_selection: Option<String>,
     agent_source: String,
     wsl_distro: Option<String>,
+    automatic_yolo_target: Option<bool>,
+    yolo_enabled: Option<bool>,
+    yolo_policy_blocked: Option<bool>,
 }
 
 impl App {
@@ -190,6 +193,10 @@ impl App {
         self.last_agent_rebind_window_id = Some(request.window_id.clone());
         self.last_agent_rebind_generation = request.generation;
         self.prepare_agent_reconnect(&request);
+        self.apply_runtime_yolo_config(
+            wire.automatic_yolo_target.or(wire.yolo_enabled),
+            wire.yolo_policy_blocked,
+        );
 
         let disconnect_in_progress = matches!(
             &self.agent_reconnect_state,
@@ -432,6 +439,7 @@ impl App {
                 self.cancel_completed_turn_click();
                 if !self.chat_input_has_edit_focus() && !self.current_tab().paste_pending {
                     self.current_tab_mut().input_all_selected = false;
+                    self.current_tab_mut().input_vertical_goal = None;
                 }
                 let is_select_all = matches!(key.code, KeyCode::Char('a'))
                     && key.modifiers == KeyModifiers::CONTROL;
@@ -472,6 +480,7 @@ impl App {
                 self.handle_key(key);
                 if !self.chat_input_has_edit_focus() && !self.current_tab().paste_pending {
                     self.current_tab_mut().input_all_selected = false;
+                    self.current_tab_mut().input_vertical_goal = None;
                 }
             }
             AppEvent::Mouse(mouse) => match mouse.kind {
@@ -517,6 +526,7 @@ impl App {
                 }
                 crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
                     self.current_tab_mut().input_all_selected = false;
+                    self.current_tab_mut().input_vertical_goal = None;
                     self.text_selection.handle_mouse(mouse);
                     let click_count = self.text_selection.click_count().unwrap_or(1);
                     if click_count > 1 {
@@ -739,6 +749,9 @@ impl App {
             AppEvent::Resize(w, h) => {
                 self.cancel_completed_turn_click();
                 self.text_selection.clear();
+                if w != self.terminal_cols {
+                    self.invalidate_input_layout();
+                }
                 self.terminal_cols = w;
                 self.terminal_rows = h;
             }
@@ -750,6 +763,7 @@ impl App {
                 self.pane_focused = focused;
                 if !focused {
                     self.current_tab_mut().input_all_selected = false;
+                    self.current_tab_mut().input_vertical_goal = None;
                 }
             }
             AppEvent::ConnectionStage(stage) => {
@@ -808,6 +822,8 @@ impl App {
                 image_supported,
                 session_capabilities_ready,
             } => {
+                self.initial_startup_presentation_eligible = false;
+                self.reconnect_after_transport_retired = false;
                 self.pending_yolo_reconciles.clear();
                 self.agent_name = name;
                 self.agent_model = model;
@@ -852,7 +868,11 @@ impl App {
                     .clone()
                     .or_else(|| self.tab_id.clone())
                     .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
-                if session_capabilities_ready {
+                let loading_session = self
+                    .tab_sessions
+                    .get(&bind_tab)
+                    .is_some_and(|tab| tab.loading_session);
+                if session_capabilities_ready && !loading_session {
                     self.pending_yolo_session_tabs.remove(&bind_tab);
                 } else {
                     self.pending_yolo_session_tabs.insert(bind_tab.clone());
@@ -879,7 +899,7 @@ impl App {
                 {
                     tab.messages.insert(0, ChatMessage::Disclaimer);
                 }
-                if session_capabilities_ready {
+                if session_capabilities_ready && !loading_session {
                     self.reconcile_session_yolo(&session_id);
                 }
                 self.publish_agent_status();
@@ -1005,13 +1025,24 @@ impl App {
                         self.send_session_model(Some(session_id.clone()), model, false);
                     }
                 }
-                let (client_reconciled_target, current_target) = {
+                let (client_reconciled_target, automatic_target) = {
                     let mut state = self.yolo_state.lock().unwrap();
-                    let current_target = state.effective(&session_id);
-                    (state.take_client_reconciled(&session_id), current_target)
+                    let client_reconciled_target = state.take_client_reconciled(&session_id);
+                    if client_reconciled_target.is_none()
+                        && is_load_target
+                        && state.owner(&session_id).is_none()
+                    {
+                        state.mark_provider_restored(session_id.clone());
+                    }
+                    (
+                        client_reconciled_target,
+                        state.automatic_directive(&session_id).target(),
+                    )
                 };
-                if client_reconciled_target != Some(current_target) {
-                    self.reconcile_session_yolo(&session_id);
+                if let Some(automatic_target) = automatic_target {
+                    if client_reconciled_target != Some(automatic_target) {
+                        self.reconcile_session_yolo(&session_id);
+                    }
                 }
                 self.publish_agent_status();
                 self.project_tab_state(&tab_id);
@@ -1264,7 +1295,16 @@ impl App {
                     tab.scroll_to_bottom();
                 }
             }
+            AppEvent::YoloControlOwnerChanged { session_id } => {
+                if let Some(tab_id) = self.current_tab_for_session(&session_id) {
+                    self.project_tab_state(&tab_id);
+                }
+            }
             AppEvent::TabError { tab_id, message } => {
+                let failed_load_session_id = self
+                    .tab_sessions
+                    .get(&tab_id)
+                    .and_then(|tab| tab.loading_target_session_id.clone());
                 self.pending_yolo_session_tabs.remove(&tab_id);
                 if self
                     .pending_session_load
@@ -1272,6 +1312,16 @@ impl App {
                     .is_some_and(|pending| pending.tab_id == tab_id)
                 {
                     self.pending_session_load = None;
+                }
+                if let Some(session_id) = failed_load_session_id {
+                    if self
+                        .initial_yolo_control_owner
+                        .as_ref()
+                        .is_some_and(|initial| initial.session_id == session_id)
+                    {
+                        self.initial_yolo_control_owner = None;
+                    }
+                    self.clear_yolo_session_state(&session_id);
                 }
                 // Scoped error for a specific tab. Bypasses the global
                 // auth-fallback / ConnectionState::Failed flip in
@@ -1323,7 +1373,6 @@ impl App {
             AppEvent::TabSystemMessage { tab_id, message } => {
                 let tab = self.tab_mut(&tab_id);
                 tab.messages.push(ChatMessage::info(message));
-                tab.scroll_to_bottom();
             }
             AppEvent::PromptTemplateLoaded { name } => {
                 self.prompt_name = Some(name);
@@ -1339,7 +1388,6 @@ impl App {
                 let tab = self.tab_mut(&tab_id);
                 tab.messages
                     .push(ChatMessage::warning(t!("system.agent_busy").into_owned()));
-                tab.scroll_to_bottom();
             }
             AppEvent::TabRenamed {
                 old_tab_id,
@@ -1481,9 +1529,7 @@ impl App {
                             install_url: String::new(),
                             auth_hint: profile.auth_hint.to_string(),
                         },
-                        install_in_progress: false,
-                        install_log: Vec::new(),
-                        install_error: None,
+                        phase: SetupPhase::Ready,
                         options,
                         title: t!("setup.title.sign_in").into_owned(),
                         subtitle: if profile.id == "copilot" {
@@ -1496,8 +1542,17 @@ impl App {
                     });
                     // Clear error messages
                     let tab = self.current_tab_mut();
-                    tab.messages.retain(|m| !matches!(m, ChatMessage::Error(_)));
+                    tab.retain_current_messages(|m| !matches!(m, ChatMessage::Error(_)));
                 } else {
+                    if session_id.is_none()
+                        && self
+                            .setup
+                            .as_ref()
+                            .is_some_and(|setup| setup.phase == SetupPhase::Reconnecting)
+                    {
+                        self.show_connection_failure_setup(message);
+                        return;
+                    }
                     if !session_survives {
                         self.state = ConnectionState::Failed(message.clone());
                         self.publish_agent_status();
@@ -1535,6 +1590,42 @@ impl App {
                     }
                 }
             }
+            AppEvent::InitialAgentStartupFailed { failure, message } => {
+                if !self.initial_startup_presentation_eligible {
+                    if !self.initial_transport_superseded
+                        && self.state == ConnectionState::Connected
+                    {
+                        self.state = ConnectionState::Failed(message.clone());
+                        self.publish_agent_status();
+                        let tab = self.current_tab_mut();
+                        let duplicate = matches!(
+                            tab.messages.last(),
+                            Some(ChatMessage::Error(previous)) if previous == &message
+                        );
+                        if !duplicate {
+                            tab.messages.push(ChatMessage::Error(message));
+                        }
+                        return;
+                    }
+                    tracing::debug!(
+                        target: "preflight",
+                        failure_class = failure.class(),
+                        "ignoring superseded initial startup failure"
+                    );
+                    return;
+                }
+                if self.preflight_setup_active
+                    || self.setup.as_ref().is_some_and(|setup| setup.is_busy())
+                {
+                    tracing::info!(
+                        target: "preflight",
+                        failure_class = failure.class(),
+                        "initial startup failure is covered by the active setup flow"
+                    );
+                    return;
+                }
+                self.show_connection_failure_setup(message);
+            }
             AppEvent::MasterDisconnected => {
                 let agent_rebind_pending = matches!(
                     &self.agent_reconnect_state,
@@ -1551,6 +1642,34 @@ impl App {
                         );
                         return;
                     }
+                    let preserve_setup = self.mode == AppMode::Setup
+                        && (self.preflight_setup_active
+                            || self
+                                .setup
+                                .as_ref()
+                                .is_some_and(SetupState::preserves_install_setup_on_disconnect));
+                    if preserve_setup {
+                        tracing::warn!(
+                            target: "helper",
+                            agent_id = %self.current_agent_id,
+                            source = %self.current_agent_source,
+                            "master disconnected during setup; preserving the active setup operation"
+                        );
+                        if self
+                            .setup
+                            .as_ref()
+                            .is_some_and(|setup| setup.phase == SetupPhase::Reconnecting)
+                        {
+                            self.reconnect_after_transport_retired = true;
+                            self.state = ConnectionState::Connecting(
+                                t!("connection.reconnecting").into_owned(),
+                            );
+                        } else {
+                            self.state = ConnectionState::Disconnected;
+                        }
+                        self.publish_agent_status();
+                        return;
+                    }
                     tracing::warn!(
                         target: "helper",
                         agent_id = %self.current_agent_id,
@@ -1562,8 +1681,8 @@ impl App {
                         self.pending_session_load = None;
                     }
                     self.reset_agent_scoped_state();
-                    if let Some((pending, prior_meaningful)) = pending_load {
-                        self.restore_pending_session_load(pending, prior_meaningful);
+                    if let Some((pending, prior_meaningful, owner)) = pending_load {
+                        self.restore_pending_session_load(pending, prior_meaningful, owner);
                     }
                     self.reconnect_after_transport_retired = !agent_rebind_pending;
                 } else {
@@ -1634,7 +1753,7 @@ impl App {
                     ConnectionState::Connecting(t!("connection.reconnecting").into_owned());
                 {
                     let tab = self.current_tab_mut();
-                    tab.messages.retain(|m| !matches!(m, ChatMessage::Error(_)));
+                    tab.retain_current_messages(|m| !matches!(m, ChatMessage::Error(_)));
                 }
                 // (ii) Request a fresh master CLI. The long-lived shared CLI
                 // cached its unauthenticated state at spawn and `authenticate`
@@ -1720,11 +1839,9 @@ impl App {
                     return;
                 };
                 tab.messages.push(ChatMessage::warning(msg.into_owned()));
-                tab.scroll_to_bottom();
             }
             AppEvent::ExecutionInfo(message) => {
                 self.push_execution_info(message);
-                self.current_tab_mut().scroll_to_bottom();
             }
             AppEvent::AgentThoughtChunk { session_id, text } => {
                 if let Some(tab) = self.session_tab_mut_if_current(&session_id) {
@@ -1864,7 +1981,6 @@ impl App {
                     content,
                     locations,
                 });
-                tab.scroll_to_bottom();
             }
             AppEvent::ToolCallUpdate {
                 session_id,
@@ -2017,9 +2133,7 @@ impl App {
                 if tab.loading_session {
                     tab.flush_replay_user_buffer();
                 }
-                tab.messages.retain(
-                    |message| !matches!(message, ChatMessage::ToolCall { id: message_id, .. } if message_id == &id),
-                );
+                tab.hide_tool_call(&id);
             }
             AppEvent::Plan {
                 session_id,
@@ -2048,7 +2162,6 @@ impl App {
                     }
                 }
                 tab.messages.push(ChatMessage::Plan(entries));
-                tab.scroll_to_bottom();
             }
             AppEvent::PermissionRequest {
                 session_id,
@@ -2138,6 +2251,14 @@ impl App {
                 }
             }
             AppEvent::PreflightComplete(result) => {
+                if !self.initial_startup_presentation_eligible {
+                    tracing::debug!(
+                        target: "preflight",
+                        stale_agent = %result.agent_id,
+                        "ignoring superseded startup preflight result"
+                    );
+                    return;
+                }
                 if !matches!(&self.agent_reconnect_state, AgentReconnectState::Idle) {
                     tracing::debug!(
                         target: "preflight",
@@ -2158,6 +2279,19 @@ impl App {
                     );
                     return;
                 }
+                if self.pending_agent_install.is_some()
+                    || self
+                        .setup
+                        .as_ref()
+                        .is_some_and(|setup| matches!(&setup.phase, SetupPhase::Installing))
+                {
+                    tracing::debug!(
+                        target: "preflight",
+                        agent = %result.agent_id,
+                        "ignoring duplicate startup preflight during agent installation"
+                    );
+                    return;
+                }
                 tracing::info!(
                     target: "preflight",
                     agent = %result.agent_id,
@@ -2165,8 +2299,14 @@ impl App {
                     auth_status = ?result.auth_status,
                     "preflight result received"
                 );
+                self.initial_preflight_completed = true;
                 if !result.all_passed() {
                     self.show_preflight_setup(result);
+                    if self.auto_install_selected_agent && !self.try_start_fre_auto_install() {
+                        self.auto_install_selected_agent = false;
+                    }
+                } else {
+                    self.auto_install_selected_agent = false;
                 }
             }
             AppEvent::AgentReconnectPreflightComplete {
@@ -2212,6 +2352,9 @@ impl App {
                 mut wsl_sources,
             } => {
                 if generation != self.agent_source_probe_generation {
+                    return;
+                }
+                if self.setup.as_ref().is_some_and(SetupState::is_busy) {
                     return;
                 }
                 self.refresh_available_agents();
@@ -2390,6 +2533,37 @@ impl App {
                 // single per-event breadcrumb stays at debug in main.rs
                 // (`wt_event_rx: received event`).
                 tracing::trace!(target: "autofix", method = %method, pane_id = %pane_id, tab_id = ?tab_id, self_pane_id = ?self.pane_id, "WtEvent");
+
+                if method == "fre_auto_install_selected_agent" {
+                    let targets_this_helper = tab_id
+                        .as_deref()
+                        .is_some_and(|target| self.agent_routing_tab_id() == Some(target));
+                    if !targets_this_helper
+                        || !matches!(
+                            self.current_agent_source,
+                            crate::agent_source::AgentSource::Host
+                        )
+                        || !self.current_agent_id.eq_ignore_ascii_case("copilot")
+                    {
+                        return;
+                    }
+                    if self.pending_agent_install.is_some()
+                        || self.setup.as_ref().is_some_and(SetupState::is_busy)
+                    {
+                        self.auto_install_selected_agent = false;
+                        return;
+                    }
+                    self.auto_install_selected_agent = true;
+                    if self.try_start_fre_auto_install() {
+                        tracing::info!(
+                            target: "preflight",
+                            "starting one-shot FRE-requested agent installation"
+                        );
+                    } else if self.initial_preflight_completed {
+                        self.auto_install_selected_agent = false;
+                    }
+                    return;
+                }
 
                 if method == "wt_listener_ready" || method == "restore_bindings_available" {
                     // Availability is scoped to the owning helper. A missed
@@ -2601,8 +2775,8 @@ impl App {
                         self.pending_session_load = None;
                     }
                     self.reset_agent_scoped_state();
-                    if let Some((pending, prior_meaningful)) = pending_load {
-                        self.restore_pending_session_load(pending, prior_meaningful);
+                    if let Some((pending, prior_meaningful, owner)) = pending_load {
+                        self.restore_pending_session_load(pending, prior_meaningful, owner);
                     }
                     if wait_for_transport_retirement {
                         self.reconnect_after_transport_retired = true;
@@ -2662,7 +2836,10 @@ impl App {
                     }
 
                     self.apply_runtime_yolo_config(
-                        params.get("yolo_enabled").and_then(|v| v.as_bool()),
+                        params
+                            .get("automatic_yolo_target")
+                            .and_then(|v| v.as_bool())
+                            .or_else(|| params.get("yolo_enabled").and_then(|v| v.as_bool())),
                         params.get("yolo_policy_blocked").and_then(|v| v.as_bool()),
                     );
 
@@ -3002,6 +3179,22 @@ impl App {
                         // user knows a conversation is on its way in rather
                         // than watching a pane that looks like a cold start.
                     }
+                    let owner = if self
+                        .initial_yolo_control_owner
+                        .as_ref()
+                        .is_some_and(|initial| initial.session_id == session_id)
+                    {
+                        self.initial_yolo_control_owner
+                            .take()
+                            .expect("matching initial owner exists")
+                            .owner
+                    } else {
+                        crate::app_contracts::YoloControlOwner::ProviderRestored
+                    };
+                    self.yolo_state
+                        .lock()
+                        .unwrap()
+                        .mark_owner(session_id.to_string(), owner);
                     self.pending_yolo_session_tabs.insert(tab_id.to_string());
                     // If the load_session target IS the active tab, push the
                     // (now Chat) view to C++ so the bar drops the "Agent
@@ -3029,23 +3222,51 @@ impl App {
                     // pair, so `try_start_acp` has to re-issue it.
                     self.pending_session_load = Some(request.clone());
                     if self.load_session_tx.send(request).is_err() {
-                        self.pending_session_load = None;
-                        self.pending_yolo_session_tabs.remove(tab_id);
-                        let tab = self.tab_mut(tab_id);
-                        tab.finish_thought();
-                        tab.loading_session = false;
-                        tab.loading_target_session_id = None;
-                        tab.replay_agent_buffer.clear();
-                        tab.replay_user_buffer.clear();
-                        tab.replay_user_message_id = None;
-                        tab.has_meaningful_conversation = tab
-                            .meaningful_conversation_before_load
-                            .take()
-                            .unwrap_or(false);
-                        tab.messages
-                            .push(ChatMessage::Error(t!("connection.lost").into_owned()));
-                        tab.scroll_to_bottom();
-                        self.project_tab_state(tab_id);
+                        let current_transport_retiring = self.agent_transport_retirement_pending
+                            && matches!(&self.agent_reconnect_state, AgentReconnectState::Idle);
+                        let reconnect_pending = self.deferred_acp.is_some()
+                            && (self.pending_acp_start
+                                || self.reconnect_after_transport_retired
+                                || current_transport_retiring);
+                        if reconnect_pending {
+                            tracing::warn!(
+                                target: "acp_load_session",
+                                tab_id,
+                                session_id,
+                                "retaining initial session load for the pending ACP reconnect"
+                            );
+                        } else {
+                            let reason = if self.deferred_acp.is_none() {
+                                "no deferred ACP binding is available"
+                            } else {
+                                "ACP reconnect has not been scheduled"
+                            };
+                            tracing::warn!(
+                                target: "acp_load_session",
+                                tab_id,
+                                session_id,
+                                reason,
+                                "session load channel closed without a pending ACP reconnect"
+                            );
+                            self.pending_session_load = None;
+                            self.pending_yolo_session_tabs.remove(tab_id);
+                            self.clear_yolo_session_state(session_id);
+                            let tab = self.tab_mut(tab_id);
+                            tab.finish_thought();
+                            tab.loading_session = false;
+                            tab.loading_target_session_id = None;
+                            tab.replay_agent_buffer.clear();
+                            tab.replay_user_buffer.clear();
+                            tab.replay_user_message_id = None;
+                            tab.has_meaningful_conversation = tab
+                                .meaningful_conversation_before_load
+                                .take()
+                                .unwrap_or(false);
+                            tab.messages
+                                .push(ChatMessage::Error(t!("connection.lost").into_owned()));
+                            tab.scroll_to_bottom();
+                            self.project_tab_state(tab_id);
+                        }
                     }
                     return;
                 }
@@ -3520,73 +3741,85 @@ impl App {
                     self.wt_notifications.pop_front();
                 }
             }
-            AppEvent::AgentInstallComplete => {
-                // Check if the agent we were trying to install is now available.
-                let agent_id = self
-                    .setup
-                    .as_ref()
-                    .map(|s| s.preflight.agent_id.clone())
-                    .unwrap_or_default();
+            AppEvent::AgentInstallComplete {
+                request_id,
+                agent_id,
+                outcome,
+            } => {
+                let Some(pending) = self.pending_agent_install.as_ref() else {
+                    tracing::debug!(
+                        request_id,
+                        agent = %agent_id,
+                        "ignoring stale agent install completion"
+                    );
+                    return;
+                };
+                if pending.request_id != request_id || pending.agent_id != agent_id {
+                    tracing::debug!(
+                        request_id,
+                        agent = %agent_id,
+                        "ignoring stale agent install completion"
+                    );
+                    return;
+                }
+                let binding_is_current = pending.binding_generation
+                    == self.agent_binding_generation
+                    && pending.agent_source == self.current_agent_source;
+                self.pending_agent_install = None;
 
-                if !agent_id.is_empty() {
-                    let status = crate::agent_check::check_agent(&agent_id);
+                if !binding_is_current {
+                    tracing::info!(
+                        request_id,
+                        agent = %agent_id,
+                        "installation completed after the Agent binding changed; leaving the current binding untouched"
+                    );
+                    return;
+                }
+
+                let installed = matches!(
+                    outcome,
+                    crate::agent_check::AgentInstallOutcome::Installed
+                        | crate::agent_check::AgentInstallOutcome::AlreadyAvailable
+                );
+                if installed {
+                    let status = crate::agent_check::recheck_agent(&agent_id);
                     if status.cli_found {
-                        // Install succeeded → proceed to connect or auth
-                        let profile = crate::agent_registry::lookup_profile_by_id(&agent_id);
-
-                        if agent_id == "copilot" {
-                            // Copilot was just installed by IT. Route directly
-                            // to sign-in instead of probing local credentials or
-                            // paying for a doomed ACP auth roundtrip.
-                            self.show_copilot_auth_screen();
-                        } else {
-                            // Future-proofing: only Copilot has an in-app auth
-                            // screen. If another agent ever becomes
-                            // auto-installable, keep it on the diagnostic setup
-                            // retry path instead of entering Auth mode.
-                            let reason = SetupReason::AgentError;
-                            let options = build_setup_options(&reason, Some(&status));
-                            self.mode = AppMode::Setup;
-                            self.setup = Some(SetupState {
-                                reason,
-                                selected_index: 0,
-                                preflight: PreflightResult {
-                                    agent_id: agent_id.clone(),
-                                    display_name: status.display_name.clone(),
-                                    cli_status: CheckStatus::Passed,
-                                    cli_path: status.cli_path.clone(),
-                                    auth_status: CheckStatus::Failed(
-                                        t!("system.authentication_failed").into_owned(),
-                                    ),
-                                    install_hint: profile.install_hint.to_string(),
-                                    install_url: String::new(),
-                                    auth_hint: profile.auth_hint.to_string(),
-                                },
-                                install_in_progress: false,
-                                install_log: Vec::new(),
-                                install_error: None,
-                                options,
-                                title: t!("setup.title.sign_in").into_owned(),
-                                subtitle: t!(
-                                    "setup.subtitle.agent_auth",
-                                    agent = status.display_name.as_str()
-                                )
-                                .into_owned(),
-                            });
+                        if self.state == ConnectionState::Connected
+                            && self.current_agent_id.eq_ignore_ascii_case(&agent_id)
+                        {
+                            self.notify_confirmed_agent_available(&agent_id);
+                            return;
                         }
+                        self.reconnect_confirmed_available_agent(&agent_id);
                         return;
                     }
                 }
 
-                // Install didn't resolve the issue — stay on setup, refresh options
-                if let Some(ref mut setup) = self.setup {
-                    setup.install_in_progress = false;
-                    let current_status = if !agent_id.is_empty() {
-                        Some(crate::agent_check::check_agent(&agent_id))
-                    } else {
-                        None
-                    };
+                if let Some(setup) = self.setup.as_mut() {
+                    let current_status = Some(crate::agent_check::recheck_agent(&agent_id));
                     setup.options = build_setup_options(&setup.reason, current_status.as_ref());
+                    setup.selected_index = setup
+                        .selected_index
+                        .min(setup.options.len().saturating_sub(1));
+                    let (kind, message) = match outcome {
+                        crate::agent_check::AgentInstallOutcome::Failed(error) => {
+                            (SetupFailureKind::Install, error)
+                        }
+                        crate::agent_check::AgentInstallOutcome::TimedOut => (
+                            SetupFailureKind::Install,
+                            t!("setup.error.install_timed_out").into_owned(),
+                        ),
+                        crate::agent_check::AgentInstallOutcome::DetectionTimedOut => (
+                            SetupFailureKind::Detection,
+                            t!("setup.error.install_detection_timed_out").into_owned(),
+                        ),
+                        crate::agent_check::AgentInstallOutcome::Installed
+                        | crate::agent_check::AgentInstallOutcome::AlreadyAvailable => (
+                            SetupFailureKind::Detection,
+                            t!("setup.error.install_detection_timed_out").into_owned(),
+                        ),
+                    };
+                    setup.phase = SetupPhase::Failed { kind, message };
                 }
             }
             AppEvent::LoginProgress {

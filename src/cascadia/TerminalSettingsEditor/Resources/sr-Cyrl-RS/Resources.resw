@@ -741,11 +741,12 @@
     <value>Изаберите модел који овај агент користи.</value>
     <comment>Supplementary description for the model setting.</comment>
   </data><data name="AIAgents_DelegateAgent.Header" xml:space="preserve">
-    <value>Агент</value>
-    <comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment>
+    <value>CLI агент</value>
+    <comment>{Locked="CLI"} Header for the agent CLI selector in Settings &gt; Agents &gt; Command palette. Here "agent" means an AI intelligent agent (e.g. Copilot, Claude, Gemini), not a proxy or human agent. CLI means command-line interface.</comment>
   </data><data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
-    <value>Изаберите агента који се користи за брзе радње у палети команди.</value>
-    <comment>Supplementary description for the command palette agent setting.</comment>
+    <value>Направите нову картицу са жељеним CLI агентом, уз могућност укључивања упита и контекста из активног панела.
+Alt+Shift+/ унесите упит; Alt+Shift+B покрените без почетног упита.</value>
+    <comment>{Locked="CLI","Alt+Shift+/","Alt+Shift+B"} Agent CLI help in Settings &gt; Agents. Keep exactly one line break between the description and the shortcut reference. The UI renders the hotkeys with the same keycap style as Settings &gt; Actions. Start the description after each shortcut with lowercase where the language uses case. Context comes from the active pane; launching without an initial prompt is still interactive. Separate each hotkey and its description with a space, not a colon.</comment>
   </data><data name="AIAgents_AutoFix.Header" xml:space="preserve">
     <value>Аутоматски предложи исправке за неуспеле команде</value>
     <comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment>
@@ -3034,10 +3035,7 @@
     <value>{} | {} | Компатибилно са OpenAI</value>
     <comment>{Locked="{}","OpenAI"} The first {} is replaced with the provider name; the second is replaced with its location.</comment>
   </data>
-  <data name="AIAgents_YoloOpenCodeWarning.Title" xml:space="preserve"><value>Yolo режим није доступан за OpenCode</value><comment>{Locked="Yolo","OpenCode"} InfoBar title shown on the AI Agents settings page when global Yolo mode is on and the installed selected default provider is OpenCode.</comment></data>
-  <data name="AIAgents_YoloOpenCodeWarning.Message" xml:space="preserve"><value>OpenCode не оглашава подржани изворни Yolo режим. Захтеви за дозволу остају интерактивни чак и када је ово подешавање укључено.</value><comment>{Locked="OpenCode","Yolo"} InfoBar message shown on the AI Agents settings page. "Advertise" means the provider reports a supported native ACP session capability. "Interactive" means the user must still choose permission options manually.</comment></data>
-  <data name="AIAgents_YoloGeminiInfo.Title" xml:space="preserve"><value>Gemini Yolo режим зависи од поверења радног простора</value><comment>{Locked="Gemini","Yolo"} InfoBar title shown on the AI Agents settings page when global Yolo mode is on and the installed selected default provider is Gemini.</comment></data>
-  <data name="AIAgents_YoloGeminiInfo.Message" xml:space="preserve"><value>Gemini омогућава Yolo режим само када то дозвољавају поверење радног простора и политика добављача.</value><comment>{Locked="Gemini","Yolo"} InfoBar message shown on the AI Agents settings page. Workspace trust and provider policy are owned by Gemini, not by Intelligent Terminal.</comment></data>
+  <data name="AIAgents_YoloGeminiInfo.Message" xml:space="preserve"><value>Аутоматско одобравање уз Gemini ограничено је на поуздане радне просторе</value><comment>{Locked="Gemini"} Single-line InfoBar message shown on the AI Agents settings page when automatic approval is on and the selected default provider is Gemini. Gemini restricts automatic approval to trusted workspaces.</comment></data>
   <data name="AIAgents_CustomAgentRemove.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Уклони</value>
     <comment>Accessible name for the X button that removes a custom agent from the agent list.</comment>

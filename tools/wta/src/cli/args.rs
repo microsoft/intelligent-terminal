@@ -67,9 +67,10 @@ pub(crate) struct Cli {
     pub(crate) allowed_agent_ids: Vec<String>,
 
     /// Boot-time hint from Windows Terminal: start directly on the auth screen
-    /// for the given agent instead of attempting the initial ACP session. Used
-    /// when FRE just installed Copilot, where the next expected action is
-    /// signing in. Hidden — only Windows Terminal should pass it.
+    /// for the given agent instead of attempting the initial ACP session.
+    /// Retained for explicit host-driven auth entry; normal deferred installs
+    /// now reconnect through preflight. Hidden — only Windows Terminal should
+    /// pass it.
     #[arg(long, hide = true, value_name = "AGENT_ID")]
     pub(crate) initial_auth_agent: Option<String>,
 
@@ -187,6 +188,14 @@ pub(crate) struct Cli {
     /// resumed conversation runs against the right repo root. Hidden.
     #[arg(long, hide = true, value_name = "PATH")]
     pub(crate) initial_load_cwd: Option<String>,
+
+    /// Saved Yolo ownership provenance paired with an initial loaded session.
+    #[arg(
+        long,
+        hide = true,
+        value_parser = ["automatic", "manual", "provider-restored"]
+    )]
+    pub(crate) initial_yolo_control_owner: Option<String>,
 
     /// Pre-warm mode: the helper is being spawned for a tab whose agent
     /// pane is *already stashed* on the C++ side (see TerminalPage::

@@ -15,17 +15,17 @@ Count events by **provider + event name**, not event name alone:
 |---|---|---|
 | Dedicated usage telemetry | `Microsoft.Windows.Terminal.App` | 4 |
 | Dedicated settings census | `Microsoft.Windows.Terminal.Setting.Model` | 3 |
-| Dedicated usage/performance telemetry | `Microsoft.Windows.Terminal.WTA` | 14 |
+| Dedicated usage/performance telemetry | `Microsoft.Windows.Terminal.WTA` | 15 |
 | Additional ETW diagnostics without an explicit telemetry keyword | `Microsoft.Windows.Terminal.Settings.Editor` | 3 |
-| **Total dedicated instrumentation** | **21 keyword-tagged events + 3 additional ETW events** | **24** |
+| **Total dedicated instrumentation** | **22 keyword-tagged events + 3 additional ETW events** | **25** |
 
-All 24 definitions have production call sites. `ErrorDetected` and
+All 25 definitions have production call sites. `ErrorDetected` and
 `DelegateInvoked` each occur under both App and WTA, with different meanings.
 The inherited `ActionDispatched`, `JsonSettingsChanged`, and `UISettingsChanged`
 events also cover Intelligent Terminal functionality; they are not counted as
 new event definitions.
 
-**An emission call does not prove upload or backend availability.** The 21
+**An emission call does not prove upload or backend availability.** The 22
 dedicated telemetry events explicitly use `MICROSOFT_KEYWORD_MEASURES`. Actual
 collection depends on the build's telemetry definitions, provider/session
 enablement, sampling, and Windows diagnostic data settings. WTA registers its
@@ -124,14 +124,21 @@ is not a unique-device count.
 |---|---|---|
 | `AutoErrorDetection` | `AutoErrorDetectionEnabled()` | String `true` or `false` |
 | `AutoFix` | `AutoFixEnabled()` | String `true` or `false` |
+| `AgentSessionManagement` | `EffectiveAgentSessionManagementEnabled()` | String `true` or `false`, after policy is applied |
 | `AgentPanePosition` | `AgentPanePosition()` | Nonempty configured position string, passed through without a telemetry allowlist |
 | `QuotaUsage` | `ShowTokenUsageAndCost()` | String `true` or `false`; visibility of usage/cost UI, not consumed quota |
 | `VerticalTabs` | `TabLayout() == Vertical` | String `true` or `false` |
+| `FirstWindowPreference` | `FirstWindowPreference()` | `defaultProfile`, `persistedLayout`, or `persistedLayoutAndContent` |
+
+Durable session restoration is inactive when `FirstWindowPreference` is
+`defaultProfile`. Either persisted-layout value enables restoration; the
+content variant additionally restores ordinary terminal scrollback.
 
 **Configured is not necessarily runtime-effective.** The census calls
 `AcpAgent()`, `DelegateAgent()`, and `AutoFixEnabled()`, not their policy-aware
 `Effective*` equivalents. A configured agent or autofix value can differ from
-what GPO or runtime gating permits. Custom provider events contain no provider,
+what GPO or runtime gating permits. `AgentSessionManagement`, in contrast,
+uses its policy-aware effective getter. Custom provider events contain no provider,
 endpoint, model, credential, or key value and cannot identify the selected model.
 
 Sources:
@@ -151,12 +158,13 @@ Sources:
 
 #### ACP lifecycle and performance
 
-All three events in this table use performance privacy metadata.
+All four events in this table use performance privacy metadata.
 
 | Event | Trigger | Fields |
 |---|---|---|
 | `AcpInitializeComplete` | An ACP `initialize` attempt completes or times out. | `DurationMs`, `Success`, `Route`, `FailureKind`, `AcpErrorCode` |
 | `AcpNewSessionComplete` | An ACP `session/new` attempt completes or times out. | `SessionId` (empty on failure), `DurationMs`, `Success`, `Route`, `FailureKind`, `AcpErrorCode` |
+| `AcpLoadSessionComplete` | An ACP `session/load` attempt completes, covering both durable agent-pane restore and an explicit resume from the session view. | `DurationMs`, `Success` |
 | `AgentColdStartComplete` | A newly spawned agent process finishes or fails its ACP initialization. Warm process-pool reuse does not emit this event. | `AgentId`, `Source`, `DurationMs`, `Success`, `FailureKind` |
 
 Current production routes:
@@ -180,6 +188,10 @@ even when the underlying master attempt timed out. Cold-start failures use
 `SpawnFailed`, `InitializeFailed`, or `Timeout`, with `Source=Host` or `Wsl`.
 Cold-start duration covers process spawn and initialization, not first-response
 latency or the entire pane-opening experience.
+
+`AcpLoadSessionComplete` records only `DurationMs` and `Success`. It does not
+export a session identifier, agent, route, or failure category, and deliberately
+does not distinguish durable restore from a Sessions View resume.
 
 Emission sources:
 [client.rs](./tools/wta/src/protocol/acp/client.rs),
@@ -274,7 +286,7 @@ Provider definition:
 [TerminalSettingsEditor/init.cpp](./src/cascadia/TerminalSettingsEditor/init.cpp).
 These three events use `Info` level and performance privacy metadata, but no
 explicit `TraceLoggingKeyword`. Their collection status is distinct from the
-21 measures-tagged events above.
+22 measures-tagged events above.
 
 | Event | Trigger | Fields |
 |---|---|---|
@@ -338,8 +350,8 @@ and [MTSMSettings.h](./src/cascadia/TerminalSettingsModel/MTSMSettings.h).
 | Response volume | `TotalResponseBytes` is unpopulated (zero), not a valid answer-size metric. |
 | Autofix effectiveness | `ErrorFixResolved` can mean prompt-start/state clearing, not a successful fix. App and WTA error events have different triggers and no shared incident ID. |
 | Session/turn funnels | Helper and master can emit for the same logical session creation. Turn events have an ACP `SessionId` but no exported per-turn ID; session-only joins can mix multiple turns. |
-| Resume success | `SessionResumeInvoked` counts Sessions View dispatch decisions, not successful resume, focus-only activation, or every saved-layout restore. |
-| Runtime configuration | Census values include defaults but are not policy-aware runtime values; only five features have dedicated value census. |
+| Resume success | `SessionResumeInvoked` counts Sessions View dispatch decisions. `AcpLoadSessionComplete` reports ACP load success/latency but does not distinguish restore from resume or cover native CLI resume success. |
+| Runtime configuration | Seven features have dedicated value census. Values include defaults; only `AgentSessionManagement` explicitly uses its policy-aware effective getter. |
 | Usage/cost | `QuotaUsage` reports whether the UI is enabled; no dedicated event here reports consumed quota, model tokens, monetary cost, or model identity. |
 | Pane lifecycle | No dedicated close/stash or complete visible-duration event. `AgentPaneOpened` is not a count of all helper starts. |
 | Background delegation | The palette submission event can fire even though its background handler is a no-op. |
