@@ -12,7 +12,7 @@
 #   * AllSigned    -> automatically changed to RemoteSigned; FRE completes
 #   * RemoteSigned -> no mutation; FRE completes
 #   * Forced remediation failure -> Hooks continue; detection is disabled; retry completes
-# The registry is always restored.
+# The original CurrentUser policies are always restored.
 #
 # NOT covered here, by design: the empty/"undefined"/probe-timeout fail-open path
 # (the core #336 regression — an EP probe that times out must NOT block). It can't be
@@ -152,6 +152,8 @@ Describe 'Feature §0 FRE automatic execution-policy remediation' -Tag 'Feature'
                 $completed | Should -BeTrue -Because 'an already-permissive policy must let FRE complete'
                 $log = Get-ItLogText -App $app -Name 'terminal-agent-pane.log' -SinceStart
                 $log | Should -Not -Match 'EP remediation set winPs'
+                $log | Should -Match '\[FRE\] EP check pwsh reused verified remediation result'
+                $log | Should -Match '\[FRE\] EP check winPs reused verified remediation result'
                 $log | Should -Not -Match 'Showing problem: ShellIntegration'
             }
             finally { Stop-Terminal -App $app }
@@ -190,6 +192,8 @@ Describe 'Feature §0 FRE automatic execution-policy remediation' -Tag 'Feature'
 
                 $firstAttemptLog = Get-ItLogText -App $app -Name 'terminal-agent-pane.log' -SinceStart
                 $firstAttemptLog | Should -Match '\[FRE\] E2E: forcing execution-policy remediation failure'
+                $firstAttemptLog | Should -Not -Match '\[FRE\] Shell integration:' `
+                    -Because 'a skipped install must not report default results as successful'
                 Test-FreProgressOrder -Log $firstAttemptLog -Events @(
                     'error-detection=running'
                     'error-detection=failed'

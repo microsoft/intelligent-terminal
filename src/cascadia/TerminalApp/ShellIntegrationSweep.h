@@ -86,6 +86,14 @@ namespace winrt::TerminalApp::implementation::ShellIntegrationSweep
         All = 0xFF,
     };
 
+    enum class PowerShellPolicyCheck : uint8_t
+    {
+        Probe,
+        // Use only immediately after both PowerShell hosts were successfully
+        // verified by the current operation.
+        AlreadyVerified,
+    };
+
     constexpr InstallTargets operator|(InstallTargets lhs, InstallTargets rhs) noexcept
     {
         return static_cast<InstallTargets>(static_cast<uint8_t>(lhs) | static_cast<uint8_t>(rhs));
@@ -213,7 +221,8 @@ namespace winrt::TerminalApp::implementation::ShellIntegrationSweep
     // Synchronous — call from a background thread.
     inline InstallSweepResults RunInstall(const ShellPresence& shellPresence,
                                           const std::vector<std::wstring>& wslCommandlines,
-                                          InstallTargets targets = InstallTargets::All)
+                                          InstallTargets targets = InstallTargets::All,
+                                          PowerShellPolicyCheck powerShellPolicyCheck = PowerShellPolicyCheck::Probe)
     {
         InstallSweepResults r{};
         r.shellPresence = shellPresence;
@@ -221,9 +230,10 @@ namespace winrt::TerminalApp::implementation::ShellIntegrationSweep
         // execution-policy VERDICT is unconditional — a Restricted / AllSigned
         // policy must stop FRE / Save even when the user has no Windows
         // Terminal profile for that host, because the shell-integration .ps1
-        // can never run. ExecutionPolicyBlocksShellIntegration() is re-queried
-        // here on every call (never cached), so fixing the policy offline and
-        // clicking Save again on the same FRE re-evaluates cleanly.
+        // can never run. The default path re-queries the policy on every call
+        // (never cached), so fixing it offline is picked up on the next attempt.
+        // FRE skips this duplicate probe only after its remediation step has
+        // just verified both hosts.
         // See SI::ResolvePowerShellHostInstall for the rationale / regression
         // guard.
         //
@@ -240,13 +250,15 @@ namespace winrt::TerminalApp::implementation::ShellIntegrationSweep
             }
             return SI::Install(profilePath);
         };
-        // Probe each PowerShell host's execution policy, and log the raw outcome
-        // (policy + whether the probe timed out + verdict) so a future FRE
-        // false-block is diagnosable straight from terminal-agent-pane.log. The
-        // probe itself is a pure query (ExecutionPolicyBlocksShellIntegration does
-        // no I/O); the logging lives here, at the app layer, next to the existing
-        // [FRE] shell-integration logging — not buried in the shared inc/ header.
-        const auto probeExecutionPolicyBlocked = [](SI::Target t, const char* label) {
+        // Unless the caller just verified both hosts, probe each PowerShell
+        // execution policy and log the raw outcome so a future false-block is
+        // diagnosable straight from terminal-agent-pane.log.
+        const auto probeExecutionPolicyBlocked = [powerShellPolicyCheck](SI::Target t, const char* label) {
+            if (powerShellPolicyCheck == PowerShellPolicyCheck::AlreadyVerified)
+            {
+                _agentPaneLog(std::string{ "[FRE] EP check " } + label + " reused verified remediation result");
+                return false;
+            }
             std::wstring policy;
             bool timedOut = false;
             const bool blocked = SI::ExecutionPolicyBlocksShellIntegration(t, &policy, &timedOut);
@@ -290,7 +302,9 @@ namespace winrt::TerminalApp::implementation::ShellIntegrationSweep
     // Snapshot on the UI thread; the returned callable uses only copied data
     // and must run on a background thread. TerminalPage callers additionally
     // hold their reconcile lock to serialize against settings changes.
-    inline auto PrepareInstall(const CascadiaSettings& settings, InstallTargets targets = InstallTargets::All)
+    inline auto PrepareInstall(const CascadiaSettings& settings,
+                               InstallTargets targets = InstallTargets::All,
+                               PowerShellPolicyCheck powerShellPolicyCheck = PowerShellPolicyCheck::Probe)
     {
         const auto shellPresence = SnapshotShellPresence(settings);
         auto wslCommandlines = std::vector<std::wstring>{};
@@ -299,8 +313,8 @@ namespace winrt::TerminalApp::implementation::ShellIntegrationSweep
             wslCommandlines = SnapshotWslCommandlines(settings);
         }
 
-        return [shellPresence, wslCommandlines = std::move(wslCommandlines), targets]() {
-            return RunInstall(shellPresence, wslCommandlines, targets);
+        return [shellPresence, wslCommandlines = std::move(wslCommandlines), targets, powerShellPolicyCheck]() {
+            return RunInstall(shellPresence, wslCommandlines, targets, powerShellPolicyCheck);
         };
     }
 

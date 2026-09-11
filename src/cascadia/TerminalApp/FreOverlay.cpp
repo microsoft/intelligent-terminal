@@ -1807,7 +1807,8 @@ namespace winrt::TerminalApp::implementation
 
             const auto installShellIntegration = ShellIntegrationSweep::PrepareInstall(
                 _settings,
-                ShellIntegrationSweep::InstallTargets::All);
+                ShellIntegrationSweep::InstallTargets::All,
+                ShellIntegrationSweep::PowerShellPolicyCheck::AlreadyVerified);
 
             co_await winrt::resume_background();
             namespace PowerShell = ::Microsoft::Terminal::ShellIntegration::Powershell;
@@ -1889,6 +1890,7 @@ namespace winrt::TerminalApp::implementation
             const auto& bashResult = results.bash;
             const auto& wslResults = results.wsl;
 
+            if (remediationSucceeded)
             {
                 std::string detail = "[FRE] Shell integration: pwsh7=";
                 detail += pwsh7Result.success ? "ok" : "FAILED";

@@ -106,6 +106,7 @@
     'FRE can be skipped or closed safely' = 'FRE can be closed safely'
     'FRE privacy / help links work'     = 'FRE privacy / help link'
     'FRE save progress works'           = 'Session management on installs agent hooks \(FRE Save\)'
+    'FRE execution-policy remediation is correct' = 'Feature §0 FRE automatic execution-policy remediation'
 
     # §4 session view switching
     # 'Ended state is correct' (C121-adjacent) — see below.
