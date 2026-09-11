@@ -15,30 +15,19 @@ impl App {
             return;
         };
         if tab.loading_session
-            || tab.telemetry_model_pending.as_deref() == Some(session_id)
+            || tab
+                .telemetry_model_pending
+                .as_ref()
+                .is_some_and(|(pending_session, _)| pending_session == session_id)
             || (!loaded && tab.last_telemetry_session_id.as_deref() == Some(session_id))
         {
             return;
         }
 
-        // Use confirmed session state, not the active tab's model picker.
-        let model_id = self
-            .session_model_configs
-            .get(session_id)
-            .and_then(|(_, model)| model.as_deref());
-        // A BYOK-bound process may report provider-native model IDs on load.
-        let model_source = if self.selected_custom_model_id().is_some()
-            || model_id.is_some_and(|id| {
-                self.custom_model_catalog.iter().any(|model| {
-                    model.selection_id == id
-                        || format!("intelligent-terminal/{}", model.model_id) == id
-                })
-            }) {
-            "byok"
-        } else if model_id.is_some() {
-            "provider"
-        } else {
-            "unknown"
+        let model_source = match self.telemetry_byok_binding {
+            Some(true) => "byok",
+            Some(false) => "provider",
+            None => "unknown",
         };
         let (automatic_yolo, yolo_policy_blocked, yolo_control_owner) = {
             let state = self.yolo_state.lock().unwrap();
@@ -245,6 +234,10 @@ mod session_telemetry_tests {
     }
 
     fn connected(id: &str, ready: bool) -> AppEvent {
+        connected_with_binding(id, ready, Some(false))
+    }
+
+    fn connected_with_binding(id: &str, ready: bool, binding: Option<bool>) -> AppEvent {
         AppEvent::AgentConnected {
             name: "Copilot".into(),
             model: None,
@@ -255,6 +248,67 @@ mod session_telemetry_tests {
             load_session_supported: true,
             image_supported: false,
             session_capabilities_ready: ready,
+            telemetry_byok_binding: binding,
+        }
+    }
+
+    #[test]
+    fn session_telemetry_initial_byok_does_not_wait_for_host_catalog() {
+        let _locale = crate::test_support::lock_locale();
+        let _capture = crate::wt_protocol_events::capture_test_published_events();
+        let mut app = test_app();
+        app.current_agent_id = "copilot".into();
+        app.set_custom_model_config(vec![], Some("custom:private:model".into()));
+        app.set_host_catalog_ready(false);
+        assert!(app.selected_custom_model_id().is_none());
+
+        app.handle_event(connected_with_binding("created", true, Some(true)));
+        let snapshots = starts();
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0]["model_source"], "byok");
+        assert!(!snapshots[0].to_string().contains("private"));
+
+        app.handle_event(AppEvent::WtEvent {
+            method: "agent_config_changed".into(),
+            pane_id: String::new(),
+            tab_id: None,
+            params: serde_json::json!({
+                "custom_models": [{
+                    "selection_id": "custom:private:model",
+                    "model_id": "private-model"
+                }],
+                "custom_model_selection": "custom:private:model"
+            }),
+        });
+        assert!(app.host_catalog_ready);
+        assert!(app.selected_custom_model_id().is_some());
+        app.publish_session_started(DEFAULT_TAB_ID, false);
+        assert!(starts().is_empty());
+    }
+
+    #[test]
+    fn session_telemetry_binding_wins_over_catalog_and_pane_model_names() {
+        let _locale = crate::test_support::lock_locale();
+        let _capture = crate::wt_protocol_events::capture_test_published_events();
+        for (binding, expected) in [
+            (Some(false), "provider"),
+            (Some(true), "byok"),
+            (None, "unknown"),
+        ] {
+            let mut app = test_app();
+            app.set_custom_model_config(
+                vec![CustomModelCatalogEntry {
+                    selection_id: "custom:selected".into(),
+                    model_id: "provider-model".into(),
+                    ..Default::default()
+                }],
+                Some("custom:selected".into()),
+            );
+            app.tab_mut(DEFAULT_TAB_ID).model_override = Some("provider-model".into());
+            app.handle_event(connected_with_binding("created", true, binding));
+            let snapshots = starts();
+            assert_eq!(snapshots.len(), 1);
+            assert_eq!(snapshots[0]["model_source"], expected);
         }
     }
 
@@ -312,8 +366,9 @@ mod session_telemetry_tests {
     fn session_telemetry_waits_for_tab_model_selection_and_uses_confirmed_value() {
         let _locale = crate::test_support::lock_locale();
         let _capture = crate::wt_protocol_events::capture_test_published_events();
-        let (mut app, _requests) = test_app_with_master_rx();
+        let (mut app, mut requests) = test_app_with_master_rx();
         app.tab_mut("background").model_override = Some("custom:chosen".into());
+        app.telemetry_byok_binding = Some(true);
         app.custom_model_catalog = vec![CustomModelCatalogEntry {
             selection_id: "custom:chosen".into(),
             model_id: "private-model".into(),
@@ -321,7 +376,32 @@ mod session_telemetry_tests {
         }];
         app.handle_event(attached("background", "new-session"));
         assert!(starts().is_empty());
+        let crate::protocol::acp::client::MasterExtRequest::SetSessionModel {
+            request_id,
+            session_id,
+            ..
+        } = requests.try_recv().unwrap()
+        else {
+            panic!("expected the initial model request");
+        };
+        assert_eq!(session_id.unwrap().to_string(), "new-session");
+        // Duplicate-value requests still have independent completion identities.
         app.handle_event(AppEvent::ModelSetCompleted {
+            request_id: uuid::Uuid::new_v4(),
+            session_id: "new-session".into(),
+            model: "custom:chosen".into(),
+            pane_override: false,
+        });
+        app.handle_event(AppEvent::ModelSetFailed {
+            request_id: uuid::Uuid::new_v4(),
+            session_id: "new-session".into(),
+            model: "custom:chosen".into(),
+            pane_override: false,
+            message: "not supported".into(),
+        });
+        assert!(starts().is_empty());
+        app.handle_event(AppEvent::ModelSetCompleted {
+            request_id,
             session_id: "new-session".into(),
             model: "custom:chosen".into(),
             pane_override: false,
@@ -331,6 +411,13 @@ mod session_telemetry_tests {
         assert_eq!(snapshots[0]["model_source"], "byok");
         assert!(!snapshots[0].to_string().contains("private-model"));
         assert!(!snapshots[0].to_string().contains("custom:chosen"));
+        app.handle_event(AppEvent::ModelSetCompleted {
+            request_id,
+            session_id: "new-session".into(),
+            model: "custom:chosen".into(),
+            pane_override: false,
+        });
+        assert!(starts().is_empty());
     }
 
     #[test]
@@ -338,10 +425,18 @@ mod session_telemetry_tests {
         let _locale = crate::test_support::lock_locale();
         let _capture = crate::wt_protocol_events::capture_test_published_events();
         let (mut app, _requests) = test_app_with_master_rx();
+        app.telemetry_byok_binding = Some(false);
         app.acp_model = Some("custom:unavailable".into());
         app.handle_event(attached(DEFAULT_TAB_ID, "created"));
         assert!(starts().is_empty());
+        let request_id = app
+            .tab_mut(DEFAULT_TAB_ID)
+            .telemetry_model_pending
+            .as_ref()
+            .unwrap()
+            .1;
         app.handle_event(AppEvent::ModelSetFailed {
+            request_id,
             session_id: "created".into(),
             model: "custom:unavailable".into(),
             pane_override: false,
@@ -357,6 +452,7 @@ mod session_telemetry_tests {
         let _locale = crate::test_support::lock_locale();
         let _capture = crate::wt_protocol_events::capture_test_published_events();
         let mut app = test_app();
+        app.telemetry_byok_binding = Some(false);
         app.acp_model = Some("unavailable-model".into());
         app.handle_event(attached(DEFAULT_TAB_ID, "created"));
         let snapshots = starts();
@@ -373,13 +469,8 @@ mod session_telemetry_tests {
         let _locale = crate::test_support::lock_locale();
         let _capture = crate::wt_protocol_events::capture_test_published_events();
         let (mut app, _requests) = test_app_with_master_rx();
+        app.telemetry_byok_binding = Some(true);
         app.acp_model = Some("custom:chosen".into());
-        app.custom_model_selection = Some("custom:chosen".into());
-        app.custom_model_catalog = vec![CustomModelCatalogEntry {
-            selection_id: "custom:chosen".into(),
-            model_id: "private-model".into(),
-            ..Default::default()
-        }];
         app.handle_event(attached(DEFAULT_TAB_ID, "created"));
         assert!(starts().is_empty());
         let tab = app.tab_mut(DEFAULT_TAB_ID);
@@ -391,11 +482,66 @@ mod session_telemetry_tests {
         assert_eq!(snapshots[0]["start_kind"], "Load");
         assert_eq!(snapshots[0]["model_source"], "byok");
         app.handle_event(AppEvent::ModelSetCompleted {
+            request_id: uuid::Uuid::new_v4(),
             session_id: "created".into(),
             model: "custom:chosen".into(),
             pane_override: false,
         });
         assert!(starts().is_empty());
+    }
+
+    #[test]
+    fn session_telemetry_rebind_clears_binding_and_ignores_old_model_completion() {
+        let _locale = crate::test_support::lock_locale();
+        let _capture = crate::wt_protocol_events::capture_test_published_events();
+        let (mut app, _requests) = test_app_with_master_rx();
+        app.telemetry_byok_binding = Some(true);
+        app.acp_model = Some("provider-model".into());
+        app.handle_event(attached(DEFAULT_TAB_ID, "reused-id"));
+        let old_request = app
+            .current_tab()
+            .telemetry_model_pending
+            .as_ref()
+            .unwrap()
+            .1;
+        app.reset_agent_scoped_state();
+        assert!(app.telemetry_byok_binding.is_none());
+        assert!(app.current_tab().telemetry_model_pending.is_none());
+        assert!(app.current_tab().last_telemetry_session_id.is_none());
+
+        app.handle_event(connected_with_binding("bootstrap", false, Some(false)));
+        app.handle_event(attached(DEFAULT_TAB_ID, "reused-id"));
+        let new_request = app
+            .current_tab()
+            .telemetry_model_pending
+            .as_ref()
+            .unwrap()
+            .1;
+        assert_ne!(old_request, new_request);
+        app.handle_event(AppEvent::ModelSetCompleted {
+            request_id: old_request,
+            session_id: "reused-id".into(),
+            model: "old-model".into(),
+            pane_override: false,
+        });
+        assert!(starts().is_empty());
+        app.handle_event(AppEvent::ModelSetFailed {
+            request_id: old_request,
+            session_id: "reused-id".into(),
+            model: "old-model".into(),
+            pane_override: false,
+            message: "retired".into(),
+        });
+        assert!(starts().is_empty());
+        app.handle_event(AppEvent::ModelSetCompleted {
+            request_id: new_request,
+            session_id: "reused-id".into(),
+            model: "provider-model".into(),
+            pane_override: false,
+        });
+        let snapshots = starts();
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0]["model_source"], "provider");
     }
 
     #[test]

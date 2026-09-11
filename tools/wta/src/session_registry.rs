@@ -58,6 +58,9 @@ pub struct WtaMeta {
     /// and fallback resolution. Returned only in the initialize response so
     /// helper-side agent-specific behavior never trusts its own request.
     pub resolved_agent_id: Option<String>,
+    /// Master-resolved process binding category, never a model identifier.
+    /// Returned on initialize; absent when talking to an older master.
+    pub resolved_model_source: Option<String>,
     /// Model override the tab wants (e.g. `gpt-5`). Folded into the
     /// reconstructed command by `build_acp_command` for agents that
     /// take a `--model` flag (adapter agents ignore it and receive the
@@ -109,6 +112,7 @@ impl WtaMeta {
             && blank(&self.agent_cmd)
             && blank(&self.agent_id)
             && blank(&self.resolved_agent_id)
+            && blank(&self.resolved_model_source)
             && blank(&self.model)
             && blank(&self.provider_binding)
             && blank(&self.agent_source)
@@ -161,6 +165,7 @@ pub fn extract_wta_meta(meta: &mut Option<acp::schema::v1::Meta>) -> WtaMeta {
         agent_cmd: str_field("agent_cmd"),
         agent_id: str_field("agent_id"),
         resolved_agent_id: str_field("resolved_agent_id"),
+        resolved_model_source: str_field("resolved_model_source"),
         model: str_field("model"),
         provider_binding: str_field("provider_binding"),
         agent_source: str_field("agent_source"),
@@ -203,6 +208,7 @@ pub fn inject_wta_meta(meta: &mut Option<acp::schema::v1::Meta>, wta: &WtaMeta) 
     put("agent_cmd", &wta.agent_cmd);
     put("agent_id", &wta.agent_id);
     put("resolved_agent_id", &wta.resolved_agent_id);
+    put("resolved_model_source", &wta.resolved_model_source);
     put("model", &wta.model);
     put("provider_binding", &wta.provider_binding);
     put("agent_source", &wta.agent_source);
@@ -4209,6 +4215,7 @@ mod tests {
             agent_cmd: Some("npx -y @agentclientprotocol/claude-agent-acp@0.65.0".to_string()),
             agent_id: Some("gemini".to_string()),
             resolved_agent_id: Some("copilot".to_string()),
+            resolved_model_source: Some("byok".to_string()),
             model: Some("gemini-2.5-pro".to_string()),
             provider_binding: Some("custom:provider-openrouter:qwen/qwen3.5-9b".to_string()),
             agent_source: Some("wsl".to_string()),
@@ -4265,6 +4272,7 @@ mod tests {
                 agent_cmd: Some(String::new()),
                 agent_id: Some("\t".to_string()),
                 resolved_agent_id: Some(" ".to_string()),
+                resolved_model_source: Some(" ".to_string()),
                 model: Some(" ".to_string()),
                 provider_binding: Some(" ".to_string()),
                 agent_source: Some(" ".to_string()),
@@ -4308,6 +4316,7 @@ mod tests {
                 agent_cmd: Some(String::new()),
                 agent_id: Some("\t".to_string()),
                 resolved_agent_id: Some(" ".to_string()),
+                resolved_model_source: Some(" ".to_string()),
                 model: Some(" ".to_string()),
                 provider_binding: Some(" ".to_string()),
                 agent_source: Some(" ".to_string()),

@@ -200,7 +200,7 @@ adds its effective settings when processing that notification.
 | `AgentId` | String | Connected agent category |
 | `AgentSource` | String | `host`, `wsl`, or `unknown`; no distribution name |
 | `DelegateAgentId` | String | Helper's resolved delegate category, or `none` |
-| `ModelSource` | String | `byok`, `provider`, or `unknown`; active BYOK binding or confirmed model category |
+| `ModelSource` | String | `byok` or `provider` from the master-resolved process binding; `unknown` if binding metadata is unavailable |
 | `AutoErrorDetection` | Bool | Policy-aware host effective automatic error-detection setting |
 | `AutoFix` | Bool | Helper runtime autofix switch AND policy-aware host effective autofix setting |
 | `AgentSessionManagement` | Bool | Policy-aware host effective session-management setting |
@@ -226,10 +226,15 @@ adds its effective settings when processing that notification.
 - Failed creation/load, handshake-only bootstrap before initial load, and
   ordinary state projections do not produce a successful-session snapshot.
   Duplicate new-session attach notifications are suppressed.
-- Initial model selection can defer publication while a model-set result is
-  pending for that session. Publication uses confirmed model state rather
-  than simply copying the requested model setting. This is not a continuous
-  settings-change feed or an atomic snapshot across helper and host.
+- Initial model selection can defer publication until that exact request
+  completes or fails. Other requests for the same session do not release
+  that wait. This is not a continuous settings-change feed or an atomic
+  snapshot across helper and host.
+- `ModelSource` uses the resolved process binding returned by the master on
+  connection, not the helper's global selection, pane override, or model
+  catalog. Catalog delivery can occur later without changing the snapshot.
+  Older masters without binding metadata produce `unknown`, not a guess
+  based on a model name. A reconnect resets this telemetry binding.
 - Loaded sessions retain their restored model. A BYOK-bound process is
   categorized as `byok` even if the restored agent reports a native model ID.
 - Re-loading the same saved session produces a new `StartId`, with the

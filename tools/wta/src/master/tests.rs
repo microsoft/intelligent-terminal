@@ -777,6 +777,24 @@ fn provider_binding_isolated_pool_keys_do_not_expose_configuration() {
             credential_resource: "test",
         },
     };
+    assert_eq!(custom.telemetry_model_source("copilot", &source), "byok");
+    assert_eq!(
+        ProviderBinding::Native.telemetry_model_source("copilot", &source),
+        "provider"
+    );
+    assert_eq!(
+        custom.telemetry_model_source("custom:external", &source),
+        "provider"
+    );
+    assert_eq!(
+        custom.telemetry_model_source(
+            "copilot",
+            &crate::agent_source::AgentSource::Wsl {
+                distro: "Ubuntu".into()
+            },
+        ),
+        "provider"
+    );
 
     let native_key =
         agent_cmd_key_with_provider(command, Some("copilot"), &source, &ProviderBinding::Native);
@@ -793,6 +811,33 @@ fn provider_binding_isolated_pool_keys_do_not_expose_configuration() {
             .starts_with("warm:"),
         "trusted custom commands are not transient model generations"
     );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn session_telemetry_binding_survives_initialize_without_model_catalog() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            for source in ["byok", "provider"] {
+                let mut agent = unbound_test_agent("telemetry-binding");
+                let owned = Arc::get_mut(&mut agent).unwrap();
+                owned.cloud_catalog = Mutex::new(NativeCloudCatalogState::Pending);
+                crate::session_registry::inject_wta_meta(
+                    &mut owned.cached_init_resp.meta,
+                    &crate::session_registry::WtaMeta {
+                        resolved_model_source: Some(source.into()),
+                        ..Default::default()
+                    },
+                );
+                let mut response = initialize_response_for_agent(&agent, false).await.unwrap();
+                let metadata = crate::session_registry::extract_wta_meta(&mut response.meta);
+                assert_eq!(metadata.resolved_model_source.as_deref(), Some(source));
+                assert!(metadata.cloud_models.is_none());
+                assert!(metadata.provider_binding.is_none());
+                assert!(metadata.model.is_none());
+                assert!(response.meta.is_none());
+            }
+        })
+        .await;
 }
 
 #[tokio::test(flavor = "current_thread")]

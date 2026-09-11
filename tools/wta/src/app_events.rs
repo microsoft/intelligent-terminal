@@ -821,7 +821,9 @@ impl App {
                 load_session_supported,
                 image_supported,
                 session_capabilities_ready,
+                telemetry_byok_binding,
             } => {
+                self.telemetry_byok_binding = telemetry_byok_binding;
                 self.initial_startup_presentation_eligible = false;
                 self.reconnect_after_transport_retired = false;
                 self.pending_yolo_reconciles.clear();
@@ -1026,9 +1028,11 @@ impl App {
                 // already model-applied by the client at startup.
                 if !is_load_target {
                     if let Some(model) = self.effective_model_for_tab(&tab_id) {
-                        if self.send_session_model(Some(session_id.clone()), model, false) {
+                        if let Some(request_id) =
+                            self.send_session_model(Some(session_id.clone()), model, false)
+                        {
                             self.tab_mut(&tab_id).telemetry_model_pending =
-                                Some(session_id.clone());
+                                Some((session_id.clone(), request_id));
                         }
                     }
                 }
@@ -1141,6 +1145,7 @@ impl App {
                 }
             }
             AppEvent::ModelSetCompleted {
+                request_id,
                 session_id,
                 model,
                 pane_override,
@@ -1167,14 +1172,20 @@ impl App {
                     self.rebuild_model_catalog_from_agent_state();
                     self.publish_agent_status();
                 }
-                if self.tab_mut(&target_tab).telemetry_model_pending.as_deref()
-                    == Some(session_id.as_str())
+                if self
+                    .tab_mut(&target_tab)
+                    .telemetry_model_pending
+                    .as_ref()
+                    .is_some_and(|(pending_session, pending_request)| {
+                        pending_session == &session_id && pending_request == &request_id
+                    })
                 {
                     self.tab_mut(&target_tab).telemetry_model_pending = None;
                     self.publish_session_started(&target_tab, false);
                 }
             }
             AppEvent::ModelSetFailed {
+                request_id,
                 session_id,
                 model,
                 pane_override,
@@ -1197,8 +1208,13 @@ impl App {
                     ));
                     tab.scroll_to_bottom();
                 }
-                if self.tab_mut(&target_tab).telemetry_model_pending.as_deref()
-                    == Some(session_id.as_str())
+                if self
+                    .tab_mut(&target_tab)
+                    .telemetry_model_pending
+                    .as_ref()
+                    .is_some_and(|(pending_session, pending_request)| {
+                        pending_session == &session_id && pending_request == &request_id
+                    })
                 {
                     self.tab_mut(&target_tab).telemetry_model_pending = None;
                     self.publish_session_started(&target_tab, false);

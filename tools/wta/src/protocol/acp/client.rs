@@ -378,6 +378,7 @@ pub enum MasterExtRequest {
     /// helper's tabs); `session_id == None` fans out to every session this
     /// helper owns.
     SetSessionModel {
+        request_id: uuid::Uuid,
         session_id: Option<acp::schema::v1::SessionId>,
         model: String,
         pane_override: bool,
@@ -3343,6 +3344,14 @@ pub async fn run_acp_client_over_pipe(
             .context("initialize over master pipe failed")
         })?;
     let wta_meta = crate::session_registry::extract_wta_meta(&mut init_resp.meta);
+    let telemetry_byok_binding = match wta_meta.resolved_model_source.as_deref() {
+        Some("byok") => Some(true),
+        Some("provider") => Some(false),
+        _ => {
+            tracing::debug!(target: "telemetry", "master did not report a known model binding category");
+            None
+        }
+    };
     state
         .native_yolo
         .set_resolved_agent_id(wta_meta.resolved_agent_id.as_deref());
@@ -3743,6 +3752,7 @@ pub async fn run_acp_client_over_pipe(
         load_session_supported,
         image_supported,
         session_capabilities_ready: has_bootstrap,
+        telemetry_byok_binding,
     });
     for option in &mut session_config {
         option.native_yolo = state
@@ -4189,6 +4199,7 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                 let _ = event_tx.send(AppEvent::MasterMutationCompleted { request_id });
             }
             MasterExtRequest::SetSessionModel {
+                request_id,
                 session_id,
                 model,
                 pane_override,
@@ -4218,6 +4229,7 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                             "set_session_model targeted an unknown/stale session; no live session updated"
                         );
                         let _ = event_tx.send(AppEvent::ModelSetFailed {
+                            request_id,
                             session_id: target.to_string(),
                             model: model.clone(),
                             pane_override,
@@ -4254,6 +4266,7 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                                 });
                             }
                             let _ = event_tx.send(AppEvent::ModelSetCompleted {
+                                request_id,
                                 session_id: sid.to_string(),
                                 model: model.clone(),
                                 pane_override,
@@ -4274,6 +4287,7 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                                 "model hot-update failed"
                             );
                             let _ = event_tx.send(AppEvent::ModelSetFailed {
+                                request_id,
                                 session_id: sid.to_string(),
                                 model: model.clone(),
                                 pane_override,

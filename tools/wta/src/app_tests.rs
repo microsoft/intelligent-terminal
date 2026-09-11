@@ -2426,6 +2426,7 @@ fn agent_connected_does_not_add_disclaimer_while_resuming() {
         load_session_supported: true,
         image_supported: true,
         session_capabilities_ready: true,
+        telemetry_byok_binding: None,
     });
 
     assert!(!app.tab_sessions["OWNER-TAB"]
@@ -3648,6 +3649,7 @@ fn slash_model_hot_applies_cloud_model_to_live_session() {
             session_id,
             model,
             pane_override,
+            ..
         } => {
             assert_eq!(session_id.expect("target session").0.as_ref(), "sid-1");
             assert_eq!(model, "gpt-5.4");
@@ -3657,6 +3659,7 @@ fn slash_model_hot_applies_cloud_model_to_live_session() {
     }
 
     app.handle_event(AppEvent::ModelSetCompleted {
+        request_id: uuid::Uuid::new_v4(),
         session_id: "sid-1".into(),
         model: "gpt-5.4".into(),
         pane_override: true,
@@ -3682,6 +3685,7 @@ fn failed_legacy_model_pick_preserves_confirmed_model() {
     app.cmd_model("gpt-5.4".into());
     let _ = master_rx.try_recv().expect("live model switch request");
     app.handle_event(AppEvent::ModelSetFailed {
+        request_id: uuid::Uuid::new_v4(),
         session_id: "sid-1".into(),
         model: "gpt-5.4".into(),
         pane_override: true,
@@ -3798,6 +3802,7 @@ fn fresh_agent_connection_model_replaces_stale_agent_default() {
         load_session_supported: false,
         image_supported: false,
         session_capabilities_ready: true,
+        telemetry_byok_binding: None,
     });
 
     assert_eq!(app.current_model_id.as_deref(), Some("fresh"));
@@ -3820,6 +3825,7 @@ fn bootstrap_agent_connection_reconciles_global_yolo_state() {
         load_session_supported: false,
         image_supported: false,
         session_capabilities_ready: true,
+        telemetry_byok_binding: None,
     });
 
     let request = master_rx
@@ -4241,6 +4247,7 @@ fn initial_load_waits_for_attach_then_preserves_provider_restored_yolo() {
         load_session_supported: true,
         image_supported: false,
         session_capabilities_ready: true,
+        telemetry_byok_binding: None,
     });
 
     assert!(
@@ -4329,6 +4336,7 @@ fn initial_load_placeholder_binds_and_gates_the_helper_owner_tab() {
         load_session_supported: true,
         image_supported: false,
         session_capabilities_ready: false,
+        telemetry_byok_binding: None,
     });
 
     assert_eq!(
@@ -4913,6 +4921,7 @@ fn fresh_session_model_does_not_replace_global_override() {
             session_id,
             model,
             pane_override,
+            ..
         } => {
             assert_eq!(session_id.unwrap().0.to_string(), "sid-fresh");
             assert_eq!(model, "global");
@@ -4952,6 +4961,7 @@ fn fresh_session_model_does_not_replace_pane_override_on_new() {
             session_id,
             model,
             pane_override,
+            ..
         } => {
             assert_eq!(session_id.unwrap().0.to_string(), "sid-new");
             assert_eq!(model, "pane-picked");
@@ -5006,6 +5016,7 @@ fn non_overridden_pane_follows_global_model() {
             session_id,
             model,
             pane_override,
+            ..
         } => {
             assert_eq!(model, "global");
             assert_eq!(session_id.unwrap().0.to_string(), "sid-1");
@@ -5909,6 +5920,7 @@ fn global_model_hot_update_is_scoped_to_matching_global_followers() {
             session_id,
             model,
             pane_override,
+            ..
         } => {
             assert_eq!(session_id.unwrap().0.to_string(), "gemini-session");
             assert_eq!(model, "copilot-only-model");
@@ -5932,6 +5944,7 @@ fn custom_model_catalog_hot_update_rebuilds_picker_without_stale_rows() {
         load_session_supported: false,
         image_supported: false,
         session_capabilities_ready: true,
+        telemetry_byok_binding: None,
     });
     app.set_custom_model_config(
         vec![
@@ -6146,6 +6159,7 @@ fn same_agent_host_and_wsl_keep_host_catalogs_isolated() {
             load_session_supported: false,
             image_supported: false,
             session_capabilities_ready: true,
+            telemetry_byok_binding: None,
         });
     };
     let host_catalog = || AppEvent::WtEvent {
@@ -6233,6 +6247,7 @@ fn custom_model_hot_update_is_ignored_for_unsupported_profile_backend() {
         load_session_supported: false,
         image_supported: false,
         session_capabilities_ready: true,
+        telemetry_byok_binding: None,
     });
 
     app.handle_event(AppEvent::WtEvent {
@@ -8378,6 +8393,7 @@ fn agent_connected_restores_proposal_channels() {
         load_session_supported: true,
         image_supported: false,
         session_capabilities_ready: true,
+        telemetry_byok_binding: None,
     });
 
     assert!(
@@ -11946,6 +11962,7 @@ fn successful_outgoing_connection_cancels_pending_replacement() {
         load_session_supported: true,
         image_supported: false,
         session_capabilities_ready: true,
+        telemetry_byok_binding: None,
     });
 
     assert_eq!(app.mode, AppMode::Chat);
@@ -15044,6 +15061,7 @@ fn resuming_pane_shows_connection_stage_then_resume_until_load_completes() {
                 load_session_supported: true,
                 image_supported: false,
                 session_capabilities_ready: false,
+                telemetry_byok_binding: None,
             });
             let resume = t!("system.resuming_session", session_id = "aaaaaaaa").into_owned();
             assert_eq!(app.state, ConnectionState::Connected);
@@ -21932,6 +21950,7 @@ fn usage_lifecycle_load_and_new_connection_clear_but_model_change_preserves() {
         load_session_supported: false,
         image_supported: false,
         session_capabilities_ready: true,
+        telemetry_byok_binding: None,
     });
     assert!(app.current_tab().usage.is_none());
 }

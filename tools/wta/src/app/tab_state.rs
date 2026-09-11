@@ -573,7 +573,7 @@ impl ConfigPickerState {
 #[derive(Default)]
 pub struct TabSession {
     pub(crate) last_telemetry_session_id: Option<String>,
-    pub(crate) telemetry_model_pending: Option<String>,
+    pub(crate) telemetry_model_pending: Option<(String, uuid::Uuid)>,
     /// Per-tab autofix state machine (see `TabAutofixState`).
     pub autofix: TabAutofixState,
     pub(crate) pending_terminal_action_proposal: Option<PendingTerminalActionProposal>,
