@@ -400,7 +400,12 @@ updates, or deletions in that original patch. Expand additions or updates to
 every shipped localized counterpart that should carry the affected keys.
 Expand removals to stale localized counterpart review for the removed keys or
 files. Localized-only edits or deletions do not independently create guidance
-scope.
+scope. If the original patch yields no English-derived scope, keep the run
+read-only and do not promote localized-only edits into guidance scope just to
+manufacture work. When the fixed non-empty final report still needs checker
+evidence for that no-scope conclusion, run syntax and encoding checks on the
+immutable pre-change source-authority snapshots associated with the patch.
+Use those bundles as historical evidence only, not as proof of the current tree.
 
 Materialize trusted file bytes in the workspace only as needed. You own the git
 inspection, scope discovery, final checker rerun, final report write, and the
@@ -431,6 +436,20 @@ Use the SKILL.md batching example for the final rerun: dot-source
 one `pwsh` process, collect the actual function-return bundles, and write the
 envelope with PowerShell file operations before emitting either `add-comment` or
 `noop`.
+
+If the English-derived scope is deletion-only and the current tree no longer
+contains one or more removed source/target files, materialize immutable
+pre-deletion snapshots for exactly those files and run syntax and encoding
+checks on those snapshots so the report still contains actual
+checker bundles. Treat those bundles as historical evidence only, and use
+explicit git inspection separately to prove the live tree really removed the
+files.
+
+If an English-source deletion leaves obsolete localized counterparts in the
+current tree, report that cleanup in the guidance comment even when historical
+syntax and encoding bundles are `PASS`. Use `noop` only when the scoped cleanup
+is complete and the review finds no other in-scope issues. Localized-only
+deletions still do not independently create guidance scope.
 
 The native gate validates report shape and output mechanics only; it does not
 prove that you preserved the original patch scope. Your own git evidence must

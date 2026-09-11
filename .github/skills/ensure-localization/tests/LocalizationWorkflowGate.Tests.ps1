@@ -3,6 +3,8 @@
 Describe 'Ensure localization repair workflow gate' -Tag 'Unit' {
     BeforeAll {
         $script:workflowPath = Resolve-Path (Join-Path $PSScriptRoot '..\..\..\workflows\ensure-localization.md')
+        $script:guideWorkflowPath = Resolve-Path (Join-Path $PSScriptRoot '..\..\..\workflows\ensure-localizationguide-forkedrepo.md')
+        $script:repairLockPath = Resolve-Path (Join-Path $PSScriptRoot '..\..\..\workflows\ensure-localization.lock.yml')
 
         function Get-RepairGateScript {
             $workflow = Get-Content -LiteralPath $script:workflowPath -Raw
@@ -172,5 +174,25 @@ Describe 'Ensure localization repair workflow gate' -Tag 'Unit' {
 
         $result.ExitCode | Should -Be 1
         $result.Output | Should -Match 'noop acknowledgement cannot discard working localization repairs'
+    }
+
+    It 'compiles pull-request read access for repair publication branch resolution' {
+        $workflow = Get-Content -LiteralPath $script:workflowPath -Raw
+        $lock = Get-Content -LiteralPath $script:repairLockPath -Raw
+
+        $workflow | Should -Match '(?ms)safe_outputs:\s+if:\s+needs\.agent\.result == ''success''\s+permissions:\s+pull-requests:\s+read'
+        $lock | Should -Match '(?ms)safe_outputs:.*?permissions:\s+contents:\s+write\s+issues:\s+write\s+pull-requests:\s+read'
+    }
+
+    It 'documents historical snapshot evidence for deletion-only and no-English-derived runs' {
+        $repairWorkflow = Get-Content -LiteralPath $script:workflowPath -Raw
+        $guideWorkflow = Get-Content -LiteralPath $script:guideWorkflowPath -Raw
+
+        foreach ($workflow in @($repairWorkflow, $guideWorkflow)) {
+            $workflow | Should -Match 'no English-derived scope'
+            $workflow | Should -Match 'historical evidence only'
+            $workflow | Should -Match 'pre-deletion snapshots'
+            $workflow | Should -Match 'Localized-only edits or deletions do not independently create'
+        }
     }
 }

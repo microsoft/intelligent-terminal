@@ -182,6 +182,8 @@ jobs:
 
   safe_outputs:
     if: needs.agent.result == 'success'
+    permissions:
+      pull-requests: read
 
 safe-outputs:
 
@@ -411,7 +413,12 @@ updates, or deletions in that original patch. Expand additions or updates to
 every shipped localized counterpart that should carry the affected keys.
 Expand removals to stale localized counterpart cleanup for the removed keys or
 files. Localized-only edits or deletions do not independently create repair
-scope.
+scope. If the original patch yields no English-derived scope, keep the run
+read-only and do not promote localized-only edits into repair scope just to
+manufacture work. When the fixed non-empty final report still needs checker
+evidence for that no-scope conclusion, run syntax and encoding checks on the
+immutable pre-change source-authority snapshots associated with the patch.
+Use those bundles as historical evidence only, not as proof of the current tree.
 
 Repair only localized targets in that English-derived scope. Keep source
 authority read-only and finish with the required independent review. Invoke the
@@ -439,6 +446,13 @@ requires final `PASS` bundles and exactly one successful outcome:
   `.github/skills/ensure-localization/scripts/localization_checks.ps1` once in
   one `pwsh` process, collect the actual function-return bundles, and write the
   envelope with PowerShell file operations before any safe output.
+- If the English-derived scope is deletion-only and the current tree no longer
+  contains one or more removed source/target files, materialize immutable
+  pre-deletion snapshots for exactly those files and run syntax and encoding
+  checks on those snapshots so the report still contains actual
+  checker bundles. Treat those bundles as historical evidence only, and use
+  explicit git inspection separately to prove the live tree really removed the
+  files.
 - The native gate validates report shape and output mechanics only; it does not
   prove that you preserved the original patch scope. Your own git evidence and
   independent review must establish that.
