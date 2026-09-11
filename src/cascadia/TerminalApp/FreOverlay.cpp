@@ -498,13 +498,6 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        // Set toggle On/Off labels
-        ShowTokenUsageAndCostToggle().OnContent(winrt::box_value(RS_(L"FreOverlay_ToggleOn")));
-        ShowTokenUsageAndCostToggle().OffContent(winrt::box_value(RS_(L"FreOverlay_ToggleOff")));
-        SessionManagementToggle().OnContent(winrt::box_value(RS_(L"FreOverlay_ToggleOn")));
-        SessionManagementToggle().OffContent(winrt::box_value(RS_(L"FreOverlay_ToggleOff")));
-        AutomaticApprovalToggle().OnContent(winrt::box_value(RS_(L"FreOverlay_ToggleOn")));
-        AutomaticApprovalToggle().OffContent(winrt::box_value(RS_(L"FreOverlay_ToggleOff")));
         AutomaticApprovalToggle().IsOn(globals.EffectiveAgentPaneYoloMode());
 
         // Populate the agent ComboBox from the policy-filtered availability
@@ -673,30 +666,9 @@ namespace winrt::TerminalApp::implementation
         measureDescription(SessionDescriptionText());
         measureDescription(TokenUsageDescriptionText());
 
-        TextBlock optionProbe;
-        optionProbe.FontSize(errorDetectionComboBox.FontSize());
-        double longestOptionWidth = 0;
-        const auto measureOption = [&](const winrt::hstring& text) {
-            optionProbe.Text(text);
-            optionProbe.Measure(unconstrained);
-            longestOptionWidth = std::max(
-                longestOptionWidth,
-                static_cast<double>(optionProbe.DesiredSize().Width));
-        };
-        measureOption(RS_(L"FreOverlay_ErrorDetectionDetectOption/Content"));
-        measureOption(RS_(L"FreOverlay_ErrorDetectionAutoFixOption/Content"));
-        measureOption(RS_(L"FreOverlay_ErrorDetectionOffOption/Content"));
-
-        // Reserve enough room for the longest localized option plus the
-        // ComboBox padding and drop-down glyph when calculating the form width.
-        // The ComboBox itself keeps its XAML MinWidth and follows the selected
-        // option's natural width.
-        constexpr double comboBoxChromeWidth = 48;
-        const double errorDetectionWidth = longestOptionWidth + comboBoxChromeWidth;
-
         double longestControlWidth = AgentComboBox().MinWidth();
         longestControlWidth = std::max(longestControlWidth, PanePositionComboBox().MinWidth());
-        longestControlWidth = std::max(longestControlWidth, errorDetectionWidth);
+        longestControlWidth = std::max(longestControlWidth, errorDetectionComboBox.Width());
 
         constexpr double cardHorizontalPadding = 32;
         constexpr double columnSpacing = 24;
@@ -1833,12 +1805,9 @@ namespace winrt::TerminalApp::implementation
             _BeginProgressStep(ProgressStep::ErrorDetection);
             _agentPaneLog("[FRE] Installing shell integration");
 
-            // Snapshot WSL distros AND non-WSL shell presence on the UI
-            // thread BEFORE resuming on a background thread —
-            // _settings.AllProfiles() is an observable vector and
-            // iterating it concurrently with a settings reload is unsafe.
-            const auto wslCommandlines = ShellIntegrationSweep::SnapshotWslCommandlines(_settings);
-            const auto shellPresence = ShellIntegrationSweep::SnapshotShellPresence(_settings);
+            const auto installShellIntegration = ShellIntegrationSweep::PrepareInstall(
+                _settings,
+                ShellIntegrationSweep::InstallTargets::All);
 
             co_await winrt::resume_background();
             namespace PowerShell = ::Microsoft::Terminal::ShellIntegration::Powershell;
@@ -1899,7 +1868,7 @@ namespace winrt::TerminalApp::implementation
                 // RunInstall reports a skipped shell as
                 // success-already-installed so the FRE failure verdict
                 // (below) doesn't flag a missing shell as a failure.
-                results = ShellIntegrationSweep::RunInstall(shellPresence, wslCommandlines);
+                results = installShellIntegration();
             }
             const auto& pwsh7Result = results.pwsh;
             const auto& windowsPsResult = results.windowsPowerShell;
