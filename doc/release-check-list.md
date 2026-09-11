@@ -445,6 +445,11 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 - [ ] `C177` `[E2E]` **Packaged `wta.exe` is present:** WTA is deployed next to WindowsTerminal in the package layout.
 - [ ] `C178` `[E2E]` **Packaged identity works:** WTA/wtcli can activate the Terminal protocol COM server from packaged context.
+- [ ] `C318` `[new]` `[E2E]` **Headless COM startup expires without leaking a process:** Package-specific `wtcli` activation with no windows exits normally after its five-second grace period, including repeated cold activations. _(E2E: `Feature.HeadlessStartup`.)_
+- [ ] `C319` `[new]` `[E2E]` **Headless COM expiry preserves the saved layout:** An unused COM server exits without clearing the previous multi-window layout or restoring agent sessions, even after repeated activation. _(E2E: `Feature.HeadlessStartup`.)_
+- [ ] `C320` `[new]` `[E2E]` **Interactive activation cancels the headless timeout and restores windows:** A real launch before expiry restores both saved windows exactly once and keeps the original process alive beyond the startup deadline. _(E2E: `Feature.HeadlessStartup`.)_
+- [ ] `C321` `[new]` `[E2E]` **Intentional headless compatibility remains supported:** Explicit `compatibility.allowHeadless=true` keeps a windowless COM server alive beyond the startup deadline without consuming the saved layout. _(E2E: `Feature.HeadlessStartup`.)_
+- [ ] `C322` `[new]` `[E2E]` **Ordinary startup still restores the previous layout:** A direct interactive cold launch restores the saved windows and their agent sessions without a startup timeout. _(E2E: `Feature.HeadlessStartup`.)_
 - [ ] `C179` `[E2E]` **Wrong unpackaged WTA is not used:** Agent pane/autofix does not accidentally use a stale dev-build WTA.
 - [ ] `C180` `[E2E]` **`WT_COM_CLSID` is injected:** Shell panes and agent panes inherit protocol discovery environment as expected.
 - [ ] `C181` `[E2E]` **`wtcli list-panes` works:** Basic WT protocol query succeeds from a pane.

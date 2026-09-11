@@ -83,6 +83,7 @@ private:
     safe_void_coroutine _dispatchCommandlineCurrentDesktop(winrt::TerminalApp::CommandlineArgs args);
     LRESULT _messageHandler(HWND window, UINT message, WPARAM wParam, LPARAM lParam) noexcept;
     void _createMessageWindow(const wchar_t* className);
+    void _stopEmbeddingStartupTimer() noexcept;
     void _postQuitMessageIfNeeded() const;
     safe_void_coroutine _showMessageBox(winrt::hstring message, bool error);
     void _notificationAreaMenuRequested(WPARAM wParam);
@@ -116,6 +117,8 @@ private:
     bool _needsPersistenceCleanup = false;
     bool _deferPersistedLayoutRestore = false;
     bool _restoringPersistedLayouts = false;
+    uint32_t _windowCreationDepth = 0;
+    UINT_PTR _embeddingStartupTimerId = 0;
     SafeDispatcherTimer _persistStateTimer;
     // Captured at startup so a deferred layout restore, which can be triggered
     // long after HandleCommandlineArgs() returned, still sees the environment

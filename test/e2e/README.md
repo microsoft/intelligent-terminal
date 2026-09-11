@@ -14,6 +14,7 @@ authenticated ACP agents. Current status (run on the Store package):
 | Suite (file) | Covers | Cases |
 |---|---|---|
 | `Feature.Packaging.Tests.ps1` | §9 packaging/protocol (incl. WT_COM_CLSID injected into pane shells) + §10 logging + log retention/cleanup | 18 |
+| `Feature.HeadlessStartup.Tests.ps1` | §9 package-specific COM startup: measured five-second expiry, repeated activation, saved-layout preservation, timely interactive restore/cancellation, intentional headless compatibility, and ordinary direct startup; deterministic ACP, no model quota | 5 |
 | `Feature.WtcliPublishStdin.Tests.ps1` | PR #652: WTA/wtcli stdin transport delivers command-line-limit-sized events intact and preserves positional compatibility | 3 |
 | `Feature.Settings.Tests.ps1` | §1 Settings>AI Agents + §0 FRE settings/positions/auto-error/session-mgmt | 18 |
 | `Feature.FreFlow.Tests.ps1` | §0 FRE overlay click-through (Next→Save, privacy link, close-safety) | 5 |
@@ -111,6 +112,18 @@ results, and scoped helper logs. The fixture uses disposable command files and
 does not modify the user's PowerShell profile or consume model quota.
 
 ## What it gives you
+
+`Feature.HeadlessStartup` must run unelevated with **all windows/background
+processes of the selected package already closed**; setup refuses to terminate
+pre-existing processes. It uses the package-local `wtcli.exe` and manifest CLSID,
+not an alias or a synthetic `-Embedding` launch. Set
+`ITE2E_EXPECTED_TERMINAL_SHA256` to the deployed feature build's
+`WindowsTerminal.exe` SHA-256 when validating a fix. Unique artifacts record the
+package/hash, activation PID/command line, measured process lifetimes and PID-scoped
+timer intervals, restored window state, and fixture logs. Settings, state, and
+existing persisted scrollback are backed up and verified byte-for-byte after
+restoration. No WinApp CLI, agent
+authentication, or provider quota is needed by this suite.
 
 Three planes, all built on self-verifying primitives:
 

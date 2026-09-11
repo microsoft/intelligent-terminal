@@ -39,6 +39,19 @@ WT (one process, N windows)
 Per agent pane: 1 conpty + 1 helper process. Per Terminal: 1 master + 1
 agent CLI. **N panes ⇒ N helpers + 1 master + 1 agent CLI.**
 
+### Headless COM activation lifetime
+
+A late `wtcli` call (including an agent lifecycle hook) can activate
+`WindowsTerminal.exe -Embedding` after the last window closes. COM activation
+does not restore or overwrite the saved window layout. If no window is created
+within five seconds, the headless process exits, unless a message box is still
+open or `compatibility.allowHeadless` explicitly enables background operation.
+Window creation suspends expiry while initialization/restoration is in progress;
+the first successfully created window cancels the startup timer. An interactive
+activation still restores the deferred layout through the normal startup path.
+The timer bounds an otherwise unused COM server's lifetime; it does not prevent
+a later COM call from activating another server.
+
 ## Design history
 
 This document was first written as a "singleton wta" design (one wta process

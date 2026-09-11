@@ -18,6 +18,7 @@
 #include "TerminalProtocolComServer.h"
 #include "resource.h"
 #include "VirtualDesktopUtils.h"
+#include "../TerminalApp/AgentPaneLog.h"
 #include "../../types/inc/User32Utils.hpp"
 #include "../../types/inc/utils.hpp"
 
@@ -268,6 +269,10 @@ void WindowEmperor::CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs args
 {
     _assertIsMainThread();
 
+    // XAML initialization can pump timer messages before the host is counted.
+    ++_windowCreationDepth;
+    const auto finishCreation = wil::scope_exit([this]() noexcept { --_windowCreationDepth; });
+
     // Our first window makes this process the owner of the persisted layout:
     // _persistState() will replace it with whatever we have open. So whatever
     // brought us here — a defterm handoff, a global hotkey, the notification
@@ -330,6 +335,7 @@ void WindowEmperor::CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs args
     // A window exists now, so this process owns the persisted layout and there
     // is nothing left to defer.
     _deferPersistedLayoutRestore = false;
+    _stopEmbeddingStartupTimer();
 
     // Wire the new window's TerminalPage::ProtocolVtSequenceReceived
     // into the COM fan-out so events emitted by panes in this window
@@ -671,9 +677,11 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
             // just as likely a wtcli protocol activation as a console handoff.
             // Stay headless and leave the saved layout alone; whichever
             // activation actually wants a window restores it.
-            //
-            // TODO: Here we could start a timer and exit after, say, 5 seconds
-            // if no windows are created. But that's a minor concern.
+            // XAML dispatcher timers do not tick until an island exists.
+            _embeddingStartupTimerId = SetTimer(_window.get(), 1, 5000, nullptr);
+            THROW_LAST_ERROR_IF(_embeddingStartupTimerId == 0);
+            winrt::TerminalApp::implementation::_agentPaneLog(
+                "headless COM activation started pid=" + std::to_string(GetCurrentProcessId()) + " window_timeout_ms=5000");
         }
         else
         {
@@ -1137,6 +1145,14 @@ void WindowEmperor::_createMessageWindow(const wchar_t* className)
     StringCchCopy(_notificationIcon.szTip, ARRAYSIZE(_notificationIcon.szTip), appNameLoc.c_str());
 }
 
+void WindowEmperor::_stopEmbeddingStartupTimer() noexcept
+{
+    if (const auto timerId = std::exchange(_embeddingStartupTimerId, 0))
+    {
+        LOG_IF_WIN32_BOOL_FALSE(KillTimer(_window.get(), timerId));
+    }
+}
+
 // Posts a WM_QUIT as soon as we have no reason to exist anymore.
 // That basically means no windows and no message boxes.
 void WindowEmperor::_postQuitMessageIfNeeded() const
@@ -1146,6 +1162,11 @@ void WindowEmperor::_postQuitMessageIfNeeded() const
         _windowCount <= 0 &&
         !_app.Logic().Settings().GlobalSettings().AllowHeadless())
     {
+        if (_deferPersistedLayoutRestore)
+        {
+            winrt::TerminalApp::implementation::_agentPaneLog(
+                "headless COM activation exiting without a window pid=" + std::to_string(GetCurrentProcessId()));
+        }
         PostQuitMessage(0);
     }
 }
@@ -1179,6 +1200,17 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
     {
         switch (message)
         {
+        case WM_TIMER:
+            if (_embeddingStartupTimerId != 0 && wParam == _embeddingStartupTimerId)
+            {
+                if (_windowCreationDepth == 0)
+                {
+                    _stopEmbeddingStartupTimer();
+                    _postQuitMessageIfNeeded();
+                }
+                return 0;
+            }
+            break;
         case WM_CLOSE_TERMINAL_WINDOW:
         {
             const auto globalSettings = _app.Logic().Settings().GlobalSettings();
