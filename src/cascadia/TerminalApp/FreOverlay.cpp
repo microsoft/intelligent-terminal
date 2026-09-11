@@ -498,13 +498,6 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        // Set toggle On/Off labels
-        ShowTokenUsageAndCostToggle().OnContent(winrt::box_value(RS_(L"FreOverlay_ToggleOn")));
-        ShowTokenUsageAndCostToggle().OffContent(winrt::box_value(RS_(L"FreOverlay_ToggleOff")));
-        SessionManagementToggle().OnContent(winrt::box_value(RS_(L"FreOverlay_ToggleOn")));
-        SessionManagementToggle().OffContent(winrt::box_value(RS_(L"FreOverlay_ToggleOff")));
-        AutomaticApprovalToggle().OnContent(winrt::box_value(RS_(L"FreOverlay_ToggleOn")));
-        AutomaticApprovalToggle().OffContent(winrt::box_value(RS_(L"FreOverlay_ToggleOff")));
         AutomaticApprovalToggle().IsOn(globals.EffectiveAgentPaneYoloMode());
 
         // Populate the agent ComboBox from the policy-filtered availability

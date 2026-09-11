@@ -21,10 +21,16 @@
              TabFocusNavigation="Cycle">
 
     <UserControl.Resources>
-        <!--  Matches TerminalSettingsEditor's StandardControlMaxWidth  -->
-        <x:Double x:Key="StandardControlMaxWidth">1000</x:Double>
-        <!--  Welcome page has two side-by-side cards (1.5× the standard width)  -->
-        <x:Double x:Key="WelcomeContentMaxWidth">1500</x:Double>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="ms-appx:///Microsoft.Terminal.Settings.Editor/CommonResources.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <!--  Matches TerminalSettingsEditor's StandardControlMaxWidth  -->
+            <x:Double x:Key="StandardControlMaxWidth">1000</x:Double>
+            <!--  Welcome page has two side-by-side cards (1.5× the standard width)  -->
+            <x:Double x:Key="WelcomeContentMaxWidth">1500</x:Double>
+        </ResourceDictionary>
     </UserControl.Resources>
 
     <!--  Full-screen dark background  -->
@@ -271,43 +277,6 @@
                             </Grid>
                         </Border>
 
-                        <!--  Automatic approval. Copy comes from the SettingsEditor
-                              resource scope so Settings and FRE cannot drift.  -->
-                        <Border x:Name="AutomaticApprovalSetting"
-                                AutomationProperties.AutomationId="AutomaticApprovalSetting"
-                                Background="{ThemeResource ExpanderHeaderBackground}"
-                                BorderBrush="{ThemeResource ExpanderHeaderBorderBrush}"
-                                BorderThickness="{ThemeResource ExpanderHeaderBorderThickness}"
-                                CornerRadius="{ThemeResource ControlCornerRadius}"
-                                MinHeight="64"
-                                Padding="16,12"
-                                Visibility="Collapsed">
-                            <Grid ColumnSpacing="24">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Spacing="2">
-                                    <TextBlock x:Name="AutomaticApprovalTitle"
-                                               FontSize="14"
-                                               FontWeight="SemiBold"
-                                               Foreground="White" />
-                                    <TextBlock x:Name="AutomaticApprovalDescription"
-                                               FontSize="12"
-                                               Foreground="#99FFFFFF"
-                                               TextWrapping="Wrap" />
-                                </StackPanel>
-                                <ToggleSwitch x:Name="AutomaticApprovalToggle"
-                                              Grid.Column="1"
-                                              AutomationProperties.AutomationId="AutomaticApprovalToggle"
-                                              HorizontalAlignment="Right"
-                                              IsEnabled="False"
-                                              IsOn="False"
-                                              MinWidth="0"
-                                              VerticalAlignment="Center" />
-                            </Grid>
-                        </Border>
-
                         <!--  Pane position  -->
                         <Border Background="{ThemeResource ExpanderHeaderBackground}"
                                 BorderBrush="{ThemeResource ExpanderHeaderBorderBrush}"
@@ -397,8 +366,9 @@
                                     </StackPanel>
                                     <ToggleSwitch x:Name="SessionManagementToggle"
                                                   Grid.Column="1"
-                                                  IsOn="True" VerticalAlignment="Center"
-                                                  HorizontalAlignment="Right" MinWidth="0" />
+                                                  AutomationProperties.AccessibilityView="Content"
+                                                  IsOn="True"
+                                                  Style="{StaticResource ToggleSwitchInExpanderStyle}" />
                                 </Grid>
                                 <TextBlock x:Name="SessionHooksPolicyNotice"
                                            FontSize="12" FontStyle="Italic"
@@ -429,9 +399,47 @@
                                                FontSize="12" Foreground="#99FFFFFF"
                                                TextWrapping="Wrap" />
                                 </StackPanel>
-                                <ToggleSwitch x:Name="ShowTokenUsageAndCostToggle" Grid.Column="1"
-                                              IsOn="False" VerticalAlignment="Center"
-                                              HorizontalAlignment="Right" MinWidth="0" />
+                                <ToggleSwitch x:Name="ShowTokenUsageAndCostToggle"
+                                              Grid.Column="1"
+                                              AutomationProperties.AccessibilityView="Content"
+                                              IsOn="False"
+                                              Style="{StaticResource ToggleSwitchInExpanderStyle}" />
+                            </Grid>
+                        </Border>
+
+                        <!--  Automatic approval. Copy comes from the SettingsEditor
+                              resource scope so Settings and FRE cannot drift.  -->
+                        <Border x:Name="AutomaticApprovalSetting"
+                                AutomationProperties.AutomationId="AutomaticApprovalSetting"
+                                Background="{ThemeResource ExpanderHeaderBackground}"
+                                BorderBrush="{ThemeResource ExpanderHeaderBorderBrush}"
+                                BorderThickness="{ThemeResource ExpanderHeaderBorderThickness}"
+                                CornerRadius="{ThemeResource ControlCornerRadius}"
+                                MinHeight="64"
+                                Padding="16,12"
+                                Visibility="Collapsed">
+                            <Grid ColumnSpacing="24">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Spacing="2">
+                                    <TextBlock x:Name="AutomaticApprovalTitle"
+                                               FontSize="14"
+                                               FontWeight="SemiBold"
+                                               Foreground="White" />
+                                    <TextBlock x:Name="AutomaticApprovalDescription"
+                                               FontSize="12"
+                                               Foreground="#99FFFFFF"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ToggleSwitch x:Name="AutomaticApprovalToggle"
+                                              Grid.Column="1"
+                                              AutomationProperties.AutomationId="AutomaticApprovalToggle"
+                                              AutomationProperties.AccessibilityView="Content"
+                                              IsEnabled="False"
+                                              IsOn="False"
+                                              Style="{StaticResource ToggleSwitchInExpanderStyle}" />
                             </Grid>
                         </Border>
                     </StackPanel>
