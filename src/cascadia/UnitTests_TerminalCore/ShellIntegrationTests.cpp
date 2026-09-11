@@ -155,6 +155,10 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(QueryExecutionPolicy_NonexistentExe_ReturnsEmpty);
     TEST_METHOD(QueryExecutionPolicy_ParsesStdoutAndLowercases);
     TEST_METHOD(QueryExecutionPolicy_TrimsWhitespaceAndStopsAtFirstLine);
+    TEST_METHOD(ResolvePwshPath_UsesFirstAbsoluteEntry);
+    TEST_METHOD(ResolvePwshPath_SkipsEmptyRelativeAndCurrentDirectoryEntries);
+    TEST_METHOD(ResolvePwshPath_AcceptsQuotedAndExpandedEntries);
+    TEST_METHOD(ResolvePwshPath_MissingReturnsFileNotFound);
     TEST_METHOD(ExecutionPolicyStatus_ClassifiesBlockedAllowedAndUnknown);
     TEST_METHOD(ExecutionPolicyRemediation_PreflightRejectsUnknown);
     TEST_METHOD(ExecutionPolicyRemediation_SucceedsOnlyWhenEveryHostAllowedOrAbsent);
@@ -1274,6 +1278,73 @@ void ShellIntegrationTests::QueryExecutionPolicy_TrimsWhitespaceAndStopsAtFirstL
     const auto first = details::QueryExecutionPolicy(L"powershell.exe");
     const auto second = details::QueryExecutionPolicy(L"powershell.exe");
     VERIFY_ARE_EQUAL(first, second, L"QueryExecutionPolicy must be deterministic for the same host");
+}
+
+void ShellIntegrationTests::ResolvePwshPath_UsesFirstAbsoluteEntry()
+{
+    const auto first = _scratchDir / L"first";
+    const auto second = _scratchDir / L"second";
+    _WriteFile(first / L"pwsh.exe", "");
+    _WriteFile(second / L"pwsh.exe", "");
+
+    DWORD error = ERROR_SUCCESS;
+    const auto resolved = Powershell::details::ResolvePwshExecutableFromExplicitPath(
+        first.wstring() + L";" + second.wstring(),
+        (_scratchDir / L"current").wstring(),
+        &error);
+
+    VERIFY_ARE_EQUAL(static_cast<DWORD>(ERROR_SUCCESS), error);
+    VERIFY_ARE_EQUAL((first / L"pwsh.exe").lexically_normal().wstring(), resolved);
+}
+
+void ShellIntegrationTests::ResolvePwshPath_SkipsEmptyRelativeAndCurrentDirectoryEntries()
+{
+    const auto current = _scratchDir / L"current";
+    const auto safe = _scratchDir / L"safe";
+    _WriteFile(current / L"pwsh.exe", "");
+    _WriteFile(safe / L"pwsh.exe", "");
+
+    DWORD error = ERROR_SUCCESS;
+    const auto resolved = Powershell::details::ResolvePwshExecutableFromExplicitPath(
+        L";.;relative;" + current.wstring() + L";" + safe.wstring(),
+        current.wstring(),
+        &error);
+
+    VERIFY_ARE_EQUAL(static_cast<DWORD>(ERROR_SUCCESS), error);
+    VERIFY_ARE_EQUAL((safe / L"pwsh.exe").lexically_normal().wstring(), resolved);
+}
+
+void ShellIntegrationTests::ResolvePwshPath_AcceptsQuotedAndExpandedEntries()
+{
+    const auto safe = _scratchDir / L"safe";
+    _WriteFile(safe / L"pwsh.exe", "");
+
+    const auto variableName = L"IT_SHELL_INTEGRATION_TEST_PATH";
+    VERIFY_WIN32_BOOL_SUCCEEDED(SetEnvironmentVariableW(variableName, safe.c_str()));
+    const auto clearVariable = wil::scope_exit([&]() noexcept {
+        SetEnvironmentVariableW(variableName, nullptr);
+    });
+
+    DWORD error = ERROR_SUCCESS;
+    const auto resolved = Powershell::details::ResolvePwshExecutableFromExplicitPath(
+        L"\"%IT_SHELL_INTEGRATION_TEST_PATH%\"",
+        (_scratchDir / L"current").wstring(),
+        &error);
+
+    VERIFY_ARE_EQUAL(static_cast<DWORD>(ERROR_SUCCESS), error);
+    VERIFY_ARE_EQUAL((safe / L"pwsh.exe").lexically_normal().wstring(), resolved);
+}
+
+void ShellIntegrationTests::ResolvePwshPath_MissingReturnsFileNotFound()
+{
+    DWORD error = ERROR_SUCCESS;
+    const auto resolved = Powershell::details::ResolvePwshExecutableFromExplicitPath(
+        (_scratchDir / L"missing").wstring(),
+        (_scratchDir / L"current").wstring(),
+        &error);
+
+    VERIFY_IS_TRUE(resolved.empty());
+    VERIFY_ARE_EQUAL(static_cast<DWORD>(ERROR_FILE_NOT_FOUND), error);
 }
 
 void ShellIntegrationTests::ExecutionPolicyStatus_ClassifiesBlockedAllowedAndUnknown()

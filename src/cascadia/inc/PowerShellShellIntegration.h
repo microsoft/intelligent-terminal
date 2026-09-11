@@ -97,6 +97,164 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
             return result;
         }
 
+        // Resolve pwsh only from explicit absolute PATH entries. Empty and
+        // relative entries can resolve through the process current directory,
+        // which must not select the executable that runs policy-management code.
+        inline std::wstring ResolvePwshExecutableFromExplicitPath(std::wstring_view searchPath,
+                                                                  std::wstring_view currentDirectory,
+                                                                  DWORD* outError = nullptr) noexcept
+        {
+            if (outError)
+            {
+                *outError = ERROR_FILE_NOT_FOUND;
+            }
+
+            try
+            {
+                const std::filesystem::path currentPath{ currentDirectory };
+                size_t entryStart = 0;
+                while (entryStart <= searchPath.size())
+                {
+                    const auto separator = searchPath.find(L';', entryStart);
+                    auto entry = searchPath.substr(
+                        entryStart,
+                        separator == std::wstring_view::npos ? std::wstring_view::npos : separator - entryStart);
+
+                    const auto first = entry.find_first_not_of(L" \t");
+                    if (first != std::wstring_view::npos)
+                    {
+                        const auto last = entry.find_last_not_of(L" \t");
+                        entry = entry.substr(first, last - first + 1);
+                        if (entry.size() >= 2 && entry.front() == L'"' && entry.back() == L'"')
+                        {
+                            entry = entry.substr(1, entry.size() - 2);
+                        }
+                        else if (entry.front() == L'"' || entry.back() == L'"')
+                        {
+                            entry = {};
+                        }
+                    }
+                    else
+                    {
+                        entry = {};
+                    }
+
+                    if (!entry.empty())
+                    {
+                        auto expanded = wil::ExpandEnvironmentStringsW<std::wstring>(std::wstring{ entry }.c_str());
+                        std::filesystem::path directory{ expanded };
+                        if (directory.is_absolute())
+                        {
+                            directory = directory.lexically_normal();
+                            std::error_code ec;
+                            const bool isCurrentDirectory =
+                                !currentPath.empty() &&
+                                std::filesystem::equivalent(directory, currentPath, ec) &&
+                                !ec;
+                            if (!isCurrentDirectory)
+                            {
+                                const auto candidate = (directory / L"pwsh.exe").lexically_normal();
+                                const auto attributes = GetFileAttributesW(candidate.c_str());
+                                if (attributes != INVALID_FILE_ATTRIBUTES &&
+                                    WI_IsFlagClear(attributes, FILE_ATTRIBUTE_DIRECTORY))
+                                {
+                                    if (outError)
+                                    {
+                                        *outError = ERROR_SUCCESS;
+                                    }
+                                    return candidate.wstring();
+                                }
+                            }
+                        }
+                    }
+
+                    if (separator == std::wstring_view::npos)
+                    {
+                        break;
+                    }
+                    entryStart = separator + 1;
+                }
+            }
+            catch (...)
+            {
+                if (outError)
+                {
+                    *outError = ERROR_UNHANDLED_EXCEPTION;
+                }
+            }
+            return {};
+        }
+
+        inline std::wstring ResolvePwshExecutableFromExplicitPath(DWORD* outError = nullptr) noexcept
+        {
+            if (outError)
+            {
+                *outError = ERROR_SUCCESS;
+            }
+
+            try
+            {
+                SetLastError(ERROR_SUCCESS);
+                const DWORD pathLength = GetEnvironmentVariableW(L"PATH", nullptr, 0);
+                if (pathLength == 0)
+                {
+                    const auto error = GetLastError();
+                    if (outError)
+                    {
+                        *outError = error == ERROR_SUCCESS ? ERROR_FILE_NOT_FOUND : error;
+                    }
+                    return {};
+                }
+
+                std::wstring searchPath(pathLength, L'\0');
+                const DWORD copiedPathLength = GetEnvironmentVariableW(L"PATH", searchPath.data(), pathLength);
+                if (copiedPathLength == 0 || copiedPathLength >= pathLength)
+                {
+                    if (outError)
+                    {
+                        *outError = copiedPathLength == 0 ? GetLastError() : ERROR_INSUFFICIENT_BUFFER;
+                    }
+                    return {};
+                }
+                searchPath.resize(copiedPathLength);
+
+                const DWORD currentDirectoryLength = GetCurrentDirectoryW(0, nullptr);
+                if (currentDirectoryLength == 0)
+                {
+                    if (outError)
+                    {
+                        *outError = GetLastError();
+                    }
+                    return {};
+                }
+                std::wstring currentDirectory(currentDirectoryLength, L'\0');
+                const DWORD copiedCurrentDirectoryLength =
+                    GetCurrentDirectoryW(currentDirectoryLength, currentDirectory.data());
+                if (copiedCurrentDirectoryLength == 0 ||
+                    copiedCurrentDirectoryLength >= currentDirectoryLength)
+                {
+                    if (outError)
+                    {
+                        *outError = copiedCurrentDirectoryLength == 0 ?
+                                        GetLastError() :
+                                        ERROR_INSUFFICIENT_BUFFER;
+                    }
+                    return {};
+                }
+                currentDirectory.resize(copiedCurrentDirectoryLength);
+
+                return ResolvePwshExecutableFromExplicitPath(searchPath, currentDirectory, outError);
+            }
+            catch (...)
+            {
+                if (outError)
+                {
+                    *outError = ERROR_UNHANDLED_EXCEPTION;
+                }
+                return {};
+            }
+        }
+
         inline PowerShellProcessResult RunPowerShellCommand(LPCWSTR exe,
                                                             std::wstring_view arguments,
                                                             DWORD timeoutMs = 20000) noexcept
@@ -266,9 +424,24 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
             std::wstring resolved{ exe };
             if (resolved.find_first_of(L"\\/") == std::wstring::npos)
             {
-                wchar_t buffer[MAX_PATH]{};
-                const DWORD resolvedLen = SearchPathW(nullptr, exe, nullptr, MAX_PATH, buffer, nullptr);
-                if (resolvedLen == 0 || resolvedLen >= MAX_PATH)
+                if (_wcsicmp(exe, L"pwsh") == 0 || _wcsicmp(exe, L"pwsh.exe") == 0)
+                {
+                    resolved = ResolvePwshExecutableFromExplicitPath();
+                }
+                else
+                {
+                    wchar_t buffer[MAX_PATH]{};
+                    const DWORD resolvedLen = SearchPathW(nullptr, exe, nullptr, MAX_PATH, buffer, nullptr);
+                    if (resolvedLen != 0 && resolvedLen < MAX_PATH)
+                    {
+                        resolved.assign(buffer, resolvedLen);
+                    }
+                    else
+                    {
+                        resolved.clear();
+                    }
+                }
+                if (resolved.empty())
                 {
                     if (outTimedOut)
                     {
@@ -276,7 +449,6 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
                     }
                     return {};
                 }
-                resolved.assign(buffer, resolvedLen);
             }
 
             const auto result = RunPowerShellCommand(
@@ -422,27 +594,21 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
             }
             else
             {
-                wchar_t buffer[MAX_PATH]{};
-                SetLastError(ERROR_SUCCESS);
-                const DWORD resolvedLen = SearchPathW(nullptr, L"pwsh.exe", nullptr, MAX_PATH, buffer, nullptr);
-                if (resolvedLen == 0)
+                DWORD resolutionError = ERROR_SUCCESS;
+                result.executablePath = details::ResolvePwshExecutableFromExplicitPath(&resolutionError);
+                if (result.executablePath.empty())
                 {
-                    const auto error = GetLastError();
-                    result.process.error = error;
-                    result.status = error == ERROR_SUCCESS ||
-                                            error == ERROR_FILE_NOT_FOUND ||
-                                            error == ERROR_PATH_NOT_FOUND ||
-                                            error == ERROR_ENVVAR_NOT_FOUND ?
+                    result.process.error = resolutionError;
+                    const bool resolutionMeansAbsent =
+                        resolutionError == ERROR_SUCCESS ||
+                        resolutionError == ERROR_FILE_NOT_FOUND ||
+                        resolutionError == ERROR_PATH_NOT_FOUND ||
+                        resolutionError == ERROR_ENVVAR_NOT_FOUND;
+                    result.status = resolutionMeansAbsent ?
                                         ExecutionPolicyStatus::Absent :
                                         ExecutionPolicyStatus::Unknown;
                     return result;
                 }
-                if (resolvedLen >= MAX_PATH)
-                {
-                    result.process.error = ERROR_INSUFFICIENT_BUFFER;
-                    return result;
-                }
-                result.executablePath.assign(buffer, resolvedLen);
             }
 
             result.process = details::RunPowerShellCommand(
@@ -593,17 +759,14 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
         }
         else
         {
-            // PowerShell 7 (pwsh.exe) is an optional third-party install with no fixed
-            // location, so it must be resolved via PATH.
-            wchar_t buffer[MAX_PATH]{};
-            const DWORD resolvedLen = SearchPathW(nullptr, L"pwsh.exe", nullptr, MAX_PATH, buffer, nullptr);
-            if (resolvedLen == 0 || resolvedLen >= MAX_PATH)
+            // PowerShell 7 is optional and has no fixed location. Search only
+            // explicit absolute PATH entries so the current directory cannot
+            // supply the executable that runs our policy-management commands.
+            resolved = details::ResolvePwshExecutableFromExplicitPath();
+            if (resolved.empty())
             {
-                // Not on PATH (resolvedLen == 0), or path too long for the buffer
-                // (resolvedLen >= MAX_PATH leaves `buffer` unfilled/truncated).
                 return false;
             }
-            resolved.assign(buffer, resolvedLen);
         }
         bool timedOut = false;
         auto policy = details::QueryExecutionPolicy(resolved.c_str(), &timedOut);
