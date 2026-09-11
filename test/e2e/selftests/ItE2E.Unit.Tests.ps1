@@ -879,8 +879,11 @@ Describe 'Yolo Settings localization contract' -Tag 'Unit' {
 }
 
 Describe 'Start-Terminal startup ordering' -Tag 'Unit' {
-    It 'waits for the first window before probing COM' {
-        InModuleScope ItE2E {
+    It 'waits for the first window before probing COM (isolated state: <PatchState>)' -ForEach @(
+        @{ PatchState = $false }, @{ PatchState = $true }
+    ) {
+        InModuleScope ItE2E -Parameters @{ PatchState = $PatchState } {
+            param($PatchState)
             $script:startupOrder = @()
             $root = Join-Path $env:TEMP "ite2e-startup-order-$PID"
             $fakeApp = [pscustomobject]@{
@@ -900,7 +903,9 @@ Describe 'Start-Terminal startup ordering' -Tag 'Unit' {
             Mock Resolve-ItApp { $fakeApp }
             Mock Stop-StaleItInstances
             Mock Get-WtProcessesForApp { [pscustomobject]@{ Id = 4242 } }
-            Mock Start-Process
+            Mock Backup-WtConfig { $script:startupOrder += 'backup' }
+            Mock Set-WtState { $script:startupOrder += 'state' }
+            Mock Start-Process { $script:startupOrder += 'launch' }
             Mock Get-WtWindowHwnds {
                 $script:startupOrder += 'hwnd'
                 [pscustomobject]@{ pid = 4242; hwnd = 9001; title = 'PowerShell' }
@@ -913,11 +918,19 @@ Describe 'Start-Terminal startup ordering' -Tag 'Unit' {
             Mock Initialize-LogOffsets
             Mock Write-ItLog
 
-            $app = Start-Terminal -Package Dev -PassFre $false -Backup $false -CleanSettings $false
+            $parameters = @{ Package = 'Dev'; PassFre = $false; Backup = $PatchState; CleanSettings = $false }
+            if ($PatchState) { $parameters.State = @{ persistedWindowLayouts = @() } }
+            $app = Start-Terminal @parameters
 
             $app.Hwnd | Should -Be 9001
-            $script:startupOrder | Should -Be @('hwnd', 'com')
+            $expected = if ($PatchState) { @('backup', 'state', 'launch', 'hwnd', 'com') } else { @('launch', 'hwnd', 'com') }
+            $script:startupOrder | Should -Be $expected
             Should -Invoke Stop-StaleItInstances -Times 1 -ParameterFilter { $App -eq $fakeApp }
+            if ($PatchState) {
+                Should -Invoke Set-WtState -Times 1 -ParameterFilter {
+                    $App -eq $fakeApp -and $Key -eq 'persistedWindowLayouts' -and $Value -is [array] -and $Value.Count -eq 0
+                }
+            }
         }
     }
 }

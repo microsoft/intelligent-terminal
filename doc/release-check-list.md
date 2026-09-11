@@ -445,6 +445,11 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 - [ ] `C177` `[E2E]` **Packaged `wta.exe` is present:** WTA is deployed next to WindowsTerminal in the package layout.
 - [ ] `C178` `[E2E]` **Packaged identity works:** WTA/wtcli can activate the Terminal protocol COM server from packaged context.
+- [ ] `C318` `[new]` `[E2E]` **Live hooks use the owning process hook endpoint:** Real shells and agent children retain the fixed `WT_COM_CLSID` and inherit a distinct `WT_COM_HOOK_CLSID`; native and legacy session-end hooks reach a ready listener through that process-bound ROT factory. _(E2E: `Feature.HeadlessStartup`.)_
+- [ ] `C319` `[new]` `[E2E]` **Late shutdown hooks cannot reactivate Terminal or erase its layout:** Repeated native `agent-hook` and lower-case `agent.*` legacy `send-event` calls with stale, missing, or invalid hook identities never fall back to the valid package class, create no replacement process, and preserve the saved layout. Native hooks and cached script wrappers still exit quietly with zero. _(E2E: `Feature.HeadlessStartup`.)_
+- [ ] `C320` `[new]` `[E2E]` **Restarted Terminal rejects hooks from the previous process:** Only the hook endpoint changes on restart. Old, missing, or invalid hook identities cannot deliver to the new instance; current hooks and ordinary fixed-class clients still work. _(E2E: `Feature.HeadlessStartup`.)_
+- [ ] `C321` `[new]` `[E2E]` **Explicit COM clients can keep a headless server alive:** The unchanged fixed package COM class remains explicitly activatable; subscribed clients and generic `send-event` topics keep working without a hook endpoint, startup timeout, or consuming the saved layout. _(E2E: `Feature.HeadlessStartup`.)_
+- [ ] `C322` `[new]` `[E2E]` **Interactive activation restores the saved windows:** Ordinary cold launch and interactive activation after explicit headless COM startup each restore saved windows and agent sessions exactly once. _(E2E: `Feature.HeadlessStartup`.)_
 - [ ] `C179` `[E2E]` **Wrong unpackaged WTA is not used:** Agent pane/autofix does not accidentally use a stale dev-build WTA.
 - [ ] `C180` `[E2E]` **`WT_COM_CLSID` is injected:** Shell panes and agent panes inherit protocol discovery environment as expected.
 - [ ] `C181` `[E2E]` **`wtcli list-panes` works:** Basic WT protocol query succeeds from a pane.
