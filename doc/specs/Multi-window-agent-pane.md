@@ -572,15 +572,6 @@ in its `_tabs` collection. Affected events:
 - `close_agent_pane` (Ctrl+C×2 in TUI)
 - `resume_in_new_agent_tab` (slash-command / Enter on an agent-pane session row)
 
-For a session-view resume, C++ records the requested session ID and cwd while
-creating the new tab. That tab's deferred initialization consumes the request
-before ordinary prewarm and launches its helper with
-`--initial-load-session-id` / `--initial-load-cwd`. The first ACP operation is
-`session/load`, not a blank `session/new`. Opening the pane does not depend on
-a `set_agent_state` roundtrip to a helper that has not started yet, and
-ordinary state projections cannot consume or replace the pending resume.
-Tabs without a resume request retain the normal stashed-prewarm behavior.
-
 **The `switch_tab_session` owner-lock.** A `tab_changed` is broadcast
 to every helper subscribed to the COM event bus. Pre-B20, every helper
 would `switch_tab_session(new_tab_id)`, which (a) overwrote `self.tab_id`

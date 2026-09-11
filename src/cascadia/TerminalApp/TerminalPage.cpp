@@ -3598,9 +3598,13 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        // Bundle resume identity with helper spawn, for both deferred
-        // session-view resumes and saved-layout restores. The helper starts
-        // with session/load instead of creating a blank session first.
+        // Plan-C: bundle the resume request with helper spawn. Caller
+        // (currently `OnResumeInNewAgentTabRequested` via the pending-
+        // load-session map in `OnAgentStateChanged`) sets these when the
+        // session management Enter-on-Historical/Ended-row path needs the freshly-spawned
+        // helper to immediately ACP `session/load` instead of creating a
+        // fresh session. Helper-side flag handling lives in main.rs
+        // (`--initial-load-session-id` + `--initial-load-cwd`).
         if (!initialLoadSessionId.empty())
         {
             const auto sidW = winrt::to_hstring(initialLoadSessionId);
@@ -7280,13 +7284,31 @@ namespace winrt::TerminalApp::implementation
                         targetTab->EffectiveAgentPanePosition(_settings.GlobalSettings().AgentPanePosition()));
                     targetTab->RestoreStashedAgentPane(splitDir);
                 }
-                else if (!targetTab->FindAgentPane() && !_pendingLoadSessions.contains(tabId))
+                else if (!targetTab->FindAgentPane())
                 {
                     // No pane on this tab yet — first toggle-open is the
                     // spawn path. View defaults to chat unless `view=sessions`.
                     const bool intoSessions = view.has_value() && *view == "sessions";
 
-                    _AutoCreateHiddenAgentPaneShared(targetTab, intoSessions, /*autoStash*/ false);
+                    // Plan-C: consume any pending load-session hint for
+                    // this tab. Set by `OnResumeInNewAgentTabRequested`
+                    // when the user pressed Enter on a Historical/Ended
+                    // row in session management view — the new helper boots straight into a
+                    // `session/load` of the requested session id instead
+                    // of creating a fresh session. One-shot: the entry
+                    // is moved out and erased here so a later
+                    // `agent_state_changed` for the same tab (e.g. a
+                    // tab_changed echo) doesn't accidentally re-spawn.
+                    std::string pendingSid;
+                    std::string pendingCwd;
+                    if (const auto it = _pendingLoadSessions.find(tabId); it != _pendingLoadSessions.end())
+                    {
+                        pendingSid = std::move(it->second.sessionId);
+                        pendingCwd = std::move(it->second.cwd);
+                        _pendingLoadSessions.erase(it);
+                        _agentPaneLog("OnAgentStateChanged: consuming pending load_session for tab " + winrt::to_string(tabId));
+                    }
+                    _AutoCreateHiddenAgentPaneShared(targetTab, intoSessions, /*autoStash*/ false, pendingSid, pendingCwd);
                 }
             }
             else
@@ -7925,10 +7947,31 @@ namespace winrt::TerminalApp::implementation
 
     // Inbound event from WTA: {method:"resume_in_new_agent_tab",
     //                          params:{session_id, cwd}}.
-    // The new tab's deferred initialization consumes the requested session
-    // before ordinary prewarm and supplies it in the helper launch arguments.
-    // No state-change roundtrip is needed through a helper that does not yet
-    // exist, and no load broadcast can land in a different helper.
+    // Sent by the session view's Enter handler on a Historical/Ended row
+    // (Plan-C ResumeInAgentPane path). We:
+    //   1. Create a new tab with the default profile (using the historical
+    //      session's cwd as the starting directory when provided).
+    //   2. Stash the (session_id, cwd) in `_pendingLoadSessions` keyed by
+    //      the new tab's StableId.
+    //   3. Ask wta to mark the new tab's agent pane as open. wta echoes
+    //      `agent_state_changed{pane_open:true, tab_id:<new>}` which
+    //      lands in `OnAgentStateChanged`; the pending entry is consumed
+    //      there and passed to `_AutoCreateHiddenAgentPaneShared` so the
+    //      newly-spawned helper boots with `--initial-load-session-id`
+    //      (atomic spawn + `session/load` via main.rs Plan-C glue).
+    //
+    // No separate `load_session` VT broadcast — the prior design had a
+    // race where the broadcast often arrived at the WRONG helper because
+    // every helper subscribes to the same shared COM event stream and
+    // the new helper's pipe attach hadn't completed yet when the
+    // broadcast fired.
+    //
+    // The shared-agent-pane model means we can't actually have two
+    // independent ACP connections on one window. If the running WTA was
+    // launched with a CLI that doesn't match the historical session's
+    // origin, `session/load` will return an error that surfaces as an
+    // AgentError in the new tab's chat view (best-effort by design — see
+    // plan.md "Constraints established with user").
     void TerminalPage::OnResumeInNewAgentTabRequested(hstring eventJson)
     {
         _agentPaneLog("OnResumeInNewAgentTabRequested: received from wta");
@@ -7970,8 +8013,11 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        // Register before returning to the dispatcher, where the new tab's
-        // deferred initialization will choose resume instead of prewarm.
+        // Step 2: register the pending load-session for the new tab and
+        // ask wta to mark it as having an open agent pane. The resulting
+        // `agent_state_changed{pane_open:true}` lands in
+        // `OnAgentStateChanged`, which consumes the pending entry and
+        // spawns the helper with the bundled resume request.
         const auto newTab = _GetFocusedTabImpl();
         if (!newTab)
         {
@@ -7987,6 +8033,7 @@ namespace winrt::TerminalApp::implementation
         _pendingLoadSessions[newStableId] = _PendingLoadSession{ sessionIdStr, cwdStr };
         _agentPaneLog("OnResumeInNewAgentTabRequested: stashed pending load_session for tab " +
                       winrt::to_string(newStableId) + " session_id=" + sessionIdStr);
+        _RequestAgentStateForTab(newTab, std::nullopt, /*pane_open*/ true);
     }
 
     void TerminalPage::_NotifyRestoredSessionBindings(const winrt::com_ptr<Tab>& tab)

@@ -272,20 +272,19 @@ Every dedicated event observed above also carried `PartA_PrivTags=0`.
 The smoke prompt, reply marker, and command text were absent from the decoded
 telemetry payloads. User settings remained unchanged.
 
-**The initial resume validation did not pass.** A production
-`resume_in_new_agent_tab` control request created a new tab and a fresh ACP
-session rather than reaching `session/load`. Consequently the capture
-contained neither `AcpLoadSessionComplete` nor `AgentSessionStarted` with
-`StartKind=Load`. Deferred tab prewarm created a blank helper before the old
-state-echo path could consume the pending resume target.
+**Sampling-build scope:** the first capture used the telemetry-only changes.
+Its `resume_in_new_agent_tab` control request did not reach `session/load`,
+so it contained neither `AcpLoadSessionComplete` nor a `StartKind=Load`
+snapshot. A temporary resume/prewarm startup-order experiment was used for
+the subsequent three completed captures, allowing a saved ACP session to be
+loaded and its historical conversation displayed during the follow-up run.
 
-**A follow-up capture passed after correcting resume/prewarm ownership.**
-Deferred tab initialization now consumes the requested session before ordinary
-prewarm and supplies it directly in the helper launch arguments. The same
-production control request loaded the requested saved Copilot session, and
-the restored conversation was visible in the new agent pane. Helper logs
-confirmed that its bootstrap skipped `session/new`; the ordinary startup tab
-still prewarmed a fresh session.
+That experiment and its associated C318 regression test have since been
+removed from this PR. **This telemetry work retains the original session
+resume/prewarm routing; it does not ship a resume behavior fix.** The records
+below preserve the actual event payload observations from those sampling
+builds, not a claim that the experiment identifies a product bug or that
+the final telemetry-only branch's resume behavior was revalidated.
 
 The follow-up capture ran from **04:36:18 to 04:37:27 UTC**, with **27 events:
 25 product events and 2 trace infrastructure events, with 0 events lost**.
@@ -315,8 +314,8 @@ the collector; no product provider identity or registration was changed.
 The additional runs covered **05:53:33-06:13:35 UTC** and
 **06:43:03-06:49:19 UTC**, collecting 83 and 29 events respectively.
 
-Across the **four completed captures**, all **22/22 dedicated event types**
-were observed. Every captured instance of these events passed an exact
+Across the **four completed captures described above**, all **22/22 dedicated
+event types** were observed. Every captured instance of these events passed an exact
 field-name-set check against the documented business fields plus
 `PartA_PrivTags`. The captures contain **185 total events: 177 product events
 and 8 trace infrastructure events, with 0 events lost**. An interrupted
@@ -388,8 +387,9 @@ Temporary test settings were restored byte-for-byte, and Settings UI probe
 selections were not saved. Raw traces and state backups remain local and are
 not part of the repository.
 
-This completes **event-type and payload-field coverage**, not every enum
-value, failure branch, or timing permutation. BYOK, WSL, and GPO/override
+These historical captures provide **event-type and payload-field coverage**,
+not a post-removal live validation of the final branch's routing or coverage
+of every enum value, failure branch, or timing permutation. BYOK, WSL, and GPO/override
 matrices were not covered; Claude was exercised for Settings catalog probes,
 not a full chat/resume workflow. Local ETW emission and decoding do not
 establish backend ingestion.

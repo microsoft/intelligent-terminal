@@ -26,60 +26,15 @@ Describe 'Feature: agent pane lifetime ownership' -Tag 'Feature', 'AgentPaneLife
         }
 
         function Assert-LifetimeSession {
-            param($Session, [int]$MasterId, [int]$RequestOffset = 0, [string]$OwnerShell)
-            $current = if ($OwnerShell) {
-                Get-LifetimeRuntimeSession -SessionId $Session.AcpSessionId -OwnerShell $OwnerShell
-            } else {
-                Get-AgentPaneSession -App $script:app -PaneSessionId $Session.PaneSessionId
-            }
+            param($Session, [int]$MasterId)
+            $current = Get-AgentPaneSession -App $script:app -PaneSessionId $Session.PaneSessionId
             $current | Should -Not -BeNullOrEmpty
-            $current.PaneSessionId | Should -Be $Session.PaneSessionId
             $current.HelperProcessId | Should -Be $Session.HelperProcessId
             $current.AcpSessionId | Should -Be $Session.AcpSessionId
             @(Get-LifetimeMaster).Count | Should -Be 1
             (Get-LifetimeMaster).ProcessId | Should -Be $MasterId
-            (@(Get-Content -LiteralPath $script:requestLog | Select-Object -Skip $RequestOffset) -join "`n") |
+            (Get-Content -LiteralPath $script:requestLog -Raw) |
                 Should -Not -Match ("\|session/close\|" + [regex]::Escape($Session.AcpSessionId) + '(\r?\n|$)')
-        }
-
-        function Get-LifetimeHelpers {
-            Get-CimInstance Win32_Process -Filter "Name='wta.exe'" |
-                Where-Object {
-                    $_.ParentProcessId -eq $script:app.Pid -and
-                    $_.ExecutablePath -eq (Join-Path (Split-Path $script:app.WtcliPath) 'wta.exe') -and
-                    $_.CommandLine -match '--connect-master'
-                }
-        }
-
-        function Get-LifetimeRuntimeSession {
-            param([string]$SessionId, [string]$OwnerShell)
-            # The provenance JSONL records session/new only, not current loaded
-            # bindings. Pin the live registry query to this run's master pipe;
-            # a shell does not necessarily inherit package runtime discovery.
-            $snapshot = "$script:requestLog.registry-$([guid]::NewGuid().ToString('N')).jsonl"
-            $wta = Join-Path (Split-Path $script:app.WtcliPath) 'wta.exe'
-            $helper = Get-LifetimeHelpers | Select-Object -First 1
-            $pipeMatch = [regex]::Match($helper.CommandLine, '--connect-master\s+(?:"(?<pipe>[^"]+)"|(?<pipe>\S+))')
-            $pipeMatch.Success | Should -BeTrue
-            $pipe = $pipeMatch.Groups['pipe'].Value
-            $command = "& '$($wta.Replace("'", "''"))' --json sessions list --master '$($pipe.Replace("'", "''"))' --origin agent-pane > '$($snapshot.Replace("'", "''"))' 2> '$($snapshot.Replace("'", "''")).err'; " +
-                "`$LASTEXITCODE | Set-Content '$($snapshot.Replace("'", "''")).exit'"
-            Invoke-RunCommand -App $script:app -SessionId $OwnerShell -Command $command | Out-Null
-            Wait-Until -TimeoutSec 10 -Because 'the in-package session registry query to complete' -Condition {
-                Test-Path -LiteralPath "$snapshot.exit"
-            } | Out-Null
-            [int](Get-Content -LiteralPath "$snapshot.exit" -Raw) |
-                Should -Be 0 -Because (Get-Content -LiteralPath "$snapshot.err" -Raw)
-            $record = @(Get-Content -LiteralPath $snapshot | Where-Object { $_.Trim() } |
-                ForEach-Object { $_ | ConvertFrom-Json } | Where-Object session_id -eq $SessionId)
-            $record.Count | Should -Be 1
-            $status = Get-WtPaneStatus -App $script:app -SessionId $record[0].pane_session_id
-            $status.state | Should -Match 'run'
-            [pscustomobject]@{
-                PaneSessionId = $record[0].pane_session_id
-                AcpSessionId = $record[0].session_id
-                HelperProcessId = $status.pid
-            }
         }
 
         function Assert-LifetimeReply {
@@ -138,12 +93,7 @@ Describe 'Feature: agent pane lifetime ownership' -Tag 'Feature', 'AgentPaneLife
     BeforeEach {
         $script:app = $null
         $script:requestLog = Join-Path $script:evidence ("acp-{0}.log" -f [guid]::NewGuid().ToString('N'))
-        $script:sessionStore = $null
         $invocation = "& '$($script:fixture.Replace("'", "''"))' -LogPath '$($script:requestLog.Replace("'", "''"))'"
-        if ($PersistSessions) {
-            $script:sessionStore = $script:requestLog + '.sessions.json'
-            $invocation += " -SessionStorePath '$($script:sessionStore.Replace("'", "''"))'"
-        }
         $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($invocation))
         $command = "pwsh -NoProfile -EncodedCommand $encoded"
         $panePosition = if ($Position) { $Position } else { 'bottom' }
@@ -170,119 +120,16 @@ Describe 'Feature: agent pane lifetime ownership' -Tag 'Feature', 'AgentPaneLife
     }
 
     AfterEach {
-        try {
-            if ($script:app) {
+        if ($script:app) {
+            try {
                 Get-ItLogText -App $script:app -Name 'terminal-agent-pane.log' -SinceStart |
                     Set-Content -LiteralPath ($script:requestLog + '.terminal.log') -Encoding utf8
             }
-        }
-        finally {
-            try {
-                if ($script:app) { Stop-Terminal -App $script:app }
-            }
             finally {
+                Stop-Terminal -App $script:app
                 $script:app = $null
-                if ($script:sessionStore -and (Test-Path -LiteralPath $script:sessionStore)) {
-                    Remove-Item -LiteralPath $script:sessionStore -Force
-                }
             }
         }
-    }
-
-    It 'Saved agent sessions resume in new tabs without prewarm replacement' -Tag 'SessionResume' -ForEach @(
-        @{ PersistSessions = $true }
-    ) {
-        $survivor = $script:session
-        $resumedIds = @()
-        foreach ($cycle in 1..2) {
-            # Create and close distinct conversations so a stale pending target
-            # cannot satisfy the second resume, or load an already-live helper.
-            $beforeSeed = @(Get-AgentPaneSessions -App $script:app).PaneSessionId
-            $seedShell = New-WtTab -App $script:app -Title "resume-source-$cycle" -Cwd $script:evidence
-            $seed = Wait-NewAgentPaneSession -App $script:app -ExcludePaneSessionId $beforeSeed -TimeoutSec 40
-            $seed.AcpSessionId | Should -Not -BeIn $resumedIds
-            Set-WtPaneFocus -App $script:app -SessionId $seedShell.session_id
-            Open-AgentPane -App $script:app | Out-Null
-            $marker = Assert-LifetimeReply -App $script:app -Session $seed
-            $saved = Get-Content -LiteralPath $script:sessionStore -Raw | ConvertFrom-Json -AsHashtable
-            $saved[$seed.AcpSessionId].transcript | Should -BeExactly "ACK:$marker"
-            Close-WtPane -App $script:app -SessionId $seedShell.session_id
-            Assert-LifetimeClosed -Session $seed
-
-            $beforeTabs = @(Get-WtTabs -App $script:app -WindowId $script:app.WindowId).tab_id
-            $beforeHelpers = @(Get-LifetimeHelpers).ProcessId
-            $beforeRequests = @(Get-Content -LiteralPath $script:requestLog).Count
-            try {
-                $payload = @{
-                    type = 'event'; method = 'resume_in_new_agent_tab'
-                    params = @{ session_id = $seed.AcpSessionId; cwd = $saved[$seed.AcpSessionId].cwd }
-                } | ConvertTo-Json -Compress
-                Invoke-WtCli -App $script:app -Arguments @('publish', $payload) | Out-Null
-                # This control request dispatches directly to TerminalPage; it
-                # is not echoed to wtcli listen. Observe the actual ACP handoff.
-                Wait-Until -TimeoutSec 20 -Because 'the requested saved ACP session to finish loading' -Condition {
-                    @(Get-Content -LiteralPath $script:requestLog | Select-Object -Skip $beforeRequests) -match
-                        ('^\d+\|session/loaded\|' + [regex]::Escape($seed.AcpSessionId) + '$')
-                } | Out-Null
-                $newTab = Wait-Until -TimeoutSec 20 -Because 'the accepted resume request to open its own tab' -Condition {
-                    Get-WtTabs -App $script:app -WindowId $script:app.WindowId |
-                        Where-Object { $_.tab_id -notin $beforeTabs } | Select-Object -First 1
-                }
-                $newShell = @(Get-WtPanes -App $script:app -WindowId $script:app.WindowId -TabId $newTab.tab_id)[0]
-                $resumed = Get-LifetimeRuntimeSession -SessionId $seed.AcpSessionId -OwnerShell $newShell.session_id
-                @{ requested = $seed; actual = $resumed; tab = $newTab; marker = $marker } |
-                    ConvertTo-Json -Depth 10 |
-                    Set-Content -LiteralPath "$script:requestLog.resume-$cycle.json" -Encoding utf8
-                $resumed.AcpSessionId | Should -BeExactly $seed.AcpSessionId
-                $resumed.HelperProcessId | Should -Not -Be $seed.HelperProcessId
-                $ownerTab = Resolve-AgentOwnerTabId -App $script:app -OwnerPaneSessionId $newShell.session_id
-                $helper = @(Get-LifetimeHelpers | Where-Object ProcessId -eq $resumed.HelperProcessId)
-                $helper.Count | Should -Be 1
-                $helper[0].CommandLine | Should -Match ('--owner-tab-id\s+"?\{?' + [regex]::Escape($ownerTab.Trim('{}')) + '\}?(?:"|\s|$)')
-                Assert-Pane -App $script:app -SessionId $resumed.PaneSessionId -Match "ACK:$marker" -TimeoutSec 20
-
-                # Wait beyond successful binding/rendering for a deferred
-                # prewarm or fallback new-session to become observable.
-                Start-Sleep -Seconds 3
-                $delta = @(Get-Content -LiteralPath $script:requestLog | Select-Object -Skip $beforeRequests)
-                $loads = @($delta | Where-Object { $_ -match '^\d+\|session/load\|' } |
-                    ForEach-Object { ($_ -split '\|', 3)[2] | ConvertFrom-Json })
-                $loads.Count | Should -Be 1
-                $loads[0].sessionId | Should -BeExactly $seed.AcpSessionId
-                $loads[0].cwd | Should -BeExactly $saved[$seed.AcpSessionId].cwd
-                ($delta -join "`n") | Should -Not -Match '\|session/new\|' -Because 'resume must never allocate a blank replacement session'
-                ($delta -join "`n") | Should -Not -Match '\|session/prompt\|' -Because 'the restored transcript must come from session/load, not another prompt'
-                @(Get-WtTabs -App $script:app -WindowId $script:app.WindowId |
-                    Where-Object { $_.tab_id -notin $beforeTabs }).Count | Should -Be 1
-                @(Get-LifetimeHelpers | Where-Object { $_.ProcessId -notin $beforeHelpers }).Count | Should -Be 1
-                Assert-LifetimeSession -Session $resumed -MasterId $script:masterId -RequestOffset $beforeRequests -OwnerShell $newShell.session_id
-                Stop-AgentPane -App $script:app | Out-Null
-                Open-AgentPane -App $script:app | Out-Null
-                Assert-LifetimeSession -Session $resumed -MasterId $script:masterId -RequestOffset $beforeRequests -OwnerShell $newShell.session_id
-                Assert-Pane -App $script:app -SessionId $resumed.PaneSessionId -Match "ACK:$marker" -TimeoutSec 10
-                $resumedIds += $resumed.AcpSessionId
-            }
-            finally {
-                Get-Content -LiteralPath $script:requestLog | Select-Object -Skip $beforeRequests |
-                    Set-Content -LiteralPath "$script:requestLog.resume-$cycle.requests.log" -Encoding utf8
-            }
-        }
-
-        $beforeOrdinary = @(Get-AgentPaneSessions -App $script:app).PaneSessionId
-        $beforeRequests = @(Get-Content -LiteralPath $script:requestLog).Count
-        $ordinaryShell = New-WtTab -App $script:app -Title 'ordinary-prewarm-after-resume'
-        $ordinary = Wait-NewAgentPaneSession -App $script:app -ExcludePaneSessionId $beforeOrdinary -TimeoutSec 40
-        $ordinary.AcpSessionId | Should -Not -BeIn $resumedIds
-        Set-WtPaneFocus -App $script:app -SessionId $ordinaryShell.session_id
-        Test-UiElementExists -App $script:app -Selector 'AgentLabelText' | Should -BeFalse
-        (Get-AgentPaneSession -App $script:app -OwnerPaneSessionId $ordinaryShell.session_id).PaneSessionId |
-            Should -BeExactly $ordinary.PaneSessionId
-        Open-AgentPane -App $script:app | Out-Null
-        Assert-LifetimeSession -Session $ordinary -MasterId $script:masterId
-        $delta = @(Get-Content -LiteralPath $script:requestLog | Select-Object -Skip $beforeRequests)
-        @($delta | Where-Object { $_ -match '\|session/new\|' }).Count | Should -Be 1
-        ($delta -join "`n") | Should -Not -Match '\|session/load\|'
-        Assert-LifetimeSession -Session $survivor -MasterId $script:masterId
     }
 
     It 'Hidden agent lifetime outlives the transfer timeout' {
