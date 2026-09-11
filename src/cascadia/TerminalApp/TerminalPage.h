@@ -838,7 +838,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _CreateNewTabFlyoutAction(const winrt::hstring& actionId, const winrt::hstring& iconPathOverride);
 
         void _OpenNewTabDropdown();
-        HRESULT _OpenNewTab(const Microsoft::Terminal::Settings::Model::INewContentArgs& newContentArgs, bool openInBackground = false);
+        HRESULT _OpenNewTab(const Microsoft::Terminal::Settings::Model::INewContentArgs& newContentArgs, bool openInBackground = false, TerminalApp::Tab* createdTab = nullptr);
         TerminalApp::Tab _CreateNewTabFromPane(std::shared_ptr<Pane> pane, uint32_t insertPosition = -1, bool openInBackground = false);
 
         std::wstring _evaluatePathForCwd(std::wstring_view path);

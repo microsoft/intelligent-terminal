@@ -63,15 +63,19 @@ namespace winrt::TerminalApp::implementation
     //   optionally be provided a NewTerminalArgs, which will be used to create
     //   a tab using the values in that object.
     // Arguments:
-    // - newTerminalArgs: An object that may contain a blob of parameters to
+    // - newContentArgs: An object that may contain a blob of parameters to
     //   control which profile is created and with possible other
     //   configurations. See TerminalSettings::CreateWithNewTerminalArgs for more details.
-    // - existingConnection: An optional connection that is already established to a PTY
-    //   for this tab to host instead of creating one.
-    //   If not defined, the tab will create the connection.
-    HRESULT TerminalPage::_OpenNewTab(const INewContentArgs& newContentArgs, bool openInBackground)
+    // - openInBackground: Whether to preserve the currently focused tab.
+    // - createdTab: Optional output for an actual local tab. Remains null for
+    //   no-op and elevation handoff paths, even when handoff returns S_OK.
+    HRESULT TerminalPage::_OpenNewTab(const INewContentArgs& newContentArgs, bool openInBackground, TerminalApp::Tab* createdTab)
     try
     {
+        if (createdTab)
+        {
+            *createdTab = nullptr;
+        }
         if (const auto& newTerminalArgs{ newContentArgs.try_as<NewTerminalArgs>() })
         {
             const auto profile{ _settings.GetProfileForArgs(newTerminalArgs) };
@@ -95,7 +99,12 @@ namespace winrt::TerminalApp::implementation
 
         // This call to _MakePane won't return nullptr, we already checked that
         // case above with the _maybeElevate call.
-        return _CreateNewTabFromPane(_MakePane(newContentArgs, nullptr), -1, openInBackground) ? S_OK : S_FALSE;
+        const auto tab = _CreateNewTabFromPane(_MakePane(newContentArgs, nullptr), -1, openInBackground);
+        if (createdTab)
+        {
+            *createdTab = tab;
+        }
+        return tab ? S_OK : S_FALSE;
     }
     CATCH_RETURN();
 

@@ -216,6 +216,8 @@ session binding. Publishing `resume_in_new_agent_tab` successfully is only a
 transport acknowledgement: ACP's actual binding establishes liveness. A
 request includes the helper's owning window and tab IDs; the host routes to
 that window only and verifies the source tab before creating a new tab.
+The pending load is attached only to the actual newly created local tab,
+never to the previously focused tab after a no-op or elevation handoff.
 Missing routing metadata is rejected rather than broadcast. A
 host/helper update must keep this private routing contract in sync. A
 30-second post-completion grace period bounds duplicate suppression when no

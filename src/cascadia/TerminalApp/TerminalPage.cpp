@@ -7961,10 +7961,11 @@ namespace winrt::TerminalApp::implementation
         {
             newTerminalArgs.StartingDirectory(winrt::to_hstring(cwdStr));
         }
-        const auto hr = _OpenNewTab(newTerminalArgs, /*openInBackground*/ false);
-        if (FAILED(hr))
+        TerminalApp::Tab createdTab{ nullptr };
+        const auto hr = _OpenNewTab(newTerminalArgs, /*openInBackground*/ false, &createdTab);
+        if (hr != S_OK || !createdTab)
         {
-            _agentPaneLog("OnResumeInNewAgentTabRequested: _OpenNewTab failed");
+            _agentPaneLog("OnResumeInNewAgentTabRequested: no local tab was created");
             return;
         }
 
@@ -7973,10 +7974,10 @@ namespace winrt::TerminalApp::implementation
         // `agent_state_changed{pane_open:true}` lands in
         // `OnAgentStateChanged`, which consumes the pending entry and
         // spawns the helper with the bundled resume request.
-        const auto newTab = _GetFocusedTabImpl();
+        const auto newTab = _GetTabImpl(createdTab);
         if (!newTab)
         {
-            _agentPaneLog("OnResumeInNewAgentTabRequested: no focused tab after _OpenNewTab");
+            _agentPaneLog("OnResumeInNewAgentTabRequested: created tab is unavailable");
             return;
         }
         const auto newStableId = newTab->StableId();
