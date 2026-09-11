@@ -19,7 +19,7 @@ struct tagProxyFileInfo;
 namespace Microsoft::Terminal::Protocol::Activation
 {
     // Keep the registration alive until all protocol proxies/stubs have been
-    // released, and destroy it before uninitializing the owning COM apartment.
+    // released, and destroy it before the owning COM apartment shuts down.
     class ProxyRegistration
     {
     public:
@@ -59,7 +59,7 @@ namespace Microsoft::Terminal::Protocol::Activation
             }
 
             // COM may retain marshaled objects after factory revocation during
-            // shutdown. Their vtables must remain valid until process exit.
+            // shutdown. Their method pointers must remain valid until process exit.
             HMODULE pinnedModule{};
             RETURN_IF_WIN32_BOOL_FALSE(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_PIN, path.c_str(), &pinnedModule));
             _module = std::move(module);
@@ -115,13 +115,19 @@ namespace Microsoft::Terminal::Protocol::Activation
         RETURN_HR_IF_NULL(E_POINTER, result);
         *result = nullptr;
 
+        // Prefer the registered class over any active object under the same
+        // CLSID. Only an unregistered class may use the live endpoint path.
+        const auto activationHr = CoCreateInstance(clsid, nullptr, CLSCTX_LOCAL_SERVER, iid, result);
+        if (activationHr != REGDB_E_CLASSNOTREG)
+        {
+            return activationHr;
+        }
+
         wil::com_ptr<IUnknown> object;
         const auto hr = GetActiveObject(clsid, nullptr, object.put());
         if (hr == MK_E_UNAVAILABLE)
         {
-            // Older hosts publish the manifest CLSID rather than a live ROT
-            // endpoint. Do not fall back after access or interface failures.
-            return CoCreateInstance(clsid, nullptr, CLSCTX_LOCAL_SERVER, iid, result);
+            return activationHr;
         }
         RETURN_IF_FAILED(hr);
         wil::com_ptr<IClassFactory> factory;

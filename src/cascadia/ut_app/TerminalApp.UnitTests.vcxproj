@@ -45,6 +45,10 @@
     <ProjectReference Include="$(OpenConsoleDir)\src\cascadia\TerminalSettingsModel\Microsoft.Terminal.Settings.ModelLib.vcxproj" />
     <ProjectReference Include="$(OpenConsoleDir)\src\types\lib\types.vcxproj" />
     <ProjectReference Include="$(OpenConsoleDir)src\propslib\propslib.vcxproj" />
+    <ProjectReference Include="$(OpenConsoleDir)src\host\proxy\Host.Proxy.vcxproj">
+      <Project>{71CC9D78-BA29-4D93-946F-BEF5D9A3A6EF}</Project>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
   </ItemGroup>
 
   <!-- ========================= Globals ======================== -->

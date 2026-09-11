@@ -2,9 +2,11 @@ aalt
 abvm
 ACCEPTFILES
 ACCESSDENIED
+ACTIVEOBJECT
 AGILEREFERENCE
 alignas
 alignof
+ALLOWANYCLIENT
 APPLYTOSUBMENUS
 appxrecipe
 bitfield
@@ -15,6 +17,7 @@ BUILDMSG
 BUILDNUMBER
 BYCOMMAND
 charconv
+CLASSNOTREG
 CLOSEAPP
 cmdletbinding
 colspan
@@ -118,6 +121,7 @@ numr
 ODR
 offsetof
 ofstream
+oleaut
 onefuzz
 osver
 OSVERSIONINFOEXW
@@ -135,11 +139,15 @@ pmr
 QUERYENDSESSION
 rcx
 REGCLS
+REGDB
+regsvr
 remotesigned
 RETURNCMD
 rfind
 ROOTOWNER
+ROTFLAGS
 roundf
+rpcproxy
 RSHIFT
 rvrn
 SACL

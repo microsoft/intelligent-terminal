@@ -4,6 +4,8 @@ pub fn send(json_payload: String) {
 }
 
 type PublishCallback = Box<dyn FnOnce(anyhow::Result<()>) + Send + 'static>;
+const PUBLISH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+const PUBLISH_REAP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 
 /// Report transport completion, not just acceptance into the publisher queue.
 pub fn send_with_callback(json_payload: String, on_complete: Option<PublishCallback>) {
@@ -166,13 +168,18 @@ fn publisher_sender() -> anyhow::Result<&'static std::sync::mpsc::Sender<Publish
     SENDER
         .get_or_init(|| {
             let (tx, rx) = std::sync::mpsc::channel::<PublishJob>();
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()?;
             std::thread::Builder::new()
                 .name("wt-event-publisher".into())
                 .spawn(move || {
-                    while let Ok(job) = rx.recv() {
-                        let result = publish_blocking(&job.json_payload);
-                        job.complete(result);
-                    }
+                    run_publisher(
+                        rx,
+                        &runtime,
+                        |_| resolved_publish_command(),
+                        PUBLISH_TIMEOUT,
+                    );
                 })?;
             Ok(tx)
         })
@@ -180,12 +187,27 @@ fn publisher_sender() -> anyhow::Result<&'static std::sync::mpsc::Sender<Publish
         .map_err(|error| anyhow::anyhow!("failed to start WT event publisher: {error}"))
 }
 
-fn publish_command(exe: &std::path::Path) -> std::process::Command {
-    let mut command = std::process::Command::new(exe);
+fn run_publisher(
+    rx: std::sync::mpsc::Receiver<PublishJob>,
+    runtime: &tokio::runtime::Runtime,
+    mut command_for: impl FnMut(&str) -> tokio::process::Command,
+    timeout: std::time::Duration,
+) {
+    while let Ok(job) = rx.recv() {
+        let result = runtime.block_on(execute_publish(
+            &mut command_for(&job.json_payload),
+            job.json_payload.as_bytes(),
+            timeout,
+        ));
+        job.complete(result);
+    }
+}
+
+fn publish_command(exe: &std::path::Path) -> tokio::process::Command {
+    let mut command = tokio::process::Command::new(exe);
     command.arg("publish").arg("--stdin");
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
         command.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
     command
@@ -195,69 +217,178 @@ fn publish_command(exe: &std::path::Path) -> std::process::Command {
     command
 }
 
-#[derive(Debug)]
-enum PublishError {
-    Spawn(std::io::Error),
-    MissingStdin,
-    Write(std::io::Error),
-    Wait(std::io::Error),
-    Exit(std::process::ExitStatus),
+async fn execute_publish(
+    command: &mut tokio::process::Command,
+    json_payload: &[u8],
+    timeout: std::time::Duration,
+) -> anyhow::Result<()> {
+    use anyhow::Context;
+
+    let mut child = command
+        .kill_on_drop(true)
+        .spawn()
+        .context("failed to start wtcli publish")?;
+    finish_publish(&mut child, json_payload, timeout).await
 }
 
-impl std::fmt::Display for PublishError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Spawn(error) => write!(f, "failed to start wtcli publish: {error}"),
-            Self::MissingStdin => write!(f, "wtcli publish stdin was not piped"),
-            Self::Write(error) => write!(f, "failed writing wtcli publish payload: {error}"),
-            Self::Wait(error) => write!(f, "failed waiting for wtcli publish: {error}"),
-            Self::Exit(status) => write!(f, "wtcli publish failed ({status})"),
+async fn finish_publish(
+    child: &mut tokio::process::Child,
+    json_payload: &[u8],
+    timeout: std::time::Duration,
+) -> anyhow::Result<()> {
+    use anyhow::Context;
+    use tokio::io::AsyncWriteExt;
+
+    let stdin = child.stdin.take();
+    // Both a child that never reads stdin and a blocked SendEvent share this
+    // deadline. Cancellation drops the pipe before kill/reap begins.
+    let completed = tokio::time::timeout(timeout, async {
+        let mut stdin = stdin.context("wtcli publish stdin was not piped")?;
+        stdin
+            .write_all(json_payload)
+            .await
+            .context("failed writing wtcli publish payload")?;
+        stdin
+            .flush()
+            .await
+            .context("failed writing wtcli publish payload")?;
+        drop(stdin);
+        child
+            .wait()
+            .await
+            .context("failed waiting for wtcli publish")
+    })
+    .await;
+    let mut failure = match completed {
+        Ok(Ok(status)) if status.success() => return Ok(()),
+        Ok(Ok(status)) => anyhow::bail!("wtcli publish failed ({status})"),
+        Ok(Err(error)) => error,
+        Err(_) => anyhow::anyhow!("wtcli publish timed out after {timeout:?}"),
+    };
+    if let Err(error) = child.start_kill() {
+        failure = failure.context(format!("wtcli publish kill failed: {error}"));
+    }
+    match tokio::time::timeout(PUBLISH_REAP_TIMEOUT, child.wait()).await {
+        Ok(Ok(_)) => {}
+        Ok(Err(error)) => failure = failure.context(format!("wtcli publish reap failed: {error}")),
+        Err(_) => {
+            failure = failure.context(format!(
+                "wtcli publish reap timed out after {PUBLISH_REAP_TIMEOUT:?}"
+            ))
         }
     }
-}
-
-impl std::error::Error for PublishError {}
-
-fn execute_publish(
-    command: &mut std::process::Command,
-    json_payload: &[u8],
-) -> Result<(), PublishError> {
-    use std::io::Write;
-
-    let mut child = command.spawn().map_err(PublishError::Spawn)?;
-    let write_result = match child.stdin.take() {
-        Some(mut stdin) => stdin.write_all(json_payload).map_err(PublishError::Write),
-        None => Err(PublishError::MissingStdin),
-    };
-    if let Err(error) = write_result {
-        let _ = child.kill();
-        let _ = child.wait();
-        return Err(error);
-    }
-
-    let status = child.wait().map_err(PublishError::Wait)?;
-    if !status.success() {
-        return Err(PublishError::Exit(status));
-    }
-    Ok(())
+    Err(failure)
 }
 
 #[cfg(not(test))]
-fn publish_blocking(json_payload: &str) -> anyhow::Result<()> {
+fn resolved_publish_command() -> tokio::process::Command {
     let exe = std::env::current_exe()
         .ok()
         .and_then(|path| path.parent().map(|directory| directory.join("wtcli.exe")))
         .filter(|path| path.exists())
         .unwrap_or_else(|| std::path::PathBuf::from("wtcli.exe"));
-    let mut command = publish_command(&exe);
-    execute_publish(&mut command, json_payload.as_bytes()).map_err(Into::into)
+    publish_command(&exe)
 }
 
 #[cfg(test)]
 mod tests {
+    fn blocked_publish_command() -> tokio::process::Command {
+        let mut command = tokio::process::Command::new("powershell.exe");
+        command
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "[Threading.Thread]::Sleep(60000)",
+            ])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .kill_on_drop(true);
+        command
+    }
+
+    #[tokio::test]
+    async fn publish_timeout_bounds_stdin_and_wait_and_reaps_child() {
+        for payload in [vec![b'x'], vec![b'x'; 1024 * 1024]] {
+            let mut child = blocked_publish_command().spawn().unwrap();
+            let error =
+                super::finish_publish(&mut child, &payload, std::time::Duration::from_millis(100))
+                    .await
+                    .unwrap_err();
+            assert!(
+                format!("{error:#}").contains("wtcli publish timed out"),
+                "{error:#}"
+            );
+            assert!(
+                child.try_wait().unwrap().is_some(),
+                "timed-out child must be reaped"
+            );
+        }
+    }
+
     #[test]
-    fn resume_publish_reports_transport_failures_to_callback() {
-        use std::process::{Command, Stdio};
+    fn publish_timeout_completes_once_and_queue_keeps_submission_order() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let (results, received) = std::sync::mpsc::channel();
+        for index in 0..3 {
+            let results = results.clone();
+            tx.send(super::PublishJob {
+                json_payload: index.to_string(),
+                on_complete: Some(Box::new(move |result| {
+                    results
+                        .send((index, result.map_err(|error| format!("{error:#}"))))
+                        .unwrap();
+                })),
+            })
+            .unwrap();
+        }
+        drop(tx);
+        drop(results);
+        let worker = std::thread::spawn(move || {
+            super::run_publisher(
+                rx,
+                &runtime,
+                |payload| {
+                    if payload == "0" {
+                        blocked_publish_command()
+                    } else {
+                        let mut command = tokio::process::Command::new("cmd.exe");
+                        command
+                            .args(["/D", "/C", "set /p value= & exit /b 0"])
+                            .stdin(std::process::Stdio::piped());
+                        command
+                    }
+                },
+                std::time::Duration::from_secs(1),
+            );
+        });
+        for expected in 0..3 {
+            let (index, result) = received
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .unwrap();
+            assert_eq!(index, expected);
+            if index == 0 {
+                assert!(result.unwrap_err().contains("wtcli publish timed out"));
+            } else {
+                assert!(result.is_ok(), "{result:?}");
+            }
+        }
+        worker.join().unwrap();
+        assert!(matches!(
+            received.try_recv(),
+            Err(std::sync::mpsc::TryRecvError::Disconnected)
+        ));
+    }
+
+    #[tokio::test]
+    async fn resume_publish_reports_transport_failures_to_callback() {
+        use std::process::Stdio;
+        use tokio::process::Command;
 
         let mut missing = Command::new(format!("missing-wtcli-{}.exe", uuid::Uuid::new_v4()));
         missing.stdin(Stdio::piped());
@@ -282,7 +413,8 @@ mod tests {
                 "failed writing wtcli publish",
             ),
         ] {
-            let result = super::execute_publish(&mut command, &payload).map_err(Into::into);
+            let result =
+                super::execute_publish(&mut command, &payload, super::PUBLISH_TIMEOUT).await;
             let (tx, rx) = std::sync::mpsc::channel();
             super::PublishJob {
                 json_payload: r#"{"method":"resume_in_new_agent_tab"}"#.into(),
@@ -413,6 +545,7 @@ mod tests {
     fn publish_command_selects_stdin_transport() {
         let command = super::publish_command(std::path::Path::new("wtcli.exe"));
         let arguments: Vec<_> = command
+            .as_std()
             .get_args()
             .map(|argument| argument.to_string_lossy().into_owned())
             .collect();
@@ -421,14 +554,14 @@ mod tests {
     }
 
     #[cfg(windows)]
-    #[test]
-    fn execute_publish_writes_and_closes_large_stdin_payload() {
+    #[tokio::test]
+    async fn execute_publish_writes_and_closes_large_stdin_payload() {
         let capture_path = std::env::temp_dir().join(format!(
             "wta-publish-{}-{}.json",
             std::process::id(),
             uuid::Uuid::new_v4()
         ));
-        let mut command = std::process::Command::new("powershell.exe");
+        let mut command = tokio::process::Command::new("powershell.exe");
         command
             .args([
                 "-NoLogo",
@@ -448,7 +581,8 @@ mod tests {
             "x".repeat(128 * 1024)
         );
 
-        super::execute_publish(&mut command, payload.as_bytes())
+        super::execute_publish(&mut command, payload.as_bytes(), super::PUBLISH_TIMEOUT)
+            .await
             .expect("fake wtcli process must accept the payload and observe EOF");
         let captured = std::fs::read(&capture_path).expect("fake wtcli must capture stdin");
         let _ = std::fs::remove_file(&capture_path);

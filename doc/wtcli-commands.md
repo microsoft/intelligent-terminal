@@ -11,6 +11,10 @@ object for each connection through that factory. Windows' user, desktop, and
 integrity-level checks remain in force; a non-elevated client cannot use an
 administrator host's endpoint. `WT_COM_CLSID` is routing metadata, not a secret.
 
+Class activation is attempted first. The ROT is consulted only after
+`REGDB_E_CLASSNOTREG`, never after an access or interface error, so an active
+object cannot override an available normal host's registered class.
+
 Both endpoints register the adjacent `OpenConsoleProxy.dll` inside their own
 process, including the callback interface used by `listen`. This does not
 write COM registry entries or require `regsvr32`. Do not copy the administrator

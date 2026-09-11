@@ -21,11 +21,17 @@ namespace TerminalAppUnitTests
 
         struct TestFactory : Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IClassFactory>
         {
+            HRESULT creationResult{ S_OK };
+
             STDMETHODIMP CreateInstance(IUnknown* outer, REFIID iid, void** result) override
             {
                 if (outer)
                 {
                     return CLASS_E_NOAGGREGATION;
+                }
+                if (FAILED(creationResult))
+                {
+                    return creationResult;
                 }
                 const auto object = Microsoft::WRL::Make<TestObject>();
                 return object ? object.CopyTo(iid, result) : E_OUTOFMEMORY;
@@ -45,7 +51,9 @@ namespace TerminalAppUnitTests
         TEST_METHOD(RunningFactoryCreatesIndependentObjects);
         TEST_METHOD(RunningFactoryRevokesEndpoint);
         TEST_METHOD(LegacyClassRegistrationStillWorks);
-        TEST_METHOD(NonFactoryActiveObjectFailsWithoutFallback);
+        TEST_METHOD(RegisteredClassTakesPrecedenceOverActiveObject);
+        TEST_METHOD(NonFactoryRunningEndpointIsRejected);
+        TEST_METHOD(ActivationFailureDoesNotUseRunningFactory);
         TEST_METHOD(MissingProxyFailsExplicitly);
         TEST_METHOD(CoLocatedProxyCreatesProtocolAndCallbackProxies);
     };
@@ -93,7 +101,26 @@ namespace TerminalAppUnitTests
         VERIFY_SUCCEEDED(Activation::CreateInstance(clsid, IID_PPV_ARGS(object.put())));
     }
 
-    void ProtocolActivationTests::NonFactoryActiveObjectFailsWithoutFallback()
+    void ProtocolActivationTests::RegisteredClassTakesPrecedenceOverActiveObject()
+    {
+        auto apartment = wil::CoInitializeEx(COINIT_MULTITHREADED);
+        GUID clsid{};
+        VERIFY_SUCCEEDED(CoCreateGuid(&clsid));
+        const auto otherFactory = Microsoft::WRL::Make<TestFactory>();
+        otherFactory->creationResult = E_ACCESSDENIED;
+        DWORD cookie{};
+        VERIFY_SUCCEEDED(RegisterActiveObject(otherFactory.Get(), clsid, ACTIVEOBJECT_STRONG, &cookie));
+        auto revoke = wil::scope_exit([&]() { LOG_IF_FAILED(RevokeActiveObject(cookie, nullptr)); });
+        const auto factory = Microsoft::WRL::Make<TestFactory>();
+        wil::unique_com_class_object_cookie legacy;
+        VERIFY_SUCCEEDED(CoRegisterClassObject(clsid, factory.Get(), CLSCTX_LOCAL_SERVER, REGCLS_MULTIPLEUSE, legacy.put()));
+
+        wil::com_ptr<IUnknown> result;
+        VERIFY_SUCCEEDED(Activation::CreateInstance(clsid, IID_PPV_ARGS(result.put())));
+        VERIFY_IS_NOT_NULL(result.get());
+    }
+
+    void ProtocolActivationTests::NonFactoryRunningEndpointIsRejected()
     {
         auto apartment = wil::CoInitializeEx(COINIT_MULTITHREADED);
         GUID clsid{};
@@ -102,12 +129,25 @@ namespace TerminalAppUnitTests
         DWORD cookie{};
         VERIFY_SUCCEEDED(RegisterActiveObject(object.Get(), clsid, ACTIVEOBJECT_STRONG, &cookie));
         auto revoke = wil::scope_exit([&]() { LOG_IF_FAILED(RevokeActiveObject(cookie, nullptr)); });
-        const auto factory = Microsoft::WRL::Make<TestFactory>();
-        wil::unique_com_class_object_cookie legacy;
-        VERIFY_SUCCEEDED(CoRegisterClassObject(clsid, factory.Get(), CLSCTX_LOCAL_SERVER, REGCLS_MULTIPLEUSE, legacy.put()));
 
         wil::com_ptr<IUnknown> result;
         VERIFY_ARE_EQUAL(E_NOINTERFACE, Activation::CreateInstance(clsid, IID_PPV_ARGS(result.put())));
+        VERIFY_IS_NULL(result.get());
+    }
+
+    void ProtocolActivationTests::ActivationFailureDoesNotUseRunningFactory()
+    {
+        auto apartment = wil::CoInitializeEx(COINIT_MULTITHREADED);
+        const auto runningFactory = Microsoft::WRL::Make<TestFactory>();
+        Activation::RunningFactoryRegistration running;
+        VERIFY_SUCCEEDED(running.Initialize(runningFactory.Get()));
+        const auto registeredFactory = Microsoft::WRL::Make<TestFactory>();
+        registeredFactory->creationResult = E_ACCESSDENIED;
+        wil::unique_com_class_object_cookie legacy;
+        VERIFY_SUCCEEDED(CoRegisterClassObject(running.Clsid(), registeredFactory.Get(), CLSCTX_LOCAL_SERVER, REGCLS_MULTIPLEUSE, legacy.put()));
+
+        wil::com_ptr<IUnknown> result;
+        VERIFY_ARE_EQUAL(E_ACCESSDENIED, Activation::CreateInstance(running.Clsid(), IID_PPV_ARGS(result.put())));
         VERIFY_IS_NULL(result.get());
     }
 
