@@ -197,4 +197,8 @@
     <value>Open in &amp;Intelligent Terminal</value>
     <comment>This is a menu item that will be displayed in the Windows File Explorer that launches Intelligent Terminal. Please mark one of the characters to be an accelerator key.</comment>
   </data>
+  <data name="ShellExtension_OpenInTerminalMenuItem_NewWindowDescription" xml:space="preserve">
+    <value>Open a new Intelligent Terminal window</value>
+    <comment>{Locked="Intelligent Terminal"} This is a short File Explorer description for the shell extension action. "Open a new" means launch another app window, not a new tab.</comment>
+  </data>
 </root>
