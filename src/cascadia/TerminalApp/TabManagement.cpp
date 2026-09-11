@@ -19,6 +19,7 @@
 
 #include "AgentPaneContent.h"
 #include "AgentPaneLog.h"
+#include "ShellIntegrationSweep.h"
 #include "SharedWta.h"
 #include "TabRowControl.h"
 #include "DebugTapConnection.h"
@@ -368,6 +369,12 @@ namespace winrt::TerminalApp::implementation
                     CATCH_LOG()
                 }
             });
+            ShellIntegrationSweep::QueueNewTabWslInstallWork<winrt::TerminalApp::TerminalPaneContent>(
+                _settings.GlobalSettings(),
+                pane,
+                get_strong(),
+                _shellIntegrationDesiredEnabled,
+                _shellIntegrationReconcileMutex);
             auto newTabImpl = winrt::make_self<Tab>(pane);
             if (_receivingContentTransfer)
             {

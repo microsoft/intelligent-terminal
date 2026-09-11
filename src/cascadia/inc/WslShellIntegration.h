@@ -25,12 +25,16 @@
 
 #pragma once
 
+#include <mutex>
+#include <set>
+
 #include "ShellIntegrationCommon.h"
 #include "BashShellIntegration.h"
-#include "ShellIntegrationProfileGate.h"
 
 namespace Microsoft::Terminal::ShellIntegration::Wsl
 {
+    using InstallDiagnosticObserver = void (*)(std::wstring_view launchCommandline, std::string_view event) noexcept;
+
     namespace details
     {
         // True for distro names that are safe to embed verbatim in a
@@ -555,6 +559,37 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
             }
             return id;
         }
+
+        inline std::mutex& InstallAttemptedCommandlinesMutex() noexcept
+        {
+            static std::mutex mutex;
+            return mutex;
+        }
+
+        inline std::set<std::wstring, std::less<>>& InstallAttemptedCommandlines() noexcept
+        {
+            static std::set<std::wstring, std::less<>> commandlines;
+            return commandlines;
+        }
+
+        inline std::string_view InstallOutcomeEvent(const InstallResult& result) noexcept
+        {
+            if (!result.success)
+            {
+                return "failed";
+            }
+            return result.alreadyInstalled ? "no-change" : "completed";
+        }
+
+        inline void NotifyInstallDiagnostic(InstallDiagnosticObserver observer,
+                                            std::wstring_view launchCommandline,
+                                            std::string_view event) noexcept
+        {
+            if (observer)
+            {
+                observer(launchCommandline, event);
+            }
+        }
     }
 
     // Returns the distro name a prior Install/Uninstall already resolved for
@@ -660,17 +695,61 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
     // `C:\Windows\system32\wsl.exe --distribution-id {GUID}`,
     // `wsl.exe -d Ubuntu`, or `C:\Windows\System32\bash.exe`).
     //
-    // Synchronous — call from a background thread. The first call for each
-    // commandline can block up to 30s on a cold-start; subsequent calls
-    // return immediately from the cache.
-    inline InstallResult Install(const std::wstring& launchCommandline)
+    // Synchronous — call from a background thread. Each exact commandline gets
+    // one attempt per process, which can block up to 30s on a cold-start.
+    // Repeated calls return without waiting or retrying, even if the first
+    // attempt is still running or failed; they never reach the identity probe.
+    template<typename InstallFn>
+    inline InstallResult Install(std::wstring_view launchCommandline,
+                                 InstallFn&& install,
+                                 InstallDiagnosticObserver diagnosticObserver)
     {
-        WslBashFlavor flavor{ launchCommandline };
-        if (!flavor.Valid())
+        bool started;
         {
-            return { false, false, std::wstring{ flavor.ErrorMessage() } };
+            std::lock_guard<std::mutex> guard{ details::InstallAttemptedCommandlinesMutex() };
+            started = details::InstallAttemptedCommandlines().emplace(launchCommandline).second;
         }
-        return orchestrator::Install(flavor);
+        if (!started)
+        {
+            details::NotifyInstallDiagnostic(diagnosticObserver, launchCommandline, "skip-already-attempted");
+            return { true, true, {} };
+        }
+
+        details::NotifyInstallDiagnostic(diagnosticObserver, launchCommandline, "attempt-started");
+
+        try
+        {
+            const auto result = install(launchCommandline);
+            details::NotifyInstallDiagnostic(diagnosticObserver, launchCommandline, details::InstallOutcomeEvent(result));
+            return result;
+        }
+        catch (...)
+        {
+            details::NotifyInstallDiagnostic(diagnosticObserver, launchCommandline, "thrown");
+            throw;
+        }
+    }
+
+    namespace details
+    {
+        inline InstallResult InstallShellIntegration(std::wstring_view commandline)
+        {
+            WslBashFlavor flavor{ std::wstring{ commandline } };
+            if (!flavor.Valid())
+            {
+                return { false, false, std::wstring{ flavor.ErrorMessage() } };
+            }
+            return orchestrator::Install(flavor);
+        }
+    }
+
+    inline InstallResult Install(const std::wstring& launchCommandline,
+                                 InstallDiagnosticObserver diagnosticObserver = nullptr)
+    {
+        return Install(
+            std::wstring_view{ launchCommandline },
+            details::InstallShellIntegration,
+            diagnosticObserver);
     }
 
     inline InstallResult Uninstall(const std::wstring& launchCommandline)
@@ -686,4 +765,5 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
         }
         return orchestrator::Uninstall(flavor);
     }
+
 }
