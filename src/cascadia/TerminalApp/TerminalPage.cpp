@@ -7923,36 +7923,36 @@ namespace winrt::TerminalApp::implementation
         if (!Json::parseFromStream(rb, is, &evt, &errs))
         {
             _agentPaneLog("OnResumeInNewAgentTabRequested: failed to parse JSON: " + errs);
-            return;
+            THROW_HR(E_INVALIDARG);
         }
         if (!evt.isMember("params") || !evt["params"].isObject())
         {
             _agentPaneLog("OnResumeInNewAgentTabRequested: missing params object");
-            return;
+            THROW_HR(E_INVALIDARG);
         }
         if (!::Microsoft::Terminal::Protocol::Parsing::IsValidAgentResumeRequest(evt))
         {
             _agentPaneLog("OnResumeInNewAgentTabRequested: missing or invalid owner routing");
-            return;
+            THROW_HR(E_INVALIDARG);
         }
         if (!::Microsoft::Terminal::Protocol::Parsing::AgentResumeTargetsWindow(
                 evt, std::to_string(_WindowProperties.WindowId())))
         {
-            return;
+            THROW_HR(HRESULT_FROM_WIN32(ERROR_NOT_FOUND));
         }
         const auto& params = evt["params"];
         const auto sourceTab = _FindTabByStableId(winrt::to_hstring(params["tab_id"].asString()));
         if (!sourceTab)
         {
             _agentPaneLog("OnResumeInNewAgentTabRequested: source tab no longer belongs to this window");
-            return;
+            THROW_HR(HRESULT_FROM_WIN32(ERROR_NOT_FOUND));
         }
         const std::string sessionIdStr = params.get("session_id", "").asString();
         const std::string cwdStr = params.get("cwd", "").asString();
         if (sessionIdStr.empty())
         {
             _agentPaneLog("OnResumeInNewAgentTabRequested: empty session_id — ignoring");
-            return;
+            THROW_HR(E_INVALIDARG);
         }
 
         // Step 1: create a new tab.
@@ -7966,7 +7966,8 @@ namespace winrt::TerminalApp::implementation
         if (hr != S_OK || !createdTab)
         {
             _agentPaneLog("OnResumeInNewAgentTabRequested: no local tab was created");
-            return;
+            THROW_IF_FAILED(hr);
+            THROW_HR(E_ABORT);
         }
 
         // Step 2: register the pending load-session for the new tab and
@@ -7978,13 +7979,13 @@ namespace winrt::TerminalApp::implementation
         if (!newTab)
         {
             _agentPaneLog("OnResumeInNewAgentTabRequested: created tab is unavailable");
-            return;
+            THROW_HR(E_UNEXPECTED);
         }
         const auto newStableId = newTab->StableId();
         if (newStableId.empty())
         {
             _agentPaneLog("OnResumeInNewAgentTabRequested: new tab has empty StableId");
-            return;
+            THROW_HR(E_UNEXPECTED);
         }
         _pendingLoadSessions[newStableId] = _PendingLoadSession{ sessionIdStr, cwdStr };
         _agentPaneLog("OnResumeInNewAgentTabRequested: stashed pending load_session for tab " +

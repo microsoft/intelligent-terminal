@@ -1590,6 +1590,15 @@ void TerminalProtocolComServer::_dispatchAgentStateChangedToPage(const winrt::hs
     }
 }
 
+static winrt::Windows::Foundation::IAsyncAction _resumeAgentTabOnPage(
+    winrt::TerminalApp::TerminalPage page,
+    winrt::hstring eventJson,
+    winrt::Windows::UI::Core::CoreDispatcher dispatcher)
+{
+    co_await wil::resume_foreground(dispatcher);
+    page.OnResumeInNewAgentTabRequested(eventJson);
+}
+
 HRESULT TerminalProtocolComServer::_dispatchResumeInNewAgentTabToPage(const winrt::hstring& eventJson) noexcept
 try
 {
@@ -1614,18 +1623,9 @@ try
         {
             return RO_E_CLOSED;
         }
-        dispatcher.RunAsync(
-            winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
-            [page, eventJson]() {
-                try
-                {
-                    page.OnResumeInNewAgentTabRequested(eventJson);
-                }
-                catch (...)
-                {
-                    LOG_CAUGHT_EXCEPTION();
-                }
-            });
+        // COM callers run on MTA workers. Wait for UI-side creation so failures
+        // reach the publisher instead of acknowledging only dispatcher enqueue.
+        _resumeAgentTabOnPage(page, eventJson, dispatcher).get();
         return S_OK;
     }
     return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
