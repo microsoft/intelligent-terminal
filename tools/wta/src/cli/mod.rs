@@ -3,6 +3,7 @@ pub(crate) mod args;
 pub(crate) mod delegate;
 pub(crate) mod hooks;
 pub(crate) mod probes;
+pub(crate) mod resume;
 pub(crate) mod sessions;
 pub(crate) mod wt;
 
@@ -12,6 +13,7 @@ use args::{Command, HooksAction, SessionsAction};
 
 pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
     match command {
+        Command::ResumeSession { payload } => resume::run(&payload).await,
         command @ (Command::Info
         | Command::TestPipe
         | Command::ListWindows

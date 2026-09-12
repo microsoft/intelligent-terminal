@@ -247,6 +247,9 @@ pub(crate) struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub(crate) enum Command {
+    /// Internal data-only launcher for an interactive historical session.
+    #[command(hide = true)]
+    ResumeSession { payload: String },
     /// Show Windows Terminal protocol connection info
     Info,
     /// Test protocol connection to Windows Terminal

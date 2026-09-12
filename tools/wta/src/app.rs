@@ -3054,7 +3054,7 @@ impl App {
     ///
     /// Flow:
     ///   1. Track the in-flight request locally without claiming a live session.
-    ///   2. Issue `wtcli --json new-tab -c "<cli> <flag> <key>" -d "<cwd>"`
+    ///   2. Issue `wtcli --json new-tab` with an encoded data-only launcher
     ///      on a background thread via
     ///      `spawn_wtcli_split_then_focus_with_callback` — the helper is
     ///      generic (parses `session_id` from JSON and focuses the new
@@ -3094,60 +3094,7 @@ impl App {
         }
 
         let key = s.key.clone();
-        let resume_invocation = format!("{} {} {}", cli_id, profile.resume_flag, key);
-        // WSL rows run the distro's own CLI *inside* the distro. Two
-        // WSL/cmd quirks shape this command line:
-        //   * The distro name is **not** quoted. `wsl -d "Ubuntu"` fails with
-        //     WSL_E_DISTRO_NOT_FOUND when the command runs under the
-        //     `cmd /c echo … && …` banner wrapper — cmd/wsl don't strip the
-        //     quotes off `-d`, so wsl looks for a distro literally named
-        //     `"Ubuntu"`. Distro names from `wsl -l` are space-free, so bare
-        //     `-d <distro>` is safe. The `--cd` path keeps its quotes (it can
-        //     contain spaces and quoting works fine there).
-        //   * The CLI is launched through a **login shell** (`bash -lc`) so the
-        //     user's PATH is set up — a snap-installed Copilot lives in
-        //     `/snap/bin`, which a bare `wsl -- copilot` misses ("command not
-        //     found"). A login shell sources the profile that adds it.
-        let login_invocation = format!("bash -lc \"{resume_invocation}\"");
-        let commandline = match &s.location {
-            crate::agent_sessions::SessionLocation::Wsl { distro } => match linux_cwd_arg(&s.cwd) {
-                Some(cwd) => format!("wsl -d {distro} --cd \"{cwd}\" -- {login_invocation}"),
-                None => format!("wsl -d {distro} -- {login_invocation}"),
-            },
-            crate::agent_sessions::SessionLocation::Host => resume_invocation,
-        };
-
-        // Per-CLI session stores are keyed by an encoding of the *current*
-        // working directory (e.g. Claude looks under
-        // `~/.claude/projects/<encoded-cwd>/<id>.jsonl`; Copilot and
-        // Gemini behave similarly). Without the right cwd the CLI
-        // reports `No conversation found with session ID: <id>` even
-        // though the JSONL exists on disk.
-        //
-        // `wtcli new-tab` exposes `-d <cwd>` (see
-        // `src/tools/wtcli/main.cpp:326-353` → COM `CreateTab(...,
-        // startingDirectory, ...)`) so the new tab's primary pane
-        // launches in the historical session's project root directly,
-        // without needing a `cd /d` shell prefix.
-        //
-        // We still wrap the CLI invocation in `cmd /c` because
-        // npm-installed CLIs (`copilot.cmd`, `claude.cmd`, `gemini.cmd`)
-        // need cmd.exe's PATHEXT resolution to launch from a bare name
-        // (`CreateProcess` returns 0x80070002 for `.cmd` shims).
-        //
-        // Loading banner (issue #135): the agent CLIs take 1–3s of
-        // Node.js cold-start + JSONL history parse before they paint
-        // anything, so the new tab was blank with no feedback. Prepend
-        // a blinking ANSI banner (`SGR 1;36;5` = bold cyan slow-blink)
-        // so the user sees immediate animated feedback in the new
-        // pane while the CLI cold-starts. The CLI's alt-screen TUI
-        // takes over once it boots and overwrites this line cleanly,
-        // so the banner leaves no residue on success. On CLI launch
-        // failure the banner stays put together with cmd.exe's error
-        // message — that's a feature, not a bug (the short id helps
-        // the user file a useful report). The trailing `\x1b[0m`
-        // reset guarantees any post-failure output isn't tinted /
-        // blinking.
+        let on_complete = self.begin_session_resume(&key);
         let raw_cwd_string = s.cwd.to_string_lossy().to_string();
         // Drop stale cwd so wtcli falls back to the profile default
         // rather than failing CreateProcessW with ERROR_DIRECTORY.
@@ -3165,24 +3112,26 @@ impl App {
                 "dispatch_resume: stored cwd is no longer a valid directory; falling back to profile default",
             );
         }
-        let short_key: String = key.chars().take(8).collect();
-        // Loading banner shown in the new pane while the CLI cold-starts.
-        // WSL rows also name the distro ("Resuming copilot session abc-123
-        // in Ubuntu (WSL)...") so the user can see which distro is being
-        // entered; host rows keep just the short session id. A WSL session
-        // only appears in the list because its distro was already started and
-        // scanned, so it is running at resume time — a "starting the distro…"
-        // hint would usually be wrong. (WSL2 can auto-shut-down an idle distro
-        // later, but a frequently-wrong hint is worse than none.)
-        let banner = match &s.location {
-            crate::agent_sessions::SessionLocation::Wsl { distro } => {
-                format!("Resuming {cli_id} session {short_key} in {distro} (WSL)...")
-            }
-            crate::agent_sessions::SessionLocation::Host => {
-                format!("Resuming {cli_id} session {short_key}...")
+        let plan = crate::cli::resume::ResumeLaunch {
+            agent: cli_id.into(),
+            session_id: key.clone(),
+            cwd: if s.location.is_wsl() {
+                linux_cwd_arg(&s.cwd).map(|cwd| cwd.to_string())
+            } else {
+                valid_cwd.clone()
+            },
+            distro: match &s.location {
+                crate::agent_sessions::SessionLocation::Wsl { distro } => Some(distro.clone()),
+                crate::agent_sessions::SessionLocation::Host => None,
+            },
+        };
+        let launch_commandline = match crate::cli::resume::commandline(&plan) {
+            Ok(commandline) => commandline,
+            Err(error) => {
+                on_complete(Err(error));
+                return;
             }
         };
-        let launch_commandline = format!("cmd /c echo \x1b[2;37m{banner}\x1b[0m && {commandline}");
         let mut argv = vec![
             "new-tab".to_string(),
             "-c".to_string(),
@@ -3192,11 +3141,12 @@ impl App {
             argv.push("--title".to_string());
             argv.push(s.title.clone());
         }
-        if let Some(ref cwd) = valid_cwd {
+        // A literal percent path must bypass WT's environment expansion.
+        // The launcher applies the original cwd from its encoded data instead.
+        if let Some(ref cwd) = valid_cwd.filter(|cwd| !cwd.contains('%')) {
             argv.push("-d".to_string());
             argv.push(cwd.clone());
         }
-        let on_complete = self.begin_session_resume(&key);
         let cb_key = key.clone();
         let cb_location = s.location.clone();
         // Unit dispatch tests have no event loop and must not launch real tabs.
@@ -3219,7 +3169,6 @@ impl App {
             target: "agents_view",
             key = %key,
             cli = %cli_id,
-            commandline = %commandline,
             launch_commandline = %launch_commandline,
             "dispatch_resume: new-tab scheduled",
         );

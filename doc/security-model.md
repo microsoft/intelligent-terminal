@@ -220,10 +220,19 @@ WTA also exposes helper CLI commands for humans, agents, diagnostics, and Settin
 |---|---|---|
 | WT operation helpers | `list-*`, `active-pane`, `capture-pane`, `pane-status`, `new-tab`, `split-pane`, `kill-pane`, `wait-for`, `listen` | Route reads, mutations (including `SendInput`), and event subscription through `CliChannel` / `wtcli.exe` / COM. They do not create a separate trust boundary. |
 | Delegation helper | `delegate` | Reads active-pane context, builds a delegate Agent CLI command line, then calls COM `CreateTab(commandline)` so WT launches the delegate Agent CLI in a new ConPTY tab. This is a pane-context disclosure and COM process-creation surface. |
+| Internal history-resume launcher | `resume-session` (hidden) | Receives encoded launch data and starts a known agent CLI with its opaque session ID as an argument. It is an ordinary pane process, not an ACP helper or authorization boundary. |
 | Hook-management helpers | `hooks install`, `hooks install --force`, `hooks status`, `hooks uninstall` | Use third-party Agent CLI plugin / extension managers and filesystem state. They affect persistent hook configuration. The default install command performs automatic reconciliation; `--force` reruns the first-install flow as a manual recovery path. |
 | Discovery / diagnostics helpers | `pipe-id`, `set-env` / `setenv`, `info`, `test-pipe` and legacy hidden flags | Expose or test WT protocol routing metadata such as `WT_COM_CLSID`. This metadata is not a bearer secret, but it helps a process locate the COM endpoint when observed platform activation behavior allows it. |
 
 None of these helper categories grants a new authorization boundary. Direct shell input is reachable from any COM-allowed caller via `IProtocolServer::SendInput` (or `wtcli send-keys`); there is no separate capability transport gating it.
+
+Historical session IDs are untrusted data. The session picker must not append
+them, including their banner preview, to shell source. Its encoded bootstrap
+survives Terminal's percent-variable expansion; the launcher uses batch-aware
+process arguments on Windows and a fixed Bash script with positional arguments
+under WSL `--exec`. Banner control characters are escaped before output.
+Encoding prevents reinterpretation, not disclosure or forgery: it is neither
+encryption nor a credential.
 
 ### 2.7 Agent hook bridge
 

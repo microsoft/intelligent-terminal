@@ -30,6 +30,12 @@ share one agent process. Bare `wta` with no subcommand and neither `--master`
 nor `--connect-master` exits with an error — there is no standalone agent / TUI
 mode.
 
+The session picker uses a private `resume-session` launcher inside resumed
+shell panes. It receives encoded launch data, prints the startup banner
+directly, and waits for the selected agent CLI with inherited terminal I/O.
+This is not a standalone ACP/TUI mode or a public command contract. Provider
+session IDs are arguments, never fragments of a `cmd` or Bash program.
+
 The default agent is Copilot; the agent and model come from Windows Terminal
 settings (`acpAgent` / `acpModel`) and are passed through to master via `--agent`
 / `--agent-id` / `--acp-model`.

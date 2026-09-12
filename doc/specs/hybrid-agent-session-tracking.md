@@ -207,6 +207,18 @@ the hook-free resume binding, so `handle_session_hook` records it in
 treated as hook-owned and its row would sit at `Idle` forever even as the watcher
 saw activity.
 
+Shell resume launches the same WTA binary through an encoded PowerShell
+bootstrap. The executable path and serialized agent/session/cwd/distro data
+contain no raw input at Terminal's environment-expansion boundary. The private
+`resume-session` command prints the banner directly (escaping control characters)
+and supplies the opaque session ID as one argument. Host launches use Rust's
+Windows batch-aware process argument handling for EXE/CMD/BAT providers. WSL uses
+`--exec bash -lc` with the fixed `exec "$@"` script and positional arguments,
+preserving login-shell PATH without interpolating the ID or cwd into a program.
+Literal-percent host directories are applied by the launcher rather than
+expanded by Terminal. NUL and unrepresentable batch CR/LF arguments fail
+explicitly; platform command-line length limits still apply.
+
 Host shell resume observes the follow-up persistence-binding publication and
 retries it once on failure; only the identical binding event is retried, never
 tab creation. Completion retains the actual created pane even if both

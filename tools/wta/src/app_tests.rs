@@ -7248,25 +7248,23 @@ fn enter_on_history_row_dispatches_new_tab_with_resume() {
         "resume tab must use the session title: {:?}",
         cmd.argv
     );
-    // The CLI invocation is still wrapped in `cmd /c` so .cmd shims
-    // resolve via PATHEXT, but the legacy `cd /d` prefix is gone —
-    // cwd is threaded through wtcli's `-d` flag now. Issue #135:
-    // a muted "Resuming … session …" banner is prepended so the
-    // user sees immediate feedback while the CLI cold-starts; the
-    // CLI's alt-screen TUI overwrites it on success. (Previously
-    // SGR 1;36;5 — bold + cyan + slow-blink — was used, but the
-    // blink + bold were too noisy. Now SGR 2;37 = dim + white, a
-    // low-contrast tone similar to the cwd line in a typical
-    // Copilot-CLI shell prompt.)
-    assert!(
-        argv.contains("cmd /c echo \x1b[2;37mResuming claude session abc-123...\x1b[0m"),
-        "expected dim-white Resuming banner echo; argv: {:?}",
-        argv
+    let plan = crate::cli::resume::ResumeLaunch {
+        agent: "claude".into(),
+        session_id: "abc-123".into(),
+        cwd: Some(real_cwd_str.clone()),
+        distro: None,
+    };
+    assert!(cmd
+        .argv
+        .windows(2)
+        .any(|args| args == ["-c", &crate::cli::resume::commandline(&plan).unwrap()]));
+    assert_eq!(
+        plan.banner(),
+        "\x1b[2;37mResuming claude session abc-123...\x1b[0m"
     );
     assert!(
-        argv.contains("&& claude --resume abc-123"),
-        "expected resume command chained after banner; argv: {}",
-        argv
+        !argv.contains("cmd /c"),
+        "opaque session data must not be interpolated into cmd"
     );
     assert!(
         !argv.contains("cd /d"),
@@ -9690,10 +9688,16 @@ fn hookless_session_snapshot_renders_and_dispatches_resume() {
         .last_dispatched_command_for_test()
         .expect("resume dispatched");
     assert_eq!(command.kind, DispatchedCommandKind::NewTabResume);
+    let plan = crate::cli::resume::ResumeLaunch {
+        agent: "claude".into(),
+        session_id: "history-without-hooks".into(),
+        cwd: Some(std::env::temp_dir().to_string_lossy().into_owned()),
+        distro: None,
+    };
     assert!(command
         .argv
-        .join(" ")
-        .contains("claude --resume history-without-hooks"));
+        .windows(2)
+        .any(|args| args == ["-c", &crate::cli::resume::commandline(&plan).unwrap()]));
 }
 
 #[tokio::test]
@@ -22692,16 +22696,21 @@ fn enter_on_wsl_history_row_resumes_inside_distro() {
         .expect("a command was dispatched");
     assert_eq!(cmd.kind, DispatchedCommandKind::NewTabResume);
     let argv = cmd.argv.join(" ");
-    assert!(
-        argv.contains(
-            "wsl -d Ubuntu --cd \"/home/u/proj\" -- bash -lc \"copilot --resume abc-123\""
-        ),
-        "expected in-distro resume; argv: {argv}"
-    );
+    let plan = crate::cli::resume::ResumeLaunch {
+        agent: "copilot".into(),
+        session_id: "abc-123".into(),
+        cwd: Some("/home/u/proj".into()),
+        distro: Some("Ubuntu".into()),
+    };
+    assert!(cmd
+        .argv
+        .windows(2)
+        .any(|args| args == ["-c", &crate::cli::resume::commandline(&plan).unwrap()]));
     // The loading banner keeps the short session id and also names the
     // distro for WSL rows.
     assert!(
-        argv.contains("Resuming copilot session abc-123 in Ubuntu (WSL)"),
+        plan.banner()
+            .contains("Resuming copilot session abc-123 in Ubuntu (WSL)"),
         "expected distro-named WSL banner; argv: {argv}"
     );
     // WSL rows must not also pass the Windows `-d <cwd>` flag.
