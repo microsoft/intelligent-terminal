@@ -3660,6 +3660,96 @@ fn initial_load_model_preserves_config_updates_around_placeholder() {
 }
 
 #[test]
+fn initial_load_model_follows_subsequent_settings_changes() {
+    use crate::protocol::acp::client::MasterExtRequest;
+
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    let _capture = crate::wt_protocol_events::capture_test_published_events();
+    app.owner_tab_id = Some(DEFAULT_TAB_ID.into());
+    app.current_agent_id = "copilot".into();
+    app.follows_global_acp_model = true;
+    app.acp_model = Some("configured-default".into());
+    app.current_tab_mut().loading_session = true;
+    app.current_tab_mut().loading_target_session_id = Some("restored-session".into());
+    app.handle_event(AppEvent::AgentConnected {
+        name: "GitHub Copilot".into(),
+        model: None,
+        version: None,
+        session_id: "restored-session".into(),
+        available_models: Vec::new(),
+        current_model_id: None,
+        load_session_supported: true,
+        image_supported: false,
+        session_capabilities_ready: false,
+        telemetry_byok_binding: None,
+    });
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: "restored-session".into(),
+        prompt_id: None,
+        available_models: vec![model_info("saved-model"), model_info("new-model")],
+        current_model_id: Some("saved-model".into()),
+    });
+    assert_eq!(
+        app.confirmed_model_display().as_deref(),
+        Some("SAVED-MODEL")
+    );
+    assert!(
+        master_rx.try_recv().is_err(),
+        "loading must preserve the saved model"
+    );
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_config_changed".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "target_agent_id": "copilot",
+            "acp_model": "new-model"
+        }),
+    });
+    let MasterExtRequest::SetSessionModel {
+        request_id,
+        session_id,
+        model,
+        pane_override,
+    } = master_rx
+        .try_recv()
+        .expect("settings must target the restored session")
+    else {
+        panic!("expected SetSessionModel");
+    };
+    assert_eq!(session_id.unwrap().0.as_ref(), "restored-session");
+    assert_eq!(model, "new-model");
+    assert!(!pane_override);
+    assert_eq!(
+        app.confirmed_model_display().as_deref(),
+        Some("SAVED-MODEL")
+    );
+
+    app.handle_event(AppEvent::ModelSetCompleted {
+        request_id,
+        session_id: "restored-session".into(),
+        model,
+        pane_override,
+    });
+    assert_eq!(app.confirmed_model_display().as_deref(), Some("NEW-MODEL"));
+    assert!(app.current_tab().model_override.is_none());
+    assert_eq!(
+        app.current_tab().session_id.as_deref(),
+        Some("restored-session")
+    );
+    let status = crate::wt_protocol_events::take_test_published_events()
+        .into_iter()
+        .map(|event| serde_json::from_str::<serde_json::Value>(&event).expect("valid WT event"))
+        .filter(|event| event["method"] == "agent_status")
+        .last()
+        .expect("successful model change must refresh the pane header");
+    assert_eq!(status["params"]["tab_id"], DEFAULT_TAB_ID);
+    assert_eq!(status["params"]["model"], "NEW-MODEL");
+}
+
+#[test]
 fn session_attach_prunes_replaced_session_model_config() {
     let mut app = test_app();
     app.current_tab_mut().session_id = Some("sid-old".into());

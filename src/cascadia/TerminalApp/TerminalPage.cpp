@@ -1548,7 +1548,13 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        if (!fields.agentIdentity.empty())
+        // Session ownership alone is not a pane override. Keep matching
+        // Settings bindings live, including legacy records without the flag,
+        // but pin an explicit override or an owner Settings no longer selects.
+        if (!fields.agentIdentity.empty() &&
+            (fields.hasAgentOverride ||
+             fields.agentIdentity != std::wstring_view{ _GetAgentPaneIdentity(tab.get()) } ||
+             fields.customCommand != std::wstring_view{ _GetAgentPaneCustomCommand(tab.get()) }))
         {
             // The saved identity folds a WSL pane's distro in with its agent
             // id, so split it back apart or the pane comes back on the host
@@ -3721,7 +3727,8 @@ namespace winrt::TerminalApp::implementation
             {
                 impl->SetAgentRestoreExecutable(winrt::hstring{ wtaPath });
                 impl->SetAgentRestoreIdentity(_GetAgentPaneIdentity(tab.get()),
-                                              _GetAgentPaneCustomCommand(tab.get()));
+                                              _GetAgentPaneCustomCommand(tab.get()),
+                                              tab->HasAgentOverride());
             }
         }
 
