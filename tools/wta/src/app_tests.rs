@@ -3534,6 +3534,132 @@ fn model_config_update_before_session_attach_is_applied_on_attach() {
 }
 
 #[test]
+fn initial_load_model_is_published_after_session_attach() {
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    let _capture = crate::wt_protocol_events::capture_test_published_events();
+    app.owner_tab_id = Some(DEFAULT_TAB_ID.into());
+    app.current_agent_id = "copilot".into();
+    app.current_tab_mut().loading_session = true;
+    app.current_tab_mut().loading_target_session_id = Some("restored-session".into());
+
+    app.handle_event(AppEvent::AgentConnected {
+        name: "GitHub Copilot".into(),
+        model: None,
+        version: Some("v1.0.0".into()),
+        session_id: "restored-session".into(),
+        available_models: Vec::new(),
+        current_model_id: None,
+        load_session_supported: true,
+        image_supported: false,
+        session_capabilities_ready: false,
+        telemetry_byok_binding: None,
+    });
+
+    assert_eq!(app.confirmed_model_display(), None);
+    assert_eq!(
+        app.session_to_tab
+            .get("restored-session")
+            .map(String::as_str),
+        Some(DEFAULT_TAB_ID),
+        "the placeholder must still route replayed history to its owner tab"
+    );
+
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: "restored-session".into(),
+        prompt_id: None,
+        available_models: vec![model_info("other-model"), model_info("saved-model")],
+        current_model_id: Some("saved-model".into()),
+    });
+
+    assert!(!app.current_tab().loading_session);
+    assert_eq!(app.agent_current_model_id.as_deref(), Some("saved-model"));
+    assert_eq!(app.current_model_id.as_deref(), Some("saved-model"));
+    assert_eq!(
+        app.confirmed_model_display().as_deref(),
+        Some("SAVED-MODEL")
+    );
+    assert_eq!(app.available_models.len(), 2);
+    app.open_model_picker();
+    assert_eq!(app.current_tab().model_picker_selected, 1);
+    assert!(
+        master_rx.try_recv().is_err(),
+        "restoring model metadata must not request a model change"
+    );
+
+    let status = crate::wt_protocol_events::take_test_published_events()
+        .into_iter()
+        .map(|event| serde_json::from_str::<serde_json::Value>(&event).expect("valid WT event"))
+        .filter(|event| event["method"] == "agent_status")
+        .last()
+        .expect("loading the session must publish its model to the pane header");
+    assert_eq!(status["params"]["tab_id"], DEFAULT_TAB_ID);
+    assert_eq!(status["params"]["state"], "connected");
+    assert_eq!(status["params"]["name"], "GitHub Copilot");
+    assert_eq!(status["params"]["version"], "v1.0.0");
+    assert_eq!(status["params"]["model"], "SAVED-MODEL");
+    assert_eq!(status["params"]["current_model_id"], "saved-model");
+    assert_eq!(
+        status["params"]["available_models"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+}
+
+#[test]
+fn initial_load_model_preserves_config_updates_around_placeholder() {
+    for update_before_connection in [false, true] {
+        for updated_model in [Some("live-model"), None] {
+            let mut app = test_app();
+            app.current_tab_mut().loading_session = true;
+            app.current_tab_mut().loading_target_session_id = Some("restored-session".into());
+            let config_update = || AppEvent::ModelConfigUpdated {
+                session_id: "restored-session".into(),
+                available_models: updated_model.map(model_info).into_iter().collect(),
+                current_model_id: updated_model.map(str::to_string),
+            };
+            if update_before_connection {
+                app.handle_event(config_update());
+            }
+
+            app.handle_event(AppEvent::AgentConnected {
+                name: "Agent".into(),
+                model: None,
+                version: None,
+                session_id: "restored-session".into(),
+                available_models: Vec::new(),
+                current_model_id: None,
+                load_session_supported: true,
+                image_supported: false,
+                session_capabilities_ready: false,
+                telemetry_byok_binding: None,
+            });
+
+            if !update_before_connection {
+                app.handle_event(config_update());
+            }
+            app.handle_event(AppEvent::SessionAttached {
+                tab_id: DEFAULT_TAB_ID.into(),
+                session_id: "restored-session".into(),
+                prompt_id: None,
+                available_models: vec![model_info("saved-model")],
+                current_model_id: Some("saved-model".into()),
+            });
+
+            assert_eq!(app.agent_current_model_id.as_deref(), updated_model);
+            assert_eq!(app.current_model_id.as_deref(), updated_model);
+            assert_eq!(
+                app.available_models.iter().map(|model| model.id.as_str()).collect::<Vec<_>>(),
+                updated_model.into_iter().collect::<Vec<_>>(),
+                "a config update, including removal of the selector, must override the load response"
+            );
+        }
+    }
+}
+
+#[test]
 fn session_attach_prunes_replaced_session_model_config() {
     let mut app = test_app();
     app.current_tab_mut().session_id = Some("sid-old".into());

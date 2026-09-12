@@ -832,11 +832,20 @@ impl App {
                 self.agent_version = version;
                 self.session_id = session_id.clone();
                 self.auth_recovery_state = AuthRecoveryState::Idle;
-                let (available_models, current_model_id) = self
-                    .session_model_configs
-                    .entry(session_id.clone())
-                    .or_insert((available_models, current_model_id))
-                    .clone();
+                let (available_models, current_model_id) = if session_capabilities_ready {
+                    self.session_model_configs
+                        .entry(session_id.clone())
+                        .or_insert((available_models, current_model_id))
+                        .clone()
+                } else {
+                    // An initial-load placeholder has no confirmed model metadata.
+                    // Do not cache it ahead of SessionAttached, but preserve any
+                    // real config update that already arrived for this session.
+                    self.session_model_configs
+                        .get(&session_id)
+                        .cloned()
+                        .unwrap_or((available_models, current_model_id))
+                };
                 self.agent_models = available_models;
                 self.agent_current_model_id = current_model_id;
                 self.rebuild_model_catalog_from_agent_state();
