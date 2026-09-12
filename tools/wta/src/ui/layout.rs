@@ -12,9 +12,11 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     app.completed_turn_hits.clear();
     app.completed_turn_action_links.clear();
     app.input_dialog_area = None;
+    let ssh_sessions_view = app.current_tab().current_view == View::Agents
+        && app.current_tab().agents_view.ssh_source.is_some();
 
     // Auth mode: show auth screen above the input box
-    if app.mode == AppMode::Auth {
+    if app.mode == AppMode::Auth && !ssh_sessions_view {
         let input_height = {
             let tab = app.current_tab();
             input::input_height(&tab.input, tab.cursor_pos, area.width)
@@ -29,7 +31,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     }
 
     // Setup mode: diagnostic install/sign-in/retry flow with input box.
-    if app.mode == AppMode::Setup {
+    if app.mode == AppMode::Setup && !ssh_sessions_view {
         let input_height = {
             let tab = app.current_tab();
             input::input_height(&tab.input, tab.cursor_pos, area.width)
@@ -73,9 +75,19 @@ pub fn render(frame: &mut Frame, app: &mut App) {
                 .map(|s| s.is_empty())
                 .unwrap_or(false)
                 || tab.agents_view.rescan_in_flight);
+        let sessions_area = match &tab.agents_view.ssh_source {
+            Some(source) => agents_view::render_ssh_source(
+                frame,
+                area,
+                &source.target,
+                &source.agent_id,
+                tab.agents_view.ssh_error.as_deref(),
+            ),
+            None => area,
+        };
         agents_view::render(
             frame,
-            area,
+            sessions_area,
             &app.agent_sessions,
             tab.agents_view.snapshot.as_deref(),
             &mut tab.agents_list_state,

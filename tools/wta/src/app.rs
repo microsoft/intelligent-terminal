@@ -79,6 +79,7 @@ fn agent_command_on_enter(input: &str, selected: Option<&AvailableAgent>) -> Opt
 mod attachments;
 mod autofix;
 mod input_edit;
+mod ssh_session_view;
 mod tab_state;
 mod turn_state;
 use autofix::*;
@@ -2853,7 +2854,7 @@ impl App {
     /// case the view falls back to showing every row so the user can still
     /// see and resume their history.
     pub fn current_cli_filter(&self) -> Option<crate::agent_sessions::CliSource> {
-        crate::agent_sessions::CliSource::from_agent_id(&self.current_agent_id)
+        self.sessions_filters_for_tab(self.active_tab_key()).0
     }
 
     /// Execution source this pane's agent runs in, used to narrow the session
@@ -2862,7 +2863,7 @@ impl App {
     /// this every Copilot pane renders one merged list of sessions from every
     /// source — including rows it cannot resume.
     pub fn current_location_filter(&self) -> crate::agent_sessions::SessionLocation {
-        self.current_agent_source.session_location()
+        self.sessions_filters_for_tab(self.active_tab_key()).1
     }
 
     /// Extracted focus-pane dispatch for Live rows. Used by
@@ -2935,7 +2936,7 @@ impl App {
             cli_source: s.cli_source.clone(),
             load_session_supported: self.agent_supports_load_session,
             cli_supports_resume_flag,
-            is_wsl: s.location.is_wsl(),
+            is_remote: !matches!(s.location, crate::agent_sessions::SessionLocation::Host),
         };
         let action = decide_enter_action(&row);
 
@@ -3100,6 +3101,10 @@ impl App {
         //     found"). A login shell sources the profile that adds it.
         let login_invocation = format!("bash -lc \"{resume_invocation}\"");
         let commandline = match &s.location {
+            crate::agent_sessions::SessionLocation::Ssh { target } => {
+                self.dispatch_ssh_session_resume(s, target);
+                return;
+            }
             crate::agent_sessions::SessionLocation::Wsl { distro } => match linux_cwd_arg(&s.cwd) {
                 Some(cwd) => format!("wsl -d {distro} --cd \"{cwd}\" -- {login_invocation}"),
                 None => format!("wsl -d {distro} -- {login_invocation}"),
@@ -3168,7 +3173,8 @@ impl App {
             crate::agent_sessions::SessionLocation::Wsl { distro } => {
                 format!("Resuming {cli_id} session {short_key} in {distro} (WSL)...")
             }
-            crate::agent_sessions::SessionLocation::Host => {
+            crate::agent_sessions::SessionLocation::Host
+            | crate::agent_sessions::SessionLocation::Ssh { .. } => {
                 format!("Resuming {cli_id} session {short_key}...")
             }
         };
@@ -3467,6 +3473,7 @@ impl App {
     }
 
     fn close_agents_view_for_tab(&mut self, tab_id: &str) {
+        self.cancel_ssh_sessions_fetch(tab_id);
         let tab = self.tab_mut(tab_id);
         tab.current_view = View::Chat;
         tab.agents_view.snapshot = None;
@@ -3481,6 +3488,10 @@ impl App {
     }
 
     fn schedule_agents_refetch_for_tab(&mut self, tab_id: &str) {
+        if self.tab_mut(tab_id).agents_view.ssh_source.is_some() {
+            self.schedule_ssh_sessions_refetch(tab_id);
+            return;
+        }
         let request = {
             let tab = self.tab_mut(tab_id);
             if tab.agents_view.snapshot.is_none() {
@@ -3512,6 +3523,7 @@ impl App {
         let tabs: Vec<String> = self
             .tab_sessions
             .iter()
+            .filter(|(_, tab)| tab.agents_view.ssh_source.is_none())
             .filter_map(|(id, tab)| tab.agents_view.snapshot.as_ref().map(|_| id.clone()))
             .collect();
         for tab_id in tabs {
@@ -3528,7 +3540,9 @@ impl App {
             .tab_sessions
             .iter()
             .filter_map(|(id, tab)| {
-                (tab.agents_view.latest_request_id == Some(request_id)).then(|| id.clone())
+                (tab.agents_view.ssh_source.is_none()
+                    && tab.agents_view.latest_request_id == Some(request_id))
+                .then(|| id.clone())
             })
             .collect();
         for tab_id in tabs {
@@ -3571,7 +3585,9 @@ impl App {
             .tab_sessions
             .iter()
             .filter_map(|(id, tab)| {
-                (tab.agents_view.latest_request_id == Some(request_id)).then(|| id.clone())
+                (tab.agents_view.ssh_source.is_none()
+                    && tab.agents_view.latest_request_id == Some(request_id))
+                .then(|| id.clone())
             })
             .collect();
         for tab_id in tabs {
@@ -3635,8 +3651,7 @@ impl App {
     }
 
     fn agents_rows_for_tab(&self, tab_id: &str) -> Vec<crate::agent_sessions::AgentSession> {
-        let filter = self.current_cli_filter();
-        let source = self.current_location_filter();
+        let (filter, source) = self.sessions_filters_for_tab(tab_id);
         let origin = self.sessions_origin_filter;
         let query = self
             .tab_sessions
@@ -4843,6 +4858,7 @@ impl App {
             AppEvent::SessionsChanged => "sessions_changed",
             AppEvent::AgentsSnapshotLoaded { .. } => "agents_snapshot_loaded",
             AppEvent::AgentsSnapshotFailed { .. } => "agents_snapshot_failed",
+            AppEvent::SshSessionsLoaded { .. } => "ssh_sessions_loaded",
             AppEvent::RegisterBornBoundSession { .. } => "register_born_bound_session",
             AppEvent::MasterMutationCompleted { .. } => "master_mutation_completed",
             AppEvent::DirectTerminalActionProposal { .. } => "direct_terminal_action_proposal",
@@ -5795,7 +5811,7 @@ impl App {
             CommandKind::Stop => self.cmd_stop(in_flight, cancelling),
             CommandKind::New => self.cmd_new(prompt_blocked),
             CommandKind::Fix => self.cmd_fix(prompt_blocked, cmd.rest),
-            CommandKind::Sessions => self.cmd_sessions(),
+            CommandKind::Sessions => self.cmd_sessions(cmd.rest),
             CommandKind::Restart => self.cmd_restart(),
             CommandKind::Agent => self.cmd_agent(cmd.rest),
             CommandKind::Model => self.cmd_model(cmd.rest),
@@ -6049,7 +6065,10 @@ impl App {
     }
 
     /// `/sessions` — open the Agents picker for the active tab.
-    fn cmd_sessions(&mut self) {
+    fn cmd_sessions(&mut self, arguments: String) {
+        if !self.select_sessions_source(&arguments) {
+            return;
+        }
         // Mirror the Ctrl+Shift+/ keybinding's open path: jump straight to
         // the Agents picker and seed a selection so Enter/Up/Down
         // are immediately useful. Esc / Ctrl+Shift+/ still close the view.
@@ -6428,6 +6447,7 @@ impl App {
             );
             return;
         }
+        self.cancel_ssh_sessions_fetch(closed_tab_id);
         if let Some(tab) = self.tab_sessions.get(closed_tab_id) {
             if let Some(prompt_id) = tab.turn.prompt_id() {
                 tab.cancel_active_prompt(prompt_id);
@@ -6523,6 +6543,12 @@ impl App {
                 "tab_renamed no-op: ids identical"
             );
             return;
+        }
+        let refetch_ssh_sessions = self.tab_sessions.get(old_tab_id).is_some_and(|tab| {
+            tab.agents_view.ssh_source.is_some() && tab.agents_view.refetch_in_flight
+        });
+        if refetch_ssh_sessions {
+            self.cancel_ssh_sessions_fetch(old_tab_id);
         }
         if self.pending_yolo_session_tabs.remove(old_tab_id) {
             self.pending_yolo_session_tabs
@@ -6637,6 +6663,9 @@ impl App {
         // for the dragged tab id would be wrong.
         if owner_matched {
             self.publish_agent_status();
+        }
+        if refetch_ssh_sessions {
+            self.schedule_ssh_sessions_refetch(new_tab_id);
         }
 
         // Tell the ACP client task to rekey its tab→SessionId map so the

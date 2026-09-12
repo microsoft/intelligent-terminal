@@ -27,6 +27,37 @@ const ACCENT_RED: Color = Color::Red; // Error
 const SOFT_WHITE: Color = Color::Rgb(0x8b, 0x8b, 0x8b); // Idle
 const MUTED_WHITE: Color = Color::Rgb(0x8b, 0x8b, 0x8b); // timestamp
 
+pub(crate) fn render_ssh_source(
+    frame: &mut Frame,
+    mut area: Rect,
+    target: &crate::ssh_sessions::SshTarget,
+    agent_id: &str,
+    error: Option<&str>,
+) -> Rect {
+    if area.height == 0 {
+        return area;
+    }
+    frame.render_widget(
+        Paragraph::new(format!("SSH: {} ({agent_id})", target.display_name()))
+            .style(Style::default().fg(Color::Cyan)),
+        Rect { height: 1, ..area },
+    );
+    area.y = area.y.saturating_add(1);
+    area.height = area.height.saturating_sub(1);
+    if let Some(error) = error {
+        let height = area.height.min(3);
+        frame.render_widget(
+            Paragraph::new(format!("{}: {error}", t!("agents.status.error")))
+                .style(Style::default().fg(Color::Red))
+                .wrap(ratatui::widgets::Wrap { trim: false }),
+            Rect { height, ..area },
+        );
+        area.y = area.y.saturating_add(height);
+        area.height = area.height.saturating_sub(height);
+    }
+    area
+}
+
 pub fn render(
     f: &mut Frame,
     area: Rect,
@@ -629,11 +660,12 @@ fn cli_suffix_for(s: &AgentSession, selected: bool) -> String {
         CliSource::OpenCode => Some("opencode"),
         CliSource::Unknown(_) => None,
     };
-    let distro = match &s.location {
-        SessionLocation::Wsl { distro } => Some(distro.as_str()),
+    let source = match &s.location {
+        SessionLocation::Wsl { distro } => Some(distro.clone()),
+        SessionLocation::Ssh { target } => Some(format!("{} (SSH)", target.display_name())),
         SessionLocation::Host => None,
     };
-    [cli, distro]
+    [cli, source.as_deref()]
         .into_iter()
         .flatten()
         .map(|part| format!("· {part}"))

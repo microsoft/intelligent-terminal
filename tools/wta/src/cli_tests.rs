@@ -131,9 +131,19 @@ fn sessions_list_cli_parses_json_and_master_override() {
     assert!(cli.json);
     match cli.command {
         Some(Command::Sessions {
-            action: SessionsAction::List { master, origin },
+            action:
+                SessionsAction::List {
+                    master,
+                    origin,
+                    ssh,
+                    port,
+                    cli,
+                },
         }) => {
             assert_eq!(master.as_deref(), Some(r"\\.\pipe\wta-master-test"));
+            assert!(ssh.is_none());
+            assert!(port.is_none());
+            assert!(cli.is_none());
             // Default keeps the historical debug behavior — show
             // every origin. MVP sessions picker has its own default in
             // `app::resolve_sessions_origin_filter`; this CLI default is
@@ -142,6 +152,111 @@ fn sessions_list_cli_parses_json_and_master_override() {
             assert_eq!(origin, SessionsOriginArg::All);
         }
         other => panic!("expected sessions list command, got {other:?}"),
+    }
+}
+
+#[test]
+fn sessions_list_cli_parses_ssh_target_port_agent_origin_and_json() {
+    let args = Cli::try_parse_from([
+        "wta",
+        "sessions",
+        "list",
+        "--ssh",
+        "User@Alias",
+        "--port",
+        "2222",
+        "--cli",
+        "codex",
+        "--origin",
+        "shell",
+        "--json",
+    ])
+    .expect("SSH list parses");
+    assert!(args.json);
+    match args.command {
+        Some(Command::Sessions {
+            action:
+                SessionsAction::List {
+                    master,
+                    ssh,
+                    port,
+                    cli,
+                    origin,
+                },
+        }) => {
+            assert!(master.is_none());
+            assert_eq!(ssh.as_deref(), Some("User@Alias"));
+            assert_eq!(port, Some(2222));
+            assert_eq!(cli.as_deref(), Some("codex"));
+            assert_eq!(origin, SessionsOriginArg::Shell);
+        }
+        other => panic!("expected SSH sessions list, got {other:?}"),
+    }
+}
+
+#[test]
+fn sessions_list_cli_ssh_defaults_do_not_change_host_arguments() {
+    let args = Cli::try_parse_from(["wta", "sessions", "list", "--ssh", "[::1]"]).unwrap();
+    match args.command {
+        Some(Command::Sessions {
+            action:
+                SessionsAction::List {
+                    master,
+                    ssh,
+                    port,
+                    cli,
+                    origin,
+                },
+        }) => {
+            assert!(master.is_none());
+            assert_eq!(ssh.as_deref(), Some("[::1]"));
+            assert!(port.is_none());
+            assert_eq!(
+                cli.as_deref().unwrap_or(agent_registry::COPILOT_AGENT_ID),
+                "copilot"
+            );
+            assert_eq!(origin, SessionsOriginArg::All);
+        }
+        other => panic!("expected SSH sessions list, got {other:?}"),
+    }
+}
+
+#[test]
+fn sessions_list_cli_ssh_options_require_ssh_and_conflict_with_master() {
+    for options in [
+        vec!["--port", "2222"],
+        vec!["--cli", "copilot"],
+        vec!["--ssh", "host", "--master", "pipe"],
+        vec!["--master", "pipe", "--ssh", "host"],
+    ] {
+        let mut args = vec!["wta", "sessions", "list"];
+        args.extend(options);
+        assert!(Cli::try_parse_from(&args).is_err(), "{args:?}");
+    }
+}
+
+#[test]
+fn sessions_list_cli_rejects_invalid_ssh_targets_ports_and_custom_clis() {
+    for options in [
+        vec!["--ssh", "host name"],
+        vec!["--ssh=host;id"],
+        vec!["--ssh=-oProxyCommand=evil"],
+        vec!["--ssh", "host:22"],
+        vec!["--ssh", "host", "--port", "0"],
+        vec!["--ssh", "host", "--port", "65536"],
+        vec!["--ssh", "host", "--port=-1"],
+        vec!["--ssh", "host", "--cli", "custom:copilot"],
+        vec!["--ssh", "host", "--cli", "copilot --acp"],
+    ] {
+        let mut args = vec!["wta", "sessions", "list"];
+        args.extend(options);
+        assert!(Cli::try_parse_from(&args).is_err(), "{args:?}");
+    }
+    for profile in agent_registry::KNOWN_AGENTS {
+        assert!(Cli::try_parse_from([
+            "wta", "sessions", "list", "--ssh", "host", "--cli", profile.id,
+        ])
+        .is_ok());
     }
 }
 

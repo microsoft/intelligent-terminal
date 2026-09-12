@@ -2552,6 +2552,15 @@ impl App {
             AppEvent::AgentsSnapshotFailed { request_id } => {
                 self.handle_agents_snapshot_failed(request_id);
             }
+            AppEvent::SshSessionsLoaded {
+                tab_id,
+                request_id,
+                target,
+                agent_id,
+                result,
+            } => {
+                self.handle_ssh_sessions_loaded(&tab_id, request_id, &target, &agent_id, result);
+            }
             AppEvent::RegisterBornBoundSession { event } => {
                 self.register_born_bound_session(event);
             }

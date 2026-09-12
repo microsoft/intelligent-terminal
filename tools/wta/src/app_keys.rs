@@ -100,11 +100,13 @@ impl App {
             self.handle_global_ctrl_c();
             return;
         }
+        let ssh_sessions_view = self.current_tab().current_view == View::Agents
+            && self.current_tab().agents_view.ssh_source.is_some();
 
         // The source picker is also reachable from Setup when the configured
         // Windows agent is missing, so it must receive keys before the
         // mode-specific setup handler.
-        if self.agent_picker_visible() {
+        if self.agent_picker_visible() && !ssh_sessions_view {
             match key.code {
                 KeyCode::Up => self.agent_picker_up(),
                 KeyCode::Down => self.agent_picker_down(),
@@ -116,13 +118,13 @@ impl App {
         }
 
         // Setup mode: diagnostic install/sign-in/retry flow.
-        if self.mode == AppMode::Setup {
+        if self.mode == AppMode::Setup && !ssh_sessions_view {
             self.handle_setup_key(key);
             return;
         }
 
         // Auth mode: Enter to sign in, Esc to go back
-        if self.mode == AppMode::Auth {
+        if self.mode == AppMode::Auth && !ssh_sessions_view {
             match key.code {
                 // GitHub Enterprise sign-in (Copilot): [E] reveals a domain
                 // input; while it's open, typed chars edit the domain and
@@ -400,6 +402,7 @@ impl App {
                         // straight from it. Clear the snapshot so a later
                         // re-entry re-captures; the lingering Agents view
                         // self-heals to chat on the next chat-toggle open.
+                        self.cancel_ssh_sessions_fetch(&tab_id);
                         let tab = self.tab_mut(&tab_id);
                         tab.pane_open = false;
                         tab.agents_view.search_query.clear();

@@ -407,7 +407,7 @@ pub(crate) enum Command {
         #[command(subcommand)]
         action: HooksAction,
     },
-    /// Inspect sessions known to the shared wta-master.
+    /// Inspect local sessions or explicitly browse remote history over SSH.
     Sessions {
         #[command(subcommand)]
         action: SessionsAction,
@@ -477,11 +477,20 @@ pub(crate) enum Command {
 /// Subcommands for `wta sessions`.
 #[derive(Subcommand, Debug)]
 pub(crate) enum SessionsAction {
-    /// List sessions in the master registry.
+    /// List sessions in the master registry, or read remote history over SSH.
     List {
         /// Override the wta-master named pipe path.
-        #[arg(long, value_name = "PIPE_NAME")]
+        #[arg(long, value_name = "PIPE_NAME", conflicts_with = "ssh")]
         master: Option<String>,
+        /// Read history on an already trusted SSH host or OpenSSH alias.
+        #[arg(long, value_name = "DESTINATION", value_parser = parse_ssh_destination)]
+        ssh: Option<String>,
+        /// Override the SSH port (otherwise use the user's SSH configuration).
+        #[arg(long, requires = "ssh", value_parser = clap::value_parser!(u16).range(1..))]
+        port: Option<u16>,
+        /// Built-in remote agent CLI id (defaults to copilot in SSH mode).
+        #[arg(long, requires = "ssh", value_parser = parse_ssh_cli)]
+        cli: Option<String>,
         /// Restrict the list to a session origin. `all` (default) shows
         /// every row — that matches the historical debug behavior.
         /// `shell` shows only user-started shell-pane sessions (the
@@ -490,6 +499,23 @@ pub(crate) enum SessionsAction {
         #[arg(long, value_enum, default_value_t = SessionsOriginArg::All)]
         origin: SessionsOriginArg,
     },
+}
+
+fn parse_ssh_destination(value: &str) -> Result<String, String> {
+    crate::ssh_sessions::SshTarget::new(value, None)
+        .map(|target| target.destination().to_string())
+        .map_err(|error| error.to_string())
+}
+
+fn parse_ssh_cli(value: &str) -> Result<String, String> {
+    if crate::agent_registry::is_known_id(value) {
+        Ok(value.to_string())
+    } else {
+        Err(
+            "SSH history requires a built-in CLI id: copilot, claude, codex, gemini, opencode"
+                .into(),
+        )
+    }
 }
 
 /// CLI value for `wta sessions list --origin`. Mirrors

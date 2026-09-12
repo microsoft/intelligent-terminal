@@ -38,6 +38,7 @@ mod session_mgmt;
 mod session_registry;
 mod session_watcher;
 mod shell;
+mod ssh_sessions;
 mod telemetry;
 #[cfg(test)]
 mod test_support;

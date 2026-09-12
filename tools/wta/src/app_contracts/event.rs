@@ -337,6 +337,13 @@ pub enum AppEvent {
     AgentsSnapshotFailed {
         request_id: u64,
     },
+    SshSessionsLoaded {
+        tab_id: String,
+        request_id: u64,
+        target: crate::ssh_sessions::SshTarget,
+        agent_id: String,
+        result: Result<Vec<crate::agent_sessions::AgentSession>, String>,
+    },
     RegisterBornBoundSession {
         event: crate::agent_sessions::SessionEvent,
     },
