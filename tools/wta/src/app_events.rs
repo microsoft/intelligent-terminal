@@ -431,6 +431,20 @@ impl App {
                 }
             }
         }
+        if let SessionEvent::ConnectionFailed {
+            pane_session_id,
+            reason,
+        } = &event
+        {
+            let pane = crate::agent_sessions::pane_key(pane_session_id);
+            if !pane.is_empty() {
+                for pending in self.pending_session_resumes.values_mut() {
+                    if pending.completed_at.is_none() {
+                        pending.failed_panes.insert(pane.clone(), reason.clone());
+                    }
+                }
+            }
+        }
         let closing_key = match &event {
             SessionEvent::PaneClosed { pane_session_id } => {
                 self.agent_sessions.key_for_pane(pane_session_id)

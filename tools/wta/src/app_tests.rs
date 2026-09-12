@@ -7316,6 +7316,8 @@ fn seed_resume_row(
 fn resume_failure_preserves_dead_rows_and_allows_retry_in_both_routes() {
     use crate::agent_sessions::{AgentStatus, SessionOrigin};
 
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     for status in [AgentStatus::Historical, AgentStatus::Ended] {
         for origin in [SessionOrigin::Unknown, SessionOrigin::AgentPane] {
             let (mut app, mut master_rx) = test_app_with_master_rx();
@@ -7494,6 +7496,7 @@ fn resume_binding_publication_waits_for_delayed_success_and_retries_only_binding
 #[test]
 fn resume_binding_publication_failure_retains_real_pane_and_reports_to_owner() {
     use crate::agent_sessions::{AgentStatus, SessionEvent, SessionOrigin};
+    let _locale = crate::test_support::lock_locale();
     for concurrent_binding in [false, true] {
         let deferred = crate::wt_protocol_events::defer_test_publications();
         let mut app = test_app();
@@ -7609,6 +7612,7 @@ fn resume_binding_publication_failure_retains_real_pane_and_reports_to_owner() {
 #[test]
 fn resume_binding_conflict_preserves_foreign_owner_reports_once_and_allows_retry() {
     use crate::agent_sessions::{AgentStatus, SessionEvent, SessionOrigin};
+    let _locale = crate::test_support::lock_locale();
     for binding_error in [None, Some("persistence also failed".to_string())] {
         let mut app = test_app();
         let row = seed_resume_row(&mut app, AgentStatus::Historical, SessionOrigin::Unknown);
@@ -7723,6 +7727,7 @@ fn resume_binding_publication_creation_failure_bypasses_publish_and_wsl_skips_it
 #[test]
 fn resume_binding_publication_failure_after_close_does_not_revive_pane() {
     use crate::agent_sessions::{AgentStatus, SessionEvent, SessionOrigin};
+    let _locale = crate::test_support::lock_locale();
     let deferred = crate::wt_protocol_events::defer_test_publications();
     let mut app = test_app();
     let row = seed_resume_row(&mut app, AgentStatus::Historical, SessionOrigin::Unknown);
@@ -7800,6 +7805,108 @@ fn resume_close_before_assignment_does_not_revive_the_pane() {
                 .is_empty());
         }
     }
+}
+
+#[test]
+fn resume_connection_failure_before_assignment_does_not_promote_failed_pane() {
+    use crate::agent_sessions::{AgentStatus, SessionEvent, SessionOrigin};
+
+    for failed_created_pane in [false, true] {
+        for concurrent_binding in [false, true] {
+            let mut app = test_app();
+            app.owner_tab_id = Some("resume-owner".into());
+            let row = seed_resume_row(&mut app, AgentStatus::Historical, SessionOrigin::Unknown);
+            app.activate_agent_session_routed(&row);
+            let request_id = app.pending_session_resumes[&row.key].request_id;
+            if concurrent_binding {
+                app.agent_sessions.apply(SessionEvent::SessionStarted {
+                    key: row.key.clone(),
+                    cli_source: row.cli_source.clone(),
+                    pane_session_id: "real-pane".into(),
+                    cwd: row.cwd.clone(),
+                    title: row.title.clone(),
+                });
+                app.agent_sessions.apply(SessionEvent::ToolStarting {
+                    key: row.key.clone(),
+                    tool_name: "real work".into(),
+                });
+            }
+            app.handle_event(AppEvent::AgentSessionEvent(
+                SessionEvent::ConnectionFailed {
+                    pane_session_id: if failed_created_pane {
+                        "NEW-PANE"
+                    } else {
+                        "unrelated-pane"
+                    }
+                    .into(),
+                    reason: "created connection failed".into(),
+                },
+            ));
+            app.tab_mut("other-tab");
+            app.tab_id = Some("other-tab".into());
+            app.handle_event(AppEvent::SessionResumeCompleted {
+                key: row.key.clone(),
+                request_id,
+                result: Ok(Some("new-pane".into()).into()),
+            });
+
+            let current = app.agent_sessions.get(&row.key).unwrap();
+            if concurrent_binding {
+                assert_eq!(current.status, AgentStatus::Working);
+                assert_eq!(current.pane_session_id.as_deref(), Some("real-pane"));
+            } else if failed_created_pane {
+                assert_eq!(current.status, AgentStatus::Historical);
+                assert!(current.pane_session_id.is_none());
+            } else {
+                assert_eq!(current.status, AgentStatus::Idle);
+                assert_eq!(current.pane_session_id.as_deref(), Some("new-pane"));
+            }
+            assert!(app.tab_sessions["other-tab"].messages.is_empty());
+            if failed_created_pane {
+                assert!(!app.pending_session_resumes.contains_key(&row.key));
+                assert!(matches!(app.tab_sessions["resume-owner"].messages.last(),
+                    Some(ChatMessage::Error(message)) if message.ends_with("created connection failed")));
+                if !concurrent_binding {
+                    app.activate_agent_session_routed(&row);
+                    let retry = &app.pending_session_resumes[&row.key];
+                    assert_ne!(retry.request_id, request_id);
+                    assert!(retry.failed_panes.is_empty());
+                    assert!(retry.closed_panes.is_empty());
+                }
+            } else {
+                assert!(app.pending_session_resumes[&row.key]
+                    .failed_panes
+                    .is_empty());
+                assert!(app.tab_sessions["resume-owner"].messages.is_empty());
+            }
+        }
+    }
+}
+
+#[test]
+fn resume_connection_failure_after_assignment_preserves_error_binding() {
+    use crate::agent_sessions::{AgentStatus, SessionEvent, SessionOrigin};
+
+    let mut app = test_app();
+    let row = seed_resume_row(&mut app, AgentStatus::Historical, SessionOrigin::Unknown);
+    app.activate_agent_session_routed(&row);
+    app.handle_event(AppEvent::SessionResumeCompleted {
+        key: row.key.clone(),
+        request_id: app.pending_session_resumes[&row.key].request_id,
+        result: Ok(Some("new-pane".into()).into()),
+    });
+    app.handle_event(AppEvent::AgentSessionEvent(
+        SessionEvent::ConnectionFailed {
+            pane_session_id: "NEW-PANE".into(),
+            reason: "connection failed after binding".into(),
+        },
+    ));
+    let current = app.agent_sessions.get(&row.key).unwrap();
+    assert_eq!(current.status, AgentStatus::Error);
+    assert_eq!(current.pane_session_id.as_deref(), Some("new-pane"));
+    assert!(app.pending_session_resumes[&row.key]
+        .failed_panes
+        .is_empty());
 }
 
 #[test]
@@ -8109,6 +8216,7 @@ fn modified_enter_on_live_row_dispatches_nothing() {
 /// the state machine routes to ResumeInAgentPane (ACP load).
 #[test]
 fn agent_pane_resume_without_owner_route_fails_before_publish() {
+    let _locale = crate::test_support::lock_locale();
     use crate::agent_sessions::{AgentStatus, SessionOrigin};
 
     for (window, tab) in [

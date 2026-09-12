@@ -121,6 +121,7 @@ pub type QueuedSessionHook = crate::agent_sessions::SessionEvent;
 struct PendingSessionResume {
     request_id: uuid::Uuid,
     closed_panes: HashSet<String>,
+    failed_panes: HashMap<String, String>,
     // Publishing an event is not proof that WT/ACP created the new session.
     // Bound the acknowledgement grace period so a lost binding can be retried.
     completed_at: Option<std::time::Instant>,
@@ -3435,6 +3436,7 @@ impl App {
             PendingSessionResume {
                 request_id,
                 closed_panes: HashSet::new(),
+                failed_panes: HashMap::new(),
                 completed_at: None,
                 created_pane: None,
             },
@@ -3497,11 +3499,23 @@ impl App {
                     .closed_panes
                     .contains(&crate::agent_sessions::pane_key(pane))
             });
-            if already_closed || (pane.is_none() && error.is_some()) {
+            let connection_failure = pane
+                .as_ref()
+                .and_then(|pane| {
+                    pending
+                        .failed_panes
+                        .get(&crate::agent_sessions::pane_key(pane))
+                })
+                .cloned();
+            if let Some(reason) = connection_failure {
+                self.pending_session_resumes.remove(&key);
+                error = Some(reason);
+            } else if already_closed || (pane.is_none() && error.is_some()) {
                 self.pending_session_resumes.remove(&key);
             } else {
                 pending.completed_at = Some(std::time::Instant::now());
                 pending.closed_panes.clear();
+                pending.failed_panes.clear();
                 if let Some(pane_session_id) = pane {
                     self.handle_event(AppEvent::AgentSessionEvent(
                         crate::agent_sessions::SessionEvent::ResumePaneAssigned {

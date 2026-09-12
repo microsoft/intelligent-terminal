@@ -267,9 +267,14 @@ and owner routing. Agent-pane rows remain excluded by the default shell-only
 picker filter; `WTA_SESSIONS_SHOW_AGENT_PANE` enables that development path.
 
 While creation is in flight, each pending request remembers normalized pane
-closures even if no session-to-pane binding exists yet. A later completion for
-one of those closed panes is discarded without promoting the row. These
-temporary IDs are cleared at completion and are not retained as global history.
+closures and connection failures even if no session-to-pane binding exists yet.
+A later completion for that exact closed or failed pane cannot promote the row.
+A connection failure reports its transport detail to the invoking tab and
+permits retry, without undoing a concurrent healthy binding. Failures received
+after assignment retain the existing Error-state pane binding until closure.
+These temporary IDs are cleared at completion and are not retained as global
+history. A session-key-only stop cannot identify the newly created pane, so it
+does not cancel an unbound attempt based on an older session's delayed hook.
 
 **Resume pane ownership.** `ResumePaneAssigned` marks the row's pane binding
 `born_bound_pane` (`session_registry.rs`) when the assignment is accepted.
