@@ -190,11 +190,11 @@ namespace TerminalApp
         void OnAgentStateChanged(String eventJson);
 
         // Inbound event from WTA carrying
-        // {method:"resume_in_new_agent_tab",params:{session_id,cwd}}.
-        // Emitted by the session view's Shift+Enter handler. The page
-        // creates a new tab, reconciles the shared agent pane onto it, then
-        // publishes a `load_session` event back to wta carrying the new
-        // tab's StableId so wta calls ACP `session/load` for that tab.
+        // {method:"resume_in_new_agent_tab",params:{window_id,tab_id,session_id,cwd?}}.
+        // Emitted by the session view's Enter handler. The page validates
+        // the owning window/tab and creates a local tab with a visible
+        // helper carrying the initial session/load ID and cwd at startup.
+        // Elevation handoff is rejected before launch; the helper owns ACP loading.
         void OnResumeInNewAgentTabRequested(String eventJson);
 
         // Inbound event from a hookless WTA delegate carrying

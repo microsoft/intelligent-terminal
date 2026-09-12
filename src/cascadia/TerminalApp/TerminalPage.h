@@ -815,7 +815,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _CreateNewTabFlyoutAction(const winrt::hstring& actionId, const winrt::hstring& iconPathOverride);
 
         void _OpenNewTabDropdown();
-        HRESULT _OpenNewTab(const Microsoft::Terminal::Settings::Model::INewContentArgs& newContentArgs, bool openInBackground = false, TerminalApp::Tab* createdTab = nullptr);
+        HRESULT _OpenNewTab(const Microsoft::Terminal::Settings::Model::INewContentArgs& newContentArgs, bool openInBackground = false, TerminalApp::Tab* createdTab = nullptr, bool allowElevationHandoff = true);
         TerminalApp::Tab _CreateNewTabFromPane(std::shared_ptr<Pane> pane, uint32_t insertPosition = -1, bool openInBackground = false);
 
         std::wstring _evaluatePathForCwd(std::wstring_view path);
@@ -1120,7 +1120,8 @@ namespace winrt::TerminalApp::implementation
 
         bool _maybeElevate(const winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs& newTerminalArgs,
                            const winrt::Microsoft::Terminal::Settings::TerminalSettingsCreateResult& controlSettings,
-                           const winrt::Microsoft::Terminal::Settings::Model::Profile& profile);
+                           const winrt::Microsoft::Terminal::Settings::Model::Profile& profile,
+                           bool allowElevationHandoff = true);
         void _OpenElevatedWT(winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs newTerminalArgs);
 
         safe_void_coroutine _ConnectionStateChangedHandler(const winrt::Windows::Foundation::IInspectable& sender, const winrt::Windows::Foundation::IInspectable& args);

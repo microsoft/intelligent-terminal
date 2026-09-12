@@ -228,6 +228,11 @@ request includes the helper's owning window and tab IDs; the host routes to
 that window only and verifies the source tab before creating a new tab.
 The initial load is attached only to the actual newly created local tab,
 never to the previously focused tab after a no-op or elevation handoff.
+If the selected profile requires elevation from a non-elevated window, this
+local-only resume request fails with `ERROR_ELEVATION_REQUIRED` before launching
+an elevated window or changing launch arguments. It never hands off a blank
+tab without the resume payload. Already-elevated windows and ordinary new-tab
+actions retain their existing behavior.
 The host creates that tab's visible agent pane immediately with the session ID
 and cwd in the helper's startup arguments. It does not wait for a
 `set_agent_state` broadcast to a helper that has not subscribed yet. Deferred

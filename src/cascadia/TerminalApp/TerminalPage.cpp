@@ -7930,7 +7930,7 @@ namespace winrt::TerminalApp::implementation
             newTerminalArgs.StartingDirectory(winrt::to_hstring(cwdStr));
         }
         TerminalApp::Tab createdTab{ nullptr };
-        const auto hr = _OpenNewTab(newTerminalArgs, /*openInBackground*/ false, &createdTab);
+        const auto hr = _OpenNewTab(newTerminalArgs, /*openInBackground*/ false, &createdTab, /*allowElevationHandoff*/ false);
         if (hr != S_OK || !createdTab)
         {
             _agentPaneLog("OnResumeInNewAgentTabRequested: no local tab was created");
@@ -12444,12 +12444,15 @@ namespace winrt::TerminalApp::implementation
     // - newTerminalArgs: The NewTerminalArgs for this terminal instance
     // - controlSettings: The constructed TerminalSettingsCreateResult for this Terminal instance
     // - profile: The Profile we're using to launch this Terminal instance
+    // - allowElevationHandoff: False for operations whose payload cannot move
+    //   to another process; reject before changing arguments or launching it.
     // Return Value:
     // - true iff we tossed this request to an elevated window. Callers can use
     //   this result to early-return if needed.
     bool TerminalPage::_maybeElevate(const NewTerminalArgs& newTerminalArgs,
                                      const Settings::TerminalSettingsCreateResult& controlSettings,
-                                     const Profile& profile)
+                                     const Profile& profile,
+                                     bool allowElevationHandoff)
     {
         // When duplicating a tab there aren't any newTerminalArgs.
         if (!newTerminalArgs)
@@ -12464,6 +12467,11 @@ namespace winrt::TerminalApp::implementation
         if (!defaultSettings->Elevate() || IsRunningElevated())
         {
             return false;
+        }
+        if (!allowElevationHandoff)
+        {
+            _agentPaneLog("_maybeElevate: local-only operation cannot hand off to an elevated window");
+            THROW_HR(HRESULT_FROM_WIN32(ERROR_ELEVATION_REQUIRED));
         }
 
         // Manually set the Profile of the NewTerminalArgs to the guid we've

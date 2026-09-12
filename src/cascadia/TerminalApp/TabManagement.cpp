@@ -69,7 +69,9 @@ namespace winrt::TerminalApp::implementation
     // - openInBackground: Whether to preserve the currently focused tab.
     // - createdTab: Optional output for an actual local tab. Remains null for
     //   no-op and elevation handoff paths, even when handoff returns S_OK.
-    HRESULT TerminalPage::_OpenNewTab(const INewContentArgs& newContentArgs, bool openInBackground, TerminalApp::Tab* createdTab)
+    // - allowElevationHandoff: Whether this operation can transfer to another
+    //   process. Local-only callers fail before launching an elevated window.
+    HRESULT TerminalPage::_OpenNewTab(const INewContentArgs& newContentArgs, bool openInBackground, TerminalApp::Tab* createdTab, bool allowElevationHandoff)
     try
     {
         if (createdTab)
@@ -88,7 +90,7 @@ namespace winrt::TerminalApp::implementation
             const auto settings{ Settings::TerminalSettings::CreateWithNewTerminalArgs(_settings, newTerminalArgs) };
 
             // Try to handle auto-elevation
-            if (!newTerminalArgs.ContentId() && _maybeElevate(newTerminalArgs, settings, profile))
+            if (!newTerminalArgs.ContentId() && _maybeElevate(newTerminalArgs, settings, profile, allowElevationHandoff))
             {
                 return S_OK;
             }
