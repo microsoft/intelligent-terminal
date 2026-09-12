@@ -480,10 +480,21 @@
     }, true);
 
     // ---- Recovery: focus OR any user interaction
+    var MOUSEMOVE_THROTTLE_MS = 250;
+    var lastMouseMoveSetFastAt = 0;
+
+    function handleMouseMoveSetFast() {
+        var now = Date.now();
+        if (now - lastMouseMoveSetFastAt >= MOUSEMOVE_THROTTLE_MS) {
+            lastMouseMoveSetFastAt = now;
+            setFast();
+        }
+    }
+
     window.addEventListener("focus", setFast, true);
     document.addEventListener("click", setFast, true);
     document.addEventListener("keydown", setFast, true);
-    document.addEventListener("mousemove", setFast, true);
+    document.addEventListener("mousemove", handleMouseMoveSetFast, true);
 
     // Initial state
     if (document.hidden) {
