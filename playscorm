@@ -1,0 +1,544 @@
+
+<!DOCTYPE html>
+<html dir="ltr" lang="en-US">
+<head>
+    <base href="/courses/playScorm/463/1043">
+    <meta http-equiv="content-type" content="text/html; charset=utf-8"/>
+    <meta name="author" content="Rockwell"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
+    <link rel="icon" href="/content/favicon.ico" type="image/x-icon">
+    <title>Introduction</title>
+    <!-- Stylesheets -->
+    <!-- Core -->
+    <!-- Latest compiled and minified CSS -->
+    <!-- Bootstrap -->
+    <link rel="stylesheet" type="text/css"
+          href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css"/>
+
+    <!-- Plugins -->
+    <!-- Plugins For This Page -->
+    <link rel="stylesheet" type="text/css" href="/core/bootstrap-custom.css"/> <!-- EOLAS Stylesheet -->
+    <link rel="stylesheet" href="/plugins/rs-plugin/css/settings.css" type="text/css"> <!-- rs Settings -->
+    <!-- Rockwell -->
+    <link rel="stylesheet" href="/rockwell/css/style.css" type="text/css"/> <!-- EOLAS Stylesheet -->
+    <link rel="stylesheet" href="/rockwell/css/helpers.css" type="text/css"/> <!-- EOLAS Stylesheet -->
+    <link rel="stylesheet" href="/rockwell/icons/icomoon/styles.css" type="text/css"> <!-- Icomoon Icons -->
+    <link rel="stylesheet" href="/rockwell/css/style-bootstrap.css" type="text/css"/> <!-- EOLAS Bootstrap Overrides -->
+    <link rel="stylesheet" href="/rockwell/css/style-plugins.css" type="text/css"/> <!-- EOLAS Plugin Styles -->
+    <link rel="stylesheet" href="/rockwell/css/animate.css" type="text/css"/> <!-- Page Animation Styles -->
+    <link rel="stylesheet" href="/rockwell/css/responsive.css" type="text/css"/> <!-- Responsive Styles -->
+    <link rel="stylesheet" href="/rockwell/css/dark.css" type="text/css"/> <!-- EOLAS Dark Styles -->
+    <!-- Theme CSS -->
+    <link rel="stylesheet" href="/rockwell/css/colors.css" type="text/css"/>
+
+
+    <!-- Web Fonts  -->
+    <link href="https://fonts.googleapis.com/css?family=Roboto:400,300,100,500,700,900,300italic"
+          rel="stylesheet"
+          type="text/css">
+    <link rel="stylesheet" type="text/css" href="https://use.typekit.net/swx1egx.css">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css">
+        <link rel="stylesheet" href="/content/bundles/rockwellcourse/css/bundle.css"/>
+
+    <link href="/content/css/theme.css?v=1" rel="stylesheet" type="text/css"/>
+
+    <!-- Scripts -->
+    <!--[if lt IE 9]>
+    <script type="text/javascript"
+            src="http://css3-mediaqueries-js.googlecode.com/svn/trunk/css3-mediaqueries.js"></script>
+    <![endif]-->
+
+    <!-- jspm packages -->
+    <script src="/dist/jspm-assets.js"></script>
+
+    <!-- Core -->
+    <script src="/eolas/eolas.js"></script>
+    <script type="text/javascript" src="//cdn.jsdelivr.net/lodash/4.8.2/lodash.min.js"></script>
+    <script src="//code.jquery.com/jquery-1.12.0.min.js"></script>
+    <script type="text/javascript" src="//code.jquery.com/ui/1.12.0/jquery-ui.min.js"></script>
+
+    <!-- Slider -->
+
+    
+    <!-- Adobe Maze.co tracker -->
+    <script>
+        (function (m, a, z, e) {
+            var s, t;
+            try {
+                t = m.sessionStorage.getItem('maze-us');
+            } catch (err) {}
+
+            if (!t) {
+                t = new Date().getTime();
+                try {
+                    m.sessionStorage.setItem('maze-us', t);
+                } catch (err) {}
+            }
+
+            s = a.createElement('script');
+            s.src = z + '?apiKey=' + e;
+            s.async = true;
+            a.getElementsByTagName('head')[0].appendChild(s);
+            m.mazeUniversalSnippetApiKey = e;
+        })
+        (window, document, 'https://snippet.maze.co/maze-universal-loader.js', '2ee31612-a882-4727-8c89-cd893941de18');
+    </script>
+
+    <!-- Global site tag (gtag.js) - Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-G61XS44WSF"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+
+        function gtag() {
+            dataLayer.push(arguments);
+        }
+        gtag('js', new Date());
+
+        gtag('config', 'G-G61XS44WSF');
+    </script>
+
+</head>
+<body class="stretched" style="overflow: hidden">
+
+<!-- Document Wrapper
+   ============================================= -->
+<div id="wrapper" class="scorm clearfix">
+    <!-- Header
+       ============================================= -->
+    <header id="header" class="sticky-header">
+        <div id="header-wrap">
+            <div class="clearfix">
+                <div id="primary-menu-trigger"><i class="icon-menu7"></i></div>
+
+                <!-- Primary Navigation
+                   ============================================= -->
+                <nav id="primary-menu" class="" style="width: 100%;">
+
+                    <a href="/courses/1043" class="btn btn-default mt-10" style="float: left"> &laquo; Back to course</a>
+                                                                <a href="/courses/playScorm/464/1043" class="btn btn-default mt-10" style="float: left; margin-left: 5px; margin-right: 10px;">Next module &raquo;</a>
+                                        
+                </nav>
+                <!-- #primary-menu end -->
+            </div>
+        </div>
+    </header>
+    <!-- #header end -->
+    <!--=== Page Content ===-->
+
+    <div id="container">
+        <!-- Sidebar Menu -->
+        <!-- NOTE: This should be a duplicate of the main navigation menu which can be opened on smartphones and tablets -->
+        <!-- USE: class="current" for current menu option -->
+        <div id="sidebar" class="sidebar-fixed" style="z-index:50;">
+            <div id="sidebar-content">
+                <!--=== Side Navigation ===-->
+
+                <!-- /Side Navigation -->
+            </div>
+        </div>
+        <!-- /Sidebar -->
+    </div>
+
+        
+                
+            
+
+    <div id="content">
+        <div class="">
+            <!--=== Page Content ===-->
+            <div>
+                <div class="statusMessages" style="display: none">
+                    <!-- Alerts line -->
+                                                                            </div>
+                <div class="content-wrap" style="padding-top: 0;">
+                        <div class="scorm-container" style="width: 100%; position: relative; height: 90vh">
+        <iframe style="position: absolute; left: 0; top: 0; width: 100%; height: 90vh;" name="scormCourseware" id="scormCourseware" class="scorm-content"></iframe>
+    </div>
+
+    <style type="text/css">
+    .modal-close {
+        border: none;
+        background-color: transparent;
+        font-size: 25px;
+        top: 25%;
+    }
+    #survey-starter {
+        padding-bottom: 4px;
+    }
+</style>
+<div id="pre-course-survey-modal" class="modal">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                                <h5 class="modal-title">Pre Course Survey</h5>
+            </div>
+
+            <div class="modal-body">
+                <h6 class="text-semibold">Please complete pre-course survey before start.</h6>
+                <p>Course <b>"Adobe Commerce Business Practitioner - Professional"</b> has a pre-course survey that needs to be completed before module start of any modules.</p>
+            </div>
+
+            <div class="modal-footer">
+                                <button type="button" class="btn btn-primary" id="survey-starter">Start Survey</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="text/javascript">
+
+    $(document).ready(function(){
+
+        $(".survey-required").on("click", function (e) {
+
+            $('#pre-course-survey-modal').modal({
+                backdrop: 'static',
+                keyboard: false
+            });
+            $('#pre-course-survey-modal').modal('show');
+        });
+
+    });
+
+
+
+    $("#survey-starter").on("click", function (e) {
+
+                    var surveyUrl = "/survey/2ea96870-59e9-449b-91f3-9db224a5c747/1043/preCourse";
+        
+        window.location.replace(surveyUrl);
+    });
+
+
+        
+</script>                </div>
+                <!-- /=== Page Content ===-->
+            </div>
+            <!-- /.container -->
+        </div>
+    </div>
+
+</div>
+<!-- #wrapper end -->
+<!-- Go To Top -->
+<div id="gotoTop" class="icon-arrow-up12"></div>
+
+<!-- Footer Scripts -->
+
+<!-- Core -->
+<!-- Latest compiled and minified JavaScript -->
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js"
+        integrity="sha384-0mSbJDEHialfmuBBQP6A4Qrprq5OVfW37PRR3j5ELqxss1yVqOtnepnHVP9aJ7xS"
+        crossorigin="anonymous"></script>
+
+<!-- Plugins -->
+<script type="text/javascript" src="/plugins/jquery-superfish/superfish.min.js"></script>
+<script type="text/javascript" src="/plugins/jquery-easing/jquery.easing.min.js"></script>
+<script type="text/javascript" src="/plugins/jrespond/jrespond.min.js"></script>
+<script type="text/javascript" src="/plugins/jquery-transit/jquery.transit.min.js"></script>
+<script type="text/javascript" src="/plugins/jquery-cookie/jquery.cookie.min.js"></script>
+<script type="text/javascript" src="/plugins/jquery-appear/jquery.appear.min.js"></script>
+<script type="text/javascript" src="/plugins/jquery-stellar/jquery.stellar.min.js"></script><!-- Parrallax Only -->
+<script type="text/javascript" src="/plugins/isotope/isotope.pkgd.min.js"></script>
+<script type="text/javascript" src="/plugins/infinite-scroll/jquery.infinitescroll.min.js"></script>
+<script type="text/javascript" src="/plugins/jquery-flexslider/jquery.flexslider.min.js"></script>
+<!--<script type="text/javascript" src="/plugins/magnific-popup/magnific.popup.min.js"></script>-->
+<script type="text/javascript" src="/plugins/owl-carousel/owl.carousel.min.js"></script>
+<script type="text/javascript" src="/plugins/pace/pace.min.js"></script>
+
+<script type="text/javascript" src="/plugins/jquery-fitvids/jquery.fitvids.js"></script>
+<script type="text/javascript" src="/plugins/pnotify/pnotify.min.js"></script>
+
+<script type="text/javascript" src="/plugins/datatables/media/js/jquery.dataTables.min.js"></script>
+<script type="text/javascript" src="/plugins/datatables/extensions/Responsive/js/dataTables.responsive.min.js"></script>
+<script type="text/javascript" src="/plugins/uniform/uniform.min.js"></script>
+<script type="text/javascript" src="/plugins/select2/select2.min.js"></script>
+<!-- Scripts -->
+<script type="text/javascript" src="/rockwell/js/panels.js"></script>
+<script type="text/javascript" src="/rockwell/js/menus.js"></script>
+<script type="text/javascript">
+    $(function () {
+
+        $('.datatable').dataTable(
+            {
+                "autoWidth": false,
+                "processing": true,
+                "serverSide": false,
+                "iDisplayLength": 25,
+                dom: '<"datatable-header"fl><"datatable-scroll-wrap"t><"datatable-footer"ip>',
+                "ordering": true,
+                "searching": true,
+                language: {
+                    search: '<span>Filter:</span> _INPUT_',
+                    lengthMenu: '<span>Show:</span> _MENU_',
+                    paginate: {'first': 'First', 'last': 'Last', 'next': '&rarr;', 'previous': '&larr;'}
+                },
+                drawCallback: function () {
+                    $(this).find('tbody tr').slice(-3).find('.dropdown, .btn-group').addClass('dropup');
+                },
+                preDrawCallback: function () {
+                    $(this).find('tbody tr').slice(-3).find('.dropdown, .btn-group').removeClass('dropup');
+                },
+                "fnInitComplete": function (settings) {
+                    if ($.isFunction($.fn['select2'])) {
+                        $('.dataTables_length select', settings.nTableWrapper).select2({
+                            theme: 'bootstrap',
+                            minimumResultsForSearch: Infinity,
+                            width: 'auto'
+                        });
+                    }
+                    this.$('a.bs-tooltip').tooltip({
+                        "delay": 0,
+                        "track": true,
+                        "fade": 250
+                    });
+                    var options = $('table', settings.nTableWrapper).data('plugin-options') || {};
+                    var $search = $('.dataTables_filter input', settings.nTableWrapper);
+
+                    if ($.isFunction($.fn.placeholder)) {
+                        $search.placeholder();
+                    }
+
+                    $search.attr({
+                        placeholder: typeof options.searchPlaceholder !== 'undefined' ? options.searchPlaceholder : 'Type to filter...'
+                    });
+                }
+            });
+
+        /*
+         * Resize sidebar on scroll
+         */
+
+        /*
+         * Affix detached sidebar
+         */
+        var sidebar = $('.sidebar-detached');
+        if (sidebar.length > 0) {
+            /* Init nicescroll when sidebar affixed */
+            sidebar.on('affix.bs.affix', function () {
+                $(window).on('load scroll', function () {
+                    if ($(window).scrollTop() > $(document).height() - $(window).height() - sidebar.height()) {
+                        sidebar.addClass('fixed-sidebar-space');
+                    }
+                    else {
+                        sidebar.removeClass('fixed-sidebar-space');
+                    }
+                });
+            });
+
+            /* Attach BS affix component to the sidebar */
+            sidebar.affix({
+                offset: {
+                    top: sidebar.offset().top - 80 // top offset - computed line height
+                }
+            });
+        }
+    });
+</script>
+<!-- Functions -->
+<script type="text/javascript" src="/rockwell/js/functions.js"></script>
+
+
+    
+    <!-- Adobe Data Layer -->
+    <script>
+        window.adobeDataLayer = window.adobeDataLayer || [];
+        window.adobeDataLayer.push({
+            event: 'pageView',
+            page: {
+                title: 'Introduction',
+                section: 'Course',
+                hierarchy: 'Home / Courses Home / Module / Introduction'
+            },
+                        visitor: {
+                authID: '75302277684EFB640A495C25@AdobeID'
+            }
+        })
+    </script>
+    <script src="/content/js/adobe-client-data-layer.min.js" async defer></script>
+
+    <!-- Adobe Analytics -->
+    <script src="https://assets.adobedtm.com/2a77210364fb/9ec433516d9d/launch-ee54ec6f2d05.min.js" async></script>
+
+    <script type="text/javascript" src="/jspm_packages/bitbucket/rockinfo/frontend@release/dist/scorm-frontend.js"></script>
+
+<script type="text/javascript">
+    $(function () {
+    window.scormBundle.setScormAPI(
+        "SCORM_1.2",
+            {"0":{"cmi.core.student_id":"","cmi.core.student_name":"","cmi.core.credit":"credit","cmi.core.entry":"ab-initio","cmi.core.lesson_mode":"normal","cmi.launch_data":"","cmi.student_data.mastery_score":"","cmi.student_data.max_time_allowed":"","cmi.student_data.time_limit_action":"","cmi.core.total_time":"00:00:02.43","cmi.core.lesson_location":"","cmi.core.lesson_status":"incomplete","cmi.core.score.raw":"","cmi.core.score.max":"","cmi.core.score.min":"","cmi.core.exit":"suspend","cmi.suspend_data":"","cmi.comments":"","cmi.student_preference.language":"","cmi.student_preference.audio":"0","cmi.student_preference.speed":"0","cmi.student_preference.text":"0","lmsFinish":true,"passed":false,"cmi.core.session_time":"0000:00:02.43"}},
+            {"0":""},
+            {"0":""},
+        '',
+        '',
+        "^[\u0000-\uFFFF]{0,64000}$",
+        "^[\u0000-\uFFFF]{0,64000}$",
+        true,
+        true,
+        "0",
+        "0",
+            false,
+            1,
+        function (data) {
+            console.log('--- posting scorm data ---');
+            data = data.replace(/__/g, '.');
+
+            //TODO: correct the path according current routing
+            $.ajax("/course/api/userFiles", {
+                data: JSON.stringify({
+                    data: {
+                        type: "userFiles",
+                        attributes: {
+                            course: 1043,
+                            position: 0,
+                            customData: JSON.parse(data),
+                            courseId: 1043,
+                        },
+                        relationships: {
+                            file: {
+                                data: {
+                                    id: "463",
+                                    type: "courseWareFiles",
+                                }
+                            },
+                            moduleVersion: {
+                                data: {
+                                    id: "238",
+                                    type: "moduleVersion",
+                                }
+                            }
+                        }
+                    }
+                }),
+                contentType: 'application/json',
+                type: 'POST',
+                            });
+        }
+    );
+
+    // // Confirm leave page
+    // $(window).on('beforeunload', function() {
+    //
+    //     if (window.API) {
+    //         window.API.LMSCommit("");
+    //     }
+    //
+    //     return "Are you sure you want to leave this page?";
+    // });
+
+    // Hack for older SCORM 1.2 packages that dont commit automatically.
+    var FAST_INTERVAL = 12000;
+    var SLOW_INTERVAL = 120000;
+    var BLUR_GRACE_MS = 1500; // second-monitor detection window
+
+    var commitTimer = null;
+    var currentInterval = null;
+    var blurTimer = null;
+
+    function startCommitTimer(interval) {
+        if (currentInterval === interval) return;
+
+        if (commitTimer) clearInterval(commitTimer);
+        currentInterval = interval;
+
+        commitTimer = setInterval(function () {
+            if (window.API && typeof window.API.LMSCommit === "function") {
+                window.API.LMSCommit("");
+            }
+        }, interval);
+
+        console.log("SCORM commit interval:", interval / 1000 + "s");
+    }
+
+    function setFast() {
+        clearTimeout(blurTimer);
+        blurTimer = null;
+        startCommitTimer(FAST_INTERVAL);
+    }
+
+    function setSlow() {
+        startCommitTimer(SLOW_INTERVAL);
+    }
+
+    // ---- Primary: tab visibility (authoritative)
+    document.addEventListener("visibilitychange", function () {
+        if (document.hidden) {
+            setSlow();
+        } else {
+            setFast();
+        }
+    }, true);
+
+    // ---- Secondary: blur fallback (multi-monitor)
+    window.addEventListener("blur", function () {
+        // Only apply blur if the tab did NOT become hidden
+        if (!document.hidden) {
+            blurTimer = setTimeout(function () {
+                setSlow();
+            }, BLUR_GRACE_MS);
+        }
+    }, true);
+
+    // ---- Recovery: focus OR any user interaction
+    window.addEventListener("focus", setFast, true);
+    document.addEventListener("click", setFast, true);
+    document.addEventListener("keydown", setFast, true);
+    document.addEventListener("mousemove", setFast, true);
+
+    // Initial state
+    if (document.hidden) {
+        setSlow();
+    } else {
+        setFast();
+    }
+
+    // Hack for older SCORM 1.2 packages that dont commit automatically.
+    // setInterval(function() {
+    //
+    //     if (window.API) {
+    //         window.API.LMSCommit("");
+    //     }
+    //
+    // }, 6000);
+
+    // Set Scorm URL
+    $('#scormCourseware').attr('src', '/scorm\u002Ddata\/463\/.\/scormdriver\/indexAPI.html');
+
+});
+</script>
+
+<script type="text/javascript">
+    /* This is to fix the issue of checkboxes not being checkable. */
+    $(function () {
+        $('.uniform').uniform({radioClass: 'choice'});
+    });
+
+    // $("#scormCourseware").on('load', function() {
+    //
+    //     $("#scormCourseware").height($("#scormCourseware")[0].contentWindow.document.body.scrollHeight)
+    //
+    // });
+
+    // // Selecting the iframe element
+    // var frame = document.getElementById("Iframe");
+    //
+    // // Adjusting the iframe height onload event
+    // frame.onload = function()
+    //     // function execute while load the iframe
+    // {
+    //     // set the height of the iframe as
+    //     // the height of the iframe content
+    //     frame.style.height =
+    //         frame.contentWindow.document.body.scrollHeight + 'px';
+    //
+    //
+    //     // set the width of the iframe as the
+    //     // width of the iframe content
+    //     frame.style.width  =
+    //         frame.contentWindow.document.body.scrollWidth+'px';
+    //
+    // }
+
+</script>
+</body>
+</html>
