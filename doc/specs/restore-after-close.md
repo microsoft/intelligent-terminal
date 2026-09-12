@@ -168,6 +168,17 @@ loaded with a different provider. Legacy records without the override marker
 inherit Settings when their owner and command match. The loaded conversation
 keeps its saved model until a subsequent model change is requested.
 
+Agent and model inheritance are independent. A pane pinned to the same built-in
+Host agent currently selected in Settings inherits that agent's global model
+unless it has an explicit model override. Pinning the agent does not also pin its
+model. A pane-local `/model` selection affects only that pane; subsequent
+Settings model changes still update the other matching panes, including
+restored panes with `--agent-override`. Other agents, WSL sources, custom-command
+overrides, and explicit profile backends do not inherit this Host model
+selection. Model updates carry the target window, tab, agent, and current
+model-follow mode so a helper's spawn-time binding cannot leave it permanently
+excluded.
+
 Pre-warm is suppressed for the duration of a startup replay
 (`_replayingStartupActions`), because a tab is created before the `splitPane`
 that carries its agent pane. `_PrewarmAgentPanesAfterStartup` then gives a

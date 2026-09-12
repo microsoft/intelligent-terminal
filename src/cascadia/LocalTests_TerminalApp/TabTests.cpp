@@ -623,7 +623,7 @@ namespace TerminalAppLocalTests
             };
             const Case cases[]{
                 { L"legacy global follower", L"copilot", L"", L"copilot", L"", false, false, true },
-                { L"explicit same-agent override", L"copilot", L"", L"copilot", L"", true, true, false },
+                { L"explicit same-agent override inherits model only", L"copilot", L"", L"copilot", L"", true, true, true },
                 { L"changed global agent keeps session owner", L"claude", L"", L"copilot", L"", false, true, false },
                 { L"profile backend remains profile-bound", L"copilot", L"host:copilot", L"copilot", L"", false, false, false },
                 { L"WSL profile remains profile-bound", L"copilot", L"wsl:Ubuntu:copilot", L"wsl:Ubuntu:copilot", L"", false, false, false },
@@ -659,6 +659,7 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(winrt::hstring{ test.savedCustomCommand }, page->_GetAgentPaneCustomCommand(tab.get()));
 
                 const auto binding = page->_ResolveAgentPaneSettingsBindingForTab(tab);
+                VERIFY_ARE_EQUAL(!test.expectedOverride && std::wstring_view{ test.profileBackend }.empty(), binding.followsGlobalAgent);
                 VERIFY_ARE_EQUAL(test.expectedGlobalFollower, binding.followsGlobalAcpModel);
                 VERIFY_ARE_EQUAL(
                     test.expectedGlobalFollower,

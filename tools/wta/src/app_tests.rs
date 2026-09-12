@@ -5722,6 +5722,40 @@ fn settings_agent_rebind_invalidates_completed_older_target_preflight() {
 }
 
 #[test]
+fn model_follow_mode_tracks_valid_agent_rebinds() {
+    let (mut app, _restart_rx) = test_app_with_restart_rx();
+    app.owner_tab_id = Some("owner-tab".into());
+    app.window_id = Some("window-1".into());
+    app.tab_id = Some("owner-tab".into());
+    app.current_agent_id = "copilot".into();
+    app.tab_mut("owner-tab");
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some("owner-tab".into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
+
+    for (generation, follows, expected) in [(1, true, true), (2, false, false), (1, true, false)] {
+        let mut event = agent_rebind_event("owner-tab", generation, "copilot");
+        if let AppEvent::WtEvent { params, .. } = &mut event {
+            params["follows_global_acp_model"] = json!(follows);
+        }
+        app.handle_event(event);
+        assert_eq!(
+            app.follows_global_acp_model, expected,
+            "a stale rebind must not restore an obsolete model-follow mode"
+        );
+    }
+}
+
+#[test]
 fn settings_model_rebind_preserves_custom_provider_selection() {
     let (mut app, mut restart_rx) = test_app_with_restart_rx();
     app.owner_tab_id = Some("owner-tab".into());
@@ -6040,6 +6074,169 @@ fn settings_agent_rebind_ignores_stale_generation_and_converges_to_latest_target
         app.current_agent_id, "codex",
         "an event delayed from the helper's previous window must be ignored"
     );
+}
+
+#[test]
+fn settings_model_updates_other_restored_panes_after_local_model_pick() {
+    use crate::protocol::acp::client::MasterExtRequest;
+
+    for config_picker in [false, true] {
+        let mut panes = ["local-pane", "following-pane-a", "following-pane-b"].map(|tab_id| {
+            let (mut app, rx) = test_app_with_master_rx();
+            app.owner_tab_id = Some(tab_id.into());
+            app.tab_id = Some(tab_id.into());
+            app.window_id = Some("window-1".into());
+            app.current_agent_id = "copilot".into();
+            let session_id = format!("restored-{tab_id}");
+            app.current_tab_mut().loading_session = true;
+            app.current_tab_mut().loading_target_session_id = Some(session_id.clone());
+            app.handle_event(AppEvent::AgentConnected {
+                name: "Copilot".into(),
+                model: None,
+                version: None,
+                session_id: session_id.clone(),
+                available_models: Vec::new(),
+                current_model_id: None,
+                load_session_supported: true,
+                image_supported: false,
+                session_capabilities_ready: false,
+                telemetry_byok_binding: None,
+            });
+            app.handle_event(AppEvent::SessionAttached {
+                tab_id: tab_id.into(),
+                session_id,
+                prompt_id: None,
+                available_models: ["gpt-5.4", "gpt-5.5", "settings-model", "next-model"]
+                    .into_iter()
+                    .map(model_info)
+                    .collect(),
+                current_model_id: Some("gpt-5.4".into()),
+            });
+            (app, rx)
+        });
+        let (local, local_rx) = &mut panes[0];
+        if config_picker {
+            local.handle_event(AppEvent::SessionConfigSetCompleted {
+                session_id: "restored-local-pane".into(),
+                config_id: "model".into(),
+                value: "gpt-5.5".into(),
+                model_compat: true,
+            });
+        } else {
+            local.cmd_model("gpt-5.5".into());
+            let MasterExtRequest::SetSessionModel {
+                request_id,
+                session_id,
+                model,
+                pane_override,
+            } = local_rx.try_recv().expect("pane-local model request")
+            else {
+                panic!("expected SetSessionModel");
+            };
+            assert_eq!(session_id.unwrap().0.as_ref(), "restored-local-pane");
+            assert!(pane_override);
+            local.handle_event(AppEvent::ModelSetCompleted {
+                request_id,
+                session_id: "restored-local-pane".into(),
+                model,
+                pane_override,
+            });
+        }
+
+        for new_model in ["settings-model", "next-model"] {
+            for target in ["local-pane", "following-pane-a", "following-pane-b"] {
+                for (app, _) in &mut panes {
+                    app.handle_event(AppEvent::WtEvent {
+                        method: "agent_config_changed".into(),
+                        pane_id: String::new(),
+                        tab_id: Some(target.into()),
+                        params: json!({
+                            "window_id": "window-1",
+                            "tab_id": target,
+                            "target_agent_id": "copilot",
+                            "acp_model": new_model,
+                            "follows_global_acp_model": true
+                        }),
+                    });
+                }
+            }
+
+            for (index, (app, rx)) in panes.iter_mut().enumerate() {
+                if index == 0 {
+                    assert!(
+                        rx.try_recv().is_err(),
+                        "only the local model pick stays pinned"
+                    );
+                    assert_eq!(app.confirmed_model_display().as_deref(), Some("GPT-5.5"));
+                    continue;
+                }
+                let MasterExtRequest::SetSessionModel {
+                    request_id,
+                    session_id,
+                    model,
+                    pane_override,
+                } = rx.try_recv().expect("each other restored pane must update")
+                else {
+                    panic!("expected SetSessionModel");
+                };
+                let session_id = session_id.unwrap().to_string();
+                assert_eq!(
+                    Some(session_id.as_str()),
+                    app.current_tab().session_id.as_deref()
+                );
+                assert_eq!(model, new_model);
+                assert!(!pane_override);
+                assert!(
+                    rx.try_recv().is_err(),
+                    "another tab's event must not duplicate the update"
+                );
+                app.handle_event(AppEvent::ModelSetCompleted {
+                    request_id,
+                    session_id,
+                    model,
+                    pane_override,
+                });
+                assert_eq!(
+                    app.confirmed_model_display(),
+                    Some(new_model.to_uppercase())
+                );
+                assert!(app.current_tab().model_override.is_none());
+            }
+        }
+    }
+}
+
+#[test]
+fn model_follow_mode_requires_matching_tab_window_and_agent() {
+    let (mut app, mut rx) = test_app_with_master_rx();
+    app.owner_tab_id = Some("owner-tab".into());
+    app.tab_id = Some("owner-tab".into());
+    app.window_id = Some("window-1".into());
+    app.current_agent_id = "copilot".into();
+    app.current_tab_mut().session_id = Some("session-1".into());
+
+    for (window, tab, agent) in [
+        ("window-2", "owner-tab", "copilot"),
+        ("window-1", "other-tab", "copilot"),
+        ("window-1", "owner-tab", "claude"),
+        ("window-1", "", "copilot"),
+        ("", "owner-tab", "copilot"),
+    ] {
+        app.handle_event(AppEvent::WtEvent {
+            method: "agent_config_changed".into(),
+            pane_id: String::new(),
+            tab_id: None,
+            params: json!({
+                "window_id": window,
+                "tab_id": tab,
+                "target_agent_id": agent,
+                "acp_model": "new-model",
+                "follows_global_acp_model": true
+            }),
+        });
+        assert!(!app.follows_global_acp_model);
+        assert!(rx.try_recv().is_err());
+    }
 }
 
 #[test]

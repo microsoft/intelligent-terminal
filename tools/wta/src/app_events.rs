@@ -22,6 +22,7 @@ struct AgentReconnectWire {
     generation: u64,
     agent_id: String,
     acp_model: Option<String>,
+    follows_global_acp_model: Option<bool>,
     custom_model_selection: Option<String>,
     agent_source: String,
     wsl_distro: Option<String>,
@@ -193,6 +194,9 @@ impl App {
         self.last_agent_rebind_window_id = Some(request.window_id.clone());
         self.last_agent_rebind_generation = request.generation;
         self.prepare_agent_reconnect(&request);
+        if let Some(follows_global_acp_model) = wire.follows_global_acp_model {
+            self.follows_global_acp_model = follows_global_acp_model;
+        }
         self.apply_runtime_yolo_config(
             wire.automatic_yolo_target.or(wire.yolo_enabled),
             wire.yolo_policy_blocked,
@@ -2869,6 +2873,10 @@ impl App {
                     if !target_tab.is_empty() && !owner_tab.is_empty() && target_tab != owner_tab {
                         return;
                     }
+                    let targets_owner_binding = !owner_tab.is_empty()
+                        && target_tab == owner_tab
+                        && !owner_window.is_empty()
+                        && target_window == owner_window;
 
                     if let Some(enabled) = params.get("autofix_enabled").and_then(|v| v.as_bool()) {
                         tracing::info!(
@@ -2904,14 +2912,23 @@ impl App {
                         self.apply_delegate_config(delegate_agent, delegate_model);
                     }
 
-                    // acp-model is scoped by both the authoritative global agent
-                    // id and this helper's spawn-time follow mode. Helpers pinned
-                    // to another agent/profile, and panes with a local `/model`
-                    // override, keep their existing model.
+                    // The host resolves agent and model inheritance separately.
+                    // Only an exact window/tab/agent target may refresh this helper's
+                    // follow mode; pane-local `/model` overrides still win.
                     if let Some(raw) = params.get("acp_model").and_then(|v| v.as_str()) {
                         if let Some(target_agent_id) =
                             params.get("target_agent_id").and_then(|v| v.as_str())
                         {
+                            if targets_owner_binding
+                                && self.current_agent_id.eq_ignore_ascii_case(target_agent_id)
+                            {
+                                if let Some(follows_global_acp_model) = params
+                                    .get("follows_global_acp_model")
+                                    .and_then(|value| value.as_bool())
+                                {
+                                    self.follows_global_acp_model = follows_global_acp_model;
+                                }
+                            }
                             tracing::info!(
                             target: "autofix",
                             model = raw,

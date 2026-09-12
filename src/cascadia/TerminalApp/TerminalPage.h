@@ -489,6 +489,7 @@ namespace winrt::TerminalApp::implementation
             std::wstring agentWslDistro;
             std::wstring acpModel;
             std::wstring customModelSelection;
+            bool followsGlobalAgent{ false };
             bool followsGlobalAcpModel{ false };
             bool launchable{ false };
             bool supportsGlobalHostByok{ false };
@@ -635,6 +636,13 @@ namespace winrt::TerminalApp::implementation
         static AgentPaneRecreationOptions _GetAgentPaneRecreationOptions(
             bool wasStashed,
             bool isActiveTab) noexcept;
+        static bool _FollowsGlobalAcpModel(
+            bool hasAgentOverride,
+            bool hasProfileBackend,
+            std::wstring_view agentId,
+            std::wstring_view agentSource,
+            std::wstring_view modelOverride,
+            std::wstring_view globalAgentId) noexcept;
         static AgentPaneSettingsBinding _ResolveAgentPaneSettingsBinding(
             const AgentPaneSettingsBindingRequest& request);
         AgentPaneSettingsBinding _ResolveAgentPaneSettingsBindingForTab(
@@ -656,6 +664,10 @@ namespace winrt::TerminalApp::implementation
             bool agentConnected) noexcept;
         static Json::Value _BuildAgentPaneSettingsRebindPayload(
             const AgentPaneSettingsBinding& binding);
+        static Json::Value _BuildAgentPaneModelHotUpdatePayload(
+            const AgentPaneSettingsBinding& binding,
+            std::wstring_view tabId,
+            std::wstring_view windowId);
         void _RaiseAgentPaneRebindRequest(
             const winrt::com_ptr<Tab>& tab,
             const AgentPaneSettingsBinding& binding,
