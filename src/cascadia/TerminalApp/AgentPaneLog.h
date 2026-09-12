@@ -22,11 +22,15 @@
 #include <windows.h>
 
 #include <chrono>
+#include <array>
+#include <atomic>
+#include <cstdint>
 #include <cstdio>
 #include <ctime>
 #include <filesystem>
 #include <string>
 #include <system_error>
+#include <utility>
 
 #include "../inc/IntelligentTerminalPaths.h"
 
@@ -101,4 +105,86 @@ namespace winrt::TerminalApp::implementation
         WriteFile(h, line.data(), static_cast<DWORD>(n), &written, nullptr);
         CloseHandle(h);
     }
+
+    // Buffer checkpoints so tracing does not add file I/O between measured steps.
+    class AgentStartupTiming
+    {
+    public:
+        explicit AgentStartupTiming(const char* scope) noexcept :
+            _scope{ scope },
+            _enabled{ Enabled() }
+        {
+            if (_enabled)
+            {
+                _start = std::chrono::steady_clock::now();
+                _unixUs = std::chrono::duration_cast<std::chrono::microseconds>(
+                              std::chrono::system_clock::now().time_since_epoch())
+                              .count();
+                static std::atomic<uint64_t> nextId{ 0 };
+                _id = ++nextId;
+            }
+        }
+
+        ~AgentStartupTiming() noexcept
+        {
+            if (!_enabled)
+            {
+                return;
+            }
+            try
+            {
+                const auto elapsedUs = ElapsedUs();
+                std::string message = "startup_timing pid=" + std::to_string(GetCurrentProcessId()) +
+                                      " tid=" + std::to_string(GetCurrentThreadId()) +
+                                      " span=" + std::to_string(_id) + " scope=" + _scope +
+                                      " start_unix_us=" + std::to_string(_unixUs) +
+                                      " elapsed_us=" + std::to_string(elapsedUs);
+                for (size_t i = 0; i < _count; ++i)
+                {
+                    message += " ";
+                    message += _checkpoints[i].first;
+                    message += "=" + std::to_string(_checkpoints[i].second);
+                }
+                _agentPaneLog(message);
+            }
+            catch (...)
+            {
+                OutputDebugStringW(L"Failed to write agent startup timing\n");
+            }
+        }
+
+        void Mark(const char* phase) noexcept
+        {
+            if (_enabled && _count < _checkpoints.size())
+            {
+                _checkpoints[_count++] = { phase, ElapsedUs() };
+            }
+        }
+
+    private:
+        static bool Enabled() noexcept
+        {
+            static const bool enabled = []() {
+                wchar_t value[2]{};
+                return GetEnvironmentVariableW(L"WTA_STARTUP_TIMING", value, ARRAYSIZE(value)) == 1 &&
+                       value[0] == L'1';
+            }();
+            return enabled;
+        }
+
+        int64_t ElapsedUs() const noexcept
+        {
+            return std::chrono::duration_cast<std::chrono::microseconds>(
+                       std::chrono::steady_clock::now() - _start)
+                .count();
+        }
+
+        const char* _scope;
+        bool _enabled;
+        std::chrono::steady_clock::time_point _start{};
+        int64_t _unixUs{};
+        uint64_t _id{};
+        std::array<std::pair<const char*, int64_t>, 32> _checkpoints{};
+        size_t _count{};
+    };
 }

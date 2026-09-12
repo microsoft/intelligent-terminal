@@ -808,6 +808,8 @@ impl App {
                 image_supported,
                 session_capabilities_ready,
             } => {
+                let mut startup =
+                    crate::startup_timing::StartupTiming::new("helper_connected_reducer");
                 self.pending_yolo_reconciles.clear();
                 self.agent_name = name;
                 self.agent_model = model;
@@ -822,6 +824,7 @@ impl App {
                 self.agent_models = available_models;
                 self.agent_current_model_id = current_model_id;
                 self.rebuild_model_catalog_from_agent_state();
+                startup.mark("model_catalog");
                 self.agent_supports_load_session = load_session_supported;
                 self.agent_supports_image = image_supported;
                 self.state = ConnectionState::Connected;
@@ -846,6 +849,7 @@ impl App {
                 if !welcome_shown_in_state() && !self.resume_in_flight() {
                     self.show_welcome_hint = true;
                 }
+                startup.mark("welcome_state");
                 // Bind the startup session to whichever tab we own.
                 let bind_tab = self
                     .owner_tab_id
@@ -884,6 +888,7 @@ impl App {
                 }
                 self.publish_agent_status();
                 self.project_tab_state(&bind_tab);
+                startup.mark("bind_and_publish");
             }
             AppEvent::SessionAttached {
                 tab_id,
@@ -2392,6 +2397,11 @@ impl App {
                 tracing::trace!(target: "autofix", method = %method, pane_id = %pane_id, tab_id = ?tab_id, self_pane_id = ?self.pane_id, "WtEvent");
 
                 if method == "wt_listener_ready" || method == "restore_bindings_available" {
+                    if method == "wt_listener_ready" {
+                        // ACP can become ready before COM subscription. Reannounce so
+                        // the host resends runtime configuration missed during that race.
+                        self.publish_agent_status();
+                    }
                     // Availability is scoped to the owning helper. A missed
                     // notification is covered by the next real subscription.
                     if method == "restore_bindings_available"

@@ -752,6 +752,7 @@ namespace winrt::TerminalApp::implementation
         std::span<const std::pair<std::wstring, std::wstring>> environment,
         const bool armUnexpectedExitRecovery)
     {
+        AgentStartupTiming startup{ "master_spawn" };
         // Lazily allocate the master pipe name once per process. We
         // intentionally keep it across master respawns: helpers
         // spawned earlier may still hold the original pipe path on
@@ -817,6 +818,7 @@ namespace winrt::TerminalApp::implementation
             QuoteAndEscapeCommandlineArg(arg, commandline);
         }
 
+        startup.Mark("pipe_name_and_arguments");
         STARTUPINFOW si{};
         si.cb = sizeof(si);
         // No stdio inheritance — wta's bytes flow to/from per-pane
@@ -847,7 +849,9 @@ namespace winrt::TerminalApp::implementation
             LOG_CAUGHT_EXCEPTION();
         }
 
+        startup.Mark("refresh_process_path");
         auto environmentBlock = details::BuildEnvironmentBlock(environment);
+        startup.Mark("environment_block");
         if (!environmentBlock)
         {
             return false;
@@ -869,6 +873,7 @@ namespace winrt::TerminalApp::implementation
             return false;
         }
 
+        startup.Mark("create_process");
         wil::unique_handle process{ pi.hProcess };
         wil::unique_handle thread{ pi.hThread };
         const auto pid = pi.dwProcessId;
@@ -911,6 +916,7 @@ namespace winrt::TerminalApp::implementation
         // pointer. PID reuse cannot make a delayed callback match a
         // replacement wait, and the integer context has no lifetime to
         // manage while non-blocking unregister drains queued callbacks.
+        startup.Mark("job_containment");
         HANDLE waitHandle = nullptr;
         const auto waitGeneration = _waitGeneration.Register(pid);
         if (!RegisterWaitForSingleObject(
@@ -928,6 +934,7 @@ namespace winrt::TerminalApp::implementation
             _waitGeneration.Retire();
         }
 
+        startup.Mark("register_wait");
         // Hand wta the go-ahead. A resume failure leaves the child suspended,
         // so cancel its wait registration and terminate it before any process
         // state or spawn inputs are published.
@@ -937,6 +944,7 @@ namespace winrt::TerminalApp::implementation
             return false;
         }
 
+        startup.Mark("resume_thread");
         _process = std::move(process);
         _job = std::move(job);
         _pid = pid;

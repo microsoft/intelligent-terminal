@@ -96,7 +96,9 @@ pub(super) async fn run_default_tui_over_pipe(
     mut config: HelperConfig,
     pipe_name: String,
 ) -> Result<()> {
+    let mut startup = crate::startup_timing::StartupTiming::new("helper_bootstrap");
     install_descendant_job()?;
+    startup.mark("descendant_job");
     tracing::info!(target: "helper", pipe = %pipe_name, "=== wta-helper starting (TUI) ===");
     let agent_source = crate::agent_source::AgentSource::from_wire(
         config.agent_source.as_deref(),
@@ -105,6 +107,7 @@ pub(super) async fn run_default_tui_over_pipe(
     config.agent_source_cwd =
         crate::agent_source::resolve_source_cwd(&agent_source, config.agent_source_cwd.as_deref())
             .await;
+    startup.mark("source_cwd");
 
     // Debug channel for the helper TUI.
     let (debug_tx, debug_rx) = tokio::sync::mpsc::unbounded_channel::<app::DebugMessage>();
@@ -128,6 +131,8 @@ pub(super) async fn run_default_tui_over_pipe(
         }
     };
     let shell_mgr = Arc::new(shell_mgr);
+    startup.mark("wt_channel_and_shell_manager");
+    drop(startup);
 
     // Connection failures to wta-master (pipe connect give-up, ACP initialize
     // timeout/failure) are logged at their source (target=helper) and again in
@@ -161,6 +166,25 @@ fn normalize_spawn_identity(value: Option<&str>) -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string)
+}
+
+fn start_capabilities_request(channel: Arc<dyn WtChannel>) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut startup = crate::startup_timing::StartupTiming::new("helper_capabilities");
+        match channel
+            .request("get_capabilities", serde_json::json!({}))
+            .await
+        {
+            Ok(value) => {
+                startup.mark("request_complete");
+                tracing::info!(result = %value, "get_capabilities OK");
+            }
+            Err(error) => {
+                startup.mark("request_failed");
+                tracing::warn!(%error, "get_capabilities FAILED");
+            }
+        }
+    })
 }
 
 #[cfg(test)]
@@ -389,6 +413,7 @@ async fn run_acp_app(
     let local_set = tokio::task::LocalSet::new();
     local_set
         .run_until(async move {
+            let mut startup = crate::startup_timing::StartupTiming::new("helper_app_bootstrap");
             let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
             let (prompt_tx, prompt_rx) = tokio::sync::mpsc::unbounded_channel();
             let proposal_channels =
@@ -461,6 +486,7 @@ async fn run_acp_app(
                 }
             });
 
+            startup.mark("channels_and_input_tasks");
             // Start the protocol listener without gating helper/ACP startup on
             // its readiness. If COM is temporarily unavailable, chat and
             // Autofix still work; the reader retries in the background and
@@ -477,18 +503,13 @@ async fn run_acp_app(
                         );
                     }
                 });
-                tracing::info!("start_reader: launched, sending get_capabilities...");
-                match protocol_ch
-                    .request("get_capabilities", serde_json::json!({}))
-                    .await
-                {
-                    Ok(v) => tracing::info!(result = %v, "get_capabilities OK"),
-                    Err(e) => tracing::warn!(error = %e, "get_capabilities FAILED"),
-                }
+                tracing::info!("start_reader: launched, scheduling get_capabilities...");
+                drop(start_capabilities_request(protocol_ch.clone()));
             } else {
                 tracing::warn!("no wt_pipe_channel — events won't work");
             }
 
+            startup.mark("get_capabilities_scheduled");
             // Background WT event reader: forwards push events from the protocol channel to the TUI.
             if let Some(mut wt_rx) = wt_event_rx {
                 tracing::info!("wt_event_rx: starting background reader task");
@@ -723,6 +744,7 @@ async fn run_acp_app(
                 Vec::new()
             };
 
+            startup.mark("event_routing_and_agent_metadata");
             // Spawn the ACP client. In helper mode (`--connect-master <pipe>`)
             // master owns the agent lifecycle, so normal panes spawn the
             // pipe-attached variant immediately. FRE-installed Copilot is the
@@ -959,6 +981,7 @@ async fn run_acp_app(
                 app_state.show_copilot_auth_screen();
             }
 
+            startup.mark("app_construct_and_acp_schedule");
             // ── Preflight: check the agent CLI before connecting ──────────
             // Skip preflight when FRE is active — FRE has its own agent
             // selection + auth flow and doesn't need the preflight wizard.
@@ -976,6 +999,7 @@ async fn run_acp_app(
                 let _ = event_tx.send(app::AppEvent::PreflightComplete(preflight_result));
             }
 
+            startup.mark("preflight");
             // Wire the agent_event channel so dispatch_resume's split-pane
             // background callback can post AgentSessionEvent (specifically
             // ResumePaneAssigned) back into the event loop.
@@ -1308,6 +1332,8 @@ async fn run_acp_app(
                 }
             }
 
+            startup.mark("initial_view_and_source_context");
+            drop(startup);
             app_state.run(terminal, event_rx, ui_event_rx).await
         })
         .await
@@ -1316,6 +1342,72 @@ async fn run_acp_app(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct PendingCapabilities {
+        started: std::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+        response: std::sync::Mutex<
+            Option<tokio::sync::oneshot::Receiver<anyhow::Result<serde_json::Value>>>,
+        >,
+    }
+
+    #[async_trait::async_trait]
+    impl WtChannel for PendingCapabilities {
+        async fn request(
+            &self,
+            method: &str,
+            params: serde_json::Value,
+        ) -> anyhow::Result<serde_json::Value> {
+            assert_eq!(method, "get_capabilities");
+            assert_eq!(params, serde_json::json!({}));
+            let response = self.response.lock().unwrap().take().unwrap();
+            self.started
+                .lock()
+                .unwrap()
+                .take()
+                .unwrap()
+                .send(())
+                .unwrap();
+            response.await.unwrap()
+        }
+
+        fn is_available(&self) -> bool {
+            true
+        }
+    }
+
+    #[tokio::test]
+    async fn capabilities_request_runs_independently_and_retains_channel() {
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (response_tx, response_rx) = tokio::sync::oneshot::channel();
+        let channel = Arc::new(PendingCapabilities {
+            started: std::sync::Mutex::new(Some(started_tx)),
+            response: std::sync::Mutex::new(Some(response_rx)),
+        });
+        let weak = Arc::downgrade(&channel);
+        let task = start_capabilities_request(channel);
+
+        started_rx.await.unwrap();
+        assert!(!task.is_finished(), "startup must not await capabilities");
+        assert!(weak.upgrade().is_some());
+        response_tx.send(Ok(serde_json::json!({}))).unwrap();
+        task.await.unwrap();
+        assert!(weak.upgrade().is_none());
+    }
+
+    #[tokio::test]
+    async fn capabilities_failure_finishes_only_the_background_task() {
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (response_tx, response_rx) = tokio::sync::oneshot::channel();
+        let task = start_capabilities_request(Arc::new(PendingCapabilities {
+            started: std::sync::Mutex::new(Some(started_tx)),
+            response: std::sync::Mutex::new(Some(response_rx)),
+        }));
+        started_rx.await.unwrap();
+        response_tx
+            .send(Err(anyhow::anyhow!("COM unavailable")))
+            .unwrap();
+        task.await.unwrap();
+    }
 
     #[test]
     fn initial_tab_state_seeds_restored_pane_position() {

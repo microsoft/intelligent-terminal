@@ -2672,6 +2672,7 @@ impl HelperHandler {
         &self,
         mut args: acp::schema::v1::InitializeRequest,
     ) -> acp::Result<acp::schema::v1::InitializeResponse> {
+        let mut startup = crate::startup_timing::StartupTiming::new("master_initialize");
         // The helper declares which agent this tab wants in `_meta.wta`
         // by *identity* (id + model). Strip the namespace so it can never
         // reach an agent CLI, then resolve the command the master will
@@ -2738,6 +2739,7 @@ impl HelperHandler {
                 }
                 Vec::new()
             };
+        startup.mark("agent_selection");
         let provider_binding = resolve_provider_binding(
             &self.state,
             agent_id.as_deref(),
@@ -2757,6 +2759,7 @@ impl HelperHandler {
             helper_initialize_error(HelperInitializeFailure::ProviderResolution, &error)
         })?;
 
+        startup.mark("provider_binding");
         let agent = self
             .get_or_initialize_agent(|| {
                 get_or_spawn_agent(
@@ -2781,6 +2784,7 @@ impl HelperHandler {
                 );
                 helper_initialize_error(HelperInitializeFailure::AgentStartup, &e)
             })?;
+        startup.mark("agent_pool_acquire");
         let session_mcp_available = if agent
             .cached_init_resp
             .agent_capabilities
@@ -2804,6 +2808,7 @@ impl HelperHandler {
             false
         };
 
+        startup.mark("mcp_endpoint");
         // Replay the CLI's own initialize response (re-forwarding returns
         // empty `agent_info` on most backends, blanking the agent bar), adding
         // only our private helper-facing cloud catalog metadata. The original
@@ -2874,7 +2879,9 @@ impl HelperHandler {
         &self,
         args: acp::schema::v1::NewSessionRequest,
     ) -> acp::Result<acp::schema::v1::NewSessionResponse> {
+        let mut startup = crate::startup_timing::StartupTiming::new("master_new_session");
         let _replacement_guard = self.replacement_gate.lock().await;
+        startup.mark("replacement_gate");
         // Pull our `_meta.wta` payload off the request before forwarding
         // to the agent CLI. Two reasons we strip here and not after the
         // RPC: (1) the spec lets third-party agents reject unknown
@@ -2936,6 +2943,7 @@ impl HelperHandler {
                 "finished predecessor cleanup before session/new"
             );
         }
+        startup.mark("ownership_and_predecessor");
         let session_mcp_endpoint = match self
             .session_mcp_endpoint_for_session(&agent, &wta_meta, "new_session")
             .await
@@ -2963,6 +2971,7 @@ impl HelperHandler {
         } else {
             None
         };
+        startup.mark("mcp_capability_prepare");
         tracing::info!(
             target: "master",
             step = "helper→agent",
@@ -2972,6 +2981,7 @@ impl HelperHandler {
             pane_session_id = ?wta_meta.pane_session_id,
             "forwarding new_session"
         );
+        startup.mark("before_agent_rpc");
         let mut resp = match self
             .forward_new_session_to_agent(
                 args,
@@ -2981,6 +2991,7 @@ impl HelperHandler {
         {
             Ok(response) => response,
             Err(error) => {
+                startup.mark("agent_rpc_failed");
                 self.finish_failed_pending_session().await;
                 if let Some(pending) = session_mcp.as_ref() {
                     self.state.session_mcp_capabilities.cancel(pending).await;
@@ -2988,6 +2999,7 @@ impl HelperHandler {
                 return Err(error);
             }
         };
+        startup.mark("agent_rpc");
         if let Some(pending) = session_mcp.as_ref() {
             let bound = self
                 .state
@@ -3007,6 +3019,7 @@ impl HelperHandler {
                 );
             }
         }
+        startup.mark("mcp_capability_bind");
         let (available_models, current_model_id) =
             crate::protocol::acp::model_select::models_from_new_session(&resp);
         let forwarder = match self.forwarder_for_route("new_session") {
@@ -3153,6 +3166,7 @@ impl HelperHandler {
         // race is benign: if a peer disconnects between us picking it
         // up here and the actual write, the prune path in
         // `broadcast_ext_to_helpers` cleans up its subscriber slot.
+        startup.mark("route_and_registry");
         crate::master::broadcast_ext_to_helpers(
             &self.state,
             crate::session_registry::build_session_added_notification(&info),
@@ -3170,6 +3184,7 @@ impl HelperHandler {
         // which model is really in effect — the acp-client current_model_id
         // line is debug-only. The explicit case is already covered by the
         // "forwarding set_session_model" log.
+        startup.mark("broadcast");
         let agent_model_count = available_models.len();
         tracing::info!(
             target: "master",
@@ -4226,6 +4241,7 @@ fn create_master_pipe_instance(
 }
 
 async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> {
+    let mut startup = crate::startup_timing::StartupTiming::new("master_bootstrap");
     // Best-effort wtcli/COM channel for intellterm.wta/focus_session AND
     // the WT connection_state -> PaneClosed bridge: master demotes F2 rows
     // to Ended on pane-close even when no helper publishes a `PaneClosed`
@@ -4252,6 +4268,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
                 None
             }
         };
+    startup.mark("wt_channel");
     // Start subscription readiness in the background. `start_reader` keeps
     // retrying after its initial readiness timeout, so master must retain the
     // channel but must not wait up to 15 seconds before accepting helpers.
@@ -4297,6 +4314,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
             .local_addr()
             .context("read master session MCP HTTP endpoint")?
     );
+    startup.mark("mcp_bind");
     let inner = Arc::new(MasterStateInner {
         session_lifecycle_gates: Mutex::new(HashMap::new()),
         session_to_helper: Mutex::new(HashMap::new()),
@@ -4356,6 +4374,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         });
     }
 
+    startup.mark("state_and_mcp_task");
     // ── Hookless Class-B session watcher ──────────────────────────────
     // A blocking `notify` watcher runs on its own OS thread; a bridge thread
     // forwards emitted events into this LocalSet via a tokio channel, where
@@ -4435,7 +4454,9 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
     // `build_pipe_security_attributes`). Held for the whole accept loop so
     // every follow-up instance inherits the same attributes; `None` means
     // we couldn't build it and fall back to the default ACL.
+    startup.mark("background_tasks");
     let pipe_security = build_pipe_security_attributes();
+    startup.mark("pipe_security");
     if pipe_security.is_none() {
         tracing::warn!(
             target: "master",
@@ -4444,6 +4465,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
     }
     let mut server = create_master_pipe_instance(&pipe_name, true, pipe_security.as_ref())
         .with_context(|| format!("failed to create named pipe '{pipe_name}'"))?;
+    startup.mark("pipe_create");
     tracing::info!(
         target: "master",
         pipe_name = %pipe_name,
@@ -4451,6 +4473,8 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         "named pipe listening; awaiting helper connections"
     );
     let _pipe_discovery_guard = MasterPipeDiscoveryGuard::write(&pipe_name);
+    startup.mark("discovery_publish");
+    drop(startup);
 
     let mut next_helper_id: u64 = 1;
     // Cheap monotonic counter for tracking concurrent helper count.
@@ -5037,6 +5061,7 @@ async fn spawn_one_agent(
     supplied_cloud_models: Vec<crate::app::AcpModelInfo>,
 ) -> Result<Arc<AgentCli>> {
     let cold_start_started = std::time::Instant::now();
+    let mut startup = crate::startup_timing::StartupTiming::new("agent_cold_start");
     let instance_id = AgentInstanceId::new_v4();
     let resolved_agent_id = agent_id
         .map(str::to_string)
@@ -5065,6 +5090,7 @@ async fn spawn_one_agent(
             return Err(error).with_context(|| format!("failed to spawn agent CLI: {agent_cmd}"));
         }
     };
+    startup.mark("spawn");
     tracing::info!(
         target: "master",
         program = %spawn_result.resolved_program,
@@ -5234,6 +5260,7 @@ async fn spawn_one_agent(
     // Initialize this CLI. npx adapter cold starts can be slow, so keep
     // the same generous timeout the single-agent master used.
     let init_timeout_secs = if is_npx { 60 } else { 15 };
+    startup.mark("acp_transport_setup");
     let init_outcome = tokio::time::timeout(
         std::time::Duration::from_secs(init_timeout_secs),
         conn.initialize(
@@ -5246,6 +5273,7 @@ async fn spawn_one_agent(
         ),
     )
     .await;
+    startup.mark("initialize_rpc");
 
     let init_resp = match init_outcome {
         Ok(Ok(resp)) => {
@@ -5379,6 +5407,7 @@ async fn spawn_one_agent(
         );
     }
 
+    startup.mark("pool_entry_and_background_seed");
     Ok(agent)
 }
 

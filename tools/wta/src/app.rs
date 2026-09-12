@@ -4323,8 +4323,14 @@ impl App {
     ) -> Result<()> {
         const MAX_EVENTS_PER_FRAME: usize = 64;
 
+        let mut startup = Some(crate::startup_timing::StartupTiming::new(
+            "helper_first_frame",
+        ));
         let initial_draw_started = std::time::Instant::now();
         self.draw_frame(terminal)?;
+        if let Some(startup) = &mut startup {
+            startup.mark("initial_draw");
+        }
         ui_trace::log_slow("initial_draw", initial_draw_started.elapsed(), || {
             self.trace_state()
         });
@@ -4404,6 +4410,12 @@ impl App {
 
                 else => {
                     break; // All senders dropped
+                }
+            }
+
+            if self.state == ConnectionState::Connected {
+                if let Some(mut startup) = startup.take() {
+                    startup.mark("first_connected_draw");
                 }
             }
 

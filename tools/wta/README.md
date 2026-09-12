@@ -223,6 +223,47 @@ Set `WTA_LOG=debug` for verbose output (debug builds default to `debug`, release
 to `info`). The F12 debug panel in the TUI shows protocol traffic live without
 tailing log files.
 
+### Startup timing
+
+Set `WTA_STARTUP_TIMING=1` in the launching process environment before starting
+a fresh Terminal process to collect buffered `startup_timing` checkpoints in
+both the C++ pane log and WTA logs. The default is off. Starting another window
+in an existing Terminal process does not update that process's environment.
+
+Each scope records a PID, a process-local span ID, a wall-clock start in
+microseconds (`start_unix_us`), and monotonic cumulative microsecond offsets.
+Subtract adjacent checkpoints to obtain phase durations. Records are emitted
+when the scope ends, not at each checkpoint; the log-line timestamp is therefore
+not the phase start. Nested scopes overlap and must not be summed. A scope ending
+does not imply success: errors and early returns also end scopes.
+
+Covered boundaries include pane/master creation, logging and locale startup,
+master listener setup, agent command/environment preparation and process spawn,
+ACP initialization and session creation, helper setup and first connected draw,
+and the serialized `wtcli` status-publisher queue. Checkpoints contain static
+phase labels and timings, not prompts, credentials, or MCP capabilities.
+
+The helper schedules the Terminal `get_capabilities` query independently of ACP
+startup; `helper_capabilities` records its completion or failure. Listener
+readiness reannounces the current agent status so the host can resend runtime
+configuration if ACP connected before the subscription became ready.
+
+Locale normalization uses a build-generated list of supported language names
+without initializing translation tables. The first translated UI string still
+initializes the translation backend, so reduced `locale_normalize` time is not
+necessarily an equal reduction in helper startup time.
+
+The status publisher suppresses only contiguous, byte-identical scoped
+`agent_status` snapshots queued before a successful delivery began (up to 64 per
+delivery). Changed snapshots, other event types, `selected_agent` events,
+retries after failure, and later reannouncements remain intact. Coalesced queue
+records end with a `coalesced` checkpoint instead of launching another `wtcli`.
+
+Distinguish new-master/new-agent runs from pooled-agent runs, keep agent caches
+and working directories comparable, and avoid concurrent builds during timing
+runs. Disabling session tracking or changing MCP configuration is an experiment,
+not an equivalent production baseline.
+
 ## Project Structure
 
 ```

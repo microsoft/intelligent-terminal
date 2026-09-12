@@ -3179,6 +3179,7 @@ namespace winrt::TerminalApp::implementation
                                                         float initialPaneSize,
                                                         bool focusPane)
     {
+        AgentStartupTiming startup{ "pane_create" };
         if (!tab || !tab->GetActiveTerminalControl())
         {
             return false;
@@ -3192,6 +3193,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto wtaPath = _DetectWtaPath();
+        startup.Mark("detect_wta");
         if (wtaPath.empty())
         {
             _agentPaneLog("_AutoCreateHiddenAgentPaneShared: no WTA path");
@@ -3302,6 +3304,7 @@ namespace winrt::TerminalApp::implementation
             effectiveModel.clear();
         }
         const bool followsGlobalAcpModel = !hasAgentOverride && !hasProfileBackend;
+        startup.Mark("agent_selection");
 
         if ((hasAgentOverride || hasProfileBackend) && agentCliPath.empty())
         {
@@ -3326,7 +3329,9 @@ namespace winrt::TerminalApp::implementation
         // is the existing one). See `_BuildSharedWtaExtraArgs` for the
         // shared arg layout.
         auto extraArgs = _BuildSharedWtaExtraArgs();
+        startup.Mark("master_arguments");
         auto environment = _BuildSharedWtaEnvironment();
+        startup.Mark("master_environment");
 
         auto& shared = winrt::TerminalApp::implementation::SharedWta::Instance();
         if (!shared.AcquirePane(std::wstring_view{ wtaPath }, extraArgs, environment))
@@ -3334,6 +3339,7 @@ namespace winrt::TerminalApp::implementation
             _agentPaneLog("_AutoCreateHiddenAgentPaneShared: SharedWta::AcquirePane failed");
             return false;
         }
+        startup.Mark("acquire_master");
         // From here on, any early-return that *isn't* a successful
         // pane attach MUST ReleasePane to undo the refcount bump.
         auto sharedAcquired = wil::scope_exit([&shared]() noexcept {
@@ -3533,6 +3539,7 @@ namespace winrt::TerminalApp::implementation
         // The pane cwd must also win over the window cwd for agent context: deferred
         // pre-warm runs after startup actions restore that property to the
         // launcher directory, which is System32 for an AUMID activation.
+        startup.Mark("helper_arguments");
         winrt::hstring paneDirectory;
         if (const auto activeControl = tab->GetActiveTerminalControl())
         {
@@ -3570,7 +3577,9 @@ namespace winrt::TerminalApp::implementation
             args.StartingDirectory(winrt::hstring{ resolvedWorkingDirectories.helper });
         }
 
+        startup.Mark("working_directory");
         auto rawPane = _MakeTerminalPane(args, nullptr, nullptr);
+        startup.Mark("make_terminal_pane");
         if (!rawPane)
         {
             _agentPaneLog("_AutoCreateHiddenAgentPaneShared: _MakeTerminalPane returned null");
@@ -6485,6 +6494,7 @@ namespace winrt::TerminalApp::implementation
     // XAML bar can refresh its label / future status indicator.
     void TerminalPage::OnAgentStatusChanged(hstring eventJson)
     {
+        AgentStartupTiming startup{ "host_agent_status" };
         Json::Value evt;
         Json::CharReaderBuilder rb;
         std::istringstream ss(winrt::to_string(eventJson));
@@ -6517,8 +6527,10 @@ namespace winrt::TerminalApp::implementation
         const auto state = pickStr("state");
         const auto backend = pickStr("backend");
         const auto statusTabId = pickStr("tab_id");
+        startup.Mark("parse");
 
         _agentPaneLog("OnAgentStatusChanged: payload=" + winrt::to_string(eventJson).substr(0, 600));
+        startup.Mark("diagnostic_log");
 
         // A transferred helper can still be starting while WT moves its
         // TermControl to another window. In that race, the one-shot
@@ -6651,6 +6663,7 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
+        startup.Mark("tab_and_model_state");
         // Full model catalogs are intentionally not placed on the helper
         // command line. Once this specific helper reports Connected without a
         // host catalog, deliver the credential-free catalogs over the existing
@@ -6698,6 +6711,7 @@ namespace winrt::TerminalApp::implementation
             _RaiseProtocolEvent("agent_config_changed", config);
         }
 
+        startup.Mark("runtime_config");
         // Route by tab_id when present; otherwise fan out to every
         // agent pane in this window (e.g. settings broadcasts).
         const auto tabId = statusTabId;

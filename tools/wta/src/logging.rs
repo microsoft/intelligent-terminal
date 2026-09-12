@@ -120,7 +120,9 @@ pub(crate) fn log_dir() -> std::path::PathBuf {
 }
 
 pub fn init(process: &str) {
+    let mut startup = crate::startup_timing::StartupTiming::new("logging");
     let logs_root = logs_root();
+    startup.mark("root");
 
     // Per-version subdirectory: each build's logs are stored separately so an
     // upgrade can drop the prior version's logs wholesale — we keep only the
@@ -138,9 +140,11 @@ pub fn init(process: &str) {
         None => logs_root.clone(),
     };
     let _ = std::fs::create_dir_all(&log_dir);
+    startup.mark("directory");
 
     // Reclaim disk BEFORE opening our own appender.
     housekeeping(&logs_root, &log_dir, version_dir.as_deref(), process);
+    startup.mark("housekeeping");
 
     // The short-lived `cli` process is the only high-frequency writer, so it
     // gets daily rotation with native retention; every other process writes a
@@ -162,8 +166,10 @@ pub fn init(process: &str) {
     };
 
     let default_level = default_filter_directive(cfg!(debug_assertions));
+    startup.mark("appender");
 
     let filter = configured_filter(default_level);
+    startup.mark("filter");
 
     tracing_subscriber::registry()
         .with(filter)
@@ -178,6 +184,7 @@ pub fn init(process: &str) {
 
     // Stash the guard globally so `shutdown_flush` can drop it on exit.
     let _ = GUARD.set(Mutex::new(Some(guard)));
+    startup.mark("subscriber");
 }
 
 /// The current process's package version as `"Major.Minor.Build.Revision"`

@@ -1,6 +1,7 @@
 /// Publish raw JSON events to Windows Terminal in submission order.
 pub fn send(json_payload: String) {
-    let _ = publisher_sender().send(json_payload);
+    let timing = crate::startup_timing::StartupTiming::new("wt_publish_queue");
+    let _ = publisher_sender().send((json_payload, timing, std::time::Instant::now()));
 }
 
 pub(crate) fn resumed_pane_binding_event(
@@ -43,21 +44,104 @@ pub(crate) fn restart_agent_stack_event_with_id(request_id: &str) -> String {
     .to_string()
 }
 
-fn publisher_sender() -> &'static std::sync::mpsc::Sender<String> {
-    static SENDER: std::sync::OnceLock<std::sync::mpsc::Sender<String>> =
+type QueuedEvent = (
+    String,
+    crate::startup_timing::StartupTiming,
+    std::time::Instant,
+);
+
+fn publisher_sender() -> &'static std::sync::mpsc::Sender<QueuedEvent> {
+    static SENDER: std::sync::OnceLock<std::sync::mpsc::Sender<QueuedEvent>> =
         std::sync::OnceLock::new();
     SENDER.get_or_init(|| {
-        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        let (tx, rx) = std::sync::mpsc::channel::<QueuedEvent>();
         std::thread::Builder::new()
             .name("wt-event-publisher".into())
             .spawn(move || {
-                while let Ok(payload) = rx.recv() {
-                    publish_blocking(&payload);
+                let mut pending = None;
+                while let Some(event) = pending.take().or_else(|| rx.recv().ok()) {
+                    pending = publish_pending_run(event, &rx, &mut publish_blocking);
                 }
             })
             .expect("spawn wt-event-publisher thread");
         tx
     })
+}
+
+// Bound each scan even if producers continuously enqueue identical statuses.
+const MAX_COALESCED_PER_PUBLISH: usize = 64;
+
+fn is_coalescible_status(payload: &str) -> bool {
+    let Ok(event) = serde_json::from_str::<serde_json::Value>(payload) else {
+        return false;
+    };
+    if event.get("type").and_then(serde_json::Value::as_str) != Some("event")
+        || event.get("method").and_then(serde_json::Value::as_str) != Some("agent_status")
+    {
+        return false;
+    }
+    let Some(params) = event.get("params").and_then(serde_json::Value::as_object) else {
+        return false;
+    };
+    // Unscoped broadcasts and one-shot selection persistence are not snapshots.
+    !params.contains_key("selected_agent")
+        && params
+            .get("tab_id")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|tab| !tab.is_empty())
+        && matches!(
+            params.get("state").and_then(serde_json::Value::as_str),
+            Some("connecting" | "connected" | "failed" | "disconnected")
+        )
+}
+
+fn publish_pending_run(
+    (payload, mut timing, _): QueuedEvent,
+    receiver: &std::sync::mpsc::Receiver<QueuedEvent>,
+    publish: &mut impl FnMut(&str) -> bool,
+) -> Option<QueuedEvent> {
+    timing.mark("dequeued");
+    let publish_started = std::time::Instant::now();
+    let published = publish(&payload);
+    timing.mark("publish_finished");
+    if !published {
+        timing.mark("publish_failed");
+        return None;
+    }
+    if !is_coalescible_status(&payload) {
+        return None;
+    }
+
+    let mut pending = None;
+    let mut coalesced = 0;
+    for _ in 0..MAX_COALESCED_PER_PUBLISH {
+        let Ok(event) = receiver.try_recv() else {
+            break;
+        };
+        // A listener-ready reannouncement can arrive after COM delivery but
+        // before wtcli exits. Only snapshots queued strictly before this
+        // attempt may be suppressed; newer arrivals are ordering barriers too.
+        // Compare the entire wire payload, not selected UI fields.
+        if event.2 >= publish_started || event.0 != payload {
+            pending = Some(event);
+            break;
+        }
+        let (_, mut timing, _) = event;
+        timing.mark("dequeued");
+        timing.mark("coalesced");
+        coalesced += 1;
+    }
+    if coalesced > 0 {
+        tracing::debug!(
+            target: "wt_protocol",
+            coalesced,
+            payload_bytes = payload.len(),
+            "coalesced pending agent_status publications"
+        );
+    }
+    // Never remember the last published snapshot beyond this pending run:
+    // later identical statuses can re-announce readiness or retry host config.
+    pending
 }
 
 fn publish_command(exe: &std::path::Path) -> std::process::Command {
@@ -89,7 +173,9 @@ fn execute_publish(
 ) -> Result<std::process::ExitStatus, PublishError> {
     use std::io::Write;
 
+    let mut startup = crate::startup_timing::StartupTiming::new("wt_publish_process");
     let mut child = command.spawn().map_err(PublishError::Spawn)?;
+    startup.mark("spawn");
     let write_result = match child.stdin.take() {
         Some(mut stdin) => stdin.write_all(json_payload).map_err(PublishError::Write),
         None => Err(PublishError::MissingStdin),
@@ -100,10 +186,13 @@ fn execute_publish(
         return Err(error);
     }
 
-    child.wait().map_err(PublishError::Wait)
+    startup.mark("stdin_written");
+    let result = child.wait().map_err(PublishError::Wait);
+    startup.mark("process_exit");
+    result
 }
 
-fn publish_blocking(json_payload: &str) {
+fn publish_blocking(json_payload: &str) -> bool {
     let exe = std::env::current_exe()
         .ok()
         .and_then(|path| path.parent().map(|directory| directory.join("wtcli.exe")))
@@ -165,9 +254,14 @@ fn publish_blocking(json_payload: &str) {
                 "failed waiting for wtcli publish"
             );
         }
-        _ => {}
+        Ok(_) => return true,
     }
+    false
 }
+
+#[cfg(test)]
+#[path = "wt_protocol_events_tests.rs"]
+mod queue_tests;
 
 #[cfg(test)]
 mod tests {
@@ -249,7 +343,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn execute_publish_writes_and_closes_large_stdin_payload() {
-        let capture_path = std::env::temp_dir().join(format!(
+        let capture_path = std::env::current_dir().unwrap().join(format!(
             "wta-publish-{}-{}.json",
             std::process::id(),
             uuid::Uuid::new_v4()

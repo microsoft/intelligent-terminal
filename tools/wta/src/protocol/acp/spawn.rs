@@ -259,8 +259,11 @@ pub(crate) fn spawn_agent_process_with_provider(
         .copied()
         .ok_or_else(|| anyhow!("empty agent command"))?;
     let args: Vec<&str> = parts[1..].to_vec();
+    let mut startup = crate::startup_timing::StartupTiming::new("agent_spawn");
     let resolved_program = crate::agent_registry::resolve_bare_agent_name(raw_program);
+    startup.mark("resolve_executable");
     let needs_cmd = crate::coordinator::needs_shell_launch(&resolved_program);
+    startup.mark("shell_launch_check");
 
     let is_npx = resolved_program.eq_ignore_ascii_case("npx")
         || resolved_program.eq_ignore_ascii_case("npx.cmd")
@@ -295,6 +298,7 @@ pub(crate) fn spawn_agent_process_with_provider(
         environment_policy,
         provider_selection,
     )?;
+    startup.mark("provider_environment");
     if is_npx && should_omit_optional_dependencies(agent_cmd, agent_id) {
         cmd.arg("--omit=optional");
     }
@@ -309,6 +313,7 @@ pub(crate) fn spawn_agent_process_with_provider(
     let base_path = crate::agent_check::spawn_path()
         .map(std::ffi::OsString::from)
         .or_else(|| std::env::var_os("PATH"));
+    startup.mark("fresh_path");
     if let Some(base_path) = base_path.as_ref() {
         cmd.env("PATH", base_path);
     }
@@ -327,6 +332,7 @@ pub(crate) fn spawn_agent_process_with_provider(
         }
     }
     cmd.env("WTA_CLI_PATH", wta_cli_directory()?.join("wta.exe"));
+    startup.mark("cli_alias_environment");
 
     // Keep the log path available to pre-0.1.5 hook bundles while startup
     // auto-upgrade replaces their PowerShell bridge with `wtcli agent-hook`.
@@ -336,6 +342,7 @@ pub(crate) fn spawn_agent_process_with_provider(
     // RETIREMENT (#620): delete once no supported upgrade path can leave a
     // pre-0.1.5 `wt-agent-hooks` bundle installed.
     cmd.env("WTA_HOOK_LOG_DIR", crate::logging::log_dir());
+    startup.mark("hook_log_directory");
 
     // Forward the user's locale to the agent process via standard POSIX
     // environment variables. Many agent CLIs (and the large language models
@@ -372,6 +379,7 @@ pub(crate) fn spawn_agent_process_with_provider(
     if let Some(cwd) = cwd {
         cmd.current_dir(cwd);
     }
+    startup.mark("locale_and_cwd");
     let child = cmd
         .args(&args)
         .stdin(std::process::Stdio::piped())
@@ -380,6 +388,7 @@ pub(crate) fn spawn_agent_process_with_provider(
         .kill_on_drop(true)
         .spawn()
         .map_err(|e| anyhow!("failed to spawn agent '{}': {}", agent_cmd, e))?;
+    startup.mark("create_process");
 
     Ok(AgentSpawn {
         child,

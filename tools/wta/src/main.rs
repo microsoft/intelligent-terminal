@@ -26,6 +26,8 @@ mod hook_contract_tests;
 #[cfg(test)]
 #[path = "locale_parity_tests.rs"]
 mod locale_parity_tests;
+#[cfg(test)]
+mod locale_selection_tests;
 mod logging;
 mod master;
 mod osc52;
@@ -38,6 +40,7 @@ mod session_mgmt;
 mod session_registry;
 mod session_watcher;
 mod shell;
+mod startup_timing;
 mod telemetry;
 #[cfg(test)]
 mod test_support;
@@ -59,10 +62,16 @@ use cli::args::{HooksCliFilter, SessionsAction, SessionsOriginArg};
 
 i18n!("locales", fallback = "en-US");
 
+include!(concat!(env!("OUT_DIR"), "/locale_names_codegen.rs"));
+
 /// Normalize a detected OS locale to the closest available locale file.
 /// Mimics Windows MRT behavior with script-aware affinity matching.
 fn normalize_locale(locale: &str) -> String {
-    let available = rust_i18n::available_locales!();
+    let mut startup = startup_timing::StartupTiming::new("locale_normalize");
+    // Enumerating the backend initializes every translation. Names alone let
+    // master/CLI dispatch proceed without paying that first-translation cost.
+    let available = AVAILABLE_LOCALE_NAMES;
+    startup.mark("available_locales");
 
     if available.iter().any(|l| l.eq_ignore_ascii_case(locale)) {
         return locale.to_string();
@@ -148,12 +157,16 @@ fn master_config(cli: Cli) -> master::config::MasterConfig {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let mut startup = startup_timing::StartupTiming::new("main");
     let mut cli = Cli::parse();
+    startup.mark("cli_parse");
 
     // Logging must be initialized before locale, telemetry, or dispatch work.
     logging::init(&process_label(&cli));
+    startup.mark("logging_init");
     logging::install_ctrl_handler();
     logging::install_panic_hook();
+    startup.mark("handlers");
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "=== wta starting ===");
 
     let locale = cli
@@ -161,9 +174,13 @@ async fn main() -> Result<()> {
         .clone()
         .or_else(sys_locale::get_locale)
         .unwrap_or_else(|| "en-US".to_string());
+    startup.mark("locale_detection");
     rust_i18n::set_locale(&normalize_locale(&locale));
+    startup.mark("locale");
 
     telemetry::register();
+    startup.mark("telemetry_register");
+    drop(startup);
 
     if cli.test_pipe {
         let result = cli::wt::run_test_pipe().await;

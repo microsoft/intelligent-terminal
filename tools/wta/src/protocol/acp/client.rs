@@ -2982,6 +2982,7 @@ pub async fn run_acp_client_over_pipe(
     post_login_reconnect: bool,
     proposal_channels: Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
 ) -> Result<AcpClientExit> {
+    let mut startup = crate::startup_timing::StartupTiming::new("helper_acp");
     let startup_probe = StartupProbe::new();
     let usage_family_id = agent_id.as_deref().and_then(|agent_id| {
         let family_id = agent_id.trim().to_ascii_lowercase();
@@ -3312,8 +3313,10 @@ pub async fn run_acp_client_over_pipe(
         );
         req
     };
+    startup.mark("pipe_and_transport_and_request");
     let init_future = conn.initialize(init_request);
     let init_result = tokio::time::timeout(std::time::Duration::from_secs(60), init_future).await;
+    startup.mark("initialize_rpc");
     log_acp_initialize_timeout_result("HelperPipe", init_started, &init_result);
     let mut init_resp = init_result
         .map_err(|_| {
@@ -3478,6 +3481,7 @@ pub async fn run_acp_client_over_pipe(
     let _ = event_tx.send(AppEvent::ConnectionStage(
         t!("connection.syncing_sessions").into_owned(),
     ));
+    startup.mark("auth_and_initialize_response");
     match conn
         .list_sessions(acp::schema::v1::ListSessionsRequest::new())
         .await
@@ -3512,6 +3516,7 @@ pub async fn run_acp_client_over_pipe(
         }
     }
 
+    startup.mark("alive_snapshot");
     // Create the initial session bound to the owner tab — unless this
     // helper was spawned with `--initial-load-session-id`, in which case
     // we skip the bootstrap entirely and let the boot-time `load_session`
@@ -3562,7 +3567,9 @@ pub async fn run_acp_client_over_pipe(
             let mut new_session_req = acp::schema::v1::NewSessionRequest::new(cwd.clone());
             inject_wta_pane_meta(&mut new_session_req.meta, proposal_commands_supported);
             let new_session_started = std::time::Instant::now();
+            startup.mark("new_session_request");
             let new_session_result = conn.new_session(new_session_req).await;
+            startup.mark("new_session_rpc");
             log_acp_new_session_result(
                 "HelperPipeStartup",
                 new_session_started,
@@ -3648,6 +3655,7 @@ pub async fn run_acp_client_over_pipe(
             )
         };
 
+    startup.mark("session_metadata_and_origin");
     // Apply --acp-model if requested. Only valid when we actually have
     // a bootstrap session to mutate; for the initial-load path the
     // loaded session's model is whatever the agent stored — overriding
@@ -3710,6 +3718,7 @@ pub async fn run_acp_client_over_pipe(
         }
     }
 
+    startup.mark("model_selection");
     // Notify app of connection. No raw `program/args` to summarise in
     // helper mode — pull what the master/agent advertised via `init_resp`.
     let agent_version = init_resp
@@ -3740,6 +3749,8 @@ pub async fn run_acp_client_over_pipe(
         image_supported,
         session_capabilities_ready: has_bootstrap,
     });
+    startup.mark("connected_enqueued");
+    drop(startup);
     for option in &mut session_config {
         option.native_yolo = state
             .native_yolo

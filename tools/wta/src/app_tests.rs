@@ -641,6 +641,28 @@ fn agent_paste_text_ignores_auth_and_setup_modes_before_reading_clipboard() {
 }
 
 #[test]
+fn listener_ready_reannounces_connected_status_without_reconnecting() {
+    let mut app = test_app();
+    app.owner_tab_id = Some("owning-tab".into());
+    app.window_id = Some("owning-window".into());
+    app.state = ConnectionState::Connected;
+    app.pending_agent_selection = Some("copilot".into());
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "wt_listener_ready".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({}),
+    });
+
+    assert_eq!(app.state, ConnectionState::Connected);
+    assert!(
+        app.pending_agent_selection.is_none(),
+        "listener readiness must publish the completed selection even if ACP connected first"
+    );
+}
+
+#[test]
 fn restored_session_bindings_request_is_scoped_and_independent_of_acp_readiness() {
     let mut app = test_app();
     assert!(app.restored_session_bindings_request().is_none());

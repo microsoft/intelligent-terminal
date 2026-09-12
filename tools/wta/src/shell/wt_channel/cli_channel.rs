@@ -121,6 +121,7 @@ async fn run_wtcli_one_shot(
     capture_stderr: bool,
     timeout: Duration,
 ) -> Result<std::process::Output, WtcliOneShotError> {
+    let mut startup = crate::startup_timing::StartupTiming::new("wtcli_one_shot");
     let mut command = tokio::process::Command::new(path);
     command
         .args(args)
@@ -138,6 +139,7 @@ async fn run_wtcli_one_shot(
         .kill_on_drop(true);
 
     let mut child = command.spawn().map_err(WtcliOneShotError::Spawn)?;
+    startup.mark("spawn");
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
     // Keep process completion and both pipe readers under one deadline. If it
@@ -147,6 +149,7 @@ async fn run_wtcli_one_shot(
         async move { tokio::join!(child.wait(), read_pipe(stdout), read_pipe(stderr),) }
     })
     .await;
+    startup.mark("process_and_pipe_completion");
 
     match completed {
         Ok((status, stdout, stderr)) => Ok(std::process::Output {

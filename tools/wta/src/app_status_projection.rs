@@ -11,9 +11,10 @@ impl App {
     /// to the host so a XAML-rendered agent bar can update itself. The COM
     /// server special-cases `method == "agent_status"` and dispatches it
     /// straight to TerminalPage, parallel to the existing `autofix_state`
-    /// path. Cheap to call on every state change — the publisher serializes
-    /// `wtcli publish` invocations, and an extra one per state transition is
-    /// negligible compared to chat traffic.
+    /// path. The publisher serializes `wtcli publish` invocations and suppresses
+    /// only byte-identical scoped statuses queued before a successful delivery
+    /// started. Changes, one-shot selections, and readiness retries arriving
+    /// during or after delivery remain separate publications.
     pub(super) fn publish_agent_status(&mut self) {
         let state_str = match &self.state {
             ConnectionState::Connecting(_) => "connecting",
