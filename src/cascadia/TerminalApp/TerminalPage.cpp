@@ -3275,7 +3275,8 @@ namespace winrt::TerminalApp::implementation
                                                         std::wstring_view initialPanePosition,
                                                         float initialPaneSize,
                                                         bool focusPane,
-                                                        std::wstring_view initialYoloControlOwner)
+                                                        std::wstring_view initialYoloControlOwner,
+                                                        bool allowElevationHandoff)
     {
         if (!tab || !tab->GetActiveTerminalControl())
         {
@@ -3671,7 +3672,7 @@ namespace winrt::TerminalApp::implementation
             args.StartingDirectory(winrt::hstring{ resolvedWorkingDirectories.helper });
         }
 
-        auto rawPane = _MakeTerminalPane(args, nullptr, nullptr);
+        auto rawPane = _MakeTerminalPane(args, nullptr, nullptr, allowElevationHandoff);
         if (!rawPane)
         {
             _agentPaneLog("_AutoCreateHiddenAgentPaneShared: _MakeTerminalPane returned null");
@@ -7937,6 +7938,13 @@ namespace winrt::TerminalApp::implementation
             THROW_IF_FAILED(hr);
             THROW_HR(E_ABORT);
         }
+        auto closeOnFailure = wil::scope_exit([&]() noexcept {
+            try
+            {
+                createdTab.Close();
+            }
+            CATCH_LOG()
+        });
 
         // Create the resume helper in this UI turn, before deferred pre-warm.
         const auto newTab = _GetTabImpl(createdTab);
@@ -7954,11 +7962,23 @@ namespace winrt::TerminalApp::implementation
         // On failure, deferred pre-warm must not substitute a blank helper.
         // Successful visible creation re-enables pre-warm itself.
         newTab->SuppressAgentPrewarm();
-        if (!_AutoCreateHiddenAgentPaneShared(newTab, /*intoSessionsView*/ false, /*autoStash*/ false, sessionIdStr, cwdStr))
+        if (!_AutoCreateHiddenAgentPaneShared(newTab,
+                                              /*intoSessionsView*/ false,
+                                              /*autoStash*/ false,
+                                              sessionIdStr,
+                                              cwdStr,
+                                              /*initialAuthAgent*/ {},
+                                              /*initialView*/ {},
+                                              /*initialPanePosition*/ {},
+                                              /*initialPaneSize*/ 0.0f,
+                                              /*focusPane*/ true,
+                                              /*initialYoloControlOwner*/ {},
+                                              /*allowElevationHandoff*/ false))
         {
             _agentPaneLog("OnResumeInNewAgentTabRequested: failed to create the resume helper");
             THROW_HR(E_FAIL);
         }
+        closeOnFailure.release();
     }
 
     void TerminalPage::_NotifyRestoredSessionBindings(const winrt::com_ptr<Tab>& tab)
@@ -11030,13 +11050,15 @@ namespace winrt::TerminalApp::implementation
     //   pane should be a duplicate of the tab's focused pane
     // - existingConnection: optionally receives a connection from the outside
     //   world instead of attempting to create one
+    // - allowElevationHandoff: false to reject elevation before launching a
+    //   pane outside this process, including when resolving a helper profile
     // Return Value:
-    // - If the newTerminalArgs required us to open the pane as a new elevated
-    //   connection, then we'll return nullptr. Otherwise, we'll return a new
-    //   Pane for this connection.
+    // - An allowed elevation handoff returns nullptr; a forbidden one throws
+    //   ERROR_ELEVATION_REQUIRED. Otherwise returns a new Pane.
     std::shared_ptr<Pane> TerminalPage::_MakeTerminalPane(const NewTerminalArgs& newTerminalArgs,
                                                           const winrt::TerminalApp::Tab& sourceTab,
-                                                          TerminalConnection::ITerminalConnection existingConnection)
+                                                          TerminalConnection::ITerminalConnection existingConnection,
+                                                          bool allowElevationHandoff)
     {
         // First things first - Check for making a pane from content ID.
         if (newTerminalArgs &&
@@ -11084,7 +11106,7 @@ namespace winrt::TerminalApp::implementation
                     throw winrt::hresult_error{ E_INVALIDARG, L"The moved agent pane is no longer available." };
                 }
                 newTerminalArgs.ContentId(0);
-                return _MakeTerminalPane(newTerminalArgs, sourceTab, existingConnection);
+                return _MakeTerminalPane(newTerminalArgs, sourceTab, existingConnection, allowElevationHandoff);
             }
             std::shared_ptr<Pane> createdPane;
             auto closeOnFailure = wil::scope_exit([&]() noexcept {
@@ -11218,7 +11240,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         // Try to handle auto-elevation
-        if (_maybeElevate(newTerminalArgs, controlSettings, profile))
+        if (_maybeElevate(newTerminalArgs, controlSettings, profile, allowElevationHandoff))
         {
             return nullptr;
         }

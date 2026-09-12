@@ -732,7 +732,8 @@ namespace winrt::TerminalApp::implementation
                                               std::wstring_view initialPanePosition = {},
                                               float initialPaneSize = 0.0f,
                                               bool focusPane = true,
-                                              std::wstring_view initialYoloControlOwner = {});
+                                              std::wstring_view initialYoloControlOwner = {},
+                                              bool allowElevationHandoff = true);
         winrt::hstring _GetAgentPaneIdentity(Tab* tab) const;
         winrt::hstring _GetAgentPaneCustomCommand(Tab* tab) const;
         void _ScheduleStartupStructureSettled() noexcept;
@@ -1072,7 +1073,8 @@ namespace winrt::TerminalApp::implementation
         TerminalApp::IPaneContent _makeSettingsContent();
         std::shared_ptr<Pane> _MakeTerminalPane(const Microsoft::Terminal::Settings::Model::NewTerminalArgs& newTerminalArgs = nullptr,
                                                 const winrt::TerminalApp::Tab& sourceTab = nullptr,
-                                                winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection existingConnection = nullptr);
+                                                winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection existingConnection = nullptr,
+                                                bool allowElevationHandoff = true);
         std::shared_ptr<Pane> _MakePane(const Microsoft::Terminal::Settings::Model::INewContentArgs& newContentArgs = nullptr,
                                         const winrt::TerminalApp::Tab& sourceTab = nullptr,
                                         winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection existingConnection = nullptr);

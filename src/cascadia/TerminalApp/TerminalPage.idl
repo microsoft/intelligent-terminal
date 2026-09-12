@@ -195,6 +195,7 @@ namespace TerminalApp
         // the owning window/tab and creates a local tab with a visible
         // helper carrying the initial session/load ID and cwd at startup.
         // Elevation handoff is rejected before launch; the helper owns ACP loading.
+        // Post-creation failure closes only the newly created temporary tab.
         void OnResumeInNewAgentTabRequested(String eventJson);
 
         // Inbound event from a hookless WTA delegate carrying

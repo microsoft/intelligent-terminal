@@ -245,6 +245,11 @@ local-only resume request fails with `ERROR_ELEVATION_REQUIRED` before launching
 an elevated window or changing launch arguments. It never hands off a blank
 tab without the resume payload. Already-elevated windows and ordinary new-tab
 actions retain their existing behavior.
+The same no-handoff policy reaches the helper's coordinator profile through
+terminal-pane creation, including any content-attachment fallback. If any
+post-creation step fails, the host closes only the newly created tab through
+the normal tab-close path before returning the error. Successful helper
+creation releases this rollback; retries cannot accumulate blank failed tabs.
 The host creates that tab's visible agent pane immediately with the session ID
 and cwd in the helper's startup arguments. It does not wait for a
 `set_agent_state` broadcast to a helper that has not subscribed yet. Deferred
