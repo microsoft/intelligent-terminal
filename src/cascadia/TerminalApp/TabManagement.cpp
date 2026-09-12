@@ -595,7 +595,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         winrt::get_self<implementation::AgentPaneContent>(agentContent)
-            ->SetAgentRestoreIdentity(_GetAgentPaneIdentity(tab), _GetAgentPaneCustomCommand(tab));
+            ->SetAgentRestoreIdentity(_GetAgentPaneIdentity(tab), _GetAgentPaneCustomCommand(tab), tab->HasAgentOverride());
     }
 
     // Rewrites each shell pane that is running an agent CLI so its persisted

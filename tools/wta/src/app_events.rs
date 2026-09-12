@@ -22,6 +22,7 @@ struct AgentReconnectWire {
     generation: u64,
     agent_id: String,
     acp_model: Option<String>,
+    follows_global_acp_model: Option<bool>,
     custom_model_selection: Option<String>,
     agent_source: String,
     wsl_distro: Option<String>,
@@ -193,6 +194,9 @@ impl App {
         self.last_agent_rebind_window_id = Some(request.window_id.clone());
         self.last_agent_rebind_generation = request.generation;
         self.prepare_agent_reconnect(&request);
+        if let Some(follows_global_acp_model) = wire.follows_global_acp_model {
+            self.follows_global_acp_model = follows_global_acp_model;
+        }
         self.apply_runtime_yolo_config(
             wire.automatic_yolo_target.or(wire.yolo_enabled),
             wire.yolo_policy_blocked,
@@ -832,11 +836,20 @@ impl App {
                 self.agent_version = version;
                 self.session_id = session_id.clone();
                 self.auth_recovery_state = AuthRecoveryState::Idle;
-                let (available_models, current_model_id) = self
-                    .session_model_configs
-                    .entry(session_id.clone())
-                    .or_insert((available_models, current_model_id))
-                    .clone();
+                let (available_models, current_model_id) = if session_capabilities_ready {
+                    self.session_model_configs
+                        .entry(session_id.clone())
+                        .or_insert((available_models, current_model_id))
+                        .clone()
+                } else {
+                    // An initial-load placeholder has no confirmed model metadata.
+                    // Do not cache it ahead of SessionAttached, but preserve any
+                    // real config update that already arrived for this session.
+                    self.session_model_configs
+                        .get(&session_id)
+                        .cloned()
+                        .unwrap_or((available_models, current_model_id))
+                };
                 self.agent_models = available_models;
                 self.agent_current_model_id = current_model_id;
                 self.rebuild_model_catalog_from_agent_state();
@@ -2860,6 +2873,10 @@ impl App {
                     if !target_tab.is_empty() && !owner_tab.is_empty() && target_tab != owner_tab {
                         return;
                     }
+                    let targets_owner_binding = !owner_tab.is_empty()
+                        && target_tab == owner_tab
+                        && !owner_window.is_empty()
+                        && target_window == owner_window;
 
                     if let Some(enabled) = params.get("autofix_enabled").and_then(|v| v.as_bool()) {
                         tracing::info!(
@@ -2895,14 +2912,23 @@ impl App {
                         self.apply_delegate_config(delegate_agent, delegate_model);
                     }
 
-                    // acp-model is scoped by both the authoritative global agent
-                    // id and this helper's spawn-time follow mode. Helpers pinned
-                    // to another agent/profile, and panes with a local `/model`
-                    // override, keep their existing model.
+                    // The host resolves agent and model inheritance separately.
+                    // Only an exact window/tab/agent target may refresh this helper's
+                    // follow mode; pane-local `/model` overrides still win.
                     if let Some(raw) = params.get("acp_model").and_then(|v| v.as_str()) {
                         if let Some(target_agent_id) =
                             params.get("target_agent_id").and_then(|v| v.as_str())
                         {
+                            if targets_owner_binding
+                                && self.current_agent_id.eq_ignore_ascii_case(target_agent_id)
+                            {
+                                if let Some(follows_global_acp_model) = params
+                                    .get("follows_global_acp_model")
+                                    .and_then(|value| value.as_bool())
+                                {
+                                    self.follows_global_acp_model = follows_global_acp_model;
+                                }
+                            }
                             tracing::info!(
                             target: "autofix",
                             model = raw,

@@ -65,7 +65,7 @@ namespace winrt::TerminalApp::implementation
         // cached at creation: `/agent` switches the running agent through
         // `OnAgentSwitchRequested`, and a stale copy here would persist the
         // agent the pane started with instead of the one it ended up on.
-        void SetAgentRestoreIdentity(const winrt::hstring& identity, const winrt::hstring& customCommand) noexcept
+        void SetAgentRestoreIdentity(const winrt::hstring& identity, const winrt::hstring& customCommand, const bool hasAgentOverride) noexcept
         {
             // An ACP session belongs to the agent that created it. If the tab
             // has switched agents since this session was recorded, the id is
@@ -81,6 +81,7 @@ namespace winrt::TerminalApp::implementation
 
             _agentRestoreIdentity = identity;
             _agentRestoreCustomCommand = customCommand;
+            _agentRestoreHasOverride = hasAgentOverride;
         }
 
         // The agent that owned `_agentSessionId` when it was recorded. Always
@@ -105,6 +106,7 @@ namespace winrt::TerminalApp::implementation
             _agentSessionOwner = source._agentSessionOwner;
             _agentRestoreIdentity = source._agentRestoreIdentity;
             _agentRestoreCustomCommand = source._agentRestoreCustomCommand;
+            _agentRestoreHasOverride = source._agentRestoreHasOverride;
             _wtaExecutablePath = source._wtaExecutablePath;
         }
 
@@ -235,6 +237,7 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _yoloControlOwner{};
         winrt::hstring _agentRestoreIdentity{};
         winrt::hstring _agentRestoreCustomCommand{};
+        bool _agentRestoreHasOverride{ false };
         winrt::hstring _wtaExecutablePath{};
 
         // --- Diagnostics / autofix state (projected by the window bottom bar) ---

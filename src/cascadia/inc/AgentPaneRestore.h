@@ -50,6 +50,7 @@ namespace Microsoft::Terminal::AgentPaneRestore
     inline constexpr std::wstring_view SessionIdFlag{ L"--initial-load-session-id" };
     inline constexpr std::wstring_view ViewFlag{ L"--initial-view" };
     inline constexpr std::wstring_view AgentIdentityFlag{ L"--agent-backend" };
+    inline constexpr std::wstring_view AgentOverrideFlag{ L"--agent-override" };
     inline constexpr std::wstring_view CustomCommandFlag{ L"--agent-custom-command" };
     inline constexpr std::wstring_view YoloControlOwnerFlag{ L"--initial-yolo-control-owner" };
     inline constexpr std::wstring_view SessionsView{ L"sessions" };
@@ -72,6 +73,7 @@ namespace Microsoft::Terminal::AgentPaneRestore
         std::wstring agentIdentity;
         std::wstring customCommand;
         std::wstring yoloControlOwner;
+        bool hasAgentOverride{ false };
     };
 
     // Quote a value so that `CommandLineToArgvW` — which is what
@@ -138,6 +140,11 @@ namespace Microsoft::Terminal::AgentPaneRestore
         AppendFlag(cmd, SessionIdFlag, fields.sessionId);
         AppendFlag(cmd, ViewFlag, fields.view);
         AppendFlag(cmd, AgentIdentityFlag, fields.agentIdentity);
+        if (fields.hasAgentOverride)
+        {
+            cmd.push_back(L' ');
+            cmd.append(AgentOverrideFlag);
+        }
         AppendFlag(cmd, CustomCommandFlag, fields.customCommand);
         if (!fields.sessionId.empty() && IsValidYoloControlOwner(fields.yoloControlOwner))
         {
@@ -173,6 +180,10 @@ namespace Microsoft::Terminal::AgentPaneRestore
             {
                 fields.agentIdentity = next();
                 ++i;
+            }
+            else if (token == AgentOverrideFlag)
+            {
+                fields.hasAgentOverride = true;
             }
             else if (token == CustomCommandFlag)
             {

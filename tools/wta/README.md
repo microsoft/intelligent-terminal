@@ -313,6 +313,8 @@ A queued session restore shows the actual connection stage first, followed by
 short resume context; once connected, it shows only "Resuming session" until
 the load completes. The pane does not become connected earlier, and these labels
 do not reduce startup time.
+After loading, the pane header displays the restored session's agent-reported
+model, when available, without switching it to the current default model.
 
 ### Adding a new WT protocol method
 

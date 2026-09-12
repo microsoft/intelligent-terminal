@@ -1318,9 +1318,9 @@ pub struct App {
     /// lazy-first-prompt sessions stay on the configured model, not just the
     /// bootstrap one. None = "agent default" (no override).
     acp_model: Option<String>,
-    /// Whether this helper was created from the global ACP agent/model
-    /// settings. Per-tab/profile-pinned helpers keep this false so a hot
-    /// global model update cannot inject another tab's model into their CLI.
+    /// Whether the host's current binding inherits the matching global agent's
+    /// model. Seeded at spawn and refreshed by scoped host updates/rebinds;
+    /// choosing an agent alone does not create a pane-local model override.
     follows_global_acp_model: bool,
     /// True after the host has delivered its credential-free cloud/custom
     /// catalogs over `agent_config_changed`. Published in `agent_status` so
@@ -2230,6 +2230,12 @@ impl App {
         };
         for tab in self.tab_sessions.values() {
             if tab.model_override.is_some() {
+                tracing::debug!(
+                    target: "acp",
+                    session_id = ?tab.session_id,
+                    model_override = ?tab.model_override,
+                    "keeping pane-local model override during Settings update"
+                );
                 continue;
             }
             if let Some(sid) = tab.session_id.clone() {
@@ -2239,14 +2245,20 @@ impl App {
     }
 
     /// Apply a global `acpModel` settings change only when this helper follows
-    /// that exact global agent. Pane/profile-pinned helpers and pane-local
-    /// `/model` overrides remain untouched. An empty value means "agent
-    /// default"; no live switch is sent because ACP has no portable reset
-    /// operation.
+    /// that exact global agent's model. Profile/explicit-model-pinned helpers
+    /// and pane-local `/model` overrides remain untouched. An empty value means
+    /// "agent default"; no live switch is sent because ACP has no portable reset operation.
     fn apply_global_acp_model(&mut self, target_agent_id: &str, new_model: Option<String>) -> bool {
         if !self.follows_global_acp_model
             || !self.current_agent_id.eq_ignore_ascii_case(target_agent_id)
         {
+            tracing::debug!(
+                target: "acp",
+                target_agent_id,
+                agent_id = %self.current_agent_id,
+                follows_global_acp_model = self.follows_global_acp_model,
+                "ignoring Settings model update outside this helper's model binding"
+            );
             return false;
         }
 

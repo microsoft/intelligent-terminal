@@ -1548,7 +1548,13 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        if (!fields.agentIdentity.empty())
+        // Session ownership alone is not a pane override. Keep matching
+        // Settings bindings live, including legacy records without the flag,
+        // but pin an explicit override or an owner Settings no longer selects.
+        if (!fields.agentIdentity.empty() &&
+            (fields.hasAgentOverride ||
+             fields.agentIdentity != std::wstring_view{ _GetAgentPaneIdentity(tab.get()) } ||
+             fields.customCommand != std::wstring_view{ _GetAgentPaneCustomCommand(tab.get()) }))
         {
             // The saved identity folds a WSL pane's distro in with its agent
             // id, so split it back apart or the pane comes back on the host
@@ -2153,7 +2159,7 @@ namespace winrt::TerminalApp::implementation
         const auto currentAgentId =
             !actualCurrentAgentId.empty() ?
                 actualCurrentAgentId :
-            binding.followsGlobalAcpModel &&
+            binding.followsGlobalAgent &&
                     !::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(
                         previous.defaultAgentId,
                         current.defaultAgentId) ?
@@ -2176,6 +2182,27 @@ namespace winrt::TerminalApp::implementation
         };
     }
 
+    bool TerminalPage::_FollowsGlobalAcpModel(
+        const bool hasAgentOverride,
+        const bool hasProfileBackend,
+        const std::wstring_view agentId,
+        const std::wstring_view agentSource,
+        const std::wstring_view modelOverride,
+        const std::wstring_view globalAgentId) noexcept
+    {
+        // Choosing an agent does not also choose a model. A built-in Host override can
+        // inherit that same agent's global model without following agent changes.
+        if (hasAgentOverride)
+        {
+            return !agentId.empty() &&
+                   !til::starts_with(agentId, L"custom:") &&
+                   agentSource == L"host" &&
+                   modelOverride.empty() &&
+                   ::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(agentId, globalAgentId);
+        }
+        return !hasProfileBackend;
+    }
+
     TerminalPage::AgentPaneSettingsBinding TerminalPage::_ResolveAgentPaneSettingsBinding(
         const AgentPaneSettingsBindingRequest& request)
     {
@@ -2184,6 +2211,14 @@ namespace winrt::TerminalApp::implementation
 
         AgentPaneSettingsBinding binding{
             .agentSource = L"host",
+            .followsGlobalAgent = !request.hasAgentOverride && request.profileBackend.empty(),
+            .followsGlobalAcpModel = _FollowsGlobalAcpModel(
+                request.hasAgentOverride,
+                !request.profileBackend.empty(),
+                request.agentIdOverride,
+                request.agentSourceOverride,
+                request.agentModelOverride,
+                request.globalAgentId),
         };
         winrt::hstring agentCliPath;
         bool validSource = true;
@@ -2193,7 +2228,7 @@ namespace winrt::TerminalApp::implementation
             binding.agentId = request.agentIdOverride;
             binding.agentSource = request.agentSourceOverride;
             binding.agentWslDistro = request.agentWslDistroOverride;
-            binding.acpModel = request.agentModelOverride;
+            binding.acpModel = binding.followsGlobalAcpModel ? request.globalModel : request.agentModelOverride;
             agentCliPath = _ResolveAgentCliPathForId(
                 winrt::hstring{ binding.agentId },
                 winrt::hstring{ binding.acpModel },
@@ -2244,7 +2279,6 @@ namespace winrt::TerminalApp::implementation
                     request.detectedGlobalAgentId :
                     request.globalAgentId;
             binding.acpModel = request.globalModel;
-            binding.followsGlobalAcpModel = true;
             agentCliPath = winrt::hstring{ request.globalAgentCliPath };
         }
 
@@ -2314,8 +2348,8 @@ namespace winrt::TerminalApp::implementation
         const bool customModelLaunchChanged) noexcept
     {
         return binding.launchable &&
-               (((globalAgentChanged || cloudModelChanged) &&
-                 binding.followsGlobalAcpModel) ||
+               ((globalAgentChanged && binding.followsGlobalAgent) ||
+                (cloudModelChanged && binding.followsGlobalAcpModel) ||
                 (customModelLaunchChanged &&
                  binding.supportsGlobalHostByok));
     }
@@ -2356,8 +2390,23 @@ namespace winrt::TerminalApp::implementation
         params["agent_source"] = winrt::to_string(winrt::hstring{ binding.agentSource });
         params["wsl_distro"] = winrt::to_string(winrt::hstring{ binding.agentWslDistro });
         params["acp_model"] = winrt::to_string(winrt::hstring{ binding.acpModel });
+        params["follows_global_acp_model"] = binding.followsGlobalAcpModel;
         params["custom_model_selection"] =
             winrt::to_string(winrt::hstring{ binding.customModelSelection });
+        return params;
+    }
+
+    Json::Value TerminalPage::_BuildAgentPaneModelHotUpdatePayload(
+        const AgentPaneSettingsBinding& binding,
+        const std::wstring_view tabId,
+        const std::wstring_view windowId)
+    {
+        Json::Value params{ Json::objectValue };
+        params["window_id"] = winrt::to_string(winrt::hstring{ windowId });
+        params["tab_id"] = winrt::to_string(winrt::hstring{ tabId });
+        params["target_agent_id"] = winrt::to_string(winrt::hstring{ binding.agentId });
+        params["acp_model"] = winrt::to_string(winrt::hstring{ binding.acpModel });
+        params["follows_global_acp_model"] = binding.followsGlobalAcpModel;
         return params;
     }
 
@@ -3326,6 +3375,10 @@ namespace winrt::TerminalApp::implementation
             effectiveModel = tab->AgentModelOverride();
             effectiveAgentSource = tab->AgentSourceOverride();
             effectiveAgentWslDistro = tab->AgentWslDistroOverride();
+            if (_FollowsGlobalAcpModel(true, false, effectiveAgentId, effectiveAgentSource, effectiveModel, globals.EffectiveAcpAgent()))
+            {
+                effectiveModel = globals.AcpModel();
+            }
             agentCliPath = _ResolveAgentCliPathForId(effectiveAgentId, effectiveModel, tab->AgentCustomCommandOverride());
         }
         else if (sourceProfile)
@@ -3404,7 +3457,13 @@ namespace winrt::TerminalApp::implementation
         {
             effectiveModel.clear();
         }
-        const bool followsGlobalAcpModel = !hasAgentOverride && !hasProfileBackend;
+        const bool followsGlobalAcpModel = _FollowsGlobalAcpModel(
+            hasAgentOverride,
+            hasProfileBackend,
+            effectiveAgentId,
+            effectiveAgentSource,
+            tab->AgentModelOverride(),
+            globals.EffectiveAcpAgent());
 
         if ((hasAgentOverride || hasProfileBackend) && agentCliPath.empty())
         {
@@ -3721,7 +3780,8 @@ namespace winrt::TerminalApp::implementation
             {
                 impl->SetAgentRestoreExecutable(winrt::hstring{ wtaPath });
                 impl->SetAgentRestoreIdentity(_GetAgentPaneIdentity(tab.get()),
-                                              _GetAgentPaneCustomCommand(tab.get()));
+                                              _GetAgentPaneCustomCommand(tab.get()),
+                                              tab->HasAgentOverride());
             }
         }
 
@@ -4512,7 +4572,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         bool hadAny = false;
-        bool hasModelHotUpdateTarget = false;
+        std::vector<std::pair<winrt::hstring, AgentPaneSettingsBinding>> modelHotUpdateTargets;
         std::vector<winrt::hstring> tabIdsThatHadAgentPane;
         std::vector<winrt::hstring> tabIdsToRetire;
         std::vector<std::pair<winrt::hstring, AgentPaneSettingsBinding>> rebindTargets;
@@ -4637,7 +4697,7 @@ namespace winrt::TerminalApp::implementation
                                          helperEventReady,
                                          agentConnected))
                             {
-                                hasModelHotUpdateTarget = true;
+                                modelHotUpdateTargets.emplace_back(tabId, *rebindBinding);
                             }
                             continue;
                         }
@@ -4671,18 +4731,16 @@ namespace winrt::TerminalApp::implementation
 
         if (modelHotUpdate)
         {
-            if (hasModelHotUpdateTarget)
+            for (const auto& [tabId, binding] : modelHotUpdateTargets)
             {
-                Json::Value params{ Json::objectValue };
-                params["window_id"] = std::to_string(_WindowProperties.WindowId());
-                params["acp_model"] = winrt::to_string(winrt::hstring{ current.acpModel });
-                params["target_agent_id"] = winrt::to_string(winrt::hstring{ current.acpAgent });
-                _RaiseProtocolEvent("agent_config_changed", params);
+                _RaiseProtocolEvent(
+                    "agent_config_changed",
+                    _BuildAgentPaneModelHotUpdatePayload(binding, tabId, std::to_wstring(_WindowProperties.WindowId())));
             }
 
             _lastAgentSettings = current;
             _agentLifecycleOperationInProgress = false;
-            _agentPaneLog("_ReconcileAgentSettings: native model reconciliation complete");
+            _agentPaneLog("_ReconcileAgentSettings: native model reconciliation complete targets=" + std::to_string(modelHotUpdateTargets.size()));
             return;
         }
 
@@ -5543,7 +5601,7 @@ namespace winrt::TerminalApp::implementation
         if (requestAutoInstall)
         {
             const auto binding = _ResolveAgentPaneSettingsBindingForTab(focusedTab);
-            if (binding.followsGlobalAcpModel &&
+            if (binding.followsGlobalAgent &&
                 binding.agentId == L"copilot" &&
                 binding.agentSource == L"host")
             {

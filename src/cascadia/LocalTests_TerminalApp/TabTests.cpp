@@ -270,6 +270,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(PaneContextPropagatesCaptureFailure);
         TEST_METHOD(AgentSessionRestoreRequiresPersistedBufferPath);
         TEST_METHOD(AgentPaneRestoreRecordRoundTrips);
+        TEST_METHOD(AgentPaneRestorePreservesSettingsBinding);
         TEST_METHOD(PersistedLayoutAgentSessionsReceiveRestorePaths);
         TEST_METHOD(PaneAgentSessionBindingRequiresPaneIdentity);
         TEST_METHOD(AgentPaneRestoreDoesNotRequireAgentSession);
@@ -561,6 +562,7 @@ namespace TerminalAppLocalTests
         written.agentIdentity = L"wsl:Ubuntu-22.04:claude";
         written.customCommand = LR"(C:\tools\my agent\agent.exe --acp --note "hi" --trailing C:\dir\)";
         written.yoloControlOwner = L"manual";
+        written.hasAgentOverride = true;
 
         const auto commandline = Restore::BuildPaneCommandline(LR"(C:\Program Files\wta.exe)", written);
 
@@ -581,6 +583,7 @@ namespace TerminalAppLocalTests
         VERIFY_ARE_EQUAL(written.agentIdentity, read.agentIdentity);
         VERIFY_ARE_EQUAL(written.customCommand, read.customCommand);
         VERIFY_ARE_EQUAL(written.yoloControlOwner, read.yoloControlOwner);
+        VERIFY_IS_TRUE(read.hasAgentOverride);
 
         // Empty fields are simply absent rather than round-tripping as `""`.
         Restore::Fields sparse;
@@ -589,6 +592,84 @@ namespace TerminalAppLocalTests
         VERIFY_IS_TRUE(sparseCmd.find(Restore::ViewFlag) == std::wstring::npos);
         VERIFY_IS_TRUE(sparseCmd.find(Restore::CustomCommandFlag) == std::wstring::npos);
         VERIFY_IS_TRUE(sparseCmd.find(Restore::YoloControlOwnerFlag) == std::wstring::npos);
+        VERIFY_IS_TRUE(sparseCmd.find(Restore::AgentOverrideFlag) == std::wstring::npos);
+        VERIFY_IS_FALSE(Restore::ParsePaneCommandline({ L"wta.exe", L"--agent-backend", L"copilot" }).hasAgentOverride);
+    }
+
+    void TabTests::AgentPaneRestorePreservesSettingsBinding()
+    {
+        namespace Restore = ::Microsoft::Terminal::AgentPaneRestore;
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+
+        auto page = _commonSetup();
+        VERIFY_IS_NOT_NULL(page);
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto globals = page->_settings.GlobalSettings();
+            const auto profile = page->_ResolveAgentSourceProfile(tab, page->_settings);
+            VERIFY_IS_NOT_NULL(profile);
+            tab->SuppressAgentPrewarm();
+
+            struct Case
+            {
+                const wchar_t* name;
+                const wchar_t* globalAgent;
+                const wchar_t* profileBackend;
+                const wchar_t* savedAgent;
+                const wchar_t* savedCustomCommand;
+                bool explicitOverride;
+                bool expectedOverride;
+                bool expectedGlobalFollower;
+            };
+            const Case cases[]{
+                { L"legacy global follower", L"copilot", L"", L"copilot", L"", false, false, true },
+                { L"explicit same-agent override inherits model only", L"copilot", L"", L"copilot", L"", true, true, true },
+                { L"changed global agent keeps session owner", L"claude", L"", L"copilot", L"", false, true, false },
+                { L"profile backend remains profile-bound", L"copilot", L"host:copilot", L"copilot", L"", false, false, false },
+                { L"WSL profile remains profile-bound", L"copilot", L"wsl:Ubuntu:copilot", L"wsl:Ubuntu:copilot", L"", false, false, false },
+                { L"changed WSL distro keeps session owner", L"copilot", L"wsl:Debian:copilot", L"wsl:Ubuntu:copilot", L"", false, true, false },
+                { L"custom global follower", L"custom:restore-test", L"", L"custom:restore-test", L"custom-agent --acp", false, false, true },
+                { L"changed custom command remains pinned", L"custom:restore-test", L"", L"custom:restore-test", L"old-agent --acp", false, true, false },
+            };
+
+            for (const auto& test : cases)
+            {
+                Log::Comment(test.name);
+                tab->ClearAgentOverride();
+                globals.AcpAgent(test.globalAgent);
+                globals.AcpModel(L"new-settings-model");
+                globals.AcpCustomCommand(test.globalAgent == std::wstring_view{ L"custom:restore-test" } ? L"custom-agent --acp" : L"");
+                profile.AgentPaneBackend(test.profileBackend);
+
+                Restore::Fields fields;
+                fields.sessionId = L"restored-session";
+                fields.view = Restore::ChatView;
+                fields.agentIdentity = test.savedAgent;
+                fields.customCommand = test.savedCustomCommand;
+                fields.hasAgentOverride = test.explicitOverride;
+                NewTerminalArgs args;
+                args.SetContentType(winrt::hstring{ Restore::StashedPaneType });
+                args.Commandline(winrt::hstring{ Restore::BuildPaneCommandline(L"wta.exe", fields) });
+
+                // Stop at the existing prewarm gate after applying the real
+                // restore binding, without launching a helper or agent CLI.
+                VERIFY_IS_FALSE(page->_RestoreAgentPaneFromLayout(tab, args, SplitDirection::Automatic, 0.5f));
+                VERIFY_ARE_EQUAL(test.expectedOverride, tab->HasAgentOverride());
+                VERIFY_ARE_EQUAL(winrt::hstring{ test.savedAgent }, page->_GetAgentPaneIdentity(tab.get()));
+                VERIFY_ARE_EQUAL(winrt::hstring{ test.savedCustomCommand }, page->_GetAgentPaneCustomCommand(tab.get()));
+
+                const auto binding = page->_ResolveAgentPaneSettingsBindingForTab(tab);
+                VERIFY_ARE_EQUAL(!test.expectedOverride && std::wstring_view{ test.profileBackend }.empty(), binding.followsGlobalAgent);
+                VERIFY_ARE_EQUAL(test.expectedGlobalFollower, binding.followsGlobalAcpModel);
+                VERIFY_ARE_EQUAL(
+                    test.expectedGlobalFollower,
+                    page->_IsAgentPaneModelHotUpdateTarget(binding, State::Connected, true, true));
+                if (test.expectedGlobalFollower)
+                {
+                    VERIFY_ARE_EQUAL(std::wstring{ L"new-settings-model" }, binding.acpModel);
+                }
+            }
+        });
     }
 
     void TabTests::PersistedLayoutAgentSessionsReceiveRestorePaths()
@@ -2814,7 +2895,7 @@ namespace TerminalAppLocalTests
             tab->AgentPanePositionOverride(winrt::hstring{ L"left" });
             fixture->agentRestoreIdentity = fixture->source->_GetAgentPaneIdentity(tab.get());
             VERIFY_ARE_NOT_EQUAL(fixture->source->_settings.GlobalSettings().EffectiveAcpAgent(), fixture->agentRestoreIdentity);
-            agent->SetAgentRestoreIdentity(fixture->agentRestoreIdentity, fixture->agentCustomCommand);
+            agent->SetAgentRestoreIdentity(fixture->agentRestoreIdentity, fixture->agentCustomCommand, tab->HasAgentOverride());
             agent->SetAgentSessionOwner(fixture->agentRestoreIdentity);
             agent->SetAgentSessionId(L"transaction-original-session");
             agent->SetAgentRestoreExecutable(L"C:\\Test Tools\\wta-transfer.exe");
@@ -2982,6 +3063,7 @@ namespace TerminalAppLocalTests
         VERIFY_ARE_EQUAL(std::wstring{ L"transaction-original-session" }, fields.sessionId);
         VERIFY_ARE_EQUAL(std::wstring{ fixture.agentRestoreIdentity }, fields.agentIdentity);
         VERIFY_ARE_EQUAL(std::wstring{ fixture.agentCustomCommand }, fields.customCommand);
+        VERIFY_IS_TRUE(fields.hasAgentOverride);
         VERIFY_ARE_EQUAL(std::wstring{ L"sessions" }, fields.view);
     }
 
