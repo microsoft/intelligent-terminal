@@ -175,6 +175,9 @@ system.cannot_focus_session: "Kāore e taea te arotahi ki te wāhanga %{session_
 system.cannot_resume_no_load_session: "Kāore e taea te tīmata anō i te papa agent: kāore a %{agent} i pānui i te āheinga ACP `loadSession`."  # {Locked="ACP","loadSession"}
 system.cannot_resume_no_resume_flag: "Kāore e taea te tīmata anō i te wāhanga %{agent}: kāore he haki ā-`--resume` tō tēnei agent."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Kāore e taea te tīmata anō i te wāhanga %{session_id}: kāore tōna agent pūtake e mōhiotia e tēnei build."
+system.cannot_resume_missing_owner: "Kāore e taea te tīmata anō i te wātū nā te mea kāore te matapihi, te ripa rānei nōna taua wātū i te wātea."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "Kua huakina te wātū ki tētahi papa hou, engari kāore i taea te tiaki i ngā mōhiohio e hiahiatia ana hei whakaora i taua wātū i muri i ngā whakamātau e rua.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Kāore e taea te hono i te wātū i tīmata anō ki tōna papa hou nā te mea nō tētahi atu wātū hohe taua papa."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "Kāore e taea te tīmata anō i te wāhanga %{agent} %{session_id}: i tīmata, engari kāore rawa he kōrerorero i kohikohia, nō reira mā %{agent} tonu e whakakore te resume. E tango ana i te rārangi."
 system.cannot_resume_phantom_via_load: "Kāore e taea te tīmata anō i te wāhanga %{agent} %{session_id}: i tīmata, engari kāore rawa he kōrerorero i kohikohia, nō reira mā %{agent} e whakakore te load. E tango ana i te rārangi."
 system.fallback.this_agent: "tēnei agent"

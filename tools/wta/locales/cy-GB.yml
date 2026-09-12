@@ -177,6 +177,9 @@ system.cannot_focus_session: "Methu canolbwyntio ar sesiwn %{session_id}: mae’
 system.cannot_resume_no_load_session: "Methu ailddechrau mewn cwarel asiant: ni hysbysebodd %{agent} y gallu ACP `loadSession`."
 system.cannot_resume_no_resume_flag: "Methu ailddechrau sesiwn %{agent}: nid oes gan yr asiant hwn faner arddull `--resume`."
 system.cannot_resume_unknown_agent: "Methu ailddechrau sesiwn %{session_id}: mae ei asiant ffynhonnell yn anhysbys i’r adeilad hwn."
+system.cannot_resume_missing_owner: "Methu ailddechrau’r sesiwn oherwydd nad yw’r ffenestr neu’r tab y mae’n perthyn iddo ar gael."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "Agorodd y sesiwn mewn cwarel newydd, ond ni fu modd cadw’r wybodaeth sydd ei hangen i’w hadfer ar ôl dau gynnig.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Methu cysylltu’r sesiwn sydd wedi ailddechrau â’i chwarel newydd oherwydd bod y cwarel hwnnw’n perthyn i sesiwn weithredol arall."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "Methu ailddechrau sesiwn %{agent} %{session_id}: cafodd ei dechrau ond ni chasglodd unrhyw sgwrs erioed, felly byddai %{agent} ei hun yn gwrthod yr ailddechrau. Yn tynnu’r rhes."
 system.cannot_resume_phantom_via_load: "Methu ailddechrau sesiwn %{agent} %{session_id}: cafodd ei dechrau ond ni chasglodd unrhyw sgwrs erioed, felly byddai %{agent} yn gwrthod y llwytho. Yn tynnu’r rhes."
 system.fallback.this_agent: "yr asiant hwn"

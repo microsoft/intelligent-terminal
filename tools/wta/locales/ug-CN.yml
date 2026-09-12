@@ -196,6 +196,9 @@ system.cannot_focus_session: "سۆزلىشىش %{session_id} غا فوكۇسلى
 system.cannot_resume_no_load_session: "agent pane دا داۋاملاشتۇرغىلى بولمايدۇ: %{agent} ACP `loadSession` ئىقتىدارىنى ئېلان قىلمىغان."  # {Locked="ACP","loadSession"} — protocol/UI terms.
 system.cannot_resume_no_resume_flag: "%{agent} سۆزلىشىشىنى داۋاملاشتۇرغىلى بولمايدۇ: بۇ agent دا `--resume` شەكلىدىكى flag يوق."  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "سۆزلىشىش %{session_id} نى داۋاملاشتۇرغىلى بولمايدۇ: ئۇنىڭ مەنبە agent ى بۇ WTA build ئۈچۈن نامەلۇم."
+system.cannot_resume_missing_owner: "سۆزلىشىش تەۋە بولغان كۆزنەك ياكى بەتكۈچنى ئىشلەتكىلى بولمىغاچقا، سۆزلىشىشنى داۋاملاشتۇرغىلى بولمايدۇ."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "سۆزلىشىش يېڭى تاختىدا ئېچىلدى، ئەمما ئۇنى ئەسلىگە كەلتۈرۈشكە كېرەكلىك ئۇچۇرلارنى ئىككى قېتىم سىناپمۇ ساقلىغىلى بولمىدى.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "داۋاملاشتۇرۇلغان سۆزلىشىشنى ئۇنىڭ يېڭى تاختىسىغا باغلىغىلى بولمايدۇ، چۈنكى ئۇ تاختا باشقا بىر ئاكتىپ سۆزلىشىشكە تەۋە."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "%{agent} سۆزلىشىشى %{session_id} نى داۋاملاشتۇرغىلى بولمايدۇ: ئۇ باشلانغان، ئەمما ھېچقانداق سۆھبەت توپلانمىغان، شۇڭا %{agent} ئۆزى resume نى رەت قىلىدۇ. قۇر ئۆچۈرۈلۈۋاتىدۇ."
 system.cannot_resume_phantom_via_load: "%{agent} سۆزلىشىشى %{session_id} نى داۋاملاشتۇرغىلى بولمايدۇ: ئۇ باشلانغان، ئەمما ھېچقانداق سۆھبەت توپلانمىغان، شۇڭا %{agent} load نى رەت قىلىدۇ. قۇر ئۆچۈرۈلۈۋاتىدۇ."
 system.fallback.this_agent: "بۇ agent"

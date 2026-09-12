@@ -188,6 +188,9 @@ system.cannot_focus_session: "സെഷൻ %{session_id} ഫോക്കസ് �
 system.cannot_resume_no_load_session: "agent pane-ൽ പുനരാരംഭിക്കാൻ കഴിയില്ല: %{agent} ACP `loadSession` കഴിവ് പ്രഖ്യാപിച്ചിട്ടില്ല."  # {Locked="ACP","loadSession"} — protocol/UI terms.
 system.cannot_resume_no_resume_flag: "%{agent} സെഷൻ പുനരാരംഭിക്കാൻ കഴിയില്ല: ഈ agent-ന് `--resume` ശൈലിയിലുള്ള flag ഇല്ല."  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "സെഷൻ %{session_id} പുനരാരംഭിക്കാൻ കഴിയില്ല: ഇതിന്റെ ഉറവിട agent ഈ WTA build-ന് അറിയില്ല."
+system.cannot_resume_missing_owner: "സെഷൻ ഉൾപ്പെടുന്ന വിൻഡോയോ ടാബോ ലഭ്യമല്ലാത്തതിനാൽ സെഷൻ പുനരാരംഭിക്കാൻ കഴിയില്ല."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "സെഷൻ ഒരു പുതിയ പേനിൽ തുറന്നു, പക്ഷേ അത് പുനഃസ്ഥാപിക്കാൻ ആവശ്യമായ വിവരങ്ങൾ രണ്ട് ശ്രമങ്ങൾക്ക് ശേഷവും സംരക്ഷിക്കാൻ കഴിഞ്ഞില്ല.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "പുനരാരംഭിച്ച സെഷനെ അതിന്റെ പുതിയ പേനുമായി ബന്ധിപ്പിക്കാൻ കഴിയില്ല, കാരണം ആ പേൻ മറ്റൊരു സജീവ സെഷന്റേതാണ്."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "%{agent} സെഷൻ %{session_id} പുനരാരംഭിക്കാൻ കഴിയില്ല: അത് തുടങ്ങിയിരുന്നു, പക്ഷേ ഒരു സംഭാഷണവും ശേഖരിച്ചിട്ടില്ല; അതിനാൽ %{agent} തന്നെ resume നിരസിക്കും. വരി നീക്കം ചെയ്യുന്നു."
 system.cannot_resume_phantom_via_load: "%{agent} സെഷൻ %{session_id} പുനരാരംഭിക്കാൻ കഴിയില്ല: അത് തുടങ്ങിയിരുന്നു, പക്ഷേ ഒരു സംഭാഷണവും ശേഖരിച്ചിട്ടില്ല; അതിനാൽ %{agent} load നിരസിക്കും. വരി നീക്കം ചെയ്യുന്നു."
 system.fallback.this_agent: "ഈ agent"

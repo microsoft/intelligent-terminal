@@ -175,6 +175,9 @@ system.cannot_focus_session: "Hindi ma-focus ang session %{session_id}: mukhang 
 system.cannot_resume_no_load_session: "Hindi maipagpatuloy sa agent pane: hindi in-advertise ng %{agent} ang ACP `loadSession` capability."  # {Locked="ACP","loadSession"}
 system.cannot_resume_no_resume_flag: "Hindi maipagpatuloy ang %{agent} session: walang `--resume`-style flag ang agent na ito."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Hindi maipagpatuloy ang session %{session_id}: hindi kilala ng build na ito ang source agent nito."
+system.cannot_resume_missing_owner: "Hindi maipagpatuloy ang session dahil hindi magagamit ang window o tab na kinabibilangan nito."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "Nabuksan ang session sa isang bagong pane, pero hindi naitabi ang impormasyong kailangan para maibalik ito matapos ang dalawang pagtatangka.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Hindi maiugnay ang ipinagpatuloy na session sa bago nitong pane dahil pag-aari ng ibang aktibong session ang pane na iyon."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "Hindi maipagpatuloy ang %{agent} session %{session_id}: nagsimula ito pero hindi kailanman nakaipon ng anumang pag-uusap, kaya tatanggihan ng %{agent} mismo ang resume. Inaalis ang row."
 system.cannot_resume_phantom_via_load: "Hindi maipagpatuloy ang %{agent} session %{session_id}: nagsimula ito pero hindi kailanman nakaipon ng anumang pag-uusap, kaya tatanggihan ng %{agent} ang load. Inaalis ang row."
 system.fallback.this_agent: "ang agent na ito"

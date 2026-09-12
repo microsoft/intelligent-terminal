@@ -184,6 +184,9 @@ system.cannot_focus_session: "Nie można ustawić fokusu na sesji %{session_id}:
 system.cannot_resume_no_load_session: "Nie można wznowić w panelu agenta: %{agent} nie ogłosił możliwości ACP `loadSession`."  # {Locked="ACP","loadSession"}
 system.cannot_resume_no_resume_flag: "Nie można wznowić sesji %{agent}: ten agent nie ma flagi w stylu `--resume`."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Nie można wznowić sesji %{session_id}: jej agent źródłowy jest nieznany tej kompilacji WTA."
+system.cannot_resume_missing_owner: "Nie można wznowić sesji, ponieważ okno lub karta, do której należy, jest niedostępna."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "Sesja została otwarta w nowym panelu, ale nie udało się zapisać informacji potrzebnych do jej przywrócenia po dwóch próbach.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Nie można powiązać wznowionej sesji z jej nowym panelem, ponieważ ten panel należy do innej aktywnej sesji."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "Nie można wznowić sesji %{agent} %{session_id}: została uruchomiona, ale nigdy nie zgromadziła żadnej konwersacji, więc sam %{agent} odrzuciłby wznowienie. Usuwanie wiersza."
 system.cannot_resume_phantom_via_load: "Nie można wznowić sesji %{agent} %{session_id}: została uruchomiona, ale nigdy nie zgromadziła żadnej konwersacji, więc %{agent} odrzuciłby załadowanie. Usuwanie wiersza."
 system.fallback.this_agent: "ten agent"

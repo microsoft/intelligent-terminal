@@ -188,6 +188,9 @@ system.cannot_focus_session: "ಸೆಷನ್ %{session_id} ಮೇಲೆ ಫೋ�
 system.cannot_resume_no_load_session: "agent pane ನಲ್ಲಿ ಪುನರಾರಂಭಿಸಲಾಗುವುದಿಲ್ಲ: %{agent} ACP `loadSession` ಸಾಮರ್ಥ್ಯವನ್ನು ಪ್ರಕಟಿಸಿಲ್ಲ."  # {Locked="ACP","loadSession"} — protocol/UI terms.
 system.cannot_resume_no_resume_flag: "%{agent} ಸೆಷನ್ ಅನ್ನು ಪುನರಾರಂಭಿಸಲಾಗುವುದಿಲ್ಲ: ಈ agent ಗೆ `--resume` ಶೈಲಿಯ flag ಇಲ್ಲ."  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "ಸೆಷನ್ %{session_id} ಪುನರಾರಂಭಿಸಲಾಗುವುದಿಲ್ಲ: ಇದರ ಮೂಲ agent ಈ WTA build ಗೆ ತಿಳಿದಿಲ್ಲ."
+system.cannot_resume_missing_owner: "ಸೆಷನ್‌ಗೆ ಸಂಬಂಧಿಸಿದ ವಿಂಡೋ ಅಥವಾ ಟ್ಯಾಬ್ ಲಭ್ಯವಿಲ್ಲದ ಕಾರಣ ಸೆಷನ್ ಅನ್ನು ಪುನರಾರಂಭಿಸಲಾಗುವುದಿಲ್ಲ."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "ಸೆಷನ್ ಹೊಸ ಪೇನ್‌ನಲ್ಲಿ ತೆರೆಯಿತು, ಆದರೆ ಅದನ್ನು ಮರುಸ್ಥಾಪಿಸಲು ಅಗತ್ಯವಿರುವ ಮಾಹಿತಿಯನ್ನು ಎರಡು ಪ್ರಯತ್ನಗಳ ನಂತರವೂ ಉಳಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "ಪುನರಾರಂಭಿಸಿದ ಸೆಷನ್ ಅನ್ನು ಅದರ ಹೊಸ ಪೇನ್‌ಗೆ ಸಂಪರ್ಕಿಸಲಾಗುವುದಿಲ್ಲ, ಏಕೆಂದರೆ ಆ ಪೇನ್ ಮತ್ತೊಂದು ಸಕ್ರಿಯ ಸೆಷನ್‌ಗೆ ಸೇರಿದೆ."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "%{agent} ಸೆಷನ್ %{session_id} ಪುನರಾರಂಭಿಸಲಾಗುವುದಿಲ್ಲ: ಅದು ಪ್ರಾರಂಭವಾಗಿತ್ತು ಆದರೆ ಯಾವುದೇ ಸಂಭಾಷಣೆ ಸಂಗ್ರಹವಾಗಿಲ್ಲ, ಆದ್ದರಿಂದ %{agent} ಸ್ವತಃ resume ಅನ್ನು ತಿರಸ್ಕರಿಸುತ್ತದೆ. ಸಾಲನ್ನು ತೆಗೆದುಹಾಕಲಾಗುತ್ತಿದೆ."
 system.cannot_resume_phantom_via_load: "%{agent} ಸೆಷನ್ %{session_id} ಪುನರಾರಂಭಿಸಲಾಗುವುದಿಲ್ಲ: ಅದು ಪ್ರಾರಂಭವಾಗಿತ್ತು ಆದರೆ ಯಾವುದೇ ಸಂಭಾಷಣೆ ಸಂಗ್ರಹವಾಗಿಲ್ಲ, ಆದ್ದರಿಂದ %{agent} load ಅನ್ನು ತಿರಸ್ಕರಿಸುತ್ತದೆ. ಸಾಲನ್ನು ತೆಗೆದುಹಾಕಲಾಗುತ್ತಿದೆ."
 system.fallback.this_agent: "ಈ agent"

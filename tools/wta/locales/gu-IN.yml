@@ -188,6 +188,9 @@ system.cannot_focus_session: "સત્ર %{session_id} પર ફોકસ ક
 system.cannot_resume_no_load_session: "agent paneમાં ફરી શરૂ કરી શકાતું નથી: %{agent}એ ACP `loadSession` ક્ષમતા જાહેર કરી નથી."  # {Locked="ACP","loadSession"} — protocol/UI terms.
 system.cannot_resume_no_resume_flag: "%{agent} સત્ર ફરી શરૂ કરી શકાતું નથી: આ agent પાસે `--resume`-શૈલીનો flag નથી."  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "સત્ર %{session_id} ફરી શરૂ કરી શકાતું નથી: તેનો સ્રોત agent આ WTA build માટે અજ્ઞાત છે."
+system.cannot_resume_missing_owner: "સત્ર જે વિન્ડો અથવા ટેબનું છે, તે ઉપલબ્ધ ન હોવાથી સત્ર ફરી શરૂ કરી શકાતું નથી."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "સત્ર નવા પેનમાં ખૂલ્યું છે, પરંતુ તેને પુનઃસ્થાપિત કરવા માટે જરૂરી માહિતી બે પ્રયાસો પછી પણ સાચવી શકાઈ નથી.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "ફરી શરૂ કરેલા સત્રને તેના નવા પેન સાથે જોડી શકાતું નથી, કારણ કે તે પેનની માલિકી બીજા સક્રિય સત્રની છે."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "%{agent} સત્ર %{session_id} ફરી શરૂ કરી શકાતું નથી: તે શરૂ થયું હતું પરંતુ તેમાં કોઈ વાતચીત સંગ્રહાઈ નથી, તેથી %{agent} પોતે resume નકારી દેશે. પંક્તિ દૂર કરવામાં આવી રહી છે."
 system.cannot_resume_phantom_via_load: "%{agent} સત્ર %{session_id} ફરી શરૂ કરી શકાતું નથી: તે શરૂ થયું હતું પરંતુ તેમાં કોઈ વાતચીત સંગ્રહાઈ નથી, તેથી %{agent} load નકારી દેશે. પંક્તિ દૂર કરવામાં આવી રહી છે."
 system.fallback.this_agent: "આ agent"

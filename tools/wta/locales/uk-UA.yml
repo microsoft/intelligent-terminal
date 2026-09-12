@@ -184,6 +184,9 @@ system.cannot_focus_session: "Не вдається сфокусувати се�
 system.cannot_resume_no_load_session: "Не вдається відновити в панелі агента: %{agent} не оголосив можливість ACP `loadSession`."  # {Locked="ACP","loadSession"}
 system.cannot_resume_no_resume_flag: "Не вдається відновити сеанс %{agent}: цей агент не має прапорця в стилі `--resume`."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Не вдається відновити сеанс %{session_id}: його вихідний агент невідомий цій збірці WTA."
+system.cannot_resume_missing_owner: "Не вдається відновити сеанс, оскільки вікно або вкладка, яким він належить, недоступні."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "Сеанс відкрито в новій панелі, але відомості, потрібні для його відновлення, не вдалося зберегти після двох спроб.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Не вдається прив’язати відновлений сеанс до його нової панелі, оскільки ця панель належить іншому активному сеансу."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "Не вдається відновити сеанс %{agent} %{session_id}: його було запущено, але в ньому не накопичилося жодної розмови, тому сам %{agent} відхилив би відновлення. Рядок видаляється."
 system.cannot_resume_phantom_via_load: "Не вдається відновити сеанс %{agent} %{session_id}: його було запущено, але в ньому не накопичилося жодної розмови, тому %{agent} відхилив би завантаження. Рядок видаляється."
 system.fallback.this_agent: "цей агент"

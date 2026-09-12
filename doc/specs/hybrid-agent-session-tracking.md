@@ -249,10 +249,22 @@ cannot block retries forever. A returned shell-pane identity does not expire
 this way: a missing persistence update must not create another live CLI.
 Closing an observed binding clears its pending resume immediately,
 including when the CLI exits before the next master snapshot. Later completion
-for that cancelled request is ignored. Late pane callbacks cannot replace an already-live session's binding
+cannot rebind that cancelled request or change a newer attempt. Its transport
+error can still be reported once through the separate attempt-local owner map;
+clearing binding deduplication is not cancellation of error delivery.
+Late pane callbacks cannot replace an already-live session's binding
 or take its hook ownership. They also cannot displace a different live session
 that already owns the returned pane. Stale index cleanup must preserve any
 other session's valid binding.
+If that ownership guard rejects the returned pane, the requested historical
+row must not remain blocked by a recorded creation forever: report the conflict
+to the invoking tab and release that attempt without evicting the live owner.
+
+Agent-pane history resume retains the existing launch-configuration behavior:
+it does not reconstruct a historical provider, custom command, or WSL backend
+on the new tab. That configuration-preservation work is separate from delivery
+and owner routing. Agent-pane rows remain excluded by the default shell-only
+picker filter; `WTA_SESSIONS_SHOW_AGENT_PANE` enables that development path.
 
 While creation is in flight, each pending request remembers normalized pane
 closures even if no session-to-pane binding exists yet. A later completion for

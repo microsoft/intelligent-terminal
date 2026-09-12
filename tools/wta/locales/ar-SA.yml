@@ -190,6 +190,9 @@ system.cannot_focus_session: "يتعذر التركيز على الجلسة %{se
 system.cannot_resume_no_load_session: "يتعذر الاستئناف في لوحة العامل: لم يعلن %{agent} عن إمكانية ACP `loadSession`."  # {Locked="ACP","loadSession"} — protocol/UI terms.
 system.cannot_resume_no_resume_flag: "يتعذر استئناف جلسة %{agent}: لا يحتوي هذا العامل على علامة بنمط `--resume`."  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "يتعذر استئناف الجلسة %{session_id}: عامل المصدر غير معروف لهذا الإصدار من WTA."
+system.cannot_resume_missing_owner: "يتعذر استئناف الجلسة لأن النافذة أو علامة التبويب التي تتبع لها غير متوفرة."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "فُتحت الجلسة في لوحة جديدة، لكن تعذر حفظ المعلومات اللازمة لاستعادتها بعد محاولتين.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "يتعذر ربط الجلسة المستأنفة بلوحتها الجديدة لأن هذه اللوحة مملوكة لجلسة نشطة أخرى."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "يتعذر استئناف جلسة %{agent} %{session_id}: بدأت لكنها لم تجمع أي محادثة، لذلك سيرفض %{agent} نفسه الاستئناف. تتم إزالة الصف."
 system.cannot_resume_phantom_via_load: "يتعذر استئناف جلسة %{agent} %{session_id}: بدأت لكنها لم تجمع أي محادثة، لذلك سيرفض %{agent} التحميل. تتم إزالة الصف."
 system.fallback.this_agent: "هذا العامل"

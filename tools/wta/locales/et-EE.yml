@@ -175,6 +175,9 @@ system.cannot_focus_session: "Seanssi %{session_id} ei saa fookusesse võtta: se
 system.cannot_resume_no_load_session: "Agendipaanil ei saa jätkata: %{agent} ei reklaaminud ACP `loadSession` võimekust."  # {Locked="ACP","loadSession"}
 system.cannot_resume_no_resume_flag: "%{agent} seanssi ei saa jätkata: sellel agendil pole `--resume`-stiilis lippu."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Seanssi %{session_id} ei saa jätkata: selle lähteagent on sellele WTA järgule tundmatu."
+system.cannot_resume_missing_owner: "Seanssi ei saa jätkata, sest aken või vahekaart, millele see kuulub, pole saadaval."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "Seanss avati uuel paanil, kuid selle taastamiseks vajalikku teavet ei õnnestunud kahe katse järel salvestada.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Jätkatud seanssi ei saa siduda selle uue paaniga, sest see paan kuulub teisele aktiivsele seansile."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "%{agent} seanssi %{session_id} ei saa jätkata: see käivitati, kuid vestlust ei kogunenud, seega lükkaks %{agent} ise jätkamise tagasi. Rida eemaldatakse."
 system.cannot_resume_phantom_via_load: "%{agent} seanssi %{session_id} ei saa jätkata: see käivitati, kuid vestlust ei kogunenud, seega lükkaks %{agent} laadimise tagasi. Rida eemaldatakse."
 system.fallback.this_agent: "see agent"

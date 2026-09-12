@@ -188,6 +188,9 @@ system.cannot_focus_session: "सत्र %{session_id} चेर फोकस 
 system.cannot_resume_no_load_session: "एजंट पेनांत परत सुरू करूंक शकना: %{agent} नें ACP `loadSession` क्षमता जाहीर करूंक ना."  # {Locked="ACP","loadSession"}
 system.cannot_resume_no_resume_flag: "%{agent} सत्र परत सुरू करूंक शकना: ह्या एजंटाक `--resume` सारको फ्लॅग ना."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "सत्र %{session_id} परत सुरू करूंक शकना: ताचो स्रोत एजंट ह्या WTA बिल्डाक खबर ना."
+system.cannot_resume_missing_owner: "सत्र परत सुरू करूंक शकना कारण तें ज्या विंडो वा टॅबाचें आसा ती उपलब्ध ना."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "सत्र नव्या पेनांत उगडलें, पूण तें परत मेळोवपाक जाय आशिल्ली म्हायती दोन प्रयत्नां उपरांतय सांबाळूंक शकले ना.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "परत सुरू केल्लें सत्र ताच्या नव्या पेनाक जोडूंक शकना कारण तो पेन दुसऱ्या सक्रिय सत्राचो आसा."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "%{agent} सत्र %{session_id} परत सुरू करूंक शकना: तें सुरू जालें पूण कसलोच संवाद जमा जालो ना, देखून %{agent} स्वतः resume नाकारतलो. ओळ काडटा."
 system.cannot_resume_phantom_via_load: "%{agent} सत्र %{session_id} परत सुरू करूंक शकना: तें सुरू जालें पूण कसलोच संवाद जमा जालो ना, देखून %{agent} load नाकारतलो. ओळ काडटा."
 system.fallback.this_agent: "हो एजंट"

@@ -188,6 +188,9 @@ system.cannot_focus_session: "ਸੈਸ਼ਨ %{session_id} 'ਤੇ ਫੋਕਸ
 system.cannot_resume_no_load_session: "agent pane ਵਿੱਚ ਮੁੜ ਸ਼ੁਰੂ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਦਾ: %{agent} ਨੇ ACP `loadSession` ਸਮਰੱਥਾ ਦਾ ਐਲਾਨ ਨਹੀਂ ਕੀਤਾ।"  # {Locked="ACP","loadSession"} — protocol/UI terms.
 system.cannot_resume_no_resume_flag: "%{agent} ਸੈਸ਼ਨ ਮੁੜ ਸ਼ੁਰੂ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਦਾ: ਇਸ agent ਕੋਲ `--resume`-ਸ਼ੈਲੀ ਦਾ flag ਨਹੀਂ ਹੈ।"  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "ਸੈਸ਼ਨ %{session_id} ਮੁੜ ਸ਼ੁਰੂ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਦਾ: ਇਸ ਦਾ ਸਰੋਤ agent ਇਸ WTA build ਲਈ ਅਣਜਾਣ ਹੈ।"
+system.cannot_resume_missing_owner: "ਸੈਸ਼ਨ ਮੁੜ ਸ਼ੁਰੂ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਦਾ ਕਿਉਂਕਿ ਉਹ ਜਿਸ ਵਿੰਡੋ ਜਾਂ ਟੈਬ ਦਾ ਹੈ, ਉਹ ਉਪਲਬਧ ਨਹੀਂ ਹੈ।"  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "ਸੈਸ਼ਨ ਇੱਕ ਨਵੇਂ ਪੈਨ ਵਿੱਚ ਖੁੱਲ੍ਹ ਗਿਆ ਹੈ, ਪਰ ਇਸ ਨੂੰ ਬਹਾਲ ਕਰਨ ਲਈ ਲੋੜੀਂਦੀ ਜਾਣਕਾਰੀ ਦੋ ਕੋਸ਼ਿਸ਼ਾਂ ਤੋਂ ਬਾਅਦ ਵੀ ਸੁਰੱਖਿਅਤ ਨਹੀਂ ਕੀਤੀ ਜਾ ਸਕੀ।\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "ਮੁੜ ਸ਼ੁਰੂ ਕੀਤੇ ਸੈਸ਼ਨ ਨੂੰ ਉਸ ਦੇ ਨਵੇਂ ਪੈਨ ਨਾਲ ਜੋੜਿਆ ਨਹੀਂ ਜਾ ਸਕਦਾ ਕਿਉਂਕਿ ਉਹ ਪੈਨ ਕਿਸੇ ਹੋਰ ਸਰਗਰਮ ਸੈਸ਼ਨ ਦਾ ਹੈ।"  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "%{agent} ਸੈਸ਼ਨ %{session_id} ਮੁੜ ਸ਼ੁਰੂ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਦਾ: ਇਹ ਸ਼ੁਰੂ ਹੋਇਆ ਸੀ ਪਰ ਕੋਈ ਗੱਲਬਾਤ ਇਕੱਠੀ ਨਹੀਂ ਹੋਈ, ਇਸ ਲਈ %{agent} ਖੁਦ resume ਨੂੰ ਰੱਦ ਕਰੇਗਾ। ਕਤਾਰ ਹਟਾਈ ਜਾ ਰਹੀ ਹੈ।"
 system.cannot_resume_phantom_via_load: "%{agent} ਸੈਸ਼ਨ %{session_id} ਮੁੜ ਸ਼ੁਰੂ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਦਾ: ਇਹ ਸ਼ੁਰੂ ਹੋਇਆ ਸੀ ਪਰ ਕੋਈ ਗੱਲਬਾਤ ਇਕੱਠੀ ਨਹੀਂ ਹੋਈ, ਇਸ ਲਈ %{agent} load ਨੂੰ ਰੱਦ ਕਰੇਗਾ। ਕਤਾਰ ਹਟਾਈ ਜਾ ਰਹੀ ਹੈ।"
 system.fallback.this_agent: "ਇਹ agent"

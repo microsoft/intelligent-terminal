@@ -201,6 +201,9 @@ system.cannot_focus_session: "Չհաջողվեց կենտրոնանալ աշխա
 system.cannot_resume_no_load_session: "Չի կարող վերսկսվել agent pane-ում. %{agent}-ը չի հայտարարել ACP `loadSession` հնարավորության մասին։"  # {Locked="ACP","loadSession"} — protocol/UI terms.
 system.cannot_resume_no_resume_flag: "Չի կարող վերսկսվել %{agent} աշխատաշրջանը. այս agent-ը չունի `--resume` ոճի flag։"  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "Չի կարող վերսկսվել աշխատաշրջանը %{session_id}. դրա աղբյուր agent-ը անհայտ է WTA-ի այս build-ին։"
+system.cannot_resume_missing_owner: "Հնարավոր չէ վերսկսել աշխատաշրջանը, քանի որ պատուհանը կամ ներդիրը, որին այն պատկանում է, հասանելի չէ։"  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "Աշխատաշրջանը բացվել է նոր վահանակում, սակայն այն վերականգնելու համար անհրաժեշտ տեղեկությունները չի հաջողվել պահել երկու փորձից հետո։\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Հնարավոր չէ վերսկսված աշխատաշրջանը կապել իր նոր վահանակին, քանի որ այդ վահանակը պատկանում է մեկ այլ ակտիվ աշխատաշրջանի։"  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "Չի կարող վերսկսվել %{agent} աշխատաշրջանը %{session_id}. այն սկսվել էր, բայց որևէ զրույց չէր կուտակել, ուստի %{agent}-ն ինքը կմերժեր վերսկսումը։ Հեռացվում է տողը։"
 system.cannot_resume_phantom_via_load: "Չի կարող վերսկսվել %{agent} աշխատաշրջանը %{session_id}. այն սկսվել էր, բայց որևէ զրույց չէր կուտակել, ուստի %{agent}-ը կմերժեր բեռնումը։ Հեռացվում է տողը։"
 system.fallback.this_agent: "այս agent-ը"

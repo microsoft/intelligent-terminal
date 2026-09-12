@@ -175,6 +175,9 @@ system.cannot_focus_session: "Det går inte att fokusera på session %{session_i
 system.cannot_resume_no_load_session: "Det går inte att återuppta i agentfönstret: %{agent} annonserade inte ACP `loadSession`-funktionen."
 system.cannot_resume_no_resume_flag: "Det går inte att återuppta %{agent}-sessionen: den här agenten har ingen `--resume`-liknande flagga."
 system.cannot_resume_unknown_agent: "Det går inte att återuppta session %{session_id}: dess källagent är okänd för den här versionen."
+system.cannot_resume_missing_owner: "Det går inte att återuppta sessionen eftersom fönstret eller fliken som den tillhör inte är tillgänglig."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "Sessionen öppnades i en ny panel, men informationen som behövs för att återställa den kunde inte sparas efter två försök.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Det går inte att koppla den återupptagna sessionen till dess nya panel eftersom panelen tillhör en annan aktiv session."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "Det går inte att återuppta %{agent}-sessionen %{session_id}: den startades men samlade aldrig någon konversation, så %{agent} skulle själv avvisa återupptagningen. Tar bort raden."
 system.cannot_resume_phantom_via_load: "Det går inte att återuppta %{agent}-sessionen %{session_id}: den startades men samlade aldrig någon konversation, så %{agent} skulle avvisa inläsningen. Tar bort raden."
 system.fallback.this_agent: "den här agenten"

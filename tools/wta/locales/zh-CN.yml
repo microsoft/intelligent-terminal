@@ -171,6 +171,9 @@ system.cannot_focus_session: "无法聚焦会话 %{session_id}：它看起来处
 system.cannot_resume_no_load_session: "无法在智能体窗格中恢复：%{agent} 未公布 ACP `loadSession` 功能。"  # {Locked="ACP","loadSession"}
 system.cannot_resume_no_resume_flag: "无法恢复 %{agent} 会话：此智能体没有 `--resume` 样式的标志。"  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "无法恢复会话 %{session_id}：此版本无法识别其源智能体。"
+system.cannot_resume_missing_owner: "无法恢复会话，因为其所属的窗口或标签页不可用。"  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "会话已在新窗格中打开，但尝试两次后仍无法保存还原会话所需的信息。\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "无法将恢复的会话绑定到其新窗格，因为该窗格已归另一个活动会话所有。"  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "无法恢复 %{agent} 会话 %{session_id}：它已启动但从未积累任何对话，因此 %{agent} 本身会拒绝恢复。正在移除此行。"
 system.cannot_resume_phantom_via_load: "无法恢复 %{agent} 会话 %{session_id}：它已启动但从未积累任何对话，因此 %{agent} 会拒绝加载。正在移除此行。"
 system.fallback.this_agent: "此智能体"

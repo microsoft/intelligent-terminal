@@ -175,6 +175,9 @@ system.cannot_focus_session: "ບໍ່ສາມາດໂຟກັສ session %{
 system.cannot_resume_no_load_session: "ບໍ່ສາມາດສືບຕໍ່ໃນ agent pane: %{agent} ບໍ່ໄດ້ແຈ້ງຄວາມສາມາດ ACP `loadSession`."  # {Locked="ACP","loadSession"}
 system.cannot_resume_no_resume_flag: "ບໍ່ສາມາດສືບຕໍ່ session %{agent}: agent ນີ້ບໍ່ມີ flag ແບບ `--resume`."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "ບໍ່ສາມາດສືບຕໍ່ session %{session_id}: agent ຕົ້ນທາງຂອງມັນບໍ່ຖືກຮູ້ຈັກໃນ build ນີ້."
+system.cannot_resume_missing_owner: "ບໍ່ສາມາດສືບຕໍ່ເຊດຊັນໄດ້ ເພາະປ່ອງຢ້ຽມ ຫຼືແຖບທີ່ເປັນເຈົ້າຂອງເຊດຊັນນີ້ບໍ່ພ້ອມໃຊ້ງານ."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "ເຊດຊັນໄດ້ເປີດໃນແຜງໃໝ່ແລ້ວ, ແຕ່ບໍ່ສາມາດບັນທຶກຂໍ້ມູນທີ່ຈຳເປັນສຳລັບການກູ້ຄືນມັນໄດ້ ຫຼັງຈາກພະຍາຍາມສອງຄັ້ງ.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "ບໍ່ສາມາດເຊື່ອມເຊດຊັນທີ່ສືບຕໍ່ແລ້ວເຂົ້າກັບແຜງໃໝ່ຂອງມັນໄດ້ ເພາະເຊດຊັນອື່ນທີ່ກຳລັງເຮັດວຽກຢູ່ເປັນເຈົ້າຂອງແຜງນັ້ນ."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "ບໍ່ສາມາດສືບຕໍ່ session %{agent} %{session_id}: ມັນເລີ່ມແລ້ວ ແຕ່ບໍ່ເຄີຍມີການສົນທະນາໃດໆສະສົມ, ດັ່ງນັ້ນ %{agent} ເອງຈະປະຕິເສດການສືບຕໍ່. ກຳລັງລຶບແຖວ."
 system.cannot_resume_phantom_via_load: "ບໍ່ສາມາດສືບຕໍ່ session %{agent} %{session_id}: ມັນເລີ່ມແລ້ວ ແຕ່ບໍ່ເຄີຍມີການສົນທະນາໃດໆສະສົມ, ດັ່ງນັ້ນ %{agent} ຈະປະຕິເສດການໂຫຼດ. ກຳລັງລຶບແຖວ."
 system.fallback.this_agent: "agent ນີ້"

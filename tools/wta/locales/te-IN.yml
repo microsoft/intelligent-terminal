@@ -188,6 +188,9 @@ system.cannot_focus_session: "సెషన్ %{session_id} పై ఫోకస�
 system.cannot_resume_no_load_session: "agent pane లో మళ్లీ ప్రారంభించలేరు: %{agent} ACP `loadSession` సామర్థ్యాన్ని ప్రకటించలేదు."  # {Locked="ACP","loadSession"} — protocol/UI terms.
 system.cannot_resume_no_resume_flag: "%{agent} సెషన్‌ను మళ్లీ ప్రారంభించలేరు: ఈ agent కు `--resume` శైలి flag లేదు."  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "సెషన్ %{session_id} మళ్లీ ప్రారంభించలేరు: దాని మూల agent ఈ WTA build కు తెలియదు."
+system.cannot_resume_missing_owner: "సెషన్ ఉన్న విండో లేదా ట్యాబ్ అందుబాటులో లేనందున సెషన్‌ను మళ్లీ ప్రారంభించలేరు."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "సెషన్ కొత్త పేన్‌లో తెరవబడింది, కానీ దాన్ని పునరుద్ధరించడానికి అవసరమైన సమాచారాన్ని రెండు ప్రయత్నాల తర్వాత కూడా సేవ్ చేయలేకపోయారు.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "మళ్లీ ప్రారంభించిన సెషన్‌ను దాని కొత్త పేన్‌కు జోడించలేరు, ఎందుకంటే ఆ పేన్ మరొక సక్రియ సెషన్‌కు చెందింది."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "%{agent} సెషన్ %{session_id} మళ్లీ ప్రారంభించలేరు: అది ప్రారంభమైంది కానీ ఏ సంభాషణను కూడగట్టలేదు, కాబట్టి %{agent} స్వయంగా resume ను తిరస్కరిస్తుంది. వరుసను తీసివేస్తోంది."
 system.cannot_resume_phantom_via_load: "%{agent} సెషన్ %{session_id} మళ్లీ ప్రారంభించలేరు: అది ప్రారంభమైంది కానీ ఏ సంభాషణను కూడగట్టలేదు, కాబట్టి %{agent} load ను తిరస్కరిస్తుంది. వరుసను తీసివేస్తోంది."
 system.fallback.this_agent: "ఈ agent"

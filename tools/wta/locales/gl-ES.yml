@@ -175,6 +175,9 @@ system.cannot_focus_session: "Non se pode enfocar a sesión %{session_id}: semel
 system.cannot_resume_no_load_session: "Non se pode retomar no panel de axente: %{agent} non anunciou a capacidade ACP `loadSession`."
 system.cannot_resume_no_resume_flag: "Non se pode retomar a sesión de %{agent}: este axente non ten unha marca de estilo `--resume`."
 system.cannot_resume_unknown_agent: "Non se pode retomar a sesión %{session_id}: o seu axente de orixe é descoñecido para esta compilación."
+system.cannot_resume_missing_owner: "Non se pode retomar a sesión porque a xanela ou a lapela á que pertence non está dispoñible."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "A sesión abriuse nun panel novo, pero non se puido gardar a información necesaria para restaurala despois de dous intentos.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Non se pode vincular a sesión retomada ao seu panel novo porque ese panel pertence a outra sesión activa."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "Non se pode retomar a sesión de %{agent} %{session_id}: iniciouse pero nunca acumulou ningunha conversa, polo que %{agent} rexeitaría a continuación. Eliminando a fila."
 system.cannot_resume_phantom_via_load: "Non se pode retomar a sesión de %{agent} %{session_id}: iniciouse pero nunca acumulou ningunha conversa, polo que %{agent} rexeitaría a carga. Eliminando a fila."
 system.fallback.this_agent: "este axente"

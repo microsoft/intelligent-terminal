@@ -175,6 +175,9 @@ system.cannot_focus_session: "Kan sessie %{session_id} niet focussen: deze lijkt
 system.cannot_resume_no_load_session: "Kan niet hervatten in agentdeelvenster: %{agent} heeft de ACP `loadSession`-mogelijkheid niet aangekondigd."
 system.cannot_resume_no_resume_flag: "Kan %{agent}-sessie niet hervatten: deze agent heeft geen vlag in de stijl `--resume`."
 system.cannot_resume_unknown_agent: "Kan sessie %{session_id} niet hervatten: de bronagent is onbekend voor deze build."
+system.cannot_resume_missing_owner: "Kan de sessie niet hervatten omdat het venster of tabblad waartoe deze behoort, niet beschikbaar is."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "De sessie is geopend in een nieuw deelvenster, maar de informatie die nodig is om deze te herstellen, kon na twee pogingen niet worden opgeslagen.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Kan de hervatte sessie niet koppelen aan het nieuwe deelvenster omdat dat deelvenster toebehoort aan een andere actieve sessie."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "Kan %{agent}-sessie %{session_id} niet hervatten: deze is gestart maar heeft nooit een gesprek opgebouwd, waardoor %{agent} zelf het hervatten zou weigeren. Rij wordt verwijderd."
 system.cannot_resume_phantom_via_load: "Kan %{agent}-sessie %{session_id} niet hervatten: deze is gestart maar heeft nooit een gesprek opgebouwd, waardoor %{agent} het laden zou weigeren. Rij wordt verwijderd."
 system.fallback.this_agent: "deze agent"

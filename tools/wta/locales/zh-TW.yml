@@ -171,6 +171,9 @@ system.cannot_focus_session: "無法聚焦工作階段 %{session_id}：它似乎
 system.cannot_resume_no_load_session: "無法在智能體窗格中恢復：%{agent} 未公布 ACP `loadSession` 功能。"  # {Locked="ACP","loadSession"}
 system.cannot_resume_no_resume_flag: "無法恢復 %{agent} 工作階段：此智能體沒有 `--resume` 樣式旗標。"  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "無法恢復工作階段 %{session_id}：此版本無法識別其來源智能體。"
+system.cannot_resume_missing_owner: "無法恢復工作階段，因為其所屬的視窗或索引標籤無法使用。"  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "工作階段已在新的窗格中開啟，但嘗試兩次後仍無法儲存還原工作階段所需的資訊。\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "無法將恢復的工作階段繫結至其新的窗格，因為該窗格已由另一個作用中的工作階段擁有。"  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "無法恢復 %{agent} 工作階段 %{session_id}：它已啟動但從未累積任何對話，因此 %{agent} 本身會拒絕恢復。正在移除此列。"
 system.cannot_resume_phantom_via_load: "無法恢復 %{agent} 工作階段 %{session_id}：它已啟動但從未累積任何對話，因此 %{agent} 會拒絕載入。正在移除此列。"
 system.fallback.this_agent: "此智能體"

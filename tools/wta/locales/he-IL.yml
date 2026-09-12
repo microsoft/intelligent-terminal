@@ -188,6 +188,9 @@ system.cannot_focus_session: "לא ניתן להתמקד בהפעלה %{session_
 system.cannot_resume_no_load_session: "לא ניתן לחדש בחלונית הסוכן: %{agent} לא פרסם את יכולת ACP `loadSession`."  # {Locked="ACP","loadSession"} — protocol/UI terms.
 system.cannot_resume_no_resume_flag: "לא ניתן לחדש את ההפעלה של %{agent}: לסוכן זה אין דגל בסגנון `--resume`."  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "לא ניתן לחדש את ההפעלה %{session_id}: סוכן המקור שלה אינו מוכר לבנייה זו של WTA."
+system.cannot_resume_missing_owner: "לא ניתן לחדש את ההפעלה כי החלון או הכרטיסיה שאליהם היא שייכת אינם זמינים."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "ההפעלה נפתחה בחלונית חדשה, אך לא ניתן היה לשמור את המידע הדרוש לשחזורה לאחר שני ניסיונות.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "לא ניתן לשייך את ההפעלה שחודשה לחלונית החדשה שלה כי החלונית שייכת להפעלה פעילה אחרת."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "לא ניתן לחדש את ההפעלה %{agent} %{session_id}: היא הופעלה אך מעולם לא צברה שיחה כלשהי, ולכן %{agent} עצמו ידחה את החידוש. מסיר את השורה."
 system.cannot_resume_phantom_via_load: "לא ניתן לחדש את ההפעלה %{agent} %{session_id}: היא הופעלה אך מעולם לא צברה שיחה כלשהי, ולכן %{agent} ידחה את הטעינה. מסיר את השורה."
 system.fallback.this_agent: "סוכן זה"

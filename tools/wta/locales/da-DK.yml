@@ -177,6 +177,9 @@ system.cannot_focus_session: "Kan ikke fokusere på session %{session_id}: den s
 system.cannot_resume_no_load_session: "Kan ikke genoptage i agentrude: %{agent} annoncerede ikke ACP `loadSession`-funktionen."
 system.cannot_resume_no_resume_flag: "Kan ikke genoptage %{agent}-session: denne agent har ikke noget `--resume`-lignende flag."
 system.cannot_resume_unknown_agent: "Kan ikke genoptage session %{session_id}: kildeagenten er ukendt for dette build."
+system.cannot_resume_missing_owner: "Sessionen kan ikke genoptages, fordi det vindue eller den fane, den tilhører, ikke er tilgængelig."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "Sessionen blev åbnet i en ny rude, men de oplysninger, der er nødvendige for at gendanne den, kunne ikke gemmes efter to forsøg.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Den genoptagne session kan ikke knyttes til sin nye rude, fordi ruden tilhører en anden aktiv session."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "Kan ikke genoptage %{agent}-session %{session_id}: den blev startet, men der blev aldrig opbygget nogen samtale, så %{agent} ville selv afvise genoptagelsen. Fjerner rækken."
 system.cannot_resume_phantom_via_load: "Kan ikke genoptage %{agent}-session %{session_id}: den blev startet, men der blev aldrig opbygget nogen samtale, så %{agent} ville afvise indlæsningen. Fjerner rækken."
 system.fallback.this_agent: "denne agent"

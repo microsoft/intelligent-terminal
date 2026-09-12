@@ -186,6 +186,9 @@ system.cannot_focus_session: "Не може да се фокусира сеси�
 system.cannot_resume_no_load_session: "Не може да се възобнови в панела на агента: %{agent} не обяви възможността ACP `loadSession`."  # {Locked="ACP","loadSession"}
 system.cannot_resume_no_resume_flag: "Не може да се възобнови сесията на %{agent}: този агент няма флаг в стил `--resume`."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Не може да се възобнови сесия %{session_id}: изходният ѝ агент е неизвестен за тази компилация на WTA."
+system.cannot_resume_missing_owner: "Сесията не може да се възобнови, защото прозорецът или разделът, към който принадлежи, не е достъпен."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "Сесията се отвори в нов панел, но информацията, необходима за възстановяването ѝ, не можа да бъде запазена след два опита.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Възобновената сесия не може да се свърже с новия си панел, защото този панел принадлежи на друга активна сесия."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "Не може да се възобнови сесията на %{agent} %{session_id}: тя е стартирана, но никога не е натрупала разговор, така че самият %{agent} би отхвърлил възобновяването. Редът се премахва."
 system.cannot_resume_phantom_via_load: "Не може да се възобнови сесията на %{agent} %{session_id}: тя е стартирана, но никога не е натрупала разговор, така че %{agent} би отхвърлил зареждането. Редът се премахва."
 system.fallback.this_agent: "този агент"

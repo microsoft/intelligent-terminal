@@ -175,6 +175,9 @@ system.cannot_focus_session: "Ma tistax tiffoka s-sessjoni %{session_id}: tidher
 system.cannot_resume_no_load_session: "Ma tistax tkompli fil-panew tal-aġent: %{agent} ma ħabbarx il-kapaċità ACP `loadSession`."
 system.cannot_resume_no_resume_flag: "Ma tistax tkompli s-sessjoni ta’ %{agent}: dan l-aġent m’għandux flag stil `--resume`."
 system.cannot_resume_unknown_agent: "Ma tistax tkompli s-sessjoni %{session_id}: l-aġent tas-sors tagħha mhuwiex magħruf għal din il-build."
+system.cannot_resume_missing_owner: "Ma tistax tkompli s-sessjoni għax it-tieqa jew it-tab li tappartjeni għaliha mhijiex disponibbli."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "Is-sessjoni nfetħet f’panew ġdid, iżda l-informazzjoni meħtieġa biex tiġi rrestawrata ma setgħetx tiġi ssejvjata wara żewġ tentattivi.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Ma tistax torbot is-sessjoni li tkompliet mal-panew il-ġdid tagħha għax dak il-panew jappartjeni għal sessjoni attiva oħra."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "Ma tistax tkompli s-sessjoni ta’ %{agent} %{session_id}: inbdiet iżda qatt ma akkumulat konverżazzjoni, għalhekk %{agent} innifsu jirrifjuta t-tkomplija. Qed titneħħa r-ringiela."
 system.cannot_resume_phantom_via_load: "Ma tistax tkompli s-sessjoni ta’ %{agent} %{session_id}: inbdiet iżda qatt ma akkumulat konverżazzjoni, għalhekk %{agent} jirrifjuta t-tagħbija. Qed titneħħa r-ringiela."
 system.fallback.this_agent: "dan l-aġent"

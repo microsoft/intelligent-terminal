@@ -175,6 +175,9 @@ system.cannot_focus_session: "[!!_Cannot focus session %{session_id}: it appears
 system.cannot_resume_no_load_session: "[!!_Cannot resume in agent pane: %{agent} did not advertise the ACP `loadSession` capability._!!]"  # {Locked="ACP","loadSession"}
 system.cannot_resume_no_resume_flag: "[!!_Cannot resume %{agent} session: this agent has no `--resume`-style flag._!!]"  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "[!!_Cannot resume session %{session_id}: its source agent is unknown to this build._!!]"
+system.cannot_resume_missing_owner: "[!!_Ｃａｎｎｏｔ ｒｅｓｕｍｅ ｔｈｅ ｓｅｓｓｉｏｎ ｂｅｃａｕｓｅ ｉｔｓ ｏｗｎｉｎｇ ｗｉｎｄｏｗ ｏｒ ｔａｂ ｉｓ ｕｎａｖａｉｌａｂｌｅ._!!]"  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "[!!_Ｔｈｅ ｓｅｓｓｉｏｎ ｏｐｅｎｅｄ ｉｎ ａ ｎｅｗ ｐａｎｅ, ｂｕｔ ｔｈｅ ｉｎｆｏｒｍａｔｉｏｎ ｎｅｅｄｅｄ ｔｏ ｒｅｓｔｏｒｅ ｉｔ ｃｏｕｌｄ ｎｏｔ ｂｅ ｓａｖｅｄ ａｆｔｅｒ ｔｗｏ ａｔｔｅｍｐｔｓ.\n%{details}_!!]"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "[!!_Ｃａｎｎｏｔ ａｔｔａｃｈ ｔｈｅ ｒｅｓｕｍｅｄ ｓｅｓｓｉｏｎ ｔｏ ｉｔｓ ｎｅｗ ｐａｎｅ ｂｅｃａｕｓｅ ａｎｏｔｈｅｒ ａｃｔｉｖｅ ｓｅｓｓｉｏｎ ｏｗｎｓ ｔｈａｔ ｐａｎｅ._!!]"  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "[!!_Cannot resume %{agent} session %{session_id}: it was started but never accumulated any conversation, so %{agent} itself would reject the resume. Removing the row._!!]"
 system.cannot_resume_phantom_via_load: "[!!_Cannot resume %{agent} session %{session_id}: it was started but never accumulated any conversation, so %{agent} would reject the load. Removing the row._!!]"
 system.fallback.this_agent: "[!!_this agent_!!]"

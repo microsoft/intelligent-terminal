@@ -188,6 +188,9 @@ system.cannot_focus_session: "அமர்வு %{session_id} மீது க�
 system.cannot_resume_no_load_session: "agent pane-இல் மீண்டும் தொடங்க முடியவில்லை: %{agent} ACP `loadSession` திறனை அறிவிக்கவில்லை."  # {Locked="ACP","loadSession"} — protocol/UI terms.
 system.cannot_resume_no_resume_flag: "%{agent} அமர்வை மீண்டும் தொடங்க முடியவில்லை: இந்த agent-க்கு `--resume` பாணி flag இல்லை."  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "அமர்வு %{session_id} மீண்டும் தொடங்க முடியவில்லை: அதன் மூல agent இந்த WTA build-க்கு தெரியாது."
+system.cannot_resume_missing_owner: "அமர்வுக்குரிய சாளரம் அல்லது தாவல் கிடைக்காததால் அமர்வை மீண்டும் தொடங்க முடியவில்லை."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "அமர்வு புதிய பலகத்தில் திறக்கப்பட்டது, ஆனால் அதை மீட்டமைக்கத் தேவையான தகவலை இரண்டு முயற்சிகளுக்குப் பிறகும் சேமிக்க முடியவில்லை.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "மீண்டும் தொடங்கப்பட்ட அமர்வை அதன் புதிய பலகத்துடன் இணைக்க முடியவில்லை, ஏனெனில் அந்தப் பலகம் செயலில் உள்ள மற்றொரு அமர்வுக்குச் சொந்தமானது."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "%{agent} அமர்வு %{session_id} மீண்டும் தொடங்க முடியவில்லை: அது தொடங்கப்பட்டது, ஆனால் எந்த உரையாடலும் சேர்க்கப்படவில்லை; எனவே %{agent} தானே resume-ஐ நிராகரிக்கும். வரிசை அகற்றப்படுகிறது."
 system.cannot_resume_phantom_via_load: "%{agent} அமர்வு %{session_id} மீண்டும் தொடங்க முடியவில்லை: அது தொடங்கப்பட்டது, ஆனால் எந்த உரையாடலும் சேர்க்கப்படவில்லை; எனவே %{agent} load-ஐ நிராகரிக்கும். வரிசை அகற்றப்படுகிறது."
 system.fallback.this_agent: "இந்த agent"

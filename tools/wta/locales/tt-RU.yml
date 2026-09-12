@@ -188,6 +188,9 @@ system.cannot_focus_session: "%{session_id} сеансына фокус куеп
 system.cannot_resume_no_load_session: "Агент панелендә дәвам итеп булмый: %{agent} ACP `loadSession` мөмкинлеген игълан итмәде."  # {Locked="ACP","loadSession"}
 system.cannot_resume_no_resume_flag: "%{agent} сеансын дәвам итеп булмый: бу агентта `--resume` рәвешендәге флаг юк."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "%{session_id} сеансын дәвам итеп булмый: аның чыганак агенты бу WTA җыелмасына билгесез."
+system.cannot_resume_missing_owner: "Сеансны дәвам итеп булмый, чөнки ул караган тәрәзә яки кыстыргыч куллану өчен мөмкин түгел."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "Сеанс яңа панельдә ачылды, ләкин аны торгызу өчен кирәкле мәгълүматны ике омтылыштан соң да саклап булмады.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Дәвам ителгән сеансны аның яңа панеленә бәйләп булмый, чөнки бу панель башка актив сеанска карый."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "%{agent} %{session_id} сеансын дәвам итеп булмый: ул башлатылган, ләкин бер сөйләшү дә җыймаган, шуңа күрә %{agent} үзе дәвам итүне кире кагар иде. Юл бетерелә."
 system.cannot_resume_phantom_via_load: "%{agent} %{session_id} сеансын дәвам итеп булмый: ул башлатылган, ләкин бер сөйләшү дә җыймаган, шуңа күрә %{agent} йөкләүне кире кагар иде. Юл бетерелә."
 system.fallback.this_agent: "бу агент"

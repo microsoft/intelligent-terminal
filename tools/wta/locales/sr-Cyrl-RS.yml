@@ -184,6 +184,9 @@ system.cannot_focus_session: "Није могуће фокусирати сес�
 system.cannot_resume_no_load_session: "Није могуће наставити у окну агента: %{agent} није огласио могућност ACP `loadSession`."  # {Locked="ACP","loadSession"}
 system.cannot_resume_no_resume_flag: "Није могуће наставити сесију агента %{agent}: овај агент нема заставицу у стилу `--resume`."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Није могуће наставити сесију %{session_id}: њен изворни агент није познат овој верзији WTA."
+system.cannot_resume_missing_owner: "Није могуће наставити сесију јер прозор или картица којој припада није доступна."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "Сесија је отворена у новом окну, али податке потребне за њено враћање није било могуће сачувати након два покушаја.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Није могуће повезати настављену сесију с њеним новим окном јер то окно припада другој активној сесији."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "Није могуће наставити сесију агента %{agent} %{session_id}: покренута је, али никада није прикупила разговор, па би сам %{agent} одбио наставак. Ред се уклања."
 system.cannot_resume_phantom_via_load: "Није могуће наставити сесију агента %{agent} %{session_id}: покренута је, али никада није прикупила разговор, па би %{agent} одбио учитавање. Ред се уклања."
 system.fallback.this_agent: "овај агент"

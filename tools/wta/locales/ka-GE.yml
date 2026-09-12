@@ -188,6 +188,9 @@ system.cannot_focus_session: "სესიაზე %{session_id} ფოკუ�
 system.cannot_resume_no_load_session: "agent pane-ში გაგრძელება შეუძლებელია: %{agent}-მა ACP `loadSession` შესაძლებლობა არ გამოაცხადა."  # {Locked="ACP","loadSession"} — protocol/UI terms.
 system.cannot_resume_no_resume_flag: "%{agent} სესიის გაგრძელება შეუძლებელია: ამ agent-ს `--resume` სტილის flag არ აქვს."  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "სესიის %{session_id} გაგრძელება შეუძლებელია: მისი წყარო agent უცნობია WTA-ის ამ build-ისთვის."
+system.cannot_resume_missing_owner: "სესიის გაგრძელება შეუძლებელია, რადგან ფანჯარა ან ჩანართი, რომელსაც ის ეკუთვნის, მიუწვდომელია."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "სესია ახალ პანელში გაიხსნა, მაგრამ მის აღსადგენად საჭირო ინფორმაციის შენახვა ორი მცდელობის შემდეგ ვერ მოხერხდა.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "გაგრძელებული სესიის მის ახალ პანელთან დაკავშირება შეუძლებელია, რადგან ეს პანელი სხვა აქტიურ სესიას ეკუთვნის."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "%{agent} სესიის %{session_id} გაგრძელება შეუძლებელია: ის დაიწყო, მაგრამ არცერთი საუბარი არ დაუგროვებია, ამიტომ %{agent} თვითონ უარყოფს გაგრძელებას. მწკრივის წაშლა."
 system.cannot_resume_phantom_via_load: "%{agent} სესიის %{session_id} გაგრძელება შეუძლებელია: ის დაიწყო, მაგრამ არცერთი საუბარი არ დაუგროვებია, ამიტომ %{agent} უარყოფს ჩატვირთვას. მწკრივის წაშლა."
 system.fallback.this_agent: "ეს agent"

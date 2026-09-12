@@ -7539,7 +7539,14 @@ fn resume_binding_publication_failure_retains_real_pane_and_reports_to_owner() {
         deferred.complete_next(Err(anyhow::anyhow!("first COM failure")));
         deferred.complete_next(Err(anyhow::anyhow!("second COM failure")));
         assert_eq!(deferred.pending_count(), 0, "retry must be bounded");
-        app.handle_event(events.try_recv().unwrap());
+        let completion = events.try_recv().unwrap();
+        assert!(
+            matches!(&completion, AppEvent::SessionResumeCompleted {
+            result: Ok(crate::wt_protocol_events::ResumeOutcome::PaneCreated { binding_error: Some(details), .. }), ..
+        } if details == "second COM failure"),
+            "publisher must preserve raw details for UI localization"
+        );
+        app.handle_event(completion);
         assert!(events.try_recv().is_err());
         let live = app.agent_sessions.get(&row.key).unwrap().clone();
         assert_eq!(
@@ -7560,9 +7567,12 @@ fn resume_binding_publication_failure_retains_real_pane_and_reports_to_owner() {
         );
         let messages = &app.tab_sessions[owner_tab].messages;
         assert_eq!(messages.len(), 1);
+        let localized = t!(
+            "system.resume_persistence_failed",
+            details = "second COM failure"
+        );
         assert!(matches!(&messages[0], ChatMessage::Error(message)
-            if message.contains("Pane created") && message.contains("persistence binding")
-                && message.contains("second COM failure")));
+            if message.ends_with(localized.as_ref())));
         assert!(app.tab_sessions["focus-tab"].messages.is_empty());
         if !concurrent_binding {
             assert!(
@@ -7593,6 +7603,77 @@ fn resume_binding_publication_failure_retains_real_pane_and_reports_to_owner() {
             }),
         });
         assert_eq!(app.tab_sessions[owner_tab].messages.len(), 1);
+    }
+}
+
+#[test]
+fn resume_binding_conflict_preserves_foreign_owner_reports_once_and_allows_retry() {
+    use crate::agent_sessions::{AgentStatus, SessionEvent, SessionOrigin};
+    for binding_error in [None, Some("persistence also failed".to_string())] {
+        let mut app = test_app();
+        let row = seed_resume_row(&mut app, AgentStatus::Historical, SessionOrigin::Unknown);
+        app.agent_sessions.apply(SessionEvent::SessionStarted {
+            key: "foreign-owner".into(),
+            cli_source: row.cli_source.clone(),
+            pane_session_id: "owned-pane".into(),
+            cwd: row.cwd.clone(),
+            title: "keep this owner".into(),
+        });
+        app.agent_sessions.apply(SessionEvent::ToolStarting {
+            key: "foreign-owner".into(),
+            tool_name: "keep this work".into(),
+        });
+        let owner = app
+            .agent_sessions
+            .get(&"foreign-owner".into())
+            .unwrap()
+            .clone();
+        app.activate_agent_session_routed(&row);
+        let request_id = app.pending_session_resumes[&row.key].request_id;
+        app.tab_mut("focus-tab");
+        app.tab_id = Some("focus-tab".into());
+        app.handle_event(AppEvent::SessionResumeCompleted {
+            key: row.key.clone(),
+            request_id,
+            result: Ok(crate::wt_protocol_events::ResumeOutcome::PaneCreated {
+                pane_session_id: "OWNED-PANE".into(),
+                binding_error,
+            }),
+        });
+        let target = app.agent_sessions.get(&row.key).unwrap();
+        assert_eq!(target.status, AgentStatus::Historical);
+        assert!(target.pane_session_id.is_none());
+        assert!(!app.pending_session_resumes.contains_key(&row.key));
+        assert_eq!(
+            app.agent_sessions.key_for_pane("OWNED-PANE").as_deref(),
+            Some("foreign-owner")
+        );
+        let retained = app.agent_sessions.get(&"foreign-owner".into()).unwrap();
+        assert_eq!(retained.pane_session_id, owner.pane_session_id);
+        assert_eq!(retained.status, owner.status);
+        assert_eq!(retained.title, owner.title);
+        assert_eq!(retained.cwd, owner.cwd);
+        assert_eq!(retained.current_tool, owner.current_tool);
+        assert_eq!(retained.last_activity_at, owner.last_activity_at);
+        assert_eq!(app.agent_sessions.iter_sorted().len(), 2);
+        let messages = &app.tab_sessions[DEFAULT_TAB_ID].messages;
+        assert_eq!(messages.len(), 1);
+        assert!(matches!(&messages[0], ChatMessage::Error(message)
+            if message.ends_with(t!("system.resume_binding_conflict").as_ref())));
+        assert!(app.current_tab().messages.is_empty());
+        app.handle_event(AppEvent::SessionResumeCompleted {
+            key: row.key.clone(),
+            request_id,
+            result: Ok(Some("owned-pane".into()).into()),
+        });
+        assert_eq!(app.tab_sessions[DEFAULT_TAB_ID].messages.len(), 1);
+        app.last_dispatched_command = None;
+        app.activate_agent_session_routed(&row);
+        assert_eq!(
+            app.last_dispatched_command.as_ref().unwrap().kind,
+            DispatchedCommandKind::NewTabResume
+        );
+        assert_ne!(app.pending_session_resumes[&row.key].request_id, request_id);
     }
 }
 
@@ -7673,7 +7754,8 @@ fn resume_binding_publication_failure_after_close_does_not_revive_pane() {
         .is_none());
     assert!(!app.pending_session_resumes.contains_key(&row.key));
     assert!(
-        matches!(app.current_tab().messages.last(), Some(ChatMessage::Error(message)) if message.contains("persistence binding"))
+        matches!(app.current_tab().messages.last(), Some(ChatMessage::Error(message))
+            if message.ends_with(t!("system.resume_persistence_failed", details = "last failure").as_ref()))
     );
 }
 
@@ -8055,7 +8137,8 @@ fn agent_pane_resume_without_owner_route_fails_before_publish() {
             AgentStatus::Historical
         );
         assert!(
-            matches!(app.tab_sessions[&invoking_tab].messages.last(), Some(ChatMessage::Error(message)) if message.contains("owning window_id and tab_id"))
+            matches!(app.tab_sessions[&invoking_tab].messages.last(), Some(ChatMessage::Error(message))
+                if message.ends_with(t!("system.cannot_resume_missing_owner").as_ref()))
         );
     }
 }

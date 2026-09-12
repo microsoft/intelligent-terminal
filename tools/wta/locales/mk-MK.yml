@@ -184,6 +184,9 @@ system.cannot_focus_session: "Не може да се фокусира сеси�
 system.cannot_resume_no_load_session: "Не може да се продолжи во панелот на агентот: %{agent} не ја објави можноста ACP `loadSession`."  # {Locked="ACP","loadSession"}
 system.cannot_resume_no_resume_flag: "Не може да се продолжи сесијата на %{agent}: овој агент нема знаменце во стил `--resume`."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Не може да се продолжи сесијата %{session_id}: нејзиниот изворен агент е непознат за оваа изведба на WTA."
+system.cannot_resume_missing_owner: "Не може да се продолжи сесијата бидејќи прозорецот или картичката на која ѝ припаѓа не е достапна."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "Сесијата се отвори во нов панел, но информациите потребни за нејзино обновување не можеа да се зачуваат по два обида.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Не може да се поврзе продолжената сесија со нејзиниот нов панел бидејќи тој панел ѝ припаѓа на друга активна сесија."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "Не може да се продолжи сесијата на %{agent} %{session_id}: таа е стартувана, но никогаш не собрала разговор, па самиот %{agent} би го одбил продолжувањето. Редот се отстранува."
 system.cannot_resume_phantom_via_load: "Не може да се продолжи сесијата на %{agent} %{session_id}: таа е стартувана, но никогаш не собрала разговор, па %{agent} би го одбил вчитувањето. Редот се отстранува."
 system.fallback.this_agent: "овој агент"

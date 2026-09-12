@@ -184,6 +184,9 @@ system.cannot_focus_session: "Nedá sa zamerať relácia %{session_id}: vyzerá 
 system.cannot_resume_no_load_session: "Nedá sa obnoviť v table agenta: %{agent} neohlásil schopnosť ACP `loadSession`."  # {Locked="ACP","loadSession"}
 system.cannot_resume_no_resume_flag: "Nedá sa obnoviť relácia %{agent}: tento agent nemá príznak v štýle `--resume`."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Nedá sa obnoviť relácia %{session_id}: jej zdrojový agent nie je tejto zostave WTA známy."
+system.cannot_resume_missing_owner: "Reláciu nemožno obnoviť, pretože okno alebo karta, ku ktorej patrí, nie je k dispozícii."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "Relácia sa otvorila v novej table, ale informácie potrebné na jej obnovenie sa nepodarilo uložiť ani po dvoch pokusoch.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Obnovenú reláciu nemožno pripojiť k jej novej table, pretože táto tabla patrí inej aktívnej relácii."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "Nedá sa obnoviť relácia %{agent} %{session_id}: bola spustená, ale nikdy nenazbierala žiadnu konverzáciu, takže samotný %{agent} by obnovenie odmietol. Riadok sa odstraňuje."
 system.cannot_resume_phantom_via_load: "Nedá sa obnoviť relácia %{agent} %{session_id}: bola spustená, ale nikdy nenazbierala žiadnu konverzáciu, takže %{agent} by načítanie odmietol. Riadok sa odstraňuje."
 system.fallback.this_agent: "tento agent"

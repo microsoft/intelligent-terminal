@@ -175,6 +175,9 @@ system.cannot_focus_session: "Nevar fokusēt sesiju %{session_id}: tā šķiet a
 system.cannot_resume_no_load_session: "Nevar atsākt aģenta rūtī: %{agent} nepaziņoja ACP `loadSession` iespēju."  # {Locked="ACP","loadSession"}
 system.cannot_resume_no_resume_flag: "Nevar atsākt %{agent} sesiju: šim aģentam nav `--resume` stila karoga."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Nevar atsākt sesiju %{session_id}: tās avota aģents šim WTA būvējumam nav zināms."
+system.cannot_resume_missing_owner: "Nevar atsākt sesiju, jo logs vai cilne, kurai tā pieder, nav pieejama."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "Sesija tika atvērta jaunā rūtī, taču tās atjaunošanai nepieciešamo informāciju neizdevās saglabāt pēc diviem mēģinājumiem.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Nevar piesaistīt atsākto sesiju tās jaunajai rūtij, jo šī rūts pieder citai aktīvai sesijai."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "Nevar atsākt %{agent} sesiju %{session_id}: tā tika sākta, bet tajā nav uzkrāta neviena saruna, tāpēc pats %{agent} noraidītu atsākšanu. Rinda tiek noņemta."
 system.cannot_resume_phantom_via_load: "Nevar atsākt %{agent} sesiju %{session_id}: tā tika sākta, bet tajā nav uzkrāta neviena saruna, tāpēc %{agent} noraidītu ielādi. Rinda tiek noņemta."
 system.fallback.this_agent: "šis aģents"

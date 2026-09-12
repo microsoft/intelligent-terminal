@@ -3357,9 +3357,10 @@ impl App {
             );
         } else {
             tracing::warn!(target: "agents_view", %key, "agent-pane resume has no owning window/tab route");
-            on_complete(Err(anyhow::anyhow!(
-                "agent-pane resume requires a non-empty owning window_id and tab_id"
-            )));
+            on_complete(Err(anyhow::anyhow!(t!(
+                "system.cannot_resume_missing_owner"
+            )
+            .into_owned())));
         }
 
         #[cfg(test)]
@@ -3469,11 +3470,20 @@ impl App {
         let Some(tab_id) = self.resume_attempt_tabs.remove(&request_id) else {
             return;
         };
-        let (pane, error) = match result {
+        let (pane, mut error) = match result {
             Ok(crate::wt_protocol_events::ResumeOutcome::PaneCreated {
                 pane_session_id,
                 binding_error,
-            }) => (Some(pane_session_id), binding_error),
+            }) => (
+                Some(pane_session_id),
+                binding_error.map(|details| {
+                    t!(
+                        "system.resume_persistence_failed",
+                        details = details.as_str()
+                    )
+                    .into_owned()
+                }),
+            ),
             Ok(crate::wt_protocol_events::ResumeOutcome::AgentTabPublished) => (None, None),
             Err(error) => (None, Some(error)),
         };
@@ -3492,14 +3502,45 @@ impl App {
             } else {
                 pending.completed_at = Some(std::time::Instant::now());
                 pending.closed_panes.clear();
-                pending.created_pane = pane.clone();
                 if let Some(pane_session_id) = pane {
                     self.handle_event(AppEvent::AgentSessionEvent(
                         crate::agent_sessions::SessionEvent::ResumePaneAssigned {
                             key: key.clone(),
-                            pane_session_id,
+                            pane_session_id: pane_session_id.clone(),
                         },
                     ));
+                    let target_binding = self
+                        .agent_sessions
+                        .get(&key)
+                        .filter(|row| row.liveness() == crate::agent_sessions::LivenessState::Live)
+                        .and_then(|row| row.pane_session_id.as_ref())
+                        .filter(|pane| {
+                            self.agent_sessions.key_for_pane(pane).as_ref() == Some(&key)
+                        })
+                        .cloned();
+                    let foreign_owner = self
+                        .agent_sessions
+                        .key_for_pane(&pane_session_id)
+                        .filter(|owner| owner != &key);
+                    if target_binding.is_none() && foreign_owner.is_some() {
+                        // The reducer rejected this assignment. Do not retain a
+                        // success-shaped dedup marker for an unbound target.
+                        if self
+                            .pending_session_resumes
+                            .get(&key)
+                            .is_some_and(|pending| pending.request_id == request_id)
+                        {
+                            self.pending_session_resumes.remove(&key);
+                        }
+                        error = Some(t!("system.resume_binding_conflict").into_owned());
+                    } else if let Some(pending) = self
+                        .pending_session_resumes
+                        .get_mut(&key)
+                        .filter(|pending| pending.request_id == request_id)
+                    {
+                        // A concurrent real target binding wins over this callback.
+                        pending.created_pane = target_binding.or(Some(pane_session_id));
+                    }
                 }
             }
         }

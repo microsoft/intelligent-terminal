@@ -175,6 +175,9 @@ system.cannot_focus_session: "Ní féidir díriú ar sheisiún %{session_id}: is
 system.cannot_resume_no_load_session: "Ní féidir atosú i bpána gníomhaire: níor fhógair %{agent} cumas ACP `loadSession`."
 system.cannot_resume_no_resume_flag: "Ní féidir seisiún %{agent} a atosú: níl bratach de stíl `--resume` ag an ngníomhaire seo."
 system.cannot_resume_unknown_agent: "Ní féidir seisiún %{session_id} a atosú: níl a ghníomhaire foinse ar eolas ag an leagan seo."
+system.cannot_resume_missing_owner: "Ní féidir an seisiún a atosú toisc nach bhfuil an fhuinneog nó an cluaisín lena mbaineann sé ar fáil."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "Osclaíodh an seisiún i bpána nua, ach níorbh fhéidir an fhaisnéis a theastaíonn chun é a athchóiriú a shábháil tar éis dhá iarracht.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Ní féidir an seisiún atosaithe a cheangal lena phána nua toisc gur le seisiún gníomhach eile an pána sin."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "Ní féidir seisiún %{agent} %{session_id} a atosú: cuireadh tús leis ach níor charnaigh sé aon chomhrá riamh, mar sin dhiúltódh %{agent} féin don atosú. An ró á bhaint."
 system.cannot_resume_phantom_via_load: "Ní féidir seisiún %{agent} %{session_id} a atosú: cuireadh tús leis ach níor charnaigh sé aon chomhrá riamh, mar sin dhiúltódh %{agent} don lódáil. An ró á bhaint."
 system.fallback.this_agent: "an gníomhaire seo"

@@ -188,6 +188,9 @@ system.cannot_focus_session: "نمی‌توان روی جلسه %{session_id} ت
 system.cannot_resume_no_load_session: "نمی‌توان در صفحه عامل ازسر گرفت: %{agent} قابلیت ACP `loadSession` را اعلام نکرده است."  # {Locked="ACP","loadSession"} — protocol/UI terms.
 system.cannot_resume_no_resume_flag: "نمی‌توان جلسه %{agent} را ازسر گرفت: این عامل هیچ پرچمی به سبک `--resume` ندارد."  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "نمی‌توان جلسه %{session_id} را ازسر گرفت: عامل مبدأ آن برای این ساخت WTA ناشناخته است."
+system.cannot_resume_missing_owner: "نمی‌توان جلسه را از سر گرفت زیرا پنجره یا زبانه‌ای که جلسه به آن تعلق دارد در دسترس نیست."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "جلسه در یک پنل جدید باز شد، اما اطلاعات لازم برای بازیابی آن پس از دو بار تلاش ذخیره نشد.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "نمی‌توان جلسهٔ ازسرگرفته‌شده را به پنل جدیدش متصل کرد زیرا آن پنل به جلسهٔ فعال دیگری تعلق دارد."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "نمی‌توان جلسه %{agent} %{session_id} را ازسر گرفت: شروع شده بود اما هیچ گفت‌وگویی جمع نکرد، بنابراین خود %{agent} ازسرگیری را رد می‌کند. در حال حذف ردیف."
 system.cannot_resume_phantom_via_load: "نمی‌توان جلسه %{agent} %{session_id} را ازسر گرفت: شروع شده بود اما هیچ گفت‌وگویی جمع نکرد، بنابراین %{agent} بارگذاری را رد می‌کند. در حال حذف ردیف."
 system.fallback.this_agent: "این عامل"

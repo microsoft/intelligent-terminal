@@ -171,6 +171,9 @@ system.cannot_focus_session: "セッション %{session_id} にフォーカス�
 system.cannot_resume_no_load_session: "エージェント ペインで再開できません: %{agent} が ACP `loadSession` 機能を通知していません。"  # {Locked="ACP","loadSession"}
 system.cannot_resume_no_resume_flag: "%{agent} セッションを再開できません: このエージェントには `--resume` 形式のフラグがありません。"  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "セッション %{session_id} を再開できません: ソース エージェントはこのビルドでは認識されません。"
+system.cannot_resume_missing_owner: "セッションが属するウィンドウまたはタブを利用できないため、セッションを再開できません。"  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "セッションは新しいペインで開かれましたが、復元に必要な情報を保存できませんでした。保存は 2 回試行されました。\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "新しいペインは別のアクティブなセッションが所有しているため、再開したセッションをそのペインに関連付けることはできません。"  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "%{agent} セッション %{session_id} を再開できません: 開始されましたが会話が一度も蓄積されていないため、%{agent} 自体が再開を拒否します。行を削除します。"
 system.cannot_resume_phantom_via_load: "%{agent} セッション %{session_id} を再開できません: 開始されましたが会話が一度も蓄積されていないため、%{agent} が読み込みを拒否します。行を削除します。"
 system.fallback.this_agent: "このエージェント"

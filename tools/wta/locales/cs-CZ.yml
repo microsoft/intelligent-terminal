@@ -186,6 +186,9 @@ system.cannot_focus_session: "Nelze zaměřit relaci %{session_id}: vypadá jako
 system.cannot_resume_no_load_session: "Nelze obnovit v podokně agenta: %{agent} neohlásil schopnost ACP `loadSession`."  # {Locked="ACP","loadSession"}
 system.cannot_resume_no_resume_flag: "Nelze obnovit relaci %{agent}: tento agent nemá příznak ve stylu `--resume`."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Nelze obnovit relaci %{session_id}: její zdrojový agent není této verzi WTA známý."
+system.cannot_resume_missing_owner: "Relaci nelze obnovit, protože okno nebo karta, ke které patří, není k dispozici."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "Relace se otevřela v novém podokně, ale informace potřebné k jejímu obnovení se nepodařilo uložit ani po dvou pokusech.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Obnovenou relaci nelze připojit k jejímu novému podoknu, protože toto podokno patří jiné aktivní relaci."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "Nelze obnovit relaci %{agent} %{session_id}: byla spuštěna, ale nikdy neshromáždila žádnou konverzaci, takže samotný %{agent} by obnovení odmítl. Řádek se odebírá."
 system.cannot_resume_phantom_via_load: "Nelze obnovit relaci %{agent} %{session_id}: byla spuštěna, ale nikdy neshromáždila žádnou konverzaci, takže %{agent} by načtení odmítl. Řádek se odebírá."
 system.fallback.this_agent: "tento agent"

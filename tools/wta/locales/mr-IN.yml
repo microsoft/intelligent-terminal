@@ -188,6 +188,9 @@ system.cannot_focus_session: "सत्र %{session_id} वर फोकस क
 system.cannot_resume_no_load_session: "agent pane मध्ये पुन्हा सुरू करता येत नाही: %{agent} ने ACP `loadSession` क्षमता जाहीर केलेली नाही."  # {Locked="ACP","loadSession"} — protocol/UI terms.
 system.cannot_resume_no_resume_flag: "%{agent} सत्र पुन्हा सुरू करता येत नाही: या agent कडे `--resume`-शैलीचा flag नाही."  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "सत्र %{session_id} पुन्हा सुरू करता येत नाही: त्याचा स्रोत agent या WTA build साठी अज्ञात आहे."
+system.cannot_resume_missing_owner: "सत्र ज्या विंडो किंवा टॅबचे आहे, ते उपलब्ध नसल्यामुळे सत्र पुन्हा सुरू करता येत नाही."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "सत्र एका नवीन पेनमध्ये उघडले, पण ते पुनर्संचयित करण्यासाठी आवश्यक असलेली माहिती दोन प्रयत्नांनंतरही जतन करता आली नाही.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "पुन्हा सुरू केलेले सत्र त्याच्या नवीन पेनशी जोडता येत नाही, कारण तो पेन दुसऱ्या सक्रिय सत्राचा आहे."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "%{agent} सत्र %{session_id} पुन्हा सुरू करता येत नाही: ते सुरू झाले होते पण कोणतेही संभाषण साठवले गेले नाही, म्हणून %{agent} स्वतः resume नाकारेल. पंक्ती काढत आहे."
 system.cannot_resume_phantom_via_load: "%{agent} सत्र %{session_id} पुन्हा सुरू करता येत नाही: ते सुरू झाले होते पण कोणतेही संभाषण साठवले गेले नाही, म्हणून %{agent} load नाकारेल. पंक्ती काढत आहे."
 system.fallback.this_agent: "हा agent"

@@ -188,6 +188,9 @@ system.cannot_focus_session: "%{session_id} сеансына фокус қою �
 system.cannot_resume_no_load_session: "Агент панелінде жалғастыру мүмкін емес: %{agent} ACP `loadSession` мүмкіндігін жарияламады."  # {Locked="ACP","loadSession"}
 system.cannot_resume_no_resume_flag: "%{agent} сеансын жалғастыру мүмкін емес: бұл агентте `--resume` үлгісіндегі жалауша жоқ."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "%{session_id} сеансын жалғастыру мүмкін емес: оның бастапқы агенті осы WTA құрастыруына белгісіз."
+system.cannot_resume_missing_owner: "Сеансты жалғастыру мүмкін емес, себебі оған иелік ететін терезе немесе қойынша қолжетімсіз."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "Сеанс жаңа панельде ашылды, бірақ оны қалпына келтіруге қажетті ақпаратты екі әрекеттен кейін де сақтау мүмкін болмады.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Жалғастырылған сеансты оның жаңа панелімен байланыстыру мүмкін емес, себебі бұл панельге басқа белсенді сеанс иелік етеді."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "%{agent} %{session_id} сеансын жалғастыру мүмкін емес: ол басталған, бірақ ешқандай әңгіме жиналмаған, сондықтан %{agent} өзі жалғастыруды қабылдамайды. Жол жойылуда."
 system.cannot_resume_phantom_via_load: "%{agent} %{session_id} сеансын жалғастыру мүмкін емес: ол басталған, бірақ ешқандай әңгіме жиналмаған, сондықтан %{agent} жүктеуді қабылдамайды. Жол жойылуда."
 system.fallback.this_agent: "осы агент"

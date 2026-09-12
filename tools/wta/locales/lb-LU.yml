@@ -175,6 +175,9 @@ system.cannot_focus_session: "Sessioun %{session_id} kann net fokusséiert ginn:
 system.cannot_resume_no_load_session: "Kann net am Agent-Fënster weiderfueren: %{agent} huet d’ACP `loadSession`-Fäegkeet net ugekënnegt."
 system.cannot_resume_no_resume_flag: "Kann %{agent}-Sessioun net weiderfueren: dësen Agent huet kee `--resume`-ähnleche Fändel."
 system.cannot_resume_unknown_agent: "Kann Sessioun %{session_id} net weiderfueren: hire Quell-Agent ass dësem Build onbekannt."
+system.cannot_resume_missing_owner: "D’Sessioun kann net weidergefouert ginn, well d’Fënster oder den Tab, zu deem se gehéiert, net disponibel ass."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "D’Sessioun gouf an engem neie Panell opgemaach, mee d’Informatiounen, déi fir hir Restauratioun néideg sinn, konnten no zwee Versich net gespäichert ginn.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Déi weidergefouert Sessioun kann net mat hirem neie Panell verbonne ginn, well dee Panell zu enger anerer aktiver Sessioun gehéiert."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "Kann %{agent}-Sessioun %{session_id} net weiderfueren: si gouf gestart, mee et ass ni e Gespréich entstanen, dofir géif %{agent} selwer d’Weiderféierung refuséieren. Rei gëtt ewechgeholl."
 system.cannot_resume_phantom_via_load: "Kann %{agent}-Sessioun %{session_id} net weiderfueren: si gouf gestart, mee et ass ni e Gespréich entstanen, dofir géif %{agent} d’Luede refuséieren. Rei gëtt ewechgeholl."
 system.fallback.this_agent: "dësen Agent"

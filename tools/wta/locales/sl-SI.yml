@@ -184,6 +184,9 @@ system.cannot_focus_session: "Seje %{session_id} ni mogoče fokusirati: videti j
 system.cannot_resume_no_load_session: "Ni mogoče nadaljevati v podoknu agenta: %{agent} ni oglaševal zmožnosti ACP `loadSession`."  # {Locked="ACP","loadSession"}
 system.cannot_resume_no_resume_flag: "Seje %{agent} ni mogoče nadaljevati: ta agent nima zastavice v slogu `--resume`."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Seje %{session_id} ni mogoče nadaljevati: njen izvorni agent tej graditvi WTA ni znan."
+system.cannot_resume_missing_owner: "Seje ni mogoče nadaljevati, ker okno ali zavihek, ki mu pripada, ni na voljo."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "Seja se je odprla v novem podoknu, vendar podatkov, potrebnih za njeno obnovitev, po dveh poskusih ni bilo mogoče shraniti.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Nadaljevane seje ni mogoče povezati z njenim novim podoknom, ker to podokno pripada drugi aktivni seji."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "Seje %{agent} %{session_id} ni mogoče nadaljevati: bila je zagnana, vendar ni nikoli zbrala nobenega pogovora, zato bi sam %{agent} zavrnil nadaljevanje. Vrstica se odstranjuje."
 system.cannot_resume_phantom_via_load: "Seje %{agent} %{session_id} ni mogoče nadaljevati: bila je zagnana, vendar ni nikoli zbrala nobenega pogovora, zato bi %{agent} zavrnil nalaganje. Vrstica se odstranjuje."
 system.fallback.this_agent: "ta agent"

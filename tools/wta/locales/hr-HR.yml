@@ -184,6 +184,9 @@ system.cannot_focus_session: "Nije moguće fokusirati sesiju %{session_id}: izgl
 system.cannot_resume_no_load_session: "Nije moguće nastaviti u oknu agenta: %{agent} nije oglasio mogućnost ACP `loadSession`."  # {Locked="ACP","loadSession"}
 system.cannot_resume_no_resume_flag: "Nije moguće nastaviti sesiju agenta %{agent}: ovaj agent nema zastavicu u stilu `--resume`."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Nije moguće nastaviti sesiju %{session_id}: njezin izvorni agent nije poznat ovoj verziji WTA."
+system.cannot_resume_missing_owner: "Nije moguće nastaviti sesiju jer prozor ili kartica kojoj pripada nije dostupna."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "Sesija je otvorena u novom oknu, ali informacije potrebne za njezino vraćanje nije bilo moguće spremiti nakon dva pokušaja.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Nije moguće povezati nastavljenu sesiju s njezinim novim oknom jer to okno pripada drugoj aktivnoj sesiji."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "Nije moguće nastaviti sesiju agenta %{agent} %{session_id}: pokrenuta je, ali nikada nije prikupila razgovor, pa bi sam %{agent} odbio nastavak. Redak se uklanja."
 system.cannot_resume_phantom_via_load: "Nije moguće nastaviti sesiju agenta %{agent} %{session_id}: pokrenuta je, ali nikada nije prikupila razgovor, pa bi %{agent} odbio učitavanje. Redak se uklanja."
 system.fallback.this_agent: "ovaj agent"

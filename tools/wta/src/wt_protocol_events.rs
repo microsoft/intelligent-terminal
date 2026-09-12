@@ -70,9 +70,7 @@ fn publish_resume_binding(
             }
             on_complete(Ok(ResumeOutcome::PaneCreated {
                 pane_session_id,
-                binding_error: result.err().map(|error| {
-                    format!("Pane created, but its session persistence binding could not be published after two attempts: {error:#}")
-                }),
+                binding_error: result.err().map(|error| format!("{error:#}")),
             }));
         })),
     );

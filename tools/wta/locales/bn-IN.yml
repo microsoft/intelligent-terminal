@@ -190,6 +190,9 @@ system.cannot_focus_session: "সেশন %{session_id}-এ ফোকাস ক
 system.cannot_resume_no_load_session: "agent pane-এ পুনরায় শুরু করা যায়নি: %{agent} ACP `loadSession` ক্ষমতা ঘোষণা করেনি।"  # {Locked="ACP","loadSession"} — protocol/UI terms.
 system.cannot_resume_no_resume_flag: "%{agent} সেশন পুনরায় শুরু করা যায়নি: এই agent-এর `--resume`-ধরনের flag নেই।"  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "সেশন %{session_id} পুনরায় শুরু করা যায়নি: এর উৎস agent এই WTA build-এর কাছে অজানা।"
+system.cannot_resume_missing_owner: "সেশনটির মালিক উইন্ডো বা ট্যাব উপলব্ধ না থাকায় সেশনটি পুনরায় শুরু করা যাচ্ছে না।"  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "সেশনটি একটি নতুন পেনে খোলা হয়েছে, কিন্তু সেটি পুনরুদ্ধার করার জন্য প্রয়োজনীয় তথ্য দুইবার চেষ্টা করার পরেও সংরক্ষণ করা যায়নি।\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "পুনরায় শুরু করা সেশনটি তার নতুন পেনের সঙ্গে সংযুক্ত করা যাচ্ছে না, কারণ অন্য একটি সক্রিয় সেশন ওই পেনের মালিক।"  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "%{agent} সেশন %{session_id} পুনরায় শুরু করা যায়নি: এটি শুরু হয়েছিল কিন্তু কোনও কথোপকথন জমা হয়নি, তাই %{agent} নিজেই resume প্রত্যাখ্যান করবে। সারিটি সরানো হচ্ছে।"
 system.cannot_resume_phantom_via_load: "%{agent} সেশন %{session_id} পুনরায় শুরু করা যায়নি: এটি শুরু হয়েছিল কিন্তু কোনও কথোপকথন জমা হয়নি, তাই %{agent} load প্রত্যাখ্যান করবে। সারিটি সরানো হচ্ছে।"
 system.fallback.this_agent: "এই agent"

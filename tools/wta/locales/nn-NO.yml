@@ -175,6 +175,9 @@ system.cannot_focus_session: "Kan ikkje fokusera økta %{session_id}: ho ser ut 
 system.cannot_resume_no_load_session: "Kan ikkje halda fram i agentruta: %{agent} annonserte ikkje ACP `loadSession`-funksjonen."
 system.cannot_resume_no_resume_flag: "Kan ikkje halda fram %{agent}-økta: denne agenten har ikkje noko `--resume`-liknande flagg."
 system.cannot_resume_unknown_agent: "Kan ikkje halda fram økta %{session_id}: kjeldeagenten er ukjend for denne bygginga."
+system.cannot_resume_missing_owner: "Kan ikkje halda fram med økta fordi vindauget eller fana ho høyrer til, ikkje er tilgjengeleg."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "Økta vart opna i ei ny rute, men informasjonen som trengst for å gjenoppretta henne, kunne ikkje lagrast etter to forsøk.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Kan ikkje knyta økta som vart teken opp att, til den nye ruta fordi ruta høyrer til ei anna aktiv økt."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "Kan ikkje halda fram %{agent}-økta %{session_id}: ho vart starta, men samla aldri opp nokon samtale, så %{agent} ville sjølv avvisa framhaldet. Fjernar rada."
 system.cannot_resume_phantom_via_load: "Kan ikkje halda fram %{agent}-økta %{session_id}: ho vart starta, men samla aldri opp nokon samtale, så %{agent} ville avvisa innlastinga. Fjernar rada."
 system.fallback.this_agent: "denne agenten"

@@ -188,6 +188,9 @@ system.cannot_focus_session: "មិនអាចផ្តោតទៅលើវ�
 system.cannot_resume_no_load_session: "មិនអាចបន្តនៅក្នុងផ្តាំងអេជេន្ត់បានទេ: %{agent} មិនបានប្រកាសសមត្ថភាព ACP `loadSession` ទេ។"  # {Locked="ACP","loadSession"}
 system.cannot_resume_no_resume_flag: "មិនអាចបន្តវគ្គ %{agent} បានទេ: អេជេន្ត់នេះមិនមាន flag រចនាប័ទ្ម `--resume` ទេ។"  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "មិនអាចបន្តវគ្គ %{session_id} បានទេ: អេជេន្ត់ប្រភពរបស់វាមិនត្រូវបានស្គាល់ដោយ build នេះទេ។"
+system.cannot_resume_missing_owner: "មិនអាចបន្តវគ្គបានទេ ព្រោះបង្អួច ឬផ្ទាំងដែលជាម្ចាស់វគ្គនេះមិនអាចប្រើបាន។"  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "វគ្គបានបើកនៅក្នុងផ្ទាំងរងថ្មី ប៉ុន្តែមិនអាចរក្សាទុកព័ត៌មានដែលត្រូវការដើម្បីស្ដារវាឡើងវិញបានទេ បន្ទាប់ពីការព្យាយាមពីរដង។\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "មិនអាចភ្ជាប់វគ្គដែលបានបន្តទៅផ្ទាំងរងថ្មីរបស់វាបានទេ ព្រោះវគ្គសកម្មផ្សេងទៀតជាម្ចាស់ផ្ទាំងរងនោះ។"  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "មិនអាចបន្តវគ្គ %{agent} %{session_id} បានទេ: វាត្រូវបានចាប់ផ្តើម ប៉ុន្តែមិនដែលមានការសន្ទនាណាមួយទេ ដូច្នេះ %{agent} ខ្លួនឯងនឹងបដិសេធការបន្ត។ កំពុងលុបជួរដេក។"
 system.cannot_resume_phantom_via_load: "មិនអាចបន្តវគ្គ %{agent} %{session_id} បានទេ: វាត្រូវបានចាប់ផ្តើម ប៉ុន្តែមិនដែលមានការសន្ទនាណាមួយទេ ដូច្នេះ %{agent} នឹងបដិសេធការផ្ទុក។ កំពុងលុបជួរដេក។"
 system.fallback.this_agent: "អេជេន្ត់នេះ"

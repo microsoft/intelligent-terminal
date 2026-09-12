@@ -175,6 +175,9 @@ system.cannot_focus_session: "Non è possibile attivare la sessione %{session_id
 system.cannot_resume_no_load_session: "Non è possibile riprendere nel riquadro dell’agente: %{agent} non ha annunciato la funzionalità ACP `loadSession`."
 system.cannot_resume_no_resume_flag: "Non è possibile riprendere la sessione %{agent}: questo agente non dispone di un flag in stile `--resume`."
 system.cannot_resume_unknown_agent: "Non è possibile riprendere la sessione %{session_id}: l’agente di origine è sconosciuto a questa build."
+system.cannot_resume_missing_owner: "Non è possibile riprendere la sessione perché la finestra o la scheda a cui appartiene non è disponibile."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "La sessione si è aperta in un nuovo riquadro, ma non è stato possibile salvare le informazioni necessarie per ripristinarla dopo due tentativi.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Non è possibile associare la sessione ripresa al suo nuovo riquadro perché il riquadro appartiene a un’altra sessione attiva."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "Non è possibile riprendere la sessione %{agent} %{session_id}: è stata avviata ma non ha mai accumulato alcuna conversazione, quindi %{agent} rifiuterebbe la ripresa. Rimozione della riga."
 system.cannot_resume_phantom_via_load: "Non è possibile riprendere la sessione %{agent} %{session_id}: è stata avviata ma non ha mai accumulato alcuna conversazione, quindi %{agent} rifiuterebbe il caricamento. Rimozione della riga."
 system.fallback.this_agent: "questo agente"

@@ -188,6 +188,9 @@ system.cannot_focus_session: "%{session_id} seansiga fokuslab boʻlmadi: u jonli
 system.cannot_resume_no_load_session: "Agent panelida davom ettirib boʻlmadi: %{agent} ACP `loadSession` imkoniyatini eʼlon qilmagan."  # {Locked="ACP","loadSession"}
 system.cannot_resume_no_resume_flag: "%{agent} seansini davom ettirib boʻlmadi: bu agentda `--resume` uslubidagi bayroq yoʻq."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "%{session_id} seansini davom ettirib boʻlmadi: uning manba agenti ushbu WTA tuzilmasiga nomaʼlum."
+system.cannot_resume_missing_owner: "Seans tegishli boʻlgan oyna yoki varaq mavjud boʻlmagani uchun seansni davom ettirib boʻlmaydi."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "Seans yangi panelda ochildi, ammo uni tiklash uchun kerakli maʼlumotlarni ikki urinishdan keyin ham saqlab boʻlmadi.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Davom ettirilgan seansni uning yangi paneliga bogʻlab boʻlmaydi, chunki bu panel boshqa faol seansga tegishli."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "%{agent} %{session_id} seansini davom ettirib boʻlmadi: u boshlangan, lekin hech qanday suhbat yigʻilmagan, shuning uchun %{agent} oʻzi davom ettirishni rad etadi. Qator olib tashlanmoqda."
 system.cannot_resume_phantom_via_load: "%{agent} %{session_id} seansini davom ettirib boʻlmadi: u boshlangan, lekin hech qanday suhbat yigʻilmagan, shuning uchun %{agent} yuklashni rad etadi. Qator olib tashlanmoqda."
 system.fallback.this_agent: "bu agent"

@@ -190,6 +190,9 @@ system.cannot_focus_session: "সত্ৰ %{session_id} ফোকাচ কৰ�
 system.cannot_resume_no_load_session: "agent pane-ত পুনৰাৰম্ভ কৰিব নোৱাৰি: %{agent}-এ ACP `loadSession` ক্ষমতা ঘোষণা কৰা নাই।"  # {Locked="ACP","loadSession"} — protocol/UI terms.
 system.cannot_resume_no_resume_flag: "%{agent} সত্ৰ পুনৰাৰম্ভ কৰিব নোৱাৰি: এই agent-ৰ `--resume`-ধৰণৰ flag নাই।"  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "সত্ৰ %{session_id} পুনৰাৰম্ভ কৰিব নোৱাৰি: ইয়াৰ উৎস agent এই WTA build-ৰ বাবে অজানা।"
+system.cannot_resume_missing_owner: "সত্ৰটোৰ গৰাকী উইণ্ড' বা টেব উপলব্ধ নোহোৱাৰ বাবে সত্ৰটো পুনৰাৰম্ভ কৰিব নোৱাৰি।"  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "সত্ৰটো এটা নতুন পেনত খোলা হ'ল, কিন্তু ইয়াক পুনৰুদ্ধাৰ কৰিবলৈ প্ৰয়োজনীয় তথ্য দুবাৰ চেষ্টা কৰাৰ পাছতো সংৰক্ষণ কৰিব পৰা নগ'ল।\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "পুনৰাৰম্ভ কৰা সত্ৰটো ইয়াৰ নতুন পেনৰ সৈতে সংযোগ কৰিব নোৱাৰি, কাৰণ আন এটা সক্ৰিয় সত্ৰ সেই পেনটোৰ গৰাকী।"  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "%{agent} সত্ৰ %{session_id} পুনৰাৰম্ভ কৰিব নোৱাৰি: ই আৰম্ভ হৈছিল কিন্তু কোনো কথোপকথন সঞ্চিত হোৱা নাই, সেয়ে %{agent} নিজেই resume নাকচ কৰিব। শাৰী আঁতৰোৱা হৈছে।"
 system.cannot_resume_phantom_via_load: "%{agent} সত্ৰ %{session_id} পুনৰাৰম্ভ কৰিব নোৱাৰি: ই আৰম্ভ হৈছিল কিন্তু কোনো কথোপকথন সঞ্চিত হোৱা নাই, সেয়ে %{agent}-এ load নাকচ কৰিব। শাৰী আঁতৰোৱা হৈছে।"
 system.fallback.this_agent: "এই agent"

@@ -175,6 +175,9 @@ system.cannot_focus_session: "Nu se poate focaliza sesiunea %{session_id}: pare 
 system.cannot_resume_no_load_session: "Nu se poate relua în panoul agentului: %{agent} nu a anunțat capacitatea ACP `loadSession`."  # {Locked="ACP","loadSession"}
 system.cannot_resume_no_resume_flag: "Nu se poate relua sesiunea %{agent}: acest agent nu are un semnalizator de tip `--resume`."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Nu se poate relua sesiunea %{session_id}: agentul său sursă este necunoscut acestei compilări WTA."
+system.cannot_resume_missing_owner: "Sesiunea nu poate fi reluată deoarece fereastra sau fila căreia îi aparține nu este disponibilă."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "Sesiunea s-a deschis într-un panou nou, dar informațiile necesare pentru restaurarea ei nu au putut fi salvate după două încercări.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Sesiunea reluată nu poate fi asociată cu noul său panou deoarece acel panou aparține altei sesiuni active."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "Nu se poate relua sesiunea %{agent} %{session_id}: a fost pornită, dar nu a acumulat nicio conversație, așa că %{agent} însuși ar respinge reluarea. Se elimină rândul."
 system.cannot_resume_phantom_via_load: "Nu se poate relua sesiunea %{agent} %{session_id}: a fost pornită, dar nu a acumulat nicio conversație, așa că %{agent} ar respinge încărcarea. Se elimină rândul."
 system.fallback.this_agent: "acest agent"

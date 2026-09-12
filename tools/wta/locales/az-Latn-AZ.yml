@@ -190,6 +190,9 @@ system.cannot_focus_session: "Sessiya %{session_id} fokuslana bilmir: canlı gö
 system.cannot_resume_no_load_session: "Agent panelində bərpa etmək mümkün deyil: %{agent} ACP `loadSession` imkanını elan etməyib."  # {Locked="ACP","loadSession"}
 system.cannot_resume_no_resume_flag: "%{agent} sessiyasını bərpa etmək mümkün deyil: bu agentdə `--resume` üslublu bayraq yoxdur."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Sessiya %{session_id} bərpa edilə bilmir: onun mənbə agenti bu WTA quruluşuna məlum deyil."
+system.cannot_resume_missing_owner: "Sessiyanın aid olduğu pəncərə və ya tab əlçatan olmadığı üçün sessiyanı bərpa etmək mümkün deyil."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "Sessiya yeni paneldə açıldı, lakin onu bərpa etmək üçün lazım olan məlumatı iki cəhddən sonra saxlamaq mümkün olmadı.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Bərpa edilmiş sessiyanı yeni panelinə bağlamaq mümkün deyil, çünki həmin panel başqa aktiv sessiyaya məxsusdur."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "%{agent} sessiyası %{session_id} bərpa edilə bilmir: o başladılıb, amma heç bir söhbət toplanmayıb, buna görə %{agent} özü bərpanı rədd edəcək. Sətir silinir."
 system.cannot_resume_phantom_via_load: "%{agent} sessiyası %{session_id} bərpa edilə bilmir: o başladılıb, amma heç bir söhbət toplanmayıb, buna görə %{agent} yükləməni rədd edəcək. Sətir silinir."
 system.fallback.this_agent: "bu agent"

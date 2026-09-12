@@ -179,19 +179,32 @@ where
     if let Ok(runtime) = tokio::runtime::Handle::try_current() {
         drop(runtime.spawn(task));
     } else {
-        std::thread::spawn(move || {
-            let runtime = match tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-            {
-                Ok(runtime) => runtime,
-                Err(error) => {
-                    tracing::warn!(target: "wtcli", %error, "failed to create wtcli task runtime");
-                    return;
-                }
-            };
-            runtime.block_on(task);
-        });
+        if let Err(error) = std::thread::Builder::new()
+            .name("wtcli-task".into())
+            .spawn(move || {
+                run_wtcli_fallback_task(
+                    task,
+                    tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build(),
+                );
+            })
+        {
+            tracing::warn!(target: "wtcli", %error, "failed to start wtcli task thread");
+        }
+    }
+}
+
+fn run_wtcli_fallback_task(
+    task: impl Future<Output = ()>,
+    runtime: std::io::Result<tokio::runtime::Runtime>,
+) {
+    match runtime {
+        Ok(runtime) => runtime.block_on(task),
+        Err(error) => {
+            tracing::warn!(target: "wtcli", %error, "failed to create wtcli task runtime");
+            // Dropping an unstarted creation task reports failure through its guard.
+        }
     }
 }
 
@@ -448,9 +461,10 @@ pub fn spawn_wtcli_split_then_focus_with_callback(
     let owned_args: Vec<String> = std::iter::once("--json".to_string())
         .chain(args.iter().cloned())
         .collect();
+    let creation = create_pane_and_report(path.clone(), owned_args, on_complete);
 
     spawn_wtcli_task(async move {
-        let Some(session_id) = create_pane_and_report(&path, &owned_args, on_complete).await else {
+        let Some(session_id) = creation.await else {
             return;
         };
 
@@ -511,25 +525,47 @@ async fn create_pane(path: &str, args: &[String]) -> anyhow::Result<String> {
     parse_created_pane(output)
 }
 
-async fn create_pane_and_report(
-    path: &str,
-    args: &[String],
+struct PaneCreationCompletion {
+    callback: Option<Box<dyn FnOnce(anyhow::Result<String>) + Send + 'static>>,
+}
+
+impl Drop for PaneCreationCompletion {
+    fn drop(&mut self) {
+        if let Some(callback) = self.callback.take() {
+            let error = anyhow!("wtcli pane creation task was cancelled or could not start");
+            tracing::warn!(target: "wtcli", %error, "pane creation did not complete");
+            callback(Err(error));
+        }
+    }
+}
+
+fn report_pane_creation(
     on_complete: Option<Box<dyn FnOnce(anyhow::Result<String>) + Send + 'static>>,
-) -> Option<String> {
-    let result = create_pane(path, args).await;
-    let pane = result.as_ref().ok().cloned();
-    if let Err(error) = &result {
-        tracing::warn!(
-            target: "wtcli",
-            path,
-            error = %format!("{error:#}"),
-            "pane creation failed",
-        );
+    operation: impl Future<Output = anyhow::Result<String>>,
+) -> impl Future<Output = Option<String>> {
+    // Construct before scheduling so even a never-polled future completes its callback.
+    let mut completion = PaneCreationCompletion {
+        callback: on_complete,
+    };
+    async move {
+        let result = operation.await;
+        let pane = result.as_ref().ok().cloned();
+        if let Err(error) = &result {
+            tracing::warn!(target: "wtcli", error = %format!("{error:#}"), "pane creation failed");
+        }
+        if let Some(callback) = completion.callback.take() {
+            callback(result);
+        }
+        pane
     }
-    if let Some(callback) = on_complete {
-        callback(result);
-    }
-    pane
+}
+
+fn create_pane_and_report(
+    path: String,
+    args: Vec<String>,
+    on_complete: Option<Box<dyn FnOnce(anyhow::Result<String>) + Send + 'static>>,
+) -> impl Future<Output = Option<String>> {
+    report_pane_creation(on_complete, async move { create_pane(&path, &args).await })
 }
 
 fn parse_created_pane(output: std::process::Output) -> anyhow::Result<String> {
@@ -1176,6 +1212,107 @@ impl WtChannel for CliChannel {
 mod tests {
     use super::*;
 
+    fn guarded_test_creation(
+        operation: impl Future<Output = anyhow::Result<String>>,
+    ) -> (
+        impl Future<Output = Option<String>>,
+        std::sync::mpsc::Receiver<anyhow::Result<String>>,
+    ) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let future = report_pane_creation(
+            Some(Box::new(move |result| tx.send(result).unwrap())),
+            operation,
+        );
+        (future, rx)
+    }
+
+    fn assert_cancelled_once(rx: std::sync::mpsc::Receiver<anyhow::Result<String>>) {
+        let error = rx
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap()
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("cancelled or could not start"),
+            "{error:#}"
+        );
+        assert!(matches!(
+            rx.try_recv(),
+            Err(std::sync::mpsc::TryRecvError::Disconnected)
+        ));
+    }
+
+    #[test]
+    fn resume_creation_guard_reports_unstarted_future_drop() {
+        let (future, rx) = guarded_test_creation(std::future::pending());
+        drop(future);
+        assert_cancelled_once(rx);
+    }
+
+    #[test]
+    fn resume_creation_guard_reports_fallback_runtime_start_failure() {
+        let (future, rx) = guarded_test_creation(std::future::pending());
+        run_wtcli_fallback_task(
+            async move {
+                future.await;
+            },
+            Err(std::io::Error::other(
+                "injected runtime initialization failure",
+            )),
+        );
+        assert_cancelled_once(rx);
+    }
+
+    #[test]
+    fn resume_creation_guard_reports_current_runtime_shutdown() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let (future, rx) = guarded_test_creation(std::future::pending());
+        let task = runtime.spawn(future);
+        drop(runtime);
+        assert_cancelled_once(rx);
+        drop(task);
+    }
+
+    #[tokio::test]
+    async fn resume_creation_guard_reports_cancelled_running_operation() {
+        let (started, ready) = oneshot::channel();
+        let (future, rx) = guarded_test_creation(async move {
+            started.send(()).unwrap();
+            std::future::pending().await
+        });
+        let task = tokio::spawn(future);
+        ready.await.unwrap();
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        assert_cancelled_once(rx);
+    }
+
+    #[tokio::test]
+    async fn resume_creation_guard_reports_normal_result_exactly_once() {
+        for succeeded in [false, true] {
+            let (future, rx) = guarded_test_creation(async move {
+                if succeeded {
+                    Ok("created-pane".into())
+                } else {
+                    Err(anyhow!("creation failed"))
+                }
+            });
+            assert_eq!(future.await.as_deref(), succeeded.then_some("created-pane"));
+            let result = rx.recv().unwrap();
+            if succeeded {
+                assert_eq!(result.unwrap(), "created-pane");
+            } else {
+                assert_eq!(result.unwrap_err().to_string(), "creation failed");
+            }
+            assert!(matches!(
+                rx.try_recv(),
+                Err(std::sync::mpsc::TryRecvError::Disconnected)
+            ));
+        }
+    }
+
     fn encoded_powershell_args(script: &str) -> Vec<String> {
         let bytes: Vec<_> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
         vec![
@@ -1190,8 +1327,8 @@ mod tests {
     async fn resume_creation_reports_spawn_failure_to_callback() {
         let (tx, rx) = oneshot::channel();
         let pane = create_pane_and_report(
-            &format!("missing-wtcli-{}.exe", uuid::Uuid::new_v4()),
-            &[],
+            format!("missing-wtcli-{}.exe", uuid::Uuid::new_v4()),
+            vec![],
             Some(Box::new(move |result| {
                 tx.send(result).unwrap();
             })),
@@ -1221,8 +1358,8 @@ mod tests {
             };
             let args = encoded_powershell_args(&script);
             assert!(create_pane_and_report(
-                "powershell.exe",
-                &args,
+                "powershell.exe".into(),
+                args,
                 Some(Box::new(move |result| tx.send(result).unwrap())),
             )
             .await
@@ -1241,8 +1378,8 @@ mod tests {
             ));
             let (tx, rx) = oneshot::channel();
             let pane = create_pane_and_report(
-                "powershell.exe",
-                &args,
+                "powershell.exe".into(),
+                args,
                 Some(Box::new(move |result| tx.send(result).unwrap())),
             )
             .await;

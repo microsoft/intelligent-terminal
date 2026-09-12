@@ -175,6 +175,9 @@ system.cannot_focus_session: "Impossible de cibler la session %{session_id} : el
 system.cannot_resume_no_load_session: "Impossible de reprendre dans le volet d’agent : %{agent} n’a pas annoncé la capacité ACP `loadSession`."
 system.cannot_resume_no_resume_flag: "Impossible de reprendre la session %{agent} : cet agent n’a pas d’indicateur de type `--resume`."
 system.cannot_resume_unknown_agent: "Impossible de reprendre la session %{session_id} : son agent source est inconnu de cette version."
+system.cannot_resume_missing_owner: "Impossible de reprendre la session, car la fenêtre ou l’onglet auquel elle appartient n’est pas disponible."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "La session s’est ouverte dans un nouveau volet, mais les informations nécessaires à sa restauration n’ont pas pu être enregistrées après deux tentatives.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Impossible de lier la session reprise à son nouveau volet, car ce volet appartient à une autre session active."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "Impossible de reprendre la session %{agent} %{session_id} : elle a été démarrée, mais n’a jamais accumulé de conversation ; %{agent} rejetterait donc lui-même la reprise. Suppression de la ligne."
 system.cannot_resume_phantom_via_load: "Impossible de reprendre la session %{agent} %{session_id} : elle a été démarrée, mais n’a jamais accumulé de conversation ; %{agent} rejetterait donc le chargement. Suppression de la ligne."
 system.fallback.this_agent: "cet agent"

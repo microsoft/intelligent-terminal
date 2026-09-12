@@ -175,6 +175,9 @@ system.cannot_focus_session: "Ekki er hægt að færa fókus á setu %{session_i
 system.cannot_resume_no_load_session: "Ekki er hægt að halda áfram í agent-rúðu: %{agent} auglýsti ekki ACP `loadSession`-getuna."
 system.cannot_resume_no_resume_flag: "Ekki er hægt að halda áfram með %{agent}-setu: þessi agent er ekki með `--resume`-líkt flagg."
 system.cannot_resume_unknown_agent: "Ekki er hægt að halda áfram með setu %{session_id}: uppruna-agent hennar er óþekktur í þessari smíði."
+system.cannot_resume_missing_owner: "Ekki er hægt að halda áfram með setuna því glugginn eða flipinn sem hún tilheyrir er ekki tiltækur."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "Setan opnaðist í nýrri rúðu, en ekki tókst að vista upplýsingarnar sem þarf til að endurheimta hana eftir tvær tilraunir.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Ekki er hægt að tengja setuna sem var haldið áfram við nýju rúðuna hennar því rúðan tilheyrir annarri virkri setu."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "Ekki er hægt að halda áfram með %{agent}-setu %{session_id}: hún var ræst en safnaði aldrei neinu samtali, þannig að %{agent} myndi sjálfur hafna áframhaldi. Fjarlægi röðina."
 system.cannot_resume_phantom_via_load: "Ekki er hægt að halda áfram með %{agent}-setu %{session_id}: hún var ræst en safnaði aldrei neinu samtali, þannig að %{agent} myndi hafna hleðslunni. Fjarlægi röðina."
 system.fallback.this_agent: "þessi agent"

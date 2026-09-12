@@ -175,6 +175,9 @@ system.cannot_focus_session: "Nepavyksta sufokusuoti seanso %{session_id}: jis a
 system.cannot_resume_no_load_session: "Nepavyksta tęsti agento srityje: %{agent} nepaskelbė ACP `loadSession` galimybės."  # {Locked="ACP","loadSession"}
 system.cannot_resume_no_resume_flag: "Nepavyksta tęsti %{agent} seanso: šis agentas neturi `--resume` tipo vėliavėlės."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Nepavyksta tęsti seanso %{session_id}: jo šaltinio agentas šiai WTA komponuotei nežinomas."
+system.cannot_resume_missing_owner: "Seanso tęsti negalima, nes langas arba skirtukas, kuriam jis priklauso, nepasiekiamas."  # Routing identity unavailable; no new tab requested.
+system.resume_persistence_failed: "Seansas atidarytas naujoje srityje, tačiau informacijos, reikalingos jam atkurti, nepavyko įrašyti po dviejų bandymų.\n%{details}"  # Real pane remains open; only restore binding failed after two attempts. %{details} is raw technical detail. {Locked="%{details}"}
+system.resume_binding_conflict: "Tęsiamo seanso negalima susieti su jo naująja sritimi, nes ši sritis priklauso kitam aktyviam seansui."  # Preserve the existing live owner; resume may be retried.
 system.cannot_resume_phantom_via_flag: "Nepavyksta tęsti %{agent} seanso %{session_id}: jis buvo paleistas, bet nesukaupė jokio pokalbio, todėl pats %{agent} atmestų tęsimą. Eilutė šalinama."
 system.cannot_resume_phantom_via_load: "Nepavyksta tęsti %{agent} seanso %{session_id}: jis buvo paleistas, bet nesukaupė jokio pokalbio, todėl %{agent} atmestų įkėlimą. Eilutė šalinama."
 system.fallback.this_agent: "šis agentas"
