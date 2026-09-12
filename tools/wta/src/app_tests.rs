@@ -7410,7 +7410,7 @@ fn resume_success_binds_and_deduplicates_until_authoritative_snapshot() {
     app.handle_event(AppEvent::SessionResumeCompleted {
         key: row.key.clone(),
         request_id: app.pending_session_resumes[&row.key].request_id,
-        result: Ok(Some("new-pane".into())),
+        result: Ok(Some("new-pane".into()).into()),
     });
     assert!(
         matches!(hooks.try_recv(), Ok(SessionEvent::ResumePaneAssigned { key, pane_session_id }) if key == row.key && pane_session_id == "new-pane")
@@ -7438,6 +7438,246 @@ fn resume_success_binds_and_deduplicates_until_authoritative_snapshot() {
 }
 
 #[test]
+fn resume_binding_publication_waits_for_delayed_success_and_retries_only_binding() {
+    use crate::agent_sessions::{AgentStatus, SessionOrigin};
+    let deferred = crate::wt_protocol_events::defer_test_publications();
+    let mut app = test_app();
+    let row = seed_resume_row(&mut app, AgentStatus::Historical, SessionOrigin::Unknown);
+    let (tx, mut events) = tokio::sync::mpsc::unbounded_channel();
+    app.set_agent_event_tx(tx);
+    let on_complete = app.begin_session_resume(&row.key);
+    crate::wt_protocol_events::complete_resumed_pane_creation(
+        Ok("created-pane".into()),
+        "copilot",
+        &row.key,
+        &row.location,
+        on_complete,
+    );
+    assert!(
+        events.try_recv().is_err(),
+        "queueing is not successful persistence"
+    );
+    app.activate_agent_session_routed(&row);
+    assert!(
+        app.last_dispatched_command.is_none(),
+        "pending persistence must not create another tab"
+    );
+    let first = deferred.complete_next(Err(anyhow::anyhow!("temporary publish failure")));
+    assert!(
+        events.try_recv().is_err(),
+        "retry must not complete the attempt prematurely"
+    );
+    assert_eq!(deferred.pending_count(), 1);
+    let second = deferred.complete_next(Ok(()));
+    assert_eq!(
+        first, second,
+        "only the identical idempotent binding is retried"
+    );
+    let payload: serde_json::Value = serde_json::from_str(&second).unwrap();
+    assert_eq!(payload["method"], "pane_agent_session_changed");
+    let completed = events.try_recv().unwrap();
+    assert!(matches!(&completed, AppEvent::SessionResumeCompleted {
+        result: Ok(crate::wt_protocol_events::ResumeOutcome::PaneCreated { pane_session_id, binding_error: None }), ..
+    } if pane_session_id == "created-pane"));
+    assert!(
+        events.try_recv().is_err(),
+        "the attempt completes exactly once"
+    );
+    assert_eq!(deferred.pending_count(), 0);
+    app.handle_event(completed);
+    let live = app.agent_sessions.get(&row.key).unwrap();
+    assert_eq!(live.status, AgentStatus::Idle);
+    assert_eq!(live.pane_session_id.as_deref(), Some("created-pane"));
+    assert!(app.current_tab().messages.is_empty());
+}
+
+#[test]
+fn resume_binding_publication_failure_retains_real_pane_and_reports_to_owner() {
+    use crate::agent_sessions::{AgentStatus, SessionEvent, SessionOrigin};
+    for concurrent_binding in [false, true] {
+        let deferred = crate::wt_protocol_events::defer_test_publications();
+        let mut app = test_app();
+        let row = seed_resume_row(&mut app, AgentStatus::Historical, SessionOrigin::Unknown);
+        app.owner_tab_id = Some("resume-owner".into());
+        let (tx, mut events) = tokio::sync::mpsc::unbounded_channel();
+        app.set_agent_event_tx(tx);
+        let (hook_tx, mut hooks) = tokio::sync::mpsc::unbounded_channel();
+        app.set_session_hook_tx(hook_tx);
+        let on_complete = app.begin_session_resume(&row.key);
+        let request_id = app.pending_session_resumes[&row.key].request_id;
+        crate::wt_protocol_events::complete_resumed_pane_creation(
+            Ok("created-pane".into()),
+            "copilot",
+            &row.key,
+            &row.location,
+            on_complete,
+        );
+        app.tab_mut("focus-tab");
+        app.tab_id = Some("focus-tab".into());
+        if concurrent_binding {
+            app.agent_sessions.apply(SessionEvent::SessionStarted {
+                key: row.key.clone(),
+                cli_source: row.cli_source.clone(),
+                pane_session_id: "real-hook-pane".into(),
+                cwd: row.cwd.clone(),
+                title: row.title.clone(),
+            });
+            app.agent_sessions.apply(SessionEvent::ToolStarting {
+                key: row.key.clone(),
+                tool_name: "real work".into(),
+            });
+            let live = app.agent_sessions.get(&row.key).unwrap().clone();
+            app.activate_agent_session_routed(&live);
+            assert!(!app.pending_session_resumes.contains_key(&row.key));
+            app.rename_tab_session("resume-owner", "renamed-owner", Some("new-window"));
+        }
+        let owner_tab = if concurrent_binding {
+            "renamed-owner"
+        } else {
+            "resume-owner"
+        };
+        deferred.complete_next(Err(anyhow::anyhow!("first COM failure")));
+        deferred.complete_next(Err(anyhow::anyhow!("second COM failure")));
+        assert_eq!(deferred.pending_count(), 0, "retry must be bounded");
+        app.handle_event(events.try_recv().unwrap());
+        assert!(events.try_recv().is_err());
+        let live = app.agent_sessions.get(&row.key).unwrap().clone();
+        assert_eq!(
+            live.pane_session_id.as_deref(),
+            Some(if concurrent_binding {
+                "real-hook-pane"
+            } else {
+                "created-pane"
+            })
+        );
+        assert_eq!(
+            live.status,
+            if concurrent_binding {
+                AgentStatus::Working
+            } else {
+                AgentStatus::Idle
+            }
+        );
+        let messages = &app.tab_sessions[owner_tab].messages;
+        assert_eq!(messages.len(), 1);
+        assert!(matches!(&messages[0], ChatMessage::Error(message)
+            if message.contains("Pane created") && message.contains("persistence binding")
+                && message.contains("second COM failure")));
+        assert!(app.tab_sessions["focus-tab"].messages.is_empty());
+        if !concurrent_binding {
+            assert!(
+                matches!(hooks.try_recv(), Ok(SessionEvent::ResumePaneAssigned { pane_session_id, .. }) if pane_session_id == "created-pane")
+            );
+            app.pending_session_resumes
+                .get_mut(&row.key)
+                .unwrap()
+                .completed_at = Some(std::time::Instant::now() - RESUME_BINDING_GRACE);
+            app.last_dispatched_command = None;
+            app.activate_agent_session_routed(&row);
+            assert!(
+                app.last_dispatched_command.is_none(),
+                "persistence failure cannot enable duplicate creation, even after the grace period"
+            );
+        }
+        app.activate_agent_session_routed(&live);
+        assert_eq!(
+            app.last_dispatched_command.as_ref().unwrap().kind,
+            DispatchedCommandKind::FocusPane
+        );
+        app.handle_event(AppEvent::SessionResumeCompleted {
+            key: row.key.clone(),
+            request_id,
+            result: Ok(crate::wt_protocol_events::ResumeOutcome::PaneCreated {
+                pane_session_id: "created-pane".into(),
+                binding_error: Some("duplicate completion".into()),
+            }),
+        });
+        assert_eq!(app.tab_sessions[owner_tab].messages.len(), 1);
+    }
+}
+
+#[test]
+fn resume_binding_publication_creation_failure_bypasses_publish_and_wsl_skips_it() {
+    use crate::agent_sessions::{AgentStatus, SessionLocation, SessionOrigin};
+    for create_success in [false, true] {
+        let deferred = crate::wt_protocol_events::defer_test_publications();
+        let mut app = test_app();
+        let mut row = seed_resume_row(&mut app, AgentStatus::Historical, SessionOrigin::Unknown);
+        if create_success {
+            row.location = SessionLocation::Wsl {
+                distro: "Ubuntu".into(),
+            };
+        }
+        let (tx, mut events) = tokio::sync::mpsc::unbounded_channel();
+        app.set_agent_event_tx(tx);
+        let on_complete = app.begin_session_resume(&row.key);
+        crate::wt_protocol_events::complete_resumed_pane_creation(
+            if create_success {
+                Ok("wsl-pane".into())
+            } else {
+                Err(anyhow::anyhow!("creation failed"))
+            },
+            "copilot",
+            &row.key,
+            &row.location,
+            on_complete,
+        );
+        assert_eq!(deferred.pending_count(), 0);
+        app.handle_event(events.try_recv().unwrap());
+        assert!(events.try_recv().is_err());
+        assert_eq!(
+            app.agent_sessions
+                .get(&row.key)
+                .unwrap()
+                .pane_session_id
+                .as_deref(),
+            create_success.then_some("wsl-pane")
+        );
+        if !create_success {
+            assert!(!app.pending_session_resumes.contains_key(&row.key));
+        }
+    }
+}
+
+#[test]
+fn resume_binding_publication_failure_after_close_does_not_revive_pane() {
+    use crate::agent_sessions::{AgentStatus, SessionEvent, SessionOrigin};
+    let deferred = crate::wt_protocol_events::defer_test_publications();
+    let mut app = test_app();
+    let row = seed_resume_row(&mut app, AgentStatus::Historical, SessionOrigin::Unknown);
+    let (tx, mut events) = tokio::sync::mpsc::unbounded_channel();
+    app.set_agent_event_tx(tx);
+    let on_complete = app.begin_session_resume(&row.key);
+    crate::wt_protocol_events::complete_resumed_pane_creation(
+        Ok("closed-pane".into()),
+        "copilot",
+        &row.key,
+        &row.location,
+        on_complete,
+    );
+    app.handle_event(AppEvent::AgentSessionEvent(SessionEvent::PaneClosed {
+        pane_session_id: "CLOSED-PANE".into(),
+    }));
+    deferred.complete_next(Err(anyhow::anyhow!("first failure")));
+    deferred.complete_next(Err(anyhow::anyhow!("last failure")));
+    app.handle_event(events.try_recv().unwrap());
+    assert_eq!(
+        app.agent_sessions.get(&row.key).unwrap().status,
+        AgentStatus::Historical
+    );
+    assert!(app
+        .agent_sessions
+        .get(&row.key)
+        .unwrap()
+        .pane_session_id
+        .is_none());
+    assert!(!app.pending_session_resumes.contains_key(&row.key));
+    assert!(
+        matches!(app.current_tab().messages.last(), Some(ChatMessage::Error(message)) if message.contains("persistence binding"))
+    );
+}
+
+#[test]
 fn resume_close_before_assignment_does_not_revive_the_pane() {
     use crate::agent_sessions::{AgentStatus, SessionEvent, SessionOrigin};
 
@@ -7457,7 +7697,7 @@ fn resume_close_before_assignment_does_not_revive_the_pane() {
         app.handle_event(AppEvent::SessionResumeCompleted {
             key: row.key.clone(),
             request_id,
-            result: Ok(Some("new-pane".into())),
+            result: Ok(Some("new-pane".into()).into()),
         });
 
         if closed_created_pane {
@@ -7493,7 +7733,7 @@ fn resumed_pane_close_clears_pending_and_allows_immediate_retry() {
             app.handle_event(AppEvent::SessionResumeCompleted {
                 key: row.key.clone(),
                 request_id,
-                result: Ok(Some("quick-pane".into())),
+                result: Ok(Some("quick-pane".into()).into()),
             });
         } else {
             app.handle_event(AppEvent::AgentSessionEvent(SessionEvent::SessionStarted {
@@ -7513,7 +7753,7 @@ fn resumed_pane_close_clears_pending_and_allows_immediate_retry() {
             app.handle_event(AppEvent::SessionResumeCompleted {
                 key: row.key.clone(),
                 request_id,
-                result: Ok(Some("quick-pane".into())),
+                result: Ok(Some("quick-pane".into()).into()),
             });
         }
         let ended = app.agent_sessions.get(&row.key).unwrap().clone();
@@ -7545,7 +7785,7 @@ async fn resume_master_removal_clears_only_an_observed_binding() {
                     app.handle_event(AppEvent::SessionResumeCompleted {
                         key: row.key.clone(),
                         request_id,
-                        result: Ok(Some("quick-pane".into())),
+                        result: Ok(Some("quick-pane".into()).into()),
                     });
                 }
                 app.handle_event(AppEvent::AliveSessionRemoved(
@@ -7570,7 +7810,7 @@ fn resume_stop_clears_only_an_observed_binding() {
             app.handle_event(AppEvent::SessionResumeCompleted {
                 key: row.key.clone(),
                 request_id,
-                result: Ok(Some("quick-pane".into())),
+                result: Ok(Some("quick-pane".into()).into()),
             });
         }
         app.handle_event(AppEvent::AgentSessionEvent(SessionEvent::SessionStopped {
@@ -7593,7 +7833,7 @@ fn resume_publish_success_does_not_claim_a_live_session_and_missing_binding_can_
     app.handle_event(AppEvent::SessionResumeCompleted {
         key: row.key.clone(),
         request_id,
-        result: Ok(None),
+        result: Ok(None.into()),
     });
     assert_eq!(
         app.agent_sessions.get(&row.key).unwrap().status,
@@ -7621,7 +7861,7 @@ fn resume_completion_preserves_concurrent_hook_binding() {
 
     for result in [
         Err("failed after hook".into()),
-        Ok(Some("late-pane".into())),
+        Ok(Some("late-pane".into()).into()),
     ] {
         let failed_attempt = result.is_err();
         let mut app = test_app();
@@ -7805,7 +8045,8 @@ fn agent_pane_resume_without_owner_route_fails_before_publish() {
         app.set_agent_event_tx(tx);
         let row = seed_resume_row(&mut app, AgentStatus::Historical, SessionOrigin::AgentPane);
         app.activate_agent_session_routed(&row);
-        let invoking_tab = app.pending_session_resumes[&row.key].tab_id.clone();
+        let invoking_tab =
+            app.resume_attempt_tabs[&app.pending_session_resumes[&row.key].request_id].clone();
         assert!(crate::wt_protocol_events::take_test_published_events().is_empty());
         app.handle_event(rx.try_recv().expect("missing route must report completion"));
         assert!(!app.pending_session_resumes.contains_key(&row.key));
@@ -7832,7 +8073,10 @@ fn agent_pane_resume_event_preserves_owning_window_and_tab() {
     app.agent_supports_load_session = true;
     let row = seed_resume_row(&mut app, AgentStatus::Historical, SessionOrigin::AgentPane);
     app.activate_agent_session_routed(&row);
-    assert_eq!(app.pending_session_resumes[&row.key].tab_id, "source-tab");
+    assert_eq!(
+        app.resume_attempt_tabs[&app.pending_session_resumes[&row.key].request_id],
+        "source-tab"
+    );
 
     let event = crate::wt_protocol_events::take_test_published_events()
         .into_iter()

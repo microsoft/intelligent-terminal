@@ -7,10 +7,92 @@ type PublishCallback = Box<dyn FnOnce(anyhow::Result<()>) + Send + 'static>;
 const PUBLISH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 const PUBLISH_REAP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum ResumeOutcome {
+    AgentTabPublished,
+    PaneCreated {
+        pane_session_id: String,
+        binding_error: Option<String>,
+    },
+}
+
+impl From<Option<String>> for ResumeOutcome {
+    fn from(pane: Option<String>) -> Self {
+        match pane {
+            Some(pane_session_id) => Self::PaneCreated {
+                pane_session_id,
+                binding_error: None,
+            },
+            None => Self::AgentTabPublished,
+        }
+    }
+}
+
+type ResumeCallback = Box<dyn FnOnce(anyhow::Result<ResumeOutcome>) + Send + 'static>;
+
+pub(crate) fn complete_resumed_pane_creation(
+    result: anyhow::Result<String>,
+    agent_id: &str,
+    session_id: &str,
+    location: &crate::agent_sessions::SessionLocation,
+    on_complete: ResumeCallback,
+) {
+    match result {
+        Err(error) => on_complete(Err(error)),
+        Ok(pane_session_id) => {
+            if let Some(binding) =
+                resumed_pane_binding_event(agent_id, session_id, &pane_session_id, location)
+            {
+                publish_resume_binding(binding, pane_session_id, true, on_complete);
+            } else {
+                on_complete(Ok(Some(pane_session_id).into()));
+            }
+        }
+    }
+}
+
+fn publish_resume_binding(
+    binding: String,
+    pane_session_id: String,
+    retry: bool,
+    on_complete: ResumeCallback,
+) {
+    send_with_callback(
+        binding.clone(),
+        Some(Box::new(move |result| {
+            if let Err(error) = &result {
+                if retry {
+                    tracing::warn!(target: "wt_protocol", %pane_session_id, error = %format!("{error:#}"), "retrying resumed pane persistence binding");
+                    // Only this idempotent publication is retried, never pane creation.
+                    publish_resume_binding(binding, pane_session_id, false, on_complete);
+                    return;
+                }
+            }
+            on_complete(Ok(ResumeOutcome::PaneCreated {
+                pane_session_id,
+                binding_error: result.err().map(|error| {
+                    format!("Pane created, but its session persistence binding could not be published after two attempts: {error:#}")
+                }),
+            }));
+        })),
+    );
+}
+
 /// Report transport completion, not just acceptance into the publisher queue.
 pub fn send_with_callback(json_payload: String, on_complete: Option<PublishCallback>) {
     #[cfg(test)]
     {
+        if on_complete.is_some()
+            && TEST_DEFERRED_PUBLICATIONS.with(|queue| queue.borrow().is_some())
+        {
+            TEST_DEFERRED_PUBLICATIONS.with(|queue| {
+                queue.borrow_mut().as_mut().unwrap().push_back(PublishJob {
+                    json_payload,
+                    on_complete,
+                });
+            });
+            return;
+        }
         TEST_PUBLISHED_EVENTS.with(|capture| {
             if let Some(events) = capture.borrow_mut().as_mut() {
                 if events.len() == TEST_PUBLISHED_EVENT_LIMIT {
@@ -72,6 +154,45 @@ thread_local! {
     static TEST_PUBLISHED_EVENTS:
         std::cell::RefCell<Option<std::collections::VecDeque<String>>> =
         const { std::cell::RefCell::new(None) };
+    static TEST_DEFERRED_PUBLICATIONS:
+        std::cell::RefCell<Option<std::collections::VecDeque<PublishJob>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+pub(crate) struct TestDeferredPublications;
+
+#[cfg(test)]
+impl Drop for TestDeferredPublications {
+    fn drop(&mut self) {
+        TEST_DEFERRED_PUBLICATIONS.with(|queue| *queue.borrow_mut() = None);
+    }
+}
+
+#[cfg(test)]
+impl TestDeferredPublications {
+    pub(crate) fn pending_count(&self) -> usize {
+        TEST_DEFERRED_PUBLICATIONS.with(|queue| queue.borrow().as_ref().unwrap().len())
+    }
+
+    pub(crate) fn complete_next(&self, result: anyhow::Result<()>) -> String {
+        let job = TEST_DEFERRED_PUBLICATIONS
+            .with(|queue| queue.borrow_mut().as_mut().unwrap().pop_front().unwrap());
+        let payload = job.json_payload.clone();
+        job.complete(result);
+        payload
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn defer_test_publications() -> TestDeferredPublications {
+    TEST_DEFERRED_PUBLICATIONS.with(|queue| {
+        assert!(queue
+            .borrow_mut()
+            .replace(std::collections::VecDeque::new())
+            .is_none());
+    });
+    TestDeferredPublications
 }
 
 #[cfg(test)]

@@ -309,8 +309,7 @@ pub enum AppEvent {
     SessionResumeCompleted {
         key: String,
         request_id: uuid::Uuid,
-        /// None acknowledges event publication only; Some contains a created pane.
-        result: Result<Option<String>, String>,
+        result: Result<crate::wt_protocol_events::ResumeOutcome, String>,
     },
     AliveSnapshotLoaded(Vec<crate::session_registry::SessionInfo>),
     AliveSessionAdded(crate::session_registry::SessionInfo),

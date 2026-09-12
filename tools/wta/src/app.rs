@@ -120,11 +120,11 @@ pub type QueuedSessionHook = crate::agent_sessions::SessionEvent;
 
 struct PendingSessionResume {
     request_id: uuid::Uuid,
-    tab_id: String,
     closed_panes: HashSet<String>,
     // Publishing an event is not proof that WT/ACP created the new session.
     // Bound the acknowledgement grace period so a lost binding can be retried.
     completed_at: Option<std::time::Instant>,
+    created_pane: Option<String>,
 }
 
 const RESUME_BINDING_GRACE: std::time::Duration = std::time::Duration::from_secs(30);
@@ -1312,6 +1312,7 @@ pub struct App {
     /// completion directly while exercising the same in-flight bookkeeping.
     agent_event_tx: Option<mpsc::UnboundedSender<AppEvent>>,
     pending_session_resumes: HashMap<String, PendingSessionResume>,
+    resume_attempt_tabs: HashMap<uuid::Uuid, String>,
     /// Helper-mode fire-and-forget publisher for `intellterm.wta/session_hook`.
     session_hook_tx: Option<mpsc::UnboundedSender<QueuedSessionHook>>,
     /// Hot-updatable delegate config, shared with the recommendation
@@ -1590,6 +1591,7 @@ impl App {
             sessions_origin_filter: resolve_sessions_origin_filter(),
             agent_event_tx: None,
             pending_session_resumes: HashMap::new(),
+            resume_attempt_tabs: HashMap::new(),
             session_hook_tx: None,
             delegate_agents: None,
             delegate_base_agent_cmd: String::new(),
@@ -2916,9 +2918,10 @@ impl App {
         };
         if let Some(pending) = self.pending_session_resumes.get(&s.key) {
             if s.pane_session_id.is_some()
-                || pending
-                    .completed_at
-                    .is_some_and(|completed| completed.elapsed() >= RESUME_BINDING_GRACE)
+                || (pending.created_pane.is_none()
+                    && pending
+                        .completed_at
+                        .is_some_and(|completed| completed.elapsed() >= RESUME_BINDING_GRACE))
             {
                 self.pending_session_resumes.remove(&s.key);
             } else {
@@ -3200,17 +3203,13 @@ impl App {
             crate::shell::wt_channel::spawn_wtcli_split_then_focus_with_callback(
                 &argv,
                 Some(Box::new(move |result| {
-                    if let Ok(pane_session_id) = &result {
-                        if let Some(binding) = crate::wt_protocol_events::resumed_pane_binding_event(
-                            cli_id,
-                            &cb_key,
-                            pane_session_id,
-                            &cb_location,
-                        ) {
-                            send_wt_protocol_event(binding);
-                        }
-                    }
-                    on_complete(result.map(Some));
+                    crate::wt_protocol_events::complete_resumed_pane_creation(
+                        result,
+                        cli_id,
+                        &cb_key,
+                        &cb_location,
+                        on_complete,
+                    );
                 })),
             );
         }
@@ -3347,7 +3346,9 @@ impl App {
             });
             crate::wt_protocol_events::send_with_callback(
                 evt.to_string(),
-                Some(Box::new(move |result| on_complete(result.map(|()| None)))),
+                Some(Box::new(move |result| {
+                    on_complete(result.map(|()| None.into()))
+                })),
             );
             tracing::info!(
                 target: "agents_view",
@@ -3418,7 +3419,8 @@ impl App {
     fn begin_session_resume(
         &mut self,
         key: &str,
-    ) -> Box<dyn FnOnce(anyhow::Result<Option<String>>) + Send + 'static> {
+    ) -> Box<dyn FnOnce(anyhow::Result<crate::wt_protocol_events::ResumeOutcome>) + Send + 'static>
+    {
         let request_id = uuid::Uuid::new_v4();
         let tab_id = self
             .agent_routing_tab_id()
@@ -3426,13 +3428,14 @@ impl App {
             .unwrap_or_else(|| self.active_tab_key())
             .to_string();
         self.tab_mut(&tab_id);
+        self.resume_attempt_tabs.insert(request_id, tab_id);
         self.pending_session_resumes.insert(
             key.to_string(),
             PendingSessionResume {
                 request_id,
-                tab_id,
                 closed_panes: HashSet::new(),
                 completed_at: None,
+                created_pane: None,
             },
         );
         let key = key.to_string();
@@ -3461,58 +3464,64 @@ impl App {
         &mut self,
         key: String,
         request_id: uuid::Uuid,
-        result: Result<Option<String>, String>,
+        result: Result<crate::wt_protocol_events::ResumeOutcome, String>,
     ) {
-        let Some(pending) = self.pending_session_resumes.get_mut(&key) else {
+        let Some(tab_id) = self.resume_attempt_tabs.remove(&request_id) else {
             return;
         };
-        if pending.request_id != request_id {
-            return;
-        }
-        if let Ok(Some(pane)) = &result {
-            if pending
-                .closed_panes
-                .contains(&crate::agent_sessions::pane_key(pane))
-            {
+        let (pane, error) = match result {
+            Ok(crate::wt_protocol_events::ResumeOutcome::PaneCreated {
+                pane_session_id,
+                binding_error,
+            }) => (Some(pane_session_id), binding_error),
+            Ok(crate::wt_protocol_events::ResumeOutcome::AgentTabPublished) => (None, None),
+            Err(error) => (None, Some(error)),
+        };
+        if let Some(pending) = self
+            .pending_session_resumes
+            .get_mut(&key)
+            .filter(|pending| pending.request_id == request_id)
+        {
+            let already_closed = pane.as_ref().is_some_and(|pane| {
+                pending
+                    .closed_panes
+                    .contains(&crate::agent_sessions::pane_key(pane))
+            });
+            if already_closed || (pane.is_none() && error.is_some()) {
                 self.pending_session_resumes.remove(&key);
-                tracing::debug!(target: "agents_view", %key, %request_id, "ignoring resume completion for a pane already closed");
-                return;
-            }
-        }
-        match result {
-            Ok(pane) => {
+            } else {
                 pending.completed_at = Some(std::time::Instant::now());
                 pending.closed_panes.clear();
+                pending.created_pane = pane.clone();
                 if let Some(pane_session_id) = pane {
-                    // One success event atomically promotes AND binds at master.
-                    // Never send ResumeDispatched on a separate racing RPC.
-                    let event = crate::agent_sessions::SessionEvent::ResumePaneAssigned {
-                        key,
-                        pane_session_id,
-                    };
-                    self.handle_event(AppEvent::AgentSessionEvent(event));
+                    self.handle_event(AppEvent::AgentSessionEvent(
+                        crate::agent_sessions::SessionEvent::ResumePaneAssigned {
+                            key: key.clone(),
+                            pane_session_id,
+                        },
+                    ));
                 }
             }
-            Err(error) => {
-                let tab_id = pending.tab_id.clone();
-                self.pending_session_resumes.remove(&key);
-                tracing::warn!(target: "agents_view", %key, %request_id, %error, "session resume failed");
-                // Failure changes no session state: a real hook or another
-                // helper's successful binding may already have won the race.
-                if self.tab_sessions.contains_key(&tab_id) {
-                    // The picker does not render chat messages. Return only
-                    // the invoking tab to chat so the failure is visible.
-                    self.close_agents_view_for_tab(&tab_id);
-                    let tab = self.tab_mut(&tab_id);
-                    let context = t!(
-                        "connection.resuming_stage",
-                        stage = t!("agents.status.error").as_ref(),
-                        session_id = key.as_str()
-                    );
-                    tab.messages
-                        .push(ChatMessage::Error(format!("{context}\n{error}")));
-                    tab.scroll_to_bottom();
-                }
+        }
+        // A real hook, focus, or pane close can retire deduplication while the
+        // publisher is still running. Keep this attempt's error routing alive.
+        if let Some(error) = error {
+            tracing::warn!(target: "agents_view", %key, %request_id, %error, "session resume failed");
+            // Reporting a persistence failure must not roll back the real pane
+            // or a concurrent hook's authoritative binding.
+            if self.tab_sessions.contains_key(&tab_id) {
+                // The picker does not render chat messages. Return only
+                // the invoking tab to chat so the failure is visible.
+                self.close_agents_view_for_tab(&tab_id);
+                let tab = self.tab_mut(&tab_id);
+                let context = t!(
+                    "connection.resuming_stage",
+                    stage = t!("agents.status.error").as_ref(),
+                    session_id = key.as_str()
+                );
+                tab.messages
+                    .push(ChatMessage::Error(format!("{context}\n{error}")));
+                tab.scroll_to_bottom();
             }
         }
     }
@@ -6612,9 +6621,9 @@ impl App {
             self.pending_yolo_session_tabs
                 .insert(new_tab_id.to_string());
         }
-        for pending in self.pending_session_resumes.values_mut() {
-            if pending.tab_id == old_tab_id {
-                pending.tab_id = new_tab_id.to_string();
+        for tab_id in self.resume_attempt_tabs.values_mut() {
+            if tab_id == old_tab_id {
+                *tab_id = new_tab_id.to_string();
             }
         }
         let had_session = if let Some(mut entry) = self.tab_sessions.remove(old_tab_id) {

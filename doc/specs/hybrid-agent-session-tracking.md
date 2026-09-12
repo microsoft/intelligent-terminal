@@ -207,20 +207,35 @@ the hook-free resume binding, so `handle_session_hook` records it in
 treated as hook-owned and its row would sit at `Idle` forever even as the watcher
 saw activity.
 
+Host shell resume observes the follow-up persistence-binding publication and
+retries it once on failure; only the identical binding event is retried, never
+tab creation. Completion retains the actual created pane even if both
+publication attempts fail. It establishes real liveness and reports the partial
+failure to the owning tab without enabling duplicate creation. WSL resume skips
+this host-only persistence event.
+
 The initiating helper deduplicates in-flight requests separately from master's
 authoritative liveness, including while a successful binding awaits the next
 master snapshot. Creation and agent-tab event publishing report transport errors
 back to the invoking tab, which returns to chat to show the localized error.
-Failures leave the original row retryable and cannot undo a concurrent real
-session binding. Publishing `resume_in_new_agent_tab` successfully is only a
+Creation and initial-dispatch failures leave the original row retryable and
+cannot undo a concurrent real session binding. Attempt-local error routing
+survives a concurrent binding or focus operation that retires deduplication, so
+a later persistence failure is still shown once in the owning tab.
+Publishing `resume_in_new_agent_tab` successfully is only a
 transport acknowledgement: ACP's actual binding establishes liveness. A
 request includes the helper's owning window and tab IDs; the host routes to
 that window only and verifies the source tab before creating a new tab.
-The pending load is attached only to the actual newly created local tab,
+The initial load is attached only to the actual newly created local tab,
 never to the previously focused tab after a no-op or elevation handoff.
-The COM publisher waits for this UI-side creation step, so validation and local
-tab-creation failures reach the invoking helper through the existing failure
-callback. This acknowledgment still does not imply that ACP loading succeeded.
+The host creates that tab's visible agent pane immediately with the session ID
+and cwd in the helper's startup arguments. It does not wait for a
+`set_agent_state` broadcast to a helper that has not subscribed yet. Deferred
+pre-warm skips this already-created pane; if creation fails, it must not
+substitute a blank helper. The COM publisher waits for this UI-side creation
+step, so validation, local-tab, and agent-pane creation failures reach the
+invoking helper through the existing failure callback. This acknowledgment
+still does not imply that ACP loading succeeded.
 Missing routing metadata is rejected rather than broadcast. A
 helper without its owning window/tab identity reports a local error before
 publishing the request. A
@@ -228,9 +243,11 @@ host/helper update must keep this private routing contract in sync. This is
 intentional: compatibility with the legacy `ResumeDispatched` session hook
 does not permit owner-less tab-creation requests. Pending completion uses the
 same owning tab identity as the outbound event, not a transient focused tab. A
-30-second post-completion grace period bounds duplicate suppression when no
-binding arrives, so a lost creation/load acknowledgement cannot block retries
-forever. Closing an observed binding clears its pending resume immediately,
+30-second post-completion grace period bounds duplicate suppression for
+agent-tab publication when no binding arrives, so a lost load acknowledgement
+cannot block retries forever. A returned shell-pane identity does not expire
+this way: a missing persistence update must not create another live CLI.
+Closing an observed binding clears its pending resume immediately,
 including when the CLI exits before the next master snapshot. Later completion
 for that cancelled request is ignored. Late pane callbacks cannot replace an already-live session's binding
 or take its hook ownership. They also cannot displace a different live session
