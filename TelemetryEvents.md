@@ -1,117 +1,22 @@
-# Windows Terminal telemetry events
+# Telemetry reference
 
-> **Note:** This file is **inherited from upstream Windows Terminal**
-> ([`microsoft/terminal`](https://github.com/microsoft/terminal)) and
-> documents the telemetry events emitted by the underlying Windows Terminal
-> / OpenConsole code that Intelligent Terminal forks from.
->
-> Intelligent Terminal-specific events are summarized below. See
-> [`PRIVACY.md`](./PRIVACY.md) for privacy information and how to disable
-> telemetry.
+For the maintained event contract, read the
+**[Intelligent Terminal telemetry reference](./doc/intelligent-terminal-telemetry.md)**.
+It contains the complete typed schemas, trigger definitions, measurement
+rules, and privacy boundaries for all 22 dedicated events.
 
-## Intelligent Terminal-specific events
+This document preserves the inherited Windows Terminal / OpenConsole
+reference. Intelligent Terminal-specific schemas are maintained in the
+linked document rather than duplicated here.
+See [`PRIVACY.md`](./PRIVACY.md) for privacy information and controls.
 
-Intelligent Terminal events use controlled categories and aggregate
-measurements. They do not include prompts, responses, terminal contents, API
-keys, credential identifiers, custom endpoint URLs, model identifiers, custom
-agent names, or custom agent command lines.
+## Inherited Windows Terminal / OpenConsole reference
 
-Agent identifiers are limited to `copilot`, `claude`, `codex`, `gemini`, and
-`opencode`; every other identifier is reported as `custom`.
-
-### Provider: Microsoft.Windows.Terminal.App
-
-This existing Terminal provider emits the following Intelligent
-Terminal-specific events:
-
-| Event | Trigger | Fields |
-|---|---|---|
-| `AgentPaneOpened` | An agent pane is created, restored, or opened into a requested view. Closing or stashing the pane does not emit this event. | `TriggerSource`, `Branding` |
-| `CommandPaletteDispatchedAgentPrompt` | A foreground or background agent prompt is submitted through the Command Palette. | `IsBackgroundMode` |
-| `DelegateInvoked` | Terminal successfully launches `wta delegate`. | `TriggerSource` (`CommandPalette` or `Action`) |
-| `ErrorDetected` | Terminal receives the first auto-detected error state for a pane. | `Branding` |
-
-Current `AgentPaneOpened.TriggerSource` values are `Action`,
-`SessionsAction`, `Autofix`, `FirstRunExperience`, `AgentSwitch`,
-`BottomBarToggle`, `BottomBarSessions`, `SettingsReload`, and `FocusAction`.
-
-### Provider: Microsoft.Windows.Terminal.Setting.Model
-
-These census events are emitted from the effective settings during settings
-load:
-
-| Event | Trigger | Fields and controlled values |
-|---|---|---|
-| `AgentProviderConfigured` | Emitted once for the effective ACP agent and once for the effective delegate agent when configured. | `ProviderType` (`AcpAgent` or `DelegateAgent`), `ProviderId`, `Branding`, `Distribution`. Unknown and custom provider IDs are reported as `custom`. |
-| `CustomModelProviderConfigured` | Emitted once for each configured BYOK/custom model provider. | `HasApiKey` (a credential reference is configured), `ApiKeyRequired` (the provider requires a key), `Branding`, `Distribution`. No provider, endpoint, model, credential, or key value is included. |
-| `IntelligentFeatureConfigured` | Emitted once for each supported Intelligent Terminal setting using its effective value. | `FeatureName`, `FeatureValue`, `Branding`, `Distribution` |
-
-`IntelligentFeatureConfigured` currently reports:
-
-| `FeatureName` | `FeatureValue` |
-|---|---|
-| `AutoErrorDetection` | `true` or `false` |
-| `AutoFix` | `true` or `false` |
-| `AgentSessionManagement` | Effective `true` or `false` value after policy is applied |
-| `AgentPanePosition` | The controlled pane-position setting value |
-| `QuotaUsage` | `true` or `false` |
-| `VerticalTabs` | `true` or `false` |
-| `FirstWindowPreference` | `defaultProfile`, `persistedLayout`, or `persistedLayoutAndContent` |
-
-Durable session restoration is inactive when `FirstWindowPreference` is
-`defaultProfile`. Either persisted-layout value enables restoration; the
-content variant additionally restores ordinary terminal scrollback.
-
-### Provider: Microsoft.Windows.Terminal.WTA
-
-- **GUID:** `{4cfcff80-4e6b-5bfd-8ea1-d38e1226f70b}`
-- **Keyword:** `MICROSOFT_KEYWORD_MEASURES`
-- **Level:** `Verbose`
-
-#### ACP lifecycle and performance
-
-| Event | Trigger | Fields |
-|---|---|---|
-| `AcpInitializeComplete` | An ACP `initialize` attempt completes or times out. | `DurationMs`, `Success`, `Route`, `FailureKind`, `AcpErrorCode` |
-| `AcpNewSessionComplete` | An ACP `session/new` attempt completes or times out. | `SessionId` (empty on failure), `DurationMs`, `Success`, `Route`, `FailureKind`, `AcpErrorCode` |
-| `AcpLoadSessionComplete` | An ACP `session/load` attempt completes, covering both durable agent-pane restore and an explicit resume from the session view. | `DurationMs`, `Success` |
-| `AgentColdStartComplete` | A newly spawned agent process finishes or fails its ACP initialization. Warm process-pool reuse does not emit this event. | `AgentId`, `Source`, `DurationMs`, `Success`, `FailureKind` |
-
-ACP lifecycle durations use monotonic clocks. `FailureKind` is empty on success;
-ACP RPC failures use `AcpError` or `Timeout`. Cold-start failures use
-`SpawnFailed`, `InitializeFailed`, or `Timeout`. `AgentColdStartComplete.Source`
-is `Host` or `Wsl`.
-
-#### Agent turns and autofix
-
-| Event | Trigger | Fields |
-|---|---|---|
-| `AgentPromptSent` | WTA dispatches a prompt to an agent over ACP, including manual and automatic autofix prompts. | `SessionId`, `PromptLengthBytes`, `IsAutofix`, `IsByok`, `AgentId`, `TemplateKind`, `Route` (`AcpDispatch`) |
-| `AgentResponseFirstToken` | The first user-visible response chunk arrives. | `SessionId`, `FirstTokenLatencyMs`, `ChunkLengthBytes`, `AgentId` |
-| `AgentResponseComplete` | The ACP prompt request completes. | `SessionId`, `TotalDurationMs`, `TotalResponseBytes`, `Success`, `IsByok`, `AgentId` |
-| `ErrorDetected` | WTA's classifier identifies an actionable or critical pane error. | `Severity`, `Method`, `PaneId` |
-| `ErrorFixResolved` | The next command after an attempted fix succeeds in the same pane. | `PaneId`, `TimeSinceFixMs`, `AgentId` |
-
-Prompt and response text is never included. Length fields contain byte counts
-only. `IsByok` is captured for the specific prompt so live model changes are
-attributed correctly. `TotalResponseBytes` is currently unpopulated and
-retained for schema compatibility.
-
-#### Commands, sessions, delegation, MCP, and hooks
-
-| Event | Trigger | Fields and controlled values |
-|---|---|---|
-| `SlashCommandInvoked` | WTA dispatches a registered slash command. | `CommandName`: `help`, `clear`, `new`, `fix`, `restart`, `stop`, `sessions`, `agent`, `model`, `config`, or `move` |
-| `SessionsViewOpened` | The Agent Session View is opened. | None |
-| `SessionResumeInvoked` | A resume operation is dispatched from Agent Session View. | `Route` (`AgentPane` for ACP `session/load`, or `Cli` for provider-native CLI resume), `AgentId` |
-| `DelegateInvoked` | An agent recommendation invokes the configured delegate through WTA. | `TriggerSource` (`Agent`) |
-| `SessionMcpToolCalled` | A session MCP function is invoked. | `ToolName`: `terminal_send`, `terminal_open`, `terminal_open_and_send`, `request_user_input`, or `unknown` |
-| `HookOperationCompleted` | Hook installation or uninstallation finishes for one supported CLI. | `Operation` (`Install` or `Uninstall`), `Cli` (`copilot`, `claude`, `gemini`, `codex`, or `opencode`), `Outcome` |
-
-Install outcomes are `installed`, `skipped`, or `failed`. Uninstall outcomes
-are `succeeded`, `skipped`, or `failed`.
-
-This document enumerates every **true telemetry event** in the Windows Terminal codebase under `src\` — i.e., every `TraceLoggingWrite(...)` call site whose argument list contains one of the Microsoft telemetry keywords (`MICROSOFT_KEYWORD_MEASURES`, `MICROSOFT_KEYWORD_TELEMETRY`, or `MICROSOFT_KEYWORD_CRITICAL_DATA`) and is therefore reported to Microsoft.
+The following historical inventory covers `TraceLoggingWrite(...)` call sites
+whose arguments contain a Microsoft telemetry keyword
+(`MICROSOFT_KEYWORD_MEASURES`, `MICROSOFT_KEYWORD_TELEMETRY`, or
+`MICROSOFT_KEYWORD_CRITICAL_DATA`). A keyword alone does not establish upload
+or ingestion.
 
 Events grouped by their `TRACELOGGING_DEFINE_PROVIDER`. Diagnostic-only ETW traces tagged with `TIL_KEYWORD_TRACE` (`UiaTracing.cpp`, `parser/tracing.cpp`, most of `host/tracing.cpp`, the server `*Dispatchers.cpp`, `VtIo.cpp`, `VtInputThread.cpp`, etc.) are excluded.
 

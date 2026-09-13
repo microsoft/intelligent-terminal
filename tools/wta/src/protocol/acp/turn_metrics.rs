@@ -506,7 +506,6 @@ impl PromptTimingState {
             crate::telemetry::log_agent_response_complete(
                 session_id,
                 total_duration_ms,
-                active_prompt.bytes_read_after_prompt as u64,
                 success,
                 active_prompt.is_byok,
                 &active_prompt.agent_id,

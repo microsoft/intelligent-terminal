@@ -26,6 +26,7 @@
     <ClCompile Include="AcpModelUtilsTests.cpp" />
     <ClCompile Include="AgentSourceUtilsTests.cpp" />
     <ClCompile Include="AgentUsageTests.cpp" />
+    <ClCompile Include="AgentSessionTelemetryTests.cpp" />
     <ClCompile Include="AgentPaneTransferTests.cpp" />
     <ClCompile Include="AutofixStateTests.cpp" />
     <ClCompile Include="BoundedDispatchQueueTests.cpp" />

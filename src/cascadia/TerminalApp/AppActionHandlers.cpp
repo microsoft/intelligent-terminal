@@ -1972,12 +1972,9 @@ namespace winrt::TerminalApp::implementation
         const auto weak = get_weak();
         const auto dispatcher = Dispatcher();
 
-        // Snapshot WSL profile commandlines AND which non-WSL shells the user has
-        // profiles for, on the UI thread BEFORE we go background.
-        // _settings.AllProfiles() is an observable vector; iterating it
-        // concurrently with a settings reload would be unsafe.
-        const auto wslCommandlines = ShellIntegrationSweep::SnapshotWslCommandlines(_settings);
-        const auto shellPresence = ShellIntegrationSweep::SnapshotShellPresence(_settings);
+        const auto installShellIntegration = ShellIntegrationSweep::PrepareInstall(
+            _settings,
+            ShellIntegrationSweep::InstallTargets::All);
 
         co_await winrt::resume_background();
 
@@ -2018,7 +2015,7 @@ namespace winrt::TerminalApp::implementation
                 // Skipped shells are reported as success-already-installed
                 // so the all-installed / any-failure UI verdict below
                 // doesn't flag a missing shell as a failure.
-                const auto results = ShellIntegrationSweep::RunInstall(shellPresence, wslCommandlines);
+                const auto results = installShellIntegration(ShellIntegrationSweep::PowerShellPolicyCheck::Probe);
 
                 // Aggregate verdict across ALL four flavors (pwsh, WinPS,
                 // bash, every WSL distro). The earlier two-flavor version
@@ -2057,15 +2054,15 @@ namespace winrt::TerminalApp::implementation
 
                 allAlreadyInstalled = true; // becomes false on first non-alreadyInstalled below
 
-                if (shellPresence.pwsh)
+                if (results.shellPresence.pwsh)
                 {
                     consider(results.pwsh, L"PowerShell");
                 }
-                if (shellPresence.windowsPowerShell)
+                if (results.shellPresence.windowsPowerShell)
                 {
                     consider(results.windowsPowerShell, L"Windows PowerShell");
                 }
-                if (shellPresence.bash)
+                if (results.shellPresence.bash)
                 {
                     consider(results.bash, L"bash");
                 }
@@ -2205,7 +2202,8 @@ namespace winrt::TerminalApp::implementation
             // profile for. A user keeping only "Developer PowerShell
             // for VS" (which uses Windows PowerShell) and no pwsh
             // profile must not get pwsh integration written.
-            (void)ShellIntegrationSweep::RunInstall(shellPresence, wslCommandlines);
+            // GH#613: startup/settings reloads leave WSL to the lazy new-tab path.
+            (void)ShellIntegrationSweep::RunInstall(shellPresence, {}, ShellIntegrationSweep::InstallTargets::WindowsShells);
         }
         else
         {

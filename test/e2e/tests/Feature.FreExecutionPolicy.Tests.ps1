@@ -1,18 +1,18 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
 # Release checklist §0 FRE — DETERMINISTIC execution-policy coverage.
 #
-# The FRE "Install"/Save probes each PowerShell host's execution policy and blocks
-# shell integration when it refuses unsigned local scripts. The other FreFlow
-# tests only ever exercise the happy path against whatever policy the machine
-# happens to have; these force the *real* policy via the Windows PowerShell
-# CurrentUser registry scope (HKCU — no admin; outranks LocalMachine, so it is the
-# effective policy) and assert the FRE's verdict from terminal-agent-pane.log.
+# The FRE Get Started flow probes each PowerShell host's execution policy before
+# shell integration. Restricted and AllSigned are automatically changed to
+# CurrentUser RemoteSigned, verified, and then followed by the normal profile
+# install. These tests force every installed PowerShell host's CurrentUser
+# policy through Set-ExecutionPolicy and assert the remediation diagnostics.
 #
-# Cases (one per outcome class the deny-list in PolicyNameBlocksUnsignedScripts has):
-#   * Restricted  -> BLOCKED      (blocking policy #1; FRE surfaces problem, never completes)
-#   * AllSigned   -> BLOCKED      (blocking policy #2 — the other refuse-unsigned policy)
-#   * RemoteSigned-> not-blocked  (permissive; FRE installs SI and COMPLETES)
-# The registry is always restored.
+# Cases:
+#   * Restricted   -> automatically changed to RemoteSigned; FRE completes
+#   * AllSigned    -> automatically changed to RemoteSigned; FRE completes
+#   * RemoteSigned -> no mutation; FRE completes
+#   * Forced remediation failure -> Hooks continue; detection is disabled; retry completes
+# The original CurrentUser policies are always restored.
 #
 # NOT covered here, by design: the empty/"undefined"/probe-timeout fail-open path
 # (the core #336 regression — an EP probe that times out must NOT block). It can't be
@@ -37,21 +37,22 @@ BeforeDiscovery {
     # winapp drives the FRE overlay via UIA; without it BeforeAll would throw, so fold it into
     # the gate and skip the suite cleanly instead.
     $script:DevReady = $script:DevReady -and (Test-WinAppAvailable)
-    # A Group Policy execution-policy override (MachinePolicy/UserPolicy) outranks the HKCU
+    # A Group Policy execution-policy override (MachinePolicy/UserPolicy) outranks the
     # CurrentUser scope these tests force, making the FRE verdict non-deterministic — skip the
     # whole suite when one is in effect rather than assert against an uncontrollable policy.
     $script:EpControllable = Test-WtExecutionPolicyControllable
-    # The not-blocked case additionally needs pwsh (if present) to not independently block,
-    # since the FRE blocks when EITHER host blocks and we only control WinPS via the registry.
-    $script:PwshBlocks = Test-WtPwshBlocksShellIntegration
+    $script:HooksReady = [bool](Get-Command copilot -ErrorAction SilentlyContinue)
 }
 
-Describe 'Feature §0 FRE execution-policy verdict (deterministic, via registry)' -Tag 'Feature' -Skip:(-not ($script:DevReady -and $script:EpControllable)) {
+Describe 'Feature §0 FRE automatic execution-policy remediation' -Tag 'Feature' -Skip:(-not ($script:DevReady -and $script:EpControllable)) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         # Safety-net snapshot so the machine's policy is restored even if a test
         # throws before its own finally runs.
         $script:epSnapshot = Get-WtExecutionPolicyState
+        $script:cfgBackup = Backup-CopilotConfig
+        $script:failureMarker = Join-Path (Resolve-ItApp -Package Dev).LocalStateDir 'fre-e2e-policy-remediation-failure'
+        Remove-Item -LiteralPath $script:failureMarker -Force -ErrorAction SilentlyContinue
 
         # Drive the FRE wizard to Save. Defined in BeforeAll (not the Describe body)
         # so Pester v5 exposes the $script: scriptblock to the It blocks.
@@ -63,30 +64,32 @@ Describe 'Feature §0 FRE execution-policy verdict (deterministic, via registry)
         }
     }
     AfterAll {
+        Remove-Item -LiteralPath $script:failureMarker -Force -ErrorAction SilentlyContinue
+        if ($script:cfgBackup) { Restore-CopilotConfig -State $script:cfgBackup }
         if ($script:epSnapshot) { Restore-WtExecutionPolicy -State $script:epSnapshot }
     }
 
-    It 'Restricted policy -> FRE probe reads it and BLOCKS; FRE does not complete' {
+    It 'Restricted policy -> automatic remediation completes FRE' {
         $st = Set-WtExecutionPolicy -Value Restricted
         try {
             $app = Start-TerminalFre -Package Dev
             try {
                 & $script:DriveFreSave $app
-                # The probe must read the real policy ('restricted') for Windows
-                # PowerShell and return the BLOCKED verdict — this is the correct,
-                # actionable case (Restricted genuinely refuses unsigned scripts).
                 $blocked = Test-Until -TimeoutSec 60 -IntervalSec 2 -Condition {
-                    (Get-ItLogText -App $app -Name 'terminal-agent-pane.log' -SinceStart) -match "EP probe winPs policy='restricted'.*BLOCKED"
+                    (Get-ItLogText -App $app -Name 'terminal-agent-pane.log' -SinceStart) -match "EP remediation pre winPs status=2 policy='restricted'"
                 }
-                $blocked | Should -BeTrue -Because "the probe must read the real Restricted policy and block"
-                # The blocked verdict drives FreOverlay::_SaveAndInstallAsync to surface
-                # the shell-integration problem (FreProblemKind::ShellIntegrationExecutionPolicy)
-                # and co_return *without* raising Completed — so the FRE does not finish.
-                $surfaced = Test-Until -TimeoutSec 60 -IntervalSec 2 -Condition {
-                    (Get-ItLogText -App $app -Name 'terminal-agent-pane.log' -SinceStart) -match 'Showing problem: ShellIntegration'
+                $blocked | Should -BeTrue -Because 'the automatic preflight must read the real Restricted policy'
+                $remediated = Test-Until -TimeoutSec 60 -IntervalSec 2 -Condition {
+                    $log = Get-ItLogText -App $app -Name 'terminal-agent-pane.log' -SinceStart
+                    $log -match 'EP remediation set winPs launched=1.*exit=0' -and
+                        $log -match "EP remediation post winPs status=1 policy='remotesigned'" -and
+                        $log -match 'EP remediation succeeded'
                 }
-                $surfaced | Should -BeTrue -Because "a real EP block must surface the shell-integration problem"
-                # ...and the FRE must NOT have completed.
+                $remediated | Should -BeTrue -Because 'Get Started must change CurrentUser to RemoteSigned and verify it'
+                $completed = Test-Until -TimeoutSec 90 -IntervalSec 2 -Condition {
+                    Get-FreCompleted -App $app
+                }
+                $completed | Should -BeTrue -Because 'automatic remediation must continue through shell integration and complete FRE'
                 $log = Get-ItLogText -App $app -Name 'terminal-agent-pane.log' -SinceStart
                 Test-FreProgressOrder -Log $log -Events @(
                     'setup=running'
@@ -94,68 +97,134 @@ Describe 'Feature §0 FRE execution-policy verdict (deterministic, via registry)
                     'agent=running'
                     'agent=completed'
                     'error-detection=running'
-                    'error-detection=failed'
-                ) | Should -BeTrue -Because 'the checklist must mark the real shell-integration policy failure'
-                $log | Should -Not -Match 'Completed — raising Completed event'
-                Get-FreCompleted -App $app | Should -BeFalse
+                    'error-detection=completed'
+                ) | Should -BeTrue -Because 'the checklist must complete Error Detection after remediation'
+                $log | Should -Not -Match 'Showing problem: ShellIntegration'
             }
             finally { Stop-Terminal -App $app }
         }
         finally { Restore-WtExecutionPolicy -State $st }
     }
 
-    It 'AllSigned policy -> FRE probe reads it and BLOCKS; FRE does not complete' {
-        # AllSigned is the *other* blocking policy (it refuses unsigned local scripts
-        # just like Restricted). Forcing it via HKCU outranks LocalMachine, so the
-        # winPs probe deterministically reads 'allsigned' regardless of the machine's
-        # baseline. pwsh's policy is irrelevant here — the assertion keys on the winPs
-        # probe line, and FRE blocks if WinPS blocks no matter what pwsh reports.
+    It 'AllSigned policy -> automatic remediation completes FRE' {
         $st = Set-WtExecutionPolicy -Value AllSigned
         try {
             $app = Start-TerminalFre -Package Dev
             try {
                 & $script:DriveFreSave $app
                 $blocked = Test-Until -TimeoutSec 60 -IntervalSec 2 -Condition {
-                    (Get-ItLogText -App $app -Name 'terminal-agent-pane.log' -SinceStart) -match "EP probe winPs policy='allsigned'.*BLOCKED"
+                    (Get-ItLogText -App $app -Name 'terminal-agent-pane.log' -SinceStart) -match "EP remediation pre winPs status=2 policy='allsigned'"
                 }
-                $blocked | Should -BeTrue -Because "the probe must read the real AllSigned policy and block"
-                $surfaced = Test-Until -TimeoutSec 60 -IntervalSec 2 -Condition {
-                    (Get-ItLogText -App $app -Name 'terminal-agent-pane.log' -SinceStart) -match 'Showing problem: ShellIntegration'
+                $blocked | Should -BeTrue -Because 'the automatic preflight must read the real AllSigned policy'
+                $remediated = Test-Until -TimeoutSec 60 -IntervalSec 2 -Condition {
+                    $log = Get-ItLogText -App $app -Name 'terminal-agent-pane.log' -SinceStart
+                    $log -match 'EP remediation set winPs launched=1.*exit=0' -and
+                        $log -match "EP remediation post winPs status=1 policy='remotesigned'" -and
+                        $log -match 'EP remediation succeeded'
                 }
-                $surfaced | Should -BeTrue -Because "a real EP block must surface the shell-integration problem"
-                $log = Get-ItLogText -App $app -Name 'terminal-agent-pane.log' -SinceStart
-                $log | Should -Not -Match 'Completed — raising Completed event'
-                Get-FreCompleted -App $app | Should -BeFalse
+                $remediated | Should -BeTrue -Because 'Get Started must change AllSigned to RemoteSigned and verify it'
+                Test-Until -TimeoutSec 90 -IntervalSec 2 -Condition {
+                    Get-FreCompleted -App $app
+                } | Should -BeTrue -Because 'automatic remediation must complete FRE without another click'
+                (Get-ItLogText -App $app -Name 'terminal-agent-pane.log' -SinceStart) |
+                    Should -Not -Match 'Showing problem: ShellIntegration'
             }
             finally { Stop-Terminal -App $app }
         }
         finally { Restore-WtExecutionPolicy -State $st }
     }
 
-    It 'RemoteSigned policy -> FRE probe reads it and does NOT block (winPs=ok)' -Skip:($script:PwshBlocks) {
-        # RemoteSigned permits *local* unsigned scripts, so our $PROFILE block runs
-        # and the probe must NOT block shell integration.
+    It 'RemoteSigned policy -> no remediation is needed and FRE completes' {
         $st = Set-WtExecutionPolicy -Value RemoteSigned
         try {
             $app = Start-TerminalFre -Package Dev
             try {
                 & $script:DriveFreSave $app
                 $notBlocked = Test-Until -TimeoutSec 60 -IntervalSec 2 -Condition {
-                    (Get-ItLogText -App $app -Name 'terminal-agent-pane.log' -SinceStart) -match "EP probe winPs policy='remotesigned'.*not-blocked"
+                    $log = Get-ItLogText -App $app -Name 'terminal-agent-pane.log' -SinceStart
+                    $log -match "EP remediation pre winPs status=1 policy='remotesigned'" -and
+                        $log -match 'EP remediation not needed'
                 }
-                $notBlocked | Should -BeTrue -Because "the probe must read the real RemoteSigned policy and not block"
-                # The symmetric POSITIVE of the blocked cases: a not-blocked verdict must let
-                # shell integration install and the FRE actually finish (Completed raised,
-                # agentFreCompleted flag set). Asserting only "no problem shown" would pass even
-                # if the FRE silently stalled for an unrelated reason — this catches that.
+                $notBlocked | Should -BeTrue -Because 'RemoteSigned must bypass the mutation path'
                 $completed = Test-Until -TimeoutSec 60 -IntervalSec 2 -Condition {
                     Get-FreCompleted -App $app
                 }
-                $completed | Should -BeTrue -Because "a not-blocked EP verdict must let the FRE complete"
-                # ...and the not-blocked path must never surface the shell-integration EP problem.
-                (Get-ItLogText -App $app -Name 'terminal-agent-pane.log' -SinceStart) | Should -Not -Match 'Showing problem: ShellIntegration'
+                $completed | Should -BeTrue -Because 'an already-permissive policy must let FRE complete'
+                $log = Get-ItLogText -App $app -Name 'terminal-agent-pane.log' -SinceStart
+                $log | Should -Not -Match 'EP remediation set winPs'
+                $log | Should -Match '\[FRE\] EP check pwsh reused verified remediation result'
+                $log | Should -Match '\[FRE\] EP check winPs reused verified remediation result'
+                $log | Should -Not -Match 'Showing problem: ShellIntegration'
             }
             finally { Stop-Terminal -App $app }
+        }
+        finally { Restore-WtExecutionPolicy -State $st }
+    }
+
+    It 'Remediation failure disables error detection, continues Hooks, and completes on retry' -Skip:(-not $script:HooksReady) {
+        $st = Set-WtExecutionPolicy -Value RemoteSigned
+        try {
+            $app = Start-TerminalFre -Package Dev
+            try {
+                Invoke-UiElement -App $app -Selector 'NextButton' -TimeoutSec 15 | Out-Null
+                Wait-UiElement -App $app -Selector 'SaveButton' -TimeoutSec 15 | Out-Null
+
+                if ((Get-UiElement -App $app -Selector 'SessionManagementToggle').toggleState -ne 'on') {
+                    Invoke-UiElement -App $app -Selector 'SessionManagementToggle' | Out-Null
+                }
+
+                # Start from Detect and fix so the fallback must turn off both
+                # persisted error-detection settings, not merely preserve defaults.
+                Invoke-UiElement -App $app -Selector 'ErrorDetectionComboBox' | Out-Null
+                Send-WtWindowKey -App $app -Vk 0x24 -RequireForeground | Out-Null
+                Send-WtWindowKey -App $app -Vk 0x28 -RequireForeground | Out-Null
+                Send-WtWindowKey -App $app -Vk 0x0D -RequireForeground | Out-Null
+
+                New-Item -ItemType File -Path $script:failureMarker -Force | Out-Null
+                Invoke-UiElement -App $app -Selector 'SaveButton' -TimeoutSec 15 | Out-Null
+
+                $failedButHooksCompleted = Test-Until -TimeoutSec 90 -IntervalSec 2 -Condition {
+                    $log = Get-ItLogText -App $app -Name 'terminal-agent-pane.log' -SinceStart
+                    $log -match '\[FRE\] Progress: error-detection=failed' -and
+                        $log -match '\[FRE\] Progress: sessions=completed'
+                }
+                $failedButHooksCompleted | Should -BeTrue -Because 'Hooks must finish after policy remediation blocks Shell Integration'
+
+                $firstAttemptLog = Get-ItLogText -App $app -Name 'terminal-agent-pane.log' -SinceStart
+                $firstAttemptLog | Should -Match '\[FRE\] E2E: forcing execution-policy remediation failure'
+                $firstAttemptLog | Should -Not -Match '\[FRE\] Shell integration:' `
+                    -Because 'a skipped install must not report default results as successful'
+                Test-FreProgressOrder -Log $firstAttemptLog -Events @(
+                    'error-detection=running'
+                    'error-detection=failed'
+                    'sessions=running'
+                    'sessions=completed'
+                ) | Should -BeTrue -Because 'policy failure must not prevent the later Hooks step'
+                $firstAttemptLog | Should -Match '\[FRE\] Showing problem: ShellIntegrationExecutionPolicy' `
+                    -Because 'the failure must select the policy-specific error and manual-help link'
+                Get-FreCompleted -App $app | Should -BeFalse
+
+                Remove-Item -LiteralPath $script:failureMarker -Force
+                Invoke-UiElement -App $app -Selector 'SaveButton' -TimeoutSec 15 | Out-Null
+                Test-Until -TimeoutSec 90 -IntervalSec 2 -Condition { Get-FreCompleted -App $app } |
+                    Should -BeTrue -Because 'retry with Error Detection disabled must complete FRE'
+
+                $allAttemptsLog = Get-ItLogText -App $app -Name 'terminal-agent-pane.log' -SinceStart
+                $allAttemptsLog | Should -Match '\[FRE\] Save: .*detect=on autoFix=on'
+                $allAttemptsLog | Should -Match '\[FRE\] Save: .*detect=off autoFix=off'
+                ([regex]::Matches($allAttemptsLog, '\[FRE\] Progress: attempt=started')).Count |
+                    Should -Be 2
+                ([regex]::Matches($allAttemptsLog, '\[FRE\] Progress: error-detection=running')).Count |
+                    Should -Be 1 -Because 'the retry must skip the disabled Error Detection step'
+
+                $settings = Get-WtSettingsObject -App $app
+                $settings.autoErrorDetectionEnabled | Should -BeFalse
+                $settings.autoFixEnabled | Should -BeFalse
+            }
+            finally {
+                Remove-Item -LiteralPath $script:failureMarker -Force -ErrorAction SilentlyContinue
+                Stop-Terminal -App $app
+            }
         }
         finally { Restore-WtExecutionPolicy -State $st }
     }

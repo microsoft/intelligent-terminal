@@ -27,6 +27,7 @@ pub enum AppEvent {
         load_session_supported: bool,
         image_supported: bool,
         session_capabilities_ready: bool,
+        telemetry_byok_binding: Option<bool>,
     },
     /// The old helper↔master ACP task has closed its pipe intentionally and
     /// the stable helper process may start the replacement connection.
@@ -65,11 +66,13 @@ pub enum AppEvent {
         session_id: String,
     },
     ModelSetCompleted {
+        request_id: uuid::Uuid,
         session_id: String,
         model: String,
         pane_override: bool,
     },
     ModelSetFailed {
+        request_id: uuid::Uuid,
         session_id: String,
         model: String,
         pane_override: bool,

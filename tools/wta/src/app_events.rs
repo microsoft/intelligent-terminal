@@ -821,7 +821,9 @@ impl App {
                 load_session_supported,
                 image_supported,
                 session_capabilities_ready,
+                telemetry_byok_binding,
             } => {
+                self.telemetry_byok_binding = telemetry_byok_binding;
                 self.initial_startup_presentation_eligible = false;
                 self.reconnect_after_transport_retired = false;
                 self.pending_yolo_reconciles.clear();
@@ -904,6 +906,9 @@ impl App {
                 }
                 self.publish_agent_status();
                 self.project_tab_state(&bind_tab);
+                if session_capabilities_ready && !loading_session {
+                    self.publish_session_started(&bind_tab, false);
+                }
             }
             AppEvent::SessionAttached {
                 tab_id,
@@ -965,6 +970,7 @@ impl App {
                     .insert(session_id.clone(), tab_id.clone());
                 self.pending_yolo_session_tabs.remove(&tab_id);
                 let tab = self.tab_mut(&tab_id);
+                tab.telemetry_model_pending = None;
                 if tab.session_id.as_deref() != Some(session_id.as_str()) {
                     tab.config_picker = ConfigPickerState::Closed;
                     tab.config_pending_id = None;
@@ -1022,7 +1028,12 @@ impl App {
                 // already model-applied by the client at startup.
                 if !is_load_target {
                     if let Some(model) = self.effective_model_for_tab(&tab_id) {
-                        self.send_session_model(Some(session_id.clone()), model, false);
+                        if let Some(request_id) =
+                            self.send_session_model(Some(session_id.clone()), model, false)
+                        {
+                            self.tab_mut(&tab_id).telemetry_model_pending =
+                                Some((session_id.clone(), request_id));
+                        }
                     }
                 }
                 let (client_reconciled_target, automatic_target) = {
@@ -1046,6 +1057,7 @@ impl App {
                 }
                 self.publish_agent_status();
                 self.project_tab_state(&tab_id);
+                self.publish_session_started(&tab_id, is_load_target);
             }
             AppEvent::UsageReported {
                 session_id,
@@ -1133,6 +1145,7 @@ impl App {
                 }
             }
             AppEvent::ModelSetCompleted {
+                request_id,
                 session_id,
                 model,
                 pane_override,
@@ -1159,8 +1172,20 @@ impl App {
                     self.rebuild_model_catalog_from_agent_state();
                     self.publish_agent_status();
                 }
+                if self
+                    .tab_mut(&target_tab)
+                    .telemetry_model_pending
+                    .as_ref()
+                    .is_some_and(|(pending_session, pending_request)| {
+                        pending_session == &session_id && pending_request == &request_id
+                    })
+                {
+                    self.tab_mut(&target_tab).telemetry_model_pending = None;
+                    self.publish_session_started(&target_tab, false);
+                }
             }
             AppEvent::ModelSetFailed {
+                request_id,
                 session_id,
                 model,
                 pane_override,
@@ -1182,6 +1207,17 @@ impl App {
                         .into_owned(),
                     ));
                     tab.scroll_to_bottom();
+                }
+                if self
+                    .tab_mut(&target_tab)
+                    .telemetry_model_pending
+                    .as_ref()
+                    .is_some_and(|(pending_session, pending_request)| {
+                        pending_session == &session_id && pending_request == &request_id
+                    })
+                {
+                    self.tab_mut(&target_tab).telemetry_model_pending = None;
+                    self.publish_session_started(&target_tab, false);
                 }
             }
             AppEvent::SessionConfigUpdated {
@@ -3676,20 +3712,12 @@ impl App {
                                 let target_tab = event_tab
                                     .clone()
                                     .expect("armed_in_event_tab requires tab_id present");
-                                // Telemetry: a fix was armed for this pane and the next
-                                // command exited cleanly — the user's problem resolved.
-                                // Elapsed is monotonic (`Instant::elapsed`) from arm to
-                                // clean exit, not wall-clock.
-                                if let Some(armed) =
-                                    self.tab_mut(&target_tab).autofix.armed_at.take()
-                                {
-                                    let elapsed_ms = armed.elapsed().as_secs_f64() * 1000.0;
-                                    crate::telemetry::log_error_fix_resolved(
-                                        pane_id.as_str(),
-                                        elapsed_ms,
-                                        &self.current_agent_id,
-                                    );
-                                }
+                                // This is UI dismissal, not verified fix execution.
+                                // `armed_at` starts at analysis submission and is
+                                // cleared when a recommendation is surfaced/executed.
+                                // Even D;0 here cannot establish that a fix was applied;
+                                // do not emit ErrorFixResolved from this state.
+                                self.tab_mut(&target_tab).autofix.armed_at = None;
                                 // `turn_cancel` owns the full cleanup: bumps
                                 // the tab's autofix_generation, emits cleared
                                 // (resolving the pane from AutofixContext, or

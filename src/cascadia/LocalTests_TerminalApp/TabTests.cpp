@@ -330,6 +330,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(ContentTransferReviewClosedAgentSuppressionMovesWithTab);
         TEST_METHOD(ContentTransferReviewSinglePaneKeepsDestinationSuppression);
         TEST_METHOD(ContentTransferReviewSinglePaneKeepsSuppressedDestination);
+        TEST_METHOD(DetachLastTerminalPaneClosesAgentOnlyTab);
+        TEST_METHOD(DetachTerminalPanePreservesRemainingFocus);
         TEST_METHOD(ClosingAgentPaneSuppressesPrewarm);
         TEST_METHOD(AgentPaneTeardownAllowsSynchronousRecreation);
         TEST_METHOD(AgentPaneLifetimeMovesAndDestroysRealCoresOnce);
@@ -3823,6 +3825,78 @@ namespace TerminalAppLocalTests
                 winrt::hresult_error,
                 [](const winrt::hresult_error& error) { return error.code() == E_ILLEGAL_METHOD_CALL; });
             VERIFY_ARE_EQUAL(contentId, finalReceive->GetTerminalControl().ContentId());
+        });
+    }
+
+    void TabTests::DetachLastTerminalPaneClosesAgentOnlyTab()
+    {
+        for (const bool hidden : { false, true })
+        {
+            auto fixture = _createContentTransferFixture(false, hidden, false, true);
+            const auto cleanup = wil::scope_exit([&]() {
+                RunOnUIThread([&]() {
+                    _closeContentTransferFixture(*fixture, false);
+                    fixture.reset();
+                });
+            });
+            TestOnUIThread([&]() {
+                const auto tab = fixture->original.tab;
+                const auto selected = tab->GetActivePane();
+                const auto contentId = selected->GetTerminalControl().ContentId();
+                VERIFY_IS_FALSE(selected->IsAgentPane());
+                VERIFY_ARE_EQUAL(hidden, tab->HasStashedAgentPane());
+                unsigned int closed = 0;
+                const auto token = tab->Closed([&](auto&&, auto&&) { ++closed; });
+                const auto revoke = wil::scope_exit([&]() { tab->Closed(token); });
+
+                const auto detached = tab->DetachPane(selected);
+                VERIFY_IS_TRUE(detached == selected);
+                VERIFY_ARE_EQUAL(1u, closed);
+                VERIFY_ARE_EQUAL(0u, fixture->source->_tabs.Size());
+                VERIFY_IS_TRUE(tab->GetRootPane()->GetActivePane() == nullptr);
+                VERIFY_IS_NULL(tab->FindAgentPaneContent());
+                VERIFY_IS_NULL(fixture->source->_manager.TryLookupCore(fixture->agentContentId));
+                VERIFY_IS_NOT_NULL(fixture->source->_manager.TryLookupCore(contentId));
+                VERIFY_ARE_EQUAL(contentId, detached->GetTerminalControl().ContentId());
+
+                detached->Shutdown();
+                _closeContentTransferFixture(*fixture, true);
+            });
+        }
+    }
+
+    void TabTests::DetachTerminalPanePreservesRemainingFocus()
+    {
+        auto fixture = _createContentTransferFixture(false, false);
+        const auto cleanup = wil::scope_exit([&]() {
+            RunOnUIThread([&]() {
+                _closeContentTransferFixture(*fixture, false);
+                fixture.reset();
+            });
+        });
+        TestOnUIThread([&]() {
+            const auto tab = fixture->original.tab;
+            fixture->source->_TeardownAgentPane(tab);
+            const auto selected = tab->GetActivePane();
+            const auto contentId = selected->GetTerminalControl().ContentId();
+            const auto remaining = std::find_if(fixture->original.leaves.begin(), fixture->original.leaves.end(), [&](const auto& leaf) {
+                return leaf.contentId != fixture->agentContentId && leaf.contentId != contentId;
+            });
+            VERIFY_IS_TRUE(remaining != fixture->original.leaves.end());
+
+            const auto detached = tab->DetachPane(selected);
+            VERIFY_IS_TRUE(detached == selected);
+            VERIFY_ARE_EQUAL(1u, fixture->source->_tabs.Size());
+            VERIFY_ARE_EQUAL(1, tab->GetLeafPaneCount());
+            VERIFY_IS_TRUE(tab->GetActivePane() != nullptr);
+            VERIFY_IS_TRUE(tab->GetRootPane()->GetActivePane() == tab->GetActivePane());
+            VERIFY_ARE_EQUAL(remaining->contentId, tab->GetActiveTerminalControl().ContentId());
+            VERIFY_IS_TRUE(tab->GetActiveTerminalControl().Connection() == remaining->connection);
+            VERIFY_ARE_EQUAL(0u, remaining->closed->load());
+            VERIFY_IS_NOT_NULL(fixture->source->_manager.TryLookupCore(contentId));
+
+            detached->Shutdown();
+            _closeContentTransferFixture(*fixture, true);
         });
     }
 

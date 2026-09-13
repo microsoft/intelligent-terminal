@@ -31,6 +31,7 @@
 #include "AgentPaneDragStash.h"
 #include "ContentTransfer.h"
 #include "AgentPaneLog.h"
+#include "AgentSessionTelemetry.h"
 #include "App.h"
 #include "DebugTapConnection.h"
 #include "FreOverlay.h"
@@ -7180,6 +7181,64 @@ namespace winrt::TerminalApp::implementation
         if (panePositionSpecified)
         {
             targetTab->AgentPanePositionOverride(panePositionOverride);
+        }
+
+        if (params.isMember("session_started"))
+        {
+            const auto start = AgentSessionTelemetry::Parse(params["session_started"]);
+            if (!start)
+            {
+                _agentPaneLog("OnAgentStateChanged: invalid session-start telemetry payload");
+            }
+            else
+            {
+                const auto globals = _settings.GlobalSettings();
+                const auto position = targetTab->EffectiveAgentPanePosition(globals.AgentPanePosition());
+                const auto firstWindow = globals.FirstWindowPreference();
+                const auto firstWindowName = firstWindow == Settings::Model::FirstWindowPreference::PersistedLayout ? "persistedLayout" :
+                                             firstWindow == Settings::Model::FirstWindowPreference::PersistedLayoutAndContent ? "persistedLayoutAndContent" :
+                                                                                                                     "defaultProfile";
+#if defined(WT_BRANDING_RELEASE)
+                constexpr uint8_t branding = 3;
+#elif defined(WT_BRANDING_PREVIEW)
+                constexpr uint8_t branding = 2;
+#elif defined(WT_BRANDING_CANARY)
+                constexpr uint8_t branding = 1;
+#else
+                constexpr uint8_t branding = 0;
+#endif
+                const uint8_t distribution = IsPackaged() ? 2 : (_settings.IsPortableMode() ? 1 : 0);
+                TraceLoggingWrite(
+                    g_hTerminalAppProvider,
+                    "AgentSessionStarted",
+                    TraceLoggingDescription("Effective settings snapshot after successful ACP session creation or load"),
+                    TraceLoggingString(start->startId.c_str(), "StartId"),
+                    TraceLoggingString(start->sessionId.c_str(), "SessionId"),
+                    TraceLoggingString(start->kind, "StartKind"),
+                    TraceLoggingString(start->agentId, "AgentId"),
+                    TraceLoggingString(start->source, "AgentSource"),
+                    TraceLoggingString(start->delegateAgentId, "DelegateAgentId"),
+                    TraceLoggingString(start->modelSource, "ModelSource"),
+                    TraceLoggingBool(globals.EffectiveAutoErrorDetectionEnabled(), "AutoErrorDetection"),
+                    TraceLoggingBool(start->autofix && globals.EffectiveAutoFixEnabled(), "AutoFix"),
+                    TraceLoggingBool(globals.EffectiveAgentSessionManagementEnabled(), "AgentSessionManagement"),
+                    TraceLoggingWideString(AgentSessionTelemetry::Bucket<wchar_t>(std::wstring_view{ position }, { L"left", L"right", L"up", L"bottom" }, L"unknown"), "AgentPanePosition"),
+                    TraceLoggingBool(globals.ShowTokenUsageAndCost(), "ShowTokenUsageAndCost"),
+                    TraceLoggingBool(globals.TabLayout() == Settings::Model::TabLayout::Vertical, "VerticalTabs"),
+                    TraceLoggingString(firstWindowName, "FirstWindowPreference"),
+                    TraceLoggingString(start->automaticYolo, "AutomaticYolo"),
+                    TraceLoggingBool(start->yoloPolicyBlocked, "YoloPolicyBlocked"),
+                    TraceLoggingString(start->yoloControlOwner, "YoloControlOwner"),
+                    TraceLoggingBool(globals.AiCoordinatorEnabled(), "CoordinatorConfigured"),
+                    TraceLoggingWideString(AgentSessionTelemetry::Bucket<wchar_t>(std::wstring_view{ globals.AiConfirmationReadOps() }, { L"auto", L"prompt" }, L"unknown"), "ReadConfirmationConfigured"),
+                    TraceLoggingWideString(AgentSessionTelemetry::Bucket<wchar_t>(std::wstring_view{ globals.AiConfirmationCreateOps() }, { L"auto", L"prompt" }, L"unknown"), "CreateConfirmationConfigured"),
+                    TraceLoggingWideString(AgentSessionTelemetry::Bucket<wchar_t>(std::wstring_view{ globals.AiConfirmationInputOps() }, { L"auto", L"prompt" }, L"unknown"), "InputConfirmationConfigured"),
+                    TraceLoggingString("user", "SessionMcpConfirmation"),
+                    TraceLoggingValue(branding, "Branding"),
+                    TraceLoggingValue(distribution, "Distribution"),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+            }
         }
 
         // Apply projected identity and view to the existing AgentPaneContent.

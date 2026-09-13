@@ -129,6 +129,22 @@ impl ProviderBinding {
             Self::Custom { .. } => true,
         }
     }
+
+    fn telemetry_model_source(
+        &self,
+        agent_id: &str,
+        source: &crate::agent_source::AgentSource,
+    ) -> &'static str {
+        if matches!(source, crate::agent_source::AgentSource::Host)
+            && crate::agent_registry::lookup_profile_by_id(agent_id).byok_mode
+                != crate::agent_registry::ByokMode::Unsupported
+            && self.has_active_custom_provider()
+        {
+            "byok"
+        } else {
+            "provider"
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -1556,8 +1572,10 @@ async fn initialize_response_for_agent(
     session_mcp_available: bool,
 ) -> Result<acp::schema::v1::InitializeResponse, serde_json::Error> {
     let mut response = agent.cached_init_resp.clone();
+    let binding = crate::session_registry::extract_wta_meta(&mut response.meta);
     let mut wta_meta = crate::session_registry::WtaMeta {
         resolved_agent_id: Some(agent.resolved_agent_id.clone()),
+        resolved_model_source: binding.resolved_model_source,
         proposal_mcp: session_mcp_available.then(|| "http-v1".to_string()),
         ..Default::default()
     };
@@ -5045,6 +5063,8 @@ async fn spawn_one_agent(
         crate::agent_source::AgentSource::Host => "Host",
         crate::agent_source::AgentSource::Wsl { .. } => "Wsl",
     };
+    let telemetry_model_source =
+        provider_binding.telemetry_model_source(&resolved_agent_id, source);
     let mut spawn_result = match spawn_agent_process_for_source_with_provider(
         agent_cmd,
         None,
@@ -5247,7 +5267,7 @@ async fn spawn_one_agent(
     )
     .await;
 
-    let init_resp = match init_outcome {
+    let mut init_resp = match init_outcome {
         Ok(Ok(resp)) => {
             stderr_log.mark_initialized();
             resp
@@ -5328,6 +5348,16 @@ async fn spawn_one_agent(
         "agent CLI initialize OK; cli_source resolved"
     );
 
+    // Cache the actual launch binding, replacing any agent-supplied WTA metadata.
+    // Every helper sharing this process receives the same category even if its
+    // model catalog or global settings change later.
+    crate::session_registry::inject_wta_meta(
+        &mut init_resp.meta,
+        &crate::session_registry::WtaMeta {
+            resolved_model_source: Some(telemetry_model_source.to_string()),
+            ..Default::default()
+        },
+    );
     let (cloud_catalog, start_clean_probe) = prepare_native_cloud_catalog(
         &resolved_agent_id,
         source,

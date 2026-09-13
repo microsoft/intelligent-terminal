@@ -523,8 +523,10 @@ You can always resolve the exact location from inside either host with:
 $PROFILE.CurrentUserCurrentHost
 ```
 
-The only step you may need to perform by hand is adjusting the PowerShell
-execution policy so the profile is allowed to run.
+During the first-run experience, Intelligent Terminal automatically changes a
+blocking CurrentUser execution policy to `RemoteSigned` before installing shell
+integration. If an organization policy overrides that setting, or automatic
+remediation otherwise fails, use the following steps.
 
 #### Set the PowerShell execution policy
 
@@ -617,10 +619,10 @@ Notes and limitations:
 
 ### Enable auto-error detection and auto-error fix
 
-Once shell integration is in place (and, for PowerShell, the execution policy
-is set), open **Settings → AI Agents** inside Intelligent Terminal and turn on
-**Auto-error detection** (and, optionally, the auto-fix follow-up). With shell
-integration loading correctly, the agent pane will now:
+Once shell integration is in place, open **Settings → AI Agents** inside
+Intelligent Terminal and turn on **Auto-error detection** (and, optionally, the
+auto-fix follow-up). With shell integration loading correctly, the agent pane
+will now:
 
 - Detect failing commands automatically (via the OSC 133 exit-code marks).
 - Offer to diagnose and propose a fix for the most recent failure.

@@ -90,67 +90,116 @@ function Test-FreProgressOrder {
     return $true
 }
 
-# ── Execution-policy control (deterministic FRE EP-block coverage) ────────────
-# The FRE Save probes each PowerShell host's execution policy and blocks shell
-# integration when it refuses unsigned local scripts (Restricted/AllSigned). These
-# helpers force the *Windows PowerShell* effective policy via the CurrentUser
-# registry scope — which outranks LocalMachine and needs NO admin — so a test can
-# deterministically exercise BOTH the blocked and the not-blocked verdict, then
-# restore the machine. (pwsh 7 keeps its policy in powershell.config.json, not the
-# registry; the FRE blocks if EITHER host is blocked, so forcing WinPS is enough.)
+# ── Execution-policy control (deterministic FRE remediation coverage) ────────
 
-$script:WtWinPSExecutionPolicyKey = 'HKCU:\SOFTWARE\Microsoft\PowerShell\1\ShellIds\Microsoft.PowerShell'
+function Get-WtExecutionPolicyHosts {
+    <# Resolve every PowerShell host whose CurrentUser policy FRE may modify. #>
+    [CmdletBinding()] param()
+    $hosts = @(
+        [pscustomobject]@{
+            Name = 'winPs'
+            Path = (Join-Path ([Environment]::GetFolderPath('System')) 'WindowsPowerShell\v1.0\powershell.exe')
+        }
+    )
+    $pwsh = Get-Command pwsh.exe -ErrorAction SilentlyContinue
+    if ($pwsh) {
+        $hosts += [pscustomobject]@{ Name = 'pwsh'; Path = $pwsh.Source }
+    }
+    $hosts
+}
 
 function Get-WtExecutionPolicyState {
-    <# Snapshot the WinPS CurrentUser execution-policy registry value for restore. #>
+    <#
+        Snapshot every supported engine's CurrentUser execution policy.
+        Process-scope Bypass keeps the management cmdlet loadable even when a
+        previous test deliberately left CurrentUser at AllSigned/Restricted.
+    #>
     [CmdletBinding()] param()
-    $val = (Get-ItemProperty -Path $script:WtWinPSExecutionPolicyKey -Name ExecutionPolicy -ErrorAction SilentlyContinue).ExecutionPolicy
-    [pscustomobject]@{ Key = $script:WtWinPSExecutionPolicyKey; HadValue = ($null -ne $val); Value = $val }
+    @(
+        foreach ($hostInfo in Get-WtExecutionPolicyHosts) {
+            $value = & $hostInfo.Path -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command 'Get-ExecutionPolicy -Scope CurrentUser' 2>$null
+            if ($LASTEXITCODE -ne 0 -or -not $value) {
+                throw "Failed to read CurrentUser execution policy from $($hostInfo.Path)."
+            }
+            [pscustomobject]@{
+                Name = $hostInfo.Name
+                Path = $hostInfo.Path
+                Value = [string]$value
+            }
+        }
+    )
 }
 
 function Set-WtExecutionPolicy {
     <#
     .SYNOPSIS
-        Force the Windows PowerShell CurrentUser execution policy (HKCU, no admin) so the FRE
-        EP probe deterministically returns it. Pass 'Undefined' to clear the scope. Returns the
-        prior state object — pass it to Restore-WtExecutionPolicy (always restore in a finally).
+        Force every supported PowerShell engine's CurrentUser execution policy so
+        FRE remediation is deterministic. Always restore the returned state.
     #>
     [CmdletBinding()]
     param([Parameter(Mandatory)][ValidateSet('Restricted', 'AllSigned', 'RemoteSigned', 'Unrestricted', 'Bypass', 'Undefined')][string]$Value)
     $state = Get-WtExecutionPolicyState
-    if (-not (Test-Path $state.Key)) { New-Item -Path $state.Key -Force | Out-Null }
-    if ($Value -eq 'Undefined') { Remove-ItemProperty -Path $state.Key -Name ExecutionPolicy -ErrorAction SilentlyContinue }
-    else { Set-ItemProperty -Path $state.Key -Name ExecutionPolicy -Value $Value -Type String -ErrorAction Stop }
-    Write-ItLog -Level INFO -Message "Set WinPS CurrentUser ExecutionPolicy = $Value (was '$($state.Value)')"
+    try {
+        foreach ($entry in $state) {
+            $command = "Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy $Value -Force -ErrorAction SilentlyContinue; if ((Get-ExecutionPolicy -Scope CurrentUser) -ne '$Value') { exit 1 }"
+            & $entry.Path -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command $command 2>&1 | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                throw "Failed to set CurrentUser execution policy through $($entry.Path)."
+            }
+            Write-ItLog -Level INFO -Message "Set $($entry.Name) CurrentUser ExecutionPolicy = $Value (was '$($entry.Value)')"
+        }
+    }
+    catch {
+        Restore-WtExecutionPolicy -State $state
+        throw
+    }
     $state
 }
 
 function Restore-WtExecutionPolicy {
-    <# Restore the snapshot returned by Set-WtExecutionPolicy / Get-WtExecutionPolicyState. #>
+    <# Restore snapshots returned by Set-WtExecutionPolicy / Get-WtExecutionPolicyState. #>
     [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$State)
     process {
-        if ($State.HadValue) { Set-ItemProperty -Path $State.Key -Name ExecutionPolicy -Value $State.Value -Type String -ErrorAction Stop }
-        else { Remove-ItemProperty -Path $State.Key -Name ExecutionPolicy -ErrorAction SilentlyContinue }
-        Write-ItLog -Level INFO -Message "Restored WinPS CurrentUser ExecutionPolicy to '$($State.Value)'"
+        $failures = @()
+        foreach ($entry in @($State)) {
+            try {
+                $command = "Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy $($entry.Value) -Force -ErrorAction SilentlyContinue; if ((Get-ExecutionPolicy -Scope CurrentUser) -ne '$($entry.Value)') { exit 1 }"
+                & $entry.Path -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command $command 2>&1 | Out-Null
+                if ($LASTEXITCODE -ne 0) {
+                    throw "setter exited with code $LASTEXITCODE"
+                }
+                $restored = & $entry.Path -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command 'Get-ExecutionPolicy -Scope CurrentUser' 2>$null
+                if ($LASTEXITCODE -ne 0 -or [string]$restored -ne $entry.Value) {
+                    throw "verification returned '$restored'"
+                }
+                Write-ItLog -Level INFO -Message "Restored $($entry.Name) CurrentUser ExecutionPolicy to '$($entry.Value)'"
+            }
+            catch {
+                $failures += "$($entry.Name) ($($entry.Path)): $($_.Exception.Message)"
+            }
+        }
+        if ($failures.Count) {
+            throw "Failed to restore one or more execution policies: $($failures -join '; ')"
+        }
     }
 }
 
 function Test-WtExecutionPolicyControllable {
     <#
     .SYNOPSIS
-        Returns $true when the Windows PowerShell effective execution policy can be forced
-        via the HKCU CurrentUser scope — i.e. no Group Policy override is in effect.
-    .DESCRIPTION
-        Group Policy scopes (MachinePolicy / UserPolicy) outrank CurrentUser, so when one is
-        set the registry value these tests write is NOT the effective policy and the FRE
-        verdict becomes non-deterministic. The EP suite must skip in that environment. GPO
-        scopes are host-independent (HKLM/HKCU ...\Policies\...\PowerShell), so probing them
-        from whatever host runs the test is valid for the WinPS the FRE will probe.
+        Returns $true when no supported PowerShell host has a Group Policy override.
     #>
     [CmdletBinding()] param()
-    $gpo = Get-ExecutionPolicy -List |
-        Where-Object { $_.Scope -in 'MachinePolicy', 'UserPolicy' -and $_.ExecutionPolicy -ne 'Undefined' }
-    -not [bool]$gpo
+    foreach ($hostInfo in Get-WtExecutionPolicyHosts) {
+        try {
+            $gpo = & $hostInfo.Path -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command 'Get-ExecutionPolicy -List | Where-Object { $_.Scope -in "MachinePolicy", "UserPolicy" -and $_.ExecutionPolicy -ne "Undefined" }' 2>$null
+            if ($LASTEXITCODE -ne 0 -or $gpo) { return $false }
+        }
+        catch {
+            return $false
+        }
+    }
+    $true
 }
 
 function Test-WtPwshBlocksShellIntegration {
@@ -159,11 +208,8 @@ function Test-WtPwshBlocksShellIntegration {
         Returns $true when pwsh 7 is installed AND its effective execution policy refuses
         unsigned local scripts (Restricted / AllSigned).
     .DESCRIPTION
-        The FRE blocks shell integration if EITHER PowerShell host blocks, but these helpers
-        only control Windows PowerShell via HKCU (pwsh keeps its policy in
-        powershell.config.json, not the registry). So the not-blocked case must skip when a
-        present pwsh would independently block — otherwise the FRE blocks regardless of the
-        RemoteSigned WinPS policy under test.
+        Used by suites that do not change execution policy themselves and therefore need
+        to skip when the machine's existing pwsh policy would block shell integration.
     #>
     [CmdletBinding()] param()
     $pwsh = Get-Command pwsh.exe -ErrorAction SilentlyContinue

@@ -1,5 +1,20 @@
 use super::*;
-use clap::Parser;
+use clap::{CommandFactory, Parser};
+
+#[test]
+fn cli_schema_has_no_duplicate_short_flags() {
+    Cli::command().debug_assert();
+}
+
+#[test]
+fn split_pane_horizontal_uses_uppercase_short_flag() {
+    let cli = Cli::try_parse_from(["wta", "split-pane", "-H"])
+        .expect("split-pane -H must parse without colliding with help");
+    match cli.command {
+        Some(Command::SplitPane { horizontal, .. }) => assert!(horizontal),
+        other => panic!("expected split-pane command, got {other:?}"),
+    }
+}
 
 // Plan-C boot-time initial-load flags: WT bundles a session resume
 // with helper spawn by passing `--initial-load-session-id` (and
