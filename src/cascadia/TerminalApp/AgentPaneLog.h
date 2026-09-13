@@ -21,6 +21,7 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <ctime>
@@ -100,5 +101,21 @@ namespace winrt::TerminalApp::implementation
         DWORD written = 0;
         WriteFile(h, line.data(), static_cast<DWORD>(n), &written, nullptr);
         CloseHandle(h);
+    }
+
+    // Evaluate formatting inside the guard too: diagnostics must never change
+    // pane lifecycle or protocol error behavior, including allocation failures.
+    template<typename F>
+    inline void _agentPaneDiagnostic(F&& message) noexcept
+    {
+        try
+        {
+            auto text = message();
+            text.resize((std::min)(text.size(), size_t{ 2048 }));
+            _agentPaneLog(text);
+        }
+        catch (...)
+        {
+        }
     }
 }

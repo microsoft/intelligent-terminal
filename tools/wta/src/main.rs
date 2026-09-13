@@ -18,6 +18,7 @@ mod commands;
 mod coordinator;
 mod custom_model_provider;
 mod cwd_util;
+mod diagnostics;
 mod event;
 mod helper;
 #[cfg(test)]

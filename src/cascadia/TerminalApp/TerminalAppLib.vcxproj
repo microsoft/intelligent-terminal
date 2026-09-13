@@ -253,6 +253,14 @@
       <DependentUpon>TerminalPage.xaml</DependentUpon>
       <SubType>Code</SubType>
     </ClCompile>
+    <ClCompile Include="TerminalPage.Diagnostics.cpp">
+      <DependentUpon>TerminalPage.xaml</DependentUpon>
+      <SubType>Code</SubType>
+    </ClCompile>
+    <ClInclude Include="BugReportDiagnostics.h" />
+    <ClInclude Include="..\inc\DiagnosticsIdentity.h" />
+    <ClInclude Include="..\inc\DiagnosticsMetadata.h" />
+    <ClInclude Include="..\inc\TerminalProtocolClsid.h" />
     <ClCompile Include="TerminalTabStatus.cpp">
       <DependentUpon>TerminalTabStatus.idl</DependentUpon>
       <SubType>Code</SubType>

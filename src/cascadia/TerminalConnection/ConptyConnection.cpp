@@ -223,6 +223,7 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
         auto [newCommandLine, newStartingDirectory] = Utils::MangleStartingDirectoryForWSL(cmdline, _startingDirectory);
         const auto startingDirectory = newStartingDirectory.size() > 0 ? newStartingDirectory.c_str() : nullptr;
 
+        wil::unique_process_information client;
         THROW_IF_WIN32_BOOL_FALSE(CreateProcessW(
             nullptr,
             newCommandLine.data(),
@@ -233,9 +234,11 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
             lpEnvironment, // lpEnvironment
             startingDirectory,
             &siEx.StartupInfo, // lpStartupInfo
-            &_piClient // lpProcessInformation
+            &client // lpProcessInformation
             ));
 
+        _diagnosticRootProcess.Capture(client.hProcess);
+        _piClient = std::move(client);
         DeleteProcThreadAttributeList(siEx.lpAttributeList);
 
         const std::filesystem::path processName = wil::GetModuleFileNameExW<std::wstring>(_piClient.hProcess, nullptr);
@@ -417,6 +420,7 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
         ownedReference.release();
         ownedSignal.release();
 
+        _diagnosticRootProcess.Capture(ownedClient.get());
         _piClient.hProcess = ownedClient.release();
 
         _startupInfo.title = winrt::hstring{ startupInfo->pszTitle, SysStringLen(startupInfo->pszTitle) };
@@ -722,6 +726,11 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
     {
 #pragma warning(disable : 26490) // Don't use reinterpret_cast (type.1).
         return reinterpret_cast<uint64_t>(_piClient.hProcess);
+    }
+
+    uint64_t ConptyConnection::DuplicateRootProcessHandle() noexcept
+    {
+        return reinterpret_cast<uint64_t>(_diagnosticRootProcess.Duplicate().release());
     }
 
     void ConptyConnection::Close() noexcept

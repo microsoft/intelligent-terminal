@@ -6,6 +6,7 @@
 #include "ConptyConnection.g.h"
 #include "BaseTerminalConnection.h"
 #include "ITerminalHandoff.h"
+#include "../inc/DiagnosticProcessHandle.h"
 
 #include <til/env.h>
 #include <til/ticket_lock.h>
@@ -31,6 +32,7 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
 
         void ReparentWindow(const uint64_t newParent);
         uint64_t RootProcessHandle() noexcept;
+        uint64_t DuplicateRootProcessHandle() noexcept;
 
         winrt::hstring Commandline() const;
         winrt::hstring StartingTitle() const;
@@ -80,6 +82,7 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
         wil::unique_hfile _pipe;
         wil::unique_handle _hOutputThread;
         wil::unique_process_information _piClient;
+        ::IntelligentTerminal::Diagnostics::DiagnosticProcessHandle _diagnosticRootProcess;
         wil::unique_any<HPCON, decltype(closePseudoConsoleAsync), closePseudoConsoleAsync> _hPC;
 
         til::ticket_lock _writeLock;

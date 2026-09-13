@@ -83,16 +83,41 @@ fn apply_dependency_privacy_cap(
     }))
 }
 
-fn configured_filter(default_directives: &str) -> impl Layer<Registry> {
+#[derive(Debug)]
+struct FilterDiagnostic {
+    source: &'static str,
+    max_level: Option<tracing::level_filters::LevelFilter>,
+    acp_privacy_cap: bool,
+}
+
+fn filter_diagnostic(
+    source: &'static str,
+    filter: &EnvFilter,
+    directives: Option<&str>,
+) -> FilterDiagnostic {
+    FilterDiagnostic {
+        source,
+        max_level: filter.max_level_hint(),
+        acp_privacy_cap: !directives.is_some_and(explicitly_configures_acp_dependency),
+    }
+}
+
+fn configured_filter(default_directives: &str) -> (impl Layer<Registry>, FilterDiagnostic) {
     for variable in ["WTA_LOG", "RUST_LOG"] {
         if let Ok(directives) = std::env::var(variable) {
             if let Ok(filter) = EnvFilter::try_new(&directives) {
-                return apply_dependency_privacy_cap(filter, Some(&directives));
+                let diagnostic = filter_diagnostic(variable, &filter, Some(&directives));
+                return (
+                    apply_dependency_privacy_cap(filter, Some(&directives)),
+                    diagnostic,
+                );
             }
         }
     }
 
-    apply_dependency_privacy_cap(EnvFilter::new(default_directives), None)
+    let filter = EnvFilter::new(default_directives);
+    let diagnostic = filter_diagnostic("default", &filter, None);
+    (apply_dependency_privacy_cap(filter, None), diagnostic)
 }
 
 /// Root of the WTA log tree: `<local_root>/logs` (or a temp-dir fallback).
@@ -163,7 +188,7 @@ pub fn init(process: &str) {
 
     let default_level = default_filter_directive(cfg!(debug_assertions));
 
-    let filter = configured_filter(default_level);
+    let (filter, diagnostic) = configured_filter(default_level);
 
     tracing_subscriber::registry()
         .with(filter)
@@ -176,8 +201,22 @@ pub fn init(process: &str) {
         )
         .init();
 
+    crate::diagnostics::retain_build_identity();
     // Stash the guard globally so `shutdown_flush` can drop it on exit.
     let _ = GUARD.set(Mutex::new(Some(guard)));
+    tracing::info!(target: "wta::logging",
+        role = process, pid = std::process::id(),
+        process_start_time_filetime = crate::diagnostics::current_process_start(),
+        cargo_version = env!("CARGO_PKG_VERSION"),
+        build_commit = env!("WTA_BUILD_COMMIT"),
+        build_commit_dirty_state = "not_recorded",
+        architecture = std::env::consts::ARCH,
+        package_version = package_version(),
+        filter_source = diagnostic.source,
+        effective_max_level = ?diagnostic.max_level,
+        acp_privacy_cap = diagnostic.acp_privacy_cap,
+        directives_redacted = true,
+        "logging_configuration");
 }
 
 /// The current process's package version as `"Major.Minor.Build.Revision"`
@@ -493,6 +532,24 @@ mod tests {
     use std::io::Write;
     use std::sync::Arc;
     use tracing_subscriber::filter::LevelFilter;
+
+    #[test]
+    fn filter_diagnostics_never_include_dynamic_selector_values() {
+        let directives = r#"warn,wta[request{token="SECRET"}]=trace"#;
+        let filter = EnvFilter::try_new(directives).unwrap();
+        let diagnostic = filter_diagnostic("WTA_LOG", &filter, Some(directives));
+        assert_eq!(diagnostic.source, "WTA_LOG");
+        assert!(diagnostic.acp_privacy_cap);
+        assert_eq!(diagnostic.max_level, Some(LevelFilter::TRACE));
+        let text = format!("{diagnostic:?}");
+        assert!(!text.contains("SECRET"));
+        assert!(!text.contains("token"));
+        let explicit = "off,agent_client_protocol=debug";
+        assert!(
+            !filter_diagnostic("RUST_LOG", &EnvFilter::new(explicit), Some(explicit))
+                .acp_privacy_cap
+        );
+    }
 
     #[derive(Clone)]
     struct SharedWriter(Arc<Mutex<Vec<u8>>>);

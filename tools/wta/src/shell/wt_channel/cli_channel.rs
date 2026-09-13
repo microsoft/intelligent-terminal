@@ -114,6 +114,13 @@ where
     Ok((retained, truncated))
 }
 
+fn is_legacy_pane_context_exit(exit_code: Option<i32>, stderr: &[u8]) -> bool {
+    exit_code == Some(2)
+        && stderr
+            .windows(b"WT_PROTOCOL_UNSUPPORTED_PANE_CONTEXT".len())
+            .any(|part| part == b"WT_PROTOCOL_UNSUPPORTED_PANE_CONTEXT")
+}
+
 async fn run_wtcli_one_shot(
     path: &str,
     args: &[String],
@@ -137,7 +144,23 @@ async fn run_wtcli_one_shot(
         })
         .kill_on_drop(true);
 
-    let mut child = command.spawn().map_err(WtcliOneShotError::Spawn)?;
+    let pane_context_request = args.get(1).is_some_and(|arg| arg == "get-pane-context");
+    let mut child = command.spawn().map_err(|error| {
+        if pane_context_request {
+            tracing::warn!(target: "acp.terminal_context",
+                reason_code = "wtcli_spawn_failed",
+                io_kind = ?error.kind(), os_error = error.raw_os_error(),
+                "pane_context_wtcli_failed");
+        }
+        WtcliOneShotError::Spawn(error)
+    })?;
+    let child_pid = child.id();
+    if pane_context_request {
+        tracing::debug!(target: "acp.terminal_context",
+            helper_pid = std::process::id(), wtcli_pid = child_pid,
+            helper_start_time_filetime = crate::diagnostics::current_process_start(),
+            "pane_context_wtcli_started");
+    }
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
     // Keep process completion and both pipe readers under one deadline. If it
@@ -148,6 +171,28 @@ async fn run_wtcli_one_shot(
     })
     .await;
 
+    if pane_context_request {
+        let failure_code = match &completed {
+            Err(_) => Some("wtcli_timeout"),
+            Ok((Err(_), _, _)) => Some("wtcli_wait_failed"),
+            Ok((_, Err(_), _)) => Some("wtcli_stdout_read_failed"),
+            Ok((_, _, Err(_))) => Some("wtcli_stderr_read_failed"),
+            Ok((Ok(status), _, Ok(stderr)))
+                if is_legacy_pane_context_exit(status.code(), stderr) =>
+            {
+                None // Expected compatibility fallback, not a failed acquisition.
+            }
+            Ok((Ok(status), _, _)) if !status.success() => Some("wtcli_exit_failed"),
+            _ => None,
+        };
+        if let Some(reason_code) = failure_code {
+            tracing::warn!(target: "acp.terminal_context", wtcli_pid = child_pid,
+                reason_code, "pane_context_wtcli_failed");
+        } else {
+            tracing::debug!(target: "acp.terminal_context", wtcli_pid = child_pid,
+                "pane_context_wtcli_completed");
+        }
+    }
     match completed {
         Ok((status, stdout, stderr)) => Ok(std::process::Output {
             status: status.map_err(WtcliOneShotError::Wait)?,
@@ -1015,7 +1060,14 @@ impl WtChannel for CliChannel {
                     }
                     args.extend(["--target", pane_id]);
                 }
-                self.run_wtcli(&args).await
+                let result = self.run_wtcli(&args).await;
+                if let Ok(context) = &result {
+                    let provenance = crate::diagnostics::context_provenance(context);
+                    tracing::debug!(target: "acp.terminal_context",
+                        helper_pid = std::process::id(), provenance = %provenance,
+                        "pane_context_server_provenance");
+                }
+                result
             }
             "get_settings" => self.run_wtcli(&["get-settings"]).await,
             "read_pane_output" => {
@@ -1197,6 +1249,17 @@ impl WtChannel for CliChannel {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn diagnostics_only_suppress_expected_legacy_exit() {
+        let marker = b"[wtcli] WT_PROTOCOL_UNSUPPORTED_PANE_CONTEXT server=2.2 required=2.3";
+        assert!(is_legacy_pane_context_exit(Some(2), marker));
+        for code in [None, Some(0), Some(1)] {
+            assert!(!is_legacy_pane_context_exit(code, marker));
+        }
+        assert!(!is_legacy_pane_context_exit(Some(2), b"PRIVATE_STDERR"));
+        assert!(!is_legacy_pane_context_exit(Some(2), b""));
+    }
 
     #[tokio::test]
     async fn get_pane_context_rejects_invalid_session_ids_before_invocation() {

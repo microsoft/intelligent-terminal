@@ -44,6 +44,11 @@ namespace Json
     class Value;
 }
 
+namespace IntelligentTerminal::Diagnostics
+{
+    struct Report;
+}
+
 namespace winrt::Microsoft::Terminal::Settings
 {
     struct TerminalSettingsCreateResult;
@@ -1228,6 +1233,8 @@ namespace winrt::TerminalApp::implementation
 
 #pragma region ActionHandlers
         // These are all defined in AppActionHandlers.cpp
+        IntelligentTerminal::Diagnostics::Report _BugReportSnapshot();
+
 #define ON_ALL_ACTIONS(action) DECLARE_ACTION_HANDLER(action);
         ALL_SHORTCUT_ACTIONS
         INTERNAL_SHORTCUT_ACTIONS

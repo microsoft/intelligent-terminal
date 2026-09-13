@@ -5,6 +5,7 @@
 #include "ColorPickupFlyout.h"
 #include "Tab.h"
 #include "AgentPaneContent.h"
+#include "AgentPaneLog.h"
 #include "SettingsPaneContent.h"
 #include "Tab.g.cpp"
 #include "Utils.h"
@@ -823,7 +824,7 @@ namespace winrt::TerminalApp::implementation
         if (const auto pane = _rootPane->DetachPane(selectedPane))
         {
             // Just make sure that the remaining pane is marked active
-            _UpdateActivePane(_rootPane->GetActivePane());
+            _UpdateActivePane(_rootPane->GetActivePane(), "detach");
 
             return pane;
         }
@@ -1446,10 +1447,42 @@ namespace winrt::TerminalApp::implementation
     // - pane: a Pane to mark as active.
     // Return Value:
     // - <none>
-    void Tab::_UpdateActivePane(std::shared_ptr<Pane> pane)
+    void Tab::_UpdateActivePane(std::shared_ptr<Pane> pane, const char* diagnosticTrigger)
     {
         // Remember previous active pane for source-of-agent tracking.
         auto previousActive = _activePane;
+        const auto diagnosticChange = previousActive != pane || pane->IsAgentPane();
+        const auto logSourceState = [&](const char* phase) noexcept {
+            if (!diagnosticChange)
+            {
+                return;
+            }
+            _agentPaneDiagnostic([&] {
+                size_t sourceCount = 0;
+                uint32_t sourcePane = UINT32_MAX;
+                winrt::guid sourceSession{};
+                _rootPane->WalkTree([&](const auto& candidate) {
+                    if (candidate->IsSourceOfAgentPane())
+                    {
+                        ++sourceCount;
+                        sourcePane = candidate->Id().value_or(UINT32_MAX);
+                        sourceSession = candidate->GetSessionId();
+                    }
+                });
+                return fmt::format("DEBUG pane_source_update pid={} tab={} phase={} trigger={} active_pane={} active_agent={} next_pane={} source_count={} source_pane={} source_session={}",
+                                   GetCurrentProcessId(),
+                                   winrt::to_string(_stableId),
+                                   phase,
+                                   diagnosticTrigger,
+                                   _activePane ? _activePane->Id().value_or(UINT32_MAX) : UINT32_MAX,
+                                   _activePane && _activePane->IsAgentPane(),
+                                   pane->Id().value_or(UINT32_MAX),
+                                   sourceCount,
+                                   sourcePane,
+                                   winrt::to_string(winrt::to_hstring(sourceSession)));
+            });
+        };
+        logSourceState("before");
 
         // Clear the active state of the entire tree, and mark only the pane as active.
         // NOTE: ClearActive() also clears _isSourceOfAgentPane on all panes.
@@ -1465,6 +1498,7 @@ namespace winrt::TerminalApp::implementation
             previousActive->SetSourceOfAgentPane(true);
             previousActive->UpdateVisuals();
         }
+        logSourceState("after");
 
         // Recompute the agent-related indicators on every pane in this tab.
         // Both ClearActive() above and SetSourceOfAgentPane(true) can change
@@ -1659,7 +1693,7 @@ namespace winrt::TerminalApp::implementation
                         (focus == WUX::FocusState::Programmatic && tab->_changingActivePane) ||
                         focus == WUX::FocusState::Pointer)
                     {
-                        tab->_UpdateActivePane(sender);
+                        tab->_UpdateActivePane(sender, "got_focus");
                         tab->_RecalculateAndApplyTabColor();
                     }
                 }
@@ -1703,7 +1737,7 @@ namespace winrt::TerminalApp::implementation
                     // did not actually change. Triggering
                     if (pane != tab->_activePane && !tab->_activePane->_IsLeaf())
                     {
-                        tab->_UpdateActivePane(tab->_activePane);
+                        tab->_UpdateActivePane(tab->_activePane, "pane_closed");
                     }
 
                     for (auto i = tab->_mruPanes.begin(); i != tab->_mruPanes.end(); ++i)
@@ -2560,6 +2594,12 @@ namespace winrt::TerminalApp::implementation
             // the stash; the toggle just no-ops here.
             return;
         }
+        _agentPaneDiagnostic([&] {
+            return fmt::format("DEBUG pane_source_trigger pid={} tab={} operation=stash agent_pane={}",
+                               GetCurrentProcessId(),
+                               winrt::to_string(_stableId),
+                               agentPane->Id().value_or(UINT32_MAX));
+        });
         parent->HidePane(agentPane);
         // After HidePane, XAML focus is in limbo (the previously-focused
         // element — typically the agent pane's TermControl — was just
@@ -2583,7 +2623,7 @@ namespace winrt::TerminalApp::implementation
             // since agent pane was the active one). Then _UpdateActivePane
             // for the bookkeeping.
             _rootPane->FocusPane(focusTarget);
-            _UpdateActivePane(focusTarget);
+            _UpdateActivePane(focusTarget, "stash");
             // Defer the actual XAML Focus to a low-priority dispatcher tick
             // (see RestoreStashedAgentPane for the explanation — synchronous
             // Programmatic focus drops silently on a just-re-parented
@@ -2635,6 +2675,12 @@ namespace winrt::TerminalApp::implementation
         {
             return false;
         }
+        _agentPaneDiagnostic([&] {
+            return fmt::format("DEBUG pane_source_trigger pid={} tab={} operation=restore agent_pane={}",
+                               GetCurrentProcessId(),
+                               winrt::to_string(_stableId),
+                               agentPane->Id().value_or(UINT32_MAX));
+        });
         parent->RestorePane(agentPane);
         // Order matters: Pane::_Focus has a `WasLastFocused()` early-return
         // guard, so do FocusPane (which calls _Focus) FIRST (agent's flag
@@ -2651,7 +2697,7 @@ namespace winrt::TerminalApp::implementation
         // So only fall through if the GotFocus path didn't update us.
         if (_activePane != agentPane)
         {
-            _UpdateActivePane(agentPane);
+            _UpdateActivePane(agentPane, "restore");
         }
 
         // CRITICAL: synchronous Focus(Programmatic) is unreliable on

@@ -4,6 +4,7 @@
 #include "pch.h"
 #include "../inc/AgentPaneRestore.h"
 #include "Pane.h"
+#include "AgentPaneLog.h"
 
 using namespace winrt::Windows::Foundation;
 using namespace winrt::Windows::Graphics::Display;
@@ -1611,6 +1612,26 @@ void Pane::_CloseChild(const bool closeFirst)
     auto remainingChild = closeFirst ? _secondChild : _firstChild;
     auto closedChildClosedToken = closeFirst ? _firstClosedToken : _secondClosedToken;
     auto remainingChildClosedToken = closeFirst ? _secondClosedToken : _firstClosedToken;
+    const auto logCollapse = [&](const char* phase) noexcept {
+        winrt::TerminalApp::implementation::_agentPaneDiagnostic([&] {
+            return fmt::format("DEBUG pane_source_collapse pid={} phase={} close_first={} parent_pane={} parent_source={} parent_active={} remaining_pane={} remaining_leaf={} remaining_source={} remaining_active={} remaining_agent={} closed_source={} parent_session={} remaining_session={}",
+                               GetCurrentProcessId(),
+                               phase,
+                               closeFirst,
+                               _id.value_or(UINT32_MAX),
+                               _isSourceOfAgentPane,
+                               _lastActive,
+                               remainingChild->Id().value_or(UINT32_MAX),
+                               remainingChild->_IsLeaf(),
+                               remainingChild->_isSourceOfAgentPane,
+                               remainingChild->_lastActive,
+                               remainingChild->_isAgentPane,
+                               closedChild->_isSourceOfAgentPane,
+                               winrt::to_string(winrt::to_hstring(GetSessionId())),
+                               winrt::to_string(winrt::to_hstring(remainingChild->GetSessionId())));
+        });
+    };
+    logCollapse("before");
 
     // If we were a parent pane, and we pointed into the now closed child
     // clear it. We will set it to something else later if
@@ -1632,6 +1653,7 @@ void Pane::_CloseChild(const bool closeFirst)
     // Tab's _rootClosedToken) tear the rest down.
     if (remainingChild->_IsLeaf() && remainingChild->_isAgentPane)
     {
+        logCollapse("orphan_agent_close");
         remainingChild->_setPaneContent(nullptr);
         closedChild->Closed(closedChildClosedToken);
         // Revoke our own routing token on the agent pane first so the
@@ -1664,6 +1686,7 @@ void Pane::_CloseChild(const bool closeFirst)
         _setPaneContent(remainingChild->_takePaneContent(), remainingContentId);
         if (!_content)
         {
+            logCollapse("promoted_content_missing");
             // GH#18071: our content is still null after taking the other pane's content,
             //           so just notify our parent that we're closed.
             Closed.raise(nullptr, nullptr);
@@ -1705,6 +1728,8 @@ void Pane::_CloseChild(const bool closeFirst)
         // what our active control is, we won't technically be a "leaf", and
         // GetTerminalControl will return null.
         _splitState = SplitState::None;
+        // Record the promoted representation before focus callbacks can mutate it.
+        logCollapse("leaf_promoted_before_focus");
 
         // re-attach our handler for the control's GotFocus event.
         if (control)
@@ -1745,6 +1770,7 @@ void Pane::_CloseChild(const bool closeFirst)
         _splitState = remainingChild->_splitState;
         _firstChild = remainingChild->_firstChild;
         _secondChild = remainingChild->_secondChild;
+        logCollapse("branch_promoted");
 
         // Set up new close handlers on the children
         _SetupChildCloseHandlers();
@@ -1828,6 +1854,7 @@ void Pane::_CloseChild(const bool closeFirst)
         remainingChild->_secondChild = nullptr;
     }
 
+    logCollapse("after");
     // Notify the discarded child that it was closed by its parent
     closedChild->ClosedByParent.raise();
 }

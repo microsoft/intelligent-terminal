@@ -661,6 +661,15 @@ namespace winrt::TerminalApp::implementation
         return _pid;
     }
 
+    wil::unique_handle SharedWta::DiagnosticProcessHandle() const
+    {
+        std::lock_guard lock{ _mtx };
+        wil::unique_handle handle;
+        if (_process)
+            THROW_IF_WIN32_BOOL_FALSE(DuplicateHandle(GetCurrentProcess(), _process.get(), GetCurrentProcess(), handle.put(), 0, FALSE, DUPLICATE_SAME_ACCESS));
+        return handle;
+    }
+
     std::wstring_view SharedWta::MasterPipeName() const noexcept
     {
         std::lock_guard lock{ _mtx };

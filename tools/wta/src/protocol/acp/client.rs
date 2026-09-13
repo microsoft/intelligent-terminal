@@ -2200,6 +2200,10 @@ impl WtaClient {
 
         let request: crate::agent_tools::session_mcp::HelperRequest =
             serde_json::from_str(args.params.get()).map_err(|error| {
+                tracing::warn!(target: "proposal_channel",
+                    binding_known = false, tool = "unknown",
+                    reason_code = "malformed_request", retryable = false,
+                    stage = "helper_request", "terminal_action_validation_rejected");
                 acp::Error::invalid_params().data(format!(
                     "invalid terminal action request parameters: {error}"
                 ))
@@ -2207,6 +2211,10 @@ impl WtaClient {
         let action_tool = {
             use crate::agent_tools::action_proposal::schema::McpActionTool;
             McpActionTool::from_tool_name(&request.tool).ok_or_else(|| {
+                tracing::warn!(target: "proposal_channel",
+                    binding_known = false, tool = "unknown",
+                    reason_code = "unknown_tool", retryable = false,
+                    stage = "helper_request", "terminal_action_validation_rejected");
                 acp::Error::invalid_params().data(format!(
                     "unknown terminal action tool `{}`; expected one of: {}",
                     request.tool,
@@ -2224,6 +2232,11 @@ impl WtaClient {
             ))
         })?;
         if payload.len() > crate::agent_tools::action_proposal::schema::MAX_PAYLOAD_BYTES {
+            tracing::warn!(target: "proposal_channel",
+                session_id = %crate::diagnostics::identity(Some(&request.session_id)), tool = action_tool.tool_name(),
+                binding_known = false, reason_code = "payload_too_large",
+                retryable = false, stage = "helper_request",
+                "terminal_action_validation_rejected");
             let response = ProposalValidationResponse {
                 phase: ValidationPhase::Validation,
                 status: ProposalValidationStatus::InvalidSchema,
@@ -2244,6 +2257,11 @@ impl WtaClient {
         {
             Ok(context) => context,
             Err(failure) => {
+                tracing::warn!(target: "proposal_channel",
+                    session_id = %crate::diagnostics::identity(Some(&request.session_id)), tool = action_tool.tool_name(),
+                    binding_known = false, reason_code = "binding_unavailable",
+                    status = ?failure.status, retryable = failure.retryable,
+                    stage = "begin_mcp_validation", "terminal_action_validation_rejected");
                 let response = ProposalValidationResponse {
                     phase: ValidationPhase::Validation,
                     status: failure.status,
@@ -2258,6 +2276,7 @@ impl WtaClient {
             }
         };
         let proposal_id = context.proposal_id.clone();
+        let diagnostic_binding = context.binding.clone();
         let (validation_tx, validation_rx) = tokio::sync::oneshot::channel();
         if self
             .state
@@ -2270,6 +2289,13 @@ impl WtaClient {
             })
             .is_err()
         {
+            tracing::warn!(target: "proposal_channel",
+                session_id = %crate::diagnostics::identity(Some(&diagnostic_binding.session_id)),
+                prompt_id = diagnostic_binding.prompt_id, tool = action_tool.tool_name(),
+                bound_target_present = diagnostic_binding.active_target.is_some(),
+                bound_target = %crate::diagnostics::identity(diagnostic_binding.active_target.as_deref()),
+                reason_code = "helper_ui_unavailable", retryable = false,
+                stage = "helper_dispatch", "terminal_action_validation_rejected");
             self.state
                 .proposal_channels
                 .reject_validation(&proposal_id, false);
@@ -2294,6 +2320,18 @@ impl WtaClient {
                 .state
                 .proposal_channels
                 .reject_validation(&proposal_id, decision.retryable);
+            // The UI logs the precise, typed validation code. This boundary
+            // also covers timeouts/dropped replies without exposing reason text.
+            tracing::warn!(target: "proposal_channel",
+                session_id = %crate::diagnostics::identity(Some(&diagnostic_binding.session_id)),
+                prompt_id = diagnostic_binding.prompt_id, tool = action_tool.tool_name(),
+                bound_target_present = diagnostic_binding.active_target.is_some(),
+                bound_target = %crate::diagnostics::identity(diagnostic_binding.active_target.as_deref()),
+                reason_code = if decision.status == ProposalValidationStatus::Unavailable {
+                    "validation_unavailable"
+                } else { "validation_denied" },
+                status = ?decision.status, retryable,
+                stage = "helper_reply", "terminal_action_validation_rejected");
             let response = ProposalValidationResponse {
                 phase: ValidationPhase::Validation,
                 status: decision.status,
@@ -3024,6 +3062,7 @@ pub async fn run_acp_client_over_pipe(
         loop {
             match tokio::net::windows::named_pipe::ClientOptions::new().open(&pipe_name) {
                 Ok(pipe) => {
+                    crate::diagnostics::log_connected_master(&pipe);
                     // Always log the connect milestone at info (not just on
                     // retry) so a clean helper→master connect is visible in
                     // release logs, not only failures/retries.
@@ -5780,8 +5819,17 @@ async fn dispatch_prompt_body(
         prompt.agent_id(),
     );
     let (text, prompt_source, resolved_target_pane) = if prompt.is_agent_command() {
+        tracing::debug!(target: "acp.terminal_context",
+            session_id = %crate::diagnostics::identity(Some(&prompt_session_id_str)), prompt_id = prompt.id,
+            reason_code = "agent_command", "pane_context_acquisition_skipped");
         (prompt.text.clone(), "agent_command".to_string(), None)
     } else {
+        use tracing::Instrument;
+        let context_span = super::prompt_context::diagnostic_span(
+            &prompt_session_id_str,
+            prompt.id,
+            prompt.pane_context.as_ref(),
+        );
         let (text, source, name, target) = build_prompt_text(
             prompt.id,
             prompt.submitted_at_unix_s,
@@ -5792,10 +5840,21 @@ async fn dispatch_prompt_body(
             wt_connected,
             prompt.pane_context.as_ref(),
         )
+        .instrument(context_span)
         .await;
         let _ = event_tx_task.send(AppEvent::PromptTemplateLoaded { name });
         (text, source, target)
     };
+    tracing::debug!(target: "acp.terminal_context",
+        session_id = %crate::diagnostics::identity(Some(&prompt_session_id_str)), prompt_id = prompt.id,
+        owner_tab = %crate::diagnostics::identity(prompt.pane_context.as_ref().and_then(|c| c.tab_id.as_deref())),
+        owner_window = %crate::diagnostics::identity(prompt.pane_context.as_ref().and_then(|c| c.window_id.as_deref())),
+        helper_pane = %crate::diagnostics::identity(prompt.pane_context.as_ref().and_then(|c| c.pane_id.as_deref())),
+        explicit_source = %crate::diagnostics::identity(prompt.pane_context.as_ref().and_then(|c| c.source_pane_id.as_deref())),
+        bound_target_present = resolved_target_pane.is_some(),
+        bound_target = %crate::diagnostics::identity(resolved_target_pane.as_deref()),
+        wt_connected, agent_command = prompt.is_agent_command(),
+        "prompt_context_binding");
     if cancellation.is_cancelled() {
         let _ = prompt_timing_task.complete(&prompt_session_id_str, false, Some("cancelled"));
         publish_prompt_cancellation_settled(&mut cleanup, &event_tx_task, prompt_id, false);
@@ -5808,12 +5867,20 @@ async fn dispatch_prompt_body(
             resolved_target_pane.clone(),
             prompt.is_autofix(),
         ) {
-            Ok(_) => {}
+            Ok(_) => tracing::debug!(target: "proposal_channel",
+                session_id = %crate::diagnostics::identity(Some(&prompt_session_id_str)), prompt_id = prompt.id,
+                bound_target_present = resolved_target_pane.is_some(),
+                bound_target = %crate::diagnostics::identity(resolved_target_pane.as_deref()),
+                "prompt_binding_issued"),
             Err(error) => {
                 tracing::warn!(
                     target: "proposal_channel",
+                    session_id = %crate::diagnostics::identity(Some(&prompt_session_id_str)),
+                    prompt_id = prompt.id,
+                    bound_target_present = resolved_target_pane.is_some(),
+                    bound_target = %crate::diagnostics::identity(resolved_target_pane.as_deref()),
                     status = ?error.status,
-                    reason = error.reason,
+                    reason_code = "binding_issue_failed",
                     "failed to issue proposal channel for prompt"
                 );
             }

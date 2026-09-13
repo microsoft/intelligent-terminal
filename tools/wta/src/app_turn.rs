@@ -305,14 +305,45 @@ impl App {
         use crate::agent_tools::action_proposal::schema::ProposalError;
 
         let binding = &context.binding;
-        match self.validate_and_stage_terminal_action_proposal(
+        let tool_name = match source {
+            crate::agent_tools::action_proposal::pipe::ProposalPayloadSource::Cli => "proposal_cli",
+            crate::agent_tools::action_proposal::pipe::ProposalPayloadSource::Mcp(tool) => {
+                tool.tool_name()
+            }
+        };
+        let evaluation = self.validate_and_stage_terminal_action_proposal(
             &binding.session_id,
             binding.prompt_id,
             binding.active_target.as_deref(),
             payload,
             &context.proposal_id,
             source,
-        ) {
+        );
+        let diagnostic = match &evaluation {
+            DirectProposalEvaluation::Presented => None,
+            DirectProposalEvaluation::Duplicate(_) => Some(("already_consumed", false)),
+            DirectProposalEvaluation::Stale(_) => Some(("stale_turn", false)),
+            DirectProposalEvaluation::Unavailable(_) => Some(("session_unavailable", false)),
+            DirectProposalEvaluation::Rejected(error) => Some((
+                error.diagnostic_code(),
+                !matches!(error, ProposalError::PolicyViolation(_)),
+            )),
+        };
+        if let Some((reason_code, retryable)) = diagnostic {
+            tracing::warn!(
+                target: "proposal_channel",
+                session_id = %crate::diagnostics::identity(Some(&binding.session_id)),
+                prompt_id = binding.prompt_id,
+                tool = tool_name,
+                bound_target_present = binding.active_target.is_some(),
+                bound_target = %crate::diagnostics::identity(binding.active_target.as_deref()),
+                reason_code,
+                retryable,
+                stage = "helper_action_validation",
+                "terminal_action_validation_rejected"
+            );
+        }
+        match evaluation {
             DirectProposalEvaluation::Presented => {
                 crate::agent_tools::action_proposal::pipe::ProposalValidationDecision::accepted()
             }

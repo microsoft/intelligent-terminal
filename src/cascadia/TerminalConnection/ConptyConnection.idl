@@ -23,6 +23,11 @@ namespace Microsoft.Terminal.TerminalConnection
 
         UInt64 RootProcessHandle();
 
+        // Caller owns the returned query-only handle and must CloseHandle it.
+        // Zero means unavailable. Unlike RootProcessHandle, this is safe across
+        // connection teardown and pins the originally launched process.
+        UInt64 DuplicateRootProcessHandle();
+
         static event NewConnectionHandler NewConnection;
         static void StartInboundListener();
 
