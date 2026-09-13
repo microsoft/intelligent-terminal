@@ -1,0 +1,25 @@
+version: 2
+
+updates:
+  - package-ecosystem: "cargo"
+    directory: "/tools/wta"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 5
+    groups:
+      wta-rust-minor-and-patch:
+        applies-to: "version-updates"
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "agent-client-protocol*"
+        update-types:
+          - "minor"
+          - "patch"
+
+    # WTA statically links its Rust dependencies. Before merging an update,
+    # regenerate and commit tools/wta/cgmanifest.json and the WTA block in
+    # NOTICE.md with build/scripts/Generate-WtaThirdPartyNotices.ps1.

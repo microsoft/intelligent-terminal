@@ -10,10 +10,10 @@ and product behavior are defined in `AGENTS.md` and `tools/wta/AGENTS.md`.
 
 ## Toolchain and dependencies
 
-- Keep the CI `ms-prod-1.93` pin in `tools/wta/rust-toolchain.toml` unless a
-  toolchain update is the explicit task. Repo-root local commands use the
-  installed active toolchain, so do not rely on language or library features
-  newer than Rust 1.93.
+- Keep the public `1.93` pin in `tools/wta/rust-toolchain.toml` unless a
+  toolchain update is the explicit task. GitHub automation resolves that pin
+  with rustup, while Azure DevOps installs the matching `ms-prod-1.93`
+  toolchain. Do not let the versions drift.
 - New dependencies must build with the repo's static-CRT Windows MSVC
   configuration.
 - Use the explicit Windows target from the repo-level build instructions; do
