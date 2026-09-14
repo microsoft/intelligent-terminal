@@ -78,7 +78,11 @@ extends:
     - 1ES.PT.ViaStartRight
     pool:
       name: SHINE-INT-L
-      demands: ImageOverride -equals SHINE-VS18-Latest
+      # Try the oldest retained image while investigating the release-only
+      # exception-handling crash; the known-good 47.0.0 is unavailable.
+      demands:
+        - ImageOverride -equals SHINE-VS18-Latest
+        - ImageVersionOverride -equals 52.0.0
       os: windows
     sdl:
       tsa:
@@ -167,7 +171,9 @@ extends:
               parameters:
                 pool:
                   name: SHINE-INT-S
-                  demands: ImageOverride -equals SHINE-VS18-Latest
+                  demands:
+                    - ImageOverride -equals SHINE-VS18-Latest
+                    - ImageVersionOverride -equals 52.0.0
                   os: windows
                 outerTemplateContext:
                   outputs:
@@ -188,7 +194,9 @@ extends:
               parameters:
                 pool:
                   name: SHINE-INT-S
-                  demands: ImageOverride -equals SHINE-VS18-Latest
+                  demands:
+                    - ImageOverride -equals SHINE-VS18-Latest
+                    - ImageVersionOverride -equals 52.0.0
                   os: windows
                 outerTemplateContext:
                   outputs:
@@ -207,7 +215,9 @@ extends:
               parameters:
                 pool:
                   name: SHINE-INT-S
-                  demands: ImageOverride -equals SHINE-VS18-Latest
+                  demands:
+                    - ImageOverride -equals SHINE-VS18-Latest
+                    - ImageVersionOverride -equals 52.0.0
                   os: windows
                 outerTemplateContext:
                   outputs:
@@ -232,7 +242,9 @@ extends:
             parameters:
               pool:
                 name: SHINE-INT-S
-                demands: ImageOverride -equals SHINE-VS18-Latest
+                demands:
+                  - ImageOverride -equals SHINE-VS18-Latest
+                  - ImageVersionOverride -equals 52.0.0
                 os: windows
               includePublicSymbolServer: ${{ parameters.publishSymbolsToPublic }}
               symbolExpiryTime: ${{ parameters.symbolExpiryTime }}
