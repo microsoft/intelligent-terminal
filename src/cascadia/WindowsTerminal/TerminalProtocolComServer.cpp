@@ -742,11 +742,12 @@ try
     const auto fail = [&](const char* reason, HRESULT hr = E_FAIL, AppHost* host = nullptr) noexcept {
         try
         {
+            const auto logic = host ? host->Logic() : nullptr;
             winrt::TerminalApp::implementation::_agentPaneLog(fmt::format(
                 "pane_context_com_failed reason={} server_pid={} window_id={} explicit_source={} source_session={} hr=0x{:08X}",
                 reason,
                 GetCurrentProcessId(),
-                host ? host->Logic().WindowProperties().WindowId() : 0,
+                logic ? logic.WindowProperties().WindowId() : 0,
                 hasExplicitSource != 0,
                 winrt::to_string(winrt::to_hstring(winrt::guid{ sourceSessionId })),
                 static_cast<uint32_t>(hr)));
@@ -790,7 +791,6 @@ try
             const auto page = _getPage(host.get());
             if (!page)
             {
-                fail("page_unavailable", E_FAIL, host.get());
                 continue;
             }
 
