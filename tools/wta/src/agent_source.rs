@@ -6,6 +6,7 @@
 //! changing policy identifiers, telemetry bucketing, or session CLI labels.
 
 use std::fmt;
+use std::path::Path;
 use std::time::Duration;
 
 #[cfg(windows)]
@@ -103,8 +104,10 @@ pub async fn resolve_source_cwd(source: &AgentSource, reported: Option<&str>) ->
         return reported.map(str::to_string);
     };
 
-    if let Some(cwd) = reported.and_then(|cwd| normalize_wsl_cwd(distro, cwd)) {
-        return Some(cwd);
+    if let Some(cwd) = reported
+        .and_then(|cwd| crate::protocol::acp::cwd_format::to_wsl_format(distro, Path::new(cwd)))
+    {
+        return Some(cwd.to_string_lossy().into_owned());
     }
 
     let home = resolve_wsl_home(distro)
@@ -115,7 +118,7 @@ pub async fn resolve_source_cwd(source: &AgentSource, reported: Option<&str>) ->
         Some(relative) if relative.starts_with("~/") => {
             Some(format!("{}/{}", home.trim_end_matches('/'), &relative[2..]))
         }
-        Some(relative) if !relative.contains(':') && !relative.starts_with('\\') => Some(format!(
+        Some(relative) if is_wsl_relative_cwd(relative) => Some(format!(
             "{}/{}",
             home.trim_end_matches('/'),
             normalize_wsl_relative_cwd(relative)
@@ -124,42 +127,12 @@ pub async fn resolve_source_cwd(source: &AgentSource, reported: Option<&str>) ->
     }
 }
 
-fn normalize_wsl_relative_cwd(cwd: &str) -> String {
-    cwd.replace('\\', "/").trim_start_matches("./").to_string()
+fn is_wsl_relative_cwd(cwd: &str) -> bool {
+    !cwd.contains(':') && !cwd.starts_with('\\') && !cwd.starts_with('/')
 }
 
-fn normalize_wsl_cwd(distro: &str, cwd: &str) -> Option<String> {
-    if cwd == "~" || cwd.starts_with("~/") {
-        return None;
-    }
-
-    let normalized = cwd.replace('\\', "/");
-    for root in [
-        format!("//wsl.localhost/{distro}"),
-        format!("//wsl$/{distro}"),
-        format!("//?/UNC/wsl.localhost/{distro}"),
-        format!("//?/UNC/wsl$/{distro}"),
-    ] {
-        if normalized.eq_ignore_ascii_case(&root) {
-            return Some("/".to_string());
-        }
-        let prefix = format!("{root}/");
-        if normalized.len() >= prefix.len()
-            && normalized[..prefix.len()].eq_ignore_ascii_case(&prefix)
-        {
-            return Some(format!("/{}", &normalized[prefix.len()..]));
-        }
-    }
-    if cwd.starts_with('/') {
-        return Some(cwd.to_string());
-    }
-
-    let bytes = normalized.as_bytes();
-    if bytes.len() >= 3 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && bytes[2] == b'/' {
-        let drive = (bytes[0] as char).to_ascii_lowercase();
-        return Some(format!("/mnt/{drive}/{}", &normalized[3..]));
-    }
-    None
+fn normalize_wsl_relative_cwd(cwd: &str) -> String {
+    cwd.replace('\\', "/").trim_start_matches("./").to_string()
 }
 
 async fn resolve_wsl_home(distro: &str) -> Option<String> {
@@ -188,6 +161,7 @@ async fn resolve_wsl_home(distro: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn wire_source_requires_a_nonempty_wsl_distro() {
@@ -231,44 +205,55 @@ mod tests {
 
     #[test]
     fn wsl_cwd_normalizes_terminal_path_forms() {
+        use crate::protocol::acp::cwd_format::to_wsl_format;
         assert_eq!(
-            normalize_wsl_cwd("Ubuntu", "/home/me/project").as_deref(),
-            Some("/home/me/project")
+            to_wsl_format("Ubuntu", Path::new("/home/me/project")),
+            Some(PathBuf::from("/home/me/project"))
         );
         assert_eq!(
-            normalize_wsl_cwd("Ubuntu", r"\\wsl.localhost\Ubuntu\home\me").as_deref(),
-            Some("/home/me")
+            to_wsl_format("Ubuntu", Path::new(r"\\wsl.localhost\Ubuntu\home\me")),
+            Some(PathBuf::from("/home/me"))
         );
         assert_eq!(
-            normalize_wsl_cwd("Ubuntu", r"\\wsl$\Ubuntu\home\me").as_deref(),
-            Some("/home/me")
+            to_wsl_format("Ubuntu", Path::new(r"\\wsl$\Ubuntu\home\me")),
+            Some(PathBuf::from("/home/me"))
         );
         assert_eq!(
-            normalize_wsl_cwd("Ubuntu", "//wsl.localhost/Ubuntu/home/me").as_deref(),
-            Some("/home/me")
+            to_wsl_format("Ubuntu", Path::new("//wsl.localhost/Ubuntu/home/me")),
+            Some(PathBuf::from("/home/me"))
         );
         assert_eq!(
-            normalize_wsl_cwd("Ubuntu", r"C:\src\project").as_deref(),
-            Some("/mnt/c/src/project")
+            to_wsl_format("Ubuntu", Path::new(r"C:\src\project")),
+            Some(PathBuf::from("/mnt/c/src/project"))
         );
-        assert_eq!(normalize_wsl_cwd("Ubuntu", "~"), None);
-        assert_eq!(normalize_wsl_cwd("Ubuntu", r"\\wsl$\Debian\home\me"), None);
+        assert_eq!(to_wsl_format("Ubuntu", Path::new("~")), None);
+        assert_eq!(
+            to_wsl_format("Ubuntu", Path::new(r"\\wsl$\Debian\home\me")),
+            None
+        );
     }
 
     #[test]
     fn wsl_cwd_normalizes_unc_roots_with_trailing_separator() {
+        use crate::protocol::acp::cwd_format::to_wsl_format;
         for cwd in [
             r"\\wsl$\Ubuntu\",
             r"\\wsl.localhost\Ubuntu\",
             "//wsl$/Ubuntu/",
             "//wsl.localhost/Ubuntu/",
         ] {
-            assert_eq!(normalize_wsl_cwd("Ubuntu", cwd).as_deref(), Some("/"));
+            assert_eq!(
+                to_wsl_format("Ubuntu", Path::new(cwd)),
+                Some(PathBuf::from("/"))
+            );
         }
     }
 
     #[test]
     fn wsl_relative_cwd_uses_posix_separators() {
+        assert!(is_wsl_relative_cwd("foo/bar"));
+        assert!(!is_wsl_relative_cwd("//wsl$/Debian/home/me"));
+        assert!(!is_wsl_relative_cwd(r"\\wsl$\Debian\home\me"));
         assert_eq!(normalize_wsl_relative_cwd(r"foo\bar"), "foo/bar");
         assert_eq!(normalize_wsl_relative_cwd(r".\foo"), "foo");
         assert_eq!(normalize_wsl_relative_cwd("./foo"), "foo");
