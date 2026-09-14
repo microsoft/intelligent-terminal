@@ -38,3 +38,10 @@ steps:
     configPath: NuGet.config
     restoreSolution: dep/nuget/packages.config
     restoreDirectory: '$(Build.SourcesDirectory)\packages'
+
+# MSVC 19.52.36725 miscompiles exception funclets in these two WIL inline
+# converters. The patch is idempotent so the project-level local-build target
+# can apply it too.
+- pwsh: |-
+    .\build\scripts\Patch-WilExceptionOptimizationWorkaround.ps1 -PackageRoot .\packages\Microsoft.Windows.ImplementationLibrary.1.0.250325.1
+  displayName: Apply scoped WIL exception optimization workaround

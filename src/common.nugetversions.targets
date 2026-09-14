@@ -35,6 +35,18 @@
     <Message Importance="high" Text="Restoring global NuGet configuration"/>
   </Target>
 
+  <!--
+    The WIL package contains two inline exception converters that MSVC
+    19.52.36725 miscompiles. Run after a local VS restore and before compilation;
+    the script serializes concurrent project builds and only scopes the
+    suppression to those two definitions.
+  -->
+  <Target Name="Terminal_ApplyWilExceptionOptimizationWorkaround"
+      BeforeTargets="PrepareForBuild"
+      Condition="Exists('$(MSBuildThisFileDirectory)..\packages\Microsoft.Windows.ImplementationLibrary.1.0.250325.1\build\native\Microsoft.Windows.ImplementationLibrary.targets')">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)..\build\scripts\Patch-WilExceptionOptimizationWorkaround.ps1&quot; -PackageRoot &quot;$(MSBuildThisFileDirectory)..\packages\Microsoft.Windows.ImplementationLibrary.1.0.250325.1&quot;" />
+  </Target>
+
   <ImportGroup Label="ExtensionTargets">
     <!--  PGO -->
     <Import Condition="'$(PgoTarget)' == 'true' And ('$(Platform)'=='x64' or '$(Platform)'=='arm64') And '$(PGOBuildMode)'!='' and Exists('$(PkgMicrosoft_PGO_Helpers_Cpp)\build\Microsoft.PGO-Helpers.Cpp.props')" Project="$(PkgMicrosoft_PGO_Helpers_Cpp)\build\Microsoft.PGO-Helpers.Cpp.props" />
