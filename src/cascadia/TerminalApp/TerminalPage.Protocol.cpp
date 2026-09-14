@@ -208,7 +208,7 @@ namespace winrt::TerminalApp::implementation
         Protocol::PaneContext result{};
         std::shared_ptr<Pane> targetPane;
         uint32_t targetTabIndex = UINT32_MAX;
-        const char* missingReason = hasExplicitSource ? "explicit_source_not_found" : "no_focused_tab";
+        const char* missingReason = "no_focused_tab";
 
         if (hasExplicitSource)
         {
@@ -256,9 +256,13 @@ namespace winrt::TerminalApp::implementation
         };
         if (!targetPane || sessionId == winrt::guid{} || targetPane->IsAgentPane())
         {
-            logFailure(!targetPane               ? missingReason :
-                       targetPane->IsAgentPane() ? (hasExplicitSource ? "agent_pane_selected" : "active_agent_without_source") :
-                                                   "selected_pane_has_no_session");
+            // A per-window miss is expected; COM reports failure after searching all windows.
+            if (!hasExplicitSource || targetPane)
+            {
+                logFailure(!targetPane               ? missingReason :
+                           targetPane->IsAgentPane() ? (hasExplicitSource ? "agent_pane_selected" : "active_agent_without_source") :
+                                                       "selected_pane_has_no_session");
+            }
             co_return result;
         }
 

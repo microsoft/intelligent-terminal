@@ -323,7 +323,8 @@ Default logs record failures without requiring `WTA_LOG=debug`:
   `selected_pane_has_no_session`, or `explicit_source_unresolved`). Exceptions from
   the page-context query are logged once at the COM boundary with their HRESULT.
 - `wta-main_helper-{pid}.log`: `pane_context_unavailable` reasons distinguish
-  protocol failure, invalid response, an agent pane, and unresolved legacy lookup.
+  protocol failure, an agent pane, and unresolved legacy lookup.
+  `pane_context_response_contract_error` records invalid responses.
   `prompt_has_no_bound_pane` identifies the affected helper/prompt;
   `terminal_action_no_active_target` records rejection at the action check.
 
