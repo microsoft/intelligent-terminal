@@ -80,11 +80,11 @@ Describe 'Feature §0 FRE agent setup (overlay controls)' -Tag 'Feature' -Skip:(
         }) | Should -BeTrue -Because 'the dropdown popup must be dismissed before later setting assertions'
     }
 
-    It 'Token usage toggle is present and defaults off' {
+    It 'Token usage toggle is present and defaults on' {
         Test-UiElementExists -App $script:app -Selector 'ShowTokenUsageAndCostToggle' -TimeoutSec 8 |
             Should -BeTrue -Because 'the FRE settings page must expose the token usage preference'
         (Get-UiElement -App $script:app -Selector 'ShowTokenUsageAndCostToggle').toggleState |
-            Should -Be 'off' -Because 'token usage and cost must be hidden by default'
+            Should -Be 'on' -Because 'token usage and cost must be shown by default'
     }
 
     It 'FRE configures automatic approval' {

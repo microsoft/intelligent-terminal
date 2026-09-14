@@ -86,7 +86,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(CustomModelProviderMultiModelDisplay);
         TEST_METHOD(AcpRuntimeModelsAreScopedByAgent);
         TEST_METHOD(AgentPanePositionRoundtripsAndDefaults);
-        TEST_METHOD(ShowTokenUsageAndCostRoundtripsAndDefaultsOff);
+        TEST_METHOD(ShowTokenUsageAndCostRoundtripsAndDefaultsOn);
         TEST_METHOD(AgentSessionManagementRoundtripsDefaultsOnAndHonorsPolicy);
         TEST_METHOD(AutoErrorSettingsRoundtrip);
         TEST_METHOD(EffectiveAutoFixFalseWhenDetectionOff);
@@ -657,13 +657,16 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(winrt::hstring{ L"bottom" }, defaulted->GlobalSettings().AgentPanePosition());
     }
 
-    void CustomAgentAndPolicyTests::ShowTokenUsageAndCostRoundtripsAndDefaultsOff()
+    void CustomAgentAndPolicyTests::ShowTokenUsageAndCostRoundtripsAndDefaultsOn()
     {
         const auto enabled = MakeSettings(R"("showTokenUsageAndCost": true)");
         VERIFY_IS_TRUE(enabled->GlobalSettings().ShowTokenUsageAndCost());
 
+        const auto disabled = MakeSettings(R"("showTokenUsageAndCost": false)");
+        VERIFY_IS_FALSE(disabled->GlobalSettings().ShowTokenUsageAndCost());
+
         const auto defaulted = MakeSettings({});
-        VERIFY_IS_FALSE(defaulted->GlobalSettings().ShowTokenUsageAndCost());
+        VERIFY_IS_TRUE(defaulted->GlobalSettings().ShowTokenUsageAndCost());
     }
 
     void CustomAgentAndPolicyTests::AgentSessionManagementRoundtripsDefaultsOnAndHonorsPolicy()
