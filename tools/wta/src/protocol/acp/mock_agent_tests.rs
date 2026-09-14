@@ -3199,6 +3199,15 @@ async fn dispatch_prompt_new_session_failure_emits_error_and_releases_slot() {
 /// context, even when another shell pane is focused.
 #[tokio::test(flavor = "current_thread")]
 async fn dispatch_prompt_autofix_first_and_later_turns_use_source_resolver() {
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let writer = captured.clone();
+    let subscriber = tracing_subscriber::fmt()
+        .without_time()
+        .with_ansi(false)
+        .with_max_level(tracing::Level::INFO)
+        .with_writer(move || SharedLogWriter(writer.clone()))
+        .finish();
+    let _subscriber_guard = tracing::subscriber::set_default(subscriber);
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async {
@@ -3348,6 +3357,9 @@ async fn dispatch_prompt_autofix_first_and_later_turns_use_source_resolver() {
             }
         })
         .await;
+    let logs = String::from_utf8(captured.lock().unwrap().clone()).unwrap();
+    assert!(logs.contains("pane_context_unavailable"));
+    assert!(!logs.contains("prompt_has_no_bound_pane"));
 }
 
 #[tokio::test]

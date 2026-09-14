@@ -277,7 +277,6 @@ namespace winrt::TerminalApp::implementation
         const auto termControl = targetPane->GetTerminalControl();
         if (!termControl)
         {
-            logFailure("terminal_control_unavailable");
             co_return result;
         }
 

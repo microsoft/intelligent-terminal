@@ -802,7 +802,7 @@ try
                 return S_OK;
             }
         }
-        return fail("explicit_source_not_found", HRESULT_FROM_WIN32(ERROR_NOT_FOUND));
+        return fail("explicit_source_unresolved", HRESULT_FROM_WIN32(ERROR_NOT_FOUND));
     }
 
     const auto host = _getMostRecentHost(windows);
