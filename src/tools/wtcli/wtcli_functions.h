@@ -305,26 +305,19 @@ namespace wtcli
             payload = Json::Value{ Json::nullValue };
         }
 
-        // Copilot's environment session is authoritative; payload IDs are fallback only.
-        const bool hasCopilotEnvironmentSessionId =
-            cliSource == "copilot" && !environmentSessionId.empty();
-
         std::string agentSessionId = environmentSessionId;
         if (payload.isObject())
         {
-            if (!hasCopilotEnvironmentSessionId)
+            for (const auto* key : { "session_id", "sessionId" })
             {
-                for (const auto* key : { "session_id", "sessionId" })
+                // get() rather than operator[]: jsoncpp's non-const operator[]
+                // *creates* a null member for every key it misses, which would
+                // then ride the broadcast as noise on every event.
+                const auto value = payload.get(key, Json::Value{});
+                if (value.isString())
                 {
-                    // get() rather than operator[]: jsoncpp's non-const operator[]
-                    // *creates* a null member for every key it misses, which would
-                    // then ride the broadcast as noise on every event.
-                    const auto value = payload.get(key, Json::Value{});
-                    if (value.isString())
-                    {
-                        agentSessionId = value.asString();
-                        break;
-                    }
+                    agentSessionId = value.asString();
+                    break;
                 }
             }
 

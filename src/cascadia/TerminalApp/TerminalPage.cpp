@@ -8132,15 +8132,15 @@ namespace winrt::TerminalApp::implementation
         const bool sessionEnded = eventName == "agent.session.stopped" ||
                                   eventName == "agent.session.end";
         const bool sessionStarted = eventName == "agent.session.started" ||
-                                    eventName == "agent.session.start" ||
-                                    eventName == "agent.prompt.submit";
+                                    eventName == "agent.session.start";
+        const bool promptSubmitted = eventName == "agent.prompt.submit";
         const auto agent = params.get("agent", params.get("cli_source", "")).asString();
         auto resumeCommandline = params.get("resume_commandline", "").asString();
         if (resumeCommandline.empty() && !agent.empty() && !agentSessionId.empty())
         {
             resumeCommandline = winrt::to_string(_BuildAgentResumeCommandline(agent, agentSessionId));
         }
-        if (!eventName.empty() && !sessionEnded && !sessionStarted)
+        if (!eventName.empty() && !sessionEnded && !sessionStarted && !promptSubmitted)
         {
             return;
         }
@@ -8182,12 +8182,30 @@ namespace winrt::TerminalApp::implementation
                     }
                     else
                     {
-                        _paneAgentSessions.insert_or_assign(
-                            *paneSessionId,
-                            _PaneAgentSession{
-                                winrt::to_hstring(agentSessionId),
-                                winrt::to_hstring(agent),
-                                winrt::to_hstring(resumeCommandline) });
+                        // Copilot nested agents submit prompts with their own
+                        // non-resumable IDs. Preserve the established pane owner,
+                        // while leaving other providers' existing behavior unchanged.
+                        const bool preserveCopilotOwner = promptSubmitted &&
+                                                          agent == "copilot" &&
+                                                          _paneAgentSessions.contains(*paneSessionId);
+                        if (!preserveCopilotOwner)
+                        {
+                            if (sessionStarted)
+                            {
+                                _pendingRestoredSessionBindings.erase(*paneSessionId);
+                            }
+                            _paneAgentSessions.insert_or_assign(
+                                *paneSessionId,
+                                _PaneAgentSession{
+                                    winrt::to_hstring(agentSessionId),
+                                    winrt::to_hstring(agent),
+                                    winrt::to_hstring(resumeCommandline) });
+                            _agentPaneLog("OnPaneAgentSessionChanged: bound pane " + paneId + " to session " + agentSessionId);
+                        }
+                        else
+                        {
+                            _agentPaneLog("OnPaneAgentSessionChanged: ignored prompt session " + agentSessionId + " for already-bound pane " + paneId);
+                        }
                     }
                     return;
                 }
