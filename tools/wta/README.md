@@ -320,8 +320,8 @@ Default logs record failures without requiring `WTA_LOG=debug`:
 
 - `terminal-agent-pane.log`: the actual server PID/window/tab, requested source,
   and why pane selection failed (for example, `active_agent_without_source`,
-  `selected_pane_has_no_session`, or `explicit_source_not_found`). Capture and COM
-  failures include their stage/reason and HRESULT.
+  `selected_pane_has_no_session`, or `explicit_source_not_found`). Exceptions from
+  the page-context query are logged once at the COM boundary with their HRESULT.
 - `wta-main_helper-{pid}.log`: `pane_context_unavailable` reasons distinguish
   protocol failure, invalid response, an agent pane, and unresolved legacy lookup.
   `prompt_has_no_bound_pane` identifies the affected helper/prompt;

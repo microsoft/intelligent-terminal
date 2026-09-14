@@ -729,25 +729,6 @@ try
 }
 CATCH_RETURN()
 
-static HRESULT _paneContextFailure(const char* reason, HRESULT hr, GUID sourceSessionId, boolean hasExplicitSource, AppHost* host = nullptr) noexcept
-{
-    try
-    {
-        winrt::TerminalApp::implementation::_agentPaneLog(fmt::format(
-            "pane_context_com_failed reason={} server_pid={} window_id={} explicit_source={} source_session={} hr=0x{:08X}",
-            reason,
-            GetCurrentProcessId(),
-            host ? host->Logic().WindowProperties().WindowId() : 0,
-            hasExplicitSource != 0,
-            winrt::to_string(winrt::to_hstring(winrt::guid{ sourceSessionId })),
-            static_cast<uint32_t>(hr)));
-    }
-    catch (...)
-    {
-    }
-    return hr;
-}
-
 STDMETHODIMP TerminalProtocolComServer::GetPaneContext(
     GUID sourceSessionId,
     boolean hasExplicitSource,
@@ -759,7 +740,21 @@ try
     RETURN_HR_IF_NULL(E_POINTER, json);
     *json = nullptr;
     const auto fail = [&](const char* reason, HRESULT hr = E_FAIL, AppHost* host = nullptr) noexcept {
-        return _paneContextFailure(reason, hr, sourceSessionId, hasExplicitSource, host);
+        try
+        {
+            winrt::TerminalApp::implementation::_agentPaneLog(fmt::format(
+                "pane_context_com_failed reason={} server_pid={} window_id={} explicit_source={} source_session={} hr=0x{:08X}",
+                reason,
+                GetCurrentProcessId(),
+                host ? host->Logic().WindowProperties().WindowId() : 0,
+                hasExplicitSource != 0,
+                winrt::to_string(winrt::to_hstring(winrt::guid{ sourceSessionId })),
+                static_cast<uint32_t>(hr)));
+        }
+        catch (...)
+        {
+        }
+        return hr;
     };
     if (!s_emperor)
         return fail("server_not_initialized", E_NOT_VALID_STATE);
@@ -826,12 +821,7 @@ try
     *json = _bstrFromJson(_toJson(context));
     return S_OK;
 }
-catch (...)
-{
-    const auto hr = wil::ResultFromCaughtException();
-    _paneContextFailure("get_pane_context_exception", hr, sourceSessionId, hasExplicitSource);
-    RETURN_CAUGHT_EXCEPTION();
-}
+CATCH_RETURN()
 
 STDMETHODIMP TerminalProtocolComServer::GetProcessStatus(GUID sessionId, BSTR* json)
 try

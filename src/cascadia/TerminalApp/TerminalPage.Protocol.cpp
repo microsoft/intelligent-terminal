@@ -208,32 +208,6 @@ namespace winrt::TerminalApp::implementation
         Protocol::PaneContext result{};
         std::shared_ptr<Pane> targetPane;
         uint32_t targetTabIndex = UINT32_MAX;
-        winrt::guid sessionId{};
-        uint64_t windowId = 0;
-        try
-        {
-            windowId = _WindowProperties.WindowId();
-        }
-        catch (...)
-        {
-        }
-        const auto logFailure = [&](const char* reason, HRESULT hr = S_OK) noexcept {
-            try
-            {
-                _agentPaneLog(fmt::format("pane_context_unavailable reason={} server_pid={} window_id={} tab_index={} explicit_source={} source_session={} selected_session={} hr=0x{:08X}",
-                                          reason,
-                                          GetCurrentProcessId(),
-                                          windowId,
-                                          targetTabIndex,
-                                          hasExplicitSource,
-                                          winrt::to_string(winrt::to_hstring(sourceSessionId)),
-                                          winrt::to_string(winrt::to_hstring(sessionId)),
-                                          static_cast<uint32_t>(hr)));
-            }
-            catch (...)
-            {
-            }
-        };
         const char* missingReason = hasExplicitSource ? "explicit_source_not_found" : "no_focused_tab";
 
         if (hasExplicitSource)
@@ -263,7 +237,23 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        sessionId = targetPane ? _getSessionIdFromPane(targetPane) : winrt::guid{};
+        const auto sessionId = targetPane ? _getSessionIdFromPane(targetPane) : winrt::guid{};
+        const auto logFailure = [&](const char* reason) noexcept {
+            try
+            {
+                _agentPaneLog(fmt::format("pane_context_unavailable reason={} server_pid={} window_id={} tab_index={} explicit_source={} source_session={} selected_session={}",
+                                          reason,
+                                          GetCurrentProcessId(),
+                                          _WindowProperties.WindowId(),
+                                          targetTabIndex,
+                                          hasExplicitSource,
+                                          winrt::to_string(winrt::to_hstring(sourceSessionId)),
+                                          winrt::to_string(winrt::to_hstring(sessionId))));
+            }
+            catch (...)
+            {
+            }
+        };
         if (!targetPane || sessionId == winrt::guid{} || targetPane->IsAgentPane())
         {
             logFailure(!targetPane               ? missingReason :
@@ -308,23 +298,17 @@ namespace winrt::TerminalApp::implementation
         }
         catch (...)
         {
-            logFailure("read_last_prompt_failed", winrt::to_hresult());
             LOG_CAUGHT_EXCEPTION();
             result.FallbackReason = L"last_command_error";
         }
 
         if (!lastCommand.empty())
         {
-            Protocol::PaneContext bounded{};
-            try
-            {
-                bounded = co_await _buildBoundedPaneContext(lastCommand, maxLines, maxCharacters, true);
-            }
-            catch (...)
-            {
-                logFailure("bound_last_prompt_failed", winrt::to_hresult());
-                throw;
-            }
+            const auto bounded = co_await _buildBoundedPaneContext(
+                lastCommand,
+                maxLines,
+                maxCharacters,
+                true);
             result.Content = bounded.Content;
             result.OutputSource = L"last_command";
             result.LineCount = bounded.LineCount;
@@ -338,27 +322,13 @@ namespace winrt::TerminalApp::implementation
         {
             result.FallbackReason = L"marks_unavailable";
         }
-        hstring bufferTail;
-        try
-        {
-            bufferTail = termControl.ReadBufferTail(maxLines + 1, maxCharacters + maxLines + 2);
-        }
-        catch (...)
-        {
-            logFailure("read_buffer_tail_failed", winrt::to_hresult());
-            throw;
-        }
+        const auto bufferTail = termControl.ReadBufferTail(maxLines + 1, maxCharacters + maxLines + 2);
 
-        Protocol::PaneContext bounded{};
-        try
-        {
-            bounded = co_await _buildBoundedPaneContext(bufferTail, maxLines, maxCharacters, false);
-        }
-        catch (...)
-        {
-            logFailure("bound_buffer_tail_failed", winrt::to_hresult());
-            throw;
-        }
+        const auto bounded = co_await _buildBoundedPaneContext(
+            bufferTail,
+            maxLines,
+            maxCharacters,
+            false);
         result.Content = bounded.Content;
         result.LineCount = bounded.LineCount;
         result.Truncated = bounded.Truncated;
