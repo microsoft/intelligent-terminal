@@ -65,6 +65,7 @@ namespace TerminalAppUnitTests
         }
         const auto actual = D::ProcessIdentity(reportHandle.get());
         VERIFY_ARE_EQUAL(expected["instance_id"].asString(), actual["instance_id"].asString());
+        VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(reportHandle.get(), 0));
     }
 
     void ProtocolParsingTests::DiagnosticProcessHandleAcquisitionIsSynchronized()
@@ -85,6 +86,7 @@ namespace TerminalAppUnitTests
             const auto process = pin.Duplicate();
             VERIFY_IS_TRUE(static_cast<bool>(process));
             VERIFY_ARE_EQUAL(expected, D::ProcessIdentity(process.get())["instance_id"].asString());
+            VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_TIMEOUT), WaitForSingleObject(process.get(), 0));
         }
     }
 

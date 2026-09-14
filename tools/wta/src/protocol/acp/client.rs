@@ -5837,7 +5837,7 @@ async fn dispatch_prompt_body(
         prompt.agent_id(),
     );
     let (text, prompt_source, resolved_target_pane) = if prompt.is_agent_command() {
-        tracing::debug!(target: "acp.terminal_context",
+        tracing::info!(target: "acp.terminal_context",
             session_id = %crate::diagnostics::identity(Some(&prompt_session_id_str)), prompt_id = prompt.id,
             reason_code = "agent_command", "pane_context_acquisition_skipped");
         (prompt.text.clone(), "agent_command".to_string(), None)
@@ -5863,7 +5863,7 @@ async fn dispatch_prompt_body(
         let _ = event_tx_task.send(AppEvent::PromptTemplateLoaded { name });
         (text, source, target)
     };
-    tracing::debug!(target: "acp.terminal_context",
+    tracing::info!(target: "acp.terminal_context",
         session_id = %crate::diagnostics::identity(Some(&prompt_session_id_str)), prompt_id = prompt.id,
         owner_tab = %crate::diagnostics::identity(prompt.pane_context.as_ref().and_then(|c| c.tab_id.as_deref())),
         owner_window = %crate::diagnostics::identity(prompt.pane_context.as_ref().and_then(|c| c.window_id.as_deref())),
@@ -5885,7 +5885,7 @@ async fn dispatch_prompt_body(
             resolved_target_pane.clone(),
             prompt.is_autofix(),
         ) {
-            Ok(_) => tracing::debug!(target: "proposal_channel",
+            Ok(_) => tracing::info!(target: "proposal_channel",
                 session_id = %crate::diagnostics::identity(Some(&prompt_session_id_str)), prompt_id = prompt.id,
                 bound_target_present = resolved_target_pane.is_some(),
                 bound_target = %crate::diagnostics::identity(resolved_target_pane.as_deref()),

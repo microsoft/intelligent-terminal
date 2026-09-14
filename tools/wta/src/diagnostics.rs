@@ -162,6 +162,30 @@ pub(crate) fn current_process_start() -> Option<u64> {
     None
 }
 
+pub(crate) fn process_start_by_id(pid: u32) -> Option<u64> {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::{
+            Foundation::CloseHandle,
+            System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION},
+        };
+        // SAFETY: query-only access to one process, with the owned handle closed below.
+        let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+        if process.is_null() {
+            return None;
+        }
+        let start = process_start(process);
+        // SAFETY: this function owns the handle.
+        unsafe { CloseHandle(process) };
+        start
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = pid;
+        None
+    }
+}
+
 #[cfg(windows)]
 pub(crate) fn log_connected_master(pipe: &tokio::net::windows::named_pipe::NamedPipeClient) {
     use std::os::windows::io::AsRawHandle;

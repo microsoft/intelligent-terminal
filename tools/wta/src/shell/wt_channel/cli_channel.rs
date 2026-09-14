@@ -156,9 +156,10 @@ async fn run_wtcli_one_shot(
     })?;
     let child_pid = child.id();
     if pane_context_request {
-        tracing::debug!(target: "acp.terminal_context",
+        tracing::info!(target: "acp.terminal_context",
             helper_pid = std::process::id(), wtcli_pid = child_pid,
             helper_start_time_filetime = crate::diagnostics::current_process_start(),
+            wtcli_start_time_filetime = child_pid.and_then(crate::diagnostics::process_start_by_id),
             "pane_context_wtcli_started");
     }
     let stdout = child.stdout.take();
@@ -1063,7 +1064,7 @@ impl WtChannel for CliChannel {
                 let result = self.run_wtcli(&args).await;
                 if let Ok(context) = &result {
                     let provenance = crate::diagnostics::context_provenance(context);
-                    tracing::debug!(target: "acp.terminal_context",
+                    tracing::info!(target: "acp.terminal_context",
                         helper_pid = std::process::id(), provenance = %provenance,
                         "pane_context_server_provenance");
                 }

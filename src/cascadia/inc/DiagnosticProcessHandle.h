@@ -20,7 +20,7 @@ namespace IntelligentTerminal::Diagnostics
         {
             wil::unique_handle copy;
             if (process)
-                DuplicateHandle(GetCurrentProcess(), process, GetCurrentProcess(), copy.put(), PROCESS_QUERY_LIMITED_INFORMATION, FALSE, 0);
+                DuplicateHandle(GetCurrentProcess(), process, GetCurrentProcess(), copy.put(), PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, 0);
             const std::lock_guard guard{ _lock };
             _process = std::move(copy);
         }

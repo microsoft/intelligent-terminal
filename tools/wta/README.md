@@ -263,11 +263,12 @@ metadata describes **collection time**; helper-origin and actual connected-maste
 provenance are recorded in request/connect logs. An owned master is not assumed
 to be the master a transferred helper currently uses.
 Helper root handles are independently pinned during process creation/handoff,
-before the ConPTY output thread can close the original handle. The query-only
+before the ConPTY output thread can close the original handle. The query/wait-only
 duplicate API is synchronized separately from connection teardown; it never
 duplicates the old borrowed `RootProcessHandle` or reopens a PID. The pin lasts
 until the connection is destroyed, so a record can describe an exited root
-process. Pin/acquisition failures are reported as unavailable, not guessed.
+process. Synchronize access permits a zero-time liveness check; no process
+mutation rights are retained. Pin/acquisition failures are reported as unavailable, not guessed.
 
 Binary entries distinguish actual process images, installed sibling
 `wta.exe`/`wtcli.exe` candidates, and an already-loaded `OpenConsoleProxy.dll`.
@@ -304,23 +305,17 @@ are not retried.
 
 ### Diagnosing an unbound action target
 
-Enable logging **before a fresh launch**, after closing all Intelligent Terminal
-windows normally. Master inherits its launch environment, but helper ConPTY
-profiles normally regenerate theirs from the registry. Setting only `$env:WTA_LOG`
-can therefore enable master logging without enabling helper logging.
+Use **Report a bug** without enabling debug logging. Release-default INFO
+records successful context acquisition, actual server provenance, final target
+and prompt binding; failures and action rejections are WARN. This preserves
+evidence for both missing targets and successful selection of an unintended
+window. It does not enable ACP payload logging or globally raise verbosity.
+Explicit `warn`/`off` filters still suppress INFO evidence.
 
-In a separate PowerShell window, retain both previous values for restoration:
-
-```powershell
-$previousUserWtaLog = [Environment]::GetEnvironmentVariable('WTA_LOG', 'User')
-$previousProcessWtaLog = $env:WTA_LOG
-[Environment]::SetEnvironmentVariable('WTA_LOG', 'debug', 'User')
-$env:WTA_LOG = 'debug'
-wtai
-# After reproducing and closing Intelligent Terminal normally:
-[Environment]::SetEnvironmentVariable('WTA_LOG', $previousUserWtaLog, 'User')
-$env:WTA_LOG = $previousProcessWtaLog
-```
+If checking an existing logging override, remember that master inherits its
+launch environment while helper ConPTY profiles normally regenerate theirs
+from the registry. Each role's startup record is authoritative; a process-only
+environment change does not prove what another role used.
 
 `logging_configuration` records role/PID, the first valid filter source
 (`WTA_LOG`, `RUST_LOG`, or default), its maximum level, and whether the ACP
@@ -345,10 +340,13 @@ Tool names come from the known action-tool enum, not request text.
   `response_contract_invalid`, `agent_pane_selected`, or
   `legacy_source_unresolved`. A failed protocol request alone does **not** prove
   absence of a source: inspect the C++ phase/HRESULT. `no_channel` and deliberate
-  agent-command context skips are DEBUG, not warnings. Old protocol servers
+  agent-command context skips are INFO, not warnings. Old protocol servers
   retain the observable `pane_context_legacy_fallback` path.
 * `prompt_context_binding` records the final proposed binding, including an absent
   target; cancellation or channel-issue failure can still prevent its use.
+  `terminal_context_target_resolved` includes the captured pane, numeric
+  protocol tab index (`target_tab`) and window ID; `owner_tab` in the prompt
+  span is a stable tab GUID, not that index.
   `prompt_binding_issued` confirms successful channel issuance with that target.
   `terminal_action_validation_rejected` records stage, known binding, tool,
   retryability and a stable reason code (`no_active_target`, `malformed_payload`,
@@ -369,7 +367,7 @@ Tool names come from the known action-tool enum, not request text.
   Numeric pane IDs are tab-local; `4294967295` denotes an unavailable numeric ID.
 
 For Rust → CLI → COM correlation, `pane_context_wtcli_started` supplies the
-child PID inside the prompt span; `pane_context_wtcli_failed` retains the PID
+child PID and best-effort creation time inside the prompt span; `pane_context_wtcli_failed` retains the PID
 and a safe failure category at WARN (spawn failure has no child PID).
 CLI `pane_context_wtcli` brackets its COM call
 with the same PID and creation time, and records the validated server identity

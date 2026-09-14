@@ -469,6 +469,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C191` `[UT~]` `[E2E]` **Log version directory is correct:** Packaged builds write under the current package-version log directory. _(UT: `runtime_paths` resolution.)_
 - [ ] `C192` `[UT~]` `[E2E]` **Old log cleanup is safe:** Starting the new build does not delete logs from the currently running version. _(UT: housekeeping prune logic.)_
 - [ ] `C193` `[E2E]` **Bug report zip includes agent logs:** Diagnostic collection includes WTA, hook, and terminal-agent-pane logs.
+- [ ] `C318` `[new]` `[E2E]` **Bug reports preserve default pane diagnostics:** The real Report a bug ZIP includes allowlisted settings, stashed helper/source state, pinned process/build identities, default-INFO helper prompt binding and actual COM provenance, plus an explicit missing-source failure. _(PR #947; E2E: `Feature.BugReport`.)_
 - [ ] `C194` `[E2E]` **Release log level is reasonable:** Default release logging is not excessively noisy.
 - [ ] `C195` `[E2E]` **Early startup failures are logged:** Failures before agent connection still land in logs.
 

@@ -442,7 +442,7 @@ async fn capture_pane_context(
             (pane, Some(value))
         }
         Err(error) if format!("{error:#}").contains("WT_PROTOCOL_UNSUPPORTED_PANE_CONTEXT") => {
-            tracing::debug!(
+            tracing::info!(
                 target: "acp.terminal_context",
                 explicit_source = explicit_source.is_some(),
                 "pane_context_legacy_fallback"
@@ -478,7 +478,7 @@ async fn capture_pane_context(
             .and_then(serde_json::Value::as_str)
             .filter(|content| !content.is_empty())
             .map(|content| preserve_protocol_truncation(content, max_chars, protocol_truncated));
-        tracing::debug!(
+        tracing::info!(
             target: "acp.terminal_context",
             explicit_source = explicit_source.is_some(),
             rpc_ms = started.elapsed().as_millis() as u64,
@@ -534,10 +534,12 @@ async fn build_terminal_context(
     let target_shell = shell_from_active(&active);
     let resolver_invocation = command_resolver_invocation(target_shell.as_deref(), Some(&active));
 
-    tracing::debug!(
+    tracing::info!(
         target: "acp.terminal_context",
-        target_pane_id = %target_pane_id,
-        shell = ?target_shell,
+        target_pane_id = %identity(Some(&target_pane_id)),
+        target_tab = %identity(json_str_or_num(active.get("tab_id")).as_deref()),
+        target_window = %identity(json_str_or_num(active.get("window_id")).as_deref()),
+        mode = "planner",
         "terminal_context_target_resolved"
     );
 
@@ -601,7 +603,7 @@ pub(super) async fn resolve_provider_context(
         },
     };
     if !wt_connected {
-        tracing::debug!(target: "acp.terminal_context", reason_code = "no_channel",
+        tracing::info!(target: "acp.terminal_context", reason_code = "no_channel",
             "pane_context_acquisition_skipped");
         return resolved;
     }
@@ -647,10 +649,11 @@ pub(super) async fn resolve_provider_context(
     resolved.context_pane = Some(captured.pane);
     resolved.terminal_output = captured.output;
 
-    tracing::debug!(
+    tracing::info!(
         target: "acp.terminal_context",
-        source_pane_id = ?source_pane_id,
-        shell = ?resolved.shell_exe,
+        target_pane_id = %identity(source_pane_id.as_deref()),
+        target_tab = %identity(resolved.context_pane.as_ref().and_then(|p| json_str_or_num(p.get("tab_id"))).as_deref()),
+        target_window = %identity(resolved.context_pane.as_ref().and_then(|p| json_str_or_num(p.get("window_id"))).as_deref()),
         mode = "autofix",
         "terminal_context_target_resolved"
     );
@@ -1260,6 +1263,86 @@ pub(super) mod tests {
 
         fn flush(&mut self) -> std::io::Result<()> {
             Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn diagnostics_info_filter_records_success_and_failure_without_content() {
+        use tracing::{instrument::WithSubscriber, Instrument};
+
+        for filter in ["info", "warn", "off"] {
+            for failure in [false, true] {
+                for is_autofix in [false, true] {
+                    let target = "12345678-1234-1234-1234-123456789abc";
+                    let context = PaneContext {
+                        pane_id: Some("PRIVATE_HELPER".into()),
+                        tab_id: Some("42".into()),
+                        window_id: Some("7".into()),
+                        source_pane_id: Some(target.into()),
+                        cwd: Some("PRIVATE_CWD".into()),
+                    };
+                    let mut response = pane_context_response();
+                    response["pane"] = serde_json::json!({
+                        "session_id": target, "is_agent_pane": false,
+                        "tab_id": 42, "window_id": 7,
+                        "shell": "PRIVATE_SHELL", "title": "PRIVATE_TITLE", "cwd": "PRIVATE_CWD"
+                    });
+                    response["content"] = serde_json::json!("PRIVATE_OUTPUT");
+                    let channel = Arc::new(RecordingPaneContextChannel {
+                        requests: AtomicUsize::new(0),
+                        params: Mutex::new(None),
+                        error: failure.then_some("PRIVATE_STDERR"),
+                        response: Some(response),
+                    });
+                    let mgr = ShellManager::new().with_wt_channel(channel);
+                    let logs = Arc::new(Mutex::new(Vec::new()));
+                    let writer = logs.clone();
+                    let subscriber = tracing_subscriber::fmt()
+                        .without_time()
+                        .with_ansi(false)
+                        .with_env_filter(tracing_subscriber::EnvFilter::new(filter))
+                        .with_writer(move || SharedWriter(writer.clone()))
+                        .finish();
+                    async {
+                        resolve_provider_context(is_autofix, true, &mgr, Some(&context))
+                            .instrument(diagnostic_span("PRIVATE_SESSION", 91, Some(&context)))
+                            .await
+                    }
+                    .with_subscriber(subscriber)
+                    .await;
+                    let log = String::from_utf8(logs.lock().unwrap().clone()).unwrap();
+                    assert!(!log.contains("PRIVATE"), "{log}");
+                    if filter == "off" || (filter == "warn" && !failure) {
+                        assert!(log.is_empty(), "{log}");
+                        continue;
+                    }
+                    for expected in [
+                        "prompt_id=91",
+                        "owner_tab=42",
+                        "owner_window=7",
+                        "helper_pane=unsupported_redacted",
+                        "session_id=unsupported_redacted",
+                        target,
+                    ] {
+                        assert!(log.contains(expected), "{log}");
+                    }
+                    if failure {
+                        assert!(log.contains("pane_context_acquisition_failed"), "{log}");
+                        assert!(log.contains("protocol_request_failed"), "{log}");
+                        assert!(!log.contains("terminal_context_target_resolved"), "{log}");
+                    } else {
+                        for expected in [
+                            "INFO",
+                            "pane_context_request_complete",
+                            "terminal_context_target_resolved",
+                            "target_tab=42",
+                            "target_window=7",
+                        ] {
+                            assert!(log.contains(expected), "{log}");
+                        }
+                    }
+                }
+            }
         }
     }
 

@@ -37,6 +37,7 @@ authenticated ACP agents. Current status (run on the Store package):
 | `Feature.AutofixParser.Tests.ps1` | issue #474: PowerShell ParserError-to-Autofix pipeline + success/handled-error/blank-input negative controls | 4 |
 | `Feature.AutofixRouting.Tests.ps1` | Two Detected tabs: real diagnostics clicks submit only to the selected tab's ACP session and preserve the other tab's opt-in | 1 |
 | `Feature.PaneContext.Tests.ps1` | issue #838: packaged pane-context capture, marked/unmarked output, explicit routing, missing panes, metadata-only mode, Unicode bounds, and agent-focus source resolution | 7 |
+| `Feature.BugReport.Tests.ps1` | PR #947: real UI ZIP, allowlisted diagnostics, stashed helper identities, default-INFO prompt binding and successful/failed COM requests; deterministic ACP fixture, Release WTA with no logging overrides | 2 |
 | `Feature.CommandResolution.Tests.ps1` | PR #418: packaged WTA resolves PowerShell profile-only aliases to their real targets | 1 |
 | `Feature.AutofixCommandResolution.Tests.ps1` | Issue #844: Debug Dev, deterministic ACP fixture; no startup/tab-selection probes, first/later Autofix contracts without enumeration, and explicit local-candidate lookup | 3 |
 | `Feature.SessionList.Tests.ps1` | session view (button + `/sessions` slash), session states, view switching (incl. draft-preservation), focus/restore | 13 (+1 skip) |
@@ -111,6 +112,16 @@ results, and scoped helper logs. The fixture uses disposable command files and
 does not modify the user's PowerShell profile or consume model quota.
 
 ## What it gives you
+
+`Feature.BugReport` requires a package containing **Release WTA**, with no
+`WTA_LOG`/`RUST_LOG` process/user/machine overrides. It refuses to cold-start over
+existing selected-package windows. The fixture consumes no model quota; settings
+are restored by ItE2E. Set `ITE2E_EXPECTED_WTA_SHA256` to pin the intended build.
+Report ZIPs and metadata evidence are retained under `artifacts/bug-report-*`;
+`ITE2E_RETAIN_BUG_REPORT=1` also retains the original Desktop ZIP.
+**Raw logs in these archives are not redacted and must not be uploaded blindly.**
+The missing-source control exercises the real CLI/COM failure path, not a
+helper-side missing-binding MCP rejection; unit tests cover that separate path.
 
 Three planes, all built on self-verifying primitives:
 
