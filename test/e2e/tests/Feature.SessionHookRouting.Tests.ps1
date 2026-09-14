@@ -76,7 +76,12 @@ Describe 'Feature: session hook fan-out routing' -Tag 'Feature' -Skip:(-not $scr
             )
             $file = Join-Path $TestDrive "hook-$([guid]::NewGuid().ToString('N')).json"
             [System.IO.File]::WriteAllText($file, ($Payload | ConvertTo-Json -Compress))
-            $cmd = "Get-Content -Raw -LiteralPath '$file' | wtcli.exe agent-hook --cli-source copilot --event $Event"
+            $cmd = "`$__itHadCopilotSession=Test-Path Env:COPILOT_SESSION_ID; " +
+            "`$__itSavedCopilotSession=`$env:COPILOT_SESSION_ID; " +
+            "try { Remove-Item Env:COPILOT_SESSION_ID -ErrorAction SilentlyContinue; " +
+            "Get-Content -Raw -LiteralPath '$file' | wtcli.exe agent-hook --cli-source copilot --event $Event } " +
+            "finally { if (`$__itHadCopilotSession) { `$env:COPILOT_SESSION_ID=`$__itSavedCopilotSession } " +
+            "else { Remove-Item Env:COPILOT_SESSION_ID -ErrorAction SilentlyContinue } }"
             Invoke-RunCommand -App $script:app -SessionId $script:shellPane -Command $cmd -SettleSec $SettleSec | Out-Null
         }
 

@@ -105,11 +105,26 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
             [System.IO.File]::WriteAllText($p, $Json)
             $p
         }
+
+        function script:Use-CopilotSessionEnvironment {
+            param([AllowNull()]$SessionId, [string]$Command)
+            $configure = if ($null -eq $SessionId) {
+                'Remove-Item Env:COPILOT_SESSION_ID -ErrorAction SilentlyContinue'
+            }
+            else {
+                "`$env:COPILOT_SESSION_ID='$SessionId'"
+            }
+            "`$__itHadCopilotSession=Test-Path Env:COPILOT_SESSION_ID; " +
+            "`$__itSavedCopilotSession=`$env:COPILOT_SESSION_ID; " +
+            "try { $configure; $Command } finally { " +
+            "if (`$__itHadCopilotSession) { `$env:COPILOT_SESSION_ID=`$__itSavedCopilotSession } " +
+            "else { Remove-Item Env:COPILOT_SESSION_ID -ErrorAction SilentlyContinue } }"
+        }
     }
 
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
 
-    It 'Native hook bridge publishes events (wtcli agent-hook publishes a pane-scoped, redacted agent event)' {
+    It 'wtcli agent-hook publishes a pane-scoped, redacted agent event and falls back to a payload session without a Copilot root environment session' {
         $paneId = (Get-ActivePane -App $script:app).session_id
         $agentSessionId = "native-hook-$([guid]::NewGuid())"
         $secret = 'must-not-cross-the-hook-bridge'
@@ -125,7 +140,8 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
             messages        = @($secret)
             model           = $secret
         } | ConvertTo-Json -Compress
-        $command = "'$payload' | wtcli.exe agent-hook --cli-source copilot --event agent.prompt.submit"
+        $command = script:Use-CopilotSessionEnvironment -SessionId $null `
+            -Command "'$payload' | wtcli.exe agent-hook --cli-source copilot --event agent.prompt.submit"
 
         $listener = Start-WtEventListener -App $script:app
         try {
@@ -151,6 +167,32 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
         }
     }
 
+    It 'Copilot hook bridge prefers the durable environment session over a payload child session' {
+        $paneId = (Get-ActivePane -App $script:app).session_id
+        # COPILOT_SESSION_ID is a CLI-owned identifier, not a Terminal GUID.
+        # Its current production value is UUID-shaped, but the bridge must not
+        # discard a valid future opaque root in favour of a payload child.
+        $rootSessionId = "copilot-root-$([guid]::NewGuid().ToString('N'))"
+        $childSessionId = [guid]::NewGuid().ToString()
+        $payload = @{ session_id = $childSessionId; cwd = 'C:\native-hook-test' } | ConvertTo-Json -Compress
+        $command = script:Use-CopilotSessionEnvironment -SessionId $rootSessionId `
+            -Command "'$payload' | wtcli.exe agent-hook --cli-source copilot --event agent.prompt.submit"
+
+        $listener = Start-WtEventListener -App $script:app
+        try {
+            Invoke-RunCommand -App $script:app -SessionId $paneId -Command $command -SettleSec 3 | Out-Null
+            $event = Wait-WtEvent -Listener $listener -TimeoutSec 20 -Predicate {
+                $_.method -eq 'agent_event' -and
+                $_.params.agent_session_id -eq $rootSessionId
+            }
+            $event.params.agent_session_id | Should -Be $rootSessionId
+            $event.params.agent_session_id | Should -Not -Be $childSessionId
+        }
+        finally {
+            Stop-WtEventListener -Listener $listener
+        }
+    }
+
     It 'Hook payload keeps interactive tool input (tool_input is dropped for ordinary tools and kept for ask_user)' {
         # A conditional retention rule fails in both directions: drop too much and the
         # proposal UI loses the question it must render; drop too little and every shell
@@ -170,7 +212,8 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
         $listener = Start-WtEventListener -App $script:app
         try {
             foreach ($f in @($ordinary, $interactive)) {
-                $cmd = "Get-Content -Raw -LiteralPath '$f' | wtcli.exe agent-hook --cli-source copilot --event agent.tool.starting"
+                $cmd = script:Use-CopilotSessionEnvironment -SessionId $null `
+                    -Command "Get-Content -Raw -LiteralPath '$f' | wtcli.exe agent-hook --cli-source copilot --event agent.tool.starting"
                 Invoke-RunCommand -App $script:app -SessionId $paneId -Command $cmd -SettleSec 3 | Out-Null
             }
 
@@ -208,17 +251,19 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
 
         $listener = Start-WtEventListener -App $script:app
         try {
-            $gatedCmd = "`$saved=`$env:WT_SESSION; `$env:WT_SESSION=''; " +
-            "Get-Content -Raw -LiteralPath '$gated' | wtcli.exe agent-hook --cli-source copilot --event agent.stop; " +
-            '"GATED_EXIT=$LASTEXITCODE"'
+            $gatedCmd = script:Use-CopilotSessionEnvironment -SessionId $null -Command (
+                "`$saved=`$env:WT_SESSION; `$env:WT_SESSION=''; " +
+                "Get-Content -Raw -LiteralPath '$gated' | wtcli.exe agent-hook --cli-source copilot --event agent.stop; " +
+                '"GATED_EXIT=$LASTEXITCODE"')
             $out = Invoke-RunCommand -App $script:app -SessionId $paneId -Command $gatedCmd -SettleSec 10
             $out | Should -Match 'GATED_EXIT=0' -Because 'a gated hook must still succeed, or a fail-closed CLI would break'
 
             # Positive control: the same pane with the gate restored. Waiting for THIS
             # event is what makes the negative assertion below sound — it proves the
             # listener was live and that enough time passed for a gated event to appear.
-            $controlCmd = "`$env:WT_SESSION=`$saved; " +
-            "Get-Content -Raw -LiteralPath '$control' | wtcli.exe agent-hook --cli-source copilot --event agent.stop"
+            $controlCmd = script:Use-CopilotSessionEnvironment -SessionId $null -Command (
+                "`$env:WT_SESSION=`$saved; " +
+                "Get-Content -Raw -LiteralPath '$control' | wtcli.exe agent-hook --cli-source copilot --event agent.stop")
             Invoke-RunCommand -App $script:app -SessionId $paneId -Command $controlCmd -SettleSec 10 | Out-Null
             $controlEvent = $null
             try {
@@ -258,8 +303,9 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
 
         $listener = Start-WtEventListener -App $script:app
         try {
-            $cmd = "Get-Content -Raw -LiteralPath '$payload' | wtcli.exe agent-hook --cli-source copilot --event agent.session.start; " +
-            '"BOUND" + "_EXIT=$LASTEXITCODE"'
+            $cmd = script:Use-CopilotSessionEnvironment -SessionId $null -Command (
+                "Get-Content -Raw -LiteralPath '$payload' | wtcli.exe agent-hook --cli-source copilot --event agent.session.start; " +
+                '"BOUND" + "_EXIT=$LASTEXITCODE"')
             $out = Invoke-RunCommand -App $script:app -SessionId $paneId -Command $cmd -SettleSec 20
             $out | Should -Match 'BOUND_EXIT=0' -Because 'the bridge must never fail its CLI, whatever it decides to publish'
 
@@ -267,8 +313,9 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
             # event arrived" means it was dropped rather than merely missed.
             $controlId = "bound-control-$([guid]::NewGuid())"
             $control = script:Write-HookPayload -Name 'bound-control' -Dir $TestDrive -Json (@{ session_id = $controlId } | ConvertTo-Json -Compress)
-            Invoke-RunCommand -App $script:app -SessionId $paneId -SettleSec 20 `
-                -Command "Get-Content -Raw -LiteralPath '$control' | wtcli.exe agent-hook --cli-source copilot --event agent.session.start" | Out-Null
+            $controlCommand = script:Use-CopilotSessionEnvironment -SessionId $null `
+                -Command "Get-Content -Raw -LiteralPath '$control' | wtcli.exe agent-hook --cli-source copilot --event agent.session.start"
+            Invoke-RunCommand -App $script:app -SessionId $paneId -SettleSec 20 -Command $controlCommand | Out-Null
             $controlEvent = $null
             try {
                 $controlEvent = Wait-WtEvent -Listener $listener -TimeoutSec 30 -Predicate {
@@ -320,6 +367,9 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
                 if (-not $invocation) {
                     Set-ItResult -Inconclusive -Because "no Git Bash on this machine, so the bash-dispatched bundle ($($c.Label)) cannot be exercised"
                     return
+                }
+                if ($c.Cli -eq 'copilot') {
+                    $invocation = script:Use-CopilotSessionEnvironment -SessionId $null -Command $invocation
                 }
 
                 $out = Invoke-RunCommand -App $script:app -SessionId $paneId -Command ($invocation + '; "SHIPPED_EXIT=$LASTEXITCODE"') -SettleSec 15
