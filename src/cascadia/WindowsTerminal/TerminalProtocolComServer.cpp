@@ -7,7 +7,6 @@
 #include "WindowEmperor.h"
 #include "AppHost.h"
 #include "../TerminalApp/AgentPaneLog.h"
-#include "../inc/DiagnosticsIdentity.h"
 
 #include <json/json.h>
 #include <til/io.h>
@@ -19,10 +18,6 @@
 
 #include <wrl/module.h>
 #include <wil/resource.h>
-#include <rpc.h>
-#include <rpcasync.h>
-
-#pragma comment(lib, "Rpcrt4.lib")
 
 using namespace Microsoft::WRL;
 
@@ -37,13 +32,6 @@ static DWORD g_comRegistration = 0;
 static std::shared_mutex g_mtx;
 static std::thread g_comMtaThread;
 static wil::unique_event g_comMtaStop;
-static std::atomic<uint64_t> g_contextRequestId{ 0 };
-
-static const Json::Value& _diagnosticServerIdentity()
-{
-    static const auto identity = IntelligentTerminal::Diagnostics::CurrentServerIdentity();
-    return identity;
-}
 
 // Static instance tracking for event delivery to COM clients
 std::mutex TerminalProtocolComServer::s_instancesMutex;
@@ -94,12 +82,6 @@ try
             }
         }
 
-        winrt::TerminalApp::implementation::_agentPaneDiagnostic([&] {
-            return fmt::format("INFO com_registration pid={} clsid={} hr=0x{:08X}",
-                               GetCurrentProcessId(),
-                               winrt::to_string(winrt::to_hstring(winrt::guid{ __uuidof(TerminalProtocolComServer) })),
-                               static_cast<uint32_t>(regHr));
-        });
         ready.SetEvent();
 
         // Keep this MTA thread alive so the COM registration stays active.
@@ -539,15 +521,6 @@ try
     v["authenticated"] = true;
     // 2.3 — GetPaneContext resolves and captures bounded pane context in one call.
     v["protocol_version"] = "2.3";
-    try
-    {
-        v["server_identity"] = _diagnosticServerIdentity();
-        v["server_identity"]["com_clsid"] = winrt::to_string(winrt::to_hstring(winrt::guid{ __uuidof(TerminalProtocolComServer) }));
-    }
-    catch (...)
-    {
-        v["server_identity"]["status"] = "unavailable";
-    }
     *resultJson = _bstrFromJson(v);
     return S_OK;
 }
@@ -756,154 +729,108 @@ try
 }
 CATCH_RETURN()
 
+static HRESULT _paneContextFailure(const char* reason, HRESULT hr, GUID sourceSessionId, boolean hasExplicitSource, AppHost* host = nullptr) noexcept
+{
+    try
+    {
+        winrt::TerminalApp::implementation::_agentPaneLog(fmt::format(
+            "pane_context_com_failed reason={} server_pid={} window_id={} explicit_source={} source_session={} hr=0x{:08X}",
+            reason,
+            GetCurrentProcessId(),
+            host ? host->Logic().WindowProperties().WindowId() : 0,
+            hasExplicitSource != 0,
+            winrt::to_string(winrt::to_hstring(winrt::guid{ sourceSessionId })),
+            static_cast<uint32_t>(hr)));
+    }
+    catch (...)
+    {
+    }
+    return hr;
+}
+
 STDMETHODIMP TerminalProtocolComServer::GetPaneContext(
     GUID sourceSessionId,
     boolean hasExplicitSource,
     long maxLines,
     long maxCharacters,
     BSTR* json)
+try
 {
-    const auto requestId = ++g_contextRequestId;
-    // Best effort for local RPC only; a failed query leaves caller_pid unknown.
-    RPC_CALL_ATTRIBUTES_V2_W attributes{};
-    attributes.Version = 2;
-    attributes.Flags = RPC_QUERY_CLIENT_PID;
-    const auto callerQuery = RpcServerInqCallAttributesW(nullptr, &attributes);
-    const auto callerPid = callerQuery == RPC_S_OK ? reinterpret_cast<ULONG_PTR>(attributes.ClientPID) : 0;
-    uint64_t windowId = 0;
-    const auto diagnosticWindow = [&](const auto& host) noexcept {
+    RETURN_HR_IF_NULL(E_POINTER, json);
+    *json = nullptr;
+    const auto fail = [&](const char* reason, HRESULT hr = E_FAIL, AppHost* host = nullptr) noexcept {
+        return _paneContextFailure(reason, hr, sourceSessionId, hasExplicitSource, host);
+    };
+    if (!s_emperor)
+        return fail("server_not_initialized", E_NOT_VALID_STATE);
+    const auto getContext = [&](const auto& page, AppHost* host) {
         try
         {
-            windowId = host->Logic().WindowProperties().WindowId();
+            return page.GetProtocolPaneContext(
+                           hasExplicitSource ? winrt::guid{ sourceSessionId } : winrt::guid{},
+                           hasExplicitSource != 0,
+                           maxLines,
+                           maxCharacters)
+                .get();
         }
         catch (...)
         {
-            windowId = 0;
+            fail("page_context_exception", wil::ResultFromCaughtException(), host);
+            throw;
         }
-    };
-    const char* phase = "validate";
-    const auto finish = [&](const HRESULT hr) noexcept {
-        winrt::TerminalApp::implementation::_agentPaneDiagnostic([&] {
-            Json::StreamWriterBuilder writer;
-            writer["indentation"] = "";
-            return fmt::format("{} pane_context_com pid={} thread={} caller_pid={} caller_query_status={} window={} explicit={} source={} phase={} hr=0x{:08X} request_id={} protocol=2.3 server_identity={}",
-                               FAILED(hr) ? "WARN" : "DEBUG",
-                               GetCurrentProcessId(),
-                               GetCurrentThreadId(),
-                               callerPid,
-                               callerQuery,
-                               windowId,
-                               hasExplicitSource != 0,
-                               winrt::to_string(winrt::to_hstring(winrt::guid{ sourceSessionId })),
-                               phase,
-                               static_cast<uint32_t>(hr),
-                               requestId,
-                               Json::writeString(writer, _diagnosticServerIdentity()));
-        });
-        return hr;
-    };
-    const auto serialize = [&](const auto& context) {
-        auto value = _toJson(context);
-        try
-        {
-            value["diagnostics"]["server_identity"] = _diagnosticServerIdentity();
-            value["diagnostics"]["request_id"] = Json::UInt64{ requestId };
-            value["diagnostics"]["caller_pid"] = callerQuery == RPC_S_OK ? Json::Value{ Json::UInt64{ callerPid } } : Json::Value{};
-            value["diagnostics"]["caller_query_status"] = static_cast<Json::UInt>(callerQuery);
-        }
-        catch (...)
-        {
-            // Optional diagnostics never prevent an otherwise valid capture.
-            value.removeMember("diagnostics");
-        }
-        return _bstrFromJson(value);
     };
 
-    try
+    constexpr long MaxContextLines = 1000;
+    constexpr long MaxContextCharacters = 100000;
+    RETURN_HR_IF(E_INVALIDARG, maxLines < 0 || maxLines > MaxContextLines);
+    RETURN_HR_IF(E_INVALIDARG, maxCharacters < 0 || maxCharacters > MaxContextCharacters);
+
+    const auto windows = s_emperor->GetWindows();
+    if (hasExplicitSource)
     {
-        if (!json)
-            return finish(E_POINTER);
-        *json = nullptr;
-        if (!s_emperor)
-            return finish(E_NOT_VALID_STATE);
+        RETURN_HR_IF(E_INVALIDARG, InlineIsEqualGUID(sourceSessionId, GUID{}));
 
-        constexpr long MaxContextLines = 1000;
-        constexpr long MaxContextCharacters = 100000;
-        if (maxLines < 0 || maxLines > MaxContextLines || maxCharacters < 0 || maxCharacters > MaxContextCharacters)
-            return finish(E_INVALIDARG);
-
-        phase = "window_enumeration";
-        const auto windows = s_emperor->GetWindows();
-        if (hasExplicitSource)
+        for (const auto& host : windows)
         {
-            phase = "validate_source";
-            if (InlineIsEqualGUID(sourceSessionId, GUID{}))
-                return finish(E_INVALIDARG);
-
-            for (const auto& host : windows)
+            const auto page = _getPage(host.get());
+            if (!page)
             {
-                diagnosticWindow(host);
-                phase = "page_lookup";
-                const auto page = _getPage(host.get());
-                if (!page)
-                {
-                    continue;
-                }
-
-                phase = "page_context";
-                finish(S_OK);
-                auto context = page.GetProtocolPaneContext(
-                                       winrt::guid{ sourceSessionId },
-                                       true,
-                                       maxLines,
-                                       maxCharacters)
-                                   .get();
-                if (context.Pane.SessionId != winrt::guid{})
-                {
-                    phase = "owner_metadata";
-                    context.Pane.WindowId = host->Logic().WindowProperties().WindowId();
-                    phase = "serialize";
-                    *json = serialize(context);
-                    phase = "complete";
-                    return finish(S_OK);
-                }
+                fail("page_unavailable", E_FAIL, host.get());
+                continue;
             }
-            phase = "source_not_found";
-            return finish(HRESULT_FROM_WIN32(ERROR_NOT_FOUND));
+
+            auto context = getContext(page, host.get());
+            if (context.Pane.SessionId != winrt::guid{})
+            {
+                context.Pane.WindowId = host->Logic().WindowProperties().WindowId();
+                *json = _bstrFromJson(_toJson(context));
+                return S_OK;
+            }
         }
-
-        phase = "most_recent_host";
-        const auto host = _getMostRecentHost(windows);
-        if (!host)
-            return finish(E_FAIL);
-
-        diagnosticWindow(host);
-        phase = "page_lookup";
-        const auto page = _getPage(host.get());
-        if (!page)
-            return finish(E_FAIL);
-
-        phase = "page_context";
-        finish(S_OK);
-        auto context = page.GetProtocolPaneContext({}, false, maxLines, maxCharacters).get();
-        if (context.Pane.SessionId == winrt::guid{})
-        {
-            phase = "source_unresolved";
-            return finish(E_FAIL);
-        }
-
-        phase = "owner_metadata";
-        context.Pane.WindowId = host->Logic().WindowProperties().WindowId();
-        phase = "serialize";
-        *json = serialize(context);
-        phase = "complete";
-        return finish(S_OK);
+        return fail("explicit_source_not_found", HRESULT_FROM_WIN32(ERROR_NOT_FOUND));
     }
-    catch (...)
-    {
-        finish(winrt::to_hresult());
-        RETURN_CAUGHT_EXCEPTION();
-    }
+
+    const auto host = _getMostRecentHost(windows);
+    if (!host)
+        return fail("no_recent_host");
+
+    const auto page = _getPage(host.get());
+    if (!page)
+        return fail("page_unavailable", E_FAIL, host.get());
+
+    auto context = getContext(page, host.get());
+    if (context.Pane.SessionId == winrt::guid{})
+        return fail("page_returned_no_pane", E_FAIL, host.get());
+
+    context.Pane.WindowId = host->Logic().WindowProperties().WindowId();
+    *json = _bstrFromJson(_toJson(context));
+    return S_OK;
+}
+catch (...)
+{
+    const auto hr = wil::ResultFromCaughtException();
+    _paneContextFailure("get_pane_context_exception", hr, sourceSessionId, hasExplicitSource);
+    RETURN_CAUGHT_EXCEPTION();
 }
 
 STDMETHODIMP TerminalProtocolComServer::GetProcessStatus(GUID sessionId, BSTR* json)

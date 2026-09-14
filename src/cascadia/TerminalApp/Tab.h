@@ -338,7 +338,7 @@ namespace winrt::TerminalApp::implementation
         void _AttachEventHandlersToContent(const uint32_t paneId, const winrt::TerminalApp::IPaneContent& content);
         void _AttachEventHandlersToPane(std::shared_ptr<Pane> pane);
 
-        void _UpdateActivePane(std::shared_ptr<Pane> pane, const char* diagnosticTrigger = "structure");
+        void _UpdateActivePane(std::shared_ptr<Pane> pane);
         void _UpdateMenuItemStates();
         void _UpdateAgentPaneIndicators();
 

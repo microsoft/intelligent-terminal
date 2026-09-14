@@ -119,17 +119,6 @@ pub enum ProposalError {
 }
 
 impl ProposalError {
-    /// Never expose payload-dependent error text in diagnostic logs.
-    pub(crate) fn diagnostic_code(&self) -> &'static str {
-        match self {
-            Self::TooLarge { .. } => "payload_too_large",
-            Self::Malformed(_) => "malformed_payload",
-            Self::UnsupportedSchemaVersion(_) => "unsupported_schema_version",
-            Self::PolicyViolation(reason) if reason == MISSING_ACTIVE_TARGET => "no_active_target",
-            Self::PolicyViolation(_) => "policy_violation",
-        }
-    }
-
     pub fn reason(&self) -> String {
         match self {
             ProposalError::TooLarge { size } => {
@@ -859,13 +848,16 @@ fn convert_terminal_agent_action(
     }
 }
 
-const MISSING_ACTIVE_TARGET: &str = "the prompt has no active pane for this action";
-
 fn require_active_target(active_target: Option<&str>) -> Result<String, ProposalError> {
     active_target
         .filter(|target| !target.trim().is_empty())
         .map(str::to_string)
-        .ok_or_else(|| ProposalError::PolicyViolation(MISSING_ACTIVE_TARGET.to_string()))
+        .ok_or_else(|| {
+            tracing::warn!(target: "proposal_channel", "terminal_action_no_active_target");
+            ProposalError::PolicyViolation(
+                "the prompt has no active pane for this action".to_string(),
+            )
+        })
 }
 
 fn panel_parent(
@@ -912,38 +904,6 @@ fn check_len(field: &str, value: &str, max_chars: usize) -> Result<(), ProposalE
 mod tests {
     use super::*;
     use serde_json::{json, Value};
-
-    #[test]
-    fn diagnostics_classify_without_payload_text() {
-        for (error, expected) in [
-            (
-                ProposalError::Malformed("SECRET".into()),
-                "malformed_payload",
-            ),
-            (
-                ProposalError::PolicyViolation("SECRET".into()),
-                "policy_violation",
-            ),
-            (
-                ProposalError::TooLarge { size: usize::MAX },
-                "payload_too_large",
-            ),
-            (
-                ProposalError::UnsupportedSchemaVersion(99),
-                "unsupported_schema_version",
-            ),
-        ] {
-            assert_eq!(error.diagnostic_code(), expected);
-            assert!(!error.diagnostic_code().contains("SECRET"));
-        }
-        for target in [None, Some(""), Some(" \t")] {
-            assert_eq!(
-                require_active_target(target).unwrap_err().diagnostic_code(),
-                "no_active_target"
-            );
-        }
-        assert_eq!(require_active_target(Some("pane-1")).unwrap(), "pane-1");
-    }
 
     fn terminal_agent_wire() -> ProposalWire {
         ProposalWire {

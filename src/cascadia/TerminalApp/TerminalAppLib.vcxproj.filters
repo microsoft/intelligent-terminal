@@ -2,10 +2,6 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Natvis Include="$(SolutionDir)tools\ConsoleTypes.natvis" />
-    <ClInclude Include="BugReportDiagnostics.h" />
-    <ClInclude Include="..\inc\DiagnosticsIdentity.h" />
-    <ClInclude Include="..\inc\DiagnosticsMetadata.h" />
-    <ClInclude Include="..\inc\TerminalProtocolClsid.h" />
   </ItemGroup>
   <ItemGroup>
     <PRIResource Include="Resources\en-US\Resources.resw" />
@@ -13,7 +9,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="init.cpp" />
-    <ClCompile Include="TerminalPage.Diagnostics.cpp" />
     <ClCompile Include="pch.cpp" />
     <ClCompile Include="$(GeneratedFilesDir)module.g.cpp" />
     <ClCompile Include="Pane.cpp">

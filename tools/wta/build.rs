@@ -50,7 +50,6 @@ fn main() {
         .and_then(Path::parent)
         .unwrap_or_else(|| panic!("could not derive repo root from {}", manifest_dir.display()))
         .to_path_buf();
-    emit_build_identity(&repo_root);
 
     // Resolve the telemetry header the same way the C++ include path does
     // (`src\inc` before `dep`): real header overlaid at `src/inc/...` by the
@@ -104,40 +103,6 @@ fn main() {
     fs::write(&out_path, generated).unwrap_or_else(|e| {
         panic!("failed to write {}: {e}", out_path.display());
     });
-}
-
-fn emit_build_identity(root: &Path) {
-    let git = |args: &[&str]| -> Option<String> {
-        let output = std::process::Command::new("git")
-            .current_dir(root)
-            .args(args)
-            .output()
-            .ok()?;
-        output
-            .status
-            .success()
-            .then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
-    };
-    // Worktrees have a .git *file* and a private HEAD, while their branch ref
-    // and packed-refs live in the common git directory. Watch all of them.
-    println!("cargo:rerun-if-changed={}", root.join(".git").display());
-    for name in ["HEAD", "packed-refs"] {
-        if let Some(path) = git(&["rev-parse", "--git-path", name]) {
-            println!("cargo:rerun-if-changed={}", root.join(path).display());
-        }
-    }
-    if let Some(reference) = git(&["symbolic-ref", "-q", "HEAD"]) {
-        if let Some(path) = git(&["rev-parse", "--git-path", &reference]) {
-            println!("cargo:rerun-if-changed={}", root.join(path).display());
-        }
-    }
-    let commit = git(&["rev-parse", "--verify", "HEAD"]).filter(|value| {
-        matches!(value.len(), 40 | 64) && value.bytes().all(|byte| byte.is_ascii_hexdigit())
-    });
-    println!(
-        "cargo:rustc-env=WTA_BUILD_COMMIT={}",
-        commit.as_deref().unwrap_or("unavailable")
-    );
 }
 
 /// Extract the Microsoft telemetry group GUID from the

@@ -350,7 +350,6 @@ namespace winrt::TerminalApp::implementation
         /// diagnostic logging only; routing in the shared-wta
         /// architecture is by tab StableId, not by PID.
         DWORD ProcessId() const noexcept;
-        wil::unique_handle DiagnosticProcessHandle() const;
 
         /// Path to the Windows named pipe that wta-master is
         /// listening on. Generated once at first acquire (per-process

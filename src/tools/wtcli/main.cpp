@@ -7,8 +7,6 @@
 #include "Formatting.h"
 #include "wtcli_functions.h"
 #include "../../cascadia/TerminalProtocol/ProtocolParsing.h"
-#include "../../cascadia/TerminalApp/AgentPaneLog.h"
-#include "../../cascadia/inc/DiagnosticsIdentity.h"
 
 // Classic-COM Terminal protocol. Generated from
 // src/host/proxy/ITerminalProtocol.idl; found via the OpenConsoleProxy IntDir
@@ -80,11 +78,8 @@ static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticate
                                                            std::string* outVersion = nullptr,
                                                            bool skipAuthenticate = false,
                                                            bool quiet = false,
-                                                           bool requireProtocolVersion = false,
-                                                           Json::Value* outIdentity = nullptr)
+                                                           bool requireProtocolVersion = false)
 {
-    if (outIdentity)
-        *outIdentity = IntelligentTerminal::Diagnostics::ServerIdentity({});
     if (outAuthenticated)
         *outAuthenticated = false;
     if (outVersion)
@@ -138,8 +133,6 @@ static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticate
             parsed = true;
             authenticated = v["authenticated"].asBool();
             version = v["protocol_version"].asString();
-            if (outIdentity && v.isObject())
-                *outIdentity = IntelligentTerminal::Diagnostics::ServerIdentity(v["server_identity"]);
         }
     }
     if (rawAuth)
@@ -621,27 +614,7 @@ int wmain(int argc, wchar_t** argv)
         }
 
         std::string version;
-        Json::Value identity;
-        const auto logContextCall = [&](const char* phase, const HRESULT hr) noexcept {
-            winrt::TerminalApp::implementation::_agentPaneDiagnostic([&] {
-                Json::Value event;
-                event["event"] = "pane_context_wtcli";
-                event["pid"] = static_cast<Json::UInt>(GetCurrentProcessId());
-                event["client_identity"] = IntelligentTerminal::Diagnostics::ProcessIdentity(GetCurrentProcess());
-                event["phase"] = phase;
-                event["explicit"] = hasExplicitSource;
-                event["hresult"] = static_cast<uint32_t>(hr);
-                event["server_identity"] = identity.isObject() ? identity : IntelligentTerminal::Diagnostics::ServerIdentity({});
-                event["protocol_version"] = IntelligentTerminal::Diagnostics::IsVersion(version) ? version : "unavailable";
-                event["environment"] = IntelligentTerminal::Diagnostics::EnvironmentProvenance();
-                Json::StreamWriterBuilder writer;
-                writer["indentation"] = "";
-                return std::string{ FAILED(hr) ? "WARN " : "DEBUG " } + Json::writeString(writer, event);
-            });
-        };
-        logContextCall("connect_start", S_OK);
-        auto server = ConnectToTerminal(nullptr, &version, skipAuthenticate, false, true, &identity);
-        logContextCall("connect_complete", server ? S_OK : E_FAIL);
+        auto server = ConnectToTerminal(nullptr, &version, skipAuthenticate, false, true);
         if (!server)
         {
             exitCode = 1;
@@ -674,7 +647,6 @@ int wmain(int argc, wchar_t** argv)
             return;
         }
 
-        logContextCall("com_request", S_OK);
         Json::Value context;
         const auto hr = CallJson([&](BSTR* json) {
             return server->GetPaneContext(
@@ -684,7 +656,6 @@ int wmain(int argc, wchar_t** argv)
                 paneContextMaxCharacters,
                 json);
         }, context);
-        logContextCall("com_response", hr);
         if (FAILED(hr))
         {
             fprintf(stderr, "GetPaneContext failed: 0x%08X\n", static_cast<uint32_t>(hr));
@@ -887,8 +858,7 @@ int wmain(int argc, wchar_t** argv)
         auto hasClsid = GetEnvironmentVariableW(L"WT_COM_CLSID", clsid, ARRAYSIZE(clsid)) > 0;
 
         std::string version;
-        Json::Value identity;
-        auto server = ConnectToTerminal(nullptr, &version, skipAuthenticate, false, false, &identity);
+        auto server = ConnectToTerminal(nullptr, &version, skipAuthenticate);
 
         Json::Value methods(Json::arrayValue);
         if (server)
@@ -899,12 +869,9 @@ int wmain(int argc, wchar_t** argv)
         if (jsonMode)
         {
             Json::Value v;
-            const auto environment = IntelligentTerminal::Diagnostics::EnvironmentProvenance();
-            if (environment.isMember("wt_com_clsid"))
-                v["com_clsid"] = environment["wt_com_clsid"];
-            v["com_clsid_status"] = environment["wt_com_clsid_status"];
+            if (hasClsid)
+                v["com_clsid"] = winrt::to_string(winrt::hstring{ clsid });
             v["connected"] = (server != nullptr);
-            v["server_identity"] = identity;
             if (!version.empty())
                 v["protocol_version"] = version;
             v["methods"] = methods.isArray() ? methods : Json::Value(Json::arrayValue);

@@ -20,26 +20,10 @@
 use async_trait::async_trait;
 
 use crate::coordinator::default_supported_delegate_agents;
-use crate::diagnostics::identity;
 use crate::pane_context::PaneContext;
 use crate::shell::ShellManager;
 
 const ACTIVE_PANE_CONTEXT_MAX_CHARS: usize = 4000;
-
-pub(super) fn diagnostic_span(
-    session_id: &str,
-    prompt_id: u64,
-    context: Option<&PaneContext>,
-) -> tracing::Span {
-    // WARN keeps correlation on failure without emitting a warning itself.
-    tracing::warn_span!(target: "acp.terminal_context", "prompt_context",
-        session_id = %identity(Some(session_id)),
-        prompt_id,
-        owner_tab = %identity(context.and_then(|c| c.tab_id.as_deref())),
-        owner_window = %identity(context.and_then(|c| c.window_id.as_deref())),
-        helper_pane = %identity(context.and_then(|c| c.pane_id.as_deref())),
-        explicit_source = %identity(context.and_then(|c| c.source_pane_id.as_deref())))
-}
 
 fn truncate_for_prompt(text: &str, max_chars: usize) -> String {
     let mut chars = text.chars();
@@ -133,12 +117,12 @@ async fn read_pane_last_message_legacy(
                 }
             }
         }
-        Err(_) => {
+        Err(err) => {
             tracing::debug!(
                 target: "acp.last_message",
-                pane_id = %identity(Some(pane_id)),
+                pane_id,
                 rpc_ms = mark_call_ms,
-                reason_code = "protocol_request_failed",
+                error = %err,
                 "last_message_rpc_err"
             );
         }
@@ -169,10 +153,10 @@ async fn read_pane_last_message_legacy(
             total_ms = started.elapsed().as_millis() as u64,
             "last_message_result"
         ),
-        None => tracing::warn!(
+        None => tracing::debug!(
             target: "acp.last_message",
-            pane_id = %identity(Some(pane_id)),
-            reason_code = "buffer_capture_failed",
+            pane_id,
+            path = "empty",
             fallback_lines,
             fallback_ms = fb_ms,
             total_ms = started.elapsed().as_millis() as u64,
@@ -326,50 +310,6 @@ struct CapturedPaneContext {
     output: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ContextFailure {
-    ProtocolRequestFailed,
-    ResponseContractInvalid,
-    AgentPaneSelected,
-    LegacySourceUnresolved,
-}
-
-impl ContextFailure {
-    fn code(self) -> &'static str {
-        match self {
-            Self::ProtocolRequestFailed => "protocol_request_failed",
-            Self::ResponseContractInvalid => "response_contract_invalid",
-            Self::AgentPaneSelected => "agent_pane_selected",
-            // Legacy enumeration suppresses transport errors as well as misses.
-            Self::LegacySourceUnresolved => "legacy_source_unresolved",
-        }
-    }
-}
-
-fn protocol_output_source(value: &serde_json::Value) -> &'static str {
-    match value
-        .get("output_source")
-        .and_then(serde_json::Value::as_str)
-    {
-        Some("last_command") => "last_command",
-        Some("buffer_tail") => "buffer_tail",
-        Some("metadata_only") => "metadata_only",
-        _ => "unknown",
-    }
-}
-
-fn protocol_fallback_reason(value: &serde_json::Value) -> &'static str {
-    match value
-        .get("fallback_reason")
-        .and_then(serde_json::Value::as_str)
-    {
-        Some("") => "none",
-        Some("marks_unavailable") => "marks_unavailable",
-        Some("last_command_error") => "last_command_error",
-        _ => "unknown",
-    }
-}
-
 fn validate_pane_context(value: &serde_json::Value) -> Result<&serde_json::Value, &'static str> {
     if !value.is_object() {
         return Err("response must be an object");
@@ -419,8 +359,17 @@ async fn capture_pane_context(
     explicit_source: Option<&str>,
     max_lines: u32,
     max_chars: usize,
-) -> Result<CapturedPaneContext, ContextFailure> {
+) -> Option<CapturedPaneContext> {
     let started = std::time::Instant::now();
+    let warn_unavailable = |reason: &'static str| {
+        tracing::warn!(
+            target: "acp.terminal_context",
+            reason,
+            explicit_source = explicit_source.is_some(),
+            rpc_ms = started.elapsed().as_millis() as u64,
+            "pane_context_unavailable"
+        );
+    };
     let (pane, response) = match shell_mgr
         .wt_get_pane_context(explicit_source, max_lines, max_chars)
         .await
@@ -431,41 +380,52 @@ async fn capture_pane_context(
                 Err(error) => {
                     tracing::warn!(
                         target: "acp.terminal_context",
+                        reason = "response_contract_invalid",
                         explicit_source = explicit_source.is_some(),
                         rpc_ms = started.elapsed().as_millis() as u64,
                         error,
                         "pane_context_response_contract_error"
                     );
-                    return Err(ContextFailure::ResponseContractInvalid);
+                    return None;
                 }
             };
             (pane, Some(value))
         }
         Err(error) if format!("{error:#}").contains("WT_PROTOCOL_UNSUPPORTED_PANE_CONTEXT") => {
-            tracing::info!(
+            tracing::warn!(
                 target: "acp.terminal_context",
                 explicit_source = explicit_source.is_some(),
                 "pane_context_legacy_fallback"
             );
             let pane = match explicit_source {
-                Some(source) => resolve_pane_by_session_id(shell_mgr, source)
-                    .await
-                    .ok_or(ContextFailure::LegacySourceUnresolved)?,
-                None => shell_mgr
-                    .wt_get_active_pane()
-                    .await
-                    .map_err(|_| ContextFailure::ProtocolRequestFailed)?,
+                Some(source) => resolve_pane_by_session_id(shell_mgr, source).await,
+                None => shell_mgr.wt_get_active_pane().await.ok(),
+            };
+            let Some(pane) = pane else {
+                warn_unavailable("legacy_source_unresolved");
+                return None;
             };
             (pane, None)
         }
-        Err(_) => return Err(ContextFailure::ProtocolRequestFailed),
+        Err(error) => {
+            warn_unavailable("protocol_request_failed");
+            tracing::debug!(
+                target: "acp.terminal_context",
+                explicit_source = explicit_source.is_some(),
+                rpc_ms = started.elapsed().as_millis() as u64,
+                error = %error,
+                "pane_context_request_failed"
+            );
+            return None;
+        }
     };
     if pane
         .get("is_agent_pane")
         .and_then(serde_json::Value::as_bool)
         .unwrap_or(false)
     {
-        return Err(ContextFailure::AgentPaneSelected);
+        warn_unavailable("agent_pane_selected");
+        return None;
     }
 
     let output = if let Some(value) = response {
@@ -478,22 +438,28 @@ async fn capture_pane_context(
             .and_then(serde_json::Value::as_str)
             .filter(|content| !content.is_empty())
             .map(|content| preserve_protocol_truncation(content, max_chars, protocol_truncated));
-        tracing::info!(
+        tracing::debug!(
             target: "acp.terminal_context",
             explicit_source = explicit_source.is_some(),
             rpc_ms = started.elapsed().as_millis() as u64,
-            output_source = protocol_output_source(&value),
-            fallback_reason = protocol_fallback_reason(&value),
+            output_source = value
+                .get("output_source")
+                .and_then(serde_json::Value::as_str),
+            fallback_reason = value
+                .get("fallback_reason")
+                .and_then(serde_json::Value::as_str),
             truncated = value.get("truncated").and_then(serde_json::Value::as_bool),
             "pane_context_request_complete"
         );
         output
     } else {
-        let pane_id = json_str_or_num(pane.get("session_id"))
-            .ok_or(ContextFailure::ResponseContractInvalid)?;
+        let pane_id = json_str_or_num(pane.get("session_id")).or_else(|| {
+            warn_unavailable("legacy_source_unresolved");
+            None
+        })?;
         read_pane_last_message_legacy(shell_mgr, &pane_id, max_lines, max_chars).await
     };
-    Ok(CapturedPaneContext { pane, output })
+    Some(CapturedPaneContext { pane, output })
 }
 
 struct PlannerTerminalContext {
@@ -505,7 +471,7 @@ struct PlannerTerminalContext {
 async fn build_terminal_context(
     shell_mgr: &ShellManager,
     pane_context: Option<&PaneContext>,
-) -> Result<PlannerTerminalContext, ContextFailure> {
+) -> Option<PlannerTerminalContext> {
     let captured = capture_pane_context(
         shell_mgr,
         pane_context.and_then(|context| context.source_pane_id.as_deref()),
@@ -515,8 +481,7 @@ async fn build_terminal_context(
     .await?;
     let active = captured.pane;
 
-    let target_pane_id =
-        json_str_or_num(active.get("session_id")).ok_or(ContextFailure::ResponseContractInvalid)?;
+    let target_pane_id = json_str_or_num(active.get("session_id"))?;
     let target_window_title = active
         .get("title")
         .and_then(|v| v.as_str())
@@ -534,12 +499,10 @@ async fn build_terminal_context(
     let target_shell = shell_from_active(&active);
     let resolver_invocation = command_resolver_invocation(target_shell.as_deref(), Some(&active));
 
-    tracing::info!(
+    tracing::debug!(
         target: "acp.terminal_context",
-        target_pane_id = %identity(Some(&target_pane_id)),
-        target_tab = %identity(json_str_or_num(active.get("tab_id")).as_deref()),
-        target_window = %identity(json_str_or_num(active.get("window_id")).as_deref()),
-        mode = "planner",
+        target_pane_id = %target_pane_id,
+        shell = ?target_shell,
         "terminal_context_target_resolved"
     );
 
@@ -551,9 +514,9 @@ async fn build_terminal_context(
         "locale": user_locale_tag(),
         "buffer": captured.output,
     }))
-    .map_err(|_| ContextFailure::ResponseContractInvalid)?;
+    .ok()?;
 
-    Ok(PlannerTerminalContext {
+    Some(PlannerTerminalContext {
         json,
         target_pane_id,
         resolver_invocation,
@@ -603,40 +566,27 @@ pub(super) async fn resolve_provider_context(
         },
     };
     if !wt_connected {
-        tracing::info!(target: "acp.terminal_context", reason_code = "no_channel",
-            "pane_context_acquisition_skipped");
         return resolved;
     }
     if !is_autofix {
-        match build_terminal_context(shell_mgr, pane_context).await {
-            Ok(context) => {
-                resolved.planner_terminal_context = Some(context.json);
-                resolved.resolved_planner_pane = Some(context.target_pane_id);
-                resolved.command_resolver_invocation = context.resolver_invocation;
-            }
-            Err(error) => tracing::warn!(target: "acp.terminal_context",
-                reason_code = error.code(), stage = "context_acquisition",
-                "pane_context_acquisition_failed"),
+        if let Some(context) = build_terminal_context(shell_mgr, pane_context).await {
+            resolved.planner_terminal_context = Some(context.json);
+            resolved.resolved_planner_pane = Some(context.target_pane_id);
+            resolved.command_resolver_invocation = context.resolver_invocation;
         }
         return resolved;
     }
 
     let explicit_source = pane_context.and_then(|ctx| ctx.source_pane_id.as_deref());
-    let captured = match capture_pane_context(
+    let Some(captured) = capture_pane_context(
         shell_mgr,
         explicit_source,
         30,
         ACTIVE_PANE_CONTEXT_MAX_CHARS,
     )
     .await
-    {
-        Ok(captured) => captured,
-        Err(error) => {
-            tracing::warn!(target: "acp.terminal_context",
-                reason_code = error.code(), stage = "context_acquisition",
-                "pane_context_acquisition_failed");
-            return resolved;
-        }
+    else {
+        return resolved;
     };
 
     let source_pane_id = json_str_or_num(captured.pane.get("session_id"));
@@ -649,11 +599,10 @@ pub(super) async fn resolve_provider_context(
     resolved.context_pane = Some(captured.pane);
     resolved.terminal_output = captured.output;
 
-    tracing::info!(
+    tracing::debug!(
         target: "acp.terminal_context",
-        target_pane_id = %identity(source_pane_id.as_deref()),
-        target_tab = %identity(resolved.context_pane.as_ref().and_then(|p| json_str_or_num(p.get("tab_id"))).as_deref()),
-        target_window = %identity(resolved.context_pane.as_ref().and_then(|p| json_str_or_num(p.get("window_id"))).as_deref()),
+        source_pane_id = ?source_pane_id,
+        shell = ?resolved.shell_exe,
         mode = "autofix",
         "terminal_context_target_resolved"
     );
@@ -1085,7 +1034,12 @@ pub(super) mod tests {
             method: &str,
             params: serde_json::Value,
         ) -> anyhow::Result<serde_json::Value> {
-            assert_eq!(method, "get_pane_context");
+            if method != "get_pane_context" {
+                assert!(self
+                    .error
+                    .is_some_and(|error| error.contains("WT_PROTOCOL_UNSUPPORTED_PANE_CONTEXT")));
+                assert!(matches!(method, "get_active_pane" | "list_windows"));
+            }
             self.requests.fetch_add(1, Ordering::Relaxed);
             *self.params.lock().unwrap() = Some(params);
             if let Some(error) = self.error {
@@ -1123,31 +1077,6 @@ pub(super) mod tests {
         assert_eq!(params["session_id"], "pane-explicit");
         assert_eq!(params["max_lines"], 30);
         assert_eq!(params["max_chars"], 4000);
-    }
-
-    #[tokio::test]
-    async fn diagnostics_optional_metadata_preserves_capture_and_binding() {
-        for metadata in [
-            serde_json::Value::Null,
-            serde_json::json!({"server_identity": true}),
-            serde_json::json!({"request_id": 1, "caller_pid": 2, "server_identity": {"pid": 3, "start_time_filetime": "134000000000000000"}}),
-        ] {
-            let mut response = pane_context_response();
-            response["diagnostics"] = metadata;
-            let channel = Arc::new(RecordingPaneContextChannel {
-                requests: AtomicUsize::new(0),
-                params: Mutex::new(None),
-                error: None,
-                response: Some(response),
-            });
-            let mgr = ShellManager::new().with_wt_channel(channel.clone());
-            let captured = capture_pane_context(&mgr, Some("pane-explicit"), 30, 4000)
-                .await
-                .expect("optional diagnostics must not change capture acceptance");
-            assert_eq!(captured.pane["session_id"], "pane-explicit");
-            assert_eq!(captured.output.as_deref(), Some("command output"));
-            assert_eq!(channel.requests.load(Ordering::Relaxed), 1);
-        }
     }
 
     #[tokio::test]
@@ -1253,237 +1182,22 @@ pub(super) mod tests {
         }
     }
 
-    struct SharedWriter(Arc<Mutex<Vec<u8>>>);
-
-    impl std::io::Write for SharedWriter {
-        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-            self.0.lock().unwrap().extend_from_slice(bytes);
-            Ok(bytes.len())
-        }
-
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-
     #[tokio::test]
-    async fn diagnostics_info_filter_records_success_and_failure_without_content() {
-        use tracing::{instrument::WithSubscriber, Instrument};
-
-        for filter in ["info", "warn", "off"] {
-            for failure in [false, true] {
-                for is_autofix in [false, true] {
-                    let target = "12345678-1234-1234-1234-123456789abc";
-                    let context = PaneContext {
-                        pane_id: Some("PRIVATE_HELPER".into()),
-                        tab_id: Some("42".into()),
-                        window_id: Some("7".into()),
-                        source_pane_id: Some(target.into()),
-                        cwd: Some("PRIVATE_CWD".into()),
-                    };
-                    let mut response = pane_context_response();
-                    response["pane"] = serde_json::json!({
-                        "session_id": target, "is_agent_pane": false,
-                        "tab_id": 42, "window_id": 7,
-                        "shell": "PRIVATE_SHELL", "title": "PRIVATE_TITLE", "cwd": "PRIVATE_CWD"
-                    });
-                    response["content"] = serde_json::json!("PRIVATE_OUTPUT");
-                    let channel = Arc::new(RecordingPaneContextChannel {
-                        requests: AtomicUsize::new(0),
-                        params: Mutex::new(None),
-                        error: failure.then_some("PRIVATE_STDERR"),
-                        response: Some(response),
-                    });
-                    let mgr = ShellManager::new().with_wt_channel(channel);
-                    let logs = Arc::new(Mutex::new(Vec::new()));
-                    let writer = logs.clone();
-                    let subscriber = tracing_subscriber::fmt()
-                        .without_time()
-                        .with_ansi(false)
-                        .with_env_filter(tracing_subscriber::EnvFilter::new(filter))
-                        .with_writer(move || SharedWriter(writer.clone()))
-                        .finish();
-                    async {
-                        resolve_provider_context(is_autofix, true, &mgr, Some(&context))
-                            .instrument(diagnostic_span("PRIVATE_SESSION", 91, Some(&context)))
-                            .await
-                    }
-                    .with_subscriber(subscriber)
-                    .await;
-                    let log = String::from_utf8(logs.lock().unwrap().clone()).unwrap();
-                    assert!(!log.contains("PRIVATE"), "{log}");
-                    if filter == "off" || (filter == "warn" && !failure) {
-                        assert!(log.is_empty(), "{log}");
-                        continue;
-                    }
-                    for expected in [
-                        "prompt_id=91",
-                        "owner_tab=42",
-                        "owner_window=7",
-                        "helper_pane=unsupported_redacted",
-                        "session_id=unsupported_redacted",
-                        target,
-                    ] {
-                        assert!(log.contains(expected), "{log}");
-                    }
-                    if failure {
-                        assert!(log.contains("pane_context_acquisition_failed"), "{log}");
-                        assert!(log.contains("protocol_request_failed"), "{log}");
-                        assert!(!log.contains("terminal_context_target_resolved"), "{log}");
-                    } else {
-                        for expected in [
-                            "INFO",
-                            "pane_context_request_complete",
-                            "terminal_context_target_resolved",
-                            "target_tab=42",
-                            "target_window=7",
-                        ] {
-                            assert!(log.contains(expected), "{log}");
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    #[tokio::test]
-    async fn diagnostics_capture_failure_warns_with_correlation_without_stderr() {
-        use tracing::{instrument::WithSubscriber, Instrument};
-
-        for is_autofix in [false, true] {
-            let channel = Arc::new(RecordingPaneContextChannel {
-                requests: AtomicUsize::new(0),
-                params: Mutex::new(None),
-                error: Some("PRIVATE_STDERR_WITH_COMMAND"),
-                response: None,
-            });
-            let mgr = ShellManager::new().with_wt_channel(channel);
-            let logs = Arc::new(Mutex::new(Vec::new()));
-            let writer = logs.clone();
-            let subscriber = tracing_subscriber::fmt()
-                .without_time()
-                .with_ansi(false)
-                .with_max_level(tracing::Level::WARN)
-                .with_writer(move || SharedWriter(writer.clone()))
-                .finish();
-            let resolved = async {
-                let span = diagnostic_span("12345678-1234-1234-1234-123456789abc", 42, None);
-                resolve_provider_context(is_autofix, true, &mgr, None)
-                    .instrument(span)
-                    .await
-            }
-            .with_subscriber(subscriber)
-            .await;
-            assert!(resolved.resolved_planner_pane.is_none());
-            assert!(resolved.resolved_fix_pane.is_none());
-            let log = String::from_utf8(logs.lock().unwrap().clone()).unwrap();
-            for expected in [
-                "WARN",
-                "12345678-1234-1234-1234-123456789abc",
-                "prompt_id=42",
-                "protocol_request_failed",
-                "pane_context_acquisition_failed",
-            ] {
-                assert!(log.contains(expected), "{log}");
-            }
-            assert!(!log.contains("PRIVATE_STDERR_WITH_COMMAND"), "{log}");
-        }
-    }
-
-    #[tokio::test]
-    async fn diagnostics_prompt_span_redacts_untrusted_identities_and_preserves_routing() {
-        use tracing::{instrument::WithSubscriber, Instrument};
-
-        for is_autofix in [false, true] {
-            for input in [
-                r"C:\Users\PRIVATE_USER\secret.txt",
-                "PRIVATE_ENV_TOKEN=secret\nFORGED_LOG",
-                "opaque-acp-session",
-                "{12345678-1234-1234-1234-123456789ABC}",
-                "42",
-            ] {
-                let context = PaneContext {
-                    pane_id: Some(input.into()),
-                    tab_id: Some(input.into()),
-                    window_id: Some(input.into()),
-                    source_pane_id: Some(input.into()),
-                    cwd: Some("PRIVATE_CWD".into()),
-                };
-                let original = context.clone();
-                let channel = Arc::new(RecordingPaneContextChannel {
-                    requests: AtomicUsize::new(0),
-                    params: Mutex::new(None),
-                    error: Some("PRIVATE_STDERR"),
-                    response: None,
-                });
-                let mgr = ShellManager::new().with_wt_channel(channel.clone());
-                let logs = Arc::new(Mutex::new(Vec::new()));
-                let writer = logs.clone();
-                let subscriber = tracing_subscriber::fmt()
-                    .without_time()
-                    .with_ansi(false)
-                    .with_max_level(tracing::Level::WARN)
-                    .with_writer(move || SharedWriter(writer.clone()))
-                    .finish();
-                async {
-                    resolve_provider_context(is_autofix, true, &mgr, Some(&context))
-                        .instrument(diagnostic_span(input, 42, Some(&context)))
-                        .await
-                }
-                .with_subscriber(subscriber)
-                .await;
-                assert_eq!(context, original);
-                assert_eq!(
-                    channel.params.lock().unwrap().as_ref().unwrap()["session_id"],
-                    input
-                );
-                let log = String::from_utf8(logs.lock().unwrap().clone()).unwrap();
-                assert!(log.contains("pane_context_acquisition_failed"), "{log}");
-                assert!(!log.contains("PRIVATE"), "{log}");
-                assert!(!log.contains("FORGED_LOG"), "{log}");
-                assert!(!log.contains("opaque-acp-session"), "{log}");
-                for field in [
-                    "session_id",
-                    "owner_tab",
-                    "owner_window",
-                    "helper_pane",
-                    "explicit_source",
-                ] {
-                    assert!(
-                        log.contains(&format!("{field}={}", identity(Some(input)))),
-                        "{log}"
-                    );
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn diagnostics_protocol_metadata_is_allowlisted() {
-        let mut value = pane_context_response();
-        assert_eq!(protocol_output_source(&value), "last_command");
-        assert_eq!(protocol_fallback_reason(&value), "none");
-        value["output_source"] = serde_json::json!("PRIVATE_COMMAND");
-        value["fallback_reason"] = serde_json::json!("PRIVATE_STDERR");
-        assert_eq!(protocol_output_source(&value), "unknown");
-        assert_eq!(protocol_fallback_reason(&value), "unknown");
-        assert_eq!(
-            ContextFailure::LegacySourceUnresolved.code(),
-            "legacy_source_unresolved"
-        );
-        assert_eq!(
-            ContextFailure::AgentPaneSelected.code(),
-            "agent_pane_selected"
-        );
-        assert_eq!(
-            ContextFailure::ResponseContractInvalid.code(),
-            "response_contract_invalid"
-        );
-    }
-
-    #[tokio::test]
-    async fn malformed_pane_context_logs_contract_error_without_fallback_or_content() {
+    async fn unavailable_pane_context_warns_without_private_content() {
         use tracing::instrument::WithSubscriber;
+
+        struct SharedWriter(Arc<Mutex<Vec<u8>>>);
+
+        impl std::io::Write for SharedWriter {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
 
         let mut cases = vec![
             (serde_json::json!(null), "response must be an object"),
@@ -1573,7 +1287,25 @@ pub(super) mod tests {
             cases.push((value, error));
         }
 
-        for (mut response, error) in cases {
+        let mut cases: Vec<_> = cases
+            .into_iter()
+            .map(|(value, error)| (value, error, None))
+            .collect();
+        let mut agent = pane_context_response();
+        agent["pane"]["is_agent_pane"] = serde_json::json!(true);
+        cases.push((agent, "agent_pane_selected", None));
+        cases.push((
+            serde_json::Value::Null,
+            "protocol_request_failed",
+            Some("DO_NOT_LOG_REQUEST_ERROR"),
+        ));
+        cases.push((
+            serde_json::Value::Null,
+            "legacy_source_unresolved",
+            Some("WT_PROTOCOL_UNSUPPORTED_PANE_CONTEXT DO_NOT_LOG_REQUEST_ERROR"),
+        ));
+
+        for (mut response, error, request_error) in cases {
             if response.is_object() {
                 response["private_terminal_content"] =
                     serde_json::json!("DO_NOT_LOG_TERMINAL_CONTENT");
@@ -1582,7 +1314,7 @@ pub(super) mod tests {
                 let channel = Arc::new(RecordingPaneContextChannel {
                     requests: AtomicUsize::new(0),
                     params: Mutex::new(None),
-                    error: None,
+                    error: request_error,
                     response: Some(response.clone()),
                 });
                 let mgr = ShellManager::new().with_wt_channel(channel.clone());
@@ -1591,26 +1323,29 @@ pub(super) mod tests {
                 let subscriber = tracing_subscriber::fmt()
                     .without_time()
                     .with_ansi(false)
-                    .with_max_level(tracing::Level::DEBUG)
+                    .with_max_level(tracing::Level::WARN)
                     .with_writer(move || SharedWriter(writer.clone()))
                     .finish();
                 let result = capture_pane_context(&mgr, explicit_source, 30, 4000)
                     .with_subscriber(subscriber)
                     .await;
-                assert!(
-                    matches!(result, Err(ContextFailure::ResponseContractInvalid)),
-                    "{response:?}"
+                assert!(result.is_none(), "{response:?}");
+                let legacy = error == "legacy_source_unresolved";
+                assert_eq!(
+                    channel.requests.load(Ordering::Relaxed),
+                    if legacy { 2 } else { 1 }
                 );
-                assert_eq!(channel.requests.load(Ordering::Relaxed), 1);
                 let log = String::from_utf8(logs.lock().unwrap().clone()).unwrap();
-                assert!(
-                    log.contains("pane_context_response_contract_error"),
+                assert!(log.contains("WARN"), "{log}");
+                assert!(log.contains(error), "{log}");
+                assert_eq!(
+                    log.contains("pane_context_legacy_fallback"),
+                    legacy,
                     "{log}"
                 );
-                assert!(log.contains(error), "{log}");
-                assert!(!log.contains("pane_context_legacy_fallback"), "{log}");
                 assert!(!log.contains("pane_context_request_complete"), "{log}");
                 assert!(!log.contains("DO_NOT_LOG_TERMINAL_CONTENT"), "{log}");
+                assert!(!log.contains("DO_NOT_LOG_REQUEST_ERROR"), "{log}");
             }
         }
     }
@@ -1702,7 +1437,7 @@ pub(super) mod tests {
                 let mgr = ShellManager::new().with_wt_channel(channel.clone());
                 let captured = capture_pane_context(&mgr, source, 30, 4000).await;
                 if is_agent {
-                    assert!(matches!(captured, Err(ContextFailure::AgentPaneSelected)));
+                    assert!(captured.is_none());
                 } else {
                     let captured = captured.expect("legacy numeric pane IDs remain supported");
                     assert_eq!(captured.pane["session_id"], 42);
@@ -1733,10 +1468,7 @@ pub(super) mod tests {
         });
         let mgr = ShellManager::new().with_wt_channel(channel.clone());
         for source in [None, Some("pane-explicit")] {
-            assert!(matches!(
-                capture_pane_context(&mgr, source, 30, 4000).await,
-                Err(ContextFailure::AgentPaneSelected)
-            ));
+            assert!(capture_pane_context(&mgr, source, 30, 4000).await.is_none());
         }
         assert_eq!(channel.requests.load(Ordering::Relaxed), 2);
     }
@@ -1744,10 +1476,7 @@ pub(super) mod tests {
     #[tokio::test]
     async fn build_terminal_context_none_without_wt_channel() {
         let mgr = ShellManager::new();
-        assert!(matches!(
-            build_terminal_context(&mgr, None).await,
-            Err(ContextFailure::ProtocolRequestFailed)
-        ));
+        assert!(build_terminal_context(&mgr, None).await.is_none());
     }
 
     #[tokio::test]
@@ -1757,10 +1486,7 @@ pub(super) mod tests {
             "is_agent_pane": true,
         }));
         assert!(
-            matches!(
-                build_terminal_context(&mgr, None).await,
-                Err(ContextFailure::AgentPaneSelected)
-            ),
+            build_terminal_context(&mgr, None).await.is_none(),
             "an active agent pane has no terminal output to ship"
         );
     }

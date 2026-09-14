@@ -73,67 +73,19 @@ namespace winrt::TerminalApp::implementation
         return {};
     }
 
-    // Only call inside an exception-isolated diagnostic block on the UI thread.
-    static const char* _protocolDiagnosticPaneType(const std::shared_ptr<Pane>& pane)
-    {
-        if (!pane)
-            return "none";
-        if (pane->IsAgentPane())
-            return "agent";
-        return pane->GetTerminalControl() ? "terminal" : "other";
-    }
-
     // These snapshot helpers are synchronous and must be called on the UI thread.
-    static std::shared_ptr<Pane> _getProtocolSourcePane(const winrt::com_ptr<Tab>& tab, const bool diagnostic = false, const uint64_t windowId = 0)
+    static std::shared_ptr<Pane> _getProtocolSourcePane(const winrt::com_ptr<Tab>& tab)
     {
         auto pane = tab->GetActivePane();
-        if (diagnostic)
-        {
-            _agentPaneDiagnostic([&] {
-                return fmt::format("DEBUG pane_context_active pid={} window={} tab={} active_present={} active_pane={} active_type={} source_scan={}",
-                                   GetCurrentProcessId(),
-                                   windowId,
-                                   winrt::to_string(tab->StableId()),
-                                   pane != nullptr,
-                                   pane ? pane->Id().value_or(UINT32_MAX) : UINT32_MAX,
-                                   _protocolDiagnosticPaneType(pane),
-                                   pane && pane->IsAgentPane());
-            });
-        }
         if (pane && pane->IsAgentPane())
         {
-            size_t sourceCount = 0;
             if (const auto rootPane = tab->GetRootPane())
             {
                 rootPane->WalkTree([&](const auto& candidate) {
                     if (candidate->IsSourceOfAgentPane())
                     {
-                        ++sourceCount;
-                        if (diagnostic)
-                        {
-                            _agentPaneDiagnostic([&] {
-                                return fmt::format("DEBUG pane_context_source_candidate pid={} window={} tab={} pane={} agent={}",
-                                                   GetCurrentProcessId(),
-                                                   windowId,
-                                                   winrt::to_string(tab->StableId()),
-                                                   candidate->Id().value_or(UINT32_MAX),
-                                                   candidate->IsAgentPane());
-                            });
-                        }
                         pane = candidate;
                     }
-                });
-            }
-            if (diagnostic)
-            {
-                _agentPaneDiagnostic([&] {
-                    return fmt::format("DEBUG pane_context_source_selection pid={} window={} tab={} source_count={} selected_pane={} selected_agent={}",
-                                       GetCurrentProcessId(),
-                                       windowId,
-                                       winrt::to_string(tab->StableId()),
-                                       sourceCount,
-                                       pane->Id().value_or(UINT32_MAX),
-                                       pane->IsAgentPane());
                 });
             }
         }
@@ -255,186 +207,162 @@ namespace winrt::TerminalApp::implementation
 
         Protocol::PaneContext result{};
         std::shared_ptr<Pane> targetPane;
-        uint32_t targetTabIndex = 0;
-        bool targetTabKnown = false;
-        uint64_t diagnosticWindow = 0;
-        bool diagnosticWindowKnown = false;
-        uint32_t diagnosticPaneId = UINT32_MAX;
-        const char* diagnosticPaneType = "unknown";
-        winrt::guid diagnosticSession{};
+        uint32_t targetTabIndex = UINT32_MAX;
+        winrt::guid sessionId{};
+        uint64_t windowId = 0;
         try
         {
-            diagnosticWindow = _WindowProperties.WindowId();
-            diagnosticWindowKnown = true;
+            windowId = _WindowProperties.WindowId();
         }
         catch (...)
         {
         }
-        const char* phase = "source_selection";
-        const auto logContext = [&](const char* level, const char* reason, const HRESULT hr) noexcept {
-            _agentPaneDiagnostic([&] {
-                // Use cached primitives: retrying a failed UI property getter
-                // here could suppress precisely the failure we need to record.
-                return fmt::format("{} pane_context_snapshot pid={} window={} window_known={} tab_index={} tab_known={} explicit={} source={} selected_present={} selected_pane={} selected_type={} selected_session={} phase={} reason_code={} hr=0x{:08X}",
-                                   level,
-                                   GetCurrentProcessId(),
-                                   diagnosticWindow,
-                                   diagnosticWindowKnown,
-                                   targetTabIndex,
-                                   targetTabKnown,
-                                   hasExplicitSource,
-                                   winrt::to_string(winrt::to_hstring(sourceSessionId)),
-                                   targetPane != nullptr,
-                                   diagnosticPaneId,
-                                   diagnosticPaneType,
-                                   winrt::to_string(winrt::to_hstring(diagnosticSession)),
-                                   phase,
-                                   reason,
-                                   static_cast<uint32_t>(hr));
-            });
-        };
-
-        try
-        {
-            if (hasExplicitSource)
+        const auto logFailure = [&](const char* reason, HRESULT hr = S_OK) noexcept {
+            try
             {
-                for (uint32_t tabIndex = 0; tabIndex < _tabs.Size() && !targetPane; ++tabIndex)
+                _agentPaneLog(fmt::format("pane_context_unavailable reason={} server_pid={} window_id={} tab_index={} explicit_source={} source_session={} selected_session={} hr=0x{:08X}",
+                                          reason,
+                                          GetCurrentProcessId(),
+                                          windowId,
+                                          targetTabIndex,
+                                          hasExplicitSource,
+                                          winrt::to_string(winrt::to_hstring(sourceSessionId)),
+                                          winrt::to_string(winrt::to_hstring(sessionId)),
+                                          static_cast<uint32_t>(hr)));
+            }
+            catch (...)
+            {
+            }
+        };
+        const char* missingReason = hasExplicitSource ? "explicit_source_not_found" : "no_focused_tab";
+
+        if (hasExplicitSource)
+        {
+            for (uint32_t tabIndex = 0; tabIndex < _tabs.Size() && !targetPane; ++tabIndex)
+            {
+                const auto tabImpl = _GetTabImpl(_tabs.GetAt(tabIndex));
+                const auto rootPane = tabImpl ? tabImpl->GetRootPane() : nullptr;
+                if (rootPane)
                 {
-                    const auto tabImpl = _GetTabImpl(_tabs.GetAt(tabIndex));
-                    const auto rootPane = tabImpl ? tabImpl->GetRootPane() : nullptr;
-                    if (rootPane)
+                    targetPane = rootPane->FindPaneBySessionId(sourceSessionId);
+                    if (targetPane)
                     {
-                        targetPane = rootPane->FindPaneBySessionId(sourceSessionId);
-                        if (targetPane)
-                        {
-                            targetTabIndex = tabIndex;
-                            targetTabKnown = true;
-                        }
+                        targetTabIndex = tabIndex;
                     }
                 }
             }
-            else if (const auto focusedTabIndex = _GetFocusedTabIndex())
-            {
-                targetTabIndex = focusedTabIndex.value();
-                targetTabKnown = true;
-                if (const auto tabImpl = _GetTabImpl(_tabs.GetAt(targetTabIndex)))
-                {
-                    targetPane = _getProtocolSourcePane(tabImpl, true, diagnosticWindow);
-                }
-            }
-
-            try
-            {
-                diagnosticPaneId = targetPane ? targetPane->Id().value_or(UINT32_MAX) : UINT32_MAX;
-                diagnosticPaneType = _protocolDiagnosticPaneType(targetPane);
-            }
-            catch (...)
-            {
-            }
-            const auto sessionId = targetPane ? _getSessionIdFromPane(targetPane) : winrt::guid{};
-            diagnosticSession = sessionId;
-            if (!targetPane || sessionId == winrt::guid{} || targetPane->IsAgentPane())
-            {
-                logContext(hasExplicitSource ? "DEBUG" : "WARN",
-                           !targetPane ? "no_source" : targetPane->IsAgentPane() ? "agent_pane_selected" :
-                                                                                   "no_session_id",
-                           S_OK);
-                co_return result;
-            }
-
-            phase = "metadata";
-            auto paneInfo = _getProtocolPaneInfo(targetPane);
-            paneInfo.SessionId = sessionId;
-            paneInfo.TabId = targetTabIndex;
-
+        }
+        else if (const auto focusedTabIndex = _GetFocusedTabIndex())
+        {
+            targetTabIndex = focusedTabIndex.value();
+            missingReason = "tab_unavailable";
             if (const auto tabImpl = _GetTabImpl(_tabs.GetAt(targetTabIndex)))
             {
-                const auto activePane = tabImpl->GetActivePane();
-                _agentPaneDiagnostic([&] {
-                    return fmt::format("DEBUG pane_context_owner pid={} window={} tab={} tab_index={} active_present={} active_pane={} active_agent={} selected_source={}",
-                                       GetCurrentProcessId(),
-                                       _WindowProperties.WindowId(),
-                                       winrt::to_string(tabImpl->StableId()),
-                                       targetTabIndex,
-                                       activePane != nullptr,
-                                       activePane ? activePane->Id().value_or(UINT32_MAX) : UINT32_MAX,
-                                       activePane && activePane->IsAgentPane(),
-                                       targetPane->IsSourceOfAgentPane());
-                });
-                paneInfo.IsActive = activePane && activePane->IsAgentPane() ? targetPane->IsSourceOfAgentPane() : activePane == targetPane;
+                missingReason = "no_active_pane";
+                targetPane = _getProtocolSourcePane(tabImpl);
             }
+        }
 
-            const auto termControl = targetPane->GetTerminalControl();
-            if (!termControl)
-            {
-                logContext("WARN", "no_terminal_control", S_OK);
-                co_return result;
-            }
-
-            paneInfo.Rows = termControl.ViewHeight();
-            paneInfo.Columns = termControl.ViewWidth();
-            result.Pane = paneInfo;
-
-            if (maxLines == 0 || maxCharacters == 0)
-            {
-                result.OutputSource = L"metadata_only";
-                logContext("DEBUG", "success", S_OK);
-                co_return result;
-            }
-
-            phase = "last_command_capture";
-            hstring lastCommand;
-            try
-            {
-                lastCommand = termControl.ReadLastPromptBounded(maxLines + 1, maxCharacters + 1);
-            }
-            catch (...)
-            {
-                logContext("WARN", "last_command_error", winrt::to_hresult());
-                LOG_CAUGHT_EXCEPTION();
-                result.FallbackReason = L"last_command_error";
-            }
-
-            if (!lastCommand.empty())
-            {
-                const auto bounded = co_await _buildBoundedPaneContext(
-                    lastCommand,
-                    maxLines,
-                    maxCharacters,
-                    true);
-                result.Content = bounded.Content;
-                result.OutputSource = L"last_command";
-                result.LineCount = bounded.LineCount;
-                result.Truncated = bounded.Truncated;
-                result.HasMarks = true;
-                logContext("DEBUG", "success", S_OK);
-                co_return result;
-            }
-
-            result.OutputSource = L"buffer_tail";
-            if (result.FallbackReason.empty())
-            {
-                result.FallbackReason = L"marks_unavailable";
-            }
-            phase = "buffer_capture";
-            const auto bufferTail = termControl.ReadBufferTail(maxLines + 1, maxCharacters + maxLines + 2);
-
-            const auto bounded = co_await _buildBoundedPaneContext(
-                bufferTail,
-                maxLines,
-                maxCharacters,
-                false);
-            result.Content = bounded.Content;
-            result.LineCount = bounded.LineCount;
-            result.Truncated = bounded.Truncated;
-            logContext("DEBUG", "success", S_OK);
+        sessionId = targetPane ? _getSessionIdFromPane(targetPane) : winrt::guid{};
+        if (!targetPane || sessionId == winrt::guid{} || targetPane->IsAgentPane())
+        {
+            logFailure(!targetPane               ? missingReason :
+                       targetPane->IsAgentPane() ? (hasExplicitSource ? "agent_pane_selected" : "active_agent_without_source") :
+                                                   "selected_pane_has_no_session");
             co_return result;
+        }
+
+        auto paneInfo = _getProtocolPaneInfo(targetPane);
+        paneInfo.SessionId = sessionId;
+        paneInfo.TabId = targetTabIndex;
+
+        if (const auto tabImpl = _GetTabImpl(_tabs.GetAt(targetTabIndex)))
+        {
+            const auto activePane = tabImpl->GetActivePane();
+            paneInfo.IsActive = activePane && activePane->IsAgentPane()
+                ? targetPane->IsSourceOfAgentPane()
+                : activePane == targetPane;
+        }
+
+        const auto termControl = targetPane->GetTerminalControl();
+        if (!termControl)
+        {
+            logFailure("terminal_control_unavailable");
+            co_return result;
+        }
+
+        paneInfo.Rows = termControl.ViewHeight();
+        paneInfo.Columns = termControl.ViewWidth();
+        result.Pane = paneInfo;
+
+        if (maxLines == 0 || maxCharacters == 0)
+        {
+            result.OutputSource = L"metadata_only";
+            co_return result;
+        }
+
+        hstring lastCommand;
+        try
+        {
+            lastCommand = termControl.ReadLastPromptBounded(maxLines + 1, maxCharacters + 1);
         }
         catch (...)
         {
-            logContext("WARN", std::string_view{ phase } == "buffer_capture" ? "buffer_capture_failed" : "phase_failed", winrt::to_hresult());
+            logFailure("read_last_prompt_failed", winrt::to_hresult());
+            LOG_CAUGHT_EXCEPTION();
+            result.FallbackReason = L"last_command_error";
+        }
+
+        if (!lastCommand.empty())
+        {
+            Protocol::PaneContext bounded{};
+            try
+            {
+                bounded = co_await _buildBoundedPaneContext(lastCommand, maxLines, maxCharacters, true);
+            }
+            catch (...)
+            {
+                logFailure("bound_last_prompt_failed", winrt::to_hresult());
+                throw;
+            }
+            result.Content = bounded.Content;
+            result.OutputSource = L"last_command";
+            result.LineCount = bounded.LineCount;
+            result.Truncated = bounded.Truncated;
+            result.HasMarks = true;
+            co_return result;
+        }
+
+        result.OutputSource = L"buffer_tail";
+        if (result.FallbackReason.empty())
+        {
+            result.FallbackReason = L"marks_unavailable";
+        }
+        hstring bufferTail;
+        try
+        {
+            bufferTail = termControl.ReadBufferTail(maxLines + 1, maxCharacters + maxLines + 2);
+        }
+        catch (...)
+        {
+            logFailure("read_buffer_tail_failed", winrt::to_hresult());
             throw;
         }
+
+        Protocol::PaneContext bounded{};
+        try
+        {
+            bounded = co_await _buildBoundedPaneContext(bufferTail, maxLines, maxCharacters, false);
+        }
+        catch (...)
+        {
+            logFailure("bound_buffer_tail_failed", winrt::to_hresult());
+            throw;
+        }
+        result.Content = bounded.Content;
+        result.LineCount = bounded.LineCount;
+        result.Truncated = bounded.Truncated;
+        co_return result;
     }
 
     IAsyncOperation<Windows::Foundation::Collections::IVector<Protocol::TabInfo>> TerminalPage::GetProtocolTabs()
