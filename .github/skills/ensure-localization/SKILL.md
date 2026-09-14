@@ -298,6 +298,11 @@ $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
   target entries. That is explicit review-and-cleanup work from step 1. A
   source-absent scoped key is a genuine `BLOCKED` input, not a fixable stale
   entry.
+- If the entire scoped source/target file pair was removed and no current file
+  remains to feed the checker, materialize immutable pre-deletion snapshots for
+  those exact files and run syntax and encoding checks on the snapshots.
+  Treat the resulting bundles as historical evidence only, and separately use
+  git inspection to confirm that the live tree really removed the files.
 - After repairing a previously missing scoped key, recompute that
   comparable-only subset from the final on-disk files before the final rerun.
   A stale pre-edit empty `ComparableKeys` array can incorrectly skip

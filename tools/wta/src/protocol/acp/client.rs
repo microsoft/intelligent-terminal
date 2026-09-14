@@ -5819,6 +5819,24 @@ async fn dispatch_prompt_body(
         publish_prompt_cancellation_settled(&mut cleanup, &event_tx_task, prompt_id, false);
         return;
     }
+    let explicit_source = prompt
+        .pane_context
+        .as_ref()
+        .is_some_and(|c| c.source_pane_id.is_some());
+    // Autofix already binds an explicit source in App before dispatch.
+    if resolved_target_pane.is_none()
+        && !prompt.is_agent_command()
+        && wt_connected
+        && !(prompt.is_autofix() && explicit_source)
+    {
+        tracing::warn!(
+            target: "acp.terminal_context",
+            helper_pid = std::process::id(),
+            prompt_id = prompt.id,
+            explicit_source,
+            "prompt_has_no_bound_pane"
+        );
+    }
     if proposal_commands_supported {
         match proposal_channels.issue(
             prompt_session_id_str.clone(),

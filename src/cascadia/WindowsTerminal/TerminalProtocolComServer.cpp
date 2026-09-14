@@ -6,6 +6,7 @@
 #include "TerminalProtocolComServer.h"
 #include "WindowEmperor.h"
 #include "AppHost.h"
+#include "../TerminalApp/AgentPaneLog.h"
 
 #include <json/json.h>
 #include <til/io.h>
@@ -738,7 +739,42 @@ try
 {
     RETURN_HR_IF_NULL(E_POINTER, json);
     *json = nullptr;
-    RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
+    const auto fail = [&](const char* reason, HRESULT hr = E_FAIL, AppHost* host = nullptr) noexcept {
+        try
+        {
+            const auto logic = host ? host->Logic() : nullptr;
+            winrt::TerminalApp::implementation::_agentPaneLog(fmt::format(
+                "pane_context_com_failed reason={} server_pid={} window_id={} explicit_source={} source_session={} hr=0x{:08X}",
+                reason,
+                GetCurrentProcessId(),
+                logic ? logic.WindowProperties().WindowId() : 0,
+                hasExplicitSource != 0,
+                winrt::to_string(winrt::to_hstring(winrt::guid{ sourceSessionId })),
+                static_cast<uint32_t>(hr)));
+        }
+        catch (...)
+        {
+        }
+        return hr;
+    };
+    if (!s_emperor)
+        return fail("server_not_initialized", E_NOT_VALID_STATE);
+    const auto getContext = [&](const auto& page, AppHost* host) {
+        try
+        {
+            return page.GetProtocolPaneContext(
+                           hasExplicitSource ? winrt::guid{ sourceSessionId } : winrt::guid{},
+                           hasExplicitSource != 0,
+                           maxLines,
+                           maxCharacters)
+                .get();
+        }
+        catch (...)
+        {
+            fail("page_context_exception", wil::ResultFromCaughtException(), host);
+            throw;
+        }
+    };
 
     constexpr long MaxContextLines = 1000;
     constexpr long MaxContextCharacters = 100000;
@@ -758,12 +794,7 @@ try
                 continue;
             }
 
-            auto context = page.GetProtocolPaneContext(
-                winrt::guid{ sourceSessionId },
-                true,
-                maxLines,
-                maxCharacters)
-                               .get();
+            auto context = getContext(page, host.get());
             if (context.Pane.SessionId != winrt::guid{})
             {
                 context.Pane.WindowId = host->Logic().WindowProperties().WindowId();
@@ -771,17 +802,20 @@ try
                 return S_OK;
             }
         }
-        return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+        return fail("explicit_source_unresolved", HRESULT_FROM_WIN32(ERROR_NOT_FOUND));
     }
 
     const auto host = _getMostRecentHost(windows);
-    RETURN_HR_IF(E_FAIL, !host);
+    if (!host)
+        return fail("no_recent_host");
 
     const auto page = _getPage(host.get());
-    RETURN_HR_IF(E_FAIL, !page);
+    if (!page)
+        return fail("page_unavailable", E_FAIL, host.get());
 
-    auto context = page.GetProtocolPaneContext({}, false, maxLines, maxCharacters).get();
-    RETURN_HR_IF(E_FAIL, context.Pane.SessionId == winrt::guid{});
+    auto context = getContext(page, host.get());
+    if (context.Pane.SessionId == winrt::guid{})
+        return fail("page_returned_no_pane", E_FAIL, host.get());
 
     context.Pane.WindowId = host->Logic().WindowProperties().WindowId();
     *json = _bstrFromJson(_toJson(context));

@@ -15,6 +15,7 @@
 #include "ContentManager.h"
 #include "TerminalPage.h"
 #include "SharedWta.h"
+#include "AgentPaneLog.h"
 #include "../../types/inc/utils.hpp"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 
@@ -206,7 +207,8 @@ namespace winrt::TerminalApp::implementation
 
         Protocol::PaneContext result{};
         std::shared_ptr<Pane> targetPane;
-        uint32_t targetTabIndex = 0;
+        uint32_t targetTabIndex = UINT32_MAX;
+        const char* missingReason = "no_focused_tab";
 
         if (hasExplicitSource)
         {
@@ -227,15 +229,40 @@ namespace winrt::TerminalApp::implementation
         else if (const auto focusedTabIndex = _GetFocusedTabIndex())
         {
             targetTabIndex = focusedTabIndex.value();
+            missingReason = "tab_unavailable";
             if (const auto tabImpl = _GetTabImpl(_tabs.GetAt(targetTabIndex)))
             {
+                missingReason = "no_active_pane";
                 targetPane = _getProtocolSourcePane(tabImpl);
             }
         }
 
         const auto sessionId = targetPane ? _getSessionIdFromPane(targetPane) : winrt::guid{};
+        const auto logFailure = [&](const char* reason) noexcept {
+            try
+            {
+                _agentPaneLog(fmt::format("pane_context_unavailable reason={} server_pid={} window_id={} tab_index={} explicit_source={} source_session={} selected_session={}",
+                                          reason,
+                                          GetCurrentProcessId(),
+                                          _WindowProperties.WindowId(),
+                                          targetTabIndex,
+                                          hasExplicitSource,
+                                          winrt::to_string(winrt::to_hstring(sourceSessionId)),
+                                          winrt::to_string(winrt::to_hstring(sessionId))));
+            }
+            catch (...)
+            {
+            }
+        };
         if (!targetPane || sessionId == winrt::guid{} || targetPane->IsAgentPane())
         {
+            // A per-window miss is expected; COM reports failure after searching all windows.
+            if (!hasExplicitSource || targetPane)
+            {
+                logFailure(!targetPane               ? missingReason :
+                           targetPane->IsAgentPane() ? (hasExplicitSource ? "agent_pane_selected" : "active_agent_without_source") :
+                                                       "selected_pane_has_no_session");
+            }
             co_return result;
         }
 

@@ -853,6 +853,7 @@ fn require_active_target(active_target: Option<&str>) -> Result<String, Proposal
         .filter(|target| !target.trim().is_empty())
         .map(str::to_string)
         .ok_or_else(|| {
+            tracing::warn!(target: "proposal_channel", "terminal_action_no_active_target");
             ProposalError::PolicyViolation(
                 "the prompt has no active pane for this action".to_string(),
             )
