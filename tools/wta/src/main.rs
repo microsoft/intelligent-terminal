@@ -38,6 +38,8 @@ mod session_mgmt;
 mod session_registry;
 mod session_watcher;
 mod shell;
+mod ssh_session_registry;
+mod ssh_sessions;
 mod telemetry;
 #[cfg(test)]
 mod test_support;
@@ -111,6 +113,9 @@ fn helper_config(cli: Cli) -> helper::config::HelperConfig {
         agent_source: cli.agent_source,
         agent_wsl_distro: cli.agent_wsl_distro,
         agent_source_cwd: cli.agent_source_cwd,
+        sessions_ssh_target: cli.sessions_ssh_target,
+        sessions_ssh_port: cli.sessions_ssh_port,
+        sessions_ssh_error: cli.sessions_ssh_error,
         allowed_agent_ids: cli.allowed_agent_ids,
         initial_auth_agent: cli.initial_auth_agent,
         acp_model: cli.acp_model,

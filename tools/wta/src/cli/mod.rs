@@ -55,8 +55,26 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
             .await
         }
         Command::Sessions { action } => match action {
-            SessionsAction::List { master, origin } => {
-                sessions::run_list(master, origin.to_filter(), json_mode).await
+            SessionsAction::List {
+                master,
+                ssh,
+                port,
+                cli,
+                origin,
+            } => {
+                if let Some(destination) = ssh {
+                    let target = crate::ssh_sessions::SshTarget::new(&destination, port)?;
+                    sessions::run_ssh_list(
+                        &target,
+                        cli.as_deref()
+                            .unwrap_or(crate::agent_registry::COPILOT_AGENT_ID),
+                        origin.to_filter(),
+                        json_mode,
+                    )
+                    .await
+                } else {
+                    sessions::run_list(master, origin.to_filter(), json_mode).await
+                }
             }
         },
         Command::Hooks { action } => match action {

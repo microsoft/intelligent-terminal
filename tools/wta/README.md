@@ -81,6 +81,88 @@ Short aliases are supported: `lsw`, `lst`, `lsp`, `neww`, `splitw`, `capturep`,
 
 When `-t` (target pane) is omitted, the active pane is used automatically.
 
+### Agent sessions over SSH
+
+The Sessions view automatically uses the SSH destination of its source terminal
+profile. Open a generated **SSH - ...** profile from the new-tab menu, then use
+the Sessions button, keyboard shortcut, or bare `/sessions` to browse that
+host's agent history. Windows and WSL profiles keep their existing agent-source
+behavior. This selects history only; it does not change the tab's chat backend.
+
+```text
+/sessions
+```
+
+`/sessions` takes no arguments. The source is always the current profile's SSH
+host or its normal Windows/WSL agent source; it cannot be overridden in the
+slash command. The remote history uses the currently selected built-in agent,
+subject to the existing agent policy.
+SSH registries are shared by the master, using the same session registry and
+state reducer as Windows/WSL sessions, but isolated by destination, port, and
+agent so remote session IDs cannot collide with local or other SSH sources.
+Each viewing tab receives only its own profile's source. Typing `ssh` in a shell does
+not automatically change the Sessions source. Profile metadata is supplied
+when the helper starts, including prewarmed/stashed helpers, and refreshed by
+the owning tab's native Sessions/tab-change events.
+
+The view shows the SSH destination above the list. Use the existing search and
+arrow keys, **F5** to fetch remote history again, and **Enter** to open a native
+Terminal tab running the remote agent's own resume command in the session's
+remote working directory. The master fetches remote history on entry and
+explicit refresh. Shared status notifications and periodic cached snapshots
+update other views without another remote history scan. Connection failures remain
+visible; a failed refresh keeps the last successful list rather than presenting
+an empty list as success.
+
+After Terminal confirms the resumed pane was created, its row shows **Idle**.
+The same row is Idle in other existing or newly opened tabs using the same SSH
+source. Pressing Enter from any of them focuses that pane instead of launching
+a duplicate. The master owns activation, so simultaneous requests cannot
+create two panes. F5 and reopening the view preserve the binding; a failed
+creation remains retryable, and closing the pane or its SSH connection ends
+the binding for every viewer. Closing the original viewing helper does not
+discard another pane's binding. Bindings last for the master's lifetime.
+
+`origin` and `status` are independent. Resuming from the Sessions view opens an
+ordinary SSH shell pane, not an ACP agent pane, so `origin` remains `Unknown`
+while the bound row's `status` becomes `Idle`. Idle indicates a known local pane
+binding; it does not report the remote agent's tool activity.
+
+For diagnostics, the standalone CLI can retrieve remote history without a
+running WTA master:
+
+```powershell
+wta sessions list --ssh dev@linux-host --cli copilot --json
+wta sessions list --ssh work-alias --port 2222 --cli copilot
+```
+
+This standalone diagnostic reads remote history only; it does not query the
+master's shared pane bindings, so its rows remain `Historical`.
+
+Requirements and boundaries:
+
+- Automatic source selection recognizes generated SSH profiles and supported
+  direct `ssh`/`ssh.exe` profile command lines. For connection options that
+  cannot be represented as a destination/user/port, define an OpenSSH `Host`
+  alias and use `ssh <alias>` in the profile. An unsupported SSH profile shows
+  a source error instead of falling back to Windows history.
+- Windows OpenSSH uses the existing SSH configuration and keys. Establish a
+  normal SSH connection first to verify the host key and configure key/agent
+  authentication. Background listing uses batch authentication and strict host
+  key checking; it never accepts an unknown host or prompts for a password.
+- The remote host needs a POSIX login shell and an installed, authenticated
+  agent with ACP `session/list` support. Agents that use an ACP adapter retain
+  their usual adapter/runtime requirements. No remote WTA daemon, hooks, or
+  tmux installation is needed.
+- Listing is a read-only ACP connection: it does not create an agent
+  conversation, send a prompt, expose local terminal/file tools, or forward
+  the local session MCP endpoint or provider credentials.
+- Resume restores the agent's conversation history; it does **not** attach to
+  an already-running remote process or provide persistent SSH shell sessions.
+  Remote agent activity, discovery of independently running remote processes,
+  hooks, and automatic detection of manually typed SSH connections are not
+  part of this first version.
+
 ### Protocol Discovery & Environment Setup
 
 WTA finds Windows Terminal via the `WT_COM_CLSID` environment variable, which
