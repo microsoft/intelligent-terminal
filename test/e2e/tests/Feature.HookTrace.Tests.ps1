@@ -17,7 +17,7 @@ BeforeDiscovery { $script:Ready = [bool](Get-AppxPackage | Where-Object { $_.Nam
 Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -State @{ persistedWindowLayouts = @() }
 
         # Prefer the bundle inside the installed package: that is the artifact that
         # actually ships, so a guard that landed in source but never made it into the
@@ -105,6 +105,17 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
             [System.IO.File]::WriteAllText($p, $Json)
             $p
         }
+
+        function script:Assert-HookCommandExit {
+            param([string]$PaneId, [string]$Command)
+            $exitFile = Join-Path $TestDrive "$([guid]::NewGuid()).exit"
+            $completion = $Command + "; [IO.File]::WriteAllText('$exitFile', [string]`$LASTEXITCODE)"
+            Send-WtInput -App $script:app -SessionId $PaneId -Text $completion
+            Send-WtKeys -App $script:app -SessionId $PaneId -Keys @('Enter')
+            (Wait-Until -TimeoutSec 30 -Because 'the hook command to complete' -Condition {
+                if (Test-Path -LiteralPath $exitFile) { Get-Content -LiteralPath $exitFile -Raw }
+            }) | Should -Be '0' -Because 'hooks must succeed independently of prompt marks or terminal rendering'
+        }
     }
 
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
@@ -127,7 +138,7 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
         } | ConvertTo-Json -Compress
         $command = "'$payload' | wtcli.exe agent-hook --cli-source copilot --event agent.prompt.submit"
 
-        $listener = Start-WtEventListener -App $script:app
+        $listener = Start-WtEventListener -App $script:app -WaitForReady
         try {
             Invoke-RunCommand -App $script:app -SessionId $paneId -Command $command -SettleSec 3 | Out-Null
             $event = Wait-WtEvent -Listener $listener -TimeoutSec 20 -Predicate {
@@ -167,7 +178,7 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
                 session_id = $interactiveId; tool_name = 'ask_user'; tool_input = @{ question = 'continue?' }
             } | ConvertTo-Json -Compress)
 
-        $listener = Start-WtEventListener -App $script:app
+        $listener = Start-WtEventListener -App $script:app -WaitForReady
         try {
             foreach ($f in @($ordinary, $interactive)) {
                 $cmd = "Get-Content -Raw -LiteralPath '$f' | wtcli.exe agent-hook --cli-source copilot --event agent.tool.starting"
@@ -206,13 +217,14 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
         $gated = script:Write-HookPayload -Name 'gated' -Dir $TestDrive -Json (@{ session_id = $gatedId } | ConvertTo-Json -Compress)
         $control = script:Write-HookPayload -Name 'ungated' -Dir $TestDrive -Json (@{ session_id = $controlId } | ConvertTo-Json -Compress)
 
-        $listener = Start-WtEventListener -App $script:app
+        $listener = Start-WtEventListener -App $script:app -WaitForReady
         try {
-            $gatedCmd = "`$saved=`$env:WT_SESSION; `$env:WT_SESSION=''; " +
+            $gatedCmd = "`$saved=`$env:WT_SESSION; try { `$env:WT_SESSION=''; " +
             "Get-Content -Raw -LiteralPath '$gated' | wtcli.exe agent-hook --cli-source copilot --event agent.stop; " +
-            '"GATED_EXIT=$LASTEXITCODE"'
-            $out = Invoke-RunCommand -App $script:app -SessionId $paneId -Command $gatedCmd -SettleSec 10
-            $out | Should -Match 'GATED_EXIT=0' -Because 'a gated hook must still succeed, or a fail-closed CLI would break'
+            "} finally { `$env:WT_SESSION=`$saved }"
+            # Clearing terminal identity can suppress prompt marks. Observe the
+            # completed CLI's exit code directly, not an empty LastPrompt capture.
+            script:Assert-HookCommandExit -PaneId $paneId -Command $gatedCmd
 
             # Positive control: the same pane with the gate restored. Waiting for THIS
             # event is what makes the negative assertion below sound — it proves the
@@ -256,12 +268,10 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
                 cwd        = 'C:\bound-test'
             } | ConvertTo-Json -Compress)
 
-        $listener = Start-WtEventListener -App $script:app
+        $listener = Start-WtEventListener -App $script:app -WaitForReady
         try {
-            $cmd = "Get-Content -Raw -LiteralPath '$payload' | wtcli.exe agent-hook --cli-source copilot --event agent.session.start; " +
-            '"BOUND" + "_EXIT=$LASTEXITCODE"'
-            $out = Invoke-RunCommand -App $script:app -SessionId $paneId -Command $cmd -SettleSec 20
-            $out | Should -Match 'BOUND_EXIT=0' -Because 'the bridge must never fail its CLI, whatever it decides to publish'
+            $cmd = "Get-Content -Raw -LiteralPath '$payload' | wtcli.exe agent-hook --cli-source copilot --event agent.session.start"
+            script:Assert-HookCommandExit -PaneId $paneId -Command $cmd
 
             # A control event proves the listener was live, so "no oversized
             # event arrived" means it was dropped rather than merely missed.
@@ -311,7 +321,7 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
             @{ Cli = 'codex'; Variant = 'auto'; Label = 'codex (unguarded)' }
         )
 
-        $listener = Start-WtEventListener -App $script:app
+        $listener = Start-WtEventListener -App $script:app -WaitForReady
         try {
             foreach ($c in $cases) {
                 $sid = "shipped-$($c.Cli)-$($c.Variant)-$([guid]::NewGuid())"
@@ -322,8 +332,7 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
                     return
                 }
 
-                $out = Invoke-RunCommand -App $script:app -SessionId $paneId -Command ($invocation + '; "SHIPPED_EXIT=$LASTEXITCODE"') -SettleSec 15
-                $out | Should -Match 'SHIPPED_EXIT=0' -Because "the shipped hook for $($c.Label) must never fail its CLI"
+                script:Assert-HookCommandExit -PaneId $paneId -Command $invocation
 
                 # Wait-WtEvent throws on timeout, which would surface as a bare "timed out"
                 # with no hint of WHICH bundle broke. Catching it lets the assertion below
