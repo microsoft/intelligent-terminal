@@ -37,11 +37,25 @@ BeforeDiscovery {
 Describe 'Feature custom-provider permission baseline' -ForEach $script:PackageCase -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:fixtureLog = Join-Path $env:TEMP "ite2e-yolo-permission-$([guid]::NewGuid().ToString('N')).log"
+        . (Join-Path $PSScriptRoot 'helpers\TestWindowKeyboardLayout.ps1')
+        $script:app = $null
+        $script:permissionKeyboardLayout = $null
+        $script:permissionLaunchStarted = $null
+        $artifactRoot = if ($env:ITE2E_ARTIFACT_ROOT) { $env:ITE2E_ARTIFACT_ROOT } else { Join-Path $PSScriptRoot '..\artifacts' }
+        $script:permissionEvidence = Join-Path ([IO.Path]::GetFullPath($artifactRoot)) "permission-shortcuts\$([guid]::NewGuid().ToString('N'))"
+        New-Item -ItemType Directory -Force -Path $script:permissionEvidence | Out-Null
+        $script:fixtureLog = Join-Path $script:permissionEvidence 'fixture.log'
+        $script:permissionTarget = Resolve-ItApp -Package $Package
+        $target = $script:permissionTarget
+        if ($env:ITE2E_EXPECTED_WTA_SHA256) {
+            (Get-FileHash -LiteralPath $target.WtaPath -Algorithm SHA256).Hash | Should -Be $env:ITE2E_EXPECTED_WTA_SHA256
+        }
+        @(Get-WtProcessesForApp -App $target).Count | Should -Be 0 -Because 'physical permission checks must not replace a user-owned window'
         $fixture = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-AcpPermissionAgent.ps1')).Path
         $fixtureInvocation = "& '$($fixture.Replace("'", "''"))' -LogPath '$($script:fixtureLog.Replace("'", "''"))'"
         $encodedInvocation = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($fixtureInvocation))
         $fixtureCommand = "pwsh -NoProfile -EncodedCommand $encodedInvocation"
+        $script:permissionLaunchStarted = Get-Date
         $script:app = Start-Terminal -Package $Package -PassFre $true -Settings @{
             acpAgent = 'custom:yolo-permission-fixture'
             acpCustomCommand = $fixtureCommand
@@ -50,44 +64,64 @@ Describe 'Feature custom-provider permission baseline' -ForEach $script:PackageC
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 60 | Should -BeTrue
         $script:agentPane = (Wait-NewAgentPaneSession -App $script:app -TimeoutSec 30).PaneSessionId
+        $script:permissionKeyboardLayout = Enable-TestWindowEnglishKeyboardLayout -App $script:app
     }
     AfterAll {
-        if ($script:app) { Stop-Terminal -App $script:app }
-        Remove-Item -LiteralPath $script:fixtureLog -Force -ErrorAction SilentlyContinue
+        try {
+            if ($script:permissionKeyboardLayout) {
+                Restore-TestWindowKeyboardLayout -App $script:app -Context $script:permissionKeyboardLayout
+            }
+        }
+        finally {
+            if ($script:app) {
+                Stop-Terminal -App $script:app
+            }
+            elseif ($script:permissionLaunchStarted) {
+                foreach ($process in @(Get-WtProcessesForApp -App $script:permissionTarget)) {
+                    if ($process.Path -ine $script:permissionTarget.WindowsTerminal -or
+                        $process.StartTime -lt $script:permissionLaunchStarted) {
+                        throw 'Failed-startup cleanup cannot identify a test-owned process.'
+                    }
+                    $recovery = $script:permissionTarget.PSObject.Copy()
+                    $recovery.Pid = $process.Id
+                    $recovery | Add-Member -NotePropertyName Launched -NotePropertyValue $true -Force
+                    Stop-Terminal -App $recovery -RestoreSettings $false
+                }
+                Restore-WtConfig -App $script:permissionTarget
+            }
+        }
     }
 
-    It 'Permission UI works' {
+    It 'Permission UI works' -Tag 'PermissionShortcutCompatibility' {
         Assert-Setting -App $script:app -Key 'agentPane.yoloMode' -Value $true
-        $allowMarker = 'PERM' + [guid]::NewGuid().ToString('N').Substring(0, 12)
-        Send-AgentPrompt -App $script:app -PaneSessionId $script:agentPane -Text $allowMarker | Out-Null
-
-        (Wait-AgentPermission -App $script:app -TimeoutSec 30) |
-            Should -BeTrue -Because 'the provider permission must remain pending for the user'
-        $before = if (Test-Path $script:fixtureLog) {
-            Get-Content -LiteralPath $script:fixtureLog -Raw
-        } else { '' }
-        $before | Should -Match "permission-requested\|$allowMarker"
-        $before | Should -Not -Match "permission-resolved\|.*\|$allowMarker"
-
-        Send-AgentKey -App $script:app -PaneSessionId $script:agentPane -Key Y | Out-Null
-        (Test-Until -TimeoutSec 20 -IntervalSec 0.5 -Condition {
-            (Get-Content -LiteralPath $script:fixtureLog -Raw -ErrorAction SilentlyContinue) -match
-                "permission-resolved\|allow-once\|$allowMarker"
-        }) | Should -BeTrue -Because 'only the explicit Y key should select AllowOnce'
-        Assert-AgentPaneText -App $script:app -PaneSessionId $script:agentPane `
-            -Pattern "PERMISSION_RESULT_${allowMarker}_allow-once" -TimeoutSec 20
-
-        $rejectMarker = 'PERM' + [guid]::NewGuid().ToString('N').Substring(0, 12)
-        Send-AgentPrompt -App $script:app -PaneSessionId $script:agentPane -Text $rejectMarker | Out-Null
-        (Wait-AgentPermission -App $script:app -TimeoutSec 30) |
-            Should -BeTrue -Because 'a second provider permission must remain available for rejection'
-        Send-AgentKey -App $script:app -PaneSessionId $script:agentPane -Key N | Out-Null
-        (Test-Until -TimeoutSec 20 -IntervalSec 0.5 -Condition {
-            (Get-Content -LiteralPath $script:fixtureLog -Raw -ErrorAction SilentlyContinue) -match
-                "permission-resolved\|reject-once\|$rejectMarker"
-        }) | Should -BeTrue -Because 'the explicit N key should select RejectOnce'
-        Assert-AgentPaneText -App $script:app -PaneSessionId $script:agentPane `
-            -Pattern "PERMISSION_RESULT_${rejectMarker}_reject-once" -TimeoutSec 20
+        Invoke-WtCli -App $script:app -Arguments @('focus-pane', '-t', $script:agentPane) | Out-Null
+        if (-not (Set-WtWindowForeground -App $script:app)) {
+            Set-ItResult -Skipped -Because 'physical permission shortcuts require an unlocked foreground desktop'
+            return
+        }
+        foreach ($chord in @(
+            @{ Name = 'Y'; Vk = 0x59; Ctrl = $false; Outcome = 'allow-once' }
+            @{ Name = 'Enter'; Vk = 0x0D; Ctrl = $false; Outcome = 'allow-once' }
+            @{ Name = 'CtrlY'; Vk = 0x59; Ctrl = $true; Outcome = 'allow-once' }
+            @{ Name = 'N'; Vk = 0x4E; Ctrl = $false; Outcome = 'reject-once' }
+        )) {
+            $marker = 'PERM' + [guid]::NewGuid().ToString('N').Substring(0, 12)
+            Send-AgentPrompt -App $script:app -PaneSessionId $script:agentPane -Text $marker | Out-Null
+            (Wait-AgentPermission -App $script:app -TimeoutSec 30) |
+                Should -BeTrue -Because 'the provider request must remain pending until an explicit shortcut'
+            $before = Get-Content -LiteralPath $script:fixtureLog -Raw
+            $before | Should -Match "permission-requested\|$marker"
+            $before | Should -Not -Match "permission-resolved\|.*\|$marker"
+            Save-UiScreenshot -App $script:app -Path (Join-Path $script:permissionEvidence "$($chord.Name)-before.png") | Out-Null
+            Send-WtWindowKey -App $script:app -Vk $chord.Vk -Ctrl:$chord.Ctrl -RequireForeground | Out-Null
+            $script:permissionExpected = "permission-resolved\|$($chord.Outcome)\|$marker"
+            (Test-Until -TimeoutSec 20 -IntervalSec 0.5 -Condition {
+                (Get-Content -LiteralPath $script:fixtureLog -Raw) -match $script:permissionExpected
+            }) | Should -BeTrue -Because "$($chord.Name) must retain its existing permission outcome"
+            Assert-AgentPaneText -App $script:app -PaneSessionId $script:agentPane `
+                -Pattern "PERMISSION_RESULT_${marker}_$($chord.Outcome)" -TimeoutSec 20
+            Save-UiScreenshot -App $script:app -Path (Join-Path $script:permissionEvidence "$($chord.Name)-after.png") | Out-Null
+        }
     }
 }
 

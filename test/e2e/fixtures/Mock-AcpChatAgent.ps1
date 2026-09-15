@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory)][string]$LogPath,
-    [string]$ReleasePromptPath
+    [string]$ReleasePromptPath,
+    [switch]$SupportsImages
 )
 
 $ErrorActionPreference = 'Stop'
@@ -65,7 +66,9 @@ while ($true) {
                 id = $request.id
                 result = @{
                     protocolVersion = 1
-                    agentCapabilities = @{}
+                    agentCapabilities = if ($SupportsImages) {
+                        @{ promptCapabilities = @{ image = $true } }
+                    } else { @{} }
                     agentInfo = @{
                         name = 'Chat Fixture'
                         version = '1.0.0'
@@ -83,13 +86,20 @@ while ($true) {
         }
         'session/prompt' {
             $sessionId = [string]$request.params.sessionId
-            $promptText = (@($request.params.prompt) | ForEach-Object text) -join "`n"
+            $promptText = (@($request.params.prompt) | Where-Object type -eq 'text' | ForEach-Object text) -join "`n"
             $marker = [regex]::Match($promptText, 'SCROLL_TURN_\d{2}_[a-f0-9]{32}').Value
             if (-not $marker) {
                 throw 'prompt did not contain a completed-turn scroll marker'
             }
             $reply = "ACK_$marker"
             Write-FixtureLog -Message "prompt|$marker"
+            if ($SupportsImages) {
+                foreach ($image in @($request.params.prompt) | Where-Object type -eq 'image') {
+                    $bytes = [Convert]::FromBase64String([string]$image.data)
+                    $hash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes))
+                    Write-FixtureLog -Message "image|$marker|$($image.mimeType)|$($bytes.Length)|$hash"
+                }
+            }
 
             $hold = $ReleasePromptPath -and $promptText -match '\bHOLD_FOR_RELEASE\b'
             if ($hold) {

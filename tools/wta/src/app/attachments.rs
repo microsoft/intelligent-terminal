@@ -1,22 +1,23 @@
 use crate::clipboard_image::PastedImage;
-use std::ops::Range;
+use std::{ops::Range, sync::Arc};
 
 /// Per-tab attachments queued for the next user prompt.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct PendingAttachments {
     images: Vec<PendingImage>,
     next_image_id: usize,
 }
 
+#[derive(Clone)]
 struct PendingImage {
-    image: PastedImage,
+    image: Arc<PastedImage>,
     token_range: Range<usize>,
 }
 
 impl PendingAttachments {
     #[cfg(test)]
     pub fn images(&self) -> impl Iterator<Item = &PastedImage> {
-        self.images.iter().map(|pending| &pending.image)
+        self.images.iter().map(|pending| pending.image.as_ref())
     }
 
     pub fn is_empty(&self) -> bool {
@@ -33,7 +34,10 @@ impl PendingAttachments {
         input.insert_str(*cursor_pos, &token);
         let token_range = *cursor_pos..*cursor_pos + token.len();
         *cursor_pos = token_range.end;
-        self.images.push(PendingImage { image, token_range });
+        self.images.push(PendingImage {
+            image: Arc::new(image),
+            token_range,
+        });
         self.images.sort_by_key(|pending| pending.token_range.start);
     }
 
@@ -41,35 +45,6 @@ impl PendingAttachments {
         self.images
             .iter()
             .map(|pending| pending.token_range.clone())
-    }
-
-    pub fn remove_before_cursor(&mut self, input: &mut String, cursor_pos: &mut usize) -> bool {
-        let Some(index) = self
-            .images
-            .iter()
-            .position(|pending| pending.token_range.end == *cursor_pos)
-        else {
-            return false;
-        };
-        let range = self.images[index].token_range.clone();
-        input.replace_range(range.clone(), "");
-        self.on_text_deleted(range.clone());
-        *cursor_pos = range.start;
-        true
-    }
-
-    pub fn remove_at_cursor(&mut self, input: &mut String, cursor_pos: usize) -> bool {
-        let Some(index) = self
-            .images
-            .iter()
-            .position(|pending| pending.token_range.start == cursor_pos)
-        else {
-            return false;
-        };
-        let range = self.images[index].token_range.clone();
-        input.replace_range(range.clone(), "");
-        self.on_text_deleted(range);
-        true
     }
 
     pub fn cursor_left(&self, cursor_pos: usize) -> Option<usize> {
@@ -157,7 +132,7 @@ impl PendingAttachments {
         }
         let images = std::mem::take(&mut self.images)
             .into_iter()
-            .map(|pending| pending.image)
+            .map(|pending| Arc::unwrap_or_clone(pending.image))
             .collect();
         (input, images)
     }

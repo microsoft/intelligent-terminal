@@ -3457,6 +3457,9 @@ impl App {
         crate::telemetry::log_sessions_view_opened();
         {
             let tab = self.tab_mut(&tab_id);
+            if tab.current_view != View::Agents {
+                tab.break_input_undo_group();
+            }
             tab.agents_view.search_query.clear();
             tab.agents_view.search_focused = false;
         }
@@ -3482,6 +3485,9 @@ impl App {
 
     fn close_agents_view_for_tab(&mut self, tab_id: &str) {
         let tab = self.tab_mut(tab_id);
+        if tab.current_view != View::Chat {
+            tab.break_input_undo_group();
+        }
         tab.current_view = View::Chat;
         tab.agents_view.snapshot = None;
         tab.agents_view.refetch_in_flight = false;
@@ -5691,7 +5697,7 @@ impl App {
             let selected_agent = self.selected_agent_command_candidate();
             if let Some(parsed) = agent_command_on_enter(&self.current_tab().input, selected_agent)
             {
-                self.current_tab_mut().clear_input();
+                self.current_tab_mut().discard_input();
                 self.handle_slash_command(parsed);
                 return true;
             }
@@ -5702,7 +5708,7 @@ impl App {
                     spec,
                     rest: position.name.to_string(),
                 };
-                self.current_tab_mut().clear_input();
+                self.current_tab_mut().discard_input();
                 self.handle_slash_command(parsed);
                 return true;
             }
@@ -5710,20 +5716,12 @@ impl App {
                 let name = candidate.name().to_string();
                 if candidate.completion_behavior().prepares_free_text() {
                     let tab = self.current_tab_mut();
-                    tab.input = format!("/{name} ");
-                    tab.input_all_selected = false;
-                    tab.input_vertical_goal = None;
-                    tab.cursor_pos = tab.input.len();
-                    tab.refresh_command_popup();
+                    tab.replace_input(format!("/{name} "));
                     return true;
                 }
                 if matches!(candidate, crate::ui::CommandCandidate::Agent(_)) {
                     let tab = self.current_tab_mut();
-                    tab.input = format!("/{name}");
-                    tab.input_all_selected = false;
-                    tab.input_vertical_goal = None;
-                    tab.cursor_pos = tab.input.len();
-                    tab.refresh_command_popup();
+                    tab.replace_input(format!("/{name}"));
                     return false;
                 }
                 if let crate::ui::CommandCandidate::Client(spec) = candidate {
@@ -5732,13 +5730,13 @@ impl App {
                         spec,
                         rest: String::new(),
                     };
-                    self.current_tab_mut().clear_input();
+                    self.current_tab_mut().discard_input();
                     self.handle_slash_command(parsed);
                     return true;
                 }
             }
 
-            self.current_tab_mut().clear_input();
+            self.current_tab_mut().discard_input();
             return true;
         }
 
@@ -5748,7 +5746,7 @@ impl App {
         }
         match commands::classify(&self.current_tab().input) {
             ParseOutcome::Command(cmd) => {
-                self.current_tab_mut().clear_input();
+                self.current_tab_mut().discard_input();
                 self.handle_slash_command(cmd);
                 true
             }
@@ -6386,8 +6384,15 @@ impl App {
             }
         }
 
+        let switching = self.active_tab_key() != new_tab_id.as_str();
+        if switching {
+            self.current_tab_mut().break_input_undo_group();
+        }
         let old_tab = self.tab_id.clone();
         let entry = self.tab_sessions.entry(new_tab_id.clone()).or_default();
+        if switching {
+            entry.break_input_undo_group();
+        }
         tracing::info!(
             target: "tab_session",
             from = ?old_tab,
@@ -6554,6 +6559,7 @@ impl App {
                 }
             }
             entry.invalidate_pending_paste();
+            entry.break_input_undo_group();
             self.tab_sessions.insert(new_tab_id.to_string(), entry);
             true
         } else {
