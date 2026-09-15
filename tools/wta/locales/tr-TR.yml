@@ -172,6 +172,7 @@ system.selection_copied: "Kopyalandı"  # Brief hint shown after selected termin
 system.cancelled: "İptal edildi."
 system.no_prompt_in_flight: "Devam eden istem yok."
 system.authentication_failed: "Kimlik doğrulama başarısız"
+system.localization_workflow_retest: "WTA terminal yerelleştirme yayınlama yeniden test mesajı."
 system.stopped_max_tokens: "Modelin çıktı sınırına ulaşıldıktan sonra yanıt kesildi."
 system.stopped_max_turn_requests: "Aracı, bu tur için istek sınırına ulaştıktan sonra durdu."
 system.stopped_refusal: "Aracı, bu isteği sürdürmeyi reddetti."

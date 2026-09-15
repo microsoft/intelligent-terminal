@@ -159,6 +159,7 @@ system.selection_copied: "Kikinchasqa"  # Brief hint shown after selected termin
 system.cancelled: "Chinkachisqa."
 system.no_prompt_in_flight: "Mana tapukuy purichkanchu."
 system.authentication_failed: "Yaykuy mana allinchu"
+system.localization_workflow_retest: "WTA terminalpa lokalisasion lluqsichiyninta kutin llamk'aq willakuy."
 system.stopped_max_tokens: "Kutichiyqa kuchurqakun modelopa lluqsiynin sayaynin chayasqan qhipata."
 system.stopped_max_turn_requests: "Agenteqa sayarqan kay kutipi mañakuy sayaynin chayasqan qhipata."
 system.stopped_refusal: "Agenteqa kay mañakuyta qatiyta mana munarqanchu."

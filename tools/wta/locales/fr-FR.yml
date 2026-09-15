@@ -159,6 +159,7 @@ system.selection_copied: "Copié"  # Brief hint shown after selected terminal te
 system.cancelled: "Annulé."
 system.no_prompt_in_flight: "Aucune invite en cours."
 system.authentication_failed: "Échec de l'authentification"
+system.localization_workflow_retest: "Message de nouveau test de publication de la localisation du terminal WTA."
 system.stopped_max_tokens: "La réponse a été tronquée après avoir atteint la limite de sortie du modèle."
 system.stopped_max_turn_requests: "L'agent s'est arrêté après avoir atteint sa limite de requêtes pour ce tour."
 system.stopped_refusal: "L'agent a refusé de poursuivre cette demande."

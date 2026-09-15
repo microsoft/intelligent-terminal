@@ -159,6 +159,7 @@ system.selection_copied: "Kopierat"  # Brief hint shown after selected terminal 
 system.cancelled: "Avbröts."
 system.no_prompt_in_flight: "Ingen fråga pågår."
 system.authentication_failed: "Autentisering misslyckades"
+system.localization_workflow_retest: "Meddelande om omtestning av publicering av terminallokalisering för WTA."
 system.stopped_max_tokens: "Svaret avbröts efter att modellens utdatagräns nåtts."
 system.stopped_max_turn_requests: "Agenten stoppade efter att ha nått sin begäransgräns för den här omgången."
 system.stopped_refusal: "Agenten avböjde att fortsätta med den här begäran."

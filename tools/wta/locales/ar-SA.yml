@@ -173,6 +173,7 @@ system.selection_copied: "تم النسخ"  # Brief hint shown after selected te
 system.cancelled: "تم الإلغاء."
 system.no_prompt_in_flight: "لا يوجد أمر قيد التنفيذ."
 system.authentication_failed: "فشلت المصادقة"
+system.localization_workflow_retest: "رسالة إعادة اختبار نشر توطين طرفية WTA."
 system.stopped_max_tokens: "تم اقتطاع الرد بعد بلوغ حد إخراج النموذج."
 system.stopped_max_turn_requests: "توقف الوكيل بعد بلوغ حد الطلبات لهذه الجولة."
 system.stopped_refusal: "رفض الوكيل متابعة هذا الطلب."

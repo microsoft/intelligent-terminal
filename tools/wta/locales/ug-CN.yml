@@ -180,6 +180,7 @@ system.selection_copied: "كۆچۈرۈلدى"  # Brief hint shown after selected
 system.cancelled: "بېكىت قىلىندى."
 system.no_prompt_in_flight: "ئېۋەتىلىۋاتقان سوراق يوق."
 system.authentication_failed: "تونۇقتۇرۇش مەغلۇب بولدى"
+system.localization_workflow_retest: "WTA تېرمىنالىنى يەرلىكلەشتۈرۈش ئېلان قىلىشنى قايتا سىناش ئۇچۇرى."
 system.stopped_max_tokens: "ئىنكاس مودېلنىڭ چىقىرىش چېكىگە يەتكەندىن كېيىن ئۈزۈلدى."
 system.stopped_max_turn_requests: "ۋاكالەتچى بۇ نۆۋەتتىكى ئىلتىماس چېكىگە يەتكەندىن كېيىن توختىدى."
 system.stopped_refusal: "ۋاكالەتچى بۇ ئىلتىماسنى داۋاملاشتۇرۇشنى رەت قىلدى."

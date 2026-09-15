@@ -159,6 +159,7 @@ system.selection_copied: "Disalin"  # Brief hint shown after selected terminal t
 system.cancelled: "Dibatalkan."
 system.no_prompt_in_flight: "Tidak ada prompt yang sedang berjalan."
 system.authentication_failed: "Autentikasi gagal"
+system.localization_workflow_retest: "Pesan pengujian ulang publikasi lokalisasi terminal WTA."
 system.stopped_max_tokens: "Respons terpotong setelah mencapai batas keluaran model."
 system.stopped_max_turn_requests: "Agen berhenti setelah mencapai batas permintaannya untuk giliran ini."
 system.stopped_refusal: "Agen menolak untuk melanjutkan permintaan ini."

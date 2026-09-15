@@ -159,6 +159,7 @@ system.selection_copied: "Kopeeritud"  # Brief hint shown after selected termina
 system.cancelled: "Tühistatud."
 system.no_prompt_in_flight: "Aktiivset päringut pole."
 system.authentication_failed: "Autentimine nurjus"
+system.localization_workflow_retest: "WTA terminali lokaliseerimise avaldamise uuestitestimise teade."
 system.stopped_max_tokens: "Vastus katkestati pärast mudeli väljundpiiri saavutamist."
 system.stopped_max_turn_requests: "Agent peatus pärast selle vooru päringupiiri saavutamist."
 system.stopped_refusal: "Agent keeldus selle päringuga jätkamast."
