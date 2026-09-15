@@ -15,10 +15,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 
     // Auth mode: show auth screen above the input box
     if app.mode == AppMode::Auth {
-        let input_height = {
-            let tab = app.current_tab();
-            input::input_height(&tab.input, tab.cursor_pos, area.width)
-        };
+        let input_height = input::input_height_for_app(app, area.width);
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Min(1), Constraint::Length(input_height)])
@@ -30,10 +27,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 
     // Setup mode: diagnostic install/sign-in/retry flow with input box.
     if app.mode == AppMode::Setup {
-        let input_height = {
-            let tab = app.current_tab();
-            input::input_height(&tab.input, tab.cursor_pos, area.width)
-        };
+        let input_height = input::input_height_for_app(app, area.width);
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Min(1), Constraint::Length(input_height)])
@@ -101,10 +95,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         (area, None)
     };
 
-    let input_height = {
-        let tab = app.current_tab();
-        input::input_height(&tab.input, tab.cursor_pos, main_area.width)
-    };
+    let input_height = input::input_height_for_app(app, main_area.width);
 
     // Expire the transient hint independently, then decide whether to
     // reserve a row for either the transient hint or the welcome hint.
