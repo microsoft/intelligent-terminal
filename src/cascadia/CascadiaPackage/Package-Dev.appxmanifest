@@ -202,6 +202,7 @@
                 <com:Interface Id="6F23DA90-15C5-4203-9DB0-64E73F1B1B00" ProxyStubClsid="DEC4804D-56D1-4F73-9FBE-6828E7C85C56"/> <!-- ITerminalHandoff3 -->
                 <com:Interface Id="746E6BC0-AB05-4E38-AB14-71E86763141F" ProxyStubClsid="DEC4804D-56D1-4F73-9FBE-6828E7C85C56"/>
                 <com:Interface Id="9C7E2A14-3B5D-4F8A-A2C9-1E4F6B8D0A3C" ProxyStubClsid="DEC4804D-56D1-4F73-9FBE-6828E7C85C56"/> <!-- ITerminalProtocol (classic) -->
+                <com:Interface Id="76F10E43-6D63-4EB0-A860-0F5A7F291BE9" ProxyStubClsid="DEC4804D-56D1-4F73-9FBE-6828E7C85C56"/> <!-- ITerminalTmuxWindow (classic) -->
                 <com:Interface Id="3D8F4B26-5C7E-4A9B-B1D0-2F5A7C9E1B4D" ProxyStubClsid="DEC4804D-56D1-4F73-9FBE-6828E7C85C56"/> <!-- ITerminalProtocolEventSink (classic) -->
             </com:ComInterface>
         </com:Extension>

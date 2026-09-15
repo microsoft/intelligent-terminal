@@ -20,6 +20,9 @@
     <ClCompile Include="AppCommandlineArgs.cpp" />
     <ClCompile Include="Commandline.cpp" />
     <ClCompile Include="DebugTapConnection.cpp" />
+    <ClCompile Include="TmuxController.cpp" />
+    <ClCompile Include="TmuxPaneConnection.cpp" />
+    <ClCompile Include="TmuxProcess.cpp" />
     <ClCompile Include="Jumplist.cpp" />
     <ClCompile Include="FilteredCommand.cpp">
       <Filter>commandPalette</Filter>
@@ -46,6 +49,10 @@
     <ClInclude Include="Commandline.h" />
     <ClInclude Include="ContentTransfer.h" />
     <ClInclude Include="DebugTapConnection.h" />
+    <ClInclude Include="TmuxController.h" />
+    <ClInclude Include="TmuxPaneConnection.h" />
+    <ClInclude Include="TmuxProcess.h" />
+    <ClInclude Include="TmuxProtocol.h" />
     <ClInclude Include="Jumplist.h" />
     <ClInclude Include="FilteredCommand.h">
       <Filter>commandPalette</Filter>

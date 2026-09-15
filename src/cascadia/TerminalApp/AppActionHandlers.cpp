@@ -6,6 +6,7 @@
 #include "App.h"
 
 #include "TerminalPage.h"
+#include "TmuxController.h"
 #include "AgentPaneContent.h"
 #include "AgentPaneLog.h"
 #include "ScratchpadContent.h"
@@ -280,6 +281,16 @@ namespace winrt::TerminalApp::implementation
         }
         else if (const auto& realArgs = args.ActionArgs().try_as<SplitPaneArgs>())
         {
+            if (_tmuxController)
+            {
+                const auto tab = _senderOrFocusedTab(sender);
+                if (tab)
+                {
+                    _tmuxController->Split(tab->GetActivePane(), realArgs.SplitDirection(), realArgs.SplitSize());
+                }
+                args.Handled(true);
+                return;
+            }
             if (_shouldBailForInvalidProfileIndex(_settings, realArgs.ContentArgs()))
             {
                 args.Handled(false);
@@ -321,6 +332,16 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_HandleTogglePaneZoom(const IInspectable& sender,
                                              const ActionEventArgs& args)
     {
+        if (_tmuxController)
+        {
+            const auto tab = _senderOrFocusedTab(sender);
+            if (tab)
+            {
+                _tmuxController->ZoomPane(tab->GetActivePane());
+            }
+            args.Handled(true);
+            return;
+        }
         if (const auto activeTab{ _senderOrFocusedTab(sender) })
         {
             // Don't do anything if there's only one pane. It's already zoomed.

@@ -72,6 +72,18 @@ public:
          const float splitPosition,
          const bool lastFocused = false);
 
+    ~Pane();
+
+    // UI-thread layout transactions: the caller first removes the root from
+    // its UI parent. These preserve the logical tree and all leaf content.
+    // Detach every affected tree before constructing branches with its leaves.
+    void DetachLayout();
+    void RestoreLayout();
+
+    // Disable local splitter gestures throughout this tree. Programmatic
+    // layout changes remain available; apply this to each replacement root.
+    void SetLayoutReadOnly(bool readOnly);
+
     std::shared_ptr<Pane> GetActivePane();
     winrt::Microsoft::Terminal::Control::TermControl GetLastFocusedTerminalControl();
     winrt::TerminalApp::IPaneContent GetLastFocusedContent();
@@ -295,6 +307,13 @@ private:
     static std::atomic<uint32_t> s_nextContentId;
     winrt::event_token _firstClosedToken{ 0 };
     winrt::event_token _secondClosedToken{ 0 };
+    // Ordinary tree mutations can replace children or remove their tokens
+    // early. Retain the exact sources and delegates until final unhooking.
+    std::weak_ptr<Pane> _firstClosedSource;
+    std::weak_ptr<Pane> _secondClosedSource;
+    winrt::Windows::Foundation::EventHandler<winrt::Windows::Foundation::IInspectable> _firstClosedHandler{ nullptr };
+    winrt::Windows::Foundation::EventHandler<winrt::Windows::Foundation::IInspectable> _secondClosedHandler{ nullptr };
+    bool _layoutDetached{ false };
 
     winrt::Windows::UI::Xaml::UIElement::GotFocus_revoker _gotFocusRevoker;
     winrt::Windows::UI::Xaml::UIElement::LostFocus_revoker _lostFocusRevoker;
@@ -310,6 +329,7 @@ private:
     bool _focusBorderEnabled{ true };
 
     // Mouse drag-to-resize state on the splitter.
+    bool _layoutReadOnly{ false };
     bool _splitterDragging{ false };
     float _splitterDragStartPosition{ 0.0f };
     winrt::Windows::Foundation::Point _splitterDragStartPointer{ 0.0f, 0.0f };
@@ -318,6 +338,7 @@ private:
     bool _IsLeaf() const noexcept;
     bool _HasFocusedChild() const noexcept;
     void _SetupChildCloseHandlers();
+    void _RevokeChildCloseHandlers() noexcept;
     winrt::TerminalApp::IPaneContent _takePaneContent();
     void _setPaneContent(winrt::TerminalApp::IPaneContent content, std::optional<uint32_t> contentId = std::nullopt);
     bool _HasChild(const std::shared_ptr<Pane> child);

@@ -86,3 +86,20 @@ import "unknwn.idl";
                            [in] long maxCharacters,
                            [out, retval] BSTR* json);
 };
+
+// Optional extension on the same registered class. Keep the original protocol
+// interface and its vtable unchanged so older clients remain compatible.
+[
+    object,
+    uuid(76F10E43-6D63-4EB0-A860-0F5A7F291BE9),
+    pointer_default(unique)
+] interface ITerminalTmuxWindow : IUnknown
+{
+    // The commandline is an opaque Windows process commandline. The working
+    // directory is an explicit absolute Windows path, not the server's cwd.
+    // Success acknowledges window creation, not backend protocol readiness:
+    // {"window_id":<id>,"state":"starting"}.
+    HRESULT CreateTmuxWindow([in] BSTR commandline,
+                             [in] BSTR workingDirectory,
+                             [out, retval] BSTR* resultJson);
+};

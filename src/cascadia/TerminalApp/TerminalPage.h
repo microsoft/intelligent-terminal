@@ -52,6 +52,7 @@ namespace winrt::Microsoft::Terminal::Settings
 namespace winrt::TerminalApp::implementation
 {
     struct TerminalSettingsCache;
+    struct TmuxController;
 
     inline constexpr uint32_t DefaultRowsToScroll{ 3 };
     inline constexpr std::wstring_view TabletInputServiceKey{ L"TabletInputService" };
@@ -166,6 +167,7 @@ namespace winrt::TerminalApp::implementation
         void SetSettings(Microsoft::Terminal::Settings::Model::CascadiaSettings settings, bool needRefreshUI);
 
         void Create();
+        void SetStartupTmux(const winrt::hstring& commandline, const winrt::hstring& workingDirectory);
         Windows::UI::Xaml::Automation::Peers::AutomationPeer OnCreateAutomationPeer();
 
         bool ShouldImmediatelyHandoffToElevated(const Microsoft::Terminal::Settings::Model::CascadiaSettings& settings) const;
@@ -391,6 +393,9 @@ namespace winrt::TerminalApp::implementation
 
         std::vector<Microsoft::Terminal::Settings::Model::ActionAndArgs> _startupActions;
         winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection _startupConnection{ nullptr };
+        winrt::hstring _tmuxCommandline;
+        winrt::hstring _tmuxWorkingDirectory;
+        std::shared_ptr<TmuxController> _tmuxController;
 
         // Deferred startup state — when FRE is active, tab creation is
         // postponed until FRE completes so ConptyConnection picks up
@@ -1252,6 +1257,7 @@ namespace winrt::TerminalApp::implementation
 
         friend class TerminalAppLocalTests::TabTests;
         friend class TerminalAppLocalTests::SettingsTests;
+        friend struct TmuxController;
     };
 }
 

@@ -88,6 +88,8 @@ namespace winrt::TerminalApp::implementation
         WINRT_PROPERTY(Windows::Foundation::IReference<Windows::Foundation::Rect>, InitialBounds);
         WINRT_PROPERTY(winrt::Microsoft::Terminal::Settings::Model::WindowLayout, PersistedLayout, nullptr);
         WINRT_PROPERTY(Windows::Foundation::Collections::IVector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>, StartupActions, nullptr);
+        WINRT_PROPERTY(winrt::hstring, TmuxCommandline);
+        WINRT_PROPERTY(winrt::hstring, TmuxWorkingDirectory);
     };
 }
 

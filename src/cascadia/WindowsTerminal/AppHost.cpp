@@ -133,7 +133,12 @@ void AppHost::_HandleCommandlineArgs(const winrt::TerminalApp::WindowRequestedAr
     // We don't have XAML yet, but we do have other stuff.
     _windowLogic = _appLogic.CreateNewWindow();
 
-    if (const auto layout = windowArgs.PersistedLayout())
+    if (!windowArgs.TmuxCommandline().empty())
+    {
+        _windowLogic.SetStartupTmux(windowArgs.TmuxCommandline(), windowArgs.TmuxWorkingDirectory());
+        _launchShowWindowCommand = SW_NORMAL;
+    }
+    else if (const auto layout = windowArgs.PersistedLayout())
     {
         _windowLogic.SetPersistedLayout(layout);
         _launchShowWindowCommand = SW_NORMAL;

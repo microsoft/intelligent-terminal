@@ -267,14 +267,17 @@ AppHost* WindowEmperor::GetWindowByName(std::wstring_view name) const noexcept
 void WindowEmperor::CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs args)
 {
     _assertIsMainThread();
+    const auto isTmuxWindow = !args.TmuxCommandline().empty();
 
-    // Our first window makes this process the owner of the persisted layout:
+    // Our first ordinary window makes this process the owner of the persisted layout:
     // _persistState() will replace it with whatever we have open. So whatever
     // brought us here — a defterm handoff, a global hotkey, the notification
     // icon — a layout that a headless COM activation deferred has to come back
     // first, or it is lost. Every window creation funnels through here, so this
     // is the one place that can make that promise.
-    if (_deferPersistedLayoutRestore)
+    // A transient tmux-only activation must neither launch saved local shells
+    // nor take ownership of the ordinary persisted session.
+    if (_deferPersistedLayoutRestore && !isTmuxWindow)
     {
         // Restore with the context of the activation that is creating this
         // window rather than the one COM started us with. For an ordinary
@@ -327,9 +330,12 @@ void WindowEmperor::CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs args
         std::lock_guard lock{ _windowsMutex };
         _windows.emplace_back(host);
     }
-    // A window exists now, so this process owns the persisted layout and there
-    // is nothing left to defer.
-    _deferPersistedLayoutRestore = false;
+    // An ordinary window takes ownership of the persisted layout; a transient
+    // tmux-only activation leaves the saved session untouched.
+    if (!isTmuxWindow)
+    {
+        _deferPersistedLayoutRestore = false;
+    }
 
     // Wire the new window's TerminalPage::ProtocolVtSequenceReceived
     // into the COM fan-out so events emitted by panes in this window
@@ -364,6 +370,19 @@ void WindowEmperor::CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs args
     // Startup layout can run before Initialize returns. Do not acknowledge
     // a transfer until this host is counted, registered, and in COM fan-out.
     addedHost->Logic().ContentTransferReceiverReady();
+}
+
+winrt::Windows::Foundation::IAsyncOperation<uint64_t> WindowEmperor::CreateTmuxWindow(winrt::hstring commandline, winrt::hstring workingDirectory)
+{
+    THROW_HR_IF(E_NOT_VALID_STATE, !_dispatcher);
+    co_await wil::resume_foreground(_dispatcher);
+    _assertIsMainThread();
+
+    winrt::TerminalApp::WindowRequestedArgs args{ 0, nullptr };
+    args.TmuxCommandline(commandline);
+    args.TmuxWorkingDirectory(workingDirectory);
+    CreateNewWindow(args);
+    co_return args.Id();
 }
 
 // Public entry point used by in-process callers (e.g. AppHost reacting to a
@@ -625,6 +644,7 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
 
     _app = winrt::TerminalApp::App{};
     _app.Logic().ReloadSettings();
+    _dispatcher = winrt::Windows::System::DispatcherQueue::GetForCurrentThread();
 
     const auto args = commandlineToArgArray(GetCommandLineW());
     const auto isEmbedding = args.size() == 2 && args[1] == L"-Embedding";
@@ -1539,6 +1559,10 @@ void WindowEmperor::_finalizeSessionPersistence() const
         // We remember the filenames so that we can clean up old ones later.
         for (const auto& w : _windows)
         {
+            if (w->Logic().IsTmuxWindow())
+            {
+                continue;
+            }
             const auto panes = w->Logic().Panes();
             for (const auto pane : panes)
             {

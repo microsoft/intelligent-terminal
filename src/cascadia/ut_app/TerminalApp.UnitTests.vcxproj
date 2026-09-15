@@ -32,6 +32,9 @@
     <ClCompile Include="BoundedDispatchQueueTests.cpp" />
     <ClCompile Include="CustomAgentIdTests.cpp" />
     <ClCompile Include="ProtocolParsingTests.cpp" />
+    <ClCompile Include="TmuxProtocolTests.cpp" />
+    <ClCompile Include="TmuxProcessTests.cpp" />
+    <ClCompile Include="TmuxPaneConnectionTests.cpp" />
     <ClCompile Include="RtlHelperTests.cpp" />
     <ClCompile Include="SharedWtaTests.cpp" />
     <ClCompile Include="precomp.cpp">

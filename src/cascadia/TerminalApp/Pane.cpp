@@ -83,15 +83,15 @@ Pane::Pane(std::shared_ptr<Pane> first,
 
     _ApplySplitDefinitions();
 
-    // Register event handlers on our children to handle their Close events
-    _SetupChildCloseHandlers();
-
     // When our border is tapped, make sure to transfer focus to our control.
     // LOAD-BEARING: This will NOT work if the border's BorderBrush is set to
     // Colors::Transparent! The border won't get Tapped events, and they'll fall
     // through to something else.
     _borderFirst.Tapped({ this, &Pane::_borderTappedHandler });
     _borderSecond.Tapped({ this, &Pane::_borderTappedHandler });
+
+    // Register last so a failed constructor cannot leave raw-this callbacks.
+    _SetupChildCloseHandlers();
 }
 
 // Extract the terminal settings from the current (leaf) pane's control
@@ -1965,6 +1965,84 @@ void Pane::_CloseChildRoutine(const bool closeFirst)
     });
 }
 
+void Pane::_RevokeChildCloseHandlers() noexcept
+{
+    if (const auto child = _firstClosedSource.lock())
+    {
+        child->Closed(_firstClosedToken);
+    }
+    if (const auto child = _secondClosedSource.lock())
+    {
+        child->Closed(_secondClosedToken);
+    }
+    _firstClosedSource.reset();
+    _secondClosedSource.reset();
+    _firstClosedToken = {};
+    _secondClosedToken = {};
+    _firstClosedHandler = nullptr;
+    _secondClosedHandler = nullptr;
+}
+
+Pane::~Pane()
+{
+    // Leaves can outlive a discarded branch, including a failed replacement
+    // layout. Its raw-this close callbacks must not outlive it.
+    _RevokeChildCloseHandlers();
+}
+
+void Pane::DetachLayout()
+{
+    if (_IsLeaf() || _layoutDetached)
+    {
+        return;
+    }
+
+    _RevokeChildCloseHandlers();
+    _borderFirst.Child(nullptr);
+    _borderSecond.Child(nullptr);
+    _root.Children().Clear();
+    _firstChild->DetachLayout();
+    _secondChild->DetachLayout();
+    _layoutDetached = true;
+}
+
+void Pane::RestoreLayout()
+{
+    if (_IsLeaf() || !_layoutDetached)
+    {
+        return;
+    }
+
+    auto detachOnFailure = wil::scope_exit([this]() {
+        try
+        {
+            _layoutDetached = false;
+            DetachLayout();
+        }
+        CATCH_LOG();
+    });
+    _firstChild->RestoreLayout();
+    _secondChild->RestoreLayout();
+    _root.Children().Clear();
+    _borderFirst.Child(_firstChild->GetRootElement());
+    _borderSecond.Child(_secondChild->GetRootElement());
+    _root.Children().Append(_borderFirst);
+    _root.Children().Append(_borderSecond);
+    _CreateRowColDefinitions();
+    _ApplySplitDefinitions();
+    if (_firstChild->_hidden)
+    {
+        HidePane(_firstChild);
+    }
+    else if (_secondChild->_hidden)
+    {
+        HidePane(_secondChild);
+    }
+    _SetupChildCloseHandlers();
+    _layoutDetached = false;
+    detachOnFailure.release();
+}
+
 // Method Description:
 // - Adds event handlers to our children to handle their close events.
 // Arguments:
@@ -1973,13 +2051,20 @@ void Pane::_CloseChildRoutine(const bool closeFirst)
 // - <none>
 void Pane::_SetupChildCloseHandlers()
 {
-    _firstClosedToken = _firstChild->Closed([this](auto&& /*s*/, auto&& /*e*/) {
+    _RevokeChildCloseHandlers();
+    auto revokeOnFailure = wil::scope_exit([this]() { _RevokeChildCloseHandlers(); });
+    _firstClosedSource = _firstChild;
+    _firstClosedHandler = [this](auto&& /*s*/, auto&& /*e*/) {
         _CloseChildRoutine(true);
-    });
+    };
+    _firstClosedToken = _firstChild->Closed(_firstClosedHandler);
 
-    _secondClosedToken = _secondChild->Closed([this](auto&& /*s*/, auto&& /*e*/) {
+    _secondClosedSource = _secondChild;
+    _secondClosedHandler = [this](auto&& /*s*/, auto&& /*e*/) {
         _CloseChildRoutine(false);
-    });
+    };
+    _secondClosedToken = _secondChild->Closed(_secondClosedHandler);
+    revokeOnFailure.release();
 }
 
 // With this method you take ownership of the control and content ID from
@@ -3682,6 +3767,26 @@ void Pane::_borderTappedHandler(const winrt::Windows::Foundation::IInspectable& 
     e.Handled(true);
 }
 
+void Pane::SetLayoutReadOnly(bool readOnly)
+{
+    _layoutReadOnly = readOnly;
+    if (_splitter)
+    {
+        if (readOnly)
+        {
+            _splitterDragging = false;
+            _splitter.ReleasePointerCaptures();
+            _RestoreSplitterCursor();
+        }
+        _splitter.IsHitTestVisible(!readOnly);
+    }
+    if (!_IsLeaf())
+    {
+        _firstChild->SetLayoutReadOnly(readOnly);
+        _secondChild->SetLayoutReadOnly(readOnly);
+    }
+}
+
 // Lazily creates the transparent splitter overlay and wires up its pointer
 // handlers. Called from the parent-pane constructor before the first layout.
 void Pane::_InstallSplitter()
@@ -3695,7 +3800,7 @@ void Pane::_InstallSplitter()
     // Transparent brush (not null) — required for the element to receive
     // pointer hit-tests.
     _splitter.Background(Media::SolidColorBrush{ winrt::Windows::UI::Colors::Transparent() });
-    _splitter.IsHitTestVisible(true);
+    _splitter.IsHitTestVisible(!_layoutReadOnly);
 
     _splitter.PointerEntered({ this, &Pane::_splitterPointerEntered });
     _splitter.PointerExited({ this, &Pane::_splitterPointerExited });
@@ -3792,7 +3897,10 @@ void Pane::_RestoreSplitterCursor()
 void Pane::_splitterPointerEntered(const winrt::Windows::Foundation::IInspectable& /*sender*/,
                                    const winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs& /*e*/)
 {
-    _SetSplitterCursor(false);
+    if (!_layoutReadOnly)
+    {
+        _SetSplitterCursor(false);
+    }
 }
 
 void Pane::_splitterPointerExited(const winrt::Windows::Foundation::IInspectable& /*sender*/,
@@ -3807,7 +3915,7 @@ void Pane::_splitterPointerExited(const winrt::Windows::Foundation::IInspectable
 void Pane::_splitterPointerPressed(const winrt::Windows::Foundation::IInspectable& /*sender*/,
                                    const winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs& e)
 {
-    if (_splitState == SplitState::None || !_splitter)
+    if (_layoutReadOnly || _splitState == SplitState::None || !_splitter)
     {
         return;
     }
@@ -3834,7 +3942,7 @@ void Pane::_splitterPointerPressed(const winrt::Windows::Foundation::IInspectabl
 void Pane::_splitterPointerMoved(const winrt::Windows::Foundation::IInspectable& /*sender*/,
                                  const winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs& e)
 {
-    if (!_splitterDragging || _splitState == SplitState::None)
+    if (_layoutReadOnly || !_splitterDragging || _splitState == SplitState::None)
     {
         return;
     }

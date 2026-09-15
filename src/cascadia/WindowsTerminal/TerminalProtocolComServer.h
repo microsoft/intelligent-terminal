@@ -37,7 +37,8 @@ class WindowEmperor;
 struct __declspec(uuid(__CLSID_TerminalProtocolServer))
 TerminalProtocolComServer : public Microsoft::WRL::RuntimeClass<
                                 Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::RuntimeClassType::ClassicCom>,
-                                ITerminalProtocol>
+                                ITerminalProtocol,
+                                ITerminalTmuxWindow>
 {
     ~TerminalProtocolComServer();
 
@@ -62,6 +63,9 @@ TerminalProtocolComServer : public Microsoft::WRL::RuntimeClass<
     STDMETHODIMP Unsubscribe() override;
     STDMETHODIMP SendEvent(BSTR eventJson) override;
     STDMETHODIMP GetPaneContext(GUID sourceSessionId, boolean hasExplicitSource, long maxLines, long maxCharacters, BSTR* json) override;
+
+    // ── ITerminalTmuxWindow ──
+    STDMETHODIMP CreateTmuxWindow(BSTR commandline, BSTR workingDirectory, BSTR* resultJson) override;
 
     // Static setup — must be called before s_StartListening().
     static void s_setEmperor(WindowEmperor* emperor) noexcept;

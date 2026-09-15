@@ -13,6 +13,7 @@
 #include "../TerminalProtocol/ProtocolParsing.h"
 
 #include <algorithm>
+#include <filesystem>
 #include <thread>
 #include <vector>
 
@@ -553,6 +554,7 @@ try
         "unsubscribe",
         "send_event",
         "get_pane_context",
+        "create_tmux_window",
     };
 
     Json::Value methods(Json::arrayValue);
@@ -560,6 +562,36 @@ try
         methods.append(m);
 
     *json = _bstrFromJson(methods);
+    return S_OK;
+}
+CATCH_RETURN()
+
+STDMETHODIMP TerminalProtocolComServer::CreateTmuxWindow(BSTR commandline, BSTR workingDirectory, BSTR* resultJson)
+try
+{
+    RETURN_HR_IF_NULL(E_POINTER, resultJson);
+    *resultJson = nullptr;
+    RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
+
+    // BSTRs carry their own length: never truncate an embedded NUL before
+    // validation, even when the caller is not wtcli.
+    const std::wstring_view command{ commandline ? commandline : L"", SysStringLen(commandline) };
+    const std::wstring_view directory{ workingDirectory ? workingDirectory : L"", SysStringLen(workingDirectory) };
+    const auto validText = [](const std::wstring_view value) {
+        return value.find_first_not_of(L' ') != std::wstring_view::npos &&
+               std::none_of(value.begin(), value.end(), [](const wchar_t ch) { return ch < L' ' || ch == L'\x7f'; });
+    };
+    RETURN_HR_IF(E_INVALIDARG, !validText(command) || command.size() >= 32767 ||
+                                 !validText(directory) || directory.size() >= 32767 ||
+                                 !std::filesystem::path{ directory }.is_absolute());
+
+    // Only native window creation runs on the dispatcher. The destination
+    // page owns asynchronous backend startup and reports any protocol failure.
+    const auto windowId = s_emperor->CreateTmuxWindow(winrt::hstring{ command }, winrt::hstring{ directory }).get();
+    Json::Value result;
+    result["window_id"] = Json::UInt64{ windowId };
+    result["state"] = "starting";
+    *resultJson = _bstrFromJson(result);
     return S_OK;
 }
 CATCH_RETURN()

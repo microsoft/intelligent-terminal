@@ -506,6 +506,10 @@ namespace winrt::TerminalApp::implementation
     // - the title string of the last focused terminal control in our tree.
     winrt::hstring Tab::_GetActiveTitle() const
     {
+        if (!_activePane)
+        {
+            return Title();
+        }
         if (!_runtimeTabText.empty())
         {
             return _runtimeTabText;
@@ -865,6 +869,226 @@ namespace winrt::TerminalApp::implementation
         _activePane = nullptr;
         Content(nullptr);
         return p;
+    }
+
+    Tab::LayoutSnapshot Tab::TakeLayout()
+    {
+        ASSERT_UI_THREAD();
+        THROW_HR_IF(E_ILLEGAL_METHOD_CALL, !_rootPane);
+
+        LayoutSnapshot snapshot;
+        snapshot.root = _rootPane;
+        snapshot.activeContentId = _activePane ? _activePane->ContentId() : std::nullopt;
+        snapshot.zoomedContentId = _zoomedPane ? _zoomedPane->ContentId() : std::nullopt;
+        snapshot.hiddenContentId = _hiddenPane ? _hiddenPane->ContentId() : std::nullopt;
+        _rootPane->WalkTree([&](const auto& pane) {
+            if (const auto contentId = pane->ContentId())
+            {
+                if (const auto id = pane->Id())
+                {
+                    snapshot.paneIdsByContentId.emplace(*contentId, *id);
+                }
+            }
+        });
+        for (const auto id : _mruPanes)
+        {
+            if (const auto pane = _rootPane->FindPane(id))
+            {
+                if (const auto contentId = pane->ContentId())
+                {
+                    snapshot.mruContentIds.push_back(*contentId);
+                }
+            }
+        }
+
+        _DetachLayout();
+        return snapshot;
+    }
+
+    void Tab::_DetachLayout()
+    {
+        _rootPane->Closed(_rootClosedToken);
+        _rootClosedToken = {};
+        while (!_paneEvents.empty())
+        {
+            _DetachEventHandlersFromPane(_paneEvents.begin()->first);
+        }
+        _contentEvents.clear();
+
+        auto root = std::move(_rootPane);
+        auto zoomed = std::move(_zoomedPane);
+        _activePane.reset();
+        _hiddenPane.reset();
+        _mruPanes.clear();
+        Content(nullptr);
+        if (zoomed)
+        {
+            root->Restore(zoomed);
+        }
+        _tabStatus.IsPaneZoomed(false);
+        root->DetachLayout();
+    }
+
+    void Tab::ApplyLayout(std::shared_ptr<Pane> root, const LayoutSnapshot& previous, std::optional<uint32_t> activeContentId)
+    {
+        ASSERT_UI_THREAD();
+        THROW_HR_IF(E_ILLEGAL_METHOD_CALL, _rootPane != nullptr);
+        THROW_HR_IF(E_INVALIDARG, !root);
+
+        std::unordered_map<uint32_t, std::shared_ptr<Pane>> leaves;
+        std::shared_ptr<Pane> firstLeaf;
+        root->WalkTree([&](const auto& pane) {
+            THROW_HR_IF(E_INVALIDARG, pane->_layoutDetached);
+            if (pane->_IsLeaf())
+            {
+                const auto contentId = pane->ContentId();
+                THROW_HR_IF(E_INVALIDARG, !contentId || !pane->GetContent());
+                THROW_HR_IF(E_INVALIDARG, !leaves.emplace(*contentId, pane).second);
+                if (!firstLeaf || (firstLeaf->IsHidden() && !pane->IsHidden()))
+                {
+                    firstLeaf = pane;
+                }
+            }
+        });
+        THROW_HR_IF(E_INVALIDARG, !firstLeaf);
+
+        // Reserve every previous ID before assigning incoming content an ID.
+        // An incoming pane's Id() still belongs to its former tab.
+        auto nextId = _nextPaneId;
+        for (const auto& entry : previous.paneIdsByContentId)
+        {
+            const auto id = entry.second;
+            THROW_HR_IF(E_BOUNDS, id == std::numeric_limits<uint32_t>::max());
+            nextId = std::max(nextId, id + 1);
+        }
+        root->WalkTree([&](const auto& pane) {
+            if (const auto contentId = pane->ContentId())
+            {
+                if (const auto it = previous.paneIdsByContentId.find(*contentId); it != previous.paneIdsByContentId.end())
+                {
+                    pane->Id(it->second);
+                }
+                else
+                {
+                    THROW_HR_IF(E_BOUNDS, nextId == std::numeric_limits<uint32_t>::max());
+                    pane->Id(nextId++);
+                }
+            }
+        });
+        _nextPaneId = nextId;
+
+        const auto findLeaf = [&](const std::optional<uint32_t> contentId) -> std::shared_ptr<Pane> {
+            if (contentId)
+            {
+                if (const auto it = leaves.find(*contentId); it != leaves.end())
+                {
+                    return it->second;
+                }
+            }
+            return nullptr;
+        };
+        auto active = findLeaf(activeContentId);
+        if (!active)
+        {
+            active = findLeaf(previous.activeContentId);
+        }
+        if (!active)
+        {
+            for (const auto contentId : previous.mruContentIds)
+            {
+                if (const auto pane = findLeaf(contentId); pane && !pane->IsHidden())
+                {
+                    active = pane;
+                    break;
+                }
+            }
+        }
+        if (!active)
+        {
+            active = firstLeaf;
+        }
+
+        _rootPane = std::move(root);
+        auto detachOnFailure = wil::scope_exit([&]() {
+            try
+            {
+                _DetachLayout();
+            }
+            CATCH_LOG();
+        });
+        _rootPane->_hidden = false;
+        if (active->_hidden)
+        {
+            if (const auto parent = _rootPane->_FindParentOfPane(active))
+            {
+                parent->RestorePane(active);
+            }
+            active->_hidden = false;
+        }
+        _hiddenPane = findLeaf(previous.hiddenContentId);
+        if (!_hiddenPane || !_hiddenPane->IsHidden())
+        {
+            _hiddenPane = _rootPane->_FindPane([](const auto& pane) {
+                return pane->IsHidden() && !pane->IsAgentPane();
+            });
+        }
+        _rootPane->_borders = Borders::None;
+        _rootPane->_ApplySplitDefinitions();
+        _rootPane->WalkTree([](const auto& pane) {
+            if (!pane->_IsLeaf())
+            {
+                if (pane->_firstChild->IsHidden())
+                {
+                    pane->HidePane(pane->_firstChild);
+                }
+                else if (pane->_secondChild->IsHidden())
+                {
+                    pane->HidePane(pane->_secondChild);
+                }
+            }
+        });
+        if (previous.root)
+        {
+            _rootPane->UpdateResources(previous.root->_themeResources);
+        }
+        _rootPane->EnableBroadcast(_tabStatus.IsInputBroadcastActive());
+
+        _mruPanes.clear();
+        for (const auto contentId : previous.mruContentIds)
+        {
+            if (const auto pane = findLeaf(contentId))
+            {
+                const auto id = *pane->Id();
+                if (std::find(_mruPanes.begin(), _mruPanes.end(), id) == _mruPanes.end())
+                {
+                    _mruPanes.push_back(id);
+                }
+            }
+        }
+
+        _activePane = active;
+        Initialize();
+        _rootClosedToken = _rootPane->Closed([weakThis = get_weak()](auto&&, auto&&) {
+            if (const auto tab = weakThis.get())
+            {
+                tab->Closed.raise(nullptr, nullptr);
+            }
+        });
+        _closePaneMenuItem.Visibility(_rootPane->GetLeafPaneCount() > 1 ? WUX::Visibility::Visible : WUX::Visibility::Collapsed);
+        _UpdateActivePane(active);
+        _RecalculateAndApplyTabColor();
+        _tabStatus.TabColorIndicator(GetTabColor().value_or(Windows::UI::Colors::Transparent()));
+
+        // Retain zoom only when its content is still the active leaf.
+        if (findLeaf(previous.zoomedContentId) == active && !active->IsAgentPane())
+        {
+            EnterZoom();
+        }
+        else
+        {
+            Content(_rootPane->GetRootElement());
+        }
+        detachOnFailure.release();
     }
 
     // Method Description:
@@ -1641,14 +1865,25 @@ namespace winrt::TerminalApp::implementation
     // - <none>
     void Tab::_AttachEventHandlersToPane(std::shared_ptr<Pane> pane)
     {
+        // Ordinary splits may destroy old leaf nodes. Do not retain those
+        // objects, and do not attach a second set of handlers to a live node.
+        std::erase_if(_paneEvents, [](const auto& entry) { return entry.second.pane.expired(); });
+        if (_paneEvents.contains(pane.get()))
+        {
+            return;
+        }
+
         auto weakThis{ get_weak() };
         std::weak_ptr<Pane> weakPane{ pane };
+        auto& events = _paneEvents[pane.get()];
+        events.pane = pane;
+        auto detachOnFailure = wil::scope_exit([&]() { _DetachEventHandlersFromPane(pane.get()); });
 
         auto gotFocusToken = pane->GotFocus([weakThis](std::shared_ptr<Pane> sender, WUX::FocusState focus) {
             // Do nothing if the Tab's lifetime is expired or pane isn't new.
             auto tab{ weakThis.get() };
 
-            if (tab)
+            if (tab && tab->_rootPane && tab->_activePane)
             {
                 if (sender != tab->_activePane)
                 {
@@ -1675,23 +1910,25 @@ namespace winrt::TerminalApp::implementation
                 }
             }
         });
+        events.gotFocus = gotFocusToken;
 
         auto lostFocusToken = pane->LostFocus([weakThis](std::shared_ptr<Pane> /*sender*/) {
             // Do nothing if the Tab's lifetime is expired or pane isn't new.
             auto tab{ weakThis.get() };
 
-            if (tab)
+            if (tab && tab->_rootPane)
             {
                 // update this tab's focus state
                 tab->_focusState = WUX::FocusState::Unfocused;
             }
         });
+        events.lostFocus = lostFocusToken;
 
         // Add a Closed event handler to the Pane. If the pane closes out from
         // underneath us, and it's zoomed, we want to be able to make sure to
         // update our state accordingly to un-zoom that pane. See GH#7252.
         auto closedToken = pane->Closed([weakThis, weakPane](auto&& /*s*/, auto&& /*e*/) {
-            if (auto tab{ weakThis.get() })
+            if (auto tab{ weakThis.get() }; tab && tab->_rootPane && tab->_activePane)
             {
                 if (tab->_zoomedPane)
                 {
@@ -1734,6 +1971,7 @@ namespace winrt::TerminalApp::implementation
                 }
             }
         });
+        events.closed = closedToken;
 
         // box the event token so that we can give a reference to it in the
         // event handler.
@@ -1751,7 +1989,11 @@ namespace winrt::TerminalApp::implementation
 
                 if (auto tab{ weakThis.get() })
                 {
-                    tab->_DetachEventHandlersFromContent(pane->Id().value());
+                    tab->_paneEvents.erase(pane.get());
+                    if (const auto id = pane->Id())
+                    {
+                        tab->_DetachEventHandlersFromContent(*id);
+                    }
 
                     for (auto i = tab->_mruPanes.begin(); i != tab->_mruPanes.end(); ++i)
                     {
@@ -1764,6 +2006,27 @@ namespace winrt::TerminalApp::implementation
                 }
             }
         });
+        events.detached = *detachedToken;
+        detachOnFailure.release();
+    }
+
+    void Tab::_DetachEventHandlersFromPane(const Pane* pane)
+    {
+        const auto it = _paneEvents.find(pane);
+        if (it == _paneEvents.end())
+        {
+            return;
+        }
+
+        const auto& events = it->second;
+        if (const auto source = events.pane.lock())
+        {
+            source->GotFocus(events.gotFocus);
+            source->LostFocus(events.lostFocus);
+            source->Closed(events.closed);
+            source->Detached(events.detached);
+        }
+        _paneEvents.erase(it);
     }
 
     void Tab::_AppendMoveMenuItems(winrt::Windows::UI::Xaml::Controls::MenuFlyout flyout)
@@ -2490,6 +2753,10 @@ namespace winrt::TerminalApp::implementation
     // If, after the calculation, the tab is read-only we hide the close button on the tab view item
     void Tab::_RecalculateAndApplyReadOnly()
     {
+        if (!_rootPane)
+        {
+            return;
+        }
         if (const auto control{ GetActiveTerminalControl() })
         {
             const auto isReadOnlyActive = control.ReadOnly();

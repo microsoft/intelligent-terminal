@@ -52,6 +52,7 @@ public:
     AppHost* GetWindowByName(std::wstring_view name) const noexcept;
     // CreateNewWindow is used for creating a new window from existing Content
     void CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs args);
+    winrt::Windows::Foundation::IAsyncOperation<uint64_t> CreateTmuxWindow(winrt::hstring commandline, winrt::hstring workingDirectory);
     void HandleCommandlineArgs(int nCmdShow);
     void FocusTabInAnyWindow(const winrt::TerminalApp::Tab& tab) const;
     // OpenWindow is used for opening a new window or summoning an existing window by name.
@@ -101,6 +102,7 @@ private:
 
     wil::unique_hwnd _window;
     winrt::TerminalApp::App _app{ nullptr };
+    winrt::Windows::System::DispatcherQueue _dispatcher{ nullptr };
     mutable std::mutex _windowsMutex;
     std::vector<std::shared_ptr<::AppHost>> _windows;
 

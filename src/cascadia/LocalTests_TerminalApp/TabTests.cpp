@@ -11,6 +11,7 @@
 #include "../TerminalApp/AgentPaneContent.h"
 #include "../TerminalApp/AgentPaneDragStash.h"
 #include "../TerminalApp/Tab.h"
+#include "../TerminalApp/TmuxController.h"
 #include "../TerminalApp/CommandPalette.h"
 #include "../TerminalApp/ContentManager.h"
 #include "../TerminalApp/ContentTransfer.h"
@@ -117,9 +118,10 @@ namespace TerminalAppLocalTests
 
     struct TrackedAgentCore
     {
-        explicit TrackedAgentCore(const winrt::TerminalApp::ContentManager& manager) :
-            connection{ winrt::make_self<TestConnection>(winrt::guid{ L"{6239a42c-aaaa-49a3-80bd-e8fdd045185c}" },
-                                                        winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected) }
+        explicit TrackedAgentCore(const winrt::TerminalApp::ContentManager& manager,
+                                  const winrt::guid& sessionId = winrt::guid{ L"{6239a42c-aaaa-49a3-80bd-e8fdd045185c}" }) :
+            connection{ winrt::make_self<TestConnection>(sessionId,
+                                                         winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected) }
         {
             const auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
             core = manager.CreateCore(*settings, *settings, *connection);
@@ -129,6 +131,44 @@ namespace TerminalAppLocalTests
         winrt::com_ptr<TestConnection> connection;
         winrt::Microsoft::Terminal::Control::ControlInteractivity core{ nullptr };
         std::shared_ptr<std::atomic<uint32_t>> closeEvents{ std::make_shared<std::atomic<uint32_t>>(0) };
+    };
+
+    struct LayoutTestLeaf
+    {
+        explicit LayoutTestLeaf(const winrt::TerminalApp::ContentManager& manager) :
+            tracked{ manager, ::Microsoft::Console::Utils::CreateGuid() },
+            control{ tracked.core },
+            content{ winrt::make<winrt::TerminalApp::implementation::TerminalPaneContent>(
+                Profile{},
+                std::shared_ptr<winrt::TerminalApp::implementation::TerminalSettingsCache>{},
+                control) },
+            pane{ std::make_shared<Pane>(content) },
+            contentId{ pane->ContentId().value() }
+        {
+        }
+
+        ~LayoutTestLeaf()
+        {
+            content.Close();
+        }
+
+        void VerifyAlive() const
+        {
+            VERIFY_ARE_EQUAL(0u, tracked.connection->CloseCount());
+            VERIFY_ARE_EQUAL(0u, tracked.closeEvents->load());
+            VERIFY_IS_TRUE(pane->GetContent() == content);
+            VERIFY_IS_TRUE(pane->GetTerminalControl() == control);
+            VERIFY_ARE_EQUAL(contentId, pane->ContentId().value());
+            VERIFY_ARE_EQUAL(tracked.core.Id(), control.ContentId());
+            VERIFY_IS_TRUE(control.Connection() == *tracked.connection);
+            VERIFY_ARE_EQUAL(tracked.connection->SessionId(), pane->GetSessionId());
+        }
+
+        TrackedAgentCore tracked;
+        winrt::Microsoft::Terminal::Control::TermControl control;
+        winrt::TerminalApp::IPaneContent content;
+        std::shared_ptr<Pane> pane;
+        uint32_t contentId;
     };
 
     static std::string _formatPaneId(const winrt::guid& sessionId)
@@ -303,6 +343,13 @@ namespace TerminalAppLocalTests
         TEST_METHOD(CloseZoomedPane);
 
         TEST_METHOD(SwapPanes);
+        TEST_METHOD(LayoutTransactionReplacesTreeWithoutClosingContent);
+        TEST_METHOD(LayoutTransactionMovesLeavesBetweenTabs);
+        TEST_METHOD(LayoutTransactionRestoresAbortedTree);
+        TEST_METHOD(LayoutTransactionRevokesDiscardedBranchHandlers);
+        TEST_METHOD(LayoutReadOnlyDisablesOnlySplitterGestures);
+        TEST_METHOD(TmuxProjectionPreservesContentAcrossWindowChanges);
+        TEST_METHOD(TmuxProjectionRejectsInvalidInventoryBeforeMutation);
         TEST_METHOD(BuildStartupActionsContentPreservesAgentFirstPaneOwnership);
         TEST_METHOD(AgentPaneTransferIdentityRoundTripsWithContent);
         TEST_METHOD(AgentPaneTransferIdentityIsNotPersistedByDefault);
@@ -2439,6 +2486,410 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(firstTab->IsZoomed());
         });
         VERIFY_SUCCEEDED(result);
+    }
+
+    void TabTests::LayoutTransactionReplacesTreeWithoutClosingContent()
+    {
+        _createContentManager();
+        TestOnUIThread([&]() {
+            LayoutTestLeaf first{ *_contentManager };
+            LayoutTestLeaf second{ *_contentManager };
+            LayoutTestLeaf third{ *_contentManager };
+            const auto tab = winrt::make_self<winrt::TerminalApp::implementation::Tab>(first.pane);
+            tab->Initialize();
+            const auto stableId = tab->StableId();
+            const auto tabItem = tab->TabViewItem();
+            const auto firstId = first.pane->Id().value();
+            tab->SetTabText(L"Managed layout");
+            tab->ToggleBroadcastInput();
+            second.control.SetReadOnly(true);
+
+            PaneResources resources;
+            resources.focusedBorderBrush = Media::SolidColorBrush{ winrt::Windows::UI::Colors::Blue() };
+            first.pane->UpdateResources(resources);
+            uint32_t detached = 0;
+            const auto detachedToken = first.pane->Detached([&](auto&&) { ++detached; });
+            auto revokeDetached = wil::scope_exit([&]() { first.pane->Detached(detachedToken); });
+            uint32_t closed = 0;
+            uint32_t closeRequested = 0;
+            tab->Closed([&](auto&&, auto&&) { ++closed; });
+            tab->CloseRequested([&](auto&&, auto&&) { ++closeRequested; });
+
+            Grid host;
+            host.Children().Append(tab->Content());
+            host.Children().Clear();
+            const auto single = tab->TakeLayout();
+            VERIFY_IS_NULL(tab->Content());
+            VERIFY_IS_TRUE(tab->GetRootPane() == nullptr);
+            VERIFY_IS_TRUE(tab->GetActivePane() == nullptr);
+            VERIFY_IS_TRUE(tab->_contentEvents.empty());
+            VERIFY_IS_TRUE(tab->_paneEvents.empty());
+            first.pane->DetachLayout();
+            first.pane->RestoreLayout();
+
+            const auto nested = std::make_shared<Pane>(
+                first.pane,
+                std::make_shared<Pane>(second.pane, third.pane, SplitState::Horizontal, 0.4f),
+                SplitState::Vertical,
+                0.6f);
+            tab->ApplyLayout(nested, single, second.contentId);
+            VERIFY_ARE_EQUAL(3, tab->GetLeafPaneCount());
+            VERIFY_ARE_EQUAL(firstId, first.pane->Id().value());
+            VERIFY_IS_TRUE(tab->GetActivePane() == second.pane);
+            VERIFY_ARE_EQUAL(stableId, tab->StableId());
+            VERIFY_IS_TRUE(tabItem == tab->TabViewItem());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Managed layout" }, tab->Title());
+            VERIFY_IS_TRUE(tab->ReadOnly());
+            VERIFY_IS_TRUE(tab->TabStatus().IsReadOnlyActive());
+            VERIFY_IS_TRUE(nested->_broadcastEnabled && second.pane->_broadcastEnabled && third.pane->_broadcastEnabled);
+            VERIFY_IS_TRUE(nested->_themeResources.focusedBorderBrush == resources.focusedBorderBrush);
+            VERIFY_ARE_EQUAL(size_t{ 5 }, tab->_paneEvents.size());
+            VERIFY_ARE_EQUAL(size_t{ 3 }, tab->_contentEvents.size());
+
+            tab->_UpdateActivePane(third.pane);
+            tab->_UpdateActivePane(second.pane);
+            const auto mru = tab->GetMruPanes();
+            const auto secondId = second.pane->Id().value();
+            const auto thirdId = third.pane->Id().value();
+            tab->EnterZoom();
+            host.Children().Append(tab->Content());
+            host.Children().Clear();
+            const auto previous = tab->TakeLayout();
+            VERIFY_ARE_EQUAL(second.contentId, previous.activeContentId.value());
+            VERIFY_ARE_EQUAL(second.contentId, previous.zoomedContentId.value());
+            VERIFY_ARE_EQUAL(size_t{ 3 }, previous.mruContentIds.size());
+            VERIFY_IS_FALSE(tab->IsZoomed());
+
+            const auto replacement = std::make_shared<Pane>(
+                third.pane,
+                std::make_shared<Pane>(first.pane, second.pane, SplitState::Vertical, 0.3f),
+                SplitState::Horizontal,
+                0.7f);
+            tab->ApplyLayout(replacement, previous);
+            VERIFY_IS_TRUE(tab->GetRootPane() == replacement);
+            VERIFY_IS_TRUE(tab->GetActivePane() == second.pane);
+            VERIFY_IS_TRUE(tab->IsZoomed());
+            VERIFY_IS_TRUE(tab->Content() == second.pane->GetRootElement());
+            VERIFY_IS_TRUE(tab->GetMruPanes() == mru);
+            VERIFY_ARE_EQUAL(firstId, first.pane->Id().value());
+            VERIFY_ARE_EQUAL(secondId, second.pane->Id().value());
+            VERIFY_ARE_EQUAL(thirdId, third.pane->Id().value());
+            VERIFY_ARE_EQUAL(stableId, tab->StableId());
+            VERIFY_IS_TRUE(tabItem == tab->TabViewItem());
+            VERIFY_ARE_EQUAL(0u, detached);
+            VERIFY_ARE_EQUAL(0u, closed);
+            VERIFY_ARE_EQUAL(0u, closeRequested);
+            first.VerifyAlive();
+            second.VerifyAlive();
+            third.VerifyAlive();
+        });
+    }
+
+    void TabTests::TmuxProjectionPreservesContentAcrossWindowChanges()
+    {
+        const auto connection = winrt::make_self<TestConnection>(
+            winrt::guid{ L"{6239a42c-1111-49a3-80bd-e8fdd045185c}" },
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        const auto page = _commonSetup(*connection);
+        TestOnUIThread([&]() {
+            using Controller = winrt::TerminalApp::implementation::TmuxController;
+            const auto controller = std::make_shared<Controller>(*page);
+            page->_tmuxCommandline = L"test-protocol";
+            page->_tmuxController = controller;
+            controller->_diagnosticTab = page->_GetFocusedTabImpl();
+            controller->_initialResponse = true;
+            std::vector<std::string> commands;
+            controller->_writeCommand = [&](std::string command) { commands.emplace_back(std::move(command)); };
+            auto cleanup = wil::scope_exit([&]() {
+                controller->Stop();
+                for (const auto& tab : page->_tabs)
+                {
+                    tab.Shutdown();
+                }
+                page->_tmuxController.reset();
+            });
+            controller->_applyWindows(controller->_parseWindows(
+                "@0 1 89f5,80x24,0,0{39x24,0,0,0,40x24,40,0,1} 89f5,80x24,0,0{39x24,0,0,0,40x24,40,0,1}\n"
+                "@1 0 b25f,80x24,0,0,2 b25f,80x24,0,0,2"));
+            VERIFY_ARE_EQUAL(2u, page->_tabs.Size());
+            VERIFY_ARE_EQUAL(size_t{ 3 }, controller->_panes.size());
+            const auto first = controller->_panes.at(0).pane;
+            const auto second = controller->_panes.at(1).pane;
+            const auto third = controller->_panes.at(2).pane;
+            const auto firstId = first->ContentId();
+            const auto thirdId = third->ContentId();
+            const auto firstSession = first->GetSessionId();
+            const auto thirdSession = third->GetSessionId();
+            const auto nativeTabId = controller->_tabs.at(0)->StableId();
+            controller->_applyWindows(controller->_parseWindows(
+                "@0 1 a26f,80x24,0,0[80x11,0,0,0,80x12,0,12{39x12,0,12,1,40x12,40,12,2}] "
+                "a26f,80x24,0,0[80x11,0,0,0,80x12,0,12{39x12,0,12,1,40x12,40,12,2}]"));
+            VERIFY_ARE_EQUAL(1u, page->_tabs.Size());
+            VERIFY_ARE_EQUAL(3, controller->_tabs.at(0)->GetLeafPaneCount());
+            VERIFY_IS_TRUE(first == controller->_panes.at(0).pane);
+            VERIFY_IS_TRUE(second == controller->_panes.at(1).pane);
+            VERIFY_IS_TRUE(third == controller->_panes.at(2).pane);
+            VERIFY_IS_TRUE(firstId == first->ContentId());
+            VERIFY_IS_TRUE(thirdId == third->ContentId());
+            VERIFY_IS_TRUE(firstSession == first->GetSessionId());
+            VERIFY_IS_TRUE(thirdSession == third->GetSessionId());
+            VERIFY_ARE_EQUAL(nativeTabId, controller->_tabs.at(0)->StableId());
+            VERIFY_IS_TRUE(first->GetTerminalControl().Connection().State() < winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Closing);
+            VERIFY_IS_TRUE(third->GetTerminalControl().Connection().State() < winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Closing);
+            VERIFY_IS_NULL(controller->_tabs.at(0)->FindAgentPane());
+            VERIFY_IS_NULL(page->GetWindowLayout());
+            VERIFY_IS_TRUE(std::none_of(commands.begin(), commands.end(), [](const auto& command) {
+                return command.find("kill-") != std::string::npos;
+            }));
+        });
+    }
+
+    void TabTests::TmuxProjectionRejectsInvalidInventoryBeforeMutation()
+    {
+        const auto connection = winrt::make_self<TestConnection>(
+            winrt::guid{ L"{6239a42c-1111-49a3-80bd-e8fdd045185c}" },
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        const auto page = _commonSetup(*connection);
+        TestOnUIThread([&]() {
+            const auto controller = std::make_shared<winrt::TerminalApp::implementation::TmuxController>(*page);
+            const auto original = page->_GetFocusedTabImpl();
+            VERIFY_THROWS(controller->_parseWindows("@0 1 bad bad"), ::Microsoft::Terminal::Tmux::ProtocolError);
+            VERIFY_THROWS(controller->_parseWindows(
+                              "@0 1 b25d,80x24,0,0,0 b25d,80x24,0,0,0\n"
+                              "@0 1 b25d,80x24,0,0,0 b25d,80x24,0,0,0"),
+                          ::Microsoft::Terminal::Tmux::ProtocolError);
+            VERIFY_IS_TRUE(original == page->_GetFocusedTabImpl());
+            VERIFY_ARE_EQUAL(0u, connection->CloseCount());
+            original->Shutdown();
+        });
+    }
+
+    void TabTests::LayoutTransactionMovesLeavesBetweenTabs()
+    {
+        _createContentManager();
+        TestOnUIThread([&]() {
+            LayoutTestLeaf moving{ *_contentManager };
+            LayoutTestLeaf staying{ *_contentManager };
+            LayoutTestLeaf destination{ *_contentManager };
+            const auto source = winrt::make_self<winrt::TerminalApp::implementation::Tab>(
+                std::make_shared<Pane>(moving.pane, staying.pane, SplitState::Vertical, 0.5f));
+            const auto target = winrt::make_self<winrt::TerminalApp::implementation::Tab>(destination.pane);
+            source->Initialize();
+            target->Initialize();
+            const auto sourceStableId = source->StableId();
+            const auto targetStableId = target->StableId();
+            const auto stayingId = staying.pane->Id().value();
+            const auto destinationId = destination.pane->Id().value();
+            VERIFY_ARE_EQUAL(moving.pane->Id().value(), destinationId);
+
+            uint32_t sourceFocusEvents = 0;
+            uint32_t targetFocusEvents = 0;
+            uint32_t closed = 0;
+            source->ActivePaneChanged([&](auto&&, auto&&) { ++sourceFocusEvents; });
+            target->ActivePaneChanged([&](auto&&, auto&&) { ++targetFocusEvents; });
+            source->Closed([&](auto&&, auto&&) { ++closed; });
+            target->Closed([&](auto&&, auto&&) { ++closed; });
+            const auto stateEvents = std::make_shared<uint32_t>(0);
+            moving.tracked.connection->StateChanged([stateEvents](auto&&, auto&&) { ++*stateEvents; });
+
+            const auto from = source->TakeLayout();
+            const auto to = target->TakeLayout();
+            moving.pane->GotFocus.raise(moving.pane, FocusState::Pointer);
+            VERIFY_ARE_EQUAL(0u, sourceFocusEvents);
+            VERIFY_ARE_EQUAL(0u, targetFocusEvents);
+            source->ApplyLayout(staying.pane, from);
+            target->ApplyLayout(std::make_shared<Pane>(destination.pane, moving.pane, SplitState::Horizontal, 0.5f),
+                                to,
+                                moving.contentId);
+            VERIFY_ARE_EQUAL(stayingId, staying.pane->Id().value());
+            VERIFY_ARE_EQUAL(destinationId, destination.pane->Id().value());
+            VERIFY_ARE_NOT_EQUAL(destinationId, moving.pane->Id().value());
+            VERIFY_IS_TRUE(source->GetRootPane() == staying.pane);
+            VERIFY_IS_TRUE(staying.pane->_borders == Borders::None);
+            VERIFY_ARE_EQUAL(sourceStableId, source->StableId());
+            VERIFY_ARE_EQUAL(targetStableId, target->StableId());
+            VERIFY_ARE_EQUAL(size_t{ 1 }, source->_paneEvents.size());
+            VERIFY_ARE_EQUAL(size_t{ 3 }, target->_paneEvents.size());
+            VERIFY_ARE_EQUAL(size_t{ 1 }, source->_contentEvents.size());
+            VERIFY_ARE_EQUAL(size_t{ 2 }, target->_contentEvents.size());
+
+            target->_UpdateActivePane(destination.pane);
+            sourceFocusEvents = targetFocusEvents = 0;
+            moving.pane->GotFocus.raise(moving.pane, FocusState::Pointer);
+            VERIFY_ARE_EQUAL(0u, sourceFocusEvents);
+            VERIFY_ARE_EQUAL(1u, targetFocusEvents);
+            VERIFY_IS_TRUE(source->GetActivePane() == staying.pane);
+            VERIFY_IS_TRUE(target->GetActivePane() == moving.pane);
+            VERIFY_ARE_EQUAL(moving.pane->Id().value(), target->GetMruPanes().front());
+            VERIFY_ARE_EQUAL(0u, closed);
+            VERIFY_ARE_EQUAL(0u, *stateEvents);
+            moving.VerifyAlive();
+            staying.VerifyAlive();
+            destination.VerifyAlive();
+
+            // A removed leaf may be retained for another window. The source
+            // transaction neither closes it nor keeps its tab subscriptions.
+            const auto moved = target->TakeLayout();
+            target->ApplyLayout(destination.pane, moved);
+            VERIFY_IS_FALSE(static_cast<bool>(moving.pane->GotFocus));
+            VERIFY_IS_FALSE(static_cast<bool>(moving.pane->Closed));
+            moving.VerifyAlive();
+        });
+    }
+
+    void TabTests::LayoutTransactionRestoresAbortedTree()
+    {
+        _createContentManager();
+        TestOnUIThread([&]() {
+            LayoutTestLeaf first{ *_contentManager };
+            LayoutTestLeaf second{ *_contentManager };
+            LayoutTestLeaf third{ *_contentManager };
+            const auto originalRoot = std::make_shared<Pane>(
+                first.pane,
+                std::make_shared<Pane>(second.pane, third.pane, SplitState::Horizontal, 0.25f),
+                SplitState::Vertical,
+                0.75f);
+            const auto tab = winrt::make_self<winrt::TerminalApp::implementation::Tab>(originalRoot);
+            tab->Initialize();
+            tab->_UpdateActivePane(third.pane);
+            tab->_UpdateActivePane(second.pane);
+            tab->EnterZoom();
+            const auto stableId = tab->StableId();
+            const auto tabItem = tab->TabViewItem();
+            const auto mru = tab->GetMruPanes();
+            uint32_t closed = 0;
+            uint32_t activeChanged = 0;
+            tab->Closed([&](auto&&, auto&&) { ++closed; });
+            tab->ActivePaneChanged([&](auto&&, auto&&) { ++activeChanged; });
+
+            for (auto attempt = 0; attempt < 3; ++attempt)
+            {
+                const auto snapshot = tab->TakeLayout();
+                snapshot.root->DetachLayout();
+                auto failed = std::make_shared<Pane>(
+                    second.pane,
+                    std::make_shared<Pane>(third.pane, first.pane, SplitState::Vertical, 0.6f),
+                    SplitState::Horizontal,
+                    0.4f);
+                failed->DetachLayout();
+                failed->DetachLayout();
+                failed.reset();
+                VERIFY_IS_FALSE(static_cast<bool>(first.pane->Closed));
+                VERIFY_IS_FALSE(static_cast<bool>(second.pane->GotFocus));
+                snapshot.root->RestoreLayout();
+                snapshot.root->RestoreLayout();
+                VERIFY_IS_TRUE(originalRoot->_borderFirst.Child() == first.pane->GetRootElement());
+                VERIFY_IS_TRUE(originalRoot->_secondChild->_borderFirst.Child() == second.pane->GetRootElement());
+                VERIFY_ARE_EQUAL(0.75f, originalRoot->_desiredSplitPosition);
+                VERIFY_ARE_EQUAL(0.25f, originalRoot->_secondChild->_desiredSplitPosition);
+                tab->ApplyLayout(snapshot.root, snapshot);
+                VERIFY_IS_TRUE(tab->GetRootPane() == originalRoot);
+                VERIFY_IS_TRUE(tab->GetActivePane() == second.pane);
+                VERIFY_IS_TRUE(tab->GetMruPanes() == mru);
+                VERIFY_IS_TRUE(tab->IsZoomed());
+                VERIFY_ARE_EQUAL(stableId, tab->StableId());
+                VERIFY_IS_TRUE(tabItem == tab->TabViewItem());
+                VERIFY_ARE_EQUAL(size_t{ 5 }, tab->_paneEvents.size());
+                VERIFY_ARE_EQUAL(size_t{ 3 }, tab->_contentEvents.size());
+            }
+            VERIFY_ARE_EQUAL(3u, activeChanged);
+            VERIFY_ARE_EQUAL(0u, closed);
+            first.VerifyAlive();
+            second.VerifyAlive();
+            third.VerifyAlive();
+
+            // Root closure is routed exactly once, even after repeated rollback.
+            originalRoot->Closed.raise(nullptr, nullptr);
+            VERIFY_ARE_EQUAL(1u, closed);
+        });
+    }
+
+    void TabTests::LayoutTransactionRevokesDiscardedBranchHandlers()
+    {
+        _createContentManager();
+        TestOnUIThread([&]() {
+            LayoutTestLeaf first{ *_contentManager };
+            LayoutTestLeaf second{ *_contentManager };
+            auto branch = std::make_shared<Pane>(first.pane, second.pane, SplitState::Vertical, 0.5f);
+            VERIFY_IS_TRUE(static_cast<bool>(first.pane->Closed));
+            branch->DetachLayout();
+            branch->DetachLayout();
+            VERIFY_IS_FALSE(static_cast<bool>(first.pane->Closed));
+            VERIFY_IS_FALSE(static_cast<bool>(second.pane->Closed));
+            branch->RestoreLayout();
+            branch->RestoreLayout();
+            VERIFY_IS_TRUE(static_cast<bool>(first.pane->Closed));
+
+            // Discarding a newly constructed, unattached branch also unhooks
+            // its raw-this routing, even if its leaf objects remain alive.
+            branch.reset();
+            VERIFY_IS_FALSE(static_cast<bool>(first.pane->Closed));
+            VERIFY_IS_FALSE(static_cast<bool>(second.pane->Closed));
+            first.pane->Closed.raise(nullptr, nullptr);
+            second.pane->Closed.raise(nullptr, nullptr);
+            first.VerifyAlive();
+            second.VerifyAlive();
+        });
+    }
+
+    void TabTests::LayoutReadOnlyDisablesOnlySplitterGestures()
+    {
+        _createContentManager();
+        TestOnUIThread([&]() {
+            LayoutTestLeaf first{ *_contentManager };
+            LayoutTestLeaf second{ *_contentManager };
+            LayoutTestLeaf third{ *_contentManager };
+            const auto nested = std::make_shared<Pane>(second.pane, third.pane, SplitState::Horizontal, 0.25f);
+            const auto root = std::make_shared<Pane>(first.pane, nested, SplitState::Vertical, 0.75f);
+            VERIFY_IS_TRUE(root->_splitter.IsHitTestVisible());
+            VERIFY_IS_TRUE(nested->_splitter.IsHitTestVisible());
+
+            root->_splitterDragging = true;
+            root->SetLayoutReadOnly(true);
+            VERIFY_IS_FALSE(root->_splitterDragging);
+            VERIFY_IS_FALSE(root->_splitter.IsHitTestVisible());
+            VERIFY_IS_FALSE(nested->_splitter.IsHitTestVisible());
+            VERIFY_IS_TRUE(first.pane->_layoutReadOnly);
+            VERIFY_IS_TRUE(second.pane->_layoutReadOnly);
+            VERIFY_IS_TRUE(third.pane->_layoutReadOnly);
+
+            // Queued pointer events must also be rejected before querying
+            // their coordinates, including a stale in-progress drag.
+            root->_splitterPointerEntered(nullptr, nullptr);
+            root->_splitterPointerPressed(nullptr, nullptr);
+            VERIFY_IS_FALSE(root->_splitterDragging);
+            root->_splitterDragging = true;
+            root->_splitterPointerMoved(nullptr, nullptr);
+            VERIFY_ARE_EQUAL(0.75f, root->_desiredSplitPosition);
+            VERIFY_ARE_EQUAL(0.25f, nested->_desiredSplitPosition);
+            root->SetLayoutReadOnly(true);
+            VERIFY_IS_FALSE(root->_splitterDragging);
+
+            root->DetachLayout();
+            root->RestoreLayout();
+            VERIFY_IS_FALSE(root->_splitter.IsHitTestVisible());
+            VERIFY_IS_FALSE(nested->_splitter.IsHitTestVisible());
+            root->SetLayoutReadOnly(false);
+            VERIFY_IS_TRUE(root->_splitter.IsHitTestVisible());
+            VERIFY_IS_TRUE(nested->_splitter.IsHitTestVisible());
+            VERIFY_IS_FALSE(first.pane->_layoutReadOnly);
+
+            // Disabling mouse gestures does not prevent backend-driven tree
+            // replacement, nor does it recreate or retire terminal content.
+            root->DetachLayout();
+            const auto replacement = std::make_shared<Pane>(
+                third.pane,
+                std::make_shared<Pane>(first.pane, second.pane, SplitState::Vertical, 0.6f),
+                SplitState::Horizontal,
+                0.4f);
+            replacement->SetLayoutReadOnly(true);
+            VERIFY_ARE_EQUAL(0.4f, replacement->_desiredSplitPosition);
+            VERIFY_IS_FALSE(replacement->_splitter.IsHitTestVisible());
+            VERIFY_IS_FALSE(replacement->_secondChild->_splitter.IsHitTestVisible());
+            first.VerifyAlive();
+            second.VerifyAlive();
+            third.VerifyAlive();
+        });
     }
 
     void TabTests::SwapPanes()

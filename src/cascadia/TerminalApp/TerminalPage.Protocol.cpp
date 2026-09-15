@@ -734,6 +734,7 @@ namespace winrt::TerminalApp::implementation
     {
         auto strong = get_strong();
         co_await wil::resume_foreground(Dispatcher());
+        THROW_HR_IF(E_NOTIMPL, !_tmuxCommandline.empty());
 
         Protocol::TabCreationResult result{};
 
@@ -805,6 +806,7 @@ namespace winrt::TerminalApp::implementation
         auto strong = get_strong();
 
         co_await wil::resume_foreground(Dispatcher());
+        THROW_HR_IF(E_NOTIMPL, !_tmuxCommandline.empty());
 
         Protocol::TabCreationResult result{};
 

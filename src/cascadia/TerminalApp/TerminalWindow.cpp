@@ -159,7 +159,11 @@ namespace winrt::TerminalApp::implementation
         //   instead.
         // * if we have commandline arguments, Pass commandline args into the
         //   TerminalPage.
-        if (_startupConnection)
+        if (IsTmuxWindow())
+        {
+            _root->SetStartupTmux(_startupTmuxCommandline, _startupTmuxWorkingDirectory);
+        }
+        else if (_startupConnection)
         {
             _root->SetStartupConnection(std::move(_startupConnection));
         }
@@ -200,7 +204,8 @@ namespace winrt::TerminalApp::implementation
         //
         // Obviously, don't use the `startupActions` from the settings in the
         // case of a tear-out / reattach. GH#16050
-        if (!_hasCommandLineArguments &&
+        if (!IsTmuxWindow() &&
+            !_hasCommandLineArguments &&
             _initialContentArgs.empty() &&
             _gotSettingsStartupActions)
         {
@@ -261,7 +266,8 @@ namespace winrt::TerminalApp::implementation
 
     WindowLayout TerminalWindow::GetWindowLayout() const
     {
-        if (_root)
+        // Control-mode backends have no shell-commandline persistence contract.
+        if (_root && !IsTmuxWindow())
         {
             return _root->GetWindowLayout();
         }
@@ -270,7 +276,7 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalWindow::PersistState()
     {
-        if (_root)
+        if (_root && !IsTmuxWindow())
         {
             _root->PersistState();
         }
@@ -1124,6 +1130,16 @@ namespace winrt::TerminalApp::implementation
         _initialContentArgs = wil::to_vector(actions);
     }
 
+    void TerminalWindow::SetStartupTmux(const winrt::hstring& commandline, const winrt::hstring& workingDirectory)
+    {
+        THROW_HR_IF(E_NOT_VALID_STATE, _root != nullptr);
+        THROW_HR_IF(E_INVALIDARG, commandline.empty() || workingDirectory.empty());
+        _startupTmuxCommandline = commandline;
+        _startupTmuxWorkingDirectory = workingDirectory;
+        _hasCommandLineArguments = true;
+        _WindowProperties->SetInitialCwd(workingDirectory);
+    }
+
     void TerminalWindow::SetPersistedLayout(const winrt::Microsoft::Terminal::Settings::Model::WindowLayout& layout)
     {
         _cachedLayout = layout;
@@ -1188,6 +1204,11 @@ namespace winrt::TerminalApp::implementation
 
     WindowLayout TerminalWindow::LoadPersistedLayout()
     {
+        if (IsTmuxWindow())
+        {
+            return nullptr;
+        }
+
         if (_cachedLayout.has_value())
         {
             return *_cachedLayout;
@@ -1359,7 +1380,7 @@ namespace winrt::TerminalApp::implementation
 
     bool TerminalWindow::ShouldImmediatelyHandoffToElevated()
     {
-        return _root != nullptr ? _root->ShouldImmediatelyHandoffToElevated(_settings) : false;
+        return !IsTmuxWindow() && _root != nullptr && _root->ShouldImmediatelyHandoffToElevated(_settings);
     }
 
     // Method Description:
@@ -1380,7 +1401,7 @@ namespace winrt::TerminalApp::implementation
     // - <none>
     void TerminalWindow::HandoffToElevated()
     {
-        if (_root)
+        if (_root && !IsTmuxWindow())
         {
             _root->HandoffToElevated(_settings);
             return;
