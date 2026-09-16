@@ -1,0 +1,358 @@
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Cash App</title>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width,initial-scale=1,minimal-ui,viewport-fit=cover">
+
+    <script nonce="AJ5trETF7/77i1Ysa+bhmTY=">function tryParse(r){try{return JSON.parse(r)}catch(r){return r}}var cdn={url:'https://cash-f.squarecdn.com',imageUrl:'https://cash-images-f.squarecdn.com',version:'fdbed54c785f7f09ecd311a40c3d20b35e875f92',translationVersion:''},countryGuess='US',regionGuess='USA',csrfToken='VXumnc9gMf44Z+RZQFgKozCBjy0KffujSY/ZWQVA7Lk=',accessToken='',bugsnagEnvironment='',locale='en-US',preload=window.cypressPreload||tryParse('{"profile":{"full_name":"Jazmyne Marrujo","photo_url":"https://franklin-assets.s3.amazonaws.com/apps/imgs/g6olrerT4uwefAYoN27dUB.jpeg","cashtag":"enymzaj22"},"avatar":{"accent_color":"#3F6AFF"}}'),worm=tryParse('{}'),templateVariables={customerToken:'C_secvagyyq',worm:worm instanceof Error?{}:worm||{}}</script>
+    <script nonce="AJ5trETF7/77i1Ysa+bhmTY=">
+      var featureFlagsJson = {"cash-web-account-p2p-payment-flow-client-scenario":"ENABLED","cash-web-account-message-book":false,"cash-web-account-activity-download":true,"cash-web-account-genie-scenes":true,"cash-web-arcade-migration-background":"ENABLED","cash-web-get-profile-migration":false,"cash-web-enable-risk-signal":true,"cash-web-moneybot-bash":false,"cash-web-help-center-datadog-rum-enabled":true,"cashclient-money-movement-copy-changes":"UNASSIGNED","cash-web-neighborhoods-local-page-v3":true,"cash-web-moneybot-focusable-insight-charts":false,"cash-web-account-iyp-multi-select":false,"cash-web-account-datadog-rum-enabled":true,"cash-web-help-center-datadog-rum-config-new":{"sessionSampleRateOverride":1},"cash-web-confirmation-claim-local-cash":false,"cash-web-moneybot-cached-session-id-timeout-seconds":300,"cash-web-account-bills-experience":false,"cash-web-admin-datadog-rum-config":{"sessionSampleRateOverride":100},"cash-web-grant-flow-enable-login-close":true,"cash-web-account-cash-business-accounts-icon-update":"ENABLED","cash-web-cashtags-oon-p2p-enabled":false,"cash-web-p2p-misdirected-payment-in-flow":"DISABLED","cash-web-passkeys-try-login-with-passkeys-rollout":false,"cash-web-account-show-money-tab-uk":"DISABLED","cash-frontend-product-tag-ordering":false,"cash-web-enable-wait-for-sid":true,"cashclient-moneybot-activity-client-renderable":"DISABLED","cash-web-account-enable-authorize-digital-wallet-payment-blocker":true,"cash-web-account-enable-multi-allocation-blocker":true,"cash-web-arcade-feature-pay-and-request":"DISABLED","cash-web-limits-use-xp-for-btc":true,"cashclient-moneybot-frontdoor-loading-delay-milliseconds":"750","cash-web-arcade-migration-cash-sans":"ENABLED","cash-web-account-blocker-provider-v2":true,"cash-web-account-moneybot-automations-hub":false,"cash-web-login-hide-cashtag-blocker-for-uk":true,"cash-web-account-settings-show-devices":true,"cash-web-grant-flow-enable-deep-link-button":false,"cash-web-local-profile":false,"cash-web-grant-flow-enable-monochrome":true,"cash-web-neighborhood-profiles-order-review-modal":false,"cash-web-account-deprecate-legacy-statements":true,"cashclient-moneybot-loading-delay-milliseconds":"500","cash-web-moneybot-home-visual-field":false,"cash-web-neighborhoods-checkout-buyer-offers":false,"cash-frontend-product-card-studio-kiosk":true,"cash-web-deposit-redirect-enabled":false,"cash-web-pools-enable-contributions":true,"cash-web-weak-pin-client-check":true,"cash-web-account-enable-card-studio-touch-devices":true,"cash-web-personalized-ads-enabled":true,"cash-web-account-card-studio":"ENABLED","cash-web-bot-prompts-you":false,"cash-web-account-enable-tm":true,"cash-web-account-router-v2":"UNASSIGNED","cash-web-account-taxes-banner":"DISABLED","cash-web-account-waitlist-minicard":true,"cash-web-taxes-dynamic-applet":true,"cash-web-taxes-timeline-event-dates":{"TAX_SEASON_START":"Jan 26","EMPLOYER_FORMS_SENT":"Jan 31","PRE_SEASON":"Dec 2025","POST_SEASON":"Oct 15","EFILE_DEADLINE":"Apr 15","INVESTMENT_FORMS_SENT":"Feb 17"},"cash-web-account-show-if-block-employee":false,"cash-web-account-address-autocomplete":true,"cash-web-account-instrument-selection-blocker-allow-v2":true,"cash-web-account-filter-money-movement":"ENABLED","cash-web-payment-route-common-enabled":true,"cash-frontend-product-resend-code":true,"cash-web-account-waitlist-referly":true,"cashclient-stream-moneybot-messages":"ENABLED","cash-web-confirmation-page-v2":true,"cash-web-passkeys-discoverable-login":false,"cash-web-arcade-migration":{"cash-web-arcade-migration-avatar":"ENABLED","cash-web-arcade-migration-apps":"ENABLED","cash-web-arcade-migration-button":"ENABLED","cash-web-arcade-migration-modal":"ENABLED"},"cash-web-taxes-timeline-stage":"POST_SEASON","cash-web-login-datadog-rum-config":{"sessionSampleRateOverride":50},"cashclient-moneybot-applet":"NONE","cash-web-taxes-datadog-rum-config":{"sessionSampleRateOverride":1},"cash-web-account-mweb-home":false,"cash-web-account-suggested-actions":false,"cash-web-local-profile-use-one-trust":true,"cash-web-account-cash-limits-xp":true,"cash-web-arcade-feature-documents":"DISABLED","cash-web-neighborhoods-enable-tm":true,"cash-web-account-moneytab":false,"cash-web-shadow-account-debit-text":false,"cash-web-active-orders":true,"cash-frontend-product-dark-mode":true,"cash-web-grant-flow-datadog-rum-config":{"sessionSampleRateOverride":100},"cash-web-account-roundup-upsells":false,"cash-web-account-settings-square-alias":false,"cash-web-enable-tm":true,"cash-web-account-safety-hub":true,"cash-web-account-edit-distributions":"ENABLED","cash-web-neighborhood-profiles-storefront-login":false,"cash-web-account-onboarding-validator":"REQUIRE_ALL","cash-web-account-money-page-separation":"ENABLED","cash-web-checkout-lending-payment-options":false,"cash-web-account-profile-switching":"DISABLED","cash-web-arcade-migration-background-login":"ENABLED","cash-web-account-new-cash-out-endpoint":false,"flackEnableMoneybotAppletPlacement":false,"cash-web-pools-datadog-rum-config":{"sessionSampleRateOverride":100},"cash-web-enable-sid-retry":true,"cash-web-one-trust-banner-visibility":true,"cash-web-pay-links-single-pay-cta":true,"cash-web-account-allow-international-p2p":"DISABLED","cash-web-account-savings-fetch-sponsorship":true,"cash-web-genie-login-welcome-scene-slug":"cash-web-welcome","cash-web-account-use-apple-pay-js-api":true,"cash-web-account-initiate-session":false,"cash-frontend-product-call-referly-for-referrals":true,"cash-web-local-profile-datadog-rum-config":{"disallowList":["CALB_CAESDU1MNzNWNkE1NVhCOVo","CALB_CAESDU1MSldNVkQzQzhDRDQ"],"sessionSampleRateOverride":100},"cash-web-account-settings-security-lock-use-plasma":true,"cash-web-account-verify-alias-additional-help-items":false,"cash-web-account-new-sam-settings":true,"cash-web-taxes-desktop-applet":"ENABLED","cash-web-account-bitcoin-limits":true,"cash-web-conversion-tracking":true,"cash-web-use-v2-cdp-endpoint":true,"cash-web-neighborhoods-enable-3ds":false,"cash-web-account-message-non-interactive":true,"cash-web-neighborhoods-multi-vertical-header-v2":false,"cash-web-show-money-tab-settings":{"countries":["US"]},"cash-web-enable-account-sid":false,"flackEnableMoneyBotSuggestionFormat":false,"cash-web-standalone-pages-datadog-rum-config":{"sessionSampleRateOverride":10},"cash-web-p2p-allow-search-new-recipients":"DISABLED","cash-web-account-multiple-goals-paychecks-enabled":true,"cash-web-account-datadog-rum-config":{"sessionSampleRateOverride":100},"cash-web-account-agents":false,"cash-web-moneybot-debug-copy-session":false,"cash-web-neighborhoods-multi-vertical-confirmation":true,"cash-web-account-enable-instrument-selection-blocker-v3":false,"cash-web-taxes-article-list":{"whats-new":true,"things-to-know":true,"what-to-do-if-you-owe":true,"how-to-check-your-refund":true,"refund-tips":true,"why-cash-app-taxes":true,"what-goes-into-your-refund":true},"cash-web-taxes-open-for-data-entry":"DISABLED","cash-web-neighborhoods-multi-vertical-checkout":true,"cash-web-account-tag-status-display":false,"cash-web-account-enable-sid":true,"cash-web-account-enable-paychecks-stock-editing":true,"cash-web-account-webmcp":false,"cash-web-incidents":{"incidents":[]},"cash-web-account-settings-set-or-update-passcode-use-plasma":true,"cashclient-moneybot-show-debug-options":"DISABLED","cash-web-moneybot-loading-delay-milliseconds":500,"cash-web-grant-flow-disable-sign-up":true,"cash-web-follow-brand":true,"cash-web-account-savings-nux":true,"cash-web-account-locale-disclosure":false,"cash-web-account-waitlist-heart":true,"cash-web-activity-cell":true,"cash-web-taxes-btc-import-top-of-funnel":{"taxesAppletBannerCopy":"Your bitcoin tax documents are now ready to import.","enabled":true},"cash-web-account-paychecks-nux":true,"cashclient-moneybot-cached-session-id-timeout-seconds":"300","cash-web-p2p-allow-new-aliases":"DISABLED","cash-web-account-settings-instrument-link-overrides":{},"cash-web-taxes-account-switcher-version":{"minIOSAppVersion":"1.0","minAndroidAppVersion":"1.0"},"cash-frontend-product-referral-information-migration-to-server-call":"ENABLED","cash-web-passkeys-try-login-with-passkeys":"DISABLED","cash-web-passcode-rejection-reprompt":true,"cash-web-replace-cash-card-ui":"ENABLED","cash-web-moneybot-background-connection":true,"cash-web-account-show-restricted-balance":true,"cash-web-cashtags-p2p-oon-pay-links":"NONE","cash-web-enable-sitm":true,"cash-web-taxes-experience-service":true,"cash-web-support-show-search":true,"cash-web-support-datadog-rum-enabled":true,"cash-web-account-sam":"ENABLED","cash-web-moneybot-developer-config":false,"cash-web-passkeys":"ENABLED","cash-web-listings-enable-summary-image":false,"cash-web-grant-flow-smart-banner-ios":false,"cash-web-account-initiate-cash-out-endpoint":"ENABLED","cash-web-account-activity-filter-domain-type":"ENABLED","cash-web-device-details-endpoint":true,"cash-web-account-personal-data-download-endpoint":true,"cashclient-moneybot-interface-spaces":"DISABLED","cash-web-login-otp-auto-submit":true,"cash-web-cashtags-datadog-rum-config":{"sessionSampleRateOverride":10},"cash-web-cashtags-p2p-enable-pay-links":true,"cash-web-genie-login-welcome-enabled":false,"cash-web-login-turnstile-site-key":"","cash-web-standalone-pools-enriched-receipt":true,"cash-web-account-taxes-entrypoint-in-sidebar-nav":"ENABLED","cashclient-moneybot-liquid-glass":"DISABLED","cash-web-lightning-datadog-rum-config":{"sessionSampleRateOverride":100},"cash-web-support-datadog-rum-config":{"sessionSampleRateOverride":100},"cash-web-account-intelligent-applets":false,"cash-web-account-janus-contact-aliases":true,"cashclient-hackweek-2026-limits-in-moneybot":"DISABLED","cash-web-account-paychecks":"ENABLED","cash-web-taxes-sam-restriction":true,"cash-web-account-ai-playground":false,"cash-web-account-pools-testing":false,"cash-web-3ds-redirect-url-test":"","cash-web-account-show-p2p-for-uk":"UNASSIGNED","cash-web-referly-reward-code":true,"cash-web-neighborhoods-multi-vertical-profile":true}
+      var experimentsJson = {"mobile-moneybot-chat":{"variant_value":"enabled"},"moneybot-home":{"variant_value":"enabled"},"moneybot-home-widgets":{"variant_value":"enabled"},"cash-web-oon-p2p-pay-links":{"variant_value":"treatment"},"cash-web-continue-in-mobile-push-notification":{"variant_value":"treatment"},"cash-web-grant-flow-enable-deep-link-otp-page":{"variant_value":"treatment"},"cash-web-bitcoin-page":{"variant_value":"treatment"},"cash-web-marketing-card-studio":{"variant_value":"treatment"},"cash-web-user-journey-tracking":{"variant_value":"treatment"},"cash-web-card-activation":{"variant_value":"treatment"},"cash-web-journey-full-screen":{"variant_value":"treatment"},"transfers-instrument-microauth-on-web-rollout":{"variant_value":"enabled"},"cash-web-full-p2p-experience":{"variant_value":"treatment"},"cash-web-card-studio-3d-card":{"variant_value":"treatment"},"cash-web-referrals":{"variant_value":"treatment"},"cash-web-account-display-name-use-plasma":{"variant_value":"use-plasma"},"cash-web-p2p-single-recipient":{"variant_value":"treatment"},"cash-web-moneybot-llm-suggestions":{"variant_value":"kgoose"},"web-fs-activity-filter":{"variant_value":"treatment2"},"mint-card-design-library-order-flow":{"variant_value":"grid_card_tag_enabled"},"moneybot-single-response-quick-action-bar":{"variant_value":"enabled"},"cash-web-card-studio":{"variant_value":"treatment"},"cash-web-enriched-receipt":{"variant_value":"treatment"},"moneybot-activity-list-live-rows":{"variant_value":"enabled"},"cash-web-savings-transfer-optimization":{"variant_value":"treatment"},"moneybot-feedback-sheet":{"variant_value":"enabled"},"cash-web-account-mobile-painted-door":{"variant_value":"treatment"},"client-transfers-multi-linking":{"variant_value":"enabled"},"cash-web-notification-setting":{"variant_value":"treatment"}}
+    </script>
+    <script nonce="AJ5trETF7/77i1Ysa+bhmTY=">var isUnsupportedBrowser='function'!=typeof Promise||'function'!=typeof Promise.allSettled||'function'!=typeof BigInt;isUnsupportedBrowser&&window.location.replace('/unsupported-browser')</script>
+  <link rel="preload" as="font" href="https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSans-Medium.woff2" type="font/woff2" crossorigin="anonymous" integrity=""><link rel="preload" as="font" href="https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSans-Regular.woff2" type="font/woff2" crossorigin="anonymous" integrity=""><meta name="public-path" content="https://cash-f.squarecdn.com/web/account/fdbed54c785f7f09ecd311a40c3d20b35e875f92/"><script type="module" src="https://cash-f.squarecdn.com/web/account/fdbed54c785f7f09ecd311a40c3d20b35e875f92/runtime.452003bb4e23e3f8.js" nonce="AJ5trETF7/77i1Ysa+bhmTY=" integrity="sha384-zTj5wBIbamBJNRNcXfzkdcF2LKaO1JPgQ32cE0AJMUZpHBqTCLNvQ1SMkmq+T12u" crossorigin="anonymous"></script><script type="module" src="https://cash-f.squarecdn.com/web/account/fdbed54c785f7f09ecd311a40c3d20b35e875f92/main.b1cea2ccc29ebbc9.js" nonce="AJ5trETF7/77i1Ysa+bhmTY=" integrity="sha384-EH5qPx1p/Wz4YyUrHr+RiXmQd6f/IEYoCHsHfvqPQTISZvQacXZbDUS4uwLjnaVJ" crossorigin="anonymous"></script><link href="https://cash-f.squarecdn.com/web/account/fdbed54c785f7f09ecd311a40c3d20b35e875f92/main.e2039878eb0390ce.css" rel="stylesheet" integrity="sha384-88+njfafaEClu6NDh2gMWKH49K7emSW/p+19hSKPMSJl+tGMcxr8IHXZnLZHMzod" crossorigin="anonymous"><link rel="apple-touch-icon" href="https://cash-f.squarecdn.com/static/apple-touch-icon.png" integrity="sha384-obbtLXUmL5CCcijDtMgdqvtSyKu3FTcGYIdVn6uif5nIxTaS7u3IMUG3Wl1PjBox"><link rel="manifest" href="https://cash-f.squarecdn.com/static/manifest.webmanifest" integrity="sha384-CdK6MPtohWsnTcqD6CGLRmq1Wc5Al3/3LP9FNcnsODQKI3SMTfCiCamhNianUQCU"><link rel="icon" href="https://cash-f.squarecdn.com/static/favicon.ico" integrity="sha384-4ChiDA321IPrHSobMPeW1n8RX2GU6pY6iWH7h79DqAFaYyhrlbYTvRWEAJqMZ3GS" sizes="16x16,32x32" type="image/x-icon"><link rel="icon" href="https://cash-f.squarecdn.com/static/favicon.svg" integrity="sha384-KFrrYlHN2FMoPYRtljOsgHAreGaHwX+UtbQgfY3LbnCzenjycuPRU7zBKWf7yaQZ" sizes="any" type="image/svg+xml"><style>@font-face {
+  font-family: "Cash Sans";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSans-Light.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSans-Regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSans-Medium.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSans-Semibold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSans-Bold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSans-Black.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSans-Extrablack.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSans-Extralight.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 200;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSans-ExtralightItalic.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 200;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSans-LightItalic.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 300;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSans-RegularItalic.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSans-MediumItalic.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSans-SemiboldItalic.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSans-BoldItalic.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSans-BlackItalic.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSans-ExtrablackItalic.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Wide";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/woff2/CashSansWide-Extlight.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 200;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Wide";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/woff2/CashSansWide-Light.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Wide";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/woff2/CashSansWide-Regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Wide";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/woff2/CashSansWide-Medium.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Wide";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/woff2/CashSansWide-Semibold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Wide";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/woff2/CashSansWide-Bold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Wide";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/woff2/CashSansWide-Black.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Wide";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/woff2/CashSansWide-Extblack.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Wide";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/woff2/CashSansWide-ExtlightItl.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 200;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Wide";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/woff2/CashSansWide-LightItl.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 300;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Wide";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/woff2/CashSansWide-RegularItl.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Wide";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/woff2/CashSansWide-MediumItl.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Wide";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/woff2/CashSansWide-SemiboldItl.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Wide";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/woff2/CashSansWide-BoldItl.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Wide";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/woff2/CashSansWide-BlackItl.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Wide";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/woff2/CashSansWide-ExtblackItl.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Mono";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSansMono-Extralight.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 200;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Mono";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSansMono-Light.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Mono";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSansMono-Regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Mono";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSansMono-Medium.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Mono";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSansMono-Semibold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Mono";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSansMono-Bold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Mono";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSansMono-Black.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Mono";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSansMono-Extrablack.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Mono";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSansMono-ExtralightItalic.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 200;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Mono";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSansMono-LightItalic.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 300;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Mono";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSansMono-RegularItalic.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Mono";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSansMono-MediumItalic.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Mono";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSansMono-SemiboldItalic.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Mono";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSansMono-BoldItalic.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Mono";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSansMono-BlackItalic.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cash Sans Mono";
+  src: url("https://cash-f.squarecdn.com/static/fonts/cashsans/v2/woff2/CashSansMono-ExtrablackItalic.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 900;
+  font-display: swap;
+}</style></head>
+
+  <body>
+    <div id="root"></div>
+    <div id="modal-root"></div>
+    <div id="locale-disclosure-root"></div>
+  <script nonce="AJ5trETF7/77i1Ysa+bhmTY=">!function(){try{if(!window.localStorage)return}catch(e){return}var e=JSON.parse(window.localStorage.getItem('cash-web-bg-fallback-color'));if(e){var t=document.createElement('style');t.setAttribute('data-appearance-fallback',''),t.textContent='body { background-color: '+e+'; }',document.head.prepend(t)}}()</script></body>
+</html>
