@@ -164,7 +164,7 @@ Once you've discussed your proposed feature/fix/etc. with a team member, and you
 
 Testing is a key component in the development workflow. The C++ Terminal and Console code uses TAEF (the Test Authoring and Execution Framework); the Rust WTA crate uses standard `cargo test`.
 
-If your changes affect existing test cases, or you're working on brand new features and also the accompanying test cases, see [TAEF](./doc/TAEF.md) for more information about how to validate the C++ side locally, and run `cargo test --manifest-path tools/wta/Cargo.toml` for the Rust side.
+If your changes affect existing test cases, or you're working on brand new features and also the accompanying test cases, see [TAEF](./doc/TAEF.md) for more information about how to validate the C++ side locally. For the Rust side, run `cargo test` from `tools/wta` so Cargo uses the pinned toolchain.
 
 ### Code Review
 
