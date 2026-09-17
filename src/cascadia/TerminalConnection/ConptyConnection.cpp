@@ -69,7 +69,7 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
             // in other terminals that launch the same shell.
             environment.as_map().insert_or_assign(L"INTELLIGENT_TERMINAL", L"1");
 
-            // Protocol server credentials — read from the Terminal process env
+            // Protocol server addresses — read from the Terminal process env
             // (set by WindowEmperor::_initializeProtocolServer). These must be
             // injected here because regenerate() builds _initialEnv from the
             // registry, not the process environment block.
@@ -77,6 +77,10 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
                 wchar_t buf[512];
                 if (GetEnvironmentVariableW(L"WT_COM_CLSID", buf, ARRAYSIZE(buf)))
                     environment.as_map().insert_or_assign(L"WT_COM_CLSID", buf);
+                if (GetEnvironmentVariableW(L"WT_COM_HOOK_CLSID", buf, ARRAYSIZE(buf)))
+                    environment.as_map().insert_or_assign(L"WT_COM_HOOK_CLSID", buf);
+                else
+                    environment.as_map().erase(L"WT_COM_HOOK_CLSID");
             }
 
             // Directory hook integrations may write diagnostics into.
@@ -147,6 +151,7 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
                 L"WT_SESSION",
                 L"WT_PROFILE_ID",
                 L"WT_COM_CLSID",
+                L"WT_COM_HOOK_CLSID",
                 L"INTELLIGENT_TERMINAL",
             };
             // Misdiagnosis in MSVC 14.44.35207. No pointer arithmetic in sight.

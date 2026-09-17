@@ -5,6 +5,15 @@ running Terminal via the `WT_COM_CLSID` environment variable, calls
 `CoCreateInstance(CLSCTX_LOCAL_SERVER)` to obtain `IProtocolServer`, and
 exposes a tmux-style command surface over its IDL methods.
 
+`WT_COM_CLSID` retains its fixed package value and existing activation behavior.
+Only `agent-hook` and `send-event` with an `agent.` topic use the separate,
+automatically inherited `WT_COM_HOOK_CLSID`. That address is registered only for
+the owning Terminal process's lifetime, so a late hook cannot start a replacement
+or connect to a newer Terminal. Hook delivery never falls back to the package
+CLSID. Native `agent-hook` still returns success silently when disconnected;
+`send-event` retains its normal error reporting, which legacy hook wrappers
+already suppress.
+
 - Source: `src/tools/wtcli/main.cpp`
 - IDL: `src/cascadia/TerminalProtocol/TerminalProtocol.idl`
 - Primary in-tree caller: `tools/wta/src/shell/wt_channel/cli_channel.rs` (and

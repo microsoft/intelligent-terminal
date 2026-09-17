@@ -671,9 +671,6 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
             // just as likely a wtcli protocol activation as a console handoff.
             // Stay headless and leave the saved layout alone; whichever
             // activation actually wants a window restores it.
-            //
-            // TODO: Here we could start a timer and exit after, say, 5 seconds
-            // if no windows are created. But that's a minor concern.
         }
         else
         {
@@ -1146,6 +1143,7 @@ void WindowEmperor::_postQuitMessageIfNeeded() const
         _windowCount <= 0 &&
         !_app.Logic().Settings().GlobalSettings().AllowHeadless())
     {
+        LOG_IF_FAILED(TerminalProtocolComServer::s_StopHookListening());
         PostQuitMessage(0);
     }
 }
@@ -1371,6 +1369,7 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
             RegisterApplicationRestart(nullptr, RESTART_NO_CRASH | RESTART_NO_HANG);
             return TRUE;
         case WM_ENDSESSION:
+            LOG_IF_FAILED(TerminalProtocolComServer::s_StopHookListening());
             _finalizeSessionPersistence();
             _skipPersistence = true;
             PostQuitMessage(0);
@@ -1866,17 +1865,37 @@ void WindowEmperor::_checkWindowsForNotificationIcon()
 
 void WindowEmperor::_initializeProtocolServer()
 {
+    if (GetEnvironmentVariableW(L"WT_COM_HOOK_CLSID", nullptr, 0) != 0 &&
+        !SetEnvironmentVariableW(L"WT_COM_HOOK_CLSID", nullptr))
+    {
+        LOG_LAST_ERROR();
+        return;
+    }
+
+    GUID hookClsid{};
+    if (FAILED_LOG(CoCreateGuid(&hookClsid)))
+    {
+        return;
+    }
+
     // Register COM class factory for cross-process access (runs on MTA thread).
     TerminalProtocolComServer::s_setEmperor(this);
-    if (SUCCEEDED_LOG(TerminalProtocolComServer::s_StartListening()))
+    if (SUCCEEDED_LOG(TerminalProtocolComServer::s_StartListening(hookClsid)))
     {
-        // Stringify the CLSID so child processes can discover us via CoCreateInstance.
+        // Preserve the fixed package CLSID for ordinary COM clients.
         wil::unique_cotaskmem_string clsidStr;
-        if (SUCCEEDED(StringFromCLSID(__uuidof(TerminalProtocolComServer), &clsidStr))
-            && clsidStr)
+        if (SUCCEEDED_LOG(StringFromCLSID(__uuidof(TerminalProtocolComServer), &clsidStr)) && clsidStr)
         {
             _comClsid = clsidStr.get();
-            SetEnvironmentVariableW(L"WT_COM_CLSID", _comClsid.c_str());
+            LOG_IF_WIN32_BOOL_FALSE(SetEnvironmentVariableW(L"WT_COM_CLSID", _comClsid.c_str()));
+        }
+
+        // Only hook delivery uses this process-lifetime registration. There is
+        // no package activation entry to fall back to after the process exits.
+        wil::unique_cotaskmem_string hookClsidStr;
+        if (SUCCEEDED_LOG(StringFromCLSID(hookClsid, &hookClsidStr)) && hookClsidStr)
+        {
+            LOG_IF_WIN32_BOOL_FALSE(SetEnvironmentVariableW(L"WT_COM_HOOK_CLSID", hookClsidStr.get()));
         }
     }
 

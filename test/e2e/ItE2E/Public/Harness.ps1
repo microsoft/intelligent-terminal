@@ -228,6 +228,7 @@ function Start-Terminal {
         Terminal. Returns the app context object used by every primitive.
     .PARAMETER Package   Store|Dev|<PackageFamilyName>. Auto is rejected for live tests.
     .PARAMETER Settings  Hashtable of top-level settings.json keys to apply.
+    .PARAMETER State     Hashtable of state.json overrides applied after backup and before launch.
     .PARAMETER PassFre   Mark the agent FRE complete before launch (default $true).
     .PARAMETER Backup    Back up settings/state for restore on Stop-Terminal (default $true).
     .PARAMETER CleanSettings  Strip agent/AI keys from settings.json after backup so the user's
@@ -247,7 +248,8 @@ function Start-Terminal {
         [bool]$Backup = $true,
         [bool]$CleanSettings = $true,
         [switch]$ShowFre,
-        [int]$TimeoutSec = 60
+        [int]$TimeoutSec = 60,
+        [hashtable]$State
     )
     if ($Package -eq 'Auto') {
         throw "Choose the live integration-test package explicitly: use -Package Dev, -Package Store, or an explicit PackageFamilyName. 'Auto' is not allowed."
@@ -279,6 +281,9 @@ function Start-Terminal {
     if ($ShowFre) { Reset-Fre -App $app | Out-Null }
     elseif ($PassFre) { Invoke-FrePass -App $app | Out-Null }
     if ($Settings) { Set-WtSettings -App $app -Settings $Settings | Out-Null }
+    if ($State) {
+        foreach ($key in $State.Keys) { Set-WtState -App $app -Key $key -Value $State[$key] | Out-Null }
+    }
 
     # Snapshot the agent-pane-sessions.jsonl BEFORE launching WT so Get-AgentPaneSession can tell
     # OUR agent pane(s) apart from every pane recorded by prior runs / other windows. The file is
