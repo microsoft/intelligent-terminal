@@ -169,6 +169,7 @@ system.selection_copied: "Копирано"  # Brief hint shown after selected t
 system.cancelled: "Отменено."
 system.no_prompt_in_flight: "Няма активна заявка."
 system.authentication_failed: "Удостоверяването е неуспешно"
+system.localization_workflow_retest: "Съобщение за повторно тестване на публикуването на локализацията на терминала на WTA."
 system.stopped_max_tokens: "Отговорът беше отрязан след достигане на изходния лимит на модела."
 system.stopped_max_turn_requests: "Агентът спря след достигане на лимита си от заявки за този ход."
 system.stopped_refusal: "Агентът отказа да продължи с тази заявка."

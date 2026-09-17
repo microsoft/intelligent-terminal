@@ -160,6 +160,7 @@ system.selection_copied: "Wedi copïo"  # Brief hint shown after selected termin
 system.cancelled: "Wedi'i ganslo."
 system.no_prompt_in_flight: "Dim anogaeth ar y gweill."
 system.authentication_failed: "Methwyd â dilysu"
+system.localization_workflow_retest: "Neges ail-brofi cyhoeddi cyfieithu terfynell WTA."
 system.stopped_max_tokens: "Cafodd yr ymateb ei dorri ar ôl cyrraedd terfyn allbwn y model."
 system.stopped_max_turn_requests: "Stopiodd yr asiant ar ôl cyrraedd ei derfyn ceisiadau ar gyfer y tro hwn."
 system.stopped_refusal: "Gwrthododd yr asiant barhau â'r cais hwn."

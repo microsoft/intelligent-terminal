@@ -160,6 +160,7 @@ system.selection_copied: "ተቀድቷል"  # Brief hint shown after selected te
 system.cancelled: "Cancelled."
 system.no_prompt_in_flight: "No prompt in flight."
 system.authentication_failed: "Authentication failed"
+system.localization_workflow_retest: "የWTA ተርሚናል የቋንቋ ማላመድ ህትመት ዳግም ሙከራ መልእክት።"
 system.stopped_max_tokens: "ምላሹ የሞዴሉ የውፅዓት ገደብ ላይ ከደረሰ በኋላ ተቆርጧል።"
 system.stopped_max_turn_requests: "ወኪሉ ለዚህ ዙር የጥያቄ ገደቡ ላይ ከደረሰ በኋላ ቆሟል።"
 system.stopped_refusal: "ወኪሉ በዚህ ጥያቄ መቀጠል አልፈለገም።"

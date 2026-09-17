@@ -160,6 +160,7 @@ system.selection_copied: "Αντιγράφηκε"  # Brief hint shown after sele
 system.cancelled: "Ακυρώθηκε."
 system.no_prompt_in_flight: "Δεν υπάρχει ενεργή εντολή."
 system.authentication_failed: "Ο έλεγχος ταυτότητας απέτυχε"
+system.localization_workflow_retest: "Μήνυμα επαναδοκιμής δημοσίευσης τοπικής προσαρμογής τερματικού WTA."
 system.stopped_max_tokens: "Η απάντηση περικόπηκε μετά την επίτευξη του ορίου εξόδου του μοντέλου."
 system.stopped_max_turn_requests: "Ο πράκτορας σταμάτησε μετά την επίτευξη του ορίου αιτημάτων για αυτόν τον γύρο."
 system.stopped_refusal: "Ο πράκτορας αρνήθηκε να συνεχίσει με αυτό το αίτημα."

@@ -155,6 +155,7 @@ system.selection_copied: "已複製"  # 複製選取的終端機文字後短暫�
 system.cancelled: "已取消。"
 system.no_prompt_in_flight: "沒有進行中的提示。"
 system.authentication_failed: "驗證失敗"
+system.localization_workflow_retest: "WTA 終端機當地語系化發佈重新測試訊息。"
 system.stopped_max_tokens: "達到模型的輸出上限後，回覆遭到截斷。"
 system.stopped_max_turn_requests: "達到本回合的要求上限後，智能體已停止。"
 system.stopped_refusal: "智能體拒絕繼續處理此要求。"

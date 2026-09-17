@@ -159,6 +159,7 @@ system.selection_copied: "Copiado"  # Brief hint shown after selected terminal t
 system.cancelled: "Cancelado."
 system.no_prompt_in_flight: "No hay ningún indicador en curso."
 system.authentication_failed: "Error de autenticación"
+system.localization_workflow_retest: "Mensaje de nueva prueba de publicación de la localización de la terminal de WTA."
 system.stopped_max_tokens: "La respuesta se cortó al alcanzar el límite de salida del modelo."
 system.stopped_max_turn_requests: "El agente se detuvo al alcanzar su límite de solicitudes para este turno."
 system.stopped_refusal: "El agente se negó a continuar con esta solicitud."
