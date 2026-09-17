@@ -1425,6 +1425,14 @@ namespace winrt::TerminalApp::implementation
         return nullptr;
     }
 
+    static ::Microsoft::Terminal::AgentSource::SessionsSshSource _SessionsSshSourceForProfile(
+        const winrt::Microsoft::Terminal::Settings::Model::Profile& profile)
+    {
+        return profile ?
+                   ::Microsoft::Terminal::AgentSource::ResolveSessionsSshSource(profile.Source(), profile.Commandline()) :
+                   ::Microsoft::Terminal::AgentSource::SessionsSshSource{};
+    }
+
     static const winrt::guid& _ProfileDefaultsAgentBackendGuid()
     {
         static const winrt::guid value{ L"{6f753615-8b19-4e3f-8f49-aac2ff577d79}" };
@@ -3166,6 +3174,8 @@ namespace winrt::TerminalApp::implementation
         Json::Value tabParams;
         tabParams["tab_id"] = winrt::to_string(tabId);
         tabParams["window_id"] = std::to_string(_WindowProperties.WindowId());
+        ::Microsoft::Terminal::AgentSource::WriteSessionsSshMetadata(
+            tabParams, _SessionsSshSourceForProfile(_SourceTerminalProfileForTab(_FindTabByStableId(tabId))));
         _RaiseProtocolEvent("tab_changed", tabParams);
     }
 
@@ -3186,6 +3196,8 @@ namespace winrt::TerminalApp::implementation
             if (!stableId.empty())
             {
                 params["tab_id"] = winrt::to_string(stableId);
+                ::Microsoft::Terminal::AgentSource::WriteSessionsSshMetadata(
+                    params, _SessionsSshSourceForProfile(_SourceTerminalProfileForTab(tab)));
             }
         }
 
@@ -3553,6 +3565,12 @@ namespace winrt::TerminalApp::implementation
             helperCmd.push_back(L' ');
             QuoteAndEscapeCommandlineArg(value, helperCmd);
         };
+        for (const auto& [flag, value] :
+             ::Microsoft::Terminal::AgentSource::BuildSessionsSshHelperArguments(
+                 _SessionsSshSourceForProfile(_SourceTerminalProfileForTab(tab))))
+        {
+            appendHelperFlagValue(flag, value);
+        }
         // Per-tab agent identity (override or global) — the helper forwards
         // these to the multi-agent master in its `initialize` handshake so
         // master spawns/reuses the right agent CLI for THIS tab.

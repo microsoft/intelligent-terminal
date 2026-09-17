@@ -68,6 +68,7 @@ use crate::protocol::acp::spawn::{
 
 pub(crate) mod config;
 mod session_mcp;
+mod ssh_sessions;
 
 use config::MasterConfig;
 
@@ -318,6 +319,9 @@ struct MasterStateInner {
     /// `session_to_helper`, then subordinate state such as `registry`.
     /// Route reads do not need the lifecycle gate.
     pub(crate) registry: Arc<dyn crate::session_registry::SessionRegistry>,
+    /// Remote IDs remain raw within an independent common registry per SSH
+    /// source. These pane bindings outlive the helper that requested resume.
+    ssh_sessions: ssh_sessions::Service,
     /// Per-helper subscribers for `intellterm.wta/*` ExtNotifications
     /// fanned out from master. Populated by `serve_helper` on connect
     /// and removed on disconnect (or whenever a send fails). Keyed by
@@ -2690,6 +2694,18 @@ impl HelperHandler {
         &self,
         mut args: acp::schema::v1::InitializeRequest,
     ) -> acp::Result<acp::schema::v1::InitializeResponse> {
+        // A registry connection must not depend on a local chat agent or BYOK
+        // credentials. This label selects behavior, not an authorization role;
+        // every SSH request still checks the master's agent policy.
+        if args
+            .client_info
+            .as_ref()
+            .is_some_and(|info| info.name == "wta-session-registry")
+        {
+            return Ok(acp::schema::v1::InitializeResponse::new(
+                acp::schema::ProtocolVersion::V1,
+            ));
+        }
         // The helper declares which agent this tab wants in `_meta.wta`
         // by *identity* (id + model). Strip the namespace so it can never
         // reach an agent CLI, then resolve the command the master will
@@ -3898,6 +3914,7 @@ impl HelperHandler {
                 let agent = self.agent.get().cloned();
                 handle_sessions_list(&self.state, agent.as_deref(), &p).await
             }
+            Req::SshSessions(request) => ssh_sessions::handle(&self.state, request).await,
             Req::SessionHook(ev) => handle_session_hook(&self.state, ev, false).await,
             Req::SessionBornBound(ev, wsl_distro) => {
                 handle_session_born_bound(&self.state, ev, wsl_distro).await
@@ -4323,6 +4340,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         pending_usage: Mutex::new(HashMap::new()),
         usage_generation: watch::channel(0u64).0,
         registry: crate::session_registry::InMemoryRegistry::shared(),
+        ssh_sessions: ssh_sessions::Service::default(),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt,
         agents: Mutex::new(HashMap::new()),
@@ -8570,6 +8588,9 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
         }
         _ => return,
     };
+    // SSH's only local liveness authority is its native resume pane. Both
+    // terminal closure and failed startup end that binding via the same reducer.
+    ssh_sessions::pane_closed(state, &pane_id).await;
     tracing::info!(
         target: "master_wt_event",
         pane_id = %pane_id,

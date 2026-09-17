@@ -1646,7 +1646,10 @@ pub(crate) fn sanitize_windows_agent_cwd(
     }
 }
 
-fn resolve_created_pane_id(result: &serde_json::Value, action_name: &str) -> Result<String> {
+pub(crate) fn resolve_created_pane_id(
+    result: &serde_json::Value,
+    action_name: &str,
+) -> Result<String> {
     value_to_string(result.get("session_id"))
         .filter(|pane_id| !pane_id.trim().is_empty())
         .ok_or_else(|| {
