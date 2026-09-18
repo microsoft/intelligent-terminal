@@ -446,6 +446,36 @@ function Invoke-UiClick {
     }
 }
 
+function Find-ItExactTextRange {
+    param(
+        [Parameter(Mandatory)]$DocumentRange,
+        [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$Text
+    )
+    $range = $DocumentRange.FindText($Text, $false, $false)
+    if (-not $range) { throw 'UIA text was not found in the requested control.' }
+    $observed = $range.GetText(-1)
+    if ([string]::Equals($observed, $Text, [StringComparison]::Ordinal)) { return $range }
+    if (-not $observed.StartsWith($Text, [StringComparison]::Ordinal)) {
+        throw 'UIA range does not exactly match the requested text.'
+    }
+
+    # Some providers include a trailing cell. Shorten in provider units, not UTF-16 offsets.
+    $remaining = $observed.Length - $Text.Length
+    while ($remaining-- -gt 0) {
+        $moved = $range.MoveEndpointByUnit(
+            [System.Windows.Automation.Text.TextPatternRangeEndpoint]::End,
+            [System.Windows.Automation.Text.TextUnit]::Character, -1)
+        if ($moved -ne -1) { throw 'UIA could not adjust the text range endpoint.' }
+        $next = $range.GetText(-1)
+        if ([string]::Equals($next, $Text, [StringComparison]::Ordinal)) { return $range }
+        if ($next.Length -ge $observed.Length -or -not $next.StartsWith($Text, [StringComparison]::Ordinal)) {
+            throw 'UIA range does not exactly match the requested text after endpoint adjustment.'
+        }
+        $observed = $next
+    }
+    throw 'UIA could not establish the exact text range endpoint.'
+}
+
 function Get-UiTextBounds {
     <# Return UIA TextPattern bounding rectangles for exact text in a named control. #>
     [CmdletBinding()]
@@ -459,37 +489,18 @@ function Get-UiTextBounds {
         Add-Type -AssemblyName UIAutomationClient
         Add-Type -AssemblyName UIAutomationTypes
         $root = [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr][int64]$App.Hwnd)
+        if (-not $root -or $root.Current.ProcessId -ne $App.Pid) {
+            throw 'The UIA text window does not belong to the test application.'
+        }
         $condition = [System.Windows.Automation.PropertyCondition]::new(
             [System.Windows.Automation.AutomationElement]::NameProperty,
             $ControlName
         )
-        $control = @($root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $condition)) |
-            Where-Object { $_.Current.ClassName -eq 'TermControl' } |
-            Select-Object -First 1
-        if (-not $control) { throw "UIA text control '$ControlName' was not found." }
-        $pattern = $control.GetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern)
-        $document = $pattern.DocumentRange
-        $documentText = $document.GetText(-1)
-        $textIndex = $documentText.IndexOf($Text, [StringComparison]::Ordinal)
-        if ($textIndex -lt 0) { throw "Text '$Text' was not found in '$ControlName'." }
-
-        $range = $document.Clone()
-        $null = $range.MoveEndpointByRange(
-            [System.Windows.Automation.Text.TextPatternRangeEndpoint]::End,
-            $range,
-            [System.Windows.Automation.Text.TextPatternRangeEndpoint]::Start)
-        $null = $range.MoveEndpointByUnit(
-            [System.Windows.Automation.Text.TextPatternRangeEndpoint]::Start,
-            [System.Windows.Automation.Text.TextUnit]::Character,
-            $textIndex)
-        $null = $range.MoveEndpointByRange(
-            [System.Windows.Automation.Text.TextPatternRangeEndpoint]::End,
-            $range,
-            [System.Windows.Automation.Text.TextPatternRangeEndpoint]::Start)
-        $null = $range.MoveEndpointByUnit(
-            [System.Windows.Automation.Text.TextPatternRangeEndpoint]::End,
-            [System.Windows.Automation.Text.TextUnit]::Character,
-            $Text.Length)
+        $controls = @($root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $condition)) |
+            Where-Object { $_.Current.ClassName -eq 'TermControl' -and -not $_.Current.IsOffscreen }
+        if (@($controls).Count -ne 1) { throw "Expected one visible UIA text control named '$ControlName'." }
+        $pattern = $controls[0].GetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern)
+        $range = Find-ItExactTextRange -DocumentRange $pattern.DocumentRange -Text $Text
         @($range.GetBoundingRectangles())
     }
 }

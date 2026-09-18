@@ -91,6 +91,43 @@ Token-consuming simulated-real-user tests are deliberately excluded from this pu
 and from CI. They live only in the feature's dev-only local validation harness and run manually
 against an exact deployed publish package with explicitly available provider quota.
 
+### Deterministic mouse and paste regression checks
+
+The `CompletedTurnMouse` group contains four fixture-backed cases; it can run without a real
+provider prompt. Run the group together as well as the `RightClickCopy`/`RightClickPaste` cases
+individually. Each case verifies an empty connected draft at entry and cleanup, with a fresh
+fixture conversation so accumulated history cannot suppress the transient copy hint. The group refuses
+an already-used selected package, preserves clipboard formats and mouse position, and records
+unique captures below `ITE2E_ARTIFACT_ROOT` (or the default artifacts directory).
+The paired paste suite also preserves full clipboard formats. Both fixtures retain a recovery
+target before startup. If startup never returns a launch context, any remaining package process
+blocks automatic recovery; a matching path and recent creation time are not termination authority.
+Configuration is restored only after the selected package is confirmed inactive. Ambiguous
+ownership or ineffective termination fails with the configuration backup retained.
+
+The shared `Get-UiTextBounds` helper locates the first literal match in the single visible named
+TermControl belonging to the test window. It verifies the exact range text before returning
+rectangles; UTF-16 string indexes are not UIA Character offsets. An unrepresentable or mismatched
+range fails instead of guessing a coordinate. `Send-AgentKey -Key Escape` uses a complete Win32
+key event so a pending escape prefix cannot consume the next prompt character.
+
+```powershell
+$env:ITE2E_PACKAGE = 'Dev'
+$env:ITE2E_EXPECTED_WTA_SHA256 = '<hash from the exact-source build receipt>'
+$run = Join-Path $PWD ('test\e2e\artifacts\mouse-' + [guid]::NewGuid().ToString('N'))
+$env:ITE2E_ARTIFACT_ROOT = $run
+.\test\e2e\Invoke-ItE2EReport.ps1 `
+    -Path @('test\e2e\tests\Feature.AgentMouse.Tests.ps1', 'test\e2e\tests\Feature.Paste.Tests.ps1') `
+    -Tag @('CompletedTurnMouse', 'PasteCore', 'PasteRefocus', 'PasteOwnerIsolation') `
+    -OutDir $run
+Invoke-Pester test\e2e\selftests\MouseInput.Unit.Tests.ps1 -Tag Unit
+```
+
+The unit cases exercise provider-defined character units, Unicode, multiline ranges, endpoint
+failures and ordinary named-key compatibility without a deployed app. Existing checklist titles
+remain unchanged; use fresh full/incremental reports rather than treating historical failures as
+passing after a helper change.
+
 `tools\AutofixPrompt.Local.Tests.ps1` is an opt-in, quota-consuming Dev validation
 of actual Copilot decisions, outside the default `tests`/`selftests` discovery.
 It runs three fresh-session samples each of an obvious Git typo and an unfamiliar

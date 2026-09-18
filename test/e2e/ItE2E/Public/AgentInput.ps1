@@ -22,7 +22,8 @@ function Send-AgentKey {
     <#
     .SYNOPSIS
         Send a navigation key to the agent pane. -Key accepts Up/Down/Left/Right (sent as
-        raw ANSI escapes) and Enter/Tab/Escape/Space/BSpace/C-c… (tmux tokens). Repeat with
+        raw ANSI escapes), Escape (a complete Win32 key event), and Enter/Tab/Space/BSpace/C-c…
+        (tmux tokens). Repeat with
         -Count. The agent pane is resolved automatically.
     #>
     [CmdletBinding()]
@@ -37,12 +38,17 @@ function Send-AgentKey {
             $PaneSessionId = (Wait-Until -TimeoutSec 20 -Because "agent pane session id" -Condition { Get-AgentPaneSession -App $App }).PaneSessionId
         }
         for ($i = 0; $i -lt $Count; $i++) {
+            if ($Key -in @('Escape', 'Esc')) {
+                # A bare ESC can remain a prefix and consume the next typed character.
+                Send-AgentWin32Key -App $App -PaneSessionId $PaneSessionId -Vk 0x1B -Sc 1 -Uc 27 | Out-Null
+                continue
+            }
             if ($script:ItArrow.ContainsKey($Key)) {
                 # Arrow keys: raw ANSI escape (wtcli has no arrow token).
                 Invoke-WtCli -App $App -Arguments @('send-keys', '--raw', '-t', $PaneSessionId, '--', $script:ItArrow[$Key]) | Out-Null
             }
             else {
-                # Enter/Tab/Escape/Space/BSpace/C-x: tmux token translation.
+                # Enter/Tab/Space/BSpace/C-x: tmux token translation.
                 Invoke-WtCli -App $App -Arguments @('send-keys', '-t', $PaneSessionId, '--', $Key) | Out-Null
             }
             Start-Sleep -Milliseconds 120
