@@ -252,7 +252,10 @@ BeforeDiscovery {
 Describe 'Feature: completed-turn triangle mouse click' -Tag 'CompletedTurnMouse' -Skip:(-not $script:TriangleClickReady) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        . (Join-Path $PSScriptRoot 'helpers\TestTerminalCleanup.ps1')
         $script:app = $null
+        $script:target = $null
+        $script:launchStarted = $null
         $script:clipboardSaved = $false
         $script:cursorSaved = $false
         $script:fixtureDir = $null
@@ -260,6 +263,7 @@ Describe 'Feature: completed-turn triangle mouse click' -Tag 'CompletedTurnMouse
         $script:evidenceDir = $null
         $script:caseNumber = 0
         $target = Resolve-ItApp -Package (Get-ItTestPackage)
+        $script:target = $target
         if (@(Get-WtProcessesForApp -App $target -IncludePackageExecutables).Count) {
             throw 'The mouse suite requires an unused selected package; it will not close user sessions.'
         }
@@ -287,6 +291,7 @@ Describe 'Feature: completed-turn triangle mouse click' -Tag 'CompletedTurnMouse
         @{ Package = $target.Package; WtaPath = $target.WtaPath; WtaSha256 = $binaryHash } |
             ConvertTo-Json | Set-Content (Join-Path $script:evidenceDir 'package.json') -Encoding utf8
 
+        $script:launchStarted = Get-Date
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
             acpAgent = 'custom:chat-fixture'
             acpCustomCommand = $command
@@ -368,7 +373,7 @@ Describe 'Feature: completed-turn triangle mouse click' -Tag 'CompletedTurnMouse
     AfterAll {
         $fixtureArchived = $false
         try {
-            if ($script:app) { Stop-Terminal -App $script:app }
+            Stop-TestTerminal -App $script:app -Target $script:target -LaunchStarted $script:launchStarted
         }
         finally {
             try {

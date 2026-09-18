@@ -48,7 +48,7 @@ function Send-AgentKey {
                 Invoke-WtCli -App $App -Arguments @('send-keys', '--raw', '-t', $PaneSessionId, '--', $script:ItArrow[$Key]) | Out-Null
             }
             else {
-                # Enter/Tab/Escape/Space/BSpace/C-x: tmux token translation.
+                # Enter/Tab/Space/BSpace/C-x: tmux token translation.
                 Invoke-WtCli -App $App -Arguments @('send-keys', '-t', $PaneSessionId, '--', $Key) | Out-Null
             }
             Start-Sleep -Milliseconds 120

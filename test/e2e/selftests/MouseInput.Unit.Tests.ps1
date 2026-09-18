@@ -2,6 +2,7 @@
 
 BeforeAll {
     Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+    . (Join-Path $PSScriptRoot '..\tests\helpers\TestTerminalCleanup.ps1')
     Add-Type -AssemblyName UIAutomationClient
     Add-Type -AssemblyName UIAutomationTypes
     if (-not ('ItE2ETests.TextRange' -as [type])) {
@@ -191,6 +192,74 @@ Describe 'Selected package discovery' -Tag 'Unit', 'SelectedPackage' {
     }
 }
 
+Describe 'Failed-startup terminal recovery' -Tag 'Unit', 'StartupRecovery' {
+    BeforeEach {
+        $script:recoveryStart = [DateTime]::UtcNow.AddMinutes(-1)
+        $script:recoveryTarget = [pscustomobject]@{
+            WindowsTerminal = (Join-Path $TestDrive 'package\WindowsTerminal.exe')
+            InstallLocation = (Join-Path $TestDrive 'package')
+            Pid = $null
+        }
+        Mock Get-CimInstance { [pscustomobject]@{ ParentProcessId = 0 } }
+        Mock Get-WtProcessesForApp { @() }
+        Mock Restore-WtConfig {}
+        Mock Stop-Terminal {}
+    }
+
+    It 'restores configuration after failure before a process was launched' {
+        Stop-TestTerminal -Target $script:recoveryTarget -LaunchStarted $script:recoveryStart
+        Should -Invoke Restore-WtConfig -Times 1 -Exactly
+        Should -Invoke Stop-Terminal -Times 0 -Exactly
+    }
+
+    It 'does nothing when startup was never attempted' {
+        Stop-TestTerminal -Target $script:recoveryTarget
+        Should -Invoke Restore-WtConfig -Times 0 -Exactly
+        Should -Invoke Stop-Terminal -Times 0 -Exactly
+    }
+
+    It 'refuses recovery when caller ancestry cannot be verified' -Tag 'RecoveryAncestry' {
+        Mock Get-CimInstance { $null }
+        { Stop-TestTerminal -Target $script:recoveryTarget -LaunchStarted $script:recoveryStart } |
+            Should -Throw '*caller ancestry*'
+        Should -Invoke Stop-Terminal -Times 0 -Exactly
+    }
+
+    It 'refuses an older process rather than assuming ownership from its path' {
+        Mock Get-WtProcessesForApp {
+            [pscustomobject]@{ Id = 77; Path = $script:recoveryTarget.WindowsTerminal; StartTime = $script:recoveryStart.AddSeconds(-1) }
+        }
+        { Stop-TestTerminal -Target $script:recoveryTarget -LaunchStarted $script:recoveryStart } |
+            Should -Throw '*cannot establish test ownership*'
+        Should -Invoke Stop-Terminal -Times 0 -Exactly
+    }
+
+    It 'rechecks PID identity before stopping a verified new process' {
+        $script:recoveryProcess = [pscustomobject]@{
+            Id = 77; Path = $script:recoveryTarget.WindowsTerminal; StartTime = $script:recoveryStart.AddSeconds(1)
+        }
+        Mock Get-WtProcessesForApp { $script:recoveryProcess }
+        Mock Get-Process { $script:recoveryProcess } -ParameterFilter { $Id -eq 77 }
+        Stop-TestTerminal -Target $script:recoveryTarget -LaunchStarted $script:recoveryStart
+        Should -Invoke Stop-Terminal -Times 1 -Exactly -ParameterFilter {
+            $App.Pid -eq 77 -and $App.Launched -and -not $RestoreSettings
+        }
+        Should -Invoke Restore-WtConfig -Times 1 -Exactly
+    }
+
+    It 'refuses a reused PID before cleanup' {
+        Mock Get-WtProcessesForApp {
+            [pscustomobject]@{ Id = 77; Path = $script:recoveryTarget.WindowsTerminal; StartTime = $script:recoveryStart.AddSeconds(1) }
+        }
+        Mock Get-Process {
+            [pscustomobject]@{ Id = 77; Path = $script:recoveryTarget.WindowsTerminal; StartTime = $script:recoveryStart.AddSeconds(2) }
+        }
+        { Stop-TestTerminal -Target $script:recoveryTarget -LaunchStarted $script:recoveryStart } |
+            Should -Throw '*identity changed*'
+        Should -Invoke Stop-Terminal -Times 0 -Exactly
+    }
+}
+
 Describe 'Mouse cleanup evidence preservation' -Tag 'Unit', 'MouseCleanup' {
     BeforeEach {
         $suite = (Resolve-Path (Join-Path $PSScriptRoot '..\tests\Feature.AgentMouse.Tests.ps1')).Path
@@ -210,6 +279,8 @@ Describe 'Mouse cleanup evidence preservation' -Tag 'Unit', 'MouseCleanup' {
         $body = $cleanup.CommandElements[1].ScriptBlock.Extent.Text
         $script:cleanupBlock = [scriptblock]::Create($body.Substring(1, $body.Length - 2))
         $script:app = [pscustomobject]@{ Pid = 1 }
+        $script:target = $null
+        $script:launchStarted = $null
         $script:clipboardSaved = $true
         $script:originalClipboard = [pscustomobject]@{ offline = $true }
         $script:cursorSaved = $false
@@ -219,6 +290,7 @@ Describe 'Mouse cleanup evidence preservation' -Tag 'Unit', 'MouseCleanup' {
         $script:fixtureLog = Join-Path $script:fixtureDir 'fixture.log'
         'offline fixture evidence' | Set-Content $script:fixtureLog
         Mock Stop-Terminal {}
+        Mock Stop-TestTerminal {}
         Mock Restore-ClipboardSnapshot {}
     }
 
@@ -236,6 +308,35 @@ Describe 'Mouse cleanup evidence preservation' -Tag 'Unit', 'MouseCleanup' {
     }
 }
 
+Describe 'Paste clipboard preservation' -Tag 'Unit', 'PasteCleanup' {
+    It 'restores a full snapshot independently of terminal cleanup' {
+        $suite = (Resolve-Path (Join-Path $PSScriptRoot '..\tests\Feature.Paste.Tests.ps1')).Path
+        $tokens = $null
+        $errors = $null
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile($suite, [ref]$tokens, [ref]$errors)
+        $cleanup = $ast.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.CommandAst] -and $node.GetCommandName() -eq 'AfterAll'
+        }, $true)[0]
+        $body = $cleanup.CommandElements[1].ScriptBlock.Extent.Text
+        $block = [scriptblock]::Create($body.Substring(1, $body.Length - 2))
+        $script:app = $null
+        $script:target = $null
+        $script:launchStarted = $null
+        $script:clipboardSaved = $true
+        $script:cursorSaved = $false
+        $script:fixtureDir = $null
+        $script:fixtureLog = $null
+        $script:originalClipboard = [pscustomobject]@{ Formats = @('offline-non-text-format') }
+        Mock Stop-TestTerminal { throw 'synthetic terminal cleanup failure' }
+        Mock Restore-ClipboardSnapshot {}
+        { & $block } | Should -Throw '*synthetic terminal cleanup failure*'
+        Should -Invoke Restore-ClipboardSnapshot -Times 1 -Exactly -ParameterFilter {
+            $Snapshot -eq $script:originalClipboard
+        }
+    }
+}
+
 Describe 'Paste evidence isolation' -Tag 'Unit', 'PasteEvidence' {
     It 'uses a unique directory beneath the explicitly selected run root' {
         $suite = (Resolve-Path (Join-Path $PSScriptRoot '..\tests\Feature.Paste.Tests.ps1')).Path
@@ -247,7 +348,9 @@ Describe 'Paste evidence isolation' -Tag 'Unit', 'PasteEvidence' {
             param($node)
             $node -is [System.Management.Automation.Language.AssignmentStatementAst]
         }, $true))
-        $evidence = @($assignments | Where-Object { $_.Left.Extent.Text -eq '$script:evidenceDir' })
+        $evidence = @($assignments | Where-Object {
+            $_.Left.Extent.Text -eq '$script:evidenceDir' -and $_.Right.Extent.Text -match '^Join-Path\s'
+        })
         $evidence.Count | Should -Be 1
         $rootAssignment = @($assignments | Where-Object { $_.Left.Extent.Text -eq '$artifactRoot' })
         $code = (@($rootAssignment | ForEach-Object { $_.Extent.Text }) + @($evidence[0].Right.Extent.Text)) -join "`n"
