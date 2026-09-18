@@ -1,0 +1,3872 @@
+var GrafanaFaroWebSdk = function(e) {
+    "use strict";
+    class t {
+        constructor(e, t) {
+            var i, n;
+            this.signalBuffer = [],
+            this.itemLimit = null !== (i = null == t ? void 0 : t.itemLimit) && void 0 !== i ? i : 50,
+            this.sendTimeout = null !== (n = null == t ? void 0 : t.sendTimeout) && void 0 !== n ? n : 250,
+            this.paused = (null == t ? void 0 : t.paused) || !1,
+            this.sendFn = e,
+            this.flushInterval = -1,
+            this.paused || this.start(),
+            document.addEventListener("visibilitychange", () => {
+                "hidden" === document.visibilityState && this.flush()
+            }
+            )
+        }
+        addItem(e) {
+            this.paused || (this.signalBuffer.push(e),
+            this.signalBuffer.length >= this.itemLimit && this.flush())
+        }
+        start() {
+            this.paused = !1,
+            this.sendTimeout > 0 && (this.flushInterval = window.setInterval( () => this.flush(), this.sendTimeout))
+        }
+        pause() {
+            this.paused = !0,
+            clearInterval(this.flushInterval)
+        }
+        groupItems(e) {
+            const t = new Map;
+            return e.forEach(e => {
+                const i = JSON.stringify(e.meta);
+                let n = t.get(i);
+                n = void 0 === n ? [e] : [...n, e],
+                t.set(i, n)
+            }
+            ),
+            Array.from(t.values())
+        }
+        flush() {
+            if (this.paused || 0 === this.signalBuffer.length)
+                return;
+            this.groupItems(this.signalBuffer).forEach(this.sendFn),
+            this.signalBuffer = []
+        }
+    }
+    var i;
+    e.TransportItemType = void 0,
+    (i = e.TransportItemType || (e.TransportItemType = {})).EXCEPTION = "exception",
+    i.LOG = "log",
+    i.MEASUREMENT = "measurement",
+    i.TRACE = "trace",
+    i.EVENT = "event";
+    const n = {
+        [e.TransportItemType.EXCEPTION]: "exceptions",
+        [e.TransportItemType.LOG]: "logs",
+        [e.TransportItemType.MEASUREMENT]: "measurements",
+        [e.TransportItemType.TRACE]: "traces",
+        [e.TransportItemType.EVENT]: "events"
+    };
+    function s(e, i, n, s) {
+        var o;
+        i.debug("Initializing transports");
+        const a = [];
+        let l = n.paused
+          , u = [];
+        const c = e => {
+            let t = e;
+            for (const e of u) {
+                const i = t.map(e).filter(Boolean);
+                if (0 === i.length)
+                    return [];
+                t = r(i, n)
+            }
+            return t
+        }
+          , d = e => {
+            const t = c(e);
+            if (0 !== t.length)
+                for (const e of a)
+                    i.debug(`Transporting item using ${e.name}\n`, t),
+                    e.isBatched() && e.send(t)
+        }
+        ;
+        let p;
+        (null === (o = n.batching) || void 0 === o ? void 0 : o.enabled) && (p = new t(d,{
+            sendTimeout: n.batching.sendTimeout,
+            itemLimit: n.batching.itemLimit,
+            paused: l
+        }));
+        return {
+            add: (...t) => {
+                i.debug("Adding transports"),
+                t.forEach(t => {
+                    i.debug(`Adding "${t.name}" transport`);
+                    a.some(e => e === t) ? i.warn(`Transport ${t.name} is already added`) : (t.unpatchedConsole = e,
+                    t.internalLogger = i,
+                    t.config = n,
+                    t.metas = s,
+                    a.push(t))
+                }
+                )
+            }
+            ,
+            addBeforeSendHooks: (...e) => {
+                i.debug("Adding beforeSendHooks\n", u),
+                e.forEach(e => {
+                    e && u.push(e)
+                }
+                )
+            }
+            ,
+            getBeforeSendHooks: () => [...u],
+            execute: e => {
+                var t;
+                l || ((null === (t = n.batching) || void 0 === t ? void 0 : t.enabled) && (null == p || p.addItem(e)),
+                (e => {
+                    var t, s;
+                    if ((null === (t = n.batching) || void 0 === t ? void 0 : t.enabled) && a.every(e => e.isBatched()))
+                        return;
+                    const [r] = c([e]);
+                    if (void 0 !== r)
+                        for (const e of a)
+                            i.debug(`Transporting item using ${e.name}\n`, r),
+                            e.isBatched() ? (null === (s = n.batching) || void 0 === s ? void 0 : s.enabled) || e.send([r]) : e.send(r)
+                }
+                )(e))
+            }
+            ,
+            isPaused: () => l,
+            pause: () => {
+                i.debug("Pausing transports"),
+                null == p || p.pause(),
+                l = !0
+            }
+            ,
+            remove: (...e) => {
+                i.debug("Removing transports"),
+                e.forEach(e => {
+                    i.debug(`Removing "${e.name}" transport`);
+                    const t = a.indexOf(e);
+                    -1 !== t ? a.splice(t, 1) : i.warn(`Transport "${e.name}" is not added`)
+                }
+                )
+            }
+            ,
+            removeBeforeSendHooks: (...e) => {
+                u.filter(t => !e.includes(t))
+            }
+            ,
+            get transports() {
+                return [...a]
+            },
+            unpause: () => {
+                i.debug("Unpausing transports"),
+                null == p || p.start(),
+                l = !1
+            }
+        }
+    }
+    function r(t, i) {
+        if (i.preserveOriginalError)
+            for (const i of t)
+                i.type === e.TransportItemType.EXCEPTION && delete i.payload.originalError;
+        return t
+    }
+    function o(e, t) {
+        return typeof e === t
+    }
+    function a(e, t) {
+        return Object.prototype.toString.call(e) === `[object ${t}]`
+    }
+    function l(e, t) {
+        try {
+            return e instanceof t
+        } catch (e) {
+            return !1
+        }
+    }
+    const u = e => o(e, "null")
+      , c = e => o(e, "string")
+      , d = e => o(e, "number") && !isNaN(e) || o(e, "bigint")
+      , p = e => o(e, "boolean")
+      , g = e => !u(e) && o(e, "object")
+      , h = e => o(e, "function")
+      , m = e => a(e, "Array")
+      , f = e => !g(e) && !h(e)
+      , v = "undefined" != typeof Event
+      , b = e => v && l(e, Event)
+      , w = "undefined" != typeof Error
+      , y = e => w && l(e, Error)
+      , S = e => a(e, "ErrorEvent")
+      , T = e => a(e, "DOMError")
+      , E = e => a(e, "DOMException")
+      , I = "undefined" != typeof Element
+      , k = "undefined" != typeof Map;
+    function x(e) {
+        return null == e || (m(e) || c(e) ? 0 === e.length : !!g(e) && 0 === Object.keys(e).length)
+    }
+    function O(e, t) {
+        if (e === t)
+            return !0;
+        if (o(e, "number") && isNaN(e))
+            return o(t, "number") && isNaN(t);
+        const i = m(e)
+          , n = m(t);
+        if (i !== n)
+            return !1;
+        if (i && n) {
+            const i = e.length;
+            if (i !== t.length)
+                return !1;
+            for (let n = i; 0 !== n--; )
+                if (!O(e[n], t[n]))
+                    return !1;
+            return !0
+        }
+        const s = g(e)
+          , r = g(t);
+        if (s !== r)
+            return !1;
+        if (e && t && s && r) {
+            const i = Object.keys(e)
+              , n = Object.keys(t);
+            if (i.length !== n.length)
+                return !1;
+            for (let e of i)
+                if (!n.includes(e))
+                    return !1;
+            for (let n of i)
+                if (!O(e[n], t[n]))
+                    return !1;
+            return !0
+        }
+        return !1
+    }
+    function A() {
+        return Date.now()
+    }
+    function L() {
+        return (new Date).toISOString()
+    }
+    function _(e) {
+        return new Date(e).toISOString()
+    }
+    var U;
+    e.LogLevel = void 0,
+    (U = e.LogLevel || (e.LogLevel = {})).TRACE = "trace",
+    U.DEBUG = "debug",
+    U.INFO = "info",
+    U.LOG = "log",
+    U.WARN = "warn",
+    U.ERROR = "error";
+    const C = e.LogLevel.LOG
+      , j = [e.LogLevel.TRACE, e.LogLevel.DEBUG, e.LogLevel.INFO, e.LogLevel.LOG, e.LogLevel.WARN, e.LogLevel.ERROR];
+    function N() {}
+    function M(e) {
+        const {size: t, concurrency: i} = e
+          , n = [];
+        let s = 0;
+        const r = () => {
+            if (s < i && n.length) {
+                const {producer: e, resolve: t, reject: i} = n.shift();
+                s++,
+                e().then(e => {
+                    s--,
+                    r(),
+                    t(e)
+                }
+                , e => {
+                    s--,
+                    r(),
+                    i(e)
+                }
+                )
+            }
+        }
+        ;
+        return {
+            add: e => {
+                if (n.length + s >= t)
+                    throw new Error("Task buffer full");
+                return new Promise( (t, i) => {
+                    n.push({
+                        producer: e,
+                        resolve: t,
+                        reject: i
+                    }),
+                    r()
+                }
+                )
+            }
+        }
+    }
+    const P = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ0123456789";
+    function D(e=10) {
+        return Array.from(Array(e)).map( () => P[Math.floor(59 * Math.random())]).join("")
+    }
+    const R = "undefined" != typeof globalThis ? globalThis : "undefined" != typeof global ? global : "undefined" != typeof self ? self : void 0;
+    function z(e={}) {
+        return JSON.stringify(null != e ? e : {}, function() {
+            const e = new WeakSet;
+            return function(t, i) {
+                if (g(i) && null !== i) {
+                    if (e.has(i))
+                        return null;
+                    e.add(i)
+                }
+                return i
+            }
+        }())
+    }
+    function B(e={}) {
+        const t = {};
+        for (const [i,n] of Object.entries(e))
+            t[i] = g(n) && null !== n ? z(n) : String(n);
+        return t
+    }
+    class q {
+        constructor() {
+            this.subscribers = []
+        }
+        subscribe(e) {
+            return this.subscribers.push(e),
+            {
+                unsubscribe: () => this.unsubscribe(e)
+            }
+        }
+        unsubscribe(e) {
+            this.subscribers = this.subscribers.filter(t => t !== e)
+        }
+        notify(e) {
+            this.subscribers.forEach(t => t(e))
+        }
+        first() {
+            const e = new q
+              , t = t => {
+                e.notify(t),
+                i.unsubscribe()
+            }
+              , i = this.subscribe(t)
+              , n = e.unsubscribe.bind(e);
+            return this.withUnsubscribeOverride(e, n, t)
+        }
+        takeWhile(e) {
+            const t = new q
+              , i = n => {
+                e(n) ? t.notify(n) : t.unsubscribe(i)
+            }
+            ;
+            this.subscribe(i);
+            const n = t.unsubscribe.bind(t);
+            return this.withUnsubscribeOverride(t, n, i)
+        }
+        filter(e) {
+            const t = new q
+              , i = i => {
+                e(i) && t.notify(i)
+            }
+            ;
+            this.subscribe(i);
+            const n = t.unsubscribe.bind(t);
+            return this.withUnsubscribeOverride(t, n, i)
+        }
+        merge(...e) {
+            const t = new q
+              , i = [];
+            e.forEach(e => {
+                const n = e.subscribe(e => {
+                    t.notify(e)
+                }
+                );
+                i.push(n)
+            }
+            );
+            const n = t.unsubscribeAll.bind(t);
+            return t.unsubscribe = () => {
+                i.forEach(e => e.unsubscribe()),
+                n()
+            }
+            ,
+            t
+        }
+        withUnsubscribeOverride(e, t, i) {
+            return e.unsubscribe = e => {
+                t(e),
+                this.unsubscribe(i)
+            }
+            ,
+            e
+        }
+        unsubscribeAll() {
+            this.subscribers = []
+        }
+    }
+    var F;
+    e.InternalLoggerLevel = void 0,
+    (F = e.InternalLoggerLevel || (e.InternalLoggerLevel = {}))[F.OFF = 0] = "OFF",
+    F[F.ERROR = 1] = "ERROR",
+    F[F.WARN = 2] = "WARN",
+    F[F.INFO = 3] = "INFO",
+    F[F.VERBOSE = 4] = "VERBOSE";
+    const V = {
+        debug: N,
+        error: N,
+        info: N,
+        prefix: "Faro",
+        warn: N
+    }
+      , $ = e.InternalLoggerLevel.ERROR
+      , H = Object.assign({}, console);
+    let G = H;
+    function W(e) {
+        var t;
+        return G = null !== (t = e.unpatchedConsole) && void 0 !== t ? t : G,
+        G
+    }
+    function K(t=H, i=$) {
+        const n = V;
+        return i > e.InternalLoggerLevel.OFF && (n.error = i >= e.InternalLoggerLevel.ERROR ? function(...e) {
+            t.error(`${n.prefix}\n`, ...e)
+        }
+        : N,
+        n.warn = i >= e.InternalLoggerLevel.WARN ? function(...e) {
+            t.warn(`${n.prefix}\n`, ...e)
+        }
+        : N,
+        n.info = i >= e.InternalLoggerLevel.INFO ? function(...e) {
+            t.info(`${n.prefix}\n`, ...e)
+        }
+        : N,
+        n.debug = i >= e.InternalLoggerLevel.VERBOSE ? function(...e) {
+            t.debug(`${n.prefix}\n`, ...e)
+        }
+        : N),
+        n
+    }
+    let X = V;
+    function J(e, t) {
+        return X = K(e, t.internalLoggerLevel),
+        X
+    }
+    class Z {
+        constructor() {
+            this.unpatchedConsole = H,
+            this.internalLogger = V,
+            this.config = {},
+            this.metas = {}
+        }
+        logDebug(...e) {
+            this.internalLogger.debug(`${this.name}\n`, ...e)
+        }
+        logInfo(...e) {
+            this.internalLogger.info(`${this.name}\n`, ...e)
+        }
+        logWarn(...e) {
+            this.internalLogger.warn(`${this.name}\n`, ...e)
+        }
+        logError(...e) {
+            this.internalLogger.error(`${this.name}\n`, ...e)
+        }
+    }
+    class Y extends Z {
+        isBatched() {
+            return !1
+        }
+        getIgnoreUrls() {
+            return []
+        }
+    }
+    function Q(e, t) {
+        var i, n;
+        if (void 0 === t)
+            return e;
+        if (void 0 === e)
+            return {
+                resourceSpans: t
+            };
+        const s = null === (i = e.resourceSpans) || void 0 === i ? void 0 : i[0];
+        if (void 0 === s)
+            return e;
+        const r = (null == s ? void 0 : s.scopeSpans) || []
+          , o = (null === (n = null == t ? void 0 : t[0]) || void 0 === n ? void 0 : n.scopeSpans) || [];
+        return Object.assign(Object.assign({}, e), {
+            resourceSpans: [Object.assign(Object.assign({}, s), {
+                scopeSpans: [...r, ...o]
+            })]
+        })
+    }
+    function ee(t) {
+        let i = {
+            meta: {}
+        };
+        return void 0 !== t[0] && (i.meta = t[0].meta),
+        t.forEach(t => {
+            switch (t.type) {
+            case e.TransportItemType.LOG:
+            case e.TransportItemType.EVENT:
+            case e.TransportItemType.EXCEPTION:
+            case e.TransportItemType.MEASUREMENT:
+                {
+                    const e = n[t.type]
+                      , s = i[e];
+                    i = Object.assign(Object.assign({}, i), {
+                        [e]: void 0 === s ? [t.payload] : [...s, t.payload]
+                    });
+                    break
+                }
+            case e.TransportItemType.TRACE:
+                i = Object.assign(Object.assign({}, i), {
+                    traces: Q(i.traces, t.payload.resourceSpans)
+                })
+            }
+        }
+        ),
+        i
+    }
+    const te = "normal";
+    var ie;
+    e.UserActionState = void 0,
+    (ie = e.UserActionState || (e.UserActionState = {}))[ie.Started = 0] = "Started",
+    ie[ie.Halted = 1] = "Halted",
+    ie[ie.Cancelled = 2] = "Cancelled",
+    ie[ie.Ended = 3] = "Ended";
+    class ne {
+        constructor() {
+            this.buffer = []
+        }
+        addItem(e) {
+            this.buffer.push(e)
+        }
+        flushBuffer(e) {
+            if (h(e))
+                for (const t of this.buffer)
+                    e(t);
+            this.buffer.length = 0
+        }
+        size() {
+            return this.buffer.length
+        }
+    }
+    class se extends q {
+        constructor({name: t, parentId: i, trigger: n, transports: s, attributes: r, trackUserActionsExcludeItem: o, importance: a=te, pushEvent: l}) {
+            super(),
+            this.name = t,
+            this.attributes = r,
+            this.id = D(),
+            this.trigger = n,
+            this.parentId = null != i ? i : this.id,
+            this.trackUserActionsExcludeItem = o,
+            this.importance = a,
+            this._pushEvent = l,
+            this._itemBuffer = new ne,
+            this._transports = s,
+            this._state = e.UserActionState.Started,
+            this._start()
+        }
+        addItem(t) {
+            return this._state === e.UserActionState.Started && (this._itemBuffer.addItem(t),
+            !0)
+        }
+        _start() {
+            this._state = e.UserActionState.Started,
+            this._state === e.UserActionState.Started && (this.startTime = A())
+        }
+        halt() {
+            this._state === e.UserActionState.Started && (this._state = e.UserActionState.Halted,
+            this.notify(this._state))
+        }
+        cancel() {
+            this._state === e.UserActionState.Started && this._itemBuffer.flushBuffer(e => {
+                this._transports.execute(e)
+            }
+            ),
+            this._state = e.UserActionState.Cancelled,
+            this.notify(this._state)
+        }
+        end() {
+            if (this._state === e.UserActionState.Cancelled)
+                return;
+            const t = A()
+              , i = t - this.startTime;
+            this._state = e.UserActionState.Ended,
+            this._itemBuffer.flushBuffer(t => {
+                if (function(t, i) {
+                    return (null == i ? void 0 : i(t)) || t.type === e.TransportItemType.MEASUREMENT && "web-vitals" === t.payload.type
+                }(t, this.trackUserActionsExcludeItem))
+                    return void this._transports.execute(t);
+                const i = Object.assign(Object.assign({}, t), {
+                    payload: Object.assign(Object.assign({}, t.payload), {
+                        action: {
+                            parentId: this.id,
+                            name: this.name
+                        }
+                    })
+                });
+                this._transports.execute(i)
+            }
+            ),
+            this._state = e.UserActionState.Ended,
+            this.notify(this._state),
+            this._pushEvent("faro.user.action", Object.assign({
+                userActionName: this.name,
+                userActionStartTime: this.startTime.toString(),
+                userActionEndTime: t.toString(),
+                userActionDuration: i.toString(),
+                userActionTrigger: this.trigger,
+                userActionImportance: this.importance
+            }, B(this.attributes)), void 0, {
+                timestampOverwriteMs: this.startTime,
+                customPayloadTransformer: e => (e.action = {
+                    id: this.id,
+                    name: this.name
+                },
+                e)
+            })
+        }
+        getState() {
+            return this._state
+        }
+    }
+    const re = new q;
+    function oe(t, i) {
+        if (!t)
+            return !1;
+        return (null == t ? void 0 : t.getState()) === e.UserActionState.Started && (t.addItem(i),
+        !0)
+    }
+    const ae = "Error"
+      , le = e => e.map(e => g(e) ? z(e) : String(e)).join(" ");
+    let ue;
+    function ce({internalLogger: t, config: i, metas: n, transports: s, tracesApi: r, userActionsApi: o}) {
+        var a;
+        t.debug("Initializing exceptions API");
+        let l = null;
+        ue = null !== (a = i.parseStacktrace) && void 0 !== a ? a : ue;
+        const d = e => {
+            t.debug("Changing stacktrace parser"),
+            ue = null != e ? e : ue
+        }
+          , {ignoreErrors: p=[], preserveOriginalError: h} = i;
+        return d(i.parseStacktrace),
+        {
+            changeStacktraceParser: d,
+            getStacktraceParser: () => ue,
+            pushError: (a, {skipDedupe: d, stackFrames: f, type: v, context: b, spanContext: w, timestampOverwriteMs: S, originalError: T}={}) => {
+                if (!function(e, t) {
+                    const {message: i, name: n, stack: s} = t;
+                    return r = e,
+                    o = i + " " + n + " " + s,
+                    r.some(e => c(e) ? o.includes(e) : !!o.match(e));
+                    var r, o
+                }(p, null != T ? T : a))
+                    try {
+                        const c = B(Object.assign(Object.assign({}, function(e) {
+                            let t = e.cause;
+                            y(t) ? t = e.cause.toString() : null !== t && (g(e.cause) || m(e.cause)) ? t = z(e.cause) : null != t && (t = e.cause.toString());
+                            return null == t ? {} : {
+                                cause: t
+                            }
+                        }(null != T ? T : a)), null != b ? b : {}))
+                          , p = {
+                            meta: n.value,
+                            payload: Object.assign(Object.assign({
+                                type: v || a.name || ae,
+                                value: a.message,
+                                timestamp: S ? _(S) : L(),
+                                trace: w ? {
+                                    trace_id: w.traceId,
+                                    span_id: w.spanId
+                                } : r.getTraceContext()
+                            }, x(c) ? {} : {
+                                context: c
+                            }), h ? {
+                                originalError: T
+                            } : {}),
+                            type: e.TransportItemType.EXCEPTION
+                        };
+                        (null == (f = null != f ? f : a.stack ? null == ue ? void 0 : ue(a).frames : void 0) ? void 0 : f.length) && (p.payload.stacktrace = {
+                            frames: f
+                        });
+                        const E = {
+                            type: p.payload.type,
+                            value: p.payload.value,
+                            stackTrace: p.payload.stacktrace,
+                            context: p.payload.context
+                        };
+                        if (!d && i.dedupe && !u(l) && O(E, l))
+                            return void t.debug("Skipping error push because it is the same as the last one\n", p.payload);
+                        l = E,
+                        t.debug("Pushing exception\n", p),
+                        oe(o.getActiveUserAction(), p) || s.execute(p)
+                    } catch (e) {
+                        t.error("Error pushing event", e)
+                    }
+            }
+        }
+    }
+    const de = e => e.map(e => {
+        try {
+            return String(e)
+        } catch (e) {
+            return ""
+        }
+    }
+    ).join(" ");
+    function pe(t, i, n, s, r) {
+        i.debug("Initializing API");
+        let o = null;
+        const a = function({transports: t, internalLogger: i, config: n, pushEvent: s}) {
+            var r;
+            const o = null === (r = n.userActionsInstrumentation) || void 0 === r ? void 0 : r.excludeItem;
+            let a;
+            const l = () => a
+              , u = {
+                startUserAction: (n, r, u) => {
+                    if (void 0 === l()) {
+                        const i = new se({
+                            name: n,
+                            transports: t,
+                            attributes: r,
+                            trigger: (null == u ? void 0 : u.triggerName) || "faroApiCall",
+                            importance: (null == u ? void 0 : u.importance) || te,
+                            trackUserActionsExcludeItem: o,
+                            pushEvent: s
+                        });
+                        return i.filter(t => [e.UserActionState.Ended, e.UserActionState.Cancelled].includes(t)).first().subscribe( () => {
+                            a = void 0
+                        }
+                        ),
+                        re.notify({
+                            type: "user_action_start",
+                            userAction: i
+                        }),
+                        a = i,
+                        a
+                    }
+                    i.error("Attempted to create a new user action while one is already running. This is not possible.")
+                }
+                ,
+                getActiveUserAction: l
+            };
+            return u
+        }({
+            transports: r,
+            config: n,
+            internalLogger: i,
+            pushEvent: (e, t, n, s) => {
+                o ? o(e, t, n, s) : i.warn("pushEventImpl is not initialized. Event dropped:", {
+                    name: e,
+                    attributes: t,
+                    domain: n,
+                    options: s
+                })
+            }
+        })
+          , l = function(t, i, n, s, r) {
+            let o;
+            return i.debug("Initializing traces API"),
+            {
+                getOTEL: () => o,
+                getTraceContext: () => {
+                    const e = null == o ? void 0 : o.trace.getSpanContext(o.context.active());
+                    return e ? {
+                        trace_id: e.traceId,
+                        span_id: e.spanId
+                    } : void 0
+                }
+                ,
+                initOTEL: (e, t) => {
+                    i.debug("Initializing OpenTelemetry"),
+                    o = {
+                        trace: e,
+                        context: t
+                    }
+                }
+                ,
+                isOTELInitialized: () => !!o,
+                pushTraces: t => {
+                    try {
+                        const n = {
+                            type: e.TransportItemType.TRACE,
+                            payload: t,
+                            meta: s.value
+                        };
+                        i.debug("Pushing trace\n", n),
+                        r.execute(n)
+                    } catch (e) {
+                        i.error("Error pushing trace\n", e)
+                    }
+                }
+            }
+        }(0, i, 0, s, r)
+          , d = {
+            internalLogger: i,
+            userActionsApi: a,
+            config: n,
+            metas: s,
+            transports: r,
+            tracesApi: l
+        }
+          , p = function({internalLogger: t, config: i, metas: n, transports: s, tracesApi: r, userActionsApi: o}) {
+            let a = null;
+            return {
+                pushEvent: (l, c, d, {skipDedupe: p, spanContext: g, timestampOverwriteMs: h, customPayloadTransformer: m=e => e}={}) => {
+                    try {
+                        const f = B(c)
+                          , v = {
+                            meta: n.value,
+                            payload: m({
+                                name: l,
+                                domain: null != d ? d : i.eventDomain,
+                                attributes: x(f) ? void 0 : f,
+                                timestamp: h ? _(h) : L(),
+                                trace: g ? {
+                                    trace_id: g.traceId,
+                                    span_id: g.spanId
+                                } : r.getTraceContext()
+                            }),
+                            type: e.TransportItemType.EVENT
+                        }
+                          , b = {
+                            name: v.payload.name,
+                            attributes: v.payload.attributes,
+                            domain: v.payload.domain
+                        };
+                        if (!p && i.dedupe && !u(a) && O(b, a))
+                            return void t.debug("Skipping event push because it is the same as the last one\n", v.payload);
+                        a = b,
+                        t.debug("Pushing event\n", v),
+                        oe(o.getActiveUserAction(), v) || s.execute(v)
+                    } catch (e) {
+                        t.error("Error pushing event", e)
+                    }
+                }
+            }
+        }(d);
+        return o = p.pushEvent,
+        Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({}, l), ce(d)), function({internalLogger: e, metas: t}) {
+            let i, n, s, r;
+            e.debug("Initializing meta API");
+            const o = e => {
+                n && t.remove(n),
+                n = {
+                    user: e
+                },
+                t.add(n)
+            }
+              , a = (e, n) => {
+                var s;
+                const r = null == n ? void 0 : n.overrides
+                  , o = r ? {
+                    overrides: Object.assign(Object.assign({}, null === (s = null == i ? void 0 : i.session) || void 0 === s ? void 0 : s.overrides), r)
+                } : {};
+                i && t.remove(i),
+                i = {
+                    session: Object.assign(Object.assign({}, x(e) ? void 0 : e), o)
+                },
+                t.add(i)
+            }
+              , l = () => t.value.session
+              , u = () => t.value.page;
+            return {
+                setUser: o,
+                resetUser: o,
+                setSession: a,
+                resetSession: a,
+                getSession: l,
+                setView: (e, i) => {
+                    var n;
+                    if ((null == i ? void 0 : i.overrides) && a(l(), {
+                        overrides: i.overrides
+                    }),
+                    (null === (n = null == s ? void 0 : s.view) || void 0 === n ? void 0 : n.name) === (null == e ? void 0 : e.name))
+                        return;
+                    const r = s;
+                    s = {
+                        view: e
+                    },
+                    t.add(s),
+                    r && t.remove(r)
+                }
+                ,
+                getView: () => t.value.view,
+                setPage: e => {
+                    var i;
+                    const n = c(e) ? Object.assign(Object.assign({}, null !== (i = null == r ? void 0 : r.page) && void 0 !== i ? i : u()), {
+                        id: e
+                    }) : e;
+                    r && t.remove(r),
+                    r = {
+                        page: n
+                    },
+                    t.add(r)
+                }
+                ,
+                getPage: u
+            }
+        }(d)), function({internalLogger: t, config: i, metas: n, transports: s, tracesApi: r, userActionsApi: o}) {
+            var a;
+            t.debug("Initializing logs API");
+            let l = null;
+            const c = null !== (a = i.logArgsSerializer) && void 0 !== a ? a : de;
+            return {
+                pushLog: (a, {context: d, level: p, skipDedupe: g, spanContext: h, timestampOverwriteMs: m}={}) => {
+                    try {
+                        const f = B(d)
+                          , v = {
+                            type: e.TransportItemType.LOG,
+                            payload: {
+                                message: c(a),
+                                level: null != p ? p : C,
+                                context: x(f) ? void 0 : f,
+                                timestamp: m ? _(m) : L(),
+                                trace: h ? {
+                                    trace_id: h.traceId,
+                                    span_id: h.spanId
+                                } : r.getTraceContext()
+                            },
+                            meta: n.value
+                        }
+                          , b = {
+                            message: v.payload.message,
+                            level: v.payload.level,
+                            context: v.payload.context
+                        };
+                        if (!g && i.dedupe && !u(l) && O(b, l))
+                            return void t.debug("Skipping log push because it is the same as the last one\n", v.payload);
+                        l = b,
+                        t.debug("Pushing log\n", v),
+                        oe(o.getActiveUserAction(), v) || s.execute(v)
+                    } catch (e) {
+                        t.error("Error pushing log\n", e)
+                    }
+                }
+            }
+        }(d)), function({internalLogger: t, config: i, metas: n, transports: s, tracesApi: r, userActionsApi: o}) {
+            t.debug("Initializing measurements API");
+            let a = null;
+            return {
+                pushMeasurement: (l, {skipDedupe: c, context: d, spanContext: p, timestampOverwriteMs: g}={}) => {
+                    try {
+                        const h = B(d)
+                          , m = {
+                            type: e.TransportItemType.MEASUREMENT,
+                            payload: Object.assign(Object.assign({}, l), {
+                                trace: p ? {
+                                    trace_id: p.traceId,
+                                    span_id: p.spanId
+                                } : r.getTraceContext(),
+                                timestamp: g ? _(g) : L(),
+                                context: x(h) ? void 0 : h
+                            }),
+                            meta: n.value
+                        }
+                          , f = {
+                            type: m.payload.type,
+                            values: m.payload.values,
+                            context: m.payload.context
+                        };
+                        if (!c && i.dedupe && !u(a) && O(f, a))
+                            return void t.debug("Skipping measurement push because it is the same as the last one\n", m.payload);
+                        a = f,
+                        t.debug("Pushing measurement\n", m),
+                        oe(o.getActiveUserAction(), m) || s.execute(m)
+                    } catch (e) {
+                        t.error("Error pushing measurement\n", e)
+                    }
+                }
+            }
+        }(d)), p), a)
+    }
+    class ge extends Z {
+        constructor() {
+            super(...arguments),
+            this.api = {},
+            this.transports = {}
+        }
+    }
+    const he = "2.2.2";
+    const me = "_faroInternal";
+    function fe(e) {
+        e.config.isolate ? e.internalLogger.debug("Skipping registering internal Faro instance on global object") : (e.internalLogger.debug("Registering internal Faro instance on global object"),
+        Object.defineProperty(R, me, {
+            configurable: !1,
+            enumerable: !1,
+            writable: !1,
+            value: e
+        }))
+    }
+    function ve() {
+        return me in R
+    }
+    function be(t, i, n, s, r, o, a) {
+        return i.debug("Initializing Faro"),
+        e.faro = {
+            api: o,
+            config: n,
+            instrumentations: a,
+            internalLogger: i,
+            metas: s,
+            pause: r.pause,
+            transports: r,
+            unpatchedConsole: t,
+            unpause: r.unpause
+        },
+        fe(e.faro),
+        function(e) {
+            if (e.config.preventGlobalExposure)
+                e.internalLogger.debug("Skipping registering public Faro instance in the global scope");
+            else {
+                if (e.internalLogger.debug(`Registering public faro reference in the global scope using "${e.config.globalObjectKey}" key`),
+                e.config.globalObjectKey in R)
+                    return void e.internalLogger.warn(`Skipping global registration due to key "${e.config.globalObjectKey}" being used already. Please set "globalObjectKey" to something else or set "preventGlobalExposure" to "true"`);
+                Object.defineProperty(R, e.config.globalObjectKey, {
+                    configurable: !1,
+                    writable: !1,
+                    value: e
+                })
+            }
+        }(e.faro),
+        e.faro
+    }
+    function we(e) {
+        const t = W(e)
+          , i = J(t, e);
+        if (ve() && !e.isolate)
+            return void i.error('Faro is already registered. Either add instrumentations, transports etc. to the global faro instance or use the "isolate" property');
+        i.debug("Initializing");
+        const n = function(e, t) {
+            let i = []
+              , n = [];
+            const s = () => i.reduce( (e, t) => Object.assign(e, h(t) ? t() : t), {})
+              , r = () => {
+                if (n.length) {
+                    const e = s();
+                    n.forEach(t => t(e))
+                }
+            }
+            ;
+            return {
+                add: (...e) => {
+                    t.debug("Adding metas\n", e),
+                    i.push(...e),
+                    r()
+                }
+                ,
+                remove: (...e) => {
+                    t.debug("Removing metas\n", e),
+                    i = i.filter(t => !e.includes(t)),
+                    r()
+                }
+                ,
+                addListener: e => {
+                    t.debug("Adding metas listener\n", e),
+                    n.push(e)
+                }
+                ,
+                removeListener: e => {
+                    t.debug("Removing metas listener\n", e),
+                    n = n.filter(t => t !== e)
+                }
+                ,
+                get value() {
+                    return s()
+                }
+            }
+        }(0, i)
+          , r = s(t, i, e, n)
+          , o = pe(0, i, e, n, r)
+          , a = function(e, t, i, n, s, r) {
+            t.debug("Initializing instrumentations");
+            const o = [];
+            return {
+                add: (...a) => {
+                    t.debug("Adding instrumentations"),
+                    a.forEach(a => {
+                        t.debug(`Adding "${a.name}" instrumentation`),
+                        o.some(e => e.name === a.name) ? t.warn(`Instrumentation ${a.name} is already added`) : (a.unpatchedConsole = e,
+                        a.internalLogger = t,
+                        a.config = i,
+                        a.metas = n,
+                        a.transports = s,
+                        a.api = r,
+                        o.push(a),
+                        a.initialize())
+                    }
+                    )
+                }
+                ,
+                get instrumentations() {
+                    return [...o]
+                },
+                remove: (...e) => {
+                    t.debug("Removing instrumentations"),
+                    e.forEach(e => {
+                        var i, n;
+                        t.debug(`Removing "${e.name}" instrumentation`);
+                        const s = o.reduce( (t, i, n) => null === t && i.name === e.name ? n : null, null);
+                        null !== s ? (null === (n = (i = o[s]).destroy) || void 0 === n || n.call(i),
+                        o.splice(s, 1)) : t.warn(`Instrumentation "${e.name}" is not added`)
+                    }
+                    )
+                }
+            }
+        }(t, i, e, n, r, o)
+          , l = be(t, i, e, n, r, o, a);
+        return function(e) {
+            var t, i;
+            const n = {
+                sdk: {
+                    version: he
+                },
+                app: {
+                    bundleId: e.config.app.name && (s = e.config.app.name,
+                    null == R ? void 0 : R[`__faroBundleId_${s}`])
+                }
+            };
+            var s;
+            const r = null === (t = e.config.sessionTracking) || void 0 === t ? void 0 : t.session;
+            r && e.api.setSession(r),
+            e.config.app && (n.app = Object.assign(Object.assign({}, e.config.app), n.app)),
+            e.config.user && (n.user = e.config.user),
+            e.config.view && (n.view = e.config.view),
+            e.metas.add(n, ...null !== (i = e.config.metas) && void 0 !== i ? i : [])
+        }(l),
+        function(e) {
+            e.transports.add(...e.config.transports),
+            e.transports.addBeforeSendHooks(e.config.beforeSend)
+        }(l),
+        function(e) {
+            e.instrumentations.add(...e.config.instrumentations)
+        }(l),
+        l
+    }
+    e.faro = {};
+    const ye = "faro"
+      , Se = {
+        enabled: !0,
+        sendTimeout: 250,
+        itemLimit: 50
+    }
+      , Te = "view_changed"
+      , Ee = "session_start"
+      , Ie = "session_resume"
+      , ke = "session_extend"
+      , xe = "service_name_override"
+      , Oe = "unknown";
+    var Ae, Le = {
+        exports: {}
+    };
+    var _e, Ue, Ce = (Ae || (Ae = 1,
+    _e = Le,
+    Ue = Le.exports,
+    function(e, t) {
+        var i = "function"
+          , n = "undefined"
+          , s = "object"
+          , r = "string"
+          , o = "major"
+          , a = "model"
+          , l = "name"
+          , u = "type"
+          , c = "vendor"
+          , d = "version"
+          , p = "architecture"
+          , g = "console"
+          , h = "mobile"
+          , m = "tablet"
+          , f = "smarttv"
+          , v = "wearable"
+          , b = "embedded"
+          , w = "Amazon"
+          , y = "Apple"
+          , S = "ASUS"
+          , T = "BlackBerry"
+          , E = "Browser"
+          , I = "Chrome"
+          , k = "Firefox"
+          , x = "Google"
+          , O = "Honor"
+          , A = "Huawei"
+          , L = "LG"
+          , _ = "Microsoft"
+          , U = "Motorola"
+          , C = "Nvidia"
+          , j = "OnePlus"
+          , N = "Opera"
+          , M = "OPPO"
+          , P = "Samsung"
+          , D = "Sharp"
+          , R = "Sony"
+          , z = "Xiaomi"
+          , B = "Zebra"
+          , q = "Facebook"
+          , F = "Chromium OS"
+          , V = "Mac OS"
+          , $ = " Browser"
+          , H = function(e) {
+            for (var t = {}, i = 0; i < e.length; i++)
+                t[e[i].toUpperCase()] = e[i];
+            return t
+        }
+          , G = function(e, t) {
+            return typeof e === r && -1 !== W(t).indexOf(W(e))
+        }
+          , W = function(e) {
+            return e.toLowerCase()
+        }
+          , K = function(e, t) {
+            if (typeof e === r)
+                return e = e.replace(/^\s\s*/, ""),
+                typeof t === n ? e : e.substring(0, 500)
+        }
+          , X = function(e, n) {
+            for (var r, o, a, l, u, c, d = 0; d < n.length && !u; ) {
+                var p = n[d]
+                  , g = n[d + 1];
+                for (r = o = 0; r < p.length && !u && p[r]; )
+                    if (u = p[r++].exec(e))
+                        for (a = 0; a < g.length; a++)
+                            c = u[++o],
+                            typeof (l = g[a]) === s && l.length > 0 ? 2 === l.length ? typeof l[1] == i ? this[l[0]] = l[1].call(this, c) : this[l[0]] = l[1] : 3 === l.length ? typeof l[1] !== i || l[1].exec && l[1].test ? this[l[0]] = c ? c.replace(l[1], l[2]) : t : this[l[0]] = c ? l[1].call(this, c, l[2]) : t : 4 === l.length && (this[l[0]] = c ? l[3].call(this, c.replace(l[1], l[2])) : t) : this[l] = c || t;
+                d += 2
+            }
+        }
+          , J = function(e, i) {
+            for (var n in i)
+                if (typeof i[n] === s && i[n].length > 0) {
+                    for (var r = 0; r < i[n].length; r++)
+                        if (G(i[n][r], e))
+                            return "?" === n ? t : n
+                } else if (G(i[n], e))
+                    return "?" === n ? t : n;
+            return i.hasOwnProperty("*") ? i["*"] : e
+        }
+          , Z = {
+            ME: "4.90",
+            "NT 3.11": "NT3.51",
+            "NT 4.0": "NT4.0",
+            2e3: "NT 5.0",
+            XP: ["NT 5.1", "NT 5.2"],
+            Vista: "NT 6.0",
+            7: "NT 6.1",
+            8: "NT 6.2",
+            8.1: "NT 6.3",
+            10: ["NT 6.4", "NT 10.0"],
+            RT: "ARM"
+        }
+          , Y = {
+            browser: [[/\b(?:crmo|crios)\/([\w\.]+)/i], [d, [l, "Chrome"]], [/edg(?:e|ios|a)?\/([\w\.]+)/i], [d, [l, "Edge"]], [/(opera mini)\/([-\w\.]+)/i, /(opera [mobiletab]{3,6})\b.+version\/([-\w\.]+)/i, /(opera)(?:.+version\/|[\/ ]+)([\w\.]+)/i], [l, d], [/opios[\/ ]+([\w\.]+)/i], [d, [l, N + " Mini"]], [/\bop(?:rg)?x\/([\w\.]+)/i], [d, [l, N + " GX"]], [/\bopr\/([\w\.]+)/i], [d, [l, N]], [/\bb[ai]*d(?:uhd|[ub]*[aekoprswx]{5,6})[\/ ]?([\w\.]+)/i], [d, [l, "Baidu"]], [/\b(?:mxbrowser|mxios|myie2)\/?([-\w\.]*)\b/i], [d, [l, "Maxthon"]], [/(kindle)\/([\w\.]+)/i, /(lunascape|maxthon|netfront|jasmine|blazer|sleipnir)[\/ ]?([\w\.]*)/i, /(avant|iemobile|slim(?:browser|boat|jet))[\/ ]?([\d\.]*)/i, /(?:ms|\()(ie) ([\w\.]+)/i, /(flock|rockmelt|midori|epiphany|silk|skyfire|ovibrowser|bolt|iron|vivaldi|iridium|phantomjs|bowser|qupzilla|falkon|rekonq|puffin|brave|whale(?!.+naver)|qqbrowserlite|duckduckgo|klar|helio|(?=comodo_)?dragon)\/([-\w\.]+)/i, /(heytap|ovi|115)browser\/([\d\.]+)/i, /(weibo)__([\d\.]+)/i], [l, d], [/quark(?:pc)?\/([-\w\.]+)/i], [d, [l, "Quark"]], [/\bddg\/([\w\.]+)/i], [d, [l, "DuckDuckGo"]], [/(?:\buc? ?browser|(?:juc.+)ucweb)[\/ ]?([\w\.]+)/i], [d, [l, "UC" + E]], [/microm.+\bqbcore\/([\w\.]+)/i, /\bqbcore\/([\w\.]+).+microm/i, /micromessenger\/([\w\.]+)/i], [d, [l, "WeChat"]], [/konqueror\/([\w\.]+)/i], [d, [l, "Konqueror"]], [/trident.+rv[: ]([\w\.]{1,9})\b.+like gecko/i], [d, [l, "IE"]], [/ya(?:search)?browser\/([\w\.]+)/i], [d, [l, "Yandex"]], [/slbrowser\/([\w\.]+)/i], [d, [l, "Smart Lenovo " + E]], [/(avast|avg)\/([\w\.]+)/i], [[l, /(.+)/, "$1 Secure " + E], d], [/\bfocus\/([\w\.]+)/i], [d, [l, k + " Focus"]], [/\bopt\/([\w\.]+)/i], [d, [l, N + " Touch"]], [/coc_coc\w+\/([\w\.]+)/i], [d, [l, "Coc Coc"]], [/dolfin\/([\w\.]+)/i], [d, [l, "Dolphin"]], [/coast\/([\w\.]+)/i], [d, [l, N + " Coast"]], [/miuibrowser\/([\w\.]+)/i], [d, [l, "MIUI" + $]], [/fxios\/([\w\.-]+)/i], [d, [l, k]], [/\bqihoobrowser\/?([\w\.]*)/i], [d, [l, "360"]], [/\b(qq)\/([\w\.]+)/i], [[l, /(.+)/, "$1Browser"], d], [/(oculus|sailfish|huawei|vivo|pico)browser\/([\w\.]+)/i], [[l, /(.+)/, "$1" + $], d], [/samsungbrowser\/([\w\.]+)/i], [d, [l, P + " Internet"]], [/metasr[\/ ]?([\d\.]+)/i], [d, [l, "Sogou Explorer"]], [/(sogou)mo\w+\/([\d\.]+)/i], [[l, "Sogou Mobile"], d], [/(electron)\/([\w\.]+) safari/i, /(tesla)(?: qtcarbrowser|\/(20\d\d\.[-\w\.]+))/i, /m?(qqbrowser|2345(?=browser|chrome|explorer))\w*[\/ ]?v?([\w\.]+)/i], [l, d], [/(lbbrowser|rekonq)/i, /\[(linkedin)app\]/i], [l], [/ome\/([\w\.]+) \w* ?(iron) saf/i, /ome\/([\w\.]+).+qihu (360)[es]e/i], [d, l], [/((?:fban\/fbios|fb_iab\/fb4a)(?!.+fbav)|;fbav\/([\w\.]+);)/i], [[l, q], d], [/(Klarna)\/([\w\.]+)/i, /(kakao(?:talk|story))[\/ ]([\w\.]+)/i, /(naver)\(.*?(\d+\.[\w\.]+).*\)/i, /(daum)apps[\/ ]([\w\.]+)/i, /safari (line)\/([\w\.]+)/i, /\b(line)\/([\w\.]+)\/iab/i, /(alipay)client\/([\w\.]+)/i, /(twitter)(?:and| f.+e\/([\w\.]+))/i, /(chromium|instagram|snapchat)[\/ ]([-\w\.]+)/i], [l, d], [/\bgsa\/([\w\.]+) .*safari\//i], [d, [l, "GSA"]], [/musical_ly(?:.+app_?version\/|_)([\w\.]+)/i], [d, [l, "TikTok"]], [/headlesschrome(?:\/([\w\.]+)| )/i], [d, [l, I + " Headless"]], [/ wv\).+(chrome)\/([\w\.]+)/i], [[l, I + " WebView"], d], [/droid.+ version\/([\w\.]+)\b.+(?:mobile safari|safari)/i], [d, [l, "Android " + E]], [/(chrome|omniweb|arora|[tizenoka]{5} ?browser)\/v?([\w\.]+)/i], [l, d], [/version\/([\w\.\,]+) .*mobile\/\w+ (safari)/i], [d, [l, "Mobile Safari"]], [/version\/([\w(\.|\,)]+) .*(mobile ?safari|safari)/i], [d, l], [/webkit.+?(mobile ?safari|safari)(\/[\w\.]+)/i], [l, [d, J, {
+                "1.0": "/8",
+                1.2: "/1",
+                1.3: "/3",
+                "2.0": "/412",
+                "2.0.2": "/416",
+                "2.0.3": "/417",
+                "2.0.4": "/419",
+                "?": "/"
+            }]], [/(webkit|khtml)\/([\w\.]+)/i], [l, d], [/(navigator|netscape\d?)\/([-\w\.]+)/i], [[l, "Netscape"], d], [/(wolvic|librewolf)\/([\w\.]+)/i], [l, d], [/mobile vr; rv:([\w\.]+)\).+firefox/i], [d, [l, k + " Reality"]], [/ekiohf.+(flow)\/([\w\.]+)/i, /(swiftfox)/i, /(icedragon|iceweasel|camino|chimera|fennec|maemo browser|minimo|conkeror)[\/ ]?([\w\.\+]+)/i, /(seamonkey|k-meleon|icecat|iceape|firebird|phoenix|palemoon|basilisk|waterfox)\/([-\w\.]+)$/i, /(firefox)\/([\w\.]+)/i, /(mozilla)\/([\w\.]+) .+rv\:.+gecko\/\d+/i, /(amaya|dillo|doris|icab|ladybird|lynx|mosaic|netsurf|obigo|polaris|w3m|(?:go|ice|up)[\. ]?browser)[-\/ ]?v?([\w\.]+)/i, /\b(links) \(([\w\.]+)/i], [l, [d, /_/g, "."]], [/(cobalt)\/([\w\.]+)/i], [l, [d, /master.|lts./, ""]]],
+            cpu: [[/\b((amd|x|x86[-_]?|wow|win)64)\b/i], [[p, "amd64"]], [/(ia32(?=;))/i, /\b((i[346]|x)86)(pc)?\b/i], [[p, "ia32"]], [/\b(aarch64|arm(v?[89]e?l?|_?64))\b/i], [[p, "arm64"]], [/\b(arm(v[67])?ht?n?[fl]p?)\b/i], [[p, "armhf"]], [/( (ce|mobile); ppc;|\/[\w\.]+arm\b)/i], [[p, "arm"]], [/((ppc|powerpc)(64)?)( mac|;|\))/i], [[p, /ower/, "", W]], [/ sun4\w[;\)]/i], [[p, "sparc"]], [/\b(avr32|ia64(?=;)|68k(?=\))|\barm(?=v([1-7]|[5-7]1)l?|;|eabi)|(irix|mips|sparc)(64)?\b|pa-risc)/i], [[p, W]]],
+            device: [[/\b(sch-i[89]0\d|shw-m380s|sm-[ptx]\w{2,4}|gt-[pn]\d{2,4}|sgh-t8[56]9|nexus 10)/i], [a, [c, P], [u, m]], [/\b((?:s[cgp]h|gt|sm)-(?![lr])\w+|sc[g-]?[\d]+a?|galaxy nexus)/i, /samsung[- ]((?!sm-[lr])[-\w]+)/i, /sec-(sgh\w+)/i], [a, [c, P], [u, h]], [/(?:\/|\()(ip(?:hone|od)[\w, ]*)(?:\/|;)/i], [a, [c, y], [u, h]], [/\((ipad);[-\w\),; ]+apple/i, /applecoremedia\/[\w\.]+ \((ipad)/i, /\b(ipad)\d\d?,\d\d?[;\]].+ios/i], [a, [c, y], [u, m]], [/(macintosh);/i], [a, [c, y]], [/\b(sh-?[altvz]?\d\d[a-ekm]?)/i], [a, [c, D], [u, h]], [/\b((?:brt|eln|hey2?|gdi|jdn)-a?[lnw]09|(?:ag[rm]3?|jdn2|kob2)-a?[lw]0[09]hn)(?: bui|\)|;)/i], [a, [c, O], [u, m]], [/honor([-\w ]+)[;\)]/i], [a, [c, O], [u, h]], [/\b((?:ag[rs][2356]?k?|bah[234]?|bg[2o]|bt[kv]|cmr|cpn|db[ry]2?|jdn2|got|kob2?k?|mon|pce|scm|sht?|[tw]gr|vrd)-[ad]?[lw][0125][09]b?|605hw|bg2-u03|(?:gem|fdr|m2|ple|t1)-[7a]0[1-4][lu]|t1-a2[13][lw]|mediapad[\w\. ]*(?= bui|\)))\b(?!.+d\/s)/i], [a, [c, A], [u, m]], [/(?:huawei)([-\w ]+)[;\)]/i, /\b(nexus 6p|\w{2,4}e?-[atu]?[ln][\dx][012359c][adn]?)\b(?!.+d\/s)/i], [a, [c, A], [u, h]], [/oid[^\)]+; (2[\dbc]{4}(182|283|rp\w{2})[cgl]|m2105k81a?c)(?: bui|\))/i, /\b((?:red)?mi[-_ ]?pad[\w- ]*)(?: bui|\))/i], [[a, /_/g, " "], [c, z], [u, m]], [/\b(poco[\w ]+|m2\d{3}j\d\d[a-z]{2})(?: bui|\))/i, /\b; (\w+) build\/hm\1/i, /\b(hm[-_ ]?note?[_ ]?(?:\d\w)?) bui/i, /\b(redmi[\-_ ]?(?:note|k)?[\w_ ]+)(?: bui|\))/i, /oid[^\)]+; (m?[12][0-389][01]\w{3,6}[c-y])( bui|; wv|\))/i, /\b(mi[-_ ]?(?:a\d|one|one[_ ]plus|note lte|max|cc)?[_ ]?(?:\d?\w?)[_ ]?(?:plus|se|lite|pro)?)(?: bui|\))/i, / ([\w ]+) miui\/v?\d/i], [[a, /_/g, " "], [c, z], [u, h]], [/; (\w+) bui.+ oppo/i, /\b(cph[12]\d{3}|p(?:af|c[al]|d\w|e[ar])[mt]\d0|x9007|a101op)\b/i], [a, [c, M], [u, h]], [/\b(opd2(\d{3}a?))(?: bui|\))/i], [a, [c, J, {
+                OnePlus: ["304", "403", "203"],
+                "*": M
+            }], [u, m]], [/vivo (\w+)(?: bui|\))/i, /\b(v[12]\d{3}\w?[at])(?: bui|;)/i], [a, [c, "Vivo"], [u, h]], [/\b(rmx[1-3]\d{3})(?: bui|;|\))/i], [a, [c, "Realme"], [u, h]], [/\b(milestone|droid(?:[2-4x]| (?:bionic|x2|pro|razr))?:?( 4g)?)\b[\w ]+build\//i, /\bmot(?:orola)?[- ](\w*)/i, /((?:moto(?! 360)[\w\(\) ]+|xt\d{3,4}|nexus 6)(?= bui|\)))/i], [a, [c, U], [u, h]], [/\b(mz60\d|xoom[2 ]{0,2}) build\//i], [a, [c, U], [u, m]], [/((?=lg)?[vl]k\-?\d{3}) bui| 3\.[-\w; ]{10}lg?-([06cv9]{3,4})/i], [a, [c, L], [u, m]], [/(lm(?:-?f100[nv]?|-[\w\.]+)(?= bui|\))|nexus [45])/i, /\blg[-e;\/ ]+((?!browser|netcast|android tv|watch)\w+)/i, /\blg-?([\d\w]+) bui/i], [a, [c, L], [u, h]], [/(ideatab[-\w ]+|602lv|d-42a|a101lv|a2109a|a3500-hv|s[56]000|pb-6505[my]|tb-?x?\d{3,4}(?:f[cu]|xu|[av])|yt\d?-[jx]?\d+[lfmx])( bui|;|\)|\/)/i, /lenovo ?(b[68]0[08]0-?[hf]?|tab(?:[\w- ]+?)|tb[\w-]{6,7})( bui|;|\)|\/)/i], [a, [c, "Lenovo"], [u, m]], [/(nokia) (t[12][01])/i], [c, a, [u, m]], [/(?:maemo|nokia).*(n900|lumia \d+|rm-\d+)/i, /nokia[-_ ]?(([-\w\. ]*))/i], [[a, /_/g, " "], [u, h], [c, "Nokia"]], [/(pixel (c|tablet))\b/i], [a, [c, x], [u, m]], [/droid.+; (pixel[\daxl ]{0,6})(?: bui|\))/i], [a, [c, x], [u, h]], [/droid.+; (a?\d[0-2]{2}so|[c-g]\d{4}|so[-gl]\w+|xq-a\w[4-7][12])(?= bui|\).+chrome\/(?![1-6]{0,1}\d\.))/i], [a, [c, R], [u, h]], [/sony tablet [ps]/i, /\b(?:sony)?sgp\w+(?: bui|\))/i], [[a, "Xperia Tablet"], [c, R], [u, m]], [/ (kb2005|in20[12]5|be20[12][59])\b/i, /(?:one)?(?:plus)? (a\d0\d\d)(?: b|\))/i], [a, [c, j], [u, h]], [/(alexa)webm/i, /(kf[a-z]{2}wi|aeo(?!bc)\w\w)( bui|\))/i, /(kf[a-z]+)( bui|\)).+silk\//i], [a, [c, w], [u, m]], [/((?:sd|kf)[0349hijorstuw]+)( bui|\)).+silk\//i], [[a, /(.+)/g, "Fire Phone $1"], [c, w], [u, h]], [/(playbook);[-\w\),; ]+(rim)/i], [a, c, [u, m]], [/\b((?:bb[a-f]|st[hv])100-\d)/i, /\(bb10; (\w+)/i], [a, [c, T], [u, h]], [/(?:\b|asus_)(transfo[prime ]{4,10} \w+|eeepc|slider \w+|nexus 7|padfone|p00[cj])/i], [a, [c, S], [u, m]], [/ (z[bes]6[027][012][km][ls]|zenfone \d\w?)\b/i], [a, [c, S], [u, h]], [/(nexus 9)/i], [a, [c, "HTC"], [u, m]], [/(htc)[-;_ ]{1,2}([\w ]+(?=\)| bui)|\w+)/i, /(zte)[- ]([\w ]+?)(?: bui|\/|\))/i, /(alcatel|geeksphone|nexian|panasonic(?!(?:;|\.))|sony(?!-bra))[-_ ]?([-\w]*)/i], [c, [a, /_/g, " "], [u, h]], [/droid [\w\.]+; ((?:8[14]9[16]|9(?:0(?:48|60|8[01])|1(?:3[27]|66)|2(?:6[69]|9[56])|466))[gqswx])\w*(\)| bui)/i], [a, [c, "TCL"], [u, m]], [/(itel) ((\w+))/i], [[c, W], a, [u, J, {
+                tablet: ["p10001l", "w7001"],
+                "*": "mobile"
+            }]], [/droid.+; ([ab][1-7]-?[0178a]\d\d?)/i], [a, [c, "Acer"], [u, m]], [/droid.+; (m[1-5] note) bui/i, /\bmz-([-\w]{2,})/i], [a, [c, "Meizu"], [u, h]], [/; ((?:power )?armor(?:[\w ]{0,8}))(?: bui|\))/i], [a, [c, "Ulefone"], [u, h]], [/; (energy ?\w+)(?: bui|\))/i, /; energizer ([\w ]+)(?: bui|\))/i], [a, [c, "Energizer"], [u, h]], [/; cat (b35);/i, /; (b15q?|s22 flip|s48c|s62 pro)(?: bui|\))/i], [a, [c, "Cat"], [u, h]], [/((?:new )?andromax[\w- ]+)(?: bui|\))/i], [a, [c, "Smartfren"], [u, h]], [/droid.+; (a(?:015|06[35]|142p?))/i], [a, [c, "Nothing"], [u, h]], [/; (x67 5g|tikeasy \w+|ac[1789]\d\w+)( b|\))/i, /archos ?(5|gamepad2?|([\w ]*[t1789]|hello) ?\d+[\w ]*)( b|\))/i], [a, [c, "Archos"], [u, m]], [/archos ([\w ]+)( b|\))/i, /; (ac[3-6]\d\w{2,8})( b|\))/i], [a, [c, "Archos"], [u, h]], [/(imo) (tab \w+)/i, /(infinix) (x1101b?)/i], [c, a, [u, m]], [/(blackberry|benq|palm(?=\-)|sonyericsson|acer|asus(?! zenw)|dell|jolla|meizu|motorola|polytron|infinix|tecno|micromax|advan)[-_ ]?([-\w]*)/i, /; (hmd|imo) ([\w ]+?)(?: bui|\))/i, /(hp) ([\w ]+\w)/i, /(microsoft); (lumia[\w ]+)/i, /(lenovo)[-_ ]?([-\w ]+?)(?: bui|\)|\/)/i, /(oppo) ?([\w ]+) bui/i], [c, a, [u, h]], [/(kobo)\s(ereader|touch)/i, /(hp).+(touchpad(?!.+tablet)|tablet)/i, /(kindle)\/([\w\.]+)/i, /(nook)[\w ]+build\/(\w+)/i, /(dell) (strea[kpr\d ]*[\dko])/i, /(le[- ]+pan)[- ]+(\w{1,9}) bui/i, /(trinity)[- ]*(t\d{3}) bui/i, /(gigaset)[- ]+(q\w{1,9}) bui/i, /(vodafone) ([\w ]+)(?:\)| bui)/i], [c, a, [u, m]], [/(surface duo)/i], [a, [c, _], [u, m]], [/droid [\d\.]+; (fp\du?)(?: b|\))/i], [a, [c, "Fairphone"], [u, h]], [/(u304aa)/i], [a, [c, "AT&T"], [u, h]], [/\bsie-(\w*)/i], [a, [c, "Siemens"], [u, h]], [/\b(rct\w+) b/i], [a, [c, "RCA"], [u, m]], [/\b(venue[\d ]{2,7}) b/i], [a, [c, "Dell"], [u, m]], [/\b(q(?:mv|ta)\w+) b/i], [a, [c, "Verizon"], [u, m]], [/\b(?:barnes[& ]+noble |bn[rt])([\w\+ ]*) b/i], [a, [c, "Barnes & Noble"], [u, m]], [/\b(tm\d{3}\w+) b/i], [a, [c, "NuVision"], [u, m]], [/\b(k88) b/i], [a, [c, "ZTE"], [u, m]], [/\b(nx\d{3}j) b/i], [a, [c, "ZTE"], [u, h]], [/\b(gen\d{3}) b.+49h/i], [a, [c, "Swiss"], [u, h]], [/\b(zur\d{3}) b/i], [a, [c, "Swiss"], [u, m]], [/\b((zeki)?tb.*\b) b/i], [a, [c, "Zeki"], [u, m]], [/\b([yr]\d{2}) b/i, /\b(dragon[- ]+touch |dt)(\w{5}) b/i], [[c, "Dragon Touch"], a, [u, m]], [/\b(ns-?\w{0,9}) b/i], [a, [c, "Insignia"], [u, m]], [/\b((nxa|next)-?\w{0,9}) b/i], [a, [c, "NextBook"], [u, m]], [/\b(xtreme\_)?(v(1[045]|2[015]|[3469]0|7[05])) b/i], [[c, "Voice"], a, [u, h]], [/\b(lvtel\-)?(v1[12]) b/i], [[c, "LvTel"], a, [u, h]], [/\b(ph-1) /i], [a, [c, "Essential"], [u, h]], [/\b(v(100md|700na|7011|917g).*\b) b/i], [a, [c, "Envizen"], [u, m]], [/\b(trio[-\w\. ]+) b/i], [a, [c, "MachSpeed"], [u, m]], [/\btu_(1491) b/i], [a, [c, "Rotor"], [u, m]], [/((?:tegranote|shield t(?!.+d tv))[\w- ]*?)(?: b|\))/i], [a, [c, C], [u, m]], [/(sprint) (\w+)/i], [c, a, [u, h]], [/(kin\.[onetw]{3})/i], [[a, /\./g, " "], [c, _], [u, h]], [/droid.+; (cc6666?|et5[16]|mc[239][23]x?|vc8[03]x?)\)/i], [a, [c, B], [u, m]], [/droid.+; (ec30|ps20|tc[2-8]\d[kx])\)/i], [a, [c, B], [u, h]], [/smart-tv.+(samsung)/i], [c, [u, f]], [/hbbtv.+maple;(\d+)/i], [[a, /^/, "SmartTV"], [c, P], [u, f]], [/(nux; netcast.+smarttv|lg (netcast\.tv-201\d|android tv))/i], [[c, L], [u, f]], [/(apple) ?tv/i], [c, [a, y + " TV"], [u, f]], [/crkey/i], [[a, I + "cast"], [c, x], [u, f]], [/droid.+aft(\w+)( bui|\))/i], [a, [c, w], [u, f]], [/(shield \w+ tv)/i], [a, [c, C], [u, f]], [/\(dtv[\);].+(aquos)/i, /(aquos-tv[\w ]+)\)/i], [a, [c, D], [u, f]], [/(bravia[\w ]+)( bui|\))/i], [a, [c, R], [u, f]], [/(mi(tv|box)-?\w+) bui/i], [a, [c, z], [u, f]], [/Hbbtv.*(technisat) (.*);/i], [c, a, [u, f]], [/\b(roku)[\dx]*[\)\/]((?:dvp-)?[\d\.]*)/i, /hbbtv\/\d+\.\d+\.\d+ +\([\w\+ ]*; *([\w\d][^;]*);([^;]*)/i], [[c, K], [a, K], [u, f]], [/droid.+; ([\w- ]+) (?:android tv|smart[- ]?tv)/i], [a, [u, f]], [/\b(android tv|smart[- ]?tv|opera tv|tv; rv:)\b/i], [[u, f]], [/(ouya)/i, /(nintendo) ([wids3utch]+)/i], [c, a, [u, g]], [/droid.+; (shield)( bui|\))/i], [a, [c, C], [u, g]], [/(playstation \w+)/i], [a, [c, R], [u, g]], [/\b(xbox(?: one)?(?!; xbox))[\); ]/i], [a, [c, _], [u, g]], [/\b(sm-[lr]\d\d[0156][fnuw]?s?|gear live)\b/i], [a, [c, P], [u, v]], [/((pebble))app/i, /(asus|google|lg|oppo) ((pixel |zen)?watch[\w ]*)( bui|\))/i], [c, a, [u, v]], [/(ow(?:19|20)?we?[1-3]{1,3})/i], [a, [c, M], [u, v]], [/(watch)(?: ?os[,\/]|\d,\d\/)[\d\.]+/i], [a, [c, y], [u, v]], [/(opwwe\d{3})/i], [a, [c, j], [u, v]], [/(moto 360)/i], [a, [c, U], [u, v]], [/(smartwatch 3)/i], [a, [c, R], [u, v]], [/(g watch r)/i], [a, [c, L], [u, v]], [/droid.+; (wt63?0{2,3})\)/i], [a, [c, B], [u, v]], [/droid.+; (glass) \d/i], [a, [c, x], [u, v]], [/(pico) (4|neo3(?: link|pro)?)/i], [c, a, [u, v]], [/; (quest( \d| pro)?)/i], [a, [c, q], [u, v]], [/(tesla)(?: qtcarbrowser|\/[-\w\.]+)/i], [c, [u, b]], [/(aeobc)\b/i], [a, [c, w], [u, b]], [/(homepod).+mac os/i], [a, [c, y], [u, b]], [/windows iot/i], [[u, b]], [/droid .+?; ([^;]+?)(?: bui|; wv\)|\) applew).+? mobile safari/i], [a, [u, h]], [/droid .+?; ([^;]+?)(?: bui|\) applew).+?(?! mobile) safari/i], [a, [u, m]], [/\b((tablet|tab)[;\/]|focus\/\d(?!.+mobile))/i], [[u, m]], [/(phone|mobile(?:[;\/]| [ \w\/\.]*safari)|pda(?=.+windows ce))/i], [[u, h]], [/droid .+?; ([\w\. -]+)( bui|\))/i], [a, [c, "Generic"]]],
+            engine: [[/windows.+ edge\/([\w\.]+)/i], [d, [l, "EdgeHTML"]], [/(arkweb)\/([\w\.]+)/i], [l, d], [/webkit\/537\.36.+chrome\/(?!27)([\w\.]+)/i], [d, [l, "Blink"]], [/(presto)\/([\w\.]+)/i, /(webkit|trident|netfront|netsurf|amaya|lynx|w3m|goanna|servo)\/([\w\.]+)/i, /ekioh(flow)\/([\w\.]+)/i, /(khtml|tasman|links)[\/ ]\(?([\w\.]+)/i, /(icab)[\/ ]([23]\.[\d\.]+)/i, /\b(libweb)/i], [l, d], [/ladybird\//i], [[l, "LibWeb"]], [/rv\:([\w\.]{1,9})\b.+(gecko)/i], [d, l]],
+            os: [[/microsoft (windows) (vista|xp)/i], [l, d], [/(windows (?:phone(?: os)?|mobile|iot))[\/ ]?([\d\.\w ]*)/i], [l, [d, J, Z]], [/windows nt 6\.2; (arm)/i, /windows[\/ ]([ntce\d\. ]+\w)(?!.+xbox)/i, /(?:win(?=3|9|n)|win 9x )([nt\d\.]+)/i], [[d, J, Z], [l, "Windows"]], [/[adehimnop]{4,7}\b(?:.*os ([\w]+) like mac|; opera)/i, /(?:ios;fbsv\/|iphone.+ios[\/ ])([\d\.]+)/i, /cfnetwork\/.+darwin/i], [[d, /_/g, "."], [l, "iOS"]], [/(mac os x) ?([\w\. ]*)/i, /(macintosh|mac_powerpc\b)(?!.+haiku)/i], [[l, V], [d, /_/g, "."]], [/droid ([\w\.]+)\b.+(android[- ]x86|harmonyos)/i], [d, l], [/(ubuntu) ([\w\.]+) like android/i], [[l, /(.+)/, "$1 Touch"], d], [/(android|bada|blackberry|kaios|maemo|meego|openharmony|qnx|rim tablet os|sailfish|series40|symbian|tizen|webos)\w*[-\/; ]?([\d\.]*)/i], [l, d], [/\(bb(10);/i], [d, [l, T]], [/(?:symbian ?os|symbos|s60(?=;)|series ?60)[-\/ ]?([\w\.]*)/i], [d, [l, "Symbian"]], [/mozilla\/[\d\.]+ \((?:mobile|tablet|tv|mobile; [\w ]+); rv:.+ gecko\/([\w\.]+)/i], [d, [l, k + " OS"]], [/web0s;.+rt(tv)/i, /\b(?:hp)?wos(?:browser)?\/([\w\.]+)/i], [d, [l, "webOS"]], [/watch(?: ?os[,\/]|\d,\d\/)([\d\.]+)/i], [d, [l, "watchOS"]], [/crkey\/([\d\.]+)/i], [d, [l, I + "cast"]], [/(cros) [\w]+(?:\)| ([\w\.]+)\b)/i], [[l, F], d], [/panasonic;(viera)/i, /(netrange)mmh/i, /(nettv)\/(\d+\.[\w\.]+)/i, /(nintendo|playstation) ([wids345portablevuch]+)/i, /(xbox); +xbox ([^\);]+)/i, /\b(joli|palm)\b ?(?:os)?\/?([\w\.]*)/i, /(mint)[\/\(\) ]?(\w*)/i, /(mageia|vectorlinux)[; ]/i, /([kxln]?ubuntu|debian|suse|opensuse|gentoo|arch(?= linux)|slackware|fedora|mandriva|centos|pclinuxos|red ?hat|zenwalk|linpus|raspbian|plan 9|minix|risc os|contiki|deepin|manjaro|elementary os|sabayon|linspire)(?: gnu\/linux)?(?: enterprise)?(?:[- ]linux)?(?:-gnu)?[-\/ ]?(?!chrom|package)([-\w\.]*)/i, /(hurd|linux)(?: arm\w*| x86\w*| ?)([\w\.]*)/i, /(gnu) ?([\w\.]*)/i, /\b([-frentopcghs]{0,5}bsd|dragonfly)[\/ ]?(?!amd|[ix346]{1,2}86)([\w\.]*)/i, /(haiku) (\w+)/i], [l, d], [/(sunos) ?([\w\.\d]*)/i], [[l, "Solaris"], d], [/((?:open)?solaris)[-\/ ]?([\w\.]*)/i, /(aix) ((\d)(?=\.|\)| )[\w\.])*/i, /\b(beos|os\/2|amigaos|morphos|openvms|fuchsia|hp-ux|serenityos)/i, /(unix) ?([\w\.]*)/i], [l, d]]
+        }
+          , Q = function(g, f) {
+            if (typeof g === s && (f = g,
+            g = t),
+            !(this instanceof Q))
+                return new Q(g,f).getResult();
+            var v = typeof e !== n && e.navigator ? e.navigator : t
+              , b = g || (v && v.userAgent ? v.userAgent : "")
+              , w = v && v.userAgentData ? v.userAgentData : t
+              , y = f ? function(e, t) {
+                var i = {};
+                for (var n in e)
+                    t[n] && t[n].length % 2 == 0 ? i[n] = t[n].concat(e[n]) : i[n] = e[n];
+                return i
+            }(Y, f) : Y
+              , S = v && v.userAgent == b;
+            return this.getBrowser = function() {
+                var e, n = {};
+                return n[l] = t,
+                n[d] = t,
+                X.call(n, b, y.browser),
+                n[o] = typeof (e = n[d]) === r ? e.replace(/[^\d\.]/g, "").split(".")[0] : t,
+                S && v && v.brave && typeof v.brave.isBrave == i && (n[l] = "Brave"),
+                n
+            }
+            ,
+            this.getCPU = function() {
+                var e = {};
+                return e[p] = t,
+                X.call(e, b, y.cpu),
+                e
+            }
+            ,
+            this.getDevice = function() {
+                var e = {};
+                return e[c] = t,
+                e[a] = t,
+                e[u] = t,
+                X.call(e, b, y.device),
+                S && !e[u] && w && w.mobile && (e[u] = h),
+                S && "Macintosh" == e[a] && v && typeof v.standalone !== n && v.maxTouchPoints && v.maxTouchPoints > 2 && (e[a] = "iPad",
+                e[u] = m),
+                e
+            }
+            ,
+            this.getEngine = function() {
+                var e = {};
+                return e[l] = t,
+                e[d] = t,
+                X.call(e, b, y.engine),
+                e
+            }
+            ,
+            this.getOS = function() {
+                var e = {};
+                return e[l] = t,
+                e[d] = t,
+                X.call(e, b, y.os),
+                S && !e[l] && w && w.platform && "Unknown" != w.platform && (e[l] = w.platform.replace(/chrome os/i, F).replace(/macos/i, V)),
+                e
+            }
+            ,
+            this.getResult = function() {
+                return {
+                    ua: this.getUA(),
+                    browser: this.getBrowser(),
+                    engine: this.getEngine(),
+                    os: this.getOS(),
+                    device: this.getDevice(),
+                    cpu: this.getCPU()
+                }
+            }
+            ,
+            this.getUA = function() {
+                return b
+            }
+            ,
+            this.setUA = function(e) {
+                return b = typeof e === r && e.length > 500 ? K(e, 500) : e,
+                this
+            }
+            ,
+            this.setUA(b),
+            this
+        };
+        Q.VERSION = "1.0.41",
+        Q.BROWSER = H([l, d, o]),
+        Q.CPU = H([p]),
+        Q.DEVICE = H([a, c, u, g, h, f, m, v, b]),
+        Q.ENGINE = Q.OS = H([l, d]),
+        _e.exports && (Ue = _e.exports = Q),
+        Ue.UAParser = Q;
+        var ee = typeof e !== n && (e.jQuery || e.Zepto);
+        if (ee && !ee.ua) {
+            var te = new Q;
+            ee.ua = te.getResult(),
+            ee.ua.get = function() {
+                return te.getUA()
+            }
+            ,
+            ee.ua.set = function(e) {
+                te.setUA(e);
+                var t = te.getResult();
+                for (var i in t)
+                    ee.ua[i] = t[i]
+            }
+        }
+    }("object" == typeof window ? window : Le.exports)),
+    Le.exports);
+    const je = () => {
+        const e = new Ce.UAParser
+          , {name: t, version: i} = e.getBrowser()
+          , {name: n, version: s} = e.getOS()
+          , r = e.getUA()
+          , o = navigator.language
+          , a = navigator.userAgent.includes("Mobi")
+          , l = function() {
+            if (!t || !i)
+                return;
+            if ("userAgentData" in navigator && navigator.userAgentData)
+                return navigator.userAgentData.brands;
+            return
+        }();
+        return {
+            browser: {
+                name: null != t ? t : Oe,
+                version: null != i ? i : Oe,
+                os: `${null != n ? n : Oe} ${null != s ? s : Oe}`,
+                userAgent: null != r ? r : Oe,
+                language: null != o ? o : Oe,
+                mobile: a,
+                brands: null != l ? l : Oe,
+                viewportWidth: `${window.innerWidth}`,
+                viewportHeight: `${window.innerHeight}`
+            }
+        }
+    }
+    ;
+    function Ne(t) {
+        var i, n, s, r;
+        return {
+            id: null !== (r = null === (s = null === (n = null === (i = e.faro.config) || void 0 === i ? void 0 : i.sessionTracking) || void 0 === n ? void 0 : n.generateSessionId) || void 0 === s ? void 0 : s.call(n)) && void 0 !== r ? r : D(),
+            attributes: t
+        }
+    }
+    const Me = "sessionStorage"
+      , Pe = "localStorage";
+    function De(t) {
+        var i;
+        try {
+            let e;
+            e = window[t];
+            const i = "__faro_storage_test__";
+            return e.setItem(i, i),
+            e.removeItem(i),
+            !0
+        } catch (n) {
+            return null === (i = e.faro.internalLogger) || void 0 === i || i.info(`Web storage of type ${t} is not available. Reason: ${n}`),
+            !1
+        }
+    }
+    function Re(e, t) {
+        return Ve(t) ? window[t].getItem(e) : null
+    }
+    function ze(e, t, i) {
+        if (Ve(i))
+            try {
+                window[i].setItem(e, t)
+            } catch (e) {}
+    }
+    function Be(e, t) {
+        Ve(t) && window[t].removeItem(e)
+    }
+    const qe = De(Pe)
+      , Fe = De(Me);
+    function Ve(e) {
+        return e === Pe ? qe : e === Me && Fe
+    }
+    function $e(e, t) {
+        let i, n = !1;
+        const s = () => {
+            null != i ? (e(...i),
+            i = null,
+            setTimeout(s, t)) : n = !1
+        }
+        ;
+        return (...r) => {
+            n ? i = r : (e(...r),
+            n = !0,
+            setTimeout(s, t))
+        }
+    }
+    function He() {
+        return e.faro.transports.transports.flatMap(e => e.getIgnoreUrls())
+    }
+    function Ge(e="") {
+        return He().some(t => e && null != e.match(t))
+    }
+    function We(e) {
+        return c(e) ? e : e instanceof URL ? e.href : !x(e) && h(null == e ? void 0 : e.toString) ? e.toString() : void 0
+    }
+    const Ke = "com.grafana.faro.session"
+      , Xe = 144e5
+      , Je = 9e5
+      , Ze = Je
+      , Ye = {
+        enabled: !0,
+        persistent: !1,
+        maxSessionPersistenceTime: Ze
+    };
+    function Qe() {
+        var t, i, n;
+        const s = e.faro.config.sessionTracking;
+        let r = null !== (n = null !== (i = null === (t = null == s ? void 0 : s.sampler) || void 0 === t ? void 0 : t.call(s, {
+            metas: e.faro.metas.value
+        })) && void 0 !== i ? i : null == s ? void 0 : s.samplingRate) && void 0 !== n ? n : 1;
+        if ("number" != typeof r) {
+            r = 0
+        }
+        return Math.random() < r
+    }
+    function et({sessionId: t, started: i, lastActivity: n, isSampled: s=!0}={}) {
+        var r, o;
+        const a = A()
+          , l = null === (o = null === (r = e.faro.config) || void 0 === r ? void 0 : r.sessionTracking) || void 0 === o ? void 0 : o.generateSessionId;
+        return null == t && (t = "function" == typeof l ? l() : D()),
+        {
+            sessionId: t,
+            lastActivity: null != n ? n : a,
+            started: null != i ? i : a,
+            isSampled: s
+        }
+    }
+    function tt(e) {
+        if (null == e)
+            return !1;
+        const t = A();
+        if (!(t - e.started < Xe))
+            return !1;
+        return t - e.lastActivity < Je
+    }
+    function it({fetchUserSession: t, storeUserSession: i}) {
+        return function({forceSessionExtend: n}={
+            forceSessionExtend: !1
+        }) {
+            var s, r, o;
+            if (!t || !i)
+                return;
+            const a = e.faro.config.sessionTracking
+              , l = null == a ? void 0 : a.persistent;
+            if (l && !qe || !l && !Fe)
+                return;
+            const u = t();
+            if (!1 === n && tt(u))
+                i(Object.assign(Object.assign({}, u), {
+                    lastActivity: A()
+                }));
+            else {
+                let t = nt(et({
+                    isSampled: Qe()
+                }), u);
+                i(t),
+                null === (s = e.faro.api) || void 0 === s || s.setSession(t.sessionMeta),
+                null === (r = null == a ? void 0 : a.onSessionChange) || void 0 === r || r.call(a, null !== (o = null == u ? void 0 : u.sessionMeta) && void 0 !== o ? o : null, t.sessionMeta)
+            }
+        }
+    }
+    function nt(t, i) {
+        var n, s, r, o, a, l, u;
+        const c = Object.assign(Object.assign({}, t), {
+            sessionMeta: {
+                id: t.sessionId,
+                attributes: Object.assign(Object.assign(Object.assign({}, null === (s = null === (n = e.faro.config.sessionTracking) || void 0 === n ? void 0 : n.session) || void 0 === s ? void 0 : s.attributes), null !== (o = null === (r = e.faro.metas.value.session) || void 0 === r ? void 0 : r.attributes) && void 0 !== o ? o : {}), {
+                    isSampled: t.isSampled.toString()
+                })
+            }
+        })
+          , d = null !== (l = null === (a = e.faro.metas.value.session) || void 0 === a ? void 0 : a.overrides) && void 0 !== l ? l : null === (u = null == i ? void 0 : i.sessionMeta) || void 0 === u ? void 0 : u.overrides;
+        x(d) || (c.sessionMeta.overrides = d);
+        const p = null == i ? void 0 : i.sessionId;
+        return null != p && (c.sessionMeta.attributes.previousSession = p),
+        c
+    }
+    function st({fetchUserSession: t, storeUserSession: i}) {
+        return function(n) {
+            const s = n.session
+              , r = t();
+            let o = null == s ? void 0 : s.id;
+            const a = null == s ? void 0 : s.attributes
+              , l = null == s ? void 0 : s.overrides
+              , u = null == r ? void 0 : r.sessionMeta
+              , c = null == u ? void 0 : u.overrides
+              , d = !!l && !O(l, c)
+              , p = !!a && !O(a, null == u ? void 0 : u.attributes);
+            if (!!s && o !== (null == r ? void 0 : r.sessionId) || p || d) {
+                const t = nt(et({
+                    sessionId: o,
+                    isSampled: Qe()
+                }), r);
+                i(t),
+                function(t, i={}, n={}) {
+                    var s, r, o;
+                    if (!t)
+                        return;
+                    const a = i.serviceName
+                      , l = null !== (o = null !== (s = n.serviceName) && void 0 !== s ? s : null === (r = e.faro.metas.value.app) || void 0 === r ? void 0 : r.name) && void 0 !== o ? o : "";
+                    a && a !== l && e.faro.api.pushEvent(xe, {
+                        serviceName: a,
+                        previousServiceName: l
+                    })
+                }(d, l, c),
+                e.faro.api.setSession(t.sessionMeta)
+            }
+        }
+    }
+    class rt {
+        constructor() {
+            this.updateSession = $e( () => this.updateUserSession(), 1e3),
+            this.updateUserSession = it({
+                fetchUserSession: rt.fetchUserSession,
+                storeUserSession: rt.storeUserSession
+            }),
+            this.init()
+        }
+        static removeUserSession() {
+            Be(Ke, rt.storageTypeLocal)
+        }
+        static storeUserSession(e) {
+            ze(Ke, z(e), rt.storageTypeLocal)
+        }
+        static fetchUserSession() {
+            const e = Re(Ke, rt.storageTypeLocal);
+            return e ? JSON.parse(e) : null
+        }
+        init() {
+            document.addEventListener("visibilitychange", () => {
+                "visible" === document.visibilityState && this.updateSession()
+            }
+            ),
+            e.faro.metas.addListener(st({
+                fetchUserSession: rt.fetchUserSession,
+                storeUserSession: rt.storeUserSession
+            }))
+        }
+    }
+    rt.storageTypeLocal = Pe;
+    class ot {
+        constructor() {
+            this.updateSession = $e( () => this.updateUserSession(), 1e3),
+            this.updateUserSession = it({
+                fetchUserSession: ot.fetchUserSession,
+                storeUserSession: ot.storeUserSession
+            }),
+            this.init()
+        }
+        static removeUserSession() {
+            Be(Ke, ot.storageTypeSession)
+        }
+        static storeUserSession(e) {
+            ze(Ke, z(e), ot.storageTypeSession)
+        }
+        static fetchUserSession() {
+            const e = Re(Ke, ot.storageTypeSession);
+            return e ? JSON.parse(e) : null
+        }
+        init() {
+            document.addEventListener("visibilitychange", () => {
+                "visible" === document.visibilityState && this.updateSession()
+            }
+            ),
+            e.faro.metas.addListener(st({
+                fetchUserSession: ot.fetchUserSession,
+                storeUserSession: ot.storeUserSession
+            }))
+        }
+    }
+    function at(e) {
+        return (null == e ? void 0 : e.persistent) ? rt : ot
+    }
+    ot.storageTypeSession = Me;
+    class lt extends ge {
+        constructor() {
+            super(...arguments),
+            this.name = "@grafana/faro-web-sdk:instrumentation-session",
+            this.version = he
+        }
+        sendSessionStartEvent(e) {
+            var t, i;
+            const n = e.session;
+            if (n && n.id !== (null === (t = this.notifiedSession) || void 0 === t ? void 0 : t.id)) {
+                if (this.notifiedSession && this.notifiedSession.id === (null === (i = n.attributes) || void 0 === i ? void 0 : i.previousSession))
+                    return this.api.pushEvent(ke, {}, void 0, {
+                        skipDedupe: !0
+                    }),
+                    void (this.notifiedSession = n);
+                this.notifiedSession = n,
+                this.api.pushEvent(Ee, {}, void 0, {
+                    skipDedupe: !0
+                })
+            }
+        }
+        createInitialSession(e, t) {
+            var i, n, s, r, o, a;
+            let l, u, c = e.fetchUserSession();
+            if (t.persistent && t.maxSessionPersistenceTime && c) {
+                const e = A();
+                c.lastActivity < e - t.maxSessionPersistenceTime && (rt.removeUserSession(),
+                c = null)
+            }
+            if (tt(c)) {
+                const e = null == c ? void 0 : c.sessionId;
+                u = et({
+                    sessionId: e,
+                    isSampled: c.isSampled || !1,
+                    started: null == c ? void 0 : c.started
+                });
+                const s = null == c ? void 0 : c.sessionMeta
+                  , r = Object.assign(Object.assign({}, null === (i = t.session) || void 0 === i ? void 0 : i.overrides), null == s ? void 0 : s.overrides);
+                u.sessionMeta = Object.assign(Object.assign({}, t.session), {
+                    id: e,
+                    attributes: Object.assign(Object.assign(Object.assign({}, null === (n = t.session) || void 0 === n ? void 0 : n.attributes), null == s ? void 0 : s.attributes), {
+                        isSampled: u.isSampled.toString()
+                    }),
+                    overrides: r
+                }),
+                l = Ie
+            } else {
+                const e = null !== (r = null === (s = t.session) || void 0 === s ? void 0 : s.id) && void 0 !== r ? r : Ne().id;
+                u = et({
+                    sessionId: e,
+                    isSampled: Qe()
+                });
+                const i = null === (o = t.session) || void 0 === o ? void 0 : o.overrides;
+                u.sessionMeta = Object.assign({
+                    id: e,
+                    attributes: Object.assign({
+                        isSampled: u.isSampled.toString()
+                    }, null === (a = t.session) || void 0 === a ? void 0 : a.attributes)
+                }, i ? {
+                    overrides: i
+                } : {}),
+                l = Ee
+            }
+            return {
+                initialSession: u,
+                lifecycleType: l
+            }
+        }
+        registerBeforeSendHook(e) {
+            var t;
+            const {updateSession: i} = new e;
+            null === (t = this.transports) || void 0 === t || t.addBeforeSendHooks(e => {
+                var t, n, s;
+                i();
+                const r = null === (t = e.meta.session) || void 0 === t ? void 0 : t.attributes;
+                if (r && "true" === (null == r ? void 0 : r.isSampled)) {
+                    let t = JSON.parse(JSON.stringify(e));
+                    const i = null === (n = t.meta.session) || void 0 === n ? void 0 : n.attributes;
+                    return null == i || delete i.isSampled,
+                    0 === Object.keys(null != i ? i : {}).length && (null === (s = t.meta.session) || void 0 === s || delete s.attributes),
+                    t
+                }
+                return null
+            }
+            )
+        }
+        initialize() {
+            this.logDebug("init session instrumentation");
+            const e = this.config.sessionTracking;
+            if (null == e ? void 0 : e.enabled) {
+                const t = at(e);
+                this.registerBeforeSendHook(t);
+                const {initialSession: i, lifecycleType: n} = this.createInitialSession(t, e);
+                t.storeUserSession(i);
+                const s = i.sessionMeta;
+                this.notifiedSession = s,
+                this.api.setSession(s),
+                n === Ee && this.api.pushEvent(Ee, {}, void 0, {
+                    skipDedupe: !0
+                }),
+                n === Ie && this.api.pushEvent(Ie, {}, void 0, {
+                    skipDedupe: !0
+                })
+            }
+            this.metas.addListener(this.sendSessionStartEvent.bind(this))
+        }
+    }
+    const ut = "http-request-start"
+      , ct = "http-request-end";
+    let dt, pt = !1;
+    const gt = /^(?:[Uu]ncaught (?:exception: )?)?(?:((?:Eval|Internal|Range|Reference|Syntax|Type|URI|)Error): )?(.*)$/i;
+    const ht = /^\s*at (?:(?![a-z]+:\/\/)([^(]+?) ?\((?:address at )?)?((?:file|https?|blob|chrome-extension|address|native|eval|webpack|<anonymous>|[-a-z]+:|.*bundle|\/)?.*?)(?::(\d+))?(?::(\d+))?\)?\s*$/i
+      , mt = /\((\S*)(?::(\d+))(?::(\d+))\)/
+      , ft = "address at "
+      , vt = /^\s*(.*?)(?:\((.*?)\))?(?:^|@)?((?:file|https?|blob|chrome|webpack|resource|moz-extension|safari-extension|safari-web-extension|capacitor)?:\/.*?|\[native code]|[^@]*(?:bundle|\d+\.js)|\/[\w\-. /=]+)(?::(\d+))?(?::(\d+))?\s*$/i
+      , bt = /(\S+) line (\d+)(?: > eval line \d+)* > eval/i
+      , wt = "safari-extension"
+      , yt = "safari-web-extension"
+      , St = /Minified React error #\d+;/i;
+    function Tt(e, t, i, n) {
+        const s = {
+            filename: e || document.location.href,
+            function: t || "?"
+        };
+        return void 0 !== i && (s.lineno = i),
+        void 0 !== n && (s.colno = n),
+        s
+    }
+    function Et(e, t) {
+        const i = null == e ? void 0 : e.includes(wt)
+          , n = !i && (null == e ? void 0 : e.includes(yt));
+        return i || n ? [(null == e ? void 0 : e.includes("@")) ? e.split("@")[0] : e, i ? `${wt}:${t}` : `${yt}:${t}`] : [e, t]
+    }
+    function It(e) {
+        let t = [];
+        e.stacktrace ? t = e.stacktrace.split("\n").filter( (e, t) => t % 2 == 0) : e.stack && (t = e.stack.split("\n"));
+        const i = t.reduce( (t, i, n) => {
+            let s, r, o, a, l;
+            if (s = ht.exec(i)) {
+                if (r = s[1],
+                o = s[2],
+                a = s[3],
+                l = s[4],
+                null == o ? void 0 : o.startsWith("eval")) {
+                    const e = mt.exec(o);
+                    e && (o = e[1],
+                    a = e[2],
+                    l = e[3])
+                }
+                o = (null == o ? void 0 : o.startsWith(ft)) ? o.substring(11) : o,
+                [r,o] = Et(r, o)
+            } else if (s = vt.exec(i)) {
+                if (r = s[1],
+                o = s[3],
+                a = s[4],
+                l = s[5],
+                o && o.includes(" > eval")) {
+                    const e = bt.exec(o);
+                    e && (r = r || "eval",
+                    o = e[1],
+                    a = e[2])
+                } else
+                    0 === n && !l && d(e.columnNumber) && (l = String(e.columnNumber + 1));
+                [r,o] = Et(r, o)
+            }
+            return (o || r) && t.push(Tt(o, r, a ? Number(a) : void 0, l ? Number(l) : void 0)),
+            t
+        }
+        , []);
+        return St.test(e.message) ? i.slice(1) : i
+    }
+    function kt(e) {
+        return {
+            frames: It(e)
+        }
+    }
+    function xt(e) {
+        let t, i, n, s, r = [];
+        if (S(e) && e.error)
+            t = e.error.message,
+            i = e.error.name,
+            r = It(e.error);
+        else if ((n = T(e)) || E(e)) {
+            const {name: s, message: r} = e;
+            i = null != s ? s : n ? "DOMError" : "DOMException",
+            t = r ? `${i}: ${r}` : i
+        } else
+            y(e) ? (t = e.message,
+            r = It(e)) : (g(e) || (s = b(e))) && (i = s ? e.constructor.name : void 0,
+            t = `Non-Error exception captured with keys: ${Object.keys(e)}`);
+        return [t, i, r]
+    }
+    function Ot(e) {
+        const [t,i,n,s,r] = e;
+        let o, a, l = [];
+        const u = c(t)
+          , d = Tt(i, "?", n, s);
+        return r || !u ? ([o,a,l] = xt(null != r ? r : t),
+        0 === l.length && (l = [d])) : u && ([o,a] = function(e) {
+            var t, i;
+            const n = e.match(gt)
+              , s = null !== (t = null == n ? void 0 : n[1]) && void 0 !== t ? t : ae;
+            return [null !== (i = null == n ? void 0 : n[2]) && void 0 !== i ? i : e, s]
+        }(t),
+        l = [d]),
+        {
+            value: o,
+            type: a,
+            stackFrames: l
+        }
+    }
+    function At(e, t) {
+        return y(e[0]) ? Ot(e) : {
+            value: t(e)
+        }
+    }
+    class Lt extends ge {
+        constructor() {
+            super(...arguments),
+            this.name = "@grafana/faro-web-sdk:instrumentation-console",
+            this.version = he,
+            this.errorSerializer = de
+        }
+        initialize() {
+            var t, i;
+            const n = this.config.consoleInstrumentation
+              , s = (null == n ? void 0 : n.serializeErrors) || !!(null == n ? void 0 : n.errorSerializer);
+            this.errorSerializer = s ? null !== (t = null == n ? void 0 : n.errorSerializer) && void 0 !== t ? t : le : de;
+            const r = null !== (i = null == n ? void 0 : n.disabledLevels) && void 0 !== i ? i : Lt.defaultDisabledLevels
+              , o = function(e) {
+                if (dt || (dt = new q),
+                !pt) {
+                    const t = null != e ? e : H;
+                    j.forEach(e => {
+                        console[e] = (...i) => {
+                            var n;
+                            dt.notify({
+                                type: "console",
+                                level: e,
+                                args: i
+                            }),
+                            null === (n = t[e]) || void 0 === n || n.apply(console, i)
+                        }
+                    }
+                    ),
+                    pt = !0
+                }
+                return dt
+            }(this.unpatchedConsole);
+            this.subscription = o.subscribe( ({level: t, args: i}) => {
+                if (!r.includes(t))
+                    try {
+                        if (t !== e.LogLevel.ERROR || (null == n ? void 0 : n.consoleErrorAsLog))
+                            if (t === e.LogLevel.ERROR && (null == n ? void 0 : n.consoleErrorAsLog)) {
+                                const {value: e, type: n, stackFrames: s} = At(i, this.errorSerializer);
+                                this.api.pushLog(e ? [Lt.consoleErrorPrefix + e] : i, {
+                                    level: t,
+                                    context: {
+                                        value: null != e ? e : "",
+                                        type: null != n ? n : "",
+                                        stackFrames: (null == s ? void 0 : s.length) ? le(s) : ""
+                                    }
+                                })
+                            } else
+                                this.api.pushLog(i, {
+                                    level: t
+                                });
+                        else {
+                            const {value: e, type: t, stackFrames: n} = At(i, this.errorSerializer);
+                            if (e && !t && !n)
+                                return void this.api.pushError(new Error(Lt.consoleErrorPrefix + e));
+                            this.api.pushError(new Error(Lt.consoleErrorPrefix + e), {
+                                type: t,
+                                stackFrames: n
+                            })
+                        }
+                    } catch (e) {
+                        this.logError(e)
+                    }
+            }
+            )
+        }
+        destroy() {
+            var e;
+            null === (e = this.subscription) || void 0 === e || e.unsubscribe(),
+            this.subscription = void 0
+        }
+    }
+    Lt.defaultDisabledLevels = [e.LogLevel.DEBUG, e.LogLevel.TRACE, e.LogLevel.LOG],
+    Lt.consoleErrorPrefix = "console.error: ";
+    class _t extends ge {
+        constructor() {
+            super(...arguments),
+            this.name = "@grafana/faro-web-sdk:instrumentation-errors",
+            this.version = he
+        }
+        initialize() {
+            var e;
+            this.logDebug("Initializing"),
+            function(e) {
+                const t = window.onerror;
+                window.onerror = (...i) => {
+                    try {
+                        const {value: t, type: n, stackFrames: s} = Ot(i)
+                          , r = i[4];
+                        if (t) {
+                            const i = {
+                                type: n,
+                                stackFrames: s
+                            };
+                            null != r && (i.originalError = r),
+                            e.pushError(new Error(t), i)
+                        }
+                    } finally {
+                        null == t || t.apply(window, i)
+                    }
+                }
+            }(this.api),
+            e = this.api,
+            window.addEventListener("unhandledrejection", t => {
+                var i, n;
+                let s, r, o = t;
+                o.reason ? o = t.reason : (null === (i = t.detail) || void 0 === i ? void 0 : i.reason) && (o = null === (n = t.detail) || void 0 === n ? void 0 : n.reason);
+                let a = [];
+                f(o) ? (s = `Non-Error promise rejection captured with value: ${String(o)}`,
+                r = "UnhandledRejection") : [s,r,a] = xt(o),
+                s && e.pushError(new Error(s), {
+                    type: r,
+                    stackFrames: a
+                })
+            }
+            )
+        }
+    }
+    class Ut extends ge {
+        constructor() {
+            super(...arguments),
+            this.name = "@grafana/faro-web-sdk:instrumentation-view",
+            this.version = he
+        }
+        sendViewChangedEvent(e) {
+            var t, i, n, s;
+            const r = e.view;
+            r && r.name !== (null === (t = this.notifiedView) || void 0 === t ? void 0 : t.name) && (this.api.pushEvent(Te, {
+                fromView: null !== (n = null === (i = this.notifiedView) || void 0 === i ? void 0 : i.name) && void 0 !== n ? n : Oe,
+                toView: null !== (s = r.name) && void 0 !== s ? s : Oe
+            }, void 0, {
+                skipDedupe: !0
+            }),
+            this.notifiedView = r)
+        }
+        initialize() {
+            this.metas.addListener(this.sendViewChangedEvent.bind(this))
+        }
+    }
+    class Ct {
+        t;
+        o = 0;
+        i = [];
+        u(e) {
+            if (e.hadRecentInput)
+                return;
+            const t = this.i[0]
+              , i = this.i.at(-1);
+            this.o && t && i && e.startTime - i.startTime < 1e3 && e.startTime - t.startTime < 5e3 ? (this.o += e.value,
+            this.i.push(e)) : (this.o = e.value,
+            this.i = [e]),
+            this.t?.(e)
+        }
+    }
+    const jt = () => {
+        const e = performance.getEntriesByType("navigation")[0];
+        if (e && e.responseStart > 0 && e.responseStart < performance.now())
+            return e
+    }
+      , Nt = e => {
+        if ("loading" === document.readyState)
+            return "loading";
+        {
+            const t = jt();
+            if (t) {
+                if (e < t.domInteractive)
+                    return "loading";
+                if (0 === t.domContentLoadedEventStart || e < t.domContentLoadedEventStart)
+                    return "dom-interactive";
+                if (0 === t.domComplete || e < t.domComplete)
+                    return "dom-content-loaded"
+            }
+        }
+        return "complete"
+    }
+      , Mt = e => {
+        const t = e.nodeName;
+        return 1 === e.nodeType ? t.toLowerCase() : t.toUpperCase().replace(/^#/, "")
+    }
+      , Pt = e => {
+        let t = "";
+        try {
+            for (; 9 !== e?.nodeType; ) {
+                const i = e
+                  , n = i.id ? "#" + i.id : [Mt(i), ...Array.from(i.classList).sort()].join(".");
+                if (t.length + n.length > 99)
+                    return t || n;
+                if (t = t ? n + ">" + t : n,
+                i.id)
+                    break;
+                e = i.parentNode
+            }
+        } catch {}
+        return t
+    }
+      , Dt = new WeakMap;
+    function Rt(e, t) {
+        return Dt.get(e) || Dt.set(e, new t),
+        Dt.get(e)
+    }
+    let zt = -1;
+    const Bt = () => zt
+      , qt = e => {
+        addEventListener("pageshow", t => {
+            t.persisted && (zt = t.timeStamp,
+            e(t))
+        }
+        , !0)
+    }
+      , Ft = (e, t, i, n) => {
+        let s, r;
+        return o => {
+            t.value >= 0 && (o || n) && (r = t.value - (s ?? 0),
+            (r || void 0 === s) && (s = t.value,
+            t.delta = r,
+            t.rating = ( (e, t) => e > t[1] ? "poor" : e > t[0] ? "needs-improvement" : "good")(t.value, i),
+            e(t)))
+        }
+    }
+      , Vt = e => {
+        requestAnimationFrame( () => requestAnimationFrame( () => e()))
+    }
+      , $t = () => {
+        const e = jt();
+        return e?.activationStart ?? 0
+    }
+      , Ht = (e, t=-1) => {
+        const i = jt();
+        let n = "navigate";
+        return Bt() >= 0 ? n = "back-forward-cache" : i && (document.prerendering || $t() > 0 ? n = "prerender" : document.wasDiscarded ? n = "restore" : i.type && (n = i.type.replace(/_/g, "-"))),
+        {
+            name: e,
+            value: t,
+            rating: "good",
+            delta: 0,
+            entries: [],
+            id: `v5-${Date.now()}-${Math.floor(8999999999999 * Math.random()) + 1e12}`,
+            navigationType: n
+        }
+    }
+      , Gt = (e, t, i={}) => {
+        try {
+            if (PerformanceObserver.supportedEntryTypes.includes(e)) {
+                const n = new PerformanceObserver(e => {
+                    Promise.resolve().then( () => {
+                        t(e.getEntries())
+                    }
+                    )
+                }
+                );
+                return n.observe({
+                    type: e,
+                    buffered: !0,
+                    ...i
+                }),
+                n
+            }
+        } catch {}
+    }
+      , Wt = e => {
+        let t = !1;
+        return () => {
+            t || (e(),
+            t = !0)
+        }
+    }
+    ;
+    let Kt = -1;
+    const Xt = new Set
+      , Jt = () => "hidden" !== document.visibilityState || document.prerendering ? 1 / 0 : 0
+      , Zt = e => {
+        if ("hidden" === document.visibilityState) {
+            if ("visibilitychange" === e.type)
+                for (const e of Xt)
+                    e();
+            isFinite(Kt) || (Kt = "visibilitychange" === e.type ? e.timeStamp : 0,
+            removeEventListener("prerenderingchange", Zt, !0))
+        }
+    }
+      , Yt = () => {
+        if (Kt < 0) {
+            const e = $t()
+              , t = document.prerendering ? void 0 : globalThis.performance.getEntriesByType("visibility-state").filter(t => "hidden" === t.name && t.startTime > e)[0]?.startTime;
+            Kt = t ?? Jt(),
+            addEventListener("visibilitychange", Zt, !0),
+            addEventListener("prerenderingchange", Zt, !0),
+            qt( () => {
+                setTimeout( () => {
+                    Kt = Jt()
+                }
+                )
+            }
+            )
+        }
+        return {
+            get firstHiddenTime() {
+                return Kt
+            },
+            onHidden(e) {
+                Xt.add(e)
+            }
+        }
+    }
+      , Qt = e => {
+        document.prerendering ? addEventListener("prerenderingchange", () => e(), !0) : e()
+    }
+      , ei = [1800, 3e3]
+      , ti = (e, t={}) => {
+        Qt( () => {
+            const i = Yt();
+            let n, s = Ht("FCP");
+            const r = Gt("paint", e => {
+                for (const t of e)
+                    "first-contentful-paint" === t.name && (r.disconnect(),
+                    t.startTime < i.firstHiddenTime && (s.value = Math.max(t.startTime - $t(), 0),
+                    s.entries.push(t),
+                    n(!0)))
+            }
+            );
+            r && (n = Ft(e, s, ei, t.reportAllChanges),
+            qt(i => {
+                s = Ht("FCP"),
+                n = Ft(e, s, ei, t.reportAllChanges),
+                Vt( () => {
+                    s.value = performance.now() - i.timeStamp,
+                    n(!0)
+                }
+                )
+            }
+            ))
+        }
+        )
+    }
+      , ii = [.1, .25]
+      , ni = e => e.find(e => 1 === e.node?.nodeType) || e[0];
+    let si = 0
+      , ri = 1 / 0
+      , oi = 0;
+    const ai = e => {
+        for (const t of e)
+            t.interactionId && (ri = Math.min(ri, t.interactionId),
+            oi = Math.max(oi, t.interactionId),
+            si = oi ? (oi - ri) / 7 + 1 : 0)
+    }
+    ;
+    let li;
+    const ui = () => li ? si : performance.interactionCount ?? 0;
+    let ci = 0;
+    class di {
+        l = [];
+        h = new Map;
+        m;
+        p;
+        v() {
+            ci = ui(),
+            this.l.length = 0,
+            this.h.clear()
+        }
+        M() {
+            const e = Math.min(this.l.length - 1, Math.floor((ui() - ci) / 50));
+            return this.l[e]
+        }
+        u(e) {
+            if (this.m?.(e),
+            !e.interactionId && "first-input" !== e.entryType)
+                return;
+            const t = this.l.at(-1);
+            let i = this.h.get(e.interactionId);
+            if (i || this.l.length < 10 || e.duration > t.T) {
+                if (i ? e.duration > i.T ? (i.entries = [e],
+                i.T = e.duration) : e.duration === i.T && e.startTime === i.entries[0].startTime && i.entries.push(e) : (i = {
+                    id: e.interactionId,
+                    entries: [e],
+                    T: e.duration
+                },
+                this.h.set(i.id, i),
+                this.l.push(i)),
+                this.l.sort( (e, t) => t.T - e.T),
+                this.l.length > 10) {
+                    const e = this.l.splice(10);
+                    for (const t of e)
+                        this.h.delete(t.id)
+                }
+                this.p?.(i)
+            }
+        }
+    }
+    const pi = e => {
+        const t = globalThis.requestIdleCallback || setTimeout;
+        "hidden" === document.visibilityState ? e() : (e = Wt(e),
+        addEventListener("visibilitychange", e, {
+            once: !0,
+            capture: !0
+        }),
+        t( () => {
+            e(),
+            removeEventListener("visibilitychange", e, {
+                capture: !0
+            })
+        }
+        ))
+    }
+      , gi = [200, 500]
+      , hi = (e, t={}) => {
+        const i = Rt(t = Object.assign({}, t), di);
+        let n = []
+          , s = []
+          , r = 0;
+        const o = new WeakMap
+          , a = new WeakMap;
+        let l = !1;
+        const u = () => {
+            l || (pi(c),
+            l = !0)
+        }
+          , c = () => {
+            const e = i.l.map(e => o.get(e.entries[0]))
+              , t = s.length - 50;
+            s = s.filter( (i, n) => n >= t || e.includes(i));
+            const a = new Set;
+            for (const e of s) {
+                const t = d(e.startTime, e.processingEnd);
+                for (const e of t)
+                    a.add(e)
+            }
+            const u = n.length - 1 - 50;
+            n = n.filter( (e, t) => e.startTime > r && t > u || a.has(e)),
+            l = !1
+        }
+        ;
+        i.m = e => {
+            const t = e.startTime + e.duration;
+            let i;
+            r = Math.max(r, e.processingEnd);
+            for (let n = s.length - 1; n >= 0; n--) {
+                const r = s[n];
+                if (Math.abs(t - r.renderTime) <= 8) {
+                    i = r,
+                    i.startTime = Math.min(e.startTime, i.startTime),
+                    i.processingStart = Math.min(e.processingStart, i.processingStart),
+                    i.processingEnd = Math.max(e.processingEnd, i.processingEnd),
+                    i.entries.push(e);
+                    break
+                }
+            }
+            i || (i = {
+                startTime: e.startTime,
+                processingStart: e.processingStart,
+                processingEnd: e.processingEnd,
+                renderTime: t,
+                entries: [e]
+            },
+            s.push(i)),
+            (e.interactionId || "first-input" === e.entryType) && o.set(e, i),
+            u()
+        }
+        ,
+        i.p = e => {
+            if (!a.get(e)) {
+                const i = e.entries[0].target;
+                if (i) {
+                    const n = t.generateTarget?.(i) ?? Pt(i);
+                    a.set(e, n)
+                }
+            }
+        }
+        ;
+        const d = (e, t) => {
+            const i = [];
+            for (const s of n)
+                if (!(s.startTime + s.duration < e)) {
+                    if (s.startTime > t)
+                        break;
+                    i.push(s)
+                }
+            return i
+        }
+          , p = e => {
+            const t = e.entries[0]
+              , n = o.get(t)
+              , s = t.processingStart
+              , r = Math.max(t.startTime + t.duration, s)
+              , l = Math.min(n.processingEnd, r)
+              , u = n.entries.sort( (e, t) => e.processingStart - t.processingStart)
+              , c = d(t.startTime, l)
+              , p = i.h.get(t.interactionId)
+              , g = {
+                interactionTarget: a.get(p),
+                interactionType: t.name.startsWith("key") ? "keyboard" : "pointer",
+                interactionTime: t.startTime,
+                nextPaintTime: r,
+                processedEventEntries: u,
+                longAnimationFrameEntries: c,
+                inputDelay: s - t.startTime,
+                processingDuration: l - s,
+                presentationDelay: r - l,
+                loadState: Nt(t.startTime),
+                longestScript: void 0,
+                totalScriptDuration: void 0,
+                totalStyleAndLayoutDuration: void 0,
+                totalPaintDuration: void 0,
+                totalUnattributedDuration: void 0
+            };
+            return (e => {
+                if (!e.longAnimationFrameEntries?.length)
+                    return;
+                const t = e.interactionTime
+                  , i = e.inputDelay
+                  , n = e.processingDuration;
+                let s, r, o = 0, a = 0, l = 0, u = 0;
+                for (const l of e.longAnimationFrameEntries) {
+                    a = a + l.startTime + l.duration - l.styleAndLayoutStart;
+                    for (const e of l.scripts) {
+                        const l = e.startTime + e.duration;
+                        if (l < t)
+                            continue;
+                        const c = l - Math.max(t, e.startTime)
+                          , d = e.duration ? c / e.duration * e.forcedStyleAndLayoutDuration : 0;
+                        o += c - d,
+                        a += d,
+                        c > u && (r = e.startTime < t + i ? "input-delay" : e.startTime >= t + i + n ? "presentation-delay" : "processing-duration",
+                        s = e,
+                        u = c)
+                    }
+                }
+                const c = e.longAnimationFrameEntries.at(-1)
+                  , d = c ? c.startTime + c.duration : 0;
+                d >= t + i + n && (l = e.nextPaintTime - d),
+                s && r && (e.longestScript = {
+                    entry: s,
+                    subpart: r,
+                    intersectingDuration: u
+                }),
+                e.totalScriptDuration = o,
+                e.totalStyleAndLayoutDuration = a,
+                e.totalPaintDuration = l,
+                e.totalUnattributedDuration = e.nextPaintTime - t - o - a - l
+            }
+            )(g),
+            Object.assign(e, {
+                attribution: g
+            })
+        }
+        ;
+        Gt("long-animation-frame", e => {
+            n = n.concat(e),
+            u()
+        }
+        ),
+        ( (e, t={}) => {
+            if (!globalThis.PerformanceEventTiming || !("interactionId" in PerformanceEventTiming.prototype))
+                return;
+            const i = Yt();
+            Qt( () => {
+                "interactionCount" in performance || li || (li = Gt("event", ai, {
+                    type: "event",
+                    buffered: !0,
+                    durationThreshold: 0
+                }));
+                let n, s = Ht("INP");
+                const r = Rt(t, di)
+                  , o = e => {
+                    pi( () => {
+                        for (const t of e)
+                            r.u(t);
+                        const t = r.M();
+                        t && t.T !== s.value && (s.value = t.T,
+                        s.entries = t.entries,
+                        n())
+                    }
+                    )
+                }
+                  , a = Gt("event", o, {
+                    durationThreshold: t.durationThreshold ?? 40
+                });
+                n = Ft(e, s, gi, t.reportAllChanges),
+                a && (a.observe({
+                    type: "first-input",
+                    buffered: !0
+                }),
+                i.onHidden( () => {
+                    o(a.takeRecords()),
+                    n(!0)
+                }
+                ),
+                qt( () => {
+                    r.v(),
+                    s = Ht("INP"),
+                    n = Ft(e, s, gi, t.reportAllChanges)
+                }
+                ))
+            }
+            )
+        }
+        )(t => {
+            const i = p(t);
+            e(i)
+        }
+        , t)
+    }
+    ;
+    class mi {
+        m;
+        u(e) {
+            this.m?.(e)
+        }
+    }
+    const fi = [2500, 4e3]
+      , vi = [800, 1800]
+      , bi = e => {
+        document.prerendering ? Qt( () => bi(e)) : "complete" !== document.readyState ? addEventListener("load", () => bi(e), !0) : setTimeout(e)
+    }
+      , wi = "com.grafana.faro.lastNavigationId"
+      , yi = "load_state"
+      , Si = "time_to_first_byte";
+    class Ti {
+        constructor(e, t) {
+            this.corePushMeasurement = e,
+            this.webVitalConfig = t
+        }
+        initialize() {
+            this.measureCLS(),
+            this.measureFCP(),
+            this.measureINP(),
+            this.measureLCP(),
+            this.measureTTFB()
+        }
+        measureCLS() {
+            var e;
+            ( (e, t={}) => {
+                const i = Rt(t = Object.assign({}, t), Ct)
+                  , n = new WeakMap;
+                i.t = e => {
+                    if (e?.sources?.length) {
+                        const i = ni(e.sources)
+                          , s = i?.node;
+                        if (s) {
+                            const e = t.generateTarget?.(s) ?? Pt(s);
+                            n.set(i, e)
+                        }
+                    }
+                }
+                ,
+                ( (e, t={}) => {
+                    const i = Yt();
+                    ti(Wt( () => {
+                        let n, s = Ht("CLS", 0);
+                        const r = Rt(t, Ct)
+                          , o = e => {
+                            for (const t of e)
+                                r.u(t);
+                            r.o > s.value && (s.value = r.o,
+                            s.entries = r.i,
+                            n())
+                        }
+                          , a = Gt("layout-shift", o);
+                        a && (n = Ft(e, s, ii, t.reportAllChanges),
+                        i.onHidden( () => {
+                            o(a.takeRecords()),
+                            n(!0)
+                        }
+                        ),
+                        qt( () => {
+                            r.o = 0,
+                            s = Ht("CLS", 0),
+                            n = Ft(e, s, ii, t.reportAllChanges),
+                            Vt( () => n())
+                        }
+                        ),
+                        setTimeout(n))
+                    }
+                    ))
+                }
+                )(t => {
+                    const i = (e => {
+                        let t = {};
+                        if (e.entries.length) {
+                            const i = e.entries.reduce( (e, t) => e.value > t.value ? e : t);
+                            if (i?.sources?.length) {
+                                const e = ni(i.sources);
+                                e && (t = {
+                                    largestShiftTarget: n.get(e),
+                                    largestShiftTime: i.startTime,
+                                    largestShiftValue: i.value,
+                                    largestShiftSource: e,
+                                    largestShiftEntry: i,
+                                    loadState: Nt(i.startTime)
+                                })
+                            }
+                        }
+                        return Object.assign(e, {
+                            attribution: t
+                        })
+                    }
+                    )(t);
+                    e(i)
+                }
+                , t)
+            }
+            )(e => {
+                const {loadState: t, largestShiftValue: i, largestShiftTime: n, largestShiftTarget: s} = e.attribution
+                  , r = this.buildInitialValues(e);
+                this.addIfPresent(r, "largest_shift_value", i),
+                this.addIfPresent(r, "largest_shift_time", n);
+                const o = this.buildInitialContext(e);
+                this.addIfPresent(o, yi, t),
+                this.addIfPresent(o, "largest_shift_target", s),
+                this.pushMeasurement(r, o)
+            }
+            , {
+                reportAllChanges: null === (e = this.webVitalConfig) || void 0 === e ? void 0 : e.reportAllChanges
+            })
+        }
+        measureFCP() {
+            var e;
+            ( (e, t={}) => {
+                ti(t => {
+                    const i = (e => {
+                        let t = {
+                            timeToFirstByte: 0,
+                            firstByteToFCP: e.value,
+                            loadState: Nt(Bt())
+                        };
+                        if (e.entries.length) {
+                            const i = jt()
+                              , n = e.entries.at(-1);
+                            if (i) {
+                                const s = i.activationStart || 0
+                                  , r = Math.max(0, i.responseStart - s);
+                                t = {
+                                    timeToFirstByte: r,
+                                    firstByteToFCP: e.value - r,
+                                    loadState: Nt(e.entries[0].startTime),
+                                    navigationEntry: i,
+                                    fcpEntry: n
+                                }
+                            }
+                        }
+                        return Object.assign(e, {
+                            attribution: t
+                        })
+                    }
+                    )(t);
+                    e(i)
+                }
+                , t)
+            }
+            )(e => {
+                const {firstByteToFCP: t, timeToFirstByte: i, loadState: n} = e.attribution
+                  , s = this.buildInitialValues(e);
+                this.addIfPresent(s, "first_byte_to_fcp", t),
+                this.addIfPresent(s, Si, i);
+                const r = this.buildInitialContext(e);
+                this.addIfPresent(r, yi, n),
+                this.pushMeasurement(s, r)
+            }
+            , {
+                reportAllChanges: null === (e = this.webVitalConfig) || void 0 === e ? void 0 : e.reportAllChanges
+            })
+        }
+        measureINP() {
+            var e;
+            hi(e => {
+                const {interactionTime: t, presentationDelay: i, inputDelay: n, processingDuration: s, nextPaintTime: r, loadState: o, interactionTarget: a, interactionType: l} = e.attribution
+                  , u = this.buildInitialValues(e);
+                this.addIfPresent(u, "interaction_time", t),
+                this.addIfPresent(u, "presentation_delay", i),
+                this.addIfPresent(u, "input_delay", n),
+                this.addIfPresent(u, "processing_duration", s),
+                this.addIfPresent(u, "next_paint_time", r);
+                const c = this.buildInitialContext(e);
+                this.addIfPresent(c, yi, o),
+                this.addIfPresent(c, "interaction_target", a),
+                this.addIfPresent(c, "interaction_type", l),
+                this.pushMeasurement(u, c)
+            }
+            , {
+                reportAllChanges: null === (e = this.webVitalConfig) || void 0 === e ? void 0 : e.reportAllChanges
+            })
+        }
+        measureLCP() {
+            var e;
+            ( (e, t={}) => {
+                const i = Rt(t = Object.assign({}, t), mi)
+                  , n = new WeakMap;
+                i.m = e => {
+                    const i = e.element;
+                    if (i) {
+                        const s = t.generateTarget?.(i) ?? Pt(i);
+                        n.set(e, s)
+                    }
+                }
+                ,
+                ( (e, t={}) => {
+                    Qt( () => {
+                        const i = Yt();
+                        let n, s = Ht("LCP");
+                        const r = Rt(t, mi)
+                          , o = e => {
+                            t.reportAllChanges || (e = e.slice(-1));
+                            for (const t of e)
+                                r.u(t),
+                                t.startTime < i.firstHiddenTime && (s.value = Math.max(t.startTime - $t(), 0),
+                                s.entries = [t],
+                                n())
+                        }
+                          , a = Gt("largest-contentful-paint", o);
+                        if (a) {
+                            n = Ft(e, s, fi, t.reportAllChanges);
+                            const i = Wt( () => {
+                                o(a.takeRecords()),
+                                a.disconnect(),
+                                n(!0)
+                            }
+                            )
+                              , r = e => {
+                                e.isTrusted && (pi(i),
+                                removeEventListener(e.type, r, {
+                                    capture: !0
+                                }))
+                            }
+                            ;
+                            for (const e of ["keydown", "click", "visibilitychange"])
+                                addEventListener(e, r, {
+                                    capture: !0
+                                });
+                            qt(i => {
+                                s = Ht("LCP"),
+                                n = Ft(e, s, fi, t.reportAllChanges),
+                                Vt( () => {
+                                    s.value = performance.now() - i.timeStamp,
+                                    n(!0)
+                                }
+                                )
+                            }
+                            )
+                        }
+                    }
+                    )
+                }
+                )(t => {
+                    const i = (e => {
+                        let t = {
+                            timeToFirstByte: 0,
+                            resourceLoadDelay: 0,
+                            resourceLoadDuration: 0,
+                            elementRenderDelay: e.value
+                        };
+                        if (e.entries.length) {
+                            const i = jt();
+                            if (i) {
+                                const s = i.activationStart || 0
+                                  , r = e.entries.at(-1)
+                                  , o = r.url && performance.getEntriesByType("resource").filter(e => e.name === r.url)[0]
+                                  , a = Math.max(0, i.responseStart - s)
+                                  , l = Math.max(a, o ? (o.requestStart || o.startTime) - s : 0)
+                                  , u = Math.min(e.value, Math.max(l, o ? o.responseEnd - s : 0));
+                                t = {
+                                    target: n.get(r),
+                                    timeToFirstByte: a,
+                                    resourceLoadDelay: l - a,
+                                    resourceLoadDuration: u - l,
+                                    elementRenderDelay: e.value - u,
+                                    navigationEntry: i,
+                                    lcpEntry: r
+                                },
+                                r.url && (t.url = r.url),
+                                o && (t.lcpResourceEntry = o)
+                            }
+                        }
+                        return Object.assign(e, {
+                            attribution: t
+                        })
+                    }
+                    )(t);
+                    e(i)
+                }
+                , t)
+            }
+            )(e => {
+                const {elementRenderDelay: t, resourceLoadDelay: i, resourceLoadDuration: n, timeToFirstByte: s, target: r} = e.attribution
+                  , o = this.buildInitialValues(e);
+                this.addIfPresent(o, "element_render_delay", t),
+                this.addIfPresent(o, "resource_load_delay", i),
+                this.addIfPresent(o, "resource_load_duration", n),
+                this.addIfPresent(o, Si, s);
+                const a = this.buildInitialContext(e);
+                this.addIfPresent(a, "element", r),
+                this.pushMeasurement(o, a)
+            }
+            , {
+                reportAllChanges: null === (e = this.webVitalConfig) || void 0 === e ? void 0 : e.reportAllChanges
+            })
+        }
+        measureTTFB() {
+            var e;
+            ( (e, t={}) => {
+                ( (e, t={}) => {
+                    let i = Ht("TTFB")
+                      , n = Ft(e, i, vi, t.reportAllChanges);
+                    bi( () => {
+                        const s = jt();
+                        s && (i.value = Math.max(s.responseStart - $t(), 0),
+                        i.entries = [s],
+                        n(!0),
+                        qt( () => {
+                            i = Ht("TTFB", 0),
+                            n = Ft(e, i, vi, t.reportAllChanges),
+                            n(!0)
+                        }
+                        ))
+                    }
+                    )
+                }
+                )(t => {
+                    const i = (e => {
+                        let t = {
+                            waitingDuration: 0,
+                            cacheDuration: 0,
+                            dnsDuration: 0,
+                            connectionDuration: 0,
+                            requestDuration: 0
+                        };
+                        if (e.entries.length) {
+                            const i = e.entries[0]
+                              , n = i.activationStart || 0
+                              , s = Math.max((i.workerStart || i.fetchStart) - n, 0)
+                              , r = Math.max(i.domainLookupStart - n, 0)
+                              , o = Math.max(i.connectStart - n, 0)
+                              , a = Math.max(i.connectEnd - n, 0);
+                            t = {
+                                waitingDuration: s,
+                                cacheDuration: r - s,
+                                dnsDuration: o - r,
+                                connectionDuration: a - o,
+                                requestDuration: e.value - a,
+                                navigationEntry: i
+                            }
+                        }
+                        return Object.assign(e, {
+                            attribution: t
+                        })
+                    }
+                    )(t);
+                    e(i)
+                }
+                , t)
+            }
+            )(e => {
+                const {dnsDuration: t, connectionDuration: i, requestDuration: n, waitingDuration: s, cacheDuration: r} = e.attribution
+                  , o = this.buildInitialValues(e);
+                this.addIfPresent(o, "dns_duration", t),
+                this.addIfPresent(o, "connection_duration", i),
+                this.addIfPresent(o, "request_duration", n),
+                this.addIfPresent(o, "waiting_duration", s),
+                this.addIfPresent(o, "cache_duration", r);
+                const a = this.buildInitialContext(e);
+                this.pushMeasurement(o, a)
+            }
+            , {
+                reportAllChanges: null === (e = this.webVitalConfig) || void 0 === e ? void 0 : e.reportAllChanges
+            })
+        }
+        buildInitialValues(e) {
+            const t = e.name.toLowerCase();
+            return {
+                [t]: e.value,
+                delta: e.delta
+            }
+        }
+        buildInitialContext(e) {
+            var t;
+            const i = null !== (t = Re(wi, Me)) && void 0 !== t ? t : Oe;
+            return {
+                id: e.id,
+                rating: e.rating,
+                navigation_type: e.navigationType,
+                navigation_entry_id: i
+            }
+        }
+        pushMeasurement(e, t) {
+            this.corePushMeasurement({
+                type: "web-vitals",
+                values: e
+            }, {
+                context: t
+            })
+        }
+        addIfPresent(e, t, i) {
+            i && (e[t] = i)
+        }
+    }
+    class Ei extends ge {
+        constructor() {
+            super(...arguments),
+            this.name = "@grafana/faro-web-sdk:instrumentation-web-vitals",
+            this.version = he
+        }
+        initialize() {
+            this.logDebug("Initializing");
+            new Ti(this.api.pushMeasurement,this.config.webVitalsInstrumentation).initialize()
+        }
+    }
+    function Ii(e, t) {
+        var i = {};
+        for (var n in e)
+            Object.prototype.hasOwnProperty.call(e, n) && t.indexOf(n) < 0 && (i[n] = e[n]);
+        if (null != e && "function" == typeof Object.getOwnPropertySymbols) {
+            var s = 0;
+            for (n = Object.getOwnPropertySymbols(e); s < n.length; s++)
+                t.indexOf(n[s]) < 0 && Object.prototype.propertyIsEnumerable.call(e, n[s]) && (i[n[s]] = e[n[s]])
+        }
+        return i
+    }
+    function ki(e, t, i, n) {
+        return new (i || (i = Promise))(function(s, r) {
+            function o(e) {
+                try {
+                    l(n.next(e))
+                } catch (e) {
+                    r(e)
+                }
+            }
+            function a(e) {
+                try {
+                    l(n.throw(e))
+                } catch (e) {
+                    r(e)
+                }
+            }
+            function l(e) {
+                var t;
+                e.done ? s(e.value) : (t = e.value,
+                t instanceof i ? t : new i(function(e) {
+                    e(t)
+                }
+                )).then(o, a)
+            }
+            l((n = n.apply(e, t || [])).next())
+        }
+        )
+    }
+    "function" == typeof SuppressedError && SuppressedError;
+    const xi = "resource"
+      , Oi = /^00-[a-f0-9]{32}-[a-f0-9]{16}-[0-9]{1,2}$/;
+    function Ai(e=[]) {
+        for (const t of e)
+            if ("traceparent" === t.name) {
+                if (!Oi.test(t.description))
+                    continue;
+                const [,e,i] = t.description.split("-");
+                if (null != e && null != i)
+                    return {
+                        traceId: e,
+                        spanId: i
+                    };
+                break
+            }
+    }
+    function Li(e, t={}) {
+        for (const [i,n] of Object.entries(t)) {
+            const t = e[i];
+            return null != t && (m(n) ? n.includes(t) : t === n)
+        }
+        return !0
+    }
+    function _i(e) {
+        const {connectEnd: t, connectStart: i, decodedBodySize: n, domainLookupEnd: s, domainLookupStart: r, duration: o, encodedBodySize: a, fetchStart: l, initiatorType: u, name: c, nextHopProtocol: d, redirectEnd: p, redirectStart: g, renderBlockingStatus: h, requestStart: m, responseEnd: f, responseStart: v, responseStatus: b, secureConnectionStart: w, transferSize: y, workerStart: S} = e;
+        return {
+            name: c,
+            duration: Ci(o),
+            tcpHandshakeTime: Ci(t - i),
+            dnsLookupTime: Ci(s - r),
+            tlsNegotiationTime: Ci(t - w),
+            responseStatus: Ci(b),
+            redirectTime: Ci(p - g),
+            requestTime: Ci(v - m),
+            responseTime: Ci(f - v),
+            fetchTime: Ci(f - l),
+            serviceWorkerTime: Ci(l - S),
+            decodedBodySize: Ci(n),
+            encodedBodySize: Ci(a),
+            cacheHitStatus: function() {
+                let e = "fullLoad";
+                0 === y ? n > 0 && (e = "cache") : null != b ? 304 === b && (e = "conditionalFetch") : a > 0 && y < a && (e = "conditionalFetch");
+                return e
+            }(),
+            renderBlockingStatus: Ci(h),
+            protocol: d,
+            initiatorType: u,
+            visibilityState: document.visibilityState,
+            ttfb: Ci(v - m),
+            transferSize: Ci(y)
+        }
+    }
+    function Ui(e) {
+        const {activationStart: t, domComplete: i, domContentLoadedEventEnd: n, domContentLoadedEventStart: s, domInteractive: r, fetchStart: o, loadEventEnd: a, loadEventStart: l, responseStart: u, type: c} = e
+          , d = function() {
+            var e;
+            if (null != (null === (e = performance.timing) || void 0 === e ? void 0 : e.domLoading))
+                return performance.timing.domLoading - performance.timeOrigin;
+            return null
+        }();
+        return Object.assign(Object.assign({}, _i(e)), {
+            pageLoadTime: Ci(i - o),
+            documentParsingTime: Ci(d ? r - d : null),
+            domProcessingTime: Ci(i - r),
+            domContentLoadHandlerTime: Ci(n - s),
+            onLoadTime: Ci(a - l),
+            ttfb: Ci(Math.max(u - (null != t ? t : 0), 0)),
+            type: c
+        })
+    }
+    function Ci(e) {
+        return null == e ? Oe : "number" == typeof e ? Math.round(e > 0 ? e : 0).toString() : e.toString()
+    }
+    const ji = {
+        initiatorType: ["xmlhttprequest", "fetch"]
+    };
+    const Ni = new q;
+    class Mi extends ge {
+        constructor() {
+            super(...arguments),
+            this.name = "@grafana/faro-web-sdk:instrumentation-performance",
+            this.version = he
+        }
+        initialize() {
+            "PerformanceObserver" in window ? function(e) {
+                if ("complete" === document.readyState)
+                    e();
+                else {
+                    const t = () => {
+                        "complete" === document.readyState && (e(),
+                        document.removeEventListener("readystatechange", t))
+                    }
+                    ;
+                    document.addEventListener("readystatechange", t)
+                }
+            }( () => ki(this, void 0, void 0, function*() {
+                const t = this.api.pushEvent
+                  , {faroNavigationId: i} = yield function(e) {
+                    let t;
+                    const i = new Promise(e => {
+                        t = e
+                    }
+                    );
+                    return new PerformanceObserver(i => {
+                        var n;
+                        const [s] = i.getEntries();
+                        if (null == s || Ge(s.name))
+                            return;
+                        const r = s.toJSON();
+                        let o = Ai(null == r ? void 0 : r.serverTiming);
+                        const a = null !== (n = Re(wi, Me)) && void 0 !== n ? n : Oe
+                          , l = Object.assign(Object.assign({}, Ui(r)), {
+                            faroNavigationId: D(),
+                            faroPreviousNavigationId: a
+                        });
+                        ze(wi, l.faroNavigationId, Me),
+                        e("faro.performance.navigation", l, void 0, {
+                            spanContext: o,
+                            timestampOverwriteMs: performance.timeOrigin + r.startTime
+                        }),
+                        t(l)
+                    }
+                    ).observe({
+                        type: "navigation",
+                        buffered: !0
+                    }),
+                    i
+                }(t);
+                null != i && function(t, i, n) {
+                    const s = e.faro.config.trackResources;
+                    new PerformanceObserver(e => {
+                        const r = e.getEntries();
+                        for (const e of r) {
+                            if (Ge(e.name))
+                                continue;
+                            null == n || n.notify({
+                                type: xi
+                            });
+                            const r = e.toJSON();
+                            let o = Ai(null == r ? void 0 : r.serverTiming);
+                            if (null == s && Li(r, ji) || s) {
+                                const e = Object.assign(Object.assign({}, _i(r)), {
+                                    faroNavigationId: t,
+                                    faroResourceId: D()
+                                });
+                                i("faro.performance.resource", e, void 0, {
+                                    spanContext: o,
+                                    timestampOverwriteMs: performance.timeOrigin + r.startTime
+                                })
+                            }
+                        }
+                    }
+                    ).observe({
+                        type: xi,
+                        buffered: !0
+                    })
+                }(i, t, Ni)
+            })) : this.logDebug("performance observer not supported. Disable performance instrumentation.")
+        }
+    }
+    const Pi = "data-faro-user-action-name";
+    let Di, Ri;
+    function zi() {
+        return Di || (Di = new q),
+        Ri || (Ri = new MutationObserver( (e, t) => {
+            Di.notify({
+                type: "dom-mutation"
+            })
+        }
+        ),
+        Ri.observe(document, {
+            attributes: !0,
+            childList: !0,
+            subtree: !0,
+            characterData: !0
+        })),
+        Di
+    }
+    const Bi = "fetch"
+      , qi = "xhr";
+    let Fi, Vi, $i, Hi, Gi = !1;
+    function Wi() {
+        if (Fi)
+            return Fi;
+        function e(e) {
+            Fi.notify({
+                type: ut,
+                request: e
+            })
+        }
+        function t(e) {
+            Fi.notify({
+                type: ct,
+                request: e
+            })
+        }
+        return Fi = new q,
+        Gi || (!function({onRequestEnd: e, onRequestStart: t}) {
+            $i || ($i = window.fetch);
+            window.fetch = function() {
+                var i, n;
+                const s = null !== (i = We(arguments[0])) && void 0 !== i ? i : ""
+                  , r = Ge(s)
+                  , o = (null !== (n = arguments[1]) && void 0 !== n ? n : {}).method
+                  , a = D();
+                return r || t({
+                    url: s,
+                    method: o,
+                    requestId: a,
+                    apiType: Bi
+                }),
+                $i.apply(this, arguments).then(t => (r || e({
+                    url: s,
+                    method: o,
+                    requestId: a,
+                    apiType: Bi
+                }),
+                t)).catch(t => {
+                    throw r || e({
+                        url: s,
+                        method: o,
+                        requestId: a,
+                        apiType: Bi
+                    }),
+                    t
+                }
+                )
+            }
+        }({
+            onRequestStart: e,
+            onRequestEnd: t
+        }),
+        function({onRequestStart: e, onRequestEnd: t}) {
+            Vi || (Vi = XMLHttpRequest.prototype.open);
+            XMLHttpRequest.prototype.open = function() {
+                const i = arguments[1]
+                  , n = Ge(i)
+                  , s = arguments[0]
+                  , r = D();
+                this.addEventListener("loadstart", function() {
+                    n || e({
+                        url: i,
+                        method: s,
+                        requestId: r,
+                        apiType: qi
+                    })
+                }),
+                this.addEventListener("load", function() {
+                    n || t({
+                        url: i,
+                        method: s,
+                        requestId: r,
+                        apiType: qi
+                    })
+                }),
+                this.addEventListener("error", function() {
+                    n || t({
+                        url: i,
+                        method: s,
+                        requestId: r,
+                        apiType: qi
+                    })
+                }),
+                this.addEventListener("abort", function() {
+                    n || t({
+                        url: i,
+                        method: s,
+                        requestId: r,
+                        apiType: qi
+                    })
+                }),
+                Vi.apply(this, arguments)
+            }
+        }({
+            onRequestStart: e,
+            onRequestEnd: t
+        }),
+        Gi = !0),
+        Fi
+    }
+    let Ki = !1;
+    function Xi(e) {
+        return e.type === ct
+    }
+    class Ji {
+        constructor(e) {
+            this.userAction = e,
+            this.http = Wi(),
+            this.dom = zi(),
+            this.perf = (Hi || (Hi = new q),
+            Ki || (Ni.subscribe(e => {
+                e.type === xi && Hi.notify({
+                    type: "resource-entry"
+                })
+            }
+            ),
+            Ki = !0),
+            Hi),
+            this.isValid = !1,
+            this.runningRequests = new Map
+        }
+        attach() {
+            this.allMonitorsSub = (new q).merge(this.http, this.dom, this.perf).takeWhile( () => [e.UserActionState.Started, e.UserActionState.Halted].includes(this.userAction.getState())).filter(t => !!(this.userAction.getState() !== e.UserActionState.Halted || Xi(t) && this.runningRequests.has(t.request.requestId))).subscribe(t => {
+                (function(e) {
+                    return e.type === ut
+                }
+                )(t) && this.runningRequests.set(t.request.requestId, t.request),
+                Xi(t) && this.runningRequests.delete(t.request.requestId),
+                Xi(t) ? this.userAction.getState() === e.UserActionState.Halted && 0 === this.runningRequests.size && this.endAction() : (this.isValid || (this.isValid = !0),
+                this.scheduleFollowUp())
+            }
+            ),
+            this.stateSub = this.userAction.filter(t => [e.UserActionState.Ended, e.UserActionState.Cancelled].includes(t)).first().subscribe( () => this.cleanup()),
+            this.scheduleFollowUp()
+        }
+        scheduleFollowUp() {
+            this.clearTimer(this.followUpTid),
+            this.followUpTid = setTimeout( () => {
+                this.userAction.getState() === e.UserActionState.Started && this.runningRequests.size > 0 ? this.haltAction() : this.isValid ? this.endAction() : this.cancelAction()
+            }
+            , 100)
+        }
+        haltAction() {
+            this.userAction.getState() === e.UserActionState.Started && (this.userAction.halt(),
+            this.startHaltTimeout())
+        }
+        startHaltTimeout() {
+            var t, i, n;
+            this.clearTimer(this.haltTid),
+            this.haltTid = (t = this.haltTid,
+            i = () => {
+                this.userAction.getState() === e.UserActionState.Halted && this.endAction()
+            }
+            ,
+            n = 1e4,
+            t && clearTimeout(t),
+            setTimeout( () => {
+                i()
+            }
+            , n))
+        }
+        endAction() {
+            this.userAction.end(),
+            this.cleanup()
+        }
+        cancelAction() {
+            this.userAction.cancel(),
+            this.cleanup()
+        }
+        cleanup() {
+            var e, t;
+            this.clearTimer(this.followUpTid),
+            this.clearTimer(this.haltTid),
+            null === (e = this.allMonitorsSub) || void 0 === e || e.unsubscribe(),
+            null === (t = this.stateSub) || void 0 === t || t.unsubscribe(),
+            this.allMonitorsSub = void 0,
+            this.stateSub = void 0,
+            this.runningRequests.clear()
+        }
+        clearTimer(e) {
+            e && clearTimeout(e)
+        }
+    }
+    function Zi(e) {
+        const {api: t, config: i} = e;
+        function n(e) {
+            new Ji(e).attach()
+        }
+        return {
+            processUserEvent: function(e) {
+                var s, r;
+                const o = function(e, t) {
+                    const i = function(e) {
+                        const t = e.split("data-")[1]
+                          , i = null == t ? void 0 : t.replace(/-(.)/g, (e, t) => t.toUpperCase());
+                        return null == i ? void 0 : i.replace(/-/g, "")
+                    }(t)
+                      , n = e.dataset;
+                    for (const e in n)
+                        if (e === i)
+                            return n[e];
+                    return
+                }(e.target, null !== (r = null === (s = i.userActionsInstrumentation) || void 0 === s ? void 0 : s.dataAttributeName) && void 0 !== r ? r : "faroUserActionName");
+                if (!o)
+                    return;
+                const a = t.startUserAction(o, {}, {
+                    triggerName: e.type
+                });
+                a && n(a)
+            },
+            processUserActionStarted: n
+        }
+    }
+    class Yi extends ge {
+        constructor() {
+            super(...arguments),
+            this.name = "@grafana/faro-web-sdk:instrumentation-user-action",
+            this.version = he
+        }
+        initialize() {
+            const {processUserEvent: t, processUserActionStarted: i} = Zi(e.faro);
+            window.addEventListener("pointerdown", t),
+            window.addEventListener("keydown", e => {
+                [" ", "Enter"].includes(e.key) && t(e)
+            }
+            ),
+            this._userActionSub = re.subscribe( ({type: e, userAction: t}) => {
+                "user_action_start" === e && i(t)
+            }
+            )
+        }
+        destroy() {
+            var e;
+            null === (e = this._userActionSub) || void 0 === e || e.unsubscribe()
+        }
+    }
+    class Qi extends ge {
+        constructor() {
+            super(),
+            this.name = "@grafana/faro-web-sdk:instrumentation-csp",
+            this.version = he
+        }
+        initialize() {
+            document.addEventListener("securitypolicyviolation", this.securitypolicyviolationHandler.bind(this))
+        }
+        destroy() {
+            document.removeEventListener("securitypolicyviolation", this.securitypolicyviolationHandler)
+        }
+        securitypolicyviolationHandler(e) {
+            const t = {
+                blockedURI: e.blockedURI,
+                columnNumber: e.columnNumber,
+                disposition: e.disposition,
+                documentURI: e.documentURI,
+                effectiveDirective: e.effectiveDirective,
+                lineNumber: e.lineNumber,
+                originalPolicy: e.originalPolicy,
+                referrer: e.referrer,
+                sample: e.sample,
+                sourceFile: e.sourceFile,
+                statusCode: e.statusCode,
+                violatedDirective: e.violatedDirective
+            };
+            this.api.pushEvent("securitypolicyviolation", B(t))
+        }
+    }
+    class en extends q {
+        constructor(e, t) {
+            var i, n, s, r;
+            super(),
+            this._tracking = !1,
+            this.eventsObservable = e,
+            this._options = {
+                inactivityMs: null !== (i = null == t ? void 0 : t.inactivityMs) && void 0 !== i ? i : 100,
+                drainTimeoutMs: null !== (n = null == t ? void 0 : t.drainTimeoutMs) && void 0 !== n ? n : 1e4,
+                isOperationStart: null !== (s = null == t ? void 0 : t.isOperationStart) && void 0 !== s ? s : () => {}
+                ,
+                isOperationEnd: null !== (r = null == t ? void 0 : t.isOperationEnd) && void 0 !== r ? r : () => {}
+            },
+            this._initialize()
+        }
+        _initialize() {
+            this.eventsObservable.filter( () => this._tracking).subscribe(e => {
+                var t, i, n;
+                this._lastEventTime = Date.now(),
+                null === (t = this._currentEvents) || void 0 === t || t.push(e);
+                const s = this._options.isOperationStart(e);
+                s && (null === (i = this._activeOperations) || void 0 === i || i.set(s, !0));
+                const r = this._options.isOperationEnd(e);
+                r && (null === (n = this._activeOperations) || void 0 === n || n.delete(r)),
+                this._scheduleInactivityCheck()
+            }
+            )
+        }
+        startTracking() {
+            this._tracking || (this._tracking = !0,
+            this._startTime = Date.now(),
+            this._lastEventTime = Date.now(),
+            this.notify({
+                message: "tracking-started"
+            }),
+            this._currentEvents = [],
+            this._activeOperations = new Map,
+            this._scheduleInactivityCheck())
+        }
+        stopTracking() {
+            this._tracking = !1,
+            this._clearTimer(this._inactivityTid),
+            this._clearTimer(this._drainTid);
+            let e = 0;
+            e = this.hasActiveOperations() ? Date.now() - this._startTime : this._lastEventTime ? this._lastEventTime - this._startTime : 0,
+            this.notify({
+                message: "tracking-ended",
+                events: this._currentEvents,
+                duration: e
+            })
+        }
+        _scheduleInactivityCheck() {
+            this._inactivityTid = tn(this._inactivityTid, () => {
+                this.hasActiveOperations() ? this._startDrainTimeout() : this.stopTracking()
+            }
+            , this._options.inactivityMs)
+        }
+        _startDrainTimeout() {
+            this._drainTid = tn(this._drainTid, () => {
+                this.stopTracking()
+            }
+            , this._options.drainTimeoutMs)
+        }
+        hasActiveOperations() {
+            return !!this._activeOperations && this._activeOperations.size > 0
+        }
+        _clearTimer(e) {
+            e && clearTimeout(e)
+        }
+    }
+    function tn(e, t, i) {
+        return e && clearTimeout(e),
+        e = setTimeout( () => {
+            t()
+        }
+        , i)
+    }
+    let nn;
+    const sn = new Set
+      , rn = new Map;
+    let on, an, ln, un, cn, dn, pn, gn, hn = !1;
+    class mn extends ge {
+        constructor() {
+            super(...arguments),
+            this.name = "@grafana/faro-web-sdk:instrumentation-navigation",
+            this.version = he
+        }
+        initialize() {
+            const t = Wi()
+              , i = zi()
+              , n = function() {
+                function e(e, t) {
+                    const i = null != t ? t : location.href;
+                    i !== an && (on.notify({
+                        type: "url-change",
+                        from: an,
+                        to: i,
+                        trigger: e
+                    }),
+                    an = i)
+                }
+                if (on || (on = new q,
+                an = location.href),
+                !hn)
+                    if ("navigation" in window && "NavigateEvent" in window) {
+                        pn = t => {
+                            try {
+                                const i = null == t ? void 0 : t.destination;
+                                (null == i ? void 0 : i.sameDocument) && "string" == typeof i.url && e("navigate", i.url)
+                            } catch (e) {}
+                        }
+                        ,
+                        window.navigation.addEventListener("navigate", pn);
+                        const t = window.NavigateEvent;
+                        t && t.prototype && "function" == typeof t.prototype.intercept && (gn || (gn = t.prototype.intercept),
+                        t.prototype.intercept = function(t) {
+                            try {
+                                const t = !!(null == this ? void 0 : this.canIntercept)
+                                  , i = null == this ? void 0 : this.destination;
+                                t && i && !1 === i.sameDocument && "string" == typeof i.url && e("navigate-intercept", i.url)
+                            } catch (e) {}
+                            return gn.call(this, t)
+                        }
+                        ),
+                        hn = !0
+                    } else
+                        ln || (ln = window.history.pushState),
+                        window.history.pushState = function(...t) {
+                            const i = ln.apply(window.history, t);
+                            return e("pushState"),
+                            i
+                        }
+                        ,
+                        un || (un = window.history.replaceState),
+                        window.history.replaceState = function(...t) {
+                            const i = un.apply(window.history, t);
+                            return e("replaceState"),
+                            i
+                        }
+                        ,
+                        cn = () => e("popstate"),
+                        dn = () => e("hashchange"),
+                        window.addEventListener("popstate", cn),
+                        window.addEventListener("hashchange", dn),
+                        hn = !0;
+                return on
+            }()
+              , s = (r = ["pointerdown", "keydown"],
+            nn || (nn = new q),
+            r.forEach(e => {
+                if (!sn.has(e)) {
+                    const t = () => {
+                        nn.notify({
+                            type: "interaction",
+                            name: e
+                        })
+                    }
+                    ;
+                    window.addEventListener(e, t),
+                    sn.add(e),
+                    rn.set(e, t)
+                }
+            }
+            ),
+            nn);
+            var r;
+            const o = new en((new q).merge(t, i, n),{
+                inactivityMs: 100,
+                drainTimeoutMs: 1e4,
+                isOperationStart: e => function(e) {
+                    return e.type === ut
+                }(e) ? e.request.requestId : void 0,
+                isOperationEnd: e => function(e) {
+                    return e.type === ct
+                }(e) ? e.request.requestId : void 0
+            });
+            o.filter(e => "tracking-ended" === e.message).subscribe(t => {
+                var i, n, s;
+                if ((null === (i = t.events) || void 0 === i ? void 0 : i.some(e => "url-change" === e.type)) && (null === (n = t.events) || void 0 === n ? void 0 : n.some(e => "dom-mutation" === e.type))) {
+                    const i = null === (s = t.events) || void 0 === s ? void 0 : s.find(e => "url-change" === e.type);
+                    e.faro.api.pushEvent("faro.navigation", {
+                        fromUrl: null == i ? void 0 : i.from,
+                        toUrl: null == i ? void 0 : i.to,
+                        sameDocument: String(!0),
+                        duration: t.duration
+                    })
+                }
+            }
+            ),
+            s.subscribe( () => {
+                o.startTracking()
+            }
+            )
+        }
+    }
+    function fn(e={}) {
+        const t = [new Yi, new _t, new Ei, new lt, new Ut, new mn];
+        return !1 !== e.enablePerformanceInstrumentation && t.unshift(new Mi),
+        !1 !== e.enableContentSecurityPolicyInstrumentation && t.push(new Qi),
+        !1 !== e.captureConsole && t.push(new Lt),
+        t
+    }
+    const vn = "browser"
+      , bn = () => {
+        const e = window.k6;
+        return {
+            k6: Object.assign({
+                isK6Browser: !0
+            }, (null == e ? void 0 : e.testRunId) && {
+                testRunId: null == e ? void 0 : e.testRunId
+            })
+        }
+    }
+    ;
+    let wn, yn;
+    function Sn({generatePageId: e, initialPageMeta: t}={}) {
+        return () => {
+            const i = location.href;
+            return h(e) && wn !== i && (wn = i,
+            yn = e(location)),
+            {
+                page: Object.assign(Object.assign({
+                    url: i
+                }, yn ? {
+                    id: yn
+                } : {}), t)
+            }
+        }
+    }
+    class Tn extends Y {
+        constructor(e) {
+            var t, i, n, s;
+            super(),
+            this.options = e,
+            this.name = "@grafana/faro-web-sdk:transport-fetch",
+            this.version = he,
+            this.disabledUntil = new Date,
+            this.rateLimitBackoffMs = null !== (t = e.defaultRateLimitBackoffMs) && void 0 !== t ? t : 5e3,
+            this.getNow = null !== (i = e.getNow) && void 0 !== i ? i : () => Date.now(),
+            this.promiseBuffer = M({
+                size: null !== (n = e.bufferSize) && void 0 !== n ? n : 30,
+                concurrency: null !== (s = e.concurrency) && void 0 !== s ? s : 5
+            })
+        }
+        send(e) {
+            return ki(this, void 0, void 0, function*() {
+                try {
+                    if (this.disabledUntil > new Date(this.getNow()))
+                        return this.logWarn(`Dropping transport item due to too many requests. Backoff until ${this.disabledUntil}`),
+                        Promise.resolve();
+                    yield this.promiseBuffer.add( () => {
+                        const t = JSON.stringify(ee(e))
+                          , {url: i, requestOptions: n, apiKey: s} = this.options
+                          , r = null != n ? n : {}
+                          , {headers: o={}} = r
+                          , a = Ii(r, ["headers"]);
+                        let l;
+                        const u = this.metas.value.session;
+                        null != u && (l = u.id);
+                        const c = {};
+                        for (const [e,t] of Object.entries(o))
+                            c[e] = "function" == typeof t ? t() : t;
+                        return fetch(i, Object.assign({
+                            method: "POST",
+                            headers: Object.assign(Object.assign(Object.assign({
+                                "Content-Type": "application/json"
+                            }, c), s ? {
+                                "x-api-key": s
+                            } : {}), l ? {
+                                "x-faro-session-id": l
+                            } : {}),
+                            body: t,
+                            keepalive: t.length <= 6e4
+                        }, null != a ? a : {})).then(e => ki(this, void 0, void 0, function*() {
+                            if (202 === e.status) {
+                                "invalid" === e.headers.get("X-Faro-Session-Status") && this.extendFaroSession(this.config, this.logDebug)
+                            }
+                            return 429 === e.status && (this.disabledUntil = this.getRetryAfterDate(e),
+                            this.logWarn(`Too many requests, backing off until ${this.disabledUntil}`)),
+                            e.text().catch(N),
+                            e
+                        })).catch(e => {
+                            this.logError("Failed sending payload to the receiver\n", JSON.parse(t), e)
+                        }
+                        )
+                    }
+                    )
+                } catch (e) {
+                    this.logError(e)
+                }
+            })
+        }
+        getIgnoreUrls() {
+            var e;
+            return [this.options.url].concat(null !== (e = this.config.ignoreUrls) && void 0 !== e ? e : [])
+        }
+        isBatched() {
+            return !0
+        }
+        getRetryAfterDate(e) {
+            const t = this.getNow()
+              , i = e.headers.get("Retry-After");
+            if (i) {
+                const e = Number(i);
+                if (!isNaN(e))
+                    return new Date(1e3 * e + t);
+                const n = Date.parse(i);
+                if (!isNaN(n))
+                    return new Date(n)
+            }
+            return new Date(t + this.rateLimitBackoffMs)
+        }
+        extendFaroSession(e, t) {
+            const i = "Session expired"
+              , n = e.sessionTracking;
+            if (null == n ? void 0 : n.enabled) {
+                const {fetchUserSession: e, storeUserSession: s} = at(n);
+                it({
+                    fetchUserSession: e,
+                    storeUserSession: s
+                })({
+                    forceSessionExtend: !0
+                }),
+                t(`${i} created new session.`)
+            } else
+                t(`${i}.`)
+        }
+    }
+    function En(e) {
+        var t, i, n, s, r;
+        const o = []
+          , a = K(e.unpatchedConsole, e.internalLoggerLevel);
+        e.transports ? ((e.url || e.apiKey) && a.error('if "transports" is defined, "url" and "apiKey" should not be defined'),
+        o.push(...e.transports)) : e.url ? o.push(new Tn({
+            url: e.url,
+            apiKey: e.apiKey
+        })) : a.error('either "url" or "transports" must be defined');
+        const {dedupe: l=!0, eventDomain: u=vn, globalObjectKey: c=ye, instrumentations: d=fn(), internalLoggerLevel: p=$, isolate: g=!1, logArgsSerializer: h=de, metas: m=kn(e), paused: f=!1, preventGlobalExposure: v=!1, unpatchedConsole: b=H, url: w, experimental: y} = e
+          , S = Ii(e, ["dedupe", "eventDomain", "globalObjectKey", "instrumentations", "internalLoggerLevel", "isolate", "logArgsSerializer", "metas", "paused", "preventGlobalExposure", "unpatchedConsole", "url", "experimental"])
+          , T = null !== (t = null == y ? void 0 : y.trackNavigation) && void 0 !== t && t
+          , E = {
+            dataAttributeName: null !== (n = null === (i = e.userActionsInstrumentation) || void 0 === i ? void 0 : i.dataAttributeName) && void 0 !== n ? n : Pi,
+            excludeItem: null === (s = e.userActionsInstrumentation) || void 0 === s ? void 0 : s.excludeItem
+        };
+        return Object.assign(Object.assign({}, S), {
+            batching: Object.assign(Object.assign({}, Se), e.batching),
+            dedupe: l,
+            globalObjectKey: c,
+            instrumentations: In(d, e),
+            internalLoggerLevel: p,
+            isolate: g,
+            logArgsSerializer: h,
+            metas: m,
+            parseStacktrace: kt,
+            paused: f,
+            preventGlobalExposure: v,
+            transports: o,
+            unpatchedConsole: b,
+            eventDomain: u,
+            ignoreUrls: [...null !== (r = e.ignoreUrls) && void 0 !== r ? r : [], ...w ? [w] : [], /\/collect(?:\/[\w]*)?$/],
+            sessionTracking: Object.assign(Object.assign(Object.assign({}, Ye), e.sessionTracking), xn({
+                trackGeolocation: e.trackGeolocation,
+                sessionTracking: e.sessionTracking
+            })),
+            userActionsInstrumentation: E,
+            experimental: {
+                trackNavigation: T
+            }
+        })
+    }
+    function In(e, {experimental: t}) {
+        var i;
+        const n = null !== (i = null == t ? void 0 : t.trackNavigation) && void 0 !== i && i;
+        return e.filter(e => !("@grafana/faro-web-sdk:instrumentation-navigation" === e.name && !n))
+    }
+    function kn(e) {
+        var t, i;
+        const {page: n, generatePageId: s} = null !== (t = null == e ? void 0 : e.pageTracking) && void 0 !== t ? t : {}
+          , r = [je, Sn({
+            generatePageId: s,
+            initialPageMeta: n
+        }), ...null !== (i = e.metas) && void 0 !== i ? i : []];
+        return g(null === window || void 0 === window ? void 0 : window.k6) ? [...r, bn] : r
+    }
+    function xn({trackGeolocation: e, sessionTracking: t}) {
+        var i;
+        const n = {};
+        return p(e) && (n.geoLocationTrackingEnabled = e),
+        x(n) ? {} : {
+            session: Object.assign(Object.assign({}, null !== (i = null == t ? void 0 : t.session) && void 0 !== i ? i : {}), {
+                overrides: n
+            })
+        }
+    }
+    return e.BaseExtension = Z,
+    e.BaseInstrumentation = ge,
+    e.BaseTransport = Y,
+    e.CSPInstrumentation = Qi,
+    e.ConsoleInstrumentation = Lt,
+    e.ConsoleTransport = class extends Y {
+        constructor(e={}) {
+            super(),
+            this.options = e,
+            this.name = "@grafana/faro-web-sdk:transport-console",
+            this.version = he
+        }
+        send(t) {
+            var i;
+            return this.unpatchedConsole[null !== (i = this.options.level) && void 0 !== i ? i : e.LogLevel.DEBUG]("New event", ee([t]))
+        }
+    }
+    ,
+    e.EVENT_CLICK = "click",
+    e.EVENT_NAVIGATION = "navigation",
+    e.EVENT_ROUTE_CHANGE = "route_change",
+    e.EVENT_SESSION_EXTEND = ke,
+    e.EVENT_SESSION_RESUME = Ie,
+    e.EVENT_SESSION_START = Ee,
+    e.EVENT_VIEW_CHANGED = Te,
+    e.ErrorsInstrumentation = _t,
+    e.FetchTransport = Tn,
+    e.MAX_SESSION_PERSISTENCE_TIME = Ze,
+    e.NavigationInstrumentation = mn,
+    e.Observable = q,
+    e.PerformanceInstrumentation = Mi,
+    e.PersistentSessionsManager = rt,
+    e.SESSION_EXPIRATION_TIME = Xe,
+    e.SESSION_INACTIVITY_TIME = Je,
+    e.STORAGE_KEY = Ke,
+    e.SessionInstrumentation = lt,
+    e.UserActionInstrumentation = Yi,
+    e.VERSION = he,
+    e.ViewInstrumentation = Ut,
+    e.VolatileSessionsManager = ot,
+    e.WebVitalsInstrumentation = Ei,
+    e.allLogLevels = j,
+    e.browserMeta = je,
+    e.buildStackFrame = Tt,
+    e.createInternalLogger = K,
+    e.createPromiseBuffer = M,
+    e.createSession = Ne,
+    e.deepEqual = O,
+    e.defaultEventDomain = vn,
+    e.defaultExceptionType = ae,
+    e.defaultGlobalObjectKey = ye,
+    e.defaultInternalLoggerLevel = $,
+    e.defaultLogLevel = C,
+    e.genShortID = D,
+    e.getCurrentTimestamp = L,
+    e.getDataFromSafariExtensions = Et,
+    e.getIgnoreUrls = He,
+    e.getInternalFaroFromGlobalObject = function() {
+        return R[me]
+    }
+    ,
+    e.getStackFramesFromError = It,
+    e.getTransportBody = ee,
+    e.getUrlFromResource = We,
+    e.getWebInstrumentations = fn,
+    e.globalObject = R,
+    e.initializeFaro = function(e) {
+        const t = En(e);
+        if (t)
+            return we(t)
+    }
+    ,
+    e.internalGlobalObjectKey = me,
+    e.isArray = m,
+    e.isBoolean = p,
+    e.isDomError = T,
+    e.isDomException = E,
+    e.isElement = e => I && l(e, Element),
+    e.isElementDefined = I,
+    e.isEmpty = x,
+    e.isError = y,
+    e.isErrorDefined = w,
+    e.isErrorEvent = S,
+    e.isEvent = b,
+    e.isEventDefined = v,
+    e.isFunction = h,
+    e.isInstanceOf = l,
+    e.isInt = e => d(e) && Number.isInteger(e),
+    e.isInternalFaroOnGlobalObject = ve,
+    e.isMap = e => k && l(e, Map),
+    e.isMapDefined = k,
+    e.isNull = u,
+    e.isNumber = d,
+    e.isObject = g,
+    e.isPrimitive = f,
+    e.isRegExp = e => a(e, "RegExp"),
+    e.isString = c,
+    e.isSymbol = e => o(e, "symbol"),
+    e.isSyntheticEvent = e => g(e) && "nativeEvent" in e && "preventDefault" in e && "stopPropagation" in e,
+    e.isThenable = e => h(null == e ? void 0 : e.then),
+    e.isToString = a,
+    e.isTypeof = o,
+    e.isUndefined = e => o(e, "undefined"),
+    e.makeCoreConfig = En,
+    e.noop = N,
+    e.parseStacktrace = kt,
+    e.sdkMeta = () => ({
+        sdk: {
+            name: "@grafana/faro-core",
+            version: he,
+            integrations: e.faro.config.instrumentations.map( ({name: e, version: t}) => ({
+                name: e,
+                version: t
+            }))
+        }
+    }),
+    e.setInternalFaroOnGlobalObject = fe,
+    e.transportItemTypeToBodyKey = n,
+    e.unknownString = Oe,
+    e.userActionDataAttribute = Pi,
+    e
+}({});
