@@ -100,9 +100,10 @@ fixture conversation so accumulated history cannot suppress the transient copy h
 an already-used selected package, preserves clipboard formats and mouse position, and records
 unique captures below `ITE2E_ARTIFACT_ROOT` (or the default artifacts directory).
 The paired paste suite also preserves full clipboard formats. Both fixtures retain a recovery
-target before startup: if startup fails, cleanup restores configuration and stops only new
-exact-path processes after rechecking PID/start-time identity and excluding the runner's ancestors.
-Ambiguous ownership fails rather than expanding cleanup to arbitrary package helpers.
+target before startup. If startup never returns a launch context, any remaining package process
+blocks automatic recovery; a matching path and recent creation time are not termination authority.
+Configuration is restored only after the selected package is confirmed inactive. Ambiguous
+ownership or ineffective termination fails with the configuration backup retained.
 
 The shared `Get-UiTextBounds` helper locates the first literal match in the single visible named
 TermControl belonging to the test window. It verifies the exact range text before returning

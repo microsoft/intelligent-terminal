@@ -6,7 +6,16 @@ function Stop-TestTerminal {
         [Nullable[DateTime]]$LaunchStarted
     )
     if ($App) {
-        Stop-Terminal -App $App
+        if ($App.PSObject.Properties.Name -notcontains 'Launched' -or -not $App.Launched -or -not $App.Pid) {
+            throw 'Terminal cleanup requires a returned owned launch context.'
+        }
+        Stop-Terminal -App $App -RestoreSettings $false
+        if (-not (Test-Until -TimeoutSec 5 -IntervalSec 0.2 -Condition ({
+            -not @(Get-WtProcessesForApp -App $App -IncludePackageExecutables).Count
+        }.GetNewClosure()))) {
+            throw 'The selected package is still active; configuration backup is retained.'
+        }
+        Restore-WtConfig -App $App
         return
     }
     if (-not $LaunchStarted) { return }
@@ -14,30 +23,8 @@ function Stop-TestTerminal {
         throw 'Failed-startup cleanup has no verified target executable.'
     }
 
-    $protected = [Collections.Generic.HashSet[int]]::new()
-    $ancestor = $PID
-    while ($ancestor -gt 0 -and $protected.Add($ancestor)) {
-        $process = Get-CimInstance Win32_Process -Filter "ProcessId=$ancestor"
-        if (-not $process) { throw 'Failed-startup cleanup cannot verify caller ancestry.' }
-        $ancestor = [int]$process.ParentProcessId
-    }
-    $candidates = @(Get-WtProcessesForApp -App $Target)
-    foreach ($process in $candidates) {
-        if ($process.Path -ine $Target.WindowsTerminal -or $process.StartTime -lt $LaunchStarted -or
-            $protected.Contains([int]$process.Id)) {
-            throw 'Failed-startup cleanup cannot establish test ownership of a candidate process.'
-        }
-    }
-    foreach ($process in $candidates) {
-        $current = Get-Process -Id $process.Id -ErrorAction SilentlyContinue
-        if (-not $current) { continue }
-        if ($current.Path -ine $process.Path -or $current.StartTime -ne $process.StartTime) {
-            throw 'Failed-startup process identity changed before cleanup.'
-        }
-        $recovery = $Target.PSObject.Copy()
-        $recovery.Pid = $process.Id
-        $recovery | Add-Member -NotePropertyName Launched -NotePropertyValue $true -Force
-        Stop-Terminal -App $recovery -RestoreSettings $false
+    if (@(Get-WtProcessesForApp -App $Target -IncludePackageExecutables).Count) {
+        throw 'There is no returned launch context; process ownership cannot be inferred and configuration backup is retained.'
     }
     Restore-WtConfig -App $Target
 }

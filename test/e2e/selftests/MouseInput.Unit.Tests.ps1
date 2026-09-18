@@ -218,10 +218,26 @@ Describe 'Failed-startup terminal recovery' -Tag 'Unit', 'StartupRecovery' {
         Should -Invoke Stop-Terminal -Times 0 -Exactly
     }
 
-    It 'refuses recovery when caller ancestry cannot be verified' -Tag 'RecoveryAncestry' {
-        Mock Get-CimInstance { $null }
-        { Stop-TestTerminal -Target $script:recoveryTarget -LaunchStarted $script:recoveryStart } |
-            Should -Throw '*caller ancestry*'
+    It 'refuses restoration when an attempted stop leaves the package active' -Tag 'RecoveryPostcondition' {
+        $app = [pscustomobject]@{ Pid = 77; Launched = $true; InstallLocation = $script:recoveryTarget.InstallLocation }
+        Mock Test-Until { $false }
+        { Stop-TestTerminal -App $app -Target $script:recoveryTarget -LaunchStarted $script:recoveryStart } |
+            Should -Throw '*still active*'
+        Should -Invoke Restore-WtConfig -Times 0 -Exactly
+    }
+
+    It 'restores configuration after an owned launch is confirmed stopped' {
+        $app = [pscustomobject]@{ Pid = 77; Launched = $true; InstallLocation = $script:recoveryTarget.InstallLocation }
+        Mock Test-Until { $true }
+        Stop-TestTerminal -App $app -Target $script:recoveryTarget -LaunchStarted $script:recoveryStart
+        Should -Invoke Stop-Terminal -Times 1 -Exactly -ParameterFilter { -not $RestoreSettings }
+        Should -Invoke Restore-WtConfig -Times 1 -Exactly
+    }
+
+    It 'does not treat an attached context as permission to stop a process' {
+        $app = [pscustomobject]@{ Pid = 77; Launched = $false }
+        { Stop-TestTerminal -App $app -Target $script:recoveryTarget -LaunchStarted $script:recoveryStart } |
+            Should -Throw '*owned launch context*'
         Should -Invoke Stop-Terminal -Times 0 -Exactly
     }
 
@@ -230,21 +246,20 @@ Describe 'Failed-startup terminal recovery' -Tag 'Unit', 'StartupRecovery' {
             [pscustomobject]@{ Id = 77; Path = $script:recoveryTarget.WindowsTerminal; StartTime = $script:recoveryStart.AddSeconds(-1) }
         }
         { Stop-TestTerminal -Target $script:recoveryTarget -LaunchStarted $script:recoveryStart } |
-            Should -Throw '*cannot establish test ownership*'
+            Should -Throw '*no returned launch context*'
         Should -Invoke Stop-Terminal -Times 0 -Exactly
     }
 
-    It 'rechecks PID identity before stopping a verified new process' {
+    It 'does not infer ownership from a new stable matching process' -Tag 'RecoveryOwnership' {
         $script:recoveryProcess = [pscustomobject]@{
             Id = 77; Path = $script:recoveryTarget.WindowsTerminal; StartTime = $script:recoveryStart.AddSeconds(1)
         }
         Mock Get-WtProcessesForApp { $script:recoveryProcess }
         Mock Get-Process { $script:recoveryProcess } -ParameterFilter { $Id -eq 77 }
-        Stop-TestTerminal -Target $script:recoveryTarget -LaunchStarted $script:recoveryStart
-        Should -Invoke Stop-Terminal -Times 1 -Exactly -ParameterFilter {
-            $App.Pid -eq 77 -and $App.Launched -and -not $RestoreSettings
-        }
-        Should -Invoke Restore-WtConfig -Times 1 -Exactly
+        { Stop-TestTerminal -Target $script:recoveryTarget -LaunchStarted $script:recoveryStart } |
+            Should -Throw '*no returned launch context*'
+        Should -Invoke Stop-Terminal -Times 0 -Exactly
+        Should -Invoke Restore-WtConfig -Times 0 -Exactly
     }
 
     It 'refuses a reused PID before cleanup' {
@@ -255,7 +270,7 @@ Describe 'Failed-startup terminal recovery' -Tag 'Unit', 'StartupRecovery' {
             [pscustomobject]@{ Id = 77; Path = $script:recoveryTarget.WindowsTerminal; StartTime = $script:recoveryStart.AddSeconds(2) }
         }
         { Stop-TestTerminal -Target $script:recoveryTarget -LaunchStarted $script:recoveryStart } |
-            Should -Throw '*identity changed*'
+            Should -Throw '*no returned launch context*'
         Should -Invoke Stop-Terminal -Times 0 -Exactly
     }
 }
