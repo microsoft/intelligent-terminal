@@ -1,0 +1,810 @@
+
+
+                          
+
+
+
+
+
+
+
+
+
+
+
+<!DOCTYPE html>
+<html data-placeholder-focus="false" data-placeholder-live="true">
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+		<title>Shopping Cart | AKC Reunite</title>
+		<meta name="description" content="AKC Reunite Shopping Cart">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<meta name="generator" content="Webflow">
+		<meta charset="UTF-8">
+		
+                          
+
+
+
+
+
+
+
+
+<script>			
+	
+	// Init top-level namespace.
+	var AKCCARPub = {}; 
+
+</script>	
+		
+                          
+
+
+
+
+
+
+
+
+<!--  OneTrust Cookies Consent Notice start for akcreunite.org -->
+<script type="text/javascript" src="https://cdn.cookielaw.org/consent/01905af6-9f6a-7dac-a08f-ac8fe94a5f4b/OtAutoBlock.js"></script>
+<script src="https://cdn.cookielaw.org/scripttemplates/otSDKStub.js" type="text/javascript" charset="UTF-8" data-domain-script="01905af6-9f6a-7dac-a08f-ac8fe94a5f4b"></script>
+<script type="text/javascript">
+    function OptanonWrapper() {}
+</script>
+<!--  OneTrust Cookies Consent Notice start for akcreunite.org -->
+
+<!-- Separate initial definition of objects -->
+<script type="text/javascript">
+    window.AKCCARPub = window.AKCCARPub || {};
+    window.AKCCARPub.GA = window.AKCCARPub.GA || {};
+    window.dataLayer = window.dataLayer || [];
+
+    AKCCARPub.GA.sendEvent = function(eventDesc) {
+        if (AKCCARPub.googleAnalyticsTrackingId) {
+            try {
+                window.dataLayer.push({
+                    'event': 'GAEvent',
+                    'event_action': eventDesc.event_action,
+                    'eventData': eventDesc
+                });
+            } catch (exception) {
+                console.error('GAEvent Error:', exception);
+            }
+        }
+    };
+
+    AKCCARPub.GA.createHitCallback = function(callback, timeoutMS) {
+        var called = false;
+        function fn() {
+            if (!called) {
+                called = true;
+                callback();
+            }
+        }
+        setTimeout(fn, timeoutMS || 1000);
+        return fn;
+    };
+
+    // Define GA Categories
+    AKCCARPub.GA.RecoveryCategory = 'Recovery';
+	AKCCARPub.GA.HubCategory = 'HUB';
+	AKCCARPub.GA.IndCategory = 'Individual';
+	AKCCARPub.GA.MicrochipStoreCategory = 'Microchip Store';
+	AKCCARPub.GA.ORSCategory = 'ors';
+	AKCCARPub.GA.Common = 'Common';
+	AKCCARPub.GA.VetData = 'VetData';
+	AKCCARPub.GA.PetProtectionPlanCategory = 'Backup Plan';
+
+	window.dataLayer.push({
+		'GA_RecoveryCategory': AKCCARPub.GA.RecoveryCategory,
+		'GA_HubCategory': AKCCARPub.GA.HubCategory,
+		'GA_IndCategory': AKCCARPub.GA.IndCategory,
+		'GA_MicrochipStoreCategory': AKCCARPub.GA.MicrochipStoreCategory,
+		'GA_ORSCategory': AKCCARPub.GA.ORSCategory,
+		'GA_Common': AKCCARPub.GA.Common,
+		'GA_VetData': AKCCARPub.GA.VetData,
+		'GA_PetProtectionPlanCategory': AKCCARPub.GA.PetProtectionPlanCategory
+	});
+</script>
+
+<!-- Google Analytics (Consent Managed) -->
+<script type="text/plain" class="optanon-category-C0002">
+    (function() {
+        AKCCARPub.googleAnalyticsTrackingId = 'G-CD6P9WR85J';
+        AKCCARPub.googleAdWordsConversionId = 'AW-961695033';
+
+        if (AKCCARPub.googleAnalyticsTrackingId && AKCCARPub.googleAdWordsConversionId) {
+            window.dataLayer.push({
+                'event': 'googleAnalyticsTracking',
+                'googleAnalyticsTrackingId': AKCCARPub.googleAnalyticsTrackingId,
+                'adwordsConversionId': AKCCARPub.googleAdWordsConversionId
+            });
+        } else {
+            console.warn('Tracking ID(s) are missing.');
+        }
+
+        
+    })();
+</script>
+
+<!-- Google Tag Manager (Consent Managed) -->
+<script type="text/plain" class="optanon-category-C0002">
+    (function(w,d,s,l,i){
+        w[l]=w[l]||[];
+        w[l].push({'gtm.start': new Date().getTime(), event:'gtm.js'});
+        var f=d.getElementsByTagName(s)[0],
+            j=d.createElement(s), dl=l!='dataLayer'?'&l='+l:'';
+        j.async=true;
+        j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;
+        f.parentNode.insertBefore(j,f);
+    })(window,document,'script','dataLayer','GTM-KF9NDSV');
+</script>
+<!-- End Google Tag Manager -->
+
+<!-- MailChimp Tracking -->
+
+<script type="text/plain" class="optanon-category-C0002">
+    try {
+        AKCCARPub.mailchimpEventName ='mailchimpTracking';
+        AKCCARPub.mailChimpAccountId = 'dd1d2f3811b7842ca2d564c7b';
+        window.dataLayer.push({
+            'event': AKCCARPub.mailchimpEventName,
+            'mailChimpAccountId': AKCCARPub.mailChimpAccountId
+        });
+    } catch (e) {
+        console.error('MailChimp Tracking Error:', e);
+    }
+</script>
+
+
+<!-- Bing Analytics Tracking -->
+
+<script type="text/plain" class="optanon-category-C0002">
+    try {
+        AKCCARPub.bingAccountId = '6003108';
+        window.dataLayer.push({
+            'event': 'bingTracking',
+            'bingAccountId': AKCCARPub.bingAccountId
+        });
+		
+		
+    } catch (e) {
+        console.error('Bing Tracking Error:', e);
+    }
+</script>
+
+
+<!-- Google Tag Manager (noscript) -->
+<noscript>
+    <iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KF9NDSV" height="0" width="0" style="display:none;visibility:hidden"></iframe>
+</noscript>
+<!-- End Google Tag Manager (noscript) -->
+		<link rel="stylesheet" type="text/css" media="screen,print" href="/cares-pub/gzip_1225268912/bundles/ind.css" >
+
+		<script type="text/javascript" src="/cares-pub/gzip_N1865447640/bundles/head.js" ></script>
+
+		<link rel="shortcut icon" href="/cares-pub/images/RE-Favicon.ico">
+		<noscript>
+			<style type="text/css">
+				#indMainLayout {display : none;}
+			</style>
+		</noscript>
+	</head>
+
+	<body>
+		<noscript>
+			<div style="height: 400px;">
+				<a class="w-inline-block" href="https://www.akcreunite.org">
+					<img class="akc-reunite-logo" src="/cares-pub/images/AKC-Reunite-Standard-Logo-No-Tagline-290x140.jpg" width="130" alt="AKC Reunite Logo" />
+				</a>	
+				
+				<h3 style="text-align: center;">
+					This application requires your internet browser have JavaScript enabled.
+				</h3>
+			</div>
+		</noscript>
+		
+		<div id="indMainLayout">	
+			
+			<!-- Header -->
+			
+                          
+
+
+
+
+
+
+
+
+<div class="w-section top-section"></div>
+<div class="w-nav navbar" id="top" data-collapse="medium" data-animation="default" data-duration="400" data-contain="1">
+	
+	<div id="submitOverlay" class="submitOverlay"></div>
+	<div id="spinnerContainer" class="spinnerContainer"></div>
+	
+	<div class="w-container nav-container">
+		<nav class="w-nav-menu nav-link-container" role="navigation">
+			<a class="w-inline-block akc-reunite-homepage" href="https://www.akcreunite.org">
+				<img class="w-hidden-medium w-hidden-small w-hidden-tiny akc-reunite-logo" src="/cares-pub/images/AKC-Reunite-Standard-Logo-No-Tagline-290x140.jpg" width="145" alt="AKC Reunite Logo">
+			</a>
+			<a class="w-nav-link nav-link" href="/cares-pub/ind/individualEnrollment.car">ENROLL</a>
+			<a class="w-nav-link nav-link" href="/cares-pub/ind/replacementTagOrderEnrollmentSearch.car">VISUAL PET ID</a>
+			<a class="w-nav-link nav-link" href="/cares-pub/ind/addOnServiceEnrollmentSearch.car">EXTRA PET PROTECTION</a>
+			<a class="w-nav-link nav-link" href="/cares-pub/customer/priv/customerHome.car">ONLINE RECORDS SYSTEM</a>
+    	</nav>
+		<div class="w-nav-button menu-button">
+      		<div class="w-icon-nav-menu menu-icon"></div>
+    	</div>
+
+		<div class="shopping-cart" title="Online Enrollment Cart">
+			<a href="/cares-pub/ind/order.car"><img class="shopping-cart-image" src="/cares-pub/images/2015/09/empty-cart-dark.jpg" alt="Shopping Cart"/></a>
+			<div class="shopping-cart-info"><a class="shopping-cart-item-count" href="/cares-pub/ind/order.car">&nbsp;</a></div>
+		</div>
+
+		<a class="w-inline-block akc-reunite-homepage" href="https://www.akcreunite.org">
+			<img class="w-hidden-main akc-reunite-logo w-hidden-tiny mobile-view" src="/cares-pub/images/AKC-Reunite-Standard-Logo-No-Tagline-290x140.jpg" width="130" alt="AKC Reunite Logo" />
+			<img class="w-hidden-main w-hidden-medium w-hidden-small akc-reunite-logo mobile-view" src="/cares-pub/images/AKC-Reunite-Standard-Logo-No-Tagline-290x140.jpg" width="100" alt="AKC Reunite Logo" />
+		</a>	
+  	</div>
+
+</div>
+<div data-user-managed-content-id="IndAlerts"></div>
+
+
+  	
+
+						
+			<!-- Content -->
+			
+                          
+
+
+
+
+
+
+
+<div class="w-section sparkle-background">
+	<div class="w-container">
+		<div class="w-clearfix sparkle-background-header-div">
+			<h1 class="sparkle-background-header">SHOPPING CART</h1>
+		</div>
+	</div>
+</div>
+<div class="w-container checkout-process-container">
+
+	
+
+
+
+<script type="text/x-handlebars-template" id="formErrorsListTemplate">
+	<ul>
+		{{#each globalErrors}}
+		<li>{{{this.msg}}}</li>											
+		{{/each}}
+		{{#each fieldErrors}}
+		<li>{{{this.msg}}}</li>											
+		{{/each}}
+	</ul>
+</script>	
+
+	<div id="confirmRemoveLineItemDialog" style="display: none;">
+		<h5 class="primary-subheader">CONFIRM REMOVE ITEM</h5>
+		<div class="plain-text" style="font-size: 14px important!">
+			Are you sure you want to remove this item from your cart?
+		</div>
+		<div class="w-clearfix">
+			<input type="button" class="primary-button right-justified w-button" value="YES">
+			<a class="close-modal" href="#">NO</a>
+		</div>
+	</div>
+	
+	<div id="confirmCancelOrderDialog" style="display: none;">
+		<h5 class="primary-subheader">CONFIRM CANCEL ORDER</h5>
+		<div class="plain-text" style="font-size: 14px important!">
+			Are you sure you want to cancel this order?
+		</div>
+		<div class="w-clearfix">
+			<input type="button" class="primary-button right-justified w-button" value="YES">
+			<a class="close-modal" href="#">NO</a>
+		</div>
+	</div>
+	
+	<script type="text/x-handlebars-template" id="productQuantityTemplate">
+		<option value="">Quantity</option>
+		{{#if pricingSelected}}
+		<option value="1">1 {{#if threepak}}  (3 Clings){{/if}}</option>
+		<option value="2">2 {{#if threepak}}  (6 Clings){{/if}}</option>
+		<option value="3">3 {{#if threepak}}  (9 Clings){{/if}}</option>
+		<option value="4">4 {{#if threepak}}  (12 Clings){{/if}}</option>
+		<option value="5">5 {{#if threepak}}  (15 Clings){{/if}}</option>
+		{{/if}}		
+	</script>
+	
+	<div id="cartItemsSection">
+		
+
+
+
+
+
+
+
+
+
+<div class="checkout-process-outer-div">
+
+	<div class="checkout-process-header">
+		<h3 class="h3-header enrollment-process-header">ITEMS</h3>
+	</div>
+
+	<div class="checkout-process-inside-div-block-form pet-id">
+		
+			
+			
+				
+					
+					
+						
+
+						
+						<div id="cartItems">
+							
+								<div class="shopping-cart-line-item">
+									<div class="w-row line-item-row">
+
+										<!-- Image and Product Description -->
+										<div class="w-col w-col-6">
+											<div class="w-row" style="margin-bottom: 10px;">
+												
+
+												<!-- Main Product Image -->
+												<div class="w-col w-col-5">
+													
+														<div class="line-item-image">
+															<img class="standard-enrollment-form-small"
+																src="/cares-pub/images/Enrollment-Forms-Cart.png"
+																style=""
+																alt="Product Image" />
+														</div>
+													
+												</div>
+
+												<!-- Main Product Description -->
+												<div class="w-col w-col-7">
+													<label class="primary-subheader small"
+														style="margin-bottom: 0px;">
+														Standard Enrollment </label>
+													
+													
+														IDs:&nbsp;&nbsp;[3176169607]
+														<br />
+													
+														Enrollment Key:&nbsp;&nbsp;20300090
+														<br />
+													
+														Pet Name:&nbsp;&nbsp;3176169607
+														<br />
+													
+												</div>
+											</div>
+
+											
+												
+													<div class="w-row" style="margin-bottom: 10px;">
+														<div class="w-col w-col-5">
+															
+																<img class="standard-enrollment-form-small"
+																	src="/cares-pub/images/Standard-Tag-450x537.png"
+																	style="background-color: rgb(255,255,255); background-color: rgba(255,255,255,1.0);"
+																	alt="Product Image" />
+															
+														</div>
+														<div class="w-col w-col-7">
+															<label class="primary-subheader small">
+																Basic Collar Tag 
+															</label>
+															
+																ID:&nbsp;&nbsp;[3176169607]
+																<br />
+															
+																DESIGN:&nbsp;&nbsp;Basic Reunite
+																<br />
+															
+																SIZE:&nbsp;&nbsp;Small - 7/8" Diameter
+																<br />
+															
+																COLOR:&nbsp;&nbsp;White
+																<br />
+															
+														</div>
+													</div>
+												
+													<div class="w-row" style="margin-bottom: 10px;">
+														<div class="w-col w-col-5">
+															
+																<img class="standard-enrollment-form-small"
+																	src="/cares-pub/images/Backup-Plan-Logo-360px.png"
+																	style=""
+																	alt="Product Image" />
+															
+														</div>
+														<div class="w-col w-col-7">
+															<label class="primary-subheader small">
+																Backup Plan 
+															</label>
+															
+														</div>
+													</div>
+												
+													<div class="w-row" style="margin-bottom: 10px;">
+														<div class="w-col w-col-5">
+															
+																<img class="standard-enrollment-form-small"
+																	src="/cares-pub/images/2015/09/Lost-Pet-Alert-Logo.jpg"
+																	style=""
+																	alt="Product Image" />
+															
+														</div>
+														<div class="w-col w-col-7">
+															<label class="primary-subheader small">
+																AKC Reunite Lost Pet Alert Service - Lifetime 
+															</label>
+															
+														</div>
+													</div>
+												
+													<div class="w-row" style="margin-bottom: 10px;">
+														<div class="w-col w-col-5">
+															
+																<img class="standard-enrollment-form-small"
+																	src="/cares-pub/images/2015/09/PPH-LOGO.jpg"
+																	style=""
+																	alt="Product Image" />
+															
+														</div>
+														<div class="w-col w-col-7">
+															<label class="primary-subheader small">
+																Pet Poison Helpline Service 
+															</label>
+															
+														</div>
+													</div>
+												
+											
+											
+												
+													
+														
+														<a
+															class="lineItemEditLink secondary-buttons enrollment-review"
+															href="orderCartLineItemEdit.car?lineItemId=19693192" rel="nofollow">CHANGE</a>
+													
+												
+												
+											
+											
+											<a
+												class="removeLineItemLink secondary-buttons enrollment-review"
+												href="orderCartRemoveLineItem.car?lineItemId=19693192" rel="nofollow">REMOVE</a>
+										</div>
+
+										<!-- Quantity -->
+										<div class="w-col w-col-4">
+											<div class="centered" style="font-size: 14px;">
+												Quantity:&nbsp;&nbsp;1<br />
+											</div>
+										</div>
+
+										<!-- Line Item Total (Price * Quantity) -->
+										<div class="w-col w-col-2">
+											<div class="price centered">
+												$75.94
+											</div>
+										</div>
+									</div>
+								</div>
+							
+
+
+							<!-- donation section -->
+							
+
+							
+
+	
+							<div class="shopping-cart-line-item">
+								<div class="w-row line-item-row">
+
+									<!-- Image and donation Description -->
+									<div class="w-col w-col-10">
+										<div class="w-row" style="margin-bottom: 10px;">
+											<!-- Donation Image -->
+											<div class="w-col w-col-3">
+												<div class="line-item-image">
+													<img class="standard-enrollment-form-small"
+														src="https://www.akcreunite.org/wp-content/uploads/Sitting-Chip-Wagging-Tail.gif"
+														style=""
+														alt="Product Image" />
+												</div>
+											</div>
+
+											<!-- donation Description -->
+											<div class="w-col w-col-9">
+												<label class="primary-subheader small"
+													style="margin-bottom: 0px;"> Help pets today </label>
+												<div>Would you like to donate to AKC Reunite's
+													charitable programs for the US pet community?</div>
+												<div class="primary-subheader small">
+													<p>
+														<a class="donationLineItemLink enrollment-review"
+															href="orderAddDonationLineItem.car?donation=1"
+															rel="nofollow">$1 </a> &nbsp;&nbsp;&nbsp; <a
+															class="donationLineItemLink enrollment-review"
+															href="orderAddDonationLineItem.car?donation=3"
+															rel="nofollow">$3 </a> &nbsp;&nbsp;&nbsp; <a
+															class="donationLineItemLink enrollment-review"
+															href="orderAddDonationLineItem.car?donation=5"
+															rel="nofollow">$5 </a>&nbsp;&nbsp;&nbsp; <a
+															class="donationLineItemLink enrollment-review"
+															href="orderAddDonationLineItem.car?donation=0"
+															rel="nofollow">Not Today </a> &nbsp;&nbsp;&nbsp;
+													</p>
+												</div>
+											</div>
+										</div>
+									</div>
+
+
+									<!-- donation amount -->
+									<div class="w-col w-col-2">
+										<div class="price centered">
+											<strong class="price"> <span id="donationTotal">$0.00</span>
+											</strong>
+										</div>
+									</div>
+								</div>
+							</div>
+
+
+							<div class="w-row">
+								<div class="w-col w-col-8 w-col-small-8"></div>
+								<div class="w-col w-col-4 w-col-small-4">
+
+									<!-- Order ID -->
+									<div class="w-row">
+										<div class="w-col w-col-8 w-col-small-8">
+											<div class="primary-subheader"
+												style="text-align: right; margin-bottom: 2px;">ORDER #
+											</div>
+										</div>
+										<div class="w-col w-col-4 w-col-small-4">
+											<div class="primary-subheader"
+												style="text-align: right; margin-bottom: 2px;">
+												11323349</div>
+										</div>
+									</div>
+									<div class="w-row">
+										<div class="w-col w-col-8 w-col-small-8">
+											<div class="subtotal">
+												SUBTOTAL (<span id="itemCount">1</span>
+												ITEM):&nbsp;&nbsp;&nbsp;
+											</div>
+										</div>
+										<div class="w-col w-col-4 w-col-small-4">
+											<div class="subtotal">
+												<strong class="price"> <span id="itemTotal">
+														$75.94
+												</span>
+												</strong>
+											</div>
+										</div>
+									</div>
+
+									<div id="cartButtons">
+										
+											
+												<input type="button" id="checkoutOrderButton"
+													class="w-button primary-button right-justified"
+													style="width: 150px;" value="CHECKOUT">
+											
+											
+										
+										<a href="orderCartCancelOrder.car"
+											class="secondary-buttons no-column cancelOrderLink"
+											rel="nofollow">CANCEL ORDER</a>
+									</div>
+
+								</div>
+							</div>
+						</div>
+					
+				
+			
+		
+	</div>
+</div>
+
+
+
+  
+
+
+
+                        
+
+
+
+
+	<!-- Recommended Product -->
+	
+	<div class="suggestions-background">
+		<h3 class="scanner-header">KEEP YOUR PET SAFE</h3>
+	</div>
+	<div class="os-product-page-suggestion-outer-div">
+		<div class="w-row">
+			<div class="w-col w-col-4">
+				<div class="centered-div">
+					<img src="/cares-pub/images/House-Window-Cling-293px.jpg">
+				</div>
+			</div>
+			<div class="w-col w-col-8">
+				<div class="os-product-suggestion-2">
+					<div class="upsell-content">
+						<form id="recommendedProductForm" action="addRecommendedProductLineItem.car" method="POST">
+							<div class="primary-subheader bundle">
+								Pets Inside Window Cling
+							</div>
+							<div class="plain-text left-justified">
+								Make sure your pets stay safe in the event of an emergency with our "Pets Inside" Window Cling that will alert firefighters, police or neighbors to rescue your pets in a time of distress. Don't leave your pets home without having impactful static clings affixed inside your window or glass door.
+							</div>
+							<div class="w-row">
+								<div class="w-col w-col-8">
+									<div class="top-padding-ten">
+										
+
+<ul class="product-details-list">
+	<li>
+		<div class="product-details-text">
+		4.125" x 4.125" in size with bright red, eye-catching design
+		</div>
+	</li>
+	<li>
+		<div class="product-details-text">
+		Flexible vinyl material that clings to your windows
+		</div>
+	</li>
+	<li>
+		<div class="product-details-text">
+		Notifies first responders and Good Samaritans your pets are inside
+		</div>
+	</li>
+	<li>
+		<div class="product-details-text">
+		Helps during fire, floods, extreme weather and other emergency situations
+		</div>
+	</li>
+	<li>
+		<div class="product-details-text">
+		Your choice of a single decal, or a three-pack so all entries to your home are covered
+		</div>
+	</li>
+	<li>
+		<div class="product-details-text">
+		Also a thoughtful gift idea!
+		</div>
+	</li>
+</ul>
+<div style="margin-bottom: 15px;">
+	<a style="font-weight: 700; color: #004487;" href="https://www.akcreunite.org/safetyproductsfaq" target="_blank">How to Use</a>
+</div>
+
+									</div>
+								</div>
+								<div class="w-col w-col-4">
+									<div class="top-padding-ten">
+										<select class="w-select" id="recommendedProductPricing" name="selectedPricing">
+											<option value="" data-units="">Choose Cling Pack</option>
+											
+												<option value="33011" data-units="1">
+													
+														
+															Single&nbsp;
+														
+														
+													
+													- $6.99
+												</option>	
+											
+												<option value="33015" data-units="3">
+													
+														
+														
+															3-Pack 
+														
+													
+													- $15.00
+												</option>	
+											
+										</select>										
+										<select class="w-select" id="recommendedProductQuantity" name="quantity">
+											<option value="">Quantity</option>
+										</select>
+									</div>
+									<input type="hidden" name="orderShippingInfoId" value="5628613">
+									<input id="submitButton" class="primary-button product-suggestion w-button" style="float: none;" type="submit" value="ADD TO CART">
+									<div class="formErrors" style="display: block; position: static; min-height: 28px; margin-top: 10px;"></div>
+								</div>
+							</div>
+						</form>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	
+
+
+
+
+	</div>
+	
+	
+</div>	
+
+
+<script type="text/javascript" src="/cares-pub/gzip_N389779107/bundles/ind.js" ></script>
+
+<script type="text/javascript" src="/cares-pub/gzip_1950166257/js/indOrderCart.js" ></script>
+
+	
+			
+		</div>	
+
+		<!-- Footer -->
+		
+                          
+
+
+
+
+
+
+
+ 
+<div class="w-section footer-section">
+ 	<div class="w-container">
+    	<div class="w-row">
+        	<div class="w-col w-col-9">
+          		<div class="copyright">
+          			AKC&nbsp;Reunite |&nbsp;8051 Arco Corporate Drive, Suite 200 Raleigh, NC 27617<br/>
+          			<a class="footer-link telContactUsLink" href="tel:800-252-7894">800-252-7894</a>&nbsp;|&nbsp;
+          			<a class="footer-link emailContactUsLink" href="mailto:updates@akcreunite.org">updates@akcreunite.org</a><br/>
+          			© Copyright 2005 - 2022 AKC Reunite | <a class="footer-link" href="https://www.akcreunite.org/termsofservice/" target="_blank">Terms of Service</a> |
+          			<a class="footer-link" href="https://www.akcreunite.org/privacypolicy/" target="_blank">Privacy Policy</a> 
+            	</div>
+        	</div>
+        	<div class="w-col w-col-3 footer-social-icons-column">
+          		<a class="w-inline-block" href="https://www.facebook.com/akcreunite" target="_blank">
+          			<img class="footer-sm-icon" src="/cares-pub/images/2015/09/Facebook-White.png" alt="Facebook" />
+          		</a>
+          		<a class="w-inline-block" href="https://www.twitter.com/akcreunite" target="_blank">
+          			<img class="footer-sm-icon" src="/cares-pub/images/2015/09/Twitter-White2.png" alt="Twitter" />
+          		</a>
+          		<a class="w-inline-block" href="https://www.linkedin.com/company/akc-reunite" target="_blank">
+          			<img class="footer-sm-icon" src="/cares-pub/images/2015/09/LinkedIn-White.png" alt="Linked In" />
+          		</a>
+        	</div>
+     	</div>
+	</div>
+</div>
+
+			
+	</body>
+	
+</html>	
+	
