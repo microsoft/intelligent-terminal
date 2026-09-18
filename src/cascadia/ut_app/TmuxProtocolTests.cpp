@@ -141,7 +141,21 @@ namespace TerminalAppUnitTests
 
     void TmuxProtocolTests::RejectsMalformedSessionInventory()
     {
-        for (const auto text : { "name", "@0 name", "$ name", "$-1 name", "$1 ", "$1", "$1 name\n\n", "$1 name\r", "$1 name\tvalue", "$1 name\x1b", "$1 one\n$1 two", "$18446744073709551616 overflow" })
+        for (const auto text : {
+                 "name",
+                 "@0 name",
+                 "$ name",
+                 "$-1 name",
+                 "$1 ",
+                 "$1",
+                 "$1 name\n\n",
+                 "$1 name\r",
+                 "$1 name\t"
+                 "value",
+                 "$1 name\x1b",
+                 "$1 one\n$1 two",
+                 "$18446744073709551616 overflow",
+             })
         {
             VERIFY_THROWS(ParseSessions(text), ProtocolError);
         }

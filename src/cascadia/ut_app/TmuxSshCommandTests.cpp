@@ -148,7 +148,18 @@ namespace TerminalAppUnitTests
 
     void TmuxSshCommandTests::NamesAreExactAndSessionIdsRemainIds()
     {
-        for (const auto session : { L"test", L"test-prefix", L"*?[abc]", L"=literal", L"{last}", L"-Lnamed", L"$", L"$1suffix", L"$-1" })
+        for (const auto session : {
+                 L"test",
+                 L"test-prefix",
+                 L"*?[abc]",
+                 L"=literal",
+                 L"{last}",
+                 L"-L"
+                 L"named",
+                 L"$",
+                 L"$1suffix",
+                 L"$-1",
+             })
         {
             VERIFY_ARE_EQUAL(std::wstring{ L"=" } + session, UnquoteRemoteTarget(RemoteTarget(L"ubuntu", session)));
         }
@@ -237,7 +248,8 @@ namespace TerminalAppUnitTests
                  L"bad;command",
                  L"$(command)",
                  L"\"host\"",
-                 L"host'quoted",
+                 L"host'"
+                 L"quoted",
                  L"host\\path",
                  L"user@",
                  L"@host",
