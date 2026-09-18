@@ -100,6 +100,35 @@ Describe 'Self-contained agent Escape input' -Tag 'Unit', 'MouseInput' {
     }
 }
 
+Describe 'Package-wide refusal discovery' -Tag 'Unit', 'PackageRefusal' {
+    BeforeEach {
+        $script:packageRoot = Join-Path $TestDrive 'selected-package'
+        Mock -ModuleName ItE2E Get-Process {
+            @(
+                [pscustomobject]@{ Id = 41; Path = (Join-Path $script:packageRoot 'wta.exe') },
+                [pscustomobject]@{ Id = 42; Path = (Join-Path ($script:packageRoot + '-other') 'wta.exe') },
+                [pscustomobject]@{ Id = 43; Path = (Join-Path $TestDrive 'ordinary-terminal\WindowsTerminal.exe') }
+            )
+        }
+        Mock -ModuleName ItE2E Stop-Process { throw 'Process discovery must not terminate anything.' }
+    }
+
+    It 'finds orphan helpers only beneath the exact selected package directory' {
+        $app = [pscustomobject]@{ InstallLocation = $script:packageRoot }
+        $matches = @(Get-WtProcessesForApp -App $app -IncludePackageExecutables)
+        $matches.Count | Should -Be 1
+        $matches[0].Id | Should -Be 41
+        Should -Invoke -ModuleName ItE2E Get-Process -Times 1 -Exactly -ParameterFilter { -not $Name }
+        Should -Invoke -ModuleName ItE2E Stop-Process -Times 0 -Exactly
+    }
+
+    It 'preserves the default terminal-only discovery contract' {
+        Get-WtProcessesForApp -App ([pscustomobject]@{ InstallLocation = $script:packageRoot }) | Out-Null
+        Should -Invoke -ModuleName ItE2E Get-Process -Times 1 -Exactly -ParameterFilter { $Name -eq 'WindowsTerminal' }
+        Should -Invoke -ModuleName ItE2E Stop-Process -Times 0 -Exactly
+    }
+}
+
 Describe 'Exact UIA text ranges' -Tag 'Unit', 'UiTextBounds' {
     It 'finds text after UTF-16 and UIA unit counts diverge' {
         $units = @([char]::ConvertFromUtf32(0x1F600), "`r`n", 'A', 'C', 'K', ' ')
@@ -182,6 +211,17 @@ Describe 'Exact UIA text ranges' -Tag 'Unit', 'UiTextBounds' {
         InModuleScope ItE2E -Parameters @{ Document = $document } {
             param($Document)
             { Find-ItExactTextRange -DocumentRange $Document -Text 'B' } | Should -Throw '*not found*'
+        }
+    }
+
+    It 'stops when one provider step removes a surplus surrogate pair' {
+        $units = @('A', [char]::ConvertFromUtf32(0x1F600))
+        $document = [ItE2ETests.TextRange]::new($units, 0, $units.Count)
+        InModuleScope ItE2E -Parameters @{ Document = $document } {
+            param($Document)
+            $range = Find-ItExactTextRange -DocumentRange $Document -Text 'A'
+            $range.End | Should -Be 1
+            [string]::Equals($range.GetText(-1), 'A', [StringComparison]::Ordinal) | Should -BeTrue
         }
     }
 }

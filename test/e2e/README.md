@@ -109,10 +109,12 @@ key event so a pending escape prefix cannot consume the next prompt character.
 ```powershell
 $env:ITE2E_PACKAGE = 'Dev'
 $env:ITE2E_EXPECTED_WTA_SHA256 = '<hash from the exact-source build receipt>'
+$run = Join-Path $PWD ('test\e2e\artifacts\mouse-' + [guid]::NewGuid().ToString('N'))
+$env:ITE2E_ARTIFACT_ROOT = $run
 .\test\e2e\Invoke-ItE2EReport.ps1 `
     -Path @('test\e2e\tests\Feature.AgentMouse.Tests.ps1', 'test\e2e\tests\Feature.Paste.Tests.ps1') `
     -Tag @('CompletedTurnMouse', 'PasteCore', 'PasteRefocus', 'PasteOwnerIsolation') `
-    -OutDir '<new run directory>'
+    -OutDir $run
 Invoke-Pester test\e2e\selftests\MouseInput.Unit.Tests.ps1 -Tag Unit
 ```
 
