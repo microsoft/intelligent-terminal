@@ -652,9 +652,8 @@ Describe 'Feature: completed-turn triangle mouse click' -Tag 'CompletedTurnMouse
             $sentinel = "RIGHT_CLICK_SENTINEL_$id"
             Set-Clipboard -Value $sentinel
             $clickX = [Math]::Round(($fromX + $toX) / 2)
-            $copyListener = Start-WtEventListener -App $script:app
+            $copyListener = Start-WtEventListener -App $script:app -WaitForReady
             try {
-                Start-Sleep -Milliseconds 400
                 $clickTimer = [Diagnostics.Stopwatch]::StartNew()
                 Invoke-UiMouseDrag -App $script:app -FromX $clickX -FromY $y -ToX $clickX -ToY $y -Right | Out-Null
                 $clickElapsed = $clickTimer.Elapsed.TotalMilliseconds
@@ -676,10 +675,9 @@ Describe 'Feature: completed-turn triangle mouse click' -Tag 'CompletedTurnMouse
 
             $pasteMarker = "RIGHT_CLICK_AFTER_COPY_$id"
             Set-Clipboard -Value $pasteMarker
-            $pasteListener = Start-WtEventListener -App $script:app
+            $pasteListener = Start-WtEventListener -App $script:app -WaitForReady
             $secondPasteObserved = $false
             try {
-                Start-Sleep -Milliseconds 400
                 Invoke-UiMouseDrag -App $script:app -FromX $clickX -FromY $y -ToX $clickX -ToY $y -Right | Out-Null
                 $pasteEvent = Wait-WtEvent -Listener $pasteListener -TimeoutSec 5 -Predicate {
                     $_.method -eq 'agent_paste_text' -and
@@ -755,9 +753,8 @@ Describe 'Feature: completed-turn triangle mouse click' -Tag 'CompletedTurnMouse
         foreach ($point in $points) {
             $marker = "RIGHT_CLICK_PASTE_$($point.Name)_$([guid]::NewGuid().ToString('N'))"
             Set-Clipboard -Value $marker
-            $listener = Start-WtEventListener -App $script:app
+            $listener = Start-WtEventListener -App $script:app -WaitForReady
             try {
-                Start-Sleep -Milliseconds 400
                 try {
                     Invoke-UiMouseDrag -App $script:app -FromX $point.X -FromY $point.Y -ToX $point.X -ToY $point.Y -Right | Out-Null
                 }
@@ -807,9 +804,8 @@ Describe 'Feature: completed-turn triangle mouse click' -Tag 'CompletedTurnMouse
 
         $marker = "RIGHT_CLICK_PASTE_highlight_$([guid]::NewGuid().ToString('N'))"
         Set-Clipboard -Value $marker
-        $listener = Start-WtEventListener -App $script:app
+        $listener = Start-WtEventListener -App $script:app -WaitForReady
         try {
-            Start-Sleep -Milliseconds 400
             try {
                 Invoke-UiMouseDrag -App $script:app -FromX $promptX -FromY $promptY -ToX $promptX -ToY $promptY -Right | Out-Null
             }

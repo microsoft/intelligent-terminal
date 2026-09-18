@@ -121,6 +121,37 @@ Describe 'Owner probe subscription readiness' -Tag 'Unit', 'OwnerProbeReady' {
     }
 }
 
+Describe 'Paired fixture listener readiness' -Tag 'Unit', 'FixtureListeners' {
+    It 'confirms subscription for every mouse and paste fixture listener' {
+        $targets = @(
+            @{ File = 'Feature.AgentMouse.Tests.ps1'; Name = 'Feature: completed-turn triangle mouse click' },
+            @{ File = 'Feature.Paste.Tests.ps1'; Name = ('Feature ' + [char]0x00A7 + '2 agent pane paste') }
+        )
+        foreach ($target in $targets) {
+            $tokens = $null
+            $errors = $null
+            $path = Join-Path $PSScriptRoot ("..\tests\" + $target.File)
+            $ast = [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors)
+            $describe = $ast.FindAll({
+                param($node)
+                $node -is [System.Management.Automation.Language.CommandAst] -and
+                $node.GetCommandName() -eq 'Describe' -and $node.CommandElements[1].Value -eq $target.Name
+            }, $true)[0]
+            $listeners = @($describe.FindAll({
+                param($node)
+                $node -is [System.Management.Automation.Language.CommandAst] -and
+                $node.GetCommandName() -eq 'Start-WtEventListener'
+            }, $true))
+            $listeners.Count | Should -BeGreaterThan 0
+            foreach ($listener in $listeners) {
+                @($listener.CommandElements | Where-Object {
+                    $_ -is [System.Management.Automation.Language.CommandParameterAst] -and $_.ParameterName -eq 'WaitForReady'
+                }).Count | Should -Be 1 -Because "$($target.File) must subscribe before testing an event or its absence"
+            }
+        }
+    }
+}
+
 Describe 'Package-wide refusal discovery' -Tag 'Unit', 'PackageRefusal' {
     BeforeEach {
         $script:packageRoot = Join-Path $TestDrive 'selected-package'

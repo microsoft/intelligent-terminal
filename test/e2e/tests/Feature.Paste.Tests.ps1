@@ -72,9 +72,8 @@ Describe 'Feature §2 agent pane paste' -Tag 'Feature' -Skip:(-not $script:Ready
             }
             Set-WtWindowForeground -App $script:app | Out-Null
             Start-Sleep -Milliseconds 300
-            $listener = Start-WtEventListener -App $script:app
+            $listener = Start-WtEventListener -App $script:app -WaitForReady
             try {
-                Start-Sleep -Milliseconds 400
                 Send-WtWindowKey -App $script:app -Vk 0x56 -Ctrl -Shift:$Shift -RequireForeground | Out-Null
                 return Wait-WtEvent -Listener $listener -TimeoutSec 5 -Predicate {
                     $_.method -eq 'agent_paste_text' -and
