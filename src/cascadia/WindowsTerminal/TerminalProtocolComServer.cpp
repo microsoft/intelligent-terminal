@@ -7,12 +7,14 @@
 #include "WindowEmperor.h"
 #include "AppHost.h"
 #include "../TerminalApp/AgentPaneLog.h"
+#include "../inc/TmuxSshCommand.h"
 
 #include <json/json.h>
 #include <til/io.h>
 #include "../TerminalProtocol/ProtocolParsing.h"
 
 #include <algorithm>
+#include <filesystem>
 #include <thread>
 #include <vector>
 
@@ -553,6 +555,8 @@ try
         "unsubscribe",
         "send_event",
         "get_pane_context",
+        "create_tmux_window",
+        "create_tmux_ssh_window",
     };
 
     Json::Value methods(Json::arrayValue);
@@ -560,6 +564,59 @@ try
         methods.append(m);
 
     *json = _bstrFromJson(methods);
+    return S_OK;
+}
+CATCH_RETURN()
+
+STDMETHODIMP TerminalProtocolComServer::CreateTmuxWindow(BSTR commandline, BSTR workingDirectory, BSTR* resultJson)
+try
+{
+    RETURN_HR_IF_NULL(E_POINTER, resultJson);
+    *resultJson = nullptr;
+    RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
+
+    // BSTR values carry their own length: never truncate an embedded NUL before
+    // validation, even when the caller is not wtcli.
+    const std::wstring_view command{ commandline ? commandline : L"", SysStringLen(commandline) };
+    const std::wstring_view directory{ workingDirectory ? workingDirectory : L"", SysStringLen(workingDirectory) };
+    const auto validText = [](const std::wstring_view value) {
+        return value.find_first_not_of(L' ') != std::wstring_view::npos &&
+               std::none_of(value.begin(), value.end(), [](const wchar_t ch) { return ch < L' ' || ch == L'\x7f'; });
+    };
+    RETURN_HR_IF(E_INVALIDARG, !validText(command) || command.size() >= 32767 ||
+                                 !validText(directory) || directory.size() >= 32767 ||
+                                 !std::filesystem::path{ directory }.is_absolute());
+
+    // Only native window creation runs on the dispatcher. The destination
+    // page owns asynchronous backend startup and reports any protocol failure.
+    const auto windowId = s_emperor->CreateTmuxWindow(winrt::hstring{ command }, winrt::hstring{ directory }).get();
+    Json::Value result;
+    result["window_id"] = Json::UInt64{ windowId };
+    result["state"] = "starting";
+    *resultJson = _bstrFromJson(result);
+    return S_OK;
+}
+CATCH_RETURN()
+
+STDMETHODIMP TerminalProtocolComServer::CreateTmuxSshWindow(BSTR destination, BSTR session, BSTR workingDirectory, BSTR* resultJson)
+try
+{
+    RETURN_HR_IF_NULL(E_POINTER, resultJson);
+    *resultJson = nullptr;
+    RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
+
+    const std::wstring_view host{ destination ? destination : L"", SysStringLen(destination) };
+    const std::wstring_view target{ session ? session : L"", SysStringLen(session) };
+    const std::wstring_view directory{ workingDirectory ? workingDirectory : L"", SysStringLen(workingDirectory) };
+    namespace Tmux = Microsoft::Terminal::Tmux;
+    RETURN_HR_IF(E_INVALIDARG, !Tmux::IsValidSshDestination(host) || !Tmux::IsValidSshLaunchText(target) ||
+                                 !Tmux::IsValidSshLaunchText(directory) || !std::filesystem::path{ directory }.is_absolute());
+
+    const auto windowId = s_emperor->CreateTmuxSshWindow(winrt::hstring{ host }, winrt::hstring{ target }, winrt::hstring{ directory }).get();
+    Json::Value result;
+    result["window_id"] = Json::UInt64{ windowId };
+    result["state"] = "starting";
+    *resultJson = _bstrFromJson(result);
     return S_OK;
 }
 CATCH_RETURN()

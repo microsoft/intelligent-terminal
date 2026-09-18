@@ -334,4 +334,20 @@
     <value>Để có trải nghiệm quản lý phiên tốt nhất, hãy bật Sessions trong Settings &gt; Agents.</value>
     <comment>Subtle hint below the agent sessions title, shown only in session management when Sessions is off and policy permits changes. Navigation is Settings &gt; Agents, then turn on Sessions. Match the displayed labels: Settings uses SettingsMenuItem/SettingsTab, Agents uses Nav_AIAgents.Content, and Sessions uses AIAgents_SessionManagement.Header, including fallback labels where a locale has no translation. Turning Sessions off only prevents hook updates; existing hooks and session functionality can keep working. Do not imply that tracking, data refresh, or functionality stops.</comment>
   </data>
+  <data name="TmuxSessionsLabel" xml:space="preserve">
+    <value>Phiên tmux</value>
+    <comment>Tooltip and accessibility name of the window-header button that lists sessions on the current SSH host's default tmux server. Selecting a session opens a new native terminal window. {Locked="tmux"}</comment>
+  </data>
+  <data name="TmuxSessionsLoading" xml:space="preserve">
+    <value>Đang tải các phiên...</value>
+    <comment>Disabled menu item shown while the list of tmux terminal sessions is being retrieved.</comment>
+  </data>
+  <data name="TmuxSessionsEmpty" xml:space="preserve">
+    <value>Không tìm thấy phiên tmux nào.</value>
+    <comment>Disabled menu item shown when the default tmux server returns an empty session list. {Locked="tmux"}</comment>
+  </data>
+  <data name="TmuxSessionsFailed" xml:space="preserve">
+    <value>Không thể liệt kê các phiên tmux.</value>
+    <comment>Disabled menu item shown when retrieving the session list fails or times out. Reopening the menu retries the request. {Locked="tmux"}</comment>
+  </data>
 </root>

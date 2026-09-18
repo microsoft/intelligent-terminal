@@ -426,4 +426,20 @@
     <value>ਏਜੰਟ · ਕਨੈਕਟ ਹੋ ਰਿਹਾ ਹੈ</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="TmuxSessionsLabel" xml:space="preserve">
+    <value>tmux ਸੈਸ਼ਨ</value>
+    <comment>Tooltip and accessibility name of the window-header button that lists sessions on the current SSH host's default tmux server. Selecting a session opens a new native terminal window. {Locked="tmux"}</comment>
+  </data>
+  <data name="TmuxSessionsLoading" xml:space="preserve">
+    <value>ਸੈਸ਼ਨ ਲੋਡ ਹੋ ਰਹੇ ਹਨ...</value>
+    <comment>Disabled menu item shown while the list of tmux terminal sessions is being retrieved.</comment>
+  </data>
+  <data name="TmuxSessionsEmpty" xml:space="preserve">
+    <value>ਕੋਈ tmux ਸੈਸ਼ਨ ਨਹੀਂ ਮਿਲਿਆ।</value>
+    <comment>Disabled menu item shown when the default tmux server returns an empty session list. {Locked="tmux"}</comment>
+  </data>
+  <data name="TmuxSessionsFailed" xml:space="preserve">
+    <value>tmux ਸੈਸ਼ਨਾਂ ਦੀ ਸੂਚੀ ਨਹੀਂ ਬਣਾਈ ਜਾ ਸਕੀ।</value>
+    <comment>Disabled menu item shown when retrieving the session list fails or times out. Reopening the menu retries the request. {Locked="tmux"}</comment>
+  </data>
 </root>

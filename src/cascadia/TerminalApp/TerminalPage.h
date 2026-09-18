@@ -52,6 +52,7 @@ namespace winrt::Microsoft::Terminal::Settings
 namespace winrt::TerminalApp::implementation
 {
     struct TerminalSettingsCache;
+    struct TmuxController;
 
     inline constexpr uint32_t DefaultRowsToScroll{ 3 };
     inline constexpr std::wstring_view TabletInputServiceKey{ L"TabletInputService" };
@@ -166,12 +167,15 @@ namespace winrt::TerminalApp::implementation
         void SetSettings(Microsoft::Terminal::Settings::Model::CascadiaSettings settings, bool needRefreshUI);
 
         void Create();
+        void SetStartupTmux(const winrt::hstring& commandline, const winrt::hstring& workingDirectory);
+        void SetStartupTmuxSshDestination(const winrt::hstring& destination, uint16_t port = 0);
         Windows::UI::Xaml::Automation::Peers::AutomationPeer OnCreateAutomationPeer();
 
         bool ShouldImmediatelyHandoffToElevated(const Microsoft::Terminal::Settings::Model::CascadiaSettings& settings) const;
         void HandoffToElevated(const Microsoft::Terminal::Settings::Model::CascadiaSettings& settings);
 
         hstring Title();
+        winrt::hstring TmuxSessionTitle() const;
 
         void TitlebarClicked();
         void WindowVisibilityChanged(const bool showOrHide);
@@ -391,6 +395,30 @@ namespace winrt::TerminalApp::implementation
 
         std::vector<Microsoft::Terminal::Settings::Model::ActionAndArgs> _startupActions;
         winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection _startupConnection{ nullptr };
+        winrt::hstring _tmuxCommandline;
+        winrt::hstring _tmuxSessionTitle;
+        winrt::hstring _tmuxWorkingDirectory;
+        winrt::hstring _tmuxSshDestination;
+        uint16_t _tmuxSshPort = 0;
+        std::shared_ptr<TmuxController> _tmuxController;
+
+        struct TmuxBrowserContext
+        {
+            bool ssh = false;
+            winrt::hstring destination;
+            uint16_t port = 0;
+            winrt::hstring error;
+            winrt::guid paneId{};
+            bool operator==(const TmuxBrowserContext&) const = default;
+        };
+        TmuxBrowserContext _tmuxBrowserContext;
+        uint64_t _tmuxBrowserGeneration = 0;
+        winrt::Windows::Foundation::IAsyncOperation<winrt::hstring> _tmuxSessionQuery{ nullptr };
+        TmuxBrowserContext _GetTmuxBrowserContext() const;
+        void _UpdateTmuxBrowser();
+        void _CancelTmuxSessionQuery() noexcept;
+        safe_void_coroutine _LoadSshTmuxSessions(TmuxBrowserContext context, uint64_t generation);
+        void _OpenSshTmuxSession(const TmuxBrowserContext& context, const winrt::hstring& workingDirectory, uint64_t id);
 
         // Deferred startup state — when FRE is active, tab creation is
         // postponed until FRE completes so ConptyConnection picks up
@@ -1252,6 +1280,7 @@ namespace winrt::TerminalApp::implementation
 
         friend class TerminalAppLocalTests::TabTests;
         friend class TerminalAppLocalTests::SettingsTests;
+        friend struct TmuxController;
     };
 }
 

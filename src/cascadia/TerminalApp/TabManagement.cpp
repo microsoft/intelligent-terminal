@@ -10,6 +10,7 @@
 
 #include "pch.h"
 #include "TerminalPage.h"
+#include "TmuxController.h"
 #include "../inc/AgentPaneRestore.h"
 #include "Utils.h"
 #include "../../types/inc/utils.hpp"
@@ -72,6 +73,17 @@ namespace winrt::TerminalApp::implementation
     HRESULT TerminalPage::_OpenNewTab(const INewContentArgs& newContentArgs, bool openInBackground)
     try
     {
+        if (_tmuxController)
+        {
+            if (const auto args = newContentArgs.try_as<NewTerminalArgs>();
+                args && (!args.Commandline().empty() || !args.StartingDirectory().empty() ||
+                         !args.Profile().empty() || args.ProfileIndex()))
+            {
+                _tmuxController->RejectUnsupportedOperation();
+                return E_NOTIMPL;
+            }
+            return _tmuxController->NewWindow() ? S_OK : E_FAIL;
+        }
         if (const auto& newTerminalArgs{ newContentArgs.try_as<NewTerminalArgs>() })
         {
             const auto profile{ _settings.GetProfileForArgs(newTerminalArgs) };
@@ -129,6 +141,10 @@ namespace winrt::TerminalApp::implementation
 
         newTabImpl->SetDispatch(*_actionDispatch);
         newTabImpl->SetActionMap(_settings.ActionMap());
+        if (!_tmuxCommandline.empty())
+        {
+            newTabImpl->SuppressAgentPrewarm();
+        }
 
         // Give the tab its index in the _tabs vector so it can manage its own SwitchToTab command.
         _UpdateTabIndices();
@@ -369,12 +385,15 @@ namespace winrt::TerminalApp::implementation
                     CATCH_LOG()
                 }
             });
-            ShellIntegrationSweep::QueueNewTabWslInstallWork<winrt::TerminalApp::TerminalPaneContent>(
-                _settings.GlobalSettings(),
-                pane,
-                get_strong(),
-                _shellIntegrationDesiredEnabled,
-                _shellIntegrationReconcileMutex);
+            if (_tmuxCommandline.empty())
+            {
+                ShellIntegrationSweep::QueueNewTabWslInstallWork<winrt::TerminalApp::TerminalPaneContent>(
+                    _settings.GlobalSettings(),
+                    pane,
+                    get_strong(),
+                    _shellIntegrationDesiredEnabled,
+                    _shellIntegrationReconcileMutex);
+            }
             auto newTabImpl = winrt::make_self<Tab>(pane);
             if (_receivingContentTransfer)
             {
@@ -448,6 +467,11 @@ namespace winrt::TerminalApp::implementation
     // - Duplicates the current focused tab
     void TerminalPage::_DuplicateFocusedTab()
     {
+        if (_tmuxController)
+        {
+            _tmuxController->NewWindow();
+            return;
+        }
         if (const auto activeTab{ _GetFocusedTabImpl() })
         {
             _DuplicateTab(*activeTab);
@@ -722,6 +746,10 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
+        if (_tmuxController && _tmuxController->CloseTab(_GetTabImpl(tab)))
+        {
+            co_return;
+        }
         auto t = winrt::get_self<implementation::Tab>(tab);
         auto actions = t->BuildStartupActions(BuildStartupKind::None);
         _AddPreviouslyClosedPaneOrTab(std::move(actions));
@@ -866,6 +894,7 @@ namespace winrt::TerminalApp::implementation
             const auto newSelectedTab = _mruTabs.GetAt(0);
             _UpdatedSelectedTab(newSelectedTab);
             _selectedTabItem(newSelectedTab.TabViewItem());
+            _UpdateTmuxBrowser();
 
             // Flush any deferred agent settings rebuild now that a
             // terminal tab is active. Per-tab model — no shared pane
@@ -1139,6 +1168,14 @@ namespace winrt::TerminalApp::implementation
     // - pane: the pane to close.
     void TerminalPage::_HandleClosePaneRequested(std::shared_ptr<Pane> pane)
     {
+        if (_tmuxController)
+        {
+            if (!_tmuxController->ClosePane(pane))
+            {
+                _tmuxController->RejectUnsupportedOperation();
+            }
+            return;
+        }
         // Build the list of actions to recreate the closed pane,
         // BuildStartupActions returns the "first" pane and the rest of
         // its actions are assuming that first pane has been created first.
@@ -1469,6 +1506,15 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_UpdatedSelectedTab(const winrt::TerminalApp::Tab& tab)
     {
+        _UpdateTmuxBrowser();
+        if (_tmuxController)
+        {
+            if (_tmuxController->ApplyingLayout())
+            {
+                return;
+            }
+            _tmuxController->SelectTab(_GetTabImpl(tab));
+        }
         // Unfocus all the tabs.
         for (const auto& tab : _tabs)
         {

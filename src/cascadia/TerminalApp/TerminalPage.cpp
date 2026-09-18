@@ -4,6 +4,10 @@
 
 #include "pch.h"
 #include "TerminalPage.h"
+#include "TmuxController.h"
+#include "TmuxSessionMenu.h"
+#include "TmuxSessionQuery.h"
+#include "../inc/TmuxSshCommand.h"
 
 #include <iomanip>
 
@@ -260,6 +264,11 @@ namespace winrt::TerminalApp::implementation
 
     TerminalPage::~TerminalPage()
     {
+        _CancelTmuxSessionQuery();
+        if (_tmuxController)
+        {
+            _tmuxController->Stop();
+        }
         auto& sharedWta = winrt::TerminalApp::implementation::SharedWta::Instance();
         for (const auto& retirement : _pendingAgentRetirements)
         {
@@ -269,6 +278,23 @@ namespace winrt::TerminalApp::implementation
         // wta-helper processes are conpty children of TermControl and so
         // are torn down by the standard pane teardown path. No per-page
         // wta-process watch state to disarm here (removed in Phase 5).
+    }
+
+    void TerminalPage::SetStartupTmux(const hstring& commandline, const hstring& workingDirectory)
+    {
+        THROW_HR_IF(E_ILLEGAL_METHOD_CALL, _startupState != StartupState::NotInitialized);
+        THROW_HR_IF(E_INVALIDARG, commandline.empty() || workingDirectory.empty());
+        _tmuxCommandline = commandline;
+        _tmuxWorkingDirectory = workingDirectory;
+        _startupActions.clear();
+        _startupConnection = nullptr;
+    }
+
+    void TerminalPage::SetStartupTmuxSshDestination(const hstring& destination, const uint16_t port)
+    {
+        THROW_HR_IF(E_ILLEGAL_METHOD_CALL, _startupState != StartupState::NotInitialized);
+        _tmuxSshDestination = destination;
+        _tmuxSshPort = port;
     }
 
     // Method Description:
@@ -503,6 +529,11 @@ namespace winrt::TerminalApp::implementation
         // Set the initial workspace name from the window name.
         // Use raw WindowName() so unnamed windows show no text.
         _tabRow.WorkspaceName(_WindowProperties.WindowName());
+        _workspaceDropdown.MaxWidth(240);
+        const auto workspaceName = tabRowImpl->WorkspaceNameText();
+        workspaceName.MaxWidth(180);
+        workspaceName.TextTrimming(TextTrimming::CharacterEllipsis);
+        _UpdateTmuxBrowser();
 
         // Rebuild the workspace flyout each time it opens so it always
         // reflects the latest set of persisted workspaces.
@@ -510,6 +541,12 @@ namespace winrt::TerminalApp::implementation
             if (auto page{ weakThis.get() })
             {
                 page->_PopulateWorkspaceFlyout();
+            }
+        });
+        _workspaceFlyout.Closed([weakThis{ get_weak() }](auto&&, auto&&) {
+            if (const auto page = weakThis.get())
+            {
+                page->_CancelTmuxSessionQuery();
             }
         });
 
@@ -1061,7 +1098,7 @@ namespace winrt::TerminalApp::implementation
 
     bool TerminalPage::_IsFreRequired() const
     {
-        return !ApplicationState::SharedInstance().AgentFreCompleted();
+        return _tmuxCommandline.empty() && !ApplicationState::SharedInstance().AgentFreCompleted();
     }
 
     void TerminalPage::_ShowFreOverlay()
@@ -3347,6 +3384,11 @@ namespace winrt::TerminalApp::implementation
                                                         bool focusPane,
                                                         std::wstring_view initialYoloControlOwner)
     {
+        if (!_tmuxCommandline.empty())
+        {
+            LOG_HR_MSG(E_NOTIMPL, "Agent panes are not supported in tmux-managed windows");
+            return false;
+        }
         if (!tab || !tab->GetActiveTerminalControl())
         {
             return false;
@@ -4123,6 +4165,14 @@ namespace winrt::TerminalApp::implementation
     // meaningful target on a non-terminal tab anyway.
     void TerminalPage::_UpdateBottomBarVisibility()
     {
+        if (!_tmuxCommandline.empty())
+        {
+            if (const auto bar = BottomBarRoot())
+            {
+                bar.Visibility(Visibility::Collapsed);
+            }
+            return;
+        }
         const auto focusedTabImpl = _GetFocusedTabImpl();
         bool isTerminalTab = true;
         if (focusedTabImpl)
@@ -4142,6 +4192,11 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_UpdateBottomBarState()
     {
+        if (!_tmuxCommandline.empty())
+        {
+            _UpdateBottomBarVisibility();
+            return;
+        }
         // Reuse the visibility helper so the show/hide decision lives
         // in exactly one place, then bail out for non-terminal tabs
         // (Settings, etc.) — the rest of this function only updates
@@ -5173,6 +5228,13 @@ namespace winrt::TerminalApp::implementation
         if (_startupState == StartupState::NotInitialized)
         {
             _startupState = StartupState::InStartup;
+            if (!_tmuxCommandline.empty())
+            {
+                _tmuxController = std::make_shared<TmuxController>(*this);
+                _tmuxController->Start(_tmuxCommandline, _tmuxWorkingDirectory);
+                _CompleteInitialization();
+                return;
+            }
             if (_startupTransferId)
             {
                 _TryCompleteStartupTransfer();
@@ -6316,6 +6378,19 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_OpenNewTerminalViaDropdown(const NewTerminalArgs newTerminalArgs)
     {
+        if (_tmuxController)
+        {
+            const auto window = CoreWindow::GetForCurrentThread();
+            if (WI_IsFlagSet(window.GetKeyState(VirtualKey::Menu), CoreVirtualKeyStates::Down))
+            {
+                _tmuxController->Split(_GetFocusedTabImpl()->GetActivePane(), SplitDirection::Automatic, 0.5f);
+            }
+            else
+            {
+                _tmuxController->NewWindow();
+            }
+            return;
+        }
         // if alt is pressed, open a pane
         const auto window = CoreWindow::GetForCurrentThread();
         const auto rAltState = window.GetKeyState(VirtualKey::RightMenu);
@@ -9010,6 +9085,10 @@ namespace winrt::TerminalApp::implementation
                 }
                 else if (propertyName == L"Content")
                 {
+                    if (page->_tmuxController && page->_tmuxController->ApplyingLayout())
+                    {
+                        return;
+                    }
                     if (*tab == page->_GetFocusedTab())
                     {
                         const auto children = page->_tabContent.Children();
@@ -9090,6 +9169,11 @@ namespace winrt::TerminalApp::implementation
     // - true if panes were swapped.
     bool TerminalPage::_SwapPane(const FocusDirection& direction)
     {
+        if (_tmuxController)
+        {
+            _tmuxController->RejectUnsupportedOperation();
+            return false;
+        }
         if (const auto tabImpl{ _GetFocusedTabImpl() })
         {
             _UnZoomIfNeeded();
@@ -9208,6 +9292,10 @@ namespace winrt::TerminalApp::implementation
 
     WindowLayout TerminalPage::GetWindowLayout()
     {
+        if (!_tmuxCommandline.empty())
+        {
+            return nullptr;
+        }
         // This method may be called for a window even if it hasn't had a tab yet or lost all of them.
         // We shouldn't persist such windows.
         const auto tabCount = _tabs.Size();
@@ -9383,6 +9471,12 @@ namespace winrt::TerminalApp::implementation
     //   warn for the current window state, show a warning dialog.
     safe_void_coroutine TerminalPage::CloseWindow()
     {
+        if (_tmuxController)
+        {
+            _tmuxController->Stop();
+            CloseWindowRequested.raise(*this, nullptr);
+            co_return;
+        }
         // During FRE, tabs are deferred (zero tabs). No warning needed;
         // just close the window immediately.
         if (_tabs.Size() == 0)
@@ -9496,6 +9590,11 @@ namespace winrt::TerminalApp::implementation
     // - true if the pane was moved locally or a cross-window request was sent.
     bool TerminalPage::_MovePane(MovePaneArgs args)
     {
+        if (_tmuxController)
+        {
+            _tmuxController->RejectUnsupportedOperation();
+            return false;
+        }
         const auto keepAlive = get_strong();
         const auto tabIdx{ args.TabIndex() };
         const auto windowId{ args.Window() };
@@ -9712,6 +9811,11 @@ namespace winrt::TerminalApp::implementation
 
     bool TerminalPage::_MoveTab(winrt::com_ptr<Tab> tab, MoveTabArgs args)
     {
+        if (_tmuxController)
+        {
+            _tmuxController->RejectUnsupportedOperation();
+            return false;
+        }
         const auto keepAlive = get_strong();
         if (!tab)
         {
@@ -9762,6 +9866,7 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_activePaneChanged(winrt::TerminalApp::Tab sender,
                                           Windows::Foundation::IInspectable /*args*/)
     {
+        _UpdateTmuxBrowser();
         if (const auto tab{ _GetTabImpl(sender) })
         {
             // Possibly update the icon of the tab.
@@ -9798,6 +9903,11 @@ namespace winrt::TerminalApp::implementation
     //   doing something like `wt -w 0 nt`.
     bool TerminalPage::AttachContent(IVector<Settings::Model::ActionAndArgs> args, uint32_t tabIndex, uint64_t transferId)
     {
+        if (!_tmuxCommandline.empty())
+        {
+            LOG_HR_MSG(E_NOTIMPL, "Content transfers into tmux windows are not supported");
+            return false;
+        }
         if (transferId)
         {
             try
@@ -10321,6 +10431,11 @@ namespace winrt::TerminalApp::implementation
     // - <none>
     void TerminalPage::_ToggleSplitOrientation()
     {
+        if (_tmuxController)
+        {
+            _tmuxController->RejectUnsupportedOperation();
+            return;
+        }
         if (const auto tabImpl{ _GetFocusedTabImpl() })
         {
             _UnZoomIfNeeded();
@@ -10338,6 +10453,11 @@ namespace winrt::TerminalApp::implementation
     // - whether a pane was resized
     bool TerminalPage::_ResizePane(const ResizeDirection& direction)
     {
+        if (_tmuxController)
+        {
+            const auto tab = _GetFocusedTabImpl();
+            return tab && _tmuxController->ResizePane(tab->GetActivePane(), direction);
+        }
         if (const auto tabImpl{ _GetFocusedTabImpl() })
         {
             _UnZoomIfNeeded();
@@ -10383,6 +10503,10 @@ namespace winrt::TerminalApp::implementation
     // - the title of the focused control if there is one, else "Terminal"
     hstring TerminalPage::Title()
     {
+        if (!_tmuxCommandline.empty())
+        {
+            return TmuxSessionTitle();
+        }
         if (_settings.GlobalSettings().ShowTitleInTitlebar())
         {
             if (const auto tab{ _GetFocusedTab() })
@@ -10391,6 +10515,15 @@ namespace winrt::TerminalApp::implementation
             }
         }
         return { L"Terminal" };
+    }
+
+    winrt::hstring TerminalPage::TmuxSessionTitle() const
+    {
+        if (_tmuxCommandline.empty())
+        {
+            return {};
+        }
+        return _tmuxSessionTitle.empty() ? winrt::hstring{ L"tmux" } : _tmuxSessionTitle;
     }
 
     // Method Description:
@@ -11507,6 +11640,11 @@ namespace winrt::TerminalApp::implementation
                                                   TerminalConnection::ITerminalConnection existingConnection)
 
     {
+        if (!_tmuxCommandline.empty())
+        {
+            LOG_HR_MSG(E_NOTIMPL, "Local pane creation is not supported in tmux-managed windows");
+            return nullptr;
+        }
         const auto& newTerminalArgs{ contentArgs.try_as<NewTerminalArgs>() };
         if (contentArgs == nullptr || newTerminalArgs != nullptr || contentArgs.Type().empty())
         {
@@ -11600,6 +11738,11 @@ namespace winrt::TerminalApp::implementation
         const TerminalApp::TerminalPaneContent& paneContent,
         const winrt::Windows::Foundation::IInspectable&)
     {
+        if (_tmuxController)
+        {
+            _tmuxController->RejectUnsupportedOperation();
+            return;
+        }
         // Note: callers are likely passing in `nullptr` as the args here, as
         // the TermControl.RestartTerminalRequested event doesn't actually pass
         // any args upwards itself. If we ever change this, make sure you check
@@ -11752,6 +11895,7 @@ namespace winrt::TerminalApp::implementation
         {
             _tabRow.ShowWorkspacesButton(theme.Window() ? theme.Window().ShowWorkspacesButton() : true);
         }
+        _UpdateTmuxBrowser();
 
         Media::SolidColorBrush transparent{ Windows::UI::Colors::Transparent() };
         _tabView.Background(transparent);
@@ -12683,6 +12827,7 @@ namespace winrt::TerminalApp::implementation
             }
 
             _adjustProcessPriorityThrottled->Run();
+            _UpdateTmuxBrowser();
 
             if (newConnectionState == ConnectionState::Failed && !_IsMessageDismissed(InfoBarMessage::CloseOnExitInfo))
             {
@@ -13491,6 +13636,177 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    TerminalPage::TmuxBrowserContext TerminalPage::_GetTmuxBrowserContext() const
+    {
+        if (!_tmuxSshDestination.empty())
+        {
+            return { true, _tmuxSshDestination, _tmuxSshPort };
+        }
+        if (!_tmuxCommandline.empty())
+        {
+            return {};
+        }
+        const auto tab = _GetFocusedTabImpl();
+        const auto pane = _SourceTerminalPaneForTab(tab);
+        if (!pane)
+        {
+            return {};
+        }
+        const auto control = pane->GetTerminalControl();
+        const auto connection = control ? control.Connection() : nullptr;
+        if (!connection || connection.State() >= ConnectionState::Closing)
+        {
+            return {};
+        }
+        auto commandline = control.Settings().Commandline();
+        if (const auto conpty = connection.try_as<ConptyConnection>())
+        {
+            commandline = conpty.Commandline();
+        }
+        // A command override can launch a local shell using an SSH profile.
+        // Follow the running connection, not the profile's generator tag.
+        const auto source = ::Microsoft::Terminal::AgentSource::ResolveSessionsSshSource({}, commandline);
+        return {
+            source.kind != ::Microsoft::Terminal::AgentSource::SessionsSshKind::NonSsh,
+            hstring{ source.destination },
+            source.port.value_or(0),
+            hstring{ source.error },
+            pane->GetSessionId()
+        };
+    }
+
+    void TerminalPage::_CancelTmuxSessionQuery() noexcept
+    {
+        ++_tmuxBrowserGeneration;
+        if (_tmuxController)
+        {
+            _tmuxController->CancelSessionsRequest();
+        }
+        if (const auto query = std::exchange(_tmuxSessionQuery, nullptr))
+        {
+            try
+            {
+                query.Cancel();
+            }
+            CATCH_LOG();
+        }
+    }
+
+    void TerminalPage::_UpdateTmuxBrowser()
+    {
+        if (!_workspaceDropdown)
+        {
+            return;
+        }
+        const auto context = _GetTmuxBrowserContext();
+        if (context != _tmuxBrowserContext)
+        {
+            _CancelTmuxSessionQuery();
+            _tmuxBrowserContext = context;
+            _workspaceFlyout.Hide();
+        }
+        _workspaceDropdown.Visibility(context.ssh ? Visibility::Visible : Visibility::Collapsed);
+        if (context.ssh)
+        {
+            _tabRow.WorkspaceName(_tmuxSshDestination.empty() ? context.destination : TmuxSessionTitle());
+            Automation::AutomationProperties::SetName(_workspaceDropdown, RS_(L"TmuxSessionsLabel"));
+            Automation::AutomationProperties::SetAutomationId(_workspaceDropdown, L"TmuxSessionsButton");
+            ToolTipService::SetToolTip(_workspaceDropdown, box_value(RS_(L"TmuxSessionsLabel") + L"\n" + context.destination));
+        }
+        else
+        {
+            _tabRow.WorkspaceName(_WindowProperties.WindowName());
+        }
+    }
+
+    safe_void_coroutine TerminalPage::_LoadSshTmuxSessions(TmuxBrowserContext context, const uint64_t generation)
+    {
+        namespace Tmux = ::Microsoft::Terminal::Tmux;
+        const auto weak = get_weak();
+        const auto dispatcher = Dispatcher();
+        const auto menu = make_weak(_workspaceFlyout);
+        auto directory = _WindowProperties.VirtualWorkingDirectory();
+        std::vector<Tmux::SessionInfo> sessions;
+        std::optional<hstring> error;
+        SetTmuxSessionListStatus(_workspaceFlyout, RS_(L"TmuxSessionsLoading"));
+        try
+        {
+            if (directory.empty())
+            {
+                directory = hstring{ wil::GetCurrentDirectoryW<std::wstring>() };
+            }
+            auto query = Tmux::QuerySessionListAsync(hstring{ Tmux::BuildSshListCommandline(context.destination, context.port) }, directory);
+            _tmuxSessionQuery = query;
+            const auto output = co_await query;
+            sessions = Tmux::ParseSessions(to_string(output));
+        }
+        catch (const hresult_canceled&)
+        {
+            co_return;
+        }
+        catch (const hresult_error& failure)
+        {
+            LOG_HR_MSG(failure.code(), "Unable to query SSH tmux sessions");
+            error = failure.message();
+        }
+        catch (const std::exception& failure)
+        {
+            LOG_HR_MSG(E_FAIL, "Unable to query SSH tmux sessions: %hs", failure.what());
+            error = to_hstring(failure.what());
+        }
+        co_await wil::resume_foreground(dispatcher);
+        const auto page = weak.get();
+        const auto flyout = menu.get();
+        if (!page || !flyout || generation != page->_tmuxBrowserGeneration || context != page->_GetTmuxBrowserContext())
+        {
+            co_return;
+        }
+        page->_tmuxSessionQuery = nullptr;
+        if (error)
+        {
+            SetTmuxSessionListStatus(flyout, RS_(L"TmuxSessionsFailed"), *error);
+        }
+        else if (sessions.empty())
+        {
+            SetTmuxSessionListStatus(flyout, RS_(L"TmuxSessionsEmpty"));
+        }
+        else
+        {
+            SetTmuxSessionList(flyout, sessions, std::nullopt, [weak, context, directory](const Tmux::Id id) {
+                if (const auto owner = weak.get())
+                {
+                    owner->_OpenSshTmuxSession(context, directory, id);
+                }
+            });
+        }
+    }
+
+    void TerminalPage::_OpenSshTmuxSession(const TmuxBrowserContext& context, const hstring& workingDirectory, const uint64_t id)
+    {
+        if (context != _GetTmuxBrowserContext())
+        {
+            LOG_HR_MSG(E_ABORT, "The SSH source changed before opening the selected tmux session");
+            return;
+        }
+        try
+        {
+            const auto commandline = ::Microsoft::Terminal::Tmux::BuildSshCommandline(context.destination, hstring{ L"$" + std::to_wstring(id) }, context.port);
+            TerminalApp::WindowRequestedArgs request{ 0, nullptr };
+            request.TmuxCommandline(hstring{ commandline });
+            request.TmuxSshDestination(context.destination);
+            request.TmuxSshPort(context.port);
+            request.TmuxWorkingDirectory(workingDirectory);
+            RequestNewWindow.raise(*this, request);
+        }
+        catch (...)
+        {
+            const auto result = wil::ResultFromCaughtException();
+            LOG_HR_MSG(result, "Unable to open the selected SSH tmux session");
+            SetTmuxSessionListStatus(_workspaceFlyout, RS_(L"TmuxSessionsFailed"), hresult_error{ result }.message());
+            _workspaceFlyout.ShowAt(_workspaceDropdown);
+        }
+    }
+
     // Rebuild the workspace flyout contents. Called every time the flyout opens
     // so it reflects the current set of persisted workspaces.
     void TerminalPage::_PopulateWorkspaceFlyout()
@@ -13501,6 +13817,36 @@ namespace winrt::TerminalApp::implementation
         }
 
         _workspaceFlyout.Items().Clear();
+        _UpdateTmuxBrowser();
+        if (!_tmuxSshDestination.empty())
+        {
+            if (_tmuxController)
+            {
+                _tmuxController->PopulateSessionsFlyout(_workspaceFlyout);
+            }
+            else
+            {
+                MenuFlyoutItem item;
+                item.Text(RS_(L"TmuxSessionsFailed"));
+                item.IsEnabled(false);
+                _workspaceFlyout.Items().Append(item);
+            }
+            return;
+        }
+        if (_tmuxBrowserContext.ssh)
+        {
+            _CancelTmuxSessionQuery();
+            if (!_tmuxBrowserContext.error.empty())
+            {
+                LOG_HR_MSG(E_NOTIMPL, "Cannot reproduce this SSH connection for tmux session discovery");
+                SetTmuxSessionListStatus(_workspaceFlyout, RS_(L"TmuxSessionsFailed"), _tmuxBrowserContext.error);
+            }
+            else
+            {
+                _LoadSshTmuxSessions(_tmuxBrowserContext, _tmuxBrowserGeneration);
+            }
+            return;
+        }
 
         // --- "Name / Rename this window" ---
         {
@@ -13692,7 +14038,7 @@ namespace winrt::TerminalApp::implementation
 
         // Keep the workspace dropdown label in sync with the window name.
         // Use raw WindowName() so clearing the name hides the text.
-        _tabRow.WorkspaceName(_WindowProperties.WindowName());
+        _tabRow.WorkspaceName(_tmuxBrowserContext.ssh ? (_tmuxSshDestination.empty() ? _tmuxBrowserContext.destination : TmuxSessionTitle()) : _WindowProperties.WindowName());
 
         // DON'T display the confirmation if this is the name we were
         // given on startup!
@@ -13705,6 +14051,11 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_onTabDragStarting(const winrt::Microsoft::UI::Xaml::Controls::TabView&,
                                           const winrt::Microsoft::UI::Xaml::Controls::TabViewTabDragStartingEventArgs& e)
     {
+        if (!_tmuxCommandline.empty())
+        {
+            e.Cancel(true);
+            return;
+        }
         _OnTabDragStartingCore(e.Tab(), e.Data());
     }
 
@@ -13714,6 +14065,11 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_OnTabStripDragStarting(const winrt::Windows::Foundation::IInspectable&,
                                                const TerminalApp::TabStripDragStartingEventArgs& e)
     {
+        if (!_tmuxCommandline.empty())
+        {
+            e.Cancel(true);
+            return;
+        }
         if (const auto tab = e.Tab())
         {
             _OnTabDragStartingCore(tab, e.Data());
@@ -13723,6 +14079,10 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_OnTabDragStartingCore(const MUX::Controls::TabViewItem& eventTab,
                                               const winrt::Windows::ApplicationModel::DataTransfer::DataPackage& data)
     {
+        if (_tmuxController)
+        {
+            return;
+        }
         // Get the tab impl from this event.
         const auto tabBase = _GetTabByTabViewItem(eventTab);
         winrt::com_ptr<Tab> tabImpl;

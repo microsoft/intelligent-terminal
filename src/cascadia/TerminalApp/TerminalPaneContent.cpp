@@ -7,6 +7,7 @@
 #include <mmsystem.h>
 
 #include "TerminalSettingsCache.h"
+#include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 #include "../../types/inc/utils.hpp"
 
 #include "BellEventArgs.g.cpp"
@@ -22,10 +23,12 @@ namespace winrt::TerminalApp::implementation
 {
     TerminalPaneContent::TerminalPaneContent(const winrt::Microsoft::Terminal::Settings::Model::Profile& profile,
                                              const std::shared_ptr<TerminalSettingsCache>& cache,
-                                             const winrt::Microsoft::Terminal::Control::TermControl& control) :
+                                             const winrt::Microsoft::Terminal::Control::TermControl& control,
+                                             const bool externallyManaged) :
         _control{ control },
         _cache{ cache },
-        _profile{ profile }
+        _profile{ profile },
+        _externallyManaged{ externallyManaged }
     {
         _setupControlEvents();
     }
@@ -233,7 +236,7 @@ namespace winrt::TerminalApp::implementation
 
         if (_profile)
         {
-            const auto mode = _profile.CloseOnExit();
+            const auto mode = _externallyManaged ? CloseOnExitMode::Never : _profile.CloseOnExit();
 
             if (
                 // This one is obvious: If the user asked for "always" we do just that.
@@ -316,6 +319,15 @@ namespace winrt::TerminalApp::implementation
         // Reload our profile from the settings model to propagate bell mode, icon, and close on exit mode (anything that uses _profile).
         const auto profile{ settings.FindProfile(_profile.Guid()) };
         _profile = profile ? profile : settings.ProfileDefaults();
+
+        if (_externallyManaged)
+        {
+            const auto controlSettings = winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithProfile(settings, _profile);
+            controlSettings.DefaultSettings()->Padding(L"0");
+            controlSettings.DefaultSettings()->ScrollState(ScrollbarState::Hidden);
+            _control.UpdateControlSettings(*controlSettings.DefaultSettings(), controlSettings.UnfocusedSettings().try_as<IControlAppearance>());
+            return;
+        }
 
         if (const auto settings{ _cache->TryLookup(_profile) })
         {

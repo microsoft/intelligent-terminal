@@ -33,6 +33,26 @@ namespace winrt::TerminalApp::implementation
 
         std::shared_ptr<Pane> DetachRoot();
         std::shared_ptr<Pane> TakeRootForTransfer();
+
+        struct LayoutSnapshot
+        {
+            std::shared_ptr<Pane> root;
+            std::unordered_map<uint32_t, uint32_t> paneIdsByContentId;
+            std::vector<uint32_t> mruContentIds;
+            std::optional<uint32_t> activeContentId;
+            std::optional<uint32_t> zoomedContentId;
+            std::optional<uint32_t> hiddenContentId;
+        };
+
+        // Synchronous UI-thread transactions, with no content retirement.
+        // Remove Content() from its actual UI parent before TakeLayout().
+        // ApplyLayout requires an empty tab and an attached replacement tree.
+        // A failed ApplyLayout leaves the tab empty for rollback.
+        // Rollback: detach replacement trees, RestoreLayout() on each snapshot
+        // root, then ApplyLayout(snapshot.root, snapshot).
+        LayoutSnapshot TakeLayout();
+        void ApplyLayout(std::shared_ptr<Pane> root, const LayoutSnapshot& previous, std::optional<uint32_t> activeContentId = {});
+
         std::shared_ptr<Pane> DetachPane();
         std::shared_ptr<Pane> DetachPane(const std::shared_ptr<Pane>& pane);
         void AttachPane(std::shared_ptr<Pane> pane);
@@ -322,6 +342,16 @@ namespace winrt::TerminalApp::implementation
         };
         std::unordered_map<uint32_t, ContentEventTokens> _contentEvents;
 
+        struct PaneEventTokens
+        {
+            std::weak_ptr<Pane> pane;
+            winrt::event_token gotFocus;
+            winrt::event_token lostFocus;
+            winrt::event_token closed;
+            winrt::event_token detached;
+        };
+        std::unordered_map<const Pane*, PaneEventTokens> _paneEvents;
+
         winrt::event_token _rootClosedToken{};
 
         std::vector<uint32_t> _mruPanes;
@@ -339,6 +369,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::UI::Xaml::Controls::TextBox::LayoutUpdated_revoker _tabRenameBoxLayoutUpdatedRevoker;
 
         void _Setup();
+        void _DetachLayout();
 
         SafeDispatcherTimer _bellIndicatorTimer;
         void _BellIndicatorTimerTick(const Windows::Foundation::IInspectable& sender, const Windows::Foundation::IInspectable& e);
@@ -351,6 +382,7 @@ namespace winrt::TerminalApp::implementation
         void _DetachEventHandlersFromContent(const uint32_t paneId);
         void _AttachEventHandlersToContent(const uint32_t paneId, const winrt::TerminalApp::IPaneContent& content);
         void _AttachEventHandlersToPane(std::shared_ptr<Pane> pane);
+        void _DetachEventHandlersFromPane(const Pane* pane);
 
         void _UpdateActivePane(std::shared_ptr<Pane> pane);
         void _UpdateMenuItemStates();

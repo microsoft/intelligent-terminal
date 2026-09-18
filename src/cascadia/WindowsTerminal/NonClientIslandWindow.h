@@ -43,6 +43,7 @@ public:
     void OnAppInitialized() override;
     void SetContent(winrt::Windows::UI::Xaml::UIElement content) override;
     void SetTitlebarContent(winrt::Windows::UI::Xaml::UIElement content);
+    void SetTitlebarWindowLabel(const winrt::hstring& label, const winrt::hstring& command);
     void OnApplicationThemeChanged(const winrt::Windows::UI::Xaml::ElementTheme& requestedTheme) override;
 
     void SetTitlebarBackground(winrt::Windows::UI::Xaml::Media::Brush brush);

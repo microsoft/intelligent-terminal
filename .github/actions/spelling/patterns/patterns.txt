@@ -44,7 +44,7 @@ D2D
 
 # hit-count: 6 file-count: 5
 # ANSI color codes
-(?:\\(?:u00|x)1[Bb]|\\03[1-7]|\x1b|\\u\{1[Bb]\})\[(?:\d+(?:;\d+)*|)m(?=[a-z])
+(?:\\(?:u00|x)1[Bb]|\\03[1-7]|\x1b|\\u\{1[Bb]\}|`e)\[(?:\d+(?:;\d+)*|)m(?=[a-z])
 
 # profiles.schema.json
 "pattern": ".*?"
@@ -111,7 +111,7 @@ L"[0-9A-F]{4}"
 
 # hit-count: 53 file-count: 10
 # ANSI color codes
-(?:\\(?:u00|x)1[Bb]|\\03[1-7]|\x1b|\\u\{1[Bb]\})\[\d+(?:;\d+)*m
+(?:\\(?:u00|x)1[Bb]|\\03[1-7]|\x1b|\\u\{1[Bb]\}|`e)\[\d+(?:;\d+)*m
 
 # hit-count: 45 file-count: 29
 # version suffix <word>v#
@@ -353,3 +353,9 @@ env_remove\("[A-Z_]+"\)
 
 # SSH source parser fixture containing a literal quote.
 \bhost'quote\b
+
+# tmux control-mode response guards are not URL escapes.
+%(?:begin|end|error)\b
+
+# tmux capture-pane option groups, not prose.
+(?<=\bcapture-pane )-[aeCpPqJN]+\b

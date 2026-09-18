@@ -27,27 +27,41 @@
 
     <Grid.ColumnDefinitions>
         <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="Auto" />
         <ColumnDefinition Width="*" />
         <ColumnDefinition Width="Auto" />
     </Grid.ColumnDefinitions>
 
+    <Border x:Name="WindowLabelPanel"
+            Grid.Column="0"
+            MaxWidth="200"
+            Padding="8,0"
+            SizeChanged="Root_SizeChanged"
+            Visibility="Collapsed">
+        <TextBlock x:Name="WindowLabelText"
+                   VerticalAlignment="Center"
+                   FontSize="12"
+                   Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}"
+                   TextTrimming="CharacterEllipsis"
+                   TextWrapping="NoWrap" />
+    </Border>
+
     <ContentPresenter x:Name="ContentRoot"
-                      Grid.Column="0" />
+                      Grid.Column="1" />
 
     <Border x:Name="DragBar"
-            Grid.Column="1"
+            Grid.Column="2"
             MinWidth="45.0"
             DoubleTapped="DragBar_DoubleTapped" />
 
     <local:MinMaxCloseControl x:Name="MinMaxCloseControl"
-                              Grid.Column="2"
+                              Grid.Column="3"
                               HorizontalAlignment="Right" />
 
     <!--  This border needs to be added manually until GH#10320 is fixed  -->
-    <Border Grid.Column="1"
-            Grid.ColumnSpan="2"
+    <Border Grid.Column="0"
+            Grid.ColumnSpan="4"
             Height="1"
             VerticalAlignment="Bottom"
             Background="{ThemeResource CardStrokeColorDefaultBrush}" />
 </Grid>
-

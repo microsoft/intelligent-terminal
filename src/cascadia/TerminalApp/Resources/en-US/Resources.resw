@@ -1347,6 +1347,22 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Diagnostics</value>
     <comment>Tooltip for the diagnostics button when there is no active diagnostic.</comment>
   </data>
+  <data name="TmuxSessionsLabel" xml:space="preserve">
+    <value>tmux sessions</value>
+    <comment>Tooltip and accessibility name of the window-header button that lists sessions on the current SSH host's default tmux server. Selecting a session opens a new native terminal window. {Locked="tmux"}</comment>
+  </data>
+  <data name="TmuxSessionsLoading" xml:space="preserve">
+    <value>Loading sessions...</value>
+    <comment>Disabled menu item shown while the list of tmux terminal sessions is being retrieved.</comment>
+  </data>
+  <data name="TmuxSessionsEmpty" xml:space="preserve">
+    <value>No tmux sessions found.</value>
+    <comment>Disabled menu item shown when the default tmux server returns an empty session list. {Locked="tmux"}</comment>
+  </data>
+  <data name="TmuxSessionsFailed" xml:space="preserve">
+    <value>Could not list tmux sessions.</value>
+    <comment>Disabled menu item shown when retrieving the session list fails or times out. Reopening the menu retries the request. {Locked="tmux"}</comment>
+  </data>
   <data name="AgentPane_SessionsTitle" xml:space="preserve">
     <value>Agent sessions</value>
     <comment>Title shown in the agent pane title bar when the session-management view is active. In this context, agent refers to an AI agent, not a human representative.</comment>

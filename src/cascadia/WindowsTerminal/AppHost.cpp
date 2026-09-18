@@ -133,7 +133,14 @@ void AppHost::_HandleCommandlineArgs(const winrt::TerminalApp::WindowRequestedAr
     // We don't have XAML yet, but we do have other stuff.
     _windowLogic = _appLogic.CreateNewWindow();
 
-    if (const auto layout = windowArgs.PersistedLayout())
+    if (!windowArgs.TmuxCommandline().empty())
+    {
+        _windowLogic.SetStartupTmux(windowArgs.TmuxCommandline(), windowArgs.TmuxWorkingDirectory());
+        _windowLogic.TmuxSshDestination(windowArgs.TmuxSshDestination());
+        _windowLogic.TmuxSshPort(windowArgs.TmuxSshPort());
+        _launchShowWindowCommand = SW_NORMAL;
+    }
+    else if (const auto layout = windowArgs.PersistedLayout())
     {
         _windowLogic.SetPersistedLayout(layout);
         _launchShowWindowCommand = SW_NORMAL;
@@ -316,6 +323,11 @@ void AppHost::Initialize()
 
     _window->UpdateTitle(_windowLogic.Title());
 
+    if (_useNonClientArea)
+    {
+        static_cast<NonClientIslandWindow*>(_window.get())->SetTitlebarWindowLabel(_windowLogic.TmuxSshDestination().empty() ? _windowLogic.TmuxSessionTitle() : winrt::hstring{}, _windowLogic.TmuxCommandline());
+    }
+
     // Set up the content of the application. If the app has a custom titlebar,
     // set that content as well.
     _window->SetContent(_windowLogic.GetRoot());
@@ -420,6 +432,10 @@ void AppHost::_revokeWindowCallbacks()
 void AppHost::_AppTitleChanged(const winrt::Windows::Foundation::IInspectable& /*sender*/, const winrt::Windows::Foundation::IInspectable& /*args*/)
 {
     _window->UpdateTitle(_windowLogic.Title());
+    if (_useNonClientArea)
+    {
+        static_cast<NonClientIslandWindow*>(_window.get())->SetTitlebarWindowLabel(_windowLogic.TmuxSshDestination().empty() ? _windowLogic.TmuxSessionTitle() : winrt::hstring{}, _windowLogic.TmuxCommandline());
+    }
 }
 
 // The terminal page is responsible for persisting its own state, but it does

@@ -86,3 +86,37 @@ import "unknwn.idl";
                            [in] long maxCharacters,
                            [out, retval] BSTR* json);
 };
+
+// Optional extension on the same registered class. Keep the original protocol
+// interface and its vtable unchanged so older clients remain compatible.
+[
+    object,
+    uuid(76F10E43-6D63-4EB0-A860-0F5A7F291BE9),
+    pointer_default(unique)
+] interface ITerminalTmuxWindow : IUnknown
+{
+    // The commandline is an opaque Windows process commandline. The working
+    // directory is an explicit absolute Windows path, not the server's cwd.
+    // Success acknowledges window creation, not backend protocol readiness:
+    // {"window_id":<id>,"state":"starting"}.
+    HRESULT CreateTmuxWindow([in] BSTR commandline,
+                             [in] BSTR workingDirectory,
+                             [out, retval] BSTR* resultJson);
+};
+
+// Explicit SSH launches use only the destination's default tmux server. This
+// separate extension leaves the opaque-commandline interface and IID intact.
+[
+    object,
+    uuid(5855B8B7-6917-4EBD-BA32-9DC2541FC2F5),
+    pointer_default(unique)
+] interface ITerminalTmuxSshWindow : IUnknown
+{
+    // destination is an SSH alias or [user@]host; session is an exact name or
+    // stable $<digits> session ID. workingDirectory is an absolute Windows path.
+    // Success: {"window_id":<id>,"state":"starting"}, not backend readiness.
+    HRESULT CreateTmuxSshWindow([in] BSTR destination,
+                                [in] BSTR session,
+                                [in] BSTR workingDirectory,
+                                [out, retval] BSTR* resultJson);
+};

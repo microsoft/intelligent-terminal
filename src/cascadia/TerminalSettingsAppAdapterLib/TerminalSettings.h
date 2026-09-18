@@ -97,6 +97,10 @@ namespace winrt::Microsoft::Terminal::Settings
         // TerminalApp overrides these when duplicating a session
         void StartingDirectory(const hstring& startingDirectory) { _StartingDirectory = startingDirectory; }
         void Commandline(const hstring& commandline) { _Commandline = commandline; }
+        void InitialRows(int32_t rows) { _InitialRows = rows; }
+        void InitialCols(int32_t columns) { _InitialCols = columns; }
+        void Padding(const hstring& padding) { _Padding = padding; }
+        void ScrollState(Microsoft::Terminal::Control::ScrollbarState state) { _ScrollState = state; }
 
     private:
         std::optional<std::array<Microsoft::Terminal::Core::Color, COLOR_TABLE_SIZE>> _ColorTable;

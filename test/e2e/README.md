@@ -41,6 +41,8 @@ authenticated ACP agents. Current status (run on the Store package):
 | `Feature.AutofixCommandResolution.Tests.ps1` | Issue #844: Debug Dev, deterministic ACP fixture; no startup/tab-selection probes, first/later Autofix contracts without enumeration, and explicit local-candidate lookup | 3 |
 | `Feature.SessionList.Tests.ps1` | session view (button + `/sessions` slash), session states, view switching (incl. draft-preservation), focus/restore | 13 (+1 skip) |
 | `Feature.NonAsciiCwd.Tests.ps1` | issue #641: a non-ASCII starting directory survives `wtcli` argv → COM → `CreateProcessW`, so the resume launch path connects and starts in that directory | 2 |
+| `Feature.TmuxReconnect.Tests.ps1` | PR #966: physical tab clicks remain selected across SSH tmux reattachment, backend selection updates, and sibling native windows | 1 (SSH-gated) |
+| `Feature.TmuxSessionBrowser.Tests.ps1` | PR #966: ordinary SSH tab entry point, default-server session menu, stable-ID attachment after rename, independent new windows, and opaque-launch compatibility | 2 (SSH-gated) |
 | `Feature.AgentPaneCwd.Tests.ps1` | agent-pane source workspace reaches ACP `session/new` and remains stable across `/new` without a model prompt | 1 |
 | `Feature.AgentRestart.Tests.ps1` | agent restart after a settings change (/restart reconnects and answers) | 1 |
 | `Feature.ShellIntegration.Tests.ps1` | §3 shell-integration OSC 133 marks (success/failure, ParserError dedup, handled errors, WinPS 5.1 errors) + non-integrated cmd.exe safety | 6 |
@@ -112,6 +114,18 @@ results, and scoped helper logs. The fixture uses disposable command files and
 does not modify the user's PowerShell profile or consume model quota.
 
 ## What it gives you
+
+`Feature.TmuxReconnect` is opt-in: set `ITE2E_TMUX_SSH_HOST` to an SSH config
+alias with noninteractive authentication and `tmux` available. Keep the desktop
+unlocked and foregroundable. The suite uses a unique tmux socket, closes only
+its own native windows and sessions, and does not change Terminal settings.
+For feature-build verification, set `ITE2E_EXPECTED_TERMINALAPP_SHA256` to the
+SHA-256 of the built `TerminalApp.dll`; a deployed mismatch fails before testing.
+The selected Dev or Store package must support `wtcli tmux`.
+`Feature.TmuxSessionBrowser` uses the same SSH and build-hash variables. It
+creates uniquely named sessions on the default server and one isolated named
+server for the exclusion check, and removes only those sessions afterward.
+It requires the structured `wtcli tmux --ssh <alias> --session <name>` entry point.
 
 Three planes, all built on self-verifying primitives:
 

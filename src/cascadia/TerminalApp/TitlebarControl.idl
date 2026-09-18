@@ -32,6 +32,8 @@ namespace TerminalApp
         Boolean Focused { get; set; };
 
         IInspectable Content;
+        String BackendCommand;
+        String WindowLabel;
         Windows.UI.Xaml.Controls.Border DragBar { get; };
     }
 }

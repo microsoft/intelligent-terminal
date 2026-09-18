@@ -160,6 +160,13 @@
       <DependentUpon>ShortcutActionDispatch.idl</DependentUpon>
     </ClInclude>
     <ClInclude Include="DebugTapConnection.h" />
+    <ClInclude Include="TmuxController.h" />
+    <ClInclude Include="TmuxPaneConnection.h" />
+    <ClInclude Include="TmuxPaneState.h" />
+    <ClInclude Include="TmuxProcess.h" />
+    <ClInclude Include="TmuxProtocol.h" />
+    <ClInclude Include="TmuxSessionQuery.h" />
+    <ClInclude Include="TmuxSessionMenu.h" />
     <ClInclude Include="AppKeyBindings.h">
       <DependentUpon>AppKeyBindings.idl</DependentUpon>
     </ClInclude>
@@ -284,6 +291,12 @@
     <ClCompile Include="Pane.cpp" />
     <ClCompile Include="Pane.LayoutSizeNode.cpp" />
     <ClCompile Include="DebugTapConnection.cpp" />
+    <ClCompile Include="TmuxController.cpp" />
+    <ClCompile Include="TmuxPaneConnection.cpp" />
+    <ClCompile Include="TmuxProcess.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="TmuxSessionQuery.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>
     </ClCompile>
