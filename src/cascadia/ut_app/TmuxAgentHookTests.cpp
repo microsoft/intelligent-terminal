@@ -74,6 +74,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(ParsesLiteralMessageAtEveryFragmentBoundary);
         TEST_METHOD(RejectsMalformedOrUnsupportedMessages);
         TEST_METHOD(NormalizesAndRedactsNativeEnvelope);
+        TEST_METHOD(UsesOnlyControllerSshSourceAndIncludesItInTheEnvelopeBudget);
         TEST_METHOD(BoundsEntireEnvelopeIncludingTmuxMetadata);
         TEST_METHOD(ReassemblesMaximumPayloadBeforeParsingOrDecodingUtf8);
         TEST_METHOD(IsolatesInterleavedTransfersAndRejectsIdentityChanges);
@@ -166,6 +167,33 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(std::string{ "sid" }, params["agent_session_id"].asString());
         VERIFY_ARE_EQUAL(std::string{ "/repo" }, params["payload"]["cwd"].asString());
         VERIFY_IS_TRUE(params["payload"]["_truncated"].asBool());
+    }
+
+    void TmuxAgentHookTests::UsesOnlyControllerSshSourceAndIncludesItInTheEnvelopeBudget()
+    {
+        const auto hook = Receive(
+            R"({"session_id":"sid","cwd":"/repo","ssh_target":{"destination":"forged"},"sessions_ssh":{"destination":"forged"},"tmux":{"ssh_target":{"destination":"forged"}},"message":")" +
+            std::string(8100, 'x') + R"("})");
+        const auto opaque = BuildAgentHookParams(hook, "pane", "tab", "9", "work", "/socket");
+        VERIFY_IS_FALSE(opaque["tmux"].isMember("ssh_target"));
+        Json::Value target;
+        target["destination"] = "user@wsl-ubuntu";
+        target["port"] = 2222;
+        const auto params = BuildAgentHookParams(hook, "pane", "tab", "9", "work", "/socket", target);
+        VERIFY_IS_TRUE(params["tmux"]["ssh_target"] == target);
+        for (const auto* key : { "ssh_target", "sessions_ssh", "tmux" })
+        {
+            VERIFY_IS_FALSE(params["payload"].isMember(key));
+        }
+        Json::Value event;
+        event["type"] = "event";
+        event["method"] = "agent_event";
+        event["params"] = params;
+        Json::StreamWriterBuilder writer;
+        writer["indentation"] = "";
+        VERIFY_IS_TRUE(Json::writeString(writer, event).size() <= wtcli::kMaxHookEventChars);
+        VERIFY_ARE_EQUAL(std::string{ "sid" }, params["agent_session_id"].asString());
+        VERIFY_ARE_EQUAL(std::string{ "/repo" }, params["payload"]["cwd"].asString());
     }
 
     void TmuxAgentHookTests::ReassemblesMaximumPayloadBeforeParsingOrDecodingUtf8()

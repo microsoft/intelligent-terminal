@@ -143,6 +143,16 @@ tmux control connection. The user's shell and agent need not run in tmux.
 The existing focus/resume path is reused; the dedicated transport's tmux pane
 is never a focus target.
 
+Native tmux panes opened through a supported direct SSH backend join this same
+Linux session list. For example, `ssh.exe -T -o BatchMode=yes wsl-ubuntu tmux -C
+attach-session -t work` uses the `wsl-ubuntu` source: native v2 hooks and managed
+v3 hooks update the same source registry and merge with remote history by CLI
+session ID. Live rows focus the actual native pane; ended rows resume through
+the ordinary SSH CLI path. The controller derives the target from its local
+launch command, not remote hook JSON. Use the same destination/alias, user, and
+explicit port as the SSH profile. Opaque or non-SSH tmux backends retain their
+existing Host-view, focus-only behavior.
+
 See [ordinary SSH agent hooks](../../doc/specs/ordinary-ssh-agent-hooks.md)
 for the full lifecycle and [remote setup](wt-agent-hooks/tmux/README.md) for
 ownership, provider support, and runtime requirements.

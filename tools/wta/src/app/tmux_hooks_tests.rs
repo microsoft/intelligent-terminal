@@ -9,6 +9,31 @@ fn route(reg: &mut AgentSessionRegistry, params: &serde_json::Value) -> bool {
 }
 
 #[test]
+fn tmux_ssh_hooks_do_not_create_helper_local_host_duplicates() {
+    let target = crate::ssh_sessions::SshTarget::new("wsl-ubuntu", None).unwrap();
+    let mut reg = AgentSessionRegistry::new();
+    for event in [
+        "agent.session.start",
+        "agent.prompt.submit",
+        "agent.notification",
+        "agent.stop",
+        "agent.session.end",
+    ] {
+        let params = crate::tmux_hooks::tests::ssh_hook(event, PANE_A, "copilot", "same", &target);
+        assert!(!route(&mut reg, &params));
+    }
+    assert!(reg.iter_sorted().is_empty());
+    assert!(route(
+        &mut reg,
+        &hook("agent.session.start", PANE_B, "copilot", "same")
+    ));
+    assert!(matches!(
+        reg.get(&key(PANE_B, "copilot", "same")).unwrap().location,
+        SessionLocation::Tmux { .. }
+    ));
+}
+
+#[test]
 fn tmux_helper_hooks_keep_local_wsl_panes_and_providers_distinct() {
     let mut reg = AgentSessionRegistry::new();
     let mut local = hook("agent.session.start", PANE_C, "copilot", "shared");

@@ -152,6 +152,7 @@ namespace winrt::TerminalApp::implementation
         std::optional<Id> _sessionId;
         std::string _sessionName;
         std::string _socketPath;
+        Json::Value _sshTarget;
         bool _socketQuerySent = false;
         winrt::Windows::UI::Xaml::FrameworkElement::SizeChanged_revoker _sizeChanged;
         winrt::Windows::UI::Xaml::FrameworkElement::LayoutUpdated_revoker _layoutUpdated;

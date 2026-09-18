@@ -1,6 +1,7 @@
 //! Identity and metadata boundary shared by the master and helper hook routers.
 //! Remote metadata is display-only; only the controller's native pane GUID can
-//! bind or focus a session. A tmux command cannot reconstruct an SSH resume.
+//! bind or focus a session. A controller-resolved SSH target joins the existing
+//! SSH registry; opaque backends retain pane-scoped tmux identities.
 
 use crate::agent_sessions::{pane_key, CliSource, SessionLocation};
 
@@ -8,6 +9,7 @@ use crate::agent_sessions::{pane_key, CliSource, SessionLocation};
 pub(crate) struct TmuxHook {
     pub location: SessionLocation,
     pub key: Option<String>,
+    pub ssh_target: Option<crate::ssh_sessions::SshTarget>,
     pane_id: String,
     cli_source: CliSource,
 }
@@ -35,6 +37,7 @@ struct TmuxMetadata {
     pane_id: String,
     session_name: String,
     socket_path: String,
+    ssh_target: Option<crate::ssh_sessions::SshTarget>,
 }
 
 /// Call only after filtering the raw Copilot sidekick id. `None` is a normal
@@ -49,6 +52,12 @@ pub(crate) fn normalize(
     let Some(value) = params.get("tmux") else {
         return Ok(None);
     };
+    if value
+        .get("ssh_target")
+        .is_some_and(serde_json::Value::is_null)
+    {
+        return Err("invalid tmux SSH target");
+    }
     let metadata: TmuxMetadata =
         serde_json::from_value(value.clone()).map_err(|_| "invalid tmux metadata shape")?;
     let valid_id = |value: &str, prefix: char| {
@@ -115,6 +124,7 @@ pub(crate) fn normalize(
             socket_path: metadata.socket_path,
         },
         key,
+        ssh_target: metadata.ssh_target,
         pane_id,
         cli_source: cli_source.clone(),
     }))
@@ -157,6 +167,47 @@ pub(crate) mod tests {
         .unwrap()
         .key
         .unwrap()
+    }
+
+    pub fn ssh_hook(
+        event: &str,
+        pane: &str,
+        cli: &str,
+        sid: &str,
+        target: &crate::ssh_sessions::SshTarget,
+    ) -> serde_json::Value {
+        let mut params = hook(event, pane, cli, sid);
+        params["tmux"]["ssh_target"] = serde_json::to_value(target).unwrap();
+        params
+    }
+
+    #[test]
+    fn tmux_ssh_source_requires_valid_controller_metadata() {
+        let target = crate::ssh_sessions::SshTarget::new("user@ubuntu", Some(2222)).unwrap();
+        let params = ssh_hook("agent.session.start", PANE_A, "copilot", "sid", &target);
+        let normalized = normalize(&params, PANE_A, &CliSource::Copilot, "sid")
+            .unwrap()
+            .unwrap();
+        assert_eq!(normalized.ssh_target, Some(target));
+        for invalid in [
+            serde_json::Value::Null,
+            serde_json::json!("ubuntu"),
+            serde_json::json!({}),
+            serde_json::json!({"destination": "-oProxyCommand=bad"}),
+            serde_json::json!({"destination": "ubuntu", "port": 0}),
+            serde_json::json!({"destination": "ubuntu", "unexpected": true}),
+        ] {
+            let mut malformed = params.clone();
+            malformed["tmux"]["ssh_target"] = invalid;
+            assert!(normalize(&malformed, PANE_A, &CliSource::Copilot, "sid").is_err());
+        }
+        let mut remote_claim = hook("agent.session.start", PANE_A, "copilot", "sid");
+        remote_claim["payload"]["ssh_target"] = params["tmux"]["ssh_target"].clone();
+        assert!(normalize(&remote_claim, PANE_A, &CliSource::Copilot, "sid")
+            .unwrap()
+            .unwrap()
+            .ssh_target
+            .is_none());
     }
 
     #[test]

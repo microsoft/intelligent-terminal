@@ -30,6 +30,8 @@ namespace TerminalAppUnitTests
         TEST_METHOD(LeavesUnsupportedSshLaunchesUnchanged);
         TEST_METHOD(RecognizesManagedSshSessionSource);
         TEST_METHOD(RejectsMalformedManagedSshSessionSource);
+        TEST_METHOD(RecognizesTmuxSshSessionsSource);
+        TEST_METHOD(RejectsAmbiguousTmuxSshSessionsSource);
     };
 
     void AgentSourceUtilsTests::ReadEnvironmentVariableSupportsLongValues()
@@ -153,6 +155,63 @@ namespace TerminalAppUnitTests
             VERIFY_IS_TRUE(source.kind == AgentSource::SessionsSshKind::ValidTarget);
             VERIFY_ARE_EQUAL(std::wstring{ L"Production-Alias" }, source.destination);
             VERIFY_IS_FALSE(source.port.has_value());
+        }
+    }
+
+    void AgentSourceUtilsTests::RecognizesTmuxSshSessionsSource()
+    {
+        namespace AgentSource = Microsoft::Terminal::AgentSource;
+        for (const auto commandline : {
+                 L"ssh.exe -T -o BatchMode=yes wsl-ubuntu tmux -C a -t test-s",
+                 L"ssh -oBatchMode=yes -- wsl-ubuntu tmux -C new-session -A -s work",
+                 LR"(ssh.exe wsl-ubuntu "tmux -C attach-session -t work")",
+                 L"ssh wsl-ubuntu /usr/bin/tmux -C a",
+             })
+        {
+            const auto source = AgentSource::ResolveSessionsSshSource({}, commandline, AgentSource::SessionsSshCommand::Tmux);
+            VERIFY_IS_TRUE(source.kind == AgentSource::SessionsSshKind::ValidTarget);
+            VERIFY_ARE_EQUAL(std::wstring{ L"wsl-ubuntu" }, source.destination);
+            VERIFY_IS_FALSE(source.port.has_value());
+            VERIFY_IS_TRUE(AgentSource::ResolveSessionsSshSource({}, commandline).kind == AgentSource::SessionsSshKind::UnsupportedSsh,
+                           L"Ordinary SSH profiles must retain their strict remote-command boundary");
+        }
+        const auto source = AgentSource::ResolveSessionsSshSource(
+            {}, L"ssh -p2222 -l user Host-Alias tmux -C a", AgentSource::SessionsSshCommand::Tmux);
+        const auto ordinary = AgentSource::ResolveSessionsSshSource({}, L"ssh -p 2222 user@Host-Alias");
+        VERIFY_ARE_EQUAL(ordinary.destination, source.destination);
+        VERIFY_ARE_EQUAL(ordinary.port.value(), source.port.value());
+        const auto ipv6 = AgentSource::ResolveSessionsSshSource(
+            {}, L"ssh -T user@[::1] tmux -C a", AgentSource::SessionsSshCommand::Tmux);
+        VERIFY_IS_TRUE(ipv6.kind == AgentSource::SessionsSshKind::ValidTarget);
+        VERIFY_ARE_EQUAL(std::wstring{ L"user@[::1]" }, ipv6.destination);
+    }
+
+    void AgentSourceUtilsTests::RejectsAmbiguousTmuxSshSessionsSource()
+    {
+        namespace AgentSource = Microsoft::Terminal::AgentSource;
+        for (const auto commandline : {
+                 L"ssh host",
+                 L"ssh host sh -lc tmux",
+                 L"ssh host ssh other tmux -C a",
+                 L"ssh host tmux -C a ; ssh other tmux -C a",
+                 L"ssh host tmux -C a || ssh other tmux -C a",
+                 L"ssh -oHostName=other host tmux -C a",
+                 L"ssh -o User=other host tmux -C a",
+                 L"ssh -F other-config host tmux -C a",
+                 L"ssh -o",
+                 L"ssh -p0 host tmux -C a",
+                 L"ssh -l one two@host tmux -C a",
+                 L"wta ssh --destination host --remote-command tmux",
+             })
+        {
+            const auto source = AgentSource::ResolveSessionsSshSource({}, commandline, AgentSource::SessionsSshCommand::Tmux);
+            VERIFY_IS_TRUE(source.kind == AgentSource::SessionsSshKind::UnsupportedSsh);
+            VERIFY_IS_TRUE(source.destination.empty());
+        }
+        for (const auto commandline : { L"wsl.exe -- tmux -C a", L"cmd.exe /c ssh host tmux -C a", L"opaque-backend" })
+        {
+            VERIFY_IS_TRUE(AgentSource::ResolveSessionsSshSource({}, commandline, AgentSource::SessionsSshCommand::Tmux).kind ==
+                           AgentSource::SessionsSshKind::NonSsh);
         }
     }
 

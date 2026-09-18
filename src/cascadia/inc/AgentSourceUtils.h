@@ -27,6 +27,12 @@ namespace Microsoft::Terminal::AgentSource
         UnsupportedSsh,
     };
 
+    enum class SessionsSshCommand
+    {
+        Login,
+        Tmux,
+    };
+
     struct SessionsSshSource
     {
         SessionsSshKind kind{ SessionsSshKind::NonSsh };
@@ -84,7 +90,8 @@ namespace Microsoft::Terminal::AgentSource
     // its command line was customized beyond the target identity we can replay.
     inline SessionsSshSource ResolveSessionsSshSource(
         const std::wstring_view profileSource,
-        std::wstring_view commandline)
+        std::wstring_view commandline,
+        const SessionsSshCommand command = SessionsSshCommand::Login)
     {
         const bool generatedSsh = profileSource == L"Windows.Terminal.SSH";
         const auto first = commandline.find_first_not_of(L" \t");
@@ -110,6 +117,10 @@ namespace Microsoft::Terminal::AgentSource
         const bool managedSsh = argc > 1 && std::wstring_view{ argv[1] } == L"ssh" &&
                                 (til::equals_insensitive_ascii(executable, L"wta") ||
                                  til::equals_insensitive_ascii(executable, L"wta.exe"));
+        if (managedSsh && command == SessionsSshCommand::Tmux)
+        {
+            return details::UnsupportedSessionsSsh(L"A tmux backend must launch SSH directly to identify its session source.");
+        }
         if (managedSsh)
         {
             if (commandline.find(L'\0') != std::wstring_view::npos || !details::HasBalancedCommandlineQuotes(commandline))
@@ -214,6 +225,26 @@ namespace Microsoft::Terminal::AgentSource
                 requestPty = arg.back() == L't';
                 continue;
             }
+            if (command == SessionsSshCommand::Tmux && arg.starts_with(L"-o"))
+            {
+                auto value = arg.substr(2);
+                if (value.empty())
+                {
+                    if (++index == argc)
+                    {
+                        return details::UnsupportedSessionsSsh(L"The tmux SSH command is missing an option value.");
+                    }
+                    value = argv[index];
+                }
+                // BatchMode changes authentication interaction, not the source.
+                // Other -o overrides may change the target or remote context.
+                if (til::equals_insensitive_ascii(value, L"BatchMode=yes") ||
+                    til::equals_insensitive_ascii(value, L"BatchMode=no"))
+                {
+                    continue;
+                }
+                return details::UnsupportedSessionsSsh(L"The tmux SSH command has source overrides that Sessions cannot reproduce.");
+            }
             if (arg.size() < 2 || (arg[1] != L'p' && arg[1] != L'l'))
             {
                 return details::UnsupportedSessionsSsh(L"The SSH profile uses options that Sessions cannot reproduce.");
@@ -266,7 +297,27 @@ namespace Microsoft::Terminal::AgentSource
         {
             return details::UnsupportedSessionsSsh(L"The SSH profile has no destination.");
         }
-        if (index + 1 != argc)
+        if (command == SessionsSshCommand::Tmux)
+        {
+            if (index + 1 == argc)
+            {
+                return details::UnsupportedSessionsSsh(L"The SSH backend has no explicit tmux command.");
+            }
+            const std::wstring_view remote{ argv[index + 1] };
+            const auto program = remote.substr(0, remote.find_first_of(L" \t"));
+            if (program != L"tmux" && program != L"/usr/bin/tmux" && program != L"/usr/local/bin/tmux")
+            {
+                return details::UnsupportedSessionsSsh(L"The SSH backend does not launch tmux directly.");
+            }
+            for (auto remoteIndex = index + 1; remoteIndex < argc; ++remoteIndex)
+            {
+                if (std::wstring_view{ argv[remoteIndex] }.find_first_of(L"\r\n;&|`$<>\\") != std::wstring_view::npos)
+                {
+                    return details::UnsupportedSessionsSsh(L"The tmux SSH command contains shell expressions whose source cannot be determined.");
+                }
+            }
+        }
+        else if (index + 1 != argc)
         {
             return details::UnsupportedSessionsSsh(L"Remote commands in SSH profiles are not supported by Sessions.");
         }

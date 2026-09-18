@@ -2886,6 +2886,7 @@ namespace TerminalAppLocalTests
         std::vector<Json::Value> events;
         std::string nativePane;
         const std::string message = "IT_AGENT_HOOK/2 $7 %1 copilot agent.stop routed 0 1 eyJzZXNzaW9uX2lkIjoic2lkIn0=";
+        std::vector<Json::Value> closes;
         winrt::event_token token{};
         auto cleanup = wil::scope_exit([&]() {
             RunOnUIThread([&]() {
@@ -2910,15 +2911,25 @@ namespace TerminalAppLocalTests
             controller->_sessionId = 7;
             controller->_sessionName = "work";
             controller->_socketPath = "/socket";
+            controller->_sshTarget["destination"] = "wsl-ubuntu";
+            controller->_sshTarget["port"] = 2222;
             controller->_writeCommand = [](std::string) {};
             token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& json) {
                 Json::Value event;
                 Json::CharReaderBuilder builder;
                 std::string errors;
                 std::istringstream stream{ winrt::to_string(json) };
-                if (Json::parseFromStream(builder, stream, &event, &errors) && event["method"] == "agent_event")
+                if (!Json::parseFromStream(builder, stream, &event, &errors))
+                {
+                    return;
+                }
+                if (event["method"] == "agent_event")
                 {
                     events.emplace_back(event["params"]);
+                }
+                else if (event["method"] == "connection_state" && event["params"]["state"] == "closed")
+                {
+                    closes.emplace_back(event["params"]);
                 }
             });
             controller->_applyWindows(controller->_parseWindows(
@@ -2952,9 +2963,27 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(winrt::to_string(controller->_tabs.at(1)->StableId()), events.back()["tab_id"].asString());
             VERIFY_ARE_EQUAL(std::string{ "%1" }, events.back()["tmux"]["pane_id"].asString());
             VERIFY_ARE_EQUAL(std::string{ "sid" }, events.back()["agent_session_id"].asString());
+            VERIFY_ARE_EQUAL(std::string{ "wsl-ubuntu" }, events.back()["tmux"]["ssh_target"]["destination"].asString());
+            VERIFY_ARE_EQUAL(2222, events.back()["tmux"]["ssh_target"]["port"].asInt());
             controller->_sessionId = 8;
             controller->_agentHook(message);
             VERIFY_ARE_EQUAL(size_t{ 2 }, events.size());
+            const auto closeCount = [&](const std::string& paneId) {
+                return static_cast<size_t>(std::count_if(closes.begin(), closes.end(), [&](const auto& params) {
+                    return params["pane_id"] == paneId;
+                }));
+            };
+            controller->_applyWindows(controller->_parseWindows("@0 1 b25d,80x24,0,0,0 b25d,80x24,0,0,0"));
+            VERIFY_ARE_EQUAL(size_t{ 1 }, closeCount(nativePane));
+            controller->_applyWindows(controller->_parseWindows(
+                "@0 1 09f6,80x24,0,0{39x24,0,0,0,40x24,40,0,2} b25d,80x24,0,0,0"));
+            const auto hiddenPane = page->_FindSessionIdForControl(controller->_panes.at(2).control);
+            controller->Stop();
+            VERIFY_ARE_EQUAL(size_t{ 1 }, closeCount(nativePane));
+            VERIFY_ARE_EQUAL(size_t{ 1 }, closeCount(hiddenPane));
+            const auto count = closes.size();
+            controller->Stop();
+            VERIFY_ARE_EQUAL(count, closes.size());
         });
     }
 

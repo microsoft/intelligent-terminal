@@ -758,6 +758,11 @@ where
             return false;
         }
     };
+    if tmux.as_ref().is_some_and(|hook| hook.ssh_target.is_some()) {
+        // Master owns the shared SSH row and notifies its source's viewers.
+        // A helper-local tmux copy would duplicate it in the Host list.
+        return false;
+    }
     let mut key = if let Some(tmux) = &tmux {
         let bound_key = reg.key_for_pane(pane_session_id).filter(|key| {
             reg.get(key).is_some_and(|row| {

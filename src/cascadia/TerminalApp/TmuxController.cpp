@@ -7,6 +7,7 @@
 #include "TmuxPaneState.h"
 #include "TerminalPage.h"
 #include "TerminalPaneContent.h"
+#include "../inc/AgentSourceUtils.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 
 #include <charconv>
@@ -114,6 +115,19 @@ namespace winrt::TerminalApp::implementation
     {
         const auto page = _page.get();
         THROW_HR_IF(E_ABORT, !page);
+        namespace AgentSource = ::Microsoft::Terminal::AgentSource;
+        const auto sshSource = AgentSource::ResolveSessionsSshSource(
+            {}, commandline, AgentSource::SessionsSshCommand::Tmux);
+        if (sshSource.kind == AgentSource::SessionsSshKind::ValidTarget)
+        {
+            Json::Value metadata;
+            AgentSource::WriteSessionsSshMetadata(metadata, sshSource);
+            _sshTarget = std::move(metadata["sessions_ssh"]);
+        }
+        else if (sshSource.kind == AgentSource::SessionsSshKind::UnsupportedSsh)
+        {
+            LOG_HR_MSG(E_INVALIDARG, "Tmux hooks cannot use an SSH session source: %hs", winrt::to_string(sshSource.error).c_str());
+        }
         page->_tabView.CanDragTabs(false);
         page->_tabView.CanReorderTabs(false);
         const auto profile = page->_settings.GetProfileForArgs(NewTerminalArgs{});
@@ -239,6 +253,17 @@ namespace winrt::TerminalApp::implementation
         _sizeChanged.revoke();
         _layoutUpdated.revoke();
         _agentHooks.Clear();
+        if (const auto page = _page.get())
+        {
+            for (const auto& [id, view] : _panes)
+            {
+                try
+                {
+                    page->_NotifyPanesClosing(view.pane);
+                }
+                CATCH_LOG();
+            }
+        }
         _tabs.clear();
         _panes.clear();
         _diagnosticTab = nullptr;
@@ -636,7 +661,7 @@ namespace winrt::TerminalApp::implementation
                 }
             }
             const auto params = Protocol::BuildAgentHookParams(
-                *hook, paneId, tabId, std::to_string(page->_WindowProperties.WindowId()), _sessionName, _socketPath);
+                *hook, paneId, tabId, std::to_string(page->_WindowProperties.WindowId()), _sessionName, _socketPath, _sshTarget);
             page->_RaiseProtocolEvent("agent_event", params);
         }
         catch (const Protocol::ProtocolError& error)
@@ -1066,6 +1091,7 @@ namespace winrt::TerminalApp::implementation
                     std::lock_guard lock{ _streamsMutex };
                     _streams.erase(it->first);
                 }
+                page->_NotifyPanesClosing(it->second.pane);
                 it->second.pane->Shutdown();
                 it = _panes.erase(it);
             }

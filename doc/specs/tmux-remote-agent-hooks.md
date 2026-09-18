@@ -37,7 +37,9 @@ still uses local `wtcli` to connect to IT's COM event service.
 The local `wta-master` must be running, with Session Management rendered by
 `wta-helper`. Managed tmux windows currently do not create local assistant
 panes. Their sessions are visible from the ordinary Host-source Session
-Management view, subject to CLI, source, origin, and search filters.
+Management view when the backend is opaque or non-SSH. Supported direct SSH
+backends instead join that target's Linux/SSH Session Management list, alongside
+ordinary SSH sessions and remote history.
 
 ## 2. End-to-End Flow
 
@@ -71,8 +73,8 @@ flowchart TD
         COM -->|"COM OnEvent"| LISTEN
         LISTEN -->|"stdout pipe"| MASTER
         MASTER --> PLAN --> REG
-        REG -->|"sessions/changed notification"| HELPER
-        HELPER -->|"sessions/list request"| MASTER
+        REG -->|"Host or SSH source-change notification"| HELPER
+        HELPER -->|"Host or SSH registry snapshot request"| MASTER
         MASTER -->|"SessionInfo[] response"| HELPER
         HELPER --> UI
     end
@@ -316,10 +318,11 @@ The call chain in [master/mod.rs](../../tools/wta/src/master/mod.rs) is:
 ```text
 handle_master_wt_event()
   -> handle_master_agent_event()
-  -> tmux_hooks::normalize() + resolve_master_hook_key()
+  -> tmux_hooks::normalize()
+  -> ssh_sessions::tmux_hook_event() for controller-resolved SSH targets
+     or resolve_master_hook_key() for opaque/non-SSH backends
   -> plan_agent_event()
-  -> apply_master_session_event()
-  -> registry.apply_event()
+  -> source registry.apply_event()
   -> session_registry::apply_event_locked()
 ```
 
@@ -327,8 +330,22 @@ handle_master_wt_event()
 
 ### 4.1 Session Identity Ownership
 
-[tmux_hooks.rs](../../tools/wta/src/tmux_hooks.rs) establishes an isolated
-identity for each remote hook session:
+[tmux_hooks.rs](../../tools/wta/src/tmux_hooks.rs) validates optional
+`params.tmux.ssh_target` metadata supplied by the native controller. This is
+not copied from remote hook JSON. A direct SSH backend such as
+`ssh.exe -T -o BatchMode=yes wsl-ubuntu tmux -C a -t test-s` joins the existing
+`wsl-ubuntu` SSH source registry, keyed by destination/alias, user, explicit port,
+and provider. The raw agent session ID merges with remote history, preserving
+the native pane binding and live status during later title refreshes.
+
+The supported launch subset uses direct `ssh`/`ssh.exe`, `-p`/`-l`, `-t`/`-T`,
+`--`, and optional `-o BatchMode=yes|no`, followed by a direct tmux command.
+Shell wrappers, expressions, and other configuration overrides do not establish
+a replayable SSH source; they retain isolated tmux tracking with a diagnostic
+for unrepresentable direct SSH commands. Use the same SSH source spelling as
+the viewing profile; host-alias equivalence is not inferred.
+
+For opaque or non-SSH backends, normalization retains an isolated identity:
 
 ```text
 registry key = tmux namespace
@@ -435,8 +452,9 @@ a request is in flight instead of fetching a full list concurrently for each
 hook. Normal Session Management uses master snapshots; it does not consume
 raw Linux JSON directly.
 
-Helpers can also observe the same event through their own COM subscriptions,
-but only maintain their local pane/session binding mirrors. They do not
+Helpers can also observe the same event through their own COM subscriptions.
+They ignore SSH-backed tmux hooks locally and render the shared SSH snapshot;
+for opaque backends they only maintain local pane/session binding mirrors. They do not
 report the hook again. Multiple helpers observing an event therefore do not
 cause master to apply that COM event repeatedly. This is not an end-to-end
 exactly-once or replay-deduplication guarantee.
@@ -451,13 +469,19 @@ The final `status_badge()` / `badge_style()` mapping is:
 | `Idle` | Localized Idle | Soft white |
 | `Ended` / `Historical` | No live badge | Default |
 
-Selected rows and Working/Attention rows can display a source suffix such as
-`· copilot · work %1 (tmux)`. Tmux rows are visible in the default Host-source
-view; explicit WSL/SSH source views remain isolated. Live rows focus the
-stored native pane, with zoom-hidden panes requiring an unzoom first.
-Ended tmux rows do not launch a local CLI resume on Windows, because an
-opaque backend commandline cannot reliably reconstruct the remote execution
-context.
+SSH-backed tmux rows appear only in the matching Linux/SSH source view, with
+their live status and native pane binding on the same row as remote history.
+They share ordinary SSH title refresh and resume: Enter focuses a live native
+pane, or launches the remote CLI over ordinary SSH for an ended conversation.
+This does not restore the old tmux layout.
+
+Opaque/non-SSH tmux rows remain in the default Host-source view and can display
+a suffix such as `· copilot · work %1 (tmux)`. They remain isolated from explicit
+WSL/SSH views and do not launch a local CLI resume on Windows. Both kinds of live
+row focus the stored native pane, with zoom-hidden panes requiring an unzoom first.
+The controller publishes pane-close notifications before removing backend panes
+or stopping, including zoom-hidden panes, so shared SSH bindings cannot remain
+live after their native focus target disappears.
 
 ## 6. A Typical Copilot Interaction
 

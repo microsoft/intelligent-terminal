@@ -34,6 +34,11 @@ The local receivers differ: v2 is handled by C++ and published through COM,
 so `wtcli --json listen --event "agent.*"` observes it. V3 is read by the
 master-owned background SSH client and updates the existing SSH source
 registry directly; it does not appear in that COM listener.
+For native v2 backends launched directly through SSH, the controller adds its
+locally resolved SSH destination to the envelope. Master then merges those
+live sessions into the same SSH source list as ordinary v3 sessions and remote
+history. No new remote variables or hook registration are needed for this
+source association. Non-SSH or opaque backends retain the Host tmux list.
 `wta sessions list --master --ssh <target> --cli copilot --json` returns one
 current state snapshot, not an event stream. For the reasoning and diagnostic
 boundaries, see the [ordinary SSH specification](../../../../doc/specs/ordinary-ssh-agent-hooks.md).

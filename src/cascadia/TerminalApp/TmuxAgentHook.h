@@ -357,7 +357,8 @@ namespace Microsoft::Terminal::Tmux
                                             const std::string& tabId,
                                             const std::string& windowId,
                                             const std::string& sessionName,
-                                            const std::string& socketPath)
+                                            const std::string& socketPath,
+                                            const Json::Value& sshTarget = {})
     {
         Json::Value event;
         // Reuse the native bridge's redaction and wire budget, not a second
@@ -375,6 +376,12 @@ namespace Microsoft::Terminal::Tmux
         tmux["pane_id"] = "%" + std::to_string(hook.paneId);
         tmux["session_name"] = wtcli::ClampUtf8(sessionName, 512);
         tmux["socket_path"] = wtcli::ClampUtf8(socketPath, 512);
+        if (!sshTarget.isNull())
+        {
+            // Only the native launch command supplies this identity. Remote
+            // hook JSON is projected separately and cannot override it.
+            tmux["ssh_target"] = sshTarget;
+        }
 
         Json::StreamWriterBuilder writer;
         writer["indentation"] = "";

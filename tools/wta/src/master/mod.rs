@@ -8211,6 +8211,24 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
             return;
         }
     };
+    if let Some(target) = tmux.as_ref().and_then(|hook| hook.ssh_target.as_ref()) {
+        let hook = crate::ssh_hook_protocol::HookEvent {
+            cli_source: params["cli_source"]
+                .as_str()
+                .unwrap_or("")
+                .to_ascii_lowercase(),
+            event: event.to_owned(),
+            raw_session_id: asid.to_owned(),
+            payload: params
+                .get("payload")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null),
+        };
+        if let Err(error) = ssh_sessions::tmux_hook_event(state, target, pane_id, hook).await {
+            tracing::warn!(target: "master_wt_event", ?error, "SSH-backed tmux hook could not update its source registry");
+        }
+        return;
+    }
     let Some((key, session_known)) =
         resolve_master_hook_key(state, asid, pane_id, &cli_source, event, tmux.as_ref()).await
     else {

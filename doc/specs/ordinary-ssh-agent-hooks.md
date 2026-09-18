@@ -180,6 +180,22 @@ then follows the shared hook plan and registry reducer. Source-specific
 `_intellterm.wta/ssh_sessions/changed` notifications refresh the existing
 Session Management view.
 
+Native tmux v2 hooks also update this registry when the controller resolved an
+SSH target from its local backend launch command. The COM envelope includes
+that target separately from the projected remote payload. Master preserves the
+raw agent session ID, so an existing Historical row becomes the live tmux row
+instead of creating a second Host entry. Destination/alias, user, explicit
+port, and provider remain source boundaries; aliases are not guessed to be the
+same machine. Native pane UUID ownership is distinct from v3 connection-route
+ownership, including stale-event protection after an SSH resume.
+
+These rows share the same title refresh, source notifications, and native
+focus/resume behavior as ordinary SSH sessions. Closing the native pane ends
+its binding; resuming an ended conversation launches the agent over ordinary
+SSH rather than recreating the tmux layout. Native v2 still travels through
+C++/COM and remains visible to `wtcli listen`. Backends without a supported SSH
+identity keep the original isolated tmux behavior.
+
 Hooks provide activity and lifetime, not the agent's generated conversation
 title. New rows initially use the working directory's basename as a placeholder.
 While an SSH Session Management view is open, its five-second poll returns the

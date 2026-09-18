@@ -66,14 +66,20 @@ struct SourceMetadata {
     listed_ids: HashSet<acp::schema::v1::SessionId>,
     outstanding_creates: usize,
     early_closes: HashSet<uuid::Uuid>,
-    hook_keys: HashMap<(RouteId, String), acp::schema::v1::SessionId>,
+    hook_keys: HashMap<(HookRoute, String), acp::schema::v1::SessionId>,
     raw_ids: HashMap<acp::schema::v1::SessionId, String>,
-    row_routes: HashMap<acp::schema::v1::SessionId, RouteId>,
+    row_routes: HashMap<acp::schema::v1::SessionId, HookRoute>,
     pending_hooks: VecDeque<PendingHook>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum HookRoute {
+    ManagedSsh(RouteId),
+    NativeTmux(uuid::Uuid),
+}
+
 struct PendingHook {
-    route: RouteId,
+    route: HookRoute,
     pane: String,
     event: HookEvent,
 }
@@ -553,6 +559,38 @@ pub(super) async fn hook_event(
     pane: &str,
     event: HookEvent,
 ) -> acp::Result<()> {
+    routed_hook_event(state, target, HookRoute::ManagedSsh(route), pane, event).await
+}
+
+/// The native controller supplies both the SSH target and pane identity after
+/// validating a v2 frame. Its pane lifetime is separate from managed SSH routes.
+pub(super) async fn tmux_hook_event(
+    state: &MasterStateInner,
+    target: &crate::ssh_sessions::SshTarget,
+    pane: &str,
+    event: HookEvent,
+) -> acp::Result<()> {
+    if !state.ssh_hooks.enabled() {
+        return Ok(());
+    }
+    let pane_id = uuid::Uuid::parse_str(pane)
+        .context("Native tmux hook has an invalid pane UUID")
+        .map_err(request_error)?;
+    if pane_id.is_nil() {
+        return Err(request_error(anyhow!(
+            "Native tmux hook has a nil pane UUID"
+        )));
+    }
+    routed_hook_event(state, target, HookRoute::NativeTmux(pane_id), pane, event).await
+}
+
+async fn routed_hook_event(
+    state: &MasterStateInner,
+    target: &crate::ssh_sessions::SshTarget,
+    route: HookRoute,
+    pane: &str,
+    event: HookEvent,
+) -> acp::Result<()> {
     let source = Source {
         target: target.clone(),
         agent_id: event.cli_source.clone(),
@@ -672,7 +710,11 @@ async fn apply_hook_locked(
         }) {
             // Registry IDs may appear in diagnostics. Do not embed the route
             // token itself in a collision key that leaves this ownership map.
-            let identity = format!("{}:{}:{}:{}", hook.route, hook.pane, raw.len(), raw);
+            let route_identity = match hook.route {
+                HookRoute::ManagedSsh(route) => format!("ssh:{route}"),
+                HookRoute::NativeTmux(pane) => format!("tmux:{pane}"),
+            };
+            let identity = format!("{route_identity}:{}:{}:{}", hook.pane, raw.len(), raw);
             acp::schema::v1::SessionId::new(format!(
                 "ssh-hook:{:x}",
                 Sha256::digest(identity.as_bytes())
@@ -709,7 +751,12 @@ async fn apply_hook_locked(
         return false;
     }
     let mut updated = false;
-    for event in plan.events {
+    for mut event in plan.events {
+        if let SessionEvent::SessionStarted { title, .. } = &mut event {
+            if known.is_some_and(|row| !crate::session_registry::title_is_synthetic(row)) {
+                title.clear();
+            }
+        }
         updated |= scoped.registry.apply_event(event).await;
     }
     if scoped.registry.lookup(&sid).await.is_some() {
