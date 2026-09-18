@@ -1,0 +1,883 @@
+
+
+                          
+
+
+
+
+
+
+
+
+
+
+
+<!DOCTYPE html>
+<html data-placeholder-focus="false" data-placeholder-live="true">
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+		<title>Order Checkout | AKC Reunite</title>
+		<meta name="description" content="AKC Reunite Order Checkout">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<meta name="generator" content="Webflow">
+		<meta charset="UTF-8">
+		
+                          
+
+
+
+
+
+
+
+
+<script>			
+	
+	// Init top-level namespace.
+	var AKCCARPub = {}; 
+
+</script>	
+		
+                          
+
+
+
+
+
+
+
+
+<!--  OneTrust Cookies Consent Notice start for akcreunite.org -->
+<script type="text/javascript" src="https://cdn.cookielaw.org/consent/01905af6-9f6a-7dac-a08f-ac8fe94a5f4b/OtAutoBlock.js"></script>
+<script src="https://cdn.cookielaw.org/scripttemplates/otSDKStub.js" type="text/javascript" charset="UTF-8" data-domain-script="01905af6-9f6a-7dac-a08f-ac8fe94a5f4b"></script>
+<script type="text/javascript">
+    function OptanonWrapper() {}
+</script>
+<!--  OneTrust Cookies Consent Notice start for akcreunite.org -->
+
+<!-- Separate initial definition of objects -->
+<script type="text/javascript">
+    window.AKCCARPub = window.AKCCARPub || {};
+    window.AKCCARPub.GA = window.AKCCARPub.GA || {};
+    window.dataLayer = window.dataLayer || [];
+
+    AKCCARPub.GA.sendEvent = function(eventDesc) {
+        if (AKCCARPub.googleAnalyticsTrackingId) {
+            try {
+                window.dataLayer.push({
+                    'event': 'GAEvent',
+                    'event_action': eventDesc.event_action,
+                    'eventData': eventDesc
+                });
+            } catch (exception) {
+                console.error('GAEvent Error:', exception);
+            }
+        }
+    };
+
+    AKCCARPub.GA.createHitCallback = function(callback, timeoutMS) {
+        var called = false;
+        function fn() {
+            if (!called) {
+                called = true;
+                callback();
+            }
+        }
+        setTimeout(fn, timeoutMS || 1000);
+        return fn;
+    };
+
+    // Define GA Categories
+    AKCCARPub.GA.RecoveryCategory = 'Recovery';
+	AKCCARPub.GA.HubCategory = 'HUB';
+	AKCCARPub.GA.IndCategory = 'Individual';
+	AKCCARPub.GA.MicrochipStoreCategory = 'Microchip Store';
+	AKCCARPub.GA.ORSCategory = 'ors';
+	AKCCARPub.GA.Common = 'Common';
+	AKCCARPub.GA.VetData = 'VetData';
+	AKCCARPub.GA.PetProtectionPlanCategory = 'Backup Plan';
+
+	window.dataLayer.push({
+		'GA_RecoveryCategory': AKCCARPub.GA.RecoveryCategory,
+		'GA_HubCategory': AKCCARPub.GA.HubCategory,
+		'GA_IndCategory': AKCCARPub.GA.IndCategory,
+		'GA_MicrochipStoreCategory': AKCCARPub.GA.MicrochipStoreCategory,
+		'GA_ORSCategory': AKCCARPub.GA.ORSCategory,
+		'GA_Common': AKCCARPub.GA.Common,
+		'GA_VetData': AKCCARPub.GA.VetData,
+		'GA_PetProtectionPlanCategory': AKCCARPub.GA.PetProtectionPlanCategory
+	});
+</script>
+
+<!-- Google Analytics (Consent Managed) -->
+<script type="text/plain" class="optanon-category-C0002">
+    (function() {
+        AKCCARPub.googleAnalyticsTrackingId = 'G-CD6P9WR85J';
+        AKCCARPub.googleAdWordsConversionId = 'AW-961695033';
+
+        if (AKCCARPub.googleAnalyticsTrackingId && AKCCARPub.googleAdWordsConversionId) {
+            window.dataLayer.push({
+                'event': 'googleAnalyticsTracking',
+                'googleAnalyticsTrackingId': AKCCARPub.googleAnalyticsTrackingId,
+                'adwordsConversionId': AKCCARPub.googleAdWordsConversionId
+            });
+        } else {
+            console.warn('Tracking ID(s) are missing.');
+        }
+
+        
+    })();
+</script>
+
+<!-- Google Tag Manager (Consent Managed) -->
+<script type="text/plain" class="optanon-category-C0002">
+    (function(w,d,s,l,i){
+        w[l]=w[l]||[];
+        w[l].push({'gtm.start': new Date().getTime(), event:'gtm.js'});
+        var f=d.getElementsByTagName(s)[0],
+            j=d.createElement(s), dl=l!='dataLayer'?'&l='+l:'';
+        j.async=true;
+        j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;
+        f.parentNode.insertBefore(j,f);
+    })(window,document,'script','dataLayer','GTM-KF9NDSV');
+</script>
+<!-- End Google Tag Manager -->
+
+<!-- MailChimp Tracking -->
+
+<script type="text/plain" class="optanon-category-C0002">
+    try {
+        AKCCARPub.mailchimpEventName ='mailchimpTracking';
+        AKCCARPub.mailChimpAccountId = 'dd1d2f3811b7842ca2d564c7b';
+        window.dataLayer.push({
+            'event': AKCCARPub.mailchimpEventName,
+            'mailChimpAccountId': AKCCARPub.mailChimpAccountId
+        });
+    } catch (e) {
+        console.error('MailChimp Tracking Error:', e);
+    }
+</script>
+
+
+<!-- Bing Analytics Tracking -->
+
+<script type="text/plain" class="optanon-category-C0002">
+    try {
+        AKCCARPub.bingAccountId = '6003108';
+        window.dataLayer.push({
+            'event': 'bingTracking',
+            'bingAccountId': AKCCARPub.bingAccountId
+        });
+		
+		
+    } catch (e) {
+        console.error('Bing Tracking Error:', e);
+    }
+</script>
+
+
+<!-- Google Tag Manager (noscript) -->
+<noscript>
+    <iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KF9NDSV" height="0" width="0" style="display:none;visibility:hidden"></iframe>
+</noscript>
+<!-- End Google Tag Manager (noscript) -->
+		<link rel="stylesheet" type="text/css" media="screen,print" href="/cares-pub/gzip_1225268912/bundles/ind.css" >
+
+		<script type="text/javascript" src="/cares-pub/gzip_N1865447640/bundles/head.js" ></script>
+
+		<link rel="shortcut icon" href="/cares-pub/images/RE-Favicon.ico">
+		<noscript>
+			<style type="text/css">
+				#indMainLayout {display : none;}
+			</style>
+		</noscript>
+	</head>
+
+	<body>
+		<noscript>
+			<div style="height: 400px;">
+				<a class="w-inline-block" href="https://www.akcreunite.org">
+					<img class="akc-reunite-logo" src="/cares-pub/images/AKC-Reunite-Standard-Logo-No-Tagline-290x140.jpg" width="130" alt="AKC Reunite Logo" />
+				</a>	
+				
+				<h3 style="text-align: center;">
+					This application requires your internet browser have JavaScript enabled.
+				</h3>
+			</div>
+		</noscript>
+		
+		<div id="indMainLayout">	
+			
+			<!-- Header -->
+			
+                          
+
+
+
+
+
+
+
+
+<div class="w-section top-section"></div>
+<div class="w-nav navbar" id="top" data-collapse="medium" data-animation="default" data-duration="400" data-contain="1">
+	
+	<div id="submitOverlay" class="submitOverlay"></div>
+	<div id="spinnerContainer" class="spinnerContainer"></div>
+	
+	<div class="w-container nav-container">
+		<nav class="w-nav-menu nav-link-container" role="navigation">
+			<a class="w-inline-block akc-reunite-homepage" href="https://www.akcreunite.org">
+				<img class="w-hidden-medium w-hidden-small w-hidden-tiny akc-reunite-logo" src="/cares-pub/images/AKC-Reunite-Standard-Logo-No-Tagline-290x140.jpg" width="145" alt="AKC Reunite Logo">
+			</a>
+			<a class="w-nav-link nav-link" href="/cares-pub/ind/individualEnrollment.car">ENROLL</a>
+			<a class="w-nav-link nav-link" href="/cares-pub/ind/replacementTagOrderEnrollmentSearch.car">VISUAL PET ID</a>
+			<a class="w-nav-link nav-link" href="/cares-pub/ind/addOnServiceEnrollmentSearch.car">EXTRA PET PROTECTION</a>
+			<a class="w-nav-link nav-link" href="/cares-pub/customer/priv/customerHome.car">ONLINE RECORDS SYSTEM</a>
+    	</nav>
+		<div class="w-nav-button menu-button">
+      		<div class="w-icon-nav-menu menu-icon"></div>
+    	</div>
+
+		<div class="shopping-cart" title="Online Enrollment Cart">
+			<a href="/cares-pub/ind/order.car"><img class="shopping-cart-image" src="/cares-pub/images/2015/09/empty-cart-dark.jpg" alt="Shopping Cart"/></a>
+			<div class="shopping-cart-info"><a class="shopping-cart-item-count" href="/cares-pub/ind/order.car">&nbsp;</a></div>
+		</div>
+
+		<a class="w-inline-block akc-reunite-homepage" href="https://www.akcreunite.org">
+			<img class="w-hidden-main akc-reunite-logo w-hidden-tiny mobile-view" src="/cares-pub/images/AKC-Reunite-Standard-Logo-No-Tagline-290x140.jpg" width="130" alt="AKC Reunite Logo" />
+			<img class="w-hidden-main w-hidden-medium w-hidden-small akc-reunite-logo mobile-view" src="/cares-pub/images/AKC-Reunite-Standard-Logo-No-Tagline-290x140.jpg" width="100" alt="AKC Reunite Logo" />
+		</a>	
+  	</div>
+
+</div>
+<div data-user-managed-content-id="IndAlerts"></div>
+
+
+  	
+
+						
+			<!-- Content -->
+			
+                          
+
+
+
+
+
+
+
+
+
+
+
+
+<script type="text/x-handlebars-template" id="formErrorsListTemplate">
+	<ul>
+		{{#each globalErrors}}
+		<li>{{{this.msg}}}</li>											
+		{{/each}}
+		{{#each fieldErrors}}
+		<li>{{{this.msg}}}</li>											
+		{{/each}}
+	</ul>
+</script>	
+
+
+
+
+
+
+
+<script type="text/x-handlebars-template" id="confirmCouponAppliedDialogTemplate">
+	<div>
+		<h5 class="primary-subheader">ORDER CHECKOUT</h5>
+		<div class="plain-text" style="font-size: 14px important!">{{this}}</div>
+		<div class="w-clearfix" style="text-align : center !important; margin-top: 15px;">
+			<a id="okButton" class="primary-button" href="#" style="float: none !important; color: white !important;">OK</a>
+		</div>
+	</div>
+</script>
+
+
+<script type="text/x-handlebars-template"
+	id="contactSearchResultsTemplate">
+	{{#each associates}}
+		<div class="w-radio radio-button-fields" style="margin-top : 10px;">
+			<input class="w-radio-input" type="radio" id="matchingContact{{this.id}}" 
+           	   	   name="selectedAssociateId" value="{{this.id}}" />
+			<label class="w-form-label" for="matchingContact{{this.id}}">
+			{{this.name}}&nbsp;-&nbsp; 
+			{{#if this.address }}
+				{{this.address.city}}, {{this.address.state}} {{this.address.country}} 
+			{{/if}}
+			</label>
+		</div>
+	{{/each}}
+</script>
+
+<div id="contactSearchResultsDialog" style="display: none;">
+	<h5 class="primary-subheader">MATCHING CONTACT FOUND</h5>
+	<div class="plain-text" style="font-size: 14px important!">We
+		found the following contacts matching the phone number you entered.
+		Select and confirm a contact or cancel to continue :</div>
+	<div class="contactList"></div>
+	<div class="w-clearfix">
+		<a class="primary-button right-justified" href="#">CONFIRM</a> <a
+			class="close-modal" href="#">CANCEL</a>
+	</div>
+</div>
+
+<div class="w-section sparkle-background">
+	<div class="w-container">
+		<div class="w-clearfix sparkle-background-header-div">
+			<h1 class="sparkle-background-header">CHECKOUT</h1>
+		</div>
+	</div>
+</div>
+
+<div class="w-container checkout-process-container">
+
+	
+		
+		
+		
+			<form id="orderCheckoutForm" class="w-clearfix" action="/cares-pub/ind/orderCheckout.car" method="post">
+
+				<div class="checkout-process-outer-div">
+
+					<div class="checkout-process-header">
+						<h3 class="h3-header enrollment-process-header">SELECT ORDER
+							SOURCE</h3>
+					</div>
+
+					<div class="checkout-process-inside-div-block-form pet-id">
+
+						<input type="hidden" id="orderId" value="11323349" />
+
+						<div class="plain-text left-justified top-and-bottom-padding"
+							style="padding-left: 10px;">Please select the individual,
+							vet, shelter or business entering this order or create a new
+							order source.</div>
+
+						<div class="formErrors"></div>
+
+						<div id="orderSourcesContainer">
+
+							<div id="existingOrderSourcesContainer">
+								
+									
+
+
+
+
+
+<div class="default-primary-contact-div">
+	
+	<div class="w-row">
+    	<div class="w-col w-col-6">
+			<div class="w-radio w-clearfix" style="padding-top: 20px;">
+				
+				<input type="radio" name="selectedAssociateId" required="required" id="14744318AssociateSelected" 
+				       class="w-radio-input" value="14744318" 
+				       data-billing-street="6370 San Ignacio Ave # D6"
+				       data-billing-city="San Jose"
+				       data-billing-state="CA" 
+				       data-billing-postal-code="95119"
+				       data-billing-country="USA" />
+				       
+  				<label class="w-form-label header-text default-vet-clinic-header" for="14744318AssociateSelected">
+  					&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Jazmyne Marrujo
+  				</label>
+  				
+			</div>
+		</div>
+		<div class="w-col w-col-6">
+     		<div class="w-clearfix div-block-bottom-margin">
+   				<div class="plain-text left-justified contact-info">			
+					        
+
+                          
+
+
+
+	<div style="margin: 0;">
+		6370 San Ignacio Ave # D6<br/>
+		
+		
+			
+				San Jose, CA 95119
+			
+			
+			
+			
+		
+	</div>		 
+	
+
+
+
+					
+  
+
+
+
+
+	
+	415-484-3537 <span style="font-weight:bold">(Primary)</span>
+
+	<br/>
+	408-569-4325 <span style="font-weight:bold">(Alternate)</span>
+
+
+<br/>
+ 				</div>
+			</div>		 
+		</div>
+	</div>
+	
+</div>
+
+								
+							</div>
+
+							<div class="default-primary-contact-div"
+								style="border: none; padding-top: 20px;">
+								<div class="w-row">
+									<div class="w-col w-col-6">
+										<div class="w-radio w-clearfix">
+											<input id="newAssociateSelected" name="selectedAssociateId" class="w-radio-input" data-billing-country="USA" required="required" type="radio" value="-1"/>
+
+											<label
+												class="w-form-label header-text default-vet-clinic-header"
+												for="newAssociateSelected">
+												&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;New Order Source </label>
+										</div>
+									</div>
+									<div class="w-col w-col-6">
+										<div class="w-clearfix div-block-bottom-margin">
+											<div class="plain-text left-justified contact-info">
+												Create a new order source.</div>
+										</div>
+									</div>
+								</div>
+							</div>
+
+						</div>
+
+						<div class="order-source-information"
+							id="newAssociateFormContainer"
+							style="display: none;">
+
+							<div class="plain-text left-justified top-and-bottom-padding">
+								Please fill out form to create a new order source.</div>
+
+							<!-- Primary Phone -->
+							<div class="w-row">
+								<div class="w-col w-col-4">
+									<label class="form-field-label"
+										for="orderSourcePrimaryPhoneDigits"> Primary Phone <span
+										class="form-field-label-required">(required)</span>
+									</label>
+									<input id="orderSourcePrimaryPhoneDigits" name="newAssociate.primaryPhone.digits" class="w-input" placeholder="XXX-XXX-XXXX" required="required" type="text" value="" maxlength="14"/>
+								</div>
+								<div class="w-col w-col-2">
+									<label class="form-field-label"
+										for="orderSource.primaryPhone.ext">Ext.</label>
+									<input id="orderSource.primaryPhone.ext" name="newAssociate.primaryPhone.ext" class="w-input" type="text" value="" maxlength="6"/>
+								</div>
+								<div class="w-col w-col-6">
+									<label class="form-field-label" for="Country-7">
+										Country </label>
+									<select id="orderSource.primaryPhone.country" name="newAssociate.primaryPhone.country" class="w-select">
+										<option value="">Select one...</option>
+										<option value="DZA">Algeria</option><option value="AND">Andorra</option><option value="ATG">Antigua and Barbuda</option><option value="ANT">Antilles</option><option value="ARG">Argentina</option><option value="ABW">Aruba</option><option value="AUS">Australia</option><option value="AUT">Austria</option><option value="BHS">Bahamas</option><option value="BHR">Bahrain</option><option value="BGD">Bangladesh</option><option value="BRB">Barbados</option><option value="BLR">Belarus</option><option value="BEL">Belgium</option><option value="BLZ">Belize</option><option value="BMU">Bermuda</option><option value="BOL">Bolivia (Plurinational State of)</option><option value="BIH">Bosnia and Herzegovina</option><option value="BWA">Botswana</option><option value="BRA">Brazil</option><option value="BRN">Brunei Darussalam</option><option value="BGR">Bulgaria</option><option value="CAN">Canada</option><option value="CYM">Cayman Islands</option><option value="CHL">Chile</option><option value="CHN">China</option><option value="COL">Colombia</option><option value="CRI">Costa Rica</option><option value="HRV">Croatia</option><option value="CUB">Cuba</option><option value="CYP">Cyprus</option><option value="CZE">Czechia</option><option value="DNK">Denmark</option><option value="DOM">Dominican Republic</option><option value="ECU">Ecuador</option><option value="EGY">Egypt</option><option value="SLV">El Salvador</option><option value="EST">Estonia</option><option value="ETH">Ethiopia</option><option value="FJI">Fiji</option><option value="FIN">Finland</option><option value="FRA">France</option><option value="PYF">French Polynesia</option><option value="GAB">Gabon</option><option value="GEO">Georgia</option><option value="DEU">Germany</option><option value="GRC">Greece</option><option value="GRD">Grenada</option><option value="GTM">Guatemala</option><option value="GUY">Guyana</option><option value="HTI">Haiti</option><option value="HND">Honduras</option><option value="HKG">Hong Kong</option><option value="HUN">Hungary</option><option value="ISL">Iceland</option><option value="IND">India</option><option value="IDN">Indonesia</option><option value="IRN">Iran (Islamic Republic of)</option><option value="IRQ">Iraq</option><option value="IRL">Ireland</option><option value="ISR">Israel</option><option value="ITA">Italy</option><option value="JAM">Jamacia</option><option value="JPN">Japan</option><option value="JOR">Jordan</option><option value="KEN">Kenya</option><option value="PRK">Korea (Democratic People&#39;s Republic of)</option><option value="KOR">Korea (Republic of)</option><option value="KWT">Kuwait</option><option value="LVA">Latvia</option><option value="LBN">Lebanon</option><option value="LTU">Lithuania</option><option value="LUX">Luxembourg</option><option value="MAC">Macao</option><option value="MKD">Macedonia (the former Yugoslav Republic of) </option><option value="MDG">Madagascar</option><option value="MYS">Malaysia</option><option value="MLT">Malta</option><option value="MUS">Mauritius</option><option value="MEX">Mexico</option><option value="MDA">Moldova (Republic of)</option><option value="MCO">Monaco</option><option value="MNG">Mongolia</option><option value="MAR">Morocco</option><option value="NAM">Namibia</option><option value="NPL">Nepal</option><option value="NLD">Netherlands</option><option value="NZL">New Zealand</option><option value="NIC">Nicaragua</option><option value="NGA">Nigeria</option><option value="NOR">Norway</option><option value="OMN">Oman</option><option value="PAK">Pakistan</option><option value="PLW">Palau</option><option value="PAN">Panama</option><option value="PRY">Paraguay</option><option value="PER">Peru</option><option value="PHL">Philippines</option><option value="POL">Poland</option><option value="PRT">Portugal</option><option value="QAT">Qatar</option><option value="ROU">Romania</option><option value="RUS">Russian Federation</option><option value="KNA">Saint Kitts and Nevis</option><option value="SMR">San Marino</option><option value="SAU">Saudi Arabia</option><option value="SRB">Serbia</option><option value="SGP">Singapore</option><option value="SVK">Slovakia</option><option value="SVN">Slovenia</option><option value="ZAF">South Africa</option><option value="ESP">Spain</option><option value="LKA">Sri Lanka</option><option value="SUR">Suriname</option><option value="SWE">Sweden</option><option value="CHE">Switzerland</option><option value="TWN">Taiwan, Province of China</option><option value="TZA">Tanzania, United Republic of</option><option value="THA">Thailand</option><option value="TTO">Trinidad and Tobago</option><option value="TUR">Turkey</option><option value="TCA">Turks and Caicos Islands</option><option value="UKR">Ukraine</option><option value="ARE">United Arab Emirates</option><option value="GBR">United Kingdom</option><option value="USA" selected="selected">United States</option><option value="URY">Uruguay</option><option value="VEN">Venezuela (Bolivarian Republic of)</option><option value="VNM">Viet Nam</option><option value="VGB">Virgin Islands (British)</option><option value="YEM">Yemen</option><option value="ZWE">Zimbabwe</option>
+									</select>
+								</div>
+							</div>
+
+							<!-- First Name / Last Name -->
+							<div class="w-row">
+								<div class="w-col w-col-6">
+									<label class="form-field-label" for="orderSource.firstName">
+										First Name <span class="form-field-label-required">(required)</span>
+									</label>
+									<input id="orderSource.firstName" name="newAssociate.firstName" class="w-input" required="required" type="text" value="" maxlength="32"/>
+								</div>
+								<div class="w-col w-col-6">
+									<label class="form-field-label" for="orderSource.lastName">
+										Last Name <span class="form-field-label-required">(required)</span>
+									</label>
+									<input id="orderSource.lastName" name="newAssociate.lastName" class="w-input" required="required" type="text" value="" maxlength="96"/>
+								</div>
+							</div>
+
+							<!-- Alternate Phone -->
+							<div class="w-row">
+								<div class="w-col w-col-4">
+									<label class="form-field-label"
+										for="orderSource.altPhone.digits">Alternate
+										Phone&nbsp;</label>
+									<input id="orderSource.altPhone.digits" name="newAssociate.altPhone.digits" class="w-input" placeholder="XXX-XXX-XXXX" type="text" value="" maxlength="14"/>
+								</div>
+								<div class="w-col w-col-2">
+									<label class="form-field-label" for="orderSource.altPhone.ext">Ext.</label>
+									<input id="orderSource.altPhone.ext" name="newAssociate.altPhone.ext" class="w-input" type="text" value="" maxlength="6"/>
+								</div>
+								<div class="w-col w-col-6">
+									<label class="form-field-label"
+										for="orderSource.altPhone.country">Country</label>
+									<select id="orderSource.altPhone.country" name="newAssociate.altPhone.country" class="w-select">
+										<option value="">Select one...</option>
+										<option value="DZA">Algeria</option><option value="AND">Andorra</option><option value="ATG">Antigua and Barbuda</option><option value="ANT">Antilles</option><option value="ARG">Argentina</option><option value="ABW">Aruba</option><option value="AUS">Australia</option><option value="AUT">Austria</option><option value="BHS">Bahamas</option><option value="BHR">Bahrain</option><option value="BGD">Bangladesh</option><option value="BRB">Barbados</option><option value="BLR">Belarus</option><option value="BEL">Belgium</option><option value="BLZ">Belize</option><option value="BMU">Bermuda</option><option value="BOL">Bolivia (Plurinational State of)</option><option value="BIH">Bosnia and Herzegovina</option><option value="BWA">Botswana</option><option value="BRA">Brazil</option><option value="BRN">Brunei Darussalam</option><option value="BGR">Bulgaria</option><option value="CAN">Canada</option><option value="CYM">Cayman Islands</option><option value="CHL">Chile</option><option value="CHN">China</option><option value="COL">Colombia</option><option value="CRI">Costa Rica</option><option value="HRV">Croatia</option><option value="CUB">Cuba</option><option value="CYP">Cyprus</option><option value="CZE">Czechia</option><option value="DNK">Denmark</option><option value="DOM">Dominican Republic</option><option value="ECU">Ecuador</option><option value="EGY">Egypt</option><option value="SLV">El Salvador</option><option value="EST">Estonia</option><option value="ETH">Ethiopia</option><option value="FJI">Fiji</option><option value="FIN">Finland</option><option value="FRA">France</option><option value="PYF">French Polynesia</option><option value="GAB">Gabon</option><option value="GEO">Georgia</option><option value="DEU">Germany</option><option value="GRC">Greece</option><option value="GRD">Grenada</option><option value="GTM">Guatemala</option><option value="GUY">Guyana</option><option value="HTI">Haiti</option><option value="HND">Honduras</option><option value="HKG">Hong Kong</option><option value="HUN">Hungary</option><option value="ISL">Iceland</option><option value="IND">India</option><option value="IDN">Indonesia</option><option value="IRN">Iran (Islamic Republic of)</option><option value="IRQ">Iraq</option><option value="IRL">Ireland</option><option value="ISR">Israel</option><option value="ITA">Italy</option><option value="JAM">Jamacia</option><option value="JPN">Japan</option><option value="JOR">Jordan</option><option value="KEN">Kenya</option><option value="PRK">Korea (Democratic People&#39;s Republic of)</option><option value="KOR">Korea (Republic of)</option><option value="KWT">Kuwait</option><option value="LVA">Latvia</option><option value="LBN">Lebanon</option><option value="LTU">Lithuania</option><option value="LUX">Luxembourg</option><option value="MAC">Macao</option><option value="MKD">Macedonia (the former Yugoslav Republic of) </option><option value="MDG">Madagascar</option><option value="MYS">Malaysia</option><option value="MLT">Malta</option><option value="MUS">Mauritius</option><option value="MEX">Mexico</option><option value="MDA">Moldova (Republic of)</option><option value="MCO">Monaco</option><option value="MNG">Mongolia</option><option value="MAR">Morocco</option><option value="NAM">Namibia</option><option value="NPL">Nepal</option><option value="NLD">Netherlands</option><option value="NZL">New Zealand</option><option value="NIC">Nicaragua</option><option value="NGA">Nigeria</option><option value="NOR">Norway</option><option value="OMN">Oman</option><option value="PAK">Pakistan</option><option value="PLW">Palau</option><option value="PAN">Panama</option><option value="PRY">Paraguay</option><option value="PER">Peru</option><option value="PHL">Philippines</option><option value="POL">Poland</option><option value="PRT">Portugal</option><option value="QAT">Qatar</option><option value="ROU">Romania</option><option value="RUS">Russian Federation</option><option value="KNA">Saint Kitts and Nevis</option><option value="SMR">San Marino</option><option value="SAU">Saudi Arabia</option><option value="SRB">Serbia</option><option value="SGP">Singapore</option><option value="SVK">Slovakia</option><option value="SVN">Slovenia</option><option value="ZAF">South Africa</option><option value="ESP">Spain</option><option value="LKA">Sri Lanka</option><option value="SUR">Suriname</option><option value="SWE">Sweden</option><option value="CHE">Switzerland</option><option value="TWN">Taiwan, Province of China</option><option value="TZA">Tanzania, United Republic of</option><option value="THA">Thailand</option><option value="TTO">Trinidad and Tobago</option><option value="TUR">Turkey</option><option value="TCA">Turks and Caicos Islands</option><option value="UKR">Ukraine</option><option value="ARE">United Arab Emirates</option><option value="GBR">United Kingdom</option><option value="USA" selected="selected">United States</option><option value="URY">Uruguay</option><option value="VEN">Venezuela (Bolivarian Republic of)</option><option value="VNM">Viet Nam</option><option value="VGB">Virgin Islands (British)</option><option value="YEM">Yemen</option><option value="ZWE">Zimbabwe</option>
+									</select>
+								</div>
+							</div>
+
+							<!-- Email Addresses -->
+							<div class="w-row">
+								<div class="w-col w-col-6">
+									<label class="form-field-label" for="orderSource.email">Primary
+										Email</label>
+									<input id="orderSource.email" name="newAssociate.email" class="w-input" type="text" value="" maxlength="255"/>
+								</div>
+								<div class="w-col w-col-6">
+									<label class="form-field-label" for="orderSource.textMsgEmail">Alternate
+										Email</label>
+									<input id="orderSource.textMsgEmail" name="newAssociate.textMsgEmail" class="w-input" type="text" value="" maxlength="255"/>
+								</div>
+							</div>
+
+							
+						</div>
+					</div>
+				</div>
+
+
+
+
+				<div class="checkout-process-outer-div">
+
+					<div class="checkout-process-header">
+						<h3 class="h3-header enrollment-process-header">ENTER CREDIT
+							CARD PAYMENT</h3>
+					</div>
+					<div class="checkout-process-inside-div-block-form pet-id">
+
+						<!-- Payment / No Payment Required  -->
+						
+							
+							
+
+								<!-- Payment Information -->
+								<div class="credit-card-information" id="creditCardContainer"
+									style="margin-top: 20px;">
+
+									<div class="w-row">
+										<!-- Credit Card Billing Address -->
+										<div class="w-col w-col-6">
+											<div class="enrollment-process-payment-info">
+
+												<h3>
+													credit card billing address&nbsp;<span
+														class="form-field-label-required">(required)</span>
+												</h3>
+
+												<label class="form-field-label"
+													for="cardholderBillingAddressStreet"> Street </label>
+												<input id="cardholderBillingAddressStreet" name="creditCardPayment.holderBillingStreet" class="w-input" placeholder="Street Address or PO Box" required="required" type="text" value="" maxlength="128"/>
+
+												<label class="form-field-label"
+													for="cardholderBillingAddressCity"> City </label>
+												<input id="cardholderBillingAddressCity" name="creditCardPayment.holderBillingCity" class="w-input" required="required" type="text" value="" maxlength="64"/>
+
+												<label class="form-field-label"
+													for="cardholderBillingAddressStateProvince">
+													State/Province </label>
+												<select id="cardholderBillingAddressStateProvince" name="creditCardPayment.holderBillingState" class="w-select">
+													<option value="" selected="selected"></option>
+												</select>
+
+												<div class="w-row">
+													<div class="w-col w-col-6">
+														<div class="_2-col-inside-1-col">
+
+															<label class="form-field-label"
+																for="cardholderBillingAddressPostalCode"> Postal
+																Code </label>
+															<input id="cardholderBillingAddressPostalCode" name="creditCardPayment.holderBillingPostalCode" class="w-input" type="text" value="" maxlength="16"/>
+														</div>
+													</div>
+
+													<div class="w-col w-col-6">
+														<div>
+															<label class="form-field-label"
+																for="cardholderBillingAddressCountrySelect">
+																Country </label>
+															<select id="cardholderBillingAddressCountrySelect" name="creditCardPayment.holderBillingCountry" class="w-select" required="required">
+																<option value="DZA">Algeria</option><option value="AND">Andorra</option><option value="ATG">Antigua and Barbuda</option><option value="ANT">Antilles</option><option value="ARG">Argentina</option><option value="ABW">Aruba</option><option value="AUS">Australia</option><option value="AUT">Austria</option><option value="BHS">Bahamas</option><option value="BHR">Bahrain</option><option value="BGD">Bangladesh</option><option value="BRB">Barbados</option><option value="BLR">Belarus</option><option value="BEL">Belgium</option><option value="BLZ">Belize</option><option value="BMU">Bermuda</option><option value="BOL">Bolivia (Plurinational State of)</option><option value="BIH">Bosnia and Herzegovina</option><option value="BWA">Botswana</option><option value="BRA">Brazil</option><option value="BRN">Brunei Darussalam</option><option value="BGR">Bulgaria</option><option value="CAN">Canada</option><option value="CYM">Cayman Islands</option><option value="CHL">Chile</option><option value="CHN">China</option><option value="COL">Colombia</option><option value="CRI">Costa Rica</option><option value="HRV">Croatia</option><option value="CUB">Cuba</option><option value="CYP">Cyprus</option><option value="CZE">Czechia</option><option value="DNK">Denmark</option><option value="DOM">Dominican Republic</option><option value="ECU">Ecuador</option><option value="EGY">Egypt</option><option value="SLV">El Salvador</option><option value="EST">Estonia</option><option value="ETH">Ethiopia</option><option value="FJI">Fiji</option><option value="FIN">Finland</option><option value="FRA">France</option><option value="PYF">French Polynesia</option><option value="GAB">Gabon</option><option value="GEO">Georgia</option><option value="DEU">Germany</option><option value="GRC">Greece</option><option value="GRD">Grenada</option><option value="GTM">Guatemala</option><option value="GUY">Guyana</option><option value="HTI">Haiti</option><option value="HND">Honduras</option><option value="HKG">Hong Kong</option><option value="HUN">Hungary</option><option value="ISL">Iceland</option><option value="IND">India</option><option value="IDN">Indonesia</option><option value="IRN">Iran (Islamic Republic of)</option><option value="IRQ">Iraq</option><option value="IRL">Ireland</option><option value="ISR">Israel</option><option value="ITA">Italy</option><option value="JAM">Jamacia</option><option value="JPN">Japan</option><option value="JOR">Jordan</option><option value="KEN">Kenya</option><option value="PRK">Korea (Democratic People&#39;s Republic of)</option><option value="KOR">Korea (Republic of)</option><option value="KWT">Kuwait</option><option value="LVA">Latvia</option><option value="LBN">Lebanon</option><option value="LTU">Lithuania</option><option value="LUX">Luxembourg</option><option value="MAC">Macao</option><option value="MKD">Macedonia (the former Yugoslav Republic of) </option><option value="MDG">Madagascar</option><option value="MYS">Malaysia</option><option value="MLT">Malta</option><option value="MUS">Mauritius</option><option value="MEX">Mexico</option><option value="MDA">Moldova (Republic of)</option><option value="MCO">Monaco</option><option value="MNG">Mongolia</option><option value="MAR">Morocco</option><option value="NAM">Namibia</option><option value="NPL">Nepal</option><option value="NLD">Netherlands</option><option value="NZL">New Zealand</option><option value="NIC">Nicaragua</option><option value="NGA">Nigeria</option><option value="NOR">Norway</option><option value="OMN">Oman</option><option value="PAK">Pakistan</option><option value="PLW">Palau</option><option value="PAN">Panama</option><option value="PRY">Paraguay</option><option value="PER">Peru</option><option value="PHL">Philippines</option><option value="POL">Poland</option><option value="PRT">Portugal</option><option value="QAT">Qatar</option><option value="ROU">Romania</option><option value="RUS">Russian Federation</option><option value="KNA">Saint Kitts and Nevis</option><option value="SMR">San Marino</option><option value="SAU">Saudi Arabia</option><option value="SRB">Serbia</option><option value="SGP">Singapore</option><option value="SVK">Slovakia</option><option value="SVN">Slovenia</option><option value="ZAF">South Africa</option><option value="ESP">Spain</option><option value="LKA">Sri Lanka</option><option value="SUR">Suriname</option><option value="SWE">Sweden</option><option value="CHE">Switzerland</option><option value="TWN">Taiwan, Province of China</option><option value="TZA">Tanzania, United Republic of</option><option value="THA">Thailand</option><option value="TTO">Trinidad and Tobago</option><option value="TUR">Turkey</option><option value="TCA">Turks and Caicos Islands</option><option value="UKR">Ukraine</option><option value="ARE">United Arab Emirates</option><option value="GBR">United Kingdom</option><option value="USA" selected="selected">United States</option><option value="URY">Uruguay</option><option value="VEN">Venezuela (Bolivarian Republic of)</option><option value="VNM">Viet Nam</option><option value="VGB">Virgin Islands (British)</option><option value="YEM">Yemen</option><option value="ZWE">Zimbabwe</option>
+															</select>
+														</div>
+													</div>
+												</div>
+											</div>
+										</div>
+
+										<!-- Credit Card Payment -->
+										<div class="w-col w-col-6">
+
+											<div class="enrollment-process-payment-info">
+
+												<h3>
+													credit card payment&nbsp;<span
+														class="form-field-label-required">(required)</span>
+												</h3>
+
+												<label class="form-field-label" for="cardHolderName">
+													Name On Card </label>
+												<input id="cardHolderName" name="creditCardPayment.cardholderName" class="w-input" autocorrect="off" autocapitalize="off" required="required" type="text" value="" maxlength="48" autocomplete="off"/>
+
+												<label class="form-field-label" for="cardType">Card
+													Type</label>
+												<select id="cardType" name="creditCardPayment.type" class="w-select" required="required">
+													<option value="">Select one...</option>
+													<option value="001">Visa</option>
+													<option value="002">Mastercard</option>
+													<option value="003">American Express</option>
+													<option value="004">Discover</option>
+												</select>
+
+												
+												<label class="form-field-label">Card Number</label>
+												<div id="number-container" class="w-input"
+													style="height: 38px; padding: 4px 6px; box-sizing: boder-box; border: 1px solid black; background-color: #ffffff;"></div>
+
+												<div class="w-row">
+													<div class="w-col w-col-5">
+														<div>
+															<div class="_3-col-inside-1-col">
+																<label class="form-field-label"
+																	for="cardEexpirationMonth">Exp. Month</label>
+																<select id="cardEexpirationMonth" name="creditCardPayment.expirationMonth" class="w-select" required="required">
+																	
+																		<option value="01">01</option>
+																	
+																		<option value="02">02</option>
+																	
+																		<option value="03">03</option>
+																	
+																		<option value="04">04</option>
+																	
+																		<option value="05">05</option>
+																	
+																		<option value="06">06</option>
+																	
+																		<option value="07">07</option>
+																	
+																		<option value="08">08</option>
+																	
+																		<option value="09">09</option>
+																	
+																		<option value="10">10</option>
+																	
+																		<option value="11">11</option>
+																	
+																		<option value="12">12</option>
+																	
+																</select>
+															</div>
+														</div>
+													</div>
+
+													<div class="w-col w-col-4">
+														<div class="_3-col-inside-1-col">
+															<label class="form-field-label" for="cardExpirationYear">Exp.
+																Year</label>
+															<select id="cardExpirationYear" name="creditCardPayment.expirationYear" class="w-select" required="required">
+																
+																	<option value="2026">2026</option>
+																
+																	<option value="2027">2027</option>
+																
+																	<option value="2028">2028</option>
+																
+																	<option value="2029">2029</option>
+																
+																	<option value="2030">2030</option>
+																
+																	<option value="2031">2031</option>
+																
+																	<option value="2032">2032</option>
+																
+																	<option value="2033">2033</option>
+																
+																	<option value="2034">2034</option>
+																
+																	<option value="2035">2035</option>
+																
+																	<option value="2036">2036</option>
+																
+															</select>
+														</div>
+													</div>
+
+													<div class="w-col w-col-3">
+														
+														<label class="form-field-label">CVV</label>
+														<div id="securityCode-container" class="w-input"
+															style="height: 38px; padding: 4px 6px; box-sizing: boder-box; border: 1px solid black; background-color: #ffffff;"></div>
+													</div>
+												</div>
+											</div>
+											
+											<div id="cybercash-errors"
+												style="color: red; margin-top: 10px; font-size: 14px;"></div>
+											<input id="cybercashPaymentToken" name="cybercashPayment.token" type="hidden" value=""/>
+										</div>
+									</div>
+								</div>
+							
+						
+
+
+
+						<div class="w-row">
+							<div class="w-col w-col-6"></div>
+							<div class="w-col w-col-6">
+								<!-- reCAPTCHA -->
+								<div class="checkout-process-outer-div">
+
+									<div class="checkout-process-header">
+										<h3 class="h3-header enrollment-process-header">SECURITY VERIFICATION</h3>
+									</div>
+
+									<div class="os-security-captcha">
+										<div id="recaptchaWidget"></div>
+										<input type="hidden" id="recaptchaResponse" name="g-recaptcha-response" value="" />
+									</div>
+								</div>
+							</div>
+						</div>
+
+
+
+						<div class="w-row">
+							<div class="w-col w-col-6"></div>
+							<div class="w-col w-col-3">
+								<div class="formErrors"></div>
+								<div id="couponContainer">
+									
+
+										<div class="w-row">
+											<div class="w-col w-col-6">
+												<label class="form-field-label" for="couponCode">Coupon
+													Code</label> <input class="w-input" id="couponCode" type="text"
+													autocomplete="off" maxlength="20">
+											</div>
+											<div class="w-col w-col-6">
+												<input id="applyCouponCodeButton"
+													class="secondary-buttons no-column right-justified"
+													type="button" value="APPLY">
+											</div>
+										</div>
+
+									
+								</div>
+							</div>
+							<div class="w-col w-col-3">
+								<!-- Order Summary -->
+								<div class="enrollment-process-order-review-label subtotal">ORDER
+									#&nbsp;&nbsp;11323349</div>
+								<div class="text-field-label plain-text-right-justified">
+
+									SUBTOTAL (1
+									ITEM):&nbsp;&nbsp;<span
+										id="orderLineItemTotal">$75.94</span><br /> -&nbsp;COUPON
+									DISCOUNT:&nbsp;&nbsp;<span id="orderCouponDiscount">$5.30</span><br /> +&nbsp;SHIPPING &amp;
+									HANDLING:&nbsp;&nbsp;<span id="orderShipping">$0.00</span><br />
+									+ SALES TAX:&nbsp;&nbsp;<span
+										id="orderTax">$0.00</span>
+
+								</div>
+								<div class="enrollment-process-order-review-label subtotal">
+									Total:&nbsp;&nbsp;<strong
+										class="enrollment-process-order-review-label price"><span
+										id="orderTotal">$70.64</span></strong>
+								</div>
+
+								
+								<input id="submitButton"
+									class="w-button primary-button right-justified" type="submit"
+									value="SUBMIT" /> <a class="secondary-buttons no-column"
+									href="/cares-pub/ind/order.car">BACK TO CART</a>
+
+								<input id="newAssociate.associateType" name="newAssociate.associateType" type="hidden" value="4"/>
+								<input id="newAssociate.billingAddress.addressType" name="newAssociate.billingAddress.addressType" type="hidden" value="1"/>
+							</div>
+						</div>
+					</div>
+				</div>
+			</form>
+		
+	
+</div>
+
+<script type="text/javascript" src="/cares-pub/gzip_N389779107/bundles/ind.js" ></script>
+
+<script type="text/javascript" src="/cares-pub/gzip_N149690812/js/address-jquery.js" ></script>
+
+<script type="text/javascript" src="/cares-pub/gzip_1241014585/js/indOrderCheckout.js" ></script>
+
+<script
+	src="https://www.google.com/recaptcha/api.js?onload=onRecaptchaLoaded&render=explicit"
+	async defer></script>
+
+
+
+
+			
+		</div>	
+
+		<!-- Footer -->
+		
+                          
+
+
+
+
+
+
+
+ 
+<div class="w-section footer-section">
+ 	<div class="w-container">
+    	<div class="w-row">
+        	<div class="w-col w-col-9">
+          		<div class="copyright">
+          			AKC&nbsp;Reunite |&nbsp;8051 Arco Corporate Drive, Suite 200 Raleigh, NC 27617<br/>
+          			<a class="footer-link telContactUsLink" href="tel:800-252-7894">800-252-7894</a>&nbsp;|&nbsp;
+          			<a class="footer-link emailContactUsLink" href="mailto:updates@akcreunite.org">updates@akcreunite.org</a><br/>
+          			© Copyright 2005 - 2022 AKC Reunite | <a class="footer-link" href="https://www.akcreunite.org/termsofservice/" target="_blank">Terms of Service</a> |
+          			<a class="footer-link" href="https://www.akcreunite.org/privacypolicy/" target="_blank">Privacy Policy</a> 
+            	</div>
+        	</div>
+        	<div class="w-col w-col-3 footer-social-icons-column">
+          		<a class="w-inline-block" href="https://www.facebook.com/akcreunite" target="_blank">
+          			<img class="footer-sm-icon" src="/cares-pub/images/2015/09/Facebook-White.png" alt="Facebook" />
+          		</a>
+          		<a class="w-inline-block" href="https://www.twitter.com/akcreunite" target="_blank">
+          			<img class="footer-sm-icon" src="/cares-pub/images/2015/09/Twitter-White2.png" alt="Twitter" />
+          		</a>
+          		<a class="w-inline-block" href="https://www.linkedin.com/company/akc-reunite" target="_blank">
+          			<img class="footer-sm-icon" src="/cares-pub/images/2015/09/LinkedIn-White.png" alt="Linked In" />
+          		</a>
+        	</div>
+     	</div>
+	</div>
+</div>
+
+			
+	</body>
+	
+</html>	
+	
