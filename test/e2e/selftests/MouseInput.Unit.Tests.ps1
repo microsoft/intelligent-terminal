@@ -101,6 +101,26 @@ Describe 'Self-contained agent Escape input' -Tag 'Unit', 'MouseInput' {
     }
 }
 
+Describe 'Owner probe subscription readiness' -Tag 'Unit', 'OwnerProbeReady' {
+    It 'confirms event subscription before emitting the owner-tab probe' {
+        $script:ownerProbeReady = $false
+        Mock -ModuleName ItE2E Start-WtEventListener {
+            param($App, $WaitForReady)
+            $script:ownerProbeReady = [bool]$WaitForReady
+            [pscustomobject]@{ fixture = $true }
+        }
+        Mock -ModuleName ItE2E Start-Sleep {}
+        Mock -ModuleName ItE2E Invoke-RunCommand {
+            if (-not $script:ownerProbeReady) { throw 'Owner probe emitted before subscription readiness.' }
+        }
+        Mock -ModuleName ItE2E Wait-WtEvent { [pscustomobject]@{ params = @{ tab_id = 'owned-tab' } } }
+        Mock -ModuleName ItE2E Stop-WtEventListener {}
+        Resolve-AgentOwnerTabId -App ([pscustomobject]@{}) -OwnerPaneSessionId 'owned-pane' | Should -Be 'owned-tab'
+        Should -Invoke -ModuleName ItE2E Start-WtEventListener -Times 1 -Exactly -ParameterFilter { $WaitForReady }
+        Should -Invoke -ModuleName ItE2E Stop-WtEventListener -Times 1 -Exactly
+    }
+}
+
 Describe 'Package-wide refusal discovery' -Tag 'Unit', 'PackageRefusal' {
     BeforeEach {
         $script:packageRoot = Join-Path $TestDrive 'selected-package'
@@ -353,6 +373,31 @@ Describe 'Paste clipboard preservation' -Tag 'Unit', 'PasteCleanup' {
 }
 
 Describe 'Paste evidence isolation' -Tag 'Unit', 'PasteEvidence' {
+    It 'verifies an explicitly supplied WTA hash before state mutation' -Tag 'PasteHash' {
+        $suite = (Resolve-Path (Join-Path $PSScriptRoot '..\tests\Feature.Paste.Tests.ps1')).Path
+        $tokens = $null
+        $errors = $null
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile($suite, [ref]$tokens, [ref]$errors)
+        $guards = @($ast.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.IfStatementAst] -and
+            $node.Clauses[0].Item1.Extent.Text -eq '$env:ITE2E_EXPECTED_WTA_SHA256'
+        }, $true))
+        $guards.Count | Should -Be 1
+        $source = [IO.File]::ReadAllText($suite)
+        $guards[0].Extent.StartOffset | Should -BeLessThan $source.IndexOf('$script:originalClipboard = Get-ClipboardSnapshot')
+        $previous = $env:ITE2E_EXPECTED_WTA_SHA256
+        try {
+            $env:ITE2E_EXPECTED_WTA_SHA256 = 'a' * 64
+            $binaryHash = 'b' * 64
+            $block = [scriptblock]::Create($guards[0].Extent.Text)
+            { & $block } | Should -Throw
+            $binaryHash = $env:ITE2E_EXPECTED_WTA_SHA256
+            { & $block } | Should -Not -Throw
+        }
+        finally { $env:ITE2E_EXPECTED_WTA_SHA256 = $previous }
+    }
+
     It 'uses a unique directory beneath the explicitly selected run root' {
         $suite = (Resolve-Path (Join-Path $PSScriptRoot '..\tests\Feature.Paste.Tests.ps1')).Path
         $tokens = $null

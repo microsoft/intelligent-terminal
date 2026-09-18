@@ -31,6 +31,10 @@ Describe 'Feature §2 agent pane paste' -Tag 'Feature' -Skip:(-not $script:Ready
         if (@(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables).Count) {
             throw 'The paste suite requires an unused selected package; it will not close user sessions.'
         }
+        $binaryHash = (Get-FileHash -LiteralPath $script:target.WtaPath).Hash
+        if ($env:ITE2E_EXPECTED_WTA_SHA256) {
+            $binaryHash | Should -Be $env:ITE2E_EXPECTED_WTA_SHA256 -Because 'the selected package must contain the intended source build'
+        }
         $script:originalClipboard = Get-ClipboardSnapshot
         $script:clipboardSaved = $true
         Add-Type -AssemblyName System.Windows.Forms
@@ -48,6 +52,8 @@ Describe 'Feature §2 agent pane paste' -Tag 'Feature' -Skip:(-not $script:Ready
         $artifactRoot = if ($env:ITE2E_ARTIFACT_ROOT) { $env:ITE2E_ARTIFACT_ROOT } else { Join-Path $PSScriptRoot '..\artifacts' }
         $script:evidenceDir = Join-Path ([IO.Path]::GetFullPath($artifactRoot)) "paste\$([guid]::NewGuid().ToString('N'))"
         New-Item -ItemType Directory -Force -Path $script:evidenceDir | Out-Null
+        @{ Package = $script:target.Package; WtaPath = $script:target.WtaPath; WtaSha256 = $binaryHash } |
+            ConvertTo-Json | Set-Content (Join-Path $script:evidenceDir 'package.json') -Encoding utf8
         $script:launchStarted = Get-Date
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
             acpAgent = 'custom:paste-fixture'

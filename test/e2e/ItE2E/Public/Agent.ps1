@@ -513,9 +513,8 @@ function Resolve-AgentOwnerTabId {
         [Parameter(Mandatory)][string]$OwnerPaneSessionId
     )
 
-    $listener = Start-WtEventListener -App $App
+    $listener = Start-WtEventListener -App $App -WaitForReady
     try {
-        Start-Sleep -Milliseconds 500
         Invoke-RunCommand -App $App -SessionId $OwnerPaneSessionId -Command 'echo ite2e-tab-id-probe' | Out-Null
         $event = Wait-WtEvent -Listener $listener -TimeoutSec 15 -Predicate {
             $_.method -eq 'vt_sequence' -and
