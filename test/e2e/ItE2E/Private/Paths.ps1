@@ -32,9 +32,13 @@ function Resolve-ItApp {
         binaries (wtcli/wta/WindowsTerminal), data files (settings/state), log root.
     .PARAMETER Package
         'Store', 'Dev', or an explicit PackageFamilyName.
+    .PARAMETER IfInstalled
+        Return no descriptor when the explicitly selected package is not installed.
     #>
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$Package)
+    param([Parameter(Mandatory)][string]$Package, [switch]$IfInstalled)
+
+    if ($Package -eq 'Auto') { throw "'Auto' is not allowed for explicit package resolution." }
 
     $candidates = switch ($Package) {
         'Store' { @($script:ItKnownFamilies.Store) }
@@ -51,7 +55,10 @@ function Resolve-ItApp {
             if ($p.InstallLocation -and (Test-Path $p.InstallLocation)) { $pkg = $p; $pfn = $c; break }
         }
     }
-    if (-not $pkg) { throw "No Intelligent Terminal package found for selector '$Package'. Install one first." }
+    if (-not $pkg) {
+        if ($IfInstalled) { return }
+        throw "No Intelligent Terminal package found for selector '$Package'. Install one first."
+    }
 
     $install = $pkg.InstallLocation
     $aumid = (Get-StartApps | Where-Object AppID -like "$pfn!*" | Select-Object -First 1 -ExpandProperty AppID)

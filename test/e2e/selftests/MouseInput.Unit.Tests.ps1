@@ -143,6 +143,99 @@ Describe 'Package-wide refusal discovery' -Tag 'Unit', 'PackageRefusal' {
     }
 }
 
+Describe 'Selected package discovery' -Tag 'Unit', 'SelectedPackage' {
+    BeforeEach {
+        Mock -ModuleName ItE2E Get-AppxPackage {
+            [pscustomobject]@{ PackageFamilyName = 'Microsoft.IntelligentTerminal_8wekyb3d8bbwe' }
+        }
+    }
+
+    It 'does not substitute another installed brand for the selected package' {
+        Resolve-ItApp -Package Dev -IfInstalled | Should -BeNullOrEmpty
+    }
+
+    It 'preserves required resolution failure when the selected package is missing' {
+        { Resolve-ItApp -Package Dev } | Should -Throw '*No Intelligent Terminal package found*'
+    }
+
+    It 'returns the explicitly selected installed package' {
+        $script:selectedInstall = Join-Path $TestDrive 'dev-layout'
+        New-Item -ItemType Directory -Path $script:selectedInstall | Out-Null
+        foreach ($name in 'wtcli.exe', 'wta.exe', 'WindowsTerminal.exe') {
+            'offline file' | Set-Content (Join-Path $script:selectedInstall $name)
+        }
+        Mock -ModuleName ItE2E Get-AppxPackage {
+            [pscustomobject]@{
+                PackageFamilyName = 'IntelligentTerminal_rd9vj3e6a2mbr'
+                PackageFullName = 'offline-dev'; Version = [version]'1.0.0'
+                InstallLocation = $script:selectedInstall
+            }
+        }
+        Mock -ModuleName ItE2E Get-StartApps { @() }
+        Mock -ModuleName ItE2E Get-Command { [pscustomobject]@{ Source = 'offline-alias' } } -ParameterFilter { $Name -eq 'wtai' }
+        $app = Resolve-ItApp -Package Dev -IfInstalled
+        $app.Package | Should -Be 'IntelligentTerminal_rd9vj3e6a2mbr'
+        $app.InstallLocation | Should -Be $script:selectedInstall
+    }
+
+    It 'does not turn an invalid implicit selection into a skip' {
+        $previous = $env:ITE2E_PACKAGE
+        try {
+            foreach ($value in @('', 'Auto')) {
+                $env:ITE2E_PACKAGE = $value
+                { Get-ItTestPackage } | Should -Throw '*Choose the live integration-test package explicitly*'
+            }
+        }
+        finally { $env:ITE2E_PACKAGE = $previous }
+        { Resolve-ItApp -Package Auto -IfInstalled } | Should -Throw "*'Auto' is not allowed*"
+    }
+}
+
+Describe 'Mouse cleanup evidence preservation' -Tag 'Unit', 'MouseCleanup' {
+    BeforeEach {
+        $suite = (Resolve-Path (Join-Path $PSScriptRoot '..\tests\Feature.AgentMouse.Tests.ps1')).Path
+        $tokens = $null
+        $errors = $null
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile($suite, [ref]$tokens, [ref]$errors)
+        $describe = $ast.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.CommandAst] -and
+            $node.GetCommandName() -eq 'Describe' -and
+            $node.CommandElements[1].Value -eq 'Feature: completed-turn triangle mouse click'
+        }, $true)[0]
+        $cleanup = $describe.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.CommandAst] -and $node.GetCommandName() -eq 'AfterAll'
+        }, $true)[0]
+        $body = $cleanup.CommandElements[1].ScriptBlock.Extent.Text
+        $script:cleanupBlock = [scriptblock]::Create($body.Substring(1, $body.Length - 2))
+        $script:app = [pscustomobject]@{ Pid = 1 }
+        $script:clipboardSaved = $true
+        $script:originalClipboard = [pscustomobject]@{ offline = $true }
+        $script:cursorSaved = $false
+        $script:fixtureDir = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        $script:evidenceDir = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $script:fixtureDir, $script:evidenceDir | Out-Null
+        $script:fixtureLog = Join-Path $script:fixtureDir 'fixture.log'
+        'offline fixture evidence' | Set-Content $script:fixtureLog
+        Mock Stop-Terminal {}
+        Mock Restore-ClipboardSnapshot {}
+    }
+
+    It 'archives the fixture log even when clipboard restoration fails' {
+        Mock Restore-ClipboardSnapshot { throw 'synthetic clipboard restore failure' }
+        { & $script:cleanupBlock } | Should -Throw '*synthetic clipboard restore failure*'
+        Get-Content (Join-Path $script:evidenceDir 'fixture.log') -Raw | Should -Match 'offline fixture evidence'
+    }
+
+    It 'restores clipboard and retains the source log when archival fails' {
+        Mock Copy-Item { throw 'synthetic archival failure' }
+        { & $script:cleanupBlock } | Should -Throw '*synthetic archival failure*'
+        Should -Invoke Restore-ClipboardSnapshot -Times 1 -Exactly
+        Test-Path $script:fixtureLog | Should -BeTrue
+    }
+}
+
 Describe 'Paste evidence isolation' -Tag 'Unit', 'PasteEvidence' {
     It 'uses a unique directory beneath the explicitly selected run root' {
         $suite = (Resolve-Path (Join-Path $PSScriptRoot '..\tests\Feature.Paste.Tests.ps1')).Path

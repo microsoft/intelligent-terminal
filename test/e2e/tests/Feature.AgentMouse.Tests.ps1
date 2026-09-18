@@ -240,8 +240,10 @@ Describe 'Feature: agent pane physical wheel routing' -Tag 'Feature' -Skip:(-not
 }
 
 BeforeDiscovery {
+    Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+    $selectedPackage = Resolve-ItApp -Package (Get-ItTestPackage) -IfInstalled
     $script:TriangleClickReady = [bool](
-        (Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }) -and
+        $selectedPackage -and
         (Get-Command pwsh -ErrorAction SilentlyContinue) -and
         (Get-Command winapp -ErrorAction SilentlyContinue)
     )
@@ -364,23 +366,29 @@ Describe 'Feature: completed-turn triangle mouse click' -Tag 'CompletedTurnMouse
     }
 
     AfterAll {
+        $fixtureArchived = $false
         try {
             if ($script:app) { Stop-Terminal -App $script:app }
         }
         finally {
             try {
                 if ($script:clipboardSaved) { Restore-ClipboardSnapshot -Snapshot $script:originalClipboard }
-                if ($script:fixtureLog -and (Test-Path -LiteralPath $script:fixtureLog)) {
-                    Copy-Item -LiteralPath $script:fixtureLog -Destination (Join-Path $script:evidenceDir 'fixture.log') -Force
-                }
             }
             finally {
                 try {
-                    if ($script:cursorSaved) { [System.Windows.Forms.Cursor]::Position = $script:originalCursor }
+                    if ($script:fixtureLog -and (Test-Path -LiteralPath $script:fixtureLog)) {
+                        Copy-Item -LiteralPath $script:fixtureLog -Destination (Join-Path $script:evidenceDir 'fixture.log') -Force
+                    }
+                    $fixtureArchived = $true
                 }
                 finally {
-                    if ($script:fixtureDir -and (Test-Path -LiteralPath $script:fixtureDir)) {
-                        Remove-Item -LiteralPath $script:fixtureDir -Recurse -Force
+                    try {
+                        if ($script:cursorSaved) { [System.Windows.Forms.Cursor]::Position = $script:originalCursor }
+                    }
+                    finally {
+                        if ($fixtureArchived -and $script:fixtureDir -and (Test-Path -LiteralPath $script:fixtureDir)) {
+                            Remove-Item -LiteralPath $script:fixtureDir -Recurse -Force
+                        }
                     }
                 }
             }
