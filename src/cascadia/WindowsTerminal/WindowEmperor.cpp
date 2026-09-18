@@ -20,8 +20,10 @@
 #include "VirtualDesktopUtils.h"
 #include "../../types/inc/User32Utils.hpp"
 #include "../../types/inc/utils.hpp"
+#include "../inc/TmuxSshCommand.h"
 
 #include <bcrypt.h>
+#include <filesystem>
 #include <fstream>
 #pragma comment(lib, "bcrypt.lib")
 
@@ -381,6 +383,33 @@ winrt::Windows::Foundation::IAsyncOperation<uint64_t> WindowEmperor::CreateTmuxW
     winrt::TerminalApp::WindowRequestedArgs args{ 0, nullptr };
     args.TmuxCommandline(commandline);
     args.TmuxWorkingDirectory(workingDirectory);
+    CreateNewWindow(args);
+    co_return args.Id();
+}
+
+winrt::Windows::Foundation::IAsyncOperation<uint64_t> WindowEmperor::CreateTmuxSshWindow(winrt::hstring destination, winrt::hstring session, winrt::hstring workingDirectory)
+{
+    namespace Tmux = ::Microsoft::Terminal::Tmux;
+    THROW_HR_IF(E_INVALIDARG, !Tmux::IsValidSshLaunchText(workingDirectory) ||
+                                 !std::filesystem::path{ std::wstring_view{ workingDirectory } }.is_absolute());
+    std::wstring commandline;
+    try
+    {
+        commandline = Tmux::BuildSshCommandline(destination, session);
+    }
+    catch (const std::invalid_argument& error)
+    {
+        throw winrt::hresult_invalid_argument{ winrt::to_hstring(error.what()) };
+    }
+
+    THROW_HR_IF(E_NOT_VALID_STATE, !_dispatcher);
+    co_await wil::resume_foreground(_dispatcher);
+    _assertIsMainThread();
+
+    winrt::TerminalApp::WindowRequestedArgs args{ 0, nullptr };
+    args.TmuxCommandline(commandline);
+    args.TmuxWorkingDirectory(workingDirectory);
+    args.TmuxSshDestination(destination);
     CreateNewWindow(args);
     co_return args.Id();
 }

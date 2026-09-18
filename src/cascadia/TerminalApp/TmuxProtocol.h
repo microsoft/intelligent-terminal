@@ -46,6 +46,14 @@ namespace Microsoft::Terminal::Tmux
         using std::runtime_error::runtime_error;
     };
 
+    struct SessionInfo
+    {
+        Id id{};
+        std::string name;
+    };
+
+    inline std::vector<SessionInfo> ParseSessions(std::string_view text);
+
     struct LayoutNode
     {
         enum class Kind
@@ -329,6 +337,40 @@ namespace Microsoft::Terminal::Tmux
     {
         return kind == other.kind && width == other.width && height == other.height &&
                x == other.x && y == other.y && paneId == other.paneId && children == other.children;
+    }
+
+    inline std::vector<SessionInfo> ParseSessions(std::string_view text)
+    {
+        if (text.size() > 64 * 1024)
+        {
+            throw ProtocolError{ "tmux session inventory exceeded its limit" };
+        }
+        std::vector<SessionInfo> sessions;
+        std::unordered_set<Id> ids;
+        while (!text.empty())
+        {
+            const auto end = text.find('\n');
+            const auto line = text.substr(0, end);
+            const auto separator = line.find(' ');
+            if (line.empty() || line.front() != '$' || separator == std::string_view::npos)
+            {
+                throw ProtocolError{ "Invalid tmux session inventory" };
+            }
+            const auto id = details::Number(line.substr(1, separator - 1));
+            const auto name = line.substr(separator + 1);
+            if (name.empty() || std::any_of(name.begin(), name.end(), [](const unsigned char ch) { return ch < 32 || ch == 127; }) ||
+                !ids.emplace(id).second || sessions.size() >= 256)
+            {
+                throw ProtocolError{ "Invalid or excessive tmux sessions" };
+            }
+            sessions.push_back({ id, std::string{ name } });
+            if (end == std::string_view::npos)
+            {
+                break;
+            }
+            text.remove_prefix(end + 1);
+        }
+        return sessions;
     }
 
     inline LayoutNode ParseLayout(const std::string_view layout)

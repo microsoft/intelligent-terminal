@@ -38,7 +38,8 @@ struct __declspec(uuid(__CLSID_TerminalProtocolServer))
 TerminalProtocolComServer : public Microsoft::WRL::RuntimeClass<
                                 Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::RuntimeClassType::ClassicCom>,
                                 ITerminalProtocol,
-                                ITerminalTmuxWindow>
+                                ITerminalTmuxWindow,
+                                ITerminalTmuxSshWindow>
 {
     ~TerminalProtocolComServer();
 
@@ -66,6 +67,9 @@ TerminalProtocolComServer : public Microsoft::WRL::RuntimeClass<
 
     // ── ITerminalTmuxWindow ──
     STDMETHODIMP CreateTmuxWindow(BSTR commandline, BSTR workingDirectory, BSTR* resultJson) override;
+
+    // ── ITerminalTmuxSshWindow ──
+    STDMETHODIMP CreateTmuxSshWindow(BSTR destination, BSTR session, BSTR workingDirectory, BSTR* resultJson) override;
 
     // Static setup — must be called before s_StartListening().
     static void s_setEmperor(WindowEmperor* emperor) noexcept;

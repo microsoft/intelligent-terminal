@@ -136,6 +136,8 @@ void AppHost::_HandleCommandlineArgs(const winrt::TerminalApp::WindowRequestedAr
     if (!windowArgs.TmuxCommandline().empty())
     {
         _windowLogic.SetStartupTmux(windowArgs.TmuxCommandline(), windowArgs.TmuxWorkingDirectory());
+        _windowLogic.TmuxSshDestination(windowArgs.TmuxSshDestination());
+        _windowLogic.TmuxSshPort(windowArgs.TmuxSshPort());
         _launchShowWindowCommand = SW_NORMAL;
     }
     else if (const auto layout = windowArgs.PersistedLayout())
@@ -323,7 +325,7 @@ void AppHost::Initialize()
 
     if (_useNonClientArea)
     {
-        static_cast<NonClientIslandWindow*>(_window.get())->SetTitlebarWindowLabel(_windowLogic.TmuxSessionTitle(), _windowLogic.TmuxCommandline());
+        static_cast<NonClientIslandWindow*>(_window.get())->SetTitlebarWindowLabel(_windowLogic.TmuxSshDestination().empty() ? _windowLogic.TmuxSessionTitle() : winrt::hstring{}, _windowLogic.TmuxCommandline());
     }
 
     // Set up the content of the application. If the app has a custom titlebar,
@@ -432,7 +434,7 @@ void AppHost::_AppTitleChanged(const winrt::Windows::Foundation::IInspectable& /
     _window->UpdateTitle(_windowLogic.Title());
     if (_useNonClientArea)
     {
-        static_cast<NonClientIslandWindow*>(_window.get())->SetTitlebarWindowLabel(_windowLogic.TmuxSessionTitle(), _windowLogic.TmuxCommandline());
+        static_cast<NonClientIslandWindow*>(_window.get())->SetTitlebarWindowLabel(_windowLogic.TmuxSshDestination().empty() ? _windowLogic.TmuxSessionTitle() : winrt::hstring{}, _windowLogic.TmuxCommandline());
     }
 }
 

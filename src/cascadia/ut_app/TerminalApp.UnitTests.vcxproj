@@ -37,6 +37,8 @@
     <ClCompile Include="TmuxPaneConnectionTests.cpp" />
     <ClCompile Include="TmuxPaneStateTests.cpp" />
     <ClCompile Include="TmuxSnapshotTests.cpp" />
+    <ClCompile Include="TmuxSshCommandTests.cpp" />
+    <ClCompile Include="TmuxSessionQueryTests.cpp" />
     <ClCompile Include="RtlHelperTests.cpp" />
     <ClCompile Include="SharedWtaTests.cpp" />
     <ClCompile Include="precomp.cpp">

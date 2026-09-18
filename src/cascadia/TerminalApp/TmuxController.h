@@ -39,6 +39,8 @@ namespace winrt::TerminalApp::implementation
         void ResizeWindow();
         void SelectTab(const winrt::com_ptr<Tab>& tab);
         void Refresh();
+        void PopulateSessionsFlyout(const winrt::Windows::UI::Xaml::Controls::MenuFlyout& flyout);
+        void CancelSessionsRequest() noexcept { ++_sessionsGeneration; }
         void RejectUnsupportedOperation();
         bool ApplyingLayout() const noexcept { return _projecting; }
 
@@ -86,6 +88,7 @@ namespace winrt::TerminalApp::implementation
         static winrt::fire_and_forget _startProcess(std::shared_ptr<TmuxController> self, std::wstring commandline, std::wstring directory);
         static winrt::fire_and_forget _closeProcess(std::shared_ptr<::Microsoft::Terminal::Tmux::TmuxProcess> process);
         static winrt::fire_and_forget _startupTimeout(std::weak_ptr<TmuxController> weak);
+        static winrt::fire_and_forget _sessionsTimeout(std::weak_ptr<TmuxController> weak, uint64_t generation, winrt::weak_ref<winrt::Windows::UI::Xaml::Controls::MenuFlyout> flyout);
         void _post(std::function<void(TmuxController&)> work);
         void _fail(std::string message);
         void _showFailure(const std::string& message);
@@ -112,6 +115,7 @@ namespace winrt::TerminalApp::implementation
         void _scheduleResize();
         void _updateSessionTitle();
         void _readSocketPath();
+        void _openSession(Id id);
 
         winrt::weak_ref<TerminalPage> _page;
         winrt::Windows::System::DispatcherQueue _dispatcher{ nullptr };
@@ -139,6 +143,7 @@ namespace winrt::TerminalApp::implementation
         bool _refreshing = false;
         bool _refreshAgain = false;
         bool _projecting = false;
+        bool _applyingState = false;
         bool _diagnosticIsError = false;
         bool _diagnosticInitialized = false;
         bool _resizeQueued = false;
@@ -150,6 +155,7 @@ namespace winrt::TerminalApp::implementation
         std::string _sessionName;
         std::string _socketPath;
         bool _socketQuerySent = false;
+        uint64_t _sessionsGeneration = 0;
         winrt::Windows::UI::Xaml::FrameworkElement::SizeChanged_revoker _sizeChanged;
         winrt::Windows::UI::Xaml::FrameworkElement::LayoutUpdated_revoker _layoutUpdated;
         friend class ::TerminalAppLocalTests::TabTests;

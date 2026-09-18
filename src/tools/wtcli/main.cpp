@@ -7,6 +7,7 @@
 #include "Formatting.h"
 #include "wtcli_functions.h"
 #include "../../cascadia/TerminalProtocol/ProtocolParsing.h"
+#include "../../cascadia/inc/TmuxSshCommand.h"
 
 // Classic-COM Terminal protocol. Generated from
 // src/host/proxy/ITerminalProtocol.idl; found via the OpenConsoleProxy IntDir
@@ -699,13 +700,42 @@ int wmain(int argc, wchar_t** argv)
     });
 
     // ── tmux ──
-    std::string tmuxCommand, tmuxCwd;
+    std::string tmuxCommand, tmuxCwd, tmuxSshDestination, tmuxSession;
     auto* tmuxCmd = app.add_subcommand("tmux", "Create a native window for a tmux-control backend process");
-    tmuxCmd->add_option("commandline", tmuxCommand, "Opaque Windows backend commandline (pass as one quoted argument)")->required();
+    const auto tmuxCommandOption = tmuxCmd->add_option("commandline", tmuxCommand, "Opaque Windows backend commandline (pass as one quoted argument; cannot combine with --ssh/--session)");
+    const auto tmuxSshOption = tmuxCmd->add_option("--ssh", tmuxSshDestination, "SSH alias or [user@]host (default tmux server only; requires --session)");
+    const auto tmuxSessionOption = tmuxCmd->add_option("--session", tmuxSession, "Exact tmux session name or $<digits> session ID (requires --ssh)");
     const auto tmuxCwdOption = tmuxCmd->add_option("-d,--cwd", tmuxCwd, "Backend working directory (default: caller's current directory)");
     tmuxCmd->callback([&]() {
+        const auto hasCommand = tmuxCommandOption->count() != 0;
+        const auto hasDestination = tmuxSshOption->count() != 0;
+        const auto hasSession = tmuxSessionOption->count() != 0;
+        if (hasCommand ? (hasDestination || hasSession) : !(hasDestination && hasSession))
+        {
+            fprintf(stderr, "[wtcli] tmux requires exactly one opaque commandline OR both --ssh <destination> and --session <session>; these forms cannot be combined.\n");
+            exitCode = 1;
+            return;
+        }
+        const auto useSsh = hasDestination;
         const auto command = winrt::to_hstring(tmuxCommand);
-        if (!IsValidTmuxLaunchText(command))
+        const auto destination = winrt::to_hstring(tmuxSshDestination);
+        const auto session = winrt::to_hstring(tmuxSession);
+        if (useSsh)
+        {
+            try
+            {
+                // Validate before connecting. The server builds the command
+                // independently; opaque commands never enter this builder.
+                Microsoft::Terminal::Tmux::BuildSshCommandline(destination, session);
+            }
+            catch (const std::invalid_argument& error)
+            {
+                fprintf(stderr, "[wtcli] %s\n", error.what());
+                exitCode = 1;
+                return;
+            }
+        }
+        else if (!IsValidTmuxLaunchText(command))
         {
             fprintf(stderr, "[wtcli] tmux requires a non-empty commandline without control characters (maximum 32766 UTF-16 code units).\n");
             exitCode = 1;
@@ -717,7 +747,7 @@ int wmain(int argc, wchar_t** argv)
         if (tmuxCwdOption->count() != 0)
         {
             const auto cwd = winrt::to_hstring(tmuxCwd);
-            if (!IsValidTmuxLaunchText(cwd))
+            if (!IsValidTmuxLaunchText(cwd) || (useSsh && !Microsoft::Terminal::Tmux::IsValidSshLaunchText(cwd)))
             {
                 fprintf(stderr, "[wtcli] tmux --cwd requires a non-empty directory without control characters.\n");
                 exitCode = 1;
@@ -729,7 +759,8 @@ int wmain(int argc, wchar_t** argv)
         {
             directory = std::filesystem::current_path(directoryError);
         }
-        if (directoryError || !directory.is_absolute() || !IsValidTmuxLaunchText(directory.native()))
+        if (directoryError || !directory.is_absolute() || !IsValidTmuxLaunchText(directory.native()) ||
+            (useSsh && !Microsoft::Terminal::Tmux::IsValidSshLaunchText(directory.native())))
         {
             fprintf(stderr, "[wtcli] Unable to resolve the tmux backend working directory.\n");
             exitCode = 1;
@@ -742,10 +773,14 @@ int wmain(int argc, wchar_t** argv)
             return;
         }
         winrt::com_ptr<ITerminalTmuxWindow> tmuxServer;
-        const auto interfaceHr = server->QueryInterface(__uuidof(ITerminalTmuxWindow), tmuxServer.put_void());
+        winrt::com_ptr<ITerminalTmuxSshWindow> tmuxSshServer;
+        const auto interfaceHr = useSsh ?
+                                     server->QueryInterface(__uuidof(ITerminalTmuxSshWindow), tmuxSshServer.put_void()) :
+                                     server->QueryInterface(__uuidof(ITerminalTmuxWindow), tmuxServer.put_void());
         if (interfaceHr == E_NOINTERFACE)
         {
-            fprintf(stderr, "[wtcli] This Intelligent Terminal version does not support native tmux windows. Update Intelligent Terminal and retry.\n");
+            fprintf(stderr, "[wtcli] This Intelligent Terminal version does not support %s. Update Intelligent Terminal and retry.\n",
+                    useSsh ? "explicit SSH tmux windows" : "native tmux windows");
             exitCode = 1;
             return;
         }
@@ -756,9 +791,20 @@ int wmain(int argc, wchar_t** argv)
             return;
         }
 
-        wil::unique_bstr commandBstr{ SysAllocStringLen(command.data(), command.size()) };
+        wil::unique_bstr commandBstr;
+        wil::unique_bstr destinationBstr;
+        wil::unique_bstr sessionBstr;
+        if (useSsh)
+        {
+            destinationBstr.reset(SysAllocStringLen(destination.data(), destination.size()));
+            sessionBstr.reset(SysAllocStringLen(session.data(), session.size()));
+        }
+        else
+        {
+            commandBstr.reset(SysAllocStringLen(command.data(), command.size()));
+        }
         wil::unique_bstr directoryBstr{ SysAllocStringLen(directory.c_str(), static_cast<UINT>(directory.native().size())) };
-        if (!commandBstr || !directoryBstr)
+        if (!directoryBstr || (useSsh ? (!destinationBstr || !sessionBstr) : !commandBstr))
         {
             fprintf(stderr, "[wtcli] Unable to allocate the tmux window request.\n");
             exitCode = 1;
@@ -766,11 +812,15 @@ int wmain(int argc, wchar_t** argv)
         }
         Json::Value result;
         const auto hr = CallJson([&](BSTR* json) {
+            if (useSsh)
+            {
+                return tmuxSshServer->CreateTmuxSshWindow(destinationBstr.get(), sessionBstr.get(), directoryBstr.get(), json);
+            }
             return tmuxServer->CreateTmuxWindow(commandBstr.get(), directoryBstr.get(), json);
         }, result);
         if (FAILED(hr))
         {
-            fprintf(stderr, "[wtcli] CreateTmuxWindow failed: 0x%08X\n", static_cast<uint32_t>(hr));
+            fprintf(stderr, "[wtcli] %s failed: 0x%08X\n", useSsh ? "CreateTmuxSshWindow" : "CreateTmuxWindow", static_cast<uint32_t>(hr));
             exitCode = 1;
             return;
         }

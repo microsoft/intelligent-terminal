@@ -351,6 +351,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(LayoutTransactionRevokesDiscardedBranchHandlers);
         TEST_METHOD(LayoutReadOnlyDisablesOnlySplitterGestures);
         TEST_METHOD(TmuxProjectionPreservesContentAcrossWindowChanges);
+        TEST_METHOD(TmuxProjectionDoesNotEchoBackendSelection);
         TEST_METHOD(TmuxProjectionRejectsInvalidInventoryBeforeMutation);
         TEST_METHOD(TmuxHydrationAcceptsUnsetSavedCursor);
         TEST_METHOD(TmuxResizeWaitsForInitializedFontAndRefreshesInventory);
@@ -359,6 +360,9 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TmuxSessionIdentityIsWindowTitleWithoutRenamingTabs);
         TEST_METHOD(TitlebarSessionIdentityUsesCompactLeftHeader);
         TEST_METHOD(TmuxSessionNotificationsUpdateOnlyTheirWindowIdentity);
+        TEST_METHOD(TmuxSessionMenuIgnoresStaleResponsesAndSurfacesErrors);
+        TEST_METHOD(TmuxSessionMenuRequestsNewSshWindow);
+        TEST_METHOD(TmuxSessionButtonFollowsOrdinarySshTabs);
         TEST_METHOD(BuildStartupActionsContentPreservesAgentFirstPaneOwnership);
         TEST_METHOD(AgentPaneTransferIdentityRoundTripsWithContent);
         TEST_METHOD(AgentPaneTransferIdentityIsNotPersistedByDefault);
@@ -2653,6 +2657,62 @@ namespace TerminalAppLocalTests
         });
     }
 
+    void TabTests::TmuxProjectionDoesNotEchoBackendSelection()
+    {
+        const auto connection = winrt::make_self<TestConnection>(
+            winrt::guid{ L"{6239a42c-1111-49a3-80bd-e8fdd045185c}" },
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        const auto page = _commonSetup(*connection);
+        TestOnUIThread([&]() {
+            const auto controller = std::make_shared<winrt::TerminalApp::implementation::TmuxController>(*page);
+            page->_tmuxCommandline = L"test-protocol";
+            page->_tmuxController = controller;
+            controller->_diagnosticTab = page->_GetFocusedTabImpl();
+            controller->_initialResponse = true;
+            std::vector<std::string> commands;
+            controller->_writeCommand = [&](std::string command) { commands.emplace_back(std::move(command)); };
+            auto cleanup = wil::scope_exit([&]() {
+                controller->Stop();
+                for (const auto& tab : page->_tabs)
+                {
+                    tab.Shutdown();
+                }
+                page->_tmuxController.reset();
+            });
+            const auto inventory =
+                "@0 0 89f5,80x24,0,0{39x24,0,0,0,40x24,40,0,1} 89f5,80x24,0,0{39x24,0,0,0,40x24,40,0,1}\n"
+                "@1 1 b25f,80x24,0,0,2 b25f,80x24,0,0,2";
+            controller->_applyWindows(controller->_parseWindows(inventory));
+            VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == controller->_tabs.at(1));
+            VERIFY_IS_TRUE(std::none_of(commands.begin(), commands.end(), [](const auto& command) {
+                return command.starts_with("select-window") || command.starts_with("select-pane");
+            }));
+            VERIFY_IS_FALSE(controller->_applyingState);
+
+            commands.clear();
+            controller->_focus(0);
+            controller->_focus(2);
+            VERIFY_IS_TRUE(commands.empty());
+
+            page->_selectedTabItem(controller->_tabs.at(0)->TabViewItem());
+            VERIFY_IS_TRUE(std::find(commands.begin(), commands.end(), "select-window -t @0\n") != commands.end());
+            controller->_focus(1);
+            VERIFY_IS_TRUE(std::find(commands.begin(), commands.end(), "select-pane -t %1\n") != commands.end());
+
+            commands.clear();
+            controller->_applyWindows(controller->_parseWindows(inventory));
+            VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == controller->_tabs.at(1));
+            VERIFY_IS_TRUE(commands.empty());
+
+            uint32_t selectionUpdates = 0;
+            const auto token = page->TitleChanged([&](auto&&, auto&&) { ++selectionUpdates; });
+            auto revoke = wil::scope_exit([&]() { page->TitleChanged(token); });
+            controller->_applyWindows(controller->_parseWindows(inventory));
+            VERIFY_ARE_EQUAL(0u, selectionUpdates);
+            VERIFY_IS_TRUE(commands.empty());
+        });
+    }
+
     void TabTests::TmuxProjectionRejectsInvalidInventoryBeforeMutation()
     {
         const auto connection = winrt::make_self<TestConnection>(
@@ -2914,6 +2974,164 @@ namespace TerminalAppLocalTests
         TestOnUIThread([&]() {
             VERIFY_ARE_EQUAL(size_t{ 1 }, commands.size());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"shell" }, page->_GetFocusedTabImpl()->Title());
+        });
+    }
+
+    void TabTests::TmuxSessionMenuIgnoresStaleResponsesAndSurfacesErrors()
+    {
+        const auto connection = winrt::make_self<TestConnection>(
+            winrt::guid{ L"{6239a42c-1111-49a3-80bd-e8fdd045185c}" },
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        const auto page = _commonSetup(*connection);
+        using Controller = winrt::TerminalApp::implementation::TmuxController;
+        using Event = ::Microsoft::Terminal::Tmux::Event;
+        std::shared_ptr<Controller> controller;
+        MenuFlyout menu{ nullptr };
+        uint64_t generation{};
+        std::vector<std::string> commands;
+        auto cleanup = wil::scope_exit([&]() {
+            RunOnUIThread([&]() {
+                controller->Stop();
+                page->_GetFocusedTabImpl()->Shutdown();
+            });
+        });
+        const auto respond = [&](bool success, const std::string& text) {
+            Event response;
+            response.kind = Event::Kind::Response;
+            response.flags = 1;
+            response.success = success;
+            response.text = text;
+            controller->_handleEvent(response);
+        };
+        TestOnUIThread([&]() {
+            controller = std::make_shared<Controller>(*page);
+            controller->_initialResponse = true;
+            controller->_writeCommand = [&](std::string command) { commands.emplace_back(std::move(command)); };
+            menu = MenuFlyout{};
+            controller->PopulateSessionsFlyout(menu);
+            controller->PopulateSessionsFlyout(menu);
+            VERIFY_ARE_EQUAL(size_t{ 2 }, commands.size());
+            VERIFY_ARE_EQUAL(std::string{ "list-sessions -F '#{session_id} #{session_name}'\n" }, commands.front());
+            generation = controller->_sessionsGeneration;
+            respond(true, "$7 stale");
+            respond(true, "$8 latest");
+        });
+        _waitForContentTransferReviewUI([&]() { return controller->_sessionsGeneration != generation; });
+        TestOnUIThread([&]() {
+            VERIFY_ARE_EQUAL(1u, menu.Items().Size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"latest" }, menu.Items().GetAt(0).as<MenuFlyoutItem>().Text());
+            VERIFY_IS_TRUE(menu.Items().GetAt(0).IsEnabled());
+            controller->PopulateSessionsFlyout(menu);
+            generation = controller->_sessionsGeneration;
+            respond(false, {});
+        });
+        _waitForContentTransferReviewUI([&]() { return controller->_sessionsGeneration != generation; });
+        TestOnUIThread([&]() {
+            VERIFY_ARE_EQUAL(1u, menu.Items().Size());
+            VERIFY_IS_FALSE(menu.Items().GetAt(0).IsEnabled());
+            VERIFY_IS_FALSE(controller->_failed.load());
+            controller->PopulateSessionsFlyout(menu);
+            generation = controller->_sessionsGeneration;
+            respond(true, {});
+        });
+        _waitForContentTransferReviewUI([&]() { return controller->_sessionsGeneration != generation; });
+        TestOnUIThread([&]() {
+            VERIFY_ARE_EQUAL(1u, menu.Items().Size());
+            VERIFY_IS_FALSE(menu.Items().GetAt(0).IsEnabled());
+            VERIFY_IS_FALSE(controller->_failed.load());
+        });
+    }
+
+    void TabTests::TmuxSessionMenuRequestsNewSshWindow()
+    {
+        const auto connection = winrt::make_self<TestConnection>(
+            winrt::guid{ L"{6239a42c-1111-49a3-80bd-e8fdd045185c}" },
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        const auto page = _commonSetup(*connection);
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto controller = std::make_shared<winrt::TerminalApp::implementation::TmuxController>(*page);
+            page->_tmuxSshDestination = L"ubuntu";
+            page->_tmuxWorkingDirectory = L"C:\\work";
+            controller->_initialResponse = true;
+            controller->_sessionId = 7;
+            std::vector<winrt::TerminalApp::WindowRequestedArgs> requests;
+            const auto token = page->RequestNewWindow([&](auto&&, const auto& request) { requests.push_back(request); });
+            auto cleanup = wil::scope_exit([&]() {
+                page->RequestNewWindow(token);
+                controller->Stop();
+                tab->Shutdown();
+            });
+            controller->_openSession(42);
+            VERIFY_ARE_EQUAL(size_t{ 1 }, requests.size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"ubuntu" }, requests.front().TmuxSshDestination());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"C:\\work" }, requests.front().TmuxWorkingDirectory());
+            VERIFY_IS_TRUE(std::wstring_view{ requests.front().TmuxCommandline() }.find(L"$42") != std::wstring_view::npos);
+            VERIFY_IS_TRUE(controller->_sessionId == 7);
+            VERIFY_IS_TRUE(tab == page->_GetFocusedTabImpl());
+            VERIFY_ARE_EQUAL(1u, page->_tabs.Size());
+        });
+    }
+
+    void TabTests::TmuxSessionButtonFollowsOrdinarySshTabs()
+    {
+        const auto connection = winrt::make_self<TestConnection>(
+            winrt::guid{ L"{6239a42c-1111-49a3-80bd-e8fdd045185c}" },
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        const auto page = _commonSetup(*connection);
+        TestOnUIThread([&]() {
+            const auto local = page->_GetFocusedTabImpl();
+            auto cleanup = wil::scope_exit([&]() {
+                for (const auto& tab : page->_tabs)
+                {
+                    tab.Shutdown();
+                }
+            });
+            VERIFY_IS_FALSE(page->_GetTmuxBrowserContext().ssh);
+            VERIFY_IS_TRUE(page->_workspaceDropdown.Visibility() == Visibility::Collapsed);
+            const auto profile = page->_settings.AllProfiles().GetAt(0);
+            profile.Source(L"Windows.Terminal.SSH");
+            page->_UpdateTmuxBrowser();
+            VERIFY_IS_FALSE(page->_GetTmuxBrowserContext().ssh);
+            VERIFY_IS_TRUE(page->_workspaceDropdown.Visibility() == Visibility::Collapsed);
+            const auto settings = winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithProfile(page->_settings, profile);
+            settings.DefaultSettings()->Commandline(L"ssh.exe -p 2222 -l user ubuntu");
+            const auto control = page->_CreateNewControlAndContent(settings, *connection);
+            const auto content = winrt::make<winrt::TerminalApp::implementation::TerminalPaneContent>(profile, page->_terminalSettingsCache, control);
+            const auto pane = std::make_shared<Pane>(content);
+            const auto ssh = winrt::make_self<winrt::TerminalApp::implementation::Tab>(pane);
+            ssh->SuppressAgentPrewarm();
+            page->_InitializeTab(ssh, page->_tabs.Size(), false);
+            page->_UpdateTmuxBrowser();
+            const auto context = page->_GetTmuxBrowserContext();
+            VERIFY_IS_TRUE(context.ssh);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"user@ubuntu" }, context.destination);
+            VERIFY_ARE_EQUAL(uint16_t{ 2222 }, context.port);
+            VERIFY_IS_TRUE(page->_workspaceDropdown.Visibility() == Visibility::Visible);
+            VERIFY_IS_NULL(page->_tmuxSessionQuery);
+            VERIFY_IS_TRUE(page->_tmuxCommandline.empty());
+
+            std::vector<WindowRequestedArgs> requests;
+            const auto token = page->RequestNewWindow([&](auto&&, const auto& request) { requests.push_back(request); });
+            auto revoke = wil::scope_exit([&]() { page->RequestNewWindow(token); });
+            page->_OpenSshTmuxSession(context, L"C:\\work", 42);
+            VERIFY_ARE_EQUAL(size_t{ 1 }, requests.size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"user@ubuntu" }, requests.front().TmuxSshDestination());
+            VERIFY_ARE_EQUAL(uint16_t{ 2222 }, requests.front().TmuxSshPort());
+            VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == ssh);
+
+            const auto generation = page->_tmuxBrowserGeneration;
+            page->_selectedTabItem(local->TabViewItem());
+            page->_UpdateTmuxBrowser();
+            VERIFY_IS_TRUE(page->_workspaceDropdown.Visibility() == Visibility::Collapsed);
+            VERIFY_IS_TRUE(page->_tmuxBrowserGeneration > generation);
+            page->_OpenSshTmuxSession(context, L"C:\\work", 42);
+            VERIFY_ARE_EQUAL(size_t{ 1 }, requests.size());
+
+            page->_selectedTabItem(ssh->TabViewItem());
+            page->_UpdateTmuxBrowser();
+            VERIFY_IS_TRUE(page->_workspaceDropdown.Visibility() == Visibility::Visible);
+            VERIFY_ARE_EQUAL(context.destination, page->_GetTmuxBrowserContext().destination);
         });
     }
 

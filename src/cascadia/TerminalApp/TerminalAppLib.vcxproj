@@ -165,6 +165,8 @@
     <ClInclude Include="TmuxPaneState.h" />
     <ClInclude Include="TmuxProcess.h" />
     <ClInclude Include="TmuxProtocol.h" />
+    <ClInclude Include="TmuxSessionQuery.h" />
+    <ClInclude Include="TmuxSessionMenu.h" />
     <ClInclude Include="AppKeyBindings.h">
       <DependentUpon>AppKeyBindings.idl</DependentUpon>
     </ClInclude>
@@ -294,6 +296,7 @@
     <ClCompile Include="TmuxProcess.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="TmuxSessionQuery.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>
     </ClCompile>
