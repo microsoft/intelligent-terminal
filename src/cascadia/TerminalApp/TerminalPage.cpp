@@ -5,6 +5,9 @@
 #include "pch.h"
 #include "TerminalPage.h"
 #include "TmuxController.h"
+#include "TmuxSessionMenu.h"
+#include "TmuxSessionQuery.h"
+#include "../inc/TmuxSshCommand.h"
 
 #include <iomanip>
 
@@ -261,6 +264,7 @@ namespace winrt::TerminalApp::implementation
 
     TerminalPage::~TerminalPage()
     {
+        _CancelTmuxSessionQuery();
         if (_tmuxController)
         {
             _tmuxController->Stop();
@@ -284,6 +288,13 @@ namespace winrt::TerminalApp::implementation
         _tmuxWorkingDirectory = workingDirectory;
         _startupActions.clear();
         _startupConnection = nullptr;
+    }
+
+    void TerminalPage::SetStartupTmuxSshDestination(const hstring& destination, const uint16_t port)
+    {
+        THROW_HR_IF(E_ILLEGAL_METHOD_CALL, _startupState != StartupState::NotInitialized);
+        _tmuxSshDestination = destination;
+        _tmuxSshPort = port;
     }
 
     // Method Description:
@@ -518,6 +529,11 @@ namespace winrt::TerminalApp::implementation
         // Set the initial workspace name from the window name.
         // Use raw WindowName() so unnamed windows show no text.
         _tabRow.WorkspaceName(_WindowProperties.WindowName());
+        _workspaceDropdown.MaxWidth(240);
+        const auto workspaceName = tabRowImpl->WorkspaceNameText();
+        workspaceName.MaxWidth(180);
+        workspaceName.TextTrimming(TextTrimming::CharacterEllipsis);
+        _UpdateTmuxBrowser();
 
         // Rebuild the workspace flyout each time it opens so it always
         // reflects the latest set of persisted workspaces.
@@ -525,6 +541,12 @@ namespace winrt::TerminalApp::implementation
             if (auto page{ weakThis.get() })
             {
                 page->_PopulateWorkspaceFlyout();
+            }
+        });
+        _workspaceFlyout.Closed([weakThis{ get_weak() }](auto&&, auto&&) {
+            if (const auto page = weakThis.get())
+            {
+                page->_CancelTmuxSessionQuery();
             }
         });
 
@@ -9898,6 +9920,7 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_activePaneChanged(winrt::TerminalApp::Tab sender,
                                           Windows::Foundation::IInspectable /*args*/)
     {
+        _UpdateTmuxBrowser();
         if (const auto tab{ _GetTabImpl(sender) })
         {
             // Possibly update the icon of the tab.
@@ -11926,6 +11949,7 @@ namespace winrt::TerminalApp::implementation
         {
             _tabRow.ShowWorkspacesButton(theme.Window() ? theme.Window().ShowWorkspacesButton() : true);
         }
+        _UpdateTmuxBrowser();
 
         Media::SolidColorBrush transparent{ Windows::UI::Colors::Transparent() };
         _tabView.Background(transparent);
@@ -12857,6 +12881,7 @@ namespace winrt::TerminalApp::implementation
             }
 
             _adjustProcessPriorityThrottled->Run();
+            _UpdateTmuxBrowser();
 
             if (newConnectionState == ConnectionState::Failed && !_IsMessageDismissed(InfoBarMessage::CloseOnExitInfo))
             {
@@ -13665,6 +13690,177 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    TerminalPage::TmuxBrowserContext TerminalPage::_GetTmuxBrowserContext() const
+    {
+        if (!_tmuxSshDestination.empty())
+        {
+            return { true, _tmuxSshDestination, _tmuxSshPort };
+        }
+        if (!_tmuxCommandline.empty())
+        {
+            return {};
+        }
+        const auto tab = _GetFocusedTabImpl();
+        const auto pane = _SourceTerminalPaneForTab(tab);
+        if (!pane)
+        {
+            return {};
+        }
+        const auto control = pane->GetTerminalControl();
+        const auto connection = control ? control.Connection() : nullptr;
+        if (!connection || connection.State() >= ConnectionState::Closing)
+        {
+            return {};
+        }
+        auto commandline = control.Settings().Commandline();
+        if (const auto conpty = connection.try_as<ConptyConnection>())
+        {
+            commandline = conpty.Commandline();
+        }
+        // A command override can launch a local shell using an SSH profile.
+        // Follow the running connection, not the profile's generator tag.
+        const auto source = ::Microsoft::Terminal::AgentSource::ResolveSessionsSshSource({}, commandline);
+        return {
+            source.kind != ::Microsoft::Terminal::AgentSource::SessionsSshKind::NonSsh,
+            hstring{ source.destination },
+            source.port.value_or(0),
+            hstring{ source.error },
+            pane->GetSessionId()
+        };
+    }
+
+    void TerminalPage::_CancelTmuxSessionQuery() noexcept
+    {
+        ++_tmuxBrowserGeneration;
+        if (_tmuxController)
+        {
+            _tmuxController->CancelSessionsRequest();
+        }
+        if (const auto query = std::exchange(_tmuxSessionQuery, nullptr))
+        {
+            try
+            {
+                query.Cancel();
+            }
+            CATCH_LOG();
+        }
+    }
+
+    void TerminalPage::_UpdateTmuxBrowser()
+    {
+        if (!_workspaceDropdown)
+        {
+            return;
+        }
+        const auto context = _GetTmuxBrowserContext();
+        if (context != _tmuxBrowserContext)
+        {
+            _CancelTmuxSessionQuery();
+            _tmuxBrowserContext = context;
+            _workspaceFlyout.Hide();
+        }
+        _workspaceDropdown.Visibility(context.ssh ? Visibility::Visible : Visibility::Collapsed);
+        if (context.ssh)
+        {
+            _tabRow.WorkspaceName(_tmuxSshDestination.empty() ? context.destination : TmuxSessionTitle());
+            Automation::AutomationProperties::SetName(_workspaceDropdown, RS_(L"TmuxSessionsLabel"));
+            Automation::AutomationProperties::SetAutomationId(_workspaceDropdown, L"TmuxSessionsButton");
+            ToolTipService::SetToolTip(_workspaceDropdown, box_value(RS_(L"TmuxSessionsLabel") + L"\n" + context.destination));
+        }
+        else
+        {
+            _tabRow.WorkspaceName(_WindowProperties.WindowName());
+        }
+    }
+
+    safe_void_coroutine TerminalPage::_LoadSshTmuxSessions(TmuxBrowserContext context, const uint64_t generation)
+    {
+        namespace Tmux = ::Microsoft::Terminal::Tmux;
+        const auto weak = get_weak();
+        const auto dispatcher = Dispatcher();
+        const auto menu = make_weak(_workspaceFlyout);
+        auto directory = _WindowProperties.VirtualWorkingDirectory();
+        std::vector<Tmux::SessionInfo> sessions;
+        std::optional<hstring> error;
+        SetTmuxSessionListStatus(_workspaceFlyout, RS_(L"TmuxSessionsLoading"));
+        try
+        {
+            if (directory.empty())
+            {
+                directory = hstring{ wil::GetCurrentDirectoryW<std::wstring>() };
+            }
+            auto query = Tmux::QuerySessionListAsync(hstring{ Tmux::BuildSshListCommandline(context.destination, context.port) }, directory);
+            _tmuxSessionQuery = query;
+            const auto output = co_await query;
+            sessions = Tmux::ParseSessions(to_string(output));
+        }
+        catch (const hresult_canceled&)
+        {
+            co_return;
+        }
+        catch (const hresult_error& failure)
+        {
+            LOG_HR_MSG(failure.code(), "Unable to query SSH tmux sessions");
+            error = failure.message();
+        }
+        catch (const std::exception& failure)
+        {
+            LOG_HR_MSG(E_FAIL, "Unable to query SSH tmux sessions: %hs", failure.what());
+            error = to_hstring(failure.what());
+        }
+        co_await wil::resume_foreground(dispatcher);
+        const auto page = weak.get();
+        const auto flyout = menu.get();
+        if (!page || !flyout || generation != page->_tmuxBrowserGeneration || context != page->_GetTmuxBrowserContext())
+        {
+            co_return;
+        }
+        page->_tmuxSessionQuery = nullptr;
+        if (error)
+        {
+            SetTmuxSessionListStatus(flyout, RS_(L"TmuxSessionsFailed"), *error);
+        }
+        else if (sessions.empty())
+        {
+            SetTmuxSessionListStatus(flyout, RS_(L"TmuxSessionsEmpty"));
+        }
+        else
+        {
+            SetTmuxSessionList(flyout, sessions, std::nullopt, [weak, context, directory](const Tmux::Id id) {
+                if (const auto owner = weak.get())
+                {
+                    owner->_OpenSshTmuxSession(context, directory, id);
+                }
+            });
+        }
+    }
+
+    void TerminalPage::_OpenSshTmuxSession(const TmuxBrowserContext& context, const hstring& workingDirectory, const uint64_t id)
+    {
+        if (context != _GetTmuxBrowserContext())
+        {
+            LOG_HR_MSG(E_ABORT, "The SSH source changed before opening the selected tmux session");
+            return;
+        }
+        try
+        {
+            const auto commandline = ::Microsoft::Terminal::Tmux::BuildSshCommandline(context.destination, hstring{ L"$" + std::to_wstring(id) }, context.port);
+            TerminalApp::WindowRequestedArgs request{ 0, nullptr };
+            request.TmuxCommandline(hstring{ commandline });
+            request.TmuxSshDestination(context.destination);
+            request.TmuxSshPort(context.port);
+            request.TmuxWorkingDirectory(workingDirectory);
+            RequestNewWindow.raise(*this, request);
+        }
+        catch (...)
+        {
+            const auto result = wil::ResultFromCaughtException();
+            LOG_HR_MSG(result, "Unable to open the selected SSH tmux session");
+            SetTmuxSessionListStatus(_workspaceFlyout, RS_(L"TmuxSessionsFailed"), hresult_error{ result }.message());
+            _workspaceFlyout.ShowAt(_workspaceDropdown);
+        }
+    }
+
     // Rebuild the workspace flyout contents. Called every time the flyout opens
     // so it reflects the current set of persisted workspaces.
     void TerminalPage::_PopulateWorkspaceFlyout()
@@ -13675,6 +13871,36 @@ namespace winrt::TerminalApp::implementation
         }
 
         _workspaceFlyout.Items().Clear();
+        _UpdateTmuxBrowser();
+        if (!_tmuxSshDestination.empty())
+        {
+            if (_tmuxController)
+            {
+                _tmuxController->PopulateSessionsFlyout(_workspaceFlyout);
+            }
+            else
+            {
+                MenuFlyoutItem item;
+                item.Text(RS_(L"TmuxSessionsFailed"));
+                item.IsEnabled(false);
+                _workspaceFlyout.Items().Append(item);
+            }
+            return;
+        }
+        if (_tmuxBrowserContext.ssh)
+        {
+            _CancelTmuxSessionQuery();
+            if (!_tmuxBrowserContext.error.empty())
+            {
+                LOG_HR_MSG(E_NOTIMPL, "Cannot reproduce this SSH connection for tmux session discovery");
+                SetTmuxSessionListStatus(_workspaceFlyout, RS_(L"TmuxSessionsFailed"), _tmuxBrowserContext.error);
+            }
+            else
+            {
+                _LoadSshTmuxSessions(_tmuxBrowserContext, _tmuxBrowserGeneration);
+            }
+            return;
+        }
 
         // --- "Name / Rename this window" ---
         {
@@ -13866,7 +14092,7 @@ namespace winrt::TerminalApp::implementation
 
         // Keep the workspace dropdown label in sync with the window name.
         // Use raw WindowName() so clearing the name hides the text.
-        _tabRow.WorkspaceName(_WindowProperties.WindowName());
+        _tabRow.WorkspaceName(_tmuxBrowserContext.ssh ? (_tmuxSshDestination.empty() ? _tmuxBrowserContext.destination : TmuxSessionTitle()) : _WindowProperties.WindowName());
 
         // DON'T display the confirmation if this is the name we were
         // given on startup!

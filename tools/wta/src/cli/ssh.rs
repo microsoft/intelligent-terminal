@@ -6,31 +6,11 @@ use tokio::io::AsyncReadExt;
 
 use anyhow::{Context, Result};
 
-use crate::coordinator::{quote_windows_commandline_arg, sh_quote};
+use crate::coordinator::sh_quote;
 use crate::ssh_hook_protocol::{
     Registration, Request, Response, RouteId, TrackingStatus, HEARTBEAT_INTERVAL,
 };
 use crate::ssh_sessions::SshTarget;
-
-pub(crate) fn managed_commandline(target: &SshTarget, script: &str) -> Result<String> {
-    // Native ConPTY creation resolves the sibling application executable.
-    // A persisted command must not retain a version-specific WindowsApps path.
-    let mut args = vec![
-        "wta.exe".to_owned(),
-        "ssh".to_owned(),
-        "--destination".to_owned(),
-        target.destination().to_owned(),
-    ];
-    if let Some(port) = target.port() {
-        args.extend(["--port".to_owned(), port.to_string()]);
-    }
-    args.extend(["--remote-command".to_owned(), script.to_owned()]);
-    Ok(args
-        .iter()
-        .map(|arg| quote_windows_commandline_arg(arg))
-        .collect::<Vec<_>>()
-        .join(" "))
-}
 
 fn foreground_arguments(
     target: &SshTarget,
@@ -86,11 +66,16 @@ fn login_arguments(target: &SshTarget, no_pty: bool) -> Vec<String> {
 
 fn foreground_environment(
     command: &mut tokio::process::Command,
-    names: impl IntoIterator<Item = std::ffi::OsString>,
+    environment: impl IntoIterator<Item = (std::ffi::OsString, std::ffi::OsString)>,
+    resume: bool,
 ) {
+    if resume {
+        crate::ssh_sessions::configure_ssh_environment(command, environment);
+        return;
+    }
     // Preserve TERM, SSH_ASKPASS, agent/authentication and user SendEnv setup.
     // Private terminal/MCP routing is not part of a foreground SSH environment.
-    for name in names {
+    for (name, _) in environment {
         let upper = name.to_string_lossy().to_ascii_uppercase();
         if upper.starts_with("WT_")
             || upper.starts_with("WTA_")
@@ -141,7 +126,7 @@ async fn check_login_configuration(target: &SshTarget, no_pty: bool) -> Result<(
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .kill_on_drop(true);
-    foreground_environment(&mut command, std::env::vars_os().map(|(name, _)| name));
+    foreground_environment(&mut command, std::env::vars_os(), false);
     #[cfg(windows)]
     command.creation_flags(0x0800_0000);
     let mut child = command
@@ -208,7 +193,7 @@ async fn check_remote_linux(target: &SshTarget) -> Result<()> {
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .kill_on_drop(true);
-    crate::ssh_sessions::configure_listing_environment(&mut command, std::env::vars_os());
+    crate::ssh_sessions::configure_ssh_environment(&mut command, std::env::vars_os());
     #[cfg(windows)]
     command.creation_flags(0x0800_0000);
     let mut child = command
@@ -331,7 +316,7 @@ pub(crate) async fn run(
         let mut command = tokio::process::Command::new(executable);
         command.args(arguments)
             .stdin(Stdio::inherit()).stdout(Stdio::inherit()).stderr(Stdio::inherit());
-        foreground_environment(&mut command, std::env::vars_os().map(|(name, _)| name));
+        foreground_environment(&mut command, std::env::vars_os(), remote_command.is_some());
         let mut child = match command.spawn().context("Launch Windows system OpenSSH") {
             Ok(child) => child,
             Err(error) => {
@@ -466,17 +451,52 @@ mod tests {
     }
 
     #[test]
-    fn managed_ssh_resume_commandline_roundtrips_as_opaque_script() {
+    #[cfg(windows)]
+    fn managed_ssh_resume_commandline_uses_the_encoded_source_launcher() {
         let target = SshTarget::new("alice@host", Some(2222)).unwrap();
-        let script =
-            crate::ssh_sessions::resume_script("copilot", "sid'quoted", "/home/a b").unwrap();
-        let line = managed_commandline(&target, &script).unwrap();
-        let args = crate::coordinator::split_windows_commandline(&line);
-        assert_eq!(args[0], "wta.exe");
+        let line = crate::ssh_sessions::resume_commandline(
+            &target,
+            "copilot",
+            "sid'quoted%PATH%",
+            "/home/a b/%PATH%",
+            true,
+        )
+        .unwrap();
+        assert!(!line.contains('%'));
+        let args = crate::ssh_sessions::tests::windows_argv(&line);
         let cli = crate::cli::args::Cli::try_parse_from(args).unwrap();
-        assert!(matches!(cli.command, Some(crate::cli::args::Command::Ssh {
-                    destination, port: Some(2222), remote_command: Some(command), ..
-                }) if destination == "alice@host" && command == script));
+        let Some(crate::cli::args::Command::SshResume { payload }) = cli.command else {
+            panic!("managed resumes must use the shared encoded launcher");
+        };
+        let request: serde_json::Value = serde_json::from_str(&payload).unwrap();
+        assert_eq!(request["target"]["destination"], "alice@host");
+        assert_eq!(request["target"]["port"], 2222);
+        assert_eq!(request["session_id"], "sid'quoted%PATH%");
+        assert_eq!(request["cwd"], "/home/a b/%PATH%");
+        assert_eq!(request["managed"], true);
+    }
+
+    #[test]
+    fn managed_ssh_resume_child_does_not_forward_local_credentials() {
+        let mut command = tokio::process::Command::new("ssh.exe");
+        command.env("PREEXISTING_SECRET", "not-retained");
+        foreground_environment(
+            &mut command,
+            [
+                ("SystemRoot", r"C:\Windows"),
+                ("SSH_AUTH_SOCK", "ssh-agent"),
+                ("WT_SESSION", "native-pane"),
+                ("IT_SSH_HOOK_ROUTE", "private-route"),
+                ("OPENAI_API_KEY", "not-retained"),
+                ("UNKNOWN_PROVIDER_SECRET", "not-retained"),
+            ]
+            .map(|(name, value)| (name.into(), value.into())),
+            true,
+        );
+        let environment: std::collections::HashMap<_, _> = command.as_std().get_envs().collect();
+        assert_eq!(environment.len(), 2);
+        assert!(environment.contains_key(std::ffi::OsStr::new("SystemRoot")));
+        assert!(environment.contains_key(std::ffi::OsStr::new("SSH_AUTH_SOCK")));
     }
 
     #[test]
@@ -508,7 +528,13 @@ mod tests {
             .env("WT_SESSION", "private");
         foreground_environment(
             &mut command,
-            ["TERM", "SSH_ASKPASS", "WT_SESSION"].map(std::ffi::OsString::from),
+            [
+                ("TERM", "xterm-256color"),
+                ("SSH_ASKPASS", "askpass.exe"),
+                ("WT_SESSION", "private"),
+            ]
+            .map(|(name, value)| (name.into(), value.into())),
+            false,
         );
         let environment: std::collections::HashMap<_, _> = command.as_std().get_envs().collect();
         assert_eq!(

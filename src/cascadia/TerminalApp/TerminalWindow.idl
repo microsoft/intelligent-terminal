@@ -60,6 +60,8 @@ namespace TerminalApp
         void SetStartupTmux(String commandline, String workingDirectory);
         Boolean IsTmuxWindow { get; };
         String TmuxCommandline { get; };
+        String TmuxSshDestination;
+        UInt16 TmuxSshPort;
         String TmuxSessionTitle { get; };
         void SetPersistedLayout(Microsoft.Terminal.Settings.Model.WindowLayout layout);
         Int32 ExecuteCommandline(CommandlineArgs args);

@@ -248,6 +248,7 @@ async fn native_tmux_hook(
 }
 
 #[tokio::test(flavor = "current_thread")]
+#[cfg(windows)]
 async fn ssh_native_tmux_merges_history_and_supports_shared_focus_titles_close_and_resume() {
     tokio::task::LocalSet::new()
         .run_until(async {
@@ -330,23 +331,16 @@ async fn ssh_native_tmux_merges_history_and_supports_shared_focus_titles_close_a
             let resume = activation(&a, &source, "same-id");
             let create = native.recv().await.unwrap();
             assert_eq!(create.method, "create_tab");
-            let argv = crate::coordinator::split_windows_commandline(
+            let argv = crate::ssh_sessions::tests::windows_argv(
                 create.params["commandline"].as_str().unwrap(),
             );
-            assert_eq!(argv[1], "ssh");
-            assert!(argv
-                .windows(2)
-                .any(|pair| pair == ["--destination", "wsl-ubuntu"]));
-            assert!(argv.windows(2).any(|pair| pair == ["--port", "2222"]));
-            let script = argv
-                .windows(2)
-                .find(|pair| pair[0] == "--remote-command")
-                .unwrap();
-            assert_eq!(
-                script[1],
-                crate::ssh_sessions::resume_script("copilot", "same-id", "/home/me/project")
-                    .unwrap()
-            );
+            assert_eq!(&argv[1..3], ["ssh-resume", "--payload"]);
+            let request: serde_json::Value = serde_json::from_str(&argv[3]).unwrap();
+            assert_eq!(request["target"]["destination"], "wsl-ubuntu");
+            assert_eq!(request["target"]["port"], 2222);
+            assert_eq!(request["session_id"], "same-id");
+            assert_eq!(request["cwd"], "/home/me/project");
+            assert_eq!(request["managed"], true);
             let resumed_pane = uuid::Uuid::new_v4();
             create
                 .reply
@@ -737,6 +731,7 @@ async fn ssh_hook_sessionless_notifications_are_pane_bound_and_history_cannot_ov
 }
 
 #[tokio::test(flavor = "current_thread")]
+#[cfg(windows)]
 async fn ssh_hook_managed_resume_preserves_reserved_sid_and_pre_ack_hook_activity() {
     tokio::task::LocalSet::new()
         .run_until(async {
@@ -749,11 +744,13 @@ async fn ssh_hook_managed_resume_preserves_reserved_sid_and_pre_ack_hook_activit
             let task = activation(&caller, &source, "requested");
             let create = native.recv().await.unwrap();
             assert_eq!(create.method, "create_tab");
-            let args = crate::coordinator::split_windows_commandline(
+            let args = crate::ssh_sessions::tests::windows_argv(
                 create.params["commandline"].as_str().unwrap(),
             );
-            assert_eq!(args[1], "ssh");
-            assert!(args.iter().any(|arg| arg == "--remote-command"));
+            assert_eq!(&args[1..3], ["ssh-resume", "--payload"]);
+            let payload: serde_json::Value = serde_json::from_str(&args[3]).unwrap();
+            assert_eq!(payload["session_id"], "requested");
+            assert_eq!(payload["managed"], true);
             let pane = uuid::Uuid::new_v4();
             let route = crate::ssh_hook_protocol::RouteId::new();
             hook_event(
@@ -827,7 +824,8 @@ async fn ssh_resume_in_one_helper_is_idle_and_focusable_in_another() {
                     &source.target,
                     &source.agent_id,
                     "same-id",
-                    "/home/user/project 'quoted'"
+                    "/home/user/project 'quoted'",
+                    false,
                 )
                 .unwrap()
             );

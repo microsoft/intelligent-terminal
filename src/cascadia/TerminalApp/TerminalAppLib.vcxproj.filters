@@ -23,6 +23,7 @@
     <ClCompile Include="TmuxController.cpp" />
     <ClCompile Include="TmuxPaneConnection.cpp" />
     <ClCompile Include="TmuxProcess.cpp" />
+    <ClCompile Include="TmuxSessionQuery.cpp" />
     <ClCompile Include="Jumplist.cpp" />
     <ClCompile Include="FilteredCommand.cpp">
       <Filter>commandPalette</Filter>
@@ -55,6 +56,8 @@
     <ClInclude Include="TmuxPaneState.h" />
     <ClInclude Include="TmuxProcess.h" />
     <ClInclude Include="TmuxProtocol.h" />
+    <ClInclude Include="TmuxSessionQuery.h" />
+    <ClInclude Include="TmuxSessionMenu.h" />
     <ClInclude Include="Jumplist.h" />
     <ClInclude Include="FilteredCommand.h">
       <Filter>commandPalette</Filter>

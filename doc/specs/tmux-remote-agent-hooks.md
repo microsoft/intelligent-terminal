@@ -340,7 +340,9 @@ the native pane binding and live status during later title refreshes.
 
 The supported launch subset uses direct `ssh`/`ssh.exe`, `-p`/`-l`, `-t`/`-T`,
 `--`, and optional `-o BatchMode=yes|no`, followed by a direct tmux command.
-Shell wrappers, expressions, and other configuration overrides do not establish
+Literal POSIX quoting from the SSH tmux session browser is supported, including
+quoted session IDs such as `'$42'` and escaped quotes in session names.
+Shell wrappers, unquoted expressions, and other configuration overrides do not establish
 a replayable SSH source; they retain isolated tmux tracking with a diagnostic
 for unrepresentable direct SSH commands. Use the same SSH source spelling as
 the viewing profile; host-alias equivalence is not inferred.

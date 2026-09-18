@@ -414,6 +414,9 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C167` `[E2E]` **Close source window is safe:** Closing a source window after moving a tab does not kill the moved tab's agent state.
 - [ ] `C168` `[E2E]` **Close target tab cleans up:** Closing moved tabs cleans up helper/session state without affecting other tabs.
 - [ ] `C275` `[E2E]` **Move tab back to source window preserves the same ACP session:** Redocking an agent tab keeps its helper, chat, and ACP session alive and does not emit session teardown.
+- [ ] `C319` `[new]` `[E2E]` **Tmux reconnect preserves mouse tab selection:** After closing and reattaching a native SSH tmux window, mouse-selected tabs stay selected in both the UI and backend; backend selection updates and sibling windows do not undo clicks. _(#966; E2E: `Feature.TmuxReconnect`.)_
+- [ ] `C320` `[new]` `[E2E]` **Default tmux session menu opens an independent window:** The workspace-style menu lists only the SSH host's default server, refreshes on opening, and attaches a selected session in a new native window without changing the source session. Stable IDs survive session renames; opaque backend launches remain compatible. _(#966; E2E: `Feature.TmuxSessionBrowser`.)_
+- [ ] `C321` `[new]` `[E2E]` **Ordinary SSH tabs expose the tmux session menu:** An ordinary SSH tab can list and attach a remote default-server session before any tmux frontend exists. The button follows the selected SSH tab or pane and is hidden for local tabs. _(#966; E2E: `Feature.TmuxSessionBrowser`.)_
 
 ## 8. Agent hooks and session tracking
 

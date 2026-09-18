@@ -3,6 +3,8 @@
 
 #include "precomp.h"
 #include "../TerminalApp/TmuxAgentHook.h"
+#include "../inc/AgentSourceUtils.h"
+#include "../inc/TmuxSshCommand.h"
 #include <filesystem>
 #include <fstream>
 #include <wincrypt.h>
@@ -75,6 +77,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(RejectsMalformedOrUnsupportedMessages);
         TEST_METHOD(NormalizesAndRedactsNativeEnvelope);
         TEST_METHOD(UsesOnlyControllerSshSourceAndIncludesItInTheEnvelopeBudget);
+        TEST_METHOD(BrowserAndManualLaunchesStampTrustedSshSource);
         TEST_METHOD(BoundsEntireEnvelopeIncludingTmuxMetadata);
         TEST_METHOD(ReassemblesMaximumPayloadBeforeParsingOrDecodingUtf8);
         TEST_METHOD(IsolatesInterleavedTransfersAndRejectsIdentityChanges);
@@ -194,6 +197,36 @@ namespace TerminalAppUnitTests
         VERIFY_IS_TRUE(Json::writeString(writer, event).size() <= wtcli::kMaxHookEventChars);
         VERIFY_ARE_EQUAL(std::string{ "sid" }, params["agent_session_id"].asString());
         VERIFY_ARE_EQUAL(std::string{ "/repo" }, params["payload"]["cwd"].asString());
+    }
+
+    void TmuxAgentHookTests::BrowserAndManualLaunchesStampTrustedSshSource()
+    {
+        namespace AgentSource = Microsoft::Terminal::AgentSource;
+        const auto hook = Receive(R"({"session_id":"sid","tmux":{"ssh_target":{"destination":"forged","port":9999}}})");
+        for (const auto& commandline : {
+                 BuildSshCommandline(L"wsl-ubuntu", L"$42"),
+                 std::wstring{ L"ssh.exe -T -o BatchMode=yes wsl-ubuntu tmux -C attach-session -t test-s" },
+             })
+        {
+            const auto source = AgentSource::ResolveSessionsSshSource({}, commandline, AgentSource::SessionsSshCommand::Tmux);
+            VERIFY_IS_TRUE(source.kind == AgentSource::SessionsSshKind::ValidTarget);
+            Json::Value metadata;
+            AgentSource::WriteSessionsSshMetadata(metadata, source);
+            const auto params = BuildAgentHookParams(hook, "pane", "tab", "9", "work", "/socket", metadata["sessions_ssh"]);
+            VERIFY_ARE_EQUAL(std::string{ "wsl-ubuntu" }, params["tmux"]["ssh_target"]["destination"].asString());
+            VERIFY_IS_TRUE(params["tmux"]["ssh_target"].isMember("port"));
+            VERIFY_IS_TRUE(params["tmux"]["ssh_target"]["port"].isNull());
+            VERIFY_IS_FALSE(params["payload"].isMember("tmux"));
+        }
+
+        const auto source = AgentSource::ResolveSessionsSshSource(
+            {}, BuildSshCommandline(L"user@Host-Alias", L"$42", 2222), AgentSource::SessionsSshCommand::Tmux);
+        VERIFY_IS_TRUE(source.kind == AgentSource::SessionsSshKind::ValidTarget);
+        Json::Value metadata;
+        AgentSource::WriteSessionsSshMetadata(metadata, source);
+        const auto params = BuildAgentHookParams(hook, "pane", "tab", "9", "work", "/socket", metadata["sessions_ssh"]);
+        VERIFY_ARE_EQUAL(std::string{ "user@Host-Alias" }, params["tmux"]["ssh_target"]["destination"].asString());
+        VERIFY_ARE_EQUAL(2222, params["tmux"]["ssh_target"]["port"].asInt());
     }
 
     void TmuxAgentHookTests::ReassemblesMaximumPayloadBeforeParsingOrDecodingUtf8()

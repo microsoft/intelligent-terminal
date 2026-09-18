@@ -90,6 +90,8 @@ namespace winrt::TerminalApp::implementation
         WINRT_PROPERTY(Windows::Foundation::Collections::IVector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>, StartupActions, nullptr);
         WINRT_PROPERTY(winrt::hstring, TmuxCommandline);
         WINRT_PROPERTY(winrt::hstring, TmuxWorkingDirectory);
+        WINRT_PROPERTY(winrt::hstring, TmuxSshDestination);
+        WINRT_PROPERTY(uint16_t, TmuxSshPort, 0);
     };
 }
 

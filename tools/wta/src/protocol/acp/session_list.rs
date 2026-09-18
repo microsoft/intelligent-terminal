@@ -92,6 +92,8 @@ pub(crate) async fn fetch_session_list(
         .ok_or_else(|| anyhow!("agent stdout not piped"))?
         .compat();
     let stderr_log = AgentStderrLog::new(client_label.to_string());
+    // Keep the guard in this function's scope through every list page. Only
+    // failed initialization transfers it to the startup-failure drain.
     let mut stderr_task = child
         .stderr
         .take()
@@ -218,6 +220,132 @@ mod tests {
     use std::collections::VecDeque;
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
+
+    #[tokio::test]
+    async fn session_list_raw_wire_uses_the_standard_method_and_cursor_shape() {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+        tokio::task::LocalSet::new()
+            .run_until(tokio::time::timeout(Duration::from_secs(5), async {
+                let (client_pipe, server_pipe) = tokio::io::duplex(8192);
+                let (client_read, client_write) = tokio::io::split(client_pipe);
+                let (server_read, mut server_write) = tokio::io::split(server_pipe);
+                let server = tokio::task::spawn_local(async move {
+                    let mut reader = BufReader::new(server_read);
+                    for cursor in [None, Some("next-page")] {
+                        let mut line = String::new();
+                        reader.read_line(&mut line).await.unwrap();
+                        let request: serde_json::Value = serde_json::from_str(&line).unwrap();
+                        assert_eq!(request["jsonrpc"], "2.0");
+                        assert_eq!(request["method"], "session/list");
+                        assert_eq!(request["params"]["cursor"].as_str(), cursor);
+                        let result = if cursor.is_none() {
+                            serde_json::json!({
+                                "sessions": [{"sessionId": "first", "cwd": "/project"}],
+                                "nextCursor": "next-page"
+                            })
+                        } else {
+                            serde_json::json!({
+                                "sessions": [{"sessionId": "second", "cwd": "/project"}]
+                            })
+                        };
+                        let response = serde_json::json!({
+                            "jsonrpc": "2.0", "id": request["id"], "result": result
+                        });
+                        server_write
+                            .write_all(format!("{response}\n").as_bytes())
+                            .await
+                            .unwrap();
+                    }
+                    // Keep the peer alive until the client consumes the final
+                    // response; EOF is a separate transport-lifetime signal.
+                    (reader, server_write)
+                });
+                let (client, io) = conn::spawn_client(
+                    readonly_client_builder(),
+                    conn::byte_streams(client_write.compat_write(), client_read.compat()),
+                );
+                let _io = AbortOnDropHandle::new(tokio::task::spawn_local(io));
+                let rows = fetch_all_pages(&client, "raw-wire-test", Duration::from_secs(5))
+                    .await
+                    .unwrap();
+                let _server_streams = server.await.unwrap();
+                client.shutdown();
+                assert_eq!(
+                    rows.iter()
+                        .map(|row| row.session_id.to_string())
+                        .collect::<Vec<_>>(),
+                    ["first", "second"]
+                );
+            }))
+            .await
+            .expect("standard session/list wire exchange must finish");
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn session_list_drains_large_stderr_after_initialize_until_listing_finishes() {
+        const SCRIPT: &str = r#"
+$ErrorActionPreference = 'Stop'
+$request = [Console]::ReadLine() | ConvertFrom-Json
+if ($request.method -ne 'initialize') { exit 10 }
+[Console]::Out.WriteLine((@{
+    jsonrpc = '2.0'; id = $request.id
+    result = @{ protocolVersion = 1; agentCapabilities = @{} }
+} | ConvertTo-Json -Compress -Depth 8))
+[Console]::Out.Flush()
+$request = [Console]::ReadLine() | ConvertFrom-Json
+if ($request.method -ne 'session/list') { exit 11 }
+[Console]::Error.WriteLine(('x' * (2 * 1024 * 1024)))
+[Console]::Error.Flush()
+[Console]::Out.WriteLine((@{
+    jsonrpc = '2.0'; id = $request.id
+    result = @{ sessions = @(@{sessionId = 'after-stderr'; cwd = '/project'}) }
+} | ConvertTo-Json -Compress -Depth 8))
+[Console]::Out.Flush()
+$null = [Console]::ReadLine()
+"#;
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let mut child = {
+                    let _env = crate::test_support::lock_env();
+                    let program = std::path::PathBuf::from(std::env::var_os("SystemRoot").unwrap())
+                        .join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
+                    tokio::process::Command::new(program)
+                        .args([
+                            "-NoLogo",
+                            "-NoProfile",
+                            "-NonInteractive",
+                            "-Command",
+                            SCRIPT,
+                        ])
+                        .stdin(std::process::Stdio::piped())
+                        .stdout(std::process::Stdio::piped())
+                        .stderr(std::process::Stdio::piped())
+                        .kill_on_drop(true)
+                        .creation_flags(0x0800_0000)
+                        .spawn()
+                        .unwrap()
+                };
+                let result = fetch_session_list(
+                    &mut child,
+                    "stderr-after-initialize",
+                    Duration::from_secs(15),
+                    Duration::from_secs(15),
+                )
+                .await;
+                if child.try_wait().unwrap().is_none() {
+                    tokio::time::timeout(Duration::from_secs(5), child.kill())
+                        .await
+                        .expect("test agent cleanup timed out")
+                        .unwrap();
+                }
+                let (_, rows) = result.expect("stderr must remain drained after initialize");
+                let rows = rows.expect("session/list must complete after the stderr flood");
+                assert_eq!(rows[0].session_id.to_string(), "after-stderr");
+            })
+            .await;
+    }
 
     struct MockListingAgent {
         client: conn::ClientLink,

@@ -311,7 +311,7 @@ function Invoke-FixtureCommand([string[]]$Words) {
     switch -CaseSensitive ($Words[0]) {
         'refresh-client' {
             $size = Get-Option $Words '-C'
-            if ($size -cnotmatch '^([0-9]{1,4})[x,]([0-9]{1,4})$') { throw 'Expected refresh-client -C columnsxrows' }
+            if ($size -cnotmatch '^([0-9]{1,4})[x,]([0-9]{1,4})$') { throw 'Expected refresh-client -C <columns>x<rows>' }
             $width = [int]$Matches[1]
             $height = [int]$Matches[2]
             if ($width -lt 1 -or $width -gt 1000 -or $height -lt 1 -or $height -gt 1000) { throw 'Invalid client dimensions' }

@@ -75,22 +75,10 @@ pub fn render(frame: &mut Frame, app: &mut App) {
                 .map(|s| s.is_empty())
                 .unwrap_or(false)
                 || tab.agents_view.rescan_in_flight);
-        let sessions_area = match &tab.agents_view.ssh_source {
-            Some(source) => agents_view::render_ssh_source(
-                frame,
-                area,
-                Some(&source.target),
-                &source.agent_id,
-                tab.agents_view.ssh_error.as_deref(),
-            ),
-            None if tab.agents_view.is_ssh_source() => agents_view::render_ssh_source(
-                frame,
-                area,
-                None,
-                "",
-                tab.agents_view.ssh_error.as_deref(),
-            ),
-            None => area,
+        let sessions_area = if tab.agents_view.is_ssh_source() {
+            agents_view::render_ssh_error(frame, area, tab.agents_view.ssh_error.as_deref())
+        } else {
+            area
         };
         agents_view::render(
             frame,

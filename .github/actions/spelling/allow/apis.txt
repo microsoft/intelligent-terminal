@@ -7,6 +7,7 @@ alignas
 alignof
 APPLYTOSUBMENUS
 appxrecipe
+beginthreadex
 bitfield
 bitfields
 BITMAPFILEHEADER
@@ -39,6 +40,7 @@ endfor
 ENDSESSION
 enumset
 environstrings
+escapechar
 EXACTSIZEONLY
 EXECUTEDEFAULT
 EXECUTEONLYONCE
@@ -49,6 +51,7 @@ FILTERSPEC
 fina
 FORCEFILESYSTEM
 FORCEMINIMIZE
+Forwardings
 frac
 fullkbd
 futex
@@ -69,6 +72,7 @@ hwinsta
 IAppearance
 ICONINFO
 IDirect
+identityfile
 IInheritable
 imm
 iosfwd
@@ -78,6 +82,7 @@ istream
 KEYSELECT
 LCID
 LINEBREAK
+LOGONSERVER
 lround
 Lsa
 lsass
@@ -119,6 +124,7 @@ ODR
 offsetof
 ofstream
 onefuzz
+openssh
 osver
 OSVERSIONINFOEXW
 otms
@@ -132,6 +138,8 @@ PHANDLER
 PICKFOLDERS
 PINPUT
 pmr
+PROGRAMDATA
+proxycommand
 QUERYENDSESSION
 rcx
 REGCLS
@@ -146,6 +154,7 @@ SACL
 schandle
 SEH
 semver
+sendenv
 serializer
 SETVERSION
 SHELLEXECUTEINFOW
@@ -170,6 +179,7 @@ Stubless
 syscall
 syscolors
 SYSTEMBACKDROP
+SYSTEMDRIVE
 TABROW
 TASKBARCREATED
 TBPF

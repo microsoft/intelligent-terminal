@@ -27,26 +27,10 @@ const ACCENT_RED: Color = Color::Red; // Error
 const SOFT_WHITE: Color = Color::Rgb(0x8b, 0x8b, 0x8b); // Idle
 const MUTED_WHITE: Color = Color::Rgb(0x8b, 0x8b, 0x8b); // timestamp
 
-pub(crate) fn render_ssh_source(
-    frame: &mut Frame,
-    mut area: Rect,
-    target: Option<&crate::ssh_sessions::SshTarget>,
-    agent_id: &str,
-    error: Option<&str>,
-) -> Rect {
+pub(crate) fn render_ssh_error(frame: &mut Frame, mut area: Rect, error: Option<&str>) -> Rect {
     if area.height == 0 {
         return area;
     }
-    frame.render_widget(
-        Paragraph::new(target.map_or_else(
-            || "SSH".to_string(),
-            |target| format!("SSH: {} ({agent_id})", target.display_name()),
-        ))
-        .style(Style::default().fg(Color::Cyan)),
-        Rect { height: 1, ..area },
-    );
-    area.y = area.y.saturating_add(1);
-    area.height = area.height.saturating_sub(1);
     if let Some(error) = error {
         let height = area.height.min(3);
         frame.render_widget(
@@ -670,7 +654,7 @@ fn cli_suffix_for(s: &AgentSession, selected: bool) -> String {
     };
     let source = match &s.location {
         SessionLocation::Wsl { distro } => Some(distro.clone()),
-        SessionLocation::Ssh { target } => Some(format!("{} (SSH)", target.display_name())),
+        SessionLocation::Ssh { target } => Some(target.display_name()),
         SessionLocation::Tmux {
             session_id,
             session_name,
@@ -1209,6 +1193,18 @@ mod tests {
         assert!(s.contains("April"), "expected month name in {:?}", s);
         assert!(s.contains("20"), "expected day in {:?}", s);
         assert!(s.contains("2026"), "expected year in {:?}", s);
+    }
+
+    #[test]
+    fn ssh_suffix_contains_only_provider_and_endpoint_identifiers() {
+        let mut session = sample_session();
+        session.location = SessionLocation::Ssh {
+            target: crate::ssh_sessions::SshTarget::new("user@remote", Some(2222)).unwrap(),
+        };
+        assert_eq!(
+            cli_suffix_for(&session, true),
+            "· copilot · user@remote:2222"
+        );
     }
 
     #[test]

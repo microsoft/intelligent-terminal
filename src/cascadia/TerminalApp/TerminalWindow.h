@@ -83,6 +83,10 @@ namespace winrt::TerminalApp::implementation
         void SetStartupTmux(const winrt::hstring& commandline, const winrt::hstring& workingDirectory);
         bool IsTmuxWindow() const noexcept { return !_startupTmuxCommandline.empty(); }
         winrt::hstring TmuxCommandline() const noexcept { return _startupTmuxCommandline; }
+        winrt::hstring TmuxSshDestination() const noexcept { return _startupTmuxSshDestination; }
+        void TmuxSshDestination(const winrt::hstring& destination);
+        uint16_t TmuxSshPort() const noexcept { return _startupTmuxSshPort; }
+        void TmuxSshPort(uint16_t port);
         winrt::hstring TmuxSessionTitle() const;
         void SetPersistedLayout(const winrt::Microsoft::Terminal::Settings::Model::WindowLayout& layout);
         int32_t ExecuteCommandline(TerminalApp::CommandlineArgs args);
@@ -184,6 +188,8 @@ namespace winrt::TerminalApp::implementation
         winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection _startupConnection{ nullptr };
         winrt::hstring _startupTmuxCommandline;
         winrt::hstring _startupTmuxWorkingDirectory;
+        winrt::hstring _startupTmuxSshDestination;
+        uint16_t _startupTmuxSshPort = 0;
         bool _hasCommandLineArguments{ false };
         bool _gotSettingsStartupActions{ false };
         std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs> _settingsStartupArgs{};

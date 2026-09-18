@@ -1,6 +1,8 @@
 use clap::{Parser, Subcommand};
 
-use crate::{agent_hooks_installer, agent_registry, agent_sessions, agent_tools::command_resolution};
+use crate::{
+    agent_hooks_installer, agent_registry, agent_sessions, agent_tools::command_resolution,
+};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -269,6 +271,12 @@ pub(crate) enum Command {
         no_hooks: bool,
         #[arg(long)]
         remote_command: Option<String>,
+    },
+    /// Internal ConPTY launcher; not a session-picker entry point.
+    #[command(hide = true)]
+    SshResume {
+        #[arg(long, hide = true)]
+        payload: String,
     },
     /// Show Windows Terminal protocol connection info
     Info,

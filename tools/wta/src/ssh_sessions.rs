@@ -145,6 +145,7 @@ pub(crate) fn ssh_arguments(target: &SshTarget, interactive: bool, script: &str)
         "StrictHostKeyChecking=yes",
         "ConnectTimeout=10",
         "ClearAllForwardings=yes",
+        "EscapeChar=none",
         "ForwardAgent=no",
         "ForwardX11=no",
         "PermitLocalCommand=no",
@@ -152,6 +153,10 @@ pub(crate) fn ssh_arguments(target: &SshTarget, interactive: bool, script: &str)
         "ControlMaster=no",
         "ControlPath=none",
         "Tunnel=no",
+        // SetEnv is first-value-wins, unlike additive SendEnv. Supplying this
+        // fixed terminal type prevents config SetEnv from injecting credentials
+        // or routing metadata; no local values are interpolated.
+        "SetEnv=TERM=xterm-256color",
     ] {
         args.extend(["-o".to_string(), option.to_string()]);
     }
@@ -163,8 +168,21 @@ pub(crate) fn ssh_arguments(target: &SshTarget, interactive: bool, script: &str)
     // ssh passes the command through the server's shell before sh parses its
     // own -c argument. Quote the entire script as well as every CLI argument.
     // The login shell supplies the remote user's PATH (including /snap/bin).
-    args.push(format!("sh -lc {}", sh_quote(script)));
+    args.push(remote_command(interactive, script));
     args
+}
+
+fn remote_command(interactive: bool, script: &str) -> String {
+    if interactive {
+        format!("sh -lc {}", sh_quote(script))
+    } else {
+        // Preserve login PATH/environment, but reserve stdout for ACP only.
+        // Restore the saved descriptor after startup files have finished.
+        format!(
+            "sh -lc {} 3>&1 1>&2",
+            sh_quote(&format!("exec 1>&3 3>&-; {script}"))
+        )
+    }
 }
 
 pub(crate) fn system_ssh_executable() -> Result<PathBuf> {
@@ -176,7 +194,7 @@ pub(crate) fn system_ssh_executable() -> Result<PathBuf> {
     Ok(root.join(r"System32\OpenSSH\ssh.exe"))
 }
 
-pub(crate) fn configure_listing_environment(
+pub(crate) fn configure_ssh_environment(
     command: &mut tokio::process::Command,
     environment: impl IntoIterator<Item = (OsString, OsString)>,
 ) {
@@ -226,7 +244,7 @@ pub(crate) async fn list_sessions(target: &SshTarget, agent_id: &str) -> Result<
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-    configure_listing_environment(&mut command, std::env::vars_os());
+    configure_ssh_environment(&mut command, std::env::vars_os());
     #[cfg(windows)]
     command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     let mut child = command
@@ -297,15 +315,46 @@ pub(crate) fn resume_commandline(
     agent_id: &str,
     session_id: &str,
     cwd: &str,
+    managed: bool,
 ) -> Result<String> {
-    let script = resume_script(agent_id, session_id, cwd)?;
-    let mut args = vec!["ssh.exe".to_string()];
-    args.extend(ssh_arguments(target, true, &script));
-    Ok(args
-        .iter()
-        .map(|arg| quote_windows_commandline_arg(arg))
-        .collect::<Vec<_>>()
-        .join(" "))
+    resume_script(agent_id, session_id, cwd)?;
+    let executable = std::env::current_exe().context("Resolve SSH resume launcher")?;
+    let executable = executable
+        .to_str()
+        .context("SSH resume launcher path is not Unicode")?;
+    if !std::path::Path::new(executable).is_absolute() || executable.contains('%') {
+        bail!("SSH resume launcher requires an absolute path without percent signs");
+    }
+    let payload = serde_json::to_string(&ResumeRequest {
+        target: target.clone(),
+        agent_id: agent_id.to_string(),
+        session_id: session_id.to_string(),
+        cwd: cwd.to_string(),
+        managed,
+    })?;
+    // JSON Unicode escaping is decoded locally, after Terminal's environment
+    // expansion. No shell wrapper, remote decoder, or credential-bearing argv.
+    let payload = payload.replace('%', r"\u0025");
+    let commandline = format!(
+        "{} ssh-resume --payload {}",
+        quote_windows_commandline_arg(executable),
+        quote_windows_commandline_arg(&payload)
+    );
+    if commandline.encode_utf16().count() >= 32767 {
+        bail!("SSH resume command exceeds the Windows command line limit");
+    }
+    Ok(commandline)
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ResumeRequest {
+    target: SshTarget,
+    agent_id: String,
+    session_id: String,
+    cwd: String,
+    #[serde(default)]
+    managed: bool,
 }
 
 pub(crate) fn resume_script(agent_id: &str, session_id: &str, cwd: &str) -> Result<String> {
@@ -333,13 +382,66 @@ pub(crate) fn resume_script(agent_id: &str, session_id: &str, cwd: &str) -> Resu
     ))
 }
 
+fn decode_resume_request(payload: &str) -> Result<ResumeRequest> {
+    if payload.len() > 131068 || payload.contains('%') {
+        bail!("Invalid SSH resume payload");
+    }
+    // Do not attach deserializer errors: unknown field names are payload data.
+    serde_json::from_str(payload).map_err(|_| anyhow!("Invalid SSH resume payload"))
+}
+
+fn resume_process(
+    request: &ResumeRequest,
+    environment: impl IntoIterator<Item = (OsString, OsString)>,
+) -> Result<tokio::process::Command> {
+    let script = resume_script(&request.agent_id, &request.session_id, &request.cwd)?;
+    let mut command = tokio::process::Command::new(system_ssh_executable()?);
+    command
+        .args(ssh_arguments(&request.target, true, &script))
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .kill_on_drop(true);
+    configure_ssh_environment(&mut command, environment);
+    Ok(command)
+}
+
+pub(crate) async fn run_resume(payload: &str) -> Result<()> {
+    let request = decode_resume_request(payload)?;
+    let code = if request.managed {
+        let script = resume_script(&request.agent_id, &request.session_id, &request.cwd)?;
+        crate::cli::ssh::run(request.target, false, false, Some(script)).await?
+    } else {
+        resume_process(&request, std::env::vars_os())?
+            .status()
+            .await
+            .context("Run Windows system OpenSSH ssh.exe")?
+            .code()
+            .unwrap_or(255)
+    };
+    crate::logging::shutdown_flush();
+    std::process::exit(code);
+}
+
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     #[cfg(windows)]
-    fn windows_argv(commandline: &str) -> Vec<String> {
-        let wide: Vec<u16> = commandline.encode_utf16().chain(Some(0)).collect();
+    pub(crate) fn windows_argv(commandline: &str) -> Vec<String> {
+        let input: Vec<u16> = commandline.encode_utf16().chain(Some(0)).collect();
+        // SAFETY: input is NUL-terminated and both calls provide valid buffers.
+        let wide = unsafe {
+            use windows_sys::Win32::System::Environment::ExpandEnvironmentStringsW;
+            let size = ExpandEnvironmentStringsW(input.as_ptr(), std::ptr::null_mut(), 0);
+            assert!(size > 0);
+            let mut expanded = vec![0; size as usize];
+            assert_eq!(
+                ExpandEnvironmentStringsW(input.as_ptr(), expanded.as_mut_ptr(), size),
+                size
+            );
+            expanded
+        };
         let mut count = 0;
         // SAFETY: the input is NUL-terminated. Windows returns count valid,
         // NUL-terminated strings in one allocation, freed after copying them.
@@ -462,6 +564,7 @@ mod tests {
             "StrictHostKeyChecking=yes",
             "ConnectTimeout=10",
             "ClearAllForwardings=yes",
+            "EscapeChar=none",
             "ForwardAgent=no",
             "ForwardX11=no",
             "PermitLocalCommand=no",
@@ -477,10 +580,7 @@ mod tests {
             &args[args.len() - 5..args.len() - 1],
             ["-p", "2222", "--", "Remote-Alias"]
         );
-        assert_eq!(
-            args.last().unwrap(),
-            &format!("sh -lc {}", sh_quote(&script))
-        );
+        assert_eq!(args.last().unwrap(), &remote_command(false, &script));
         assert!(!args
             .iter()
             .any(|arg| matches!(arg.as_str(), "-R" | "-L" | "-D" | "-A")));
@@ -539,7 +639,7 @@ mod tests {
         ];
         let mut command = tokio::process::Command::new("ssh.exe");
         command.env("PREEXISTING_SECRET", "not-retained");
-        configure_listing_environment(
+        configure_ssh_environment(
             &mut command,
             retained
                 .iter()
@@ -568,18 +668,35 @@ mod tests {
     fn resume_uses_each_cli_resume_flag_and_remote_cwd_without_host_resolution() {
         let target = SshTarget::new("Alias", None).unwrap();
         for profile in crate::agent_registry::KNOWN_AGENTS {
-            let command = resume_commandline(&target, profile.id, "sid", "/remote/repo").unwrap();
-            let args = windows_argv(&command);
-            assert_eq!(args[0], "ssh.exe");
-            assert_eq!(args[1], "-t");
-            assert!(!args.iter().any(|arg| arg == "cmd.exe"));
+            let command =
+                resume_commandline(&target, profile.id, "sid", "/remote/repo", false).unwrap();
+            let launcher = windows_argv(&command);
+            assert_eq!(
+                PathBuf::from(&launcher[0]),
+                std::env::current_exe().unwrap()
+            );
+            assert_eq!(&launcher[1..3], ["ssh-resume", "--payload"]);
+            let request = decode_resume_request(&launcher[3]).unwrap();
+            assert!(!request.managed);
+            let process = resume_process(&request, []).unwrap();
+            assert_eq!(
+                process.as_std().get_program(),
+                system_ssh_executable().unwrap().as_os_str()
+            );
+            let args: Vec<_> = process
+                .as_std()
+                .get_args()
+                .map(|arg| arg.to_str().unwrap())
+                .collect();
+            assert_eq!(args[0], "-t");
+            assert!(!args.contains(&"cmd.exe"));
             let script = format!(
                 "cd -- '/remote/repo' && exec '{}' '{}' 'sid'",
                 profile.id, profile.resume_flag
             );
             assert_eq!(
-                args.last().unwrap(),
-                &format!("sh -lc {}", sh_quote(&script))
+                args.last().copied(),
+                Some(format!("sh -lc {}", sh_quote(&script)).as_str())
             );
         }
     }
@@ -589,28 +706,40 @@ mod tests {
     fn resume_quotes_shell_metacharacters_at_both_shell_layers_and_windows_argv() {
         let target = SshTarget::new("user@[::1]", Some(2222)).unwrap();
         let id = r#"session'";$(echo injected)`id`&%PATH%\"#;
-        let cwd = r#"/home/a b/'";$(touch nope)\last"#;
-        let command = resume_commandline(&target, "codex", id, cwd).unwrap();
-        let args = windows_argv(&command);
-        assert_eq!(args[0], "ssh.exe");
-        assert_eq!(args[args.len() - 2], "user@[::1]");
-        let script = format!(
-            "cd -- {} && exec 'codex' 'resume' {}",
-            sh_quote(cwd),
-            sh_quote(id)
-        );
-        assert_eq!(
-            args.last().unwrap(),
-            &format!("sh -lc {}", sh_quote(&script))
-        );
-        assert!(args.last().unwrap().contains(r"'\''"));
+        let cwd = r#"/home/a b/世界/%PATH%/'";$(touch nope)\last"#;
+        for managed in [false, true] {
+            let command = resume_commandline(&target, "codex", id, cwd, managed).unwrap();
+            assert!(!command.contains('%'));
+            let launcher = windows_argv(&command);
+            let request = decode_resume_request(&launcher[3]).unwrap();
+            assert_eq!(request.session_id, id);
+            assert_eq!(request.cwd, cwd);
+            assert_eq!(request.managed, managed);
+            let process = resume_process(&request, []).unwrap();
+            let args: Vec<_> = process
+                .as_std()
+                .get_args()
+                .map(|arg| arg.to_str().unwrap())
+                .collect();
+            assert_eq!(args[args.len() - 2], "user@[::1]");
+            let script = format!(
+                "cd -- {} && exec 'codex' 'resume' {}",
+                sh_quote(cwd),
+                sh_quote(id)
+            );
+            assert_eq!(
+                args.last().copied(),
+                Some(format!("sh -lc {}", sh_quote(&script)).as_str())
+            );
+            assert!(args.last().unwrap().contains(r"'\''"));
+        }
     }
 
     #[test]
     fn resume_rejects_options_controls_unknown_agents_and_non_posix_cwd() {
         let target = SshTarget::new("host", None).unwrap();
         for id in ["", " ", "-x", "--help", "id\0", "id\n", "id\r"] {
-            assert!(resume_commandline(&target, "copilot", id, "/repo").is_err());
+            assert!(resume_commandline(&target, "copilot", id, "/repo", false).is_err());
         }
         for cwd in [
             "",
@@ -622,12 +751,133 @@ mod tests {
             "/repo\0",
             "/repo\n",
         ] {
-            assert!(resume_commandline(&target, "copilot", "sid", cwd).is_err());
+            assert!(resume_commandline(&target, "copilot", "sid", cwd, false).is_err());
         }
         for agent in ["unknown", "custom:copilot", "copilot;id"] {
-            assert!(resume_commandline(&target, agent, "sid", "/repo").is_err());
+            assert!(resume_commandline(&target, agent, "sid", "/repo", false).is_err());
         }
-        assert!(resume_commandline(&target, "copilot", "sid", "/").is_ok());
+        assert!(resume_commandline(&target, "copilot", "sid", "/", false).is_ok());
+    }
+
+    #[test]
+    fn resume_child_scrubs_inherited_environment_and_checks_payload() {
+        let request = ResumeRequest {
+            target: SshTarget::new("host", None).unwrap(),
+            agent_id: "copilot".into(),
+            session_id: "sid".into(),
+            cwd: "/repo".into(),
+            managed: false,
+        };
+        let payload = serde_json::to_string(&request).unwrap();
+        let process = resume_process(
+            &decode_resume_request(&payload).unwrap(),
+            [
+                ("USERPROFILE", "ssh-user"),
+                ("SSH_AUTH_SOCK", "ssh-agent"),
+                ("WTA_MCP_TOKEN", "secret"),
+                ("OPENAI_API_KEY", "secret"),
+                ("WT_COM_CLSID", "route"),
+                ("UNKNOWN_PROVIDER_SECRET", "secret"),
+            ]
+            .map(|(name, value)| (OsString::from(name), OsString::from(value))),
+        )
+        .unwrap();
+        let env: Vec<_> = process.as_std().get_envs().collect();
+        assert_eq!(env.len(), 2);
+        assert!(env
+            .iter()
+            .all(|(name, _)| *name == "USERPROFILE" || *name == "SSH_AUTH_SOCK"));
+        for invalid in [
+            "{}",
+            r#"{"target":{"destination":"-oProxyCommand=bad","port":null},"agent_id":"copilot","session_id":"sid","cwd":"/repo"}"#,
+            r#"{"target":{"destination":"host","port":null},"agent_id":"unknown","session_id":"sid","cwd":"/repo"}"#,
+            r#"{"target":{"destination":"host","port":null},"agent_id":"copilot","session_id":"-option","cwd":"/repo"}"#,
+            r#"{"target":{"destination":"host","port":null},"agent_id":"copilot","session_id":"sid","cwd":"/%PATH%"}"#,
+        ] {
+            assert!(decode_resume_request(invalid)
+                .and_then(|request| resume_process(&request, []))
+                .is_err());
+        }
+        let legacy = serde_json::json!({
+            "target": {"destination": "host", "port": null},
+            "agent_id": "copilot", "session_id": "sid", "cwd": "/repo"
+        });
+        assert!(!decode_resume_request(&legacy.to_string()).unwrap().managed);
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn openssh_config_cannot_restore_setenv_but_sendenv_is_additive() {
+        let fixture =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(r"tests\fixtures\ssh_sessions.conf");
+        for interactive in [false, true] {
+            let mut command = tokio::process::Command::new(system_ssh_executable().unwrap());
+            configure_ssh_environment(&mut command, std::env::vars_os());
+            command.args(["-G", "-F"]).arg(&fixture);
+            command.args(["-o", "SendEnv=-*"]);
+            command.args(ssh_arguments(
+                &SshTarget::new("fixture", None).unwrap(),
+                interactive,
+                "true",
+            ));
+            let output = command.as_std_mut().output().unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let config = String::from_utf8(output.stdout).unwrap();
+            assert!(config.lines().any(|line| line == "sendenv *"));
+            assert!(config.lines().any(|line| line == "escapechar none"));
+            assert_eq!(
+                config
+                    .lines()
+                    .filter(|line| line.starts_with("setenv "))
+                    .collect::<Vec<_>>(),
+                ["setenv TERM=xterm-256color"]
+            );
+            assert!(config.contains("identityfile ~/.ssh/fixture"));
+            assert!(config.contains("proxycommand ssh -W %h:%p jump"));
+        }
+    }
+
+    #[test]
+    fn login_startup_banner_is_stderr_but_login_path_and_acp_stdio_survive() {
+        #[cfg(windows)]
+        let shell = PathBuf::from(r"C:\Program Files\Git\bin\bash.exe");
+        #[cfg(not(windows))]
+        let shell = PathBuf::from("/bin/bash");
+        if !shell.is_file() {
+            eprintln!("Skipping POSIX fixture: bash is not installed");
+            return;
+        }
+        // Emulate login startup without reading or modifying real dotfiles.
+        let fixture = r#"sh() {
+            test "$1" = -lc || return 99
+            printf 'login-banner\n'
+            export PATH="/fixture/login:$PATH"
+            command sh -c "$2"
+        }; "#;
+        let script = r#"read -r request; printf 'ACP:%s:%s\n' "$request" "$PATH"; printf 'agent-diagnostic\n' >&2; exit 23"#;
+        let mut child = std::process::Command::new(shell)
+            .args(["--noprofile", "--norc", "-c"])
+            .arg(format!("{fixture}{}", remote_command(false, script)))
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        use std::io::Write;
+        child.stdin.take().unwrap().write_all(b"request\n").unwrap();
+        let output = child.wait_with_output().unwrap();
+        assert_eq!(output.status.code(), Some(23));
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        assert!(stdout.starts_with("ACP:request:/fixture/login:"));
+        assert!(!stdout.contains("banner"));
+        assert_eq!(
+            String::from_utf8(output.stderr).unwrap(),
+            ["login-banner", "agent-diagnostic", ""].join("\n")
+        );
     }
 
     #[test]

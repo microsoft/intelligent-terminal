@@ -87,9 +87,12 @@ querying, duplication, restart, and layout persistence rather than storing
 the current package's WTA executable path.
 
 Session source discovery uses the source pane's logical connection command,
-not just the inherited profile. It also recognizes managed WTA SSH commands,
-including resume commands that carry `--remote-command`. This keeps a
-commandline override or resumed SSH tab from incorrectly showing Host history.
+not just the inherited profile. It recognizes managed WTA SSH commands and the
+encoded `ssh-resume --payload` launcher. Managed resumes use the same encoded
+payload and sanitized SSH child environment as ordinary resumes, then retain
+the connection route and heartbeat needed for live hooks. This keeps a
+commandline override or resumed SSH tab from incorrectly showing Host history
+without reintroducing Windows environment expansion into remote session IDs or cwd.
 
 The wrapper obtains the local pane GUID from `WT_SESSION`. It registers an
 active connection route with master before relying on hook messages, and

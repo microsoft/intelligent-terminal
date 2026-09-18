@@ -551,7 +551,7 @@ async fn run_channel(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
-    crate::ssh_sessions::configure_listing_environment(&mut command, std::env::vars_os());
+    crate::ssh_sessions::configure_ssh_environment(&mut command, std::env::vars_os());
     #[cfg(windows)]
     command.creation_flags(0x0800_0000);
     let mut child = command

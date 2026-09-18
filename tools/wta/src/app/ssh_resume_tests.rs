@@ -356,6 +356,65 @@ async fn failed_shared_activation_is_retryable_and_its_error_survives_cached_pol
         .await;
 }
 
+#[tokio::test]
+async fn successful_cached_poll_clears_only_its_own_transient_error() {
+    let _locale = crate::test_support::lock_locale();
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let registry = SharedRegistry::new();
+            let source = source("ubuntu");
+            let mut helper = Helper::new("first", &source, &registry);
+            helper.open().await;
+            *registry.failure.lock().unwrap() = Some("registry temporarily unavailable".into());
+            helper
+                .app
+                .handle_event(AppEvent::SshSessionsChanged(source.clone()));
+            helper.next().await;
+            assert!(helper.app.current_tab().agents_view.ssh_error.is_some());
+            helper
+                .app
+                .handle_event(AppEvent::SshSessionsChanged(source));
+            helper.next().await;
+            assert!(helper.app.current_tab().agents_view.ssh_error.is_none());
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn successful_cached_poll_does_not_claim_a_failed_ssh_refresh_recovered() {
+    let _locale = crate::test_support::lock_locale();
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let registry = SharedRegistry::new();
+            let source = source("ubuntu");
+            let mut helper = Helper::new("first", &source, &registry);
+            helper.open().await;
+            *registry.failure.lock().unwrap() = Some("SSH connection refused".into());
+            helper
+                .app
+                .handle_key(KeyEvent::new(KeyCode::F(5), KeyModifiers::NONE));
+            helper.next().await;
+            helper
+                .app
+                .handle_event(AppEvent::SshSessionsChanged(source));
+            helper.next().await;
+            assert!(helper
+                .app
+                .current_tab()
+                .agents_view
+                .ssh_error
+                .as_deref()
+                .unwrap()
+                .contains("SSH connection refused"));
+            helper
+                .app
+                .handle_key(KeyEvent::new(KeyCode::F(5), KeyModifiers::NONE));
+            helper.next().await;
+            assert!(helper.app.current_tab().agents_view.ssh_error.is_none());
+        })
+        .await;
+}
+
 #[test]
 fn snapshot_revisions_and_master_epochs_reject_stale_idle_history() {
     let source = source("ubuntu");

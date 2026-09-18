@@ -47,10 +47,18 @@ struct CachedSnapshot {
     retired_epochs: HashSet<uuid::Uuid>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SshErrorOperation {
+    History,
+    Activate,
+    Cached,
+}
+
 #[derive(Default)]
 pub(crate) struct SshResumes {
     client: Option<Arc<dyn SshRegistryClient>>,
     snapshots: HashMap<Source, CachedSnapshot>,
+    errors: HashMap<Source, SshErrorOperation>,
     pending_actions: HashMap<(Source, String), u64>,
     pending_cached: HashMap<Source, u64>,
     dirty_cached: HashSet<Source>,
@@ -216,7 +224,7 @@ impl App {
             sequence,
         )?;
         self.ssh_resumes.pending_actions.insert(key, sequence);
-        self.set_shared_ssh_error(&source, None);
+        self.set_shared_ssh_error(&source, None, SshErrorOperation::Activate);
         Ok(())
     }
 
@@ -258,7 +266,11 @@ impl App {
                     .pending_cached
                     .insert(source.clone(), sequence);
             }
-            Err(error) => self.set_shared_ssh_error(source, Some(format!("{error:#}"))),
+            Err(error) => self.set_shared_ssh_error(
+                source,
+                Some(format!("{error:#}")),
+                SshErrorOperation::Cached,
+            ),
         }
     }
 
@@ -343,6 +355,13 @@ impl App {
                     })
                     .ok_or_else(|| "Shared SSH snapshot was not cached.".to_string())
             });
+            if rows.is_err() {
+                self.ssh_resumes
+                    .errors
+                    .insert(source.clone(), SshErrorOperation::History);
+            } else {
+                self.ssh_resumes.errors.remove(&source);
+            }
             self.handle_ssh_sessions_loaded(
                 tab_id,
                 *request_id,
@@ -350,10 +369,13 @@ impl App {
                 &source.agent_id,
                 rows,
             );
-        } else if let Err(error) = result {
-            self.set_shared_ssh_error(&source, Some(error));
-        } else if !matches!(action, SshRegistryAction::Cached) {
-            self.set_shared_ssh_error(&source, None);
+        } else {
+            let operation = if matches!(action, SshRegistryAction::Cached) {
+                SshErrorOperation::Cached
+            } else {
+                SshErrorOperation::Activate
+            };
+            self.set_shared_ssh_error(&source, result.err(), operation);
         }
         if succeeded {
             self.refresh_ssh_resume_snapshots();
@@ -370,9 +392,30 @@ impl App {
         }
     }
 
-    fn set_shared_ssh_error(&mut self, source: &Source, error: Option<String>) {
+    fn set_shared_ssh_error(
+        &mut self,
+        source: &Source,
+        error: Option<String>,
+        operation: SshErrorOperation,
+    ) {
         if let Some(error) = &error {
             tracing::warn!(target: "ssh_sessions", %error, "shared SSH session operation failed");
+        }
+        // A cached read only retries local registry access, not remote SSH or
+        // a failed native launch. It must not erase those unrelated failures.
+        if operation == SshErrorOperation::Cached
+            && self
+                .ssh_resumes
+                .errors
+                .get(source)
+                .is_some_and(|prior| *prior != operation)
+        {
+            return;
+        }
+        if error.is_some() {
+            self.ssh_resumes.errors.insert(source.clone(), operation);
+        } else {
+            self.ssh_resumes.errors.remove(source);
         }
         for tab in self.tab_sessions.values_mut() {
             if tab.agents_view.ssh_source.as_ref() == Some(source) {

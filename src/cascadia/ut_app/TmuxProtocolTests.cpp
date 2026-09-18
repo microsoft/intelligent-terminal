@@ -115,6 +115,9 @@ namespace TerminalAppUnitTests
         TEST_METHOD(FormatsNamedSocketSessionTitle);
         TEST_METHOD(OmitsDefaultOrMissingSocketFromSessionTitle);
         TEST_METHOD(PreservesSessionIdentityText);
+        TEST_METHOD(ParsesSessionInventoryWithStableIds);
+        TEST_METHOD(RejectsMalformedSessionInventory);
+        TEST_METHOD(BoundsSessionInventory);
     };
 
     void TmuxProtocolTests::FormatsNamedSocketSessionTitle()
@@ -122,6 +125,54 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(std::string{ "it-test/demo" }, FormatSessionTitle("/tmp/tmux-1000/it-test", "demo"));
         VERIFY_ARE_EQUAL(std::string{ "it-test/worker" }, FormatSessionTitle("it-test", "worker"));
         VERIFY_ARE_EQUAL(std::string{ "it-test/demo" }, FormatSessionTitle(R"(\\.\pipe\it-test)", "demo"));
+    }
+
+    void TmuxProtocolTests::ParsesSessionInventoryWithStableIds()
+    {
+        const auto sessions = ParseSessions("$0 first\n$42 work 'quoted' $name; \xe4\xbc\x9a\xe8\xaf\x9d");
+        VERIFY_ARE_EQUAL(size_t{ 2 }, sessions.size());
+        VERIFY_ARE_EQUAL(Id{ 0 }, sessions[0].id);
+        VERIFY_ARE_EQUAL(std::string{ "first" }, sessions[0].name);
+        VERIFY_ARE_EQUAL(Id{ 42 }, sessions[1].id);
+        VERIFY_ARE_EQUAL(std::string{ "work 'quoted' $name; \xe4\xbc\x9a\xe8\xaf\x9d" }, sessions[1].name);
+        VERIFY_IS_TRUE(ParseSessions({}).empty());
+        VERIFY_ARE_EQUAL(size_t{ 1 }, ParseSessions("$7 trailing newline\n").size());
+    }
+
+    void TmuxProtocolTests::RejectsMalformedSessionInventory()
+    {
+        for (const auto text : {
+                 "name",
+                 "@0 name",
+                 "$ name",
+                 "$-1 name",
+                 "$1 ",
+                 "$1",
+                 "$1 name\n\n",
+                 "$1 name\r",
+                 "$1 name\t"
+                 "value",
+                 "$1 name\x1b",
+                 "$1 one\n$1 two",
+                 "$18446744073709551616 overflow",
+             })
+        {
+            VERIFY_THROWS(ParseSessions(text), ProtocolError);
+        }
+        VERIFY_THROWS(ParseSessions(std::string_view{ "$1 a\0b", 6 }), ProtocolError);
+    }
+
+    void TmuxProtocolTests::BoundsSessionInventory()
+    {
+        std::string inventory;
+        for (size_t id = 0; id < 256; ++id)
+        {
+            inventory.append("$").append(std::to_string(id)).append(" name\n");
+        }
+        VERIFY_ARE_EQUAL(size_t{ 256 }, ParseSessions(inventory).size());
+        VERIFY_THROWS(ParseSessions(inventory + "$256 extra"), ProtocolError);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, ParseSessions("$1 " + std::string(64 * 1024 - 3, 'a')).size());
+        VERIFY_THROWS(ParseSessions("$1 " + std::string(64 * 1024 - 2, 'a')), ProtocolError);
     }
 
     void TmuxProtocolTests::OmitsDefaultOrMissingSocketFromSessionTitle()
@@ -361,8 +412,10 @@ namespace TerminalAppUnitTests
             Parser parser;
             VERIFY_THROWS(parser.Feed(wire), ProtocolError);
         }
+        const auto unfinishedResponse = "%begin 1 2 0\n"
+                                        "body\n";
         for (const auto wire : {
-                 "\x1b", "\x1bP1000", "\x1bP1000p", "\x1bP1000p%exit\n", "\x1bP1000p%exit\n\x1b", "%begin 1 2 0\n", "%begin 1 2 0\nbody\n", "%output %1 partial", "%exit\r" })
+                 "\x1b", "\x1bP1000", "\x1bP1000p", "\x1bP1000p%exit\n", "\x1bP1000p%exit\n\x1b", "%begin 1 2 0\n", unfinishedResponse, "%output %1 partial", "%exit\r" })
         {
             Parser parser;
             parser.Feed(wire);

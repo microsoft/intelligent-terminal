@@ -4,12 +4,25 @@
 #include "precomp.h"
 
 #include "../inc/AgentSourceUtils.h"
+#include "../inc/TmuxSshCommand.h"
 #include "../WinRTUtils/inc/WtExeUtils.h"
 
 using namespace WEX::TestExecution;
 
 namespace TerminalAppUnitTests
 {
+    namespace
+    {
+        std::wstring SshResumeCommandline(const std::wstring_view payload, const std::wstring_view executable = L"wta.exe")
+        {
+            std::wstring commandline;
+            Microsoft::Terminal::AgentPaneRestore::AppendQuoted(commandline, executable);
+            commandline.append(L" ssh-resume --payload ");
+            Microsoft::Terminal::AgentPaneRestore::AppendQuoted(commandline, payload);
+            return commandline;
+        }
+    }
+
     class AgentSourceUtilsTests
     {
         TEST_CLASS(AgentSourceUtilsTests);
@@ -30,7 +43,10 @@ namespace TerminalAppUnitTests
         TEST_METHOD(LeavesUnsupportedSshLaunchesUnchanged);
         TEST_METHOD(RecognizesManagedSshSessionSource);
         TEST_METHOD(RejectsMalformedManagedSshSessionSource);
+        TEST_METHOD(RecognizesSshResumeSourceWithoutExpandingPayloadData);
+        TEST_METHOD(RejectsMalformedSshResumeSource);
         TEST_METHOD(RecognizesTmuxSshSessionsSource);
+        TEST_METHOD(PreservesBrowserTmuxSshSessionsSource);
         TEST_METHOD(RejectsAmbiguousTmuxSshSessionsSource);
     };
 
@@ -120,7 +136,7 @@ namespace TerminalAppUnitTests
             L"Windows.Terminal.SSH",
             LR"("%SystemRoot%\System32\OpenSSH\ssh.exe" wsl-ssh)");
         VERIFY_IS_TRUE(source.kind == AgentSource::SessionsSshKind::ValidTarget,
-                       L"Generated SSH identity depends on namespace and commandline, not a renameable display name");
+                       L"Generated SSH identity depends on namespace and commandline, not the display name");
         VERIFY_ARE_EQUAL(std::wstring{ L"wsl-ssh" }, source.destination);
         VERIFY_IS_FALSE(source.port.has_value());
         VERIFY_IS_TRUE(source.error.empty());
@@ -162,6 +178,7 @@ namespace TerminalAppUnitTests
     {
         namespace AgentSource = Microsoft::Terminal::AgentSource;
         for (const auto commandline : {
+                 L"ssh.exe -T -o BatchMode=yes wsl-ubuntu tmux -C attach-session -t test-s",
                  L"ssh.exe -T -o BatchMode=yes wsl-ubuntu tmux -C a -t test-s",
                  L"ssh -oBatchMode=yes -- wsl-ubuntu tmux -C new-session -A -s work",
                  LR"(ssh.exe wsl-ubuntu "tmux -C attach-session -t work")",
@@ -186,6 +203,39 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(std::wstring{ L"user@[::1]" }, ipv6.destination);
     }
 
+    void AgentSourceUtilsTests::PreservesBrowserTmuxSshSessionsSource()
+    {
+        namespace AgentSource = Microsoft::Terminal::AgentSource;
+        namespace Tmux = Microsoft::Terminal::Tmux;
+        for (const auto destination : { L"wsl-ubuntu", L"Wsl-Alias", L"user@Wsl-Alias", L"other@Wsl-Alias", L"user@[::1]" })
+        {
+            for (const auto port : { uint16_t{ 0 }, uint16_t{ 22 }, uint16_t{ 2222 } })
+            {
+                auto login = std::wstring{ L"ssh.exe " };
+                if (port != 0)
+                {
+                    login.append(L"-p ").append(std::to_wstring(port)).push_back(L' ');
+                }
+                login.append(destination);
+                const auto ordinary = AgentSource::ResolveSessionsSshSource({}, login);
+                VERIFY_IS_TRUE(ordinary.kind == AgentSource::SessionsSshKind::ValidTarget);
+                for (const auto session : { L"$42", L"work", L"\u5f00\u53d1 \U0001f680", L"a'\\\"b;", L"$(command); & | `command` > out < in" })
+                {
+                    const auto commandline = Tmux::BuildSshCommandline(destination, session, port);
+                    const auto source = AgentSource::ResolveSessionsSshSource({}, commandline, AgentSource::SessionsSshCommand::Tmux);
+                    VERIFY_IS_TRUE(source.kind == AgentSource::SessionsSshKind::ValidTarget);
+                    VERIFY_ARE_EQUAL(ordinary.destination, source.destination);
+                    VERIFY_ARE_EQUAL(ordinary.port.has_value(), source.port.has_value());
+                    VERIFY_ARE_EQUAL(ordinary.port.value_or(0), source.port.value_or(0));
+                    VERIFY_IS_TRUE(AgentSource::ResolveSessionsSshSource({}, commandline).kind == AgentSource::SessionsSshKind::UnsupportedSsh);
+                }
+                VERIFY_IS_TRUE(AgentSource::ResolveSessionsSshSource({}, Tmux::BuildSshListCommandline(destination, port), AgentSource::SessionsSshCommand::Tmux).kind ==
+                                   AgentSource::SessionsSshKind::UnsupportedSsh,
+                               L"A one-shot discovery query is not a tmux control backend");
+            }
+        }
+    }
+
     void AgentSourceUtilsTests::RejectsAmbiguousTmuxSshSessionsSource()
     {
         namespace AgentSource = Microsoft::Terminal::AgentSource;
@@ -195,6 +245,11 @@ namespace TerminalAppUnitTests
                  L"ssh host ssh other tmux -C a",
                  L"ssh host tmux -C a ; ssh other tmux -C a",
                  L"ssh host tmux -C a || ssh other tmux -C a",
+                 L"ssh host tmux -C a -t '$42'; ssh other tmux -C a",
+                 L"ssh host tmux -C a -t 'unterminated",
+                 L"ssh host tmux -C a -t '$42'$(ssh other tmux -C a)",
+                 LR"(ssh host tmux -C a -t \"'$42'; ssh other tmux -C a\")",
+                 L"ssh host tmux -C a -t '\\'; ssh other tmux -C a",
                  L"ssh -oHostName=other host tmux -C a",
                  L"ssh -o User=other host tmux -C a",
                  L"ssh -F other-config host tmux -C a",
@@ -235,6 +290,9 @@ namespace TerminalAppUnitTests
             { L"ssh -p00022 server", L"server", 22 },
             { L"ssh -p2222 user@[::1]", L"user@[::1]", 2222 },
             { L"ssh user@::1", L"user@::1", 0 },
+            { L"ssh user@[fe80::1%eth0]", L"user@[fe80::1%eth0]", 0 },
+            { L"ssh -p2222 user@[fe80::1%12]", L"user@[fe80::1%12]", 2222 },
+            { L"ssh user@fe80::1%eth0", L"user@fe80::1%eth0", 0 },
         };
         for (const auto& test : cases)
         {
@@ -349,6 +407,11 @@ namespace TerminalAppUnitTests
                  L"ssh [::1",
                  L"ssh ::1]",
                  L"ssh user@[server]",
+                 L"ssh user@[fe80::1%]",
+                 L"ssh user@[fe80::1%eth0%other]",
+                 L"ssh user@[fe80::1%-scope]",
+                 L"ssh user@server%eth0",
+                 L"ssh user@[fe80::1%scope;command]",
                  L"ssh ssh://user@server",
              })
         {
@@ -386,7 +449,9 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(std::wstring{ L"--sessions-ssh-error" }, errorArgs[0].first);
         VERIFY_ARE_EQUAL(unsupported.error, errorArgs[0].second);
 
-        for (const auto& source : { direct, alias, unsupported, AgentSource::SessionsSshSource{} })
+        const auto scoped = AgentSource::ResolveSessionsSshSource({}, L"ssh user@[fe80::1%12]");
+        VERIFY_IS_TRUE(scoped.kind == AgentSource::SessionsSshKind::ValidTarget);
+        for (const auto& source : { direct, alias, scoped, unsupported, AgentSource::SessionsSshSource{} })
         {
             const auto args = AgentSource::BuildSessionsSshHelperArguments(source);
             std::wstring commandline{ L"wta.exe" };
@@ -396,7 +461,8 @@ namespace TerminalAppUnitTests
                 QuoteAndEscapeCommandlineArg(value, commandline);
             }
             int argc = 0;
-            const wil::unique_hlocal_ptr<PWSTR[]> argv{ CommandLineToArgvW(commandline.c_str(), &argc) };
+            const auto expanded = wil::ExpandEnvironmentStringsW<std::wstring>(commandline.c_str());
+            const wil::unique_hlocal_ptr<PWSTR[]> argv{ CommandLineToArgvW(expanded.c_str(), &argc) };
             VERIFY_IS_NOT_NULL(argv.get());
             VERIFY_ARE_EQUAL(args.size() * 2 + 1, static_cast<size_t>(argc));
             for (size_t i = 0; i < args.size(); ++i)
@@ -508,6 +574,121 @@ namespace TerminalAppUnitTests
             VERIFY_IS_TRUE(source.kind == AgentSource::SessionsSshKind::UnsupportedSsh);
             VERIFY_IS_FALSE(source.error.empty());
         }
+    }
+
+    void AgentSourceUtilsTests::RecognizesSshResumeSourceWithoutExpandingPayloadData()
+    {
+        namespace AgentSource = Microsoft::Terminal::AgentSource;
+        struct TestCase
+        {
+            const wchar_t* target;
+            const wchar_t* login;
+        };
+        constexpr TestCase cases[]{
+            { LR"({"destination":"Host-Alias"})", L"ssh Host-Alias" },
+            { LR"({"destination":"Host-Alias","port":null})", L"ssh Host-Alias" },
+            { LR"({"destination":"user@Host-Alias","port":22})", L"ssh -p22 user@Host-Alias" },
+            { LR"({"destination":"other@Host-Alias","port":2222})", L"ssh -p2222 other@Host-Alias" },
+            { LR"({"destination":"user@[fe80::1\u002512]","port":2222})", L"ssh -p2222 user@[fe80::1%12]" },
+        };
+        for (const auto& test : cases)
+        {
+            const auto expected = AgentSource::ResolveSessionsSshSource({}, test.login);
+            for (const auto executable : { L"wta", L"WTA.EXE", LR"(C:\Program Files\IT\wta.exe)" })
+            {
+                for (const auto managed : { L"", L",\"managed\":false", L",\"managed\":true" })
+                {
+                    const auto payload = std::wstring{ L"{\"target\":" } + test.target +
+                                         LR"(,"agent_id":"copilot","session_id":"sid \u0025PATH\u0025; host","cwd":"/home/\u4e16\u754c/\u0025PATH\u0025/other@host")" + managed + L"}";
+                    const auto commandline = SshResumeCommandline(payload, executable);
+                    const auto expanded = wil::ExpandEnvironmentStringsW<std::wstring>(commandline.c_str());
+                    VERIFY_ARE_EQUAL(commandline, expanded);
+                    const auto source = AgentSource::ResolveSessionsSshSource({}, expanded);
+                    VERIFY_IS_TRUE(source.kind == AgentSource::SessionsSshKind::ValidTarget);
+                    VERIFY_ARE_EQUAL(expected.destination, source.destination);
+                    VERIFY_ARE_EQUAL(expected.port.has_value(), source.port.has_value());
+                    VERIFY_ARE_EQUAL(expected.port.value_or(0), source.port.value_or(0));
+                    VERIFY_ARE_EQUAL(std::wstring{ executable }, source.executable);
+                    VERIFY_IS_TRUE(source.requestPty);
+                    VERIFY_IS_TRUE(source.managedLaunch);
+                    VERIFY_IS_FALSE(AgentSource::BuildManagedSshCommandline(source, L"wta.exe", {}).has_value());
+                    VERIFY_IS_TRUE(AgentSource::ResolveSessionsSshSource({}, expanded, AgentSource::SessionsSshCommand::Tmux).kind ==
+                                   AgentSource::SessionsSshKind::UnsupportedSsh);
+                    Json::Value actualMetadata;
+                    Json::Value expectedMetadata;
+                    AgentSource::WriteSessionsSshMetadata(actualMetadata, source);
+                    AgentSource::WriteSessionsSshMetadata(expectedMetadata, expected);
+                    VERIFY_IS_TRUE(actualMetadata == expectedMetadata);
+                }
+            }
+        }
+    }
+
+    void AgentSourceUtilsTests::RejectsMalformedSshResumeSource()
+    {
+        namespace AgentSource = Microsoft::Terminal::AgentSource;
+        constexpr std::wstring_view valid{ LR"({"target":{"destination":"host","port":null},"agent_id":"copilot","session_id":"sid","cwd":"/repo"})" };
+        const auto reject = [](const std::wstring_view commandline) {
+            const auto source = AgentSource::ResolveSessionsSshSource({}, commandline);
+            VERIFY_IS_TRUE(source.kind == AgentSource::SessionsSshKind::UnsupportedSsh);
+            VERIFY_IS_TRUE(source.destination.empty());
+            VERIFY_IS_FALSE(source.error.empty());
+        };
+        for (const auto payload : { L"", L"null", L"[]", L"{}", L"{", L"{}{}", L"/*comment*/{}", L"\ufeff{}", LR"({"target":{},"target":{}})" })
+        {
+            reject(SshResumeCommandline(payload));
+        }
+        for (const auto target : {
+                 L"null",
+                 L"[]",
+                 L"\"host\"",
+                 L"{}",
+                 LR"({"destination":null})",
+                 LR"({"destination":42})",
+                 LR"({"destination":"host","destination":"other"})",
+                 LR"({"destination":"host","extra":"other"})",
+                 LR"({"destination":"host","port":0})",
+                 LR"({"destination":"host","port":-1})",
+                 LR"({"destination":"host","port":65536})",
+                 LR"({"destination":"host","port":22.0})",
+                 LR"({"destination":"host","port":"22"})",
+                 LR"({"destination":"host","port":true})",
+                 LR"({"destination":"host","port":22,"port":23})",
+                 LR"({"destination":"-option"})",
+                 LR"({"destination":"user@other@host"})",
+                 LR"({"destination":"host; command"})",
+                 LR"({"destination":"host\u0000other"})",
+             })
+        {
+            reject(SshResumeCommandline(std::wstring{ L"{\"target\":" } + target + LR"(,"agent_id":"copilot","session_id":"sid","cwd":"/repo"})"));
+        }
+        for (const auto fields : {
+                 L"",
+                 LR"(,"agent_id":null,"session_id":"sid","cwd":"/repo")",
+                 LR"(,"agent_id":"copilot","session_id":[],"cwd":"/repo")",
+                 LR"(,"agent_id":"copilot","session_id":"sid","cwd":false)",
+                 LR"(,"agent_id":"copilot","session_id":"sid","cwd":"/repo","managed":null)",
+                 LR"(,"agent_id":"copilot","session_id":"sid","cwd":"/repo","managed":"true")",
+                 LR"(,"agent_id":"copilot","session_id":"sid","cwd":"/repo","managed":true,"managed":false)",
+                 LR"(,"agent_id":"copilot","session_id":"sid","cwd":"/repo","extra":"host")",
+                 LR"(,"agent_id":"copilot","session_id":"%PATH%","cwd":"/repo")",
+             })
+        {
+            reject(SshResumeCommandline(std::wstring{ LR"({"target":{"destination":"host"})" } + fields + L"}"));
+        }
+        reject(SshResumeCommandline(std::wstring{ valid } + L" {}"));
+        reject(SshResumeCommandline(std::wstring{ L"/*comment*/" } + std::wstring{ valid }));
+        reject(SshResumeCommandline(std::wstring{ valid } + L"/*comment*/"));
+        reject(SshResumeCommandline(std::wstring{ valid.substr(0, valid.size() - 1) } + L",}"));
+        reject(SshResumeCommandline(std::wstring{ valid } + std::wstring(32767, L' ')));
+        reject(SshResumeCommandline(std::wstring(32, L'[') + L"0" + std::wstring(32, L']')));
+        reject(SshResumeCommandline(valid) + L" extra");
+        reject(SshResumeCommandline(valid) + L" --payload {}");
+        reject(SshResumeCommandline(valid) + L'"');
+        reject(SshResumeCommandline(valid) + L'\0' + L"extra");
+        reject(L"wta.exe ssh-resume");
+        reject(L"wta.exe ssh-resume --payload");
+        reject(L"wta.exe ssh-resume --unknown {}");
     }
 
     void AgentSourceUtilsTests::WritesSshSessionsRuntimeMetadata()

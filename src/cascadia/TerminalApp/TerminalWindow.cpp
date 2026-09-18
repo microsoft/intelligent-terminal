@@ -162,6 +162,7 @@ namespace winrt::TerminalApp::implementation
         if (IsTmuxWindow())
         {
             _root->SetStartupTmux(_startupTmuxCommandline, _startupTmuxWorkingDirectory);
+            _root->SetStartupTmuxSshDestination(_startupTmuxSshDestination, _startupTmuxSshPort);
         }
         else if (_startupConnection)
         {
@@ -1143,6 +1144,18 @@ namespace winrt::TerminalApp::implementation
         _startupTmuxWorkingDirectory = workingDirectory;
         _hasCommandLineArguments = true;
         _WindowProperties->SetInitialCwd(workingDirectory);
+    }
+
+    void TerminalWindow::TmuxSshDestination(const winrt::hstring& destination)
+    {
+        THROW_HR_IF(E_NOT_VALID_STATE, _root != nullptr);
+        _startupTmuxSshDestination = destination;
+    }
+
+    void TerminalWindow::TmuxSshPort(const uint16_t port)
+    {
+        THROW_HR_IF(E_NOT_VALID_STATE, _root != nullptr);
+        _startupTmuxSshPort = port;
     }
 
     void TerminalWindow::SetPersistedLayout(const winrt::Microsoft::Terminal::Settings::Model::WindowLayout& layout)

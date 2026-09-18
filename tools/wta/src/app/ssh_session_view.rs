@@ -301,7 +301,7 @@ mod tests {
     }
 
     #[test]
-    fn ssh_view_displays_source_and_errors_even_without_rows() {
+    fn ssh_view_displays_errors_without_a_source_header() {
         let _locale = crate::test_support::lock_locale();
         let mut app = test_app();
         prepare(&mut app, DEFAULT_TAB_ID, &source("test-host"), 1);
@@ -321,9 +321,46 @@ mod tests {
                 .iter()
                 .map(|cell| cell.symbol())
                 .collect();
-            assert!(rendered.contains("SSH: test-host (copilot)"));
+            assert!(!rendered.contains("SSH: test-host (copilot)"));
             assert!(rendered.contains("connection refused"));
         }
+    }
+
+    #[test]
+    fn ssh_view_has_no_source_header_or_reserved_row() {
+        let _locale = crate::test_support::lock_locale();
+        let mut app = test_app();
+        let source = source("wsl-ubuntu");
+        prepare(&mut app, DEFAULT_TAB_ID, &source, 1);
+        loaded(
+            &mut app,
+            DEFAULT_TAB_ID,
+            &source,
+            1,
+            vec![row(&source, "example")],
+        );
+        let mut terminal =
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(100, 12)).unwrap();
+        terminal
+            .draw(|frame| crate::ui::render(frame, &mut app))
+            .unwrap();
+        let first_row: String = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .take(100)
+            .map(|cell| cell.symbol())
+            .collect();
+        assert!(first_row.contains("Session example"), "{first_row}");
+        let rendered: String = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect();
+        assert!(!rendered.contains("SSH:"));
     }
 }
 

@@ -5,10 +5,12 @@
 #include "TmuxController.h"
 #include "TmuxAgentHook.h"
 #include "TmuxPaneState.h"
+#include "TmuxSessionMenu.h"
 #include "TerminalPage.h"
 #include "TerminalPaneContent.h"
 #include "../inc/AgentSourceUtils.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
+#include "../inc/TmuxSshCommand.h"
 
 #include <charconv>
 #include <cmath>
@@ -679,8 +681,134 @@ namespace winrt::TerminalApp::implementation
             if (page->_tmuxSessionTitle != title)
             {
                 page->_tmuxSessionTitle = title;
+                if (!page->_tmuxSshDestination.empty())
+                {
+                    page->_tabRow.WorkspaceName(title);
+                }
                 page->TitleChanged.raise(*page, nullptr);
             }
+        }
+    }
+
+    void TmuxController::PopulateSessionsFlyout(const Controls::MenuFlyout& flyout)
+    {
+        const auto generation = ++_sessionsGeneration;
+        const auto weakFlyout = winrt::make_weak(flyout);
+        SetTmuxSessionListStatus(flyout, RS_(L"TmuxSessionsLoading"));
+        try
+        {
+            _send("list-sessions -F '#{session_id} #{session_name}'", [weak = weak_from_this(), weakFlyout, generation](const Event& response) {
+                if (const auto self = weak.lock())
+                {
+                    std::vector<Protocol::SessionInfo> sessions;
+                    std::optional<std::string> error;
+                    try
+                    {
+                        if (!response.success)
+                        {
+                            throw Protocol::ProtocolError{ response.text };
+                        }
+                        sessions = Protocol::ParseSessions(response.text);
+                    }
+                    catch (...)
+                    {
+                        error = exceptionMessage();
+                        LOG_HR_MSG(E_FAIL, "Unable to list tmux sessions: %hs", error->c_str());
+                    }
+                    self->_post([weakFlyout, generation, sessions = std::move(sessions), error = std::move(error)](auto& owner) {
+                        const auto menu = weakFlyout.get();
+                        if (!menu || generation != owner._sessionsGeneration)
+                        {
+                            return;
+                        }
+                        ++owner._sessionsGeneration;
+                        if (error)
+                        {
+                            SetTmuxSessionListStatus(menu, RS_(L"TmuxSessionsFailed"), winrt::to_hstring(diagnosticText(*error)));
+                            return;
+                        }
+                        if (sessions.empty())
+                        {
+                            SetTmuxSessionListStatus(menu, RS_(L"TmuxSessionsEmpty"));
+                            return;
+                        }
+                        try
+                        {
+                            SetTmuxSessionList(menu, sessions, owner._sessionId, [weak = owner.weak_from_this()](const Id id) {
+                                if (const auto controller = weak.lock())
+                                {
+                                    controller->_openSession(id);
+                                }
+                            });
+                        }
+                        catch (...)
+                        {
+                            const auto error = exceptionMessage();
+                            LOG_HR_MSG(E_FAIL, "Unable to display tmux sessions: %hs", error.c_str());
+                            SetTmuxSessionListStatus(menu, RS_(L"TmuxSessionsFailed"), winrt::to_hstring(diagnosticText(error)));
+                        }
+                    });
+                }
+            });
+            _sessionsTimeout(weak_from_this(), generation, weakFlyout);
+        }
+        catch (...)
+        {
+            ++_sessionsGeneration;
+            const auto error = exceptionMessage();
+            LOG_HR_MSG(E_FAIL, "Unable to request tmux sessions: %hs", error.c_str());
+            SetTmuxSessionListStatus(flyout, RS_(L"TmuxSessionsFailed"), winrt::to_hstring(diagnosticText(error)));
+        }
+    }
+
+    winrt::fire_and_forget TmuxController::_sessionsTimeout(std::weak_ptr<TmuxController> weak, const uint64_t generation, winrt::weak_ref<Controls::MenuFlyout> flyout)
+    {
+        co_await winrt::resume_after(std::chrono::seconds{ 10 });
+        if (const auto self = weak.lock(); self && !self->_stopped)
+        {
+            try
+            {
+                self->_post([generation, flyout](auto& owner) {
+                    if (generation == owner._sessionsGeneration)
+                    {
+                        ++owner._sessionsGeneration;
+                        LOG_HR_MSG(HRESULT_FROM_WIN32(ERROR_TIMEOUT), "Timed out retrieving tmux sessions");
+                        if (const auto menu = flyout.get())
+                        {
+                            SetTmuxSessionListStatus(menu, RS_(L"TmuxSessionsFailed"));
+                        }
+                    }
+                });
+            }
+            catch (...)
+            {
+                self->_fail(exceptionMessage());
+            }
+        }
+    }
+
+    void TmuxController::_openSession(const Id id)
+    {
+        const auto page = _page.get();
+        if (!page || _stopped)
+        {
+            return;
+        }
+        try
+        {
+            THROW_HR_IF(E_ILLEGAL_METHOD_CALL, _failed || _exiting || !_initialResponse);
+            TerminalApp::WindowRequestedArgs request{ 0, nullptr };
+            request.TmuxSshDestination(page->_tmuxSshDestination);
+            request.TmuxSshPort(page->_tmuxSshPort);
+            request.TmuxWorkingDirectory(page->_tmuxWorkingDirectory);
+            request.TmuxCommandline(winrt::hstring{ Protocol::BuildSshCommandline(page->_tmuxSshDestination, winrt::to_hstring(fmt::format("${}", id)), page->_tmuxSshPort) });
+            page->RequestNewWindow.raise(*page, request);
+        }
+        catch (...)
+        {
+            const auto error = exceptionMessage();
+            LOG_HR_MSG(E_FAIL, "Unable to open tmux session: %hs", error.c_str());
+            _showFailure(error);
         }
     }
 
@@ -967,6 +1095,10 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
+        // Backend-driven focus changes, including removal of the startup tab,
+        // must not echo stale selections back into the control stream.
+        const auto wasApplyingState = std::exchange(_applyingState, true);
+        auto restoreApplyingState = wil::scope_exit([&]() noexcept { _applyingState = wasApplyingState; });
         if (windows.empty())
         {
             page->CloseWindow();
@@ -1118,8 +1250,16 @@ namespace winrt::TerminalApp::implementation
             }
         }
         _activeWindow = active;
-        page->_selectedTabItem(_tabs.at(active)->TabViewItem());
-        page->_UpdatedSelectedTab(*_tabs.at(active));
+        const auto& tab = _tabs.at(active);
+        _activePane = _paneId(tab->GetActivePane());
+        if (page->_selectedTabItem() != tab->TabViewItem())
+        {
+            page->_selectedTabItem(tab->TabViewItem());
+        }
+        else if (changed)
+        {
+            page->_UpdatedSelectedTab(*tab);
+        }
         page->_tabContent.UpdateLayout();
         _scheduleResize();
 
@@ -1365,7 +1505,7 @@ namespace winrt::TerminalApp::implementation
 
     void TmuxController::_focus(const Id id)
     {
-        if (_projecting || _stopped || _failed || _exiting || !_initialResponse || _activePane == id)
+        if (_projecting || _applyingState || _stopped || _failed || _exiting || !_initialResponse || _activePane == id)
         {
             return;
         }
@@ -1376,15 +1516,14 @@ namespace winrt::TerminalApp::implementation
             {
                 return;
             }
-            for (const auto& [window, tab] : _tabs)
+            const auto page = _page.get();
+            const auto tab = page ? page->_GetFocusedTabImpl() : nullptr;
+            const auto root = tab ? tab->GetRootPane() : nullptr;
+            if (!root || !root->FindPaneByContentId(*pane->second.pane->ContentId()))
             {
-                const auto root = tab->GetRootPane();
-                if (root && root->FindPaneByContentId(*pane->second.pane->ContentId()))
-                {
-                    SelectTab(tab);
-                    break;
-                }
+                return;
             }
+            SelectTab(tab);
             _activePane = id;
             _send(fmt::format("select-pane -t %{}", id));
         }
@@ -1396,7 +1535,7 @@ namespace winrt::TerminalApp::implementation
 
     void TmuxController::SelectTab(const winrt::com_ptr<Tab>& selected)
     {
-        if (_projecting || _stopped || _failed || _exiting || !_initialResponse)
+        if (_projecting || _applyingState || _stopped || _failed || _exiting || !_initialResponse)
         {
             return;
         }

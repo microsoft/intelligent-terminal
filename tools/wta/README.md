@@ -105,8 +105,9 @@ not automatically change the Sessions source. Source metadata is supplied
 when the helper starts, including prewarmed/stashed helpers, and refreshed by
 the owning tab's native Sessions/tab-change events.
 
-The view shows the SSH destination above the list. Use the existing search and
-arrow keys, **F5** to fetch remote history again, and **Enter** to open a native
+The view uses the same list layout as local profiles, without an extra title row.
+Connection errors are still shown above the list. Use the existing search and arrow keys,
+**F5** to fetch remote history again, and **Enter** to open a native
 Terminal tab running the remote agent's own resume command in the session's
 remote working directory. The master fetches remote history on entry and
 explicit refresh. While the view is open, periodic polls also refresh history
@@ -127,6 +128,16 @@ create two panes. F5 and reopening the view preserve the binding; a failed
 creation remains retryable, and closing the pane or its SSH connection ends
 the binding for every viewer. Closing the original viewing helper does not
 discard another pane's binding. Bindings last for the master's lifetime.
+
+The native pane starts an internal WTA launcher, which passes validated remote
+values past Terminal's environment expansion before invoking the same absolute
+system OpenSSH executable used for listing. Both SSH child processes receive
+only the environment needed for Windows and SSH authentication, not inherited
+provider credentials or WTA routing data. A fixed terminal type overrides
+configured `SetEnv` values. Explicit login-shell startup output is sent to
+stderr so it cannot corrupt the ACP stream; login PATH setup is preserved.
+SSH escape commands are disabled, so the resume transport cannot add new
+forwarding channels interactively.
 
 `origin` and `status` are independent. Resuming from the Sessions view opens an
 ordinary SSH shell pane, not an ACP agent pane, so `origin` remains `Unknown`

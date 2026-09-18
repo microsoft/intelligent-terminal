@@ -7,6 +7,17 @@ fn cli_schema_has_no_duplicate_short_flags() {
 }
 
 #[test]
+fn ssh_resume_launcher_is_hidden_and_requires_its_payload() {
+    let cli = Cli::try_parse_from(["wta", "ssh-resume", "--payload", "{}"]).unwrap();
+    assert!(matches!(cli.command, Some(Command::SshResume { .. })));
+    assert!(Cli::try_parse_from(["wta", "ssh-resume"]).is_err());
+    assert!(!Cli::command()
+        .render_long_help()
+        .to_string()
+        .contains("ssh-resume"));
+}
+
+#[test]
 fn ssh_profile_helper_flags_preserve_target_port_and_initial_view() {
     let cli = Cli::try_parse_from([
         "wta",

@@ -46,11 +46,46 @@ scripts) are not counted.
 
 ## Native tmux-control windows
 
+An ordinary SSH tab (a generated SSH profile or a tab launched directly with
+`ssh.exe <alias>`) shows the workspace-style button at the upper left. Open it
+to list sessions on that SSH host's **default** tmux server, then select a row
+to attach in a new native window. No existing tmux frontend is required.
+Switching to a local tab hides the button; switching tabs or panes cancels a
+pending request so one host's results cannot appear under another host.
+User and port arguments (`-l` and `-p`) are retained. Put other connection
+options in an SSH config Host alias; unsupported direct options display an
+explicit failure rather than silently querying a different connection.
+SSH entered inside an already-running local shell is not detected.
+
+To open a tmux frontend directly, use the structured connection form:
+
+```powershell
+ssh.exe -T ubuntu "tmux -L default new-session -Ad -s work"
+wtcli tmux --ssh ubuntu --session work
+```
+
+`--ssh` accepts an SSH config alias or destination. SSH uses noninteractive
+authentication and no TTY; configure keys/ssh-agent and trust the host before
+launching. `--session` identifies an existing session. The upper-left workspace
+icon opens a freshly queried list of sessions on that host's **default** tmux
+server. Selecting a row opens a new native window without switching or closing
+the source window. Rows use stable session IDs, so spaces, Unicode and session
+renames do not turn a selection into shell syntax. Reopen the menu to refresh or
+retry a failed request; loading, empty and failed lists have explicit states.
+The list is bounded to 256 sessions and 64 KiB, with a 10-second response timeout.
+Other socket names and custom socket paths are not enumerated.
+
+The existing opaque backend form remains available:
+
 ```powershell
 wtcli --json tmux "wsl.exe -- tmux -C new-session -A -s work"
 wtcli tmux --cwd "C:\src\项目" "ssh.exe build-host tmux -C attach-session -t work"
 wtcli tmux '"C:\Program Files\Backend\control.exe" --session work'
 ```
+
+The structured `--ssh` form also exposes the session menu. Arbitrary opaque
+backend commands do not supply reusable SSH connection metadata and retain
+their static label. Do not combine the two forms. Both support `--cwd`.
 
 Pass the complete backend Windows process commandline as **one argument**.
 Intelligent Terminal does not detect SSH, interpret the commandline, or insert
@@ -102,6 +137,8 @@ property of the backend; a real tmux server normally keeps them running.
 
 Layout notifications from another client are reconciled while retaining existing
 terminal contents and connection identities, including panes moved between tabs.
+Backend-driven tab selection is not sent back as a new selection command, so
+reattaching to an existing multi-window session does not undo native tab clicks.
 Initial attachment captures up to 2,000 history lines and restores the main/alternate
 screen, cursor position, scroll region, wrap, insert, cursor-key/keypad and exposed
 mouse modes. tmux's unset saved-cursor sentinel is accepted, including alternate

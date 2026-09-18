@@ -894,6 +894,7 @@ namespace winrt::TerminalApp::implementation
             const auto newSelectedTab = _mruTabs.GetAt(0);
             _UpdatedSelectedTab(newSelectedTab);
             _selectedTabItem(newSelectedTab.TabViewItem());
+            _UpdateTmuxBrowser();
 
             // Flush any deferred agent settings rebuild now that a
             // terminal tab is active. Per-tab model — no shared pane
@@ -1505,6 +1506,7 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_UpdatedSelectedTab(const winrt::TerminalApp::Tab& tab)
     {
+        _UpdateTmuxBrowser();
         if (_tmuxController)
         {
             if (_tmuxController->ApplyingLayout())

@@ -381,14 +381,14 @@ async fn activate(
         .cwd
         .to_str()
         .ok_or_else(|| request_error(anyhow!("SSH session cwd is not UTF-8")))?;
-    let commandline = if state.ssh_hooks.enabled() {
-        let script = crate::ssh_sessions::resume_script(&source.agent_id, raw_sid, cwd)
-            .map_err(request_error)?;
-        crate::cli::ssh::managed_commandline(&source.target, &script).map_err(request_error)?
-    } else {
-        crate::ssh_sessions::resume_commandline(&source.target, &source.agent_id, raw_sid, cwd)
-            .map_err(request_error)?
-    };
+    let commandline = crate::ssh_sessions::resume_commandline(
+        &source.target,
+        &source.agent_id,
+        raw_sid,
+        cwd,
+        state.ssh_hooks.enabled(),
+    )
+    .map_err(request_error)?;
     let wt = state
         .wt
         .as_ref()

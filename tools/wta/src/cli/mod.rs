@@ -25,6 +25,7 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
             crate::logging::shutdown_flush();
             std::process::exit(status);
         }
+        Command::SshResume { payload } => crate::ssh_sessions::run_resume(&payload).await,
         command @ (Command::Info
         | Command::TestPipe
         | Command::ListWindows

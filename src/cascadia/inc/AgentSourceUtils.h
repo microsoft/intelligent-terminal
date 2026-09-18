@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -66,6 +67,38 @@ namespace Microsoft::Terminal::AgentSource
             return !quoted;
         }
 
+        inline bool IsLiteralTmuxRemoteCommand(const std::wstring_view command) noexcept
+        {
+            // SSH joins its Windows arguments before the remote shell parses
+            // them. Browser session IDs and names use POSIX single quoting,
+            // including escaped apostrophes between quoted spans.
+            bool quoted = false;
+            for (size_t index = 0; index < command.size(); ++index)
+            {
+                const auto ch = command[index];
+                if (ch == L'\r' || ch == L'\n')
+                {
+                    return false;
+                }
+                if (ch == L'\'')
+                {
+                    quoted = !quoted;
+                }
+                else if (!quoted)
+                {
+                    if (ch == L'\\' && index + 1 < command.size() && command[index + 1] == L'\'')
+                    {
+                        ++index;
+                    }
+                    else if (std::wstring_view{ L";&|`$<>\\\"" }.find(ch) != std::wstring_view::npos)
+                    {
+                        return false;
+                    }
+                }
+            }
+            return !quoted;
+        }
+
         inline bool IsSafeSshIdentityPart(std::wstring_view value, const bool host) noexcept
         {
             if (host && value.starts_with(L'['))
@@ -75,6 +108,18 @@ namespace Microsoft::Terminal::AgentSource
                     return false;
                 }
                 value = value.substr(1, value.size() - 2);
+            }
+            if (host)
+            {
+                if (const auto scope = value.find(L'%'); scope != std::wstring_view::npos)
+                {
+                    if (value.substr(0, scope).find(L':') == std::wstring_view::npos ||
+                        !IsSafeSshIdentityPart(value.substr(scope + 1), false))
+                    {
+                        return false;
+                    }
+                    value = value.substr(0, scope);
+                }
             }
             return !value.empty() && value.front() != L'-' &&
                    std::all_of(value.begin(), value.end(), [host](const wchar_t ch) {
@@ -114,12 +159,76 @@ namespace Microsoft::Terminal::AgentSource
         }
         const bool directSsh = til::equals_insensitive_ascii(executable, L"ssh") ||
                                til::equals_insensitive_ascii(executable, L"ssh.exe");
-        const bool managedSsh = argc > 1 && std::wstring_view{ argv[1] } == L"ssh" &&
-                                (til::equals_insensitive_ascii(executable, L"wta") ||
-                                 til::equals_insensitive_ascii(executable, L"wta.exe"));
-        if (managedSsh && command == SessionsSshCommand::Tmux)
+        const bool wta = til::equals_insensitive_ascii(executable, L"wta") ||
+                         til::equals_insensitive_ascii(executable, L"wta.exe");
+        const bool managedSsh = wta && argc > 1 && std::wstring_view{ argv[1] } == L"ssh";
+        const bool sshResume = wta && argc > 1 && std::wstring_view{ argv[1] } == L"ssh-resume";
+        if ((managedSsh || sshResume) && command == SessionsSshCommand::Tmux)
         {
             return details::UnsupportedSessionsSsh(L"A tmux backend must launch SSH directly to identify its session source.");
+        }
+        if (sshResume)
+        {
+            if (argc != 4 || std::wstring_view{ argv[2] } != L"--payload" ||
+                commandline.size() > 32766 || commandline.find(L'\0') != std::wstring_view::npos ||
+                !details::HasBalancedCommandlineQuotes(commandline))
+            {
+                return details::UnsupportedSessionsSsh(L"The SSH resume command line is malformed.");
+            }
+            try
+            {
+                const auto payload = winrt::to_string(std::wstring_view{ argv[3] });
+                if (payload.size() > 131068 || payload.find('%') != std::string::npos)
+                {
+                    return details::UnsupportedSessionsSsh(L"The SSH resume payload is invalid.");
+                }
+                Json::CharReaderBuilder builder;
+                Json::CharReaderBuilder::strictMode(&builder.settings_);
+                builder["collectComments"] = false;
+                builder["skipBom"] = false;
+                builder["stackLimit"] = 16;
+                const std::unique_ptr<Json::CharReader> reader{ builder.newCharReader() };
+                Json::Value root;
+                std::string errors;
+                if (!reader->parse(payload.data(), payload.data() + payload.size(), &root, &errors))
+                {
+                    return details::UnsupportedSessionsSsh(L"The SSH resume payload is invalid.");
+                }
+                const Json::Value& request = root;
+                const auto& target = request["target"];
+                const auto& port = target["port"];
+                if (!request.isObject() || request.size() != (request.isMember("managed") ? 5u : 4u) ||
+                    !request["agent_id"].isString() || !request["session_id"].isString() || !request["cwd"].isString() ||
+                    (request.isMember("managed") && !request["managed"].isBool()) ||
+                    !target.isObject() || target.size() != (target.isMember("port") ? 2u : 1u) || !target["destination"].isString() ||
+                    (!port.isNull() && ((port.type() != Json::intValue && port.type() != Json::uintValue) ||
+                                        !port.isUInt() || port.asUInt() == 0 || port.asUInt() > 65535)))
+                {
+                    return details::UnsupportedSessionsSsh(L"The SSH resume payload is invalid.");
+                }
+
+                // Decode the launcher's \u0025 protection only through JSON,
+                // then validate just its target with the ordinary SSH parser.
+                std::wstring equivalent{ L"ssh.exe" };
+                if (!port.isNull())
+                {
+                    AgentPaneRestore::AppendFlag(equivalent, L"-p", std::to_wstring(port.asUInt()));
+                }
+                equivalent.append(L" -- ");
+                AgentPaneRestore::AppendQuoted(equivalent, winrt::to_hstring(target["destination"].asString()));
+                auto source = ResolveSessionsSshSource({}, equivalent);
+                source.executable = argv[0];
+                source.managedLaunch = true;
+                return source;
+            }
+            catch (const Json::Exception&)
+            {
+                return details::UnsupportedSessionsSsh(L"The SSH resume payload is invalid.");
+            }
+            catch (const winrt::hresult_error&)
+            {
+                return details::UnsupportedSessionsSsh(L"The SSH resume payload is invalid.");
+            }
         }
         if (managedSsh)
         {
@@ -309,12 +418,15 @@ namespace Microsoft::Terminal::AgentSource
             {
                 return details::UnsupportedSessionsSsh(L"The SSH backend does not launch tmux directly.");
             }
-            for (auto remoteIndex = index + 1; remoteIndex < argc; ++remoteIndex)
+            std::wstring remoteCommand{ remote };
+            for (auto remoteIndex = index + 2; remoteIndex < argc; ++remoteIndex)
             {
-                if (std::wstring_view{ argv[remoteIndex] }.find_first_of(L"\r\n;&|`$<>\\") != std::wstring_view::npos)
-                {
-                    return details::UnsupportedSessionsSsh(L"The tmux SSH command contains shell expressions whose source cannot be determined.");
-                }
+                remoteCommand.push_back(L' ');
+                remoteCommand.append(argv[remoteIndex]);
+            }
+            if (!details::IsLiteralTmuxRemoteCommand(remoteCommand))
+            {
+                return details::UnsupportedSessionsSsh(L"The tmux SSH command contains shell expressions whose source cannot be determined.");
             }
         }
         else if (index + 1 != argc)
