@@ -127,6 +127,50 @@ Describe 'Package-wide refusal discovery' -Tag 'Unit', 'PackageRefusal' {
         Should -Invoke -ModuleName ItE2E Get-Process -Times 1 -Exactly -ParameterFilter { $Name -eq 'WindowsTerminal' }
         Should -Invoke -ModuleName ItE2E Stop-Process -Times 0 -Exactly
     }
+
+    It 'continues to discover package helpers after an inaccessible process path' {
+        Mock -ModuleName ItE2E Get-Process {
+            $inaccessible = [pscustomobject]@{ Id = 40 }
+            $inaccessible | Add-Member -MemberType ScriptProperty -Name Path -Value {
+                throw [UnauthorizedAccessException]::new('Synthetic inaccessible process.')
+            }
+            $inaccessible
+            [pscustomobject]@{ Id = 41; Path = (Join-Path $script:packageRoot 'wta.exe') }
+        }
+        $matches = @(Get-WtProcessesForApp -App ([pscustomobject]@{ InstallLocation = $script:packageRoot }) -IncludePackageExecutables)
+        $matches.Count | Should -Be 1
+        $matches[0].Id | Should -Be 41
+    }
+}
+
+Describe 'Paste evidence isolation' -Tag 'Unit', 'PasteEvidence' {
+    It 'uses a unique directory beneath the explicitly selected run root' {
+        $suite = (Resolve-Path (Join-Path $PSScriptRoot '..\tests\Feature.Paste.Tests.ps1')).Path
+        $tokens = $null
+        $errors = $null
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile($suite, [ref]$tokens, [ref]$errors)
+        $errors | Should -BeNullOrEmpty
+        $assignments = @($ast.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.AssignmentStatementAst]
+        }, $true))
+        $evidence = @($assignments | Where-Object { $_.Left.Extent.Text -eq '$script:evidenceDir' })
+        $evidence.Count | Should -Be 1
+        $rootAssignment = @($assignments | Where-Object { $_.Left.Extent.Text -eq '$artifactRoot' })
+        $code = (@($rootAssignment | ForEach-Object { $_.Extent.Text }) + @($evidence[0].Right.Extent.Text)) -join "`n"
+        $code = $code.Replace('$PSScriptRoot', ("'" + (Split-Path $suite -Parent).Replace("'", "''") + "'"))
+        $previous = $env:ITE2E_ARTIFACT_ROOT
+        try {
+            $env:ITE2E_ARTIFACT_ROOT = Join-Path $TestDrive 'selected-run'
+            $first = & ([scriptblock]::Create($code))
+            $second = & ([scriptblock]::Create($code))
+            $prefix = [IO.Path]::GetFullPath($env:ITE2E_ARTIFACT_ROOT).TrimEnd('\') + '\'
+            $first.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) | Should -BeTrue
+            $second.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) | Should -BeTrue
+            $first | Should -Not -Be $second
+        }
+        finally { $env:ITE2E_ARTIFACT_ROOT = $previous }
+    }
 }
 
 Describe 'Exact UIA text ranges' -Tag 'Unit', 'UiTextBounds' {
