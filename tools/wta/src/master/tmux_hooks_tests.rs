@@ -239,7 +239,7 @@ async fn tmux_master_focus_uses_controller_pane_not_remote_metadata() {
 }
 
 #[tokio::test]
-async fn tmux_master_initial_attach_accepts_empty_metadata_and_ignored_hooks_are_noops() {
+async fn tmux_master_initial_attach_accepts_empty_metadata_and_ignored_hooks_are_no_ops() {
     let state = make_state();
     let mut params = hook("agent.session.start", PANE_A, "copilot", "sid");
     params["tmux"]["session_name"] = "".into();

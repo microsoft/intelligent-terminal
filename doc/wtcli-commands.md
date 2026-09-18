@@ -184,8 +184,8 @@ agent events. IT parses the complete UTF-8 JSON, projects only consumed metadata
 resolves the native pane/tab/window itself (including zoom-hidden panes), and
 applies the native hook's redaction and final event budget.
 WTA scopes these live rows separately from local agent sessions and supports
-focusing their visible native panes. Unzoom a zoom-hidden pane before focusing
-its row; its hook status is still tracked while hidden. An ended tmux row does
+focusing their visible native panes. Leave zoom mode before focusing a hidden
+pane's row; its hook status is still tracked while hidden. An ended tmux row does
 not resume a CLI on Windows:
 the opaque backend command is not enough information to reconstruct a remote
 resume invocation.

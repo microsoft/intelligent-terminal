@@ -232,7 +232,7 @@ fn tmux_helper_drops_sidekicks_malformed_metadata_and_stale_errors() {
 }
 
 #[test]
-fn tmux_helper_initial_attach_accepts_empty_metadata_and_ignored_hooks_are_noops() {
+fn tmux_helper_initial_attach_accepts_empty_metadata_and_ignored_hooks_are_no_ops() {
     let mut reg = AgentSessionRegistry::new();
     let mut params = hook("agent.session.start", PANE_A, "copilot", "sid");
     params["tmux"]["session_name"] = "".into();

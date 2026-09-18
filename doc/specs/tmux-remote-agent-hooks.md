@@ -478,7 +478,7 @@ This does not restore the old tmux layout.
 Opaque/non-SSH tmux rows remain in the default Host-source view and can display
 a suffix such as `· copilot · work %1 (tmux)`. They remain isolated from explicit
 WSL/SSH views and do not launch a local CLI resume on Windows. Both kinds of live
-row focus the stored native pane, with zoom-hidden panes requiring an unzoom first.
+row focus the stored native pane; leave zoom mode before focusing a hidden pane.
 The controller publishes pane-close notifications before removing backend panes
 or stopping, including zoom-hidden panes, so shared SSH bindings cannot remain
 live after their native focus target disappears.

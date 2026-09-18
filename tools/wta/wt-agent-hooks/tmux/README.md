@@ -99,8 +99,8 @@ does not load the user's tmux configuration or touch ordinary tmux servers,
 sessions, or panes. A private idle session keeps it alive after individual
 control clients disconnect. No disconnect handler kills the shared server.
 Ownership, canonical login-home identity, private directory permissions, and
-the Linux UNIX-socket path limit are checked; there is no fallback to `/tmp`
-or another user's socket when these checks fail.
+the Linux UNIX-socket path limit are checked. The installer does not fall back
+to `/tmp` or another user's socket when these checks fail.
 
 After native control attachment, `@it-ssh-hooks-protocol` must be `3`.
 `@it-ssh-hooks-setup` reports `transport-ready` or `transport-partial`.

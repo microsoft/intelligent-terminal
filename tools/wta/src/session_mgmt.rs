@@ -30,8 +30,8 @@
 //! Remote rows, dead -> ResumeCliFlag if supported, regardless of origin (the agent
 //!                   pane is host-side, so ACP `session/load` can't
 //!                   rehydrate an in-distro session)
-//! Tmux rows have no reconstructable remote launch command, so their caller
-//! supplies no CLI-resume capability; dead rows stay NotResumable.
+//! Opaque tmux rows lack the source needed to rebuild a remote launch command;
+//! their caller supplies no CLI-resume capability, so dead rows stay NotResumable.
 //!
 //! Cli Unknown in any dead branch -> NotResumable(UnknownCli)
 //! Missing capability in the chosen branch -> NotResumable(<reason>)
