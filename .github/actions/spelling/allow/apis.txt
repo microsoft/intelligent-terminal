@@ -5,8 +5,11 @@ ACCESSDENIED
 AGILEREFERENCE
 alignas
 alignof
+appimage
 APPLYTOSUBMENUS
 appxrecipe
+ASKPASS
+askpass
 beginthreadex
 bitfield
 bitfields
@@ -51,6 +54,7 @@ FILTERSPEC
 fina
 FORCEFILESYSTEM
 FORCEMINIMIZE
+forkafterauthentication
 Forwardings
 frac
 fullkbd
@@ -111,6 +115,7 @@ NIN
 NOASYNC
 NOBREAKS
 NOCHANGEDIR
+NOCRLF
 NOPROGRESS
 NOREDIRECTIONBITMAP
 NOREPEAT
@@ -142,7 +147,9 @@ PROGRAMDATA
 proxycommand
 QUERYENDSESSION
 rcx
+Reassembler
 REGCLS
+remotecommand
 remotesigned
 RETURNCMD
 rfind
@@ -156,6 +163,7 @@ SEH
 semver
 sendenv
 serializer
+sessiontype
 SETVERSION
 SHELLEXECUTEINFOW
 shobjidl

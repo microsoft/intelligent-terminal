@@ -536,6 +536,35 @@ mod bundle {
         resolved
     }
 
+    pub(crate) fn remote_hook_assets() -> anyhow::Result<(Vec<u8>, Vec<u8>)> {
+        use std::io::Read;
+        let root = candidate_roots()
+            .into_iter()
+            .find(|root| root.is_dir())
+            .ok_or_else(|| anyhow::anyhow!("On-disk wt-agent-hooks bundle unavailable"))?;
+        anyhow::ensure!(root.is_absolute(), "Hook bundle root must be absolute");
+        let read = |name: &str| -> anyhow::Result<Vec<u8>> {
+            let path = root.join("tmux").join(name);
+            let metadata = std::fs::metadata(&path)?;
+            anyhow::ensure!(
+                metadata.is_file() && metadata.len() <= 256 * 1024,
+                "Invalid remote hook asset"
+            );
+            let mut bytes = Vec::new();
+            std::fs::File::open(path)?
+                .take(256 * 1024 + 1)
+                .read_to_end(&mut bytes)?;
+            anyhow::ensure!(
+                !bytes.is_empty() && bytes.len() <= 256 * 1024,
+                "Invalid remote hook asset size"
+            );
+            Ok(bytes)
+        };
+        // An incomplete selected bundle is an error, not permission to copy a
+        // potentially stale asset from another checkout or an embedded fallback.
+        Ok((read("install-remote-hooks.sh")?, read("it-agent-hook.sh")?))
+    }
+
     /// Identify which root in the lookup chain supplied the bundle. Used
     /// by `wta hooks status` to surface the resolved source for support
     /// diagnosis. `kind` is one of `"env" | "exe-sibling" | "dev-tree" |
@@ -654,6 +683,8 @@ mod bundle {
 // ---------------------------------------------------------------------------
 // Public install entry points
 // ---------------------------------------------------------------------------
+
+pub(crate) use bundle::remote_hook_assets;
 
 /// What one CLI's install attempt actually did.
 ///

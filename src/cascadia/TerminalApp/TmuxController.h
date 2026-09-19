@@ -5,6 +5,7 @@
 
 #include "Pane.h"
 #include "Tab.h"
+#include "TmuxAgentHook.h"
 #include "TmuxPaneConnection.h"
 #include "TmuxPaneState.h"
 #include "TmuxProtocol.h"
@@ -96,6 +97,7 @@ namespace winrt::TerminalApp::implementation
         void _stderr(std::string_view bytes);
         void _exited(uint32_t code);
         void _handleEvent(const Event& event);
+        void _agentHook(std::string_view message);
         void _send(std::string command, ResponseHandler response = {});
         void _sendBatch(std::vector<std::pair<std::string, ResponseHandler>> commands, bool compound = false);
         void _requestRefresh();
@@ -126,6 +128,7 @@ namespace winrt::TerminalApp::implementation
         std::shared_ptr<::Microsoft::Terminal::Tmux::TmuxProcess> _process;
         std::function<void(std::string)> _writeCommand;
         ::Microsoft::Terminal::Tmux::Parser _parser;
+        ::Microsoft::Terminal::Tmux::AgentHookAssembler _agentHooks;
         std::mutex _protocolMutex;
         std::deque<ResponseHandler> _responses;
         std::atomic<bool> _initialResponse = false;
@@ -154,6 +157,7 @@ namespace winrt::TerminalApp::implementation
         std::optional<Id> _sessionId;
         std::string _sessionName;
         std::string _socketPath;
+        Json::Value _sshTarget;
         bool _socketQuerySent = false;
         uint64_t _sessionsGeneration = 0;
         winrt::Windows::UI::Xaml::FrameworkElement::SizeChanged_revoker _sizeChanged;

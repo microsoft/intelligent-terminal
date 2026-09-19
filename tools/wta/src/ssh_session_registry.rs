@@ -16,6 +16,16 @@ pub struct Source {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Request {
+    /// Read already-known rows only. Unlike List's first read, this never
+    /// discovers history, connects SSH, or starts an agent CLI.
+    Snapshot {
+        source: Source,
+    },
+    /// Return cached state immediately and refresh remote history in the
+    /// background when this source's shared refresh interval has elapsed.
+    Poll {
+        source: Source,
+    },
     List {
         source: Source,
         refresh_history: bool,

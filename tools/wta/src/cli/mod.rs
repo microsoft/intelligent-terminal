@@ -4,6 +4,7 @@ pub(crate) mod delegate;
 pub(crate) mod hooks;
 pub(crate) mod probes;
 pub(crate) mod sessions;
+pub(crate) mod ssh;
 pub(crate) mod wt;
 
 use anyhow::Result;
@@ -12,6 +13,18 @@ use args::{Command, HooksAction, SessionsAction};
 
 pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
     match command {
+        Command::Ssh {
+            destination,
+            port,
+            no_pty,
+            no_hooks,
+            remote_command,
+        } => {
+            let target = crate::ssh_sessions::SshTarget::new(&destination, port)?;
+            let status = ssh::run(target, no_pty, no_hooks, remote_command).await?;
+            crate::logging::shutdown_flush();
+            std::process::exit(status);
+        }
         Command::SshResume { payload } => crate::ssh_sessions::run_resume(&payload).await,
         command @ (Command::Info
         | Command::TestPipe
@@ -65,21 +78,32 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
             } => {
                 if let Some(destination) = ssh {
                     let target = crate::ssh_sessions::SshTarget::new(&destination, port)?;
-                    sessions::run_ssh_list(
-                        &target,
-                        cli.as_deref()
-                            .unwrap_or(crate::agent_registry::COPILOT_AGENT_ID),
-                        origin.to_filter(),
-                        json_mode,
-                    )
-                    .await
+                    let cli = cli
+                        .as_deref()
+                        .unwrap_or(crate::agent_registry::COPILOT_AGENT_ID);
+                    if let Some(master) = master {
+                        sessions::run_ssh_master_snapshot(
+                            master,
+                            &target,
+                            cli,
+                            origin.to_filter(),
+                            json_mode,
+                        )
+                        .await
+                    } else {
+                        sessions::run_ssh_list(&target, cli, origin.to_filter(), json_mode).await
+                    }
                 } else {
                     sessions::run_list(master, origin.to_filter(), json_mode).await
                 }
             }
         },
         Command::Hooks { action } => match action {
-            HooksAction::Install { cli, force } => hooks::run_install(cli, force, json_mode),
+            HooksAction::Install { cli, force } => {
+                let result = hooks::run_install(cli, force, json_mode);
+                ssh::ensure_registered_targets().await;
+                result
+            }
             HooksAction::Status => hooks::run_status(json_mode),
             HooksAction::Uninstall { cli } => hooks::run_uninstall(cli, json_mode),
         },

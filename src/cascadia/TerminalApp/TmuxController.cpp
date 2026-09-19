@@ -3,10 +3,12 @@
 
 #include "pch.h"
 #include "TmuxController.h"
+#include "TmuxAgentHook.h"
 #include "TmuxPaneState.h"
 #include "TmuxSessionMenu.h"
 #include "TerminalPage.h"
 #include "TerminalPaneContent.h"
+#include "../inc/AgentSourceUtils.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 #include "../inc/TmuxSshCommand.h"
 
@@ -115,6 +117,19 @@ namespace winrt::TerminalApp::implementation
     {
         const auto page = _page.get();
         THROW_HR_IF(E_ABORT, !page);
+        namespace AgentSource = ::Microsoft::Terminal::AgentSource;
+        const auto sshSource = AgentSource::ResolveSessionsSshSource(
+            {}, commandline, AgentSource::SessionsSshCommand::Tmux);
+        if (sshSource.kind == AgentSource::SessionsSshKind::ValidTarget)
+        {
+            Json::Value metadata;
+            AgentSource::WriteSessionsSshMetadata(metadata, sshSource);
+            _sshTarget = std::move(metadata["sessions_ssh"]);
+        }
+        else if (sshSource.kind == AgentSource::SessionsSshKind::UnsupportedSsh)
+        {
+            LOG_HR_MSG(E_INVALIDARG, "Tmux hooks cannot use an SSH session source: %hs", winrt::to_string(sshSource.error).c_str());
+        }
         page->_tabView.CanDragTabs(false);
         page->_tabView.CanReorderTabs(false);
         const auto profile = page->_settings.GetProfileForArgs(NewTerminalArgs{});
@@ -239,6 +254,18 @@ namespace winrt::TerminalApp::implementation
         }
         _sizeChanged.revoke();
         _layoutUpdated.revoke();
+        _agentHooks.Clear();
+        if (const auto page = _page.get())
+        {
+            for (const auto& [id, view] : _panes)
+            {
+                try
+                {
+                    page->_NotifyPanesClosing(view.pane);
+                }
+                CATCH_LOG();
+            }
+        }
         _tabs.clear();
         _panes.clear();
         _diagnosticTab = nullptr;
@@ -488,7 +515,21 @@ namespace winrt::TerminalApp::implementation
             break;
         }
         case Event::Kind::Notification:
-            if (event.name == "session-changed" || event.name == "session-renamed")
+            if (event.name == "message")
+            {
+                if (event.text.starts_with("IT_AGENT_HOOK/"))
+                {
+                    if (event.text.size() > Protocol::MaxAgentHookMessageBytes || _postedWork.load() >= 256)
+                    {
+                        LOG_HR_MSG(E_BOUNDS, "Dropping tmux agent hook exceeding message or pending update limit");
+                    }
+                    else
+                    {
+                        _post([message = event.text](auto& self) { self._agentHook(message); });
+                    }
+                }
+            }
+            else if (event.name == "session-changed" || event.name == "session-renamed")
             {
                 const auto split = event.text.find(' ');
                 if (split == std::string::npos || split + 1 == event.text.size())
@@ -500,6 +541,10 @@ namespace winrt::TerminalApp::implementation
                     if (self._failed || self._exiting || (!changed && self._sessionId != id))
                     {
                         return;
+                    }
+                    if (self._sessionId != id)
+                    {
+                        self._agentHooks.Clear();
                     }
                     self._sessionId = id;
                     self._sessionName = name;
@@ -570,6 +615,61 @@ namespace winrt::TerminalApp::implementation
         case Event::Kind::Exit:
             _exiting = true;
             break;
+        }
+    }
+
+    void TmuxController::_agentHook(const std::string_view message)
+    {
+        try
+        {
+            auto chunk = Protocol::ParseAgentHookChunk(message);
+            if (!chunk)
+            {
+                return;
+            }
+            const auto page = _page.get();
+            if (!page || _stopped || _failed || _exiting)
+            {
+                return;
+            }
+            if (const auto expired = _agentHooks.Expire())
+            {
+                LOG_HR_MSG(HRESULT_FROM_WIN32(ERROR_TIMEOUT), "Expired %zu incomplete tmux agent hook transfers", expired);
+            }
+            const auto view = _panes.find(chunk->message.paneId);
+            if (_sessionId != chunk->message.sessionId || view == _panes.end())
+            {
+                LOG_HR_MSG(E_INVALIDARG, "Ignoring tmux hook outside the attached session or current pane inventory");
+                return;
+            }
+            const auto hook = _agentHooks.Append(std::move(*chunk));
+            if (!hook)
+            {
+                return;
+            }
+
+            const auto paneId = page->_FindSessionIdForControl(view->second.control);
+            // The full backend layout owns zoom-hidden panes too. Looking only
+            // through the visible native pane tree would misroute their hooks.
+            std::string tabId;
+            for (const auto& [id, window] : _windows)
+            {
+                std::unordered_map<Id, std::pair<uint32_t, uint32_t>> leaves;
+                _collectLeaves(window.layout, leaves);
+                if (leaves.contains(hook->paneId))
+                {
+                    tabId = winrt::to_string(_tabs.at(id)->StableId());
+                    break;
+                }
+            }
+            const auto params = Protocol::BuildAgentHookParams(
+                *hook, paneId, tabId, std::to_string(page->_WindowProperties.WindowId()), _sessionName, _socketPath, _sshTarget);
+            page->_RaiseProtocolEvent("agent_event", params);
+        }
+        catch (const Protocol::ProtocolError& error)
+        {
+            // A bad optional hook must not disconnect the terminal transport.
+            LOG_HR_MSG(E_INVALIDARG, "%hs", error.what());
         }
     }
 
@@ -1123,6 +1223,7 @@ namespace winrt::TerminalApp::implementation
                     std::lock_guard lock{ _streamsMutex };
                     _streams.erase(it->first);
                 }
+                page->_NotifyPanesClosing(it->second.pane);
                 it->second.pane->Shutdown();
                 it = _panes.erase(it);
             }

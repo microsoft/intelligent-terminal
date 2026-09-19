@@ -1462,12 +1462,27 @@ namespace winrt::TerminalApp::implementation
         return nullptr;
     }
 
-    static ::Microsoft::Terminal::AgentSource::SessionsSshSource _SessionsSshSourceForProfile(
-        const winrt::Microsoft::Terminal::Settings::Model::Profile& profile)
+    static ::Microsoft::Terminal::AgentSource::SessionsSshSource _SessionsSshSourceForPane(
+        const std::shared_ptr<Pane>& pane)
     {
-        return profile ?
-                   ::Microsoft::Terminal::AgentSource::ResolveSessionsSshSource(profile.Source(), profile.Commandline()) :
-                   ::Microsoft::Terminal::AgentSource::SessionsSshSource{};
+        if (pane)
+        {
+            if (const auto content = pane->GetContent().try_as<TerminalApp::TerminalPaneContent>())
+            {
+                const auto profile = content.GetProfile();
+                auto commandline = profile ? profile.Commandline() : winrt::hstring{};
+                if (const auto control = content.GetTermControl())
+                {
+                    if (const auto connection = control.Connection().try_as<ConptyConnection>())
+                    {
+                        commandline = connection.Commandline();
+                    }
+                }
+                return ::Microsoft::Terminal::AgentSource::ResolveSessionsSshSource(
+                    profile ? profile.Source() : winrt::hstring{}, commandline);
+            }
+        }
+        return {};
     }
 
     static const winrt::guid& _ProfileDefaultsAgentBackendGuid()
@@ -3212,7 +3227,7 @@ namespace winrt::TerminalApp::implementation
         tabParams["tab_id"] = winrt::to_string(tabId);
         tabParams["window_id"] = std::to_string(_WindowProperties.WindowId());
         ::Microsoft::Terminal::AgentSource::WriteSessionsSshMetadata(
-            tabParams, _SessionsSshSourceForProfile(_SourceTerminalProfileForTab(_FindTabByStableId(tabId))));
+            tabParams, _SessionsSshSourceForPane(_SourceTerminalPaneForTab(_FindTabByStableId(tabId))));
         _RaiseProtocolEvent("tab_changed", tabParams);
     }
 
@@ -3234,7 +3249,7 @@ namespace winrt::TerminalApp::implementation
             {
                 params["tab_id"] = winrt::to_string(stableId);
                 ::Microsoft::Terminal::AgentSource::WriteSessionsSshMetadata(
-                    params, _SessionsSshSourceForProfile(_SourceTerminalProfileForTab(tab)));
+                    params, _SessionsSshSourceForPane(_SourceTerminalPaneForTab(tab)));
             }
         }
 
@@ -3609,7 +3624,7 @@ namespace winrt::TerminalApp::implementation
         };
         for (const auto& [flag, value] :
              ::Microsoft::Terminal::AgentSource::BuildSessionsSshHelperArguments(
-                 _SessionsSshSourceForProfile(_SourceTerminalProfileForTab(tab))))
+                 _SessionsSshSourceForPane(_SourceTerminalPaneForTab(tab))))
         {
             appendHelperFlagValue(flag, value);
         }
@@ -4504,12 +4519,26 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
+        const bool sshHooksConfigurationChanged =
+            _lastAgentSettings.agentSessionManagementEnabled != current.agentSessionManagementEnabled ||
+            _lastAgentSettings.acpAgent != current.acpAgent;
+        if (sshHooksConfigurationChanged)
+        {
+            Json::Value params{ Json::objectValue };
+            params["enabled"] = current.agentSessionManagementEnabled;
+            _RaiseProtocolEvent("ssh_hooks_configuration", params);
+        }
+
         const auto changeKind = _ClassifyAgentSettingsChange(_lastAgentSettings, current);
         const auto hooksReconciliation =
             _ClassifyAgentHooksReconciliation(_lastAgentSettings, current);
         if (changeKind == AgentSettingsChangeKind::None &&
             hooksReconciliation == AgentHooksReconciliationScope::None)
         {
+            if (sshHooksConfigurationChanged)
+            {
+                _lastAgentSettings = current;
+            }
             _agentPaneLog("_ReconcileAgentSettings: no change");
             return;
         }
@@ -6555,8 +6584,27 @@ namespace winrt::TerminalApp::implementation
             // process until later, on another thread, after we've already
             // restored the CWD to its original value.
             auto newWorkingDirectory{ _evaluatePathForCwd(settings.StartingDirectory()) };
+            const auto originalCommandline = settings.Commandline();
+            auto launchCommandline = originalCommandline;
+            namespace AgentSource = ::Microsoft::Terminal::AgentSource;
+            const auto sshSource = AgentSource::ResolveSessionsSshSource({}, originalCommandline);
+            if (sshSource.kind == AgentSource::SessionsSshKind::ValidTarget && !sshSource.managedLaunch)
+            {
+                // Keep the connection registered while tracking is temporarily
+                // disabled; master applies the current policy and later re-enablement.
+                const auto wtaPath = ::Microsoft::Terminal::WtaProcess::ResolveWtaExePath();
+                const auto systemSsh = AgentSource::ReadEnvironmentVariable(L"SystemRoot") + L"\\System32\\OpenSSH\\ssh.exe";
+                if (const auto managed = AgentSource::BuildManagedSshCommandline(sshSource, wtaPath, systemSsh))
+                {
+                    launchCommandline = winrt::hstring{ *managed };
+                }
+                else
+                {
+                    _agentPaneLog("SSH hook wrapper unavailable; preserving the original SSH command");
+                }
+            }
             connection = TerminalConnection::ConptyConnection{};
-            valueSet = TerminalConnection::ConptyConnection::CreateSettings(settings.Commandline(),
+            valueSet = TerminalConnection::ConptyConnection::CreateSettings(launchCommandline,
                                                                             newWorkingDirectory,
                                                                             settings.StartingTitle(),
                                                                             settingsInternal->ReloadEnvironmentVariables(),
@@ -6566,6 +6614,12 @@ namespace winrt::TerminalApp::implementation
                                                                             settings.InitialCols(),
                                                                             winrt::guid(),
                                                                             profile.Guid());
+            if (launchCommandline != originalCommandline)
+            {
+                // Persist the logical SSH command, not a versioned package path
+                // or the wrapper's connection-lifetime implementation details.
+                valueSet.Insert(L"originalCommandline", Windows::Foundation::PropertyValue::CreateString(originalCommandline));
+            }
 
             if (inheritCursor)
             {

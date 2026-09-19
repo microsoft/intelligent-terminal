@@ -68,6 +68,7 @@ use crate::protocol::acp::spawn::{
 
 pub(crate) mod config;
 mod session_mcp;
+mod ssh_hooks;
 mod ssh_sessions;
 
 use config::MasterConfig;
@@ -322,6 +323,7 @@ struct MasterStateInner {
     /// Remote IDs remain raw within an independent common registry per SSH
     /// source. These pane bindings outlive the helper that requested resume.
     ssh_sessions: ssh_sessions::Service,
+    ssh_hooks: ssh_hooks::Service,
     /// Per-helper subscribers for `intellterm.wta/*` ExtNotifications
     /// fanned out from master. Populated by `serve_helper` on connect
     /// and removed on disconnect (or whenever a send fails). Keyed by
@@ -3915,6 +3917,7 @@ impl HelperHandler {
                 handle_sessions_list(&self.state, agent.as_deref(), &p).await
             }
             Req::SshSessions(request) => ssh_sessions::handle(&self.state, request).await,
+            Req::SshHooks(request) => ssh_hooks::handle(&self.state, request).await,
             Req::SessionHook(ev) => handle_session_hook(&self.state, ev, false).await,
             Req::SessionBornBound(ev, wsl_distro) => {
                 handle_session_born_bound(&self.state, ev, wsl_distro).await
@@ -4341,6 +4344,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         usage_generation: watch::channel(0u64).0,
         registry: crate::session_registry::InMemoryRegistry::shared(),
         ssh_sessions: ssh_sessions::Service::default(),
+        ssh_hooks: ssh_hooks::Service::new(config.session_management_enabled),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt,
         agents: Mutex::new(HashMap::new()),
@@ -8200,8 +8204,33 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
         .or_else(|| params.get("session_id").and_then(|v| v.as_str()))
         .unwrap_or("");
 
+    let tmux = match crate::tmux_hooks::normalize(params, pane_id, &cli_source, asid) {
+        Ok(tmux) => tmux,
+        Err(reason) => {
+            tracing::warn!(target: "master_wt_event", reason, "dropping malformed tmux hook");
+            return;
+        }
+    };
+    if let Some(target) = tmux.as_ref().and_then(|hook| hook.ssh_target.as_ref()) {
+        let hook = crate::ssh_hook_protocol::HookEvent {
+            cli_source: params["cli_source"]
+                .as_str()
+                .unwrap_or("")
+                .to_ascii_lowercase(),
+            event: event.to_owned(),
+            raw_session_id: asid.to_owned(),
+            payload: params
+                .get("payload")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null),
+        };
+        if let Err(error) = ssh_sessions::tmux_hook_event(state, target, pane_id, hook).await {
+            tracing::warn!(target: "master_wt_event", ?error, "SSH-backed tmux hook could not update its source registry");
+        }
+        return;
+    }
     let Some((key, session_known)) =
-        resolve_master_hook_key(state, asid, pane_id, &cli_source, event).await
+        resolve_master_hook_key(state, asid, pane_id, &cli_source, event, tmux.as_ref()).await
     else {
         // No real ACP session id and no live row to attach to. The helper keeps
         // a `pane:<guid>` placeholder for its own bookkeeping, but master only
@@ -8242,6 +8271,17 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
         if let Some(key) = refresh_key {
             refresh_keys.insert(key);
         }
+    }
+    if let Some(tmux) = tmux {
+        changed |= state
+            .registry
+            .set_location(
+                &acp::schema::v1::SessionId::new(session_key.clone()),
+                tmux.location,
+            )
+            .await;
+        // There is no ACP process or local history store for these identities.
+        refresh_keys.clear();
     }
     let final_status = state
         .registry
@@ -8292,6 +8332,7 @@ async fn resolve_master_hook_key(
     pane_session_id: &str,
     cli_source: &crate::agent_sessions::CliSource,
     event: &str,
+    tmux: Option<&crate::tmux_hooks::TmuxHook>,
 ) -> Option<(String, bool)> {
     use crate::agent_sessions::{AgentStatus, CliSource};
 
@@ -8305,6 +8346,36 @@ async fn resolve_master_hook_key(
                 | Some(AgentStatus::Error)
         )
     };
+
+    if let Some(tmux) = tmux {
+        if let Some(key) = &tmux.key {
+            let row = snapshot.iter().find(|s| s.session_id.0.as_ref() == key);
+            if event == "agent.error"
+                && row.is_some_and(|s| {
+                    !is_live(s)
+                        || !tmux.matches_binding(
+                            s.pane_session_id.as_deref(),
+                            s.cli_source.as_ref(),
+                            &s.location,
+                        )
+                })
+            {
+                return None;
+            }
+            return Some((key.clone(), row.is_some()));
+        }
+        return snapshot
+            .iter()
+            .find(|s| {
+                is_live(s)
+                    && tmux.matches_binding(
+                        s.pane_session_id.as_deref(),
+                        s.cli_source.as_ref(),
+                        &s.location,
+                    )
+            })
+            .map(|s| (s.session_id.0.to_string(), true));
+    }
 
     if !asid.is_empty() {
         let known = snapshot.iter().any(|s| s.session_id.0.as_ref() == asid);
@@ -8322,6 +8393,10 @@ async fn resolve_master_hook_key(
                 .as_deref()
                 == Some(pane_lc.as_str())
                 && is_live(s)
+                && !matches!(
+                    s.location,
+                    crate::agent_sessions::SessionLocation::Tmux { .. }
+                )
         }) {
             return Some((row.session_id.0.to_string(), true));
         }
@@ -8343,7 +8418,14 @@ async fn resolve_master_hook_key(
     if needs_fallback && !matches!(cli_source, CliSource::Unknown(_)) {
         if let Some(row) = snapshot
             .iter()
-            .filter(|s| s.cli_source.as_ref() == Some(cli_source) && is_live(s))
+            .filter(|s| {
+                s.cli_source.as_ref() == Some(cli_source)
+                    && is_live(s)
+                    && !matches!(
+                        s.location,
+                        crate::agent_sessions::SessionLocation::Tmux { .. }
+                    )
+            })
             .max_by_key(|s| s.last_activity_at_ms.unwrap_or(0))
         {
             return Some((row.session_id.0.to_string(), true));
@@ -8372,6 +8454,15 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
         .get("params")
         .cloned()
         .unwrap_or_else(|| serde_json::json!({}));
+
+    if method == "ssh_hooks_configuration" {
+        if let Some(enabled) = params.get("enabled").and_then(|value| value.as_bool()) {
+            ssh_hooks::configure(state, enabled).await;
+        } else {
+            tracing::warn!(target: "ssh_hooks", "Ignoring malformed SSH hooks configuration event");
+        }
+        return;
+    }
 
     if method == "retire_agent_sessions" {
         handle_retire_agent_sessions_event(state, params).await;
@@ -8591,6 +8682,7 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
     // SSH's only local liveness authority is its native resume pane. Both
     // terminal closure and failed startup end that binding via the same reducer.
     ssh_sessions::pane_closed(state, &pane_id).await;
+    ssh_hooks::pane_closed(state, &pane_id).await;
     tracing::info!(
         target: "master_wt_event",
         pane_id = %pane_id,

@@ -138,7 +138,7 @@ fn listing_script(agent_id: &str) -> Result<String> {
     ))
 }
 
-fn ssh_arguments(target: &SshTarget, interactive: bool, script: &str) -> Vec<String> {
+pub(crate) fn ssh_arguments(target: &SshTarget, interactive: bool, script: &str) -> Vec<String> {
     let mut args = vec![if interactive { "-t" } else { "-T" }.to_string()];
     for option in [
         "BatchMode=yes",
@@ -185,7 +185,7 @@ fn remote_command(interactive: bool, script: &str) -> String {
     }
 }
 
-fn system_ssh_executable() -> Result<PathBuf> {
+pub(crate) fn system_ssh_executable() -> Result<PathBuf> {
     let root = std::env::var_os("SystemRoot").context("SystemRoot is not set")?;
     let root = PathBuf::from(root);
     if !root.is_absolute() {
@@ -194,7 +194,7 @@ fn system_ssh_executable() -> Result<PathBuf> {
     Ok(root.join(r"System32\OpenSSH\ssh.exe"))
 }
 
-fn configure_ssh_environment(
+pub(crate) fn configure_ssh_environment(
     command: &mut tokio::process::Command,
     environment: impl IntoIterator<Item = (OsString, OsString)>,
 ) {
@@ -315,6 +315,7 @@ pub(crate) fn resume_commandline(
     agent_id: &str,
     session_id: &str,
     cwd: &str,
+    managed: bool,
 ) -> Result<String> {
     resume_script(agent_id, session_id, cwd)?;
     let executable = std::env::current_exe().context("Resolve SSH resume launcher")?;
@@ -329,6 +330,7 @@ pub(crate) fn resume_commandline(
         agent_id: agent_id.to_string(),
         session_id: session_id.to_string(),
         cwd: cwd.to_string(),
+        managed,
     })?;
     // JSON Unicode escaping is decoded locally, after Terminal's environment
     // expansion. No shell wrapper, remote decoder, or credential-bearing argv.
@@ -351,9 +353,11 @@ struct ResumeRequest {
     agent_id: String,
     session_id: String,
     cwd: String,
+    #[serde(default)]
+    managed: bool,
 }
 
-fn resume_script(agent_id: &str, session_id: &str, cwd: &str) -> Result<String> {
+pub(crate) fn resume_script(agent_id: &str, session_id: &str, cwd: &str) -> Result<String> {
     let profile = known_profile(agent_id)?;
     if profile.resume_flag.is_empty() {
         bail!("The remote agent CLI does not support session resume");
@@ -378,16 +382,18 @@ fn resume_script(agent_id: &str, session_id: &str, cwd: &str) -> Result<String> 
     ))
 }
 
-fn resume_process(
-    payload: &str,
-    environment: impl IntoIterator<Item = (OsString, OsString)>,
-) -> Result<tokio::process::Command> {
+fn decode_resume_request(payload: &str) -> Result<ResumeRequest> {
     if payload.len() > 131068 || payload.contains('%') {
         bail!("Invalid SSH resume payload");
     }
     // Do not attach deserializer errors: unknown field names are payload data.
-    let request: ResumeRequest =
-        serde_json::from_str(payload).map_err(|_| anyhow!("Invalid SSH resume payload"))?;
+    serde_json::from_str(payload).map_err(|_| anyhow!("Invalid SSH resume payload"))
+}
+
+fn resume_process(
+    request: &ResumeRequest,
+    environment: impl IntoIterator<Item = (OsString, OsString)>,
+) -> Result<tokio::process::Command> {
     let script = resume_script(&request.agent_id, &request.session_id, &request.cwd)?;
     let mut command = tokio::process::Command::new(system_ssh_executable()?);
     command
@@ -401,20 +407,28 @@ fn resume_process(
 }
 
 pub(crate) async fn run_resume(payload: &str) -> Result<()> {
-    let status = resume_process(payload, std::env::vars_os())?
-        .status()
-        .await
-        .context("Run Windows system OpenSSH ssh.exe")?;
+    let request = decode_resume_request(payload)?;
+    let code = if request.managed {
+        let script = resume_script(&request.agent_id, &request.session_id, &request.cwd)?;
+        crate::cli::ssh::run(request.target, false, false, Some(script)).await?
+    } else {
+        resume_process(&request, std::env::vars_os())?
+            .status()
+            .await
+            .context("Run Windows system OpenSSH ssh.exe")?
+            .code()
+            .unwrap_or(255)
+    };
     crate::logging::shutdown_flush();
-    std::process::exit(status.code().unwrap_or(255));
+    std::process::exit(code);
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     #[cfg(windows)]
-    fn windows_argv(commandline: &str) -> Vec<String> {
+    pub(crate) fn windows_argv(commandline: &str) -> Vec<String> {
         let input: Vec<u16> = commandline.encode_utf16().chain(Some(0)).collect();
         // SAFETY: input is NUL-terminated and both calls provide valid buffers.
         let wide = unsafe {
@@ -654,14 +668,17 @@ mod tests {
     fn resume_uses_each_cli_resume_flag_and_remote_cwd_without_host_resolution() {
         let target = SshTarget::new("Alias", None).unwrap();
         for profile in crate::agent_registry::KNOWN_AGENTS {
-            let command = resume_commandline(&target, profile.id, "sid", "/remote/repo").unwrap();
+            let command =
+                resume_commandline(&target, profile.id, "sid", "/remote/repo", false).unwrap();
             let launcher = windows_argv(&command);
             assert_eq!(
                 PathBuf::from(&launcher[0]),
                 std::env::current_exe().unwrap()
             );
             assert_eq!(&launcher[1..3], ["ssh-resume", "--payload"]);
-            let process = resume_process(&launcher[3], []).unwrap();
+            let request = decode_resume_request(&launcher[3]).unwrap();
+            assert!(!request.managed);
+            let process = resume_process(&request, []).unwrap();
             assert_eq!(
                 process.as_std().get_program(),
                 system_ssh_executable().unwrap().as_os_str()
@@ -690,36 +707,39 @@ mod tests {
         let target = SshTarget::new("user@[::1]", Some(2222)).unwrap();
         let id = r#"session'";$(echo injected)`id`&%PATH%\"#;
         let cwd = r#"/home/a b/世界/%PATH%/'";$(touch nope)\last"#;
-        let command = resume_commandline(&target, "codex", id, cwd).unwrap();
-        assert!(!command.contains('%'));
-        let launcher = windows_argv(&command);
-        let request: ResumeRequest = serde_json::from_str(&launcher[3]).unwrap();
-        assert_eq!(request.session_id, id);
-        assert_eq!(request.cwd, cwd);
-        let process = resume_process(&launcher[3], []).unwrap();
-        let args: Vec<_> = process
-            .as_std()
-            .get_args()
-            .map(|arg| arg.to_str().unwrap())
-            .collect();
-        assert_eq!(args[args.len() - 2], "user@[::1]");
-        let script = format!(
-            "cd -- {} && exec 'codex' 'resume' {}",
-            sh_quote(cwd),
-            sh_quote(id)
-        );
-        assert_eq!(
-            args.last().copied(),
-            Some(format!("sh -lc {}", sh_quote(&script)).as_str())
-        );
-        assert!(args.last().unwrap().contains(r"'\''"));
+        for managed in [false, true] {
+            let command = resume_commandline(&target, "codex", id, cwd, managed).unwrap();
+            assert!(!command.contains('%'));
+            let launcher = windows_argv(&command);
+            let request = decode_resume_request(&launcher[3]).unwrap();
+            assert_eq!(request.session_id, id);
+            assert_eq!(request.cwd, cwd);
+            assert_eq!(request.managed, managed);
+            let process = resume_process(&request, []).unwrap();
+            let args: Vec<_> = process
+                .as_std()
+                .get_args()
+                .map(|arg| arg.to_str().unwrap())
+                .collect();
+            assert_eq!(args[args.len() - 2], "user@[::1]");
+            let script = format!(
+                "cd -- {} && exec 'codex' 'resume' {}",
+                sh_quote(cwd),
+                sh_quote(id)
+            );
+            assert_eq!(
+                args.last().copied(),
+                Some(format!("sh -lc {}", sh_quote(&script)).as_str())
+            );
+            assert!(args.last().unwrap().contains(r"'\''"));
+        }
     }
 
     #[test]
     fn resume_rejects_options_controls_unknown_agents_and_non_posix_cwd() {
         let target = SshTarget::new("host", None).unwrap();
         for id in ["", " ", "-x", "--help", "id\0", "id\n", "id\r"] {
-            assert!(resume_commandline(&target, "copilot", id, "/repo").is_err());
+            assert!(resume_commandline(&target, "copilot", id, "/repo", false).is_err());
         }
         for cwd in [
             "",
@@ -731,12 +751,12 @@ mod tests {
             "/repo\0",
             "/repo\n",
         ] {
-            assert!(resume_commandline(&target, "copilot", "sid", cwd).is_err());
+            assert!(resume_commandline(&target, "copilot", "sid", cwd, false).is_err());
         }
         for agent in ["unknown", "custom:copilot", "copilot;id"] {
-            assert!(resume_commandline(&target, agent, "sid", "/repo").is_err());
+            assert!(resume_commandline(&target, agent, "sid", "/repo", false).is_err());
         }
-        assert!(resume_commandline(&target, "copilot", "sid", "/").is_ok());
+        assert!(resume_commandline(&target, "copilot", "sid", "/", false).is_ok());
     }
 
     #[test]
@@ -746,10 +766,11 @@ mod tests {
             agent_id: "copilot".into(),
             session_id: "sid".into(),
             cwd: "/repo".into(),
+            managed: false,
         };
         let payload = serde_json::to_string(&request).unwrap();
         let process = resume_process(
-            &payload,
+            &decode_resume_request(&payload).unwrap(),
             [
                 ("USERPROFILE", "ssh-user"),
                 ("SSH_AUTH_SOCK", "ssh-agent"),
@@ -773,8 +794,15 @@ mod tests {
             r#"{"target":{"destination":"host","port":null},"agent_id":"copilot","session_id":"-option","cwd":"/repo"}"#,
             r#"{"target":{"destination":"host","port":null},"agent_id":"copilot","session_id":"sid","cwd":"/%PATH%"}"#,
         ] {
-            assert!(resume_process(invalid, []).is_err());
+            assert!(decode_resume_request(invalid)
+                .and_then(|request| resume_process(&request, []))
+                .is_err());
         }
+        let legacy = serde_json::json!({
+            "target": {"destination": "host", "port": null},
+            "agent_id": "copilot", "session_id": "sid", "cwd": "/repo"
+        });
+        assert!(!decode_resume_request(&legacy.to_string()).unwrap().managed);
     }
 
     #[test]

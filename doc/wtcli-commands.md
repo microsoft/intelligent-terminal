@@ -37,7 +37,7 @@ scripts) are not counted.
 | `kill-pane` | `killp` | Close a pane. | `wtcli kill-pane -t 4` | ✅ `cli_channel.rs` (`close_pane`) |
 | `focus-pane` | `focusp` | Move focus to the given pane. | `wtcli focus-pane -t 3` | ✅ `cli_channel.rs` (`focus_pane`) |
 | `wait-for` | — | Block (poll `pane-status`) until the pane process exits. `--interval` is poll period in ms; `--timeout` is seconds (`0` = forever). | `wtcli wait-for -t 3 --timeout 60` | ❌ Not called. (`wta` exposes its own `wait-for` subcommand at `tools/wta/src/main.rs:209`, but its handler polls by shelling out to `wtcli pane-status` in a Rust loop — it does **not** invoke `wtcli wait-for`.) |
-| `listen` | — | Long-running. Subscribe to `IProtocolServer` and stream every event JSON line to stdout until Ctrl-C. `-t` filters by pane id; `--event` filters by type and supports a trailing `*` wildcard. Internal callers use `--parent-pid` to terminate the listener if its owner crashes. | `wtcli --json listen --event "agent.*"` | ✅ `cli_channel.rs` (background listener task) |
+| `listen` | — | Long-running. Subscribe to `IProtocolServer` and stream its COM-published event JSON lines to stdout until Ctrl-C. Includes local hooks and native tmux v2 events, but not master-direct ordinary SSH v3 hooks. `-t` filters by pane id; `--event` filters by type and supports a trailing `*` wildcard. Internal callers use `--parent-pid` to terminate the listener if its owner crashes. | `wtcli --json listen --event "agent.*"` | ✅ `cli_channel.rs` (background listener task) |
 | `send-event` | `se` | Publish an event using the `agent_event` envelope: sets `type=event`, `method=agent_event`, fills `params.event` from `-e` and `params.pane_id` from `-p`. Omitting `-p` publishes an empty `pane_id` meaning "source pane unknown" — it is **not** attributed to the focused pane, because guessing a pane corrupts session-to-pane binding, while an unattributed event is routed by `cli_source` instead. Extra params come from the trailing JSON object. | `wtcli send-event -p 3 -e agent.task.completed '{"exit_code":0}'` | ❌ Not called from in-tree code. Kept as the transport for legacy PowerShell hook bundles (guarded by `Feature.LegacyHookBundle.Tests.ps1`) and as the public CLI surface for external agents in `doc/specs/llm-agent-event-integration.md`. |
 | `publish` | — | Low-level escape hatch: forwards raw JSON straight to `IProtocolServer::SendEvent` with no envelope. Pass JSON as a positional argument for compatibility, or use `--stdin` for payloads that may exceed the Windows command-line limit. The two input forms are mutually exclusive. | `Get-Content event.json -Raw \| wtcli publish --stdin` | ✅ `tools/wta/src/wt_protocol_events.rs` |
 | `info` | — | Print `WT_COM_CLSID`, connection status, protocol version, and the server's `GetCapabilities()` method list. | `wtcli --json info` | ✅ `cli_channel.rs` maps `get_capabilities` → `wtcli info` |
@@ -177,6 +177,65 @@ The process transport uses raw pipes, not a local ConPTY. Both unframed `-C` and
 DCS-framed `-CC` protocol streams are accepted. Real tmux `-CC` additionally needs a
 TTY, so use `-C` for the simple WSL/SSH pipe examples, or supply a backend command
 that provides its own TTY. IT does not infer or rewrite that command.
+
+### Remote Linux agent hooks
+
+The optional [tmux hook bridge](../tools/wta/wt-agent-hooks/tmux/README.md)
+forwards agent lifecycle/status events without installing `wtcli` or WTA on
+the remote host. Install it separately in the Linux CLI's hook configuration;
+the existing Windows hook installer does not modify remote machines.
+
+For the end-to-end transport diagrams, implementation map, status transitions,
+and Session Management refresh flow, see the
+[remote tmux agent hook specification](specs/tmux-remote-agent-hooks.md).
+
+Ordinary managed SSH panes use a separate background channel and reuse the
+SSH source registry for status and focus. See
+[ordinary SSH agent hooks](specs/ordinary-ssh-agent-hooks.md); this does not
+intercept arbitrary SSH commands typed inside an unrelated shell.
+
+It uses a shell script, standard Linux utilities, and **tmux 3.4 or newer**;
+Python, Node.js, and `jq` are not required for the sender. Inside tmux, it checks
+`TMUX` and `TMUX_PANE`, verifies that the pane still belongs to its originating
+session, and enumerates only that session's control clients. For each client it
+uses `display-message -l -c <client>` to deliver a literal `%message` notification:
+
+```text
+%message IT_AGENT_HOOK/2 $0 %1 copilot agent.stop transfer-id 0 1 eyJzZXNzaW9uX2lkIjoic2lkIn0=
+```
+
+The fields after the version are session, pane, CLI source, event, transfer ID,
+zero-based chunk index, chunk count, and Base64 data. The shell does not parse,
+redact, or truncate JSON. It forwards up to 1 MiB of raw stdin using chunks of at
+most 6,000 Base64 characters, so each tmux message stays below 8 KiB.
+
+`display-message -C` is **not** a broadcast switch. Ordinary status messages,
+`wait-for`, and user options do not automatically carry hook JSON to the
+frontend. The bridge uses the documented control-client message path; it never
+writes an OSC sequence or hook JSON into a pane's terminal output.
+
+IT checks the version, size, source, event, attached session and pane inventory,
+then reassembles complete transfers with bounded memory and a 10-second expiry.
+Missing, duplicate, inconsistent, or oversized chunks never become partial
+agent events. IT parses the complete UTF-8 JSON, projects only consumed metadata,
+resolves the native pane/tab/window itself (including zoom-hidden panes), and
+applies the native hook's redaction and final event budget.
+WTA scopes these live rows separately from local agent sessions and supports
+focusing their visible native panes. Leave zoom mode before focusing a hidden
+pane's row; its hook status is still tracked while hidden. An ended tmux row does
+not resume a CLI on Windows:
+the opaque backend command is not enough information to reconstruct a remote
+resume invocation.
+
+Missing tmux, unsupported tmux versions, execution outside tmux, stale pane
+membership, and no attached control client are successful no-ops. Delivery is
+live and best-effort, not a durable queue: disconnected clients receive no replay.
+Linked windows send only to the originating session, not every session sharing
+the pane. Other control clients attached to that same session can read the
+original hook payload, including prompts and tool data, before IT redacts it.
+Base64 is framing, not encryption. Access to the tmux socket also permits
+spoofing status events; this is a status channel, never proof of identity,
+permission or shell-input authorization.
 
 ### Deterministic local fixture
 

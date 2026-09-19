@@ -513,6 +513,7 @@ pub enum WtaExtRequest {
     SessionsList(SessionsListParams),
     /// Source-scoped SSH history and master-owned focus/resume.
     SshSessions(crate::ssh_session_registry::Request),
+    SshHooks(crate::ssh_hook_protocol::Request),
     /// `_intellterm.wta/session_hook` — a helper-originated session event
     /// (resume bookkeeping, pane lifecycle). Agent CLI hooks reach master over
     /// the COM broadcast instead.
@@ -536,7 +537,10 @@ pub enum WtaExtRequest {
     ForwardToAgent(acp::schema::v1::ExtRequest),
     /// Method matched one of ours but the params failed to decode. The master
     /// answers `invalid_params` rather than acting on a half-parsed payload.
-    Malformed { method: String, error: String },
+    Malformed {
+        method: String,
+        error: String,
+    },
 }
 
 /// Classify and decode an inbound helper→master `ExtRequest`.
@@ -567,6 +571,8 @@ pub fn parse_ext_request(req: acp::schema::v1::ExtRequest) -> WtaExtRequest {
         decode!(SessionsList, parse_sessions_list_params)
     } else if ext_method_matches(&req.method, crate::ssh_session_registry::METHOD) {
         decode!(SshSessions, crate::ssh_session_registry::parse_request)
+    } else if ext_method_matches(&req.method, crate::ssh_hook_protocol::METHOD) {
+        decode!(SshHooks, crate::ssh_hook_protocol::parse_request)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_HOOK) {
         decode!(SessionHook, parse_session_hook_params)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_BORN_BOUND) {

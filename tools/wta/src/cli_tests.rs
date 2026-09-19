@@ -296,17 +296,42 @@ fn sessions_list_cli_ssh_defaults_do_not_change_host_arguments() {
 }
 
 #[test]
-fn sessions_list_cli_ssh_options_require_ssh_and_conflict_with_master() {
-    for options in [
-        vec!["--port", "2222"],
-        vec!["--cli", "copilot"],
-        vec!["--ssh", "host", "--master", "pipe"],
-        vec!["--master", "pipe", "--ssh", "host"],
-    ] {
+fn sessions_list_cli_ssh_options_require_ssh() {
+    for options in [vec!["--port", "2222"], vec!["--cli", "copilot"]] {
         let mut args = vec!["wta", "sessions", "list"];
         args.extend(options);
         assert!(Cli::try_parse_from(&args).is_err(), "{args:?}");
     }
+}
+
+#[test]
+fn sessions_list_cli_master_and_ssh_select_source_snapshot() {
+    let parsed = Cli::try_parse_from([
+        "wta",
+        "sessions",
+        "list",
+        "--master",
+        r"\\.\pipe\wta-test",
+        "--ssh",
+        "user@host",
+        "--port",
+        "2222",
+        "--cli",
+        "copilot",
+        "--json",
+    ])
+    .unwrap();
+    assert!(parsed.json);
+    assert!(parsed.master.is_none(), "list --master must not select master process mode");
+    assert!(matches!(parsed.command, Some(Command::Sessions {
+        action: SessionsAction::List { master: Some(master), ssh: Some(ssh), port: Some(2222), cli: Some(cli), .. }
+    }) if master == r"\\.\pipe\wta-test" && ssh == "user@host" && cli == "copilot"));
+    let discovered =
+        Cli::try_parse_from(["wta", "sessions", "list", "--master", "--ssh", "user@host"])        .unwrap();
+        assert!(discovered.master.is_none());
+    assert!(matches!(discovered.command, Some(Command::Sessions {
+        action: SessionsAction::List { master: Some(master), ssh: Some(ssh), .. }
+    }) if master.is_empty() && ssh == "user@host"));
 }
 
 #[test]

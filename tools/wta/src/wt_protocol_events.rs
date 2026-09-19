@@ -65,8 +65,13 @@ pub(crate) fn resumed_pane_binding_event(
     location: &crate::agent_sessions::SessionLocation,
 ) -> Option<String> {
     // The native binding map currently rebuilds host resume invocations.
-    // Do not turn an existing WSL launch into a host command on persistence.
-    if location.is_wsl() {
+    // Do not turn WSL or an opaque tmux connection into a host command on persistence.
+    if location.is_wsl()
+        || matches!(
+            location,
+            crate::agent_sessions::SessionLocation::Tmux { .. }
+        )
+    {
         return None;
     }
     Some(

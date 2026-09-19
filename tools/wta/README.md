@@ -84,7 +84,7 @@ When `-t` (target pane) is omitted, the active pane is used automatically.
 ### Agent sessions over SSH
 
 The Sessions view automatically uses the SSH destination of its source terminal
-profile. Open a generated **SSH - ...** profile from the new-tab menu, then use
+connection. Open a generated **SSH - ...** profile from the new-tab menu, then use
 the Sessions button, keyboard shortcut, or bare `/sessions` to browse that
 host's agent history. Windows and WSL profiles keep their existing agent-source
 behavior. This selects history only; it does not change the tab's chat backend.
@@ -93,15 +93,15 @@ behavior. This selects history only; it does not change the tab's chat backend.
 /sessions
 ```
 
-`/sessions` takes no arguments. The source is always the current profile's SSH
+`/sessions` takes no arguments. The source is always the current connection's SSH
 host or its normal Windows/WSL agent source; it cannot be overridden in the
 slash command. The remote history uses the currently selected built-in agent,
 subject to the existing agent policy.
 SSH registries are shared by the master, using the same session registry and
 state reducer as Windows/WSL sessions, but isolated by destination, port, and
 agent so remote session IDs cannot collide with local or other SSH sources.
-Each viewing tab receives only its own profile's source. Typing `ssh` in a shell does
-not automatically change the Sessions source. Profile metadata is supplied
+Each viewing tab receives only its own connection's source. Typing `ssh` in a shell does
+not automatically change the Sessions source. Source metadata is supplied
 when the helper starts, including prewarmed/stashed helpers, and refreshed by
 the owning tab's native Sessions/tab-change events.
 
@@ -110,10 +110,15 @@ Connection errors are still shown above the list. Use the existing search and ar
 **F5** to fetch remote history again, and **Enter** to open a native
 Terminal tab running the remote agent's own resume command in the session's
 remote working directory. The master fetches remote history on entry and
-explicit refresh. Shared status notifications and periodic cached snapshots
-update other views without another remote history scan. Connection failures remain
-visible; a failed refresh keeps the last successful list rather than presenting
-an empty list as success.
+explicit refresh. While the view is open, periodic polls also refresh history
+in the background so new sessions acquire their generated titles and later
+title changes appear without reopening the view. The master coalesces polls
+across tabs for the same SSH source and waits at least five seconds after each
+completed history query before starting another automatic query. Status
+notifications read cached state immediately, without waiting for SSH.
+Connection failures on entry or explicit refresh remain visible; background
+refresh failures are logged. Failed queries keep the last successful list
+rather than presenting an empty list as success.
 
 After Terminal confirms the resumed pane was created, its row shows **Idle**.
 The same row is Idle in other existing or newly opened tabs using the same SSH
@@ -136,8 +141,32 @@ forwarding channels interactively.
 
 `origin` and `status` are independent. Resuming from the Sessions view opens an
 ordinary SSH shell pane, not an ACP agent pane, so `origin` remains `Unknown`
-while the bound row's `status` becomes `Idle`. Idle indicates a known local pane
-binding; it does not report the remote agent's tool activity.
+while the bound row's `status` initially becomes `Idle`. Without hooks, Idle
+indicates only a known local pane binding. With managed remote hooks, real
+agent events update Working, Attention, Idle, Error, and Ended on that same row.
+
+Supported ordinary SSH launches are wrapped by local `wta ssh`. A
+connection-lifetime route associates remote hook events with the native SSH
+pane, including new conversations started by hand in that shell. When Session
+Management is enabled, master reconciles a policy-scoped hook bundle under
+the remote user's `.intelligent-terminal` directory and maintains a separate
+tmux control connection. The user's shell and agent need not run in tmux.
+The existing focus/resume path is reused; the dedicated transport's tmux pane
+is never a focus target.
+
+Native tmux panes opened through a supported direct SSH backend join this same
+Linux session list. For example, `ssh.exe -T -o BatchMode=yes wsl-ubuntu tmux -C
+attach-session -t work` uses the `wsl-ubuntu` source: native v2 hooks and managed
+v3 hooks update the same source registry and merge with remote history by CLI
+session ID. Live rows focus the actual native pane; ended rows resume through
+the ordinary SSH CLI path. The controller derives the target from its local
+launch command, not remote hook JSON. Use the same destination/alias, user, and
+explicit port as the SSH profile. Opaque or non-SSH tmux backends retain their
+existing Host-view, focus-only behavior.
+
+See [ordinary SSH agent hooks](../../doc/specs/ordinary-ssh-agent-hooks.md)
+for the full lifecycle and [remote setup](wt-agent-hooks/tmux/README.md) for
+ownership, provider support, and runtime requirements.
 
 For diagnostics, the standalone CLI can retrieve remote history without a
 running WTA master:
@@ -150,10 +179,28 @@ wta sessions list --ssh work-alias --port 2222 --cli copilot
 This standalone diagnostic reads remote history only; it does not query the
 master's shared pane bindings, so its rows remain `Historical`.
 
+To inspect the master's current SSH source snapshot without a remote history
+query, add `--master` (optionally followed by an explicit pipe):
+
+```powershell
+wta sessions list --master --ssh dev@linux-host --cli copilot --json
+```
+
+V3 hook traffic is consumed directly by master and does not appear in
+`wtcli --json listen --event "agent.*"`. That listener still observes local
+hooks and the native tmux-pane v2 path. Master owns the ordinary SSH control
+reader and existing source registry, so those events do not make a round trip
+through C++/COM. The snapshot command above returns and exits; it is not an
+event-stream replacement and can miss intermediate transitions between polls.
+There is currently no unified hook event listener for both paths. See the
+[transport and diagnostics comparison](../../doc/specs/ordinary-ssh-agent-hooks.md#diagnostics-event-streams-versus-state-snapshots).
+
 Requirements and boundaries:
 
 - Automatic source selection recognizes generated SSH profiles and supported
-  direct `ssh`/`ssh.exe` profile command lines. For connection options that
+  direct `ssh`/`ssh.exe` connection command lines and managed resume wrappers.
+  Automatic wrapping is limited to bare/system OpenSSH, not custom clients.
+  For connection options that
   cannot be represented as a destination/user/port, define an OpenSSH `Host`
   alias and use `ssh <alias>` in the profile. An unsupported SSH profile shows
   a source error instead of falling back to Windows history.
@@ -163,16 +210,19 @@ Requirements and boundaries:
   key checking; it never accepts an unknown host or prompts for a password.
 - The remote host needs a POSIX login shell and an installed, authenticated
   agent with ACP `session/list` support. Agents that use an ACP adapter retain
-  their usual adapter/runtime requirements. No remote WTA daemon, hooks, or
-  tmux installation is needed.
+  their usual adapter/runtime requirements. History listing alone needs no
+  remote WTA daemon, hooks, or tmux installation. Live hooks additionally
+  require tmux 3.4+, standard Linux utilities, and a supported CLI runtime
+  that can access the managed socket. Registration changes may require
+  restarting an already-running CLI.
 - Listing is a read-only ACP connection: it does not create an agent
   conversation, send a prompt, expose local terminal/file tools, or forward
   the local session MCP endpoint or provider credentials.
 - Resume restores the agent's conversation history; it does **not** attach to
   an already-running remote process or provide persistent SSH shell sessions.
-  Remote agent activity, discovery of independently running remote processes,
-  hooks, and automatic detection of manually typed SSH connections are not
-  part of this first version.
+  Hook activity is available for managed SSH connections; discovery of
+  independently running remote processes and automatic detection of SSH
+  commands typed inside unrelated shells are not supported.
 
 ### Protocol Discovery & Environment Setup
 

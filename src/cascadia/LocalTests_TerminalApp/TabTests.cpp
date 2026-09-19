@@ -360,6 +360,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TmuxSessionIdentityIsWindowTitleWithoutRenamingTabs);
         TEST_METHOD(TitlebarSessionIdentityUsesCompactLeftHeader);
         TEST_METHOD(TmuxSessionNotificationsUpdateOnlyTheirWindowIdentity);
+        TEST_METHOD(TmuxAgentHooksUseOwningPaneAndTab);
+        TEST_METHOD(ManagedSshConnectionPreservesLogicalCommandline);
         TEST_METHOD(TmuxSessionMenuIgnoresStaleResponsesAndSurfacesErrors);
         TEST_METHOD(TmuxSessionMenuRequestsNewSshWindow);
         TEST_METHOD(TmuxSessionButtonFollowsOrdinarySshTabs);
@@ -2911,6 +2913,137 @@ namespace TerminalAppLocalTests
             titlebar->WindowLabel({});
             VERIFY_IS_TRUE(panel.Visibility() == Visibility::Collapsed);
             VERIFY_ARE_EQUAL(45.0, titlebar->DragBar().MinWidth());
+        });
+    }
+
+    void TabTests::ManagedSshConnectionPreservesLogicalCommandline()
+    {
+        TestOnUIThread([]() {
+            using winrt::Microsoft::Terminal::TerminalConnection::ConptyConnection;
+            const auto original = winrt::hstring{ L"ssh.exe -p 2222 user@host" };
+            const auto wrapper = winrt::hstring{ L"\"C:\\Program Files\\IT\\wta.exe\" ssh --destination user@host --port 2222" };
+            auto settings = ConptyConnection::CreateSettings(
+                wrapper, L"C:\\", L"SSH", false, {}, nullptr, 24, 80, {}, {});
+            settings.Insert(L"originalCommandline", winrt::Windows::Foundation::PropertyValue::CreateString(original));
+            ConptyConnection connection;
+            connection.Initialize(settings);
+            VERIFY_ARE_EQUAL(original, connection.Commandline());
+            settings.Remove(L"originalCommandline");
+            ConptyConnection ordinary;
+            ordinary.Initialize(settings);
+            VERIFY_ARE_EQUAL(wrapper, ordinary.Commandline());
+        });
+    }
+
+    void TabTests::TmuxAgentHooksUseOwningPaneAndTab()
+    {
+        const auto connection = winrt::make_self<TestConnection>(
+            winrt::guid{ L"{6239a42c-1111-49a3-80bd-e8fdd045185c}" },
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        const auto page = _commonSetup(*connection);
+        using Controller = winrt::TerminalApp::implementation::TmuxController;
+        std::shared_ptr<Controller> controller;
+        std::vector<Json::Value> events;
+        std::string nativePane;
+        const std::string message = "IT_AGENT_HOOK/2 $7 %1 copilot agent.stop routed 0 1 eyJzZXNzaW9uX2lkIjoic2lkIn0=";
+        std::vector<Json::Value> closes;
+        winrt::event_token token{};
+        auto cleanup = wil::scope_exit([&]() {
+            RunOnUIThread([&]() {
+                page->ProtocolVtSequenceReceived(token);
+                if (controller)
+                {
+                    controller->Stop();
+                }
+                for (const auto& tab : page->_tabs)
+                {
+                    tab.Shutdown();
+                }
+                page->_tmuxController.reset();
+            });
+        });
+        TestOnUIThread([&]() {
+            controller = std::make_shared<Controller>(*page);
+            page->_tmuxCommandline = L"opaque-backend";
+            page->_tmuxController = controller;
+            controller->_diagnosticTab = page->_GetFocusedTabImpl();
+            controller->_initialResponse = true;
+            controller->_sessionId = 7;
+            controller->_sessionName = "work";
+            controller->_socketPath = "/socket";
+            controller->_sshTarget["destination"] = "wsl-ubuntu";
+            controller->_sshTarget["port"] = 2222;
+            controller->_writeCommand = [](std::string) {};
+            token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& json) {
+                Json::Value event;
+                Json::CharReaderBuilder builder;
+                std::string errors;
+                std::istringstream stream{ winrt::to_string(json) };
+                if (!Json::parseFromStream(builder, stream, &event, &errors))
+                {
+                    return;
+                }
+                if (event["method"] == "agent_event")
+                {
+                    events.emplace_back(event["params"]);
+                }
+                else if (event["method"] == "connection_state" && event["params"]["state"] == "closed")
+                {
+                    closes.emplace_back(event["params"]);
+                }
+            });
+            controller->_applyWindows(controller->_parseWindows(
+                "@0 1 89f5,80x24,0,0{39x24,0,0,0,40x24,40,0,1} b25d,80x24,0,0,0"));
+            nativePane = page->_FindSessionIdForControl(controller->_panes.at(1).control);
+            VERIFY_IS_FALSE(nativePane.empty());
+            controller->_agentHook(message);
+            VERIFY_ARE_EQUAL(size_t{ 1 }, events.size());
+            VERIFY_ARE_EQUAL(nativePane, events.back()["pane_id"].asString());
+            VERIFY_ARE_EQUAL(winrt::to_string(controller->_tabs.at(0)->StableId()), events.back()["tab_id"].asString());
+            VERIFY_ARE_EQUAL(std::to_string(page->_WindowProperties.WindowId()), events.back()["window_id"].asString());
+
+            controller->_agentHook("ordinary message");
+            controller->_agentHook("IT_AGENT_HOOK/2 invalid");
+            controller->_agentHook("IT_AGENT_HOOK/2 $8 %1 copilot agent.stop wrong-session 0 1 e30=");
+            controller->_agentHook("IT_AGENT_HOOK/2 $7 %99 copilot agent.stop wrong-pane 0 1 e30=");
+            VERIFY_ARE_EQUAL(size_t{ 1 }, events.size());
+            VERIFY_IS_FALSE(controller->_failed.load());
+            controller->_agentHook("IT_AGENT_HOOK/2 $7 %1 copilot agent.stop invalid-json 0 1 ew==");
+            VERIFY_ARE_EQUAL(size_t{ 1 }, events.size());
+            VERIFY_IS_FALSE(controller->_failed.load());
+
+            controller->_applyWindows(controller->_parseWindows(
+                "@0 1 b25d,80x24,0,0,0 b25d,80x24,0,0,0\n"
+                "@1 0 b25e,80x24,0,0,1 b25e,80x24,0,0,1"));
+            controller->_output("%message " + message + "\n");
+        });
+        _waitForContentTransferReviewUI([&]() { return events.size() == 2; });
+        TestOnUIThread([&]() {
+            VERIFY_ARE_EQUAL(nativePane, events.back()["pane_id"].asString());
+            VERIFY_ARE_EQUAL(winrt::to_string(controller->_tabs.at(1)->StableId()), events.back()["tab_id"].asString());
+            VERIFY_ARE_EQUAL(std::string{ "%1" }, events.back()["tmux"]["pane_id"].asString());
+            VERIFY_ARE_EQUAL(std::string{ "sid" }, events.back()["agent_session_id"].asString());
+            VERIFY_ARE_EQUAL(std::string{ "wsl-ubuntu" }, events.back()["tmux"]["ssh_target"]["destination"].asString());
+            VERIFY_ARE_EQUAL(2222, events.back()["tmux"]["ssh_target"]["port"].asInt());
+            controller->_sessionId = 8;
+            controller->_agentHook(message);
+            VERIFY_ARE_EQUAL(size_t{ 2 }, events.size());
+            const auto closeCount = [&](const std::string& paneId) {
+                return static_cast<size_t>(std::count_if(closes.begin(), closes.end(), [&](const auto& params) {
+                    return params["pane_id"] == paneId;
+                }));
+            };
+            controller->_applyWindows(controller->_parseWindows("@0 1 b25d,80x24,0,0,0 b25d,80x24,0,0,0"));
+            VERIFY_ARE_EQUAL(size_t{ 1 }, closeCount(nativePane));
+            controller->_applyWindows(controller->_parseWindows(
+                "@0 1 09f6,80x24,0,0{39x24,0,0,0,40x24,40,0,2} b25d,80x24,0,0,0"));
+            const auto hiddenPane = page->_FindSessionIdForControl(controller->_panes.at(2).control);
+            controller->Stop();
+            VERIFY_ARE_EQUAL(size_t{ 1 }, closeCount(nativePane));
+            VERIFY_ARE_EQUAL(size_t{ 1 }, closeCount(hiddenPane));
+            const auto count = closes.size();
+            controller->Stop();
+            VERIFY_ARE_EQUAL(count, closes.size());
         });
     }
 
