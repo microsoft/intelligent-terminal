@@ -118,6 +118,19 @@ Master stages these assets through the background SSH connection using
 bounded, known-size input. Stdin remains open when the remote process
 transitions into tmux control mode.
 
+Plugin installation is now coordinated separately by the master's Linux hook
+service. It coalesces work by exact SSH target or WSL distribution/login user.
+An install-only invocation emits bounded, nonce-correlated per-provider records;
+only an actual install/update emits an `installing` record. The SSH reader then
+uses `--transport-only --attach-control` to prepare and attach its owned tmux
+server without rerunning plugin registration.
+
+Native pane connection/discovery events register active Linux targets. WSL
+identity probing preserves the launch's distribution and user selection,
+accepts only supported launch options, and never reruns WSL management commands.
+The same install-only path serves WSL and identifiable native tmux backends.
+It does not create a WSL hook reader, route, or live session-status producer.
+
 The installer manages its own files under the remote user's
 `.intelligent-terminal` directory. It installs self-contained CLI hook
 plugins through their supported plugin/extension interfaces rather than
@@ -253,6 +266,21 @@ targets when enabled and stops background setup/readers when disabled,
 without terminating the user's foreground SSH connection or uninstalling
 remote files. Existing hook installation entry points also request remote
 reconciliation.
+
+`wta hooks install --cli <provider>` applies that scope to both local and
+active Linux installations, awaits completed outcomes, and reports failures
+instead of treating queued work as success. The command runs on Windows;
+no WTA runtime is installed on Linux. Manual retry can recover after installing
+tmux or a CLI. New connections and re-enablement also recheck active targets.
+IT-managed SSH resumes and supported WSL resumes allow a short bounded hook
+preparation period before launching the agent; timeout never cancels the launch.
+
+Automatic hook diagnostics are logged, not printed into the foreground shell.
+The Sessions page reads a tab/provider-scoped installation snapshot without
+triggering installation. It shows actual installation progress or an actionable
+failure above the list and provides a scoped Windows recovery command, not a
+retry button. It hides routine checks and automatic success, and never equates
+installed WSL plugins with a connected live transport.
 
 The explicit `wta ssh --no-hooks` option is a durable opt-out for that
 connection. It is distinct from temporarily disabling Session Management.

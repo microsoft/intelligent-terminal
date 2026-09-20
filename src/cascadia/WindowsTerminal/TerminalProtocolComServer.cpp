@@ -1263,6 +1263,9 @@ try
     case ProtocolParsing::SendEventRoute::AgentAvailability:
         _dispatchAgentAvailabilityToPage(eventH);
         return S_OK;
+    case ProtocolParsing::SendEventRoute::LinuxHooksDiscover:
+        _dispatchLinuxHooksDiscover();
+        return S_OK;
     case ProtocolParsing::SendEventRoute::AgentSwitch:
         _dispatchAgentSwitchToPage(eventH);
         return S_OK;
@@ -1392,6 +1395,30 @@ void TerminalProtocolComServer::_dispatchAgentStatusToPage(const winrt::hstring&
                     // Swallow: page may have been torn down during dispatch.
                 }
             });
+    }
+}
+
+void TerminalProtocolComServer::_dispatchLinuxHooksDiscover()
+{
+    if (!s_emperor)
+    {
+        return;
+    }
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        if (const auto page = _getPage(host.get()))
+        {
+            if (const auto dispatcher = page.Dispatcher())
+            {
+                dispatcher.RunAsync(winrt::Windows::UI::Core::CoreDispatcherPriority::Normal, [page]() {
+                    try
+                    {
+                        page.OnLinuxHooksDiscover();
+                    }
+                    CATCH_LOG();
+                });
+            }
+        }
     }
 }
 

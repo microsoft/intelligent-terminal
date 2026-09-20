@@ -514,6 +514,7 @@ pub enum WtaExtRequest {
     /// Source-scoped SSH history and master-owned focus/resume.
     SshSessions(crate::ssh_session_registry::Request),
     SshHooks(crate::ssh_hook_protocol::Request),
+    LinuxHooks(crate::linux_hooks::Request),
     /// `_intellterm.wta/session_hook` — a helper-originated session event
     /// (resume bookkeeping, pane lifecycle). Agent CLI hooks reach master over
     /// the COM broadcast instead.
@@ -573,6 +574,8 @@ pub fn parse_ext_request(req: acp::schema::v1::ExtRequest) -> WtaExtRequest {
         decode!(SshSessions, crate::ssh_session_registry::parse_request)
     } else if ext_method_matches(&req.method, crate::ssh_hook_protocol::METHOD) {
         decode!(SshHooks, crate::ssh_hook_protocol::parse_request)
+    } else if ext_method_matches(&req.method, crate::linux_hooks::METHOD) {
+        decode!(LinuxHooks, crate::linux_hooks::parse_request)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_HOOK) {
         decode!(SessionHook, parse_session_hook_params)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_BORN_BOUND) {

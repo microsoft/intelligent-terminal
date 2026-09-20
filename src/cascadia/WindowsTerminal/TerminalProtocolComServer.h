@@ -141,6 +141,7 @@ private:
     static void _dispatchAutofixStateToPage(const winrt::hstring& eventJson);
     static void _dispatchAgentStatusToPage(const winrt::hstring& eventJson);
     static void _dispatchAgentAvailabilityToPage(const winrt::hstring& eventJson);
+    static void _dispatchLinuxHooksDiscover();
     static void _dispatchAgentSwitchToPage(const winrt::hstring& eventJson);
     static void _dispatchCloseAgentPaneToPage(const winrt::hstring& eventJson);
     static void _dispatchDefaultPasteToPage(const winrt::hstring& eventJson);

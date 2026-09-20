@@ -2108,6 +2108,10 @@ void ShellIntegrationTests::Wsl_StripExecTail_StripsExistingExecCommand()
                      StripExecTail(L"wsl.exe -d Ubuntu --exec zsh", false));
     VERIFY_ARE_EQUAL(std::wstring_view{ L"wsl.exe -d Ubuntu" },
                      StripExecTail(L"wsl.exe -d Ubuntu -- fish -l", false));
+    VERIFY_ARE_EQUAL(std::wstring_view{ L"wsl.exe -d Ubuntu -u alice" },
+                     StripExecTail(L"wsl.exe -d Ubuntu -u alice --exec bash", false));
+    VERIFY_ARE_EQUAL(std::wstring_view{ L"wsl.exe --distribution-id {GUID} --user root" },
+                     StripExecTail(L"wsl.exe --distribution-id {GUID} --user root -- tmux -C attach", false));
     // bash.exe: keep ONLY the launcher token; ALL its args are dropped (we
     // replace them with our own `-c "probe"`). bash treats a leading operand
     // like `~` as the script and would ignore a later `-c`, so the legacy

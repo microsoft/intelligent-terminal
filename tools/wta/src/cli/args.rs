@@ -578,16 +578,17 @@ impl SessionsOriginArg {
 #[derive(Subcommand, Debug)]
 pub(crate) enum HooksAction {
     /// Ensure the wt-agent-hooks bridge is installed and current. Reconciles
-    /// all supported CLIs by default, or a single CLI with `--cli`. Use
+    /// local and active Linux targets, for all supported CLIs by default or a
+    /// single CLI with `--cli`. Linux targets require running Session Management.
+    /// Use
     /// `--force` to rerun the first-install flow unconditionally. With
     /// `--json` returns a structured per-CLI outcome report.
     Install {
         /// Which CLI to install for. Default: `all`.
         #[arg(long, value_enum, default_value_t = HooksCliFilter::All)]
         cli: HooksCliFilter,
-        /// Rerun the first-install flow even when hooks already appear
-        /// installed. Intended as a manual recovery path when status cannot
-        /// observe the underlying problem.
+        /// Rerun the Windows first-install flow even when hooks already appear
+        /// installed. Linux ownership and user-disablement checks remain in effect.
         #[arg(long)]
         force: bool,
     },

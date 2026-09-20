@@ -115,6 +115,7 @@ namespace winrt::TerminalApp::implementation
 
     void TmuxController::Start(const hstring& commandline, const hstring& workingDirectory)
     {
+        _hookCommandline = commandline;
         const auto page = _page.get();
         THROW_HR_IF(E_ABORT, !page);
         namespace AgentSource = ::Microsoft::Terminal::AgentSource;
@@ -197,6 +198,20 @@ namespace winrt::TerminalApp::implementation
         _writeCommand = [process = _process](std::string command) { process->Write(std::move(command)); };
         _startProcess(shared_from_this(), std::wstring{ commandline }, std::wstring{ workingDirectory });
         _startupTimeout(weak_from_this());
+    }
+
+    void TmuxController::PublishHookTargets(const bool force)
+    {
+        if (const auto page = _page.get(); page && !_stopped)
+        {
+            for (const auto& [id, view] : _panes)
+            {
+                if (force || _hookPublishedPanes.insert(id).second)
+                {
+                    page->_PublishLinuxHookTarget(view.control, _hookCommandline, true);
+                }
+            }
+        }
     }
 
     winrt::fire_and_forget TmuxController::_startupTimeout(std::weak_ptr<TmuxController> weak)
@@ -1224,6 +1239,7 @@ namespace winrt::TerminalApp::implementation
                     _streams.erase(it->first);
                 }
                 page->_NotifyPanesClosing(it->second.pane);
+                _hookPublishedPanes.erase(it->first);
                 it->second.pane->Shutdown();
                 it = _panes.erase(it);
             }
@@ -1262,6 +1278,7 @@ namespace winrt::TerminalApp::implementation
         }
         page->_tabContent.UpdateLayout();
         _scheduleResize();
+        PublishHookTargets();
 
         for (const auto& [id, view] : _panes)
         {

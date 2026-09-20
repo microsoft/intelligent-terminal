@@ -712,6 +712,7 @@ impl App {
             }
             AppEvent::Tick => {
                 self.poll_shared_ssh_sessions();
+                self.poll_linux_hooks();
                 // Fan out across all tabs: a background tab with an in-flight
                 // prompt should keep its shimmer phase advancing so when the
                 // user switches back the animation is in step.
@@ -2565,6 +2566,9 @@ impl App {
             }
             AppEvent::AgentsSnapshotFailed { request_id } => {
                 self.handle_agents_snapshot_failed(request_id);
+            }
+            AppEvent::LinuxHooksSnapshot { tab_id, request_id, cli, result } => {
+                self.handle_linux_hooks_snapshot(&tab_id, request_id, &cli, result);
             }
             AppEvent::SshRegistryResult {
                 source,

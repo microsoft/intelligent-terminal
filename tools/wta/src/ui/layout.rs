@@ -80,6 +80,9 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         } else {
             area
         };
+        let sessions_area = agents_view::render_linux_hooks(
+            frame, sessions_area, &tab.agents_view.linux_hooks, &app.current_agent_id,
+        );
         agents_view::render(
             frame,
             sessions_area,

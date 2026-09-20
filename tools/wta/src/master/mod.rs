@@ -68,6 +68,7 @@ use crate::protocol::acp::spawn::{
 
 pub(crate) mod config;
 mod session_mcp;
+mod linux_hooks;
 mod ssh_hooks;
 mod ssh_sessions;
 
@@ -324,6 +325,7 @@ struct MasterStateInner {
     /// source. These pane bindings outlive the helper that requested resume.
     ssh_sessions: ssh_sessions::Service,
     ssh_hooks: ssh_hooks::Service,
+    linux_hooks: linux_hooks::Service,
     /// Per-helper subscribers for `intellterm.wta/*` ExtNotifications
     /// fanned out from master. Populated by `serve_helper` on connect
     /// and removed on disconnect (or whenever a send fails). Keyed by
@@ -3918,6 +3920,7 @@ impl HelperHandler {
             }
             Req::SshSessions(request) => ssh_sessions::handle(&self.state, request).await,
             Req::SshHooks(request) => ssh_hooks::handle(&self.state, request).await,
+            Req::LinuxHooks(request) => linux_hooks::handle(&self.state, request).await,
             Req::SessionHook(ev) => handle_session_hook(&self.state, ev, false).await,
             Req::SessionBornBound(ev, wsl_distro) => {
                 handle_session_born_bound(&self.state, ev, wsl_distro).await
@@ -4345,6 +4348,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         registry: crate::session_registry::InMemoryRegistry::shared(),
         ssh_sessions: ssh_sessions::Service::default(),
         ssh_hooks: ssh_hooks::Service::new(config.session_management_enabled),
+        linux_hooks: linux_hooks::Service::default(),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt,
         agents: Mutex::new(HashMap::new()),
@@ -8455,11 +8459,30 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
         .cloned()
         .unwrap_or_else(|| serde_json::json!({}));
 
+    if method == "wt_listener_ready" {
+        if state.ssh_hooks.enabled() {
+            linux_hooks::listener_ready(state).await;
+        }
+        return;
+    }
+
     if method == "ssh_hooks_configuration" {
         if let Some(enabled) = params.get("enabled").and_then(|value| value.as_bool()) {
             ssh_hooks::configure(state, enabled).await;
         } else {
             tracing::warn!(target: "ssh_hooks", "Ignoring malformed SSH hooks configuration event");
+        }
+        return;
+    }
+
+    if method == "linux_hooks_target" {
+        match serde_json::from_value::<crate::linux_hooks::Binding>(params) {
+            Ok(binding) => {
+                if let Err(error) = linux_hooks::register(state, binding).await {
+                    tracing::warn!(target: "linux_hooks", %error, "Ignoring invalid Linux hook target");
+                }
+            }
+            Err(error) => tracing::warn!(target: "linux_hooks", %error, "Ignoring malformed Linux hook target"),
         }
         return;
     }
@@ -8488,6 +8511,7 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
         if old_tab_id == new_tab_id {
             return;
         }
+        linux_hooks::rename_tab(state, old_tab_id, new_tab_id).await;
         let mut renamed_helpers = 0usize;
         let _ownership_guard = state.tab_ownership_gate.lock().await;
         {
@@ -8662,6 +8686,10 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
         return;
     }
     let pane_state = params.get("state").and_then(|v| v.as_str()).unwrap_or("");
+    if pane_state == "connected" {
+        linux_hooks::pane_connected(state, &pane_id).await;
+        return;
+    }
     let event = match pane_state {
         "closed" => crate::agent_sessions::SessionEvent::PaneClosed {
             pane_session_id: pane_id.clone(),
@@ -8683,6 +8711,7 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
     // terminal closure and failed startup end that binding via the same reducer.
     ssh_sessions::pane_closed(state, &pane_id).await;
     ssh_hooks::pane_closed(state, &pane_id).await;
+    linux_hooks::pane_closed(state, &pane_id).await;
     tracing::info!(
         target: "master_wt_event",
         pane_id = %pane_id,

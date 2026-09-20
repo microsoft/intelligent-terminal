@@ -27,6 +27,33 @@ const ACCENT_RED: Color = Color::Red; // Error
 const SOFT_WHITE: Color = Color::Rgb(0x8b, 0x8b, 0x8b); // Idle
 const MUTED_WHITE: Color = Color::Rgb(0x8b, 0x8b, 0x8b); // timestamp
 
+pub(crate) fn render_linux_hooks(frame: &mut Frame, mut area: Rect, targets: &[crate::linux_hooks::TargetStatus], cli: &str) -> Rect {
+    use crate::linux_hooks::InstallState;
+    for target in targets {
+        for provider in target.providers.iter().filter(|provider| provider.cli == cli) {
+            if area.height < 3 || area.width == 0 { return area; }
+            let color = match &provider.status {
+                InstallState::Checking | InstallState::Installed | InstallState::NotFound => continue,
+                InstallState::Installing | InstallState::Disabled => SOFT_WHITE,
+                InstallState::Unavailable { .. } => ACCENT_YELLOW,
+            };
+            let message = match &provider.status {
+                InstallState::Unavailable { reason } if reason.starts_with("unsupported-") && reason != "unsupported-tmux-version" =>
+                    t!("hooks.linux_failed", reason = reason, command = format!("wta hooks install --cli {cli}")).into_owned(),
+                status => crate::linux_hooks::status_text(status, cli),
+            };
+            let text = format!("{} / {}: {}", trunc(&target.target.label(), 40), cli, message);
+            let height = ((text.width() / usize::from(area.width) + 2) as u16).min(area.height - 2);
+            frame.render_widget(Paragraph::new(text).style(Style::default().fg(color))
+                .alignment(crate::rtl::text_alignment())
+                .wrap(ratatui::widgets::Wrap { trim: false }), Rect { height, ..area });
+            area.y = area.y.saturating_add(height);
+            area.height = area.height.saturating_sub(height);
+        }
+    }
+    area
+}
+
 pub(crate) fn render_ssh_error(frame: &mut Frame, mut area: Rect, error: Option<&str>) -> Rect {
     if area.height == 0 {
         return area;
@@ -854,6 +881,48 @@ mod tests {
     /// while holding the locale guard.
     fn set_test_locale() {
         rust_i18n::set_locale("en-US");
+    }
+
+    #[test]
+    fn linux_hooks_banner_omits_routine_checks_and_automatic_success() {
+        let _locale = crate::test_support::lock_locale();
+        set_test_locale();
+        use crate::linux_hooks::{InstallState, ProviderStatus, Target, TargetStatus};
+        let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(100, 12)).unwrap();
+        for status in [InstallState::Checking, InstallState::Installed, InstallState::NotFound] {
+            let target = TargetStatus {
+                target: Target::Wsl { distro: "Ubuntu".into(), user: "alice".into() },
+                providers: vec![ProviderStatus { cli: "copilot".into(), status }],
+            };
+            terminal.draw(|frame| {
+                let area = frame.area();
+                assert_eq!(render_linux_hooks(frame, area, &[target], "copilot"), area);
+            }).unwrap();
+        }
+    }
+
+    #[test]
+    fn linux_hooks_failure_shows_scoped_windows_command_without_a_button() {
+        let _locale = crate::test_support::lock_locale();
+        set_test_locale();
+        use crate::linux_hooks::{InstallState, ProviderStatus, Target, TargetStatus};
+        let target = TargetStatus {
+            target: Target::Wsl { distro: "Ubuntu".into(), user: "alice".into() },
+            providers: vec![ProviderStatus { cli: "copilot".into(), status: InstallState::Unavailable {
+                reason: "required-utility-unavailable:tmux".into(),
+            }}],
+        };
+        let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(70, 12)).unwrap();
+        terminal.draw(|frame| {
+            let area = frame.area();
+            assert_eq!(render_linux_hooks(frame, area, &[target.clone()], "claude"), area);
+            assert!(render_linux_hooks(frame, area, &[target.clone()], "copilot").height >= 2);
+        }).unwrap();
+        let text: String = terminal.backend().buffer().content.iter().map(|cell| cell.symbol()).collect();
+        assert!(text.contains("tmux 3.4+"));
+        assert!(text.contains("wta hooks install --cli copilot"));
+        assert!(text.contains("Windows"));
+        assert!(!text.contains("[Retry]"));
     }
 
     fn sample_session() -> AgentSession {

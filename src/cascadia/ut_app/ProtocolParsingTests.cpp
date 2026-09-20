@@ -66,6 +66,8 @@ namespace TerminalAppUnitTests
 
         VERIFY_ARE_EQUAL(SendEventRoute::AgentAvailability, route);
         VERIFY_ARE_EQUAL("copilot", event["params"]["agent_id"].asString());
+        VERIFY_ARE_EQUAL(SendEventRoute::LinuxHooksDiscover,
+                         ClassifySendEvent(R"({"type":"event","method":"linux_hooks_discover","params":{}})", event));
     }
 
     void ProtocolParsingTests::AgentSessionsRetiredUsesDirectRoute()

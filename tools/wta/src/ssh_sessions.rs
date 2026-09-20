@@ -410,7 +410,7 @@ pub(crate) async fn run_resume(payload: &str) -> Result<()> {
     let request = decode_resume_request(payload)?;
     let code = if request.managed {
         let script = resume_script(&request.agent_id, &request.session_id, &request.cwd)?;
-        crate::cli::ssh::run(request.target, false, false, Some(script)).await?
+        crate::cli::ssh::run(request.target, false, false, Some(script), Some(request.agent_id)).await?
     } else {
         resume_process(&request, std::env::vars_os())?
             .status()

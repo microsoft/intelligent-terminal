@@ -21,7 +21,7 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
             remote_command,
         } => {
             let target = crate::ssh_sessions::SshTarget::new(&destination, port)?;
-            let status = ssh::run(target, no_pty, no_hooks, remote_command).await?;
+            let status = ssh::run(target, no_pty, no_hooks, remote_command, None).await?;
             crate::logging::shutdown_flush();
             std::process::exit(status);
         }
@@ -100,9 +100,7 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
         },
         Command::Hooks { action } => match action {
             HooksAction::Install { cli, force } => {
-                let result = hooks::run_install(cli, force, json_mode);
-                ssh::ensure_registered_targets().await;
-                result
+                hooks::run_install(cli, force, json_mode).await
             }
             HooksAction::Status => hooks::run_status(json_mode),
             HooksAction::Uninstall { cli } => hooks::run_uninstall(cli, json_mode),

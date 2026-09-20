@@ -1,8 +1,87 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use super::args::HooksCliFilter;
 
-pub(crate) fn run_install(cli: HooksCliFilter, force: bool, json_mode: bool) -> Result<()> {
+pub(crate) async fn run_install(cli: HooksCliFilter, force: bool, json_mode: bool) -> Result<()> {
+    let remote_cli = match cli.into_scope() {
+        crate::agent_hooks_installer::CliScope::All => None,
+        crate::agent_hooks_installer::CliScope::One(kind) => Some(kind.name().to_owned()),
+    };
+    let local = tokio::task::spawn_blocking(move || collect_local_install(cli, force))
+        .await
+        .context("Local hook installation task failed")?;
+    let remote = tokio::task::LocalSet::new()
+        .run_until(async {
+            let request =
+                crate::linux_hooks::build_request(&crate::linux_hooks::Request::Install {
+                    cli: remote_cli,
+                })?;
+            let response = super::sessions::request_from_master(None, request).await?;
+            serde_json::from_str::<crate::linux_hooks::Response>(response.0.get())
+                .context("Invalid Linux hook installation result")
+        })
+        .await;
+    let linux_skipped = remote
+        .as_ref()
+        .err()
+        .is_some_and(|error| error.is::<super::sessions::MasterNotRunning>());
+    let succeeded = local.failure.is_none()
+        && (linux_skipped || remote.as_ref().is_ok_and(|result| result.succeeded()));
+    if json_mode {
+        let mut report = serde_json::to_value(&local.report)?;
+        report["success"] = succeeded.into();
+        match &remote {
+            Ok(result) => report["linux"] = serde_json::to_value(result)?,
+            Err(_) if linux_skipped => report["linux_skipped"] = "master_not_running".into(),
+            Err(error) => report["linux_error"] = format!("{error:#}").into(),
+        }
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        if linux_skipped {
+            eprintln!("{}", super::sessions::MasterNotRunning);
+            tracing::info!(target: "linux_hooks", "No running master; Linux installation was skipped, not reported as installed");
+        }
+        if let Some(failure) = &local.failure {
+            eprintln!("{failure}");
+        } else {
+            println!(
+                "{}",
+                t!("hooks.install_succeeded", clis = local.installed.join(", "))
+            );
+        }
+        if let Ok(result) = &remote {
+            for target in &result.targets {
+                for provider in &target.providers {
+                    println!(
+                        "{} / {}: {}",
+                        target.target.label(),
+                        provider.cli,
+                        crate::linux_hooks::status_text(&provider.status, &provider.cli)
+                    );
+                }
+            }
+        }
+    }
+    if !succeeded {
+        if let Err(error) = remote {
+            if !linux_skipped {
+                return Err(error.context(
+                    "Linux hook reconciliation unavailable; local results are reported separately",
+                ));
+            }
+        }
+        anyhow::bail!("One or more hook installations failed; see the per-target results");
+    }
+    Ok(())
+}
+
+struct LocalInstall {
+    report: crate::agent_hooks_installer::InstallReport,
+    installed: Vec<String>,
+    failure: Option<String>,
+}
+
+fn collect_local_install(cli: HooksCliFilter, force: bool) -> LocalInstall {
     // Logging is initialized in `main()`; the install attempt is written under
     // the canonical `logging::log_dir()` (the packaged cache path when packaged).
     let scope = cli.into_scope();
@@ -32,49 +111,37 @@ pub(crate) fn run_install(cli: HooksCliFilter, force: bool, json_mode: bool) -> 
         crate::telemetry::log_hook_operation_completed("Install", cli.name, outcome);
     }
 
-    if json_mode {
-        // Emit per-CLI diagnostics even on failure; the exit code below
-        // independently carries pass/fail for scripts.
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&install_report)
-                .unwrap_or_else(|_| serde_json::to_string(&install_report).unwrap_or_default())
-        );
+    let failure = if spawn_failures.is_empty() && missing.is_empty() {
+        None
+    } else {
+        let message = format_install_failure(&spawn_failures, &missing);
+        tracing::error!(target: "agent_hooks", "{}", message);
+        Some(message)
+    };
+    // The version rides inside the interpolated CLI list rather than in its
+    // own placeholder, so adding it costs no re-translation across the
+    // locale set — "name (vX.Y.Z)" reads the same in every language.
+    let installed: Vec<String> = report
+        .clis
+        .iter()
+        .filter(|c| c.binary_on_path && c.plugin_installed)
+        .map(
+            |c| match crate::agent_hooks_installer::installed_plugin_version(c.name) {
+                Some(v) => format!("{} (v{v})", c.name),
+                // A CLI whose version can't be read still installed fine;
+                // saying so beats omitting it or inventing a number.
+                None => c.name.to_string(),
+            },
+        )
+        .collect();
+    // Name the CLIs: with `--cli <x>` it confirms the scope took effect,
+    // and without it, it distinguishes "installed everywhere" from
+    // "silently skipped every CLI because none are on PATH".
+    LocalInstall {
+        report: install_report,
+        installed,
+        failure,
     }
-
-    if spawn_failures.is_empty() && missing.is_empty() {
-        if json_mode {
-            return Ok(());
-        }
-        // The version rides inside the interpolated CLI list rather than in its
-        // own placeholder, so adding it costs no re-translation across the
-        // locale set — "name (vX.Y.Z)" reads the same in every language.
-        let installed: Vec<String> = report
-            .clis
-            .iter()
-            .filter(|c| c.binary_on_path && c.plugin_installed)
-            .map(
-                |c| match crate::agent_hooks_installer::installed_plugin_version(c.name) {
-                    Some(v) => format!("{} (v{v})", c.name),
-                    // A CLI whose version can't be read still installed fine;
-                    // saying so beats omitting it or inventing a number.
-                    None => c.name.to_string(),
-                },
-            )
-            .collect();
-        // Name the CLIs: with `--cli <x>` it confirms the scope took effect,
-        // and without it, it distinguishes "installed everywhere" from
-        // "silently skipped every CLI because none are on PATH".
-        println!(
-            "{}",
-            t!("hooks.install_succeeded", clis = installed.join(", "))
-        );
-        return Ok(());
-    }
-
-    let message = format_install_failure(&spawn_failures, &missing);
-    tracing::error!(target: "agent_hooks", "{}", message);
-    anyhow::bail!(message)
 }
 
 /// Preserve the historical full-install behavior for explicit

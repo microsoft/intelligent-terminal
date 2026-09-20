@@ -52,7 +52,7 @@ The first-run setup installs hooks for the agent selected in FRE. Afterward,
 automatic reconciliation runs when session management is enabled at
 `wta-master` startup, when the setting changes from off to on, and when the
 selected built-in agent changes. Manual repair remains available through
-`wta hooks install`. All automatic paths end up in
+`wta hooks install`. Windows automatic paths end up in
 `agent_hooks_installer::reconcile_agent_hooks()`, which dispatches per CLI:
 
 ```
@@ -73,6 +73,15 @@ uses each CLI's own update command for an existing stale bridge, because a
 second `install` is a no-op once the plugin is registered.
 `wta hooks install --force` bypasses this plan and reruns the first-install
 flow as a manual recovery path when status cannot observe the real problem.
+
+The same Windows command also reconciles registered active Linux targets
+(SSH, WSL, and identifiable native tmux connections). `--cli` applies to those
+targets too; `--force` does not bypass Linux ownership checks or user disablement.
+Linux installation uses the separate
+[managed shell installer](tmux/README.md), requires tmux 3.4+, and does not
+install system dependencies. Its progress/failure guidance appears only in
+Session Management, not in ordinary shell output. Installation alone does not
+add live hook transport to ordinary WSL shells.
 
 OpenCode has no separate hook marketplace. `wta hooks install --cli opencode`
 copies `wt-agent-hooks.js` into `%XDG_CONFIG_HOME%\opencode\plugins\` when

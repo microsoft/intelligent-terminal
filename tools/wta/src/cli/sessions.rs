@@ -4,6 +4,17 @@ use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 const MASTER_NOT_RUNNING: &str = "wta-master not running. Start Windows Terminal first.";
 
+#[derive(Debug)]
+pub(crate) struct MasterNotRunning;
+
+impl std::fmt::Display for MasterNotRunning {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(MASTER_NOT_RUNNING)
+    }
+}
+
+impl std::error::Error for MasterNotRunning {}
+
 pub(crate) async fn run_list(
     master_override: Option<String>,
     origin_filter: crate::agent_sessions::OriginFilter,
@@ -270,18 +281,18 @@ async fn resolve_master_pipe(master_override: Option<String>) -> Result<String> 
 
     for attempt in 0..2 {
         if let Some(path) = crate::runtime_paths::master_pipe_file_path() {
-            if let Ok(contents) = std::fs::read_to_string(path) {
-                let pipe = contents.trim();
-                if !pipe.is_empty() {
-                    return Ok(pipe.to_string());
-                }
+            match std::fs::read_to_string(path) {
+                Ok(contents) if !contents.trim().is_empty() => return Ok(contents.trim().to_owned()),
+                Ok(_) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error).context("Read master discovery file"),
             }
         }
         if attempt == 0 {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
     }
-    Err(anyhow::anyhow!(MASTER_NOT_RUNNING))
+    Err(MasterNotRunning.into())
 }
 
 async fn open_master_pipe(
@@ -293,10 +304,11 @@ async fn open_master_pipe(
             Err(_) if attempt == 0 => {
                 tokio::time::sleep(std::time::Duration::from_millis(100)).await
             }
-            Err(_) => return Err(anyhow::anyhow!(MASTER_NOT_RUNNING)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Err(MasterNotRunning.into()),
+            Err(error) => return Err(error).context("Connect to master registry pipe"),
         }
     }
-    Err(anyhow::anyhow!(MASTER_NOT_RUNNING))
+    Err(MasterNotRunning.into())
 }
 
 fn format_json_lines(sessions: &[crate::session_registry::SessionInfo]) -> Result<String> {
