@@ -123,10 +123,10 @@ $env:ITE2E_ARTIFACT_ROOT = $run
 Invoke-Pester test\e2e\selftests\MouseInput.Unit.Tests.ps1 -Tag Unit
 ```
 
-The unit cases exercise provider-defined character units, Unicode, multiline ranges, endpoint
-failures and ordinary named-key compatibility without a deployed app. Existing checklist titles
-remain unchanged; use fresh full/incremental reports rather than treating historical failures as
-passing after a helper change.
+The unit file keeps one representative regression per major helper or cleanup behavior, using
+small stubs without a deployed app. The existing mouse and paste E2E cases retain the broader
+interaction coverage. Existing checklist titles remain unchanged; use fresh full/incremental
+reports rather than treating historical failures as passing after a helper change.
 
 `tools\AutofixPrompt.Local.Tests.ps1` is an opt-in, quota-consuming Dev validation
 of actual Copilot decisions, outside the default `tests`/`selftests` discovery.
