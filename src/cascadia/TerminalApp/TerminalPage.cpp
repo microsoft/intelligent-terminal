@@ -27,6 +27,7 @@
 #include "../inc/AgentPolicy.h"
 #include "../inc/AgentPaneBackend.h"
 #include "../inc/AgentSourceUtils.h"
+#include "../inc/ShellIntegration.h"
 #include "../inc/AgentYoloPolicy.h"
 #include "../inc/WtaProcess.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
@@ -2670,6 +2671,116 @@ namespace winrt::TerminalApp::implementation
             winrt::to_hstring(Json::writeString(wb, evt)));
     }
 
+    safe_void_coroutine TerminalPage::_PublishLinuxHookTarget(TermControl control, hstring commandline, bool nativeTmux)
+    {
+        if (!control || !_settings.GlobalSettings().EffectiveAgentSessionManagementEnabled() ||
+            control.ConnectionState() != ConnectionState::Connected)
+        {
+            co_return;
+        }
+        namespace Source = ::Microsoft::Terminal::AgentSource;
+        namespace SI = ::Microsoft::Terminal::ShellIntegration;
+        const auto source = Source::ResolveSessionsSshSource(
+            {}, commandline, nativeTmux ? Source::SessionsSshCommand::Tmux : Source::SessionsSshCommand::Login);
+        const auto isWsl = SI::IsWslProfile(commandline);
+        if (!isWsl && source.kind != Source::SessionsSshKind::ValidTarget)
+        {
+            co_return;
+        }
+        if (!isWsl && !source.managedLaunch &&
+            !Source::IsSystemSshExecutable(source.executable, Source::ReadEnvironmentVariable(L"SystemRoot") + L"\\System32\\OpenSSH\\ssh.exe"))
+        {
+            LOG_HR_MSG(E_INVALIDARG, "Skipping hook installation for a custom SSH executable");
+            co_return;
+        }
+        const auto weak = get_weak();
+        const winrt::weak_ref<TermControl> weakControl{ control };
+        const auto paneId = _FindSessionIdForControl(control);
+        const auto dispatcher = Dispatcher();
+        control = nullptr;
+        Json::Value target{ Json::objectValue };
+        if (isWsl)
+        {
+            const auto probe = Source::BuildWslHookProbeCommandline(
+                commandline, Source::ReadEnvironmentVariable(L"SystemRoot") + L"\\System32\\wsl.exe");
+            if (!probe)
+            {
+                LOG_HR_MSG(E_INVALIDARG, "Skipping unsupported WSL hook installation launch");
+                co_return;
+            }
+            co_await winrt::resume_background();
+            const auto identity = SI::Wsl::details::QueryWslIdentityRaw(*probe);
+            if (!identity.valid() || identity.user.empty())
+            {
+                LOG_HR_MSG(E_FAIL, "Could not resolve the connected WSL user for hook installation");
+                co_return;
+            }
+            target["kind"] = "wsl";
+            target["distro"] = winrt::to_string(identity.name);
+            target["user"] = identity.user;
+            co_await wil::resume_foreground(dispatcher);
+        }
+        else
+        {
+            Json::Value metadata;
+            Source::WriteSessionsSshMetadata(metadata, source);
+            target["kind"] = "ssh";
+            target["target"] = std::move(metadata["sessions_ssh"]);
+        }
+        if (const auto page = weak.get())
+        {
+            if (const auto terminal = weakControl.get();
+                terminal && terminal.ConnectionState() == ConnectionState::Connected &&
+                page->_FindSessionIdForControl(terminal) == paneId &&
+                page->_settings.GlobalSettings().EffectiveAgentSessionManagementEnabled())
+            {
+                const auto tabId = page->_FindTabIdForControl(terminal);
+                if (!tabId.empty())
+                {
+                    Json::Value params;
+                    params["pane_id"] = paneId;
+                    params["tab_id"] = tabId;
+                    params["window_id"] = std::to_string(page->_WindowProperties.WindowId());
+                    params["target"] = std::move(target);
+                    params["native_tmux"] = nativeTmux;
+                    page->_RaiseProtocolEvent("linux_hooks_target", params);
+                }
+            }
+        }
+    }
+
+    void TerminalPage::OnLinuxHooksDiscover()
+    {
+        if (!_settings.GlobalSettings().EffectiveAgentSessionManagementEnabled())
+        {
+            return;
+        }
+        for (const auto& tab : _tabs)
+        {
+            const auto tabImpl = _GetTabImpl(tab);
+            if (const auto root = tabImpl ? tabImpl->GetRootPane() : nullptr)
+            {
+                root->WalkTree([this](const std::shared_ptr<Pane>& pane) {
+                    if (pane->IsAgentPane())
+                    {
+                        return;
+                    }
+                    if (const auto control = pane->GetTerminalControl())
+                    {
+                        if (const auto connection = control.Connection().try_as<ConptyConnection>())
+                        {
+                            _PublishLinuxHookTarget(control, connection.Commandline());
+                        }
+                    }
+                });
+            }
+        }
+        if (_tmuxController)
+        {
+            _tmuxController->PublishHookTargets(true);
+        }
+    }
+
     void TerminalPage::_RaiseConnectionStateEvent(std::string_view paneId,
                                                   std::string_view state,
                                                   std::string_view tabId)
@@ -3226,8 +3337,11 @@ namespace winrt::TerminalApp::implementation
         Json::Value tabParams;
         tabParams["tab_id"] = winrt::to_string(tabId);
         tabParams["window_id"] = std::to_string(_WindowProperties.WindowId());
+        const auto sourcePane = _SourceTerminalPaneForTab(_FindTabByStableId(tabId));
+        const auto sourceControl = sourcePane ? sourcePane->GetTerminalControl() : nullptr;
+        tabParams["linux_hooks_pane_id"] = sourceControl ? Json::Value{ _FindSessionIdForControl(sourceControl) } : Json::Value{};
         ::Microsoft::Terminal::AgentSource::WriteSessionsSshMetadata(
-            tabParams, _SessionsSshSourceForPane(_SourceTerminalPaneForTab(_FindTabByStableId(tabId))));
+            tabParams, _SessionsSshSourceForPane(sourcePane));
         _RaiseProtocolEvent("tab_changed", tabParams);
     }
 
@@ -3248,8 +3362,11 @@ namespace winrt::TerminalApp::implementation
             if (!stableId.empty())
             {
                 params["tab_id"] = winrt::to_string(stableId);
+                const auto sourcePane = _SourceTerminalPaneForTab(tab);
+                const auto sourceControl = sourcePane ? sourcePane->GetTerminalControl() : nullptr;
+                params["linux_hooks_pane_id"] = sourceControl ? Json::Value{ _FindSessionIdForControl(sourceControl) } : Json::Value{};
                 ::Microsoft::Terminal::AgentSource::WriteSessionsSshMetadata(
-                    params, _SessionsSshSourceForPane(_SourceTerminalPaneForTab(tab)));
+                    params, _SessionsSshSourceForPane(sourcePane));
             }
         }
 
@@ -9079,6 +9196,13 @@ namespace winrt::TerminalApp::implementation
                             else
                             {
                                 page->_RaiseConnectionStateEvent(paneIdStr, stateStr, tabIdStr);
+                                if (term2)
+                                {
+                                    if (const auto connection = term2.Connection().try_as<ConptyConnection>())
+                                    {
+                                        page->_PublishLinuxHookTarget(term2, connection.Commandline());
+                                    }
+                                }
                             }
                         });
                 });

@@ -16,13 +16,21 @@ socket=
 session=it-hooks
 attach=
 agents=
+install_only=
+transport_only=
+report_nonce=
 log() { printf '%s\n' "it-remote-hooks: $*" >&2; }
+report() {
+    [ -z "$report_nonce" ] || printf 'IT_HOOK_INSTALL/1 %s %s %s\n' "$report_nonce" "$1" "$2"
+}
 fatal_reported=
-die() { fatal_reported=1; log "$1"; exit 1; }
+die() { fatal_reported=1; report all "$1"; log "$1"; exit 1; }
 while [ "$#" -gt 0 ]; do
     case $1 in
         --attach-control) attach=1; shift ;;
-        --hook-source|--login-home|--socket|--session|--agents|--allowed-clis)
+        --install-only) install_only=1; shift ;;
+        --transport-only) transport_only=1; shift ;;
+        --hook-source|--login-home|--socket|--session|--agents|--allowed-clis|--report-nonce)
             [ "$#" -ge 2 ] || die invalid-arguments
             case $1 in
                 --hook-source) hook_source=$2 ;;
@@ -30,12 +38,16 @@ while [ "$#" -gt 0 ]; do
                 --socket) socket=$2 ;;
                 --session) session=$2 ;;
                 --agents|--allowed-clis) agents=$2 ;;
+                --report-nonce) report_nonce=$2 ;;
             esac
             shift 2 ;;
         *) die invalid-arguments ;;
     esac
 done
-[ -z "${WTA_TMUX_HOOKS_DISABLED:-}" ] || { log disabled; exit 0; }
+case $report_nonce in *[!0-9a-f]*) report_nonce=; die invalid-report-nonce ;; esac
+[ -z "$report_nonce" ] || [ "${#report_nonce}" -eq 32 ] || { report_nonce=; die invalid-report-nonce; }
+[ -z "$install_only" ] || { [ -z "$transport_only" ] && [ -z "$attach" ]; } || die invalid-mode
+[ -z "${WTA_TMUX_HOOKS_DISABLED:-}" ] || { report all user-disabled; log disabled; exit 0; }
 case $agents in
     '') log no-agents-selected; exit 0 ;;
     ,*|*,|*,,*|*[!a-z,]*) die invalid-agent-selection ;;
@@ -94,15 +106,17 @@ for directory in "$root" "$run"; do
 done
 [ -n "$socket" ] || socket=$run/tmux-hooks.sock
 [ "$socket" = "$run/tmux-hooks.sock" ] || die socket-namespace-mismatch
+if [ -z "$install_only" ]; then
 [ "${#socket}" -le 107 ] || die socket-path-too-long
 [ ! -L "$socket" ] || die unsafe-socket
+fi
 [ ! -L "$run/tmux-hooks.install.lock" ] || die unsafe-install-lock
 if [ -e "$run/tmux-hooks.install.lock" ]; then
     [ -f "$run/tmux-hooks.install.lock" ] &&
         [ "$(stat -c %u "$run/tmux-hooks.install.lock")" = "$uid" ] || die unsafe-install-lock
 fi
 exec 9>>"$run/tmux-hooks.install.lock"
-flock -w 5 9 || die install-lock-timeout
+flock -w 30 9 || die install-lock-timeout
 if [ -e "$hooks" ]; then
     secure_directory "$hooks"
     [ -f "$hooks/owner" ] && [ ! -L "$hooks/owner" ] &&
@@ -118,6 +132,7 @@ phase=transport
 cleanup() {
     cleanup_status=$?
     if [ "$cleanup_status" -ne 0 ] && [ -z "$fatal_reported" ]; then
+        report all "setup-command-failed:$phase"
         log "setup-command-failed:$phase"
     fi
     rm -rf -- "$work" || log staging-cleanup-failed
@@ -131,6 +146,8 @@ for directory in releases receipts; do
 done
 tm() { timeout --kill-after=1 5 tmux -N -S "$socket" "$@" < /dev/null 9>&- 2>"$work/tmux-error"; }
 
+server_pid=
+if [ -z "$install_only" ]; then
 if [ -e "$socket" ]; then
     [ -S "$socket" ] && [ "$(stat -c %u -- "$socket")" = "$uid" ] || die socket-owner-mismatch
 fi
@@ -171,6 +188,7 @@ server_session=$(tm list-sessions -F '#{session_id} #{==:#{session_name},it-hook
 tm set-option -g exit-unattached off || die server-lifetime-update-failed
 tm set-option -t "$server_session" destroy-unattached off || die session-lifetime-update-failed
 server_pid=$(tm display-message -p '#{pid}') || die server-identity-query-failed
+fi
 
 json_string() {
     awk 'BEGIN { printf "\"" } {
@@ -409,7 +427,7 @@ if [ -e "$release" ]; then
     secure_directory "$release"
     timeout --kill-after=1 5 sh -c 'cd "$1" && sha256sum -c manifest.sha256 --quiet' sh \
         "$release" >"$work/verify-output" 2>&1 || die modified-managed-release
-else
+elif [ -z "$transport_only" ]; then
     mkdir "$work/release"
     cp -- "$hook_source" "$work/release/it-agent-hook.sh"
     chmod 700 "$work/release/it-agent-hook.sh"
@@ -417,18 +435,32 @@ else
     (cd "$work/release" && find . -type f ! -name manifest.sha256 -print | sort |
         while IFS= read -r file; do sha256sum "$file"; done) >"$work/release/manifest.sha256"
     mv -T -- "$work/release" "$release"
+else
+    die installation-required
 fi
+if [ -z "$transport_only" ]; then
 printf '%s\n%s\n' "$owner" "$generation" >"$work/pending"
 mv -T -- "$work/pending" "$hooks/pending"
 ln -s "releases/$generation" "$work/current"
 mv -Tf -- "$work/current" "$hooks/current"
+fi
 
 probe='
     umask 077
     for utility in sh tmux timeout mktemp rm rmdir head wc base64 stat id; do
         command -v "$utility" >/dev/null 2>&1 || exit 1
     done
-    test -r "$1" && test -S "$2" || exit 1
+    test -r "$1" || exit 1
+    if [ "$4" = install ]; then
+        version=$(tmux -V) || exit 1
+        case $version in "tmux "*) version=${version#tmux } ;; *) exit 1 ;; esac
+        major=${version%%.*}; minor=${version#*.}; minor=${minor%%[!0-9]*}
+        case $major:$minor in *[!0-9:]*|:*|*:) exit 1 ;; esac
+        [ "${#major}" -le 6 ] && [ "${#minor}" -le 6 ] || exit 1
+        [ "$major" -gt 3 ] || { [ "$major" -eq 3 ] && [ "$minor" -ge 4 ]; }
+        exit $?
+    fi
+    test -S "$2" || exit 1
     socket_uid=$(stat -c %u -- "$2") || exit 1
     current_uid=$(id -u) || exit 1
     test "$socket_uid" = "$current_uid" || exit 1
@@ -453,10 +485,10 @@ probe_runtime() {
             app=${cli##*/}
             command -v snap >/dev/null 2>&1 || return 1
             timeout --kill-after=1 5 snap run --shell "$app" -c "$probe" sh \
-                "$hooks/current/it-agent-hook.sh" "$socket" "$server_pid" </dev/null 9>&- >"$work/probe-output" 2>"$work/probe-error" ;;
+                "$hooks/current/it-agent-hook.sh" "$socket" "$server_pid" "${install_only:+install}" </dev/null 9>&- >"$work/probe-output" 2>"$work/probe-error" ;;
         */flatpak/*|*/AppImage*|*/appimage*) return 1 ;;
         *)
-            timeout --kill-after=1 5 sh -c "$probe" sh "$hooks/current/it-agent-hook.sh" "$socket" "$server_pid" \
+            timeout --kill-after=1 5 sh -c "$probe" sh "$hooks/current/it-agent-hook.sh" "$socket" "$server_pid" "${install_only:+install}" \
                 </dev/null 9>&- >"$work/probe-output" 2>"$work/probe-error" ;;
     esac
 }
@@ -476,6 +508,7 @@ write_receipt() {
 }
 provider_result() {
     printf '%s %s\n' "$provider" "$1" >>"$work/results"
+    [ "$1" = not-selected ] || report "$provider" "$1"
     log "provider=$provider result=$1"
 }
 copilot_source_status() (
@@ -568,6 +601,24 @@ for provider in claude copilot codex gemini opencode; do
     done
     market_trusted=0
     state=$(query_plugin) || { provider_result unsupported-status-api; continue; }
+    if [ -n "$transport_only" ]; then
+        if [ "$provider" = claude ] || [ "$provider" = codex ]; then
+            cli_run plugin marketplace list --json ||
+                { provider_result unsupported-marketplace-api; continue; }
+            if receipt_valid "$hooks/receipts/$provider.market" &&
+                [ "$(json_status "$market" "$hooks/current/$provider" market)" = enabled ]; then
+                market_trusted=1
+                state=$(query_plugin) || { provider_result unsupported-status-api; continue; }
+            fi
+        fi
+        if [ "$state" = enabled ] && receipt_valid "$receipt" &&
+            [ "$(receipt_generation "$receipt")" = "$generation" ]; then
+            provider_result installed
+        else
+            provider_result installation-required
+        fi
+        continue
+    fi
     legacy_state=$(query_legacy) || { provider_result unsupported-status-api; continue; }
     if [ "$legacy_state" != absent ]; then
         if [ "$legacy_state" = disabled ]; then provider_result user-disabled; continue; fi
@@ -589,6 +640,7 @@ for provider in claude copilot codex gemini opencode; do
         esac
         # Retire the verified old registration before installing the new name.
         # Journals preserve ownership across failures on either side of that gap.
+        report "$provider" installing
         write_receipt "$legacy_transaction"
         [ "$state" != absent ] || write_receipt "$transaction"
         if ! cli_run plugin uninstall it-tmux-hooks; then
@@ -627,6 +679,7 @@ for provider in claude copilot codex gemini opencode; do
             { provider_result unsupported-marketplace-schema; continue; }
         case $market_state in
             absent)
+                report "$provider" installing
                 write_receipt "$market_receipt.pending"
                 if ! cli_run plugin marketplace add "$hooks/current/$provider"; then
                     provider_result marketplace-install-failed; failed=1; continue
@@ -636,6 +689,7 @@ for provider in claude copilot codex gemini opencode; do
                     provider_result foreign-marketplace; continue
                 fi
                 if [ "$(receipt_generation "$market_receipt")" != "$generation" ]; then
+                    report "$provider" installing
                     cli_run plugin marketplace update "$market" ||
                         { provider_result marketplace-update-failed; failed=1; continue; }
                 fi ;;
@@ -654,6 +708,7 @@ for provider in claude copilot codex gemini opencode; do
         disabled) provider_result user-disabled; continue ;;
         foreign|unknown) provider_result foreign-plugin; continue ;;
         absent)
+            report "$provider" installing
             write_receipt "$transaction"
             if [ "$provider" = gemini ]; then
                 cli_run extensions install "$hooks/current/gemini/$plugin" --consent --skip-settings ||
@@ -667,6 +722,7 @@ for provider in claude copilot codex gemini opencode; do
             fi ;;
         enabled)
             if [ "$(receipt_generation "$receipt")" != "$generation" ]; then
+                report "$provider" installing
                 write_receipt "$transaction"
                 if [ "$provider" = gemini ]; then
                     cli_run extensions update "$plugin" ||
@@ -699,6 +755,7 @@ for provider in claude copilot codex gemini opencode; do
 done
 
 phase=manifest
+if [ -z "$transport_only" ]; then
 if [ -z "$failed" ]; then
     { printf '%s\n%s\nversion %s\n' "$owner" "$generation" "$version"; cat "$work/results"; } >"$work/manifest"
     mv -T -- "$work/manifest" "$hooks/manifest"
@@ -706,8 +763,10 @@ if [ -z "$failed" ]; then
 else
     log partial-setup-retry-required
 fi
+fi
 setup=transport-ready
 [ -z "$failed" ] || setup=transport-partial
+if [ -z "$install_only" ]; then
 tm set-option -g @it-ssh-hooks-setup "$setup" || die setup-status-update-failed
 installed=
 unavailable=
@@ -726,6 +785,7 @@ channel_state=ready
 tm set-option -g @it-ssh-hooks-installed-clis "$installed" \
     \; set-option -g @it-ssh-hooks-unavailable-clis "$unavailable" \
     \; set-option -g @it-hook-channel "3 $channel_state $installed" || die channel-status-update-failed
+fi
 log "$setup; plugin installation is not proof of hook-runtime readiness"
 cleanup
 trap - 0 HUP INT TERM

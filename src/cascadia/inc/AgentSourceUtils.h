@@ -454,22 +454,25 @@ namespace Microsoft::Terminal::AgentSource
         return { SessionsSshKind::ValidTarget, std::move(destination), port, {}, std::wstring{ argv[0] }, requestPty };
     }
 
+    inline bool IsSystemSshExecutable(
+        std::wstring executable,
+        const std::wstring_view systemSshExecutable)
+    {
+        std::replace(executable.begin(), executable.end(), L'/', L'\\');
+        return til::equals_insensitive_ascii(executable, L"ssh") ||
+               til::equals_insensitive_ascii(executable, L"ssh.exe") ||
+               til::equals_insensitive_ascii(executable, L"%SystemRoot%\\System32\\OpenSSH\\ssh.exe") ||
+               til::equals_insensitive_ascii(executable, L"%windir%\\System32\\OpenSSH\\ssh.exe") ||
+               til::equals_insensitive_ascii(executable, systemSshExecutable);
+    }
+
     inline std::optional<std::wstring> BuildManagedSshCommandline(
         const SessionsSshSource& source,
         const std::wstring_view wtaExecutable,
         const std::wstring_view systemSshExecutable)
     {
-        if (source.kind != SessionsSshKind::ValidTarget || source.managedLaunch || wtaExecutable.empty())
-        {
-            return std::nullopt;
-        }
-        auto executable = source.executable;
-        std::replace(executable.begin(), executable.end(), L'/', L'\\');
-        if (!til::equals_insensitive_ascii(executable, L"ssh") &&
-            !til::equals_insensitive_ascii(executable, L"ssh.exe") &&
-            !til::equals_insensitive_ascii(executable, L"%SystemRoot%\\System32\\OpenSSH\\ssh.exe") &&
-            !til::equals_insensitive_ascii(executable, L"%windir%\\System32\\OpenSSH\\ssh.exe") &&
-            !til::equals_insensitive_ascii(executable, systemSshExecutable))
+        if (source.kind != SessionsSshKind::ValidTarget || source.managedLaunch || wtaExecutable.empty() ||
+            !IsSystemSshExecutable(source.executable, systemSshExecutable))
         {
             return std::nullopt;
         }
@@ -487,6 +490,59 @@ namespace Microsoft::Terminal::AgentSource
             commandline.append(L" --no-pty");
         }
         return commandline;
+    }
+
+    inline std::optional<std::wstring> BuildWslHookProbeCommandline(
+        const std::wstring_view commandline,
+        const std::wstring_view systemWslExecutable)
+    {
+        if (commandline.empty() || commandline.size() > 32767 ||
+            commandline.find(L'\0') != std::wstring_view::npos ||
+            !details::HasBalancedCommandlineQuotes(commandline) || systemWslExecutable.empty())
+        {
+            return std::nullopt;
+        }
+        int argc = 0;
+        const wil::unique_hlocal_ptr<PWSTR[]> argv{ CommandLineToArgvW(std::wstring{ commandline }.c_str(), &argc) };
+        if (!argv || argc < 1)
+        {
+            return std::nullopt;
+        }
+        std::wstring executable{ argv[0] };
+        std::replace(executable.begin(), executable.end(), L'/', L'\\');
+        const auto legacyBash = std::wstring{ systemWslExecutable.substr(0, systemWslExecutable.find_last_of(L'\\') + 1) } + L"bash.exe";
+        const bool legacy = til::equals_insensitive_ascii(executable, legacyBash) ||
+                            til::equals_insensitive_ascii(executable, L"%SystemRoot%\\System32\\bash.exe");
+        if (!legacy &&
+            !til::equals_insensitive_ascii(executable, L"wsl") &&
+            !til::equals_insensitive_ascii(executable, L"wsl.exe") &&
+            !til::equals_insensitive_ascii(executable, L"%SystemRoot%\\System32\\wsl.exe") &&
+            !til::equals_insensitive_ascii(executable, L"%windir%\\System32\\wsl.exe") &&
+            !til::equals_insensitive_ascii(executable, systemWslExecutable))
+        {
+            return std::nullopt;
+        }
+        std::wstring probe;
+        AgentPaneRestore::AppendQuoted(probe, systemWslExecutable);
+        for (int index = 1; !legacy && index < argc; ++index)
+        {
+            const std::wstring_view option{ argv[index] };
+            if (option == L"-e" || option == L"--exec" || option == L"--")
+            {
+                break;
+            }
+            if (option != L"-d" && option != L"--distribution" && option != L"--distribution-id" &&
+                option != L"-u" && option != L"--user" && option != L"--cd")
+            {
+                return std::nullopt;
+            }
+            if (++index >= argc || std::wstring_view{ argv[index] }.empty())
+            {
+                return std::nullopt;
+            }
+            AgentPaneRestore::AppendFlag(probe, option, argv[index]);
+        }
+        return probe;
     }
 
     inline std::vector<std::pair<std::wstring, std::wstring>> BuildSessionsSshHelperArguments(const SessionsSshSource& source)

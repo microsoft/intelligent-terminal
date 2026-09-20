@@ -48,7 +48,25 @@ namespace TerminalAppUnitTests
         TEST_METHOD(RecognizesTmuxSshSessionsSource);
         TEST_METHOD(PreservesBrowserTmuxSshSessionsSource);
         TEST_METHOD(RejectsAmbiguousTmuxSshSessionsSource);
+        TEST_METHOD(BuildsBoundedWslHookIdentityProbe);
     };
+
+    void AgentSourceUtilsTests::BuildsBoundedWslHookIdentityProbe()
+    {
+        using Microsoft::Terminal::AgentSource::BuildWslHookProbeCommandline;
+        constexpr auto systemWsl = L"C:\\Windows\\System32\\wsl.exe";
+        const auto probe = BuildWslHookProbeCommandline(
+            L"\"wsl.exe\" --distribution-id {GUID} --user alice --exec tmux -C attach", systemWsl);
+        VERIFY_IS_TRUE(probe.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"\"C:\\Windows\\System32\\wsl.exe\" --distribution-id \"{GUID}\" --user \"alice\"" }, *probe);
+        VERIFY_IS_TRUE(BuildWslHookProbeCommandline(L"wsl", systemWsl).has_value());
+        VERIFY_IS_TRUE(BuildWslHookProbeCommandline(L"%SystemRoot%\\System32\\wsl.exe -d Ubuntu -u root", systemWsl).has_value());
+        for (const auto command : {
+                 L"wsl --shutdown", L"wsl --unregister Ubuntu", L"wsl --install -d Ubuntu", L"wsl --export Ubuntu backup.tar", L"wsl --manage Ubuntu --set-default-user root", L"wsl -u", L"wsl -d Ubuntu bash -lc \"echo unexpected\"", L"C:\\custom\\wsl.exe -d Ubuntu", L"cmd /c wsl -d Ubuntu" })
+        {
+            VERIFY_IS_FALSE(BuildWslHookProbeCommandline(command, systemWsl).has_value());
+        }
+    }
 
     void AgentSourceUtilsTests::ReadEnvironmentVariableSupportsLongValues()
     {

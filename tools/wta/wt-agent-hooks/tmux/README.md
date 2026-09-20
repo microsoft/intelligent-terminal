@@ -45,6 +45,33 @@ boundaries, see the [ordinary SSH specification](../../../../doc/specs/ordinary-
 
 ## Automatically managed ordinary SSH sessions
 
+The managed installer is also used for active WSL and native tmux connections.
+WTA invokes it through Windows `wsl.exe` for WSL, preserving the selected
+distribution and Linux user. No SSH server or Linux WTA binary is required.
+Ordinary WSL hook event delivery is not implemented by this installation path;
+native tmux continues to use the existing v2 sender.
+
+Installation and transport setup can be requested independently:
+
+| Installer mode | Effect |
+|---|---|
+| `--install-only` | Check prerequisites and reconcile selected plugins; do not create a tmux server or control reader |
+| `--transport-only --attach-control` | Prepare the owned SSH server, verify existing selected registrations/runtime access, and attach; do not install or update plugins |
+| Neither mode | Retain the combined setup behavior for existing callers |
+
+`--report-nonce <32-lowercase-hex-digits>` enables machine-readable stdout
+records: `IT_HOOK_INSTALL/1 <nonce> <provider-or-all> <result-code>`.
+The Windows coordinator accepts only matching nonces, selected providers, and
+bounded diagnostic tokens; it does not display arbitrary remote stderr.
+`installing` records describe plugin mutations, not connection or status probes.
+
+Automatic feedback is confined to Session Management. If setup fails, run
+`wta hooks install --cli copilot` (or the affected provider) in a **local Windows
+terminal**, after fixing any reported Linux prerequisites. This command also
+reconciles registered WSL targets and waits for their results. There is no retry
+button, shell notification, automatic system-package installation, or forced
+agent restart.
+
 The Windows wrapper supplies these variables to the foreground login shell or
 remote command:
 

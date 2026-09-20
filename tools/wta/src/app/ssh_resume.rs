@@ -116,6 +116,7 @@ impl SshResumes {
 
 impl App {
     pub(crate) fn set_sessions_master_pipe(&mut self, pipe: String) {
+        self.linux_hooks_view.pipe = Some(pipe.clone());
         self.ssh_resumes.client = Some(Arc::new(PipeRegistryClient { pipe }));
     }
 

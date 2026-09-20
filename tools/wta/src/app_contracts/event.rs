@@ -337,6 +337,12 @@ pub enum AppEvent {
     AgentsSnapshotFailed {
         request_id: u64,
     },
+    LinuxHooksSnapshot {
+        tab_id: String,
+        request_id: u64,
+        cli: String,
+        result: Result<crate::linux_hooks::Response, String>,
+    },
     SshRegistryResult {
         source: crate::ssh_session_registry::Source,
         sequence: u64,

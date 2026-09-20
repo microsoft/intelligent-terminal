@@ -44,7 +44,7 @@ impl Routes {
             .retain(|_, route| now.duration_since(route.renewed) < ROUTE_LEASE);
     }
 
-    fn register(&mut self, registration: Registration, now: Instant) -> Result<()> {
+    fn register(&mut self, registration: Registration, now: Instant) -> Result<bool> {
         self.expire(now);
         ensure!(
             !self.revoked.contains(&registration.route),
@@ -56,7 +56,7 @@ impl Routes {
                 "SSH route identity cannot change"
             );
             existing.renewed = now;
-            return Ok(());
+            return Ok(false);
         }
         ensure!(
             !self
@@ -76,7 +76,7 @@ impl Routes {
                 renewed: now,
             },
         );
-        Ok(())
+        Ok(true)
     }
 
     fn revoke(&mut self, registration: &Registration) -> Result<bool> {
@@ -132,6 +132,23 @@ impl Service {
 
     pub fn enabled(&self) -> bool {
         self.enabled.load(Ordering::Acquire)
+    }
+
+    pub(super) async fn active_targets(&self) -> std::collections::HashSet<SshTarget> {
+        let mut routes = self.routes.lock().await;
+        routes.expire(Instant::now());
+        routes.active.values().filter(|route| !route.registration.no_hooks)
+            .map(|route| route.registration.target.clone()).collect()
+    }
+
+    pub(super) async fn tracks_pane(&self, pane: &str) -> bool {
+        let mut routes = self.routes.lock().await;
+        routes.expire(Instant::now());
+        routes.active.values().any(|route| !route.registration.no_hooks && route.registration.pane_id == pane)
+    }
+
+    pub(super) async fn tracking_status(&self, target: &SshTarget) -> Option<TrackingStatus> {
+        self.channels.lock().await.get(target).map(|channel| channel.status.borrow().clone())
     }
 
     async fn active_route(&self, target: &SshTarget, route: RouteId) -> Option<Registration> {
@@ -210,13 +227,23 @@ pub(super) async fn handle(
                         "Native SSH pane does not belong to this live wrapper"
                     )));
                 }
-                state
+                let new_connection = state
                     .ssh_hooks
                     .routes
                     .lock()
                     .await
                     .register(registration.clone(), Instant::now())
                     .map_err(rpc_error)?;
+                if new_connection && !registration.no_hooks && state.ssh_hooks.enabled() {
+                    let clis = super::linux_hooks::selected_clis(&state, None).map_err(rpc_error)?;
+                    super::linux_hooks::ensure_install(
+                        &state,
+                        &crate::linux_hooks::Target::Ssh { target: registration.target.clone() },
+                        clis,
+                        true,
+                    ).await.map_err(rpc_error)?;
+                    retry_transport(&state, &registration.target, None).await;
+                }
                 let status = if registration.no_hooks {
                     TrackingStatus::OptedOut
                 } else {
@@ -311,10 +338,25 @@ async fn ensure_target(state: &Arc<MasterStateInner>, target: &SshTarget) -> Tra
 
 pub(super) async fn configure(state: &Arc<MasterStateInner>, enabled: bool) {
     state.ssh_hooks.enabled.store(enabled, Ordering::Release);
+    super::linux_hooks::configure(state, enabled).await;
     if enabled {
         reconcile_registered(state).await;
     } else {
         state.ssh_hooks.stop_unused().await;
+    }
+}
+
+pub(super) async fn retry_transport(state: &MasterStateInner, target: &SshTarget, installed: Option<&[String]>) {
+    if let Some(channel) = state.ssh_hooks.channels.lock().await.get(target) {
+        let retry = match &*channel.status.borrow() {
+            TrackingStatus::Unavailable { .. } => true,
+            TrackingStatus::Partial { unavailable_providers } =>
+                installed.is_some_and(|clis| clis.iter().any(|cli| unavailable_providers.contains(cli))),
+            _ => false,
+        };
+        if retry {
+            channel.reconcile.notify_one();
+        }
     }
 }
 
@@ -469,7 +511,7 @@ timeout --kill-after=1 20 dd bs=1 count="$1" of="$it_stage/install-remote-hooks.
 timeout --kill-after=1 20 dd bs=1 count="$2" of="$it_stage/it-agent-hook.sh" 2>/dev/null
 [ "$(wc -c < "$it_stage/it-agent-hook.sh")" -eq "$2" ] || exit 1
 it_home=$(getent passwd "$(id -u)" | cut -d: -f6)
-sh -lc 'exec sh "$@"' it-ssh-setup "$it_stage/install-remote-hooks.sh" --hook-source "$it_stage/it-agent-hook.sh" --login-home "$it_home" --socket "$it_home/.intelligent-terminal/run/tmux-hooks.sock" --session it-hooks --allowed-clis "$3" --attach-control
+sh -lc 'exec sh "$@"' it-ssh-setup "$it_stage/install-remote-hooks.sh" --transport-only --hook-source "$it_stage/it-agent-hook.sh" --login-home "$it_home" --socket "$it_home/.intelligent-terminal/run/tmux-hooks.sock" --session it-hooks --allowed-clis "$3" --attach-control
 "#;
     Ok(format!(
         "sh -c {} it-ssh-upload {installer_bytes} {hook_bytes} {}",
@@ -540,7 +582,27 @@ async fn run_channel(
     {
         return Ok(());
     }
+    let installation_clis: Vec<_> = clis.iter().map(|cli| (*cli).to_owned()).collect();
+    let installation = super::linux_hooks::ensure_install(
+        &current,
+        &crate::linux_hooks::Target::Ssh { target: target.clone() },
+        installation_clis.clone(),
+        false,
+    ).await?;
     drop(current);
+    let installed = tokio::select! {
+        _ = cancellation.cancelled() => return Ok(()),
+        installed = super::linux_hooks::wait_for(installation, &installation_clis) => installed?,
+    };
+    if installation_blocks_transport(&installed) {
+        status.send_replace(TrackingStatus::Unavailable { reason: "Linux hook registration is unavailable; inspect Session Management or run wta hooks install".into() });
+        reconciling.store(false, Ordering::Release);
+        tokio::select! {
+            _ = cancellation.cancelled() => {},
+            _ = reconcile.notified() => {},
+        }
+        return Ok(());
+    }
     let mut args = crate::ssh_sessions::ssh_arguments(target, false, "");
     let command = args.last_mut().context("Missing SSH bootstrap command")?;
     *command = bootstrap_command(installer.len(), hook.len(), clis)?;
@@ -669,6 +731,14 @@ async fn run_channel(
         }
     }
     result
+}
+
+fn installation_blocks_transport(providers: &[crate::linux_hooks::ProviderStatus]) -> bool {
+    providers.iter().any(|provider| matches!(&provider.status,
+        crate::linux_hooks::InstallState::Unavailable { reason }
+            if reason.starts_with("required-utility-unavailable:")
+                || reason == "unsupported-tmux-version"
+                || reason == "tmux-version-query-failed"))
 }
 
 struct Readiness {
@@ -831,6 +901,23 @@ async fn apply_routed_hook(
 mod tests {
     use super::*;
     use crate::ssh_session_registry::{Snapshot, Source};
+
+    #[test]
+    fn unmanaged_or_missing_registrations_do_not_block_manual_hook_transport() {
+        use crate::linux_hooks::{InstallState, ProviderStatus};
+        for status in [
+            InstallState::NotFound,
+            InstallState::Disabled,
+            InstallState::Unavailable { reason: "unsupported-registration-api".into() },
+            InstallState::Unavailable { reason: "foreign-plugin".into() },
+        ] {
+            assert!(!installation_blocks_transport(&[ProviderStatus { cli: "opencode".into(), status }]));
+        }
+        assert!(installation_blocks_transport(&[ProviderStatus {
+            cli: "copilot".into(),
+            status: InstallState::Unavailable { reason: "required-utility-unavailable:tmux".into() },
+        }]));
+    }
 
     fn registration(pane: uuid::Uuid) -> Registration {
         Registration {

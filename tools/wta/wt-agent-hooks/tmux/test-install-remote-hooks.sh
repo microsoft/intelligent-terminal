@@ -178,7 +178,7 @@ run_install() {
     env PATH="$bin" HOME="$TEST_RUNTIME_HOME" IT_SSH_HOOK_ROUTE=11111111-2222-4333-8444-555555555555 \
         /bin/sh "$work/install-remote-hooks.sh" --hook-source "${TEST_UPLOAD_SOURCE:-$work/upload-hook.sh}" \
         --login-home "$TEST_LOGIN_HOME" --allowed-clis claude,copilot,codex,gemini,opencode \
-        "$@" >"$work/install.stdout" 2>"$work/install.stderr"
+        "$@" >"$work/install${TEST_INSTALL_LOG_SUFFIX:-}.stdout" 2>"$work/install${TEST_INSTALL_LOG_SUFFIX:-}.stderr"
 }
 expect_success() {
     run_install "$@" || { cat "$work/install.stderr" >&2; fail 'setup failed'; }
@@ -483,12 +483,12 @@ env PATH="$bin" HOME="$TEST_RUNTIME_HOME" /bin/sh "$work/install-remote-hooks.sh
 pass 'agent selection is enforced and per-provider generations repair deferred upgrades'
 
 new_case concurrent concurrent
-run_install &
+TEST_INSTALL_LOG_SUFFIX=.first run_install &
 first=$!
-run_install &
+TEST_INSTALL_LOG_SUFFIX=.second run_install &
 second=$!
-wait "$first" || fail 'first concurrent installer failed'
-wait "$second" || fail 'second concurrent installer failed'
+wait "$first" || { cat "$work/install.first.stderr" >&2; fail 'first concurrent installer failed'; }
+wait "$second" || { cat "$work/install.second.stderr" >&2; fail 'second concurrent installer failed'; }
 [[ $(grep -c '^copilot plugin install ' "$TEST_STATE/calls") == 1 ]] || fail 'install lock did not serialize'
 pass 'two installers share a process-safe install lock'
 
@@ -538,6 +538,49 @@ new_case "$long_name" long
 if run_install; then fail 'oversized UNIX socket path accepted'; fi
 grep -q socket-path-too-long "$work/install.stderr" || fail 'socket length diagnostic missing'
 pass 'socket namespace and UNIX path length never fall back to another location'
+
+new_case install-only install-only
+nonce=0123456789abcdef0123456789abcdef
+run_install --install-only --allowed-clis copilot --report-nonce "$nonce" ||
+    { cat "$work/install.stderr" >&2; fail 'install-only setup failed'; }
+[[ -f $TEST_STATE/copilot/installed && ! -d $TEST_STATE/claude ]] || fail 'install-only provider scope lost'
+[[ ! -e $TEST_LOGIN_HOME/.intelligent-terminal/run/tmux-hooks.sock ]] || fail 'install-only started a transport'
+grep -qx "IT_HOOK_INSTALL/1 $nonce copilot installing" "$work/install.stdout" || fail 'installation progress missing'
+grep -qx "IT_HOOK_INSTALL/1 $nonce copilot installed" "$work/install.stdout" || fail 'installation result missing'
+run_install --install-only --allowed-clis copilot --report-nonce "$nonce" || fail 'install-only retry failed'
+if grep -q " installing$" "$work/install.stdout"; then fail 'unchanged install pretended to install'; fi
+before_calls=$(grep -Ec '^copilot plugin (install|update) ' "$TEST_STATE/calls")
+expect_success --transport-only --allowed-clis copilot
+after_calls=$(grep -Ec '^copilot plugin (install|update) ' "$TEST_STATE/calls")
+[[ $before_calls == "$after_calls" ]] || fail 'transport setup mutated registration'
+[[ -S $TEST_LOGIN_HOME/.intelligent-terminal/run/tmux-hooks.sock ]] || fail 'transport-only channel missing'
+pass 'WSL installation does not create a transport and SSH transport setup does not reinstall plugins'
+
+new_case install-manual-only install-manual-only
+expect_success --install-only --allowed-clis opencode
+expect_success --transport-only --allowed-clis opencode
+[[ -S $TEST_LOGIN_HOME/.intelligent-terminal/run/tmux-hooks.sock ]] ||
+    fail 'unsupported automatic registration prevented manual hook transport'
+[[ ! -e $TEST_STATE/opencode/installed ]] || fail 'unsupported provider registration was modified'
+[[ $(tmux -N -S "$TEST_LOGIN_HOME/.intelligent-terminal/run/tmux-hooks.sock" show-options -gqv @it-ssh-hooks-unavailable-clis) == opencode ]] ||
+    fail 'unsupported registration was falsely reported as installed'
+pass 'manually configured providers retain transport without automatic registration support'
+
+new_case install-no-tmux install-no-tmux
+mv "$bin/tmux" "$bin/tmux.off"
+if run_install --install-only --allowed-clis copilot --report-nonce "$nonce"; then fail 'missing tmux accepted'; fi
+[[ ! -e $TEST_LOGIN_HOME/.intelligent-terminal ]] || fail 'missing tmux modified managed files'
+grep -qx "IT_HOOK_INSTALL/1 $nonce all required-utility-unavailable:tmux" "$work/install.stdout" ||
+    fail 'missing tmux result missing'
+printf '#!/bin/sh\nprintf "tmux 3.3a\\n"\n' >"$bin/tmux"
+chmod 700 "$bin/tmux"
+if run_install --install-only --allowed-clis copilot --report-nonce "$nonce"; then fail 'old tmux accepted'; fi
+[[ ! -e $TEST_LOGIN_HOME/.intelligent-terminal ]] || fail 'old tmux modified managed files'
+grep -qx "IT_HOOK_INSTALL/1 $nonce all unsupported-tmux-version" "$work/install.stdout" ||
+    fail 'old tmux result missing'
+rm "$bin/tmux"
+mv "$bin/tmux.off" "$bin/tmux"
+pass 'missing and old tmux stop installation before any user configuration changes'
 
 TEST_LOGIN_HOME=$home_fresh
 TEST_STATE=$state_fresh

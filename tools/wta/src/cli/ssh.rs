@@ -31,7 +31,7 @@ fn foreground_arguments(
         "unset IT_SSH_HOOK_ROUTE IT_SSH_HOOK_SOCKET IT_SSH_HOOK_SESSION; ".to_owned();
     if let Some(route) = route {
         bootstrap.push_str(&format!(
-            "it_hook_home=$(getent passwd \"$(id -u)\" | cut -d: -f6); case \"$it_hook_home\" in /*) export IT_SSH_HOOK_ROUTE={}; export IT_SSH_HOOK_SOCKET=\"$it_hook_home/.intelligent-terminal/run/tmux-hooks.sock\"; export IT_SSH_HOOK_SESSION=it-hooks;; *) printf '%s\\n' 'wta ssh: canonical login home unavailable; hooks disabled' >&2;; esac; ",
+            "it_hook_home=$(getent passwd \"$(id -u)\" | cut -d: -f6); case \"$it_hook_home\" in /*) export IT_SSH_HOOK_ROUTE={}; export IT_SSH_HOOK_SOCKET=\"$it_hook_home/.intelligent-terminal/run/tmux-hooks.sock\"; export IT_SSH_HOOK_SESSION=it-hooks;; esac; ",
             sh_quote(&route.to_string()),
         ));
     } else {
@@ -243,7 +243,6 @@ async fn request(request: &Request) -> Result<TrackingStatus> {
 
 fn warning(reason: &str) {
     // These are operational SSH diagnostics, never remote hook payloads.
-    eprintln!("wta ssh: status tracking unavailable: {reason}");
     tracing::warn!(target: "ssh_hooks", reason, "SSH status tracking unavailable; foreground login continues");
 }
 
@@ -260,13 +259,10 @@ fn report_status(status: &TrackingStatus, previous: &mut Option<TrackingStatus>)
             unavailable_providers,
         } => {
             let providers = unavailable_providers.join(", ");
-            eprintln!(
-                "wta ssh: hooks unavailable for {providers}; other providers remain connected"
-            );
             tracing::warn!(target: "ssh_hooks", providers, "Some remote hook registrations are unavailable");
         }
         TrackingStatus::Connecting if previous.is_none() => {
-            eprintln!("wta ssh: remote status setup is pending; foreground login continues");
+            tracing::debug!(target: "ssh_hooks", "Remote status setup is pending; foreground login continues");
         }
         _ => {}
     }
@@ -278,6 +274,7 @@ pub(crate) async fn run(
     no_pty: bool,
     no_hooks: bool,
     remote_command: Option<String>,
+    initial_agent: Option<String>,
 ) -> Result<i32> {
     tokio::task::LocalSet::new().run_until(async move {
         let route = RouteId::new();
@@ -312,6 +309,13 @@ pub(crate) async fn run(
             report_status(&status, &mut last_status);
         } else if !no_hooks {
             warning("native pane identity is unavailable");
+        }
+        if !no_hooks && registration.is_ok() {
+            if let Some(cli) = initial_agent {
+                crate::linux_hooks::prepare_launch(None, crate::linux_hooks::Request::Prepare {
+                    target: crate::linux_hooks::Target::Ssh { target: target.clone() }, cli,
+                }).await;
+            }
         }
         let mut command = tokio::process::Command::new(executable);
         command.args(arguments)
@@ -352,29 +356,6 @@ pub(crate) async fn run(
         }
         Ok(result?.code().unwrap_or(255))
     }).await
-}
-
-pub(crate) async fn ensure_registered_targets() {
-    let result = tokio::task::LocalSet::new()
-        .run_until(request(&Request::Ensure))
-        .await;
-    match result {
-        Ok(TrackingStatus::Unavailable { reason }) => warning(&reason),
-        Ok(TrackingStatus::Partial {
-            unavailable_providers,
-        }) => {
-            report_status(
-                &TrackingStatus::Partial {
-                    unavailable_providers,
-                },
-                &mut None,
-            );
-        }
-        Err(_) => {
-            tracing::warn!(target: "ssh_hooks", "Remote hook reconciliation could not reach the master; registered wrappers will retry");
-        }
-        _ => {}
-    }
 }
 
 #[cfg(test)]

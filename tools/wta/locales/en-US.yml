@@ -307,6 +307,14 @@ hooks.installed: "✓ installed"
 hooks.marketplace_path_stale: "⚠ marketplace path stale"
 # Badge when the shell hook extension is installed but the user has disabled it
 hooks.installed_but_disabled: "⚠ installed but disabled"
+# Session Management only. %{cli} is a literal agent CLI identifier.
+hooks.linux_installing: "Configuring %{cli} session tracking..."
+# %{reason} is a diagnostic code; %{command} is a literal recovery command. {Locked="Windows"}
+hooks.linux_failed: "Session tracking could not be configured (%{reason}). Run %{command} in a local Windows terminal."
+# Run the recovery command on Windows, not inside the Linux shell. {Locked="tmux","3.4+","Linux","Windows"}
+hooks.linux_tmux_required: "Install tmux 3.4+ in this Linux environment, then run %{command} in a local Windows terminal."
+# %{cli} is an agent CLI identifier; %{reason} is a diagnostic code.
+hooks.linux_unsupported: "Session tracking is unsupported for %{cli} (%{reason})."
 # Shown when a shell hook is not yet installed
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"

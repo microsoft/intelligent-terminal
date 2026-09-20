@@ -63,6 +63,7 @@ namespace Microsoft::Terminal::Protocol::Parsing
         AutofixState,         // Direct to TerminalPage, no broadcast
         AgentStatus,          // Direct to TerminalPage, no broadcast
         AgentAvailability,    // Direct to TerminalPage, no broadcast — post-install hook reconciliation
+        LinuxHooksDiscover,
         AgentSwitch,          // Direct to TerminalPage, no broadcast — `/agent` per-tab switch
         CloseAgentPane,       // Direct to TerminalPage, no broadcast
         DefaultPaste,         // Direct to TerminalPage, no broadcast — WTA-owned right-click copy-or-paste
@@ -112,6 +113,10 @@ namespace Microsoft::Terminal::Protocol::Parsing
             if (method == "agent_availability_changed")
             {
                 return SendEventRoute::AgentAvailability;
+            }
+            if (method == "linux_hooks_discover")
+            {
+                return SendEventRoute::LinuxHooksDiscover;
             }
             if (method == "switch_agent")
             {

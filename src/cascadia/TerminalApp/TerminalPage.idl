@@ -166,6 +166,7 @@ namespace TerminalApp
         // to the AgentPaneContent so the XAML agent bar can refresh.
         void OnAgentStatusChanged(String eventJson);
         void OnAgentAvailabilityChanged(String eventJson);
+        void OnLinuxHooksDiscover();
 
         // Inbound event from `/agent` carrying
         // {method:"switch_agent",params:{window_id,tab_id,agent_id}}.

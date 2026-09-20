@@ -268,6 +268,7 @@ namespace winrt::TerminalApp::implementation
         void OnAutofixStateChanged(hstring eventJson);
         void OnAgentStatusChanged(hstring eventJson);
         void OnAgentAvailabilityChanged(hstring eventJson);
+        void OnLinuxHooksDiscover();
         void OnAgentSwitchRequested(hstring eventJson);
         void OnCloseAgentPaneRequested(hstring eventJson);
         void OnDefaultPasteRequested(hstring eventJson);
@@ -722,6 +723,9 @@ namespace winrt::TerminalApp::implementation
         // Raises one `connection_state` protocol event. Terminal end states
         // (`closed` / `failed`) must go through `_TryRaiseTerminalEndStateEvent`
         // so only the first producer emits.
+        safe_void_coroutine _PublishLinuxHookTarget(Microsoft::Terminal::Control::TermControl control,
+                                                    hstring commandline,
+                                                    bool nativeTmux = false);
         void _RaiseConnectionStateEvent(std::string_view paneId,
                                         std::string_view state,
                                         std::string_view tabId = {});

@@ -81,6 +81,49 @@ Short aliases are supported: `lsw`, `lst`, `lsp`, `neww`, `splitw`, `capturep`,
 
 When `-t` (target pane) is omitted, the active pane is used automatically.
 
+### Linux hook installation
+
+With Session Management enabled, opening a supported WSL connection or a
+managed SSH connection automatically checks the Linux user's hook plugins.
+Native tmux connections use the same installer when their SSH or WSL target
+can be identified safely. WSL preserves the connection's selected Linux user,
+including `wsl -u`; it does not require an SSH server. Only active targets are
+considered. Browsing history or refreshing the Sessions list does not install
+plugins or start inactive distributions.
+
+Linux needs tmux 3.4+ and the installer's standard shell utilities. Missing or
+older tmux prevents registration; WTA does not install tmux, an agent CLI, or
+system packages. Plugin installation is separate from the hook transport:
+ordinary SSH retains its v3 background reader, native tmux retains v2, and
+ordinary WSL shells do **not** gain live status reporting from installation alone.
+
+Installation progress and actionable failures appear only above the current
+Session Management list. Routine checks and automatic success do not produce
+notifications, chat messages, or shell output. SSH authentication and connection
+errors remain unchanged. Failure guidance names a command to run in a **local
+Windows terminal**, for example:
+
+```powershell
+wta hooks install --cli copilot
+```
+
+The CLI reconciles Windows and registered active Linux targets, applying
+`--cli` to both. Omit `--cli` to check all supported, policy-allowed providers.
+It waits for per-target results, reports partial failures, and returns a
+nonzero exit code for failed or incomplete operations. `--json` retains the
+local `clis` report and adds `success` and a `linux` result containing `enabled`
+and `targets` (each with its target identity and per-provider state).
+An unavailable master is reported separately as `linux_error`.
+When no master is running, the historical Windows-only installation remains
+available; Linux work is explicitly skipped (`linux_skipped: "master_not_running"`),
+not reported as installed. Other connection or protocol errors still fail.
+Linux reconciliation respects user-disabled or removed plugins even when
+the Windows-only `--force` recovery option is supplied.
+
+Fix a missing dependency on Linux before retrying the Windows command.
+Already-running agents may need to be restarted to load a new registration;
+WTA does not restart them automatically or replay missed events.
+
 ### Agent sessions over SSH
 
 The Sessions view automatically uses the SSH destination of its source terminal

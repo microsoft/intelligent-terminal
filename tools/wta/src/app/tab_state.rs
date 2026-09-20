@@ -1565,6 +1565,8 @@ impl Default for View {
 
 #[derive(Debug, Default, Clone)]
 pub struct AgentsViewState {
+    pub(crate) linux_hooks: Vec<crate::linux_hooks::TargetStatus>,
+    pub(crate) linux_hooks_source_pane: Option<String>,
     pub snapshot: Option<Vec<crate::session_registry::SessionInfo>>,
     pub(crate) ssh_profile: super::ssh_profile::SessionsProfile,
     pub(crate) ssh_source: Option<super::ssh_session_view::SshSessionsSource>,

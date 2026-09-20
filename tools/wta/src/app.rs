@@ -79,6 +79,7 @@ fn agent_command_on_enter(input: &str, selected: Option<&AvailableAgent>) -> Opt
 mod attachments;
 mod autofix;
 mod input_edit;
+mod linux_hooks;
 mod ssh_profile;
 mod ssh_resume;
 mod ssh_session_view;
@@ -1335,6 +1336,7 @@ pub struct App {
     /// + selected row) lives per-tab on `TabSession`.
     pub agent_sessions: crate::agent_sessions::AgentSessionRegistry,
     ssh_resumes: ssh_resume::SshResumes,
+    linux_hooks_view: linux_hooks::LinuxHooksView,
     /// Whether the connected ACP agent advertised the `loadSession`
     /// capability in its initialize response. Used by the
     /// session management view's Enter handler to short-circuit
@@ -1635,6 +1637,7 @@ impl App {
             session_to_tab: HashMap::new(),
             agent_sessions: crate::agent_sessions::AgentSessionRegistry::new(),
             ssh_resumes: ssh_resume::SshResumes::default(),
+            linux_hooks_view: linux_hooks::LinuxHooksView::default(),
             agent_supports_load_session: false,
             agent_supports_image: false,
             sessions_origin_filter: resolve_sessions_origin_filter(),
@@ -3327,7 +3330,19 @@ impl App {
                     }
                 }
             }));
-        crate::shell::wt_channel::spawn_wtcli_split_then_focus_with_callback(&argv, on_pane_id);
+        let launch_argv = argv.clone();
+        let launch = move || crate::shell::wt_channel::spawn_wtcli_split_then_focus_with_callback(&launch_argv, on_pane_id);
+        if let (crate::agent_sessions::SessionLocation::Wsl { distro }, Some(pipe)) =
+            (&s.location, self.linux_hooks_view.pipe.clone())
+        {
+            let request = crate::linux_hooks::Request::PrepareWsl { distro: distro.clone(), cli: cli_id.to_owned() };
+            tokio::task::spawn_local(async move {
+                crate::linux_hooks::prepare_launch(Some(pipe), request).await;
+                launch();
+            });
+        } else {
+            launch();
+        }
 
         tracing::info!(
             target: "agents_view",
@@ -3562,9 +3577,11 @@ impl App {
         self.refresh_ssh_resume_snapshots();
         self.update_agents_focus_for_tab(&tab_id);
         self.schedule_agents_refetch_for_tab(&tab_id);
+        self.request_linux_hooks(&tab_id);
     }
 
     fn close_agents_view_for_tab(&mut self, tab_id: &str) {
+        self.cancel_linux_hooks(tab_id);
         self.cancel_ssh_sessions_fetch(tab_id);
         let tab = self.tab_mut(tab_id);
         tab.current_view = View::Chat;
@@ -4956,6 +4973,7 @@ impl App {
             AppEvent::AgentsSnapshotLoaded { .. } => "agents_snapshot_loaded",
             AppEvent::AgentsSnapshotFailed { .. } => "agents_snapshot_failed",
             AppEvent::SshRegistryResult { .. } => "ssh_registry_result",
+            AppEvent::LinuxHooksSnapshot { .. } => "linux_hooks_snapshot",
             AppEvent::SshSessionsChanged(_) => "ssh_sessions_changed",
             AppEvent::RegisterBornBoundSession { .. } => "register_born_bound_session",
             AppEvent::MasterMutationCompleted { .. } => "master_mutation_completed",

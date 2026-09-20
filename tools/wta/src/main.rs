@@ -23,6 +23,7 @@ mod helper;
 #[cfg(test)]
 #[path = "hook_contract_tests.rs"]
 mod hook_contract_tests;
+mod linux_hooks;
 #[cfg(test)]
 #[path = "locale_parity_tests.rs"]
 mod locale_parity_tests;

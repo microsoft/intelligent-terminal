@@ -40,6 +40,7 @@ namespace winrt::TerminalApp::implementation
         void ResizeWindow();
         void SelectTab(const winrt::com_ptr<Tab>& tab);
         void Refresh();
+        void PublishHookTargets(bool force = false);
         void PopulateSessionsFlyout(const winrt::Windows::UI::Xaml::Controls::MenuFlyout& flyout);
         void CancelSessionsRequest() noexcept { ++_sessionsGeneration; }
         void RejectUnsupportedOperation();
@@ -158,6 +159,8 @@ namespace winrt::TerminalApp::implementation
         std::string _sessionName;
         std::string _socketPath;
         Json::Value _sshTarget;
+        winrt::hstring _hookCommandline;
+        std::unordered_set<Id> _hookPublishedPanes;
         bool _socketQuerySent = false;
         uint64_t _sessionsGeneration = 0;
         winrt::Windows::UI::Xaml::FrameworkElement::SizeChanged_revoker _sizeChanged;

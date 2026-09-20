@@ -89,6 +89,24 @@ impl App {
         {
             return;
         }
+        if let Some(pane) = params.get("linux_hooks_pane_id") {
+            let source = if pane.is_null() {
+                None
+            } else if let Some(pane) = pane
+                .as_str()
+                .and_then(|value| uuid::Uuid::parse_str(value).ok())
+                .filter(|id| !id.is_nil())
+            {
+                Some(pane.to_string())
+            } else {
+                tracing::warn!(target: "linux_hooks", "Ignoring invalid hook source pane identity");
+                return;
+            };
+            if self.tab_mut(tab_id).agents_view.linux_hooks_source_pane != source {
+                self.cancel_linux_hooks(tab_id);
+                self.tab_mut(tab_id).agents_view.linux_hooks_source_pane = source;
+            }
+        }
         self.set_sessions_profile(tab_id, SessionsProfile::from_wire(value));
     }
 

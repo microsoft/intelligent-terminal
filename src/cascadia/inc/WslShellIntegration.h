@@ -117,6 +117,7 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
         {
             std::wstring name; // $WSL_DISTRO_NAME reported by the distro
             std::string home;  // $HOME reported by the distro (POSIX path)
+            std::string user; // Actual login selected by the launch command, including -u.
             bool valid() const noexcept { return !name.empty() && !home.empty(); }
         };
 
@@ -254,7 +255,7 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
 
         // Run the profile's launch commandline (distro SELECTION only — see
         // StripExecTail) with a probe appended, and read back the distro's own
-        // `$WSL_DISTRO_NAME` and `$HOME`. We NEVER parse the distro out of the
+        // login name, `$WSL_DISTRO_NAME` and `$HOME`. We NEVER parse the distro out of the
         // commandline — the profile already selects it (`-d <name>`,
         // `--distribution-id {GUID}`, or the default distro for bare `wsl.exe`
         // / System32 `bash.exe`), so we reuse the command and let the running
@@ -262,10 +263,10 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
         // renamed profiles all "just work" with one code path.
         //
         // The shell-invocation suffix differs by launcher:
-        //   * `wsl.exe …` -> ` -e sh -c "echo $WSL_DISTRO_NAME; echo $HOME"`
+        //   * `wsl.exe …` -> ` -e sh -c "id -un; echo $WSL_DISTRO_NAME; echo $HOME"`
         //     (wsl.exe is a launcher, not a shell — it must be given a shell
         //     to run; bare `-c` is rejected by wsl.exe).
-        //   * `bash.exe`  -> ` -c "echo $WSL_DISTRO_NAME; echo $HOME"`
+        //   * `bash.exe`  -> ` -c "id -un; echo $WSL_DISTRO_NAME; echo $HOME"`
         //     (bash.exe IS the shell; `-c` is its own flag, `-e`/`-d` are
         //     rejected).
         //
@@ -323,11 +324,11 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
                 std::wstring cmdLine{ QualifyBareLauncher(StripExecTail(launchCommandline, isBash)) };
                 if (isBash)
                 {
-                    cmdLine += L" -c \"echo $WSL_DISTRO_NAME; echo $HOME\"";
+                    cmdLine += L" -c \"id -un; echo $WSL_DISTRO_NAME; echo $HOME\"";
                 }
                 else
                 {
-                    cmdLine += L" -e sh -c \"echo $WSL_DISTRO_NAME; echo $HOME\"";
+                    cmdLine += L" -e sh -c \"id -un; echo $WSL_DISTRO_NAME; echo $HOME\"";
                 }
 
                 // Expand %VAR% in the launcher path. CreateProcessW does NOT
@@ -471,12 +472,11 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
                 {
                     raw.pop_back();
                 }
-                // The probe prints two lines: `$WSL_DISTRO_NAME` then `$HOME`.
-                // Any WSL cold-start banner precedes them, so take the LAST
-                // two non-empty lines: home is the last line, name the one
-                // before it.
+                // The last two lines remain distro and home; the preceding
+                // line identifies the selected Linux user, after any startup banner.
                 std::string home = raw;
                 std::string nameUtf8;
+                std::string user;
                 if (const auto lastLf = raw.find_last_of('\n'); lastLf != std::string::npos)
                 {
                     home = raw.substr(lastLf + 1);
@@ -489,6 +489,16 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
                     }
                     const auto lf2 = before.find_last_of('\n');
                     nameUtf8 = (lf2 != std::string::npos) ? before.substr(lf2 + 1) : before;
+                    if (lf2 != std::string::npos)
+                    {
+                        before.resize(lf2);
+                        while (!before.empty() && (before.back() == '\r' || before.back() == '\n'))
+                        {
+                            before.pop_back();
+                        }
+                        const auto lf3 = before.find_last_of('\n');
+                        user = lf3 == std::string::npos ? before : before.substr(lf3 + 1);
+                    }
                 }
 
                 if (!IsSafeHome(home))
@@ -505,6 +515,7 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
                 WslIdentity id;
                 id.name = nameW;
                 id.home = std::move(home);
+                id.user = std::move(user);
                 return id;
             }
             catch (...)
