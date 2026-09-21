@@ -276,6 +276,8 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
         $worker | Should -Match '(?m)^steps:'
         $worker | Should -Not -Match '(?m)^\s{2}prepare:'
         $worker | Should -Match 'Validate findings and publication shape'
+        $worker | Should -Match 'Checkout trusted repository state'
+        $worker | Should -Match 'Fetch immutable pull request head'
         $worker | Should -Not -Match '(?m)^post-steps:'
         $worker | Should -Not -Match 'pwsh -NoProfile -File \.github/scripts/ghaw-pr-globalization/'
         $worker | Should -Match 'max: 1'
@@ -324,6 +326,8 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
         }
         $guideLock | Should -Match 'globalization-context-safe\.json'
         $guideLock | Should -Not -Match '# --allow-tool shell\(git show'
+        $guideLock | Should -Match 'Checkout trusted repository state'
+        $guideLock | Should -Match 'Fetch immutable pull request head'
         $repairLock | Should -Match 'trusted-validation\.json'
         $repairLock | Should -Match 'git-diff-check'
         $repairLock | Should -Match 'GH_AW_PR_HEAD_BASE_SHA'

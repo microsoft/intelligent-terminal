@@ -102,6 +102,12 @@ steps:
 safe-outputs:
   github-token: ${{ secrets.GITHUB_TOKEN }}
   steps:
+    - name: Checkout trusted repository state
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ github.workflow_sha }}
+        fetch-depth: 0
+        persist-credentials: false
     - name: Reject stale globalization comment
       shell: pwsh
       env:
@@ -114,6 +120,26 @@ safe-outputs:
         $current = (& gh api "/repos/$env:REPOSITORY/pulls/$env:PR_NUMBER" --jq '.head.sha' | Out-String).Trim()
         if ($LASTEXITCODE -ne 0 -or $current.ToLowerInvariant() -cne $env:EXPECTED_HEAD_SHA.ToLowerInvariant()) {
           throw "Stale globalization comment rejected. Expected $env:EXPECTED_HEAD_SHA, found '$current'."
+        }
+    - name: Fetch immutable pull request head
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+        PR_NUMBER: ${{ github.event.inputs.pr_number }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        if ($env:PR_NUMBER -notmatch '^[1-9][0-9]*$') {
+          throw 'Invalid pull request number.'
+        }
+        $remoteRef = "refs/remotes/origin/globalization-safe-pr-$env:PR_NUMBER"
+        git -c credential.helper= -c 'credential.helper=!gh auth git-credential' fetch --no-tags origin "refs/pull/$env:PR_NUMBER/head:$remoteRef"
+        if ($LASTEXITCODE -ne 0) {
+          throw 'Failed to fetch the immutable pull request head for trusted validation.'
+        }
+        $actual = (git rev-parse $remoteRef).Trim().ToLowerInvariant()
+        if ($actual -cne $env:EXPECTED_HEAD_SHA.ToLowerInvariant()) {
+          throw "Fetched head mismatch: expected $env:EXPECTED_HEAD_SHA, found $actual."
         }
     - name: Validate findings and publication shape
       shell: pwsh
