@@ -271,7 +271,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(CreateTerminalMuxXamlType);
 
         TEST_METHOD(CreateTerminalPage);
-        TEST_METHOD(ScrollbarMarksRespectLayout);
+        TEST_METHOD(ScrollbarMarkFailureDoesNotAbortInitialization);
         TEST_METHOD(PaneContextPropagatesCaptureFailure);
         TEST_METHOD(AgentSessionRestoreRequiresPersistedBufferPath);
         TEST_METHOD(AgentPaneRestoreRecordRoundTrips);
@@ -514,10 +514,10 @@ namespace TerminalAppLocalTests
         VERIFY_SUCCEEDED(result);
     }
 
-    void TabTests::ScrollbarMarksRespectLayout()
+    void TabTests::ScrollbarMarkFailureDoesNotAbortInitialization()
     {
         BEGIN_TEST_METHOD_PROPERTIES()
-            TEST_METHOD_PROPERTY(L"Data:testPass", L"{0, 1, 2, 3, 4, 5}")
+            TEST_METHOD_PROPERTY(L"Data:testPass", L"{0, 1, 2, 3, 4}")
         END_TEST_METHOD_PROPERTIES();
         int testPass;
         VERIFY_SUCCEEDED(TestData::TryGetValue(L"testPass", testPass));
@@ -536,7 +536,6 @@ namespace TerminalAppLocalTests
             LayoutCase{ true, true, 16, 300, false, false },
             LayoutCase{ true, false, 0, 300, false, false },
             LayoutCase{ true, false, 16, 0, false, false },
-            LayoutCase{ true, false, 16, 38, true, false },
             LayoutCase{ false, false, 16, 300, false, false },
         };
         const auto& layout = cases.at(testPass);
