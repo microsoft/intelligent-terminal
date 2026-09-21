@@ -209,11 +209,11 @@ if ($fixedFindings.Count -gt 0) {
     $trustedChecks = @($trusted.checks)
     if ($trusted.version -ne 1 -or $trustedChecks.Count -eq 0 -or
         @($trustedChecks | Where-Object {
-            $_.name -notin @('git-diff-check', 'patch-manifest') -or
+            $_.name -notin @('git-diff-check', 'patch-manifest', 'patch-shape') -or
             $_.status -ne 'PASS' -or $_.exitCode -ne 0
         }).Count -gt 0 -or
-        @($trustedChecks.name | Sort-Object -Unique).Count -ne 2) {
-        throw 'Trusted validation must contain passing git-diff-check and patch-manifest checks.'
+        @($trustedChecks.name | Sort-Object -Unique).Count -ne 3) {
+        throw 'Trusted validation must contain passing git-diff-check, patch-manifest, and patch-shape checks.'
     }
 }
 

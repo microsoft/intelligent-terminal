@@ -80,7 +80,8 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
                     version = 1
                     checks = @(
                         [ordered]@{ name = 'git-diff-check'; status = 'PASS'; exitCode = 0 },
-                        [ordered]@{ name = 'patch-manifest'; status = 'PASS'; exitCode = 0 }
+                        [ordered]@{ name = 'patch-manifest'; status = 'PASS'; exitCode = 0 },
+                        [ordered]@{ name = 'patch-shape'; status = 'PASS'; exitCode = 0 }
                     )
                 }
                 [System.IO.File]::WriteAllText($trustedPath, ($trustedValidation | ConvertTo-Json -Depth 10), [System.Text.UTF8Encoding]::new($false))
@@ -273,6 +274,8 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
         $repair | Should -Match 'patch-format: am'
         $repair | Should -Match 'Validate isolated repair patch and live head'
         $repair | Should -Match 'GIT_CONFIG_NOSYSTEM'
+        $repair | Should -Not -Match "'pwsh:\*'"
+        $repair | Should -Match 'Only added or modified regular text files'
         $repair | Should -Not -Match 'add-comment:'
         $repair | Should -Match '(?m)^steps:'
         $repair | Should -Not -Match '(?m)^\s{2}prepare:'

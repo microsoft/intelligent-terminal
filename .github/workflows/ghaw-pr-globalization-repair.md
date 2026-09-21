@@ -66,7 +66,6 @@ tools:
     - 'git show:*'
     - 'git status:*'
     - 'git rev-parse:*'
-    - 'pwsh:*'
 
 jobs:
   safe_outputs:
@@ -174,9 +173,34 @@ safe-outputs:
             -BaseSha $env:BASE_SHA -HeadSha $env:EXPECTED_HEAD_SHA -OutputPath $contextPath
           if ($LASTEXITCODE -ne 0) { throw 'Trusted immutable classification failed.' }
 
-          $changedPaths = @(git --no-replace-objects diff --name-only --no-ext-diff --no-textconv `
+          $changeRows = @(git --no-replace-objects diff --name-status --no-renames --no-ext-diff --no-textconv `
             $env:EXPECTED_HEAD_SHA $candidateSha --)
           if ($LASTEXITCODE -ne 0) { throw 'Trusted patch manifest derivation failed.' }
+          $changedPaths = [System.Collections.Generic.List[string]]::new()
+          foreach ($row in $changeRows) {
+            $parts = $row -split "`t", 2
+            if ($parts.Count -ne 2 -or $parts[0] -notin @('A', 'M')) {
+              throw 'Only added or modified regular text files may be repaired; deletions and renames are rejected.'
+            }
+            $path = $parts[1]
+            $newEntry = (git --no-replace-objects -C $verificationRepo ls-tree $candidateSha -- $path | Out-String).Trim()
+            if ($LASTEXITCODE -ne 0 -or $newEntry -notmatch '^100644 blob [0-9a-f]{40}\t') {
+              throw "Repair path '$path' is not a regular non-executable file."
+            }
+            if ($parts[0] -eq 'M') {
+              $oldEntry = (git --no-replace-objects -C $verificationRepo ls-tree $env:EXPECTED_HEAD_SHA -- $path | Out-String).Trim()
+              if ($LASTEXITCODE -ne 0 -or $oldEntry -notmatch '^100644 blob [0-9a-f]{40}\t') {
+                throw "Repair path '$path' changes file type or mode."
+              }
+            }
+            $changedPaths.Add($path)
+          }
+          $numstatRows = @(git --no-replace-objects diff --numstat --no-renames --no-ext-diff --no-textconv `
+            $env:EXPECTED_HEAD_SHA $candidateSha --)
+          if ($LASTEXITCODE -ne 0 -or
+              @($numstatRows | Where-Object { $_ -notmatch '^[0-9]+\t[0-9]+\t' }).Count -gt 0) {
+            throw 'Binary or malformed repair patches are rejected.'
+          }
           $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json -Depth 20
           $declaredPaths = @($report.patchFiles.path | Sort-Object -Unique)
           if (Compare-Object -ReferenceObject @($changedPaths | Sort-Object -Unique) -DifferenceObject $declaredPaths) {
@@ -191,6 +215,7 @@ safe-outputs:
             checks = @(
               @{ name = 'git-diff-check'; status = 'PASS'; exitCode = 0 }
               @{ name = 'patch-manifest'; status = 'PASS'; exitCode = 0 }
+              @{ name = 'patch-shape'; status = 'PASS'; exitCode = 0 }
             )
           } | ConvertTo-Json -Depth 5), [System.Text.UTF8Encoding]::new($false))
           pwsh -NoProfile -File (Join-Path $trustedDirectory 'Test-GlobalizationFindings.ps1') `
@@ -288,9 +313,10 @@ Do not translate or modify RESW or localization YAML. Report resource findings
 for the localization workflow or a maintainer to address. This keeps automatic
 globalization repair within exact product-code files from the immutable PR
 change set and avoids accepting agent-authored localization checker evidence.
-Run the smallest applicable existing tests for every product-code edit. Do not
-claim validation that was not run, and do not turn unavailable Windows-native
-validation into a pass.
+Do not execute PR-controlled scripts, binaries, or tests. Use only the
+allowlisted read-only Git commands to inspect the final diff and record
+unavailable native validation honestly. The isolated safe-output gate validates
+the patch structure before publication.
 
 Write `/tmp/gh-aw/agent/globalization-findings.json` using the version-1
 schema in `.github/workflows/ghaw-pr-globalization.md`. Add `patchFiles`
