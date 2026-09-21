@@ -101,35 +101,27 @@ steps:
       if ($LASTEXITCODE -ne 0) { throw 'Globalization change classification failed.' }
 
 safe-outputs:
+  github-token: ${{ secrets.GITHUB_TOKEN }}
+  steps:
+    - name: Reject stale globalization comment
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+        PR_NUMBER: ${{ github.event.inputs.pr_number }}
+        REPOSITORY: ${{ github.event.inputs.repo }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $current = (& gh api "/repos/$env:REPOSITORY/pulls/$env:PR_NUMBER" --jq '.head.sha' | Out-String).Trim()
+        if ($LASTEXITCODE -ne 0 -or $current.ToLowerInvariant() -cne $env:EXPECTED_HEAD_SHA.ToLowerInvariant()) {
+          throw "Stale globalization comment rejected. Expected $env:EXPECTED_HEAD_SHA, found '$current'."
+        }
   add-comment:
     target: '${{ github.event.inputs.pr_number }}'
     max: 1
     hide-older-comments: true
 
 post-steps:
-  - name: Reject stale worker output
-    shell: pwsh
-    env:
-      GH_TOKEN: ${{ github.token }}
-      EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
-      PR_NUMBER: ${{ github.event.inputs.pr_number }}
-      REPOSITORY: ${{ github.event.inputs.repo }}
-    run: |
-      $ErrorActionPreference = 'Stop'
-      if (($env:EXPECTED_HEAD_SHA ?? '') -notmatch '^[0-9a-f]{40}$') {
-        throw 'Freshness check received an invalid expected head SHA.'
-      }
-      $currentOutput = & gh api "/repos/$env:REPOSITORY/pulls/$env:PR_NUMBER" --jq '.head.sha'
-      if ($LASTEXITCODE -ne 0) {
-        throw "Failed to read the current head SHA for PR #$env:PR_NUMBER."
-      }
-      $current = ($currentOutput | Out-String).Trim()
-      if (($current ?? '') -notmatch '^[0-9a-fA-F]{40}$') {
-        throw "Freshness check returned an invalid current head SHA: '$current'."
-      }
-      if ($current.ToLowerInvariant() -cne $env:EXPECTED_HEAD_SHA.ToLowerInvariant()) {
-        throw "Stale globalization output rejected. Expected $env:EXPECTED_HEAD_SHA, found '$current'."
-      }
   - name: Validate findings and publication shape
     shell: bash
     env:

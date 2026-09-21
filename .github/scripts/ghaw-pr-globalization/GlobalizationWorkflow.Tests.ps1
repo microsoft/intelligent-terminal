@@ -106,6 +106,12 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
 
         $mediumBlocker = New-Finding -Severity 'MEDIUM' -Confidence 'moderate' -Disposition 'blocked'
         (Invoke-Validator -Report (New-Report -Findings @($mediumBlocker))) | Should -Not -Be 0
+
+        $lowRemaining = New-Finding -Severity 'LOW' -Confidence 'moderate' -Disposition 'remaining'
+        (Invoke-Validator -Report (New-Report -Findings @($lowRemaining))) | Should -Not -Be 0
+
+        $highSuggestion = New-Finding -Severity 'HIGH' -Confidence 'strong' -Disposition 'suggestion'
+        (Invoke-Validator -Report (New-Report -Findings @($highSuggestion))) | Should -Not -Be 0
     }
 
     It 'allows fixed disposition only for strong HIGH repair findings' {
@@ -134,6 +140,13 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
         )
         $report.executedValidation = @(
             [ordered]@{ command = 'focused-test'; exitCode = 0; result = 'passed' }
+        )
+        (Invoke-Validator -Report $report -Mode repair -Trusted) | Should -Not -Be 0
+
+        $remaining = New-Finding -Disposition 'remaining'
+        $report = New-Report -Findings @($remaining)
+        $report.patchFiles = @(
+            [ordered]@{ path = $remaining.file; kind = 'fix'; findingIds = @($remaining.stableId) }
         )
         (Invoke-Validator -Report $report -Mode repair -Trusted) | Should -Not -Be 0
     }
@@ -253,7 +266,7 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
         $worker | Should -Match 'git --no-replace-objects show'
         $worker | Should -Not -Match 'pwsh -NoProfile -File \.github/scripts/ghaw-pr-globalization/'
         $worker | Should -Match 'max: 1'
-        $worker | Should -Match 'Reject stale worker output'
+        $worker | Should -Match 'Reject stale globalization comment'
         $worker | Should -Not -Match '(?m)^\s{8}/tmp/gh-aw/globalization-context\.json$'
         $worker | Should -Not -Match 'push-to-pull-request-branch'
         $repair | Should -Match 'push-to-pull-request-branch'

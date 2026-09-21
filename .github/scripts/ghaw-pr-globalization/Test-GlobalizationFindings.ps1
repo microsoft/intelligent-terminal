@@ -128,8 +128,13 @@ foreach ($finding in $findings) {
     if ($finding.disposition -notin @('fixed', 'remaining', 'suggestion', 'blocked', 'skipped')) {
         throw "Finding $($finding.stableId) has an invalid disposition."
     }
-    if ($finding.severity -ne 'HIGH' -and $finding.disposition -eq 'blocked') {
-        throw "Only HIGH findings may use the blocking disposition."
+    $allowedDispositions = if ($finding.severity -eq 'HIGH') {
+        if ($Mode -eq 'repair') { @('fixed', 'remaining', 'blocked') } else { @('remaining', 'blocked') }
+    } else {
+        @('suggestion', 'skipped')
+    }
+    if ($finding.disposition -notin $allowedDispositions) {
+        throw "Finding $($finding.stableId) has a disposition that is invalid for its severity and workflow mode."
     }
     if ($finding.disposition -eq 'fixed' -and
         ($Mode -ne 'repair' -or $finding.severity -ne 'HIGH' -or $finding.confidence -ne 'strong')) {
@@ -140,13 +145,20 @@ foreach ($finding in $findings) {
     }
 }
 
+$patchFiles = @($report.patchFiles)
+if ($Mode -eq 'guide' -and ($patchFiles.Count -gt 0 -or @($report.executedValidation).Count -gt 0)) {
+    throw 'Guide reports cannot claim patch files or executed repair validation.'
+}
+if ($Mode -eq 'repair' -and $patchFiles.Count -gt 0 -and $fixedFindings.Count -eq 0) {
+    throw 'A non-empty patchFiles manifest requires at least one fixed finding.'
+}
+
 if ($fixedFindings.Count -gt 0) {
     $fixedById = @{}
     foreach ($finding in $fixedFindings) {
         $fixedById[[string]$finding.stableId] = $finding
     }
 
-    $patchFiles = @($report.patchFiles)
     if ($patchFiles.Count -eq 0) {
         throw 'Fixed findings require an explicit patchFiles manifest.'
     }
@@ -154,8 +166,9 @@ if ($fixedFindings.Count -gt 0) {
     foreach ($patchFile in $patchFiles) {
         $path = ([string]$patchFile.path).Replace('\', '/')
         if (-not (Test-SafeRepositoryPath -Path $path) -or $patchFile.kind -ne 'fix' -or
+            $path -notmatch '\.(cpp|cxx|cc|h|hpp|xaml|rs)$' -or
             -not $changedPaths.Contains($path) -or -not $declaredPatchPaths.Add($path)) {
-            throw 'Every patchFiles entry must be a unique immutable-scope path with kind fix.'
+            throw 'Every patchFiles entry must be a unique immutable-scope C++/XAML/Rust product path with kind fix.'
         }
         $linkedIds = @($patchFile.findingIds)
         if ($linkedIds.Count -eq 0) {
