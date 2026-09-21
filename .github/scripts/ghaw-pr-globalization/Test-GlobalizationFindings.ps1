@@ -78,11 +78,16 @@ if ($context.version -ne 1 -or $context.baseSha -cne $base -or $context.headSha 
     throw 'Immutable change context envelope is incomplete or stale.'
 }
 $changedPaths = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+$contextByPath = @{}
 foreach ($file in @($context.files)) {
     $path = ([string]$file.path).Replace('\', '/')
     if (-not (Test-SafeRepositoryPath -Path $path) -or -not $changedPaths.Add($path)) {
         throw 'Immutable change context contains an invalid or duplicate path.'
     }
+    if (@($file.hunks).Count -eq 0) {
+        throw "Immutable change context contains no changed-line ranges for '$path'."
+    }
+    $contextByPath[$path] = $file
 }
 
 if ($report.version -ne 1 -or $report.baseSha -cne $base -or
@@ -116,6 +121,15 @@ foreach ($finding in $findings) {
     }
     if ($finding.line -isnot [long] -or $finding.line -lt 1) {
         throw "Finding $($finding.stableId) must identify a positive source line."
+    }
+    $touchesImmutableHunk = @($contextByPath[$findingPath].hunks | Where-Object {
+        $start = if ($_.newCount -gt 0) { [long]$_.newStart } else { [long]$_.oldStart }
+        $count = if ($_.newCount -gt 0) { [long]$_.newCount } else { [long]$_.oldCount }
+        $end = $start + [Math]::Max($count, 1) - 1
+        $finding.line -ge $start -and $finding.line -le $end
+    }).Count -gt 0
+    if (-not $touchesImmutableHunk) {
+        throw "Finding $($finding.stableId) line is outside the immutable pull request hunks."
     }
     foreach ($field in @('scenario', 'localeOrScript', 'observed', 'expected', 'impact', 'proposedFix')) {
         if ([string]::IsNullOrWhiteSpace($finding.$field)) {
@@ -209,11 +223,11 @@ if ($fixedFindings.Count -gt 0) {
     $trustedChecks = @($trusted.checks)
     if ($trusted.version -ne 1 -or $trustedChecks.Count -eq 0 -or
         @($trustedChecks | Where-Object {
-            $_.name -notin @('git-diff-check', 'patch-manifest', 'patch-shape') -or
+            $_.name -notin @('git-diff-check', 'patch-manifest', 'patch-shape', 'hunk-scope') -or
             $_.status -ne 'PASS' -or $_.exitCode -ne 0
         }).Count -gt 0 -or
-        @($trustedChecks.name | Sort-Object -Unique).Count -ne 3) {
-        throw 'Trusted validation must contain passing git-diff-check, patch-manifest, and patch-shape checks.'
+        @($trustedChecks.name | Sort-Object -Unique).Count -ne 4) {
+        throw 'Trusted validation must contain passing diff, manifest, shape, and hunk-scope checks.'
     }
 }
 

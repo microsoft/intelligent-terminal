@@ -103,6 +103,28 @@ steps:
 safe-outputs:
   github-token: ${{ secrets.GITHUB_TOKEN }}
   steps:
+    - name: Validate repair output selection
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $rootItem = Get-Item -LiteralPath /tmp/gh-aw -Force
+        $outputPath = '/tmp/gh-aw/agent_output.json'
+        $outputItem = Get-Item -LiteralPath $outputPath -Force
+        if (-not $rootItem.PSIsContainer -or $rootItem.LinkType -or
+            (($rootItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) -or
+            $outputItem.PSIsContainer -or $outputItem.LinkType -or
+            (($outputItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) -or
+            $outputItem.Length -lt 2 -or $outputItem.Length -gt 1MB -or
+            [System.IO.Path]::GetDirectoryName((Resolve-Path -LiteralPath $outputPath).Path) -cne
+              (Resolve-Path -LiteralPath /tmp/gh-aw).Path) {
+          throw 'Agent output is not a confined regular file.'
+        }
+        $output = Get-Content -LiteralPath $outputPath -Raw | ConvertFrom-Json -Depth 20
+        $types = @($output.items.type)
+        if (@($output.errors).Count -ne 0 -or $types.Count -ne 1 -or
+            $types[0] -notin @('push_to_pull_request_branch', 'noop')) {
+          throw 'Repair requires exactly one push_to_pull_request_branch or noop output.'
+        }
     - name: Validate isolated repair patch and live head
       if: contains(needs.agent.outputs.output_types, 'push_to_pull_request_branch')
       shell: pwsh
@@ -206,6 +228,42 @@ safe-outputs:
           if (Compare-Object -ReferenceObject @($changedPaths | Sort-Object -Unique) -DifferenceObject $declaredPaths) {
             throw 'Isolated final patch paths do not match patchFiles evidence.'
           }
+          if ($changedPaths.Count -gt 3) {
+            throw 'Automatic repair is limited to three files.'
+          }
+          $fixedById = @{}
+          foreach ($finding in @($report.findings | Where-Object disposition -eq 'fixed')) {
+            $fixedById[[string]$finding.stableId] = $finding
+          }
+          foreach ($path in $changedPaths) {
+            $numstat = @(git --no-replace-objects diff --numstat --no-renames --no-ext-diff --no-textconv `
+              $env:EXPECTED_HEAD_SHA $candidateSha -- $path)
+            if ($LASTEXITCODE -ne 0 -or $numstat.Count -ne 1 -or $numstat[0] -notmatch '^(?<added>[0-9]+)\t(?<deleted>[0-9]+)\t') {
+              throw "Repair path '$path' is binary or has malformed size evidence."
+            }
+            if (([int]$Matches.added + [int]$Matches.deleted) -gt 40) {
+              throw "Repair path '$path' exceeds the 40-line automatic repair limit."
+            }
+            $findingLines = @($report.patchFiles |
+              Where-Object path -eq $path |
+              ForEach-Object findingIds |
+              ForEach-Object { [long]$fixedById[[string]$_].line })
+            $hunkHeaders = @(git --no-replace-objects diff --unified=0 --no-renames --no-ext-diff --no-textconv `
+              $env:EXPECTED_HEAD_SHA $candidateSha -- $path |
+              Where-Object { $_ -match '^@@ -(?<start>[0-9]+)(?:,(?<count>[0-9]+))? ' })
+            if ($LASTEXITCODE -ne 0 -or $hunkHeaders.Count -eq 0) {
+              throw "Repair path '$path' has no parseable text hunks."
+            }
+            foreach ($header in $hunkHeaders) {
+              $null = $header -match '^@@ -(?<start>[0-9]+)(?:,(?<count>[0-9]+))? '
+              $start = [long]$Matches.start
+              $count = if ([string]::IsNullOrEmpty($Matches.count)) { 1 } else { [long]$Matches.count }
+              $end = $start + [Math]::Max($count, 1) - 1
+              if (@($findingLines | Where-Object { $_ -ge ($start - 20) -and $_ -le ($end + 20) }).Count -eq 0) {
+                throw "Repair hunk in '$path' is not within 20 lines of a linked fixed finding."
+              }
+            }
+          }
           git --no-replace-objects diff --check --no-ext-diff --no-textconv $env:EXPECTED_HEAD_SHA $candidateSha
           if ($LASTEXITCODE -ne 0) { throw 'Isolated final patch failed git diff --check.' }
 
@@ -216,6 +274,7 @@ safe-outputs:
               @{ name = 'git-diff-check'; status = 'PASS'; exitCode = 0 }
               @{ name = 'patch-manifest'; status = 'PASS'; exitCode = 0 }
               @{ name = 'patch-shape'; status = 'PASS'; exitCode = 0 }
+              @{ name = 'hunk-scope'; status = 'PASS'; exitCode = 0 }
             )
           } | ConvertTo-Json -Depth 5), [System.Text.UTF8Encoding]::new($false))
           pwsh -NoProfile -File (Join-Path $trustedDirectory 'Test-GlobalizationFindings.ps1') `

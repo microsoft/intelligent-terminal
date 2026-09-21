@@ -111,9 +111,25 @@ foreach ($row in $rows) {
 
     $normalized = $path.Replace('\', '/')
     $surfaces = @(Get-Surface -Path $normalized)
+    $hunks = [System.Collections.Generic.List[object]]::new()
+    $diffLines = @(& git --no-replace-objects diff --no-ext-diff --no-textconv --unified=0 --format= $BaseSha $HeadSha -- $normalized)
+    if ($LASTEXITCODE -ne 0) {
+        throw "git diff failed while identifying changed lines for '$normalized'."
+    }
+    foreach ($diffLine in $diffLines) {
+        if ($diffLine -match '^@@ -(?<oldStart>[0-9]+)(?:,(?<oldCount>[0-9]+))? \+(?<newStart>[0-9]+)(?:,(?<newCount>[0-9]+))? @@') {
+            $hunks.Add([ordered]@{
+                oldStart = [int]$Matches.oldStart
+                oldCount = if ([string]::IsNullOrEmpty($Matches.oldCount)) { 1 } else { [int]$Matches.oldCount }
+                newStart = [int]$Matches.newStart
+                newCount = if ([string]::IsNullOrEmpty($Matches.newCount)) { 1 } else { [int]$Matches.newCount }
+            })
+        }
+    }
     $files.Add([ordered]@{
         path = $normalized
         status = $status
+        hunks = @($hunks)
         surfaces = $surfaces
         checks = @(Get-Checks -Path $normalized -Surfaces $surfaces)
         customerFacingLikelihood = if (

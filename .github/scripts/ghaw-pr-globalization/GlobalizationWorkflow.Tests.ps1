@@ -64,7 +64,11 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
                 version = 1
                 baseSha = 'a' * 40
                 headSha = $ExpectedHead
-                files = @([ordered]@{ path = 'src/cascadia/TerminalApp/Sample.xaml'; status = 'M' })
+                files = @([ordered]@{
+                    path = 'src/cascadia/TerminalApp/Sample.xaml'
+                    status = 'M'
+                    hunks = @([ordered]@{ oldStart = 1; oldCount = 100; newStart = 1; newCount = 100 })
+                })
             }
             [System.IO.File]::WriteAllText($contextPath, ($context | ConvertTo-Json -Depth 10), [System.Text.UTF8Encoding]::new($false))
             $arguments = @(
@@ -81,7 +85,8 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
                     checks = @(
                         [ordered]@{ name = 'git-diff-check'; status = 'PASS'; exitCode = 0 },
                         [ordered]@{ name = 'patch-manifest'; status = 'PASS'; exitCode = 0 },
-                        [ordered]@{ name = 'patch-shape'; status = 'PASS'; exitCode = 0 }
+                        [ordered]@{ name = 'patch-shape'; status = 'PASS'; exitCode = 0 },
+                        [ordered]@{ name = 'hunk-scope'; status = 'PASS'; exitCode = 0 }
                     )
                 }
                 [System.IO.File]::WriteAllText($trustedPath, ($trustedValidation | ConvertTo-Json -Depth 10), [System.Text.UTF8Encoding]::new($false))
@@ -104,6 +109,10 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
         $unsafe = New-Finding
         $unsafe.file = '../workflow.yml'
         (Invoke-Validator -Report (New-Report -Findings @($unsafe))) | Should -Not -Be 0
+
+        $unchangedLine = New-Finding
+        $unchangedLine.line = 101
+        (Invoke-Validator -Report (New-Report -Findings @($unchangedLine))) | Should -Not -Be 0
 
         $mediumBlocker = New-Finding -Severity 'MEDIUM' -Confidence 'moderate' -Disposition 'blocked'
         (Invoke-Validator -Report (New-Report -Findings @($mediumBlocker))) | Should -Not -Be 0
@@ -163,7 +172,11 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
             version = 1
             baseSha = 'a' * 40
             headSha = 'b' * 40
-            files = @([ordered]@{ path = 'src/cascadia/TerminalApp/Sample.xaml'; status = 'M' })
+            files = @([ordered]@{
+                path = 'src/cascadia/TerminalApp/Sample.xaml'
+                status = 'M'
+                hunks = @([ordered]@{ oldStart = 1; oldCount = 100; newStart = 1; newCount = 100 })
+            })
         } | ConvertTo-Json -Depth 10))
         [System.IO.File]::CreateSymbolicLink($link, $target) | Out-Null
         $null = & pwsh -NoProfile -File $script:validator -ReportPath $link -ContextPath $context `
@@ -276,6 +289,9 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
         $repair | Should -Match 'GIT_CONFIG_NOSYSTEM'
         $repair | Should -Not -Match "'pwsh:\*'"
         $repair | Should -Match 'Only added or modified regular text files'
+        $repair | Should -Match '40-line automatic repair limit'
+        $repair | Should -Match 'within 20 lines of a linked fixed finding'
+        $repair | Should -Match 'Validate repair output selection'
         $repair | Should -Not -Match 'add-comment:'
         $repair | Should -Match '(?m)^steps:'
         $repair | Should -Not -Match '(?m)^\s{2}prepare:'
