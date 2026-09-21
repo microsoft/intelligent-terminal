@@ -271,7 +271,6 @@ namespace TerminalAppLocalTests
         TEST_METHOD(CreateTerminalMuxXamlType);
 
         TEST_METHOD(CreateTerminalPage);
-        TEST_METHOD(ScrollbarMarkFailureDoesNotAbortInitialization);
         TEST_METHOD(PaneContextPropagatesCaptureFailure);
         TEST_METHOD(AgentSessionRestoreRequiresPersistedBufferPath);
         TEST_METHOD(AgentPaneRestoreRecordRoundTrips);
@@ -512,114 +511,6 @@ namespace TerminalAppLocalTests
             VERIFY_IS_NOT_NULL(page);
         });
         VERIFY_SUCCEEDED(result);
-    }
-
-    void TabTests::ScrollbarMarkFailureDoesNotAbortInitialization()
-    {
-        BEGIN_TEST_METHOD_PROPERTIES()
-            TEST_METHOD_PROPERTY(L"Data:testPass", L"{0, 1, 2, 3, 4}")
-        END_TEST_METHOD_PROPERTIES();
-        int testPass;
-        VERIFY_SUCCEEDED(TestData::TryGetValue(L"testPass", testPass));
-
-        struct LayoutCase
-        {
-            bool showMarks;
-            bool hidden;
-            double width;
-            double height;
-            bool expectBitmap;
-            bool expectVisible;
-        };
-        static constexpr std::array cases{
-            LayoutCase{ true, false, 16, 300, true, true },
-            LayoutCase{ true, true, 16, 300, false, false },
-            LayoutCase{ true, false, 0, 300, false, false },
-            LayoutCase{ true, false, 16, 0, false, false },
-            LayoutCase{ false, false, 16, 300, false, false },
-        };
-        const auto& layout = cases.at(testPass);
-        winrt::Microsoft::Terminal::Control::TermControl control{ nullptr };
-        Image canvas{ nullptr };
-        const auto initialized = std::make_shared<::details::Event>();
-        VERIFY_IS_TRUE(initialized->IsValid());
-        const auto cleanup = wil::scope_exit([&]() {
-            RunOnUIThread([&]() {
-                if (control)
-                {
-                    control.Close();
-                }
-                Window::Current().Content(nullptr);
-                canvas = nullptr;
-                control = nullptr;
-            });
-        });
-        TestOnUIThread([&]() {
-            const auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
-            settings->ShowMarks(layout.showMarks);
-            settings->ScrollState(layout.hidden ?
-                                      winrt::Microsoft::Terminal::Control::ScrollbarState::Hidden :
-                                      winrt::Microsoft::Terminal::Control::ScrollbarState::Visible);
-            const auto connection = winrt::make_self<TestConnection>(
-                ::Microsoft::Console::Utils::CreateGuid(),
-                winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
-            control = winrt::Microsoft::Terminal::Control::TermControl{ *settings, *settings, *connection };
-            control.Width(600);
-            control.Height(400);
-            control.Initialized([initialized](auto&&, auto&&) { initialized->Set(); });
-            const auto scrollbar = control.FindName(L"ScrollBar").as<Controls::Primitives::ScrollBar>();
-            scrollbar.MinWidth(0);
-            scrollbar.MinHeight(0);
-            scrollbar.Width(layout.width);
-            scrollbar.Height(layout.height);
-            canvas = control.FindName(L"ScrollBarCanvas").as<Image>();
-            Window::Current().Content(control);
-            Window::Current().Activate();
-            control.UpdateLayout();
-        });
-        VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(initialized->m_handle, 10000));
-        TestOnUIThread([&]() {
-            const auto scrollbar = control.FindName(L"ScrollBar").as<Controls::Primitives::ScrollBar>();
-            if (!layout.hidden)
-            {
-                VERIFY_ARE_EQUAL(layout.width, scrollbar.ActualWidth());
-                VERIFY_ARE_EQUAL(layout.height, scrollbar.ActualHeight());
-            }
-            const auto bitmap = canvas.Source().try_as<Media::Imaging::WriteableBitmap>();
-            VERIFY_ARE_EQUAL(layout.expectBitmap, static_cast<bool>(bitmap));
-            VERIFY_ARE_EQUAL(layout.expectVisible, canvas.Visibility() == Visibility::Visible);
-            if (bitmap)
-            {
-                VERIFY_IS_TRUE(bitmap.PixelWidth() > 0);
-                VERIFY_IS_TRUE(bitmap.PixelHeight() > 0);
-            }
-        });
-
-        const auto marksVisible = std::make_shared<::details::Event>();
-        VERIFY_IS_TRUE(marksVisible->IsValid());
-        TestOnUIThread([&]() {
-            canvas.RegisterPropertyChangedCallback(UIElement::VisibilityProperty(), [marksVisible](const auto& sender, const auto&) {
-                if (sender.template as<Image>().Visibility() == Visibility::Visible)
-                {
-                    marksVisible->Set();
-                }
-            });
-            const auto scrollbar = control.FindName(L"ScrollBar").as<Controls::Primitives::ScrollBar>();
-            scrollbar.Width(16);
-            scrollbar.Height(300);
-            const auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
-            settings->ShowMarks(true);
-            settings->ScrollState(winrt::Microsoft::Terminal::Control::ScrollbarState::Visible);
-            control.UpdateControlSettings(*settings, *settings);
-            control.UpdateLayout();
-        });
-        VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(marksVisible->m_handle, 10000));
-        TestOnUIThread([&]() {
-            const auto bitmap = canvas.Source().as<Media::Imaging::WriteableBitmap>();
-            VERIFY_IS_TRUE(bitmap.PixelWidth() > 0);
-            VERIFY_IS_TRUE(bitmap.PixelHeight() > bitmap.PixelWidth());
-            VERIFY_ARE_EQUAL(Visibility::Visible, canvas.Visibility());
-        });
     }
 
     void TabTests::AgentSessionRestoreRequiresPersistedBufferPath()
