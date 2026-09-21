@@ -84,9 +84,6 @@ foreach ($file in @($context.files)) {
     if (-not (Test-SafeRepositoryPath -Path $path) -or -not $changedPaths.Add($path)) {
         throw 'Immutable change context contains an invalid or duplicate path.'
     }
-    if (@($file.hunks).Count -eq 0) {
-        throw "Immutable change context contains no changed-line ranges for '$path'."
-    }
     $contextByPath[$path] = $file
 }
 

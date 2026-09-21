@@ -52,7 +52,8 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
                 $Report,
                 [string]$ExpectedHead = ('b' * 40),
                 [ValidateSet('guide', 'repair')][string]$Mode = 'guide',
-                [switch]$Trusted
+                [switch]$Trusted,
+                [switch]$NoHunks
             )
             $directory = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
             [System.IO.Directory]::CreateDirectory($directory) | Out-Null
@@ -60,6 +61,9 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
             $contextPath = Join-Path $directory 'context.json'
             $trustedPath = Join-Path $directory 'trusted-validation.json'
             [System.IO.File]::WriteAllText($path, ($Report | ConvertTo-Json -Depth 10), [System.Text.UTF8Encoding]::new($false))
+            $hunks = if ($NoHunks) { @() } else {
+                @([ordered]@{ oldStart = 1; oldCount = 100; newStart = 1; newCount = 100 })
+            }
             $context = [ordered]@{
                 version = 1
                 baseSha = 'a' * 40
@@ -67,7 +71,7 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
                 files = @([ordered]@{
                     path = 'src/cascadia/TerminalApp/Sample.xaml'
                     status = 'M'
-                    hunks = @([ordered]@{ oldStart = 1; oldCount = 100; newStart = 1; newCount = 100 })
+                    hunks = @($hunks)
                 })
             }
             [System.IO.File]::WriteAllText($contextPath, ($context | ConvertTo-Json -Depth 10), [System.Text.UTF8Encoding]::new($false))
@@ -99,7 +103,9 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
 
     It 'accepts no findings and a fully evidenced HIGH blocker' {
         (Invoke-Validator -Report (New-Report)) | Should -Be 0
+        (Invoke-Validator -Report (New-Report) -NoHunks) | Should -Be 0
         (Invoke-Validator -Report (New-Report -Findings @((New-Finding)))) | Should -Be 0
+        (Invoke-Validator -Report (New-Report -Findings @((New-Finding))) -NoHunks) | Should -Not -Be 0
     }
 
     It 'rejects malformed output, stale SHA, unsafe paths, and invalid severity gating' {
