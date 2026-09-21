@@ -129,6 +129,7 @@ namespace winrt::TerminalApp::implementation
 
         newTabImpl->SetDispatch(*_actionDispatch);
         newTabImpl->SetActionMap(_settings.ActionMap());
+        newTabImpl->SetVerticalTabLayout(_isVerticalLayout);
 
         // Give the tab its index in the _tabs vector so it can manage its own SwitchToTab command.
         _UpdateTabIndices();
@@ -421,6 +422,18 @@ namespace winrt::TerminalApp::implementation
     // - Handle changes in tab layout.
     void TerminalPage::_UpdateTabView()
     {
+        if (_isVerticalLayout)
+        {
+            const auto railVisible = !_isInFocusMode &&
+                                     (!_isFullscreen || _showTabsFullscreen);
+            const auto tabsVisible = railVisible &&
+                                     ((_tabs.Size() > 1) ||
+                                      _settings.GlobalSettings().AlwaysShowTabs());
+            _tabStrip.TabsVisible(tabsVisible);
+            _SetVerticalRailVisibility(railVisible);
+            return;
+        }
+
         // The tab row should only be visible if:
         // - we're not in focus mode
         // - we're not in full screen, or the user has enabled fullscreen tabs
@@ -1399,7 +1412,8 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_OnTabPointerPressed(const IInspectable& sender, const Windows::UI::Xaml::Input::PointerRoutedEventArgs& e)
     {
-        if (!_tabItemMiddleClickHookEnabled || !e.GetCurrentPoint(nullptr).Properties().IsMiddleButtonPressed())
+        if ((!_isVerticalLayout && !_tabItemMiddleClickHookEnabled) ||
+            !e.GetCurrentPoint(nullptr).Properties().IsMiddleButtonPressed())
         {
             return;
         }

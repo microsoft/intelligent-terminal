@@ -7,6 +7,7 @@
 #include "../TerminalApp/TerminalWindow.h"
 #include "../TerminalApp/MinMaxCloseControl.h"
 #include "../TerminalApp/TabRowControl.h"
+#include "../TerminalApp/TabStrip.h"
 #include "../TerminalApp/ShortcutActionDispatch.h"
 #include "../TerminalApp/AgentPaneContent.h"
 #include "../TerminalApp/AgentPaneDragStash.h"
@@ -266,6 +267,9 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TryCreateXamlObjects);
 
         TEST_METHOD(TryInitializePage);
+        TEST_METHOD(VerticalRailVisibilityRestoresWidth);
+        TEST_METHOD(VerticalLayoutMismatchInfoBarRecomputes);
+        TEST_METHOD(VerticalTabStripEnablesCloseButton);
 
         TEST_METHOD(CreateSimpleTerminalXamlType);
         TEST_METHOD(CreateTerminalMuxXamlType);
@@ -415,7 +419,8 @@ namespace TerminalAppLocalTests
         winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> _commonSetup(
             winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection connection = nullptr,
             Grid layoutHost = nullptr,
-            std::optional<int32_t> historySize = std::nullopt);
+            std::optional<int32_t> historySize = std::nullopt,
+            bool verticalLayout = false);
         winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> _restoreBindingsSetup();
         winrt::com_ptr<winrt::TerminalApp::implementation::WindowProperties> _windowProperties;
         winrt::com_ptr<winrt::TerminalApp::implementation::ContentManager> _contentManager;
@@ -1946,6 +1951,61 @@ namespace TerminalAppLocalTests
         VERIFY_SUCCEEDED(result);
     }
 
+    void TabTests::VerticalRailVisibilityRestoresWidth()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            VERIFY_IS_TRUE(page->_isVerticalLayout);
+
+            page->_verticalRailWidth = 333.0;
+            page->_SetVerticalRailVisibility(false);
+
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_tabView.Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_tabRow.Visibility());
+            VERIFY_ARE_EQUAL(0.0, page->VerticalRailColumn().Width().Value);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_verticalRailSplitter.Visibility());
+            VERIFY_IS_FALSE(page->_verticalRailSplitter.IsHitTestVisible());
+
+            page->_SetVerticalRailVisibility(true);
+
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_tabView.Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabRow.Visibility());
+            VERIFY_ARE_EQUAL(333.0, page->VerticalRailColumn().Width().Value);
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->_verticalRailSplitter.Visibility());
+            VERIFY_IS_TRUE(page->_verticalRailSplitter.IsHitTestVisible());
+        });
+    }
+
+    void TabTests::VerticalLayoutMismatchInfoBarRecomputes()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            const auto infoBar = page->FindName(L"TabLayoutRestartInfoBar").as<winrt::Microsoft::UI::Xaml::Controls::InfoBar>();
+            VERIFY_IS_FALSE(infoBar.IsOpen());
+
+            page->_settings.GlobalSettings().TabLayout(TabLayout::Horizontal);
+            page->SetSettings(page->_settings, false);
+            VERIFY_IS_TRUE(infoBar.IsOpen());
+
+            page->_settings.GlobalSettings().TabLayout(TabLayout::Vertical);
+            page->SetSettings(page->_settings, false);
+            VERIFY_IS_FALSE(infoBar.IsOpen());
+        });
+    }
+
+    void TabTests::VerticalTabStripEnablesCloseButton()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+            winrt::MUX::Controls::TabViewItem tab;
+            tab.IsClosable(false);
+            strip.TabItems().Append(tab);
+            VERIFY_IS_TRUE(tab.IsClosable());
+        });
+    }
+
     void TabTests::TryDuplicateBadTab()
     {
         // * Create a tab with a profile with GUID 1
@@ -2163,7 +2223,8 @@ namespace TerminalAppLocalTests
     winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> TabTests::_commonSetup(
         winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection connection,
         Grid layoutHost,
-        std::optional<int32_t> historySize)
+        std::optional<int32_t> historySize,
+        const bool verticalLayout)
     {
         static constexpr std::wstring_view settingsJson0{ LR"(
         {
@@ -2272,6 +2333,11 @@ namespace TerminalAppLocalTests
 
         CascadiaSettings settings0{ settingsJson0, {} };
         VERIFY_IS_NOT_NULL(settings0);
+
+        if (verticalLayout)
+        {
+            settings0.GlobalSettings().TabLayout(TabLayout::Vertical);
+        }
 
         if (historySize)
         {

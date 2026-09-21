@@ -177,6 +177,9 @@
   <data name="TabCloseAfter" xml:space="preserve">
     <value>Close tabs to the right</value>
   </data>
+  <data name="TabCloseBelow" xml:space="preserve">
+    <value>Close tabs below</value>
+  </data>
   <data name="TabCloseOther" xml:space="preserve">
     <value>Close other tabs</value>
   </data>
@@ -858,9 +861,6 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="TabStrip_ControlType" xml:space="preserve">
     <value>tab strip</value>
   </data>
-  <data name="TabStripCloseButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Close tab</value>
-  </data>
   <data name="CloseOnExitInfoBar.Message" xml:space="preserve">
     <value>Termination behavior can be configured in advanced profile settings.</value>
   </data>
@@ -923,6 +923,9 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="TabCloseAfterToolTip" xml:space="preserve">
     <value>Close all tabs to the right of this tab</value>
+  </data>
+  <data name="TabCloseBelowToolTip" xml:space="preserve">
+    <value>Close all tabs below this tab</value>
   </data>
   <data name="TabCloseOtherToolTip" xml:space="preserve">
     <value>Close all tabs except this tab</value>

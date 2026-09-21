@@ -209,6 +209,7 @@ namespace winrt::TerminalApp::implementation
 
         void UpdateTabViewIndex(const uint32_t idx, const uint32_t numTabs);
         void SetActionMap(const Microsoft::Terminal::Settings::Model::IActionMapView& actionMap);
+        void SetVerticalTabLayout(bool vertical);
 
         void ThemeColor(const winrt::Microsoft::Terminal::Settings::Model::ThemeColor& focused,
                         const winrt::Microsoft::Terminal::Settings::Model::ThemeColor& unfocused,

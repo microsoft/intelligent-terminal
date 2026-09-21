@@ -60,6 +60,7 @@ namespace TerminalApp
 
         Boolean CanReorderTabs;
         Boolean CanDragTabs;
+        Boolean TabsVisible;
 
         // Top/bottom (or leading/trailing in horizontal) slots. Populated by
         // TabRowControl.xaml with the elevation shield / workspaces button

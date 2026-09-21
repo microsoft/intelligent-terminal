@@ -336,7 +336,9 @@ namespace winrt::TerminalApp::implementation
         // hit strip straddles the column boundary.
         Windows::UI::Xaml::Controls::Border _verticalRailSplitter{ nullptr };
         Windows::UI::Core::CoreCursor _railSplitterPriorCursor{ nullptr };
-        bool _railSplitterDragging{ false };
+        bool _railSplitterCursorSaved{ false };
+        Windows::UI::Xaml::Input::Pointer _railSplitterPointer{ nullptr };
+        double _verticalRailWidth{ 220.0 };
         double _railSplitterStartWidth{ 0.0 };
         Windows::Foundation::Point _railSplitterStartPointer{};
         Windows::UI::Xaml::Controls::Grid _tabContent{ nullptr };
@@ -1057,6 +1059,8 @@ namespace winrt::TerminalApp::implementation
         void _OnFirstLayout(const IInspectable& sender, const IInspectable& eventArgs);
         void _ApplyVerticalLayoutReshape();
         void _InstallVerticalRailSplitter();
+        void _SetVerticalRailVisibility(bool visible);
+        void _CancelRailSplitterDrag();
         void _SetRailSplitterCursor();
         void _RestoreRailSplitterCursor();
         void _OnRailSplitterPointerEntered(const IInspectable& sender, const Windows::UI::Xaml::Input::PointerRoutedEventArgs& e);

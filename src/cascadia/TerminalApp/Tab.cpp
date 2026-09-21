@@ -1899,6 +1899,15 @@ namespace winrt::TerminalApp::implementation
         return closeSubMenu;
     }
 
+    void Tab::SetVerticalTabLayout(const bool vertical)
+    {
+        const auto label = vertical ? RS_(L"TabCloseBelow") : RS_(L"TabCloseAfter");
+        const auto tooltip = vertical ? RS_(L"TabCloseBelowToolTip") : RS_(L"TabCloseAfterToolTip");
+        _closeTabsAfterMenuItem.Text(label);
+        WUX::Controls::ToolTipService::SetToolTip(_closeTabsAfterMenuItem, box_value(tooltip));
+        Automation::AutomationProperties::SetHelpText(_closeTabsAfterMenuItem, tooltip);
+    }
+
     // Method Description:
     // - Creates a context menu attached to the tab.
     // Currently contains elements allowing to select or

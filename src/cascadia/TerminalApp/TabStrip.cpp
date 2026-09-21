@@ -27,6 +27,26 @@ namespace winrt
 
 namespace winrt::TerminalApp::implementation
 {
+    static WUX::Controls::Button _findCloseButton(WUX::DependencyObject const& root)
+    {
+        const auto childCount = WUX::Media::VisualTreeHelper::GetChildrenCount(root);
+        for (int32_t index = 0; index < childCount; ++index)
+        {
+            const auto child = WUX::Media::VisualTreeHelper::GetChild(root, index);
+            if (const auto button = child.try_as<WUX::Controls::Button>();
+                button && button.Name() == L"CloseButton")
+            {
+                return button;
+            }
+
+            if (const auto button = _findCloseButton(child))
+            {
+                return button;
+            }
+        }
+        return nullptr;
+    }
+
     TabStrip::TabStrip()
     {
         _tabItems = single_threaded_observable_vector<IInspectable>();
@@ -84,6 +104,14 @@ namespace winrt::TerminalApp::implementation
     {
         ItemsList().CanDragItems(value);
     }
+    bool TabStrip::TabsVisible()
+    {
+        return ItemsList().Visibility() == Visibility::Visible;
+    }
+    void TabStrip::TabsVisible(bool value)
+    {
+        ItemsList().Visibility(value ? Visibility::Visible : Visibility::Collapsed);
+    }
 
     UIElement TabStrip::LeadingContent()
     {
@@ -116,10 +144,6 @@ namespace winrt::TerminalApp::implementation
             }
             break;
         case CollectionChange::ItemRemoved:
-            // We can't reach the removed item from `sender` here — the removal
-            // side is bounded by _closeRequestedTokens's key set; if the item
-            // is gone from the tree, its subscription lapses naturally. No
-            // action required for the prototype.
             break;
         case CollectionChange::ItemChanged:
             if (const auto item = sender.GetAt(args.Index()).try_as<MUX::Controls::TabViewItem>())
@@ -128,7 +152,7 @@ namespace winrt::TerminalApp::implementation
             }
             break;
         case CollectionChange::Reset:
-            _closeRequestedTokens.clear();
+            _clearCloseRequestedSubscriptions();
             for (uint32_t i = 0; i < sender.Size(); ++i)
             {
                 if (const auto item = sender.GetAt(i).try_as<MUX::Controls::TabViewItem>())
@@ -139,36 +163,117 @@ namespace winrt::TerminalApp::implementation
             break;
         }
 
+        _removeStaleCloseRequestedSubscriptions(sender);
         TabItemsChanged.raise(*this, args);
     }
 
     void TabStrip::_hookCloseRequested(MUX::Controls::TabViewItem const& item)
     {
-        // The rail renders its own X in the DataTemplate wrapper (see
-        // TabStrip.xaml, OnCustomCloseClick). MUX's built-in CloseButton on
-        // TabViewItem only shows when the item lives inside a TabView (via
-        // TabView.CloseButtonOverlayMode), so we suppress it here — this
-        // prevents both a stale hidden button and any double-X if MUX ever
-        // changes its default.
-        item.IsClosable(false);
-        _closeRequestedTokens[winrt::get_abi(item)] = {};
-    }
-
-    void TabStrip::_unhookCloseRequested(MUX::Controls::TabViewItem const& item)
-    {
-        _closeRequestedTokens.erase(winrt::get_abi(item));
-    }
-
-    void TabStrip::OnCustomCloseClick(IInspectable const& sender, WUX::RoutedEventArgs const&)
-    {
-        if (const auto button = sender.try_as<WUX::Controls::Button>())
+        const auto key = winrt::get_abi(item);
+        if (_closeRequestedSubscriptions.contains(key))
         {
-            if (const auto tab = button.DataContext().try_as<MUX::Controls::TabViewItem>())
+            return;
+        }
+
+        item.IsClosable(true);
+
+        const auto weakThis = get_weak();
+        const auto weakItem = winrt::make_weak(item);
+        const auto loadedToken = item.Loaded([weakThis, weakItem](auto&&, auto&&) {
+            const auto self = weakThis.get();
+            const auto tab = weakItem.get();
+            if (self && tab)
             {
-                auto args = winrt::make_self<TabStripCloseRequestedEventArgs>(tab);
-                TabCloseRequested.raise(*this, *args);
+                self->_refreshCloseButton(tab);
+            }
+        });
+        _closeRequestedSubscriptions.emplace(key, CloseRequestedSubscription{ weakItem, loadedToken });
+        _refreshCloseButton(item);
+    }
+
+    void TabStrip::_refreshCloseButton(MUX::Controls::TabViewItem const& item)
+    {
+        const auto key = winrt::get_abi(item);
+        if (const auto found = _closeRequestedSubscriptions.find(key);
+            found != _closeRequestedSubscriptions.end())
+        {
+            item.ApplyTemplate();
+            if (const auto button = _findCloseButton(item))
+            {
+                if (const auto currentButton = found->second.CloseButton.get();
+                    currentButton && currentButton == button)
+                {
+                    return;
+                }
+
+                if (const auto currentButton = found->second.CloseButton.get())
+                {
+                    currentButton.Click(found->second.ClickToken);
+                }
+
+                const auto weakThis = get_weak();
+                const auto weakItem = winrt::make_weak(item);
+                found->second.ClickToken = button.Click([weakThis, weakItem](auto&&, auto&&) {
+                    const auto self = weakThis.get();
+                    const auto tab = weakItem.get();
+                    if (self && tab)
+                    {
+                        auto args = winrt::make_self<TabStripCloseRequestedEventArgs>(tab);
+                        self->TabCloseRequested.raise(*self, *args);
+                    }
+                });
+                found->second.CloseButton = winrt::make_weak(button);
             }
         }
+    }
+
+    void TabStrip::_removeStaleCloseRequestedSubscriptions(IObservableVector<IInspectable> const& items)
+    {
+        for (auto it = _closeRequestedSubscriptions.begin(); it != _closeRequestedSubscriptions.end();)
+        {
+            bool stillPresent = false;
+            for (uint32_t index = 0; index < items.Size(); ++index)
+            {
+                if (winrt::get_abi(items.GetAt(index)) == it->first)
+                {
+                    stillPresent = true;
+                    break;
+                }
+            }
+
+            if (stillPresent)
+            {
+                ++it;
+            }
+            else
+            {
+                if (const auto item = it->second.Item.get())
+                {
+                    item.Loaded(it->second.LoadedToken);
+                }
+                if (const auto button = it->second.CloseButton.get())
+                {
+                    button.Click(it->second.ClickToken);
+                }
+                it = _closeRequestedSubscriptions.erase(it);
+            }
+        }
+    }
+
+    void TabStrip::_clearCloseRequestedSubscriptions()
+    {
+        for (const auto& [_, subscription] : _closeRequestedSubscriptions)
+        {
+            if (const auto item = subscription.Item.get())
+            {
+                item.Loaded(subscription.LoadedToken);
+            }
+            if (const auto button = subscription.CloseButton.get())
+            {
+                button.Click(subscription.ClickToken);
+            }
+        }
+        _closeRequestedSubscriptions.clear();
     }
 
     WUX::Automation::Peers::AutomationPeer TabStrip::OnCreateAutomationPeer()

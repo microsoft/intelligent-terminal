@@ -327,12 +327,9 @@ namespace winrt::TerminalApp::implementation
         if (!firstLoad)
         {
             const bool wantVertical = settings.GlobalSettings().TabLayout() == TabLayout::Vertical;
-            if (wantVertical != _isVerticalLayout)
+            if (const auto infoBar = FindName(L"TabLayoutRestartInfoBar").try_as<MUX::Controls::InfoBar>())
             {
-                if (const auto infoBar = FindName(L"TabLayoutRestartInfoBar").try_as<MUX::Controls::InfoBar>())
-                {
-                    infoBar.IsOpen(true);
-                }
+                infoBar.IsOpen(wantVertical != _isVerticalLayout);
             }
         }
         _settings = settings;
@@ -5223,8 +5220,8 @@ namespace winrt::TerminalApp::implementation
         // Spec A §5.2: rail width comes from settings (default 220, clamped
         // 180..480). Persisted on drag-end via _OnRailSplitterPointerReleased.
         const double persistedWidth = static_cast<double>(_settings.GlobalSettings().TabLayoutVerticalWidth());
-        const double railWidth = std::clamp(persistedWidth, railMin, railMax);
-        VerticalRailColumn().Width(GridLengthHelper::FromValueAndType(railWidth, GridUnitType::Pixel));
+        _verticalRailWidth = std::clamp(persistedWidth, railMin, railMax);
+        VerticalRailColumn().Width(GridLengthHelper::FromValueAndType(_verticalRailWidth, GridUnitType::Pixel));
 
         Grid::SetRow(_tabRow, 0);
         Grid::SetRowSpan(_tabRow, 4);
@@ -5281,6 +5278,54 @@ namespace winrt::TerminalApp::implementation
         Root().Children().Append(_verticalRailSplitter);
     }
 
+    void TerminalPage::_SetVerticalRailVisibility(const bool visible)
+    {
+        if (!_isVerticalLayout)
+        {
+            return;
+        }
+
+        if (_tabView)
+        {
+            _tabView.Visibility(Visibility::Collapsed);
+        }
+        if (_tabRow)
+        {
+            _tabRow.Height(NAN);
+            _tabRow.Visibility(visible ? Visibility::Visible : Visibility::Collapsed);
+        }
+
+        if (visible)
+        {
+            VerticalRailColumn().Width(GridLengthHelper::FromValueAndType(_verticalRailWidth, GridUnitType::Pixel));
+            if (_verticalRailSplitter)
+            {
+                _verticalRailSplitter.IsHitTestVisible(true);
+                _verticalRailSplitter.Visibility(Visibility::Visible);
+            }
+        }
+        else
+        {
+            _CancelRailSplitterDrag();
+            if (_verticalRailSplitter)
+            {
+                _verticalRailSplitter.IsHitTestVisible(false);
+                _verticalRailSplitter.Visibility(Visibility::Collapsed);
+            }
+            VerticalRailColumn().Width(GridLengthHelper::FromValueAndType(0, GridUnitType::Pixel));
+        }
+    }
+
+    void TerminalPage::_CancelRailSplitterDrag()
+    {
+        const auto pointer = std::exchange(_railSplitterPointer, nullptr);
+        if (pointer && _verticalRailSplitter)
+        {
+            _verticalRailSplitter.ReleasePointerCapture(pointer);
+        }
+        _RestoreRailSplitterCursor();
+    }
+
     void TerminalPage::_SetRailSplitterCursor()
     {
         const auto cw = CoreWindow::GetForCurrentThread();
@@ -5288,16 +5333,17 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
-        if (!_railSplitterPriorCursor)
+        if (!_railSplitterCursorSaved)
         {
             _railSplitterPriorCursor = cw.PointerCursor();
+            _railSplitterCursorSaved = true;
         }
         cw.PointerCursor(CoreCursor{ CoreCursorType::SizeWestEast, 0 });
     }
 
     void TerminalPage::_RestoreRailSplitterCursor()
     {
-        if (!_railSplitterPriorCursor)
+        if (!_railSplitterCursorSaved)
         {
             return;
         }
@@ -5306,6 +5352,7 @@ namespace winrt::TerminalApp::implementation
             cw.PointerCursor(_railSplitterPriorCursor);
         }
         _railSplitterPriorCursor = nullptr;
+        _railSplitterCursorSaved = false;
     }
 
     void TerminalPage::_OnRailSplitterPointerEntered(const IInspectable&, const WUX::Input::PointerRoutedEventArgs&)
@@ -5315,7 +5362,7 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_OnRailSplitterPointerExited(const IInspectable&, const WUX::Input::PointerRoutedEventArgs&)
     {
-        if (!_railSplitterDragging)
+        if (!_railSplitterPointer)
         {
             _RestoreRailSplitterCursor();
         }
@@ -5323,7 +5370,10 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_OnRailSplitterPointerPressed(const IInspectable&, const WUX::Input::PointerRoutedEventArgs& e)
     {
-        if (!_verticalRailSplitter)
+        if (!_verticalRailSplitter ||
+            _verticalRailSplitter.Visibility() != Visibility::Visible ||
+            !_verticalRailSplitter.IsHitTestVisible() ||
+            _railSplitterPointer)
         {
             return;
         }
@@ -5332,12 +5382,13 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
-        _railSplitterDragging = _verticalRailSplitter.CapturePointer(e.Pointer());
-        if (!_railSplitterDragging)
+        const auto pointer = e.Pointer();
+        if (!_verticalRailSplitter.CapturePointer(pointer))
         {
             return;
         }
-        _railSplitterStartWidth = VerticalRailColumn().ActualWidth();
+        _railSplitterPointer = pointer;
+        _railSplitterStartWidth = _verticalRailWidth;
         _railSplitterStartPointer = point.Position();
         _SetRailSplitterCursor();
         e.Handled(true);
@@ -5345,39 +5396,63 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_OnRailSplitterPointerMoved(const IInspectable&, const WUX::Input::PointerRoutedEventArgs& e)
     {
-        if (!_railSplitterDragging)
+        const auto pointer = e.Pointer();
+        if (!_railSplitterPointer ||
+            !pointer ||
+            pointer.PointerId() != _railSplitterPointer.PointerId() ||
+            !_verticalRailSplitter ||
+            _verticalRailSplitter.Visibility() != Visibility::Visible)
         {
             return;
         }
         const auto point = e.GetCurrentPoint(Root()).Position();
         const auto delta = static_cast<double>(point.X - _railSplitterStartPointer.X);
         const auto requested = std::clamp(_railSplitterStartWidth + delta, railMin, railMax);
-        VerticalRailColumn().Width(GridLengthHelper::FromValueAndType(requested, GridUnitType::Pixel));
+        if (std::isfinite(requested))
+        {
+            _verticalRailWidth = requested;
+            VerticalRailColumn().Width(GridLengthHelper::FromValueAndType(_verticalRailWidth, GridUnitType::Pixel));
+        }
         e.Handled(true);
     }
 
     void TerminalPage::_OnRailSplitterPointerReleased(const IInspectable&, const WUX::Input::PointerRoutedEventArgs& e)
     {
-        if (_railSplitterDragging && _verticalRailSplitter)
+        const auto pointer = e.Pointer();
+        if (!_railSplitterPointer ||
+            !pointer ||
+            pointer.PointerId() != _railSplitterPointer.PointerId() ||
+            !_verticalRailSplitter ||
+            _verticalRailSplitter.Visibility() != Visibility::Visible ||
+            !std::isfinite(_verticalRailWidth))
         {
-            _verticalRailSplitter.ReleasePointerCapture(e.Pointer());
+            return;
         }
-        _railSplitterDragging = false;
+
+        const auto finalWidth = std::clamp(_verticalRailWidth, railMin, railMax);
+        const auto capturedPointer = std::exchange(_railSplitterPointer, nullptr);
+        _verticalRailSplitter.ReleasePointerCapture(capturedPointer);
         _RestoreRailSplitterCursor();
 
-        // Persist. Read back the ActualWidth to catch any layout snapping.
-        const auto finalWidth = static_cast<int32_t>(std::lround(VerticalRailColumn().ActualWidth()));
-        if (finalWidth != _settings.GlobalSettings().TabLayoutVerticalWidth())
+        const auto persistedWidth = static_cast<int32_t>(std::lround(finalWidth));
+        if (persistedWidth != _settings.GlobalSettings().TabLayoutVerticalWidth())
         {
-            _settings.GlobalSettings().TabLayoutVerticalWidth(finalWidth);
+            _settings.GlobalSettings().TabLayoutVerticalWidth(persistedWidth);
             _settings.WriteSettingsToDisk();
         }
         e.Handled(true);
     }
 
-    void TerminalPage::_OnRailSplitterPointerCaptureLost(const IInspectable&, const WUX::Input::PointerRoutedEventArgs&)
+    void TerminalPage::_OnRailSplitterPointerCaptureLost(const IInspectable&, const WUX::Input::PointerRoutedEventArgs& e)
     {
-        _railSplitterDragging = false;
+        const auto pointer = e.Pointer();
+        if (_railSplitterPointer &&
+            pointer &&
+            pointer.PointerId() != _railSplitterPointer.PointerId())
+        {
+            return;
+        }
+        _railSplitterPointer = nullptr;
         _RestoreRailSplitterCursor();
     }
 
@@ -11721,6 +11796,10 @@ namespace winrt::TerminalApp::implementation
         AlwaysOnTopChanged.raise(*this, nullptr);
 
         _showTabsFullscreen = _settings.GlobalSettings().ShowTabsFullscreen();
+        if (_isVerticalLayout)
+        {
+            _UpdateTabView();
+        }
 
         // Settings AllowDependentAnimations will affect whether animations are
         // enabled application-wide, so we don't need to check it each time we
@@ -12257,7 +12336,17 @@ namespace winrt::TerminalApp::implementation
         }
         else
         {
-            _tabView.SelectedItem(_settingsTab.TabViewItem());
+            if (_GetFocusedTab() == _settingsTab)
+            {
+                if (!_commandPaletteIs(Visibility::Visible))
+                {
+                    _FocusCurrentTab(false);
+                }
+            }
+            else
+            {
+                FocusTab(_settingsTab);
+            }
         }
     }
 
