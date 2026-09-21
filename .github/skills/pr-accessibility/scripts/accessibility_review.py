@@ -22,7 +22,7 @@ UI_ROOTS = (
     "src/cascadia/UIMarkdown/",
 )
 UI_SUFFIXES = {".xaml", ".cpp", ".h", ".idl", ".resw", ".cs"}
-PATCH_SUFFIXES = {".xaml", ".cpp", ".h", ".idl", ".cs"}
+PATCH_SUFFIXES = {".xaml", ".cpp", ".h", ".cs"}
 INTERACTIVE_TAGS = {
     "AppBarButton",
     "AutoSuggestBox",
