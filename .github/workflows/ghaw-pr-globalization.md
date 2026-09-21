@@ -66,6 +66,7 @@ jobs:
         id: prepare
         shell: pwsh
         env:
+          GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
           BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}
           PR_NUMBER: ${{ github.event.inputs.pr_number }}
