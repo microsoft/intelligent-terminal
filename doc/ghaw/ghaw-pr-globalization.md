@@ -75,10 +75,14 @@ Run:
 
 ```powershell
 Invoke-Pester .github/scripts/ghaw-pr-globalization/GlobalizationWorkflow.Tests.ps1
-gh aw compile ghaw-pr-globalization --actionlint
-gh aw compile ghaw-pr-globalization-repair
+gh aw compile .\.github\workflows\ghaw-pr-globalization.md
+gh aw compile .\.github\workflows\ghaw-pr-globalization-repair.md
 gh aw validate ghaw-pr-globalization ghaw-pr-globalization-repair
 ```
+
+When an actionlint runtime is available, append `--actionlint` to the compile
+commands for the additional GitHub Actions lint pass. The compile and strict
+validation commands above do not require actionlint.
 
 ### Historical PR agent evaluation
 

@@ -105,8 +105,18 @@ post-steps:
       REPOSITORY: ${{ github.event.inputs.repo }}
     run: |
       $ErrorActionPreference = 'Stop'
-      $current = (& gh api "/repos/$env:REPOSITORY/pulls/$env:PR_NUMBER" --jq '.head.sha' | Out-String).Trim()
-      if ($LASTEXITCODE -ne 0 -or $current -cne $env:EXPECTED_HEAD_SHA.ToLowerInvariant()) {
+      if (($env:EXPECTED_HEAD_SHA ?? '') -notmatch '^[0-9a-f]{40}$') {
+        throw 'Freshness check received an invalid expected head SHA.'
+      }
+      $currentOutput = & gh api "/repos/$env:REPOSITORY/pulls/$env:PR_NUMBER" --jq '.head.sha'
+      if ($LASTEXITCODE -ne 0) {
+        throw "Failed to read the current head SHA for PR #$env:PR_NUMBER."
+      }
+      $current = ($currentOutput | Out-String).Trim()
+      if (($current ?? '') -notmatch '^[0-9a-fA-F]{40}$') {
+        throw "Freshness check returned an invalid current head SHA: '$current'."
+      }
+      if ($current.ToLowerInvariant() -cne $env:EXPECTED_HEAD_SHA.ToLowerInvariant()) {
         throw "Stale globalization repair rejected. Expected $env:EXPECTED_HEAD_SHA, found '$current'."
       }
   - name: Validate final patch and output shape
