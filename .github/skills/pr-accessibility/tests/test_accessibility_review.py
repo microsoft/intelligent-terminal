@@ -341,6 +341,10 @@ class ValidationTests(unittest.TestCase):
                 self.report([], ["README.md"]),
             )
 
+    def test_idl_is_reviewable_but_not_patchable(self):
+        self.assertIn(".idl", MODULE.UI_SUFFIXES)
+        self.assertNotIn(".idl", MODULE.PATCH_SUFFIXES)
+
     def test_literal_accessible_string_patch_is_rejected(self):
         path = self.root / "src/cascadia/TerminalApp/Test.xaml"
         path.write_text('<Button AutomationProperties.Name="Open" />\n', encoding="utf-8")
