@@ -166,8 +166,8 @@ post-steps:
         fail('Repair requires exactly one branch push or noop.');
       }
       const split = buffer => buffer.toString('utf8').split('\0').filter(Boolean);
-      const tracked = split(execFileSync('git', ['diff', '--name-only', '-z', '--no-ext-diff', '--no-textconv', process.env.HEAD_SHA], { timeout: 15000 }));
-      const untracked = split(execFileSync('git', ['ls-files', '--others', '--exclude-standard', '-z'], { timeout: 15000 }));
+      const tracked = split(execFileSync('git', ['--no-replace-objects', 'diff', '--name-only', '-z', '--no-ext-diff', '--no-textconv', process.env.HEAD_SHA], { timeout: 15000 }));
+      const untracked = split(execFileSync('git', ['--no-replace-objects', 'ls-files', '--others', '--exclude-standard', '-z'], { timeout: 15000 }));
       const changedPaths = [...new Set([...tracked, ...untracked])].sort();
       const declaredPaths = [...new Set((report.patchFiles || []).map(item => item.path))].sort();
       const changed = changedPaths.length > 0;
@@ -176,7 +176,7 @@ post-steps:
       if (!changed && types[0] !== 'noop') fail('A branch push requires a final patch.');
       if (changed !== fixed) fail('Final patch and fixed-finding evidence must agree.');
       if (JSON.stringify(changedPaths) !== JSON.stringify(declaredPaths)) fail('Final patch paths do not match patchFiles evidence.');
-      execFileSync('git', ['diff', '--check', '--no-ext-diff', process.env.HEAD_SHA], { timeout: 15000, stdio: 'inherit' });
+      execFileSync('git', ['--no-replace-objects', 'diff', '--check', '--no-ext-diff', '--no-textconv', process.env.HEAD_SHA], { timeout: 15000, stdio: 'inherit' });
       fs.writeFileSync('/tmp/gh-aw/agent/trusted-validation.json', JSON.stringify({
         version: 1,
         checks: [
@@ -195,7 +195,6 @@ post-steps:
     with:
       name: globalization-repair-evidence
       path: |
-        /tmp/gh-aw/agent/globalization-context.json
         /tmp/gh-aw/agent/globalization-context-post.json
         /tmp/gh-aw/agent/globalization-findings.json
         /tmp/gh-aw/agent/trusted-validation.json

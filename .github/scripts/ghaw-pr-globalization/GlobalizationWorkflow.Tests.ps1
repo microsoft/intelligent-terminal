@@ -258,6 +258,9 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
         $repair | Should -Match '(?m)^steps:'
         $repair | Should -Not -Match '(?m)^\s{2}prepare:'
         $repair | Should -Match 'cancel-in-progress: false'
+        $repair | Should -Match "'--no-replace-objects', 'diff'"
+        $repair | Should -Not -Match '(?m)^\s{8}/tmp/gh-aw/agent/globalization-context\.json$'
+        (Get-Content -LiteralPath $script:classifier -Raw) | Should -Match 'git --no-replace-objects diff'
         (Get-Content -LiteralPath $script:localizationWorkflow -Raw) | Should -Match 'cancel-in-progress: false'
         $repair | Should -Match 'HIGH finding with strong'
         $repair | Should -Match '\[globalization-review\]'

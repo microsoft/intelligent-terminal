@@ -14,7 +14,7 @@ function Test-ExactCommit {
         throw "Revision must be an exact 40-character hexadecimal SHA: '$Revision'."
     }
 
-    & git cat-file -e "$Revision^{commit}" 2>$null
+    & git --no-replace-objects cat-file -e "$Revision^{commit}" 2>$null
     if ($LASTEXITCODE -ne 0) {
         throw "Revision is not an available commit: '$Revision'."
     }
@@ -92,7 +92,7 @@ function Get-Checks {
 Test-ExactCommit -Revision $BaseSha
 Test-ExactCommit -Revision $HeadSha
 
-$rows = @(& git diff --no-ext-diff --name-status --find-renames $BaseSha $HeadSha --)
+$rows = @(& git --no-replace-objects diff --no-ext-diff --no-textconv --name-status --find-renames $BaseSha $HeadSha --)
 if ($LASTEXITCODE -ne 0) {
     throw 'git diff failed while enumerating the immutable change set.'
 }
