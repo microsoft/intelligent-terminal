@@ -53,7 +53,8 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
                 [string]$ExpectedHead = ('b' * 40),
                 [ValidateSet('guide', 'repair')][string]$Mode = 'guide',
                 [switch]$Trusted,
-                [switch]$NoHunks
+                [switch]$NoHunks,
+                [string]$ChangedPath = 'src/cascadia/TerminalApp/Sample.xaml'
             )
             $directory = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
             [System.IO.Directory]::CreateDirectory($directory) | Out-Null
@@ -69,7 +70,7 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
                 baseSha = 'a' * 40
                 headSha = $ExpectedHead
                 files = @([ordered]@{
-                    path = 'src/cascadia/TerminalApp/Sample.xaml'
+                    path = $ChangedPath
                     status = 'M'
                     hunks = @($hunks)
                 })
@@ -143,6 +144,18 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
         (Invoke-Validator -Report $report -Mode repair -Trusted) | Should -Be 0
         (Invoke-Validator -Report $report -Mode repair) | Should -Not -Be 0
         (Invoke-Validator -Report $report -Mode guide -Trusted) | Should -Not -Be 0
+
+        $testFinding = New-Finding
+        $testFinding.file = 'src/cascadia/TerminalApp/LocalTests/Sample.xaml'
+        $testFinding.disposition = 'fixed'
+        $testReport = New-Report -Findings @($testFinding)
+        $testReport.patchFiles = @(
+            [ordered]@{ path = $testFinding.file; kind = 'fix'; findingIds = @($testFinding.stableId) }
+        )
+        $testReport.executedValidation = @(
+            [ordered]@{ command = 'focused-test'; exitCode = 0; result = 'passed' }
+        )
+        (Invoke-Validator -Report $testReport -Mode repair -Trusted -ChangedPath $testFinding.file) | Should -Not -Be 0
     }
 
     It 'rejects fixed findings without validation or with paths outside exact finding scope' {
@@ -273,6 +286,7 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
         $worker | Should -Match 'edit: false'
         $worker | Should -Not -Match "'pwsh:\*'"
         $worker | Should -Not -Match "'git show:\*'"
+        $worker | Should -Not -Match '(?m)^\s{2}bash:'
         $worker | Should -Match '(?m)^steps:'
         $worker | Should -Not -Match '(?m)^\s{2}prepare:'
         $worker | Should -Match 'Validate findings and publication shape'
@@ -292,6 +306,8 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
         $repair | Should -Match 'Only added or modified regular text files'
         $repair | Should -Match '40-line automatic repair limit'
         $repair | Should -Match 'within 20 lines of a linked fixed finding'
+        $repair | Should -Match 'excluded-files:'
+        $repair | Should -Match 'LocalTests'
         $repair | Should -Match 'Validate repair output selection'
         $repair | Should -Not -Match 'add-comment:'
         $repair | Should -Match '(?m)^steps:'

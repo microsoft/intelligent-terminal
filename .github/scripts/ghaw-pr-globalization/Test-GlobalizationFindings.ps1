@@ -176,9 +176,11 @@ if ($fixedFindings.Count -gt 0) {
     $declaredPatchPaths = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
     foreach ($patchFile in $patchFiles) {
         $path = ([string]$patchFile.path).Replace('\', '/')
+        $isTestPath = $path -match '(^|/)(ut_[^/]*|ft_[^/]*|LocalTests[^/]*|WindowsTerminal_UIATests|tests?)(/|$)' -or
+            $path -match '(^|/)[^/]+_tests?\.rs$'
         if (-not (Test-SafeRepositoryPath -Path $path) -or $patchFile.kind -ne 'fix' -or
             $path -notmatch '\.(cpp|cxx|cc|h|hpp|xaml|rs)$' -or
-            -not $changedPaths.Contains($path) -or -not $declaredPatchPaths.Add($path)) {
+            $isTestPath -or -not $changedPaths.Contains($path) -or -not $declaredPatchPaths.Add($path)) {
             throw 'Every patchFiles entry must be a unique immutable-scope C++/XAML/Rust product path with kind fix.'
         }
         $linkedIds = @($patchFile.findingIds)

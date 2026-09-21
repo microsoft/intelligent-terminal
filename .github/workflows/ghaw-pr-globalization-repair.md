@@ -330,6 +330,17 @@ safe-outputs:
       - 'src/types/**/*.h'
       - 'src/types/**/*.hpp'
       - 'tools/wta/**/*.rs'
+    excluded-files:
+      - 'src/**/ut_*/**'
+      - 'src/**/ft_*/**'
+      - 'src/**/LocalTests*/**'
+      - 'src/**/test/**'
+      - 'src/**/tests/**'
+      - 'src/**/WindowsTerminal_UIATests/**'
+      - 'tools/wta/**/test/**'
+      - 'tools/wta/**/tests/**'
+      - 'tools/wta/**/*_test.rs'
+      - 'tools/wta/**/*_tests.rs'
     protected-files: blocked
     if-no-changes: error
     fallback-as-pull-request: false
