@@ -193,9 +193,17 @@ same machine. Native pane UUID ownership is distinct from v3 connection-route
 ownership, including stale-event protection after an SSH resume.
 
 These rows share the same title refresh, source notifications, and native
-focus/resume behavior as ordinary SSH sessions. Closing the native pane ends
-its binding; resuming an ended conversation launches the agent over ordinary
-SSH rather than recreating the tmux layout. Native v2 still travels through
+focus/resume behavior as ordinary SSH sessions. Closing the native attachment
+window or detaching clears its local pane binding, but preserves the last hook
+activity: the remote agent may still be running. A detached live row must not
+start another agent through CLI resume. Attach the existing tmux session again;
+a hook from its new native pane restores the same SSH row's binding. Without an
+attached v2 receiver, activity remains last-known rather than being inferred
+from history or window visibility.
+
+An agent-end hook or confirmed remote pane/session closure still ends the row.
+Resuming an ended conversation launches the agent over ordinary SSH rather
+than recreating the tmux layout. Native v2 still travels through
 C++/COM and remains visible to `wtcli listen`. Backends without a supported SSH
 identity keep the original isolated tmux behavior.
 

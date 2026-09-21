@@ -5,7 +5,7 @@
 // - TmuxSshCommand.h
 //
 // Abstract:
-// - Validates and quotes explicit default-server SSH tmux launches.
+// - Validates and quotes explicit SSH tmux launches and read-only queries.
 
 #pragma once
 
@@ -60,6 +60,13 @@ namespace Microsoft::Terminal::Tmux
         return at == std::wstring_view::npos ||
                (at != 0 && at + 1 < destination.size() && destination[at + 1] != L'-' &&
                 destination.find(L'@', at + 1) == std::wstring_view::npos);
+    }
+
+    inline bool IsValidSshSocketPath(const std::wstring_view socketPath) noexcept
+    {
+        return socketPath.size() > 1 && socketPath.size() <= 512 &&
+               socketPath.front() == L'/' && socketPath.back() != L'/' &&
+               IsValidSshLaunchText(socketPath);
     }
 
     inline bool IsSshSessionId(const std::wstring_view session) noexcept
@@ -180,6 +187,22 @@ namespace Microsoft::Terminal::Tmux
         // server from authentication, permissions and missing-command failures.
         commandline.append(L" LC_ALL=C tmux -L default list-sessions -F ");
         details::AppendSshWindowsArgument(commandline, details::QuoteSshRemoteArgument(L"#{session_id} #{session_name}"));
+        details::CheckSshCommandlineLength(commandline);
+        return commandline;
+    }
+
+    inline std::wstring BuildSshPaneListCommandline(const std::wstring_view destination, const std::wstring_view socketPath, const uint16_t port = 0)
+    {
+        auto commandline = details::SshCommandlinePrefix(destination, port, true);
+        if (!IsValidSshSocketPath(socketPath))
+        {
+            throw std::invalid_argument{ "The tmux socket must be an absolute POSIX path without controls (maximum 512 UTF-16 code units)." };
+        }
+        // -N forbids starting a server; -S pins the exact server being checked.
+        commandline.append(L" LC_ALL=C tmux -N -S ");
+        details::AppendSshWindowsArgument(commandline, details::QuoteSshRemoteArgument(socketPath));
+        commandline.append(L" list-panes -a -F ");
+        details::AppendSshWindowsArgument(commandline, details::QuoteSshRemoteArgument(L"#{pane_id}"));
         details::CheckSshCommandlineLength(commandline);
         return commandline;
     }

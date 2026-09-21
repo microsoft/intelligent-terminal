@@ -5,6 +5,7 @@
 #include "TmuxController.h"
 #include "TmuxAgentHook.h"
 #include "TmuxPaneState.h"
+#include "TmuxSessionQuery.h"
 #include "TmuxSessionMenu.h"
 #include "TerminalPage.h"
 #include "TerminalPaneContent.h"
@@ -117,6 +118,7 @@ namespace winrt::TerminalApp::implementation
     {
         const auto page = _page.get();
         THROW_HR_IF(E_ABORT, !page);
+        _workingDirectory = workingDirectory;
         namespace AgentSource = ::Microsoft::Terminal::AgentSource;
         const auto sshSource = AgentSource::ResolveSessionsSshSource(
             {}, commandline, AgentSource::SessionsSshCommand::Tmux);
@@ -261,7 +263,9 @@ namespace winrt::TerminalApp::implementation
             {
                 try
                 {
-                    page->_NotifyPanesClosing(view.pane);
+                    const auto detached = !_remoteServerEnded &&
+                                          (!_remotePanesAfterExit || _remotePanesAfterExit->contains(id));
+                    page->_NotifyPanesClosing(view.pane, detached);
                 }
                 CATCH_LOG();
             }
@@ -322,6 +326,10 @@ namespace winrt::TerminalApp::implementation
             self._showFailure(message);
             for (const auto& [id, view] : self._panes)
             {
+                if (const auto page = self._page.get())
+                {
+                    page->_NotifyPanesClosing(view.pane, !self._remoteServerEnded);
+                }
                 view.stream->connection->SetState(ConnectionState::Failed);
             }
         });
@@ -422,15 +430,45 @@ namespace winrt::TerminalApp::implementation
         if (_exiting && code == 0)
         {
             _post([](auto& self) {
-                if (const auto page = self._page.get())
-                {
-                    page->CloseWindow();
-                }
+                _finishExit(self.shared_from_this());
             });
         }
         else
         {
             _fail(fmt::format("tmux control process exited (code {})", code));
+        }
+    }
+
+    winrt::fire_and_forget TmuxController::_finishExit(std::shared_ptr<TmuxController> self)
+    {
+        const winrt::apartment_context ui;
+        try
+        {
+            // tmux may emit the same bare %exit for detach and kill-session.
+            // Confirm pane existence on the original server instead of guessing.
+            if (!self->_stopped && !self->_sshTarget.isNull() && !self->_socketPath.empty())
+            {
+                const auto destination = winrt::to_hstring(self->_sshTarget["destination"].asString());
+                const auto socket = winrt::to_hstring(self->_socketPath);
+                const auto port = self->_sshTarget["port"].isNull() ? uint16_t{} : gsl::narrow<uint16_t>(self->_sshTarget["port"].asUInt());
+                const auto command = Protocol::BuildSshPaneListCommandline(destination, socket, port);
+                const auto output = co_await Protocol::QuerySessionListAsync(winrt::hstring{ command }, winrt::hstring{ self->_workingDirectory }, socket);
+                auto panes = Protocol::ParsePaneIds(winrt::to_string(output));
+                co_await ui;
+                if (!self->_stopped)
+                {
+                    self->_remotePanesAfterExit = std::move(panes);
+                }
+            }
+        }
+        CATCH_LOG();
+        co_await ui;
+        if (!self->_stopped)
+        {
+            if (const auto page = self->_page.get())
+            {
+                page->CloseWindow();
+            }
         }
     }
 
@@ -613,6 +651,7 @@ namespace winrt::TerminalApp::implementation
             }
             break;
         case Event::Kind::Exit:
+            _remoteServerEnded = Protocol::ExitEndsRemoteServer(event.text);
             _exiting = true;
             break;
         }
@@ -919,15 +958,57 @@ namespace winrt::TerminalApp::implementation
                 auto windows = self->_parseWindows(response.text);
                 self->_inventoryReceived = true;
                 self->_post([windows = std::move(windows)](auto& owner) mutable {
-                    owner._applyWindows(std::move(windows));
-                    owner._refreshing = false;
-                    if (std::exchange(owner._refreshAgain, false))
+                    if (owner._stopped || owner._failed || owner._exiting)
                     {
-                        owner.Refresh();
+                        return;
                     }
+                    std::unordered_map<Id, std::pair<uint32_t, uint32_t>> leaves;
+                    for (const auto& [id, window] : windows)
+                    {
+                        owner._collectLeaves(window.layout, leaves);
+                    }
+                    const auto removed = std::any_of(owner._panes.begin(), owner._panes.end(), [&](const auto& pane) {
+                        return !leaves.contains(pane.first);
+                    });
+                    if (!removed)
+                    {
+                        owner._completeRefresh(std::move(windows));
+                        return;
+                    }
+                    owner._send("list-panes -a -F '#{pane_id}'", [weak = owner.weak_from_this(), windows = std::move(windows)](const Event& panes) mutable {
+                        if (const auto current = weak.lock())
+                        {
+                            std::optional<std::unordered_set<Id>> remotePanes;
+                            if (panes.success)
+                            {
+                                remotePanes = Protocol::ParsePaneIds(panes.text);
+                            }
+                            else
+                            {
+                                LOG_HR_MSG(E_FAIL, "Unable to confirm removed tmux pane lifetime");
+                            }
+                            current->_post([windows = std::move(windows), remotePanes = std::move(remotePanes)](auto& target) mutable {
+                                target._completeRefresh(std::move(windows), std::move(remotePanes));
+                            });
+                        }
+                    });
                 });
             }
         });
+    }
+
+    void TmuxController::_completeRefresh(std::map<Id, Window> windows, std::optional<std::unordered_set<Id>> remotePanes)
+    {
+        if (_stopped || _failed || _exiting)
+        {
+            return;
+        }
+        _applyWindows(std::move(windows), std::move(remotePanes));
+        _refreshing = false;
+        if (std::exchange(_refreshAgain, false))
+        {
+            Refresh();
+        }
     }
 
     std::map<TmuxController::Id, TmuxController::Window> TmuxController::_parseWindows(std::string_view text) const
@@ -1088,7 +1169,7 @@ namespace winrt::TerminalApp::implementation
         return root;
     }
 
-    void TmuxController::_applyWindows(std::map<Id, Window> windows)
+    void TmuxController::_applyWindows(std::map<Id, Window> windows, std::optional<std::unordered_set<Id>> remotePanes)
     {
         const auto page = _page.get();
         if (!page || _stopped || _failed)
@@ -1101,6 +1182,7 @@ namespace winrt::TerminalApp::implementation
         auto restoreApplyingState = wil::scope_exit([&]() noexcept { _applyingState = wasApplyingState; });
         if (windows.empty())
         {
+            _remotePanesAfterExit = std::move(remotePanes);
             page->CloseWindow();
             return;
         }
@@ -1223,7 +1305,7 @@ namespace winrt::TerminalApp::implementation
                     std::lock_guard lock{ _streamsMutex };
                     _streams.erase(it->first);
                 }
-                page->_NotifyPanesClosing(it->second.pane);
+                page->_NotifyPanesClosing(it->second.pane, !remotePanes || remotePanes->contains(it->first));
                 it->second.pane->Shutdown();
                 it = _panes.erase(it);
             }
@@ -1485,6 +1567,10 @@ namespace winrt::TerminalApp::implementation
 
     void TmuxController::_input(const Id id, const std::string_view bytes)
     {
+        if (_stopped || _failed || _exiting)
+        {
+            return;
+        }
         try
         {
             std::vector<std::pair<std::string, ResponseHandler>> commands;

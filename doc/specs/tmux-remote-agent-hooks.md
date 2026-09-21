@@ -481,9 +481,21 @@ Opaque/non-SSH tmux rows remain in the default Host-source view and can display
 a suffix such as `· copilot · work %1 (tmux)`. They remain isolated from explicit
 WSL/SSH views and do not launch a local CLI resume on Windows. Both kinds of live
 row focus the stored native pane; leave zoom mode before focusing a hidden pane.
-The controller publishes pane-close notifications before removing backend panes
-or stopping, including zoom-hidden panes, so shared SSH bindings cannot remain
-live after their native focus target disappears.
+The controller publishes attachment lifecycle notifications before teardown,
+including zoom-hidden panes. Closing the IT window, a tmux client detach, or a
+transport failure without remote-exit evidence emits `detached`, not `closed`.
+Master clears the local pane binding but keeps the last received activity and
+timestamp. A bare `%exit` can mean either detach or session destruction, and
+window removal can mean unlinking rather than process exit. For known SSH
+backends, a bounded read-only query checks pane IDs on the original tmux socket;
+confirmed absence emits `closed`, while surviving panes remain detached. Query
+errors preserve last-known activity rather than inventing remote termination.
+An agent's session-end hook also ends its row.
+
+Detached live rows are not resumed as duplicate agent processes. Reattach the
+existing tmux session; the next hook binds the same SSH row to the new native
+pane. When no control client is receiving v2 hooks, activity is last-known.
+Remote history refreshes may update titles but do not invent an activity change.
 
 ## 6. A Typical Copilot Interaction
 

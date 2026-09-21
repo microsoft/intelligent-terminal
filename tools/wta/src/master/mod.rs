@@ -6505,6 +6505,7 @@ async fn handle_session_hook(
                 | SessionEvent::SessionStopped { .. }
                 | SessionEvent::ConnectionFailed { .. }
                 | SessionEvent::PaneClosed { .. }
+                | SessionEvent::PaneDetached { .. }
         );
         if lifecycle {
             tracing::info!(target: "session_hook", event = ?event, "received helper session hook");
@@ -8663,6 +8664,9 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
     }
     let pane_state = params.get("state").and_then(|v| v.as_str()).unwrap_or("");
     let event = match pane_state {
+        "detached" => crate::agent_sessions::SessionEvent::PaneDetached {
+            pane_session_id: pane_id.clone(),
+        },
         "closed" => crate::agent_sessions::SessionEvent::PaneClosed {
             pane_session_id: pane_id.clone(),
         },
@@ -8679,10 +8683,12 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
         }
         _ => return,
     };
-    // SSH's only local liveness authority is its native resume pane. Both
-    // terminal closure and failed startup end that binding via the same reducer.
-    ssh_sessions::pane_closed(state, &pane_id).await;
-    ssh_hooks::pane_closed(state, &pane_id).await;
+    if pane_state == "detached" {
+        ssh_sessions::pane_detached(state, &pane_id).await;
+    } else {
+        ssh_sessions::pane_closed(state, &pane_id).await;
+        ssh_hooks::pane_closed(state, &pane_id).await;
+    }
     tracing::info!(
         target: "master_wt_event",
         pane_id = %pane_id,
@@ -8695,7 +8701,7 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
         tracing::info!(
             target: "master_wt_event",
             pane_id = %pane_id,
-            "broadcasting sessions/changed after WT-driven demotion"
+            "broadcasting sessions/changed after WT-driven binding change"
         );
         broadcast_ext_to_helpers(
             state,
@@ -8712,10 +8718,8 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
 }
 
 /// Extract the session key from event variants that carry one. Returns
-/// `None` for pane-only variants (PaneClosed, ConnectionFailed) — those
-/// don't have a stable session id without a reverse lookup, and they
-/// transition the row to a terminal state where the title doesn't need
-/// refreshing anyway.
+/// `None` for pane-only variants: they have no session key without a reverse
+/// lookup and do not supply title metadata.
 fn session_event_key(event: &crate::agent_sessions::SessionEvent) -> Option<&str> {
     use crate::agent_sessions::SessionEvent;
     match event {
@@ -8726,7 +8730,9 @@ fn session_event_key(event: &crate::agent_sessions::SessionEvent) -> Option<&str
         | SessionEvent::SessionStopped { key, .. }
         | SessionEvent::ResumeDispatched { key }
         | SessionEvent::ResumePaneAssigned { key, .. } => Some(key.as_str()),
-        SessionEvent::PaneClosed { .. } | SessionEvent::ConnectionFailed { .. } => None,
+        SessionEvent::PaneClosed { .. }
+        | SessionEvent::PaneDetached { .. }
+        | SessionEvent::ConnectionFailed { .. } => None,
     }
 }
 

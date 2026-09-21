@@ -69,6 +69,7 @@ struct SourceMetadata {
     hook_keys: HashMap<(HookRoute, String), acp::schema::v1::SessionId>,
     raw_ids: HashMap<acp::schema::v1::SessionId, String>,
     row_routes: HashMap<acp::schema::v1::SessionId, HookRoute>,
+    detached_native_panes: HashSet<uuid::Uuid>,
     pending_hooks: VecDeque<PendingHook>,
 }
 
@@ -363,6 +364,12 @@ async fn activate(
         Some(AgentStatus::Historical | AgentStatus::Ended)
     ) {
         let Some(pane) = info.pane_session_id else {
+            if matches!(metadata.row_routes.get(&sid), Some(HookRoute::NativeTmux(pane)) if metadata.detached_native_panes.contains(pane))
+            {
+                return Err(request_error(anyhow!(
+                    "The remote tmux session is still live but detached; attach its tmux session before focusing it"
+                )));
+            }
             // ResumeDispatched has already reserved this session. A second
             // helper sees pending Idle, and never starts a second native RPC.
             return Ok(snapshot_locked(state, source, &scoped, &metadata).await);
@@ -501,13 +508,23 @@ async fn focus(
             .contains("0x80070490")
         {
             let mut metadata = scoped.operations.lock().await;
-            if scoped
-                .registry
-                .apply_event(SessionEvent::PaneClosed {
+            let detached = uuid::Uuid::parse_str(pane).ok().filter(|pane_id| {
+                metadata
+                    .row_routes
+                    .values()
+                    .any(|route| *route == HookRoute::NativeTmux(*pane_id))
+            });
+            let event = if let Some(pane_id) = detached {
+                metadata.detached_native_panes.insert(pane_id);
+                SessionEvent::PaneDetached {
                     pane_session_id: pane.to_owned(),
-                })
-                .await
-            {
+                }
+            } else {
+                SessionEvent::PaneClosed {
+                    pane_session_id: pane.to_owned(),
+                }
+            };
+            if scoped.registry.apply_event(event).await {
                 changed(state, source, &mut metadata).await;
             }
         }
@@ -517,6 +534,14 @@ async fn focus(
 }
 
 pub(super) async fn pane_closed(state: &MasterStateInner, pane: &str) {
+    pane_unavailable(state, pane, false).await;
+}
+
+pub(super) async fn pane_detached(state: &MasterStateInner, pane: &str) {
+    pane_unavailable(state, pane, true).await;
+}
+
+async fn pane_unavailable(state: &MasterStateInner, pane: &str, detached: bool) {
     let Ok(pane_id) = uuid::Uuid::parse_str(pane) else {
         return;
     };
@@ -534,17 +559,35 @@ pub(super) async fn pane_closed(state: &MasterStateInner, pane: &str) {
     for (source, scoped) in sources {
         let mut metadata = scoped.operations.lock().await;
         let canonical = pane_id.hyphenated().to_string();
+        if detached {
+            let native = HookRoute::NativeTmux(pane_id);
+            if !metadata.row_routes.values().any(|route| *route == native)
+                && !metadata
+                    .pending_hooks
+                    .iter()
+                    .any(|hook| hook.route == native)
+            {
+                continue;
+            }
+            metadata.detached_native_panes.insert(pane_id);
+        }
         metadata.pending_hooks.retain(|hook| hook.pane != canonical);
-        if metadata.outstanding_creates > 0 && metadata.early_closes.len() < MAX_EARLY_CLOSES {
+        if !detached
+            && metadata.outstanding_creates > 0
+            && metadata.early_closes.len() < MAX_EARLY_CLOSES
+        {
             metadata.early_closes.insert(pane_id);
         }
-        if scoped
-            .registry
-            .apply_event(SessionEvent::PaneClosed {
-                pane_session_id: pane_id.hyphenated().to_string(),
-            })
-            .await
-        {
+        let event = if detached {
+            SessionEvent::PaneDetached {
+                pane_session_id: canonical,
+            }
+        } else {
+            SessionEvent::PaneClosed {
+                pane_session_id: canonical,
+            }
+        };
+        if scoped.registry.apply_event(event).await {
             changed(state, &source, &mut metadata).await;
         }
     }
@@ -601,6 +644,11 @@ async fn routed_hook_event(
     }
     let scoped = state.ssh_sessions.source(&source).await;
     let mut metadata = scoped.operations.lock().await;
+    if matches!(route, HookRoute::NativeTmux(pane) if metadata.detached_native_panes.contains(&pane))
+    {
+        tracing::debug!(target: "ssh_sessions", "ignoring hook from a detached native attachment");
+        return Ok(());
+    }
     let pane = crate::agent_sessions::pane_key(pane);
     let pending = PendingHook { route, pane, event };
     let bound = scoped
@@ -731,10 +779,11 @@ async fn apply_hook_locked(
         return false;
     }
     let same_generation = known.is_some_and(|row| {
-        !matches!(
+        (!matches!(
             row.status,
             Some(AgentStatus::Ended | AgentStatus::Historical)
-        ) || metadata.row_routes.get(&sid) == Some(&hook.route)
+        ) && row.pane_session_id.as_deref() == Some(hook.pane.as_str()))
+            || metadata.row_routes.get(&sid) == Some(&hook.route)
     });
     let facts = crate::app::AgentEventFacts {
         key: sid.0.to_string(),

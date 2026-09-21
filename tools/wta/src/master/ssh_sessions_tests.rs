@@ -373,6 +373,115 @@ async fn ssh_native_tmux_merges_history_and_supports_shared_focus_titles_close_a
         .await;
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn ssh_tmux_detach_preserves_activity_and_reattach_rebinds_without_resuming() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            for event in [
+                "agent.prompt.submit",
+                "agent.notification",
+                "agent.stop",
+                "agent.error",
+            ] {
+                let (mut state, mut native) = harness();
+                Arc::get_mut(&mut state).unwrap().ssh_hooks =
+                    super::super::ssh_hooks::Service::new(true);
+                let source = source("ubuntu", None, "copilot");
+                let scoped = state.ssh_sessions.source(&source).await;
+                let old_pane = uuid::Uuid::new_v4();
+                native_tmux_hook(&state, &source, old_pane, "agent.session.start", "live").await;
+                native_tmux_hook(&state, &source, old_pane, event, "live").await;
+                let before = scoped.registry.lookup(&"live".into()).await.unwrap();
+                close(&state, old_pane, "detached").await;
+                let detached = scoped.registry.lookup(&"live".into()).await.unwrap();
+                let mut expected = before;
+                expected.pane_session_id = None;
+                expected.born_bound_pane = false;
+                assert_eq!(
+                    detached, expected,
+                    "detach must not change remote activity or its timestamp"
+                );
+                assert!(activate(&state, &source, "live").await.is_err());
+                assert!(
+                    native.try_recv().is_err(),
+                    "a live detached agent must not be resumed as a duplicate"
+                );
+
+                for late in [
+                    "agent.session.start",
+                    "agent.prompt.submit",
+                    "agent.stop",
+                    "agent.session.end",
+                ] {
+                    native_tmux_hook(&state, &source, old_pane, late, "live").await;
+                }
+                close(&state, old_pane, "closed").await;
+                assert_eq!(
+                    scoped.registry.lookup(&"live".into()).await.unwrap(),
+                    detached
+                );
+                merge_history(
+                    &state,
+                    &source,
+                    &scoped,
+                    vec![history(&source, "live", "Remote title")],
+                )
+                .await;
+                let after_history = scoped.registry.lookup(&"live".into()).await.unwrap();
+                assert_eq!(after_history.status, detached.status);
+                assert_eq!(after_history.pane_session_id, None);
+
+                let new_pane = uuid::Uuid::new_v4();
+                native_tmux_hook(&state, &source, new_pane, "agent.prompt.submit", "live").await;
+                let rebound = scoped.registry.snapshot().await;
+                assert_eq!(rebound.len(), 1);
+                assert_eq!(rebound[0].session_id.0.as_ref(), "live");
+                assert_eq!(rebound[0].pane_session_id, Some(new_pane.to_string()));
+                assert_eq!(rebound[0].status, Some(AgentStatus::Working));
+                assert_eq!(rebound[0].title.as_deref(), Some("Remote title"));
+                let handler = caller(&state, 1);
+                let focus = activation(&handler, &source, "live");
+                focused(&mut native, new_pane).await;
+                focus.await.unwrap().unwrap();
+                close(&state, new_pane, "closed").await;
+                assert_eq!(
+                    scoped.registry.lookup(&"live".into()).await.unwrap().status,
+                    Some(AgentStatus::Ended)
+                );
+                assert!(native.try_recv().is_err());
+            }
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn ssh_missing_native_tmux_view_is_detached_not_remote_termination() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let (mut state, mut native) = harness();
+            Arc::get_mut(&mut state).unwrap().ssh_hooks =
+                super::super::ssh_hooks::Service::new(true);
+            let source = source("ubuntu", None, "copilot");
+            let pane = uuid::Uuid::new_v4();
+            native_tmux_hook(&state, &source, pane, "agent.prompt.submit", "live").await;
+            let handler = caller(&state, 1);
+            let focus = activation(&handler, &source, "live");
+            let request = native.recv().await.unwrap();
+            assert_eq!(request.method, "focus_pane");
+            request
+                .reply
+                .send(Err(anyhow!("FocusPane failed: 0x80070490")))
+                .unwrap();
+            assert!(focus.await.unwrap().is_err());
+            let scoped = state.ssh_sessions.source(&source).await;
+            let row = scoped.registry.lookup(&"live".into()).await.unwrap();
+            assert_eq!(row.status, Some(AgentStatus::Working));
+            assert_eq!(row.pane_session_id, None);
+            assert!(native.try_recv().is_err());
+        })
+        .await;
+}
+
 #[tokio::test]
 async fn ssh_native_tmux_and_managed_hooks_share_a_source_without_crossing_pane_lifetimes() {
     let mut state = make_state();

@@ -366,6 +366,10 @@ pub enum SessionEvent {
     PaneClosed {
         pane_session_id: String,
     },
+    /// The local attachment disappeared, not the remote agent process.
+    PaneDetached {
+        pane_session_id: String,
+    },
     /// Optimistic transition: a resume command for this key was just dispatched.
     /// Bumps a Historical/Ended row to Idle so a rapid second Enter on the same
     /// row doesn't dispatch another `wtcli split-pane` and create a duplicate
@@ -492,6 +496,9 @@ impl AgentSessionRegistry {
                 reason,
             },
             SessionEvent::PaneClosed { pane_session_id } => SessionEvent::PaneClosed {
+                pane_session_id: pane_key(&pane_session_id),
+            },
+            SessionEvent::PaneDetached { pane_session_id } => SessionEvent::PaneDetached {
                 pane_session_id: pane_key(&pane_session_id),
             },
             SessionEvent::ResumePaneAssigned {
@@ -765,6 +772,15 @@ impl AgentSessionRegistry {
                         entry.current_tool = None;
                         entry.attention_reason = None;
                         entry.last_activity_at = now;
+                        self.dirty = true;
+                    }
+                }
+            }
+
+            SessionEvent::PaneDetached { pane_session_id } => {
+                if let Some(key) = self.active_by_pane.remove(&pane_session_id) {
+                    if let Some(entry) = self.sessions.get_mut(&key) {
+                        entry.pane_session_id = None;
                         self.dirty = true;
                     }
                 }

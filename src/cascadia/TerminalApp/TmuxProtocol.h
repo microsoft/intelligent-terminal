@@ -25,6 +25,13 @@ namespace Microsoft::Terminal::Tmux
 {
     using Id = uint64_t;
 
+    inline bool ExitEndsRemoteServer(const std::string_view reason) noexcept
+    {
+        // A client/session can exit while its windows survive elsewhere.
+        // Only an explicit server exit proves that all its panes have ended.
+        return reason == "server exited" || reason == "server exited unexpectedly";
+    }
+
     inline std::string FormatSessionTitle(const std::string_view socketPath, const std::string_view sessionName)
     {
         if (sessionName.empty())
@@ -53,6 +60,7 @@ namespace Microsoft::Terminal::Tmux
     };
 
     inline std::vector<SessionInfo> ParseSessions(std::string_view text);
+    inline std::unordered_set<Id> ParsePaneIds(std::string_view text);
 
     struct LayoutNode
     {
@@ -371,6 +379,30 @@ namespace Microsoft::Terminal::Tmux
             text.remove_prefix(end + 1);
         }
         return sessions;
+    }
+
+    inline std::unordered_set<Id> ParsePaneIds(std::string_view text)
+    {
+        if (text.size() > 64 * 1024)
+        {
+            throw ProtocolError{ "tmux pane inventory exceeded its limit" };
+        }
+        std::unordered_set<Id> ids;
+        while (!text.empty())
+        {
+            const auto end = text.find('\n');
+            const auto id = details::PaneId(text.substr(0, end));
+            if (ids.size() >= 4096 || !ids.emplace(id).second)
+            {
+                throw ProtocolError{ "Invalid or excessive tmux panes" };
+            }
+            if (end == std::string_view::npos)
+            {
+                break;
+            }
+            text.remove_prefix(end + 1);
+        }
+        return ids;
     }
 
     inline LayoutNode ParseLayout(const std::string_view layout)

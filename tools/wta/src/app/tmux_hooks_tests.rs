@@ -9,6 +9,35 @@ fn route(reg: &mut AgentSessionRegistry, params: &serde_json::Value) -> bool {
 }
 
 #[test]
+fn tmux_helper_detach_clears_binding_without_ending_remote_activity() {
+    let mut reg = AgentSessionRegistry::new();
+    route(
+        &mut reg,
+        &hook("agent.prompt.submit", PANE_A, "copilot", "live"),
+    );
+    let sid = key(PANE_A, "copilot", "live");
+    let before = reg.get(&sid).unwrap().clone();
+    reg.apply(SessionEvent::PaneDetached {
+        pane_session_id: format!("{{{}}}", PANE_A.to_uppercase()),
+    });
+    let detached = reg.get(&sid).unwrap();
+    assert_eq!(detached.status, AgentStatus::Working);
+    assert_eq!(detached.current_tool, before.current_tool);
+    assert_eq!(detached.last_activity_at, before.last_activity_at);
+    assert!(detached.pane_session_id.is_none());
+    assert!(reg.key_for_pane(PANE_A).is_none());
+    reg.apply(SessionEvent::PaneClosed {
+        pane_session_id: PANE_A.into(),
+    });
+    assert_eq!(reg.get(&sid).unwrap().status, AgentStatus::Working);
+    reg.apply(SessionEvent::SessionStopped {
+        key: sid.clone(),
+        reason: "agent exited".into(),
+    });
+    assert_eq!(reg.get(&sid).unwrap().status, AgentStatus::Ended);
+}
+
+#[test]
 fn tmux_ssh_hooks_do_not_create_helper_local_host_duplicates() {
     let target = crate::ssh_sessions::SshTarget::new("wsl-ubuntu", None).unwrap();
     let mut reg = AgentSessionRegistry::new();

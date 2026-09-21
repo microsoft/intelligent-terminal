@@ -89,6 +89,7 @@ namespace winrt::TerminalApp::implementation
         static winrt::fire_and_forget _startProcess(std::shared_ptr<TmuxController> self, std::wstring commandline, std::wstring directory);
         static winrt::fire_and_forget _closeProcess(std::shared_ptr<::Microsoft::Terminal::Tmux::TmuxProcess> process);
         static winrt::fire_and_forget _startupTimeout(std::weak_ptr<TmuxController> weak);
+        static winrt::fire_and_forget _finishExit(std::shared_ptr<TmuxController> self);
         static winrt::fire_and_forget _sessionsTimeout(std::weak_ptr<TmuxController> weak, uint64_t generation, winrt::weak_ref<winrt::Windows::UI::Xaml::Controls::MenuFlyout> flyout);
         void _post(std::function<void(TmuxController&)> work);
         void _fail(std::string message);
@@ -101,7 +102,8 @@ namespace winrt::TerminalApp::implementation
         void _send(std::string command, ResponseHandler response = {});
         void _sendBatch(std::vector<std::pair<std::string, ResponseHandler>> commands, bool compound = false);
         void _requestRefresh();
-        void _applyWindows(std::map<Id, Window> windows);
+        void _completeRefresh(std::map<Id, Window> windows, std::optional<std::unordered_set<Id>> remotePanes = std::nullopt);
+        void _applyWindows(std::map<Id, Window> windows, std::optional<std::unordered_set<Id>> remotePanes = std::nullopt);
         std::map<Id, Window> _parseWindows(std::string_view text) const;
         PaneView _createPane(Id id, uint32_t columns, uint32_t rows);
         std::shared_ptr<Pane> _buildLayout(const Layout& layout);
@@ -124,6 +126,8 @@ namespace winrt::TerminalApp::implementation
         std::atomic<bool> _stopped = false;
         std::atomic<bool> _failed = false;
         std::atomic<bool> _exiting = false;
+        std::atomic<bool> _remoteServerEnded = false;
+        std::optional<std::unordered_set<Id>> _remotePanesAfterExit;
         std::atomic<size_t> _postedWork = 0;
         std::shared_ptr<::Microsoft::Terminal::Tmux::TmuxProcess> _process;
         std::function<void(std::string)> _writeCommand;
@@ -157,6 +161,7 @@ namespace winrt::TerminalApp::implementation
         std::optional<Id> _sessionId;
         std::string _sessionName;
         std::string _socketPath;
+        std::wstring _workingDirectory;
         Json::Value _sshTarget;
         bool _socketQuerySent = false;
         uint64_t _sessionsGeneration = 0;

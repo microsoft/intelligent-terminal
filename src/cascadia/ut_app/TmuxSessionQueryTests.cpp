@@ -45,16 +45,16 @@ namespace TerminalAppUnitTests
                    L"\\WindowsPowerShell\\v1.0\\powershell.exe\" -NoLogo -NoProfile -NonInteractive -Command \"" + std::wstring{ script } + L"\"";
         }
 
-        winrt::hstring Query(const std::wstring_view commandline)
+        winrt::hstring Query(const std::wstring_view commandline, const std::wstring_view socket = {})
         {
-            return QuerySessionListAsync(winrt::hstring{ commandline }, winrt::hstring{ SystemDirectory() }).get();
+            return QuerySessionListAsync(winrt::hstring{ commandline }, winrt::hstring{ SystemDirectory() }, winrt::hstring{ socket }).get();
         }
 
-        winrt::hresult_error QueryFailure(const std::wstring_view commandline)
+        winrt::hresult_error QueryFailure(const std::wstring_view commandline, const std::wstring_view socket = {})
         {
             try
             {
-                Query(commandline);
+                Query(commandline, socket);
                 VERIFY_FAIL(L"Expected the session query to fail.");
             }
             catch (const winrt::hresult_error& error)
@@ -74,6 +74,8 @@ namespace TerminalAppUnitTests
         TEST_METHOD(ReportsNonzeroExitAndDiagnostic);
         TEST_METHOD(RecognizesOnlyMissingDefaultServer);
         TEST_METHOD(RejectsOtherServerAndSshFailures);
+        TEST_METHOD(RecognizesOnlyExactMissingSocket);
+        TEST_METHOD(RejectsForeignSocketAndUncertainAbsence);
         TEST_METHOD(AcceptsExactOutputBounds);
         TEST_METHOD(ReportsOutputAndErrorOverflow);
         TEST_METHOD(RejectsMalformedUtf8);
@@ -137,6 +139,43 @@ namespace TerminalAppUnitTests
             const auto error = QueryFailure(Cmd(script));
             VERIFY_IS_TRUE(std::wstring_view{ error.message() }.find(L"exit code ") != std::wstring_view::npos);
         }
+    }
+
+    void TmuxSessionQueryTests::RecognizesOnlyExactMissingSocket()
+    {
+        constexpr auto socket = L"/isolated/socket";
+        VERIFY_ARE_EQUAL(winrt::hstring{}, Query(Cmd(L"1>&2 echo no server running on /isolated/socket&exit /b 1"), socket));
+        VERIFY_ARE_EQUAL(winrt::hstring{}, Query(Cmd(L"1>&2 echo error connecting to /isolated/socket ^(No such file or directory^)&exit /b 1"), socket));
+        VERIFY_ARE_EQUAL(winrt::hstring{}, Query(PowerShell(L"[Console]::Error.Write('no server running on /isolated/socket'); exit 1"), socket));
+        VERIFY_ARE_EQUAL(winrt::hstring{}, Query(PowerShell(L"$socket = '/custom tmux/a' + [char]39 + [char]34 + [char]37 + 'PATH' + [char]37 + '/socket'; "
+                                                            L"[Console]::Error.Write('no server running on ' + $socket + [char]10); exit 1"),
+                                                 L"/custom tmux/a'\"%PATH%/socket"));
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"%1\n" }, Query(PowerShell(L"[Console]::Out.Write('%1' + [char]10)"), socket));
+    }
+
+    void TmuxSessionQueryTests::RejectsForeignSocketAndUncertainAbsence()
+    {
+        for (const auto script : {
+                 L"1>&2 echo no server running on /other/socket&exit /b 1",
+                 L"1>&2 echo no server running on /isolated/default&exit /b 1",
+                 L"1>&2 echo no server running on /isolated/socket-extra&exit /b 1",
+                 L"1>&2 echo error connecting to /other/socket ^(No such file or directory^)&exit /b 1",
+                 L"1>&2 echo error connecting to /isolated/socket ^(Permission denied^)&exit /b 1",
+                 L"1>&2 echo error connecting to /isolated/socket ^(Connection refused^)&exit /b 1",
+                 L"1>&2 echo error connecting to /isolated/socket ^(Connection timed out^)&exit /b 1",
+                 L"1>&2 echo ssh: Permission denied ^(publickey^).&exit /b 255",
+                 L"1>&2 echo warning&1>&2 echo no server running on /isolated/socket&exit /b 1",
+                 L"1>&2 echo no server running on /isolated/socket&1>&2 echo second error&exit /b 1",
+                 L"1>&2 echo no server running on /isolated/socket&exit /b 255",
+                 L"echo partial&1>&2 echo no server running on /isolated/socket&exit /b 1",
+                 L"exit /b 1",
+             })
+        {
+            const auto error = QueryFailure(Cmd(script), L"/isolated/socket");
+            VERIFY_IS_TRUE(std::wstring_view{ error.message() }.find(L"exit code ") != std::wstring_view::npos);
+        }
+        const auto invalidSocket = QueryFailure(Cmd(L"exit /b 0"), L"relative");
+        VERIFY_ARE_EQUAL(E_INVALIDARG, static_cast<HRESULT>(invalidSocket.code()));
     }
 
     void TmuxSessionQueryTests::AcceptsExactOutputBounds()

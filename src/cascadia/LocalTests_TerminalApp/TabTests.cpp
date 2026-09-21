@@ -2987,7 +2987,8 @@ namespace TerminalAppLocalTests
                 {
                     events.emplace_back(event["params"]);
                 }
-                else if (event["method"] == "connection_state" && event["params"]["state"] == "closed")
+                else if (event["method"] == "connection_state" &&
+                         (event["params"]["state"] == "closed" || event["params"]["state"] == "detached"))
                 {
                     closes.emplace_back(event["params"]);
                 }
@@ -3028,19 +3029,32 @@ namespace TerminalAppLocalTests
             controller->_sessionId = 8;
             controller->_agentHook(message);
             VERIFY_ARE_EQUAL(size_t{ 2 }, events.size());
-            const auto closeCount = [&](const std::string& paneId) {
+            const auto closeCount = [&](const std::string& paneId, const std::string_view state = "closed") {
                 return static_cast<size_t>(std::count_if(closes.begin(), closes.end(), [&](const auto& params) {
-                    return params["pane_id"] == paneId;
+                    return params["pane_id"] == paneId && params["state"].asString() == state;
                 }));
             };
-            controller->_applyWindows(controller->_parseWindows("@0 1 b25d,80x24,0,0,0 b25d,80x24,0,0,0"));
+            controller->_applyWindows(controller->_parseWindows("@0 1 b25d,80x24,0,0,0 b25d,80x24,0,0,0"), std::unordered_set<uint64_t>{ 0 });
             VERIFY_ARE_EQUAL(size_t{ 1 }, closeCount(nativePane));
             controller->_applyWindows(controller->_parseWindows(
                 "@0 1 09f6,80x24,0,0{39x24,0,0,0,40x24,40,0,2} b25d,80x24,0,0,0"));
+            const auto linkedPane = page->_FindSessionIdForControl(controller->_panes.at(2).control);
+            controller->_applyWindows(controller->_parseWindows("@0 1 b25d,80x24,0,0,0 b25d,80x24,0,0,0"), std::unordered_set<uint64_t>{ 0, 2 });
+            VERIFY_ARE_EQUAL(size_t{ 0 }, closeCount(linkedPane));
+            VERIFY_ARE_EQUAL(size_t{ 1 }, closeCount(linkedPane, "detached"));
+            controller->_applyWindows(controller->_parseWindows(
+                "@0 1 09f6,80x24,0,0{39x24,0,0,0,40x24,40,0,2} b25d,80x24,0,0,0"));
             const auto hiddenPane = page->_FindSessionIdForControl(controller->_panes.at(2).control);
+            const auto paneCount = controller->_panes.size();
+            controller->_exiting = true;
+            controller->_input(2, "ignored after exit");
+            controller->_completeRefresh({});
+            VERIFY_IS_FALSE(controller->_failed.load());
+            VERIFY_ARE_EQUAL(paneCount, controller->_panes.size());
             controller->Stop();
             VERIFY_ARE_EQUAL(size_t{ 1 }, closeCount(nativePane));
-            VERIFY_ARE_EQUAL(size_t{ 1 }, closeCount(hiddenPane));
+            VERIFY_ARE_EQUAL(size_t{ 0 }, closeCount(hiddenPane));
+            VERIFY_ARE_EQUAL(size_t{ 1 }, closeCount(hiddenPane, "detached"));
             const auto count = closes.size();
             controller->Stop();
             VERIFY_ARE_EQUAL(count, closes.size());

@@ -807,6 +807,9 @@ pub enum SessionHookParams {
     PaneClosed {
         pane_session_id: String,
     },
+    PaneDetached {
+        pane_session_id: String,
+    },
     ResumeDispatched {
         key: crate::agent_sessions::AgentKey,
     },
@@ -856,6 +859,9 @@ impl From<&crate::agent_sessions::SessionEvent> for SessionHookParams {
             SessionEvent::PaneClosed { pane_session_id } => Self::PaneClosed {
                 pane_session_id: pane_session_id.clone(),
             },
+            SessionEvent::PaneDetached { pane_session_id } => Self::PaneDetached {
+                pane_session_id: pane_session_id.clone(),
+            },
             SessionEvent::ResumeDispatched { key } => Self::ResumeDispatched { key: key.clone() },
             SessionEvent::ResumePaneAssigned {
                 key,
@@ -901,6 +907,9 @@ impl From<SessionHookParams> for crate::agent_sessions::SessionEvent {
             },
             SessionHookParams::PaneClosed { pane_session_id } => {
                 Self::PaneClosed { pane_session_id }
+            }
+            SessionHookParams::PaneDetached { pane_session_id } => {
+                Self::PaneDetached { pane_session_id }
             }
             SessionHookParams::ResumeDispatched { key } => Self::ResumeDispatched { key },
             SessionHookParams::ResumePaneAssigned {
@@ -1603,6 +1612,9 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
         SessionEvent::PaneClosed { pane_session_id } => SessionEvent::PaneClosed {
             pane_session_id: pane_key(&pane_session_id),
         },
+        SessionEvent::PaneDetached { pane_session_id } => SessionEvent::PaneDetached {
+            pane_session_id: pane_key(&pane_session_id),
+        },
         SessionEvent::ResumePaneAssigned {
             key,
             pane_session_id,
@@ -1867,6 +1879,17 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             entry.current_tool = None;
             entry.attention_reason = None;
             entry.last_activity_at_ms = Some(now);
+            true
+        }
+        SessionEvent::PaneDetached { pane_session_id } => {
+            let Some(sid) = state.active_by_pane.remove(&pane_session_id) else {
+                return false;
+            };
+            let Some(entry) = state.sessions.get_mut(&sid) else {
+                return false;
+            };
+            entry.pane_session_id = None;
+            entry.born_bound_pane = false;
             true
         }
         SessionEvent::ConnectionFailed {
@@ -3964,6 +3987,9 @@ mod tests {
             },
             SessionEvent::PaneClosed {
                 pane_session_id: "pane-closed".to_string(),
+            },
+            SessionEvent::PaneDetached {
+                pane_session_id: "pane-detached".to_string(),
             },
             SessionEvent::ResumeDispatched {
                 key: "resume-dispatched".to_string(),

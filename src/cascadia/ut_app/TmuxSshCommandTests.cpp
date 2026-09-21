@@ -126,6 +126,8 @@ namespace TerminalAppUnitTests
 
         TEST_METHOD(UsesDefaultServerAndPreservesAliases);
         TEST_METHOD(ListUsesDefaultServerWithoutInteractiveInput);
+        TEST_METHOD(PaneListPinsLiteralSocketWithoutStartingServer);
+        TEST_METHOD(RejectsInvalidPaneListSocketsAndBoundsCommandline);
         TEST_METHOD(PreservesPortsForAttachAndList);
         TEST_METHOD(NamesAreExactAndSessionIdsRemainIds);
         TEST_METHOD(PreservesUnicodeAndAdversarialSessionNames);
@@ -178,6 +180,70 @@ namespace TerminalAppUnitTests
         {
             VERIFY_ARE_EQUAL(std::wstring{ L"#{session_id} #{session_name}" }, UnquoteRemoteTarget(RemoteListFormat(destination)));
         }
+    }
+
+    void TmuxSshCommandTests::PaneListPinsLiteralSocketWithoutStartingServer()
+    {
+        VERIFY_ARE_EQUAL(std::wstring{ L"ssh.exe -T -n -o BatchMode=yes \"ubuntu\" LC_ALL=C tmux -N -S \"'/socket'\" list-panes -a -F \"'#{pane_id}'\"" },
+                         BuildSshPaneListCommandline(L"ubuntu", L"/socket"));
+        for (const auto destination : { L"ubuntu", L"user@Host-Alias", L"user@[fe80::1%12]" })
+        {
+            for (const auto port : { uint16_t{ 0 }, uint16_t{ 22 }, uint16_t{ 65535 } })
+            {
+                for (const auto socket : {
+                         L"/socket",
+                         L"/path with spaces/q'\"\\;$HOME`id`%PATH%",
+                         L"/socket;",
+                         L"/\u4f1a\u8bdd/\U0001f680",
+                         L"/$(command); & | > out < in",
+                     })
+                {
+                    const auto commandline = BuildSshPaneListCommandline(destination, socket, port);
+                    int argc{};
+                    const wil::unique_hlocal_ptr<PWSTR[]> argv{ CommandLineToArgvW(commandline.c_str(), &argc) };
+                    VERIFY_IS_NOT_NULL(argv.get());
+                    const auto offset = port == 0 ? 0 : 2;
+                    VERIFY_ARE_EQUAL(15 + offset, argc);
+                    VERIFY_ARE_EQUAL(std::wstring{ L"ssh.exe" }, std::wstring{ argv[0] });
+                    VERIFY_ARE_EQUAL(std::wstring{ L"-T" }, std::wstring{ argv[1] });
+                    VERIFY_ARE_EQUAL(std::wstring{ L"-n" }, std::wstring{ argv[2] });
+                    VERIFY_ARE_EQUAL(std::wstring{ L"-o" }, std::wstring{ argv[3] });
+                    VERIFY_ARE_EQUAL(std::wstring{ L"BatchMode=yes" }, std::wstring{ argv[4] });
+                    if (port != 0)
+                    {
+                        VERIFY_ARE_EQUAL(std::wstring{ L"-p" }, std::wstring{ argv[5] });
+                        VERIFY_ARE_EQUAL(std::to_wstring(port), std::wstring{ argv[6] });
+                    }
+                    VERIFY_ARE_EQUAL(std::wstring{ destination }, std::wstring{ argv[5 + offset] });
+                    VERIFY_ARE_EQUAL(std::wstring{ L"LC_ALL=C" }, std::wstring{ argv[6 + offset] });
+                    VERIFY_ARE_EQUAL(std::wstring{ L"tmux" }, std::wstring{ argv[7 + offset] });
+                    VERIFY_ARE_EQUAL(std::wstring{ L"-N" }, std::wstring{ argv[8 + offset] });
+                    VERIFY_ARE_EQUAL(std::wstring{ L"-S" }, std::wstring{ argv[9 + offset] });
+                    VERIFY_ARE_EQUAL(std::wstring{ socket }, UnquoteRemoteTarget(argv[10 + offset]));
+                    VERIFY_ARE_EQUAL(std::wstring{ L"list-panes" }, std::wstring{ argv[11 + offset] });
+                    VERIFY_ARE_EQUAL(std::wstring{ L"-a" }, std::wstring{ argv[12 + offset] });
+                    VERIFY_ARE_EQUAL(std::wstring{ L"-F" }, std::wstring{ argv[13 + offset] });
+                    VERIFY_ARE_EQUAL(std::wstring{ L"#{pane_id}" }, UnquoteRemoteTarget(argv[14 + offset]));
+                }
+            }
+        }
+    }
+
+    void TmuxSshCommandTests::RejectsInvalidPaneListSocketsAndBoundsCommandline()
+    {
+        for (const auto socket : { L"", L"relative", L"/", L"/socket/", L"-S", L"C:\\socket", L"/bad\nsocket", L"/bad\x7f", L"/\xd800", L"/\xdc00" })
+        {
+            VERIFY_THROWS(BuildSshPaneListCommandline(L"host", socket), std::invalid_argument);
+        }
+        VERIFY_THROWS(BuildSshPaneListCommandline(L"host", std::wstring{ L"/socket" } + L'\0' + L"other"), std::invalid_argument);
+        VERIFY_THROWS(BuildSshPaneListCommandline(L"-host", L"/socket"), std::invalid_argument);
+        const auto socket = std::wstring{ L"/" } + std::wstring(511, L'x');
+        VERIFY_IS_FALSE(BuildSshPaneListCommandline(L"host", socket).empty());
+        VERIFY_THROWS(BuildSshPaneListCommandline(L"host", socket + L"x"), std::invalid_argument);
+        const auto overhead = BuildSshPaneListCommandline(L"h", L"/socket", 65535).size() - 1;
+        const auto destination = std::wstring(MaxSshLaunchTextLength - overhead, L'h');
+        VERIFY_ARE_EQUAL(MaxSshLaunchTextLength, BuildSshPaneListCommandline(destination, L"/socket", 65535).size());
+        VERIFY_THROWS(BuildSshPaneListCommandline(destination + L"h", L"/socket", 65535), std::invalid_argument);
     }
 
     void TmuxSshCommandTests::PreservesPortsForAttachAndList()

@@ -164,6 +164,12 @@ launch command, not remote hook JSON. Use the same destination/alias, user, and
 explicit port as the SSH profile. Opaque or non-SSH tmux backends retain their
 existing Host-view, focus-only behavior.
 
+Closing a native tmux attachment window is a detach, not an agent exit. The
+session keeps its last hook status but loses the closed window's pane binding.
+Attach the existing tmux session again to restore tracking and focus; a detached
+live row is not resumed as another CLI process. Real remote closure still ends
+the row.
+
 See [ordinary SSH agent hooks](../../doc/specs/ordinary-ssh-agent-hooks.md)
 for the full lifecycle and [remote setup](wt-agent-hooks/tmux/README.md) for
 ownership, provider support, and runtime requirements.

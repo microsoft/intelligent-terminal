@@ -43,6 +43,7 @@ authenticated ACP agents. Current status (run on the Store package):
 | `Feature.NonAsciiCwd.Tests.ps1` | issue #641: a non-ASCII starting directory survives `wtcli` argv → COM → `CreateProcessW`, so the resume launch path connects and starts in that directory | 2 |
 | `Feature.TmuxReconnect.Tests.ps1` | PR #966: physical tab clicks remain selected across SSH tmux reattachment, backend selection updates, and sibling native windows | 1 (SSH-gated) |
 | `Feature.TmuxSessionBrowser.Tests.ps1` | PR #966: ordinary SSH tab entry point, default-server session menu, stable-ID attachment after rename, independent new windows, and opaque-launch compatibility | 2 (SSH-gated) |
+| `Feature.TmuxRemoteHooks.Tests.ps1` | Native SSH tmux detach preserves last-known activity; a fresh real v2 hook rebinds the same raw remote session; observed remote exit ends it. Packaged sender → native controller → COM → shared master snapshot, without model quota | 2 (SSH-gated, explicit running Dev and both feature hashes required) |
 | `Feature.AgentPaneCwd.Tests.ps1` | agent-pane source workspace reaches ACP `session/new` and remains stable across `/new` without a model prompt | 1 |
 | `Feature.AgentRestart.Tests.ps1` | agent restart after a settings change (/restart reconnects and answers) | 1 |
 | `Feature.ShellIntegration.Tests.ps1` | §3 shell-integration OSC 133 marks (success/failure, ParserError dedup, handled errors, WinPS 5.1 errors) + non-integrated cmd.exe safety | 6 |
@@ -126,6 +127,53 @@ The selected Dev or Store package must support `wtcli tmux`.
 creates uniquely named sessions on the default server and one isolated named
 server for the exclusion check, and removes only those sessions afterward.
 It requires the structured `wtcli tmux --ssh <alias> --session <name>` entry point.
+
+`Feature.TmuxRemoteHooks` attaches to an **already running Dev** package through
+the ItE2E descriptor/resolver. It never calls `Start-Terminal`/`Stop-Terminal`,
+resets settings/state, installs remote hooks, or starts an agent CLI. Prepare the
+feature package and start Dev separately with `PassFre=false`, `Backup=false`,
+and `CleanSettings=false`; deploying/starting it requires separate permission.
+Set both expected hashes from that feature build, not from an arbitrary installed
+package. The suite fails on a binary or remote-sender mismatch.
+
+```powershell
+$env:ITE2E_PACKAGE = 'Dev'
+$env:ITE2E_TMUX_SSH_HOST = 'your-ssh-config-alias'
+# Optional overrides: used identically by SSH launch and source snapshot.
+$env:ITE2E_TMUX_SSH_USER = 'your-user'
+$env:ITE2E_TMUX_SSH_PORT = '22'
+$env:ITE2E_EXPECTED_TERMINALAPP_SHA256 = (Get-FileHash .\bin\x64\Debug\TerminalApp\TerminalApp.dll).Hash
+$env:ITE2E_EXPECTED_WTA_SHA256 = (Get-FileHash .\tools\wta\target\x86_64-pc-windows-msvc\debug\wta.exe).Hash
+pwsh -NoProfile -File test\e2e\bootstrap.ps1 -Check
+pwsh -NoProfile -File test\e2e\Invoke-ItE2EReport.ps1 `
+    -Path test\e2e\tests\Feature.TmuxRemoteHooks.Tests.ps1 -UpdateReport
+```
+
+Use the actual native build-output path if it differs. Unset USER/PORT overrides
+to use the alias unchanged (the source key does not expand SSH configuration).
+The remote prerequisite is noninteractive SSH with a trusted host key, tmux
+3.4+, `sha256sum`, and the package-matching sender already installed at
+`$HOME/.intelligent-terminal/ssh-hooks/current/it-agent-hook.sh`.
+Missing external SSH prerequisites skip; connected product failures fail.
+All sessions use a GUID-named `-L` socket, an owned home subdirectory, and owned
+native HWNDs; cleanup never kills a default/user server or existing window.
+A sentinel session keeps the server alive during observed destruction so tmux
+generates `%exit exited`, not a transport failure.
+
+The oracles check real v2 COM metadata, exact user/alias/port source snapshots,
+no Host/source duplicate, focus, unchanged last-known activity/tool/error/title/
+timestamp after WM_CLOSE, and the same remote pane process after reattachment.
+The process check is passive observation, not proof that activating a detached
+picker row suppresses a second agent launch.
+There is **no detached background observer**: the next real hook refreshes and
+rebinds the row, and the suite does not assert updates without a native receiver.
+Detached-row picker activation/duplicate-resume rejection and late old-native
+hook fencing remain deterministic runtime-unit coverage; these two E2E cases
+exercise real window detach/reattach and remote exit, not a synthetic COM hook
+injection or an agent-provider prompt. Run `Feature.TmuxReconnect` and
+`Feature.TmuxSessionBrowser` separately for their existing mouse/browser baselines.
+Source edits and discovery alone do not establish a live pass: verify the new
+stable IDs in both full and incremental release reports after authorized execution.
 
 Three planes, all built on self-verifying primitives:
 

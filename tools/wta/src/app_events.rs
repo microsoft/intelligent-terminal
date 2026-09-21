@@ -3527,6 +3527,13 @@ impl App {
                         "helper observed WT connection_state event"
                     );
                     match state {
+                        "detached" => {
+                            self.agent_sessions.apply(
+                                crate::agent_sessions::SessionEvent::PaneDetached {
+                                    pane_session_id: pane_id.clone(),
+                                },
+                            );
+                        }
                         "closed" => {
                             // Capture the key BEFORE PaneClosed clears
                             // the pane→key binding, so the log can report
