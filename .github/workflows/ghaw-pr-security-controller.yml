@@ -1,0 +1,211 @@
+name: Intelligent Terminal Security Review
+run-name: Security Review for PR #${{ github.event.pull_request.number }}
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+    paths:
+      - '.github/actions/**'
+      - '.github/agents/**'
+      - '.github/scripts/**'
+      - '.github/skills/**'
+      - '.github/workflows/**'
+      - 'build/**'
+      - 'src/**'
+      - 'tools/wta/**'
+      - 'test/**'
+      - 'doc/security-model.md'
+
+permissions:
+  actions: write
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ghaw-pr-security-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  security-review:
+    name: Intelligent Terminal security review
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout trusted base
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve immutable review scope
+        id: scope
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          SAME_REPO: ${{ github.event.pull_request.head.repo.id == github.repository_id }}
+        run: |
+          set -euo pipefail
+          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          remote_ref="refs/remotes/origin/security-pr-$PR_NUMBER"
+          git -c credential.helper= -c 'credential.helper=!gh auth git-credential' \
+            fetch --no-tags origin "refs/pull/$PR_NUMBER/head:$remote_ref"
+          fetched_head="$(git rev-parse "$remote_ref")"
+          [ "$fetched_head" = "$HEAD_SHA" ] || {
+            echo "::error::PR head changed before security review."
+            exit 1
+          }
+          comparison_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
+          relation=review
+          worker=ghaw-pr-security-guide-fork.lock.yml
+          if [ "$SAME_REPO" = true ]; then
+            relation=repair
+            worker=ghaw-pr-security.lock.yml
+          fi
+          scope_file="$RUNNER_TEMP/security-scope.json"
+          node .github/skills/ghaw-pr-security/scripts/security-review.mjs scope \
+            --base "$BASE_SHA" \
+            --head "$HEAD_SHA" \
+            --pr "$PR_NUMBER" \
+            --relation "$([ "$SAME_REPO" = true ] && echo same-repo || echo fork)" \
+            --mode "$([ "$SAME_REPO" = true ] && echo repair || echo guide)" \
+            --output "$scope_file"
+          applicable="$(node -p "JSON.parse(require('fs').readFileSync('$scope_file','utf8')).applicable")"
+          echo "comparison_base_sha=$comparison_base" >> "$GITHUB_OUTPUT"
+          echo "applicable=$applicable" >> "$GITHUB_OUTPUT"
+          echo "worker=$worker" >> "$GITHUB_OUTPUT"
+          if [ "$applicable" != true ]; then
+            {
+              echo '## Intelligent Terminal security review'
+              echo
+              echo 'No security-relevant trust-boundary surface was detected by deterministic classification.'
+              echo
+              echo '- AI Credits: **0**'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Dispatch and wait for security worker
+        id: worker
+        if: steps.scope.outputs.applicable == 'true'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          WORKER: ${{ steps.scope.outputs.worker }}
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          COMPARISON_BASE_SHA: ${{ steps.scope.outputs.comparison_base_sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const dispatchId =
+              `ghaw-pr-security-${pr.number}-${process.env.EXPECTED_HEAD_SHA}-${context.runId}-${context.runAttempt}`;
+            const inputs = {
+              dispatch_id: dispatchId,
+              pr_number: String(pr.number),
+              repo: `${context.repo.owner}/${context.repo.repo}`,
+              expected_head_sha: process.env.EXPECTED_HEAD_SHA,
+              expected_base_sha: process.env.EXPECTED_BASE_SHA,
+              comparison_base_sha: process.env.COMPARISON_BASE_SHA,
+              head_ref: process.env.HEAD_REF,
+              head_repo: process.env.HEAD_REPO,
+              aw_context: JSON.stringify({
+                item_type: "pull_request",
+                item_number: pr.number,
+                repo: `${context.repo.owner}/${context.repo.repo}`,
+                event_type: "pull_request",
+                head_sha: process.env.EXPECTED_HEAD_SHA,
+                base_sha: process.env.EXPECTED_BASE_SHA,
+                comparison_base_sha: process.env.COMPARISON_BASE_SHA,
+                root_run_id: String(context.runId),
+                root_workflow_id: "ghaw-pr-security-controller"
+              })
+            };
+            const startedAt = Date.now() - 5000;
+            const response = await github.request(
+              "POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches",
+              { ...context.repo, workflow_id: process.env.WORKER, ref: pr.base.ref, inputs }
+            );
+            let runId = response.data?.workflow_run_id;
+            let run;
+            for (let attempt = 0; !runId && attempt < 20; attempt++) {
+              await new Promise(resolve => setTimeout(resolve, 3000));
+              const runs = await github.rest.actions.listWorkflowRuns({
+                ...context.repo,
+                workflow_id: process.env.WORKER,
+                event: "workflow_dispatch",
+                branch: pr.base.ref,
+                per_page: 50
+              });
+              run = runs.data.workflow_runs.find(candidate =>
+                Date.parse(candidate.created_at) >= startedAt &&
+                candidate.display_title.includes(dispatchId));
+              runId = run?.id;
+            }
+            if (!runId) throw new Error(`Could not correlate ${process.env.WORKER} for ${dispatchId}.`);
+            const deadline = Date.now() + 50 * 60 * 1000;
+            while (Date.now() < deadline) {
+              run = (await github.rest.actions.getWorkflowRun({ ...context.repo, run_id: runId })).data;
+              if (run.status === "completed") {
+                core.setOutput("run_id", String(runId));
+                core.setOutput("run_url", run.html_url);
+                core.setOutput("conclusion", run.conclusion || "failure");
+                return;
+              }
+              await new Promise(resolve => setTimeout(resolve, 15000));
+            }
+            throw new Error(`Security worker ${runId} exceeded 50 minutes.`);
+
+      - name: Publish worker check card
+        if: always() && steps.worker.outputs.run_id != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.worker.outputs.run_id }}
+          RUN_URL: ${{ steps.worker.outputs.run_url }}
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          current_head="$(gh api "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)"
+          [ "$current_head" = "$EXPECTED_HEAD_SHA" ] || {
+            echo "::error::Stale security worker result rejected: expected $EXPECTED_HEAD_SHA, found $current_head."
+            exit 1
+          }
+          report_dir="$RUNNER_TEMP/security-report"
+          mkdir -p "$report_dir"
+          gh run download "$RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "ghaw-pr-security-$PR_NUMBER-$EXPECTED_HEAD_SHA" \
+            --dir "$report_dir"
+          cat "$report_dir/security-summary.md" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo
+            echo "- Internal GHAW run: [$RUN_ID]($RUN_URL)"
+          } >> "$GITHUB_STEP_SUMMARY"
+          status="$(tr -d '\r\n' < "$report_dir/security-status.txt")"
+          if [ "$status" = blocking ]; then
+            echo "::error::One or more HIGH security findings remain blocking."
+            exit 2
+          fi
+          [ "$status" = pass ] || {
+            echo "::error::Invalid security worker status '$status'."
+            exit 1
+          }
+
+      - name: Enforce worker success
+        if: always() && steps.scope.outputs.applicable == 'true'
+        shell: bash
+        env:
+          WORKER_CONCLUSION: ${{ steps.worker.outputs.conclusion }}
+        run: |
+          if [ "${WORKER_CONCLUSION:-failure}" != success ]; then
+            echo "::error::The internal security worker did not succeed."
+            exit 1
+          fi
