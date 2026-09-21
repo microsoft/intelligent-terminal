@@ -384,6 +384,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertNotIn("Microsoft.IntelligentTerminal", harness)
         self.assertIn("SourceSha", harness)
         self.assertIn("failed before producing results", harness)
+        self.assertIn("Failed to restore the previous WindowsTerminal.TestHost registration", harness)
         self.assertIn("OutputFileFormat]::None", scan)
         self.assertIn("Axe.Windows.Automation.ScannerFactory", scan)
 
