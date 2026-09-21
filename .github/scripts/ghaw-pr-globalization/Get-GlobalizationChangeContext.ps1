@@ -25,12 +25,13 @@ function Get-Surface {
 
     $normalized = $Path.Replace('\', '/')
     $surfaces = [System.Collections.Generic.List[string]]::new()
+    $isResw = $normalized -match '/Resources/(?:.+/)?[^/]+\.resw$'
 
     if ($normalized -match '\.xaml$' -or
-        $normalized -match '^src/cascadia/(TerminalApp|TerminalSettingsEditor|TerminalControl)/') {
+        ($normalized -match '^src/cascadia/(TerminalApp|TerminalSettingsEditor|TerminalControl)/' -and -not $isResw)) {
         $surfaces.Add('xaml-ui')
     }
-    if ($normalized -match '/Resources/(?:.+/)?[^/]+\.resw$') {
+    if ($isResw) {
         $surfaces.Add('resw')
     }
     if ($normalized -match '^tools/wta/locales/[^/]+\.yml$') {

@@ -142,6 +142,7 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
 
         foreach ($relative in @(
             'src/cascadia/TerminalApp/Sample.xaml',
+            'src/cascadia/TerminalApp/Resources/en-US/Resources.resw',
             'src/cascadia/TerminalProtocol/Sample.cpp',
             'src/buffer/out/Sample.cpp',
             'tools/wta/locales/ar-SA.yml'
@@ -164,8 +165,12 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
         }
 
         $context = Get-Content -LiteralPath $output -Raw | ConvertFrom-Json
-        $context.files.Count | Should -Be 4
+        $context.files.Count | Should -Be 5
         @($context.files | Where-Object path -eq 'src/cascadia/TerminalApp/Sample.xaml').surfaces | Should -Contain 'xaml-ui'
+        $resource = @($context.files | Where-Object path -eq 'src/cascadia/TerminalApp/Resources/en-US/Resources.resw')
+        $resource.surfaces | Should -Contain 'resw'
+        $resource.surfaces | Should -Not -Contain 'xaml-ui'
+        $resource.checks | Should -Not -Contain 'rtl-layout'
         @($context.files | Where-Object path -eq 'src/cascadia/TerminalProtocol/Sample.cpp').checks | Should -Contain 'machine-token-exclusion'
         @($context.files | Where-Object path -eq 'src/buffer/out/Sample.cpp').checks | Should -Contain 'grapheme-and-cell-width'
         @($context.files | Where-Object path -eq 'tools/wta/locales/ar-SA.yml').checks | Should -Contain 'placeholder-reordering'
