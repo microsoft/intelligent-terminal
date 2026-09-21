@@ -25,6 +25,26 @@ on:
         description: 'Controller-resolved merge base'
         required: true
         type: string
+      expected_base_sha:
+        description: 'Observed pull request base tip'
+        required: true
+        type: string
+      head_ref:
+        description: 'Pull request head branch'
+        required: true
+        type: string
+      base_ref:
+        description: 'Pull request base branch'
+        required: true
+        type: string
+      head_repo:
+        description: 'Pull request head repository'
+        required: true
+        type: string
+      same_repo:
+        description: 'Whether the head repository is the workflow repository'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -187,7 +207,6 @@ post-steps:
     with:
       name: globalization-review-evidence
       path: |
-        /tmp/gh-aw/globalization-context.json
         /tmp/gh-aw/globalization-context-post.json
         /tmp/gh-aw/globalization-findings.json
       if-no-files-found: error

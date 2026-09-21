@@ -56,8 +56,11 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         env:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           COMPARISON_BASE_SHA: ${{ steps.comparison.outputs.comparison_base_sha }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           SAME_REPO: ${{ github.event.pull_request.head.repo.id == github.repository_id }}
         with:
           script: |
@@ -67,6 +70,27 @@ jobs:
             const workflow = sameRepo
               ? 'ghaw-pr-globalization-repair.lock.yml'
               : 'ghaw-pr-globalization.lock.yml';
+            const awContext = sameRepo ? JSON.stringify({
+              item_type: 'pull_request',
+              item_number: pr.number,
+              repo: `${context.repo.owner}/${context.repo.repo}`,
+              event_type: 'pull_request',
+              head_sha: process.env.HEAD_SHA,
+              base_sha: process.env.EXPECTED_BASE_SHA,
+              comparison_base_sha: process.env.COMPARISON_BASE_SHA,
+              root_repo: `${context.repo.owner}/${context.repo.repo}`,
+              root_run_id: String(context.runId),
+              root_workflow_id: 'ghaw-pr-globalization-controller'
+            }) : JSON.stringify({
+              event_type: 'workflow_dispatch',
+              source_pr_number: pr.number,
+              head_sha: process.env.HEAD_SHA,
+              base_sha: process.env.EXPECTED_BASE_SHA,
+              comparison_base_sha: process.env.COMPARISON_BASE_SHA,
+              root_repo: `${context.repo.owner}/${context.repo.repo}`,
+              root_run_id: String(context.runId),
+              root_workflow_id: 'ghaw-pr-globalization-controller'
+            });
             const startedAt = Date.now() - 5000;
             const response = await github.request('POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches', {
               owner: context.repo.owner,
@@ -78,7 +102,13 @@ jobs:
                 pr_number: String(pr.number),
                 repo: `${context.repo.owner}/${context.repo.repo}`,
                 expected_head_sha: process.env.HEAD_SHA,
-                comparison_base_sha: process.env.COMPARISON_BASE_SHA
+                expected_base_sha: process.env.EXPECTED_BASE_SHA,
+                comparison_base_sha: process.env.COMPARISON_BASE_SHA,
+                head_ref: process.env.HEAD_REF,
+                base_ref: process.env.BASE_REF,
+                head_repo: process.env.HEAD_REPO,
+                same_repo: String(sameRepo),
+                aw_context: awContext
               }
             });
             let runId = response.data?.workflow_run_id;

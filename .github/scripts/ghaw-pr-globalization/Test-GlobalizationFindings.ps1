@@ -57,7 +57,8 @@ function Test-SafeRepositoryPath {
     return -not [string]::IsNullOrWhiteSpace($Path) -and
         -not [System.IO.Path]::IsPathRooted($Path) -and
         $Path.Replace('\', '/') -notmatch '(^|/)\.\.(/|$)' -and
-        $Path.Replace('\', '/') -notmatch '^\.github/'
+        $Path.Replace('\', '/') -notmatch '^\.github/' -and
+        $Path.Replace('\', '/') -notmatch '(^|/)\.(gitattributes|gitmodules)$'
 }
 
 Assert-ExactSha -Name 'ExpectedBaseSha' -Value $ExpectedBaseSha

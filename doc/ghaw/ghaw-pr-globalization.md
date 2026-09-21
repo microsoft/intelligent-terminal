@@ -38,10 +38,14 @@ behavior-preserving patch to the exact immutable changed file named by the
 finding. Medium/low findings remain suggestions. Forks are always read-only.
 Automatic globalization repair does not modify RESW or localization YAML;
 resource findings are handed to the localization workflow or a maintainer. The
-trusted post-step independently derives the final patch manifest and runs
-`git diff --check`. Globalization and localization repairs share a PR-scoped,
-non-cancelling concurrency group; the worker never performs both branch push
-and comment publication.
+privileged safe-output job applies the generated mailbox patch in a fresh,
+configuration-isolated clone, independently derives the final manifest, runs
+`git diff --check`, validates the structured report with trusted scripts, and
+rechecks the live PR head immediately before publication. A later head race is
+rejected as a non-fast-forward push because fallback PR creation is disabled.
+Globalization and localization repairs share a PR-scoped, non-cancelling
+concurrency group; the worker never performs both branch push and comment
+publication.
 
 ## Repository-specific checks
 

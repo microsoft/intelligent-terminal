@@ -25,6 +25,26 @@ on:
         description: 'Controller-resolved merge base'
         required: true
         type: string
+      expected_base_sha:
+        description: 'Observed pull request base tip'
+        required: true
+        type: string
+      head_ref:
+        description: 'Pull request head branch'
+        required: true
+        type: string
+      base_ref:
+        description: 'Pull request base branch'
+        required: true
+        type: string
+      head_repo:
+        description: 'Pull request head repository'
+        required: true
+        type: string
+      same_repo:
+        description: 'Whether the head repository is the workflow repository'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -83,8 +103,120 @@ steps:
 
 safe-outputs:
   github-token: ${{ secrets.GITHUB_TOKEN }}
+  steps:
+    - name: Validate isolated repair patch and live head
+      if: contains(needs.agent.outputs.output_types, 'push_to_pull_request_branch')
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+        BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}
+        PR_NUMBER: ${{ github.event.inputs.pr_number }}
+        REPOSITORY: ${{ github.event.inputs.repo }}
+        WORKFLOW_SHA: ${{ github.workflow_sha }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $env:GIT_CONFIG_NOSYSTEM = '1'
+        $env:GIT_CONFIG_GLOBAL = '/dev/null'
+        $env:GIT_NO_REPLACE_OBJECTS = '1'
+
+        $patches = @(Get-ChildItem -LiteralPath /tmp/gh-aw -Filter 'aw-*.patch' -File -Force)
+        if ($patches.Count -ne 1 -or $patches[0].LinkType -or
+            (($patches[0].Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)) {
+          throw 'Expected exactly one regular gh-aw patch artifact.'
+        }
+        $patchPath = $patches[0].FullName
+
+        $validationRoot = Join-Path $env:RUNNER_TEMP 'ghaw-globalization-safe-validation'
+        $verificationRepo = Join-Path $validationRoot 'repo'
+        $evidenceDirectory = Join-Path $validationRoot 'evidence'
+        [System.IO.Directory]::CreateDirectory($evidenceDirectory) | Out-Null
+        git -c core.hooksPath=/dev/null clone --no-local --no-hardlinks --quiet $env:GITHUB_WORKSPACE $verificationRepo
+        if ($LASTEXITCODE -ne 0) { throw 'Failed to create isolated validation checkout.' }
+        git -C $verificationRepo -c core.hooksPath=/dev/null checkout --detach $env:EXPECTED_HEAD_SHA
+        if ($LASTEXITCODE -ne 0) { throw 'Failed to check out the immutable repair base.' }
+        git -C $verificationRepo -c core.hooksPath=/dev/null -c user.name=github-actions `
+          -c user.email=41898282+github-actions[bot]@users.noreply.github.com `
+          am --3way --keep-cr $patchPath
+        if ($LASTEXITCODE -ne 0) { throw 'The proposed repair patch does not apply cleanly.' }
+        $candidateSha = (git -C $verificationRepo rev-parse HEAD).Trim()
+
+        $trustedDirectory = Join-Path $validationRoot 'trusted'
+        [System.IO.Directory]::CreateDirectory($trustedDirectory) | Out-Null
+        foreach ($name in @('Get-GlobalizationChangeContext.ps1', 'Test-GlobalizationFindings.ps1')) {
+          git --no-replace-objects show "${env:WORKFLOW_SHA}:.github/scripts/ghaw-pr-globalization/$name" |
+            Set-Content -LiteralPath (Join-Path $trustedDirectory $name) -Encoding utf8NoBOM
+          if ($LASTEXITCODE -ne 0) { throw "Failed to materialize trusted script $name." }
+        }
+
+        $agentDirectory = '/tmp/gh-aw/agent'
+        $reportSource = Join-Path $agentDirectory 'globalization-findings.json'
+        $agentDirectoryItem = Get-Item -LiteralPath $agentDirectory -Force
+        if (-not $agentDirectoryItem.PSIsContainer -or $agentDirectoryItem.LinkType -or
+            (($agentDirectoryItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)) {
+          throw 'Agent evidence directory is not a real directory.'
+        }
+        $agentRoot = (Resolve-Path -LiteralPath $agentDirectory).Path
+        $reportItem = Get-Item -LiteralPath $reportSource -Force
+        if ($reportItem.PSIsContainer -or $reportItem.LinkType -or
+            (($reportItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) -or
+            $reportItem.Length -lt 2 -or $reportItem.Length -gt 1MB -or
+            [System.IO.Path]::GetDirectoryName((Resolve-Path -LiteralPath $reportSource).Path) -cne $agentRoot) {
+          throw 'Agent findings report is not a confined regular file.'
+        }
+        $reportPath = Join-Path $evidenceDirectory 'globalization-findings.json'
+        Copy-Item -LiteralPath $reportSource -Destination $reportPath
+
+        Push-Location $verificationRepo
+        try {
+          $contextPath = Join-Path $evidenceDirectory 'globalization-context.json'
+          pwsh -NoProfile -File (Join-Path $trustedDirectory 'Get-GlobalizationChangeContext.ps1') `
+            -BaseSha $env:BASE_SHA -HeadSha $env:EXPECTED_HEAD_SHA -OutputPath $contextPath
+          if ($LASTEXITCODE -ne 0) { throw 'Trusted immutable classification failed.' }
+
+          $changedPaths = @(git --no-replace-objects diff --name-only --no-ext-diff --no-textconv `
+            $env:EXPECTED_HEAD_SHA $candidateSha --)
+          if ($LASTEXITCODE -ne 0) { throw 'Trusted patch manifest derivation failed.' }
+          $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json -Depth 20
+          $declaredPaths = @($report.patchFiles.path | Sort-Object -Unique)
+          if (Compare-Object -ReferenceObject @($changedPaths | Sort-Object -Unique) -DifferenceObject $declaredPaths) {
+            throw 'Isolated final patch paths do not match patchFiles evidence.'
+          }
+          git --no-replace-objects diff --check --no-ext-diff --no-textconv $env:EXPECTED_HEAD_SHA $candidateSha
+          if ($LASTEXITCODE -ne 0) { throw 'Isolated final patch failed git diff --check.' }
+
+          $trustedValidationPath = Join-Path $evidenceDirectory 'trusted-validation.json'
+          [System.IO.File]::WriteAllText($trustedValidationPath, (@{
+            version = 1
+            checks = @(
+              @{ name = 'git-diff-check'; status = 'PASS'; exitCode = 0 }
+              @{ name = 'patch-manifest'; status = 'PASS'; exitCode = 0 }
+            )
+          } | ConvertTo-Json -Depth 5), [System.Text.UTF8Encoding]::new($false))
+          pwsh -NoProfile -File (Join-Path $trustedDirectory 'Test-GlobalizationFindings.ps1') `
+            -ReportPath $reportPath -ContextPath $contextPath `
+            -TrustedValidationPath $trustedValidationPath `
+            -ExpectedBaseSha $env:BASE_SHA -ExpectedHeadSha $env:EXPECTED_HEAD_SHA -Mode repair
+          if ($LASTEXITCODE -ne 0) { throw 'Trusted findings validation failed.' }
+        } finally {
+          Pop-Location
+        }
+
+        $current = (& gh api "/repos/$env:REPOSITORY/pulls/$env:PR_NUMBER" --jq '.head.sha' | Out-String).Trim()
+        if ($LASTEXITCODE -ne 0 -or $current.ToLowerInvariant() -cne $env:EXPECTED_HEAD_SHA.ToLowerInvariant()) {
+          throw "Stale globalization repair rejected. Expected $env:EXPECTED_HEAD_SHA, found '$current'."
+        }
+    - name: Upload trusted globalization repair evidence
+      if: contains(needs.agent.outputs.output_types, 'push_to_pull_request_branch')
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: globalization-repair-trusted-evidence
+        path: ${{ runner.temp }}/ghaw-globalization-safe-*/evidence/
+        if-no-files-found: error
+        retention-days: 7
   push-to-pull-request-branch:
     base-branch: ${{ github.event.inputs.expected_head_sha }}
+    patch-format: am
     github-token-for-extra-empty-commit: "${{ '' }}"
     allowed-files:
       - 'src/cascadia/**'
@@ -96,110 +228,6 @@ safe-outputs:
     protected-files: blocked
     if-no-changes: error
     fallback-as-pull-request: false
-
-post-steps:
-  - name: Reject stale repair output
-    shell: pwsh
-    env:
-      GH_TOKEN: ${{ github.token }}
-      EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
-      PR_NUMBER: ${{ github.event.inputs.pr_number }}
-      REPOSITORY: ${{ github.event.inputs.repo }}
-    run: |
-      $ErrorActionPreference = 'Stop'
-      if (($env:EXPECTED_HEAD_SHA ?? '') -notmatch '^[0-9a-f]{40}$') {
-        throw 'Freshness check received an invalid expected head SHA.'
-      }
-      $currentOutput = & gh api "/repos/$env:REPOSITORY/pulls/$env:PR_NUMBER" --jq '.head.sha'
-      if ($LASTEXITCODE -ne 0) {
-        throw "Failed to read the current head SHA for PR #$env:PR_NUMBER."
-      }
-      $current = ($currentOutput | Out-String).Trim()
-      if (($current ?? '') -notmatch '^[0-9a-fA-F]{40}$') {
-        throw "Freshness check returned an invalid current head SHA: '$current'."
-      }
-      if ($current.ToLowerInvariant() -cne $env:EXPECTED_HEAD_SHA.ToLowerInvariant()) {
-        throw "Stale globalization repair rejected. Expected $env:EXPECTED_HEAD_SHA, found '$current'."
-      }
-  - name: Validate final patch and output shape
-    shell: bash
-    env:
-      BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}
-      HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
-      WORKFLOW_SHA: ${{ github.workflow_sha }}
-      RUNNER_TEMP: ${{ runner.temp }}
-    run: |
-      set -euo pipefail
-      trusted_dir="$(mktemp -d "$RUNNER_TEMP/ghaw-globalization-post.XXXXXX")"
-      trap 'rm -rf -- "$trusted_dir"' EXIT
-      git --no-replace-objects show "$WORKFLOW_SHA:.github/scripts/ghaw-pr-globalization/Get-GlobalizationChangeContext.ps1" > "$trusted_dir/Get-GlobalizationChangeContext.ps1"
-      git --no-replace-objects show "$WORKFLOW_SHA:.github/scripts/ghaw-pr-globalization/Test-GlobalizationFindings.ps1" > "$trusted_dir/Test-GlobalizationFindings.ps1"
-      rm -f -- /tmp/gh-aw/agent/globalization-context-post.json /tmp/gh-aw/agent/trusted-validation.json
-      pwsh -NoProfile -File "$trusted_dir/Get-GlobalizationChangeContext.ps1" \
-        -BaseSha "$BASE_SHA" -HeadSha "$HEAD_SHA" \
-        -OutputPath /tmp/gh-aw/agent/globalization-context-post.json
-      node <<'NODE'
-      const fs = require('fs');
-      const path = require('path');
-      const { execFileSync } = require('child_process');
-      const fail = message => { throw new Error(message); };
-      const readJson = (filename, directory) => {
-        const candidate = path.join(directory, filename);
-        const stat = fs.lstatSync(candidate);
-        if (stat.isSymbolicLink() || !stat.isFile() || stat.size < 2 || stat.size > 1024 * 1024) {
-          fail(`${filename} must be a regular file within the size limit`);
-        }
-        const realRoot = fs.realpathSync(directory);
-        const realFile = fs.realpathSync(candidate);
-        if (path.dirname(realFile) !== realRoot || path.basename(realFile) !== filename) {
-          fail(`${filename} resolved outside the fixed runtime location`);
-        }
-        return JSON.parse(fs.readFileSync(candidate, 'utf8'));
-      };
-      const report = readJson('globalization-findings.json', '/tmp/gh-aw/agent');
-      const output = readJson('agent_output.json', '/tmp/gh-aw');
-      if (!Array.isArray(output.items) || !Array.isArray(output.errors ?? []) || output.errors.length !== 0) {
-        fail('Invalid agent output envelope.');
-      }
-      const types = output.items.map(item => item?.type);
-      if (types.length !== 1 || types.some(type => !['push_to_pull_request_branch', 'noop'].includes(type))) {
-        fail('Repair requires exactly one branch push or noop.');
-      }
-      const split = buffer => buffer.toString('utf8').split('\0').filter(Boolean);
-      const tracked = split(execFileSync('git', ['--no-replace-objects', 'diff', '--name-only', '-z', '--no-ext-diff', '--no-textconv', process.env.HEAD_SHA], { timeout: 15000 }));
-      const untracked = split(execFileSync('git', ['--no-replace-objects', 'ls-files', '--others', '--exclude-standard', '-z'], { timeout: 15000 }));
-      const changedPaths = [...new Set([...tracked, ...untracked])].sort();
-      const declaredPaths = [...new Set((report.patchFiles || []).map(item => item.path))].sort();
-      const changed = changedPaths.length > 0;
-      const fixed = report.findings.some(finding => finding.disposition === 'fixed');
-      if ((changed || fixed) && types[0] !== 'push_to_pull_request_branch') fail('A repair cannot be discarded by noop.');
-      if (!changed && types[0] !== 'noop') fail('A branch push requires a final patch.');
-      if (changed !== fixed) fail('Final patch and fixed-finding evidence must agree.');
-      if (JSON.stringify(changedPaths) !== JSON.stringify(declaredPaths)) fail('Final patch paths do not match patchFiles evidence.');
-      execFileSync('git', ['--no-replace-objects', 'diff', '--check', '--no-ext-diff', '--no-textconv', process.env.HEAD_SHA], { timeout: 15000, stdio: 'inherit' });
-      fs.writeFileSync('/tmp/gh-aw/agent/trusted-validation.json', JSON.stringify({
-        version: 1,
-        checks: [
-          { name: 'git-diff-check', status: 'PASS', exitCode: 0 },
-          { name: 'patch-manifest', status: 'PASS', exitCode: 0 }
-        ]
-      }), { flag: 'wx', mode: 0o600 });
-      NODE
-      pwsh -NoProfile -File "$trusted_dir/Test-GlobalizationFindings.ps1" \
-        -ReportPath /tmp/gh-aw/agent/globalization-findings.json \
-        -ContextPath /tmp/gh-aw/agent/globalization-context-post.json \
-        -TrustedValidationPath /tmp/gh-aw/agent/trusted-validation.json \
-        -ExpectedBaseSha "$BASE_SHA" -ExpectedHeadSha "$HEAD_SHA" -Mode repair
-  - name: Upload globalization repair evidence
-    uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-    with:
-      name: globalization-repair-evidence
-      path: |
-        /tmp/gh-aw/agent/globalization-context-post.json
-        /tmp/gh-aw/agent/globalization-findings.json
-        /tmp/gh-aw/agent/trusted-validation.json
-      if-no-files-found: error
-      retention-days: 7
 
 timeout-minutes: 45
 max-ai-credits: 1000

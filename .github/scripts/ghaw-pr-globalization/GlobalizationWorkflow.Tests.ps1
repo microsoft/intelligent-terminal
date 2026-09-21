@@ -254,13 +254,17 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
         $worker | Should -Not -Match 'pwsh -NoProfile -File \.github/scripts/ghaw-pr-globalization/'
         $worker | Should -Match 'max: 1'
         $worker | Should -Match 'Reject stale worker output'
+        $worker | Should -Not -Match '(?m)^\s{8}/tmp/gh-aw/globalization-context\.json$'
         $worker | Should -Not -Match 'push-to-pull-request-branch'
         $repair | Should -Match 'push-to-pull-request-branch'
+        $repair | Should -Match 'patch-format: am'
+        $repair | Should -Match 'Validate isolated repair patch and live head'
+        $repair | Should -Match 'GIT_CONFIG_NOSYSTEM'
         $repair | Should -Not -Match 'add-comment:'
         $repair | Should -Match '(?m)^steps:'
         $repair | Should -Not -Match '(?m)^\s{2}prepare:'
         $repair | Should -Match 'cancel-in-progress: false'
-        $repair | Should -Match "'--no-replace-objects', 'diff'"
+        $repair | Should -Match 'git --no-replace-objects diff'
         $repair | Should -Not -Match '(?m)^\s{8}/tmp/gh-aw/agent/globalization-context\.json$'
         (Get-Content -LiteralPath $script:classifier -Raw) | Should -Match 'git --no-replace-objects diff'
         (Get-Content -LiteralPath $script:localizationWorkflow -Raw) | Should -Match 'cancel-in-progress: false'
@@ -269,6 +273,9 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
         $controller | Should -Match 'pull_request_target'
         $controller | Should -Match 'sameRepo'
         $controller | Should -Match 'ghaw-pr-globalization-repair\.lock\.yml'
+        $controller | Should -Match 'aw_context: awContext'
+        $controller | Should -Match "item_type: 'pull_request'"
+        $controller | Should -Match 'head_ref: process\.env\.HEAD_REF'
         $controller | Should -Match 'persist-credentials: false'
         $controller | Should -Match 'cancel-in-progress: true'
     }
@@ -286,6 +293,8 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
         $guideLock | Should -Match 'globalization-context-post\.json'
         $repairLock | Should -Match 'trusted-validation\.json'
         $repairLock | Should -Match 'git-diff-check'
+        $repairLock | Should -Match 'GH_AW_PR_HEAD_BASE_SHA'
+        $repairLock | Should -Match 'Validate isolated repair patch and live head'
     }
 
     It 'pins the custom review agent to the native findings schema' {
