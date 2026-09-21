@@ -50,7 +50,7 @@ jobs:
           $base = (git merge-base $env:BASE_SHA $head).Trim().ToLowerInvariant()
           if ($base -notmatch '^[0-9a-f]{40}$') { throw 'Could not resolve merge base.' }
           "comparison_base_sha=$base" >> $env:GITHUB_OUTPUT
-      - name: Dispatch and wait for read-only worker
+      - name: Dispatch and wait for globalization worker
         id: worker
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         env:
@@ -121,6 +121,6 @@ jobs:
             echo "- Result: **${CONCLUSION:-failure}**"
             echo "- Immutable head: \`${{ github.event.pull_request.head.sha }}\`"
             echo "- Internal GHAW run: [${RUN_ID:-unavailable}](${RUN_URL:-${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}})"
-            echo "- Worker is read-only for same-repository and fork pull requests."
+            echo "- Same-repository worker may push one constrained repair; fork worker is read-only."
           } >> "$GITHUB_STEP_SUMMARY"
           test "${CONCLUSION:-failure}" = success

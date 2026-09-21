@@ -10,6 +10,7 @@ ACIOSS
 ACL'd
 acp
 Acq
+actionlint
 actctx
 ACTCTXW
 activedir
@@ -195,6 +196,7 @@ cmw
 CNL
 cnn
 Codeflow
+CODEOWNERS
 codepages
 coinit
 colorizing
@@ -673,6 +675,7 @@ GETWHEELSCROLLCHARS
 GETWHEELSCROLLLINES
 gfx
 GGI
+ghaw
 GHgh
 GHIJK
 GHIJKL
