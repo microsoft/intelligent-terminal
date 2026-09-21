@@ -7,11 +7,22 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
         $script:validator = Join-Path $PSScriptRoot 'Test-GlobalizationFindings.ps1'
         $script:workflow = Join-Path $script:root '.github\workflows\ghaw-pr-globalization.md'
         $script:repairWorkflow = Join-Path $script:root '.github\workflows\ghaw-pr-globalization-repair.md'
+        $script:workflowLock = Join-Path $script:root '.github\workflows\ghaw-pr-globalization.lock.yml'
+        $script:repairWorkflowLock = Join-Path $script:root '.github\workflows\ghaw-pr-globalization-repair.lock.yml'
+        $script:localizationWorkflow = Join-Path $script:root '.github\workflows\ensure-localization.md'
         $script:controller = Join-Path $script:root '.github\workflows\ghaw-pr-globalization-controller.yml'
 
         function New-Report {
             param([object[]]$Findings = @(), [string]$Base = ('a' * 40), [string]$Head = ('b' * 40))
-            return [ordered]@{ version = 1; baseSha = $Base; headSha = $Head; findings = $Findings }
+            return [ordered]@{
+                version = 1
+                baseSha = $Base
+                headSha = $Head
+                findings = $Findings
+                patchFiles = @()
+                executedValidation = @()
+                resourceChecks = @()
+            }
         }
 
         function New-Finding {
@@ -37,10 +48,45 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
         }
 
         function Invoke-Validator {
-            param($Report, [string]$ExpectedHead = ('b' * 40))
-            $path = Join-Path $TestDrive (([guid]::NewGuid().ToString('N')) + '.json')
+            param(
+                $Report,
+                [string]$ExpectedHead = ('b' * 40),
+                [ValidateSet('guide', 'repair')][string]$Mode = 'guide',
+                [switch]$Trusted
+            )
+            $directory = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+            [System.IO.Directory]::CreateDirectory($directory) | Out-Null
+            $path = Join-Path $directory 'findings.json'
+            $contextPath = Join-Path $directory 'context.json'
+            $trustedPath = Join-Path $directory 'trusted-validation.json'
             [System.IO.File]::WriteAllText($path, ($Report | ConvertTo-Json -Depth 10), [System.Text.UTF8Encoding]::new($false))
-            $null = & pwsh -NoProfile -File $script:validator -ReportPath $path -ExpectedBaseSha ('a' * 40) -ExpectedHeadSha $ExpectedHead 2>&1
+            $context = [ordered]@{
+                version = 1
+                baseSha = 'a' * 40
+                headSha = $ExpectedHead
+                files = @([ordered]@{ path = 'src/cascadia/TerminalApp/Sample.xaml'; status = 'M' })
+            }
+            [System.IO.File]::WriteAllText($contextPath, ($context | ConvertTo-Json -Depth 10), [System.Text.UTF8Encoding]::new($false))
+            $arguments = @(
+                '-NoProfile', '-File', $script:validator,
+                '-ReportPath', $path,
+                '-ContextPath', $contextPath,
+                '-ExpectedBaseSha', ('a' * 40),
+                '-ExpectedHeadSha', $ExpectedHead,
+                '-Mode', $Mode
+            )
+            if ($Trusted) {
+                $trustedValidation = [ordered]@{
+                    version = 1
+                    checks = @(
+                        [ordered]@{ name = 'git-diff-check'; status = 'PASS'; exitCode = 0 },
+                        [ordered]@{ name = 'patch-manifest'; status = 'PASS'; exitCode = 0 }
+                    )
+                }
+                [System.IO.File]::WriteAllText($trustedPath, ($trustedValidation | ConvertTo-Json -Depth 10), [System.Text.UTF8Encoding]::new($false))
+                $arguments += @('-TrustedValidationPath', $trustedPath)
+            }
+            $null = & pwsh @arguments 2>&1
             return $LASTEXITCODE
         }
     }
@@ -63,7 +109,6 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
     }
 
     It 'allows fixed disposition only for strong HIGH repair findings' {
-        $path = Join-Path $TestDrive 'repair-report.json'
         $fixed = New-Finding
         $fixed.disposition = 'fixed'
         $report = New-Report -Findings @($fixed)
@@ -73,41 +118,61 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
         $report.executedValidation = @(
             [ordered]@{ command = 'focused-test'; exitCode = 0; result = 'passed' }
         )
-        [System.IO.File]::WriteAllText($path, ($report | ConvertTo-Json -Depth 10))
-
-        $null = & pwsh -NoProfile -File $script:validator -ReportPath $path `
-            -ExpectedBaseSha ('a' * 40) -ExpectedHeadSha ('b' * 40) -Mode repair 2>&1
-        $LASTEXITCODE | Should -Be 0
-        $null = & pwsh -NoProfile -File $script:validator -ReportPath $path `
-            -ExpectedBaseSha ('a' * 40) -ExpectedHeadSha ('b' * 40) -Mode guide 2>&1
-        $LASTEXITCODE | Should -Not -Be 0
+        (Invoke-Validator -Report $report -Mode repair -Trusted) | Should -Be 0
+        (Invoke-Validator -Report $report -Mode repair) | Should -Not -Be 0
+        (Invoke-Validator -Report $report -Mode guide -Trusted) | Should -Not -Be 0
     }
 
-    It 'rejects fixed findings without passing executed and resource validation' {
-        $path = Join-Path $TestDrive 'invalid-fixed-report.json'
+    It 'rejects fixed findings without validation or with paths outside exact finding scope' {
         $fixed = New-Finding
         $fixed.disposition = 'fixed'
         $report = New-Report -Findings @($fixed)
-        [System.IO.File]::WriteAllText($path, ($report | ConvertTo-Json -Depth 10))
-        $null = & pwsh -NoProfile -File $script:validator -ReportPath $path `
-            -ExpectedBaseSha ('a' * 40) -ExpectedHeadSha ('b' * 40) -Mode repair 2>&1
-        $LASTEXITCODE | Should -Not -Be 0
+        (Invoke-Validator -Report $report -Mode repair -Trusted) | Should -Not -Be 0
 
-        $fixed.file = 'src/cascadia/TerminalApp/Resources/en-US/Resources.resw'
-        $report = New-Report -Findings @($fixed)
         $report.patchFiles = @(
-            [ordered]@{ path = $fixed.file; kind = 'fix'; findingIds = @($fixed.stableId) }
+            [ordered]@{ path = 'src/cascadia/TerminalApp/Other.xaml'; kind = 'fix'; findingIds = @($fixed.stableId) }
         )
         $report.executedValidation = @(
-            [ordered]@{ command = 'resource-check'; exitCode = 0; result = 'passed' }
+            [ordered]@{ command = 'focused-test'; exitCode = 0; result = 'passed' }
         )
-        $report.resourceChecks = @(
-            [ordered]@{ check = 'Test-ResourceSyntax'; status = 'FIXABLE'; exitCode = 20 }
-        )
-        [System.IO.File]::WriteAllText($path, ($report | ConvertTo-Json -Depth 10))
-        $null = & pwsh -NoProfile -File $script:validator -ReportPath $path `
-            -ExpectedBaseSha ('a' * 40) -ExpectedHeadSha ('b' * 40) -Mode repair 2>&1
+        (Invoke-Validator -Report $report -Mode repair -Trusted) | Should -Not -Be 0
+    }
+
+    It 'rejects symlinked reports and accepts only complete resource checker bundles' {
+        $directory = Join-Path $TestDrive 'symlink'
+        [System.IO.Directory]::CreateDirectory($directory) | Out-Null
+        $target = Join-Path $directory 'target.json'
+        $link = Join-Path $directory 'report.json'
+        $context = Join-Path $directory 'context.json'
+        [System.IO.File]::WriteAllText($target, ((New-Report) | ConvertTo-Json -Depth 10))
+        [System.IO.File]::WriteAllText($context, ([ordered]@{
+            version = 1
+            baseSha = 'a' * 40
+            headSha = 'b' * 40
+            files = @([ordered]@{ path = 'src/cascadia/TerminalApp/Sample.xaml'; status = 'M' })
+        } | ConvertTo-Json -Depth 10))
+        [System.IO.File]::CreateSymbolicLink($link, $target) | Out-Null
+        $null = & pwsh -NoProfile -File $script:validator -ReportPath $link -ContextPath $context `
+            -ExpectedBaseSha ('a' * 40) -ExpectedHeadSha ('b' * 40) 2>&1
         $LASTEXITCODE | Should -Not -Be 0
+
+        $valid = New-Report
+        $checks = @(
+            'Test-ResourceSyntax', 'Test-ResourceEncoding', 'Test-RequiredKeys',
+            'Test-PlaceholderParity', 'Test-LockedContent', 'Test-PseudoLocale'
+        )
+        $valid.resourceChecks = @($checks | ForEach-Object {
+            [ordered]@{
+                check = $_
+                status = 'PASS'
+                exitCode = 0
+                results = @([ordered]@{ status = 'PASS'; path = 'sample' })
+            }
+        })
+        (Invoke-Validator -Report $valid) | Should -Be 0
+        $valid.resourceChecks[0].status = 'FIXABLE'
+        $valid.resourceChecks[0].exitCode = 20
+        (Invoke-Validator -Report $valid) | Should -Not -Be 0
     }
 
     It 'carries every required domain rule and false-positive boundary in the prompt' {
@@ -182,11 +247,18 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
         $controller = Get-Content -LiteralPath $script:controller -Raw
         $worker | Should -Match 'checkout:\s*\r?\n\s*ref: \$\{\{ github\.workflow_sha \}\}'
         $worker | Should -Match 'edit: false'
+        $worker | Should -Not -Match "'pwsh:\*'"
+        $worker | Should -Match '(?m)^steps:'
+        $worker | Should -Not -Match '(?m)^\s{2}prepare:'
         $worker | Should -Match 'max: 1'
         $worker | Should -Match 'Reject stale worker output'
         $worker | Should -Not -Match 'push-to-pull-request-branch'
         $repair | Should -Match 'push-to-pull-request-branch'
         $repair | Should -Not -Match 'add-comment:'
+        $repair | Should -Match '(?m)^steps:'
+        $repair | Should -Not -Match '(?m)^\s{2}prepare:'
+        $repair | Should -Match 'cancel-in-progress: false'
+        (Get-Content -LiteralPath $script:localizationWorkflow -Raw) | Should -Match 'cancel-in-progress: false'
         $repair | Should -Match 'HIGH finding with strong'
         $repair | Should -Match '\[globalization-review\]'
         $controller | Should -Match 'pull_request_target'
@@ -194,6 +266,21 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
         $controller | Should -Match 'ghaw-pr-globalization-repair\.lock\.yml'
         $controller | Should -Match 'persist-credentials: false'
         $controller | Should -Match 'cancel-in-progress: true'
+    }
+
+    It 'compiles same-runner context, dispatch environment, and trusted gates' {
+        $guideLock = Get-Content -LiteralPath $script:workflowLock -Raw
+        $repairLock = Get-Content -LiteralPath $script:repairWorkflowLock -Raw
+        foreach ($compiled in @($guideLock, $repairLock)) {
+            $compiled | Should -Match '(?:Verify|Validate) immutable'
+            $compiled | Should -Match 'HEAD_SHA:'
+            $compiled | Should -Match 'BASE_SHA:'
+            $compiled | Should -Match 'PR_NUMBER:'
+            $compiled | Should -Match 'GH_TOKEN:'
+        }
+        $guideLock | Should -Match 'globalization-context-post\.json'
+        $repairLock | Should -Match 'trusted-validation\.json'
+        $repairLock | Should -Match 'git-diff-check'
     }
 
     It 'pins the custom review agent to the native findings schema' {

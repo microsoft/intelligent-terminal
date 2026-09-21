@@ -24,16 +24,24 @@ This mirrors the existing localization controller's separation because gh-aw
 PR safe output must not combine a branch push and a comment in one worker.
 
 The fork worker publishes at most one hidden-on-rerun comment; the repair worker
-publishes at most one branch push. Before publication,
-`Test-GlobalizationFindings.ps1` rejects malformed reports, stale SHAs, unsafe
-paths, invalid severity/disposition combinations, and more than 50 findings.
-Each worker re-reads the live PR head immediately before publication.
+publishes at most one branch push. The fork agent has only read-only Git
+commands and carries its structured report inside the native comment output;
+it cannot write a separate report through an unrestricted shell. Before
+publication, `Test-GlobalizationFindings.ps1` rejects symlinked or
+out-of-directory evidence, malformed reports, stale SHAs, paths outside the
+immutable PR change set, invalid severity/disposition combinations, and more
+than 50 findings. Each worker re-reads the live PR head immediately before
+publication.
 
 The repair worker can edit only strongly evidenced HIGH findings with a small,
-behavior-preserving patch and applicable final validation. Medium/low findings
-remain suggestions. Forks are always read-only. Resource edits must use the
-existing localization skill's final checks and the same PR-scoped mutation
-contract; the worker never performs both branch push and comment publication.
+behavior-preserving patch to the exact immutable changed file named by the
+finding. Medium/low findings remain suggestions. Forks are always read-only.
+Automatic globalization repair does not modify RESW or localization YAML;
+resource findings are handed to the localization workflow or a maintainer. The
+trusted post-step independently derives the final patch manifest and runs
+`git diff --check`. Globalization and localization repairs share a PR-scoped,
+non-cancelling concurrency group; the worker never performs both branch push
+and comment publication.
 
 ## Repository-specific checks
 

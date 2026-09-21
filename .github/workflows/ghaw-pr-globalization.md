@@ -47,48 +47,31 @@ tools:
     - 'git grep:*'
     - 'git show:*'
     - 'git rev-parse:*'
-    - 'pwsh:*'
 
 jobs:
-  prepare:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    outputs:
-      trusted_code_revision: ${{ steps.prepare.outputs.trusted_code_revision }}
-    steps:
-      - name: Checkout trusted workflow revision
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: ${{ github.workflow_sha }}
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Verify immutable head and classify changes
-        id: prepare
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
-          BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}
-          PR_NUMBER: ${{ github.event.inputs.pr_number }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          if ($env:PR_NUMBER -notmatch '^[1-9][0-9]*$') { throw 'Invalid pull request number.' }
-          $remoteRef = "refs/remotes/origin/globalization-pr-$env:PR_NUMBER"
-          git -c credential.helper= -c 'credential.helper=!gh auth git-credential' fetch --no-tags origin "refs/pull/$env:PR_NUMBER/head:$remoteRef"
-          if ($LASTEXITCODE -ne 0) { throw 'Failed to fetch the pull request head.' }
-          $actual = (git rev-parse $remoteRef).Trim().ToLowerInvariant()
-          if ($actual -cne $env:HEAD_SHA.ToLowerInvariant()) { throw "Stale head: expected $env:HEAD_SHA, found $actual." }
-          pwsh -NoProfile -File .github/scripts/ghaw-pr-globalization/Get-GlobalizationChangeContext.ps1 `
-            -BaseSha $env:BASE_SHA -HeadSha $env:HEAD_SHA `
-            -OutputPath /tmp/gh-aw/globalization-context.json
-          if ($LASTEXITCODE -ne 0) { throw 'Globalization change classification failed.' }
-          "trusted_code_revision=${{ github.workflow_sha }}" >> $env:GITHUB_OUTPUT
-
-  agent:
-    needs: [prepare]
-
   safe_outputs:
     if: needs.agent.result == 'success'
+
+steps:
+  - name: Verify immutable head and classify changes
+    shell: pwsh
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+      BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}
+      PR_NUMBER: ${{ github.event.inputs.pr_number }}
+    run: |
+      $ErrorActionPreference = 'Stop'
+      if ($env:PR_NUMBER -notmatch '^[1-9][0-9]*$') { throw 'Invalid pull request number.' }
+      $remoteRef = "refs/remotes/origin/globalization-pr-$env:PR_NUMBER"
+      git -c credential.helper= -c 'credential.helper=!gh auth git-credential' fetch --no-tags origin "refs/pull/$env:PR_NUMBER/head:$remoteRef"
+      if ($LASTEXITCODE -ne 0) { throw 'Failed to fetch the pull request head.' }
+      $actual = (git rev-parse $remoteRef).Trim().ToLowerInvariant()
+      if ($actual -cne $env:HEAD_SHA.ToLowerInvariant()) { throw "Stale head: expected $env:HEAD_SHA, found $actual." }
+      pwsh -NoProfile -File .github/scripts/ghaw-pr-globalization/Get-GlobalizationChangeContext.ps1 `
+        -BaseSha $env:BASE_SHA -HeadSha $env:HEAD_SHA `
+        -OutputPath /tmp/gh-aw/globalization-context.json
+      if ($LASTEXITCODE -ne 0) { throw 'Globalization change classification failed.' }
 
 safe-outputs:
   add-comment:
@@ -127,27 +110,72 @@ post-steps:
       HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
     run: |
       set -euo pipefail
-      pwsh -NoProfile -File .github/scripts/ghaw-pr-globalization/Test-GlobalizationFindings.ps1 \
-        -ReportPath /tmp/gh-aw/globalization-findings.json \
-        -ExpectedBaseSha "$BASE_SHA" -ExpectedHeadSha "$HEAD_SHA"
       node <<'NODE'
       const fs = require('fs');
-      const report = JSON.parse(fs.readFileSync('/tmp/gh-aw/globalization-findings.json', 'utf8'));
-      const output = JSON.parse(fs.readFileSync('/tmp/gh-aw/agent_output.json', 'utf8'));
-      if (!Array.isArray(output.items) || (output.errors?.length ?? 0) !== 0) throw new Error('Invalid agent output envelope.');
+      const path = require('path');
+      const fail = message => { throw new Error(message); };
+      const readJson = (filename, directory = '/tmp/gh-aw') => {
+        const candidate = path.join(directory, filename);
+        const stat = fs.lstatSync(candidate);
+        if (stat.isSymbolicLink() || !stat.isFile() || stat.size < 2 || stat.size > 1024 * 1024) {
+          fail(`${filename} must be a regular file within the size limit`);
+        }
+        const realRoot = fs.realpathSync(directory);
+        const realFile = fs.realpathSync(candidate);
+        if (path.dirname(realFile) !== realRoot || path.basename(realFile) !== filename) {
+          fail(`${filename} resolved outside the fixed runtime location`);
+        }
+        return JSON.parse(fs.readFileSync(candidate, 'utf8'));
+      };
+      const output = readJson('agent_output.json');
+      if (!Array.isArray(output.items) || !Array.isArray(output.errors ?? []) || output.errors.length !== 0) {
+        fail('Invalid agent output envelope.');
+      }
       const types = output.items.map(item => item?.type);
-      if (types.some(type => !['add_comment', 'noop'].includes(type))) throw new Error('Only add_comment or noop is permitted.');
+      if (types.length !== 1 || types.some(type => !['add_comment', 'noop'].includes(type))) {
+        fail('Exactly one add_comment or noop is permitted.');
+      }
       const comments = types.filter(type => type === 'add_comment').length;
-      const noops = types.filter(type => type === 'noop').length;
-      if (report.findings.length === 0 && (comments !== 0 || noops !== 1)) throw new Error('No-findings runs require one noop.');
-      if (report.findings.length > 0 && (comments !== 1 || noops !== 0)) throw new Error('Findings runs require exactly one comment.');
+      let report;
+      if (comments === 0) {
+        report = {
+          version: 1,
+          baseSha: process.env.BASE_SHA,
+          headSha: process.env.HEAD_SHA,
+          findings: [],
+          patchFiles: [],
+          executedValidation: [],
+          resourceChecks: []
+        };
+      } else {
+        const item = output.items[0];
+        const body = item?.body ?? item?.data?.body ?? item?.payload?.body ?? item?.params?.body;
+        if (typeof body !== 'string' || !body.startsWith('## Globalization review')) {
+          fail('Globalization comment is missing its required heading.');
+        }
+        const matches = [...body.matchAll(/```globalization-report-json\n([\s\S]*?)\n```/g)];
+        if (matches.length !== 1) fail('Globalization comment must contain exactly one structured report marker.');
+        report = JSON.parse(matches[0][1]);
+        if (!Array.isArray(report.findings) || report.findings.length === 0) {
+          fail('A globalization comment requires at least one finding.');
+        }
+      }
+      fs.writeFileSync('/tmp/gh-aw/globalization-findings.json', JSON.stringify(report), { flag: 'wx', mode: 0o600 });
       NODE
+      pwsh -NoProfile -File .github/scripts/ghaw-pr-globalization/Get-GlobalizationChangeContext.ps1 \
+        -BaseSha "$BASE_SHA" -HeadSha "$HEAD_SHA" \
+        -OutputPath /tmp/gh-aw/globalization-context-post.json
+      pwsh -NoProfile -File .github/scripts/ghaw-pr-globalization/Test-GlobalizationFindings.ps1 \
+        -ReportPath /tmp/gh-aw/globalization-findings.json \
+        -ContextPath /tmp/gh-aw/globalization-context-post.json \
+        -ExpectedBaseSha "$BASE_SHA" -ExpectedHeadSha "$HEAD_SHA"
   - name: Upload globalization evidence
     uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
     with:
       name: globalization-review-evidence
       path: |
         /tmp/gh-aw/globalization-context.json
+        /tmp/gh-aw/globalization-context-post.json
         /tmp/gh-aw/globalization-findings.json
       if-no-files-found: error
       retention-days: 7
@@ -190,8 +218,7 @@ with strong repository-specific evidence, a small localized patch, unchanged
 intent, and validation against the final patch, including a final rerun of all
 applicable resource checks; it must serialize with the localization workflow.
 
-At startup remove any existing `/tmp/gh-aw/globalization-findings.json`. Write
-exactly one UTF-8 JSON report:
+Create exactly one version-1 JSON report in memory:
 
 ```json
 {"version":1,"baseSha":"<lowercase SHA>","headSha":"<lowercase SHA>","findings":[{"stableId":"GLOB-...","severity":"HIGH|MEDIUM|LOW","confidence":"strong|moderate|weak","sourceSha":"<base>","headSha":"<head>","file":"relative/path","line":1,"scenario":"reachable user scenario","localeOrScript":"affected locale/script","observed":"observed behavior","expected":"expected behavior","impact":"user impact","evidence":["path:line and test/code evidence"],"proposedFix":"bounded fix","validation":["specific test/check"],"disposition":"blocked|remaining|suggestion|skipped"}],"patchFiles":[],"executedValidation":[],"resourceChecks":[]}
@@ -199,6 +226,13 @@ exactly one UTF-8 JSON report:
 
 If there are no findings, emit exactly one `noop`. Otherwise emit exactly one
 `add_comment` card headed `## Globalization review`, grouped as High (must fix),
-Medium, and Low (consider), and include reviewed head SHA plus counts. Keep it
-concise and deterministic. The native post-step validates shape, stale SHAs,
-unsafe paths, severity gating, publication count, and the 50-finding limit.
+Medium, and Low (consider), and include reviewed head SHA plus counts. Append
+the exact JSON report inside one fenced block beginning with
+````text
+```globalization-report-json
+````
+and ending with ` ``` ` (without spaces). Do not write any files. Keep the
+visible card concise and deterministic. The trusted post-step extracts the
+payload from the native safe-output queue and validates its shape, immutable
+scope, SHAs, severity gating, publication count, and 50-finding limit before
+publication.
