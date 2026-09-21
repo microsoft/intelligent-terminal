@@ -98,7 +98,11 @@ namespace winrt::TerminalApp::implementation
         _headerControl.TitleChangeRequested([weakThis = get_weak()](auto&& title) {
             if (auto tab{ weakThis.get() })
             {
-                tab->SetTabText(title);
+                const ActionAndArgs action{ ShortcutAction::RenameTab, RenameTabArgs{ title } };
+                if (!tab->_dispatch || !tab->_dispatch.DoAction(*tab, action))
+                {
+                    tab->SetTabText(title);
+                }
             }
         });
 
@@ -2201,6 +2205,7 @@ namespace winrt::TerminalApp::implementation
             renameTabMenuItem.Click({ get_weak(), &Tab::_renameTabClicked });
             renameTabMenuItem.Text(RS_(L"RenameTabText"));
             renameTabMenuItem.Icon(renameTabSymbol);
+            Automation::AutomationProperties::SetAutomationId(renameTabMenuItem, L"RenameTabMenuItem");
 
             const auto renameTabToolTip = RS_(L"RenameTabToolTip");
 

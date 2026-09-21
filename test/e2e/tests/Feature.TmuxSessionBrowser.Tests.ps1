@@ -8,6 +8,8 @@ BeforeDiscovery {
 Describe 'Feature: default tmux session browser' -Tag 'Feature' -Skip:(-not $script:TmuxBrowserConfigured) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        Add-Type -AssemblyName UIAutomationClient
+        Add-Type -AssemblyName UIAutomationTypes
         if (-not ('ItE2E.TmuxBrowserTestWindow' -as [type])) {
             Add-Type -Namespace ItE2E -Name TmuxBrowserTestWindow -MemberDefinition @'
                 [DllImport("user32.dll", SetLastError = true)]
@@ -142,6 +144,35 @@ namespace ItE2E {
                 Should -Be 1 -Because 'the existing backend connection must be reused'
         }
 
+        function Get-BrowserTabNames($Window) {
+            $root = [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr]$Window.Hwnd)
+            $tabs = $root.FindAll(
+                [System.Windows.Automation.TreeScope]::Descendants,
+                [System.Windows.Automation.PropertyCondition]::new(
+                    [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+                    [System.Windows.Automation.ControlType]::TabItem))
+            foreach ($tab in $tabs) { $tab.Current.Name }
+        }
+
+        function Rename-BrowserTab($Window, [string]$CurrentTitle, [string]$NewTitle, [switch]$Cancel) {
+            Set-WtWindowForeground -App $Window | Should -BeTrue
+            Invoke-UiClick -App $Window -Selector $CurrentTitle -Right | Out-Null
+            Invoke-UiElement -App $Window -Selector RenameTabMenuItem | Out-Null
+            $editor = Wait-Until -TimeoutSec 10 -IntervalSec 0.2 -Because 'visible tab rename editor' -Condition {
+                $root = [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr]$Window.Hwnd)
+                foreach ($element in $root.FindAll(
+                    [System.Windows.Automation.TreeScope]::Descendants,
+                    [System.Windows.Automation.PropertyCondition]::new(
+                        [System.Windows.Automation.AutomationElement]::AutomationIdProperty,
+                        'HeaderRenamerTextBox'))) {
+                    if (-not $element.Current.IsOffscreen) { return $element }
+                }
+            }
+            $value = [System.Windows.Automation.ValuePattern]$editor.GetCurrentPattern(
+                [System.Windows.Automation.ValuePattern]::Pattern)
+            $value.SetValue($NewTitle)
+            Send-WtWindowKey -App $Window -Vk $(if ($Cancel) { 0x1B } else { 0x0D }) -RequireForeground | Out-Null
+        }
     }
 
     AfterAll {
@@ -208,6 +239,10 @@ namespace ItE2E {
         $local = New-WtTab -App $sourceWindow -Command 'cmd.exe /d' -Title "$script:prefix-local"
         $script:ownedPanes.Add([string]$local.session_id)
         Set-WtPaneFocus -App $sourceWindow -SessionId $local.session_id
+        Rename-BrowserTab $sourceWindow "$script:prefix-local" "$script:prefix-local-renamed"
+        Wait-Until -TimeoutSec 10 -Because 'ordinary local tab rename still works' -Condition {
+            @(Get-BrowserTabNames $sourceWindow) -contains "$script:prefix-local-renamed"
+        } | Out-Null
         (Test-Until -TimeoutSec 10 -IntervalSec 0.25 -Condition {
             $button = Get-UiElement -App $sourceWindow -Selector TmuxSessionsButton
             -not $button -or $button.isOffscreen
@@ -322,4 +357,67 @@ namespace ItE2E {
         [ItE2E.TmuxBrowserTestWindow]::IsWindow([IntPtr]$reattached.Hwnd) | Should -BeTrue
     }
 
+    It 'Native tmux tab rename persists across clients and reattachment' -Tag 'TmuxRename' {
+        $session = New-BrowserSession "$script:prefix-rename"
+        $firstTitle = "$script:prefix-first"
+        $otherTitle = "$script:prefix-other"
+        $remoteWindow = Invoke-BrowserTmux "list-windows -t $(Quote-BrowserArgument $session.Id) -F '#{window_id}'"
+        $remoteWindow | Should -Match '^@\d+$'
+        Invoke-BrowserTmux "rename-window -t $remoteWindow $firstTitle" | Out-Null
+        $otherWindow = Invoke-BrowserTmux "new-window -d -P -F '#{window_id}' -t $(Quote-BrowserArgument $session.Id) -n $otherTitle"
+        $previous = @(Get-WtWindowHwnds -App $script:app | ForEach-Object hwnd)
+        Invoke-WtCli -App $script:app -Arguments @('tmux', '--ssh', $script:sshHost, '--session', $session.Id) | Out-Null
+        $window = Wait-BrowserWindow $session.Name $previous
+        $previous = @(Get-WtWindowHwnds -App $script:app | ForEach-Object hwnd)
+        Invoke-WtCli -App $script:app -Arguments @(
+            'tmux', "ssh.exe -T -o BatchMode=yes $script:sshHost tmux -L default -C attach-session -t $(Quote-BrowserArgument $session.Id)"
+        ) | Out-Null
+        $observer = Wait-BrowserWindow $session.Name $previous
+        Wait-Until -TimeoutSec 15 -Because 'both backend tabs render' -Condition {
+            @(Get-BrowserTabNames $window) -contains $firstTitle -and @(Get-BrowserTabNames $window) -contains $otherTitle
+        } | Out-Null
+        $title = "renamed $([char]0x4f1a)$([char]0x8bdd) " + 'O''Reilly ; $HOME \path #{window_id} #(printf SHOULD_NOT_RUN) #[fg=red] {tail},'
+        # tmux window_set_name stores backslashes in its printable escaped form.
+        $storedTitle = $title.Replace('\', '\\')
+        Rename-BrowserTab $window $firstTitle $title
+        try {
+            Wait-Until -TimeoutSec 15 -IntervalSec 0.25 -Because 'literal title is stored in tmux and echoed to both clients' -Condition {
+                (Invoke-BrowserTmux "display-message -p -t $remoteWindow '#{window_name}'") -ceq $storedTitle -and
+                    @(Get-BrowserTabNames $window) -contains $storedTitle -and @(Get-BrowserTabNames $observer) -contains $storedTitle
+            } | Out-Null
+        } catch {
+            Write-Host ([pscustomobject]@{
+                Expected=$storedTitle
+                Remote=(Invoke-BrowserTmux "display-message -p -t $remoteWindow '#{window_name}'")
+                Native=@(Get-BrowserTabNames $window)
+                Observer=@(Get-BrowserTabNames $observer)
+            } | ConvertTo-Json -Compress -Depth 3)
+            throw
+        }
+        Invoke-BrowserTmux "show-options -w -v -t $remoteWindow automatic-rename" | Should -BeExactly 'off'
+        Invoke-BrowserTmux "display-message -p -t $otherWindow '#{window_name}'" | Should -BeExactly $otherTitle
+        @((Invoke-BrowserTmux "list-windows -t $(Quote-BrowserArgument $session.Id) -F '#{window_id}'") -split '\r?\n' |
+            Where-Object { $_.Trim() }).Count | Should -Be 2 -Because 'title characters must not become additional tmux commands'
+        Rename-BrowserTab $window $storedTitle $storedTitle
+        Invoke-BrowserTmux "display-message -p -t $remoteWindow '#{window_name}'" | Should -BeExactly $storedTitle
+        Rename-BrowserTab $window $storedTitle 'cancelled-title' -Cancel
+        Invoke-BrowserTmux "display-message -p -t $remoteWindow '#{window_name}'" | Should -BeExactly $storedTitle
+        @(Get-BrowserTabNames $window) | Should -Contain $storedTitle
+
+        Close-BrowserWindow $observer
+        Close-BrowserWindow $window
+        $previous = @(Get-WtWindowHwnds -App $script:app | ForEach-Object hwnd)
+        Invoke-WtCli -App $script:app -Arguments @('tmux', '--ssh', $script:sshHost, '--session', $session.Id) | Out-Null
+        $reattached = Wait-BrowserWindow $session.Name $previous
+        Wait-Until -TimeoutSec 15 -Because 'remote title survives reattachment' -Condition {
+            @(Get-BrowserTabNames $reattached) -contains $storedTitle
+        } | Out-Null
+        Rename-BrowserTab $reattached $storedTitle ''
+        Wait-Until -TimeoutSec 10 -Because 'clearing the custom title restores automatic naming' -Condition {
+            $automatic = Invoke-BrowserTmux "display-message -p -t $remoteWindow '#{window_name}'"
+            (Invoke-BrowserTmux "show-options -w -v -t $remoteWindow automatic-rename") -ceq 'on' -and
+                $automatic -cne $storedTitle -and @(Get-BrowserTabNames $reattached) -contains $automatic
+        } | Out-Null
+        Invoke-BrowserTmux "display-message -p -t $otherWindow '#{window_name}'" | Should -BeExactly $otherTitle
+    }
 }

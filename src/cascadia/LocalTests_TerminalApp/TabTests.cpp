@@ -12,6 +12,7 @@
 #include "../TerminalApp/AgentPaneContent.h"
 #include "../TerminalApp/AgentPaneDragStash.h"
 #include "../TerminalApp/Tab.h"
+#include "../TerminalApp/TabHeaderControl.h"
 #include "../TerminalApp/TmuxController.h"
 #include "../TerminalApp/TmuxPaneState.h"
 #include "../TerminalApp/CommandPalette.h"
@@ -364,6 +365,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(ManagedSshConnectionPreservesLogicalCommandline);
         TEST_METHOD(TmuxSessionMenuIgnoresStaleResponsesAndSurfacesErrors);
         TEST_METHOD(TmuxSessionMenuRequestsNewSshWindow);
+        TEST_METHOD(TmuxTabRenameUsesBackendWindowAndPreservesLocalTabs);
         TEST_METHOD(TmuxSessionButtonFollowsOrdinarySshTabs);
         TEST_METHOD(BuildStartupActionsContentPreservesAgentFirstPaneOwnership);
         TEST_METHOD(AgentPaneTransferIdentityRoundTripsWithContent);
@@ -3232,6 +3234,64 @@ namespace TerminalAppLocalTests
             controller->_exiting = false;
             controller->Stop();
             VERIFY_IS_FALSE(controller->MatchesSession(L"$42", L"$42"));
+        });
+    }
+
+    void TabTests::TmuxTabRenameUsesBackendWindowAndPreservesLocalTabs()
+    {
+        const auto connection = winrt::make_self<TestConnection>(
+            winrt::guid{ L"{6239a42c-1111-49a3-80bd-e8fdd045185c}" },
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        const auto page = _commonSetup(*connection);
+        using Controller = winrt::TerminalApp::implementation::TmuxController;
+        std::shared_ptr<Controller> controller;
+        winrt::com_ptr<winrt::TerminalApp::implementation::Tab> tab;
+        std::vector<std::string> commands;
+        auto cleanup = wil::scope_exit([&]() {
+            RunOnUIThread([&]() {
+                if (controller)
+                {
+                    controller->Stop();
+                }
+                for (const auto& item : page->_tabs)
+                {
+                    item.Shutdown();
+                }
+                page->_tmuxController.reset();
+            });
+        });
+        TestOnUIThread([&]() {
+            tab = page->_GetFocusedTabImpl();
+            tab->SetTabText(L"before");
+            controller = std::make_shared<Controller>(*page);
+            page->_tmuxController = controller;
+            controller->_tabs.emplace(7, tab);
+            controller->_initialResponse = true;
+            controller->_writeCommand = [&](std::string command) { commands.emplace_back(std::move(command)); };
+
+            const auto header = winrt::get_self<winrt::TerminalApp::implementation::TabHeaderControl>(tab->_headerControl);
+            header->TitleChangeRequested.raise(L"before");
+            VERIFY_IS_TRUE(commands.empty());
+            header->TitleChangeRequested.raise(L"requested");
+            VERIFY_ARE_EQUAL(size_t{ 1 }, commands.size());
+            VERIFY_ARE_EQUAL(std::string{ "rename-window -t @7 -- '#{l:requested}'\n" }, commands.back());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"before" }, tab->GetTabText());
+
+            ActionEventArgs reset{ RenameTabArgs{ L"" } };
+            page->_HandleRenameTab(*tab, reset);
+            VERIFY_IS_TRUE(reset.Handled());
+            VERIFY_ARE_EQUAL(std::string{ "set-option -w -t @7 automatic-rename on\n" }, commands.back());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"before" }, tab->GetTabText());
+            controller->_output("%window-renamed @7 backend-confirmed\n");
+        });
+        _waitForContentTransferReviewUI([&]() { return tab->GetTabText() == L"backend-confirmed"; });
+        TestOnUIThread([&]() {
+            const auto count = commands.size();
+            page->_tmuxController.reset();
+            const auto header = winrt::get_self<winrt::TerminalApp::implementation::TabHeaderControl>(tab->_headerControl);
+            header->TitleChangeRequested.raise(L"ordinary-local-title");
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"ordinary-local-title" }, tab->GetTabText());
+            VERIFY_ARE_EQUAL(count, commands.size());
         });
     }
 

@@ -36,6 +36,7 @@ namespace winrt::TerminalApp::implementation
         bool Split(const std::shared_ptr<Pane>& pane, Microsoft::Terminal::Settings::Model::SplitDirection direction, float size);
         bool ClosePane(const std::shared_ptr<Pane>& pane);
         bool CloseTab(const winrt::com_ptr<Tab>& tab);
+        void RenameWindow(const winrt::com_ptr<Tab>& tab, const winrt::hstring& title);
         bool ResizePane(const std::shared_ptr<Pane>& pane, Microsoft::Terminal::Settings::Model::ResizeDirection direction);
         bool ZoomPane(const std::shared_ptr<Pane>& pane);
         void ResizeWindow();
@@ -120,6 +121,7 @@ namespace winrt::TerminalApp::implementation
         void _scheduleResize();
         void _updateSessionTitle();
         void _readSocketPath();
+        void _readWindowName(Id id);
         void _openSession(Id id);
 
         winrt::weak_ref<TerminalPage> _page;

@@ -182,6 +182,44 @@ namespace Microsoft::Terminal::Tmux
         bool _finished{};
     };
 
+    inline std::string RenameWindowCommand(const Id id, const std::string_view title)
+    {
+        const auto target = " -t @" + std::to_string(id);
+        if (title.empty())
+        {
+            return "set-option -w" + target + " automatic-rename on";
+        }
+        if (title.size() >= Parser::MaxLineBytes ||
+            std::any_of(title.begin(), title.end(), [](const unsigned char ch) { return ch < 32 || ch == 127; }))
+        {
+            throw ProtocolError{ "Tmux window name exceeds its limit or contains control characters" };
+        }
+        // rename-window expands tmux formats even inside command quotes.
+        // The literal modifier prevents names from becoming formats or jobs.
+        std::string command = "rename-window" + target + " -- '#{l:";
+        for (const auto ch : title)
+        {
+            if (ch == '\'')
+            {
+                command.append("'\\''");
+            }
+            else
+            {
+                if (ch == '#' || ch == '}' || ch == ',')
+                {
+                    command.push_back('#');
+                }
+                command.push_back(ch);
+            }
+            if (command.size() >= Parser::MaxLineBytes - 2)
+            {
+                throw ProtocolError{ "Quoted tmux window name exceeds the command limit" };
+            }
+        }
+        command.append("}'");
+        return command;
+    }
+
     namespace details
     {
         inline constexpr size_t MaxLayoutBytes = 1024 * 1024;

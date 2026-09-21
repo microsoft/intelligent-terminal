@@ -801,7 +801,11 @@ namespace winrt::TerminalApp::implementation
 
         if (const auto activeTab{ _senderOrFocusedTab(sender) })
         {
-            if (title.has_value())
+            if (_tmuxController)
+            {
+                _tmuxController->RenameWindow(activeTab, title.value_or(winrt::hstring{}));
+            }
+            else if (title.has_value())
             {
                 activeTab->SetTabText(title.value());
             }

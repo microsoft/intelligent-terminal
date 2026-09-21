@@ -123,6 +123,8 @@ namespace TerminalAppUnitTests
         TEST_METHOD(RejectsMalformedPaneInventory);
         TEST_METHOD(BoundsPaneInventory);
         TEST_METHOD(MatchesPendingAndConfirmedSessionTargets);
+        TEST_METHOD(EncodesLiteralWindowRename);
+        TEST_METHOD(RejectsUnsafeWindowRename);
     };
 
     void TmuxProtocolTests::FormatsNamedSocketSessionTitle()
@@ -130,6 +132,28 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(std::string{ "it-test/demo" }, FormatSessionTitle("/tmp/tmux-1000/it-test", "demo"));
         VERIFY_ARE_EQUAL(std::string{ "it-test/worker" }, FormatSessionTitle("it-test", "worker"));
         VERIFY_ARE_EQUAL(std::string{ "it-test/demo" }, FormatSessionTitle(R"(\\.\pipe\it-test)", "demo"));
+    }
+
+    void TmuxProtocolTests::EncodesLiteralWindowRename()
+    {
+        VERIFY_ARE_EQUAL(std::string{ "rename-window -t @7 -- '#{l:work}'" }, RenameWindowCommand(7, "work"));
+        VERIFY_ARE_EQUAL(std::string{ R"(rename-window -t @42 -- '#{l:a'\''b##{#}#,}')" }, RenameWindowCommand(42, "a'b#{},"));
+        VERIFY_ARE_EQUAL(std::string{ R"(rename-window -t @7 -- '#{l:$HOME ; \path ##[fg=red] ##(printf test)}')" },
+                         RenameWindowCommand(7, R"($HOME ; \path #[fg=red] #(printf test))"));
+        VERIFY_ARE_EQUAL(std::string{ "rename-window -t @7 -- '#{l:\xe4\xbc\x9a\xe8\xaf\x9d}'" },
+                         RenameWindowCommand(7, "\xe4\xbc\x9a\xe8\xaf\x9d"));
+        VERIFY_ARE_EQUAL(std::string{ "set-option -w -t @7 automatic-rename on" }, RenameWindowCommand(7, {}));
+    }
+
+    void TmuxProtocolTests::RejectsUnsafeWindowRename()
+    {
+        for (const auto ch : { '\0', '\n', '\r', '\t', '\x1b', '\x7f' })
+        {
+            const std::string title{ 'a', ch, 'b' };
+            VERIFY_THROWS(RenameWindowCommand(7, title), ProtocolError);
+        }
+        VERIFY_THROWS(RenameWindowCommand(7, std::string(Parser::MaxLineBytes, 'a')), ProtocolError);
+        VERIFY_THROWS(RenameWindowCommand(7, std::string(Parser::MaxLineBytes / 2, '\'')), ProtocolError);
     }
 
     void TmuxProtocolTests::MatchesPendingAndConfirmedSessionTargets()

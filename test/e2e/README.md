@@ -42,7 +42,7 @@ authenticated ACP agents. Current status (run on the Store package):
 | `Feature.SessionList.Tests.ps1` | session view (button + `/sessions` slash), session states, view switching (incl. draft-preservation), focus/restore | 13 (+1 skip) |
 | `Feature.NonAsciiCwd.Tests.ps1` | issue #641: a non-ASCII starting directory survives `wtcli` argv → COM → `CreateProcessW`, so the resume launch path connects and starts in that directory | 2 |
 | `Feature.TmuxReconnect.Tests.ps1` | PR #966: physical tab clicks remain selected across SSH tmux reattachment, backend selection updates, and sibling native windows | 1 (SSH-gated) |
-| `Feature.TmuxSessionBrowser.Tests.ps1` | Ordinary SSH tab entry point, default-server session menu, stable-ID attachment/focus after rename, repeated-selection window/backend reuse, and opaque-launch compatibility | 3 (SSH-gated) |
+| `Feature.TmuxSessionBrowser.Tests.ps1` | Ordinary SSH entry point, session-menu attach/focus reuse, persistent backend tab rename with literal text/reset/cancel/multiple clients, and opaque-launch compatibility | 4 (SSH-gated) |
 | `Feature.TmuxRemoteHooks.Tests.ps1` | Native SSH tmux detach preserves last-known activity; a fresh real v2 hook rebinds the same raw remote session; observed remote exit ends it. Packaged sender → native controller → COM → shared master snapshot, without model quota | 2 (SSH-gated, explicit running Dev and both feature hashes required) |
 | `Feature.AgentPaneCwd.Tests.ps1` | agent-pane source workspace reaches ACP `session/new` and remains stable across `/new` without a model prompt | 1 |
 | `Feature.AgentRestart.Tests.ps1` | agent restart after a settings change (/restart reconnects and answers) | 1 |

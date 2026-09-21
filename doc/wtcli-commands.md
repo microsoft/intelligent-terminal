@@ -136,6 +136,14 @@ windows to tabs, and backend panes to terminal panes. Ordinary output, Unicode
 input, terminal mouse sequences, and paste use the single control stream.
 The `+` button, new-tab action, directional split actions, keyboard pane resize,
 pane zoom, and individual pane/tab close commands operate on the backend.
+The existing tab rename editor and `renameTab` action rename the corresponding
+tmux **window** by its stable ID, not just a local title and not the tmux session.
+Names are literal, including Unicode, quotes, shell characters, and tmux format
+markers. The backend confirmation updates all attached native clients, and the
+name survives reattachment. Clearing the custom name restores automatic naming
+for that backend window; cancelling the editor leaves it unchanged.
+tmux's printable-name escaping (such as doubled backslashes) is displayed
+consistently; confirming an unchanged title does not rename it again.
 Closing the **native window** disconnects the frontend; it does not send
 `kill-session`, `kill-window`, or `kill-pane`. Whether processes survive is a
 property of the backend; a real tmux server normally keeps them running.

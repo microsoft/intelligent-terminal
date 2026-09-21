@@ -881,6 +881,25 @@ namespace winrt::TerminalApp::implementation
         });
     }
 
+    void TmuxController::_readWindowName(const Id id)
+    {
+        if (_stopped || _failed || _exiting || !_tabs.contains(id))
+        {
+            return;
+        }
+        _send(fmt::format("display-message -p -t @{} '#{{window_name}}'", id), [weak = weak_from_this(), id](const Event& response) {
+            if (const auto self = weak.lock(); self && response.success)
+            {
+                self->_post([id, name = response.text](auto& owner) {
+                    if (const auto tab = owner._tabs.find(id); tab != owner._tabs.end())
+                    {
+                        tab->second->SetTabText(winrt::to_hstring(name));
+                    }
+                });
+            }
+        });
+    }
+
     void TmuxController::_send(std::string command, ResponseHandler response)
     {
         std::vector<std::pair<std::string, ResponseHandler>> commands;
@@ -1364,17 +1383,7 @@ namespace winrt::TerminalApp::implementation
         {
             for (const auto& [id, tab] : _tabs)
             {
-                _send(fmt::format("display-message -p -t @{} '#{{window_name}}'", id), [weak = weak_from_this(), id](const Event& response) {
-                    if (const auto self = weak.lock(); self && response.success)
-                    {
-                        self->_post([id, name = response.text](auto& owner) {
-                            if (const auto tab = owner._tabs.find(id); tab != owner._tabs.end())
-                            {
-                                tab->second->SetTabText(winrt::to_hstring(name));
-                            }
-                        });
-                    }
-                });
+                _readWindowName(id);
             }
         }
     }
@@ -1732,6 +1741,49 @@ namespace winrt::TerminalApp::implementation
         {
             _showFailure(exceptionMessage());
             return false;
+        }
+    }
+
+    void TmuxController::RenameWindow(const winrt::com_ptr<Tab>& tab, const winrt::hstring& title)
+    {
+        try
+        {
+            for (const auto& [id, candidate] : _tabs)
+            {
+                if (candidate != tab)
+                {
+                    continue;
+                }
+                // tmux stores printable names with escaping. Re-submitting
+                // its unchanged display form would escape backslashes again.
+                if (!title.empty() && title == candidate->GetTabText())
+                {
+                    return;
+                }
+                _send(Protocol::RenameWindowCommand(id, winrt::to_string(title)), [weak = weak_from_this(), id](const Event& response) {
+                    if (const auto self = weak.lock())
+                    {
+                        self->_post([id, success = response.success, error = response.text](auto& owner) {
+                            if (!success)
+                            {
+                                LOG_HR_MSG(E_FAIL, "Tmux window rename failed");
+                                owner._showFailure("Unable to rename tmux window: " + error);
+                            }
+                            else
+                            {
+                                owner._readWindowName(id);
+                            }
+                        });
+                    }
+                });
+                return;
+            }
+            THROW_HR_MSG(E_INVALIDARG, "The tab has no tmux window identity");
+        }
+        catch (...)
+        {
+            LOG_HR_MSG(E_FAIL, "Unable to request tmux window rename");
+            _showFailure(exceptionMessage());
         }
     }
 
