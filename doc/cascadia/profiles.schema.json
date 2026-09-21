@@ -3024,7 +3024,7 @@
         },
         "showMarksOnScrollbar": {
           "default": false,
-          "description": "When set to true, marks added to the buffer via the addMark action will appear on the scrollbar.",
+          "description": "When set to true, marks added to the buffer via the addMark action will appear on the scrollbar. Marks are not displayed when scrollbarState is hidden.",
           "type": "boolean"
         },
         "experimental.rainbowSuggestions": {

@@ -636,11 +636,31 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
         if (_showMarksInScrollbar)
         {
+            // A collapsed scrollbar can retain its previous layout size.
+            if (scrollBar.Visibility() != Visibility::Visible)
+            {
+                if (const auto canvas = ScrollBarCanvas())
+                {
+                    canvas.Visibility(Visibility::Collapsed);
+                }
+                return;
+            }
+
             const auto scaleFactor = DisplayInformation::GetForCurrentView().RawPixelsPerViewPixel();
             const auto scrollBarWidthInDIP = scrollBar.ActualWidth();
             const auto scrollBarHeightInDIP = scrollBar.ActualHeight();
             const auto scrollBarWidthInPx = gsl::narrow_cast<int32_t>(lrint(scrollBarWidthInDIP * scaleFactor));
             const auto scrollBarHeightInPx = gsl::narrow_cast<int32_t>(lrint(scrollBarHeightInDIP * scaleFactor));
+
+            // Layout may not have assigned a drawable size yet.
+            if (scrollBarWidthInPx <= 0 || scrollBarHeightInPx <= 0)
+            {
+                if (const auto canvas = ScrollBarCanvas())
+                {
+                    canvas.Visibility(Visibility::Collapsed);
+                }
+                return;
+            }
 
             const auto canvas = FindName(L"ScrollBarCanvas").as<Controls::Image>();
             auto source = canvas.Source().try_as<Media::Imaging::WriteableBitmap>();
@@ -665,23 +685,22 @@ namespace winrt::Microsoft::Terminal::Control::implementation
             // for the "VerticalDecrementTemplate" (and similar for the increment), but it seems neither of those is correct,
             // because a padding for 3 DIPs seem to be the exact right amount to add.
             const auto increaseDecreaseButtonHeight = scrollBarWidthInPx + lround(3 * scaleFactor);
-            const auto drawableDataStart = data + stride * increaseDecreaseButtonHeight;
             const auto drawableRange = scrollBarHeightInPx - 2 * increaseDecreaseButtonHeight;
+            const auto pipHeight = lround(1 * scaleFactor);
 
-            // Protect the remaining code against negative offsets. This normally can't happen
-            // and this code just exists so it doesn't crash if I'm ever wrong about this.
-            // (The window has a min. size that ensures that there's always a scrollbar thumb.)
-            if (drawableRange < 0)
+            // The drawable range must fit a full mark before computing bitmap offsets.
+            if (drawableRange < pipHeight)
             {
+                canvas.Visibility(Visibility::Collapsed);
                 return;
             }
+            const auto drawableDataStart = data + stride * increaseDecreaseButtonHeight;
 
             // The scrollbar bitmap is divided into 3 evenly sized stripes:
             // Left: Regular marks
             // Center: nothing
             // Right: Search marks
             const auto pipWidth = (scrollBarWidthInPx + 1) / 3;
-            const auto pipHeight = lround(1 * scaleFactor);
 
             const auto maxOffsetY = drawableRange - pipHeight;
             const auto offsetScale = maxOffsetY / gsl::narrow_cast<float>(update.newMaximum + update.newViewportSize);
