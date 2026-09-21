@@ -134,6 +134,10 @@ visible in that tooltip.
 One control client maps its attached session to the native window, backend
 windows to tabs, and backend panes to terminal panes. Ordinary output, Unicode
 input, terminal mouse sequences, and paste use the single control stream.
+Tabs follow the backend's current `window_index` order, while permanent window
+IDs remain the routing identity. A client-local order subscription catches
+index-only swaps and renumbering without recreating panes, changing the selected
+backend window, or modifying remote configuration.
 The `+` button, new-tab action, directional split actions, keyboard pane resize,
 pane zoom, and individual pane/tab close commands operate on the backend.
 The existing tab rename editor and `renameTab` action rename the corresponding

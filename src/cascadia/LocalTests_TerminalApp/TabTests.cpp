@@ -353,6 +353,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(LayoutReadOnlyDisablesOnlySplitterGestures);
         TEST_METHOD(TmuxProjectionPreservesContentAcrossWindowChanges);
         TEST_METHOD(TmuxProjectionDoesNotEchoBackendSelection);
+        TEST_METHOD(TmuxProjectionFollowsWindowIndicesWithoutRecreatingTabs);
         TEST_METHOD(TmuxProjectionRejectsInvalidInventoryBeforeMutation);
         TEST_METHOD(TmuxHydrationAcceptsUnsetSavedCursor);
         TEST_METHOD(TmuxResizeWaitsForInitializedFontAndRefreshesInventory);
@@ -2626,8 +2627,8 @@ namespace TerminalAppLocalTests
                 page->_tmuxController.reset();
             });
             controller->_applyWindows(controller->_parseWindows(
-                "@0 1 89f5,80x24,0,0{39x24,0,0,0,40x24,40,0,1} 89f5,80x24,0,0{39x24,0,0,0,40x24,40,0,1}\n"
-                "@1 0 b25f,80x24,0,0,2 b25f,80x24,0,0,2"));
+                "@0 0 1 89f5,80x24,0,0{39x24,0,0,0,40x24,40,0,1} 89f5,80x24,0,0{39x24,0,0,0,40x24,40,0,1}\n"
+                "@1 1 0 b25f,80x24,0,0,2 b25f,80x24,0,0,2"));
             VERIFY_ARE_EQUAL(2u, page->_tabs.Size());
             VERIFY_ARE_EQUAL(size_t{ 3 }, controller->_panes.size());
             const auto first = controller->_panes.at(0).pane;
@@ -2639,7 +2640,7 @@ namespace TerminalAppLocalTests
             const auto thirdSession = third->GetSessionId();
             const auto nativeTabId = controller->_tabs.at(0)->StableId();
             controller->_applyWindows(controller->_parseWindows(
-                "@0 1 a26f,80x24,0,0[80x11,0,0,0,80x12,0,12{39x12,0,12,1,40x12,40,12,2}] "
+                "@0 0 1 a26f,80x24,0,0[80x11,0,0,0,80x12,0,12{39x12,0,12,1,40x12,40,12,2}] "
                 "a26f,80x24,0,0[80x11,0,0,0,80x12,0,12{39x12,0,12,1,40x12,40,12,2}]"));
             VERIFY_ARE_EQUAL(1u, page->_tabs.Size());
             VERIFY_ARE_EQUAL(3, controller->_tabs.at(0)->GetLeafPaneCount());
@@ -2684,8 +2685,8 @@ namespace TerminalAppLocalTests
                 page->_tmuxController.reset();
             });
             const auto inventory =
-                "@0 0 89f5,80x24,0,0{39x24,0,0,0,40x24,40,0,1} 89f5,80x24,0,0{39x24,0,0,0,40x24,40,0,1}\n"
-                "@1 1 b25f,80x24,0,0,2 b25f,80x24,0,0,2";
+                "@0 0 0 89f5,80x24,0,0{39x24,0,0,0,40x24,40,0,1} 89f5,80x24,0,0{39x24,0,0,0,40x24,40,0,1}\n"
+                "@1 1 1 b25f,80x24,0,0,2 b25f,80x24,0,0,2";
             controller->_applyWindows(controller->_parseWindows(inventory));
             VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == controller->_tabs.at(1));
             VERIFY_IS_TRUE(std::none_of(commands.begin(), commands.end(), [](const auto& command) {
@@ -2726,14 +2727,82 @@ namespace TerminalAppLocalTests
         TestOnUIThread([&]() {
             const auto controller = std::make_shared<winrt::TerminalApp::implementation::TmuxController>(*page);
             const auto original = page->_GetFocusedTabImpl();
-            VERIFY_THROWS(controller->_parseWindows("@0 1 bad bad"), ::Microsoft::Terminal::Tmux::ProtocolError);
+            VERIFY_THROWS(controller->_parseWindows("@0 0 1 bad bad"), ::Microsoft::Terminal::Tmux::ProtocolError);
             VERIFY_THROWS(controller->_parseWindows(
-                              "@0 1 b25d,80x24,0,0,0 b25d,80x24,0,0,0\n"
-                              "@0 1 b25d,80x24,0,0,0 b25d,80x24,0,0,0"),
+                              "@0 0 1 b25d,80x24,0,0,0 b25d,80x24,0,0,0\n"
+                              "@0 1 1 b25d,80x24,0,0,0 b25d,80x24,0,0,0"),
+                          ::Microsoft::Terminal::Tmux::ProtocolError);
+            for (const auto& prefix : { "@0 -1 1 ", "@0 2147483648 1 ", "@0 0 2 " })
+            {
+                VERIFY_THROWS(controller->_parseWindows(std::string{ prefix } + "b25d,80x24,0,0,0 b25d,80x24,0,0,0"), ::Microsoft::Terminal::Tmux::ProtocolError);
+            }
+            VERIFY_THROWS(controller->_parseWindows(
+                              "@0 4 1 b25d,80x24,0,0,0 b25d,80x24,0,0,0\n"
+                              "@1 4 0 b25e,80x24,0,0,1 b25e,80x24,0,0,1"),
                           ::Microsoft::Terminal::Tmux::ProtocolError);
             VERIFY_IS_TRUE(original == page->_GetFocusedTabImpl());
             VERIFY_ARE_EQUAL(0u, connection->CloseCount());
             original->Shutdown();
+        });
+    }
+
+    void TabTests::TmuxProjectionFollowsWindowIndicesWithoutRecreatingTabs()
+    {
+        const auto connection = winrt::make_self<TestConnection>(
+            winrt::guid{ L"{6239a42c-1111-49a3-80bd-e8fdd045185c}" },
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        const auto page = _commonSetup(*connection);
+        TestOnUIThread([&]() {
+            const auto controller = std::make_shared<winrt::TerminalApp::implementation::TmuxController>(*page);
+            page->_tmuxCommandline = L"test-protocol";
+            page->_tmuxController = controller;
+            controller->_diagnosticTab = page->_GetFocusedTabImpl();
+            controller->_initialResponse = true;
+            std::vector<std::string> commands;
+            controller->_writeCommand = [&](std::string command) { commands.emplace_back(std::move(command)); };
+            auto cleanup = wil::scope_exit([&]() {
+                controller->Stop();
+                for (const auto& tab : page->_tabs)
+                {
+                    tab.Shutdown();
+                }
+                page->_tmuxController.reset();
+            });
+            controller->_applyWindows(controller->_parseWindows(
+                "@40 2 0 b25d,80x24,0,0,0 b25d,80x24,0,0,0\n"
+                "@7 9 1 b25e,80x24,0,0,1 b25e,80x24,0,0,1\n"
+                "@99 5 0 b25f,80x24,0,0,2 b25f,80x24,0,0,2"));
+            const auto first = controller->_tabs.at(40);
+            const auto active = controller->_tabs.at(7);
+            const auto middle = controller->_tabs.at(99);
+            const auto root = first->GetRootPane();
+            const auto paneId = controller->_panes.at(0).pane->GetSessionId();
+            VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(0)) == first);
+            VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(1)) == middle);
+            VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(2)) == active);
+            VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == active);
+
+            commands.clear();
+            controller->_applyWindows(controller->_parseWindows(
+                "@40 9 0 b25d,80x24,0,0,0 b25d,80x24,0,0,0\n"
+                "@7 2 1 b25e,80x24,0,0,1 b25e,80x24,0,0,1\n"
+                "@99 5 0 b25f,80x24,0,0,2 b25f,80x24,0,0,2"));
+            VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(0)) == active);
+            VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(1)) == middle);
+            VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(2)) == first);
+            VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == active);
+            VERIFY_IS_TRUE(first->GetRootPane() == root);
+            VERIFY_ARE_EQUAL(paneId, controller->_panes.at(0).pane->GetSessionId());
+            VERIFY_IS_TRUE(commands.empty());
+
+            controller->_applyWindows(controller->_parseWindows(
+                "@40 3 0 b25d,80x24,0,0,0 b25d,80x24,0,0,0\n"
+                "@7 1 1 b25e,80x24,0,0,1 b25e,80x24,0,0,1\n"
+                "@99 2 0 b25f,80x24,0,0,2 b25f,80x24,0,0,2"));
+            VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(0)) == active);
+            VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == active);
+            VERIFY_IS_TRUE(first->GetRootPane() == root);
+            VERIFY_IS_TRUE(commands.empty());
         });
     }
 
@@ -2996,7 +3065,7 @@ namespace TerminalAppLocalTests
                 }
             });
             controller->_applyWindows(controller->_parseWindows(
-                "@0 1 89f5,80x24,0,0{39x24,0,0,0,40x24,40,0,1} b25d,80x24,0,0,0"));
+                "@0 0 1 89f5,80x24,0,0{39x24,0,0,0,40x24,40,0,1} b25d,80x24,0,0,0"));
             nativePane = page->_FindSessionIdForControl(controller->_panes.at(1).control);
             VERIFY_IS_FALSE(nativePane.empty());
             controller->_agentHook(message);
@@ -3016,8 +3085,8 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(controller->_failed.load());
 
             controller->_applyWindows(controller->_parseWindows(
-                "@0 1 b25d,80x24,0,0,0 b25d,80x24,0,0,0\n"
-                "@1 0 b25e,80x24,0,0,1 b25e,80x24,0,0,1"));
+                "@0 0 1 b25d,80x24,0,0,0 b25d,80x24,0,0,0\n"
+                "@1 1 0 b25e,80x24,0,0,1 b25e,80x24,0,0,1"));
             controller->_output("%message " + message + "\n");
         });
         _waitForContentTransferReviewUI([&]() { return events.size() == 2; });
@@ -3036,16 +3105,16 @@ namespace TerminalAppLocalTests
                     return params["pane_id"] == paneId && params["state"].asString() == state;
                 }));
             };
-            controller->_applyWindows(controller->_parseWindows("@0 1 b25d,80x24,0,0,0 b25d,80x24,0,0,0"), std::unordered_set<uint64_t>{ 0 });
+            controller->_applyWindows(controller->_parseWindows("@0 0 1 b25d,80x24,0,0,0 b25d,80x24,0,0,0"), std::unordered_set<uint64_t>{ 0 });
             VERIFY_ARE_EQUAL(size_t{ 1 }, closeCount(nativePane));
             controller->_applyWindows(controller->_parseWindows(
-                "@0 1 09f6,80x24,0,0{39x24,0,0,0,40x24,40,0,2} b25d,80x24,0,0,0"));
+                "@0 0 1 09f6,80x24,0,0{39x24,0,0,0,40x24,40,0,2} b25d,80x24,0,0,0"));
             const auto linkedPane = page->_FindSessionIdForControl(controller->_panes.at(2).control);
-            controller->_applyWindows(controller->_parseWindows("@0 1 b25d,80x24,0,0,0 b25d,80x24,0,0,0"), std::unordered_set<uint64_t>{ 0, 2 });
+            controller->_applyWindows(controller->_parseWindows("@0 0 1 b25d,80x24,0,0,0 b25d,80x24,0,0,0"), std::unordered_set<uint64_t>{ 0, 2 });
             VERIFY_ARE_EQUAL(size_t{ 0 }, closeCount(linkedPane));
             VERIFY_ARE_EQUAL(size_t{ 1 }, closeCount(linkedPane, "detached"));
             controller->_applyWindows(controller->_parseWindows(
-                "@0 1 09f6,80x24,0,0{39x24,0,0,0,40x24,40,0,2} b25d,80x24,0,0,0"));
+                "@0 0 1 09f6,80x24,0,0{39x24,0,0,0,40x24,40,0,2} b25d,80x24,0,0,0"));
             const auto hiddenPane = page->_FindSessionIdForControl(controller->_panes.at(2).control);
             const auto paneCount = controller->_panes.size();
             controller->_exiting = true;

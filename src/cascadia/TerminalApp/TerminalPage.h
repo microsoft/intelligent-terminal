@@ -1161,7 +1161,7 @@ namespace winrt::TerminalApp::implementation
 
         void _UpdateMRUTab(const winrt::TerminalApp::Tab& tab);
 
-        void _TryMoveTab(const uint32_t currentTabIndex, const int32_t suggestedNewTabIndex);
+        void _TryMoveTab(const uint32_t currentTabIndex, const int32_t suggestedNewTabIndex, bool userInitiated = true);
 
         void _PreviewAction(const Microsoft::Terminal::Settings::Model::ActionAndArgs& args);
         void _PreviewActionHandler(const IInspectable& sender, const Microsoft::Terminal::Settings::Model::Command& args);

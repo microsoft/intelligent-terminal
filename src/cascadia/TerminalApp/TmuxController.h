@@ -81,6 +81,7 @@ namespace winrt::TerminalApp::implementation
 
         struct Window
         {
+            uint32_t index{};
             Layout layout;
             Layout visibleLayout;
             std::string layoutText;

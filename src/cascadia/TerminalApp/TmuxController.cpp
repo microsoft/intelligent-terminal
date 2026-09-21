@@ -496,6 +496,18 @@ namespace winrt::TerminalApp::implementation
                     return;
                 }
                 _post([](auto& self) {
+                    if (self._failed || self._exiting)
+                    {
+                        return;
+                    }
+                    // Index-only swaps/renumbering need not emit layout changes.
+                    // This subscription belongs to this client, not the server.
+                    self._send("refresh-client -B 'it-window-order::#{W:#{window_index}=#{window_id};}'", [](const Event& response) {
+                        if (!response.success)
+                        {
+                            LOG_HR_MSG(E_FAIL, "Unable to subscribe to tmux window ordering");
+                        }
+                    });
                     self._scheduleResize();
                 });
                 return;
@@ -602,7 +614,8 @@ namespace winrt::TerminalApp::implementation
             }
             else if (event.name == "layout-change" || event.name == "window-add" ||
                      event.name == "window-close" ||
-                     event.name == "session-window-changed")
+                     event.name == "session-window-changed" ||
+                     (event.name == "subscription-changed" && event.text.starts_with("it-window-order ")))
             {
                 _post([](auto& self) { self.Refresh(); });
             }
@@ -973,7 +986,7 @@ namespace winrt::TerminalApp::implementation
     void TmuxController::_requestRefresh()
     {
         _refreshing = true;
-        _send("list-windows -F '#{window_id} #{window_active} #{window_layout} #{window_visible_layout}'", [weak = weak_from_this()](const Event& response) {
+        _send("list-windows -F '#{window_id} #{window_index} #{window_active} #{window_layout} #{window_visible_layout}'", [weak = weak_from_this()](const Event& response) {
             if (const auto self = weak.lock())
             {
                 if (!response.success)
@@ -1040,21 +1053,30 @@ namespace winrt::TerminalApp::implementation
     std::map<TmuxController::Id, TmuxController::Window> TmuxController::_parseWindows(std::string_view text) const
     {
         std::map<Id, Window> result;
+        std::unordered_set<uint32_t> indices;
         while (!text.empty())
         {
             const auto end = text.find('\n');
             const auto fields = words(text.substr(0, end));
-            if (fields.size() != 4)
+            if (fields.size() != 5)
             {
                 throw Protocol::ProtocolError{ "Invalid tmux window inventory" };
             }
             const auto id = identifier(fields[0], '@');
             Window window;
-            window.active = number(fields[1]) != 0;
-            window.layoutText = fields[2];
-            window.visibleLayoutText = fields[3];
-            window.layout = Protocol::ParseLayout(fields[2]);
-            window.visibleLayout = Protocol::ParseLayout(fields[3]);
+            const auto index = number(fields[1]);
+            const auto active = number(fields[2]);
+            if (index > static_cast<uint64_t>(std::numeric_limits<int32_t>::max()) || active > 1 ||
+                !indices.emplace(gsl::narrow_cast<uint32_t>(index)).second)
+            {
+                throw Protocol::ProtocolError{ "Invalid or duplicate tmux window index" };
+            }
+            window.index = gsl::narrow_cast<uint32_t>(index);
+            window.active = active != 0;
+            window.layoutText = fields[3];
+            window.visibleLayoutText = fields[4];
+            window.layout = Protocol::ParseLayout(fields[3]);
+            window.visibleLayout = Protocol::ParseLayout(fields[4]);
             if (!result.emplace(id, std::move(window)).second || result.size() > 256)
             {
                 throw Protocol::ProtocolError{ "Duplicate window or excessive tmux window count" };
@@ -1348,7 +1370,35 @@ namespace winrt::TerminalApp::implementation
             _diagnosticControl = nullptr;
             _diagnosticConnection = nullptr;
         }
-        auto active = _tabs.begin()->first;
+        std::vector<std::pair<uint32_t, Id>> order;
+        order.reserve(_windows.size());
+        for (const auto& [id, window] : _windows)
+        {
+            order.emplace_back(window.index, id);
+        }
+        std::sort(order.begin(), order.end());
+        auto reordered = false;
+        {
+            const auto wasProjecting = std::exchange(_projecting, true);
+            const auto wasRemoving = std::exchange(page->_removing, true);
+            auto finish = wil::scope_exit([&]() noexcept {
+                page->_removing = wasRemoving;
+                _projecting = wasProjecting;
+            });
+            uint32_t position = 0;
+            for (const auto& [index, id] : order)
+            {
+                const auto current = page->_GetTabIndex(*_tabs.at(id));
+                THROW_HR_IF(E_UNEXPECTED, !current);
+                if (*current != position)
+                {
+                    page->_TryMoveTab(*current, gsl::narrow_cast<int32_t>(position), false);
+                    reordered = true;
+                }
+                ++position;
+            }
+        }
+        auto active = order.front().second;
         for (const auto& [id, window] : _windows)
         {
             if (window.active)
@@ -1364,7 +1414,7 @@ namespace winrt::TerminalApp::implementation
         {
             page->_selectedTabItem(tab->TabViewItem());
         }
-        else if (changed)
+        else if (changed || reordered)
         {
             page->_UpdatedSelectedTab(*tab);
         }

@@ -1687,10 +1687,12 @@ namespace winrt::TerminalApp::implementation
     // Arguments:
     // - currentTabIndex: the current index of the tab to move
     // - suggestedNewTabIndex: the new index of the tab, might get clamped to fit int the tabs row boundaries
+    // - userInitiated: select and announce the moved tab; backend projections restore their own selection
     // Return Value:
     // - <none>
     void TerminalPage::_TryMoveTab(const uint32_t currentTabIndex,
-                                   const int32_t suggestedNewTabIndex)
+                                   const int32_t suggestedNewTabIndex,
+                                   const bool userInitiated)
     {
         auto newTabIndex = gsl::narrow_cast<uint32_t>(std::clamp<int32_t>(suggestedNewTabIndex, 0, _tabs.Size() - 1));
         if (currentTabIndex != newTabIndex)
@@ -1703,15 +1705,17 @@ namespace winrt::TerminalApp::implementation
 
             _tabItems().RemoveAt(currentTabIndex);
             _tabItems().InsertAt(newTabIndex, tabViewItem);
-            _selectedTabItem(tabViewItem);
-
-            if (auto autoPeer = Automation::Peers::FrameworkElementAutomationPeer::FromElement(*this))
+            if (userInitiated)
             {
-                const auto tabTitle = tab.Title();
-                autoPeer.RaiseNotificationEvent(Automation::Peers::AutomationNotificationKind::ActionCompleted,
-                                                Automation::Peers::AutomationNotificationProcessing::ImportantMostRecent,
-                                                RS_fmt(L"TerminalPage_TabMovedAnnouncement_Direction", tabTitle, newTabIndex + 1),
-                                                L"TerminalPageMoveTabWithDirection" /* unique name for this notification category */);
+                _selectedTabItem(tabViewItem);
+                if (auto autoPeer = Automation::Peers::FrameworkElementAutomationPeer::FromElement(*this))
+                {
+                    const auto tabTitle = tab.Title();
+                    autoPeer.RaiseNotificationEvent(Automation::Peers::AutomationNotificationKind::ActionCompleted,
+                                                    Automation::Peers::AutomationNotificationProcessing::ImportantMostRecent,
+                                                    RS_fmt(L"TerminalPage_TabMovedAnnouncement_Direction", tabTitle, newTabIndex + 1),
+                                                    L"TerminalPageMoveTabWithDirection" /* unique name for this notification category */);
+                }
             }
         }
     }
