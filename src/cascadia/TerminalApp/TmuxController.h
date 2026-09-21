@@ -31,6 +31,7 @@ namespace winrt::TerminalApp::implementation
 
         void Start(const winrt::hstring& commandline, const winrt::hstring& workingDirectory);
         void Stop() noexcept;
+        bool MatchesSession(const winrt::hstring& session, const winrt::hstring& pendingSession) const;
         bool NewWindow();
         bool Split(const std::shared_ptr<Pane>& pane, Microsoft::Terminal::Settings::Model::SplitDirection direction, float size);
         bool ClosePane(const std::shared_ptr<Pane>& pane);

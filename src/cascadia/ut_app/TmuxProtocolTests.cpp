@@ -122,6 +122,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(ParsesServerWidePaneInventory);
         TEST_METHOD(RejectsMalformedPaneInventory);
         TEST_METHOD(BoundsPaneInventory);
+        TEST_METHOD(MatchesPendingAndConfirmedSessionTargets);
     };
 
     void TmuxProtocolTests::FormatsNamedSocketSessionTitle()
@@ -129,6 +130,21 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(std::string{ "it-test/demo" }, FormatSessionTitle("/tmp/tmux-1000/it-test", "demo"));
         VERIFY_ARE_EQUAL(std::string{ "it-test/worker" }, FormatSessionTitle("it-test", "worker"));
         VERIFY_ARE_EQUAL(std::string{ "it-test/demo" }, FormatSessionTitle(R"(\\.\pipe\it-test)", "demo"));
+    }
+
+    void TmuxProtocolTests::MatchesPendingAndConfirmedSessionTargets()
+    {
+        VERIFY_IS_TRUE(MatchesSessionTarget("$7", std::nullopt, {}, "$7"));
+        VERIFY_IS_FALSE(MatchesSessionTarget("$8", std::nullopt, {}, "$7"));
+        VERIFY_IS_FALSE(MatchesSessionTarget({}, std::nullopt, {}, {}));
+        VERIFY_IS_TRUE(MatchesSessionTarget("$7", Id{ 7 }, "renamed", "old-name"));
+        VERIFY_IS_TRUE(MatchesSessionTarget("$0007", Id{ 7 }, "renamed", "old-name"));
+        VERIFY_IS_TRUE(MatchesSessionTarget("renamed", Id{ 7 }, "renamed", "old-name"));
+        VERIFY_IS_FALSE(MatchesSessionTarget("old-name", Id{ 7 }, "renamed", "old-name"));
+        VERIFY_IS_FALSE(MatchesSessionTarget("$8", Id{ 7 }, "$8", "old-name"));
+        VERIFY_IS_FALSE(MatchesSessionTarget("$18446744073709551616", Id{ 7 }, "name", {}));
+        VERIFY_IS_TRUE(MatchesSessionTarget("$name", Id{ 7 }, "$name", {}));
+        VERIFY_IS_TRUE(MatchesSessionTarget("\xe4\xbc\x9a\xe8\xaf\x9d", Id{ 7 }, "\xe4\xbc\x9a\xe8\xaf\x9d", {}));
     }
 
     void TmuxProtocolTests::DistinguishesClientExitFromRemoteServerExit()

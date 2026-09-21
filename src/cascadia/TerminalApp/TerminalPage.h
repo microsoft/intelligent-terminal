@@ -176,6 +176,7 @@ namespace winrt::TerminalApp::implementation
 
         hstring Title();
         winrt::hstring TmuxSessionTitle() const;
+        bool MatchesTmuxSession(const winrt::hstring& session, const winrt::hstring& pendingSession) const;
 
         void TitlebarClicked();
         void WindowVisibilityChanged(const bool showOrHide);

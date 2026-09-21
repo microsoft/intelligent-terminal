@@ -92,6 +92,7 @@ namespace winrt::TerminalApp::implementation
         WINRT_PROPERTY(winrt::hstring, TmuxWorkingDirectory);
         WINRT_PROPERTY(winrt::hstring, TmuxSshDestination);
         WINRT_PROPERTY(uint16_t, TmuxSshPort, 0);
+        WINRT_PROPERTY(winrt::hstring, TmuxSshSession);
     };
 }
 

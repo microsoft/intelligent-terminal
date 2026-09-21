@@ -10583,6 +10583,11 @@ namespace winrt::TerminalApp::implementation
         return _tmuxSessionTitle.empty() ? winrt::hstring{ L"tmux" } : _tmuxSessionTitle;
     }
 
+    bool TerminalPage::MatchesTmuxSession(const winrt::hstring& session, const winrt::hstring& pendingSession) const
+    {
+        return _tmuxController ? _tmuxController->MatchesSession(session, pendingSession) : session == pendingSession;
+    }
+
     // Method Description:
     // - Handles the special case of providing a text override for the UI shortcut due to VK_OEM issue.
     //      Looks at the flags from the KeyChord modifiers and provides a concatenated string value of all
@@ -13852,6 +13857,7 @@ namespace winrt::TerminalApp::implementation
             request.TmuxCommandline(hstring{ commandline });
             request.TmuxSshDestination(context.destination);
             request.TmuxSshPort(context.port);
+            request.TmuxSshSession(hstring{ L"$" + std::to_wstring(id) });
             request.TmuxWorkingDirectory(workingDirectory);
             RequestNewWindow.raise(*this, request);
         }

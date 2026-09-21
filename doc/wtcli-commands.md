@@ -49,7 +49,8 @@ scripts) are not counted.
 An ordinary SSH tab (a generated SSH profile or a tab launched directly with
 `ssh.exe <alias>`) shows the workspace-style button at the upper left. Open it
 to list sessions on that SSH host's **default** tmux server, then select a row
-to attach in a new native window. No existing tmux frontend is required.
+to attach in a new native window, or focus the existing window for the same SSH
+destination, port, and session. No existing tmux frontend is required.
 Switching to a local tab hides the button; switching tabs or panes cancels a
 pending request so one host's results cannot appear under another host.
 User and port arguments (`-l` and `-p`) are retained. Put other connection
@@ -96,15 +97,19 @@ request is sent; omitted `--cwd` captures the caller's current directory.
 Empty values, control characters, and values exceeding the Windows commandline
 length limit are rejected.
 
-The request always creates a new native window; identical commandlines are not
-deduplicated. `wtcli` exits after window creation and does not own the backend's
-lifetime. A successful JSON response is:
+Structured `--ssh` requests and session-menu selections reuse an existing window
+for the same destination, port, and tmux session, including an attachment still
+connecting. Once connected, matching uses the current stable session ID/name,
+not the window caption or an old name. Failed, closing, or closed attachments
+are not reused. Opaque commandline requests still create independent windows.
+`wtcli` exits after the request and does not own the backend's lifetime. A
+successful JSON response is:
 
 ```json
 {"window_id": 2, "state": "starting"}
 ```
 
-`starting` acknowledges the new window, **not** a connected backend. Process or
+`starting` acknowledges the selected or newly created window, **not** a connected backend. Process or
 protocol startup failures are reported by the destination window. There is no
 automatic restart or reconnect. These transient windows are excluded from
 automatic layout/buffer persistence and named-workspace restoration.

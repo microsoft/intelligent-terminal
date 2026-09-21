@@ -885,6 +885,16 @@ namespace winrt::TerminalApp::implementation
         return _root ? _root->TmuxSessionTitle() : winrt::hstring{};
     }
 
+    bool TerminalWindow::MatchesTmuxSshSession(const winrt::hstring& destination, const uint16_t port, const winrt::hstring& session) const
+    {
+        if (!IsTmuxWindow() || destination.empty() || session.empty() ||
+            destination != _startupTmuxSshDestination || port != _startupTmuxSshPort)
+        {
+            return false;
+        }
+        return _root ? _root->MatchesTmuxSession(session, _startupTmuxSshSession) : session == _startupTmuxSshSession;
+    }
+
     // Method Description:
     // - Used to tell the app that the titlebar has been clicked. The App won't
     //   actually receive any clicks in the titlebar area, so this is a helper
@@ -1156,6 +1166,12 @@ namespace winrt::TerminalApp::implementation
     {
         THROW_HR_IF(E_NOT_VALID_STATE, _root != nullptr);
         _startupTmuxSshPort = port;
+    }
+
+    void TerminalWindow::TmuxSshSession(const winrt::hstring& session)
+    {
+        THROW_HR_IF(E_NOT_VALID_STATE, _root != nullptr);
+        _startupTmuxSshSession = session;
     }
 
     void TerminalWindow::SetPersistedLayout(const winrt::Microsoft::Terminal::Settings::Model::WindowLayout& layout)

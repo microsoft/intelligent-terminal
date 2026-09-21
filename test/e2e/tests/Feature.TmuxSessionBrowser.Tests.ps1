@@ -14,6 +14,8 @@ Describe 'Feature: default tmux session browser' -Tag 'Feature' -Skip:(-not $scr
                 public static extern bool PostMessage(IntPtr hwnd, uint message, IntPtr wparam, IntPtr lparam);
                 [DllImport("user32.dll")]
                 public static extern bool IsWindow(IntPtr hwnd);
+                [DllImport("user32.dll")]
+                public static extern IntPtr GetForegroundWindow();
 '@
         }
         if (-not ('ItE2E.TmuxBrowserLauncher' -as [type])) {
@@ -52,6 +54,13 @@ namespace ItE2E {
             throw "Deployed TerminalApp.dll does not match the intended build: $hash"
         }
         Write-Host "Testing $($script:app.PackageFullName); TerminalApp.dll SHA256=$hash"
+        if ($env:ITE2E_EXPECTED_WINDOWSTERMINAL_SHA256) {
+            $hostHash = (Get-FileHash -LiteralPath $script:app.WindowsTerminal -Algorithm SHA256).Hash
+            if ($hostHash -ine $env:ITE2E_EXPECTED_WINDOWSTERMINAL_SHA256) {
+                throw "Deployed WindowsTerminal.exe does not match the intended build: $hostHash"
+            }
+            Write-Host "WindowsTerminal.exe SHA256=$hostHash"
+        }
         Resolve-WtComClsid -App $script:app | Out-Null
         $script:prefix = 'it-browser-' + [guid]::NewGuid().ToString('N')
         $script:ownedWindows = [Collections.Generic.List[object]]::new()
@@ -121,6 +130,18 @@ namespace ItE2E {
         function Open-BrowserMenu($App) {
             Invoke-UiElement -App $App -Selector TmuxSessionsButton | Out-Null
         }
+
+        function Assert-BrowserWindowReused($Window, [object[]]$ExpectedWindows, [string]$Session) {
+            Wait-Until -TimeoutSec 10 -IntervalSec 0.2 -Because 'existing tmux window receives focus' -Condition {
+                [ItE2E.TmuxBrowserTestWindow]::GetForegroundWindow() -eq [IntPtr]$Window.Hwnd
+            } | Out-Null
+            @(Get-WtWindowHwnds -App $script:app | ForEach-Object hwnd | Sort-Object) |
+                Should -Be $ExpectedWindows -Because 'repeated selection must not create another native window'
+            @((Invoke-BrowserTmux "list-clients -t $(Quote-BrowserArgument $Session) -F '#{client_pid}'") -split '\r?\n' |
+                Where-Object { $_.Trim() }).Count |
+                Should -Be 1 -Because 'the existing backend connection must be reused'
+        }
+
     }
 
     AfterAll {
@@ -174,6 +195,12 @@ namespace ItE2E {
             Should -BeExactly $target.Name
         [ItE2E.TmuxBrowserTestWindow]::IsWindow([IntPtr]$sourceWindow.Hwnd) | Should -BeTrue
         Wait-UiElement -App $attached -Selector TmuxSessionsButton -TimeoutSec 15 | Out-Null
+        $expectedWindows = @(Get-WtWindowHwnds -App $script:app | ForEach-Object hwnd | Sort-Object)
+        Set-WtWindowForeground -App $sourceWindow | Should -BeTrue
+        Open-BrowserMenu $sourceWindow
+        Wait-UiElement -App $sourceWindow -Selector $selector -TimeoutSec 15 | Out-Null
+        Invoke-UiElement -App $sourceWindow -Selector $selector | Out-Null
+        Assert-BrowserWindowReused $attached $expectedWindows $target.Id
         Close-BrowserWindow $attached
 
         Set-WtPaneFocus -App $sourceWindow -SessionId $sourcePane.session_id
@@ -247,4 +274,52 @@ namespace ItE2E {
         Close-BrowserWindow $opaqueWindow
         [ItE2E.TmuxBrowserTestWindow]::IsWindow([IntPtr]$sourceWindow.Hwnd) | Should -BeTrue
     }
+
+    It 'Repeated tmux session menu selections focus the existing window' {
+        $source = New-BrowserSession "$script:prefix-focus-source"
+        $target = New-BrowserSession "$script:prefix-focus-target"
+        $previous = @(Get-WtWindowHwnds -App $script:app | ForEach-Object hwnd)
+        $firstRequest = Invoke-WtCli -App $script:app -Arguments @('tmux', '--ssh', $script:sshHost, '--session', $source.Id)
+        $secondRequest = Invoke-WtCli -App $script:app -Arguments @('tmux', '--ssh', $script:sshHost, '--session', $source.Id)
+        $secondRequest.window_id | Should -Be $firstRequest.window_id
+        $sourceWindow = Wait-BrowserWindow $source.Name $previous
+        Open-BrowserMenu $sourceWindow
+        $selector = 'TmuxSession_' + $target.Id.TrimStart('$')
+        Wait-UiElement -App $sourceWindow -Selector $selector -TimeoutSec 15 | Out-Null
+        $previous = @(Get-WtWindowHwnds -App $script:app | ForEach-Object hwnd)
+        Invoke-UiElement -App $sourceWindow -Selector $selector | Out-Null
+        $targetWindow = Wait-BrowserWindow $target.Name $previous
+        $expectedWindows = @(Get-WtWindowHwnds -App $script:app | ForEach-Object hwnd | Sort-Object)
+
+        foreach ($menuWindow in @($sourceWindow, $targetWindow, $sourceWindow)) {
+            Set-WtWindowForeground -App $menuWindow | Should -BeTrue
+            Open-BrowserMenu $menuWindow
+            Wait-UiElement -App $menuWindow -Selector $selector -TimeoutSec 15 | Out-Null
+            Invoke-UiElement -App $menuWindow -Selector $selector | Out-Null
+            Assert-BrowserWindowReused $targetWindow $expectedWindows $target.Id
+        }
+
+        $renamed = "$script:prefix-focus-renamed"
+        Invoke-BrowserTmux "rename-session -t $(Quote-BrowserArgument $target.Id) $(Quote-BrowserArgument $renamed)" | Out-Null
+        Set-WtWindowForeground -App $sourceWindow | Should -BeTrue
+        Open-BrowserMenu $sourceWindow
+        Wait-UiElement -App $sourceWindow -Selector $selector -TimeoutSec 15 | Out-Null
+        Invoke-UiElement -App $sourceWindow -Selector $selector | Out-Null
+        Wait-Until -TimeoutSec 10 -Because 'renamed session still focuses by stable ID' -Condition {
+            [ItE2E.TmuxBrowserTestWindow]::GetForegroundWindow() -eq [IntPtr]$targetWindow.Hwnd
+        } | Out-Null
+        Invoke-WtCli -App $script:app -Arguments @('tmux', '--ssh', $script:sshHost, '--session', $renamed) | Out-Null
+        @(Get-WtWindowHwnds -App $script:app | ForEach-Object hwnd | Sort-Object) | Should -Be $expectedWindows
+
+        Close-BrowserWindow $targetWindow
+        Invoke-BrowserTmux "has-session -t $(Quote-BrowserArgument $target.Id)" | Out-Null
+        Set-WtWindowForeground -App $sourceWindow | Should -BeTrue
+        Open-BrowserMenu $sourceWindow
+        Wait-UiElement -App $sourceWindow -Selector $selector -TimeoutSec 15 | Out-Null
+        $previous = @(Get-WtWindowHwnds -App $script:app | ForEach-Object hwnd)
+        Invoke-UiElement -App $sourceWindow -Selector $selector | Out-Null
+        $reattached = Wait-BrowserWindow $renamed $previous
+        [ItE2E.TmuxBrowserTestWindow]::IsWindow([IntPtr]$reattached.Hwnd) | Should -BeTrue
+    }
+
 }

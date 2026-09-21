@@ -114,6 +114,12 @@ namespace winrt::TerminalApp::implementation
         Stop();
     }
 
+    bool TmuxController::MatchesSession(const winrt::hstring& session, const winrt::hstring& pendingSession) const
+    {
+        return !_stopped && !_failed && !_exiting &&
+               Protocol::MatchesSessionTarget(winrt::to_string(session), _sessionId, _sessionName, winrt::to_string(pendingSession));
+    }
+
     void TmuxController::Start(const hstring& commandline, const hstring& workingDirectory)
     {
         const auto page = _page.get();
@@ -839,6 +845,7 @@ namespace winrt::TerminalApp::implementation
             TerminalApp::WindowRequestedArgs request{ 0, nullptr };
             request.TmuxSshDestination(page->_tmuxSshDestination);
             request.TmuxSshPort(page->_tmuxSshPort);
+            request.TmuxSshSession(winrt::to_hstring(fmt::format("${}", id)));
             request.TmuxWorkingDirectory(page->_tmuxWorkingDirectory);
             request.TmuxCommandline(winrt::hstring{ Protocol::BuildSshCommandline(page->_tmuxSshDestination, winrt::to_hstring(fmt::format("${}", id)), page->_tmuxSshPort) });
             page->RequestNewWindow.raise(*page, request);

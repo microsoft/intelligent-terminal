@@ -3212,11 +3212,26 @@ namespace TerminalAppLocalTests
             controller->_openSession(42);
             VERIFY_ARE_EQUAL(size_t{ 1 }, requests.size());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"ubuntu" }, requests.front().TmuxSshDestination());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"$42" }, requests.front().TmuxSshSession());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"C:\\work" }, requests.front().TmuxWorkingDirectory());
             VERIFY_IS_TRUE(std::wstring_view{ requests.front().TmuxCommandline() }.find(L"$42") != std::wstring_view::npos);
             VERIFY_IS_TRUE(controller->_sessionId == 7);
             VERIFY_IS_TRUE(tab == page->_GetFocusedTabImpl());
             VERIFY_ARE_EQUAL(1u, page->_tabs.Size());
+            controller->_sessionName = "renamed";
+            VERIFY_IS_TRUE(controller->MatchesSession(L"$7", L"old-name"));
+            VERIFY_IS_TRUE(controller->MatchesSession(L"renamed", L"old-name"));
+            VERIFY_IS_FALSE(controller->MatchesSession(L"old-name", L"old-name"));
+            controller->_sessionId.reset();
+            VERIFY_IS_TRUE(controller->MatchesSession(L"$42", L"$42"));
+            controller->_failed = true;
+            VERIFY_IS_FALSE(controller->MatchesSession(L"$42", L"$42"));
+            controller->_failed = false;
+            controller->_exiting = true;
+            VERIFY_IS_FALSE(controller->MatchesSession(L"$42", L"$42"));
+            controller->_exiting = false;
+            controller->Stop();
+            VERIFY_IS_FALSE(controller->MatchesSession(L"$42", L"$42"));
         });
     }
 
@@ -3265,6 +3280,7 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(size_t{ 1 }, requests.size());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"user@ubuntu" }, requests.front().TmuxSshDestination());
             VERIFY_ARE_EQUAL(uint16_t{ 2222 }, requests.front().TmuxSshPort());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"$42" }, requests.front().TmuxSshSession());
             VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == ssh);
 
             const auto generation = page->_tmuxBrowserGeneration;

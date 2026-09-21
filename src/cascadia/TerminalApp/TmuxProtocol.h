@@ -14,6 +14,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -58,6 +59,28 @@ namespace Microsoft::Terminal::Tmux
         Id id{};
         std::string name;
     };
+
+    inline bool MatchesSessionTarget(const std::string_view requested, const std::optional<Id> id, const std::string_view name, const std::string_view pending) noexcept
+    {
+        if (requested.empty())
+        {
+            return false;
+        }
+        if (!id)
+        {
+            return requested == pending;
+        }
+        if (requested.size() > 1 && requested.front() == '$' &&
+            std::all_of(requested.begin() + 1, requested.end(), [](const char ch) { return ch >= '0' && ch <= '9'; }))
+        {
+            Id value{};
+            const auto end = requested.data() + requested.size();
+            const auto [next, error] = std::from_chars(requested.data() + 1, end, value);
+            return error == std::errc{} && next == end && value == *id;
+        }
+        // Once connected, the current name replaces the launch-time name.
+        return requested == name;
+    }
 
     inline std::vector<SessionInfo> ParseSessions(std::string_view text);
     inline std::unordered_set<Id> ParsePaneIds(std::string_view text);
