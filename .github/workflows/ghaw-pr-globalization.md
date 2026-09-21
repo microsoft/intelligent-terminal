@@ -60,6 +60,7 @@ steps:
       HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
       BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}
       PR_NUMBER: ${{ github.event.inputs.pr_number }}
+      WORKFLOW_SHA: ${{ github.workflow_sha }}
     run: |
       $ErrorActionPreference = 'Stop'
       if ($env:PR_NUMBER -notmatch '^[1-9][0-9]*$') { throw 'Invalid pull request number.' }
@@ -68,7 +69,13 @@ steps:
       if ($LASTEXITCODE -ne 0) { throw 'Failed to fetch the pull request head.' }
       $actual = (git rev-parse $remoteRef).Trim().ToLowerInvariant()
       if ($actual -cne $env:HEAD_SHA.ToLowerInvariant()) { throw "Stale head: expected $env:HEAD_SHA, found $actual." }
-      pwsh -NoProfile -File .github/scripts/ghaw-pr-globalization/Get-GlobalizationChangeContext.ps1 `
+      $trustedDirectory = Join-Path $env:RUNNER_TEMP "ghaw-globalization-$([guid]::NewGuid().ToString('N'))"
+      [System.IO.Directory]::CreateDirectory($trustedDirectory) | Out-Null
+      $classifier = Join-Path $trustedDirectory 'Get-GlobalizationChangeContext.ps1'
+      git --no-replace-objects show "$($env:WORKFLOW_SHA):.github/scripts/ghaw-pr-globalization/Get-GlobalizationChangeContext.ps1" |
+        Set-Content -LiteralPath $classifier -Encoding utf8NoBOM
+      if ($LASTEXITCODE -ne 0) { throw 'Failed to materialize the trusted globalization classifier.' }
+      pwsh -NoProfile -File $classifier `
         -BaseSha $env:BASE_SHA -HeadSha $env:HEAD_SHA `
         -OutputPath /tmp/gh-aw/globalization-context.json
       if ($LASTEXITCODE -ne 0) { throw 'Globalization change classification failed.' }
@@ -108,8 +115,14 @@ post-steps:
     env:
       BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}
       HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+      WORKFLOW_SHA: ${{ github.workflow_sha }}
+      RUNNER_TEMP: ${{ runner.temp }}
     run: |
       set -euo pipefail
+      trusted_dir="$(mktemp -d "$RUNNER_TEMP/ghaw-globalization-guide-post.XXXXXX")"
+      trap 'rm -rf -- "$trusted_dir"' EXIT
+      git --no-replace-objects show "$WORKFLOW_SHA:.github/scripts/ghaw-pr-globalization/Get-GlobalizationChangeContext.ps1" > "$trusted_dir/Get-GlobalizationChangeContext.ps1"
+      git --no-replace-objects show "$WORKFLOW_SHA:.github/scripts/ghaw-pr-globalization/Test-GlobalizationFindings.ps1" > "$trusted_dir/Test-GlobalizationFindings.ps1"
       node <<'NODE'
       const fs = require('fs');
       const path = require('path');
@@ -162,10 +175,10 @@ post-steps:
       }
       fs.writeFileSync('/tmp/gh-aw/globalization-findings.json', JSON.stringify(report), { flag: 'wx', mode: 0o600 });
       NODE
-      pwsh -NoProfile -File .github/scripts/ghaw-pr-globalization/Get-GlobalizationChangeContext.ps1 \
+      pwsh -NoProfile -File "$trusted_dir/Get-GlobalizationChangeContext.ps1" \
         -BaseSha "$BASE_SHA" -HeadSha "$HEAD_SHA" \
         -OutputPath /tmp/gh-aw/globalization-context-post.json
-      pwsh -NoProfile -File .github/scripts/ghaw-pr-globalization/Test-GlobalizationFindings.ps1 \
+      pwsh -NoProfile -File "$trusted_dir/Test-GlobalizationFindings.ps1" \
         -ReportPath /tmp/gh-aw/globalization-findings.json \
         -ContextPath /tmp/gh-aw/globalization-context-post.json \
         -ExpectedBaseSha "$BASE_SHA" -ExpectedHeadSha "$HEAD_SHA"

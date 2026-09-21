@@ -250,6 +250,8 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
         $worker | Should -Not -Match "'pwsh:\*'"
         $worker | Should -Match '(?m)^steps:'
         $worker | Should -Not -Match '(?m)^\s{2}prepare:'
+        $worker | Should -Match 'git --no-replace-objects show'
+        $worker | Should -Not -Match 'pwsh -NoProfile -File \.github/scripts/ghaw-pr-globalization/'
         $worker | Should -Match 'max: 1'
         $worker | Should -Match 'Reject stale worker output'
         $worker | Should -Not -Match 'push-to-pull-request-branch'
