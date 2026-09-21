@@ -11,6 +11,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     struct AIAgents : public HasScrollViewer<AIAgents>, AIAgentsT<AIAgents>
     {
         AIAgents();
+        AIAgents(Model::GlobalAppSettings globalSettings);
 
         void OnNavigatedTo(const winrt::Windows::UI::Xaml::Navigation::NavigationEventArgs& e);
         void CustomAgentAction_Loaded(

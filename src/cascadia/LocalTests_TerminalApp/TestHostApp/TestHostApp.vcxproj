@@ -83,6 +83,9 @@
     <ApplicationDefinition Include="UnitTestApp.xaml">
       <SubType>Designer</SubType>
     </ApplicationDefinition>
+    <Content Include="$(OpenConsoleDir)src\cascadia\CascadiaPackage\ProfileGeneratorIcons\PowerShell.png">
+      <Link>taef.png</Link>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <AppxManifest Include="Package.appxmanifest">
@@ -144,7 +147,6 @@
   </ItemGroup>
 
   <Target Name="AfterBuild" Inputs="@(TestDll)" Outputs="@(TestDll->'$(TargetDir)'\%(Filename)%(Extension)')">
-
     <!-- Use this to auto-find all the dll's that TerminalConnection produces. We
       don't roll these up automatically, so we'll need to copy them manually
       (below)
@@ -180,5 +182,11 @@
           UseHardLinksIfPossible="true"
           SkipUnchangedFiles="true" />
 
+  </Target>
+
+  <Target Name="PrepareAccessibilityHostAssets" AfterTargets="Build">
+    <Copy SourceFiles="$(OpenConsoleDir)src\cascadia\CascadiaPackage\ProfileGeneratorIcons\PowerShell.png"
+          DestinationFiles="$(TargetDir)\taef.png"
+          SkipUnchangedFiles="true" />
   </Target>
 </Project>
