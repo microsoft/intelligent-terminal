@@ -24,6 +24,8 @@ When the caller requests version-1 JSON, use these exact names and values:
 
 - Top level: `version: 1`, lowercase `baseSha`, lowercase `headSha`,
   `findings`, `patchFiles`, `executedValidation`, and `resourceChecks`.
+- Keep `resourceChecks` empty. The separate trusted Localization Review owns
+  deterministic RESW/YAML checker execution and evidence.
 - Finding: `stableId` (`GLOB-*`), `severity` (`HIGH|MEDIUM|LOW`),
   `confidence` (`strong|moderate|weak`), `sourceSha`, `headSha`, repository
   relative `file`, positive integer `line`, `scenario`, string

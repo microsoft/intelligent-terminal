@@ -10,6 +10,7 @@ on:
       - 'src/terminal/**'
       - 'src/renderer/**'
       - 'src/types/**'
+      - 'src/inc/**'
       - 'tools/wta/**'
 
 permissions:

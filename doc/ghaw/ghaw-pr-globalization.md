@@ -73,10 +73,11 @@ tests).
 - Microsoft Learn, [Globalization and localization for Windows
   apps](https://learn.microsoft.com/windows/apps/design/globalizing/globalizing-portal),
   distinguishes culture-aware display from invariant application data.
-- The existing `ensure-localization` skill's six file checks are reused as
-  evidence when reviewing resource changes, but they are rejected as proof of
-  RTL layout, grapheme behavior, customer-facing reachability, or invariant
-  protocol serialization.
+- The separate trusted `Localization Review` owns the `ensure-localization`
+  skill's six deterministic file checks. Globalization Review may report
+  functional resource findings, but rejects agent-authored checker bundles and
+  never treats localization checks as proof of RTL layout, grapheme behavior,
+  customer-facing reachability, or invariant protocol serialization.
 - Generic web-only `dir`/CSS guidance is not used as the implementation model:
   this repository uses WinUI/XAML, C++/WinRT, ratatui, DirectWrite, and terminal
   protocol semantics.

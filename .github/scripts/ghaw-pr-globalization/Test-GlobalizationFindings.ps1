@@ -229,36 +229,7 @@ if ($fixedFindings.Count -gt 0) {
 }
 
 if (@($report.resourceChecks).Count -gt 0) {
-    $requiredChecks = @(
-        'Test-ResourceSyntax',
-        'Test-ResourceEncoding',
-        'Test-RequiredKeys',
-        'Test-PlaceholderParity',
-        'Test-LockedContent',
-        'Test-PseudoLocale'
-    )
-    $allowedStatuses = @{ PASS = 0; FIXABLE = 20; BLOCKED = 30; INVALID_INPUT = 64 }
-    $seenChecks = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
-    foreach ($bundle in @($report.resourceChecks)) {
-        if ($bundle.check -notin $requiredChecks -or -not $seenChecks.Add([string]$bundle.check) -or
-            -not $allowedStatuses.ContainsKey([string]$bundle.status) -or
-            $bundle.exitCode -ne $allowedStatuses[[string]$bundle.status]) {
-            throw 'Resource checker bundle has an unknown check, duplicate check, or invalid status/exit-code mapping.'
-        }
-        $results = @($bundle.results)
-        if ($results.Count -eq 0 -or
-            @($results | Where-Object { $_.status -notin @('PASS', 'FIXABLE', 'BLOCKED') }).Count -gt 0) {
-            throw 'Every resource checker bundle requires non-empty results with known statuses.'
-        }
-        $statuses = @($results.status)
-        $derived = if ($statuses -contains 'BLOCKED') { 'BLOCKED' } elseif ($statuses -contains 'FIXABLE') { 'FIXABLE' } else { 'PASS' }
-        if ($bundle.status -cne $derived) {
-            throw 'Resource checker aggregate status does not match its results.'
-        }
-    }
-    if ($seenChecks.Count -ne $requiredChecks.Count) {
-        throw 'Resource checker evidence must contain each of the six required checks exactly once.'
-    }
+    throw 'Agent-authored resource checker bundles are not accepted; the separate Localization Review owns trusted resource checks.'
 }
 
 [pscustomobject]@{

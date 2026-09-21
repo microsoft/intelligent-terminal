@@ -167,7 +167,7 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
         (Invoke-Validator -Report $report -Mode repair -Trusted) | Should -Not -Be 0
     }
 
-    It 'rejects symlinked reports and accepts only complete resource checker bundles' {
+    It 'rejects symlinked reports and agent-authored resource checker bundles' {
         $directory = Join-Path $TestDrive 'symlink'
         [System.IO.Directory]::CreateDirectory($directory) | Out-Null
         $target = Join-Path $directory 'target.json'
@@ -189,23 +189,14 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
             -ExpectedBaseSha ('a' * 40) -ExpectedHeadSha ('b' * 40) 2>&1
         $LASTEXITCODE | Should -Not -Be 0
 
-        $valid = New-Report
-        $checks = @(
-            'Test-ResourceSyntax', 'Test-ResourceEncoding', 'Test-RequiredKeys',
-            'Test-PlaceholderParity', 'Test-LockedContent', 'Test-PseudoLocale'
-        )
-        $valid.resourceChecks = @($checks | ForEach-Object {
-            [ordered]@{
-                check = $_
-                status = 'PASS'
-                exitCode = 0
-                results = @([ordered]@{ status = 'PASS'; path = 'sample' })
-            }
+        $untrusted = New-Report
+        $untrusted.resourceChecks = @([ordered]@{
+            check = 'Test-ResourceSyntax'
+            status = 'PASS'
+            exitCode = 0
+            results = @([ordered]@{ status = 'PASS'; path = 'sample' })
         })
-        (Invoke-Validator -Report $valid) | Should -Be 0
-        $valid.resourceChecks[0].status = 'FIXABLE'
-        $valid.resourceChecks[0].exitCode = 20
-        (Invoke-Validator -Report $valid) | Should -Not -Be 0
+        (Invoke-Validator -Report $untrusted) | Should -Not -Be 0
     }
 
     It 'carries every required domain rule and false-positive boundary in the prompt' {
@@ -281,9 +272,11 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
         $worker | Should -Match 'checkout:\s*\r?\n\s*ref: \$\{\{ github\.workflow_sha \}\}'
         $worker | Should -Match 'edit: false'
         $worker | Should -Not -Match "'pwsh:\*'"
+        $worker | Should -Not -Match "'git show:\*'"
         $worker | Should -Match '(?m)^steps:'
         $worker | Should -Not -Match '(?m)^\s{2}prepare:'
-        $worker | Should -Match 'git --no-replace-objects show'
+        $worker | Should -Match 'Validate findings and publication shape'
+        $worker | Should -Not -Match '(?m)^post-steps:'
         $worker | Should -Not -Match 'pwsh -NoProfile -File \.github/scripts/ghaw-pr-globalization/'
         $worker | Should -Match 'max: 1'
         $worker | Should -Match 'Reject stale globalization comment'
@@ -316,6 +309,7 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
         $controller | Should -Match 'head_ref: process\.env\.HEAD_REF'
         $controller | Should -Match 'persist-credentials: false'
         $controller | Should -Match 'cancel-in-progress: true'
+        $controller | Should -Match "'src/inc/\*\*'"
     }
 
     It 'compiles same-runner context, dispatch environment, and trusted gates' {
@@ -328,7 +322,8 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
             $compiled | Should -Match 'PR_NUMBER:'
             $compiled | Should -Match 'GH_TOKEN:'
         }
-        $guideLock | Should -Match 'globalization-context-post\.json'
+        $guideLock | Should -Match 'globalization-context-safe\.json'
+        $guideLock | Should -Not -Match '# --allow-tool shell\(git show'
         $repairLock | Should -Match 'trusted-validation\.json'
         $repairLock | Should -Match 'git-diff-check'
         $repairLock | Should -Match 'GH_AW_PR_HEAD_BASE_SHA'

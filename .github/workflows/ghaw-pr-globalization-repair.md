@@ -360,6 +360,9 @@ false-positive, localization-checker, and validation procedure. This workflow
 owns immutable same-repository PR scope, mutation, final-patch validation, and
 publication; the skill owns reusable globalization review logic.
 
+The separate trusted Localization Review owns deterministic RESW/YAML checker
+execution. Keep `resourceChecks` empty and never claim those checks ran here.
+
 ## Mutation rule
 
 Classify all findings, but edit only a HIGH finding with strong
