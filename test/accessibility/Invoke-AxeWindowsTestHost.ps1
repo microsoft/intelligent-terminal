@@ -209,7 +209,14 @@ finally
             $previousManifest = Join-Path $previousPackage.InstallLocation 'AppxManifest.xml'
             if (Test-Path -LiteralPath $previousManifest)
             {
-                Add-AppxPackage -Register $previousManifest -DisableDevelopmentMode
+                try
+                {
+                    Add-AppxPackage -Register $previousManifest -DisableDevelopmentMode
+                }
+                catch
+                {
+                    Write-Warning "Failed to restore the previous WindowsTerminal.TestHost registration: $($_.Exception.Message)"
+                }
             }
         }
     }
