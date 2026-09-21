@@ -1,7 +1,6 @@
 ---
 name: 'PR Globalization Reviewer'
 description: 'Reviews Intelligent Terminal pull requests for RTL, Unicode, locale, and message-construction defects'
-tools: ['read', 'search', 'execute']
 user-invocable: false
 disable-model-invocation: true
 ---

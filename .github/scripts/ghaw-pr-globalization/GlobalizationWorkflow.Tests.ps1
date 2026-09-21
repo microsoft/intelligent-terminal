@@ -121,6 +121,14 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
         $unchangedLine.line = 101
         (Invoke-Validator -Report (New-Report -Findings @($unchangedLine))) | Should -Not -Be 0
 
+        $scalarEvidence = New-Finding
+        $scalarEvidence.evidence = 'not-an-array'
+        (Invoke-Validator -Report (New-Report -Findings @($scalarEvidence))) | Should -Not -Be 0
+
+        $blankValidation = New-Finding
+        $blankValidation.validation = @(' ')
+        (Invoke-Validator -Report (New-Report -Findings @($blankValidation))) | Should -Not -Be 0
+
         $mediumBlocker = New-Finding -Severity 'MEDIUM' -Confidence 'moderate' -Disposition 'blocked'
         (Invoke-Validator -Report (New-Report -Findings @($mediumBlocker))) | Should -Not -Be 0
 
@@ -228,7 +236,7 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
             $skill | Should -Match ([regex]::Escape($needle))
         }
         (Get-Content -LiteralPath $script:workflow -Raw) | Should -Match 'review-globalization/SKILL\.md'
-        (Get-Content -LiteralPath $script:repairWorkflow -Raw) | Should -Match 'review-globalization/SKILL\.md'
+        (Get-Content -LiteralPath $script:repairWorkflow -Raw) | Should -Match 'Do not load instructions, agents, skills'
     }
 
     It 'classifies UI, protocol, terminal, and Rust locale surfaces deterministically' {
@@ -286,7 +294,8 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
         $worker | Should -Match 'edit: false'
         $worker | Should -Not -Match "'pwsh:\*'"
         $worker | Should -Not -Match "'git show:\*'"
-        $worker | Should -Not -Match '(?m)^\s{2}bash:'
+        $worker | Should -Not -Match "'git diff:\*'"
+        $worker | Should -Match 'get_pull_request_diff'
         $worker | Should -Match '(?m)^steps:'
         $worker | Should -Not -Match '(?m)^\s{2}prepare:'
         $worker | Should -Match 'Validate findings and publication shape'
@@ -342,6 +351,7 @@ Describe 'PR globalization workflow' -Tag 'Unit' {
         }
         $guideLock | Should -Match 'globalization-context-safe\.json'
         $guideLock | Should -Not -Match '# --allow-tool shell\(git show'
+        $guideLock | Should -Not -Match '--allow-all-tools'
         $guideLock | Should -Match 'Checkout trusted repository state'
         $guideLock | Should -Match 'Fetch immutable pull request head'
         $repairLock | Should -Match 'trusted-validation\.json'

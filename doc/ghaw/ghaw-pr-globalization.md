@@ -104,18 +104,10 @@ C++/XAML and Rust UI RTL behavior. Clone the user's fork into a disposable
 automation directory, fetch immutable base
 `6281d4b64c8a587dd47a249a350b84c3442c8d3b` and head
 `558c20bf0a9df333e9dead4c2b1e12a83778279d`, and create local branches without
-pushing them. Install the review agent and skill into that fixture through
-`.git/info/exclude`, then run a separately named Copilot automation session:
-
-```powershell
-$env:COPILOT_HOME = "$env:LOCALAPPDATA\CopilotAutomation"
-copilot -C <fixture> --agent ghaw-pr-globalization --allow-all-tools `
-  --allow-all-paths --reasoning-effort high `
-  --name "auto:eval:ghaw-pr-globalization-pr45:<run-id>" `
-  --prompt (Get-Content <prompt-file> -Raw)
-```
-
-Bound the process and kill only that process tree on timeout. Require no
+pushing them. Run the fixture only inside a disposable container or VM with no
+host credentials, no network, a read-only repository mount, and a writable
+scratch directory limited to report output. Bound the process and kill only
+that process tree on timeout. Require no
 worktree/index changes afterward, then pass the JSON through
 `Test-GlobalizationFindings.ps1 -Mode guide`. This tests actual agent reasoning,
 schema adherence, false-positive exclusions, and immutable evidence; it does

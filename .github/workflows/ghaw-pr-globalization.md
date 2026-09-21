@@ -48,6 +48,7 @@ on:
 
 permissions:
   contents: read
+  issues: read
   pull-requests: read
   copilot-requests: write
 
@@ -61,6 +62,15 @@ checkout:
 
 tools:
   edit: false
+  bash:
+    - 'echo:*'
+  github:
+    allowed:
+      - get_pull_request
+      - get_pull_request_diff
+      - get_pull_request_files
+      - get_file_contents
+      - search_code
 
 jobs:
   safe_outputs:

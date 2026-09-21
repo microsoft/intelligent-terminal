@@ -133,8 +133,13 @@ foreach ($finding in $findings) {
             throw "Finding $($finding.stableId) is missing $field."
         }
     }
-    if (@($finding.evidence).Count -eq 0 -or @($finding.validation).Count -eq 0) {
-        throw "Finding $($finding.stableId) requires evidence and validation."
+    foreach ($arrayField in @('evidence', 'validation')) {
+        $value = $finding.$arrayField
+        if ($value -is [string] -or $value -isnot [System.Collections.IEnumerable] -or
+            @($value).Count -eq 0 -or
+            @($value | Where-Object { $_ -isnot [string] -or [string]::IsNullOrWhiteSpace($_) }).Count -gt 0) {
+            throw "Finding $($finding.stableId) requires $arrayField as a non-empty array of non-blank strings."
+        }
     }
     if ($finding.disposition -notin @('fixed', 'remaining', 'suggestion', 'blocked', 'skipped')) {
         throw "Finding $($finding.stableId) has an invalid disposition."
