@@ -1568,6 +1568,10 @@ impl Default for View {
 #[derive(Debug, Default, Clone)]
 pub struct AgentsViewState {
     pub snapshot: Option<Vec<crate::session_registry::SessionInfo>>,
+    pub(crate) ssh_profile: super::ssh_profile::SessionsProfile,
+    pub(crate) ssh_source: Option<super::ssh_session_view::SshSessionsSource>,
+    pub(crate) ssh_error: Option<String>,
+    pub(crate) ssh_fetch: Option<tokio::task::AbortHandle>,
     pub focused_sid: Option<agent_client_protocol::schema::v1::SessionId>,
     pub search_query: String,
     pub search_focused: bool,
@@ -1577,4 +1581,11 @@ pub struct AgentsViewState {
     pub latest_request_id: Option<u64>,
     pub pending_rescan: bool,
     pub rescan_in_flight: bool,
+}
+
+impl AgentsViewState {
+    pub(crate) fn is_ssh_source(&self) -> bool {
+        self.ssh_source.is_some()
+            || !matches!(self.ssh_profile, super::ssh_profile::SessionsProfile::Agent)
+    }
 }

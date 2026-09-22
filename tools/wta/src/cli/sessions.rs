@@ -11,6 +11,31 @@ pub(crate) async fn run_list(
 ) -> Result<()> {
     let local = tokio::task::LocalSet::new();
     let sessions = local.run_until(fetch_from_master(master_override)).await?;
+    print_sessions(sessions, origin_filter, json_mode)
+}
+
+pub(crate) async fn run_ssh_list(
+    target: &crate::ssh_sessions::SshTarget,
+    agent_id: &str,
+    origin_filter: crate::agent_sessions::OriginFilter,
+    json_mode: bool,
+) -> Result<()> {
+    let local = tokio::task::LocalSet::new();
+    let sessions = local
+        .run_until(crate::ssh_sessions::list_sessions(target, agent_id))
+        .await?;
+    let sessions = sessions
+        .iter()
+        .map(crate::session_registry::agent_session_to_session_info)
+        .collect();
+    print_sessions(sessions, origin_filter, json_mode)
+}
+
+fn print_sessions(
+    sessions: Vec<crate::session_registry::SessionInfo>,
+    origin_filter: crate::agent_sessions::OriginFilter,
+    json_mode: bool,
+) -> Result<()> {
     // Origin filter is applied client-side: master always returns the
     // full registry so this command can act as the debug eye-of-god
     // view (default `--origin all`). `--origin shell` matches what
@@ -34,26 +59,73 @@ pub(crate) async fn run_list(
 async fn fetch_from_master(
     master_override: Option<String>,
 ) -> Result<Vec<crate::session_registry::SessionInfo>> {
+    let request = crate::session_registry::build_sessions_list_request(false);
+    let response =
+        request_from_master_with_identity(master_override, request, "wta-sessions").await?;
+    let parsed = crate::session_registry::parse_sessions_list_response(&response.0)
+        .context("parse sessions/list response")?;
+    Ok(parsed.sessions)
+}
+
+struct RegistryConnection(crate::protocol::acp::conn::ClientLink);
+
+impl Drop for RegistryConnection {
+    fn drop(&mut self) {
+        self.0.shutdown();
+    }
+}
+
+/// The same registry transport serves the CLI and SSH-profile helpers without
+/// starting a local chat agent. The explicit pipe keeps a helper in its master.
+pub(crate) async fn request_from_master(
+    master_override: Option<String>,
+    request: acp::schema::v1::ExtRequest,
+) -> Result<acp::schema::v1::ExtResponse> {
+    request_from_master_with_identity(master_override, request, "wta-session-registry").await
+}
+
+async fn request_from_master_with_identity(
+    master_override: Option<String>,
+    request: acp::schema::v1::ExtRequest,
+    client_name: &'static str,
+) -> Result<acp::schema::v1::ExtResponse> {
+    tokio::time::timeout(
+        std::time::Duration::from_secs(110),
+        request_from_master_inner(master_override, request, client_name),
+    )
+    .await
+    .context("session registry request timed out")?
+}
+
+async fn request_from_master_inner(
+    master_override: Option<String>,
+    request: acp::schema::v1::ExtRequest,
+    client_name: &'static str,
+) -> Result<acp::schema::v1::ExtResponse> {
     let pipe_name = resolve_master_pipe(master_override).await?;
     let pipe = open_master_pipe(&pipe_name).await?;
     let (read_half, write_half) = tokio::io::split(pipe);
     let outgoing = write_half.compat_write();
     let incoming = read_half.compat();
     let (conn, handle_io) = crate::protocol::acp::conn::spawn_client(
-        acp::Client.builder().name("wta-sessions"),
+        acp::Client.builder().name(client_name),
         crate::protocol::acp::conn::byte_streams(outgoing, incoming),
     );
-    tokio::task::spawn_local(async move {
-        let _ = handle_io.await;
-    });
+    let conn = RegistryConnection(conn);
+    let _io_task = tokio_util::task::AbortOnDropHandle::new(tokio::task::spawn_local(async move {
+        if let Err(error) = handle_io.await {
+            tracing::debug!(target: "session_registry", %error, "registry connection ended");
+        }
+    }));
 
     let init_started = std::time::Instant::now();
     let init_result = conn
+        .0
         .initialize(
             acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
                 .client_capabilities(acp::schema::v1::ClientCapabilities::new())
                 .client_info(
-                    acp::schema::v1::Implementation::new("wta-sessions", env!("CARGO_PKG_VERSION"))
+                    acp::schema::v1::Implementation::new(client_name, env!("CARGO_PKG_VERSION"))
                         .title("Windows Terminal Agent sessions CLI"),
                 ),
         )
@@ -69,16 +141,12 @@ async fn fetch_from_master(
             .map(|e| e.code.into())
             .unwrap_or(0),
     );
-    init_result.map_err(|_| anyhow::anyhow!(MASTER_NOT_RUNNING))?;
+    init_result.context("initialize session registry connection")?;
 
-    let req = crate::session_registry::build_sessions_list_request(false);
-    let resp = conn
-        .ext_method(req)
+    conn.0
+        .ext_method(request)
         .await
-        .map_err(|_| anyhow::anyhow!(MASTER_NOT_RUNNING))?;
-    let parsed = crate::session_registry::parse_sessions_list_response(&resp.0)
-        .context("parse sessions/list response")?;
-    Ok(parsed.sessions)
+        .context("master session registry request failed")
 }
 
 /// Best-effort: register a WTA-launched CLI session with `wta-master` as a
@@ -221,11 +289,7 @@ fn format_table(sessions: &[crate::session_registry::SessionInfo]) -> String {
     ));
     for (i, session) in sessions.iter().enumerate() {
         let sid = session.session_id.to_string();
-        let short_sid = if sid.len() > 24 {
-            &sid[..24]
-        } else {
-            sid.as_str()
-        };
+        let short_sid: String = sid.chars().take(24).collect();
         out.push_str(&format!(
             "{:<4} {:<24} {:<10} {:<10} {:<10} {:<16} {:<20} {:<20} {}\n",
             i + 1,
@@ -275,11 +339,14 @@ fn origin_label(origin: Option<&crate::agent_sessions::SessionOrigin>) -> &'stat
 
 /// Render a `SessionLocation` for the `wta sessions list` table: `host`
 /// for Windows-profile sessions, `wsl:<distro>` for sessions discovered
-/// inside a WSL distro.
+/// inside a WSL distro, and `ssh:<destination>` for remote history.
 fn location_label(location: &crate::agent_sessions::SessionLocation) -> String {
     match location {
         crate::agent_sessions::SessionLocation::Host => "host".to_string(),
         crate::agent_sessions::SessionLocation::Wsl { distro } => format!("wsl:{distro}"),
+        crate::agent_sessions::SessionLocation::Ssh { target } => {
+            format!("ssh:{}", target.display_name())
+        }
     }
 }
 
@@ -320,6 +387,26 @@ fn format_epoch_ms_utc(ms: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn registry_connection_guard_closes_its_transport_when_a_request_is_cancelled() {
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let (client, _peer) = tokio::io::duplex(1024);
+                let (read, write) = tokio::io::split(client);
+                let (connection, io) = crate::protocol::acp::conn::spawn_client(
+                    acp::Client.builder().name("wta-session-registry"),
+                    crate::protocol::acp::conn::byte_streams(write.compat_write(), read.compat()),
+                );
+                let connection = RegistryConnection(connection);
+                drop(connection);
+                tokio::time::timeout(std::time::Duration::from_secs(2), io)
+                    .await
+                    .expect("registry transport must close without waiting for peer EOF")
+                    .expect("intentional registry shutdown must be clean");
+            })
+            .await;
+    }
 
     #[test]
     fn json_lines_prints_one_session_info_per_line() {
@@ -409,14 +496,67 @@ mod tests {
         wsl.location = crate::agent_sessions::SessionLocation::Wsl {
             distro: "Ubuntu".into(),
         };
+        let mut ssh = crate::session_registry::SessionInfo::new(
+            acp::schema::v1::SessionId::new("sid-ssh"),
+            std::path::PathBuf::from("/home/remote"),
+        );
+        ssh.location = crate::agent_sessions::SessionLocation::Ssh {
+            target: crate::ssh_sessions::SshTarget::new("User@Alias", Some(2222)).unwrap(),
+        };
 
-        let out = format_table(&[host, wsl]);
+        let out = format_table(&[host, wsl, ssh]);
         assert!(out.contains("LOCATION"), "LOCATION header present: {out}");
         assert!(out.contains("host"), "host location label present: {out}");
         assert!(
             out.contains("wsl:Ubuntu"),
             "wsl distro label present: {out}"
         );
+        assert!(
+            out.contains("ssh:User@Alias:2222"),
+            "SSH label present: {out}"
+        );
+    }
+
+    #[test]
+    fn remote_session_json_preserves_location_and_existing_session_info_shape() {
+        let target = crate::ssh_sessions::SshTarget::new("Alias", None).unwrap();
+        let raw = acp::schema::v1::SessionInfo::new(
+            acp::schema::v1::SessionId::new("remote-id"),
+            std::path::PathBuf::from("/remote/repo"),
+        );
+        let agent = crate::session_history::acp_session_to_agent_session(
+            &raw,
+            crate::agent_sessions::SessionLocation::Ssh {
+                target: target.clone(),
+            },
+            &crate::agent_sessions::CliSource::Copilot,
+        );
+        let row = crate::session_registry::agent_session_to_session_info(&agent);
+        let json = format_json_lines(&[row]).unwrap();
+        let parsed: crate::session_registry::SessionInfo =
+            serde_json::from_str(json.trim()).unwrap();
+        assert_eq!(parsed.session_id.to_string(), "remote-id");
+        assert_eq!(
+            parsed.location,
+            crate::agent_sessions::SessionLocation::Ssh { target }
+        );
+        assert_eq!(
+            parsed.cli_source,
+            Some(crate::agent_sessions::CliSource::Copilot)
+        );
+        assert!(parsed.pane_session_id.is_none());
+        assert_eq!(parsed.cwd, std::path::PathBuf::from("/remote/repo"));
+    }
+
+    #[test]
+    fn table_truncates_unicode_session_ids_without_splitting_utf8() {
+        let row = crate::session_registry::SessionInfo::new(
+            acp::schema::v1::SessionId::new("é".repeat(30)),
+            std::path::PathBuf::from("/remote/repo"),
+        );
+        let output = format_table(&[row]);
+        assert!(output.contains(&"é".repeat(24)));
+        assert!(!output.contains(&"é".repeat(25)));
     }
 
     #[test]

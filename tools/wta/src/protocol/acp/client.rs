@@ -2469,6 +2469,12 @@ impl WtaClient {
             WtaExtNotification::SessionsChanged => {
                 let _ = self.state.event_tx.send(AppEvent::SessionsChanged);
             }
+            WtaExtNotification::SshSessionsChanged(source) => {
+                let _ = self
+                    .state
+                    .event_tx
+                    .send(AppEvent::SshSessionsChanged(source));
+            }
             WtaExtNotification::Unknown => {
                 tracing::trace!(
                     target: "acp_client",

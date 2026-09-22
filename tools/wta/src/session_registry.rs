@@ -415,6 +415,7 @@ pub enum WtaExtNotification {
     SessionAdded(SessionInfo),
     SessionRemoved(acp::schema::v1::SessionId),
     SessionsChanged,
+    SshSessionsChanged(crate::ssh_session_registry::Source),
     /// Not one of ours. Caller should silently ignore.
     Unknown,
     /// Method matched but params failed to parse. Caller should log
@@ -468,6 +469,14 @@ pub fn parse_ext_notification(n: &acp::schema::v1::ExtNotification) -> WtaExtNot
                 error: err.to_string(),
             },
         }
+    } else if ext_method_matches(method, crate::ssh_session_registry::CHANGED_METHOD) {
+        match serde_json::from_str::<crate::ssh_session_registry::Source>(raw.get()) {
+            Ok(source) => WtaExtNotification::SshSessionsChanged(source),
+            Err(err) => WtaExtNotification::MalformedParams {
+                method: method.to_string(),
+                error: err.to_string(),
+            },
+        }
     } else {
         WtaExtNotification::Unknown
     }
@@ -502,6 +511,8 @@ pub enum WtaExtRequest {
     FocusSession(FocusSessionParams),
     /// `_intellterm.wta/sessions/list` — full registry snapshot.
     SessionsList(SessionsListParams),
+    /// Source-scoped SSH history and master-owned focus/resume.
+    SshSessions(crate::ssh_session_registry::Request),
     /// `_intellterm.wta/session_hook` — a helper-originated session event
     /// (resume bookkeeping, pane lifecycle). Agent CLI hooks reach master over
     /// the COM broadcast instead.
@@ -554,6 +565,8 @@ pub fn parse_ext_request(req: acp::schema::v1::ExtRequest) -> WtaExtRequest {
         decode!(FocusSession, parse_focus_session_params)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSIONS_LIST) {
         decode!(SessionsList, parse_sessions_list_params)
+    } else if ext_method_matches(&req.method, crate::ssh_session_registry::METHOD) {
+        decode!(SshSessions, crate::ssh_session_registry::parse_request)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_HOOK) {
         decode!(SessionHook, parse_session_hook_params)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_BORN_BOUND) {
@@ -1988,7 +2001,7 @@ pub async fn apply_ext_notification(
         WtaExtNotification::SessionRemoved(sid) => {
             reg.remove(sid).await;
         }
-        WtaExtNotification::SessionsChanged => {}
+        WtaExtNotification::SessionsChanged | WtaExtNotification::SshSessionsChanged(_) => {}
         // Unknown / MalformedParams: caller's job to log; never panic
         // and never mutate the registry. A future master may broadcast
         // notifications we don't recognise — silently ignoring them

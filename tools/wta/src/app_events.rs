@@ -790,6 +790,7 @@ impl App {
                 );
             }
             AppEvent::Tick => {
+                self.poll_shared_ssh_sessions();
                 // Fan out across all tabs: a background tab with an in-flight
                 // prompt should keep its shimmer phase advancing so when the
                 // user switches back the animation is in step.
@@ -2644,6 +2645,17 @@ impl App {
             AppEvent::AgentsSnapshotFailed { request_id } => {
                 self.handle_agents_snapshot_failed(request_id);
             }
+            AppEvent::SshRegistryResult {
+                source,
+                sequence,
+                action,
+                result,
+            } => {
+                self.handle_ssh_registry_result(source, sequence, action, result);
+            }
+            AppEvent::SshSessionsChanged(source) => {
+                self.request_cached_ssh_source(&source);
+            }
             AppEvent::RegisterBornBoundSession { event } => {
                 self.register_born_bound_session(event);
             }
@@ -3132,6 +3144,7 @@ impl App {
                         "tab_changed event received"
                     );
                     if let Some(new_tab_id) = params.get("tab_id").and_then(|v| v.as_str()) {
+                        self.update_sessions_profile_from_event(&params);
                         // switch_tab_session calls project_active_tab_state
                         // at its end — that pushes the new tab's view AND
                         // autofix bar snapshot to C++ in one shot.
@@ -3496,6 +3509,8 @@ impl App {
                             return;
                         }
                     }
+
+                    self.update_sessions_profile_from_event(&params);
 
                     // Apply `view` if present.
                     if let Some(view_str) = params.get("view").and_then(|v| v.as_str()) {

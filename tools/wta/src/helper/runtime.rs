@@ -1010,6 +1010,19 @@ async fn run_acp_app(
                 }
             }
 
+            // SSH history may start before the chat connection or local setup
+            // completes, so its snapshot task needs the event sender now.
+            app_state.set_event_tx(event_tx.clone());
+            app_state.set_sessions_master_pipe(connect_master_pipe.clone());
+            if config.sessions_ssh_target.is_some() && app_state.current_agent_id.is_empty() {
+                app_state.current_agent_id = canonical_agent_id.clone();
+            }
+            app_state.set_initial_sessions_ssh_profile(
+                config.sessions_ssh_target.as_deref(),
+                config.sessions_ssh_port,
+                config.sessions_ssh_error.as_deref(),
+            );
+
             // Plan-C boot-time initial-load: if WT spawned us with
             // `--initial-load-session-id` (+ optional `--initial-load-cwd`)
             // synthesize an `AppEvent::WtEvent { method:"load_session" }`
@@ -1118,11 +1131,11 @@ async fn run_acp_app(
             // the wta cmdline. `open_agents_view_for_tab` fires the
             // `session/list` refetch to master that populates the view.
             //
-            // Skip in setup mode: --setup takes the diagnostic path and the user
-            // shouldn't be dropped into an empty session list.
-            if config.setup.is_none()
-                && !start_in_initial_auth
-                && config.initial_view == InitialView::Sessions
+            // Local setup/auth gates normal history, but the SSH history source
+            // does not depend on the local chat agent being available.
+            if config.initial_view == InitialView::Sessions
+                && (app_state.current_tab().agents_view.is_ssh_source()
+                    || (config.setup.is_none() && !start_in_initial_auth))
             {
                 tracing::info!(target: "initial_view", "starting in agent session view");
                 let tab_id = app_state
@@ -1183,8 +1196,6 @@ async fn run_acp_app(
                     subtitle,
                 });
             }
-
-            app_state.set_event_tx(event_tx.clone());
 
             // The helper does not scan on-disk history: master performs the
             // single (CLI-filtered) scan and the session view renders from

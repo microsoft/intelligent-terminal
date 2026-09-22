@@ -1482,7 +1482,7 @@ fn pool_key_dedupes_same_selection_and_separates_distinct_agents() {
     assert_ne!(a, c, "different agents must get different pool keys");
 }
 
-fn make_state() -> Arc<MasterStateInner> {
+pub(super) fn make_state() -> Arc<MasterStateInner> {
     make_state_with_retirement_pending_timeout(SESSION_CLOSE_TIMEOUT)
 }
 
@@ -1497,6 +1497,7 @@ fn make_state_with_retirement_pending_timeout(
         pending_usage: Mutex::new(HashMap::new()),
         usage_generation: watch::channel(0u64).0,
         registry: crate::session_registry::InMemoryRegistry::shared(),
+        ssh_sessions: ssh_sessions::Service::default(),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt: None,
         agents: Mutex::new(HashMap::new()),
@@ -9900,6 +9901,7 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
         pending_usage: Mutex::new(HashMap::new()),
         usage_generation: watch::channel(0u64).0,
         registry: crate::session_registry::InMemoryRegistry::shared(),
+        ssh_sessions: ssh_sessions::Service::default(),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt: Some(wt),
         agents: Mutex::new(HashMap::new()),

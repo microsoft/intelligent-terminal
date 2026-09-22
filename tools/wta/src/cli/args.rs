@@ -50,6 +50,17 @@ pub(crate) struct Cli {
     #[arg(long, hide = true)]
     pub(crate) agent_source_cwd: Option<String>,
 
+    /// SSH profile's history source, independent of the ACP chat backend.
+    #[arg(long, hide = true, conflicts_with = "sessions_ssh_error")]
+    pub(crate) sessions_ssh_target: Option<String>,
+
+    #[arg(long, hide = true, requires = "sessions_ssh_target", value_parser = clap::value_parser!(u16).range(1..))]
+    pub(crate) sessions_ssh_port: Option<u16>,
+
+    /// Unsupported SSH profile metadata must not fall back to local history.
+    #[arg(long, hide = true)]
+    pub(crate) sessions_ssh_error: Option<String>,
+
     /// Master-only allowlist of agent ids a helper may request over the
     /// pipe (the GPO-filtered set; built by TerminalPage::
     /// _BuildSharedWtaExtraArgs from `FilteredAcpAgents()`). The master
@@ -247,6 +258,12 @@ pub(crate) struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub(crate) enum Command {
+    /// Internal ConPTY launcher; not a session-picker entry point.
+    #[command(hide = true)]
+    SshResume {
+        #[arg(long, hide = true)]
+        payload: String,
+    },
     /// Show Windows Terminal protocol connection info
     Info,
     /// Test protocol connection to Windows Terminal
@@ -407,7 +424,7 @@ pub(crate) enum Command {
         #[command(subcommand)]
         action: HooksAction,
     },
-    /// Inspect sessions known to the shared wta-master.
+    /// Inspect local sessions or explicitly browse remote history over SSH.
     Sessions {
         #[command(subcommand)]
         action: SessionsAction,
@@ -477,11 +494,20 @@ pub(crate) enum Command {
 /// Subcommands for `wta sessions`.
 #[derive(Subcommand, Debug)]
 pub(crate) enum SessionsAction {
-    /// List sessions in the master registry.
+    /// List sessions in the master registry, or read remote history over SSH.
     List {
         /// Override the wta-master named pipe path.
-        #[arg(long, value_name = "PIPE_NAME")]
+        #[arg(long, value_name = "PIPE_NAME", conflicts_with = "ssh")]
         master: Option<String>,
+        /// Read history on an already trusted SSH host or OpenSSH alias.
+        #[arg(long, value_name = "DESTINATION", value_parser = parse_ssh_destination)]
+        ssh: Option<String>,
+        /// Override the SSH port (otherwise use the user's SSH configuration).
+        #[arg(long, requires = "ssh", value_parser = clap::value_parser!(u16).range(1..))]
+        port: Option<u16>,
+        /// Built-in remote agent CLI id (defaults to copilot in SSH mode).
+        #[arg(long, requires = "ssh", value_parser = parse_ssh_cli)]
+        cli: Option<String>,
         /// Restrict the list to a session origin. `all` (default) shows
         /// every row — that matches the historical debug behavior.
         /// `shell` shows only user-started shell-pane sessions (the
@@ -490,6 +516,23 @@ pub(crate) enum SessionsAction {
         #[arg(long, value_enum, default_value_t = SessionsOriginArg::All)]
         origin: SessionsOriginArg,
     },
+}
+
+fn parse_ssh_destination(value: &str) -> Result<String, String> {
+    crate::ssh_sessions::SshTarget::new(value, None)
+        .map(|target| target.destination().to_string())
+        .map_err(|error| error.to_string())
+}
+
+fn parse_ssh_cli(value: &str) -> Result<String, String> {
+    if crate::agent_registry::is_known_id(value) {
+        Ok(value.to_string())
+    } else {
+        Err(
+            "SSH history requires a built-in CLI id: copilot, claude, codex, gemini, opencode"
+                .into(),
+        )
+    }
 }
 
 /// CLI value for `wta sessions list --origin`. Mirrors

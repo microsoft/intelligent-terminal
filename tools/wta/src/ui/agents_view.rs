@@ -27,6 +27,24 @@ const ACCENT_RED: Color = Color::Red; // Error
 const SOFT_WHITE: Color = Color::Rgb(0x8b, 0x8b, 0x8b); // Idle
 const MUTED_WHITE: Color = Color::Rgb(0x8b, 0x8b, 0x8b); // timestamp
 
+pub(crate) fn render_ssh_error(frame: &mut Frame, mut area: Rect, error: Option<&str>) -> Rect {
+    if area.height == 0 {
+        return area;
+    }
+    if let Some(error) = error {
+        let height = area.height.min(3);
+        frame.render_widget(
+            Paragraph::new(format!("{}: {error}", t!("agents.status.error")))
+                .style(Style::default().fg(Color::Red))
+                .wrap(ratatui::widgets::Wrap { trim: false }),
+            Rect { height, ..area },
+        );
+        area.y = area.y.saturating_add(height);
+        area.height = area.height.saturating_sub(height);
+    }
+    area
+}
+
 pub fn render(
     f: &mut Frame,
     area: Rect,
@@ -629,11 +647,12 @@ fn cli_suffix_for(s: &AgentSession, selected: bool) -> String {
         CliSource::OpenCode => Some("opencode"),
         CliSource::Unknown(_) => None,
     };
-    let distro = match &s.location {
-        SessionLocation::Wsl { distro } => Some(distro.as_str()),
+    let source = match &s.location {
+        SessionLocation::Wsl { distro } => Some(distro.clone()),
+        SessionLocation::Ssh { target } => Some(target.display_name()),
         SessionLocation::Host => None,
     };
-    [cli, distro]
+    [cli, source.as_deref()]
         .into_iter()
         .flatten()
         .map(|part| format!("· {part}"))
@@ -1114,6 +1133,18 @@ mod tests {
         assert!(s.contains("April"), "expected month name in {:?}", s);
         assert!(s.contains("20"), "expected day in {:?}", s);
         assert!(s.contains("2026"), "expected year in {:?}", s);
+    }
+
+    #[test]
+    fn ssh_suffix_contains_only_provider_and_endpoint_identifiers() {
+        let mut session = sample_session();
+        session.location = SessionLocation::Ssh {
+            target: crate::ssh_sessions::SshTarget::new("user@remote", Some(2222)).unwrap(),
+        };
+        assert_eq!(
+            cli_suffix_for(&session, true),
+            "· copilot · user@remote:2222"
+        );
     }
 
     #[test]

@@ -347,3 +347,9 @@ env_remove\("[A-Z_]+"\)
 # tools/wta/src/agent_sessions.rs - lowercased agent tool name (Claude AskUserQuestion)
 # matched as a string literal in is_user_input_tool.
 \baskuserquestion\b
+
+# SSH source parser fixtures: user identity and its attached -l option value.
+\b(?:l)?yuazha\b
+
+# SSH source parser fixture containing a literal quote.
+\bhost'quote\b
