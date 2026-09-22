@@ -112,6 +112,12 @@ namespace winrt::TerminalApp::implementation
         winrt::TerminalApp::AgentPaneContent FindAgentPaneContent() const;
         // Returns the Pane node hosting the AgentPaneContent, or nullptr.
         std::shared_ptr<Pane> FindAgentPane() const;
+        bool IsAgentTab() const;
+        void SetTabFilterActive(bool active)
+        {
+            _tabFilterActive = active;
+            _EnableMenuItems();
+        }
 
         // Hide the agent pane without detaching it from the tree. The pane
         // stays alive (so TermControl + conpty + wta-helper survive), but
@@ -259,6 +265,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _restartConnectionMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _switchTabLayoutMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _closeOtherTabsMenuItem{};
+        bool _tabFilterActive{ false };
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _closeTabsAfterMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _closePaneMenuItem{};
         winrt::TerminalApp::ShortcutActionDispatch _dispatch;

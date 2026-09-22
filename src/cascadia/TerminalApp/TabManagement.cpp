@@ -10,6 +10,7 @@
 
 #include "pch.h"
 #include "TerminalPage.h"
+#include "../inc/AgentRegistry.h"
 #include "../inc/AgentPaneRestore.h"
 #include "Utils.h"
 #include "../../types/inc/utils.hpp"
@@ -1449,6 +1450,7 @@ namespace winrt::TerminalApp::implementation
             p.Visibility(Visibility::Collapsed);
         }
         _UpdateTabView();
+        _ApplyTabFilter();
     }
 
     void TerminalPage::_OnTabPointerPressed(const IInspectable& sender, const Windows::UI::Xaml::Input::PointerRoutedEventArgs& e)
@@ -1632,6 +1634,78 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         _OnSelectionChangedCore();
+        _ApplyTabFilter();
+    }
+
+    void TerminalPage::_ApplyTabFilter()
+    {
+        if (!_tabStrip)
+        {
+            return;
+        }
+
+        const bool filterEffective = _IsAgentFilterEffective();
+        uint32_t visibleTabCount = 0;
+        bool selectedTabVisible = true;
+        const auto selectedItem = _selectedTabItem();
+
+        for (const auto& tab : _tabs)
+        {
+            const auto item = tab.TabViewItem();
+            const auto tabImpl = _GetTabImpl(tab);
+            const auto visible = !filterEffective ||
+                                 (tabImpl && (tabImpl->IsAgentTab() || _TabHasCliAgent(tabImpl)));
+            if (tabImpl)
+            {
+                tabImpl->SetTabFilterActive(filterEffective);
+            }
+            _tabStrip.SetTabItemVisibility(item, visible);
+            visibleTabCount += visible ? 1u : 0u;
+            if (selectedItem && winrt::get_abi(selectedItem) == winrt::get_abi(item))
+            {
+                selectedTabVisible = visible;
+            }
+        }
+
+        _tabStrip.SetFilterStatus(filterEffective ? visibleTabCount : _tabs.Size(),
+                                  !filterEffective || selectedTabVisible);
+        const auto canDragDrop = CanDragDrop() && !filterEffective;
+        _tabStrip.CanReorderTabs(canDragDrop);
+        _tabStrip.CanDragTabs(canDragDrop);
+    }
+
+    bool TerminalPage::_IsKnownAgentCliTitle(const std::wstring_view title) noexcept
+    {
+        for (const auto& agent : ::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinDelegateAgents)
+        {
+            if (::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(title, agent.displayName))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool TerminalPage::_TabHasCliAgent(const winrt::com_ptr<Tab>& tab) const
+    {
+        if (!tab)
+        {
+            return false;
+        }
+
+        // Agent CLIs set a stable, known terminal title before their first
+        // session event. Ignore user-renamed tabs so an arbitrary custom title
+        // cannot opt a normal shell into the Agent filter.
+        if (tab->GetTabText().empty() && _IsKnownAgentCliTitle(tab->Title()))
+        {
+            return true;
+        }
+
+        const auto rootPane = tab->GetRootPane();
+        return rootPane && rootPane->WalkTree([&](const auto& pane) {
+            const auto sessionId = pane->GetSessionId();
+            return sessionId != winrt::guid{} && _paneAgentSessions.contains(sessionId);
+        });
     }
 
     // Spec A §4.2: TabStrip's SelectionChanged uses custom args (TabStripSelectionChangedEventArgs),
@@ -1644,6 +1718,7 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         _OnSelectionChangedCore();
+        _ApplyTabFilter();
     }
 
     void TerminalPage::_OnSelectionChangedCore()

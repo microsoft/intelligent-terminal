@@ -39,14 +39,7 @@ namespace winrt::TerminalApp::implementation
         // into sessions view.
         bool IsSessionsView() const noexcept { return _isSessionsView; }
         winrt::hstring AgentSessionId() const noexcept { return _agentSessionId; }
-        void SetAgentSessionId(const winrt::hstring& sessionId) noexcept
-        {
-            if (_agentSessionId != sessionId)
-            {
-                _yoloControlOwner = {};
-            }
-            _agentSessionId = sessionId;
-        }
+        void SetAgentSessionId(const winrt::hstring& sessionId);
         const winrt::hstring& YoloControlOwner() const noexcept { return _yoloControlOwner; }
         void SetYoloControlOwner(const winrt::hstring& owner) noexcept
         {

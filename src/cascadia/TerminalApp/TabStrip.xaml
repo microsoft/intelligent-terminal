@@ -25,6 +25,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <Grid x:Name="TopChrome"
@@ -114,10 +115,32 @@
 
             <!--  Reserved for the Filter and History buttons shown in the target design.  -->
             <Button x:Name="FilterTabsButton"
+                    x:Uid="VerticalTabsFilterButton"
                     Grid.Column="2"
                     Width="32"
                     Height="32"
-                    Visibility="Collapsed" />
+                    Padding="0"
+                    VerticalAlignment="Center"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    IsTabStop="False">
+                <Button.Content>
+                    <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                              FontSize="12"
+                              Glyph="&#xE71C;" />
+                </Button.Content>
+                <Button.Flyout>
+                    <MenuFlyout>
+                        <ToggleMenuFlyoutItem x:Name="AllTabsFilterItem"
+                                              x:Uid="VerticalTabsFilterAllTabs"
+                                              IsChecked="True"
+                                              Click="OnAllTabsFilterClick" />
+                        <ToggleMenuFlyoutItem x:Name="AgentsOnlyFilterItem"
+                                              x:Uid="VerticalTabsFilterAgentsOnly"
+                                              Click="OnAgentsOnlyFilterClick" />
+                    </MenuFlyout>
+                </Button.Flyout>
+            </Button>
             <Button x:Name="TabHistoryButton"
                     Grid.Column="3"
                     Width="32"
@@ -169,5 +192,49 @@
                 </ItemsPanelTemplate>
             </ListView.ItemsPanel>
         </ListView>
+
+        <Border x:Name="FilterStatusBar"
+                Grid.Row="4"
+                Height="32"
+                Padding="12,0,4,0"
+                Background="{ThemeResource TabViewBackground}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="0,1,0,0"
+                Visibility="Collapsed">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="FilterStatusText"
+                           VerticalAlignment="Center"
+                           FontSize="11"
+                           Opacity="0.72"
+                           TextTrimming="CharacterEllipsis" />
+                <FontIcon x:Name="HiddenCurrentTabIndicator"
+                          x:Uid="VerticalTabsFilterCurrentHidden"
+                          Grid.Column="1"
+                          Margin="4,0"
+                          VerticalAlignment="Center"
+                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                          FontSize="12"
+                          Glyph="&#xE7BA;"
+                          Visibility="Collapsed" />
+                <Button x:Uid="VerticalTabsFilterShowAll"
+                        Grid.Column="2"
+                        Width="28"
+                        Height="28"
+                        Padding="0"
+                        VerticalAlignment="Center"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Click="OnShowAllTabsClick">
+                    <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                              FontSize="10"
+                              Glyph="&#xE711;" />
+                </Button>
+            </Grid>
+        </Border>
     </Grid>
 </UserControl>

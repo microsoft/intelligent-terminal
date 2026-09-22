@@ -17,6 +17,12 @@ namespace TerminalApp
         Vertical = 1,
     };
 
+    enum TabStripFilterMode
+    {
+        AllTabs = 0,
+        AgentsOnly = 1,
+    };
+
     [default_interface] runtimeclass TabStripSelectionChangedEventArgs
     {
         Object AddedItem { get; };
@@ -57,11 +63,14 @@ namespace TerminalApp
 
         // Mirrors TabView.ContainerFromIndex — used by tearoff drop-position math.
         Windows.UI.Xaml.DependencyObject ContainerFromIndex(Int32 index);
+        void SetTabItemVisibility(Object item, Boolean visible);
+        void SetFilterStatus(UInt32 visibleTabCount, Boolean selectedTabVisible);
 
         Boolean CanReorderTabs;
         Boolean CanDragTabs;
         Boolean TabsVisible;
         Boolean IsRailCollapsed;
+        TabStripFilterMode FilterMode;
 
         // Hosts the complete vertical chrome when no titlebar is available.
         Windows.UI.Xaml.UIElement TopChromeContent;
@@ -77,5 +86,6 @@ namespace TerminalApp
         event Windows.Foundation.TypedEventHandler<TabStrip, Object> RailCollapseRequested;
         event Windows.Foundation.TypedEventHandler<TabStrip, Object> CompactNewTabRequested;
         event Windows.Foundation.TypedEventHandler<TabStrip, Object> CompactNewTabMenuRequested;
+        event Windows.Foundation.TypedEventHandler<TabStrip, Object> FilterChanged;
     };
 }

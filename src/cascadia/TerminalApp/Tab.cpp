@@ -2128,16 +2128,16 @@ namespace winrt::TerminalApp::implementation
         const auto numOfTabs = TabViewNumTabs();
 
         // enabled if there are other tabs
-        _closeOtherTabsMenuItem.IsEnabled(numOfTabs > 1);
+        _closeOtherTabsMenuItem.IsEnabled(!_tabFilterActive && numOfTabs > 1);
 
         // enabled if there are other tabs on the right
-        _closeTabsAfterMenuItem.IsEnabled(tabIndex < numOfTabs - 1);
+        _closeTabsAfterMenuItem.IsEnabled(!_tabFilterActive && tabIndex < numOfTabs - 1);
 
         // enabled if not left-most tab
-        _moveLeftMenuItem.IsEnabled(tabIndex > 0);
+        _moveLeftMenuItem.IsEnabled(!_tabFilterActive && tabIndex > 0);
 
         // enabled if not last tab
-        _moveRightMenuItem.IsEnabled(tabIndex < numOfTabs - 1);
+        _moveRightMenuItem.IsEnabled(!_tabFilterActive && tabIndex < numOfTabs - 1);
     }
 
     void Tab::UpdateTabViewIndex(const uint32_t idx, const uint32_t numTabs)
@@ -2576,6 +2576,35 @@ namespace winrt::TerminalApp::implementation
             }
         }
         return nullptr;
+    }
+
+    bool Tab::IsAgentTab() const
+    {
+        if (!_rootPane)
+        {
+            return false;
+        }
+
+        return _rootPane->WalkTree([&](const std::shared_ptr<Pane>& pane) {
+            const auto content = pane->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>();
+            if (!content)
+            {
+                return false;
+            }
+            if (!winrt::get_self<implementation::AgentPaneContent>(content)->AgentSessionId().empty())
+            {
+                return true;
+            }
+
+            for (auto current = pane; current; current = _rootPane->_FindParentOfPane(current))
+            {
+                if (current->IsHidden())
+                {
+                    return false;
+                }
+            }
+            return true;
+        });
     }
 
     // Hide the agent pane without destroying it. The pane stays in the tab

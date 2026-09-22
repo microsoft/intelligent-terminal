@@ -133,6 +133,18 @@ namespace winrt::TerminalApp::implementation
         StateChanged.raise(*this, nullptr);
     }
 
+    void AgentPaneContent::SetAgentSessionId(const winrt::hstring& sessionId)
+    {
+        if (_agentSessionId == sessionId)
+        {
+            return;
+        }
+
+        _agentSessionId = sessionId;
+        _yoloControlOwner = {};
+        StateChanged.raise(*this, nullptr);
+    }
+
     void AgentPaneContent::ApplyAutofixState(AutofixState state,
                                              const winrt::hstring& paneId,
                                              const winrt::hstring& summary,

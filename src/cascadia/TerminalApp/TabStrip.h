@@ -75,6 +75,8 @@ namespace winrt::TerminalApp::implementation
         int32_t SelectedIndex();
         void SelectedIndex(int32_t value);
         winrt::Windows::UI::Xaml::DependencyObject ContainerFromIndex(int32_t index);
+        void SetTabItemVisibility(winrt::Windows::Foundation::IInspectable const& item, bool visible);
+        void SetFilterStatus(uint32_t visibleTabCount, bool selectedTabVisible);
 
         // Prototype: setter accepts Vertical only. Horizontal setter is a no-op —
         // C is where the layout actually flips.
@@ -89,6 +91,8 @@ namespace winrt::TerminalApp::implementation
         void TabsVisible(bool value);
         bool IsRailCollapsed() const noexcept { return _isRailCollapsed; }
         void IsRailCollapsed(bool value);
+        TerminalApp::TabStripFilterMode FilterMode() const noexcept { return _filterMode; }
+        void FilterMode(TerminalApp::TabStripFilterMode value);
 
         winrt::Windows::UI::Xaml::UIElement TopChromeContent();
         void TopChromeContent(winrt::Windows::UI::Xaml::UIElement const& value);
@@ -112,6 +116,12 @@ namespace winrt::TerminalApp::implementation
                                   winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnCompactNewTabMenuClick(winrt::Windows::Foundation::IInspectable const& sender,
                                       winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void OnAllTabsFilterClick(winrt::Windows::Foundation::IInspectable const& sender,
+                                  winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void OnAgentsOnlyFilterClick(winrt::Windows::Foundation::IInspectable const& sender,
+                                     winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void OnShowAllTabsClick(winrt::Windows::Foundation::IInspectable const& sender,
+                                winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
 
         // Spec A §2.4: reports the rail as an AutomationControlType::Tab
         // container so screen readers (Narrator / third-party AT) treat it
@@ -129,11 +139,13 @@ namespace winrt::TerminalApp::implementation
         til::typed_event<TerminalApp::TabStrip, winrt::Windows::Foundation::IInspectable> RailCollapseRequested;
         til::typed_event<TerminalApp::TabStrip, winrt::Windows::Foundation::IInspectable> CompactNewTabRequested;
         til::typed_event<TerminalApp::TabStrip, winrt::Windows::Foundation::IInspectable> CompactNewTabMenuRequested;
+        til::typed_event<TerminalApp::TabStrip, winrt::Windows::Foundation::IInspectable> FilterChanged;
 
     private:
         TerminalApp::TabStripOrientation _orientation{ TerminalApp::TabStripOrientation::Vertical };
         bool _tabsVisible{ true };
         bool _isRailCollapsed{ false };
+        TerminalApp::TabStripFilterMode _filterMode{ TerminalApp::TabStripFilterMode::AllTabs };
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Windows::Foundation::IInspectable> _tabItems{ nullptr };
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Windows::Foundation::IInspectable>::VectorChanged_revoker _vectorChangedRevoker;
 
@@ -145,6 +157,7 @@ namespace winrt::TerminalApp::implementation
             winrt::event_token ClickToken;
         };
         std::unordered_map<void*, CloseRequestedSubscription> _closeRequestedSubscriptions;
+        std::unordered_map<void*, bool> _tabItemVisibility;
 
         // The item currently being dragged. Set in OnDragItemsStarting, cleared in
         // OnDragItemsCompleted. If DropResult is None, this is the item to fire
@@ -159,6 +172,7 @@ namespace winrt::TerminalApp::implementation
         void _clearCloseRequestedSubscriptions();
         void _applyRailState();
         void _applyTabItemRailState(winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& item);
+        void _applyTabItemVisibility(winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& item);
 
         // Axis-parameterized per B→C rules. Returns -1 to mean "append at end."
         // Non-const because it reaches into the XAML-generated ItemsList().

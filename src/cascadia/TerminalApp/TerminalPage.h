@@ -340,6 +340,7 @@ namespace winrt::TerminalApp::implementation
         bool _tabLayoutTransitionPreviousVertical{ false };
         bool _isVerticalRailVisible{ true };
         bool _isVerticalRailCollapsed{ false };
+        TerminalApp::TabStripFilterMode _tabFilterMode{ TerminalApp::TabStripFilterMode::AllTabs };
         // Spec A §5.2: hand-rolled splitter for resizing the vertical rail.
         // Lives in column 1 of the Root Grid, hugging its left edge, so the
         // hit strip straddles the column boundary.
@@ -895,6 +896,14 @@ namespace winrt::TerminalApp::implementation
         void _UpdateTitle(const Tab& tab);
         void _UpdateTabIcon(Tab& tab);
         void _UpdateTabView();
+        void _ApplyTabFilter();
+        static bool _IsKnownAgentCliTitle(std::wstring_view title) noexcept;
+        bool _TabHasCliAgent(const winrt::com_ptr<Tab>& tab) const;
+        bool _IsAgentFilterEffective() const noexcept
+        {
+            return _isVerticalLayout &&
+                   _tabFilterMode == TerminalApp::TabStripFilterMode::AgentsOnly;
+        }
         void _UpdateTabWidthMode();
         void _SetBackgroundImage(const winrt::Microsoft::Terminal::Settings::Model::IAppearanceConfig& newAppearance);
 

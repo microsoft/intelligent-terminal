@@ -273,6 +273,10 @@ namespace TerminalAppLocalTests
         TEST_METHOD(LiveTabLayoutLatestRequestWins);
         TEST_METHOD(TabLayoutSwitchMenuTracksOrientation);
         TEST_METHOD(VerticalTabStripPreservesClosePolicy);
+        TEST_METHOD(VerticalTabStripCollapsedItemsPreserveSelection);
+        TEST_METHOD(WindowActivationToleratesTabWithoutStatus);
+        TEST_METHOD(AgentTabClassificationTracksSession);
+        TEST_METHOD(CliAgentClassifiesTab);
 
         TEST_METHOD(CreateSimpleTerminalXamlType);
         TEST_METHOD(CreateTerminalMuxXamlType);
@@ -2083,6 +2087,179 @@ namespace TerminalAppLocalTests
             tab.IsClosable(false);
             strip.TabItems().Append(tab);
             VERIFY_IS_FALSE(tab.IsClosable());
+        });
+    }
+
+    void TabTests::VerticalTabStripCollapsedItemsPreserveSelection()
+    {
+        winrt::TerminalApp::TabStrip strip;
+        Grid host;
+        winrt::MUX::Controls::TabViewItem first;
+        winrt::MUX::Controls::TabViewItem second;
+        winrt::MUX::Controls::TabViewItem third;
+
+        TestOnUIThread([&]() {
+            host.Width(240);
+            host.Height(160);
+            strip.Width(240);
+            strip.Height(160);
+
+            first.Header(winrt::box_value(L"First"));
+            second.Header(winrt::box_value(L"Second"));
+            third.Header(winrt::box_value(L"Third"));
+
+            strip.TabItems().Append(first);
+            strip.TabItems().Append(second);
+            strip.TabItems().Append(third);
+            host.Children().Append(strip);
+            Window::Current().Content(host);
+            Window::Current().Activate();
+            host.UpdateLayout();
+
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            const auto firstContainer = strip.ContainerFromIndex(0).as<ListViewItem>();
+            const auto secondContainer = strip.ContainerFromIndex(1).as<ListViewItem>();
+            const auto thirdContainer = strip.ContainerFromIndex(2).as<ListViewItem>();
+            VERIFY_IS_TRUE(strip.IsLoaded());
+            VERIFY_IS_TRUE(strip.ActualWidth() > 0);
+            VERIFY_IS_TRUE(strip.ActualHeight() > 0);
+            VERIFY_IS_TRUE(stripImpl->ItemsList().ItemFromContainer(firstContainer) == first);
+            VERIFY_IS_TRUE(stripImpl->ItemsList().ItemFromContainer(secondContainer) == second);
+            VERIFY_IS_TRUE(stripImpl->ItemsList().ItemFromContainer(thirdContainer) == third);
+
+            strip.SelectedItem(second);
+            VERIFY_IS_TRUE(strip.SelectedItem() == second);
+            VERIFY_IS_TRUE(stripImpl->ItemsList().SelectedItem() == second);
+
+            const auto firstTop = firstContainer.TransformToVisual(strip).TransformPoint({ 0, 0 }).Y;
+            const auto secondTop = secondContainer.TransformToVisual(strip).TransformPoint({ 0, 0 }).Y;
+            const auto thirdTop = thirdContainer.TransformToVisual(strip).TransformPoint({ 0, 0 }).Y;
+            VERIFY_IS_TRUE(firstContainer.ActualHeight() > 0);
+            VERIFY_IS_TRUE(secondTop > firstTop);
+            VERIFY_IS_TRUE(thirdTop > secondTop);
+
+            secondContainer.Visibility(Visibility::Collapsed);
+            host.UpdateLayout();
+
+            VERIFY_IS_TRUE(strip.SelectedItem() == second);
+            VERIFY_IS_TRUE(stripImpl->ItemsList().SelectedItem() == second);
+            const auto collapsedThirdTop = thirdContainer.TransformToVisual(strip).TransformPoint({ 0, 0 }).Y;
+            VERIFY_IS_TRUE(collapsedThirdTop < thirdTop);
+            VERIFY_IS_TRUE(collapsedThirdTop <= firstTop + firstContainer.ActualHeight() + 1.0);
+        });
+
+        // Run on a later dispatcher turn to prove layout processing does not
+        // clear a selected item solely because its row is collapsed.
+        TestOnUIThread([&]() {
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            host.UpdateLayout();
+            VERIFY_IS_TRUE(strip.SelectedItem() == second);
+            VERIFY_IS_TRUE(stripImpl->ItemsList().SelectedItem() == second);
+
+            // The existing tab commands can select a filtered-out tab. This
+            // must remain a stable operation without an asynchronous repair.
+            strip.SelectedItem(first);
+            const auto firstContainer = strip.ContainerFromIndex(0).as<ListViewItem>();
+            const auto thirdContainer = strip.ContainerFromIndex(2).as<ListViewItem>();
+            firstContainer.Visibility(Visibility::Collapsed);
+            thirdContainer.Visibility(Visibility::Collapsed);
+            host.UpdateLayout();
+            strip.SelectedItem(third);
+            host.UpdateLayout();
+
+            VERIFY_IS_TRUE(strip.SelectedItem() == third);
+            VERIFY_IS_TRUE(stripImpl->ItemsList().SelectedItem() == third);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, strip.ContainerFromIndex(0).as<ListViewItem>().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, strip.ContainerFromIndex(1).as<ListViewItem>().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, strip.ContainerFromIndex(2).as<ListViewItem>().Visibility());
+        });
+
+        TestOnUIThread([&]() {
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            host.UpdateLayout();
+            VERIFY_IS_TRUE(strip.SelectedItem() == third);
+            VERIFY_IS_TRUE(stripImpl->ItemsList().SelectedItem() == third);
+        });
+    }
+
+    void TabTests::WindowActivationToleratesTabWithoutStatus()
+    {
+        auto page = _commonSetup();
+
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(tab);
+
+            const auto status = tab->_tabStatus;
+            tab->_tabStatus = nullptr;
+            page->WindowActivated(true);
+            tab->_tabStatus = status;
+        });
+    }
+
+    void TabTests::AgentTabClassificationTracksSession()
+    {
+        auto page = _commonSetup();
+
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(tab);
+
+            tab->SetAgentOverride(L"copilot", {}, {});
+            const auto agentPane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
+            VERIFY_IS_NOT_NULL(agentPane);
+            agentPane->IsAgentPane(true);
+            page->_SplitPane(tab, SplitDirection::Right, 0.5f, agentPane);
+
+            const auto content = agentPane->GetContent().as<winrt::TerminalApp::AgentPaneContent>();
+            const auto contentImpl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(content);
+            uint32_t stateChangeCount = 0;
+            content.StateChanged([&](auto&&, auto&&) {
+                ++stateChangeCount;
+            });
+
+            VERIFY_IS_TRUE(tab->IsAgentTab());
+
+            tab->StashAgentPane();
+            VERIFY_IS_FALSE(tab->IsAgentTab());
+
+            contentImpl->SetAgentSessionId(L"copilot-session");
+            VERIFY_ARE_EQUAL(1u, stateChangeCount);
+            VERIFY_IS_TRUE(tab->IsAgentTab());
+
+            contentImpl->SetAgentSessionId(L"copilot-session");
+            VERIFY_ARE_EQUAL(1u, stateChangeCount);
+
+            contentImpl->SetAgentSessionId({});
+            VERIFY_ARE_EQUAL(2u, stateChangeCount);
+            VERIFY_IS_FALSE(tab->IsAgentTab());
+        });
+    }
+
+    void TabTests::CliAgentClassifiesTab()
+    {
+        auto page = _commonSetup();
+
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(tab);
+            VERIFY_IS_TRUE(page->_IsKnownAgentCliTitle(L"GitHub Copilot"));
+            VERIFY_IS_TRUE(page->_IsKnownAgentCliTitle(L"github copilot"));
+            VERIFY_IS_FALSE(page->_IsKnownAgentCliTitle(L"PowerShell"));
+            VERIFY_IS_FALSE(page->_TabHasCliAgent(tab));
+
+            const auto paneSessionId = tab->GetRootPane()->GetSessionId();
+            VERIFY_IS_TRUE(paneSessionId != winrt::guid{});
+            page->_paneAgentSessions.insert_or_assign(
+                paneSessionId,
+                winrt::TerminalApp::implementation::TerminalPage::_PaneAgentSession{
+                    L"copilot-session",
+                    L"copilot",
+                    L"copilot --resume copilot-session" });
+
+            VERIFY_IS_TRUE(page->_TabHasCliAgent(tab));
+            page->_paneAgentSessions.erase(paneSessionId);
+            VERIFY_IS_FALSE(page->_TabHasCliAgent(tab));
         });
     }
 

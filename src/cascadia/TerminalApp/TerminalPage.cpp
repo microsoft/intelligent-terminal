@@ -587,6 +587,13 @@ namespace winrt::TerminalApp::implementation
         _tabStrip.TabStripDragOver({ this, &TerminalPage::_onTabStripDragOver });
         _tabStrip.TabStripDrop({ this, &TerminalPage::_onTabStripDrop });
         _tabStrip.TabDroppedOutside({ this, &TerminalPage::_OnTabStripDroppedOutside });
+        _tabStrip.FilterChanged([weakThis{ get_weak() }](const auto& sender, auto&&) {
+            if (const auto page = weakThis.get())
+            {
+                page->_tabFilterMode = sender.FilterMode();
+                page->_ApplyTabFilter();
+            }
+        });
         _tabRow.RailCollapseRequested({ this, &TerminalPage::_OnVerticalRailCollapseRequested });
         _tabStrip.CompactNewTabRequested([weakThis{ get_weak() }](auto&&, auto&&) {
             if (const auto page = weakThis.get(); page && page->_isVerticalLayout && !page->_changingTabLayout)
@@ -3848,21 +3855,37 @@ namespace winrt::TerminalApp::implementation
     // the active tab. The handler carries a weak ref to the page so it
     // survives tab close gracefully.
     void TerminalPage::_WireAgentPaneEvents(const winrt::TerminalApp::AgentPaneContent& content,
-                                            const winrt::com_ptr<Tab>& /*ownerTab*/)
+                                            const winrt::com_ptr<Tab>& ownerTab)
     {
         if (!content)
         {
             return;
         }
         auto weakSelf = get_weak();
-        content.StateChanged([weakSelf](const winrt::TerminalApp::AgentPaneContent& sender,
-                                        const winrt::Windows::Foundation::IInspectable& /*args*/) {
+        const auto weakOwner = ownerTab ? ownerTab->get_weak() : winrt::weak_ref<Tab>{};
+        content.StateChanged([weakSelf, weakOwner](const winrt::TerminalApp::AgentPaneContent& sender,
+                                                   const winrt::Windows::Foundation::IInspectable& /*args*/) {
             if (const auto self = weakSelf.get())
             {
-                // Only refresh the bar if the firing pane belongs to the
-                // currently active tab. Background-tab state changes are
-                // not visible until the user switches tabs (the next
-                // `_UpdatedSelectedTab` call will refresh from scratch).
+                auto owner = weakOwner.get();
+                if (!owner)
+                {
+                    for (const auto& candidate : self->_tabs)
+                    {
+                        const auto candidateImpl = self->_GetTabImpl(candidate);
+                        if (candidateImpl && candidateImpl->FindAgentPaneContent() == sender)
+                        {
+                            owner = candidateImpl;
+                            break;
+                        }
+                    }
+                }
+                if (owner)
+                {
+                    self->_UpdateTabIcon(*owner);
+                }
+                self->_ApplyTabFilter();
+
                 const auto activeTab = self->_GetFocusedTabImpl();
                 if (activeTab && activeTab->FindAgentPaneContent() == sender)
                 {
@@ -5479,6 +5502,7 @@ namespace winrt::TerminalApp::implementation
         _updateAllTabCloseButtons();
         stage = "update tab visibility";
         _UpdateTabView();
+        _ApplyTabFilter();
         stage = "update theme";
         _updateThemeColors();
     }
@@ -7910,6 +7934,7 @@ namespace winrt::TerminalApp::implementation
                 _UpdateBottomBarState();
             }
         }
+        _ApplyTabFilter();
     }
 
     // Inbound event from WTA: {method:"close_agent_pane", params:{tab_id}}.
@@ -8728,6 +8753,7 @@ namespace winrt::TerminalApp::implementation
                             _agentPaneLog("OnPaneAgentSessionChanged: ignored prompt session " + agentSessionId + " for already-bound pane " + paneId);
                         }
                     }
+                    _ApplyTabFilter();
                     return;
                 }
             }
@@ -9437,6 +9463,7 @@ namespace winrt::TerminalApp::implementation
                 if (propertyName == L"Title")
                 {
                     page->_UpdateTitle(*tab);
+                    page->_ApplyTabFilter();
                 }
                 else if (propertyName == L"Content")
                 {
@@ -13609,7 +13636,8 @@ namespace winrt::TerminalApp::implementation
 
         if (const auto& tab{ _GetFocusedTabImpl() })
         {
-            if (tab->TabStatus().IsInputBroadcastActive())
+            if (const auto status = tab->TabStatus();
+                status && status.IsInputBroadcastActive())
             {
                 tab->GetRootPane()->WalkTree([activated](const auto& p) {
                     if (const auto& control{ p->GetTerminalControl() })

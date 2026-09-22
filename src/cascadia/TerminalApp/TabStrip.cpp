@@ -79,6 +79,30 @@ namespace winrt::TerminalApp::implementation
         return ItemsList().ContainerFromIndex(index);
     }
 
+    void TabStrip::SetTabItemVisibility(IInspectable const& item, bool visible)
+    {
+        _tabItemVisibility.insert_or_assign(winrt::get_abi(item), visible);
+        uint32_t index{};
+        if (_tabItems.IndexOf(item, index))
+        {
+            if (const auto tab = item.try_as<MUX::Controls::TabViewItem>())
+            {
+                _applyTabItemVisibility(tab);
+            }
+        }
+    }
+
+    void TabStrip::SetFilterStatus(uint32_t visibleTabCount, bool selectedTabVisible)
+    {
+        FilterStatusText().Text(visibleTabCount == 1 ?
+                                    RS_(L"VerticalTabsFilterStatusSingle") :
+                                    winrt::hstring{ RS_fmt(L"VerticalTabsFilterStatusPlural", visibleTabCount) });
+        HiddenCurrentTabIndicator().Visibility(selectedTabVisible ? Visibility::Collapsed : Visibility::Visible);
+        FilterStatusBar().Visibility(_filterMode == TerminalApp::TabStripFilterMode::AgentsOnly ?
+                                         Visibility::Visible :
+                                         Visibility::Collapsed);
+    }
+
     void TabStrip::Orientation(TerminalApp::TabStripOrientation value)
     {
         _orientation = value;
@@ -123,6 +147,21 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void TabStrip::FilterMode(TerminalApp::TabStripFilterMode value)
+    {
+        const auto changed = _filterMode != value;
+        _filterMode = value;
+        AllTabsFilterItem().IsChecked(value == TerminalApp::TabStripFilterMode::AllTabs);
+        AgentsOnlyFilterItem().IsChecked(value == TerminalApp::TabStripFilterMode::AgentsOnly);
+        FilterStatusBar().Visibility(value == TerminalApp::TabStripFilterMode::AgentsOnly ?
+                                         Visibility::Visible :
+                                         Visibility::Collapsed);
+        if (changed)
+        {
+            FilterChanged.raise(*this, nullptr);
+        }
+    }
+
     UIElement TabStrip::TopChromeContent()
     {
         return TopChromeContentPresenter().Content().try_as<UIElement>();
@@ -148,6 +187,21 @@ namespace winrt::TerminalApp::implementation
         CompactNewTabMenuRequested.raise(*this, CompactNewTabMenuButton());
     }
 
+    void TabStrip::OnAllTabsFilterClick(IInspectable const&, WUX::RoutedEventArgs const&)
+    {
+        FilterMode(TerminalApp::TabStripFilterMode::AllTabs);
+    }
+
+    void TabStrip::OnAgentsOnlyFilterClick(IInspectable const&, WUX::RoutedEventArgs const&)
+    {
+        FilterMode(TerminalApp::TabStripFilterMode::AgentsOnly);
+    }
+
+    void TabStrip::OnShowAllTabsClick(IInspectable const&, WUX::RoutedEventArgs const&)
+    {
+        FilterMode(TerminalApp::TabStripFilterMode::AllTabs);
+    }
+
     void TabStrip::_applyRailState()
     {
         const auto expandedVisibility = _isRailCollapsed ? Visibility::Collapsed : Visibility::Visible;
@@ -168,6 +222,7 @@ namespace winrt::TerminalApp::implementation
             if (const auto item = _tabItems.GetAt(index).try_as<MUX::Controls::TabViewItem>())
             {
                 _applyTabItemRailState(item);
+                _applyTabItemVisibility(item);
             }
         }
     }
@@ -193,6 +248,24 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void TabStrip::_applyTabItemVisibility(MUX::Controls::TabViewItem const& item)
+    {
+        const auto desired = _tabItemVisibility.find(winrt::get_abi(item));
+        if (desired == _tabItemVisibility.end())
+        {
+            return;
+        }
+
+        uint32_t index{};
+        if (_tabItems.IndexOf(item, index))
+        {
+            if (const auto container = ItemsList().ContainerFromIndex(index).try_as<ListViewItem>())
+            {
+                container.Visibility(desired->second ? Visibility::Visible : Visibility::Collapsed);
+            }
+        }
+    }
+
     void TabStrip::_onItemsVectorChanged(IObservableVector<IInspectable> const& sender,
                                           IVectorChangedEventArgs const& args)
     {
@@ -205,6 +278,7 @@ namespace winrt::TerminalApp::implementation
             {
                 _hookCloseRequested(item);
                 _applyTabItemRailState(item);
+                _applyTabItemVisibility(item);
             }
             break;
         case CollectionChange::ItemRemoved:
@@ -214,16 +288,19 @@ namespace winrt::TerminalApp::implementation
             {
                 _hookCloseRequested(item);
                 _applyTabItemRailState(item);
+                _applyTabItemVisibility(item);
             }
             break;
         case CollectionChange::Reset:
             _clearCloseRequestedSubscriptions();
+            _tabItemVisibility.clear();
             for (uint32_t i = 0; i < sender.Size(); ++i)
             {
                 if (const auto item = sender.GetAt(i).try_as<MUX::Controls::TabViewItem>())
                 {
                     _hookCloseRequested(item);
                     _applyTabItemRailState(item);
+                    _applyTabItemVisibility(item);
                 }
             }
             break;
@@ -249,6 +326,7 @@ namespace winrt::TerminalApp::implementation
             if (self && tab)
             {
                 self->_refreshCloseButton(tab);
+                self->_applyTabItemVisibility(tab);
             }
         });
         _closeRequestedSubscriptions.emplace(key, CloseRequestedSubscription{ weakItem, loadedToken });
@@ -319,7 +397,9 @@ namespace winrt::TerminalApp::implementation
                 {
                     button.Click(it->second.ClickToken);
                 }
+                const auto key = it->first;
                 it = _closeRequestedSubscriptions.erase(it);
+                _tabItemVisibility.erase(key);
             }
         }
     }
