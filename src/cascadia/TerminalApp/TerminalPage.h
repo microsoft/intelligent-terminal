@@ -896,14 +896,43 @@ namespace winrt::TerminalApp::implementation
         void _UpdateTitle(const Tab& tab);
         void _UpdateTabIcon(Tab& tab);
         void _UpdateTabView();
+        void _AttachOrUpdateRichTabControl(const Microsoft::Terminal::Control::TermControl& control);
+        void _DetachRichTabControl(const Microsoft::Terminal::Control::TermControl& control);
+        void _NotifyRichTabControl(
+            const Microsoft::Terminal::Control::TermControl& control,
+            ::Microsoft::Terminal::RichTab::Provider::ActivationEvent reason);
+        void _ReleaseRichTabAttachments(const std::shared_ptr<Pane>& rootPane);
+        void _RefreshRichTabForTab(Tab& tab, bool activate);
+        void _ApplyRichTabUpdate(
+            uintptr_t controlKey,
+            uint64_t reservation,
+            const ::Microsoft::Terminal::RichTab::Provider::BrokerUpdate& update);
         void _ApplyTabFilter();
         static bool _IsKnownAgentCliTitle(std::wstring_view title) noexcept;
         bool _TabHasCliAgent(const winrt::com_ptr<Tab>& tab) const;
-        bool _IsAgentFilterEffective() const noexcept
+        bool _IsTabFilterEffective() const noexcept
         {
             return _isVerticalLayout &&
-                   _tabFilterMode == TerminalApp::TabStripFilterMode::AgentsOnly;
+                   _tabFilterMode != TerminalApp::TabStripFilterMode::AllTabs;
         }
+
+        struct RichTabAttachment
+        {
+            ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::AttachmentId id{ 0 };
+            std::string sessionId;
+            uint64_t reservation{ 0 };
+        };
+        struct RichTabPresentationState
+        {
+            uint64_t sessionIncarnation{ 0 };
+            uint64_t updateSequence{ 0 };
+            std::optional<::Microsoft::Terminal::RichTab::Provider::Presentation> presentation;
+        };
+        std::mutex _richTabAttachmentsMutex;
+        std::unordered_map<uintptr_t, RichTabAttachment> _richTabAttachments;
+        std::unordered_map<std::string, RichTabPresentationState> _richTabPresentations;
+        uint64_t _nextRichTabAttachmentReservation{ 1 };
+
         void _UpdateTabWidthMode();
         void _SetBackgroundImage(const winrt::Microsoft::Terminal::Settings::Model::IAppearanceConfig& newAppearance);
 

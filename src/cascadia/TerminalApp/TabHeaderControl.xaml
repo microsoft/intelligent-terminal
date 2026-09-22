@@ -14,8 +14,14 @@
              MinHeight="16"
              mc:Ignorable="d">
 
-    <StackPanel x:Name="HeaderStackPanel"
-                Orientation="Horizontal">
+    <Grid x:Name="HeaderLayout">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <StackPanel x:Name="HeaderStackPanel"
+                    Grid.Row="0"
+                    Orientation="Horizontal">
         <mux:ProgressRing x:Name="HeaderProgressRing"
                           Width="15"
                           Height="15"
@@ -58,6 +64,7 @@
                   Visibility="{x:Bind TabStatus.IsInputBroadcastActive, Mode=OneWay}" />
         <TextBlock x:Name="HeaderTextBlock"
                    Text="{x:Bind Title, Mode=OneWay}"
+                   TextTrimming="CharacterEllipsis"
                    Visibility="Visible" />
         <TextBox x:Name="HeaderRenamerTextBox"
                  Height="24"
@@ -73,5 +80,15 @@
                 <mtu:TextMenuFlyout />
             </TextBox.ContextFlyout>
         </TextBox>
-    </StackPanel>
+        </StackPanel>
+        <TextBlock x:Name="HeaderMetadataTextBlock"
+                   Grid.Row="1"
+                   MaxLines="1"
+                   FontSize="10"
+                   Opacity="0.72"
+                   Text="{x:Bind MetadataText, Mode=OneWay}"
+                   TextTrimming="CharacterEllipsis"
+                   Visibility="Collapsed"
+                   AutomationProperties.Name="{x:Bind MetadataAutomationName, Mode=OneWay}" />
+    </Grid>
 </UserControl>

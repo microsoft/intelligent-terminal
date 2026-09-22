@@ -93,6 +93,20 @@ namespace winrt::TerminalApp::implementation
         void IsRailCollapsed(bool value);
         TerminalApp::TabStripFilterMode FilterMode() const noexcept { return _filterMode; }
         void FilterMode(TerminalApp::TabStripFilterMode value);
+        bool RichTabRepositoryVisible() const noexcept { return _richTabRepositoryVisible; }
+        void RichTabRepositoryVisible(bool value);
+        bool RichTabBranchVisible() const noexcept { return _richTabBranchVisible; }
+        void RichTabBranchVisible(bool value);
+        bool RichTabStatusVisible() const noexcept { return _richTabStatusVisible; }
+        void RichTabStatusVisible(bool value);
+        bool RichTabWorkingDirectoryVisible() const noexcept { return _richTabWorkingDirectoryVisible; }
+        void RichTabWorkingDirectoryVisible(bool value);
+        bool RichTabAgentUsageCostVisible() const noexcept { return _richTabAgentUsageCostVisible; }
+        void RichTabAgentUsageCostVisible(bool value);
+        bool RichTabAgentContextWindowVisible() const noexcept { return _richTabAgentContextWindowVisible; }
+        void RichTabAgentContextWindowVisible(bool value);
+        bool RichTabAgentModelVisible() const noexcept { return _richTabAgentModelVisible; }
+        void RichTabAgentModelVisible(bool value);
 
         winrt::Windows::UI::Xaml::UIElement TopChromeContent();
         void TopChromeContent(winrt::Windows::UI::Xaml::UIElement const& value);
@@ -120,6 +134,20 @@ namespace winrt::TerminalApp::implementation
                                   winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnAgentsOnlyFilterClick(winrt::Windows::Foundation::IInspectable const& sender,
                                      winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void OnRichTabRepositoryVisibleClick(winrt::Windows::Foundation::IInspectable const& sender,
+                                             winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void OnRichTabBranchVisibleClick(winrt::Windows::Foundation::IInspectable const& sender,
+                                         winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void OnRichTabStatusVisibleClick(winrt::Windows::Foundation::IInspectable const& sender,
+                                         winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void OnRichTabWorkingDirectoryVisibleClick(winrt::Windows::Foundation::IInspectable const& sender,
+                                                   winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void OnRichTabAgentUsageCostVisibleClick(winrt::Windows::Foundation::IInspectable const& sender,
+                                                 winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void OnRichTabAgentContextWindowVisibleClick(winrt::Windows::Foundation::IInspectable const& sender,
+                                                     winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void OnRichTabAgentModelVisibleClick(winrt::Windows::Foundation::IInspectable const& sender,
+                                             winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnShowAllTabsClick(winrt::Windows::Foundation::IInspectable const& sender,
                                 winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
 
@@ -140,12 +168,20 @@ namespace winrt::TerminalApp::implementation
         til::typed_event<TerminalApp::TabStrip, winrt::Windows::Foundation::IInspectable> CompactNewTabRequested;
         til::typed_event<TerminalApp::TabStrip, winrt::Windows::Foundation::IInspectable> CompactNewTabMenuRequested;
         til::typed_event<TerminalApp::TabStrip, winrt::Windows::Foundation::IInspectable> FilterChanged;
+        til::typed_event<TerminalApp::TabStrip, winrt::Windows::Foundation::IInspectable> VisibleFieldsChanged;
 
     private:
         TerminalApp::TabStripOrientation _orientation{ TerminalApp::TabStripOrientation::Vertical };
         bool _tabsVisible{ true };
         bool _isRailCollapsed{ false };
         TerminalApp::TabStripFilterMode _filterMode{ TerminalApp::TabStripFilterMode::AllTabs };
+        bool _richTabRepositoryVisible{ true };
+        bool _richTabBranchVisible{ true };
+        bool _richTabStatusVisible{ true };
+        bool _richTabWorkingDirectoryVisible{ true };
+        bool _richTabAgentUsageCostVisible{ true };
+        bool _richTabAgentContextWindowVisible{ true };
+        bool _richTabAgentModelVisible{ true };
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Windows::Foundation::IInspectable> _tabItems{ nullptr };
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Windows::Foundation::IInspectable>::VectorChanged_revoker _vectorChangedRevoker;
 

@@ -277,6 +277,9 @@ namespace TerminalAppLocalTests
         TEST_METHOD(WindowActivationToleratesTabWithoutStatus);
         TEST_METHOD(AgentTabClassificationTracksSession);
         TEST_METHOD(CliAgentClassifiesTab);
+        TEST_METHOD(VisibleFieldsControlRichTabComposition);
+        TEST_METHOD(RichTabRequestIncludesFirstPartyFields);
+        TEST_METHOD(VisibleFieldsDoNotFilterTabs);
 
         TEST_METHOD(CreateSimpleTerminalXamlType);
         TEST_METHOD(CreateTerminalMuxXamlType);
@@ -2260,6 +2263,92 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(page->_TabHasCliAgent(tab));
             page->_paneAgentSessions.erase(paneSessionId);
             VERIFY_IS_FALSE(page->_TabHasCliAgent(tab));
+        });
+    }
+
+    void TabTests::VisibleFieldsControlRichTabComposition()
+    {
+        using namespace ::Microsoft::Terminal::RichTab::Provider;
+
+        Registration provider;
+        provider.manifest.id = "git";
+        provider.manifest.fields = {
+            { "status", "Status", FieldType::String, true },
+            { "workingDirectory", "Working directory", FieldType::String, true },
+            { "repository", "Repository", FieldType::String, true },
+            { "branch", "Branch", FieldType::String, true },
+            { "agentUsageCost", "Agent usage/cost", FieldType::String, true },
+            { "agentContextWindow", "Agent context window", FieldType::String, true },
+            { "agentModel", "Agent model", FieldType::String, true },
+        };
+
+        Snapshot snapshot;
+        snapshot.fields.emplace("status", std::string{ "connected" });
+        snapshot.fields.emplace("workingDirectory", std::string{ R"(C:\src\terminal)" });
+        snapshot.fields.emplace("repository", std::string{ "terminal" });
+        snapshot.fields.emplace("branch", std::string{ "main" });
+        snapshot.fields.emplace("agentUsageCost", std::string{ "$1.25" });
+        snapshot.fields.emplace("agentContextWindow", std::string{ "Context Window: 42%" });
+        snapshot.fields.emplace("agentModel", std::string{ "gpt-test" });
+        const std::unordered_map<std::string, Snapshot> snapshots{ { "git", snapshot } };
+
+        const auto defaults = ProviderBroker::ComposePresentation({ provider }, snapshots);
+        VERIFY_IS_TRUE(defaults.has_value());
+        VERIFY_ARE_EQUAL(
+            std::wstring{ LR"(connected · C:\src\terminal · terminal · main · $1.25 · Context Window: 42% · gpt-test)" },
+            defaults->text);
+
+        ProviderBroker::VisibleFieldMap visibleFields;
+        visibleFields["git"].emplace("branch");
+        const auto branchOnly = ProviderBroker::ComposePresentation({ provider }, snapshots, visibleFields);
+        VERIFY_IS_TRUE(branchOnly.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"main" }, branchOnly->text);
+
+        visibleFields["git"].clear();
+        VERIFY_IS_FALSE(ProviderBroker::ComposePresentation({ provider }, snapshots, visibleFields).has_value());
+    }
+
+    void TabTests::RichTabRequestIncludesFirstPartyFields()
+    {
+        using namespace ::Microsoft::Terminal::RichTab::Provider;
+
+        Manifest manifest;
+        manifest.id = "git";
+        manifest.activationEvents.emplace_back(ActivationEvent::ManualRefresh);
+
+        Request request;
+        request.requestId = "request";
+        request.providerId = manifest.id;
+        request.processEpoch = 1;
+        request.sessionId = "session";
+        request.reason = ActivationEvent::ManualRefresh;
+        request.firstPartyFields.emplace("agentModel", "gpt-test");
+        request.firstPartyFields.emplace("agentContextWindow", "Context Window: 42%");
+
+        const auto serialized = SerializeRequest(request, manifest);
+        VERIFY_IS_TRUE(static_cast<bool>(serialized));
+        VERIFY_IS_TRUE(serialized.value->find(R"("agentModel":"gpt-test")") != std::string::npos);
+        VERIFY_IS_TRUE(serialized.value->find(R"("agentContextWindow":"Context Window: 42%")") != std::string::npos);
+    }
+
+    void TabTests::VisibleFieldsDoNotFilterTabs()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            page->_tabStrip.RichTabRepositoryVisible(false);
+            page->_tabStrip.RichTabBranchVisible(false);
+            page->_tabStrip.RichTabStatusVisible(false);
+            page->_tabStrip.RichTabWorkingDirectoryVisible(false);
+            page->_tabStrip.RichTabAgentUsageCostVisible(false);
+            page->_tabStrip.RichTabAgentContextWindowVisible(false);
+            page->_tabStrip.RichTabAgentModelVisible(false);
+            page->_ApplyTabFilter();
+            page->UpdateLayout();
+
+            const auto container = page->_tabStrip.ContainerFromIndex(0).as<ListViewItem>();
+            VERIFY_ARE_EQUAL(Visibility::Visible, container.Visibility());
+            VERIFY_ARE_EQUAL(winrt::TerminalApp::TabStripFilterMode::AllTabs, page->_tabStrip.FilterMode());
         });
     }
 

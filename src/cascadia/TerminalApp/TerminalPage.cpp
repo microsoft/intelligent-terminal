@@ -261,6 +261,25 @@ namespace winrt::TerminalApp::implementation
 
     TerminalPage::~TerminalPage()
     {
+        if constexpr (Feature_RichTabProviders::IsEnabled())
+        {
+            std::vector<::Microsoft::Terminal::RichTab::Provider::ProviderBroker::AttachmentId> attachments;
+            {
+                std::lock_guard lock{ _richTabAttachmentsMutex };
+                attachments.reserve(_richTabAttachments.size());
+                for (const auto& [_, attachment] : _richTabAttachments)
+                {
+                    attachments.emplace_back(attachment.id);
+                }
+                _richTabAttachments.clear();
+            }
+            auto& broker = ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance();
+            for (const auto attachment : attachments)
+            {
+                broker.Detach(attachment);
+            }
+        }
+
         auto& sharedWta = winrt::TerminalApp::implementation::SharedWta::Instance();
         for (const auto& retirement : _pendingAgentRetirements)
         {
@@ -593,6 +612,56 @@ namespace winrt::TerminalApp::implementation
                 page->_tabFilterMode = sender.FilterMode();
                 page->_ApplyTabFilter();
             }
+        });
+        constexpr std::string_view gitStatusProviderId{ "com.microsoft.intelligent-terminal.git-status" };
+        auto& richTabBroker = ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance();
+        if (const auto fields = richTabBroker.VisibleFields(gitStatusProviderId))
+        {
+            const auto contains = [&](const std::string_view field) {
+                return std::find(fields->begin(), fields->end(), field) != fields->end();
+            };
+            _tabStrip.RichTabRepositoryVisible(contains("repository"));
+            _tabStrip.RichTabBranchVisible(contains("branch"));
+            _tabStrip.RichTabStatusVisible(contains("status"));
+            _tabStrip.RichTabWorkingDirectoryVisible(contains("workingDirectory"));
+            _tabStrip.RichTabAgentUsageCostVisible(contains("agentUsageCost"));
+            _tabStrip.RichTabAgentContextWindowVisible(contains("agentContextWindow"));
+            _tabStrip.RichTabAgentModelVisible(contains("agentModel"));
+        }
+        _tabStrip.VisibleFieldsChanged([](const auto& sender, auto&&) {
+            std::vector<std::string> fields;
+            fields.reserve(7);
+            if (sender.RichTabStatusVisible())
+            {
+                fields.emplace_back("status");
+            }
+            if (sender.RichTabWorkingDirectoryVisible())
+            {
+                fields.emplace_back("workingDirectory");
+            }
+            if (sender.RichTabRepositoryVisible())
+            {
+                fields.emplace_back("repository");
+            }
+            if (sender.RichTabBranchVisible())
+            {
+                fields.emplace_back("branch");
+            }
+            if (sender.RichTabAgentUsageCostVisible())
+            {
+                fields.emplace_back("agentUsageCost");
+            }
+            if (sender.RichTabAgentContextWindowVisible())
+            {
+                fields.emplace_back("agentContextWindow");
+            }
+            if (sender.RichTabAgentModelVisible())
+            {
+                fields.emplace_back("agentModel");
+            }
+            ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance().SetVisibleFields(
+                "com.microsoft.intelligent-terminal.git-status",
+                std::move(fields));
         });
         _tabRow.RailCollapseRequested({ this, &TerminalPage::_OnVerticalRailCollapseRequested });
         _tabStrip.CompactNewTabRequested([weakThis{ get_weak() }](auto&&, auto&&) {
@@ -3883,6 +3952,7 @@ namespace winrt::TerminalApp::implementation
                 if (owner)
                 {
                     self->_UpdateTabIcon(*owner);
+                    self->_RefreshRichTabForTab(*owner, false);
                 }
                 self->_ApplyTabFilter();
 
@@ -9017,6 +9087,290 @@ namespace winrt::TerminalApp::implementation
         return {};
     }
 
+    void TerminalPage::_AttachOrUpdateRichTabControl(const TermControl& control)
+    {
+        if constexpr (!Feature_RichTabProviders::IsEnabled())
+        {
+            return;
+        }
+        if (!control || control.ConnectionState() != ConnectionState::Connected)
+        {
+            return;
+        }
+
+        const auto sessionId = _FindSessionIdForControl(control);
+        if (sessionId.empty())
+        {
+            return;
+        }
+
+        const auto key = reinterpret_cast<uintptr_t>(winrt::get_abi(control));
+        const auto workingDirectory = std::filesystem::path{ control.WorkingDirectory().c_str() };
+        const auto authoritative = control.WorkingDirectoryReportedByShell();
+        const auto shellName = control.ShellName();
+        std::optional<std::string> shellType;
+        if (!shellName.empty())
+        {
+            shellType = winrt::to_string(shellName);
+        }
+
+        auto& broker = ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance();
+        std::optional<::Microsoft::Terminal::RichTab::Provider::ProviderBroker::AttachmentId> existing;
+        std::optional<::Microsoft::Terminal::RichTab::Provider::ProviderBroker::AttachmentId> staleAttachment;
+        uint64_t reservation = 0;
+        {
+            std::lock_guard lock{ _richTabAttachmentsMutex };
+            if (const auto found = _richTabAttachments.find(key); found != _richTabAttachments.end())
+            {
+                if (found->second.sessionId == sessionId)
+                {
+                    existing = found->second.id;
+                }
+                else
+                {
+                    staleAttachment = found->second.id;
+                    _richTabAttachments.erase(found);
+                }
+            }
+            reservation = _nextRichTabAttachmentReservation++;
+        }
+        if (staleAttachment)
+        {
+            broker.Detach(*staleAttachment);
+        }
+
+        if (existing)
+        {
+            broker.UpdateContext(*existing, workingDirectory, authoritative, shellType);
+            return;
+        }
+
+        const auto attachment = broker.Attach(
+            {
+                sessionId,
+                workingDirectory,
+                authoritative,
+                shellType,
+            },
+            [weakThis = get_weak(), key, reservation](const auto& update) {
+                if (const auto page = weakThis.get())
+                {
+                    page->Dispatcher().RunAsync(
+                        winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
+                        [weakThis, key, reservation, update]() {
+                            if (const auto page = weakThis.get())
+                            {
+                                page->_ApplyRichTabUpdate(key, reservation, update);
+                            }
+                        });
+                }
+            });
+        if (attachment != 0)
+        {
+            std::lock_guard lock{ _richTabAttachmentsMutex };
+            _richTabAttachments.insert_or_assign(
+                key,
+                RichTabAttachment{ attachment, sessionId, reservation });
+        }
+    }
+
+    void TerminalPage::_DetachRichTabControl(const TermControl& control)
+    {
+        if constexpr (!Feature_RichTabProviders::IsEnabled())
+        {
+            return;
+        }
+        if (!control)
+        {
+            return;
+        }
+
+        const auto key = reinterpret_cast<uintptr_t>(winrt::get_abi(control));
+        std::optional<RichTabAttachment> attachment;
+        {
+            std::lock_guard lock{ _richTabAttachmentsMutex };
+            if (const auto found = _richTabAttachments.find(key); found != _richTabAttachments.end())
+            {
+                attachment = std::move(found->second);
+                _richTabAttachments.erase(found);
+            }
+        }
+        if (attachment)
+        {
+            ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance().Detach(attachment->id);
+        }
+    }
+
+    void TerminalPage::_NotifyRichTabControl(
+        const TermControl& control,
+        const ::Microsoft::Terminal::RichTab::Provider::ActivationEvent reason)
+    {
+        if constexpr (!Feature_RichTabProviders::IsEnabled())
+        {
+            return;
+        }
+        if (!control)
+        {
+            return;
+        }
+
+        const auto key = reinterpret_cast<uintptr_t>(winrt::get_abi(control));
+        ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::AttachmentId attachment{ 0 };
+        {
+            std::lock_guard lock{ _richTabAttachmentsMutex };
+            if (const auto found = _richTabAttachments.find(key); found != _richTabAttachments.end())
+            {
+                attachment = found->second.id;
+            }
+        }
+        if (attachment != 0)
+        {
+            ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance().Notify(attachment, reason);
+        }
+    }
+
+    void TerminalPage::_ReleaseRichTabAttachments(const std::shared_ptr<Pane>& rootPane)
+    {
+        if (!rootPane)
+        {
+            return;
+        }
+        rootPane->WalkTree([&](const auto& pane) {
+            if (const auto control = pane->GetTerminalControl())
+            {
+                _DetachRichTabControl(control);
+            }
+            return false;
+        });
+    }
+
+    void TerminalPage::_RefreshRichTabForTab(Tab& tab, const bool activate)
+    {
+        if constexpr (!Feature_RichTabProviders::IsEnabled())
+        {
+            tab.SetRichTabPresentation(std::nullopt);
+            return;
+        }
+
+        const auto pane = tab.GetActivePane();
+        const auto control = pane ? pane->GetTerminalControl() : nullptr;
+        if (!control)
+        {
+            tab.SetRichTabPresentation(std::nullopt);
+            return;
+        }
+
+        _AttachOrUpdateRichTabControl(control);
+        const auto key = reinterpret_cast<uintptr_t>(winrt::get_abi(control));
+        ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::AttachmentId attachment{ 0 };
+        {
+            std::lock_guard lock{ _richTabAttachmentsMutex };
+            if (const auto found = _richTabAttachments.find(key); found != _richTabAttachments.end())
+            {
+                attachment = found->second.id;
+            }
+        }
+        if (attachment != 0)
+        {
+            std::unordered_map<std::string, std::string> firstPartyFields;
+            if (const auto agentContent = tab.FindAgentPaneContent())
+            {
+                const auto agent = winrt::get_self<implementation::AgentPaneContent>(agentContent);
+                if (const auto state = agent->GetAgentState(); !state.empty())
+                {
+                    firstPartyFields.emplace("status", winrt::to_string(state));
+                }
+                if (const auto model = agent->GetAgentModel(); !model.empty())
+                {
+                    firstPartyFields.emplace("agentModel", winrt::to_string(model));
+                }
+
+                const auto usage = ::TerminalApp::AgentUsage::BuildPrimaryDisplay(
+                    agent->GetAgentUsage(),
+                    RS_(L"Usage_TokensUnit"),
+                    true,
+                    RS_(L"Usage_ContextWindowLabel"));
+                for (const auto& item : usage.items)
+                {
+                    const auto field = item.displayKind == ::TerminalApp::AgentUsage::DisplayKind::Context ?
+                                           "agentContextWindow" :
+                                           item.displayKind == ::TerminalApp::AgentUsage::DisplayKind::Billing ?
+                                           "agentUsageCost" :
+                                           nullptr;
+                    if (field)
+                    {
+                        firstPartyFields.emplace(field, winrt::to_string(winrt::hstring{ item.text }));
+                    }
+                }
+            }
+            ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance().UpdateFirstPartyFields(
+                attachment,
+                std::move(firstPartyFields));
+        }
+
+        const auto sessionId = _FindSessionIdForControl(control);
+        if (const auto presentation = _richTabPresentations.find(sessionId);
+            presentation != _richTabPresentations.end())
+        {
+            tab.SetRichTabPresentation(presentation->second.presentation);
+        }
+        else
+        {
+            tab.SetRichTabPresentation(std::nullopt);
+        }
+
+        if (activate)
+        {
+            if (attachment != 0)
+            {
+                ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance().Activate(attachment);
+            }
+        }
+    }
+
+    void TerminalPage::_ApplyRichTabUpdate(
+        const uintptr_t controlKey,
+        const uint64_t reservation,
+        const ::Microsoft::Terminal::RichTab::Provider::BrokerUpdate& update)
+    {
+        {
+            std::lock_guard lock{ _richTabAttachmentsMutex };
+            const auto attachment = _richTabAttachments.find(controlKey);
+            if (attachment == _richTabAttachments.end() ||
+                attachment->second.reservation != reservation ||
+                attachment->second.sessionId != update.sessionId)
+            {
+                return;
+            }
+        }
+
+        auto& state = _richTabPresentations[update.sessionId];
+        if (state.sessionIncarnation > update.sessionIncarnation ||
+            (state.sessionIncarnation == update.sessionIncarnation &&
+             state.updateSequence >= update.updateSequence))
+        {
+            return;
+        }
+        state = RichTabPresentationState{
+            update.sessionIncarnation,
+            update.updateSequence,
+            update.presentation,
+        };
+
+        const auto target = winrt::guid{ winrt::to_hstring(update.sessionId) };
+        for (const auto& projectedTab : _tabs)
+        {
+            if (const auto tab = _GetTabImpl(projectedTab))
+            {
+                if (const auto activePane = tab->GetActivePane();
+                    activePane && activePane->GetSessionId() == target)
+                {
+                    tab->SetRichTabPresentation(update.presentation);
+                }
+            }
+        }
+    }
+
     static std::optional<winrt::guid> _TryParsePaneSessionId(const std::string_view value) noexcept
     {
         try
@@ -9147,7 +9501,7 @@ namespace winrt::TerminalApp::implementation
             const auto paneIdStr = _FindSessionIdForControl(term);
 
             term.VtSequenceReceived(
-                [weakThis = get_weak(), paneIdStr, publication](auto&&, const winrt::hstring& seq) {
+                [weakThis = get_weak(), weakTerm, paneIdStr, publication](auto&&, const winrt::hstring& seq) {
                     if (publication && !publication->load(std::memory_order_acquire))
                     {
                         return;
@@ -9161,7 +9515,7 @@ namespace winrt::TerminalApp::implementation
                     // don't block the connection reader thread.
                     strongThis->Dispatcher().RunAsync(
                         winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
-                        [weakThis, paneIdStr, seq, publication]() {
+                        [weakThis, weakTerm, paneIdStr, seq, publication]() {
                             if (publication && !publication->load(std::memory_order_acquire))
                             {
                                 return;
@@ -9202,7 +9556,29 @@ namespace winrt::TerminalApp::implementation
                             static constexpr std::string_view osc133Prefix = "osc:133;";
                             const bool isAgentEvent = seqStr.starts_with(agentPrefix);
                             const bool isOsc133 = seqStr.starts_with(osc133Prefix);
-                            if (!isAgentEvent && !isOsc133)
+                            const bool isRichTabContextEvent =
+                                seqStr.starts_with("osc:7;") ||
+                                seqStr.starts_with("osc:9;9;") ||
+                                seqStr.starts_with("osc:9001;ShellType;");
+                            if (!isAgentEvent && !isOsc133 && !isRichTabContextEvent)
+                            {
+                                return;
+                            }
+
+                            if (isOsc133 || isRichTabContextEvent)
+                            {
+                                if (const auto richTabControl = weakTerm.get())
+                                {
+                                    page->_AttachOrUpdateRichTabControl(richTabControl);
+                                    if (seqStr.starts_with("osc:133;D"))
+                                    {
+                                        page->_NotifyRichTabControl(
+                                            richTabControl,
+                                            ::Microsoft::Terminal::RichTab::Provider::ActivationEvent::CommandFinished);
+                                    }
+                                }
+                            }
+                            if (isRichTabContextEvent)
                             {
                                 return;
                             }
@@ -9398,6 +9774,17 @@ namespace winrt::TerminalApp::implementation
                             // pane_id alone is sufficient for the
                             // session-list / PaneClosed prune path.
                             auto term2 = weakTerm.get();
+                            if (term2)
+                            {
+                                if (stateStr == "connected")
+                                {
+                                    page->_AttachOrUpdateRichTabControl(term2);
+                                }
+                                else
+                                {
+                                    page->_DetachRichTabControl(term2);
+                                }
+                            }
                             const auto tabIdStr = term2 ? page->_FindTabIdForControl(term2) : std::string{};
                             if (stateStr == "closed" || stateStr == "failed")
                             {
@@ -10031,6 +10418,7 @@ namespace winrt::TerminalApp::implementation
                                              const winrt::com_ptr<Tab>& sourceTab,
                                              const uint64_t firstPaneContentId)
     {
+        _ReleaseRichTabAttachments(pane);
         pane->WalkTree([&](auto p) {
             if (const auto& control{ p->GetTerminalControl() })
             {
@@ -10233,6 +10621,7 @@ namespace winrt::TerminalApp::implementation
 
             auto profile = tab->GetFocusedProfile();
             _UpdateBackground(profile);
+            _RefreshRichTabForTab(*tab, true);
         }
 
         _adjustProcessPriorityThrottled->Run();
@@ -11678,6 +12067,24 @@ namespace winrt::TerminalApp::implementation
         }
 
         _RegisterTerminalEvents(term);
+        if (_receivingContentTransfer)
+        {
+            const auto weakThis = get_weak();
+            const winrt::weak_ref<TermControl> weakTerm{ term };
+            _receivingContentTransfer->afterCommit.emplace_back([weakThis, weakTerm]() {
+                if (const auto page = weakThis.get())
+                {
+                    if (const auto control = weakTerm.get())
+                    {
+                        page->_AttachOrUpdateRichTabControl(control);
+                    }
+                }
+            });
+        }
+        else
+        {
+            _AttachOrUpdateRichTabControl(term);
+        }
         return term;
     }
 
@@ -14275,8 +14682,9 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_onTabStripDragOver(const winrt::Windows::Foundation::IInspectable& sender,
                                            const winrt::Windows::UI::Xaml::DragEventArgs& e)
     {
-        if (_changingTabLayout || !_IsActiveTabControl(sender))
+        if (_changingTabLayout || !_IsActiveTabControl(sender) || _IsTabFilterEffective())
         {
+            e.AcceptedOperation(DataPackageOperation::None);
             return;
         }
 
@@ -14303,7 +14711,7 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_onTabStripDrop(winrt::Windows::Foundation::IInspectable sender,
                                        winrt::Windows::UI::Xaml::DragEventArgs e)
     {
-        if (_changingTabLayout || !_IsActiveTabControl(sender))
+        if (_changingTabLayout || !_IsActiveTabControl(sender) || _IsTabFilterEffective())
         {
             return;
         }
@@ -14407,7 +14815,7 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_OnTabStripDroppedOutside(const winrt::Windows::Foundation::IInspectable& sender,
                                                  const TerminalApp::TabStripDroppedOutsideEventArgs& /*e*/)
     {
-        if (_changingTabLayout || !_IsActiveTabControl(sender))
+        if (_changingTabLayout || !_IsActiveTabControl(sender) || _IsTabFilterEffective())
         {
             return;
         }

@@ -201,11 +201,38 @@
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>Filter tabs</value>
   </data>
+  <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
+    <value>Filter</value>
+  </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>All tabs</value>
   </data>
   <data name="VerticalTabsFilterAgentsOnly.Text" xml:space="preserve">
     <value>Agents only</value>
+  </data>
+  <data name="VerticalTabsVisibleSection.Text" xml:space="preserve">
+    <value>Visible</value>
+  </data>
+  <data name="VerticalTabsVisibleRepository.Text" xml:space="preserve">
+    <value>Repository</value>
+  </data>
+  <data name="VerticalTabsVisibleBranch.Text" xml:space="preserve">
+    <value>Branch</value>
+  </data>
+  <data name="VerticalTabsVisibleStatus.Text" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="VerticalTabsVisibleWorkingDirectory.Text" xml:space="preserve">
+    <value>Working directory</value>
+  </data>
+  <data name="VerticalTabsVisibleAgentUsageCost.Text" xml:space="preserve">
+    <value>Agent usage/cost</value>
+  </data>
+  <data name="VerticalTabsVisibleAgentContextWindow.Text" xml:space="preserve">
+    <value>Agent context window</value>
+  </data>
+  <data name="VerticalTabsVisibleAgentModel.Text" xml:space="preserve">
+    <value>Agent model</value>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>Showing 1 agent session</value>
@@ -654,22 +681,22 @@
   </data>
   <data name="CommandPaletteModeAnnouncement_AgentForegroundMode" xml:space="preserve">
     <value>Agent prompt mode</value>
-    <comment>This text will be read aloud using assistive technologies when the command palette switches into the agent foreground prompt mode. 
+    <comment>This text will be read aloud using assistive technologies when the command palette switches into the agent foreground prompt mode.
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="CommandPaletteModeAnnouncement_AgentBackgroundMode" xml:space="preserve">
     <value>Agent background task mode</value>
-    <comment>This text will be read aloud using assistive technologies when the command palette switches into the agent background task mode. 
+    <comment>This text will be read aloud using assistive technologies when the command palette switches into the agent background task mode.
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="CmdPalAgentForegroundPrompt" xml:space="preserve">
     <value>Ask agent...</value>
-    <comment>Placeholder text shown in the command palette search box when in agent foreground prompt mode. 
+    <comment>Placeholder text shown in the command palette search box when in agent foreground prompt mode.
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="CmdPalAgentBackgroundPrompt" xml:space="preserve">
     <value>Run agent task in background...</value>
-    <comment>Placeholder text shown in the command palette search box when in agent background task mode. 
+    <comment>Placeholder text shown in the command palette search box when in agent background task mode.
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="CommandPalette_NestedCommandAnnouncement" xml:space="preserve">
@@ -887,7 +914,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="NotificationMessage_TabActivity" xml:space="preserve">
     <value>Activity in tab "{0}"</value>
-    <comment>{0} is the tab title. Shown as the body of a desktop notification when tab activity is detected. 
+    <comment>{0} is the tab title. Shown as the body of a desktop notification when tab activity is detected.
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="NotificationMessage_TabActivityInWindow" xml:space="preserve">

@@ -44,6 +44,7 @@ namespace TerminalApp::AgentUsage
 
     struct PrimaryDisplayItem
     {
+        DisplayKind displayKind{ DisplayKind::Other };
         std::wstring text;
         std::wstring fullText;
     };

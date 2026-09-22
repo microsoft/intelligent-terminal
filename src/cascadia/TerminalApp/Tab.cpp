@@ -277,6 +277,14 @@ namespace winrt::TerminalApp::implementation
         textBlock.TextAlignment(WUX::TextAlignment::Center);
         textBlock.Inlines().Append(titleRun);
 
+        if (!_richTabTooltipText.empty())
+        {
+            auto metadataRun = WUX::Documents::Run();
+            metadataRun.Text(_richTabTooltipText);
+            textBlock.Inlines().Append(WUX::Documents::LineBreak{});
+            textBlock.Inlines().Append(metadataRun);
+        }
+
         if (!_keyChord.empty())
         {
             auto keyChordRun = WUX::Documents::Run();
@@ -542,8 +550,55 @@ namespace winrt::TerminalApp::implementation
 
         // Update the control to reflect the changed title
         _headerControl.Title(activeTitle);
-        Automation::AutomationProperties::SetName(TabViewItem(), activeTitle);
+        _UpdateRichTabPresentation();
+    }
+
+    void Tab::SetRichTabPresentation(
+        const std::optional<::Microsoft::Terminal::RichTab::Provider::Presentation>& presentation)
+    {
+        ASSERT_UI_THREAD();
+        if (_richTabPresentation != presentation)
+        {
+            _richTabPresentation = presentation;
+            _UpdateRichTabPresentation();
+        }
+    }
+
+    void Tab::_UpdateRichTabPresentation()
+    {
+        std::wstring text;
+        std::wstring tooltip;
+        std::wstring accessibilityText;
+        if constexpr (Feature_RichTabProviders::IsEnabled())
+        {
+            if (_richTabPresentation)
+            {
+                text = _richTabPresentation->text;
+                tooltip = _richTabPresentation->tooltip;
+                accessibilityText = _richTabPresentation->accessibilityText;
+            }
+        }
+
+        const auto hasVisibleMetadata = !text.empty();
+        _richTabTooltipText = tooltip;
+        _richTabAccessibilityText = accessibilityText;
+        _headerControl.MetadataText(text);
+        _headerControl.MetadataAutomationName(_richTabAccessibilityText);
+        _headerControl.IsMetadataVisible(hasVisibleMetadata);
+
+        _UpdateAutomationName();
         _UpdateToolTip();
+    }
+
+    void Tab::_UpdateAutomationName()
+    {
+        auto name = std::wstring{ Title() };
+        if (!_richTabAccessibilityText.empty())
+        {
+            name += L", ";
+            name += _richTabAccessibilityText;
+        }
+        Automation::AutomationProperties::SetName(TabViewItem(), name);
     }
 
     // Method Description:

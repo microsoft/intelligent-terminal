@@ -168,6 +168,7 @@ namespace winrt::TerminalApp::implementation
         bool IsHelperEventReady() const noexcept { return _helperEventReady; }
         winrt::hstring GetAgentName() const noexcept { return _agentName; }
         winrt::hstring GetAgentModel() const noexcept { return _agentModel; }
+        winrt::hstring GetAgentState() const noexcept { return _agentState; }
         winrt::hstring GetLastErrorPaneId() const noexcept { return _lastErrorPaneId; }
         winrt::hstring GetFixPreview() const noexcept { return _fixPreview; }
         winrt::hstring GetHotkeyHint() const noexcept { return _hotkeyHint; }

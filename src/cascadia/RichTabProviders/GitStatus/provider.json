@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "id": "com.microsoft.intelligent-terminal.git-status",
+  "displayName": "Git Status",
+  "publisher": "Microsoft",
+  "version": "1.0.0",
+  "protocol": {
+    "minVersion": 1,
+    "maxVersion": 1
+  },
+  "runtime": {
+    "type": "powerShellV1",
+    "entrypoint": "provider.ps1",
+    "arguments": []
+  },
+  "activationEvents": [
+    "onWorkingDirectoryChanged",
+    "onCommandFinished",
+    "onTabActivated",
+    "onManualRefresh"
+  ],
+  "fields": [
+    {
+      "id": "status",
+      "displayName": "Status",
+      "type": "string",
+      "defaultVisible": true
+    },
+    {
+      "id": "workingDirectory",
+      "displayName": "Working directory",
+      "type": "string",
+      "defaultVisible": true
+    },
+    {
+      "id": "repository",
+      "displayName": "Repo",
+      "type": "string",
+      "defaultVisible": true
+    },
+    {
+      "id": "branch",
+      "displayName": "Branch",
+      "type": "string",
+      "defaultVisible": true
+    },
+    {
+      "id": "agentUsageCost",
+      "displayName": "Agent usage/cost",
+      "type": "string",
+      "defaultVisible": true
+    },
+    {
+      "id": "agentContextWindow",
+      "displayName": "Agent context window",
+      "type": "string",
+      "defaultVisible": true
+    },
+    {
+      "id": "agentModel",
+      "displayName": "Agent model",
+      "type": "string",
+      "defaultVisible": true
+    }
+  ]
+}
