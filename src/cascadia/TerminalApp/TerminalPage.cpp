@@ -77,6 +77,7 @@ using namespace std::chrono_literals;
 
 static constexpr double railMin = 180.0;
 static constexpr double railMax = 480.0;
+static constexpr double railCollapsedWidth = 40.0;
 
 #define HOOKUP_ACTION(action) _actionDispatch->action({ this, &TerminalPage::_Handle##action });
 
@@ -548,7 +549,7 @@ namespace winrt::TerminalApp::implementation
         else if (_isVerticalLayout)
         {
             // Vertical mode: TabRow stays in the page. TabRowControl already
-            // extracted shield + workspaces into VerticalTitleBarContent
+            // assembled the complete rail chrome into VerticalTitleBarContent
             // during IsVerticalLayout(true). Where the chrome lands depends
             // on whether we have a non-client-area titlebar to host it:
             //   - showTabsInTitlebar=true  -> hand it to the extended titlebar
@@ -567,11 +568,7 @@ namespace winrt::TerminalApp::implementation
                 }
                 else
                 {
-                    if (const auto panel = content.try_as<WUX::Controls::StackPanel>())
-                    {
-                        panel.Orientation(WUX::Controls::Orientation::Vertical);
-                    }
-                    _tabStrip.LeadingContent(content);
+                    _tabStrip.TopChromeContent(content);
                 }
             }
         }
@@ -644,6 +641,22 @@ namespace winrt::TerminalApp::implementation
             _tabStrip.TabStripDragOver({ this, &TerminalPage::_onTabStripDragOver });
             _tabStrip.TabStripDrop({ this, &TerminalPage::_onTabStripDrop });
             _tabStrip.TabDroppedOutside({ this, &TerminalPage::_OnTabStripDroppedOutside });
+            _tabStrip.RailCollapseRequested({ this, &TerminalPage::_OnVerticalRailCollapseRequested });
+            _tabStrip.CompactNewTabRequested([weakThis{ get_weak() }](auto&&, auto&&) {
+                if (const auto page = weakThis.get())
+                {
+                    page->_OpenNewTerminalViaDropdown(NewTerminalArgs());
+                }
+            });
+            _tabStrip.CompactNewTabMenuRequested([weakThis{ get_weak() }](auto&&, const auto& anchor) {
+                if (const auto page = weakThis.get())
+                {
+                    if (const auto target = anchor.try_as<WUX::FrameworkElement>())
+                    {
+                        page->_newTabButton.Flyout().ShowAt(target);
+                    }
+                }
+            });
         }
 
         _CreateNewTabFlyout();
@@ -5285,6 +5298,8 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
+        _isVerticalRailVisible = visible;
+
         if (_tabView)
         {
             _tabView.Visibility(Visibility::Collapsed);
@@ -5295,18 +5310,57 @@ namespace winrt::TerminalApp::implementation
             _tabRow.Visibility(visible ? Visibility::Visible : Visibility::Collapsed);
         }
 
+        _tabStrip.IsRailCollapsed(_isVerticalRailCollapsed);
+
+        const bool expanded = visible && !_isVerticalRailCollapsed;
+        const auto width = visible ? (_isVerticalRailCollapsed ? railCollapsedWidth : _verticalRailWidth) : 0.0;
+        winrt::get_self<implementation::TabRowControl>(_tabRow)->SetVerticalRailState(visible, _isVerticalRailCollapsed, width);
+        if (!expanded)
+        {
+            bool focusWasInRail = false;
+            if (const auto xamlRoot = _tabRow.XamlRoot())
+            {
+                auto focused = WUX::Input::FocusManager::GetFocusedElement(xamlRoot).try_as<DependencyObject>();
+                while (focused)
+                {
+                    if (focused == _tabRow)
+                    {
+                        focusWasInRail = true;
+                        break;
+                    }
+                    focused = Media::VisualTreeHelper::GetParent(focused);
+                }
+            }
+
+            if (_newTabButton && _newTabButton.Flyout())
+            {
+                _newTabButton.Flyout().Hide();
+            }
+            _DismissTabContextMenus();
+            _CancelRailSplitterDrag();
+
+            if (focusWasInRail)
+            {
+                _FocusActiveControl(nullptr, nullptr);
+            }
+        }
+
         if (visible)
         {
-            VerticalRailColumn().Width(GridLengthHelper::FromValueAndType(_verticalRailWidth, GridUnitType::Pixel));
-            if (_verticalRailSplitter)
+            VerticalRailColumn().Width(GridLengthHelper::FromValueAndType(width, GridUnitType::Pixel));
+            if (_verticalRailSplitter && expanded)
             {
                 _verticalRailSplitter.IsHitTestVisible(true);
                 _verticalRailSplitter.Visibility(Visibility::Visible);
             }
+            else if (_verticalRailSplitter)
+            {
+                _verticalRailSplitter.IsHitTestVisible(false);
+                _verticalRailSplitter.Visibility(Visibility::Collapsed);
+            }
         }
         else
         {
-            _CancelRailSplitterDrag();
             if (_verticalRailSplitter)
             {
                 _verticalRailSplitter.IsHitTestVisible(false);
@@ -5314,6 +5368,17 @@ namespace winrt::TerminalApp::implementation
             }
             VerticalRailColumn().Width(GridLengthHelper::FromValueAndType(0, GridUnitType::Pixel));
         }
+    }
+
+    void TerminalPage::_OnVerticalRailCollapseRequested(const IInspectable&, const IInspectable&)
+    {
+        if (!_isVerticalLayout || !_isVerticalRailVisible)
+        {
+            return;
+        }
+
+        _isVerticalRailCollapsed = !_isVerticalRailCollapsed;
+        _SetVerticalRailVisibility(true);
     }
 
     void TerminalPage::_CancelRailSplitterDrag()
@@ -5412,6 +5477,7 @@ namespace winrt::TerminalApp::implementation
         {
             _verticalRailWidth = requested;
             VerticalRailColumn().Width(GridLengthHelper::FromValueAndType(_verticalRailWidth, GridUnitType::Pixel));
+            winrt::get_self<implementation::TabRowControl>(_tabRow)->SetVerticalRailState(true, false, _verticalRailWidth);
         }
         e.Handled(true);
     }

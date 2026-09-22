@@ -3,6 +3,7 @@
 
 #include "pch.h"
 #include "TabRowControl.h"
+#include "TabStrip.h"
 
 #include "TabRowControl.g.cpp"
 
@@ -50,12 +51,11 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    // Spec A §5.1: move the three chrome elements out of TabView's header /
-    // footer slots. Shield + workspaces go into a horizontal StackPanel that
-    // TerminalPage hands to the titlebar (same bar as min/max/close); the
-    // new-tab split button anchors right-aligned inside TabStrip's trailing
-    // slot at the bottom of the rail. XAML forbids a UIElement having two
-    // logical parents at once, so we clear both host panels first.
+    // Move the three chrome elements out of TabView's header/footer slots and
+    // build the complete vertical chrome row that can be hosted by either the
+    // window titlebar or the in-page fallback.
+    // XAML forbids a UIElement having two logical parents at once, so we clear
+    // both host panels first.
     void TabRowControl::_reparentChromeToVertical()
     {
         if (_chromeReparentedToVertical)
@@ -80,27 +80,99 @@ namespace winrt::TerminalApp::implementation
         }
         TabView().TabStripFooter(nullptr);
 
-        WUX::Controls::StackPanel titlebarPanel;
-        titlebarPanel.Orientation(WUX::Controls::Orientation::Horizontal);
-        titlebarPanel.VerticalAlignment(WUX::VerticalAlignment::Center);
-        titlebarPanel.Children().Append(shield);
-        titlebarPanel.Children().Append(workspaces);
-        _verticalTitleBarContent = titlebarPanel;
+        WUX::Controls::Grid titlebarGrid;
+        titlebarGrid.Height(40);
+        titlebarGrid.MinWidth(40);
+        titlebarGrid.HorizontalAlignment(WUX::HorizontalAlignment::Left);
 
-        // Put the right-alignment on an outer Grid instead of the SplitButton
-        // itself — setting HorizontalAlignment=Right on the SplitButton
-        // fights its own template layout and collapses the dropdown chevron.
-        // A right-aligned outer Grid with a Stretch SplitButton lets MUX
-        // render both primary and secondary parts at their intrinsic size.
+        WUX::Controls::ColumnDefinition toggleColumn;
+        toggleColumn.Width(WUX::GridLengthHelper::FromValueAndType(40, WUX::GridUnitType::Pixel));
+        titlebarGrid.ColumnDefinitions().Append(toggleColumn);
+        titlebarGrid.ColumnDefinitions().Append(WUX::Controls::ColumnDefinition{});
+        WUX::Controls::ColumnDefinition newTabColumn;
+        newTabColumn.Width(WUX::GridLengthHelper::Auto());
+        titlebarGrid.ColumnDefinitions().Append(newTabColumn);
+
+        WUX::Controls::Button railToggle;
+        railToggle.Width(40);
+        railToggle.Height(40);
+        railToggle.Padding(WUX::Thickness{});
+        railToggle.HorizontalAlignment(WUX::HorizontalAlignment::Left);
+        railToggle.VerticalAlignment(WUX::VerticalAlignment::Center);
+        railToggle.Background(WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
+        railToggle.BorderThickness(WUX::Thickness{});
+
+        _verticalRailToggleIcon = WUX::Controls::FontIcon{};
+        _verticalRailToggleIcon.FontFamily(WUX::Media::FontFamily{ L"Segoe Fluent Icons, Segoe MDL2 Assets" });
+        _verticalRailToggleIcon.FontSize(12);
+        railToggle.Content(_verticalRailToggleIcon);
+        railToggle.Click([weakStrip = winrt::make_weak(TabStrip())](auto&&, auto&&) {
+            if (const auto strip = weakStrip.get())
+            {
+                winrt::get_self<implementation::TabStrip>(strip)->OnRailToggleClick(nullptr, nullptr);
+            }
+        });
+        titlebarGrid.Children().Append(railToggle);
+
+        WUX::Controls::Grid expandedChrome;
+        WUX::Controls::Grid::SetColumn(expandedChrome, 1);
+        WUX::Controls::Grid::SetColumnSpan(expandedChrome, 2);
+        expandedChrome.ColumnDefinitions().Append(WUX::Controls::ColumnDefinition{});
+        WUX::Controls::ColumnDefinition expandedNewTabColumn;
+        expandedNewTabColumn.Width(WUX::GridLengthHelper::Auto());
+        expandedChrome.ColumnDefinitions().Append(expandedNewTabColumn);
+
+        WUX::Controls::StackPanel leadingChrome;
+        leadingChrome.Orientation(WUX::Controls::Orientation::Horizontal);
+        leadingChrome.VerticalAlignment(WUX::VerticalAlignment::Center);
+        leadingChrome.Children().Append(shield);
+        leadingChrome.Children().Append(workspaces);
+        expandedChrome.Children().Append(leadingChrome);
+
+        // Keep the right-alignment on an outer Grid. Setting it directly on
+        // SplitButton fights its template and can collapse the chevron.
         newTab.HorizontalAlignment(WUX::HorizontalAlignment::Stretch);
-        newTab.Height(31);
+        newTab.Height(32);
         newTab.MinWidth(64);
-        newTab.Margin(WUX::Thickness{ 0, 4, 0, 4 });
-        WUX::Controls::Grid trailingContainer;
-        trailingContainer.HorizontalAlignment(WUX::HorizontalAlignment::Right);
-        trailingContainer.Margin(WUX::Thickness{ 0, 0, 8, 0 });
-        trailingContainer.Children().Append(newTab);
-        TabStrip().TrailingContent(trailingContainer);
+        newTab.Margin(WUX::Thickness{});
+        WUX::Controls::Grid topChromeContainer;
+        topChromeContainer.HorizontalAlignment(WUX::HorizontalAlignment::Right);
+        topChromeContainer.Margin(WUX::Thickness{ 0, 0, 4, 0 });
+        topChromeContainer.Children().Append(newTab);
+        WUX::Controls::Grid::SetColumn(topChromeContainer, 1);
+        expandedChrome.Children().Append(topChromeContainer);
+
+        titlebarGrid.Children().Append(expandedChrome);
+        _verticalExpandedChrome = expandedChrome;
+        _verticalTitleBarContent = titlebarGrid;
+        SetVerticalRailState(true, false, 220);
+    }
+
+    void TabRowControl::SetVerticalRailState(const bool visible, const bool collapsed, const double width)
+    {
+        const auto titlebarGrid = _verticalTitleBarContent.try_as<WUX::FrameworkElement>();
+        if (!titlebarGrid)
+        {
+            return;
+        }
+
+        titlebarGrid.Width(width);
+        titlebarGrid.Visibility(visible ? WUX::Visibility::Visible : WUX::Visibility::Collapsed);
+        if (_verticalExpandedChrome)
+        {
+            _verticalExpandedChrome.Visibility(!collapsed && visible ? WUX::Visibility::Visible : WUX::Visibility::Collapsed);
+        }
+
+        if (_verticalRailToggleIcon)
+        {
+            _verticalRailToggleIcon.Glyph(collapsed ? L"\xE8A0" : L"\xE89F");
+            const auto label = collapsed ? RS_(L"VerticalTabsExpandPane") : RS_(L"VerticalTabsCollapsePane");
+            if (const auto button = _verticalRailToggleIcon.Parent().try_as<WUX::Controls::Button>())
+            {
+                WUX::Automation::AutomationProperties::SetName(button, label);
+                WUX::Controls::ToolTipService::SetToolTip(button, box_value(label));
+            }
+        }
     }
 
     // Method Description:

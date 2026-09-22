@@ -61,12 +61,10 @@ namespace TerminalApp
         Boolean CanReorderTabs;
         Boolean CanDragTabs;
         Boolean TabsVisible;
+        Boolean IsRailCollapsed;
 
-        // Top/bottom (or leading/trailing in horizontal) slots. Populated by
-        // TabRowControl.xaml with the elevation shield / workspaces button
-        // (leading) and the new-tab split button (trailing).
-        Windows.UI.Xaml.UIElement LeadingContent;
-        Windows.UI.Xaml.UIElement TrailingContent;
+        // Hosts the complete vertical chrome when no titlebar is available.
+        Windows.UI.Xaml.UIElement TopChromeContent;
 
         event Windows.Foundation.TypedEventHandler<TabStrip, TabStripSelectionChangedEventArgs> SelectionChanged;
         event Windows.Foundation.TypedEventHandler<TabStrip, TabStripCloseRequestedEventArgs> TabCloseRequested;
@@ -76,5 +74,8 @@ namespace TerminalApp
         event Windows.Foundation.TypedEventHandler<TabStrip, Windows.UI.Xaml.DragEventArgs> TabStripDragOver;
         event Windows.Foundation.TypedEventHandler<TabStrip, Windows.UI.Xaml.DragEventArgs> TabStripDrop;
         event Windows.Foundation.TypedEventHandler<TabStrip, TabStripDroppedOutsideEventArgs> TabDroppedOutside;
+        event Windows.Foundation.TypedEventHandler<TabStrip, Object> RailCollapseRequested;
+        event Windows.Foundation.TypedEventHandler<TabStrip, Object> CompactNewTabRequested;
+        event Windows.Foundation.TypedEventHandler<TabStrip, Object> CompactNewTabMenuRequested;
     };
 }

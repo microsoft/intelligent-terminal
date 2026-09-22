@@ -331,6 +331,8 @@ namespace winrt::TerminalApp::implementation
         // Populated with real TabViewItems via the routed _tabItems() helper.
         TerminalApp::TabStrip _tabStrip{ nullptr };
         bool _isVerticalLayout{ false };
+        bool _isVerticalRailVisible{ true };
+        bool _isVerticalRailCollapsed{ false };
         // Spec A §5.2: hand-rolled splitter for resizing the vertical rail.
         // Lives in column 1 of the Root Grid, hugging its left edge, so the
         // hit strip straddles the column boundary.
@@ -1060,6 +1062,7 @@ namespace winrt::TerminalApp::implementation
         void _ApplyVerticalLayoutReshape();
         void _InstallVerticalRailSplitter();
         void _SetVerticalRailVisibility(bool visible);
+        void _OnVerticalRailCollapseRequested(const IInspectable& sender, const IInspectable& eventArgs);
         void _CancelRailSplitterDrag();
         void _SetRailSplitterCursor();
         void _RestoreRailSplitterCursor();

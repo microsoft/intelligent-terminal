@@ -268,6 +268,7 @@ namespace TerminalAppLocalTests
 
         TEST_METHOD(TryInitializePage);
         TEST_METHOD(VerticalRailVisibilityRestoresWidth);
+        TEST_METHOD(VerticalRailCollapseRestoresWidth);
         TEST_METHOD(VerticalLayoutMismatchInfoBarRecomputes);
         TEST_METHOD(VerticalTabStripEnablesCloseButton);
 
@@ -1971,6 +1972,38 @@ namespace TerminalAppLocalTests
 
             VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_tabView.Visibility());
             VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabRow.Visibility());
+            VERIFY_ARE_EQUAL(333.0, page->VerticalRailColumn().Width().Value);
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->_verticalRailSplitter.Visibility());
+            VERIFY_IS_TRUE(page->_verticalRailSplitter.IsHitTestVisible());
+        });
+    }
+
+    void TabTests::VerticalRailCollapseRestoresWidth()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            page->_verticalRailWidth = 333.0;
+            page->_SetVerticalRailVisibility(true);
+
+            page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
+
+            VERIFY_IS_TRUE(page->_isVerticalRailCollapsed);
+            VERIFY_IS_TRUE(page->_tabStrip.IsRailCollapsed());
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabRow.Visibility());
+            const auto tabStrip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            VERIFY_ARE_EQUAL(Visibility::Visible, tabStrip->CompactNewTabToolbar().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, tabStrip->SearchTabsButton().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, tabStrip->ItemsList().Visibility());
+            VERIFY_ARE_EQUAL(40.0, page->VerticalRailColumn().Width().Value);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_verticalRailSplitter.Visibility());
+            VERIFY_IS_FALSE(page->_verticalRailSplitter.IsHitTestVisible());
+
+            page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
+
+            VERIFY_IS_FALSE(page->_isVerticalRailCollapsed);
+            VERIFY_IS_FALSE(page->_tabStrip.IsRailCollapsed());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, tabStrip->CompactNewTabToolbar().Visibility());
             VERIFY_ARE_EQUAL(333.0, page->VerticalRailColumn().Width().Value);
             VERIFY_ARE_EQUAL(Visibility::Visible, page->_verticalRailSplitter.Visibility());
             VERIFY_IS_TRUE(page->_verticalRailSplitter.IsHitTestVisible());

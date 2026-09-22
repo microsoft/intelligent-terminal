@@ -55,6 +55,7 @@ namespace winrt::TerminalApp::implementation
 
         ItemsList().ItemsSource(_tabItems);
         _vectorChangedRevoker = _tabItems.VectorChanged(auto_revoke, { get_weak(), &TabStrip::_onItemsVectorChanged });
+        _applyRailState();
     }
 
     IInspectable TabStrip::SelectedItem()
@@ -106,28 +107,90 @@ namespace winrt::TerminalApp::implementation
     }
     bool TabStrip::TabsVisible()
     {
-        return ItemsList().Visibility() == Visibility::Visible;
+        return _tabsVisible;
     }
     void TabStrip::TabsVisible(bool value)
     {
-        ItemsList().Visibility(value ? Visibility::Visible : Visibility::Collapsed);
+        _tabsVisible = value;
+        _applyRailState();
+    }
+    void TabStrip::IsRailCollapsed(bool value)
+    {
+        if (_isRailCollapsed != value)
+        {
+            _isRailCollapsed = value;
+            _applyRailState();
+        }
     }
 
-    UIElement TabStrip::LeadingContent()
+    UIElement TabStrip::TopChromeContent()
     {
-        return LeadingContentPresenter().Content().try_as<UIElement>();
+        return TopChromeContentPresenter().Content().try_as<UIElement>();
     }
-    void TabStrip::LeadingContent(UIElement const& value)
+    void TabStrip::TopChromeContent(UIElement const& value)
     {
-        LeadingContentPresenter().Content(value);
+        TopChromeContentPresenter().Content(value);
+        TopChrome().Visibility(value ? Visibility::Visible : Visibility::Collapsed);
     }
-    UIElement TabStrip::TrailingContent()
+
+    void TabStrip::OnRailToggleClick(IInspectable const&, WUX::RoutedEventArgs const&)
     {
-        return TrailingContentPresenter().Content().try_as<UIElement>();
+        RailCollapseRequested.raise(*this, nullptr);
     }
-    void TabStrip::TrailingContent(UIElement const& value)
+
+    void TabStrip::OnCompactNewTabClick(IInspectable const&, WUX::RoutedEventArgs const&)
     {
-        TrailingContentPresenter().Content(value);
+        CompactNewTabRequested.raise(*this, nullptr);
+    }
+
+    void TabStrip::OnCompactNewTabMenuClick(IInspectable const&, WUX::RoutedEventArgs const&)
+    {
+        CompactNewTabMenuRequested.raise(*this, CompactNewTabMenuButton());
+    }
+
+    void TabStrip::_applyRailState()
+    {
+        const auto expandedVisibility = _isRailCollapsed ? Visibility::Collapsed : Visibility::Visible;
+        const auto collapsedVisibility = _isRailCollapsed ? Visibility::Visible : Visibility::Collapsed;
+
+        MinWidth(_isRailCollapsed ? 40.0 : 180.0);
+        CompactNewTabToolbar().Visibility(collapsedVisibility);
+        VerticalTabsHeader().Visibility(expandedVisibility);
+        TabsToolbar().Padding(_isRailCollapsed ? WUX::Thickness{} : WUX::Thickness{ 12, 0, 8, 0 });
+        WUX::Controls::Grid::SetColumn(SearchTabsButton(), _isRailCollapsed ? 0 : 1);
+        WUX::Controls::Grid::SetColumnSpan(SearchTabsButton(), _isRailCollapsed ? 4 : 1);
+        SearchTabsButton().Width(_isRailCollapsed ? 40.0 : 32.0);
+        SearchTabsButton().Height(_isRailCollapsed ? 40.0 : 32.0);
+        ItemsList().Visibility(_tabsVisible ? Visibility::Visible : Visibility::Collapsed);
+
+        for (uint32_t index = 0; index < _tabItems.Size(); ++index)
+        {
+            if (const auto item = _tabItems.GetAt(index).try_as<MUX::Controls::TabViewItem>())
+            {
+                _applyTabItemRailState(item);
+            }
+        }
+    }
+
+    void TabStrip::_applyTabItemRailState(MUX::Controls::TabViewItem const& item)
+    {
+        if (const auto header = item.Header().try_as<UIElement>())
+        {
+            header.Visibility(_isRailCollapsed ? Visibility::Collapsed : Visibility::Visible);
+        }
+
+        if (_isRailCollapsed)
+        {
+            item.Width(40.0);
+            item.MinWidth(40.0);
+            item.MaxWidth(40.0);
+        }
+        else
+        {
+            item.Width(std::numeric_limits<double>::quiet_NaN());
+            item.MinWidth(0.0);
+            item.MaxWidth(std::numeric_limits<double>::infinity());
+        }
     }
 
     void TabStrip::_onItemsVectorChanged(IObservableVector<IInspectable> const& sender,
@@ -141,6 +204,7 @@ namespace winrt::TerminalApp::implementation
             if (const auto item = sender.GetAt(args.Index()).try_as<MUX::Controls::TabViewItem>())
             {
                 _hookCloseRequested(item);
+                _applyTabItemRailState(item);
             }
             break;
         case CollectionChange::ItemRemoved:
@@ -149,6 +213,7 @@ namespace winrt::TerminalApp::implementation
             if (const auto item = sender.GetAt(args.Index()).try_as<MUX::Controls::TabViewItem>())
             {
                 _hookCloseRequested(item);
+                _applyTabItemRailState(item);
             }
             break;
         case CollectionChange::Reset:
@@ -158,6 +223,7 @@ namespace winrt::TerminalApp::implementation
                 if (const auto item = sender.GetAt(i).try_as<MUX::Controls::TabViewItem>())
                 {
                     _hookCloseRequested(item);
+                    _applyTabItemRailState(item);
                 }
             }
             break;

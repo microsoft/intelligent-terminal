@@ -15,21 +15,115 @@
              xmlns:local="using:TerminalApp"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:mux="using:Microsoft.UI.Xaml.Controls"
-             MinWidth="180"
+             MinWidth="40"
              Background="{ThemeResource TabViewBackground}"
              mc:Ignorable="d">
 
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!--  Leading slot: hosts elevation shield + workspaces button in vertical top.  -->
-        <ContentPresenter x:Name="LeadingContentPresenter"
-                          Grid.Row="0"
-                          HorizontalContentAlignment="Stretch" />
+        <Grid x:Name="TopChrome"
+              Grid.Row="0"
+              MinHeight="40"
+              Visibility="Collapsed">
+            <!--
+                Hosts the complete vertical chrome when a non-client titlebar
+                is unavailable. Otherwise, the same element is hosted by the
+                window titlebar.
+            -->
+            <ContentPresenter x:Name="TopChromeContentPresenter"
+                              HorizontalContentAlignment="Stretch"
+                              VerticalContentAlignment="Center" />
+        </Grid>
+
+        <Grid x:Name="CompactNewTabToolbar"
+              Grid.Row="1"
+              Width="40"
+              Height="80"
+              Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="40" />
+                <RowDefinition Height="40" />
+            </Grid.RowDefinitions>
+
+            <Button x:Name="CompactNewTabButton"
+                    x:Uid="CompactNewTabButton"
+                    Width="40"
+                    Height="40"
+                    Padding="0"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Click="OnCompactNewTabClick">
+                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                          FontSize="10"
+                          Glyph="&#xE710;" />
+            </Button>
+
+            <Button x:Name="CompactNewTabMenuButton"
+                    x:Uid="CompactNewTabMenuButton"
+                    Grid.Row="1"
+                    Width="40"
+                    Height="40"
+                    Padding="0"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Click="OnCompactNewTabMenuClick">
+                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                          FontSize="8"
+                          Glyph="&#xE70D;" />
+            </Button>
+        </Grid>
+
+        <Grid x:Name="TabsToolbar"
+              Grid.Row="2"
+              Height="44"
+              Padding="12,0,8,0"
+              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+              BorderThickness="0,1,0,1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock x:Name="VerticalTabsHeader"
+                       x:Uid="VerticalTabsHeader"
+                       VerticalAlignment="Center"
+                       FontWeight="SemiBold" />
+
+            <Button x:Name="SearchTabsButton"
+                    x:Uid="VerticalTabsSearchButton"
+                    Grid.Column="1"
+                    Width="32"
+                    Height="32"
+                    Padding="0"
+                    VerticalAlignment="Center"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    IsTabStop="False">
+                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                          FontSize="12"
+                          Glyph="&#xE721;" />
+            </Button>
+
+            <!--  Reserved for the Filter and History buttons shown in the target design.  -->
+            <Button x:Name="FilterTabsButton"
+                    Grid.Column="2"
+                    Width="32"
+                    Height="32"
+                    Visibility="Collapsed" />
+            <Button x:Name="TabHistoryButton"
+                    Grid.Column="3"
+                    Width="32"
+                    Height="32"
+                    Visibility="Collapsed" />
+        </Grid>
 
         <!--
             The strip proper. ListView holds TabViewItem instances directly via
@@ -37,7 +131,7 @@
             TabViewItem owns all visual state; selection is synced in code-behind.
         -->
         <ListView x:Name="ItemsList"
-                  Grid.Row="1"
+                  Grid.Row="3"
                   Padding="0"
                   AllowDrop="True"
                   CanDragItems="True"
@@ -75,10 +169,5 @@
                 </ItemsPanelTemplate>
             </ListView.ItemsPanel>
         </ListView>
-
-        <!--  Trailing slot: hosts the new-tab split button in vertical bottom.  -->
-        <ContentPresenter x:Name="TrailingContentPresenter"
-                          Grid.Row="2"
-                          HorizontalContentAlignment="Stretch" />
     </Grid>
 </UserControl>

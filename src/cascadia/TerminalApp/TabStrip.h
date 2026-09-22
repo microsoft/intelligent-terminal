@@ -69,8 +69,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Windows::Foundation::IInspectable> TabItems() const { return _tabItems; }
 
         // Proxies to the internal ListView. Non-const because the XAML-generated
-        // ItemsList()/LeadingContentPresenter()/TrailingContentPresenter()
-        // accessors are non-const.
+        // control accessors are non-const.
         winrt::Windows::Foundation::IInspectable SelectedItem();
         void SelectedItem(winrt::Windows::Foundation::IInspectable const& value);
         int32_t SelectedIndex();
@@ -88,11 +87,11 @@ namespace winrt::TerminalApp::implementation
         void CanDragTabs(bool value);
         bool TabsVisible();
         void TabsVisible(bool value);
+        bool IsRailCollapsed() const noexcept { return _isRailCollapsed; }
+        void IsRailCollapsed(bool value);
 
-        winrt::Windows::UI::Xaml::UIElement LeadingContent();
-        void LeadingContent(winrt::Windows::UI::Xaml::UIElement const& value);
-        winrt::Windows::UI::Xaml::UIElement TrailingContent();
-        void TrailingContent(winrt::Windows::UI::Xaml::UIElement const& value);
+        winrt::Windows::UI::Xaml::UIElement TopChromeContent();
+        void TopChromeContent(winrt::Windows::UI::Xaml::UIElement const& value);
 
         // XAML-bound event handlers.
         void OnListSelectionChanged(winrt::Windows::Foundation::IInspectable const& sender,
@@ -107,6 +106,12 @@ namespace winrt::TerminalApp::implementation
                              winrt::Windows::UI::Xaml::DragEventArgs const& e);
         void OnListDrop(winrt::Windows::Foundation::IInspectable const& sender,
                          winrt::Windows::UI::Xaml::DragEventArgs const& e);
+        void OnRailToggleClick(winrt::Windows::Foundation::IInspectable const& sender,
+                               winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void OnCompactNewTabClick(winrt::Windows::Foundation::IInspectable const& sender,
+                                  winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void OnCompactNewTabMenuClick(winrt::Windows::Foundation::IInspectable const& sender,
+                                      winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
 
         // Spec A §2.4: reports the rail as an AutomationControlType::Tab
         // container so screen readers (Narrator / third-party AT) treat it
@@ -121,9 +126,14 @@ namespace winrt::TerminalApp::implementation
         til::typed_event<TerminalApp::TabStrip, winrt::Windows::UI::Xaml::DragEventArgs> TabStripDragOver;
         til::typed_event<TerminalApp::TabStrip, winrt::Windows::UI::Xaml::DragEventArgs> TabStripDrop;
         til::typed_event<TerminalApp::TabStrip, TerminalApp::TabStripDroppedOutsideEventArgs> TabDroppedOutside;
+        til::typed_event<TerminalApp::TabStrip, winrt::Windows::Foundation::IInspectable> RailCollapseRequested;
+        til::typed_event<TerminalApp::TabStrip, winrt::Windows::Foundation::IInspectable> CompactNewTabRequested;
+        til::typed_event<TerminalApp::TabStrip, winrt::Windows::Foundation::IInspectable> CompactNewTabMenuRequested;
 
     private:
         TerminalApp::TabStripOrientation _orientation{ TerminalApp::TabStripOrientation::Vertical };
+        bool _tabsVisible{ true };
+        bool _isRailCollapsed{ false };
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Windows::Foundation::IInspectable> _tabItems{ nullptr };
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Windows::Foundation::IInspectable>::VectorChanged_revoker _vectorChangedRevoker;
 
@@ -147,6 +157,8 @@ namespace winrt::TerminalApp::implementation
         void _refreshCloseButton(winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& item);
         void _removeStaleCloseRequestedSubscriptions(winrt::Windows::Foundation::Collections::IObservableVector<winrt::Windows::Foundation::IInspectable> const& items);
         void _clearCloseRequestedSubscriptions();
+        void _applyRailState();
+        void _applyTabItemRailState(winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& item);
 
         // Axis-parameterized per B→C rules. Returns -1 to mean "append at end."
         // Non-const because it reaches into the XAML-generated ItemsList().
