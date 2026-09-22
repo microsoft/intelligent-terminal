@@ -26,7 +26,7 @@ BeforeDiscovery { $script:Ready = [bool](Get-AppxPackage | Where-Object { $_.Nam
 Describe 'Feature §8 legacy hook bundle compatibility' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -State @{ persistedWindowLayouts = @() }
 
         $script:Fixture = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\legacy-hook-bundle')).Path
         $script:LegacyScript = Join-Path $script:Fixture 'send-event.ps1'
@@ -82,7 +82,7 @@ Describe 'Feature §8 legacy hook bundle compatibility' -Tag 'Feature' -Skip:(-n
         $legacy = script:Get-LegacyCommand -Event 'agent.prompt.submit'
         $legacy | Should -Match 'send-event\.ps1' -Because 'the fixture command must still point at the legacy script'
 
-        $listener = Start-WtEventListener -App $script:app
+        $listener = Start-WtEventListener -App $script:app -WaitForReady
         try {
             Invoke-RunCommand -App $script:app -SessionId $paneId -SettleSec 20 `
                 -Command "Get-Content -Raw -LiteralPath '$payload' | $legacy" | Out-Null
@@ -140,7 +140,7 @@ Describe 'Feature §8 legacy hook bundle compatibility' -Tag 'Feature' -Skip:(-n
 
         $legacy = script:Get-LegacyCommand -Event 'agent.session.start'
 
-        $listener = Start-WtEventListener -App $script:app
+        $listener = Start-WtEventListener -App $script:app -WaitForReady
         try {
             # Clear only WT_SESSION. WT_COM_CLSID stays, so the script runs all
             # the way through and really publishes -- otherwise "no focused-pane
@@ -185,14 +185,17 @@ Describe 'Feature §8 legacy hook bundle compatibility' -Tag 'Feature' -Skip:(-n
         # match the command being echoed back — the marker, the payload path and the
         # word wtcli all appear in the line that sets the test up.
         $noise = Join-Path $TestDrive 'legacy-gated.out'
+        $exitFile = Join-Path $TestDrive "$gatedId.exit"
 
-        $listener = Start-WtEventListener -App $script:app
+        $listener = Start-WtEventListener -App $script:app -WaitForReady
         try {
-            $gatedCmd = "`$saved=`$env:WT_COM_CLSID; `$env:WT_COM_CLSID=''; " +
+            $gatedCmd = "`$saved=`$env:WT_COM_CLSID; try { `$env:WT_COM_CLSID=''; " +
             "Get-Content -Raw -LiteralPath '$gated' | $legacy *> '$noise'; " +
-            '"GATED" + "=$LASTEXITCODE"'
-            $out = Invoke-RunCommand -App $script:app -SessionId $paneId -Command $gatedCmd -SettleSec 20
-            $out | Should -Match 'GATED=0' -Because 'a stale hook must never fail its CLI once Terminal is gone'
+            "[IO.File]::WriteAllText('$exitFile', [string]`$LASTEXITCODE) } finally { `$env:WT_COM_CLSID=`$saved }"
+            Invoke-RunCommand -App $script:app -SessionId $paneId -Command $gatedCmd -SettleSec 20 | Out-Null
+            (Wait-Until -TimeoutSec 10 -Because 'the gated legacy hook to complete' -Condition {
+                if (Test-Path -LiteralPath $exitFile) { Get-Content -LiteralPath $exitFile -Raw }
+            }) | Should -Be '0' -Because 'a stale hook must never fail its CLI once Terminal is gone'
 
             (Get-Content -Raw -LiteralPath $noise -ErrorAction SilentlyContinue) |
                 Should -BeNullOrEmpty -Because 'a hook for an uninstalled product must not print anything at all'
