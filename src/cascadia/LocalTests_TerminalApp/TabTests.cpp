@@ -269,8 +269,10 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TryInitializePage);
         TEST_METHOD(VerticalRailVisibilityRestoresWidth);
         TEST_METHOD(VerticalRailCollapseRestoresWidth);
-        TEST_METHOD(VerticalLayoutMismatchInfoBarRecomputes);
-        TEST_METHOD(VerticalTabStripEnablesCloseButton);
+        TEST_METHOD(LiveTabLayoutRoundTripPreservesState);
+        TEST_METHOD(LiveTabLayoutLatestRequestWins);
+        TEST_METHOD(TabLayoutSwitchMenuTracksOrientation);
+        TEST_METHOD(VerticalTabStripPreservesClosePolicy);
 
         TEST_METHOD(CreateSimpleTerminalXamlType);
         TEST_METHOD(CreateTerminalMuxXamlType);
@@ -1963,7 +1965,7 @@ namespace TerminalAppLocalTests
             page->_SetVerticalRailVisibility(false);
 
             VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_tabView.Visibility());
-            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_tabRow.Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_tabStrip.Visibility());
             VERIFY_ARE_EQUAL(0.0, page->VerticalRailColumn().Width().Value);
             VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_verticalRailSplitter.Visibility());
             VERIFY_IS_FALSE(page->_verticalRailSplitter.IsHitTestVisible());
@@ -1971,7 +1973,7 @@ namespace TerminalAppLocalTests
             page->_SetVerticalRailVisibility(true);
 
             VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_tabView.Visibility());
-            VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabRow.Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabStrip.Visibility());
             VERIFY_ARE_EQUAL(333.0, page->VerticalRailColumn().Width().Value);
             VERIFY_ARE_EQUAL(Visibility::Visible, page->_verticalRailSplitter.Visibility());
             VERIFY_IS_TRUE(page->_verticalRailSplitter.IsHitTestVisible());
@@ -1990,7 +1992,7 @@ namespace TerminalAppLocalTests
 
             VERIFY_IS_TRUE(page->_isVerticalRailCollapsed);
             VERIFY_IS_TRUE(page->_tabStrip.IsRailCollapsed());
-            VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabRow.Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabStrip.Visibility());
             const auto tabStrip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
             VERIFY_ARE_EQUAL(Visibility::Visible, tabStrip->CompactNewTabToolbar().Visibility());
             VERIFY_ARE_EQUAL(Visibility::Visible, tabStrip->SearchTabsButton().Visibility());
@@ -2010,7 +2012,7 @@ namespace TerminalAppLocalTests
         });
     }
 
-    void TabTests::VerticalLayoutMismatchInfoBarRecomputes()
+    void TabTests::LiveTabLayoutRoundTripPreservesState()
     {
         auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
 
@@ -2018,24 +2020,110 @@ namespace TerminalAppLocalTests
             const auto infoBar = page->FindName(L"TabLayoutRestartInfoBar").as<winrt::Microsoft::UI::Xaml::Controls::InfoBar>();
             VERIFY_IS_FALSE(infoBar.IsOpen());
 
+            const auto selectedItem = page->_selectedTabItem();
+            VERIFY_IS_NOT_NULL(selectedItem);
+            page->_tabRow.ShowElevationShield(true);
+            const auto tabRowImpl = winrt::get_self<winrt::TerminalApp::implementation::TabRowControl>(page->_tabRow);
+            VERIFY_ARE_EQUAL(Visibility::Visible, tabRowImpl->ElevationShieldIcon().Visibility());
+            const auto horizontalNewTabButton = tabRowImpl->NewTabButton();
+            const auto verticalNewTabButton = tabRowImpl->VerticalNewTabButton();
+            VERIFY_IS_TRUE(winrt::get_abi(horizontalNewTabButton) != winrt::get_abi(verticalNewTabButton));
+            const auto horizontalNewTabParent = horizontalNewTabButton.Parent();
+            const auto verticalNewTabParent = verticalNewTabButton.Parent();
+            VERIFY_IS_NOT_NULL(horizontalNewTabParent);
+            VERIFY_IS_NOT_NULL(verticalNewTabParent);
+
+            page->_verticalRailWidth = 333.0;
+            page->_SetVerticalRailVisibility(true);
+            page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
+            VERIFY_IS_TRUE(page->_isVerticalRailCollapsed);
+
             page->_settings.GlobalSettings().TabLayout(TabLayout::Horizontal);
             page->SetSettings(page->_settings, false);
-            VERIFY_IS_TRUE(infoBar.IsOpen());
+            page->_CompleteTabLayoutChange(page->_tabLayoutGeneration);
+            VERIFY_IS_FALSE(infoBar.IsOpen());
+            VERIFY_IS_FALSE(page->_isVerticalLayout);
+            VERIFY_ARE_EQUAL(page->_tabs.Size(), page->_tabView.TabItems().Size());
+            VERIFY_ARE_EQUAL(0u, page->_tabStrip.TabItems().Size());
+            VERIFY_IS_TRUE(page->_tabView.SelectedItem() == selectedItem);
+            VERIFY_ARE_EQUAL(Visibility::Visible, tabRowImpl->ElevationShieldIcon().Visibility());
+            VERIFY_IS_TRUE(horizontalNewTabButton.Parent() == horizontalNewTabParent);
+            VERIFY_IS_TRUE(verticalNewTabButton.Parent() == verticalNewTabParent);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_tabStrip.Visibility());
+            VERIFY_ARE_EQUAL(0.0, page->VerticalRailColumn().Width().Value);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_verticalRailSplitter.Visibility());
+
+            const auto tabItem = page->_tabs.GetAt(0).TabViewItem();
+            VERIFY_IS_TRUE(std::isnan(tabItem.Width()));
+            VERIFY_ARE_EQUAL(Visibility::Visible, tabItem.Header().as<UIElement>().Visibility());
 
             page->_settings.GlobalSettings().TabLayout(TabLayout::Vertical);
             page->SetSettings(page->_settings, false);
+            page->_CompleteTabLayoutChange(page->_tabLayoutGeneration);
             VERIFY_IS_FALSE(infoBar.IsOpen());
+            VERIFY_IS_TRUE(page->_isVerticalLayout);
+            VERIFY_ARE_EQUAL(0u, page->_tabView.TabItems().Size());
+            VERIFY_ARE_EQUAL(page->_tabs.Size(), page->_tabStrip.TabItems().Size());
+            VERIFY_IS_TRUE(page->_tabStrip.SelectedItem() == selectedItem);
+            VERIFY_ARE_EQUAL(Visibility::Visible, tabRowImpl->ElevationShieldIcon().Visibility());
+            VERIFY_IS_TRUE(horizontalNewTabButton.Parent() == horizontalNewTabParent);
+            VERIFY_IS_TRUE(verticalNewTabButton.Parent() == verticalNewTabParent);
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabStrip.Visibility());
+            VERIFY_IS_TRUE(page->_isVerticalRailCollapsed);
+            VERIFY_ARE_EQUAL(40.0, page->VerticalRailColumn().Width().Value);
+            VERIFY_ARE_EQUAL(333.0, page->_verticalRailWidth);
         });
     }
 
-    void TabTests::VerticalTabStripEnablesCloseButton()
+    void TabTests::VerticalTabStripPreservesClosePolicy()
     {
         TestOnUIThread([&]() {
             winrt::TerminalApp::TabStrip strip;
             winrt::MUX::Controls::TabViewItem tab;
             tab.IsClosable(false);
             strip.TabItems().Append(tab);
-            VERIFY_IS_TRUE(tab.IsClosable());
+            VERIFY_IS_FALSE(tab.IsClosable());
+        });
+    }
+
+    void TabTests::LiveTabLayoutLatestRequestWins()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            VERIFY_IS_TRUE(page->_isVerticalLayout);
+            VERIFY_IS_TRUE(page->_ApplyTabLayout(TabLayout::Horizontal));
+            VERIFY_IS_TRUE(page->_changingTabLayout);
+
+            VERIFY_IS_TRUE(page->_ApplyTabLayout(TabLayout::Vertical));
+            VERIFY_IS_TRUE(page->_pendingTabLayout.has_value());
+            VERIFY_ARE_EQUAL(TabLayout::Vertical, *page->_pendingTabLayout);
+
+            page->_CompleteTabLayoutChange(page->_tabLayoutGeneration);
+            VERIFY_IS_FALSE(page->_isVerticalLayout);
+
+            page->_ApplyPendingTabLayout();
+            VERIFY_IS_TRUE(page->_changingTabLayout);
+            page->_CompleteTabLayoutChange(page->_tabLayoutGeneration);
+            VERIFY_IS_TRUE(page->_isVerticalLayout);
+            VERIFY_IS_FALSE(page->_pendingTabLayout.has_value());
+        });
+    }
+
+    void TabTests::TabLayoutSwitchMenuTracksOrientation()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            const auto tab = winrt::get_self<winrt::TerminalApp::implementation::Tab>(page->_tabs.GetAt(0));
+
+            tab->SetVerticalTabLayout(true);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Switch to horizontal tabs" }, tab->_switchTabLayoutMenuItem.Text());
+            VERIFY_ARE_EQUAL(TabLayout::Horizontal, tab->_switchTabLayoutTarget);
+
+            tab->SetVerticalTabLayout(false);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Switch to vertical tabs" }, tab->_switchTabLayoutMenuItem.Text());
+            VERIFY_ARE_EQUAL(TabLayout::Vertical, tab->_switchTabLayoutTarget);
         });
     }
 

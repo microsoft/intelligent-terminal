@@ -19,7 +19,7 @@
              Background="{ThemeResource TabViewBackground}"
              mc:Ignorable="d">
 
-    <Grid>
+    <Grid Background="{ThemeResource TabViewBackground}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />

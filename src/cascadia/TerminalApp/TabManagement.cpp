@@ -210,6 +210,13 @@ namespace winrt::TerminalApp::implementation
             }
         });
 
+        newTabImpl->TabLayoutChangeRequested([weakThis{ get_weak() }](auto&&, const TabLayout target) {
+            if (const auto page{ weakThis.get() })
+            {
+                page->_RequestTabLayoutChange(target);
+            }
+        });
+
         // This kicks off TabView::SelectionChanged, in response to which
         // we'll attach the terminal's Xaml control to the Xaml root.
         if (!openInBackground)
@@ -440,7 +447,7 @@ namespace winrt::TerminalApp::implementation
         // - there is more than one tab, or the user has chosen to always show tabs
         const auto isVisible = !_isInFocusMode &&
                                (!_isFullscreen || _showTabsFullscreen) &&
-                               (_settings.GlobalSettings().ShowTabsInTitlebar() ||
+                               (_hasTitlebarHost ||
                                 (_tabs.Size() > 1) ||
                                 _settings.GlobalSettings().AlwaysShowTabs());
 
@@ -451,6 +458,7 @@ namespace winrt::TerminalApp::implementation
         }
         if (_tabRow)
         {
+            _tabRow.Visibility(Visibility::Visible);
             // collapse/show the row that the tabs are in.
             // NaN is the special value XAML uses for "Auto" sizing.
             _tabRow.Height(isVisible ? NAN : 0);
@@ -990,8 +998,24 @@ namespace winrt::TerminalApp::implementation
         return _tabView.TabItems();
     }
 
+    bool TerminalPage::_IsActiveTabControl(const IInspectable& sender) const noexcept
+    {
+        if (!sender)
+        {
+            return false;
+        }
+
+        return _isVerticalLayout ?
+                   winrt::get_abi(sender) == winrt::get_abi(_tabStrip) :
+                   winrt::get_abi(sender) == winrt::get_abi(_tabView);
+    }
+
     IInspectable TerminalPage::_selectedTabItem() const
     {
+        if (_changingTabLayout && _tabLayoutTransitionSelectedItem)
+        {
+            return _tabLayoutTransitionSelectedItem;
+        }
         return _isVerticalLayout ? _tabStrip.SelectedItem() : _tabView.SelectedItem();
     }
 
@@ -1014,6 +1038,18 @@ namespace winrt::TerminalApp::implementation
     // - the index of the currently focused tab if there is one, else nullopt
     std::optional<uint32_t> TerminalPage::_GetFocusedTabIndex() const noexcept
     {
+        if (_changingTabLayout && _tabLayoutTransitionSelectedItem)
+        {
+            for (uint32_t index = 0; index < _tabs.Size(); ++index)
+            {
+                if (winrt::get_abi(_tabs.GetAt(index).TabViewItem()) == winrt::get_abi(_tabLayoutTransitionSelectedItem))
+                {
+                    return index;
+                }
+            }
+            return std::nullopt;
+        }
+
         // GH#1117: This is a workaround because _tabView.SelectedIndex()
         //          sometimes return incorrect result after removing some tabs
         uint32_t focusedIndex;
@@ -1388,8 +1424,13 @@ namespace winrt::TerminalApp::implementation
     // Arguments:
     // - sender: the control that originated this event
     // - eventArgs: the event's constituent arguments
-    void TerminalPage::_OnTabItemsChanged(const IInspectable& /*sender*/, const Windows::Foundation::Collections::IVectorChangedEventArgs& eventArgs)
+    void TerminalPage::_OnTabItemsChanged(const IInspectable& sender, const Windows::Foundation::Collections::IVectorChangedEventArgs& eventArgs)
     {
+        if (_changingTabLayout || !_IsActiveTabControl(sender))
+        {
+            return;
+        }
+
         if (_rearranging)
         {
             if (eventArgs.CollectionChange() == Windows::Foundation::Collections::CollectionChange::ItemRemoved)
@@ -1412,8 +1453,9 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_OnTabPointerPressed(const IInspectable& sender, const Windows::UI::Xaml::Input::PointerRoutedEventArgs& e)
     {
-        if ((!_isVerticalLayout && !_tabItemMiddleClickHookEnabled) ||
-            !e.GetCurrentPoint(nullptr).Properties().IsMiddleButtonPressed())
+        if (_changingTabLayout ||
+            ((!_isVerticalLayout && !_tabItemMiddleClickHookEnabled) ||
+             !e.GetCurrentPoint(nullptr).Properties().IsMiddleButtonPressed()))
         {
             return;
         }
@@ -1447,7 +1489,7 @@ namespace winrt::TerminalApp::implementation
 
             if (!_tabItemMiddleClickExited && !e.GetCurrentPoint(nullptr).Properties().IsMiddleButtonPressed())
             {
-                _OnTabPointerReleasedCloseTab(std::move(sender));
+                _OnTabPointerReleasedCloseTab(std::move(sender), _tabLayoutGeneration);
             }
 
             e.Handled(true);
@@ -1455,7 +1497,7 @@ namespace winrt::TerminalApp::implementation
         e.Handled(true);
     }
 
-    safe_void_coroutine TerminalPage::_OnTabPointerReleasedCloseTab(IInspectable sender)
+    safe_void_coroutine TerminalPage::_OnTabPointerReleasedCloseTab(IInspectable sender, const uint64_t layoutGeneration)
     {
         // WinUI asynchronously updates its tab view items, so it may happen that we're given a
         // `TabViewItem` that still contains a `Tab` which has actually already been removed.
@@ -1464,6 +1506,10 @@ namespace winrt::TerminalApp::implementation
         co_await wil::resume_foreground(Dispatcher());
         const auto strong = weak.get();
         if (!strong)
+        {
+            co_return;
+        }
+        if (strong->_changingTabLayout || strong->_tabLayoutGeneration != layoutGeneration)
         {
             co_return;
         }
@@ -1579,22 +1625,30 @@ namespace winrt::TerminalApp::implementation
     // Arguments:
     // - sender: the control that originated this event
     // - eventArgs: the event's constituent arguments
-    void TerminalPage::_OnTabSelectionChanged(const IInspectable& /*sender*/, const WUX::Controls::SelectionChangedEventArgs& /*eventArgs*/)
+    void TerminalPage::_OnTabSelectionChanged(const IInspectable& sender, const WUX::Controls::SelectionChangedEventArgs& /*eventArgs*/)
     {
+        if (_changingTabLayout || !_IsActiveTabControl(sender))
+        {
+            return;
+        }
         _OnSelectionChangedCore();
     }
 
     // Spec A §4.2: TabStrip's SelectionChanged uses custom args (TabStripSelectionChangedEventArgs),
     // so it needs its own wrapper. Both wrappers dispatch to the same core method,
     // which uses the routing helpers instead of asking sender for its selection.
-    void TerminalPage::_OnTabStripSelectionChanged(const IInspectable& /*sender*/, const TerminalApp::TabStripSelectionChangedEventArgs& /*eventArgs*/)
+    void TerminalPage::_OnTabStripSelectionChanged(const IInspectable& sender, const TerminalApp::TabStripSelectionChangedEventArgs& /*eventArgs*/)
     {
+        if (_changingTabLayout || !_IsActiveTabControl(sender))
+        {
+            return;
+        }
         _OnSelectionChangedCore();
     }
 
     void TerminalPage::_OnSelectionChangedCore()
     {
-        if (!_rearranging && !_removing)
+        if (!_changingTabLayout && !_rearranging && !_removing)
         {
             // Look up selection via the router — works for both TabView and
             // TabStrip because _selectedTabItem and _tabItems both branch on
@@ -1684,17 +1738,25 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    void TerminalPage::_TabDragStarted(const IInspectable& /*sender*/,
+    void TerminalPage::_TabDragStarted(const IInspectable& sender,
                                        const IInspectable& /*eventArgs*/)
     {
+        if (_changingTabLayout || !_IsActiveTabControl(sender))
+        {
+            return;
+        }
         _rearranging = true;
         _rearrangeFrom = std::nullopt;
         _rearrangeTo = std::nullopt;
     }
 
-    void TerminalPage::_TabDragCompleted(const IInspectable& /*sender*/,
+    void TerminalPage::_TabDragCompleted(const IInspectable& sender,
                                          const IInspectable& /*eventArgs*/)
     {
+        if (_changingTabLayout || !_IsActiveTabControl(sender))
+        {
+            return;
+        }
         auto& from{ _rearrangeFrom };
         auto& to{ _rearrangeTo };
 
@@ -1713,15 +1775,23 @@ namespace winrt::TerminalApp::implementation
 
         _rearranging = false;
 
-        if (to.has_value() &&
-            *to < gsl::narrow_cast<int32_t>(TabRow().TabView().TabItems().Size()))
+        if (to.has_value() && *to >= 0 && *to < gsl::narrow_cast<int32_t>(_tabs.Size()))
         {
-            // Selecting the dropped tab
-            TabRow().TabView().SelectedIndex(to.value());
+            _selectedTabItem(_tabs.GetAt(gsl::narrow_cast<uint32_t>(*to)).TabViewItem());
         }
 
         from = std::nullopt;
         to = std::nullopt;
+
+        if (_pendingTabLayout)
+        {
+            Dispatcher().RunAsync(CoreDispatcherPriority::Low, [weakThis{ get_weak() }]() {
+                if (const auto page = weakThis.get())
+                {
+                    page->_ApplyPendingTabLayout();
+                }
+            });
+        }
     }
 
     void TerminalPage::_DismissTabContextMenus()

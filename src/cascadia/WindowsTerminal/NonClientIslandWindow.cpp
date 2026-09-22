@@ -37,6 +37,7 @@ void NonClientIslandWindow::Close()
 {
     // Avoid further callbacks into XAML/WinUI-land after we've Close()d the DesktopWindowXamlSource
     // inside `IslandWindow::Close()`. XAML thanks us for doing that by not crashing. Thank you XAML.
+    _titlebarContentSizeChangedRevoker.revoke();
     SetWindowLongPtr(_dragBarWindow.get(), GWLP_USERDATA, 0);
     IslandWindow::Close();
 }
@@ -417,6 +418,7 @@ void NonClientIslandWindow::SetContent(winrt::Windows::UI::Xaml::UIElement conte
 // - <none>
 void NonClientIslandWindow::SetTitlebarContent(winrt::Windows::UI::Xaml::UIElement content)
 {
+    _titlebarContentSizeChangedRevoker.revoke();
     _titlebar.Content(content);
 
     // GH#4288 - add a SizeChanged handler to this content. It's possible that
@@ -426,7 +428,7 @@ void NonClientIslandWindow::SetTitlebarContent(winrt::Windows::UI::Xaml::UIEleme
     const auto fwe = content.try_as<winrt::Windows::UI::Xaml::FrameworkElement>();
     if (fwe)
     {
-        fwe.SizeChanged({ this, &NonClientIslandWindow::_OnDragBarSizeChanged });
+        _titlebarContentSizeChangedRevoker = fwe.SizeChanged(winrt::auto_revoke, { this, &NonClientIslandWindow::_OnDragBarSizeChanged });
     }
 }
 

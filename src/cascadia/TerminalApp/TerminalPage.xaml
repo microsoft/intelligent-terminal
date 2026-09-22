@@ -32,6 +32,14 @@
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
+        <local:TabStrip x:Name="VerticalTabStrip"
+                        Grid.Row="0"
+                        Grid.RowSpan="4"
+                        Grid.Column="0"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Stretch"
+                        Visibility="Collapsed" />
+
         <local:TabRowControl x:Name="TabRow"
                              Grid.Row="0"
                              Grid.ColumnSpan="2"

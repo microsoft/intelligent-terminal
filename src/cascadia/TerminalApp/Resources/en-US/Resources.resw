@@ -879,6 +879,18 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="FindText" xml:space="preserve">
     <value>Find</value>
   </data>
+  <data name="SwitchToHorizontalTabsText" xml:space="preserve">
+    <value>Switch to horizontal tabs</value>
+  </data>
+  <data name="SwitchToHorizontalTabsToolTip" xml:space="preserve">
+    <value>Use horizontal tabs in all Terminal windows</value>
+  </data>
+  <data name="SwitchToVerticalTabsText" xml:space="preserve">
+    <value>Switch to vertical tabs</value>
+  </data>
+  <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
+    <value>Use vertical tabs in all Terminal windows</value>
+  </data>
   <data name="TabLayoutRestartInfoBar.Title" xml:space="preserve">
     <value>Tab layout change requires restart</value>
   </data>

@@ -219,6 +219,7 @@ namespace winrt::TerminalApp::implementation
         void CloseButtonVisibility(Microsoft::Terminal::Settings::Model::TabCloseButtonVisibility visible);
 
         til::event<winrt::delegate<void()>> RequestFocusActiveControl;
+        til::typed_event<TerminalApp::Tab, winrt::Microsoft::Terminal::Settings::Model::TabLayout> TabLayoutChangeRequested;
 
         til::event<winrt::Windows::Foundation::EventHandler<winrt::Windows::Foundation::IInspectable>> Closed;
         til::event<winrt::Windows::Foundation::EventHandler<winrt::Windows::Foundation::IInspectable>> CloseRequested;
@@ -256,6 +257,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _exportTabMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _findMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _restartConnectionMenuItem{};
+        winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _switchTabLayoutMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _closeOtherTabsMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _closeTabsAfterMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _closePaneMenuItem{};
@@ -268,6 +270,8 @@ namespace winrt::TerminalApp::implementation
         til::color _tabRowColor;
 
         Microsoft::Terminal::Settings::Model::TabCloseButtonVisibility _closeButtonVisibility{ Microsoft::Terminal::Settings::Model::TabCloseButtonVisibility::Always };
+        winrt::Microsoft::Terminal::Settings::Model::TabLayout _switchTabLayoutTarget{ winrt::Microsoft::Terminal::Settings::Model::TabLayout::Vertical };
+        std::optional<winrt::Microsoft::Terminal::Settings::Model::TabLayout> _pendingTabLayoutChange;
 
         std::shared_ptr<Pane> _rootPane{ nullptr };
         std::shared_ptr<Pane> _activePane{ nullptr };

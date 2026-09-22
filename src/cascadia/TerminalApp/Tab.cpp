@@ -1906,6 +1906,13 @@ namespace winrt::TerminalApp::implementation
         _closeTabsAfterMenuItem.Text(label);
         WUX::Controls::ToolTipService::SetToolTip(_closeTabsAfterMenuItem, box_value(tooltip));
         Automation::AutomationProperties::SetHelpText(_closeTabsAfterMenuItem, tooltip);
+
+        _switchTabLayoutTarget = vertical ? TabLayout::Horizontal : TabLayout::Vertical;
+        const auto switchLabel = vertical ? RS_(L"SwitchToHorizontalTabsText") : RS_(L"SwitchToVerticalTabsText");
+        const auto switchTooltip = vertical ? RS_(L"SwitchToHorizontalTabsToolTip") : RS_(L"SwitchToVerticalTabsToolTip");
+        _switchTabLayoutMenuItem.Text(switchLabel);
+        WUX::Controls::ToolTipService::SetToolTip(_switchTabLayoutMenuItem, box_value(switchTooltip));
+        Automation::AutomationProperties::SetHelpText(_switchTabLayoutMenuItem, switchTooltip);
     }
 
     // Method Description:
@@ -2050,6 +2057,15 @@ namespace winrt::TerminalApp::implementation
             Automation::AutomationProperties::SetHelpText(_restartConnectionMenuItem, restartConnectionToolTip);
         }
 
+        {
+            _switchTabLayoutMenuItem.Click([weakThis](auto&&, auto&&) {
+                if (const auto tab{ weakThis.get() })
+                {
+                    tab->_pendingTabLayoutChange = tab->_switchTabLayoutTarget;
+                }
+            });
+        }
+
         // Build the menu
         Controls::MenuFlyout contextMenuFlyout;
         Controls::MenuFlyoutSeparator menuSeparator;
@@ -2061,6 +2077,7 @@ namespace winrt::TerminalApp::implementation
         contextMenuFlyout.Items().Append(_exportTabMenuItem);
         contextMenuFlyout.Items().Append(_findMenuItem);
         contextMenuFlyout.Items().Append(_restartConnectionMenuItem);
+        contextMenuFlyout.Items().Append(_switchTabLayoutMenuItem);
         contextMenuFlyout.Items().Append(menuSeparator);
 
         auto closeSubMenu = _AppendCloseMenuItems(contextMenuFlyout);
@@ -2082,6 +2099,16 @@ namespace winrt::TerminalApp::implementation
                     (terminalControl == nullptr || !terminalControl.SearchBoxEditInFocus()))
                 {
                     tab->RequestFocusActiveControl.raise();
+                }
+
+                if (const auto target = std::exchange(tab->_pendingTabLayoutChange, std::nullopt))
+                {
+                    tab->TabViewItem().Dispatcher().RunAsync(CoreDispatcherPriority::Low, [weakThis, target = *target]() {
+                        if (const auto deferredTab{ weakThis.get() })
+                        {
+                            deferredTab->TabLayoutChangeRequested.raise(*deferredTab, target);
+                        }
+                    });
                 }
             }
         });

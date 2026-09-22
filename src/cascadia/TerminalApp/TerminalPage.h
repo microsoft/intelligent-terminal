@@ -331,6 +331,13 @@ namespace winrt::TerminalApp::implementation
         // Populated with real TabViewItems via the routed _tabItems() helper.
         TerminalApp::TabStrip _tabStrip{ nullptr };
         bool _isVerticalLayout{ false };
+        bool _changingTabLayout{ false };
+        bool _hasTitlebarHost{ false };
+        uint64_t _tabLayoutGeneration{ 0 };
+        std::optional<winrt::Microsoft::Terminal::Settings::Model::TabLayout> _pendingTabLayout;
+        std::optional<winrt::Microsoft::Terminal::Settings::Model::TabLayout> _tabLayoutTransitionTarget;
+        Windows::Foundation::IInspectable _tabLayoutTransitionSelectedItem{ nullptr };
+        bool _tabLayoutTransitionPreviousVertical{ false };
         bool _isVerticalRailVisible{ true };
         bool _isVerticalRailCollapsed{ false };
         // Spec A §5.2: hand-rolled splitter for resizing the vertical rail.
@@ -345,6 +352,8 @@ namespace winrt::TerminalApp::implementation
         Windows::Foundation::Point _railSplitterStartPointer{};
         Windows::UI::Xaml::Controls::Grid _tabContent{ nullptr };
         Microsoft::UI::Xaml::Controls::SplitButton _newTabButton{ nullptr };
+        Microsoft::UI::Xaml::Controls::SplitButton _horizontalNewTabButton{ nullptr };
+        Microsoft::UI::Xaml::Controls::SplitButton _verticalNewTabButton{ nullptr };
         Windows::UI::Xaml::Controls::MenuFlyout _workspaceFlyout{ nullptr };
         Windows::UI::Xaml::Controls::Button _workspaceDropdown{ nullptr };
         winrt::TerminalApp::ColorPickupFlyout _tabColorPicker{ nullptr };
@@ -1049,7 +1058,7 @@ namespace winrt::TerminalApp::implementation
         PointerExited_revoker _tabItemMiddleClickPointerExited;
         PointerCaptureLost_revoker _tabItemMiddleClickPointerCaptureLost;
         void _OnTabPointerPressed(const IInspectable& sender, const Windows::UI::Xaml::Input::PointerRoutedEventArgs& eventArgs);
-        safe_void_coroutine _OnTabPointerReleasedCloseTab(IInspectable sender);
+        safe_void_coroutine _OnTabPointerReleasedCloseTab(IInspectable sender, uint64_t layoutGeneration);
 
         void _OnTabSelectionChanged(const IInspectable& sender, const Windows::UI::Xaml::Controls::SelectionChangedEventArgs& eventArgs);
         void _OnTabStripSelectionChanged(const IInspectable& sender, const TerminalApp::TabStripSelectionChangedEventArgs& eventArgs);
@@ -1058,8 +1067,16 @@ namespace winrt::TerminalApp::implementation
         void _OnTabCloseRequested(const IInspectable& sender, const Microsoft::UI::Xaml::Controls::TabViewTabCloseRequestedEventArgs& eventArgs);
         void _OnTabStripCloseRequested(const IInspectable& sender, const TerminalApp::TabStripCloseRequestedEventArgs& eventArgs);
         void _HandleTabCloseRequestedCore(const Microsoft::UI::Xaml::Controls::TabViewItem& tabViewItem);
+        bool _IsActiveTabControl(const IInspectable& sender) const noexcept;
         void _OnFirstLayout(const IInspectable& sender, const IInspectable& eventArgs);
-        void _ApplyVerticalLayoutReshape();
+        void _ApplyVerticalLayoutReshape(bool initializeWidth = false);
+        void _ApplyHorizontalLayoutReshape();
+        void _UpdateTabLayoutHost();
+        void _RequestTabLayoutChange(winrt::Microsoft::Terminal::Settings::Model::TabLayout targetLayout);
+        bool _ApplyTabLayout(winrt::Microsoft::Terminal::Settings::Model::TabLayout targetLayout);
+        void _RebuildTabLayout(bool vertical, const winrt::Windows::Foundation::IInspectable& selectedItem, std::string& stage);
+        void _CompleteTabLayoutChange(uint64_t generation);
+        void _ApplyPendingTabLayout();
         void _InstallVerticalRailSplitter();
         void _SetVerticalRailVisibility(bool visible);
         void _OnVerticalRailCollapseRequested(const IInspectable& sender, const IInspectable& eventArgs);

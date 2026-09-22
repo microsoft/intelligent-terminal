@@ -241,8 +241,6 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        item.IsClosable(true);
-
         const auto weakThis = get_weak();
         const auto weakItem = winrt::make_weak(item);
         const auto loadedToken = item.Loaded([weakThis, weakItem](auto&&, auto&&) {

@@ -44,7 +44,8 @@
                  TabWidthMode="Equal">
 
         <mux:TabView.TabStripHeader>
-            <StackPanel Orientation="Horizontal">
+            <StackPanel x:Name="HorizontalChromeHeader"
+                        Orientation="Horizontal">
                 <!--  EA18 is the "Shield" glyph  -->
                 <FontIcon x:Name="ElevationShieldIcon"
                           x:Uid="ElevationShield"
@@ -87,7 +88,7 @@
         </mux:TabView.TabStripHeader>
 
         <mux:TabView.TabStripFooter>
-            <Grid>
+            <Grid x:Name="HorizontalChromeFooter">
                 <!--  Remove this border after WinUI 2.8  -->
                 <Border Height="1"
                         VerticalAlignment="Bottom"

@@ -20,5 +20,7 @@ namespace TerminalApp
         Boolean ShowElevationShield;
         Boolean ShowWorkspacesButton;
         String WorkspaceName;
+
+        event Windows.Foundation.TypedEventHandler<TabRowControl, Object> RailCollapseRequested;
     }
 }

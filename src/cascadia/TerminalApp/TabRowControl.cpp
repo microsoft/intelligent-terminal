@@ -21,10 +21,35 @@ namespace winrt
 
 namespace winrt::TerminalApp::implementation
 {
+    static void _removeChild(const WUX::Controls::Panel& panel, const WUX::UIElement& child)
+    {
+        if (!panel || !child)
+        {
+            return;
+        }
+
+        uint32_t index = 0;
+        if (panel.Children().IndexOf(child, index))
+        {
+            panel.Children().RemoveAt(index);
+        }
+    }
+
     TabRowControl::TabRowControl()
     {
         InitializeComponent();
+        _ensureVerticalChrome();
         _applyLayoutVisibility();
+    }
+
+    void TabRowControl::ShowElevationShield(const bool value)
+    {
+        ElevationShieldIcon().Visibility(value ? WUX::Visibility::Visible : WUX::Visibility::Collapsed);
+        if (_showElevationShield != value)
+        {
+            _showElevationShield = value;
+            PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"ShowElevationShield" });
+        }
     }
 
     void TabRowControl::IsVerticalLayout(bool value)
@@ -34,6 +59,14 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         _isVerticalLayout = value;
+        if (_isVerticalLayout)
+        {
+            _attachChromeToVertical();
+        }
+        else
+        {
+            _attachChromeToHorizontal();
+        }
         _applyLayoutVisibility();
         PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"IsVerticalLayout" });
     }
@@ -41,44 +74,19 @@ namespace winrt::TerminalApp::implementation
     void TabRowControl::_applyLayoutVisibility()
     {
         // PROTOTYPE — the horizontal TabView and vertical TabStrip both live
-        // in the XAML tree; only one is visible at a time. Full layout
-        // reshaping (moving the strip to a left column) is Spec A.
+        // in the XAML tree. TerminalPage owns the live vertical strip so it
+        // remains in the client XAML island while TabRow can live in the
+        // non-client titlebar.
         TabView().Visibility(_isVerticalLayout ? WUX::Visibility::Collapsed : WUX::Visibility::Visible);
-        TabStrip().Visibility(_isVerticalLayout ? WUX::Visibility::Visible : WUX::Visibility::Collapsed);
-        if (_isVerticalLayout)
-        {
-            _reparentChromeToVertical();
-        }
+        TabStrip().Visibility(WUX::Visibility::Collapsed);
     }
 
-    // Move the three chrome elements out of TabView's header/footer slots and
-    // build the complete vertical chrome row that can be hosted by either the
-    // window titlebar or the in-page fallback.
-    // XAML forbids a UIElement having two logical parents at once, so we clear
-    // both host panels first.
-    void TabRowControl::_reparentChromeToVertical()
+    void TabRowControl::_ensureVerticalChrome()
     {
-        if (_chromeReparentedToVertical)
+        if (_verticalTitleBarContent)
         {
             return;
         }
-        _chromeReparentedToVertical = true;
-
-        auto shield = ElevationShieldIcon();
-        auto workspaces = WorkspaceDropdown();
-        auto newTab = NewTabButton();
-
-        if (const auto headerPanel = TabView().TabStripHeader().try_as<WUX::Controls::StackPanel>())
-        {
-            headerPanel.Children().Clear();
-        }
-        TabView().TabStripHeader(nullptr);
-
-        if (const auto footerGrid = TabView().TabStripFooter().try_as<WUX::Controls::Grid>())
-        {
-            footerGrid.Children().Clear();
-        }
-        TabView().TabStripFooter(nullptr);
 
         WUX::Controls::Grid titlebarGrid;
         titlebarGrid.Height(40);
@@ -106,10 +114,10 @@ namespace winrt::TerminalApp::implementation
         _verticalRailToggleIcon.FontFamily(WUX::Media::FontFamily{ L"Segoe Fluent Icons, Segoe MDL2 Assets" });
         _verticalRailToggleIcon.FontSize(12);
         railToggle.Content(_verticalRailToggleIcon);
-        railToggle.Click([weakStrip = winrt::make_weak(TabStrip())](auto&&, auto&&) {
-            if (const auto strip = weakStrip.get())
+        railToggle.Click([weakThis = get_weak()](auto&&, auto&&) {
+            if (const auto self = weakThis.get())
             {
-                winrt::get_self<implementation::TabStrip>(strip)->OnRailToggleClick(nullptr, nullptr);
+                self->RailCollapseRequested.raise(*self, nullptr);
             }
         });
         titlebarGrid.Children().Append(railToggle);
@@ -125,27 +133,92 @@ namespace winrt::TerminalApp::implementation
         WUX::Controls::StackPanel leadingChrome;
         leadingChrome.Orientation(WUX::Controls::Orientation::Horizontal);
         leadingChrome.VerticalAlignment(WUX::VerticalAlignment::Center);
-        leadingChrome.Children().Append(shield);
-        leadingChrome.Children().Append(workspaces);
         expandedChrome.Children().Append(leadingChrome);
 
-        // Keep the right-alignment on an outer Grid. Setting it directly on
-        // SplitButton fights its template and can collapse the chevron.
-        newTab.HorizontalAlignment(WUX::HorizontalAlignment::Stretch);
-        newTab.Height(32);
-        newTab.MinWidth(64);
-        newTab.Margin(WUX::Thickness{});
         WUX::Controls::Grid topChromeContainer;
         topChromeContainer.HorizontalAlignment(WUX::HorizontalAlignment::Right);
         topChromeContainer.Margin(WUX::Thickness{ 0, 0, 4, 0 });
-        topChromeContainer.Children().Append(newTab);
         WUX::Controls::Grid::SetColumn(topChromeContainer, 1);
         expandedChrome.Children().Append(topChromeContainer);
 
+        // Keep a distinct SplitButton permanently parented here. Reparenting
+        // the horizontal button leaves its automation peer attached to the
+        // old subtree and hides the client UIA tree after a layout round trip.
+        _verticalNewTabButton = MUX::Controls::SplitButton{};
+        _verticalNewTabButton.Width(64);
+        _verticalNewTabButton.Height(32);
+        _verticalNewTabButton.Padding(WUX::Thickness{});
+        _verticalNewTabButton.HorizontalAlignment(WUX::HorizontalAlignment::Stretch);
+        _verticalNewTabButton.VerticalAlignment(WUX::VerticalAlignment::Center);
+        _verticalNewTabButton.AllowDrop(true);
+        _verticalNewTabButton.Background(WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
+        _verticalNewTabButton.BorderThickness(WUX::Thickness{});
+        _verticalNewTabButton.Content(box_value(L"\xE710"));
+        _verticalNewTabButton.FontFamily(WUX::Media::FontFamily{ L"Segoe Fluent Icons, Segoe MDL2 Assets" });
+        _verticalNewTabButton.FontSize(12);
+        const auto dividerKey = box_value(L"SplitButtonBorderBrushDivider");
+        const auto dividerBrush = WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() };
+        WUX::ResourceDictionary defaultResources;
+        WUX::ResourceDictionary lightResources;
+        WUX::ResourceDictionary darkResources;
+        WUX::ResourceDictionary highContrastResources;
+        defaultResources.Insert(dividerKey, dividerBrush);
+        lightResources.Insert(dividerKey, dividerBrush);
+        darkResources.Insert(dividerKey, dividerBrush);
+        highContrastResources.Insert(dividerKey, dividerBrush);
+        const auto themeResources = _verticalNewTabButton.Resources().ThemeDictionaries();
+        themeResources.Insert(box_value(L"Default"), defaultResources);
+        themeResources.Insert(box_value(L"Light"), lightResources);
+        themeResources.Insert(box_value(L"Dark"), darkResources);
+        themeResources.Insert(box_value(L"HighContrast"), highContrastResources);
+        WUX::Automation::AutomationProperties::SetAccessibilityView(_verticalNewTabButton, WUX::Automation::Peers::AccessibilityView::Control);
+        const auto newTabName = WUX::Automation::AutomationProperties::GetName(NewTabButton());
+        const auto newTabHelpText = WUX::Automation::AutomationProperties::GetHelpText(NewTabButton());
+        WUX::Automation::AutomationProperties::SetName(_verticalNewTabButton, newTabName);
+        WUX::Automation::AutomationProperties::SetHelpText(_verticalNewTabButton, newTabHelpText);
+        WUX::Controls::ToolTipService::SetToolTip(_verticalNewTabButton, box_value(newTabName));
+        _verticalNewTabButton.DragOver({ get_weak(), &TabRowControl::OnNewTabButtonDragOver });
+        topChromeContainer.Children().Append(_verticalNewTabButton);
+
         titlebarGrid.Children().Append(expandedChrome);
+        _verticalLeadingChrome = leadingChrome;
+        _verticalNewTabHost = topChromeContainer;
         _verticalExpandedChrome = expandedChrome;
         _verticalTitleBarContent = titlebarGrid;
         SetVerticalRailState(true, false, 220);
+    }
+
+    void TabRowControl::_attachChromeToVertical()
+    {
+        _ensureVerticalChrome();
+
+        const auto shield = ElevationShieldIcon();
+        const auto workspaces = WorkspaceDropdown();
+
+        _removeChild(HorizontalChromeHeader(), shield);
+        _removeChild(HorizontalChromeHeader(), workspaces);
+
+        _verticalLeadingChrome.Children().Append(shield);
+        _verticalLeadingChrome.Children().Append(workspaces);
+        shield.Visibility(ShowElevationShield() ? WUX::Visibility::Visible : WUX::Visibility::Collapsed);
+    }
+
+    void TabRowControl::_attachChromeToHorizontal()
+    {
+        if (!_verticalTitleBarContent)
+        {
+            return;
+        }
+
+        const auto shield = ElevationShieldIcon();
+        const auto workspaces = WorkspaceDropdown();
+
+        _removeChild(_verticalLeadingChrome, shield);
+        _removeChild(_verticalLeadingChrome, workspaces);
+
+        HorizontalChromeHeader().Children().Append(shield);
+        HorizontalChromeHeader().Children().Append(workspaces);
+        shield.Visibility(ShowElevationShield() ? WUX::Visibility::Visible : WUX::Visibility::Collapsed);
     }
 
     void TabRowControl::SetVerticalRailState(const bool visible, const bool collapsed, const double width)
