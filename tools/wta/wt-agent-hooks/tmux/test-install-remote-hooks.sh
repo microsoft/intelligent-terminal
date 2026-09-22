@@ -67,9 +67,17 @@ if [[ ${1:-} == plugin && ${2:-} == marketplace ]]; then
     case ${3:-} in
         list)
             if [[ -f $state/market ]]; then
-                printf '[{"name":"it-ssh-local","source":'; quote "$(<"$state/market")"; printf '}]\n'
+                source=$(<"$state/market")
+                [[ $name != copilot ]] || source="Local: $source"
+                printf '[{"name":"it-ssh-local","source":'; quote "$source"; printf '}]\n'
             else printf '[]\n'; fi ;;
-        add) printf '%s' "$4" >"$state/market" ;;
+        add)
+            printf '%s' "$4" >"$state/market"
+            if [[ ${TEST_DISABLE_AFTER_MARKET_ADD:-} == "$name" ]]; then : >"$state/disabled"; fi
+            if [[ ${TEST_FAIL_MARKET_ONCE:-} == "$name" && ! -f $state/market-failed-once ]]; then
+                : >"$state/market-failed-once"
+                exit 1
+            fi ;;
         update) [[ -f $state/market ]] ;;
         *) exit 2 ;;
     esac
@@ -77,12 +85,15 @@ if [[ ${1:-} == plugin && ${2:-} == marketplace ]]; then
 fi
 if [[ ${2:-} == list ]]; then
     if [[ $name == copilot ]]; then
+        registration=direct
+        [[ ! -f $state/registration ]] || registration=$(<"$state/registration")
         if [[ ${TEST_COMPACT_SOURCE:-} == 1 ]]; then
             mkdir -p "$HOME/.copilot"
             {
                 printf '// CLI-owned registration metadata\n{"installedPlugins":[\n'
                 for entry in legacy-installed installed; do
                     [[ -f $state/$entry ]] || continue
+                    [[ $entry != installed || $registration != market ]] || continue
                     identity=it-ssh-hooks
                     [[ $entry != legacy-installed ]] || identity=it-tmux-hooks
                     printf '{"name":'; quote "$identity"
@@ -91,6 +102,19 @@ if [[ ${2:-} == list ]]; then
                 done
                 printf '],/* comments and trailing commas are legal here */}\n'
             } >"$HOME/.copilot/config.json"
+        fi
+        mkdir -p "$HOME/.copilot"
+        {
+            printf '// CLI-owned activation metadata\n{"enabledPlugins":{'
+            if [[ -f $state/disabled ]]; then
+                printf '"it-ssh-hooks@it-ssh-local":false,'
+            elif [[ $registration == market && -f $state/installed ]]; then
+                printf '"it-ssh-hooks@it-ssh-local":true,'
+            fi
+            printf '},}\n'
+        } >"$HOME/.copilot/settings.json"
+        if [[ -n ${TEST_ACTIVATION_METADATA:-} ]]; then
+            printf '%s\n' "$TEST_ACTIVATION_METADATA" >"$HOME/.copilot/settings.json"
         fi
         printf '['
         separator=
@@ -101,11 +125,21 @@ if [[ ${2:-} == list ]]; then
             else printf ',"source":"local","installedFrom":'; quote "$(<"$state/legacy-installed")"; printf '}'; fi
             separator=,
         fi
-        if [[ -f $state/installed ]]; then
+        if [[ -f $state/installed && $registration == direct ]]; then
             enabled=true; [[ ! -f $state/disabled ]] || enabled=false
             printf '%s{"name":"it-ssh-hooks","version":"3.0.0","description":"\\u4f60\\u597d \\ud83d\\ude00","enabled":%s' "$separator" "$enabled"
             if [[ ${TEST_COMPACT_SOURCE:-} == 1 ]]; then printf ',"source":"installed"}'
             else printf ',"source":"local","installedFrom":'; quote "$(<"$state/installed")"; printf '}'; fi
+            separator=,
+        fi
+        if [[ -f $state/market ]]; then
+            enabled=false
+            if [[ $registration == market && -f $state/installed && ! -f $state/disabled ]]; then enabled=true; fi
+            identity=it-ssh-local
+            [[ ! -f $state/identity ]] || identity=$(<"$state/identity")
+            printf '%s{"name":"it-ssh-hooks","marketplace":' "$separator"; quote "$identity"
+            printf ',"version":"3.0.0","enabled":%s,"source":"live","installedFrom":' "$enabled"
+            quote "$(<"$state/market")"; printf '}'
         fi
         printf ']\n'
     elif [[ ! -f $state/installed ]]; then
@@ -126,12 +160,16 @@ if [[ ${2:-} == list ]]; then
 fi
 case ${2:-} in
     install)
-        if [[ $name == copilot && -f $state/legacy-installed ]]; then
-            : >"$state/duplicate-at-install"
-        fi
-        if [[ $name == copilot || $name == gemini ]]; then
+        if [[ $name == gemini ]]; then
             printf '%s' "$3" >"$state/installed"
         else
+            [[ $3 == it-ssh-hooks@it-ssh-local && -f $state/market ]] || exit 2
+            if [[ $name == copilot ]]; then
+                if [[ -f $state/legacy-installed || ( -f $state/installed && ! -f $state/registration ) ]]; then
+                    : >"$state/duplicate-at-install"
+                fi
+                printf market >"$state/registration"
+            fi
             printf '%s/it-ssh-hooks' "$(<"$state/market")" >"$state/installed"
         fi
         if [[ ${TEST_FAIL_ONCE:-} == "$name" && ! -f $state/failed-once ]]; then
@@ -139,6 +177,7 @@ case ${2:-} in
             exit 1
         fi ;;
     update)
+        [[ $name == gemini || $3 == it-ssh-hooks@it-ssh-local ]] || exit 2
         if [[ ${TEST_FAIL_UPDATE_ONCE:-} == "$name" && ! -f $state/update-failed-once ]]; then
             rm "$state/installed"
             : >"$state/update-failed-once"
@@ -146,13 +185,26 @@ case ${2:-} in
         fi
         [[ -f $state/installed && ! -f $state/disabled ]] ;;
     uninstall)
-        [[ $name == copilot && $3 == it-tmux-hooks && -f $state/legacy-installed && ! -f $state/legacy-disabled ]] || exit 2
-        if [[ ${TEST_KEEP_LEGACY:-} == 1 ]]; then exit 0; fi
-        rm "$state/legacy-installed"
-        if [[ ${TEST_FAIL_LEGACY_UNINSTALL_ONCE:-} == 1 && ! -f $state/legacy-uninstall-failed ]]; then
-            : >"$state/legacy-uninstall-failed"
-            exit 1
-        fi ;;
+        [[ $name == copilot ]] || exit 2
+        case $3 in
+            it-tmux-hooks)
+                [[ -f $state/legacy-installed && ! -f $state/legacy-disabled ]] || exit 2
+                if [[ ${TEST_KEEP_LEGACY:-} == 1 ]]; then exit 0; fi
+                rm "$state/legacy-installed"
+                if [[ ${TEST_FAIL_LEGACY_UNINSTALL_ONCE:-} == 1 && ! -f $state/legacy-uninstall-failed ]]; then
+                    : >"$state/legacy-uninstall-failed"
+                    exit 1
+                fi ;;
+            it-ssh-hooks)
+                [[ -f $state/installed && ! -f $state/market && ! -f $state/disabled ]] || exit 2
+                if [[ ${TEST_KEEP_DIRECT:-} == 1 ]]; then exit 0; fi
+                rm "$state/installed"
+                if [[ ${TEST_FAIL_DIRECT_UNINSTALL_ONCE:-} == 1 && ! -f $state/direct-uninstall-failed ]]; then
+                    : >"$state/direct-uninstall-failed"
+                    exit 1
+                fi ;;
+            *) exit 2 ;;
+        esac ;;
     *) exit 2 ;;
 esac
 SH
@@ -171,14 +223,16 @@ new_case() {
     TEST_STATE="$work/state-$2"
     export TEST_LOGIN_HOME TEST_STATE
     mkdir "$TEST_LOGIN_HOME" "$TEST_STATE"
+    rm -f "$TEST_RUNTIME_HOME/.copilot/config.json" "$TEST_RUNTIME_HOME/.copilot/settings.json"
     sockets+=("$TEST_LOGIN_HOME/.intelligent-terminal/run/tmux-hooks.sock")
     : >"$TEST_STATE/calls"
 }
 run_install() {
-    env PATH="$bin" HOME="$TEST_RUNTIME_HOME" IT_SSH_HOOK_ROUTE=11111111-2222-4333-8444-555555555555 \
+    env PATH="$bin" HOME="$TEST_RUNTIME_HOME" COPILOT_HOME="$TEST_RUNTIME_HOME/.copilot" \
+        IT_SSH_HOOK_ROUTE=11111111-2222-4333-8444-555555555555 \
         /bin/sh "$work/install-remote-hooks.sh" --hook-source "${TEST_UPLOAD_SOURCE:-$work/upload-hook.sh}" \
         --login-home "$TEST_LOGIN_HOME" --allowed-clis claude,copilot,codex,gemini,opencode \
-        "$@" >"$work/install.stdout" 2>"$work/install.stderr"
+        "$@" >"${TEST_INSTALL_LOG_PREFIX:-$work/install}.stdout" 2>"${TEST_INSTALL_LOG_PREFIX:-$work/install}.stderr"
 }
 expect_success() {
     run_install "$@" || { cat "$work/install.stderr" >&2; fail 'setup failed'; }
@@ -193,6 +247,12 @@ create_legacy_bundle() {
     chmod 700 "$legacy/scripts/it-agent-hook.sh"
     printf '%s' "$legacy" >"$TEST_STATE/copilot/legacy-installed"
 }
+create_direct_registration() {
+    expect_success --allowed-clis copilot
+    hooks="$TEST_LOGIN_HOME/.intelligent-terminal/ssh-hooks"
+    rm "$TEST_STATE/copilot/market" "$TEST_STATE/copilot/registration" "$hooks/receipts/copilot.market"
+    : >"$TEST_STATE/calls"
+}
 
 new_case 'h '"'"'"\$' fresh
 home_fresh=$TEST_LOGIN_HOME
@@ -204,6 +264,13 @@ hooks="$TEST_LOGIN_HOME/.intelligent-terminal/ssh-hooks"
 for provider in claude copilot codex gemini; do
     grep -q "provider=$provider result=installed" "$work/install.stderr" || fail "$provider not installed"
     [[ -f $hooks/receipts/$provider ]] || fail "$provider receipt missing"
+done
+for provider in claude copilot codex; do
+    grep -Fqx "$provider plugin marketplace add $hooks/current/$provider" "$TEST_STATE/calls" ||
+        fail "$provider did not register the managed marketplace"
+    grep -Fqx "$provider plugin install it-ssh-hooks@it-ssh-local" "$TEST_STATE/calls" ||
+        fail "$provider did not install by marketplace-qualified identity"
+    [[ -f $hooks/receipts/$provider.market ]] || fail "$provider marketplace ownership receipt missing"
 done
 grep -q 'provider=opencode result=unsupported-registration-api' "$work/install.stderr" ||
     fail 'OpenCode unsupported API was not reported'
@@ -220,7 +287,8 @@ TEST_UPLOAD_SOURCE="$TEST_LOGIN_HOME/alternate 'upload.sh" expect_success
 printf '\n# upgrade fixture\n' >>"$work/upload-hook.sh"
 expect_success
 [[ $(readlink "$hooks/current") != "$generation" ]] || fail 'changed assets did not upgrade'
-grep -q 'copilot plugin update it-ssh-hooks' "$TEST_STATE/calls" || fail 'upgrade did not use CLI API'
+grep -qx 'copilot plugin marketplace update it-ssh-local' "$TEST_STATE/calls" || fail 'upgrade did not update marketplace'
+grep -qx 'copilot plugin update it-ssh-hooks@it-ssh-local' "$TEST_STATE/calls" || fail 'upgrade did not use qualified CLI API'
 pass 'fresh/idempotent/upgrade installs use original login HOME and managed CLI APIs'
 
 mkfifo "$work/installer-control.in" "$work/installer-control.out"
@@ -320,22 +388,36 @@ grep -q 'provider=copilot result=foreign-plugin' "$work/install.stderr" || fail 
 if grep -q 'copilot plugin install\|copilot plugin update' "$TEST_STATE/calls"; then fail 'foreign plugin API mutation'; fi
 pass 'foreign same-name CLI plugin is not overwritten'
 
-new_case fq foreign-qualified
-mkdir "$TEST_STATE/claude"
-printf '/foreign/user/plugin' >"$TEST_STATE/claude/installed"
-printf 'it-ssh-hooks@another-market' >"$TEST_STATE/claude/identity"
-expect_success
-grep -q 'provider=claude result=foreign-plugin' "$work/install.stderr" ||
-    fail 'same-name plugin from another marketplace was not detected'
+for provider in claude copilot; do
+    new_case "fq-$provider" "foreign-qualified-$provider"
+    mkdir "$TEST_STATE/$provider"
+    printf '/foreign/user/plugin' >"$TEST_STATE/$provider/installed"
+    if [[ $provider == copilot ]]; then
+        printf market >"$TEST_STATE/$provider/registration"
+        printf '/foreign/user/marketplace' >"$TEST_STATE/$provider/market"
+        printf another-market >"$TEST_STATE/$provider/identity"
+    else
+        printf 'it-ssh-hooks@another-market' >"$TEST_STATE/$provider/identity"
+    fi
+    expect_success
+    grep -q "provider=$provider result=foreign-plugin" "$work/install.stderr" ||
+        fail 'same-name plugin from another marketplace was not detected'
+done
 pass 'foreign marketplace-qualified plugin identities are preserved'
 
-new_case fm foreign-market
-mkdir "$TEST_STATE/claude"
-printf '/foreign/user/marketplace' >"$TEST_STATE/claude/market"
-expect_success
-grep -q 'provider=claude result=foreign-marketplace' "$work/install.stderr" ||
-    fail 'foreign marketplace was not detected'
-[[ $(<"$TEST_STATE/claude/market") == /foreign/user/marketplace ]] || fail 'foreign marketplace was changed'
+for provider in claude copilot; do
+    new_case "fm-$provider" "foreign-market-$provider"
+    mkdir "$TEST_STATE/$provider"
+    printf '/foreign/user/marketplace' >"$TEST_STATE/$provider/market"
+    expect_success
+    if [[ $provider == copilot ]]; then result=user-disabled; else result=foreign-marketplace; fi
+    grep -q "provider=$provider result=$result" "$work/install.stderr" ||
+        fail 'foreign marketplace was not preserved'
+    [[ $(<"$TEST_STATE/$provider/market") == /foreign/user/marketplace ]] || fail 'foreign marketplace was changed'
+    if grep -q "^$provider plugin marketplace add\|^$provider plugin install " "$TEST_STATE/calls"; then
+        fail 'foreign marketplace caused a registration mutation'
+    fi
+done
 
 new_case ff foreign-files
 mkdir -p "$TEST_LOGIN_HOME/.intelligent-terminal/ssh-hooks"
@@ -348,12 +430,102 @@ pass 'foreign same-name marketplace and files are not overwritten'
 
 new_case removed removed
 expect_success
-installs=$(grep -c '^copilot plugin install ' "$TEST_STATE/calls")
-rm "$TEST_STATE/copilot/installed"
+installs=$(grep -c '^claude plugin install ' "$TEST_STATE/calls")
+rm "$TEST_STATE/claude/installed"
 expect_success
-grep -q 'provider=copilot result=user-removed' "$work/install.stderr" || fail 'user removal was ignored'
-[[ $(grep -c '^copilot plugin install ' "$TEST_STATE/calls") == "$installs" ]] || fail 'removed plugin reinstalled'
+grep -q 'provider=claude result=user-removed' "$work/install.stderr" || fail 'user removal was ignored'
+[[ $(grep -c '^claude plugin install ' "$TEST_STATE/calls") == "$installs" ]] || fail 'removed plugin reinstalled'
 pass 'operator removal is not mistaken for an incomplete installation'
+
+for compact in 0 1; do
+    new_case "direct-$compact" "direct-$compact"
+    create_direct_registration
+    TEST_COMPACT_SOURCE=$compact expect_success --allowed-clis copilot
+    [[ $(<"$TEST_STATE/copilot/registration") == market ]] || fail 'direct registration was not migrated'
+    [[ ! -f $TEST_STATE/copilot/duplicate-at-install ]] || fail 'direct migration duplicated hooks'
+    grep -qx 'copilot plugin uninstall it-ssh-hooks' "$TEST_STATE/calls" || fail 'direct registration was not removed'
+    expect_success --allowed-clis copilot
+    [[ $(grep -c '^copilot plugin uninstall it-ssh-hooks$' "$TEST_STATE/calls") == 1 ]] ||
+        fail 'direct migration was not idempotent'
+done
+pass 'owned direct Copilot registrations migrate before marketplace registration without duplicate hooks'
+
+new_case direct-foreign direct-foreign
+create_direct_registration
+printf '/foreign/user/plugin' >"$TEST_STATE/copilot/installed"
+expect_success --allowed-clis copilot
+grep -q 'provider=copilot result=foreign-plugin' "$work/install.stderr" || fail 'receipt alone authorized direct migration'
+[[ ! -e $TEST_STATE/copilot/market ]] || fail 'foreign direct plugin acquired a marketplace registration'
+if grep -q '^copilot plugin uninstall\|^copilot plugin install ' "$TEST_STATE/calls"; then
+    fail 'foreign direct source was mutated'
+fi
+pass 'a previous ownership receipt does not authorize migration of a changed direct source'
+
+for interruption in uninstall retained marketplace install; do
+    new_case "dm-$interruption" "dm-$interruption"
+    create_direct_registration
+    case $interruption in
+        uninstall) export TEST_FAIL_DIRECT_UNINSTALL_ONCE=1 ;;
+        retained) export TEST_KEEP_DIRECT=1 ;;
+        marketplace) export TEST_FAIL_MARKET_ONCE=copilot ;;
+        install) export TEST_FAIL_ONCE=copilot ;;
+    esac
+    if run_install --allowed-clis copilot; then fail 'incomplete direct migration reported success'; fi
+    [[ -f $hooks/receipts/copilot.pending ]] || fail 'direct migration ownership journal was lost'
+    [[ ! -f $TEST_STATE/copilot/duplicate-at-install ]] || fail 'interrupted migration duplicated hooks'
+    if [[ $interruption == retained && -f $TEST_STATE/copilot/market ]]; then
+        fail 'marketplace registered while the direct plugin remained'
+    fi
+    unset TEST_FAIL_DIRECT_UNINSTALL_ONCE TEST_KEEP_DIRECT TEST_FAIL_MARKET_ONCE TEST_FAIL_ONCE
+    expect_success --allowed-clis copilot
+    [[ $(<"$TEST_STATE/copilot/registration") == market && ! -e $hooks/receipts/copilot.pending ]] ||
+        fail 'direct migration retry did not complete'
+done
+pass 'interrupted direct removal, marketplace registration, and qualified install are repairable'
+
+new_case direct-disabled direct-disabled
+create_direct_registration
+: >"$TEST_STATE/copilot/disabled"
+expect_success --allowed-clis copilot
+grep -q 'provider=copilot result=user-disabled' "$work/install.stderr" || fail 'disabled direct plugin was migrated'
+[[ ! -e $TEST_STATE/copilot/market && -f $TEST_STATE/copilot/installed ]] || fail 'disabled direct registration changed'
+
+new_case market-retry market-retry
+export TEST_FAIL_MARKET_ONCE=copilot
+if run_install --allowed-clis copilot; then fail 'marketplace failure reported success'; fi
+hooks="$TEST_LOGIN_HOME/.intelligent-terminal/ssh-hooks"
+[[ -f $hooks/receipts/copilot.pending && -f $hooks/receipts/copilot.market.pending ]] ||
+    fail 'interrupted marketplace registration lost its ownership journals'
+: >"$TEST_STATE/copilot/disabled"
+unset TEST_FAIL_MARKET_ONCE
+expect_success --allowed-clis copilot
+grep -q 'provider=copilot result=user-disabled' "$work/install.stderr" || fail 'retry ignored explicit disablement'
+[[ ! -f $TEST_STATE/copilot/installed ]] || fail 'retry enabled an explicitly disabled live plugin'
+pass 'direct migration and interrupted marketplace installs never override explicit user disablement'
+
+new_case market-disabled market-disabled
+TEST_DISABLE_AFTER_MARKET_ADD=copilot expect_success --allowed-clis copilot
+grep -q 'provider=copilot result=user-disabled' "$work/install.stderr" || fail 'new marketplace ignored explicit disablement'
+[[ ! -f $TEST_STATE/copilot/installed ]] || fail 'new marketplace re-enabled an explicitly disabled plugin'
+pass 'initial inactive catalog entries are distinct from explicitly disabled marketplace plugins'
+
+for invalid in string array duplicate; do
+    new_case "activation-$invalid" "activation-$invalid"
+    export TEST_FAIL_MARKET_ONCE=copilot
+    if run_install --allowed-clis copilot; then fail 'marketplace failure reported success'; fi
+    unset TEST_FAIL_MARKET_ONCE
+    case $invalid in
+        string) export TEST_ACTIVATION_METADATA='{"enabledPlugins":{"it-ssh-hooks@it-ssh-local":"false"}}' ;;
+        array) export TEST_ACTIVATION_METADATA='{"enabledPlugins":[]}' ;;
+        duplicate) export TEST_ACTIVATION_METADATA='{"enabledPlugins":{"it-ssh-hooks@it-ssh-local":false,"it-ssh-hooks@it-ssh-local":true}}' ;;
+    esac
+    expect_success --allowed-clis copilot
+    grep -q 'provider=copilot result=unsupported-status-api' "$work/install.stderr" ||
+        fail 'ambiguous activation metadata was accepted'
+    [[ ! -f $TEST_STATE/copilot/installed ]] || fail 'ambiguous activation enabled a plugin'
+    unset TEST_ACTIVATION_METADATA
+done
+pass 'malformed or ambiguous Copilot activation metadata never authorizes enablement'
 
 new_case legacy legacy
 create_legacy_bundle
@@ -389,14 +561,14 @@ expect_success --allowed-clis copilot
 grep -q 'provider=copilot result=user-disabled' "$work/install.stderr" ||
     fail 'JSONC origin overrode disabled CLI status'
 rm "$TEST_STATE/copilot/disabled"
-printf '/foreign/user/it-ssh-hooks' >"$TEST_STATE/copilot/installed"
+printf '/foreign/user/marketplace' >"$TEST_STATE/copilot/market"
 expect_success --allowed-clis copilot
-grep -q 'provider=copilot result=foreign-plugin' "$work/install.stderr" ||
+grep -q 'provider=copilot result=foreign-marketplace' "$work/install.stderr" ||
     fail 'compact source accepted a foreign registered origin'
 [[ $(grep -c '^copilot plugin install ' "$TEST_STATE/calls") == 1 ]] ||
     fail 'compact source conflict rewrote the plugin registration'
 unset TEST_COMPACT_SOURCE
-rm -f "$TEST_RUNTIME_HOME/.copilot/config.json"
+rm -f "$TEST_RUNTIME_HOME/.copilot/config.json" "$TEST_RUNTIME_HOME/.copilot/settings.json"
 rmdir "$TEST_RUNTIME_HOME/.copilot"
 pass 'compact Copilot plugin output resolves ownership through bounded CLI-owned JSONC metadata'
 
@@ -483,14 +655,24 @@ env PATH="$bin" HOME="$TEST_RUNTIME_HOME" /bin/sh "$work/install-remote-hooks.sh
 pass 'agent selection is enforced and per-provider generations repair deferred upgrades'
 
 new_case concurrent concurrent
-run_install &
+TEST_INSTALL_LOG_PREFIX="$work/first-install" run_install &
 first=$!
-run_install &
+TEST_INSTALL_LOG_PREFIX="$work/second-install" run_install &
 second=$!
-wait "$first" || fail 'first concurrent installer failed'
-wait "$second" || fail 'second concurrent installer failed'
+first_result=0; wait "$first" || first_result=$?
+second_result=0; wait "$second" || second_result=$?
+[[ $first_result == 0 || $second_result == 0 ]] || fail 'both concurrent installers failed'
+retry=
+for result in "first:$first_result" "second:$second_result"; do
+    [[ ${result#*:} != 0 ]] || continue
+    log="$work/${result%%:*}-install.stderr"
+    grep -qx 'it-remote-hooks: install-lock-timeout' "$log" ||
+        { cat "$log" >&2; fail 'concurrent installer failed outside bounded lock contention'; }
+    retry=1
+done
+if [[ -n $retry ]]; then expect_success; fi
 [[ $(grep -c '^copilot plugin install ' "$TEST_STATE/calls") == 1 ]] || fail 'install lock did not serialize'
-pass 'two installers share a process-safe install lock'
+pass 'concurrent installers serialize; bounded lock contention retries without duplicate registration'
 
 new_case snap snap
 rm "$bin/copilot"

@@ -313,9 +313,13 @@ json_status() {
     function value(depth, key, c,k,s,d,identity,enabled,trusted,rest,parts,ours,keys) {
         if(depth>32) bad()
         space(); c=substr(text,pos,1)
+        if(mode=="activation" && depth==1 && key=="enabledPlugins" && c!="{") bad()
+        if(mode=="activation" && depth==2 && object_keys[1]=="enabledPlugins" && key==wanted &&
+            c!="t" && c!="f") bad()
         if(c=="{") {
             pos++; space()
             names[depth]=""; ids[depth]=""; states[depth]=""; paths[depth]=0; versions[depth]=""
+            marketplaces[depth]=""; sources[depth]=""; object_keys[depth]=key
             if(substr(text,pos,1)!="}") while(1) {
                 k=string(); space()
                 if(k in keys) bad()
@@ -328,13 +332,17 @@ json_status() {
                 if(ENVIRON["IT_QUERY_JSONC"]=="1" && substr(text,pos,1)=="}") { pos++; break }
             } else pos++
             identity=names[depth]; if(identity=="") identity=ids[depth]
-            if(identity==wanted || (mode=="plugin" && index(identity,wanted "@")==1)) {
+            if(provider=="copilot" && marketplaces[depth]!="" && index(identity,"@")==0)
+                identity=identity "@" marketplaces[depth]
+            if(mode!="activation" && (identity==wanted || (mode=="plugin" && index(identity,wanted "@")==1))) {
                 matches++; enabled=states[depth]; trusted=paths[depth]
                 if(mode=="manifest") result=versions[depth]==required_version ? "valid" : "stale"
                 else if(mode=="market") result=trusted ? "enabled" : "foreign"
-                else if(enabled=="false") result="disabled"
+                else if(enabled=="false") result=(provider=="copilot" && identity==wanted "@it-ssh-local" &&
+                    sources[depth]=="live" && trusted) ? "inactive" : "disabled"
                 else if(enabled!="true") result="unknown"
                 else if(exact=="1" && identity!=wanted) result="foreign"
+                else if(index(identity,wanted "@")==1 && identity!=wanted "@it-ssh-local") result="foreign"
                 else if(trusted || (market=="1" && identity==wanted "@it-ssh-local")) {
                     result=(required_version!="" && versions[depth]!=required_version) ? "stale" : "enabled"
                 }
@@ -354,6 +362,10 @@ json_status() {
             if(key=="name") names[depth-1]=s
             if(key=="id") ids[depth-1]=s
             if(key=="version") versions[depth-1]=s
+            if(key=="marketplace") marketplaces[depth-1]=s
+            if(key=="source") sources[depth-1]=s
+            if(provider=="copilot" && mode=="market" && key=="source" && index(s,"Local: ")==1)
+                s=substr(s,8)
             ours=(key=="source" || key=="installedFrom" || key=="path" || key=="installPath") &&
                 (s==root || (exact!="1" && index(s,root "/")==1))
             if(exact!="1" && (key=="source" || key=="installedFrom" || key=="path" || key=="installPath") && index(s,releases)==1) {
@@ -366,6 +378,10 @@ json_status() {
             while(pos<=length(text) && substr(text,pos,1) !~ /[ \t\r\n,\]}]/) s=s substr(text,pos++,1)
             if(s!="true" && s!="false" && s!="null" && s !~ /^-?(0|[1-9][0-9]*)([.][0-9]+)?([eE][+-]?[0-9]+)?$/) bad()
             if((provider=="gemini" && key=="isActive") || (provider!="gemini" && key=="enabled")) states[depth-1]=s
+            if(mode=="activation" && depth==2 && object_keys[1]=="enabledPlugins" && key==wanted) {
+                if(s!="true" && s!="false") bad()
+                matches++; result=s=="true" ? "enabled" : "disabled"
+            }
         }
     }
     { text=text $0 "\n"; if(length(text)>1048576) bad() }
@@ -375,7 +391,7 @@ json_status() {
         mode=ENVIRON["IT_QUERY_MODE"]; market=ENVIRON["IT_QUERY_MARKET"]
         exact=ENVIRON["IT_QUERY_EXACT"]
         releases=ENVIRON["IT_QUERY_RELEASES"]; provider=ENVIRON["IT_QUERY_PROVIDER"]
-        required_version=(mode=="plugin" || mode=="manifest") ? ENVIRON["IT_QUERY_VERSION"] : ""
+        required_version=(mode=="plugin" || mode=="direct" || mode=="manifest") ? ENVIRON["IT_QUERY_VERSION"] : ""
         pos=1; value(0,""); space()
         if(pos<=length(text) || matches>1) exit 2
         print matches ? result : "absent"
@@ -484,6 +500,8 @@ copilot_source_status() (
     exact=$3
     status=$4
     [ "$provider" = copilot ] && [ "$status" = foreign ] || { printf '%s\n' "$status"; exit 0; }
+    [ "$(json_status "$wanted" "$expected" direct 0 "$exact")" = foreign ] ||
+        { printf '%s\n' "$status"; exit 0; }
     if [ -n "$verify_version" ] &&
         [ "$(json_status "$wanted" "$expected" manifest 0 "$exact")" != valid ]; then
         printf '%s\n' stale
@@ -502,13 +520,36 @@ copilot_source_status() (
     fi
     printf '%s\n' "$status"
 )
+copilot_activation() (
+    configuration=${COPILOT_HOME:-$HOME/.copilot}/settings.json
+    if [ ! -e "$configuration" ] && [ ! -L "$configuration" ]; then
+        printf '%s\n' absent
+        exit 0
+    fi
+    [ -f "$configuration" ] && [ ! -L "$configuration" ] &&
+        [ "$(stat -c %u -- "$configuration")" = "$uid" ] &&
+        [ "$(wc -c <"$configuration")" -le 1048576 ] || exit 1
+    cp -- "$configuration" "$work/query"
+    json_status "$plugin@$market" "" activation 0 0 1
+)
 query_plugin() {
     if [ "$provider" = gemini ]; then
         cli_run extensions list --output-format json || return 1
     else
         cli_run plugin list --json || return 1
     fi
-    result=$(json_status "$plugin" "$hooks/current/$provider" plugin "${market_trusted:-0}") || return 1
+    result=$(json_status "$plugin" "$hooks/current/$provider" "${1:-plugin}" "${market_trusted:-0}") || return 1
+    if [ "$result" = inactive ]; then
+        # A newly registered local marketplace lists its catalog as disabled.
+        # Only an unfinished install with no explicit setting may enable it.
+        activation=$(copilot_activation) || return 1
+        if [ "$activation" = absent ] && receipt_valid "$transaction"; then
+            printf '%s\n' absent
+        else
+            printf '%s\n' disabled
+        fi
+        return
+    fi
     copilot_source_status "$plugin" "$hooks/current/$provider" 0 "$result"
 }
 query_legacy() (
@@ -614,7 +655,7 @@ for provider in claude copilot codex gemini opencode; do
             fi ;;
         *) provider_result unsupported-status-schema; continue ;;
     esac
-    if [ "$provider" = claude ] || [ "$provider" = codex ]; then
+    if [ "$provider" = claude ] || [ "$provider" = copilot ] || [ "$provider" = codex ]; then
         market_receipt=$hooks/receipts/$provider.market
         for state_file in "$market_receipt" "$market_receipt.pending"; do
             if { [ -e "$state_file" ] || [ -L "$state_file" ]; } && ! receipt_valid "$state_file"; then
@@ -626,20 +667,49 @@ for provider in claude copilot codex gemini opencode; do
         market_state=$(json_status "$market" "$hooks/current/$provider" market) ||
             { provider_result unsupported-marketplace-schema; continue; }
         case $market_state in
+            absent) ;;
+            enabled)
+                if ! receipt_valid "$market_receipt" && ! receipt_valid "$market_receipt.pending"; then
+                    provider_result foreign-marketplace; continue
+                fi ;;
+            *) provider_result foreign-marketplace; continue ;;
+        esac
+        if [ "$provider" = copilot ] && { [ "$state" = enabled ] || [ "$state" = foreign ]; }; then
+            verify_version=$version
+            direct_state=$(query_plugin direct) ||
+                { provider_result unsupported-status-api; continue; }
+            verify_version=
+            case $direct_state in
+                enabled)
+                    # Remove the old direct name before marketplace registration:
+                    # Copilot resolves an unqualified uninstall to the live plugin.
+                    [ "$market_state" = absent ] ||
+                        { provider_result direct-migration-conflict; continue; }
+                    write_receipt "$transaction"
+                    cli_run plugin uninstall "$plugin" ||
+                        { provider_result direct-migration-failed; failed=1; continue; }
+                    state=$(query_plugin) ||
+                        { provider_result direct-migration-failed; failed=1; continue; }
+                    [ "$state" = absent ] ||
+                        { provider_result direct-migration-failed; failed=1; continue; } ;;
+                absent) ;;
+                *) provider_result foreign-plugin; continue ;;
+            esac
+        fi
+        case $market_state in
             absent)
+                if [ "$provider" = copilot ] && [ "$state" = absent ]; then
+                    write_receipt "$transaction"
+                fi
                 write_receipt "$market_receipt.pending"
                 if ! cli_run plugin marketplace add "$hooks/current/$provider"; then
                     provider_result marketplace-install-failed; failed=1; continue
                 fi ;;
             enabled)
-                if ! receipt_valid "$market_receipt" && ! receipt_valid "$market_receipt.pending"; then
-                    provider_result foreign-marketplace; continue
-                fi
                 if [ "$(receipt_generation "$market_receipt")" != "$generation" ]; then
                     cli_run plugin marketplace update "$market" ||
                         { provider_result marketplace-update-failed; failed=1; continue; }
                 fi ;;
-            *) provider_result foreign-marketplace; continue ;;
         esac
         cli_run plugin marketplace list --json ||
             { provider_result marketplace-verification-failed; failed=1; continue; }
@@ -658,9 +728,6 @@ for provider in claude copilot codex gemini opencode; do
             if [ "$provider" = gemini ]; then
                 cli_run extensions install "$hooks/current/gemini/$plugin" --consent --skip-settings ||
                     { provider_result install-failed; failed=1; continue; }
-            elif [ "$provider" = copilot ]; then
-                cli_run plugin install "$hooks/current/copilot/$plugin" ||
-                    { provider_result install-failed; failed=1; continue; }
             else
                 cli_run plugin install "$plugin@$market" ||
                     { provider_result install-failed; failed=1; continue; }
@@ -672,9 +739,7 @@ for provider in claude copilot codex gemini opencode; do
                     cli_run extensions update "$plugin" ||
                         { provider_result update-failed; failed=1; continue; }
                 else
-                    specification=$plugin
-                    [ "$provider" = copilot ] || specification=$plugin@$market
-                    cli_run plugin update "$specification" ||
+                    cli_run plugin update "$plugin@$market" ||
                         { provider_result update-failed; failed=1; continue; }
                 fi
             fi ;;

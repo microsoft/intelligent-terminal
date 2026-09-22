@@ -195,7 +195,7 @@ not operate on a real user's authenticated Copilot configuration.
 
 | Provider | Managed registration |
 | --- | --- |
-| Copilot | Local `plugin install`, `plugin list --json`, and named `plugin update` |
+| Copilot | Owned local marketplace, `plugin install/update it-ssh-hooks@it-ssh-local`, and JSON state queries |
 | Claude | Owned local marketplace plus plugin install/update and JSON state queries |
 | Codex | The same explicit plugin/marketplace APIs when supplied by the installed CLI; otherwise an unsupported-API result |
 | Gemini | `extensions install --consent --skip-settings`, named update, and `extensions list --output-format json` |
@@ -207,6 +207,36 @@ environment names without persisting their per-session values. Unknown or
 ambiguous management response schemas fail closed. CLIs must be available in
 the bootstrap's PATH; no package installation or shell-profile mutation is
 used to make a missing CLI appear.
+
+Copilot uses the same marketplace-based installation pattern as the Windows
+hook bundle:
+
+```sh
+copilot plugin marketplace add "$HOME/.intelligent-terminal/ssh-hooks/current/copilot"
+copilot plugin install it-ssh-hooks@it-ssh-local
+```
+
+These illustrate the installer's CLI calls, not a replacement for its ownership
+checks. The marketplace is local to the remote machine: Windows still uploads
+the packaged installer and sender over SSH, and the installer generates the
+marketplace files there. No marketplace download or direct-path plugin install
+is used. Updates refresh the owned marketplace and use the qualified plugin
+identity.
+
+Existing IT-owned direct `it-ssh-hooks` registrations are migrated through the
+CLI only after validating the managed files, receipt, source, version, and
+enablement. The direct registration is removed and verified absent before
+adding the marketplace; otherwise Copilot can resolve an unqualified uninstall
+to the new live plugin instead. Pending receipts make interrupted migrations
+repairable. Foreign or disabled registrations are not migrated.
+
+Copilot lists plugins from a newly added local marketplace as disabled even
+before they have been installed. Only a pending managed installation with no
+explicit `enabledPlugins` entry in the bounded, read-only Copilot
+`settings.json` may enable such a catalog entry. Explicit user disablement is
+preserved, including after an interrupted marketplace registration. Copilot's
+separate `marketplace` identity field and `Local: ` source prefix are verified
+rather than assuming its listing matches the other CLIs.
 
 For Snap launchers, the installer uses `snap run --shell` to probe the actual
 confinement. It checks script readability, required utility behavior, socket

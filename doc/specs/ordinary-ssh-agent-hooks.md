@@ -124,6 +124,15 @@ plugins through their supported plugin/extension interfaces rather than
 rewriting arbitrary user settings. The generated hook command uses a stable
 absolute script path.
 
+Copilot, Claude, and Codex register an owned local marketplace and install
+`it-ssh-hooks@it-ssh-local`, matching the Windows-side marketplace pattern.
+Copilot no longer installs the plugin directory directly. The marketplace
+is generated on Linux from the uploaded assets, not downloaded from a remote
+catalog. Existing verified IT-owned direct Copilot registrations are removed
+before marketplace registration and migrated with retryable ownership journals.
+Explicitly disabled integrations remain disabled, including Copilot's live
+marketplace entries during interrupted setup.
+
 Setup is policy-scoped and ownership-aware:
 
 - Only allowed, supported, detected CLIs are candidates.
