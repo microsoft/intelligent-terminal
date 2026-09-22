@@ -190,6 +190,20 @@ namespace winrt::TerminalApp::implementation
         // this as a MTA, before the app is Create()'d
         WINRT_ASSERT(_loadedInitialSettings);
 
+        // AppHost calls Create for every window. These inventories describe the
+        // application launch, so only the first window may emit them.
+        if (!_launchTelemetryLogged.exchange(true, std::memory_order_relaxed))
+        {
+            _settings.LogAgentConfigurationOnLaunch(_usingDefaultSettings);
+            TraceLoggingWrite(
+                g_hTerminalAppProvider,
+                "SidebarStateOnLaunch",
+                TraceLoggingDescription("Configured sidebar state once per application launch"),
+                TraceLoggingBool(_settings.GlobalSettings().TabLayout() == TabLayout::Vertical, "enabled"),
+                TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+        }
+
         TraceLoggingWrite(
             g_hTerminalAppProvider,
             "AppCreated",
@@ -425,6 +439,7 @@ namespace winrt::TerminalApp::implementation
             if (initialLoad)
             {
                 _settings = CascadiaSettings::LoadDefaults();
+                _usingDefaultSettings = true;
             }
             else
             {
@@ -444,7 +459,18 @@ namespace winrt::TerminalApp::implementation
         }
         else
         {
+            _usingDefaultSettings = false;
             _settings.LogSettingChanges(true);
+
+            if (_hasAgentProviderTelemetryBaseline)
+            {
+                _settings.LogAgentProviderChanges(_lastTelemetryAcpAgent, _lastTelemetryDelegateAgent);
+            }
+            // Retain values, not the mutable settings object: UI writes can mutate it
+            // before the file watcher delivers this accepted settings reload.
+            _lastTelemetryAcpAgent = _settings.GlobalSettings().AcpAgent();
+            _lastTelemetryDelegateAgent = _settings.GlobalSettings().DelegateAgent();
+            _hasAgentProviderTelemetryBaseline = true;
         }
 
         if (const auto globals = _settings.GlobalSettings();

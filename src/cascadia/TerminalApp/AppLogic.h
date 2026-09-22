@@ -56,12 +56,17 @@ namespace winrt::TerminalApp::implementation
         bool _isElevated{ false };
         bool _canDragDrop{ false };
         std::atomic<bool> _notifyRootInitializedCalled{ false };
+        std::atomic<bool> _launchTelemetryLogged{ false };
 
         Microsoft::Terminal::Settings::Model::CascadiaSettings _settings{ nullptr };
 
         winrt::hstring _settingsLoadExceptionText;
         HRESULT _settingsLoadedResult = S_OK;
         bool _loadedInitialSettings = false;
+        bool _usingDefaultSettings = false;
+        bool _hasAgentProviderTelemetryBaseline = false;
+        winrt::hstring _lastTelemetryAcpAgent;
+        winrt::hstring _lastTelemetryDelegateAgent;
 
         bool _hasSettingsStartupActions{ false };
         ::TerminalApp::AppCommandlineArgs _settingsAppArgs;

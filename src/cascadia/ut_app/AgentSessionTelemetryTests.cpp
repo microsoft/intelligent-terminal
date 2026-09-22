@@ -3,6 +3,7 @@
 
 #include "precomp.h"
 #include "../TerminalApp/AgentSessionTelemetry.h"
+#include "../TerminalApp/AgentPolicyTelemetry.h"
 
 using namespace WEX::TestExecution;
 namespace Telemetry = TerminalApp::AgentSessionTelemetry;
@@ -15,6 +16,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(ParsesSessionSettings);
         TEST_METHOD(BucketsPrivateValues);
         TEST_METHOD(RejectsIncompleteSnapshots);
+        TEST_METHOD(ReportsRawAutoFixPolicy);
     };
 
     static Json::Value Snapshot()
@@ -32,6 +34,15 @@ namespace TerminalAppUnitTests
         value["yolo_policy_blocked"] = false;
         value["yolo_control_owner"] = "provider-restored";
         return value;
+    }
+
+    void AgentSessionTelemetryTests::ReportsRawAutoFixPolicy()
+    {
+        using ::Microsoft::Terminal::Settings::Model::AgentPolicy::PolicyState;
+        using ::TerminalApp::AgentPolicyTelemetry::AutoFixPolicyName;
+        VERIFY_ARE_EQUAL(std::string{ "notConfigured" }, std::string{ AutoFixPolicyName(PolicyState::NotConfigured) });
+        VERIFY_ARE_EQUAL(std::string{ "enabled" }, std::string{ AutoFixPolicyName(PolicyState::Allowed) });
+        VERIFY_ARE_EQUAL(std::string{ "disabled" }, std::string{ AutoFixPolicyName(PolicyState::Blocked) });
     }
 
     void AgentSessionTelemetryTests::ParsesSessionSettings()

@@ -1244,6 +1244,8 @@ pub struct App {
     // generation, suggested_pane_id, armed_at, bar_snapshot) lives on
     // `TabSession.autofix`.
     pub autofix_enabled: bool,
+    pub(crate) autofix_policy_state: crate::telemetry::AutoFixPolicyState,
+    pub(crate) recommendation_rendered: bool,
     // Per-tab conversation sessions. Keyed by the stable tab GUID WT mints
     // at tab construction. The active tab is `tab_id` — seeded from the
     // `--owner-tab-id` CLI arg before ACP init in the WT-spawned path, or
@@ -1572,6 +1574,8 @@ impl App {
             wt_notifications: VecDeque::new(),
             show_notification_banner: false,
             autofix_enabled,
+            autofix_policy_state: crate::telemetry::AutoFixPolicyState::default(),
+            recommendation_rendered: false,
             tab_sessions,
             pending_session_load: None,
             session_to_tab: HashMap::new(),
@@ -4753,6 +4757,7 @@ impl App {
         );
 
         self.log_selection_visible_if_needed();
+        self.log_error_fix_offered_if_visible();
 
         ui_trace::log_slow("draw_frame_total", total_started.elapsed(), || {
             self.trace_state()
@@ -5798,7 +5803,7 @@ impl App {
         let in_flight = self.current_tab().turn.is_in_flight();
         let cancelling = self.current_tab().turn.is_cancelling();
         let prompt_blocked = !self.current_tab().turn.accepts_new_prompt();
-        crate::telemetry::log_slash_command_invoked(cmd.spec.name);
+        crate::telemetry::log_agent_slash_command_used(cmd.spec.name);
         tracing::info!(
             target: "slash_cmd",
             name = cmd.spec.name,

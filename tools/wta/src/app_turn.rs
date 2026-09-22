@@ -88,6 +88,7 @@ impl App {
         tab.recommendation_focus = RecommendationFocus::Button;
         tab.rec_scroll.reset();
         tab.pending_terminal_action_proposal = None;
+        tab.autofix.offer = None;
         tab.active_direct_proposal_id = None;
         // Autofix prompts are synthesized by the system; they don't render
         // as a User bubble (the user already sees the error line in the
@@ -807,6 +808,9 @@ impl App {
             .and_then(|p| p.autofix.as_ref())
             .is_some()
         {
+            if dispatched && !insert_only {
+                self.log_error_fix_accepted(session_id);
+            }
             self.emit_autofix_state_cleared(&target_tab);
         }
         let autofix = &mut self.session_tab_mut(session_id).autofix;
@@ -1160,6 +1164,12 @@ impl App {
         // bottom-bar / suggested-pane side effects — they key off a real
         // failing pane (the Review pill, the Ctrl+Alt+. hotkey target).
         let bar_pane = prompt.context.target_pane_id().map(str::to_string);
+        let offer = super::autofix::ErrorFixOffer {
+            id: uuid::Uuid::new_v4(),
+            prompt_id: prompt.id,
+            offered: false,
+            accepted: false,
+        };
         self.log_selection_phase_for(
             session_id,
             phase_name,
@@ -1185,6 +1195,7 @@ impl App {
         }
         let rec_idx = recommended_choice_index(&recommendations);
         let tab = self.session_tab_mut(session_id);
+        tab.autofix.offer = Some(offer);
         let prompt = tab.turn.prompt().cloned().expect("prompt set");
         tab.selected_recommendation = rec_idx;
         tab.selected_button = 0;

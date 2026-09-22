@@ -522,6 +522,7 @@ namespace winrt::TerminalApp::implementation
             std::wstring defaultAgentId;
             bool yoloEnabled{ false };
             bool yoloPolicyBlocked{ false };
+            std::string autofixPolicyState{ "unknown" };
         };
         AgentRuntimeConfigSnapshot _lastAgentRuntimeConfig{};
         bool _agentRuntimeConfigInitialized{ false };

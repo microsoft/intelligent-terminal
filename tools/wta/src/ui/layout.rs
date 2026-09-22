@@ -12,6 +12,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     app.completed_turn_hits.clear();
     app.completed_turn_action_links.clear();
     app.input_dialog_area = None;
+    app.recommendation_rendered = false;
 
     // Auth mode: show auth screen above the input box
     if app.mode == AppMode::Auth {
@@ -224,7 +225,8 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 
     chat::render(frame, app, h_chat[1], h_chat[2]);
     app.sync_rec_scroll_max(main_area.width, panel_layout.recommendation_height);
-    recommendations::render(frame, app, h_rec[1], panel_layout.recommendation_mode);
+    app.recommendation_rendered =
+        recommendations::render(frame, app, h_rec[1], panel_layout.recommendation_mode);
     if !app.current_tab().permission.is_empty() {
         permission::render(frame, app, h_perm[1]);
     }
@@ -298,6 +300,17 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // `/help` overlay sits on top of everything so the user can always
     // dismiss it with Esc.
     command_popup::render_help_overlay(frame, app, area);
+    // Overlays can cover the card. Wait for an unobscured frame rather than
+    // treating an underlying buffer paint as a displayed repair offer.
+    if app.help_overlay_visible
+        || app.command_popup_state().is_some()
+        || app.model_popup_state().is_some()
+        || app.config_popup_state().is_some()
+        || app.agent_popup_state().is_some()
+        || !app.current_tab().user_input.is_empty()
+    {
+        app.recommendation_rendered = false;
+    }
 }
 
 /// Truncate `s` so its rendered (display-cell) width fits in `max` columns,

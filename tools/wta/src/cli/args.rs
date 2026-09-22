@@ -116,6 +116,10 @@ pub(crate) struct Cli {
     #[arg(long)]
     pub(crate) no_autofix: bool,
 
+    /// Host-resolved AllowAutoFix policy for telemetry, not an enforcement flag.
+    #[arg(long, hide = true, value_parser = ["notConfigured", "enabled", "disabled", "unknown"])]
+    pub(crate) autofix_policy_state: Option<String>,
+
     /// Disable automatic agent hook reconciliation at master startup.
     #[arg(long, hide = true)]
     pub(crate) no_session_management: bool,

@@ -21864,6 +21864,263 @@ fn submit_proposal_prompt(app: &mut App, session_id: &str) {
 
 const TERMINAL_AGENT_PROPOSAL_PAYLOAD: &str = r#"{"schema_version":1,"origin":"terminal_agent","recommended_choice":1,"choices":[{"choice":1,"title":"restart service","rationale":"r","actions":[{"type":"send","input":"Restart-Service foo"}]}]}"#;
 
+fn stage_error_fix_telemetry_proposal(
+    app: &mut App,
+    is_autofix: bool,
+) -> (
+    String,
+    tokio::sync::oneshot::Receiver<
+        crate::agent_tools::action_proposal::channel::ProposalFinalStatus,
+    >,
+) {
+    use crate::agent_tools::action_proposal::{
+        channel::{ProposalChannelManager, ProposalValidationStatus},
+        pipe::ProposalPayloadSource,
+        schema::McpActionTool,
+    };
+    app.state = ConnectionState::Connected;
+    app.mode = AppMode::Chat;
+    stage_proposal_session(app, "fix-telemetry");
+    submit_proposal_prompt(app, "fix-telemetry");
+    let tab = app.current_tab_mut();
+    tab.pane_open = true;
+    if is_autofix {
+        tab.turn.prompt_mut().unwrap().autofix = Some(AutofixContext {
+            generation: tab.autofix.generation,
+        });
+    }
+    let manager = Arc::new(ProposalChannelManager::new());
+    app.set_proposal_channels(Arc::clone(&manager));
+    let channel = manager
+        .issue(
+            "fix-telemetry".into(),
+            99,
+            Some("pane-9".into()),
+            is_autofix,
+        )
+        .unwrap();
+    let context = manager.begin_validation(&channel).unwrap();
+    let proposal_id = context.proposal_id.clone();
+    let decision = app.evaluate_direct_terminal_action_proposal(
+        &context,
+        r#"{"summary":"Repair the failure","command":"Get-Date"}"#,
+        ProposalPayloadSource::Mcp(McpActionTool::RunCommandInCurrentShell),
+    );
+    assert_eq!(decision.status, ProposalValidationStatus::Accepted);
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    assert!(manager.accept_validation(&proposal_id, tx));
+    (proposal_id, rx)
+}
+
+fn flush_error_fix_telemetry_frame(app: &mut App, width: u16, height: u16) -> String {
+    let text = render_to_text(app, width, height);
+    app.log_error_fix_offered_if_visible();
+    text
+}
+
+#[test]
+fn error_fix_telemetry_requires_display_then_run_and_deduplicates() {
+    use crate::telemetry::capture::{take, Event};
+    take();
+    let mut app = test_app();
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    app.recommendation_tx = tx;
+    let (proposal_id, mut final_rx) = stage_error_fix_telemetry_proposal(&mut app, true);
+    assert!(take().is_empty(), "validation is not an offer");
+    assert!(app.commit_terminal_action_proposal(&proposal_id));
+    assert!(!app.commit_terminal_action_proposal(&proposal_id));
+    assert!(take().is_empty(), "committing a hidden card is not display");
+    assert!(flush_error_fix_telemetry_frame(&mut app, 100, 30).contains("Get-Date"));
+    let offer_id = app.current_tab().autofix.offer.as_ref().unwrap().id;
+    assert_eq!(take(), vec![Event::ErrorFixOffered(offer_id)]);
+
+    flush_error_fix_telemetry_frame(&mut app, 100, 30);
+    app.project_active_tab_state();
+    app.turn_close("fix-telemetry");
+    flush_error_fix_telemetry_frame(&mut app, 100, 30);
+    assert!(
+        take().is_empty(),
+        "redraw, projection and completion are not offers"
+    );
+
+    app.turn_execute_card("fix-telemetry");
+    assert_eq!(take(), vec![Event::ErrorFixAccepted(offer_id)]);
+    assert!(!rx.try_recv().unwrap().insert_only);
+    assert_eq!(
+        final_rx.try_recv().unwrap(),
+        crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Confirmed
+    );
+    app.turn_execute_card("fix-telemetry");
+    flush_error_fix_telemetry_frame(&mut app, 100, 30);
+    assert!(take().is_empty());
+    assert!(rx.try_recv().is_err());
+}
+
+#[test]
+fn error_fix_telemetry_waits_for_unobscured_open_card() {
+    use crate::telemetry::capture::{take, Event};
+    take();
+    let mut app = test_app();
+    let (proposal_id, _final_rx) = stage_error_fix_telemetry_proposal(&mut app, true);
+    assert!(app.commit_terminal_action_proposal(&proposal_id));
+    app.current_tab_mut().pane_open = false;
+    flush_error_fix_telemetry_frame(&mut app, 100, 30);
+    assert!(take().is_empty(), "stashed pane");
+    app.current_tab_mut().pane_open = true;
+    app.current_tab_mut().current_view = View::Agents;
+    flush_error_fix_telemetry_frame(&mut app, 100, 30);
+    assert!(take().is_empty(), "session picker");
+    app.current_tab_mut().current_view = View::Chat;
+    app.help_overlay_visible = true;
+    flush_error_fix_telemetry_frame(&mut app, 100, 30);
+    assert!(take().is_empty(), "help overlay");
+    app.help_overlay_visible = false;
+    flush_error_fix_telemetry_frame(&mut app, 1, 1);
+    assert!(take().is_empty(), "no space for card content");
+    flush_error_fix_telemetry_frame(&mut app, 100, 6);
+    let offer_id = app.current_tab().autofix.offer.as_ref().unwrap().id;
+    assert_eq!(
+        take(),
+        vec![Event::ErrorFixOffered(offer_id)],
+        "compact card"
+    );
+}
+
+#[test]
+fn error_fix_telemetry_excludes_insert_cancel_and_failed_dispatch() {
+    use crate::telemetry::capture::take;
+    for action in ["insert", "cancel", "failed", "revoked"] {
+        take();
+        let mut app = test_app();
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        if action != "failed" {
+            app.recommendation_tx = tx;
+        }
+        let (proposal_id, _final_rx) = stage_error_fix_telemetry_proposal(&mut app, true);
+        assert!(app.commit_terminal_action_proposal(&proposal_id));
+        flush_error_fix_telemetry_frame(&mut app, 100, 30);
+        assert_eq!(take().len(), 1);
+        match action {
+            "cancel" => app.turn_cancel("fix-telemetry"),
+            "revoked" => {
+                app.proposal_channels.resolve_final(
+                    &proposal_id,
+                    crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Superseded,
+                );
+                app.turn_execute_card("fix-telemetry");
+            }
+            _ => {
+                app.current_tab_mut().selected_button = usize::from(action == "insert");
+                app.turn_execute_card("fix-telemetry");
+            }
+        }
+        flush_error_fix_telemetry_frame(&mut app, 100, 30);
+        assert!(
+            take().is_empty(),
+            "{action} must not count as Run acceptance"
+        );
+    }
+}
+
+#[test]
+fn error_fix_telemetry_excludes_generic_actions_and_undisplayed_acceptance() {
+    use crate::telemetry::capture::take;
+    for is_autofix in [false, true] {
+        take();
+        let mut app = test_app();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.recommendation_tx = tx;
+        let (proposal_id, _final_rx) = stage_error_fix_telemetry_proposal(&mut app, is_autofix);
+        assert!(app.commit_terminal_action_proposal(&proposal_id));
+        if !is_autofix {
+            flush_error_fix_telemetry_frame(&mut app, 100, 30);
+        }
+        app.turn_execute_card("fix-telemetry");
+        assert!(
+            rx.try_recv().is_ok(),
+            "existing execution behavior preserved"
+        );
+        assert!(take().is_empty());
+    }
+}
+
+#[test]
+fn error_fix_telemetry_excludes_analysis_explanation_and_stale_proposals() {
+    use crate::telemetry::capture::take;
+    take();
+    let mut app = test_app();
+    let (proposal_id, _final_rx) = stage_error_fix_telemetry_proposal(&mut app, true);
+    flush_error_fix_telemetry_frame(&mut app, 100, 30);
+    assert!(take().is_empty(), "analysis is not a recommendation");
+    app.turn_observe_chunk(
+        "fix-telemetry",
+        ChunkKind::Message,
+        "Here is why it failed.",
+    );
+    app.turn_close("fix-telemetry");
+    flush_error_fix_telemetry_frame(&mut app, 100, 30);
+    assert!(take().is_empty(), "explanation is not executable");
+    assert!(!app.commit_terminal_action_proposal(&proposal_id));
+    assert!(take().is_empty(), "stale commit is not an offer");
+}
+
+#[test]
+fn error_fix_telemetry_ignores_stale_generation_and_new_turn_gets_new_id() {
+    use crate::telemetry::capture::{take, Event};
+    take();
+    let mut app = test_app();
+    let (proposal_id, _final_rx) = stage_error_fix_telemetry_proposal(&mut app, true);
+    assert!(app.commit_terminal_action_proposal(&proposal_id));
+    let old_id = app.current_tab().autofix.offer.as_ref().unwrap().id;
+    app.current_tab_mut().autofix.generation += 1;
+    flush_error_fix_telemetry_frame(&mut app, 100, 30);
+    assert!(take().is_empty(), "invalidated autofix generation");
+    let (proposal_id, _final_rx) = stage_error_fix_telemetry_proposal(&mut app, true);
+    assert!(app.commit_terminal_action_proposal(&proposal_id));
+    let new_id = app.current_tab().autofix.offer.as_ref().unwrap().id;
+    assert_ne!(old_id, new_id);
+    flush_error_fix_telemetry_frame(&mut app, 100, 30);
+    assert_eq!(take(), vec![Event::ErrorFixOffered(new_id)]);
+}
+
+#[test]
+fn error_fix_telemetry_policy_is_independent_of_effective_setting() {
+    use crate::telemetry::{
+        capture::{take, Event},
+        AutoFixPolicyState,
+    };
+    let mut app = test_app();
+    assert_eq!(app.autofix_policy_state, AutoFixPolicyState::Unknown);
+    for (wire, policy) in [
+        ("disabled", AutoFixPolicyState::Disabled),
+        ("notConfigured", AutoFixPolicyState::NotConfigured),
+        ("enabled", AutoFixPolicyState::Enabled),
+        ("invalid-private-string", AutoFixPolicyState::Unknown),
+    ] {
+        take();
+        app.handle_event(AppEvent::WtEvent {
+            method: "agent_config_changed".into(),
+            pane_id: String::new(),
+            tab_id: None,
+            params: json!({"autofix_enabled": false, "autofix_policy_state": wire}),
+        });
+        app.handle_event(AppEvent::WtEvent {
+            method: "vt_sequence".into(),
+            pane_id: "failing-pane".into(),
+            tab_id: Some(DEFAULT_TAB_ID.into()),
+            params: json!({"sequence": "osc:133;D;1"}),
+        });
+        assert_eq!(
+            take(),
+            vec![Event::ErrorDetected {
+                policy,
+                enabled: false
+            }]
+        );
+        assert!(!app.autofix_enabled);
+    }
+}
+
 fn stage_direct_proposal(
     app: &mut App,
     manager: &std::sync::Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,

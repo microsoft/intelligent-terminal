@@ -2966,6 +2966,12 @@ impl App {
                         );
                         self.autofix_enabled = enabled;
                     }
+                    if let Some(policy) =
+                        params.get("autofix_policy_state").and_then(|v| v.as_str())
+                    {
+                        self.autofix_policy_state =
+                            crate::telemetry::AutoFixPolicyState::from_wire(policy);
+                    }
 
                     self.apply_runtime_yolo_config(
                         params
@@ -3741,7 +3747,13 @@ impl App {
                         WtEventSeverity::Informational => None,
                     };
                     if let Some(severity_str) = severity_str {
-                        crate::telemetry::log_error_detected(severity_str, &method, &pane_id);
+                        crate::telemetry::log_error_detected(
+                            severity_str,
+                            &method,
+                            &pane_id,
+                            self.autofix_policy_state,
+                            self.autofix_enabled,
+                        );
                     }
                 }
 

@@ -33,6 +33,8 @@ namespace Microsoft.Terminal.Settings.Model
         void ResetToDefaultSettings();
         Boolean WriteSettingsToDisk();
         void LogSettingChanges(Boolean isJsonLoad);
+        void LogAgentConfigurationOnLaunch(Boolean defaultsFallback);
+        void LogAgentProviderChanges(String previousAcpAgent, String previousDelegateAgent);
 
         String Hash { get; };
 

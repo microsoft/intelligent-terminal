@@ -6,6 +6,7 @@
 #include "FilteredCommand.h"
 #include "CommandPalette.g.h"
 #include "AppCommandlineArgs.h"
+#include "CommandPaletteTelemetry.h"
 
 #include <til/hash.h>
 
@@ -127,6 +128,8 @@ namespace winrt::TerminalApp::implementation
 
         CommandPaletteMode _currentMode;
         void _switchToMode(CommandPaletteMode mode);
+        void _recordAgentPromptEntry();
+        ::TerminalApp::CommandPaletteTelemetry::AgentPromptEntry _agentPromptEntry;
 
         std::wstring _getTrimmedInput();
         void _evaluatePrefix();

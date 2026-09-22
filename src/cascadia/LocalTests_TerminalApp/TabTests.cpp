@@ -5218,6 +5218,7 @@ namespace TerminalAppLocalTests
         winrt::TerminalApp::implementation::TerminalPage::AgentRuntimeConfigSnapshot config;
         config.yoloEnabled = false;
         config.yoloPolicyBlocked = true;
+        config.autofixPolicyState = "disabled";
 
         const auto payload = winrt::TerminalApp::implementation::TerminalPage::_BuildAgentReadyRuntimeConfigPayload(
             "tab-a",
@@ -5232,6 +5233,7 @@ namespace TerminalAppLocalTests
         VERIFY_IS_FALSE(payload["yolo_enabled"].asBool());
         VERIFY_IS_TRUE(payload["yolo_policy_blocked"].isBool());
         VERIFY_IS_TRUE(payload["yolo_policy_blocked"].asBool());
+        VERIFY_ARE_EQUAL("disabled", payload["autofix_policy_state"].asString());
     }
 
     void TabTests::NextMRUTab()
