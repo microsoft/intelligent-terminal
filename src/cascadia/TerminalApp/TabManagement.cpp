@@ -23,6 +23,7 @@
 #include "ShellIntegrationSweep.h"
 #include "SharedWta.h"
 #include "TabRowControl.h"
+#include "TabStrip.h"
 #include "DebugTapConnection.h"
 #include "DesktopNotification.h"
 #include "..\TerminalSettingsModel\FileUtils.h"
@@ -173,10 +174,19 @@ namespace winrt::TerminalApp::implementation
         });
 
         auto tabViewItem = newTabImpl->TabViewItem();
-        _tabItems().InsertAt(insertPosition, tabViewItem);
 
-        // Set this tab's icon to the icon from the content
+        // Initialize the icon before the item enters the visual collection so
+        // the tab header does not render a text-only first frame.
         _UpdateTabIcon(*newTabImpl);
+
+        // Prepare vertical chrome before the item enters the visual collection
+        // so its first rendered frame already has the final shape.
+        if (_isVerticalLayout)
+        {
+            winrt::get_self<implementation::TabStrip>(_tabStrip)->PrepareTabItem(tabViewItem);
+        }
+
+        _tabItems().InsertAt(insertPosition, tabViewItem);
 
         tabViewItem.PointerPressed({ this, &TerminalPage::_OnTabPointerPressed });
 

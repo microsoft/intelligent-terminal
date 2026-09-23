@@ -27,24 +27,143 @@ namespace winrt
 
 namespace winrt::TerminalApp::implementation
 {
-    static WUX::Controls::Button _findCloseButton(WUX::DependencyObject const& root)
+    static WUX::FrameworkElement _findNamedElement(WUX::DependencyObject const& root, std::wstring_view name)
     {
         const auto childCount = WUX::Media::VisualTreeHelper::GetChildrenCount(root);
         for (int32_t index = 0; index < childCount; ++index)
         {
             const auto child = WUX::Media::VisualTreeHelper::GetChild(root, index);
-            if (const auto button = child.try_as<WUX::Controls::Button>();
-                button && button.Name() == L"CloseButton")
+            if (const auto element = child.try_as<WUX::FrameworkElement>();
+                element && element.Name() == name)
             {
-                return button;
+                return element;
             }
 
-            if (const auto button = _findCloseButton(child))
+            if (const auto element = _findNamedElement(child, name))
             {
-                return button;
+                return element;
             }
         }
+
         return nullptr;
+    }
+
+    static WUX::Controls::Button _findCloseButton(WUX::DependencyObject const& root)
+    {
+        if (const auto element = _findNamedElement(root, L"CloseButton"))
+        {
+            return element.try_as<WUX::Controls::Button>();
+        }
+
+        return nullptr;
+    }
+
+    static bool _applyVerticalTabChrome(MUX::Controls::TabViewItem const& item)
+    {
+        item.ApplyTemplate();
+        bool applied = false;
+
+        if (const auto layoutRoot = _findNamedElement(item, L"LayoutRoot").try_as<WUX::Controls::Grid>())
+        {
+            applied = true;
+            const auto transparentBrush = WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() };
+            for (const auto keyName : {
+                     L"TabViewItemHeaderBackground",
+                     L"TabViewItemHeaderBackgroundPointerOver",
+                     L"TabViewItemHeaderBackgroundPressed",
+                     L"TabViewItemHeaderBackgroundSelected",
+                     L"TabViewItemHeaderBackgroundDisabled" })
+            {
+                const auto key = box_value(keyName);
+                layoutRoot.Resources().Remove(key);
+                layoutRoot.Resources().Insert(key, transparentBrush);
+            }
+
+            auto selectionBackground = _findNamedElement(layoutRoot, L"VerticalSelectionBackground").try_as<WUX::Controls::Border>();
+            if (!selectionBackground)
+            {
+                const auto lightTheme = item.ActualTheme() == WUX::ElementTheme::Light;
+                selectionBackground = WUX::Controls::Border{};
+                selectionBackground.Name(L"VerticalSelectionBackground");
+                selectionBackground.Background(WUX::Media::SolidColorBrush{
+                    Windows::UI::ColorHelper::FromArgb(lightTheme ? 0x09 : 0x0F,
+                                                       lightTheme ? 0x00 : 0xFF,
+                                                       lightTheme ? 0x00 : 0xFF,
+                                                       lightTheme ? 0x00 : 0xFF) });
+                selectionBackground.CornerRadius(WUX::CornerRadius{ 6.0, 6.0, 6.0, 6.0 });
+                selectionBackground.IsHitTestVisible(false);
+                WUX::Controls::Grid::SetColumnSpan(selectionBackground, 3);
+                layoutRoot.Children().InsertAt(0, selectionBackground);
+            }
+            selectionBackground.Opacity(item.IsSelected() ? 1.0 : 0.0);
+        }
+
+        if (const auto tabContainer = _findNamedElement(item, L"TabContainer").try_as<WUX::Controls::Border>())
+        {
+            tabContainer.Background(WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
+            tabContainer.CornerRadius(WUX::CornerRadius{ 6.0, 6.0, 6.0, 6.0 });
+        }
+
+        for (const auto name : {
+                 L"SelectedBackgroundPath",
+                 L"RightRadiusRenderArc",
+                 L"LeftRadiusRenderArc",
+                 L"TabSeparator",
+                 L"BottomBorderLine" })
+        {
+            if (const auto element = _findNamedElement(item, name))
+            {
+                element.Opacity(0.0);
+            }
+        }
+
+        return applied;
+    }
+
+    static void _restoreTabChrome(MUX::Controls::TabViewItem const& item)
+    {
+        item.ApplyTemplate();
+
+        if (const auto layoutRoot = _findNamedElement(item, L"LayoutRoot").try_as<WUX::Controls::Grid>())
+        {
+            for (const auto keyName : {
+                     L"TabViewItemHeaderBackground",
+                     L"TabViewItemHeaderBackgroundPointerOver",
+                     L"TabViewItemHeaderBackgroundPressed",
+                     L"TabViewItemHeaderBackgroundSelected",
+                     L"TabViewItemHeaderBackgroundDisabled" })
+            {
+                layoutRoot.Resources().Remove(box_value(keyName));
+            }
+
+            if (const auto selectionBackground = _findNamedElement(layoutRoot, L"VerticalSelectionBackground"))
+            {
+                uint32_t index{};
+                if (layoutRoot.Children().IndexOf(selectionBackground.try_as<WUX::UIElement>(), index))
+                {
+                    layoutRoot.Children().RemoveAt(index);
+                }
+            }
+        }
+
+        if (const auto tabContainer = _findNamedElement(item, L"TabContainer").try_as<WUX::Controls::Border>())
+        {
+            tabContainer.ClearValue(WUX::Controls::Border::BackgroundProperty());
+            tabContainer.ClearValue(WUX::Controls::Border::CornerRadiusProperty());
+        }
+
+        for (const auto name : {
+                 L"SelectedBackgroundPath",
+                 L"RightRadiusRenderArc",
+                 L"LeftRadiusRenderArc",
+                 L"TabSeparator",
+                 L"BottomBorderLine" })
+        {
+            if (const auto element = _findNamedElement(item, name))
+            {
+                element.ClearValue(WUX::UIElement::OpacityProperty());
+            }
+        }
     }
 
     TabStrip::TabStrip()
@@ -147,6 +266,11 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void TabStrip::PrepareTabItem(MUX::Controls::TabViewItem const& item)
+    {
+        _applyTabItemRailState(item);
+    }
+
     void TabStrip::FilterMode(TerminalApp::TabStripFilterMode value)
     {
         const auto changed = _filterMode != value;
@@ -247,6 +371,11 @@ namespace winrt::TerminalApp::implementation
             header.Visibility(_isRailCollapsed ? Visibility::Collapsed : Visibility::Visible);
         }
 
+        item.Height(32.0);
+        item.CornerRadius(WUX::CornerRadius{ 6.0, 6.0, 6.0, 6.0 });
+        item.VerticalContentAlignment(WUX::VerticalAlignment::Center);
+        _applyVerticalTabChrome(item);
+
         if (_isRailCollapsed)
         {
             item.Width(40.0);
@@ -261,6 +390,14 @@ namespace winrt::TerminalApp::implementation
         }
 
         _refreshCloseButton(item);
+    }
+
+    void TabStrip::_restoreTabItemRailState(MUX::Controls::TabViewItem const& item)
+    {
+        item.ClearValue(WUX::FrameworkElement::HeightProperty());
+        item.ClearValue(WUX::Controls::Control::CornerRadiusProperty());
+        item.ClearValue(WUX::Controls::Control::VerticalContentAlignmentProperty());
+        _restoreTabChrome(item);
     }
 
     void TabStrip::_applyTabItemVisibility(MUX::Controls::TabViewItem const& item)
@@ -340,11 +477,25 @@ namespace winrt::TerminalApp::implementation
             const auto tab = weakItem.get();
             if (self && tab)
             {
-                self->_refreshCloseButton(tab);
+                self->_applyTabItemRailState(tab);
                 self->_applyTabItemVisibility(tab);
             }
         });
-        _closeRequestedSubscriptions.emplace(key, CloseRequestedSubscription{ weakItem, loadedToken });
+        const auto layoutUpdatedToken = item.LayoutUpdated([weakThis, weakItem](auto&&, auto&&) {
+            const auto self = weakThis.get();
+            const auto tab = weakItem.get();
+            if (self && tab && _applyVerticalTabChrome(tab))
+            {
+                self->_refreshCloseButton(tab);
+                if (const auto found = self->_closeRequestedSubscriptions.find(winrt::get_abi(tab));
+                    found != self->_closeRequestedSubscriptions.end())
+                {
+                    tab.LayoutUpdated(found->second.LayoutUpdatedToken);
+                    found->second.LayoutUpdatedToken = {};
+                }
+            }
+        });
+        _closeRequestedSubscriptions.emplace(key, CloseRequestedSubscription{ weakItem, loadedToken, layoutUpdatedToken });
         _refreshCloseButton(item);
     }
 
@@ -408,6 +559,11 @@ namespace winrt::TerminalApp::implementation
             {
                 if (const auto item = it->second.Item.get())
                 {
+                    if (it->second.LayoutUpdatedToken.value)
+                    {
+                        item.LayoutUpdated(it->second.LayoutUpdatedToken);
+                    }
+                    _restoreTabItemRailState(item);
                     item.Loaded(it->second.LoadedToken);
                 }
                 if (const auto button = it->second.CloseButton.get())
@@ -427,6 +583,11 @@ namespace winrt::TerminalApp::implementation
         {
             if (const auto item = subscription.Item.get())
             {
+                if (subscription.LayoutUpdatedToken.value)
+                {
+                    item.LayoutUpdated(subscription.LayoutUpdatedToken);
+                }
+                _restoreTabItemRailState(item);
                 item.Loaded(subscription.LoadedToken);
             }
             if (const auto button = subscription.CloseButton.get())
@@ -445,14 +606,15 @@ namespace winrt::TerminalApp::implementation
     void TabStrip::OnListSelectionChanged(IInspectable const& /*sender*/,
                                            SelectionChangedEventArgs const& e)
     {
-        // Sync IsSelected on the TabViewItem so the tab visually reflects
-        // selection state (the ListViewItem chrome is stripped in XAML, so
-        // the TabViewItem owns the visual).
+        // Keep TabViewItem selection synchronized for close-button and
+        // accessibility behavior. The injected LayoutRoot background renders
+        // the vertical rounded selection state.
         for (const auto& removed : e.RemovedItems())
         {
             if (auto item = removed.try_as<MUX::Controls::TabViewItem>())
             {
                 item.IsSelected(false);
+                _applyVerticalTabChrome(item);
             }
         }
         for (const auto& added : e.AddedItems())
@@ -460,6 +622,7 @@ namespace winrt::TerminalApp::implementation
             if (auto item = added.try_as<MUX::Controls::TabViewItem>())
             {
                 item.IsSelected(true);
+                _applyVerticalTabChrome(item);
             }
         }
 

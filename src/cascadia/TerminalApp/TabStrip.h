@@ -91,6 +91,7 @@ namespace winrt::TerminalApp::implementation
         void TabsVisible(bool value);
         bool IsRailCollapsed() const noexcept { return _isRailCollapsed; }
         void IsRailCollapsed(bool value);
+        void PrepareTabItem(winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& item);
         TerminalApp::TabStripFilterMode FilterMode() const noexcept { return _filterMode; }
         void FilterMode(TerminalApp::TabStripFilterMode value);
 
@@ -153,6 +154,7 @@ namespace winrt::TerminalApp::implementation
         {
             winrt::weak_ref<winrt::Microsoft::UI::Xaml::Controls::TabViewItem> Item;
             winrt::event_token LoadedToken;
+            winrt::event_token LayoutUpdatedToken;
             winrt::weak_ref<winrt::Windows::UI::Xaml::Controls::Button> CloseButton;
             winrt::event_token ClickToken;
         };
@@ -172,6 +174,7 @@ namespace winrt::TerminalApp::implementation
         void _clearCloseRequestedSubscriptions();
         void _applyRailState();
         void _applyTabItemRailState(winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& item);
+        void _restoreTabItemRailState(winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& item);
         void _applyTabItemVisibility(winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& item);
 
         // Axis-parameterized per B→C rules. Returns -1 to mean "append at end."
