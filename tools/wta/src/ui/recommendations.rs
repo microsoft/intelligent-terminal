@@ -21,19 +21,19 @@ use crate::ui::card::{self, CARD_MIN_SIZE};
 /// height that fits — `render_card` lets cassowary squash the inner content
 /// area, so the user keeps the border, button, and as many content rows as
 /// fit. This avoids the previous "tall card in squashed pane → nothing
-/// renders" failure mode.
-pub fn render(frame: &mut Frame, app: &App, area: Rect, mode: PanelMode) -> bool {
+/// renders" failure mode. Returns the bounds of cards with painted content.
+pub fn render(frame: &mut Frame, app: &App, area: Rect, mode: PanelMode) -> Option<Rect> {
     let Some(recs) = app.current_tab().turn.recommendations() else {
-        return false;
+        return None;
     };
     if mode == PanelMode::Hidden || area.width == 0 || area.height == 0 {
-        return false;
+        return None;
     }
     if mode == PanelMode::Compact {
-        return render_compact(frame, app, area);
+        return render_compact(frame, app, area).then_some(area);
     }
 
-    let mut rendered = false;
+    let mut rendered: Option<Rect> = None;
     let rec_scroll = app.current_tab().rec_scroll.offset;
     let cards_bottom = area.y.saturating_add(area.height);
 
@@ -64,7 +64,9 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect, mode: PanelMode) -> bool
                 width: area.width,
                 height: render_h,
             };
-            rendered |= render_card(frame, app, card_area, choice, idx);
+            if render_card(frame, app, card_area, choice, idx) {
+                rendered = Some(rendered.map_or(card_area, |bounds| bounds.union(card_area)));
+            }
         }
         canvas_top += h;
     }

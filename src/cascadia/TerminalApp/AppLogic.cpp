@@ -211,21 +211,14 @@ namespace winrt::TerminalApp::implementation
             TraceLoggingBool(globals.ShowTabsInTitlebar(), "TabsInTitlebar"),
             TraceLoggingString(primary.configured, "PrimaryProvider"),
             TraceLoggingString(primary.effective, "PrimaryEffectiveProvider"),
-            TraceLoggingString(primary.origin, "PrimarySelectionOrigin"),
             TraceLoggingUInt32(primary.custom.count, "PrimaryCustomConfiguredCount"),
-            TraceLoggingBool(primary.custom.selected, "PrimaryCustomSelected"),
             TraceLoggingBool(primary.custom.selectedCommandConfigured, "PrimaryCustomSelectedCommandConfigured"),
             TraceLoggingString(delegate.configured, "DelegateProvider"),
             TraceLoggingString(delegate.effective, "DelegateEffectiveProvider"),
-            TraceLoggingString(delegate.origin, "DelegateSelectionOrigin"),
             TraceLoggingUInt32(delegate.custom.count, "DelegateCustomConfiguredCount"),
-            TraceLoggingBool(delegate.custom.selected, "DelegateCustomSelected"),
             TraceLoggingBool(delegate.custom.selectedCommandConfigured, "DelegateCustomSelectedCommandConfigured"),
-            TraceLoggingBool(policy.allowedAgentsPolicySet, "AllowedAgentsPolicySet"),
-            TraceLoggingBool(policy.allowCustomAgentsPolicySet, "AllowCustomAgentsPolicySet"),
             TraceLoggingString(policy.allowedAgentsCategory, "AllowedAgentsPolicy"),
             TraceLoggingString(policy.allowCustomAgentsCategory, "AllowCustomAgentsPolicy"),
-            TraceLoggingString(policy.effectiveCustomPolicy, "EffectiveCustomPolicy"),
             TraceLoggingBool(globals.TabLayout() == TabLayout::Vertical, "SidebarEnabled"),
             TraceLoggingBool(_usingDefaultSettings, "DefaultsFallback"),
             TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
@@ -486,9 +479,7 @@ namespace winrt::TerminalApp::implementation
         // Seed from the settings actually applied, including initial-load defaults.
         // Failed later reloads returned above and must not replace this baseline.
         const auto globalsForTelemetry = _settings.GlobalSettings();
-        if (const auto previous = _agentProviderTelemetryBaseline.ObserveLoad(
-                initialLoad,
-                SUCCEEDED(_settingsLoadedResult),
+        if (const auto previous = _agentProviderTelemetryBaseline.ObserveAppliedSettings(
                 { globalsForTelemetry.AcpAgent(), globalsForTelemetry.DelegateAgent() }))
         {
             _settings.LogAgentProviderChanges(previous->primary, previous->delegate);

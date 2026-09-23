@@ -123,7 +123,7 @@ Business-field counts exclude the common `PartA_PrivTags` field.
 | App | [AgentPaneOpened](#appagentpaneopened) | 2 | Usage |
 | App | [CommandPaletteAgentPromptEntered](#appcommandpaletteagentpromptentered) | 0 | Usage |
 | App | [CommandPaletteDispatchedAgentPrompt](#appcommandpalettedispatchedagentprompt) | 1 | Usage |
-| App | [AppCreated](#appappcreated) | 20 | Usage |
+| App | [AppCreated](#appappcreated) | 13 | Usage |
 | App | [DelegateInvoked](#appdelegateinvoked) | 1 | Usage |
 | App | [ErrorDetected](#apperrordetected) | 1 | Usage |
 | App | [AgentSessionStarted](#appagentsessionstarted) | 24 | Usage |
@@ -205,21 +205,14 @@ the same process and windows that never connect an agent session.
 | `TabsInTitlebar` | Bool | Existing configured tabs-in-titlebar field |
 | `PrimaryProvider` | String | Configured primary provider: `copilot`, `claude`, `codex`, `gemini`, `opencode`, `custom`, `unknown`, or `none` |
 | `PrimaryEffectiveProvider` | String | Settings-layer effective primary provider in the same bucket set, after fallback/policy resolution |
-| `PrimarySelectionOrigin` | String | `user` for a local override, `inherited` for a parent setting, or `default` |
 | `PrimaryCustomConfiguredCount` | UInt32 | Distinct executable-derived custom IDs in the primary role's plural and legacy command settings |
-| `PrimaryCustomSelected` | Bool | Whether the configured primary provider starts with `custom:` |
 | `PrimaryCustomSelectedCommandConfigured` | Bool | Whether that selected custom ID has a matching configured command entry |
 | `DelegateProvider` | String | Configured delegate provider, using the same bucket set |
 | `DelegateEffectiveProvider` | String | Settings-layer effective delegate provider, using the same bucket set |
-| `DelegateSelectionOrigin` | String | `user`, `inherited`, or `default` for the delegate selection |
 | `DelegateCustomConfiguredCount` | UInt32 | Distinct executable-derived custom IDs in the delegate role's plural and legacy command settings |
-| `DelegateCustomSelected` | Bool | Whether the configured delegate provider starts with `custom:` |
 | `DelegateCustomSelectedCommandConfigured` | Bool | Whether that selected custom ID has a matching configured command entry |
-| `AllowedAgentsPolicySet` | Bool | Whether `AllowedAgents` is present, including an empty allowlist |
-| `AllowCustomAgentsPolicySet` | Bool | Whether `AllowCustomAgents` is explicitly configured |
 | `AllowedAgentsPolicy` | String | `not_configured`, `empty`, or `allowlist`; never the allowlist entries |
 | `AllowCustomAgentsPolicy` | String | `not_configured`, `allowed`, or `blocked` |
-| `EffectiveCustomPolicy` | String | `allowed` or `blocked` by the custom-agent gate |
 | `SidebarEnabled` | Bool | Whether the configured tab layout is vertical |
 | `DefaultsFallback` | Bool | Whether the currently accepted settings came from initial load-failure fallback |
 
@@ -240,6 +233,12 @@ ID do not create additional agents. Empty/invalid derivations are excluded.
 `AllowedAgents` gates built-in providers; custom agents are governed
 separately by `AllowCustomAgents`. `SidebarEnabled` measures the existing
 vertical-tab sidebar, not the availability of search, pinning, or rich rows.
+
+Custom selection is derivable from the corresponding provider being `custom`.
+Policy presence is derivable from its category differing from `not_configured`;
+the custom-agent policy gate is blocked only when `AllowCustomAgentsPolicy`
+is `blocked`. These facts are not repeated as additional fields. Explicit,
+inherited, and default selection origins are not distinguished.
 
 ### App.DelegateInvoked
 
@@ -484,6 +483,8 @@ Repeated renders do not emit again. Stashed panes, hidden/fully clipped
 cards, overlays covering the recommendation, stale autofix generations,
 generic non-autofix proposals, analysis, and prose-only results do not
 count. A previously hidden offer can count when it is later presented.
+An autocomplete popup elsewhere in the pane does not suppress the event;
+its painted rectangle must overlap the recommendation card to obscure it.
 This measures application-level presentation, not proof that the user
 looked at the window.
 

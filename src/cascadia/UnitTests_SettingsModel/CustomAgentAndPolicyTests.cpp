@@ -55,7 +55,6 @@ namespace SettingsModelUnitTests
         TEST_METHOD(AgentTelemetryProviderBuckets);
         TEST_METHOD(AgentTelemetryProviderTransitions);
         TEST_METHOD(AgentTelemetryPolicyAndInPlaceChanges);
-        TEST_METHOD(AgentTelemetrySelectionOrigin);
         TEST_METHOD(AgentTelemetryUnusedCustomInventory);
         TEST_METHOD(AgentTelemetryCustomInventoryDeduplicates);
         TEST_METHOD(AgentTelemetryPolicyCategories);
@@ -209,24 +208,6 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(std::string{ "none" }, std::string{ cleared->to });
     }
 
-    void CustomAgentAndPolicyTests::AgentTelemetrySelectionOrigin()
-    {
-        using namespace implementation::AgentSettingsTelemetry;
-        const auto defaults = MakeSettings({});
-        const auto explicitDefault = MakeSettings(R"("acpAgent":"copilot","delegateAgent":"")");
-        const auto globals = defaults->GlobalSettings();
-        const auto configured = explicitDefault->GlobalSettings();
-        const auto configuredImpl = winrt::get_self<implementation::GlobalAppSettings>(configured);
-        VERIFY_ARE_EQUAL(globals.AcpAgent(), configured.AcpAgent());
-        VERIFY_ARE_EQUAL(std::string{ "default" }, std::string{ SelectionOrigin(globals.HasAcpAgent(), globals.AcpAgentOverrideSource() != nullptr) });
-        VERIFY_ARE_EQUAL(std::string{ "user" }, std::string{ SelectionOrigin(configured.HasAcpAgent(), configured.AcpAgentOverrideSource() != nullptr) });
-        VERIFY_ARE_EQUAL(std::string{ "user" }, std::string{ SelectionOrigin(configured.HasDelegateAgent(), configured.DelegateAgentOverrideSource() != nullptr) });
-        VERIFY_ARE_EQUAL(std::string{ "none" }, std::string{ ProviderId(configured.DelegateAgent()) });
-
-        const auto inherited = configuredImpl->CreateChild();
-        VERIFY_ARE_EQUAL(std::string{ "inherited" }, std::string{ SelectionOrigin(inherited->HasAcpAgent(), inherited->AcpAgentOverrideSource() != nullptr) });
-    }
-
     void CustomAgentAndPolicyTests::AgentTelemetryAppliedSettingsLifecycle()
     {
         using namespace implementation::AgentSettingsTelemetry;
@@ -240,11 +221,10 @@ namespace SettingsModelUnitTests
             const auto initialDelegate = globals.DelegateAgent();
 
             // A failed initial load applies defaults; neither startup path is a change.
-            VERIFY_IS_FALSE(baseline.ObserveLoad(true, initialSucceeded, { initialPrimary, initialDelegate }).has_value());
-            VERIFY_IS_FALSE(baseline.ObserveLoad(false, false, { L"codex", L"custom:rejected" }).has_value());
+            VERIFY_IS_FALSE(baseline.ObserveAppliedSettings({ initialPrimary, initialDelegate }).has_value());
 
             globals.AcpAgent(L"claude");
-            const auto recovered = baseline.ObserveLoad(false, true, { globals.AcpAgent(), globals.DelegateAgent() });
+            const auto recovered = baseline.ObserveAppliedSettings({ globals.AcpAgent(), globals.DelegateAgent() });
             VERIFY_IS_TRUE(recovered.has_value());
             VERIFY_ARE_EQUAL(initialPrimary, recovered->primary);
             VERIFY_ARE_EQUAL(initialDelegate, recovered->delegate);
@@ -253,16 +233,15 @@ namespace SettingsModelUnitTests
             VERIFY_ARE_EQUAL(std::string{ "claude" }, std::string{ change->to });
             VERIFY_IS_FALSE(GetProviderChange(recovered->delegate, globals.DelegateAgent()).has_value());
 
-            VERIFY_IS_FALSE(baseline.ObserveLoad(false, false, { L"gemini", L"custom:rejected-again" }).has_value());
-            const auto unchanged = baseline.ObserveLoad(false, true, { L"claude", initialDelegate });
+            const auto unchanged = baseline.ObserveAppliedSettings({ L"claude", initialDelegate });
             VERIFY_IS_TRUE(unchanged.has_value());
             VERIFY_IS_FALSE(GetProviderChange(unchanged->primary, L"claude").has_value());
             VERIFY_ARE_EQUAL(initialDelegate, unchanged->delegate);
 
-            const auto customFirst = baseline.ObserveLoad(false, true, { L"custom:first", L"custom:delegate-first" });
+            const auto customFirst = baseline.ObserveAppliedSettings({ L"custom:first", L"custom:delegate-first" });
             VERIFY_IS_TRUE(customFirst.has_value());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, customFirst->primary);
-            const auto customNext = baseline.ObserveLoad(false, true, { L"custom:second", L"custom:delegate-second" });
+            const auto customNext = baseline.ObserveAppliedSettings({ L"custom:second", L"custom:delegate-second" });
             VERIFY_IS_TRUE(customNext.has_value());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:first" }, customNext->primary);
             VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:delegate-first" }, customNext->delegate);
@@ -285,22 +264,20 @@ namespace SettingsModelUnitTests
         const auto delegate = GetProviderSnapshot(globals, false);
         VERIFY_ARE_EQUAL(std::string{ "copilot" }, std::string{ primary.configured });
         VERIFY_ARE_EQUAL(std::string{ "none" }, std::string{ primary.effective });
-        VERIFY_ARE_EQUAL(std::string{ "user" }, std::string{ primary.origin });
         VERIFY_ARE_EQUAL(uint32_t{ 1 }, primary.custom.count);
-        VERIFY_IS_FALSE(primary.custom.selected);
         VERIFY_IS_FALSE(primary.custom.selectedCommandConfigured);
         VERIFY_ARE_EQUAL(std::string{ "custom" }, std::string{ delegate.configured });
         VERIFY_ARE_EQUAL(std::string{ "none" }, std::string{ delegate.effective });
-        VERIFY_ARE_EQUAL(std::string{ "user" }, std::string{ delegate.origin });
         VERIFY_ARE_EQUAL(uint32_t{ 1 }, delegate.custom.count);
-        VERIFY_IS_TRUE(delegate.custom.selected);
         VERIFY_IS_TRUE(delegate.custom.selectedCommandConfigured);
 
         const auto inherited = winrt::get_self<implementation::GlobalAppSettings>(globals)->CreateChild().as<GlobalAppSettings>();
-        VERIFY_ARE_EQUAL(std::string{ "inherited" }, std::string{ GetProviderSnapshot(inherited, true).origin });
-        VERIFY_ARE_EQUAL(std::string{ "inherited" }, std::string{ GetProviderSnapshot(inherited, false).origin });
-        const auto defaults = MakeSettings({});
-        VERIFY_ARE_EQUAL(std::string{ "default" }, std::string{ GetProviderSnapshot(defaults->GlobalSettings(), true).origin });
+        const auto inheritedPrimary = GetProviderSnapshot(inherited, true);
+        const auto inheritedDelegate = GetProviderSnapshot(inherited, false);
+        VERIFY_ARE_EQUAL(std::string{ primary.configured }, std::string{ inheritedPrimary.configured });
+        VERIFY_ARE_EQUAL(primary.custom.count, inheritedPrimary.custom.count);
+        VERIFY_ARE_EQUAL(std::string{ delegate.configured }, std::string{ inheritedDelegate.configured });
+        VERIFY_IS_TRUE(inheritedDelegate.custom.selectedCommandConfigured);
     }
 
     void CustomAgentAndPolicyTests::AgentTelemetryPolicyAndInPlaceChanges()
@@ -336,16 +313,13 @@ namespace SettingsModelUnitTests
         const auto globals = settings->GlobalSettings();
         const auto primary = GetCustomInventory(globals.AcpAgent(), globals.AcpCustomCommand(), globals.AcpCustomCommands());
         VERIFY_ARE_EQUAL(uint32_t{ 3 }, primary.count);
-        VERIFY_IS_FALSE(primary.selected);
         VERIFY_IS_FALSE(primary.selectedCommandConfigured);
         const auto delegate = GetCustomInventory(globals.DelegateAgent(), globals.DelegateCustomCommand(), globals.DelegateCustomCommands());
         VERIFY_ARE_EQUAL(uint32_t{ 1 }, delegate.count);
-        VERIFY_IS_TRUE(delegate.selected);
         VERIFY_IS_TRUE(delegate.selectedCommandConfigured);
 
         const auto missing = GetCustomInventory(L"custom:missing", L"", nullptr);
         VERIFY_ARE_EQUAL(uint32_t{ 0 }, missing.count);
-        VERIFY_IS_TRUE(missing.selected);
         VERIFY_IS_FALSE(missing.selectedCommandConfigured);
     }
 
@@ -356,7 +330,6 @@ namespace SettingsModelUnitTests
             { L"helper.cmd --old", L"helper.exe --new", L"", L" \t", L"\"\" --invalid", L"\"C:\\Program Files\\other.exe\" --acp" });
         const auto inventory = GetCustomInventory(L"custom:helper", L"helper.bat --legacy", commands);
         VERIFY_ARE_EQUAL(uint32_t{ 2 }, inventory.count);
-        VERIFY_IS_TRUE(inventory.selected);
         VERIFY_IS_TRUE(inventory.selectedCommandConfigured);
     }
 
@@ -377,11 +350,8 @@ namespace SettingsModelUnitTests
                     }
                 }
                 const auto summary = SummarizePolicy(*policy);
-                VERIFY_ARE_EQUAL(allowlistKind != 0, summary.allowedAgentsPolicySet);
-                VERIFY_ARE_EQUAL(custom != AgentPolicy::PolicyState::NotConfigured, summary.allowCustomAgentsPolicySet);
                 VERIFY_ARE_EQUAL(std::string{ allowlistKind == 0 ? "not_configured" : (allowlistKind == 1 ? "empty" : "allowlist") }, std::string{ summary.allowedAgentsCategory });
                 VERIFY_ARE_EQUAL(std::string{ custom == AgentPolicy::PolicyState::NotConfigured ? "not_configured" : (custom == AgentPolicy::PolicyState::Allowed ? "allowed" : "blocked") }, std::string{ summary.allowCustomAgentsCategory });
-                VERIFY_ARE_EQUAL(std::string{ custom == AgentPolicy::PolicyState::Blocked ? "blocked" : "allowed" }, std::string{ summary.effectiveCustomPolicy });
             }
         }
     }

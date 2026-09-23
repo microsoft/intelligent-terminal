@@ -225,8 +225,9 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 
     chat::render(frame, app, h_chat[1], h_chat[2]);
     app.sync_rec_scroll_max(main_area.width, panel_layout.recommendation_height);
-    app.recommendation_rendered =
+    let recommendation_area =
         recommendations::render(frame, app, h_rec[1], panel_layout.recommendation_mode);
+    app.recommendation_rendered = recommendation_area.is_some();
     if !app.current_tab().permission.is_empty() {
         permission::render(frame, app, h_perm[1]);
     }
@@ -275,7 +276,13 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // sits above it — otherwise a short chat leaves a tall filler and the
     // popup floats far up the pane (worst in side-by-side layouts).
     if let Some(popup_state) = app.command_popup_state() {
-        command_popup::render_popup(frame, popup_state, chunks[7]);
+        let popup_area = command_popup::render_popup(frame, popup_state, chunks[7]);
+        if recommendation_area
+            .zip(popup_area)
+            .is_some_and(|(card, popup)| card.intersects(popup))
+        {
+            app.recommendation_rendered = false;
+        }
     }
 
     // `/model` picker modal: same anchor as the autocomplete popup. The two
@@ -303,7 +310,6 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // Overlays can cover the card. Wait for an unobscured frame rather than
     // treating an underlying buffer paint as a displayed repair offer.
     if app.help_overlay_visible
-        || app.command_popup_state().is_some()
         || app.model_popup_state().is_some()
         || app.config_popup_state().is_some()
         || app.agent_popup_state().is_some()

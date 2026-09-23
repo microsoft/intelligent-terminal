@@ -117,15 +117,9 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             return ProviderChange{ ProviderId(previous), ProviderId(current) };
         }
 
-        constexpr const char* SelectionOrigin(const bool local, const bool inherited) noexcept
-        {
-            return local ? "user" : (inherited ? "inherited" : "default");
-        }
-
         struct CustomInventory
         {
             uint32_t count;
-            bool selected;
             bool selectedCommandConfigured;
         };
 
@@ -153,23 +147,19 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
 
             const auto selected = selectedId.starts_with(L"custom:");
             const auto configured = selected && ids.contains(winrt::hstring{ selectedId.substr(7) });
-            return { static_cast<uint32_t>(ids.size()), selected, configured };
+            return { static_cast<uint32_t>(ids.size()), configured };
         }
 
         struct PolicySummary
         {
-            bool allowedAgentsPolicySet;
-            bool allowCustomAgentsPolicySet;
             const char* allowedAgentsCategory;
             const char* allowCustomAgentsCategory;
-            const char* effectiveCustomPolicy;
         };
 
         struct ProviderSnapshot
         {
             const char* configured;
             const char* effective;
-            const char* origin;
             CustomInventory custom;
         };
 
@@ -177,12 +167,9 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         {
             const auto selected = primary ? globals.AcpAgent() : globals.DelegateAgent();
             const auto effective = primary ? globals.EffectiveAcpAgent() : globals.EffectiveDelegateAgent();
-            const auto local = primary ? globals.HasAcpAgent() : globals.HasDelegateAgent();
-            const auto source = primary ? globals.AcpAgentOverrideSource() : globals.DelegateAgentOverrideSource();
             return {
                 ProviderId(selected),
                 ProviderId(effective),
-                SelectionOrigin(local, source != nullptr),
                 primary ? GetCustomInventory(selected, globals.AcpCustomCommand(), globals.AcpCustomCommands()) :
                           GetCustomInventory(selected, globals.DelegateCustomCommand(), globals.DelegateCustomCommands()),
             };
@@ -192,11 +179,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         {
             using ::Microsoft::Terminal::Settings::Model::AgentPolicy::PolicyState;
             return {
-                policy.allowedAgents.has_value(),
-                policy.customAgents != PolicyState::NotConfigured,
                 !policy.allowedAgents ? "not_configured" : (policy.allowedAgents->empty() ? "empty" : "allowlist"),
                 policy.customAgents == PolicyState::NotConfigured ? "not_configured" : (policy.customAgents == PolicyState::Blocked ? "blocked" : "allowed"),
-                policy.customAgents == PolicyState::Blocked ? "blocked" : "allowed",
             };
         }
     }

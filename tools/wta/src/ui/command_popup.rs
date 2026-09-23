@@ -68,15 +68,15 @@ impl<'a> CommandCandidate<'a> {
 /// Render the autocomplete popup just above `input_area`. If there isn't
 /// enough room above, fall back to anchoring just below.
 ///
-/// No-op when `state.candidates` is empty.
-pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) {
+/// Returns the painted popup bounds, or None when `state.candidates` is empty.
+pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) -> Option<Rect> {
     let candidate_count = match &state.candidates {
         PopupCandidates::Commands(candidates) => candidates.len(),
         PopupCandidates::MovePositions(candidates) => candidates.len(),
         PopupCandidates::Agents(candidates) => candidates.len(),
     };
     if candidate_count == 0 {
-        return;
+        return None;
     }
 
     let visible = candidate_count.min(POPUP_MAX_VISIBLE) as u16;
@@ -159,6 +159,7 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
     list_state.select(popup_highlight(candidate_count, state.selected));
 
     frame.render_stateful_widget(list, area, &mut list_state);
+    Some(area)
 }
 
 fn source_badge_span(

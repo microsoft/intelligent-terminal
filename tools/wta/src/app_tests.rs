@@ -21957,6 +21957,86 @@ fn error_fix_telemetry_requires_display_then_run_and_deduplicates() {
 }
 
 #[test]
+fn error_fix_telemetry_nonoverlapping_autocomplete_allows_offer_and_enter_acceptance() {
+    use crate::telemetry::capture::{take, Event};
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    take();
+    let mut app = test_app();
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    app.recommendation_tx = tx;
+    let (proposal_id, mut final_rx) = stage_error_fix_telemetry_proposal(&mut app, true);
+    app.handle_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
+    assert!(app.command_popup_state().is_some());
+    assert!(app.commit_terminal_action_proposal(&proposal_id));
+    assert_eq!(
+        app.current_tab().recommendation_focus,
+        RecommendationFocus::Button
+    );
+    assert_eq!(app.current_tab().selected_button, 0);
+
+    let text = flush_error_fix_telemetry_frame(&mut app, 100, 40);
+    let command_row = text
+        .lines()
+        .position(|line| line.contains("Get-Date"))
+        .unwrap();
+    let popup_row = text
+        .lines()
+        .position(|line| line.contains("/help"))
+        .unwrap();
+    assert!(
+        command_row < popup_row,
+        "the card and autocomplete must both be visible"
+    );
+    assert!(app.command_popup_state().is_some());
+    let offer_id = app.current_tab().autofix.offer.as_ref().unwrap().id;
+    assert_eq!(take(), vec![Event::ErrorFixOffered(offer_id)]);
+    flush_error_fix_telemetry_frame(&mut app, 100, 40);
+    assert!(take().is_empty(), "redrawing must not offer twice");
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert_eq!(take(), vec![Event::ErrorFixAccepted(offer_id)]);
+    let execution = rx.try_recv().unwrap();
+    assert!(!execution.insert_only);
+    assert_eq!(execution.context.target_pane_id(), Some("pane-9"));
+    assert!(matches!(
+        execution.choice.actions.as_slice(),
+        [crate::coordinator::RecommendedAction::Send { input, .. }] if input == "Get-Date"
+    ));
+    assert_eq!(
+        final_rx.try_recv().unwrap(),
+        crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Confirmed
+    );
+    assert_eq!(app.current_tab().input, "/", "Run must preserve the draft");
+    assert!(app.current_tab().turn.recommendations().is_none());
+    flush_error_fix_telemetry_frame(&mut app, 100, 40);
+    assert!(take().is_empty());
+    assert!(rx.try_recv().is_err());
+}
+
+#[test]
+fn error_fix_telemetry_overlapping_autocomplete_and_clipping_suppress_offer() {
+    use crate::telemetry::capture::{take, Event};
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    take();
+    let mut app = test_app();
+    let (proposal_id, _final_rx) = stage_error_fix_telemetry_proposal(&mut app, true);
+    app.handle_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
+    assert!(app.commit_terminal_action_proposal(&proposal_id));
+    for (width, height) in [(100, 12), (1, 1)] {
+        assert!(app.command_popup_state().is_some());
+        let text = flush_error_fix_telemetry_frame(&mut app, width, height);
+        assert!(!text.contains("Get-Date"), "command is obscured or clipped");
+        assert!(!app.recommendation_rendered);
+        assert!(take().is_empty(), "no offer at {width}x{height}");
+    }
+    let offer_id = app.current_tab().autofix.offer.as_ref().unwrap().id;
+    assert!(flush_error_fix_telemetry_frame(&mut app, 100, 40).contains("Get-Date"));
+    assert_eq!(take(), vec![Event::ErrorFixOffered(offer_id)]);
+}
+
+#[test]
 fn error_fix_telemetry_waits_for_unobscured_open_card() {
     use crate::telemetry::capture::{take, Event};
     take();
