@@ -200,14 +200,18 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::SetTabItemVisibility(IInspectable const& item, bool visible)
     {
-        _tabItemVisibility.insert_or_assign(winrt::get_abi(item), visible);
-        uint32_t index{};
-        if (_tabItems.IndexOf(item, index))
+        const auto tab = item.try_as<MUX::Controls::TabViewItem>();
+        if (!tab)
         {
-            if (const auto tab = item.try_as<MUX::Controls::TabViewItem>())
-            {
-                _applyTabItemVisibility(tab);
-            }
+            return;
+        }
+
+        uint32_t index{};
+        if (_tabItems.IndexOf(tab, index))
+        {
+            _tabItemVisibility.insert_or_assign(winrt::get_abi(tab), TabItemVisibilityState{ winrt::make_weak(tab), visible });
+            _applyTabItemVisibility(tab);
+            _pruneTabItemVisibility();
         }
     }
 
@@ -286,6 +290,34 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void TabStrip::SearchActive(bool value)
+    {
+        if (_searchActive != value)
+        {
+            _searchActive = value;
+            _updateSearchVisualState();
+        }
+    }
+
+    void TabStrip::SearchQuery(winrt::hstring const& value)
+    {
+        if (_searchQuery != value)
+        {
+            _searchQuery = value;
+            _syncingSearchState = true;
+            SearchTextBox().Text(value);
+            _syncingSearchState = false;
+            _updateSearchVisualState();
+        }
+    }
+
+    void TabStrip::ProjectionControlsEnabled(bool value)
+    {
+        _projectionControlsEnabled = value;
+        SearchTabsButton().IsEnabled(value && !_isRailCollapsed);
+        FilterTabsButton().IsEnabled(value && !_isRailCollapsed);
+    }
+
     UIElement TabStrip::TopChromeContent()
     {
         return TopChromeContentPresenter().Content().try_as<UIElement>();
@@ -326,6 +358,97 @@ namespace winrt::TerminalApp::implementation
         FilterMode(TerminalApp::TabStripFilterMode::AllTabs);
     }
 
+    void TabStrip::OnSearchToggleClick(IInspectable const&, WUX::RoutedEventArgs const&)
+    {
+        if (_isRailCollapsed)
+        {
+            SearchTabsButton().IsChecked(false);
+            return;
+        }
+
+        _searchActive = SearchTabsButton().IsChecked().GetBoolean();
+        if (!_searchActive)
+        {
+            _searchQuery.clear();
+            _syncingSearchState = true;
+            SearchTextBox().Text(L"");
+            _syncingSearchState = false;
+        }
+        _updateSearchVisualState();
+        SearchChanged.raise(*this, nullptr);
+
+        if (_searchActive)
+        {
+            SearchTextBox().Focus(WUX::FocusState::Programmatic);
+        }
+    }
+
+    void TabStrip::OnSearchPointerPressed(IInspectable const&, WUX::Input::PointerRoutedEventArgs const&)
+    {
+        if (!_searchActive && !_isRailCollapsed)
+        {
+            SearchActivationRequested.raise(*this, nullptr);
+        }
+    }
+
+    void TabStrip::OnSearchTextChanged(IInspectable const&, TextChangedEventArgs const&)
+    {
+        if (_syncingSearchState)
+        {
+            return;
+        }
+
+        _searchQuery = SearchTextBox().Text();
+        _updateSearchVisualState();
+        SearchChanged.raise(*this, nullptr);
+    }
+
+    void TabStrip::OnSearchBoxKeyDown(IInspectable const&, WUX::Input::KeyRoutedEventArgs const& e)
+    {
+        if (e.OriginalKey() == Windows::System::VirtualKey::Escape)
+        {
+            _searchActive = false;
+            _searchQuery.clear();
+            _syncingSearchState = true;
+            SearchTextBox().Text(L"");
+            _syncingSearchState = false;
+            _updateSearchVisualState();
+            SearchChanged.raise(*this, nullptr);
+            e.Handled(true);
+        }
+    }
+
+    void TabStrip::OnClearSearchClick(IInspectable const&, WUX::RoutedEventArgs const&)
+    {
+        SearchTextBox().Text(L"");
+        SearchTextBox().Focus(WUX::FocusState::Programmatic);
+    }
+
+    void TabStrip::OnContainerContentChanging(ListViewBase const&,
+                                               ContainerContentChangingEventArgs const& e)
+    {
+        const auto container = e.ItemContainer().try_as<ListViewItem>();
+        if (!container)
+        {
+            return;
+        }
+
+        if (e.InRecycleQueue())
+        {
+            container.Visibility(Visibility::Visible);
+            return;
+        }
+
+        if (const auto item = e.Item().try_as<MUX::Controls::TabViewItem>())
+        {
+            _applyTabItemVisibility(item, container);
+        }
+        else
+        {
+            container.Visibility(Visibility::Visible);
+        }
+    }
+
     void TabStrip::_applyRailState()
     {
         const auto expandedVisibility = _isRailCollapsed ? Visibility::Collapsed : Visibility::Visible;
@@ -335,7 +458,9 @@ namespace winrt::TerminalApp::implementation
         CompactNewTabToolbar().Visibility(collapsedVisibility);
         VerticalTabsHeader().Visibility(expandedVisibility);
         SearchTabsButton().IsHitTestVisible(!_isRailCollapsed);
+        SearchTabsButton().IsEnabled(_projectionControlsEnabled && !_isRailCollapsed);
         FilterTabsButton().IsHitTestVisible(!_isRailCollapsed);
+        FilterTabsButton().IsEnabled(_projectionControlsEnabled && !_isRailCollapsed);
         TabHistoryButton().IsHitTestVisible(!_isRailCollapsed);
         FilterStatusBar().IsHitTestVisible(!_isRailCollapsed);
         ItemsList().AllowDrop(!_isRailCollapsed);
@@ -348,6 +473,7 @@ namespace winrt::TerminalApp::implementation
 
         if (_isRailCollapsed)
         {
+            SearchPanel().Visibility(Visibility::Collapsed);
             if (const auto flyout = FilterTabsButton().Flyout())
             {
                 flyout.Hide();
@@ -402,20 +528,57 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::_applyTabItemVisibility(MUX::Controls::TabViewItem const& item)
     {
-        const auto desired = _tabItemVisibility.find(winrt::get_abi(item));
-        if (desired == _tabItemVisibility.end())
-        {
-            return;
-        }
-
         uint32_t index{};
         if (_tabItems.IndexOf(item, index))
         {
             if (const auto container = ItemsList().ContainerFromIndex(index).try_as<ListViewItem>())
             {
-                container.Visibility(desired->second ? Visibility::Visible : Visibility::Collapsed);
+                _applyTabItemVisibility(item, container);
             }
         }
+    }
+
+    void TabStrip::_applyTabItemVisibility(MUX::Controls::TabViewItem const& item,
+                                            ListViewItem const& container)
+    {
+        bool visible = true;
+        if (const auto desired = _tabItemVisibility.find(winrt::get_abi(item));
+            desired != _tabItemVisibility.end())
+        {
+            if (const auto storedItem = desired->second.Item.get();
+                storedItem && winrt::get_abi(storedItem) == winrt::get_abi(item))
+            {
+                visible = desired->second.Visible;
+            }
+        }
+        container.Visibility(visible ? Visibility::Visible : Visibility::Collapsed);
+    }
+
+    void TabStrip::_pruneTabItemVisibility()
+    {
+        for (auto it = _tabItemVisibility.begin(); it != _tabItemVisibility.end();)
+        {
+            const auto item = it->second.Item.get();
+            uint32_t index{};
+            if (!item || !_tabItems.IndexOf(item, index))
+            {
+                it = _tabItemVisibility.erase(it);
+            }
+            else
+            {
+                ++it;
+            }
+        }
+    }
+
+    void TabStrip::_updateSearchVisualState()
+    {
+        _syncingSearchState = true;
+        SearchTabsButton().IsChecked(_searchActive);
+        _syncingSearchState = false;
+
+        SearchPanel().Visibility(_searchActive && !_isRailCollapsed ? Visibility::Visible : Visibility::Collapsed);
+        ClearSearchButton().Visibility(_searchActive && !_searchQuery.empty() ? Visibility::Visible : Visibility::Collapsed);
     }
 
     void TabStrip::_onItemsVectorChanged(IObservableVector<IInspectable> const& sender,

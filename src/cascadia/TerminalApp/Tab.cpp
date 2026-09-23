@@ -1145,8 +1145,13 @@ namespace winrt::TerminalApp::implementation
     {
         ASSERT_UI_THREAD();
 
+        const auto previousTitle = Title();
         _runtimeTabText = title;
         UpdateTitle();
+        if (Title() == previousTitle)
+        {
+            PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"Title" });
+        }
     }
 
     winrt::hstring Tab::GetTabText() const
@@ -1160,8 +1165,13 @@ namespace winrt::TerminalApp::implementation
     {
         ASSERT_UI_THREAD();
 
+        const auto previousTitle = Title();
         _runtimeTabText = L"";
         UpdateTitle();
+        if (Title() == previousTitle)
+        {
+            PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"Title" });
+        }
     }
 
     // Method Description:
@@ -1176,6 +1186,12 @@ namespace winrt::TerminalApp::implementation
         ASSERT_UI_THREAD();
 
         _headerControl.BeginRename();
+    }
+
+    void Tab::CancelTabRename()
+    {
+        ASSERT_UI_THREAD();
+        _headerControl.CancelRename();
     }
 
     // Method Description:
@@ -2181,16 +2197,16 @@ namespace winrt::TerminalApp::implementation
         const auto numOfTabs = TabViewNumTabs();
 
         // enabled if there are other tabs
-        _closeOtherTabsMenuItem.IsEnabled(!_tabFilterActive && numOfTabs > 1);
+        _closeOtherTabsMenuItem.IsEnabled(!_tabListPositionOperationsRestricted && numOfTabs > 1);
 
         // enabled if there are other tabs on the right
-        _closeTabsAfterMenuItem.IsEnabled(!_tabFilterActive && tabIndex < numOfTabs - 1);
+        _closeTabsAfterMenuItem.IsEnabled(!_tabListPositionOperationsRestricted && tabIndex < numOfTabs - 1);
 
         // enabled if not left-most tab
-        _moveLeftMenuItem.IsEnabled(!_tabFilterActive && tabIndex > 0);
+        _moveLeftMenuItem.IsEnabled(!_tabListPositionOperationsRestricted && tabIndex > 0);
 
         // enabled if not last tab
-        _moveRightMenuItem.IsEnabled(!_tabFilterActive && tabIndex < numOfTabs - 1);
+        _moveRightMenuItem.IsEnabled(!_tabListPositionOperationsRestricted && tabIndex < numOfTabs - 1);
     }
 
     void Tab::UpdateTabViewIndex(const uint32_t idx, const uint32_t numTabs)

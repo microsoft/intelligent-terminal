@@ -341,6 +341,13 @@ namespace winrt::TerminalApp::implementation
         bool _isVerticalRailVisible{ true };
         bool _isVerticalRailCollapsed{ false };
         TerminalApp::TabStripFilterMode _tabFilterMode{ TerminalApp::TabStripFilterMode::AllTabs };
+        bool _tabSearchActive{ false };
+        winrt::hstring _tabSearchQuery;
+        bool _pendingTabProjectionRefresh{ false };
+        bool _mutatingTabCollections{ false };
+        bool _suppressTabFocusRequests{ false };
+        bool _tabDragReorderAuthorized{ false };
+        Windows::Foundation::IInspectable _tabDragSelectedItem{ nullptr };
         // Spec A §5.2: hand-rolled splitter for resizing the vertical rail.
         // Lives in column 1 of the Root Grid, hugging its left edge, so the
         // hit strip straddles the column boundary.
@@ -896,14 +903,33 @@ namespace winrt::TerminalApp::implementation
         void _UpdateTitle(const Tab& tab);
         void _UpdateTabIcon(Tab& tab);
         void _UpdateTabView();
-        void _ApplyTabFilter();
+        void _ApplyTabListProjection();
         static bool _IsKnownAgentCliTitle(std::wstring_view title) noexcept;
         bool _TabHasCliAgent(const winrt::com_ptr<Tab>& tab) const;
-        bool _IsAgentFilterEffective() const noexcept
+        bool _IsAgentScopeEffective() const noexcept
         {
             return _isVerticalLayout &&
                    _tabFilterMode == TerminalApp::TabStripFilterMode::AgentsOnly;
         }
+        bool _IsTabSearchEffective() const noexcept
+        {
+            return _isVerticalLayout &&
+                   _isVerticalRailVisible &&
+                   !_isVerticalRailCollapsed &&
+                   _tabSearchActive;
+        }
+        bool _IsTabListProjectionActive() const noexcept
+        {
+            return _IsAgentScopeEffective() || _IsTabSearchEffective();
+        }
+        bool _IsTabListPositionOperationBlocked() const noexcept
+        {
+            return _IsTabListProjectionActive();
+        }
+        bool _MatchesTabScope(const winrt::com_ptr<Tab>& tab) const;
+        bool _MatchesTabSearch(const Tab& tab) const;
+        bool _IsTabVisibleInProjection(const winrt::com_ptr<Tab>& tab) const;
+        void _ClearTabSearch();
         bool _IsCollapsedVerticalRail() const noexcept
         {
             return _isVerticalLayout &&

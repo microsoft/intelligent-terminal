@@ -75,6 +75,7 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring GetTabText() const;
         void ResetTabText();
         void ActivateTabRenamer();
+        void CancelTabRename();
 
         std::optional<winrt::Windows::UI::Color> GetTabColor();
         void SetRuntimeTabColor(const winrt::Windows::UI::Color& color);
@@ -113,9 +114,9 @@ namespace winrt::TerminalApp::implementation
         // Returns the Pane node hosting the AgentPaneContent, or nullptr.
         std::shared_ptr<Pane> FindAgentPane() const;
         bool IsAgentTab() const;
-        void SetTabFilterActive(bool active)
+        void SetTabListPositionOperationsRestricted(bool restricted)
         {
-            _tabFilterActive = active;
+            _tabListPositionOperationsRestricted = restricted;
             _EnableMenuItems();
         }
         void SetTabPointerInteractionRestricted(bool restricted);
@@ -266,7 +267,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _restartConnectionMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _switchTabLayoutMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _closeOtherTabsMenuItem{};
-        bool _tabFilterActive{ false };
+        bool _tabListPositionOperationsRestricted{ false };
         bool _tabPointerInteractionRestricted{ false };
         winrt::Windows::UI::Xaml::Controls::MenuFlyout _contextMenuFlyout{ nullptr };
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _closeTabsAfterMenuItem{};

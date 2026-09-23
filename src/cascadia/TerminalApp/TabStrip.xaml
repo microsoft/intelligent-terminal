@@ -29,6 +29,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
@@ -103,20 +104,21 @@
                        VerticalAlignment="Center"
                        FontWeight="SemiBold" />
 
-            <Button x:Name="SearchTabsButton"
-                    x:Uid="VerticalTabsSearchButton"
-                    Grid.Column="1"
-                    Width="40"
-                    Height="40"
-                    Padding="0"
-                    VerticalAlignment="Center"
-                    Background="Transparent"
-                    BorderThickness="0"
-                    IsTabStop="False">
+            <ToggleButton x:Name="SearchTabsButton"
+                          x:Uid="VerticalTabsSearchButton"
+                          Grid.Column="1"
+                          Width="40"
+                          Height="40"
+                          Padding="0"
+                          VerticalAlignment="Center"
+                          Background="Transparent"
+                          BorderThickness="0"
+                          PointerPressed="OnSearchPointerPressed"
+                          Click="OnSearchToggleClick">
                 <PathIcon Width="16"
                           Height="16"
                           Data="M11.0195 11.7266C10.0658 12.5217 8.83875 13 7.5 13C4.46243 13 2 10.5376 2 7.5C2 4.46243 4.46243 2 7.5 2C10.5376 2 13 4.46243 13 7.5C13 8.83875 12.5217 10.0658 11.7266 11.0195L14.8535 14.1464C15.0488 14.3417 15.0488 14.6583 14.8535 14.8536C14.6583 15.0488 14.3417 15.0488 14.1464 14.8536L11.0195 11.7266ZM12 7.5C12 5.01472 9.98528 3 7.5 3C5.01472 3 3 5.01472 3 7.5C3 9.98528 5.01472 12 7.5 12C9.98528 12 12 9.98528 12 7.5Z" />
-            </Button>
+            </ToggleButton>
 
             <!--  Reserved for the Filter and History buttons shown in the target design.  -->
             <Button x:Name="FilterTabsButton"
@@ -161,17 +163,46 @@
             </Button>
         </Grid>
 
+        <Grid x:Name="SearchPanel"
+              Grid.Row="3"
+              Height="32"
+              Margin="6,4"
+              Visibility="Collapsed">
+            <TextBox x:Name="SearchTextBox"
+                     x:Uid="VerticalTabsSearchBox"
+                     Padding="8,0,32,0"
+                     VerticalContentAlignment="Center"
+                     KeyDown="OnSearchBoxKeyDown"
+                     TextChanged="OnSearchTextChanged" />
+            <Button x:Name="ClearSearchButton"
+                    x:Uid="VerticalTabsClearSearchButton"
+                    Width="28"
+                    Height="28"
+                    Margin="0,2,2,2"
+                    Padding="0"
+                    HorizontalAlignment="Right"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Click="OnClearSearchClick"
+                    Visibility="Collapsed">
+                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                          FontSize="10"
+                          Glyph="&#xE711;" />
+            </Button>
+        </Grid>
+
         <!--
             The strip proper. ListView holds TabViewItem instances directly via
             a passthrough item template. Code-behind adds vertical selection
             chrome to the hosted TabViewItem without replacing its template.
         -->
         <ListView x:Name="ItemsList"
-                  Grid.Row="3"
+                  Grid.Row="4"
                   Padding="0"
                   AllowDrop="True"
                   CanDragItems="True"
                   CanReorderItems="True"
+                  ContainerContentChanging="OnContainerContentChanging"
                   DragOver="OnListDragOver"
                   Drop="OnListDrop"
                   DragItemsStarting="OnDragItemsStarting"
@@ -209,7 +240,7 @@
         </ListView>
 
         <Border x:Name="FilterStatusBar"
-                Grid.Row="4"
+                Grid.Row="5"
                 Height="32"
                 Padding="12,0,4,0"
                 Background="{ThemeResource TabViewBackground}"
