@@ -2606,6 +2606,10 @@ namespace winrt::TerminalApp::implementation
 
         if (const auto paneSessionId = _TryParsePaneSessionId(paneId))
         {
+            if (_detachedPaneIds.contains(*paneSessionId))
+            {
+                return false;
+            }
             _pendingRestoredSessionBindings.erase(*paneSessionId);
             // A CLI that exited on its own leaves nothing to resume. One that
             // was killed does: `closeOnExit` only closes a pane on a graceful
@@ -5133,7 +5137,7 @@ namespace winrt::TerminalApp::implementation
         if (_startupState == StartupState::NotInitialized)
         {
             _startupState = StartupState::InStartup;
-            if (_startupTransferId)
+            if (_startupTransferId || _startupKeptGroup != winrt::guid{})
             {
                 _TryCompleteStartupTransfer();
                 return;
@@ -5176,6 +5180,17 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_TryCompleteStartupTransfer()
     {
+        if (_startupKeptGroup != winrt::guid{} && _transferReceiverReady && _startupState == StartupState::InStartup)
+        {
+            const auto groupId = std::exchange(_startupKeptGroup, winrt::guid{});
+            try
+            {
+                RestoreKeptGroup(groupId);
+            }
+            CATCH_LOG()
+            _CompleteInitialization();
+            return;
+        }
         if (_startupTransferId && _transferReceiverReady && _startupState == StartupState::InStartup)
         {
             // Both layout and host registration must precede the acknowledgement:
@@ -8639,6 +8654,7 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::OnPaneAgentSessionChanged(hstring eventJson)
     {
+        _manager.OnPaneAgentSessionChanged(eventJson);
         Json::Value evt;
         Json::CharReaderBuilder reader;
         std::string errors;
@@ -9224,6 +9240,10 @@ namespace winrt::TerminalApp::implementation
                                 {
                                     const auto eventName = agentParams["event"].asString();
                                     const auto agentSessionId = agentParams.get("agent_session_id", "").asString();
+                                    agentParams["pane_id"] = paneIdStr;
+                                    Json::Value bindingEvent;
+                                    bindingEvent["params"] = agentParams;
+                                    page->_manager.OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, bindingEvent)));
                                     if (const auto paneSessionId = _TryParsePaneSessionId(paneIdStr))
                                     {
                                         // This event arrived in-band on this
@@ -9841,10 +9861,15 @@ namespace winrt::TerminalApp::implementation
     //   warn for the current window state, show a warning dialog.
     safe_void_coroutine TerminalPage::CloseWindow()
     {
+        if (_windowCloseAccepted || _displayingCloseDialog)
+        {
+            co_return;
+        }
         // During FRE, tabs are deferred (zero tabs). No warning needed;
         // just close the window immediately.
         if (_tabs.Size() == 0)
         {
+            _windowCloseAccepted = true;
             CloseWindowRequested.raise(*this, nullptr);
             co_return;
         }
@@ -9877,7 +9902,42 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
+        try
+        {
+            _SaveWorkspaceIfNeeded();
+        }
+        CATCH_LOG()
+        for (const auto& tab : _tabs)
+        {
+            _DetachKeepRunningPanes(_GetTabImpl(tab));
+        }
+        _windowCloseAccepted = true;
         CloseWindowRequested.raise(*this, nullptr);
+    }
+
+    void TerminalPage::ShutdownPanes()
+    {
+        if (std::exchange(_windowPanesShutdown, true))
+        {
+            return;
+        }
+        for (const auto& tab : _tabs)
+        {
+            try
+            {
+                if (const auto impl = _GetTabImpl(tab))
+                {
+                    _NotifyPanesClosing(impl->GetRootPane());
+                    _NotifyAgentTabClosed(impl->StableId());
+                }
+            }
+            CATCH_LOG()
+            try
+            {
+                tab.Shutdown();
+            }
+            CATCH_LOG()
+        }
     }
 
     std::vector<IPaneContent> TerminalPage::Panes() const
@@ -11619,6 +11679,8 @@ namespace winrt::TerminalApp::implementation
 
     TermControl TerminalPage::_AttachControlToContent(const uint64_t& contentId, const NewTerminalArgs& /*newTerminalArgs*/)
     {
+        // Kept content can only be borrowed by the group restore transaction.
+        THROW_HR_IF(E_ILLEGAL_METHOD_CALL, _manager.IsKeptContent(contentId));
         if (const auto& content{ _manager.TryLookupCore(contentId) })
         {
             const auto rawControl = _receivingContentTransfer ?
@@ -11676,6 +11738,10 @@ namespace winrt::TerminalApp::implementation
         if (const auto paneIdStr = _FindSessionIdForControl(term); !_receivingContentTransfer && !paneIdStr.empty())
         {
             _panesWithEmittedTerminalEndState.erase(paneIdStr);
+            if (const auto sessionId = _TryParsePaneSessionId(paneIdStr))
+            {
+                _detachedPaneIds.erase(*sessionId);
+            }
         }
 
         _RegisterTerminalEvents(term);

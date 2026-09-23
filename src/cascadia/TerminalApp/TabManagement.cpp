@@ -746,7 +746,16 @@ namespace winrt::TerminalApp::implementation
 
         auto t = winrt::get_self<implementation::Tab>(tab);
         auto actions = t->BuildStartupActions(BuildStartupKind::None);
-        _AddPreviouslyClosedPaneOrTab(std::move(actions));
+        std::vector<std::pair<winrt::guid, INewContentArgs>> closedPaneArgs;
+        t->GetRootPane()->WalkTree([&](const auto& pane) {
+            if (pane->GetContent())
+            {
+                const auto control = pane->GetTerminalControl();
+                const auto connection = control ? control.Connection() : nullptr;
+                closedPaneArgs.emplace_back(connection ? connection.SessionId() : winrt::guid{},
+                                            pane->GetTerminalArgsForPane(BuildStartupKind::None));
+            }
+        });
 
         // Per-tab model: each tab owns its own agent pane. Closing a tab
         // takes its agent pane with it — no rescue needed.
@@ -763,7 +772,170 @@ namespace winrt::TerminalApp::implementation
             CATCH_LOG()
         }
 
+        _DetachKeepRunningPanes(_GetTabImpl(tab));
+        if (std::ranges::any_of(closedPaneArgs, [&](const auto& pane) { return _detachedPaneIds.contains(pane.first); }))
+        {
+            // Undo-close must never launch a second copy of a still-running CLI.
+            actions.clear();
+            for (const auto& [id, args] : closedPaneArgs)
+            {
+                if (args && !_detachedPaneIds.contains(id))
+                {
+                    if (actions.empty())
+                    {
+                        actions.emplace_back(ShortcutAction::NewTab, NewTabArgs{ args });
+                    }
+                    else
+                    {
+                        actions.emplace_back(ShortcutAction::SplitPane, SplitPaneArgs{ SplitDirection::Automatic, args });
+                    }
+                }
+            }
+        }
+        if (!actions.empty())
+        {
+            _AddPreviouslyClosedPaneOrTab(std::move(actions));
+        }
         tab.Close();
+    }
+
+    std::shared_ptr<Pane> TerminalPage::_FindKeepRunningPane(const winrt::guid& sessionId) const
+    {
+        if (sessionId == winrt::guid{})
+        {
+            return nullptr;
+        }
+        for (const auto& tab : _tabs)
+        {
+            const auto impl = _GetTabImpl(tab);
+            const auto root = impl ? impl->GetRootPane() : nullptr;
+            if (const auto pane = root ? root->FindPaneBySessionId(sessionId) : nullptr;
+                pane && !pane->IsAgentPane() && pane->GetContent().try_as<winrt::TerminalApp::TerminalPaneContent>())
+            {
+                return pane;
+            }
+        }
+        return nullptr;
+    }
+
+    bool TerminalPage::CanKeepPaneRunning(const winrt::guid& sessionId)
+    {
+        const auto pane = _FindKeepRunningPane(sessionId);
+        const auto control = pane ? pane->GetTerminalControl() : nullptr;
+        return control && _manager.CanKeepRunning(control.ContentId());
+    }
+
+    bool TerminalPage::IsPaneKeepRunning(const winrt::guid& sessionId)
+    {
+        const auto pane = _FindKeepRunningPane(sessionId);
+        const auto control = pane ? pane->GetTerminalControl() : nullptr;
+        return control && _manager.IsKeepRunning(control.ContentId());
+    }
+
+    void TerminalPage::SetPaneKeepRunning(const winrt::guid& sessionId, const bool enabled)
+    {
+        const auto pane = _FindKeepRunningPane(sessionId);
+        THROW_HR_IF(E_INVALIDARG, !pane);
+        _manager.SetKeepRunning(pane->GetTerminalControl().ContentId(), enabled);
+    }
+
+    void TerminalPage::_DetachKeepRunningPanes(const winrt::com_ptr<Tab>& tab)
+    {
+        if (!tab || !tab->GetRootPane())
+        {
+            return;
+        }
+        const winrt::guid groupId{ tab->StableId() };
+        tab->GetRootPane()->WalkTree([&](const auto& pane) {
+            if (pane->IsAgentPane())
+            {
+                return;
+            }
+            const auto control = pane->GetTerminalControl();
+            if (!control || !_manager.IsKeepRunning(control.ContentId()))
+            {
+                return;
+            }
+            const auto sessionId = control.Connection().SessionId();
+            const auto args = pane->GetTerminalArgsForPane(BuildStartupKind::Content).template as<NewTerminalArgs>();
+            _detachedPaneIds.emplace(sessionId);
+            auto rollback = wil::scope_exit([&]() noexcept { _detachedPaneIds.erase(sessionId); });
+            if (_manager.DetachForKeepRunning(groupId, tab->Title(), args, control))
+            {
+                rollback.release();
+            }
+        });
+    }
+
+    bool TerminalPage::RestoreKeptGroup(const winrt::guid& groupId)
+    {
+        const auto keepAlive = get_strong();
+        const auto previousFocus = _GetFocusedTab();
+        const auto args = _manager.BeginReattachKeptGroup(groupId);
+        std::vector<TermControl> controls;
+        std::vector<winrt::hstring> bindings;
+        std::shared_ptr<Pane> root;
+        winrt::com_ptr<Tab> tab;
+        auto rollback = wil::scope_exit([&]() noexcept {
+            for (const auto& control : controls)
+            {
+                try
+                {
+                    control.Detach();
+                    control.Close();
+                }
+                CATCH_LOG()
+            }
+            try
+            {
+                if (tab)
+                {
+                    _RemoveTab(*tab, true);
+                }
+                _manager.CompleteKeptGroupReattach(groupId, false);
+                if (const auto index = _GetTabIndex(previousFocus))
+                {
+                    _SelectTab(*index);
+                }
+            }
+            CATCH_LOG()
+        });
+
+        for (const auto& terminalArgs : args)
+        {
+            const auto content = _manager.TryLookupCore(terminalArgs.ContentId());
+            const auto profile = _settings.GetProfileForArgs(terminalArgs);
+            THROW_HR_IF(E_INVALIDARG, !content || !profile);
+            THROW_HR_IF(E_ABORT, content.Core().ConnectionState() >= ConnectionState::Closed);
+            const auto control = TermControl::PrepareControlByAttachingContent(content);
+            controls.emplace_back(control);
+            _SetupControl(control);
+            bindings.emplace_back(_manager.AgentSessionEvent(terminalArgs.ContentId()));
+            auto pane = std::make_shared<Pane>(winrt::make<TerminalPaneContent>(profile, _terminalSettingsCache, control));
+            root = root ? std::make_shared<Pane>(root, pane, SplitState::Vertical, static_cast<float>(controls.size() - 1) / controls.size()) :
+                          std::move(pane);
+        }
+        THROW_HR_IF(E_UNEXPECTED, !root);
+        tab = winrt::make_self<Tab>(root, winrt::hstring{ ::Microsoft::Console::Utils::GuidToString(groupId) });
+        _InitializeTab(tab, -1, false);
+        for (const auto& control : controls)
+        {
+            THROW_HR_IF(E_ABORT, control.TransferState() != Microsoft::Terminal::Control::ContentTransferState::Prepared || control.ConnectionState() >= ConnectionState::Closed);
+        }
+        for (const auto& control : controls)
+        {
+            control.CommitContentTransfer();
+        }
+        _manager.CompleteKeptGroupReattach(groupId, true);
+        rollback.release();
+        for (const auto& binding : bindings)
+        {
+            if (!binding.empty())
+            {
+                OnPaneAgentSessionChanged(binding);
+            }
+        }
+        return true;
     }
 
     // Removes the tab (both TerminalControl and XAML).

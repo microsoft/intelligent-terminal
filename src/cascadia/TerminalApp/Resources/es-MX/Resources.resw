@@ -422,4 +422,8 @@
     <value>Agente · Conectando</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="NotificationIconRestoreKeptTab" xml:space="preserve">
+    <value>Restaurar</value>
+    <comment>Command in the notification-area menu that brings a background tab and its still-running terminal panes back into a window. It does not restart the processes or restore a file backup.</comment>
+  </data>
 </root>

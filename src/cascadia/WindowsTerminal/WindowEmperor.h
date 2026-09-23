@@ -33,6 +33,7 @@ public:
         WM_IDENTIFY_ALL_WINDOWS,
         WM_NOTIFY_FROM_NOTIFICATION_AREA,
         WM_GET_WINDOW_LIST,
+        WM_KEPT_SESSIONS_CHANGED,
     };
 
     // Used by WM_GET_WINDOW_LIST.  Callers allocate a vector on their
@@ -61,6 +62,7 @@ public:
     const std::wstring& GetComClsid() const noexcept { return _comClsid; }
     std::vector<std::shared_ptr<::AppHost>> GetWindows() const;
     AppHost* GetMostRecentWindow() const noexcept { return _mostRecentWindow(); }
+    void TrackPaneAgentSession(const winrt::hstring& eventJson);
 
 private:
     struct SummonWindowSelectionArgs
@@ -86,7 +88,10 @@ private:
     void _postQuitMessageIfNeeded() const;
     safe_void_coroutine _showMessageBox(winrt::hstring message, bool error);
     void _notificationAreaMenuRequested(WPARAM wParam);
-    void _notificationAreaMenuClicked(WPARAM wParam, LPARAM lParam) const;
+    void _notificationAreaMenuClicked(WPARAM wParam, LPARAM lParam);
+    bool _restoreKeptGroup(const winrt::guid& groupId);
+    bool _restoreAllKeptGroups();
+    void _setupKeptSessions();
     void _hotkeyPressed(long hotkeyIndex);
     void _registerHotKey(int index, const winrt::Microsoft::Terminal::Control::KeyChord& hotkey) noexcept;
     void _unregisterHotKey(int index) noexcept;
@@ -112,6 +117,11 @@ private:
     UINT WM_TASKBARCREATED = 0;
     HMENU _currentWindowMenu = nullptr;
     bool _notificationIconShown = false;
+    winrt::TerminalApp::ContentManager _keptManager{ nullptr };
+    winrt::Windows::System::DispatcherQueue _keptDispatcher{ nullptr };
+    winrt::TerminalApp::ContentManager::KeptSessionsChanged_revoker _keptChanged;
+    winrt::TerminalApp::ContentManager::DetachedSessionEvent_revoker _keptEvents;
+    std::unordered_map<HMENU, winrt::guid> _keptSessionMenus;
     bool _skipPersistence = false;
     bool _needsPersistenceCleanup = false;
     bool _deferPersistedLayoutRestore = false;

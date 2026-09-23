@@ -152,6 +152,7 @@ namespace winrt::TerminalApp::implementation
         // Now that we know we can do XAML, build our page.
         _root = winrt::make_self<TerminalPage>(*_WindowProperties, _manager);
         _root->SetStartupTransfer(_initialTransferId);
+        _root->SetStartupKeptGroup(StartupKeptGroup());
 
         // Pass in information about the initial state of the window.
         // * If we were supposed to start from serialized "content", do that,
@@ -159,7 +160,11 @@ namespace winrt::TerminalApp::implementation
         //   instead.
         // * if we have commandline arguments, Pass commandline args into the
         //   TerminalPage.
-        if (_startupConnection)
+        if (StartupKeptGroup() != winrt::guid{})
+        {
+            // Live content restore must not create a default shell or replay snapshots.
+        }
+        else if (_startupConnection)
         {
             _root->SetStartupConnection(std::move(_startupConnection));
         }
@@ -201,6 +206,7 @@ namespace winrt::TerminalApp::implementation
         // Obviously, don't use the `startupActions` from the settings in the
         // case of a tear-out / reattach. GH#16050
         if (!_hasCommandLineArguments &&
+            StartupKeptGroup() == winrt::guid{} &&
             _initialContentArgs.empty() &&
             _gotSettingsStartupActions)
         {

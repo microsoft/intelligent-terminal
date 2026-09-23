@@ -18,7 +18,7 @@ namespace winrt::TerminalApp::implementation
     struct Tab : TabT<Tab>
     {
     public:
-        Tab(std::shared_ptr<Pane> rootPane);
+        Tab(std::shared_ptr<Pane> rootPane, winrt::hstring stableId = {});
 
         // Called after construction to perform the necessary setup, which relies on weak_ptr
         void Initialize();

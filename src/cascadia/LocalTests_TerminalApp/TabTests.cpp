@@ -291,6 +291,15 @@ namespace TerminalAppLocalTests
         TEST_METHOD(PaneAgentSessionBindingRequiresPaneIdentity);
         TEST_METHOD(AgentPaneRestoreDoesNotRequireAgentSession);
         TEST_METHOD(PaneAgentSessionEndClearsAgentBinding);
+        TEST_METHOD(KeepRunningRequiresLiveCliSession);
+        TEST_METHOD(KeepRunningMixedTabCloseRestoresSameContent);
+        TEST_METHOD(KeepRunningDirectPaneCloseTerminates);
+        TEST_METHOD(KeepRunningCliExitRetainsDetachedShell);
+        TEST_METHOD(KeepRunningReattachClaimAndRollback);
+        TEST_METHOD(KeepRunningFailedRestorePreservesGroup);
+        TEST_METHOD(KeepRunningConnectionExitReapsOnlyItsPane);
+        TEST_METHOD(KeepRunningWindowCloseIsIdempotent);
+        TEST_METHOD(KeepRunningStartupWaitsForHostRegistration);
         TEST_METHOD(ContentIdAttachedPaneEmitsEndStateForItsConnection);
         TEST_METHOD(GetWindowLayoutIncludesAgentRestoreMetadata);
         TEST_METHOD(ResumedPaneIdentityPersistsWithoutHooksOrBannerParsing);
@@ -848,6 +857,328 @@ namespace TerminalAppLocalTests
             // an unattributed end event.
             event("agent.session.end", "");
             VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(page->_paneAgentSessions.count(paneSessionId)));
+        });
+    }
+
+    static winrt::hstring _keepRunningHook(const winrt::guid& paneId, std::string_view name, std::string_view session = "keep-running-session", std::string_view agent = "copilot")
+    {
+        Json::Value event;
+        event["params"]["pane_id"] = _formatPaneId(paneId);
+        event["params"]["event"] = std::string{ name };
+        event["params"]["agent_session_id"] = std::string{ session };
+        event["params"]["agent"] = std::string{ agent };
+        return winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, event));
+    }
+
+    void TabTests::KeepRunningRequiresLiveCliSession()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const winrt::guid id{ L"{13f7aa41-8837-473e-92a3-f1e682ab1001}" };
+        const auto connection = winrt::make_self<TestConnection>(id, State::Connected);
+        const auto page = _commonSetup(*connection);
+        TestOnUIThread([&]() {
+            VERIFY_IS_FALSE(page->CanKeepPaneRunning(id));
+            VERIFY_THROWS(page->SetPaneKeepRunning(id, true), winrt::hresult_error);
+            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.start", "sidekick-child"));
+            VERIFY_IS_FALSE(page->CanKeepPaneRunning(id));
+
+            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.start"));
+            VERIFY_IS_TRUE(page->CanKeepPaneRunning(id));
+            VERIFY_IS_FALSE(page->IsPaneKeepRunning(id));
+            page->SetPaneKeepRunning(id, true);
+            VERIFY_IS_TRUE(page->IsPaneKeepRunning(id));
+            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.prompt.submit", "nested-session"));
+            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.end", "stale-session"));
+            VERIFY_IS_TRUE(page->IsPaneKeepRunning(id));
+            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.task.complete"));
+            VERIFY_IS_TRUE(page->IsPaneKeepRunning(id));
+
+            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.end"));
+            VERIFY_IS_FALSE(page->CanKeepPaneRunning(id));
+            VERIFY_IS_FALSE(page->IsPaneKeepRunning(id));
+            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.start", "new-session"));
+            VERIFY_IS_TRUE(page->CanKeepPaneRunning(id));
+            VERIFY_IS_FALSE(page->IsPaneKeepRunning(id));
+            auto pane = page->_GetFocusedTabImpl()->GetRootPane();
+            pane->IsAgentPane(true);
+            VERIFY_IS_FALSE(page->CanKeepPaneRunning(id));
+            VERIFY_THROWS(page->SetPaneKeepRunning(id, true), winrt::hresult_error);
+            pane->IsAgentPane(false);
+            connection->SetState(State::Failed);
+            VERIFY_IS_FALSE(page->CanKeepPaneRunning(id));
+            VERIFY_THROWS(page->SetPaneKeepRunning(id, true), winrt::hresult_error);
+        });
+    }
+
+    void TabTests::KeepRunningMixedTabCloseRestoresSameContent()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const winrt::guid keptId{ L"{13f7aa41-8837-473e-92a3-f1e682ab1002}" };
+        const winrt::guid closedId{ L"{13f7aa41-8837-473e-92a3-f1e682ab1003}" };
+        const auto kept = winrt::make_self<TestConnection>(keptId, State::Connected);
+        const auto closed = winrt::make_self<TestConnection>(closedId, State::Connected);
+        const auto page = _commonSetup(*kept);
+        std::vector<ConnectionStateEventRecord> events;
+        TestOnUIThread([&]() {
+            page->_settings.GlobalSettings().ConfirmOnClose(ConfirmOnClose::Never);
+            const auto eventToken = page->ProtocolVtSequenceReceived([&](auto&&, const auto& json) { _recordConnectionStateEvent(json, events); });
+            const auto revoke = wil::scope_exit([&]() noexcept { page->ProtocolVtSequenceReceived(eventToken); });
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto control = tab->GetRootPane()->GetTerminalControl();
+            const auto contentId = control.ContentId();
+            const auto content = page->_manager.TryLookupCore(contentId);
+            const auto stableId = tab->StableId();
+            const winrt::guid groupId{ stableId };
+            const auto otherPane = page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *closed);
+            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, otherPane));
+            page->OnPaneAgentSessionChanged(_keepRunningHook(keptId, "agent.session.start"));
+            page->OnPaneAgentSessionChanged(_keepRunningHook(closedId, "agent.session.start"));
+            page->SetPaneKeepRunning(keptId, true);
+            page->_HandleCloseTabRequested(*tab, true);
+
+            VERIFY_ARE_EQUAL(0u, page->_tabs.Size());
+            VERIFY_ARE_EQUAL(0u, kept->CloseCount());
+            VERIFY_IS_TRUE(closed->WaitForClose());
+            VERIFY_IS_TRUE(page->_manager.HasKeptSessions());
+            VERIFY_ARE_EQUAL(1u, page->_manager.KeptGroups().Size());
+            VERIFY_IS_TRUE(page->_manager.KeptGroups().HasKey(groupId));
+            VERIFY_IS_TRUE(_statesForPane(events, _formatPaneId(keptId)).empty());
+            VERIFY_ARE_EQUAL(size_t{ 1 }, _statesForPane(events, _formatPaneId(closedId)).size());
+            VERIFY_ARE_EQUAL(size_t{ 1 }, page->_previouslyClosedPanesAndTabs.size());
+            VERIFY_ARE_EQUAL(size_t{ 1 }, page->_previouslyClosedPanesAndTabs.back().size());
+            const std::u16string output{ u"still running while detached\r\n" };
+            kept->TerminalOutput.raise(winrt::array_view<const char16_t>{ output.data(), output.data() + output.size() });
+            VERIFY_IS_TRUE(std::wstring_view{ content.Core().ReadEntireBuffer() }.find(L"still running while detached") != std::wstring_view::npos);
+
+            VERIFY_IS_TRUE(page->RestoreKeptGroup(groupId));
+            const auto restored = page->_GetFocusedTabImpl();
+            VERIFY_ARE_EQUAL(stableId, restored->StableId());
+            VERIFY_ARE_EQUAL(1, restored->GetLeafPaneCount());
+            const auto restoredControl = restored->GetRootPane()->GetTerminalControl();
+            VERIFY_ARE_EQUAL(contentId, restoredControl.ContentId());
+            VERIFY_IS_TRUE(content == page->_manager.TryLookupCore(restoredControl.ContentId()));
+            VERIFY_IS_TRUE(restoredControl.Connection() == *kept);
+            VERIFY_ARE_EQUAL(keptId, restoredControl.Connection().SessionId());
+            VERIFY_IS_TRUE(std::wstring_view{ restoredControl.ReadEntireBuffer() }.find(L"still running while detached") != std::wstring_view::npos);
+            VERIFY_IS_TRUE(page->IsPaneKeepRunning(keptId));
+            VERIFY_IS_FALSE(page->_manager.HasKeptSessions());
+            VERIFY_ARE_EQUAL(0u, kept->CloseCount());
+            VERIFY_THROWS(page->RestoreKeptGroup(groupId), winrt::hresult_error);
+            restored->Close();
+        });
+    }
+
+    void TabTests::KeepRunningDirectPaneCloseTerminates()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const winrt::guid id{ L"{13f7aa41-8837-473e-92a3-f1e682ab1004}" };
+        const auto connection = winrt::make_self<TestConnection>(id, State::Connected);
+        const auto page = _commonSetup(*connection);
+        TestOnUIThread([&]() {
+            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.start"));
+            page->SetPaneKeepRunning(id, true);
+            page->_HandleClosePaneRequested(page->_GetFocusedTabImpl()->GetRootPane());
+        });
+        VERIFY_IS_TRUE(connection->WaitForClose());
+        TestOnUIThread([&]() { VERIFY_IS_FALSE(page->_manager.HasKeptSessions()); });
+    }
+
+    void TabTests::KeepRunningCliExitRetainsDetachedShell()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const winrt::guid id{ L"{13f7aa41-8837-473e-92a3-f1e682ab1005}" };
+        const auto connection = winrt::make_self<TestConnection>(id, State::Connected);
+        const auto page = _commonSetup(*connection);
+        TestOnUIThread([&]() {
+            page->_settings.GlobalSettings().ConfirmOnClose(ConfirmOnClose::Never);
+            const auto tab = page->_GetFocusedTabImpl();
+            const winrt::guid groupId{ tab->StableId() };
+            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.start"));
+            page->SetPaneKeepRunning(id, true);
+            page->_HandleCloseTabRequested(*tab, true);
+            page->_manager.OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.end"));
+            VERIFY_IS_TRUE(page->_manager.HasKeptSessions());
+            VERIFY_ARE_EQUAL(0u, connection->CloseCount());
+            VERIFY_IS_TRUE(page->RestoreKeptGroup(groupId));
+            VERIFY_IS_FALSE(page->CanKeepPaneRunning(id));
+            VERIFY_IS_FALSE(page->IsPaneKeepRunning(id));
+            page->_GetFocusedTabImpl()->Close();
+        });
+        VERIFY_IS_TRUE(connection->WaitForClose());
+    }
+
+    void TabTests::KeepRunningReattachClaimAndRollback()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const winrt::guid id{ L"{13f7aa41-8837-473e-92a3-f1e682ab1006}" };
+        const auto connection = winrt::make_self<TestConnection>(id, State::Connected);
+        const auto page = _commonSetup(*connection);
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const winrt::guid groupId{ tab->StableId() };
+            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.start"));
+            page->SetPaneKeepRunning(id, true);
+            page->_DetachKeepRunningPanes(tab);
+            tab->Close();
+            const auto firstArgs = page->_manager.BeginReattachKeptGroup(groupId);
+            VERIFY_ARE_EQUAL(1u, firstArgs.Size());
+            const auto contentId = firstArgs.GetAt(0).ContentId();
+            VERIFY_THROWS(page->_AttachControlToContent(contentId, firstArgs.GetAt(0)), winrt::hresult_error);
+            firstArgs.GetAt(0).ContentId(0);
+            VERIFY_IS_TRUE(page->_manager.HasKeptSessions());
+            VERIFY_ARE_EQUAL(0u, page->_manager.KeptGroups().Size());
+            VERIFY_THROWS(page->_manager.BeginReattachKeptGroup(groupId), winrt::hresult_error);
+            VERIFY_THROWS(page->_manager.DiscardKeptGroup(groupId), winrt::hresult_error);
+            page->_manager.CompleteKeptGroupReattach(groupId, false);
+            const auto retry = page->_manager.BeginReattachKeptGroup(groupId);
+            VERIFY_ARE_EQUAL(contentId, retry.GetAt(0).ContentId());
+            page->_manager.CompleteKeptGroupReattach(groupId, false);
+            VERIFY_IS_TRUE(page->RestoreKeptGroup(groupId));
+            VERIFY_ARE_EQUAL(0u, connection->CloseCount());
+            page->_GetFocusedTabImpl()->Close();
+        });
+    }
+
+    void TabTests::KeepRunningFailedRestorePreservesGroup()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const winrt::guid firstId{ L"{13f7aa41-8837-473e-92a3-f1e682ab1010}" };
+        const winrt::guid secondId{ L"{13f7aa41-8837-473e-92a3-f1e682ab1011}" };
+        const auto first = winrt::make_self<TestConnection>(firstId, State::Connected);
+        const auto second = winrt::make_self<TestConnection>(secondId, State::Connected);
+        const auto page = _commonSetup(*first);
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const winrt::guid groupId{ tab->StableId() };
+            const auto firstPane = tab->GetRootPane();
+            const auto firstControl = firstPane->GetTerminalControl();
+            const auto other = page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *second);
+            const auto otherControl = other->GetTerminalControl();
+            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, other));
+            for (const auto& id : { firstId, secondId })
+            {
+                page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.start"));
+                page->SetPaneKeepRunning(id, true);
+            }
+            VERIFY_IS_TRUE(page->_manager.DetachForKeepRunning(groupId, tab->Title(), NewTerminalArgs{ 0 }, firstControl));
+            VERIFY_IS_TRUE(page->_manager.DetachForKeepRunning(groupId, tab->Title(), NewTerminalArgs{ 99 }, otherControl));
+            page->_RemoveTab(*tab, true);
+            VERIFY_THROWS(page->RestoreKeptGroup(groupId), winrt::hresult_error);
+            VERIFY_ARE_EQUAL(0u, page->_tabs.Size());
+            VERIFY_ARE_EQUAL(0u, first->CloseCount());
+            VERIFY_ARE_EQUAL(0u, second->CloseCount());
+            VERIFY_IS_TRUE(page->_manager.KeptGroups().HasKey(groupId));
+            const auto args = page->_manager.BeginReattachKeptGroup(groupId);
+            VERIFY_ARE_EQUAL(2u, args.Size());
+            for (const auto& arg : args)
+            {
+                VERIFY_IS_NOT_NULL(page->_manager.TryLookupCore(arg.ContentId()));
+            }
+            page->_manager.CompleteKeptGroupReattach(groupId, false);
+            page->_manager.DiscardKeptGroup(groupId);
+            VERIFY_IS_FALSE(page->_manager.HasKeptSessions());
+        });
+        VERIFY_IS_TRUE(first->WaitForClose());
+        VERIFY_IS_TRUE(second->WaitForClose());
+    }
+
+    void TabTests::KeepRunningConnectionExitReapsOnlyItsPane()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const winrt::guid firstId{ L"{13f7aa41-8837-473e-92a3-f1e682ab1007}" };
+        const winrt::guid secondId{ L"{13f7aa41-8837-473e-92a3-f1e682ab1008}" };
+        const auto first = winrt::make_self<TestConnection>(firstId, State::Connected);
+        const auto second = winrt::make_self<TestConnection>(secondId, State::Connected);
+        const auto page = _commonSetup(*first);
+        std::vector<ConnectionStateEventRecord> events;
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const winrt::guid groupId{ tab->StableId() };
+            const auto other = page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *second);
+            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, other));
+            for (const auto& id : { firstId, secondId })
+            {
+                page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.start"));
+                page->SetPaneKeepRunning(id, true);
+            }
+            const auto eventToken = page->_manager.DetachedSessionEvent([&](auto&&, const auto& json) { _recordConnectionStateEvent(json, events); });
+            const auto revoke = wil::scope_exit([&]() noexcept { page->_manager.DetachedSessionEvent(eventToken); });
+            page->_DetachKeepRunningPanes(tab);
+            tab->Close();
+            first->TransitionTo(State::Failed);
+            VERIFY_IS_TRUE(page->_manager.HasKeptSessions());
+            const auto remaining = page->_manager.BeginReattachKeptGroup(groupId);
+            VERIFY_ARE_EQUAL(1u, remaining.Size());
+            VERIFY_ARE_EQUAL(secondId, remaining.GetAt(0).SessionId());
+            page->_manager.CompleteKeptGroupReattach(groupId, false);
+            VERIFY_ARE_EQUAL(size_t{ 1 }, _statesForPane(events, _formatPaneId(firstId)).size());
+            VERIFY_ARE_EQUAL(std::string{ "failed" }, _statesForPane(events, _formatPaneId(firstId)).front());
+            VERIFY_ARE_EQUAL(0u, second->CloseCount());
+            page->_manager.DiscardKeptGroup(groupId);
+            VERIFY_IS_FALSE(page->_manager.HasKeptSessions());
+            VERIFY_ARE_EQUAL(size_t{ 1 }, _statesForPane(events, _formatPaneId(secondId)).size());
+        });
+        VERIFY_IS_TRUE(first->WaitForClose());
+        VERIFY_IS_TRUE(second->WaitForClose());
+    }
+
+    void TabTests::KeepRunningWindowCloseIsIdempotent()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const winrt::guid id{ L"{13f7aa41-8837-473e-92a3-f1e682ab1009}" };
+        const auto connection = winrt::make_self<TestConnection>(id, State::Connected);
+        const auto closed = winrt::make_self<TestConnection>(winrt::guid{ L"{13f7aa41-8837-473e-92a3-f1e682ab1012}" }, State::Connected);
+        const auto page = _commonSetup(*connection);
+        TestOnUIThread([&]() {
+            page->_settings.GlobalSettings().ConfirmOnClose(ConfirmOnClose::Never);
+            const auto other = page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *closed);
+            VERIFY_IS_TRUE(page->_SplitPane(page->_GetFocusedTabImpl(), SplitDirection::Right, 0.5f, other));
+            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.start"));
+            page->SetPaneKeepRunning(id, true);
+            uint32_t closeRequests = 0;
+            const auto eventToken = page->CloseWindowRequested([&](auto&&, auto&&) { ++closeRequests; });
+            const auto revoke = wil::scope_exit([&]() noexcept { page->CloseWindowRequested(eventToken); });
+            const winrt::guid groupId{ page->_GetFocusedTabImpl()->StableId() };
+            page->CloseWindow();
+            page->CloseWindow();
+            VERIFY_ARE_EQUAL(1u, closeRequests);
+            VERIFY_ARE_EQUAL(1u, page->_manager.KeptGroups().Size());
+            VERIFY_ARE_EQUAL(0u, connection->CloseCount());
+            page->ShutdownPanes();
+            VERIFY_ARE_EQUAL(0u, connection->CloseCount());
+            VERIFY_IS_TRUE(closed->WaitForClose());
+            page->_manager.DiscardKeptGroup(groupId);
+            VERIFY_IS_FALSE(page->_manager.HasKeptSessions());
+        });
+    }
+
+    void TabTests::KeepRunningStartupWaitsForHostRegistration()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        using Startup = winrt::TerminalApp::implementation::StartupState;
+        const winrt::guid id{ L"{13f7aa41-8837-473e-92a3-f1e682ab1013}" };
+        const auto connection = winrt::make_self<TestConnection>(id, State::Connected);
+        const auto page = _commonSetup(*connection);
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const winrt::guid groupId{ tab->StableId() };
+            const auto contentId = tab->GetRootPane()->GetTerminalControl().ContentId();
+            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.start"));
+            page->SetPaneKeepRunning(id, true);
+            page->_DetachKeepRunningPanes(tab);
+            tab->Close();
+            page->_startupState = Startup::NotInitialized;
+            page->_transferReceiverReady = false;
+            page->SetStartupKeptGroup(groupId);
+            page->_OnFirstLayout(nullptr, nullptr);
+            VERIFY_ARE_EQUAL(0u, page->_tabs.Size());
+            VERIFY_IS_TRUE(page->_manager.HasKeptSessions());
+            page->ContentTransferReceiverReady();
+            VERIFY_ARE_EQUAL(1u, page->_tabs.Size());
+            VERIFY_ARE_EQUAL(contentId, page->_GetFocusedTabImpl()->GetRootPane()->GetTerminalControl().ContentId());
+            VERIFY_IS_FALSE(page->_manager.HasKeptSessions());
+            VERIFY_ARE_EQUAL(0u, connection->CloseCount());
+            page->_GetFocusedTabImpl()->Close();
         });
     }
 

@@ -694,6 +694,13 @@ namespace winrt::TerminalApp::implementation
         return _AcquireLeaseLocked();
     }
 
+    SharedWtaLease SharedWta::AcquireKeepRunningLease()
+    {
+        std::lock_guard lock{ _mtx };
+        // A headless shell needs hook tracking, but must not start an unused master.
+        return _refCount ? _AcquireLeaseLocked() : SharedWtaLease{};
+    }
+
     SharedWtaLease SharedWta::_AcquireLeaseLocked() noexcept
     {
         ++_refCount;

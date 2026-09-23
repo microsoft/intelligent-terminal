@@ -32,12 +32,14 @@ namespace winrt
 
 namespace winrt::TerminalApp::implementation
 {
-    Tab::Tab(std::shared_ptr<Pane> rootPane)
+    Tab::Tab(std::shared_ptr<Pane> rootPane, winrt::hstring stableId)
     {
         _rootPane = rootPane;
         _activePane = nullptr;
 
-        _stableId = winrt::hstring{ ::Microsoft::Console::Utils::GuidToString(::Microsoft::Console::Utils::CreateGuid()) };
+        _stableId = stableId.empty() ?
+                        winrt::hstring{ ::Microsoft::Console::Utils::GuidToString(::Microsoft::Console::Utils::CreateGuid()) } :
+                        std::move(stableId);
 
         _closePaneMenuItem.Visibility(WUX::Visibility::Collapsed);
 

@@ -1631,6 +1631,7 @@ void TerminalProtocolComServer::_dispatchPaneAgentSessionToPage(const winrt::hst
     {
         return;
     }
+    s_emperor->TrackPaneAgentSession(eventJson);
     for (const auto& host : s_emperor->GetWindows())
     {
         auto page = _getPage(host.get());

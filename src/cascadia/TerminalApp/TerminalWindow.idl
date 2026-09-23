@@ -57,6 +57,7 @@ namespace TerminalApp
         Int32 SetStartupCommandline(CommandlineArgs args);
         void SetStartupContent(String json, Windows.Foundation.IReference<Windows.Foundation.Rect> bounds, UInt64 transferId);
         void SetStartupActions(Windows.Foundation.Collections.IVector<Microsoft.Terminal.Settings.Model.ActionAndArgs> actions);
+        Guid StartupKeptGroup;
         void SetPersistedLayout(Microsoft.Terminal.Settings.Model.WindowLayout layout);
         Int32 ExecuteCommandline(CommandlineArgs args);
 

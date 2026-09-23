@@ -244,6 +244,12 @@ namespace winrt::TerminalApp::implementation
         void SendContentToOther(winrt::TerminalApp::RequestReceiveContentArgs args);
 
         uint32_t NumberOfTabs() const;
+        bool CanKeepPaneRunning(const winrt::guid& paneSessionId);
+        bool IsPaneKeepRunning(const winrt::guid& paneSessionId);
+        void SetPaneKeepRunning(const winrt::guid& paneSessionId, bool enabled);
+        bool RestoreKeptGroup(const winrt::guid& groupId);
+        void ShutdownPanes();
+        void SetStartupKeptGroup(const winrt::guid& groupId) noexcept { _startupKeptGroup = groupId; }
 
         // Terminal Protocol Bridge Methods
         uint32_t TabCount() const;
@@ -883,6 +889,12 @@ namespace winrt::TerminalApp::implementation
         void _OpenNewTerminalViaDropdown(const Microsoft::Terminal::Settings::Model::NewTerminalArgs newTerminalArgs);
 
         bool _displayingCloseDialog{ false };
+        bool _windowCloseAccepted{ false };
+        bool _windowPanesShutdown{ false };
+        winrt::guid _startupKeptGroup{};
+        std::shared_ptr<Pane> _FindKeepRunningPane(const winrt::guid& sessionId) const;
+        void _DetachKeepRunningPanes(const winrt::com_ptr<Tab>& tab);
+        std::unordered_set<winrt::guid> _detachedPaneIds;
         void _SettingsButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
         void _CommandPaletteButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
         void _AboutButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
