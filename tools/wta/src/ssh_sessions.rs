@@ -187,11 +187,31 @@ fn remote_command(interactive: bool, script: &str) -> String {
 
 pub(crate) fn system_ssh_executable() -> Result<PathBuf> {
     let root = std::env::var_os("SystemRoot").context("SystemRoot is not set")?;
-    let root = PathBuf::from(root);
+    #[cfg(all(windows, target_pointer_width = "32"))]
+    let is_wow64 = {
+        use windows_sys::Win32::System::Threading::{GetCurrentProcess, IsWow64Process};
+
+        let mut wow64 = 0;
+        // SAFETY: The current-process pseudo-handle is valid and wow64 is writable.
+        if unsafe { IsWow64Process(GetCurrentProcess(), &mut wow64) } == 0 {
+            return Err(std::io::Error::last_os_error())
+                .context("Query WOW64 state for Windows system OpenSSH");
+        }
+        wow64 != 0
+    };
+    #[cfg(not(all(windows, target_pointer_width = "32")))]
+    let is_wow64 = false;
+
+    system_ssh_executable_path(PathBuf::from(root), is_wow64)
+}
+
+fn system_ssh_executable_path(root: PathBuf, is_wow64: bool) -> Result<PathBuf> {
     if !root.is_absolute() {
         bail!("SystemRoot must be an absolute Windows path");
     }
-    Ok(root.join(r"System32\OpenSSH\ssh.exe"))
+    // Sysnative bypasses WOW64 redirection and is not available to native processes.
+    let directory = if is_wow64 { "Sysnative" } else { "System32" };
+    Ok(root.join(directory).join(r"OpenSSH\ssh.exe"))
 }
 
 pub(crate) fn configure_ssh_environment(
@@ -807,11 +827,35 @@ pub(crate) mod tests {
 
     #[test]
     #[cfg(windows)]
+    fn system_openssh_path_selects_the_native_directory_without_path_lookup() {
+        for root in [r"C:\Windows", r"D:\Windows Directory"] {
+            for (is_wow64, directory) in [(false, "System32"), (true, "Sysnative")] {
+                assert_eq!(
+                    system_ssh_executable_path(PathBuf::from(root), is_wow64).unwrap(),
+                    PathBuf::from(format!(r"{root}\{directory}\OpenSSH\ssh.exe"))
+                );
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn system_openssh_path_rejects_relative_system_roots() {
+        for root in ["", "Windows", r"C:Windows", r"\Windows"] {
+            for is_wow64 in [false, true] {
+                assert!(system_ssh_executable_path(PathBuf::from(root), is_wow64).is_err());
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(windows)]
     fn openssh_config_cannot_restore_setenv_but_sendenv_is_additive() {
         let fixture =
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(r"tests\fixtures\ssh_sessions.conf");
+        let executable = system_ssh_executable().unwrap();
         for interactive in [false, true] {
-            let mut command = tokio::process::Command::new(system_ssh_executable().unwrap());
+            let mut command = tokio::process::Command::new(&executable);
             configure_ssh_environment(&mut command, std::env::vars_os());
             command.args(["-G", "-F"]).arg(&fixture);
             command.args(["-o", "SendEnv=-*"]);
@@ -820,7 +864,11 @@ pub(crate) mod tests {
                 interactive,
                 "true",
             ));
-            let output = command.as_std_mut().output().unwrap();
+            let output = command
+                .as_std_mut()
+                .output()
+                .with_context(|| format!("Run system OpenSSH at {}", executable.display()))
+                .unwrap();
             assert!(
                 output.status.success(),
                 "{}",

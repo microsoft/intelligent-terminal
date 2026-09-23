@@ -131,7 +131,10 @@ discard another pane's binding. Bindings last for the master's lifetime.
 
 The native pane starts an internal WTA launcher, which passes validated remote
 values past Terminal's environment expansion before invoking the same absolute
-system OpenSSH executable used for listing. Both SSH child processes receive
+system OpenSSH executable used for listing. WOW64 processes use
+`%SystemRoot%\Sysnative\OpenSSH\ssh.exe` to bypass 32-bit filesystem redirection;
+native processes use `%SystemRoot%\System32\OpenSSH\ssh.exe`. Neither path falls
+back to an executable found through `PATH`. Both SSH child processes receive
 only the environment needed for Windows and SSH authentication, not inherited
 provider credentials or WTA routing data. A fixed terminal type overrides
 configured `SetEnv` values. Explicit login-shell startup output is sent to
