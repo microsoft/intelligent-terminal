@@ -8,6 +8,9 @@ use super::*;
 use acp::schema::v1::{ContentChunk, SessionId, SessionNotification, SessionUpdate};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
+#[path = "tmux_hooks_tests.rs"]
+mod tmux_hooks_tests;
+
 fn empty_agent_cell() -> AgentCell {
     Arc::new(OnceCell::new())
 }
@@ -1498,6 +1501,7 @@ fn make_state_with_retirement_pending_timeout(
         usage_generation: watch::channel(0u64).0,
         registry: crate::session_registry::InMemoryRegistry::shared(),
         ssh_sessions: ssh_sessions::Service::default(),
+        ssh_hooks: ssh_hooks::Service::default(),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt: None,
         agents: Mutex::new(HashMap::new()),
@@ -9902,6 +9906,7 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
         usage_generation: watch::channel(0u64).0,
         registry: crate::session_registry::InMemoryRegistry::shared(),
         ssh_sessions: ssh_sessions::Service::default(),
+        ssh_hooks: ssh_hooks::Service::default(),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt: Some(wt),
         agents: Mutex::new(HashMap::new()),

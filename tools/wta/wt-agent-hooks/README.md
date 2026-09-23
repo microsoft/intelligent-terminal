@@ -7,6 +7,11 @@ via `wtcli`. This lets the WTA agent pane display real-time tool
 use, prompts, and session events from any agent CLI session running in another
 pane.
 
+For a remote Linux host without `wtcli`, use the separate, opt-in
+[tmux hook bridge](tmux/README.md). Its shell script forwards raw payloads in
+session-scoped control-mode notifications; IT owns JSON parsing and redaction.
+It does not require Python or change these locally managed plugins.
+
 ## Layout
 
 This directory is the **single source of truth** for everything WTA installs
@@ -37,7 +42,7 @@ wt-agent-hooks/
     └── state-logger.ps1
 ```
 
-Every integration dispatches through the native `wtcli agent-hook` command,
+Each locally managed integration dispatches through the native `wtcli agent-hook` command,
 invoked directly from `hooks.json` with no script or batch launcher in between.
 Claude and Copilot share the same plugin manifest and event schema.
 

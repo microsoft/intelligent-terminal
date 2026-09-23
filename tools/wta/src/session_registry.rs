@@ -513,6 +513,7 @@ pub enum WtaExtRequest {
     SessionsList(SessionsListParams),
     /// Source-scoped SSH history and master-owned focus/resume.
     SshSessions(crate::ssh_session_registry::Request),
+    SshHooks(crate::ssh_hook_protocol::Request),
     /// `_intellterm.wta/session_hook` — a helper-originated session event
     /// (resume bookkeeping, pane lifecycle). Agent CLI hooks reach master over
     /// the COM broadcast instead.
@@ -536,7 +537,10 @@ pub enum WtaExtRequest {
     ForwardToAgent(acp::schema::v1::ExtRequest),
     /// Method matched one of ours but the params failed to decode. The master
     /// answers `invalid_params` rather than acting on a half-parsed payload.
-    Malformed { method: String, error: String },
+    Malformed {
+        method: String,
+        error: String,
+    },
 }
 
 /// Classify and decode an inbound helper→master `ExtRequest`.
@@ -567,6 +571,8 @@ pub fn parse_ext_request(req: acp::schema::v1::ExtRequest) -> WtaExtRequest {
         decode!(SessionsList, parse_sessions_list_params)
     } else if ext_method_matches(&req.method, crate::ssh_session_registry::METHOD) {
         decode!(SshSessions, crate::ssh_session_registry::parse_request)
+    } else if ext_method_matches(&req.method, crate::ssh_hook_protocol::METHOD) {
+        decode!(SshHooks, crate::ssh_hook_protocol::parse_request)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_HOOK) {
         decode!(SessionHook, parse_session_hook_params)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_BORN_BOUND) {
@@ -801,6 +807,9 @@ pub enum SessionHookParams {
     PaneClosed {
         pane_session_id: String,
     },
+    PaneDetached {
+        pane_session_id: String,
+    },
     ResumeDispatched {
         key: crate::agent_sessions::AgentKey,
     },
@@ -850,6 +859,9 @@ impl From<&crate::agent_sessions::SessionEvent> for SessionHookParams {
             SessionEvent::PaneClosed { pane_session_id } => Self::PaneClosed {
                 pane_session_id: pane_session_id.clone(),
             },
+            SessionEvent::PaneDetached { pane_session_id } => Self::PaneDetached {
+                pane_session_id: pane_session_id.clone(),
+            },
             SessionEvent::ResumeDispatched { key } => Self::ResumeDispatched { key: key.clone() },
             SessionEvent::ResumePaneAssigned {
                 key,
@@ -895,6 +907,9 @@ impl From<SessionHookParams> for crate::agent_sessions::SessionEvent {
             },
             SessionHookParams::PaneClosed { pane_session_id } => {
                 Self::PaneClosed { pane_session_id }
+            }
+            SessionHookParams::PaneDetached { pane_session_id } => {
+                Self::PaneDetached { pane_session_id }
             }
             SessionHookParams::ResumeDispatched { key } => Self::ResumeDispatched { key },
             SessionHookParams::ResumePaneAssigned {
@@ -1597,6 +1612,9 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
         SessionEvent::PaneClosed { pane_session_id } => SessionEvent::PaneClosed {
             pane_session_id: pane_key(&pane_session_id),
         },
+        SessionEvent::PaneDetached { pane_session_id } => SessionEvent::PaneDetached {
+            pane_session_id: pane_key(&pane_session_id),
+        },
         SessionEvent::ResumePaneAssigned {
             key,
             pane_session_id,
@@ -1861,6 +1879,17 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             entry.current_tool = None;
             entry.attention_reason = None;
             entry.last_activity_at_ms = Some(now);
+            true
+        }
+        SessionEvent::PaneDetached { pane_session_id } => {
+            let Some(sid) = state.active_by_pane.remove(&pane_session_id) else {
+                return false;
+            };
+            let Some(entry) = state.sessions.get_mut(&sid) else {
+                return false;
+            };
+            entry.pane_session_id = None;
+            entry.born_bound_pane = false;
             true
         }
         SessionEvent::ConnectionFailed {
@@ -3958,6 +3987,9 @@ mod tests {
             },
             SessionEvent::PaneClosed {
                 pane_session_id: "pane-closed".to_string(),
+            },
+            SessionEvent::PaneDetached {
+                pane_session_id: "pane-detached".to_string(),
             },
             SessionEvent::ResumeDispatched {
                 key: "resume-dispatched".to_string(),

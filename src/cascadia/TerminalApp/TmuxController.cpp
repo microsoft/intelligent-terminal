@@ -3,10 +3,13 @@
 
 #include "pch.h"
 #include "TmuxController.h"
+#include "TmuxAgentHook.h"
 #include "TmuxPaneState.h"
+#include "TmuxSessionQuery.h"
 #include "TmuxSessionMenu.h"
 #include "TerminalPage.h"
 #include "TerminalPaneContent.h"
+#include "../inc/AgentSourceUtils.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 #include "../inc/TmuxSshCommand.h"
 
@@ -111,10 +114,30 @@ namespace winrt::TerminalApp::implementation
         Stop();
     }
 
+    bool TmuxController::MatchesSession(const winrt::hstring& session, const winrt::hstring& pendingSession) const
+    {
+        return !_stopped && !_failed && !_exiting &&
+               Protocol::MatchesSessionTarget(winrt::to_string(session), _sessionId, _sessionName, winrt::to_string(pendingSession));
+    }
+
     void TmuxController::Start(const hstring& commandline, const hstring& workingDirectory)
     {
         const auto page = _page.get();
         THROW_HR_IF(E_ABORT, !page);
+        _workingDirectory = workingDirectory;
+        namespace AgentSource = ::Microsoft::Terminal::AgentSource;
+        const auto sshSource = AgentSource::ResolveSessionsSshSource(
+            {}, commandline, AgentSource::SessionsSshCommand::Tmux);
+        if (sshSource.kind == AgentSource::SessionsSshKind::ValidTarget)
+        {
+            Json::Value metadata;
+            AgentSource::WriteSessionsSshMetadata(metadata, sshSource);
+            _sshTarget = std::move(metadata["sessions_ssh"]);
+        }
+        else if (sshSource.kind == AgentSource::SessionsSshKind::UnsupportedSsh)
+        {
+            LOG_HR_MSG(E_INVALIDARG, "Tmux hooks cannot use an SSH session source: %hs", winrt::to_string(sshSource.error).c_str());
+        }
         page->_tabView.CanDragTabs(false);
         page->_tabView.CanReorderTabs(false);
         const auto profile = page->_settings.GetProfileForArgs(NewTerminalArgs{});
@@ -239,6 +262,20 @@ namespace winrt::TerminalApp::implementation
         }
         _sizeChanged.revoke();
         _layoutUpdated.revoke();
+        _agentHooks.Clear();
+        if (const auto page = _page.get())
+        {
+            for (const auto& [id, view] : _panes)
+            {
+                try
+                {
+                    const auto detached = !_remoteServerEnded &&
+                                          (!_remotePanesAfterExit || _remotePanesAfterExit->contains(id));
+                    page->_NotifyPanesClosing(view.pane, detached);
+                }
+                CATCH_LOG();
+            }
+        }
         _tabs.clear();
         _panes.clear();
         _diagnosticTab = nullptr;
@@ -295,6 +332,10 @@ namespace winrt::TerminalApp::implementation
             self._showFailure(message);
             for (const auto& [id, view] : self._panes)
             {
+                if (const auto page = self._page.get())
+                {
+                    page->_NotifyPanesClosing(view.pane, !self._remoteServerEnded);
+                }
                 view.stream->connection->SetState(ConnectionState::Failed);
             }
         });
@@ -395,15 +436,45 @@ namespace winrt::TerminalApp::implementation
         if (_exiting && code == 0)
         {
             _post([](auto& self) {
-                if (const auto page = self._page.get())
-                {
-                    page->CloseWindow();
-                }
+                _finishExit(self.shared_from_this());
             });
         }
         else
         {
             _fail(fmt::format("tmux control process exited (code {})", code));
+        }
+    }
+
+    winrt::fire_and_forget TmuxController::_finishExit(std::shared_ptr<TmuxController> self)
+    {
+        const winrt::apartment_context ui;
+        try
+        {
+            // tmux may emit the same bare %exit for detach and kill-session.
+            // Confirm pane existence on the original server instead of guessing.
+            if (!self->_stopped && !self->_sshTarget.isNull() && !self->_socketPath.empty())
+            {
+                const auto destination = winrt::to_hstring(self->_sshTarget["destination"].asString());
+                const auto socket = winrt::to_hstring(self->_socketPath);
+                const auto port = self->_sshTarget["port"].isNull() ? uint16_t{} : gsl::narrow<uint16_t>(self->_sshTarget["port"].asUInt());
+                const auto command = Protocol::BuildSshPaneListCommandline(destination, socket, port);
+                const auto output = co_await Protocol::QuerySessionListAsync(winrt::hstring{ command }, winrt::hstring{ self->_workingDirectory }, socket);
+                auto panes = Protocol::ParsePaneIds(winrt::to_string(output));
+                co_await ui;
+                if (!self->_stopped)
+                {
+                    self->_remotePanesAfterExit = std::move(panes);
+                }
+            }
+        }
+        CATCH_LOG();
+        co_await ui;
+        if (!self->_stopped)
+        {
+            if (const auto page = self->_page.get())
+            {
+                page->CloseWindow();
+            }
         }
     }
 
@@ -425,6 +496,18 @@ namespace winrt::TerminalApp::implementation
                     return;
                 }
                 _post([](auto& self) {
+                    if (self._failed || self._exiting)
+                    {
+                        return;
+                    }
+                    // Index-only swaps/renumbering need not emit layout changes.
+                    // This subscription belongs to this client, not the server.
+                    self._send("refresh-client -B 'it-window-order::#{W:#{window_index}=#{window_id};}'", [](const Event& response) {
+                        if (!response.success)
+                        {
+                            LOG_HR_MSG(E_FAIL, "Unable to subscribe to tmux window ordering");
+                        }
+                    });
                     self._scheduleResize();
                 });
                 return;
@@ -488,7 +571,21 @@ namespace winrt::TerminalApp::implementation
             break;
         }
         case Event::Kind::Notification:
-            if (event.name == "session-changed" || event.name == "session-renamed")
+            if (event.name == "message")
+            {
+                if (event.text.starts_with("IT_AGENT_HOOK/"))
+                {
+                    if (event.text.size() > Protocol::MaxAgentHookMessageBytes || _postedWork.load() >= 256)
+                    {
+                        LOG_HR_MSG(E_BOUNDS, "Dropping tmux agent hook exceeding message or pending update limit");
+                    }
+                    else
+                    {
+                        _post([message = event.text](auto& self) { self._agentHook(message); });
+                    }
+                }
+            }
+            else if (event.name == "session-changed" || event.name == "session-renamed")
             {
                 const auto split = event.text.find(' ');
                 if (split == std::string::npos || split + 1 == event.text.size())
@@ -500,6 +597,10 @@ namespace winrt::TerminalApp::implementation
                     if (self._failed || self._exiting || (!changed && self._sessionId != id))
                     {
                         return;
+                    }
+                    if (self._sessionId != id)
+                    {
+                        self._agentHooks.Clear();
                     }
                     self._sessionId = id;
                     self._sessionName = name;
@@ -513,7 +614,8 @@ namespace winrt::TerminalApp::implementation
             }
             else if (event.name == "layout-change" || event.name == "window-add" ||
                      event.name == "window-close" ||
-                     event.name == "session-window-changed")
+                     event.name == "session-window-changed" ||
+                     (event.name == "subscription-changed" && event.text.starts_with("it-window-order ")))
             {
                 _post([](auto& self) { self.Refresh(); });
             }
@@ -568,8 +670,64 @@ namespace winrt::TerminalApp::implementation
             }
             break;
         case Event::Kind::Exit:
+            _remoteServerEnded = Protocol::ExitEndsRemoteServer(event.text);
             _exiting = true;
             break;
+        }
+    }
+
+    void TmuxController::_agentHook(const std::string_view message)
+    {
+        try
+        {
+            auto chunk = Protocol::ParseAgentHookChunk(message);
+            if (!chunk)
+            {
+                return;
+            }
+            const auto page = _page.get();
+            if (!page || _stopped || _failed || _exiting)
+            {
+                return;
+            }
+            if (const auto expired = _agentHooks.Expire())
+            {
+                LOG_HR_MSG(HRESULT_FROM_WIN32(ERROR_TIMEOUT), "Expired %zu incomplete tmux agent hook transfers", expired);
+            }
+            const auto view = _panes.find(chunk->message.paneId);
+            if (_sessionId != chunk->message.sessionId || view == _panes.end())
+            {
+                LOG_HR_MSG(E_INVALIDARG, "Ignoring tmux hook outside the attached session or current pane inventory");
+                return;
+            }
+            const auto hook = _agentHooks.Append(std::move(*chunk));
+            if (!hook)
+            {
+                return;
+            }
+
+            const auto paneId = page->_FindSessionIdForControl(view->second.control);
+            // The full backend layout owns zoom-hidden panes too. Looking only
+            // through the visible native pane tree would misroute their hooks.
+            std::string tabId;
+            for (const auto& [id, window] : _windows)
+            {
+                std::unordered_map<Id, std::pair<uint32_t, uint32_t>> leaves;
+                _collectLeaves(window.layout, leaves);
+                if (leaves.contains(hook->paneId))
+                {
+                    tabId = winrt::to_string(_tabs.at(id)->StableId());
+                    break;
+                }
+            }
+            const auto params = Protocol::BuildAgentHookParams(
+                *hook, paneId, tabId, std::to_string(page->_WindowProperties.WindowId()), _sessionName, _socketPath, _sshTarget);
+            page->_RaiseProtocolEvent("agent_event", params);
+        }
+        catch (const Protocol::ProtocolError& error)
+        {
+            // A bad optional hook must not disconnect the terminal transport.
+            LOG_HR_MSG(E_INVALIDARG, "%hs", error.what());
         }
     }
 
@@ -700,6 +858,7 @@ namespace winrt::TerminalApp::implementation
             TerminalApp::WindowRequestedArgs request{ 0, nullptr };
             request.TmuxSshDestination(page->_tmuxSshDestination);
             request.TmuxSshPort(page->_tmuxSshPort);
+            request.TmuxSshSession(winrt::to_hstring(fmt::format("${}", id)));
             request.TmuxWorkingDirectory(page->_tmuxWorkingDirectory);
             request.TmuxCommandline(winrt::hstring{ Protocol::BuildSshCommandline(page->_tmuxSshDestination, winrt::to_hstring(fmt::format("${}", id)), page->_tmuxSshPort) });
             page->RequestNewWindow.raise(*page, request);
@@ -730,6 +889,25 @@ namespace winrt::TerminalApp::implementation
                 self->_post([path = response.text](auto& owner) {
                     owner._socketPath = path;
                     owner._updateSessionTitle();
+                });
+            }
+        });
+    }
+
+    void TmuxController::_readWindowName(const Id id)
+    {
+        if (_stopped || _failed || _exiting || !_tabs.contains(id))
+        {
+            return;
+        }
+        _send(fmt::format("display-message -p -t @{} '#{{window_name}}'", id), [weak = weak_from_this(), id](const Event& response) {
+            if (const auto self = weak.lock(); self && response.success)
+            {
+                self->_post([id, name = response.text](auto& owner) {
+                    if (const auto tab = owner._tabs.find(id); tab != owner._tabs.end())
+                    {
+                        tab->second->SetTabText(winrt::to_hstring(name));
+                    }
                 });
             }
         });
@@ -808,7 +986,7 @@ namespace winrt::TerminalApp::implementation
     void TmuxController::_requestRefresh()
     {
         _refreshing = true;
-        _send("list-windows -F '#{window_id} #{window_active} #{window_layout} #{window_visible_layout}'", [weak = weak_from_this()](const Event& response) {
+        _send("list-windows -F '#{window_id} #{window_index} #{window_active} #{window_layout} #{window_visible_layout}'", [weak = weak_from_this()](const Event& response) {
             if (const auto self = weak.lock())
             {
                 if (!response.success)
@@ -819,35 +997,86 @@ namespace winrt::TerminalApp::implementation
                 auto windows = self->_parseWindows(response.text);
                 self->_inventoryReceived = true;
                 self->_post([windows = std::move(windows)](auto& owner) mutable {
-                    owner._applyWindows(std::move(windows));
-                    owner._refreshing = false;
-                    if (std::exchange(owner._refreshAgain, false))
+                    if (owner._stopped || owner._failed || owner._exiting)
                     {
-                        owner.Refresh();
+                        return;
                     }
+                    std::unordered_map<Id, std::pair<uint32_t, uint32_t>> leaves;
+                    for (const auto& [id, window] : windows)
+                    {
+                        owner._collectLeaves(window.layout, leaves);
+                    }
+                    const auto removed = std::any_of(owner._panes.begin(), owner._panes.end(), [&](const auto& pane) {
+                        return !leaves.contains(pane.first);
+                    });
+                    if (!removed)
+                    {
+                        owner._completeRefresh(std::move(windows));
+                        return;
+                    }
+                    owner._send("list-panes -a -F '#{pane_id}'", [weak = owner.weak_from_this(), windows = std::move(windows)](const Event& panes) mutable {
+                        if (const auto current = weak.lock())
+                        {
+                            std::optional<std::unordered_set<Id>> remotePanes;
+                            if (panes.success)
+                            {
+                                remotePanes = Protocol::ParsePaneIds(panes.text);
+                            }
+                            else
+                            {
+                                LOG_HR_MSG(E_FAIL, "Unable to confirm removed tmux pane lifetime");
+                            }
+                            current->_post([windows = std::move(windows), remotePanes = std::move(remotePanes)](auto& target) mutable {
+                                target._completeRefresh(std::move(windows), std::move(remotePanes));
+                            });
+                        }
+                    });
                 });
             }
         });
     }
 
+    void TmuxController::_completeRefresh(std::map<Id, Window> windows, std::optional<std::unordered_set<Id>> remotePanes)
+    {
+        if (_stopped || _failed || _exiting)
+        {
+            return;
+        }
+        _applyWindows(std::move(windows), std::move(remotePanes));
+        _refreshing = false;
+        if (std::exchange(_refreshAgain, false))
+        {
+            Refresh();
+        }
+    }
+
     std::map<TmuxController::Id, TmuxController::Window> TmuxController::_parseWindows(std::string_view text) const
     {
         std::map<Id, Window> result;
+        std::unordered_set<uint32_t> indices;
         while (!text.empty())
         {
             const auto end = text.find('\n');
             const auto fields = words(text.substr(0, end));
-            if (fields.size() != 4)
+            if (fields.size() != 5)
             {
                 throw Protocol::ProtocolError{ "Invalid tmux window inventory" };
             }
             const auto id = identifier(fields[0], '@');
             Window window;
-            window.active = number(fields[1]) != 0;
-            window.layoutText = fields[2];
-            window.visibleLayoutText = fields[3];
-            window.layout = Protocol::ParseLayout(fields[2]);
-            window.visibleLayout = Protocol::ParseLayout(fields[3]);
+            const auto index = number(fields[1]);
+            const auto active = number(fields[2]);
+            if (index > static_cast<uint64_t>(std::numeric_limits<int32_t>::max()) || active > 1 ||
+                !indices.emplace(gsl::narrow_cast<uint32_t>(index)).second)
+            {
+                throw Protocol::ProtocolError{ "Invalid or duplicate tmux window index" };
+            }
+            window.index = gsl::narrow_cast<uint32_t>(index);
+            window.active = active != 0;
+            window.layoutText = fields[3];
+            window.visibleLayoutText = fields[4];
+            window.layout = Protocol::ParseLayout(fields[3]);
+            window.visibleLayout = Protocol::ParseLayout(fields[4]);
             if (!result.emplace(id, std::move(window)).second || result.size() > 256)
             {
                 throw Protocol::ProtocolError{ "Duplicate window or excessive tmux window count" };
@@ -988,7 +1217,7 @@ namespace winrt::TerminalApp::implementation
         return root;
     }
 
-    void TmuxController::_applyWindows(std::map<Id, Window> windows)
+    void TmuxController::_applyWindows(std::map<Id, Window> windows, std::optional<std::unordered_set<Id>> remotePanes)
     {
         const auto page = _page.get();
         if (!page || _stopped || _failed)
@@ -1001,6 +1230,7 @@ namespace winrt::TerminalApp::implementation
         auto restoreApplyingState = wil::scope_exit([&]() noexcept { _applyingState = wasApplyingState; });
         if (windows.empty())
         {
+            _remotePanesAfterExit = std::move(remotePanes);
             page->CloseWindow();
             return;
         }
@@ -1123,6 +1353,7 @@ namespace winrt::TerminalApp::implementation
                     std::lock_guard lock{ _streamsMutex };
                     _streams.erase(it->first);
                 }
+                page->_NotifyPanesClosing(it->second.pane, !remotePanes || remotePanes->contains(it->first));
                 it->second.pane->Shutdown();
                 it = _panes.erase(it);
             }
@@ -1139,7 +1370,35 @@ namespace winrt::TerminalApp::implementation
             _diagnosticControl = nullptr;
             _diagnosticConnection = nullptr;
         }
-        auto active = _tabs.begin()->first;
+        std::vector<std::pair<uint32_t, Id>> order;
+        order.reserve(_windows.size());
+        for (const auto& [id, window] : _windows)
+        {
+            order.emplace_back(window.index, id);
+        }
+        std::sort(order.begin(), order.end());
+        auto reordered = false;
+        {
+            const auto wasProjecting = std::exchange(_projecting, true);
+            const auto wasRemoving = std::exchange(page->_removing, true);
+            auto finish = wil::scope_exit([&]() noexcept {
+                page->_removing = wasRemoving;
+                _projecting = wasProjecting;
+            });
+            uint32_t position = 0;
+            for (const auto& [index, id] : order)
+            {
+                const auto current = page->_GetTabIndex(*_tabs.at(id));
+                THROW_HR_IF(E_UNEXPECTED, !current);
+                if (*current != position)
+                {
+                    page->_TryMoveTab(*current, gsl::narrow_cast<int32_t>(position), false);
+                    reordered = true;
+                }
+                ++position;
+            }
+        }
+        auto active = order.front().second;
         for (const auto& [id, window] : _windows)
         {
             if (window.active)
@@ -1155,7 +1414,7 @@ namespace winrt::TerminalApp::implementation
         {
             page->_selectedTabItem(tab->TabViewItem());
         }
-        else if (changed)
+        else if (changed || reordered)
         {
             page->_UpdatedSelectedTab(*tab);
         }
@@ -1174,17 +1433,7 @@ namespace winrt::TerminalApp::implementation
         {
             for (const auto& [id, tab] : _tabs)
             {
-                _send(fmt::format("display-message -p -t @{} '#{{window_name}}'", id), [weak = weak_from_this(), id](const Event& response) {
-                    if (const auto self = weak.lock(); self && response.success)
-                    {
-                        self->_post([id, name = response.text](auto& owner) {
-                            if (const auto tab = owner._tabs.find(id); tab != owner._tabs.end())
-                            {
-                                tab->second->SetTabText(winrt::to_hstring(name));
-                            }
-                        });
-                    }
-                });
+                _readWindowName(id);
             }
         }
     }
@@ -1384,6 +1633,10 @@ namespace winrt::TerminalApp::implementation
 
     void TmuxController::_input(const Id id, const std::string_view bytes)
     {
+        if (_stopped || _failed || _exiting)
+        {
+            return;
+        }
         try
         {
             std::vector<std::pair<std::string, ResponseHandler>> commands;
@@ -1538,6 +1791,49 @@ namespace winrt::TerminalApp::implementation
         {
             _showFailure(exceptionMessage());
             return false;
+        }
+    }
+
+    void TmuxController::RenameWindow(const winrt::com_ptr<Tab>& tab, const winrt::hstring& title)
+    {
+        try
+        {
+            for (const auto& [id, candidate] : _tabs)
+            {
+                if (candidate != tab)
+                {
+                    continue;
+                }
+                // tmux stores printable names with escaping. Re-submitting
+                // its unchanged display form would escape backslashes again.
+                if (!title.empty() && title == candidate->GetTabText())
+                {
+                    return;
+                }
+                _send(Protocol::RenameWindowCommand(id, winrt::to_string(title)), [weak = weak_from_this(), id](const Event& response) {
+                    if (const auto self = weak.lock())
+                    {
+                        self->_post([id, success = response.success, error = response.text](auto& owner) {
+                            if (!success)
+                            {
+                                LOG_HR_MSG(E_FAIL, "Tmux window rename failed");
+                                owner._showFailure("Unable to rename tmux window: " + error);
+                            }
+                            else
+                            {
+                                owner._readWindowName(id);
+                            }
+                        });
+                    }
+                });
+                return;
+            }
+            THROW_HR_MSG(E_INVALIDARG, "The tab has no tmux window identity");
+        }
+        catch (...)
+        {
+            LOG_HR_MSG(E_FAIL, "Unable to request tmux window rename");
+            _showFailure(exceptionMessage());
         }
     }
 

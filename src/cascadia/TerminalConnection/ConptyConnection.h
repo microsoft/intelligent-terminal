@@ -68,6 +68,7 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
         til::CoordType _cols = 30;
         uint64_t _initialParentHwnd{ 0 };
         hstring _commandline{};
+        hstring _originalCommandline{};
         hstring _startingDirectory{};
         hstring _startingTitle{};
         bool _initialVisibility{ true };

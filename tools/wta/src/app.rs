@@ -751,7 +751,55 @@ where
         );
         return false;
     }
-    let mut key = reg.resolve_or_synthesize_key(asid, pane_session_id);
+    let tmux = match crate::tmux_hooks::normalize(params, pane_session_id, &cli_source, asid) {
+        Ok(tmux) => tmux,
+        Err(reason) => {
+            tracing::warn!(target: "agent_route", reason, "dropping malformed tmux hook");
+            return false;
+        }
+    };
+    if tmux.as_ref().is_some_and(|hook| hook.ssh_target.is_some()) {
+        // Master owns the shared SSH row and notifies its source's viewers.
+        // A helper-local tmux copy would duplicate it in the Host list.
+        return false;
+    }
+    let mut key = if let Some(tmux) = &tmux {
+        let bound_key = reg.key_for_pane(pane_session_id).filter(|key| {
+            reg.get(key).is_some_and(|row| {
+                row.liveness() == crate::agent_sessions::LivenessState::Live
+                    && tmux.matches_binding(
+                        row.pane_session_id.as_deref(),
+                        Some(&row.cli_source),
+                        &row.location,
+                    )
+            })
+        });
+        let Some(key) = tmux.key.clone().or(bound_key) else {
+            return false;
+        };
+        // ConnectionFailed is pane-keyed. A delayed error from a superseded
+        // remote session must not fail the pane's newer owner.
+        if event == "agent.error"
+            && reg.has_session(&key)
+            && reg.key_for_pane(pane_session_id).as_ref() != Some(&key)
+        {
+            return false;
+        }
+        key
+    } else {
+        let key = reg.resolve_or_synthesize_key(asid, pane_session_id);
+        if asid.is_empty()
+            && reg.get(&key).is_some_and(|row| {
+                matches!(
+                    row.location,
+                    crate::agent_sessions::SessionLocation::Tmux { .. }
+                )
+            })
+        {
+            return false;
+        }
+        key
+    };
     // Some agent CLIs fire hooks
     // without populating either `agent_session_id` (in the JSON
     // payload) or `WT_SESSION` (in the env of the hook subprocess).
@@ -779,8 +827,8 @@ where
     //   * `most_recent_live_session_for_cli` rejects `Unknown` cli
     //     hints, so any event without a trustworthy CLI label still
     //     falls through to the synthetic key.
-    let mut key_is_synthetic = key.starts_with("pane:");
-    if key_is_synthetic && asid.is_empty() {
+    let key_is_synthetic = key.starts_with("pane:");
+    if tmux.is_none() && key_is_synthetic && asid.is_empty() {
         let needs_fallback = matches!(
             event,
             "agent.notification"
@@ -801,7 +849,6 @@ where
                     "sessionless hook: falling back to most-recently-active live session for cli",
                 );
                 key = fallback;
-                key_is_synthetic = false;
             }
         }
     }
@@ -827,6 +874,9 @@ where
         session_known: reg.has_session(&key),
     };
     let plan = plan_agent_event(event, &payload, pane_session_id, &cli_source, &facts);
+    if tmux.is_some() && plan.events.is_empty() {
+        return false;
+    }
 
     // A real `agent.session.started` supersedes any `pane:`-keyed placeholder
     // minted for this pane while the id was still unknown.
@@ -838,6 +888,9 @@ where
         reg.apply(ev.clone());
         hook_sink(ev);
     }
+    if let Some(tmux) = &tmux {
+        reg.set_location(&key_for_refresh, tmux.location.clone());
+    }
 
     // Stamp `AgentPane` origin on the live session if the agent-pane
     // origin index recorded its session id. This is what flips the
@@ -848,7 +901,7 @@ where
     // re-read the index on every routed event (small file, infrequent
     // event) rather than caching, to stay correct after a new session
     // is created while wta is already running.
-    if !key_for_refresh.is_empty() {
+    if tmux.is_none() && !key_for_refresh.is_empty() {
         let agent_pane_keys = crate::agent_pane_origin::load_default_set();
         if agent_pane_keys.contains(&key_for_refresh) {
             reg.set_origin(
@@ -2957,7 +3010,11 @@ impl App {
             key: s.key.clone(),
             cli_source: s.cli_source.clone(),
             load_session_supported: self.agent_supports_load_session,
-            cli_supports_resume_flag,
+            cli_supports_resume_flag: cli_supports_resume_flag
+                && !matches!(
+                    s.location,
+                    crate::agent_sessions::SessionLocation::Tmux { .. }
+                ),
             is_remote: !matches!(s.location, crate::agent_sessions::SessionLocation::Host),
         };
         let action = decide_enter_action(&row);
@@ -3132,6 +3189,7 @@ impl App {
         //     found"). A login shell sources the profile that adds it.
         let login_invocation = format!("bash -lc \"{resume_invocation}\"");
         let commandline = match &s.location {
+            crate::agent_sessions::SessionLocation::Tmux { .. } => return,
             crate::agent_sessions::SessionLocation::Ssh { target } => {
                 self.dispatch_ssh_session_resume(s, target);
                 return;
@@ -3205,7 +3263,8 @@ impl App {
                 format!("Resuming {cli_id} session {short_key} in {distro} (WSL)...")
             }
             crate::agent_sessions::SessionLocation::Host
-            | crate::agent_sessions::SessionLocation::Ssh { .. } => {
+            | crate::agent_sessions::SessionLocation::Ssh { .. }
+            | crate::agent_sessions::SessionLocation::Tmux { .. } => {
                 format!("Resuming {cli_id} session {short_key}...")
             }
         };
@@ -7265,3 +7324,7 @@ mod autofix_tests;
 #[cfg(test)]
 #[path = "app_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "app/tmux_hooks_tests.rs"]
+mod tmux_hooks_tests;

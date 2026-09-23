@@ -138,6 +138,7 @@ void AppHost::_HandleCommandlineArgs(const winrt::TerminalApp::WindowRequestedAr
         _windowLogic.SetStartupTmux(windowArgs.TmuxCommandline(), windowArgs.TmuxWorkingDirectory());
         _windowLogic.TmuxSshDestination(windowArgs.TmuxSshDestination());
         _windowLogic.TmuxSshPort(windowArgs.TmuxSshPort());
+        _windowLogic.TmuxSshSession(windowArgs.TmuxSshSession());
         _launchShowWindowCommand = SW_NORMAL;
     }
     else if (const auto layout = windowArgs.PersistedLayout())

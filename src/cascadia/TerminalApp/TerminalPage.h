@@ -176,6 +176,7 @@ namespace winrt::TerminalApp::implementation
 
         hstring Title();
         winrt::hstring TmuxSessionTitle() const;
+        bool MatchesTmuxSession(const winrt::hstring& session, const winrt::hstring& pendingSession) const;
 
         void TitlebarClicked();
         void WindowVisibilityChanged(const bool showOrHide);
@@ -720,7 +721,7 @@ namespace winrt::TerminalApp::implementation
         // wire shape — callers just supply the method name and a params object.
         void _RaiseProtocolEvent(std::string_view method, const Json::Value& params);
         // Raises one `connection_state` protocol event. Terminal end states
-        // (`closed` / `failed`) must go through `_TryRaiseTerminalEndStateEvent`
+        // (`closed` / `failed` / `detached`) must go through `_TryRaiseTerminalEndStateEvent`
         // so only the first producer emits.
         void _RaiseConnectionStateEvent(std::string_view paneId,
                                         std::string_view state,
@@ -1015,7 +1016,7 @@ namespace winrt::TerminalApp::implementation
         void _selectedTabItem(const Windows::Foundation::IInspectable& item);
 
         void _HandleClosePaneRequested(std::shared_ptr<Pane> pane);
-        void _NotifyPanesClosing(const std::shared_ptr<Pane>& rootPane);
+        void _NotifyPanesClosing(const std::shared_ptr<Pane>& rootPane, bool detached = false);
         bool _ShouldWarnOnClose() const;
         bool _ShouldWarnOnCloseTab(const winrt::com_ptr<Tab>& tab) const;
         safe_void_coroutine _SetFocusedTab(const winrt::TerminalApp::Tab tab);
@@ -1160,7 +1161,7 @@ namespace winrt::TerminalApp::implementation
 
         void _UpdateMRUTab(const winrt::TerminalApp::Tab& tab);
 
-        void _TryMoveTab(const uint32_t currentTabIndex, const int32_t suggestedNewTabIndex);
+        void _TryMoveTab(const uint32_t currentTabIndex, const int32_t suggestedNewTabIndex, bool userInitiated = true);
 
         void _PreviewAction(const Microsoft::Terminal::Settings::Model::ActionAndArgs& args);
         void _PreviewActionHandler(const IInspectable& sender, const Microsoft::Terminal::Settings::Model::Command& args);

@@ -271,6 +271,24 @@ void WindowEmperor::CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs args
     _assertIsMainThread();
     const auto isTmuxWindow = !args.TmuxCommandline().empty();
 
+    if (isTmuxWindow && !args.TmuxSshDestination().empty() && !args.TmuxSshSession().empty())
+    {
+        for (const auto& host : _windows)
+        {
+            if (host->Logic().MatchesTmuxSshSession(args.TmuxSshDestination(), args.TmuxSshPort(), args.TmuxSshSession()))
+            {
+                args.Id(host->Logic().WindowProperties().WindowId());
+                winrt::TerminalApp::SummonWindowBehavior summon{};
+                summon.MoveToCurrentDesktop(false);
+                summon.DropdownDuration(0);
+                summon.ToMonitor(winrt::TerminalApp::MonitorBehavior::InPlace);
+                summon.ToggleVisibility(false);
+                host->HandleSummon(std::move(summon));
+                return;
+            }
+        }
+    }
+
     // Our first ordinary window makes this process the owner of the persisted layout:
     // _persistState() will replace it with whatever we have open. So whatever
     // brought us here — a defterm handoff, a global hotkey, the notification
@@ -410,6 +428,7 @@ winrt::Windows::Foundation::IAsyncOperation<uint64_t> WindowEmperor::CreateTmuxS
     args.TmuxCommandline(commandline);
     args.TmuxWorkingDirectory(workingDirectory);
     args.TmuxSshDestination(destination);
+    args.TmuxSshSession(session);
     CreateNewWindow(args);
     co_return args.Id();
 }

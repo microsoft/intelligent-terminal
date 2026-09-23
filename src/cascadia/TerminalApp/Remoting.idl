@@ -58,5 +58,6 @@ namespace TerminalApp
         String TmuxWorkingDirectory;
         String TmuxSshDestination;
         UInt16 TmuxSshPort;
+        String TmuxSshSession;
     };
 }

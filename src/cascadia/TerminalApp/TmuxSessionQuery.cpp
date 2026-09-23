@@ -5,11 +5,12 @@
 // - TmuxSessionQuery.cpp
 //
 // Abstract:
-// - Bounded, cancellable one-shot default-server session discovery.
+// - Bounded, cancellable one-shot tmux session and pane discovery.
 
 #include "pch.h"
 #include "TmuxSessionQuery.h"
 #include "TmuxProcess.h"
+#include "../inc/TmuxSshCommand.h"
 
 #include <algorithm>
 #include <chrono>
@@ -70,7 +71,7 @@ namespace Microsoft::Terminal::Tmux
             return text;
         }
 
-        bool IsMissingDefaultServer(std::wstring_view error) noexcept
+        bool IsMissingServer(std::wstring_view error, const std::wstring_view expectedSocketPath) noexcept
         {
             if (error.ends_with(L"\r\n"))
             {
@@ -102,11 +103,13 @@ namespace Microsoft::Terminal::Tmux
             {
                 return false;
             }
-            return error.starts_with(L"/") && error.ends_with(L"/default") && error.size() > 8;
+            return expectedSocketPath.empty() ?
+                       error.starts_with(L"/") && error.ends_with(L"/default") && error.size() > 8 :
+                       error == expectedSocketPath;
         }
     }
 
-    winrt::Windows::Foundation::IAsyncOperation<winrt::hstring> QuerySessionListAsync(winrt::hstring commandline, winrt::hstring workingDirectory)
+    winrt::Windows::Foundation::IAsyncOperation<winrt::hstring> QuerySessionListAsync(winrt::hstring commandline, winrt::hstring workingDirectory, winrt::hstring expectedSocketPath)
     {
         const auto cancellation = co_await winrt::get_cancellation_token();
         co_await winrt::resume_background();
@@ -121,6 +124,7 @@ namespace Microsoft::Terminal::Tmux
         {
             throw winrt::hresult_canceled{};
         }
+        THROW_HR_IF(E_INVALIDARG, !expectedSocketPath.empty() && !IsValidSshSocketPath(expectedSocketPath));
 
         TmuxProcess process{ {
             [state](const std::string_view bytes) {
@@ -186,7 +190,7 @@ namespace Microsoft::Terminal::Tmux
         const auto error = DecodeUtf8(state->error, L"Tmux session query returned invalid UTF-8 on stderr.");
         if (state->exitCode != 0)
         {
-            if (state->exitCode == 1 && output.empty() && IsMissingDefaultServer(error))
+            if (state->exitCode == 1 && output.empty() && IsMissingServer(error, expectedSocketPath))
             {
                 co_return winrt::hstring{};
             }

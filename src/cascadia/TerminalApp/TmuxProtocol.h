@@ -14,6 +14,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -24,6 +25,13 @@
 namespace Microsoft::Terminal::Tmux
 {
     using Id = uint64_t;
+
+    inline bool ExitEndsRemoteServer(const std::string_view reason) noexcept
+    {
+        // A client/session can exit while its windows survive elsewhere.
+        // Only an explicit server exit proves that all its panes have ended.
+        return reason == "server exited" || reason == "server exited unexpectedly";
+    }
 
     inline std::string FormatSessionTitle(const std::string_view socketPath, const std::string_view sessionName)
     {
@@ -52,7 +60,30 @@ namespace Microsoft::Terminal::Tmux
         std::string name;
     };
 
+    inline bool MatchesSessionTarget(const std::string_view requested, const std::optional<Id> id, const std::string_view name, const std::string_view pending) noexcept
+    {
+        if (requested.empty())
+        {
+            return false;
+        }
+        if (!id)
+        {
+            return requested == pending;
+        }
+        if (requested.size() > 1 && requested.front() == '$' &&
+            std::all_of(requested.begin() + 1, requested.end(), [](const char ch) { return ch >= '0' && ch <= '9'; }))
+        {
+            Id value{};
+            const auto end = requested.data() + requested.size();
+            const auto [next, error] = std::from_chars(requested.data() + 1, end, value);
+            return error == std::errc{} && next == end && value == *id;
+        }
+        // Once connected, the current name replaces the launch-time name.
+        return requested == name;
+    }
+
     inline std::vector<SessionInfo> ParseSessions(std::string_view text);
+    inline std::unordered_set<Id> ParsePaneIds(std::string_view text);
 
     struct LayoutNode
     {
@@ -150,6 +181,44 @@ namespace Microsoft::Terminal::Tmux
         bool _failed{};
         bool _finished{};
     };
+
+    inline std::string RenameWindowCommand(const Id id, const std::string_view title)
+    {
+        const auto target = " -t @" + std::to_string(id);
+        if (title.empty())
+        {
+            return "set-option -w" + target + " automatic-rename on";
+        }
+        if (title.size() >= Parser::MaxLineBytes ||
+            std::any_of(title.begin(), title.end(), [](const unsigned char ch) { return ch < 32 || ch == 127; }))
+        {
+            throw ProtocolError{ "Tmux window name exceeds its limit or contains control characters" };
+        }
+        // rename-window expands tmux formats even inside command quotes.
+        // The literal modifier prevents names from becoming formats or jobs.
+        std::string command = "rename-window" + target + " -- '#{l:";
+        for (const auto ch : title)
+        {
+            if (ch == '\'')
+            {
+                command.append("'\\''");
+            }
+            else
+            {
+                if (ch == '#' || ch == '}' || ch == ',')
+                {
+                    command.push_back('#');
+                }
+                command.push_back(ch);
+            }
+            if (command.size() >= Parser::MaxLineBytes - 2)
+            {
+                throw ProtocolError{ "Quoted tmux window name exceeds the command limit" };
+            }
+        }
+        command.append("}'");
+        return command;
+    }
 
     namespace details
     {
@@ -371,6 +440,30 @@ namespace Microsoft::Terminal::Tmux
             text.remove_prefix(end + 1);
         }
         return sessions;
+    }
+
+    inline std::unordered_set<Id> ParsePaneIds(std::string_view text)
+    {
+        if (text.size() > 64 * 1024)
+        {
+            throw ProtocolError{ "tmux pane inventory exceeded its limit" };
+        }
+        std::unordered_set<Id> ids;
+        while (!text.empty())
+        {
+            const auto end = text.find('\n');
+            const auto id = details::PaneId(text.substr(0, end));
+            if (ids.size() >= 4096 || !ids.emplace(id).second)
+            {
+                throw ProtocolError{ "Invalid or excessive tmux panes" };
+            }
+            if (end == std::string_view::npos)
+            {
+                break;
+            }
+            text.remove_prefix(end + 1);
+        }
+        return ids;
     }
 
     inline LayoutNode ParseLayout(const std::string_view layout)

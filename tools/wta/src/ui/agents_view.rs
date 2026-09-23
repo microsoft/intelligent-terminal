@@ -503,9 +503,14 @@ fn row_for(
 /// `CliSource::Copilot`, so filtering by CLI alone leaves a Debian pane listing
 /// host and Ubuntu sessions it cannot resume — those session files sit on
 /// another filesystem, reachable only by that distro's own CLI. Match the
-/// execution source exactly.
+/// execution source exactly. Controller-connected tmux rows are also visible
+/// from the default host view: they focus a native pane, not a source-specific
+/// ACP process. Explicit WSL/SSH filters remain source-specific. Ended tmux
+/// rows remain visible in the host view but cannot resume.
 pub(crate) fn matches_source(session: &AgentSession, pane_location: &SessionLocation) -> bool {
     &session.location == pane_location
+        || (matches!(session.location, SessionLocation::Tmux { .. })
+            && matches!(pane_location, SessionLocation::Host))
 }
 
 pub(crate) fn matches_folded_query(session: &AgentSession, folded_query: &str) -> bool {
@@ -650,6 +655,19 @@ fn cli_suffix_for(s: &AgentSession, selected: bool) -> String {
     let source = match &s.location {
         SessionLocation::Wsl { distro } => Some(distro.clone()),
         SessionLocation::Ssh { target } => Some(target.display_name()),
+        SessionLocation::Tmux {
+            session_id,
+            session_name,
+            pane_id,
+            ..
+        } => {
+            let name = if session_name.is_empty() {
+                session_id
+            } else {
+                session_name
+            };
+            Some(format!("{name} {pane_id} (tmux)"))
+        }
         SessionLocation::Host => None,
     };
     [cli, source.as_deref()]
@@ -894,6 +912,48 @@ mod tests {
         let s = relative_age(t);
         assert!(!s.is_empty(), "expected calendar date, got empty");
         assert!(!s.ends_with("ago"), "expected calendar date, got {:?}", s);
+    }
+
+    #[test]
+    fn tmux_rows_are_visible_with_literal_source_badge() {
+        let mut row = sample_session();
+        let params = crate::tmux_hooks::tests::hook(
+            "agent.session.start",
+            crate::tmux_hooks::tests::PANE_A,
+            "copilot",
+            "sid",
+        );
+        row.cli_source = CliSource::Copilot;
+        row.location = crate::tmux_hooks::normalize(
+            &params,
+            crate::tmux_hooks::tests::PANE_A,
+            &row.cli_source,
+            "sid",
+        )
+        .unwrap()
+        .unwrap()
+        .location;
+        assert!(matches_source(&row, &SessionLocation::Host));
+        assert!(!matches_source(
+            &row,
+            &SessionLocation::Wsl {
+                distro: "Ubuntu".into()
+            }
+        ));
+        assert!(!matches_source(
+            &row,
+            &SessionLocation::Ssh {
+                target: crate::ssh_sessions::SshTarget::new("unrelated", None).unwrap()
+            }
+        ));
+        assert_eq!(cli_suffix_for(&row, true), "· copilot · work %1 (tmux)");
+        row.status = AgentStatus::Ended;
+        assert!(matches_source(&row, &SessionLocation::Host));
+        assert_eq!(cli_suffix_for(&row, true), "· copilot · work %1 (tmux)");
+        if let SessionLocation::Tmux { session_name, .. } = &mut row.location {
+            session_name.clear();
+        }
+        assert_eq!(cli_suffix_for(&row, true), "· copilot · $0 %1 (tmux)");
     }
 
     /// Host Copilot and Copilot inside a WSL distro report the same

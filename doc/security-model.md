@@ -231,6 +231,20 @@ None of these helper categories grants a new authorization boundary. Direct shel
 
 For supported CLI sessions where hooks are installed, manifest-driven hook systems launch `wtcli agent-hook` for lifecycle, prompt, tool, notification, and error events. The launcher requires both `WT_COM_CLSID` and `WT_SESSION`, so shared ACP processes without a pane identity return before starting `wtcli.exe`; it also forces exit code 0 if the native binary is unavailable. OpenCode performs the same environment checks in its managed JavaScript plugin and spawns the native command directly. `wtcli agent-hook` reads hook JSON from stdin, wraps it with `cli_source`, `agent_session_id`, and `payload`, and publishes directly through COM `SendEvent`. WT normalizes accepted messages to legacy `agent_event` and broadcasts them to all subscribers. WTA consumes the broadcast through `wtcli --json listen` and updates its `AgentSessionRegistry` / agent session view. This path is useful telemetry and state synchronization; it is not an authorization path for shell input.
 
+The separate, opt-in [remote tmux hook](../tools/wta/wt-agent-hooks/tmux/README.md) uses a shell script to forward raw stdin in bounded Base64 chunks to control clients attached to the originating tmux session. JSON parsing, metadata projection, and redaction happen in IT, after bounded reassembly and session/pane routing checks, before publishing the normal `agent_event`. Base64 is not encryption: the tmux server and other control clients attached to that session can read the original payload, including prompts and tool data, before redaction. Access to the tmux socket also permits spoofing hook events. Native pane mapping and isolated session keys prevent accidental attribution across panes but are not proof of agent identity or user approval. Incomplete or invalid transfers do not produce partial status events.
+
+For [ordinary managed SSH panes](specs/ordinary-ssh-agent-hooks.md), a local
+wrapper registers a connection-lifetime route against its native pane and
+process identity. Master owns a separate, trusted, noninteractive SSH/tmux
+control connection and accepts v3 messages only for active routes belonging
+to that SSH target. Validated hook data updates the existing source-scoped
+SSH registry directly rather than being rebroadcast through COM. These route
+tokens prevent accidental cross-connection attribution but are not a new
+security boundary against code running as the same remote user. Remote setup
+is restricted to owned `.intelligent-terminal` assets and policy-permitted
+providers; it does not overwrite foreign/disabled integrations, install agent
+executables, change credentials, or bypass sandbox restrictions.
+
 ---
 
 ## 3. Trust Boundaries and Assets

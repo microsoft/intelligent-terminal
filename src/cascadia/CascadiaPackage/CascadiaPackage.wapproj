@@ -152,7 +152,8 @@
        subfolder directly to `<cli> plugin marketplace add` /
        `gemini extensions install`, and skips its embedded fallback when
        the loose copy is present. Excludes hook-debug/ (dev utility, not
-       part of the install bundle) and *.md (developer docs). -->
+       part of the install bundle), tmux development files, and *.md
+       (developer docs). The remote tmux runtime is included explicitly. -->
   <ItemGroup>
     <Content Include="$(SolutionDir)res\fre\FRE_Asset1.png">
       <Link>FREAssets\FRE_Asset1.png</Link>
@@ -165,8 +166,16 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="$(SolutionDir)tools\wta\wt-agent-hooks\**"
-             Exclude="$(SolutionDir)tools\wta\wt-agent-hooks\hook-debug\**;$(SolutionDir)tools\wta\wt-agent-hooks\**\*.md">
+             Exclude="$(SolutionDir)tools\wta\wt-agent-hooks\hook-debug\**;$(SolutionDir)tools\wta\wt-agent-hooks\tmux\**;$(SolutionDir)tools\wta\wt-agent-hooks\**\*.md">
       <Link>wt-agent-hooks\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="$(SolutionDir)tools\wta\wt-agent-hooks\tmux\it-agent-hook.sh">
+      <Link>wt-agent-hooks\tmux\it-agent-hook.sh</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="$(SolutionDir)tools\wta\wt-agent-hooks\tmux\install-remote-hooks.sh">
+      <Link>wt-agent-hooks\tmux\install-remote-hooks.sh</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

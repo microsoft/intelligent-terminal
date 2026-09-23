@@ -160,6 +160,7 @@
       <DependentUpon>ShortcutActionDispatch.idl</DependentUpon>
     </ClInclude>
     <ClInclude Include="DebugTapConnection.h" />
+    <ClInclude Include="TmuxAgentHook.h" />
     <ClInclude Include="TmuxController.h" />
     <ClInclude Include="TmuxPaneConnection.h" />
     <ClInclude Include="TmuxPaneState.h" />

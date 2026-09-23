@@ -60,6 +60,7 @@
                    Text="{x:Bind Title, Mode=OneWay}"
                    Visibility="Visible" />
         <TextBox x:Name="HeaderRenamerTextBox"
+                 AutomationProperties.AutomationId="HeaderRenamerTextBox"
                  Height="24"
                  MinHeight="0"
                  MaxWidth="{x:Bind RenamerMaxWidth, Mode=OneWay}"

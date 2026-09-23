@@ -311,6 +311,7 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
             // It'll just return null
 
             _commandline = unbox_prop_or<winrt::hstring>(settings, L"commandline", _commandline);
+            _originalCommandline = unbox_prop_or<winrt::hstring>(settings, L"originalCommandline", winrt::hstring{});
             _startingDirectory = unbox_prop_or<winrt::hstring>(settings, L"startingDirectory", _startingDirectory);
             _startingTitle = unbox_prop_or<winrt::hstring>(settings, L"startingTitle", _startingTitle);
             _rows = unbox_prop_or<uint32_t>(settings, L"initialRows", _rows);
@@ -444,7 +445,7 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
 
     winrt::hstring ConptyConnection::Commandline() const
     {
-        return _commandline;
+        return _originalCommandline.empty() ? _commandline : _originalCommandline;
     }
 
     winrt::hstring ConptyConnection::StartingTitle() const

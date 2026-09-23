@@ -196,6 +196,14 @@ pub enum SessionLocation {
     Ssh {
         target: crate::ssh_sessions::SshTarget,
     },
+    /// A controller-connected tmux pane. Metadata is never a launch target:
+    /// after disconnection there is no safe CLI-resume path.
+    Tmux {
+        session_id: String,
+        pane_id: String,
+        session_name: String,
+        socket_path: String,
+    },
 }
 
 impl SessionLocation {
@@ -211,7 +219,9 @@ impl SessionLocation {
     pub fn distro(&self) -> Option<&str> {
         match self {
             SessionLocation::Wsl { distro } => Some(distro.as_str()),
-            SessionLocation::Host | SessionLocation::Ssh { .. } => None,
+            SessionLocation::Host | SessionLocation::Ssh { .. } | SessionLocation::Tmux { .. } => {
+                None
+            }
         }
     }
 }
@@ -290,7 +300,7 @@ pub struct AgentSession {
     /// Provenance for this session — populated for historical rows from
     /// the agent-pane origin index. See [`SessionOrigin`].
     pub origin: SessionOrigin,
-    /// Where this session's artefacts live (host vs a WSL distro).
+    /// Execution location, retained after the native pane disconnects.
     pub location: SessionLocation,
 }
 
@@ -354,6 +364,10 @@ pub enum SessionEvent {
         reason: String,
     },
     PaneClosed {
+        pane_session_id: String,
+    },
+    /// The local attachment disappeared, not the remote agent process.
+    PaneDetached {
         pane_session_id: String,
     },
     /// Optimistic transition: a resume command for this key was just dispatched.
@@ -482,6 +496,9 @@ impl AgentSessionRegistry {
                 reason,
             },
             SessionEvent::PaneClosed { pane_session_id } => SessionEvent::PaneClosed {
+                pane_session_id: pane_key(&pane_session_id),
+            },
+            SessionEvent::PaneDetached { pane_session_id } => SessionEvent::PaneDetached {
                 pane_session_id: pane_key(&pane_session_id),
             },
             SessionEvent::ResumePaneAssigned {
@@ -760,6 +777,15 @@ impl AgentSessionRegistry {
                 }
             }
 
+            SessionEvent::PaneDetached { pane_session_id } => {
+                if let Some(key) = self.active_by_pane.remove(&pane_session_id) {
+                    if let Some(entry) = self.sessions.get_mut(&key) {
+                        entry.pane_session_id = None;
+                        self.dirty = true;
+                    }
+                }
+            }
+
             SessionEvent::ConnectionFailed {
                 pane_session_id,
                 reason,
@@ -948,7 +974,11 @@ impl AgentSessionRegistry {
         }
         self.sessions
             .iter()
-            .filter(|(_, s)| &s.cli_source == cli && s.liveness() == LivenessState::Live)
+            .filter(|(_, s)| {
+                &s.cli_source == cli
+                    && s.liveness() == LivenessState::Live
+                    && !matches!(s.location, SessionLocation::Tmux { .. })
+            })
             .max_by_key(|(_, s)| s.last_activity_at)
             .map(|(k, _)| k.clone())
     }
@@ -960,6 +990,15 @@ impl AgentSessionRegistry {
     /// on-disk artefact has no resumable content).
     pub fn get(&self, key: &AgentKey) -> Option<&AgentSession> {
         self.sessions.get(key)
+    }
+
+    pub fn set_location(&mut self, key: &str, location: SessionLocation) {
+        if let Some(entry) = self.sessions.get_mut(key) {
+            if entry.location != location {
+                entry.location = location;
+                self.dirty = true;
+            }
+        }
     }
 
     /// Update the `origin` field on an existing session entry. No-op if

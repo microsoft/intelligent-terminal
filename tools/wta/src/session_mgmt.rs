@@ -27,9 +27,11 @@
 //! Class B (origin=Unknown), dead (Ended | Historical):
 //!   Enter -> ResumeCliFlag      (needs cli_supports_resume_flag)
 //!
-//! Remote rows, dead -> ResumeCliFlag regardless of origin (the agent
+//! Remote rows, dead -> ResumeCliFlag if supported, regardless of origin (the agent
 //!                   pane is host-side, so ACP `session/load` can't
 //!                   rehydrate an in-distro session)
+//! Opaque tmux rows lack the source needed to rebuild a remote launch command;
+//! their caller supplies no CLI-resume capability, so dead rows stay NotResumable.
 //!
 //! Cli Unknown in any dead branch -> NotResumable(UnknownCli)
 //! Missing capability in the chosen branch -> NotResumable(<reason>)
@@ -129,7 +131,7 @@ pub struct RowSnapshot {
     /// this is sourced from `AgentProfile::resume_flag` rather than
     /// assumed.
     pub cli_supports_resume_flag: bool,
-    /// Whether the session lives in WSL or on an SSH host. Remote history
+    /// Whether the session lives in WSL, on an SSH host, or behind tmux. Remote history
     /// resumes through that environment's CLI, never the chat agent's
     /// potentially unrelated ACP connection.
     pub is_remote: bool,

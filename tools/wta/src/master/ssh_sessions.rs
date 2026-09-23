@@ -3,12 +3,14 @@
 //! Each execution source reuses the host/WSL registry and its event reducer,
 //! without inserting remote IDs into the host registry or owning an ACP agent.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::future::Future;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use agent_client_protocol as acp;
 use anyhow::{anyhow, Context};
+use sha2::{Digest, Sha256};
 use tokio::sync::Mutex;
 
 use super::{broadcast_ext_to_helpers, MasterStateInner};
@@ -18,9 +20,11 @@ use crate::agent_sessions::{
 use crate::session_registry::{
     agent_session_to_session_info, title_is_displayable, InMemoryRegistry, SessionRegistry,
 };
+use crate::ssh_hook_protocol::{HookEvent, RouteId};
 use crate::ssh_session_registry::{build_changed_notification, Request, Snapshot, Source};
 
 const MAX_EARLY_CLOSES: usize = 1024;
+const HISTORY_POLL_INTERVAL: Duration = Duration::from_secs(5);
 
 pub(super) struct Service {
     epoch: uuid::Uuid,
@@ -51,7 +55,7 @@ impl Service {
 struct SourceState {
     registry: InMemoryRegistry,
     /// Only history readers wait on SSH; snapshots and mutations do not.
-    refresh: Mutex<()>,
+    refresh: Arc<Mutex<Option<Instant>>>,
     operations: Mutex<SourceMetadata>,
 }
 
@@ -62,6 +66,23 @@ struct SourceMetadata {
     listed_ids: HashSet<acp::schema::v1::SessionId>,
     outstanding_creates: usize,
     early_closes: HashSet<uuid::Uuid>,
+    hook_keys: HashMap<(HookRoute, String), acp::schema::v1::SessionId>,
+    raw_ids: HashMap<acp::schema::v1::SessionId, String>,
+    row_routes: HashMap<acp::schema::v1::SessionId, HookRoute>,
+    detached_native_panes: HashSet<uuid::Uuid>,
+    pending_hooks: VecDeque<PendingHook>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum HookRoute {
+    ManagedSsh(RouteId),
+    NativeTmux(uuid::Uuid),
+}
+
+struct PendingHook {
+    route: HookRoute,
+    pane: String,
+    event: HookEvent,
 }
 
 impl SourceMetadata {
@@ -100,7 +121,10 @@ pub(super) async fn handle(
     request: Request,
 ) -> acp::Result<acp::schema::v1::ExtResponse> {
     let source = match &request {
-        Request::List { source, .. } | Request::Activate { source, .. } => source,
+        Request::Snapshot { source }
+        | Request::Poll { source }
+        | Request::List { source, .. }
+        | Request::Activate { source, .. } => source,
     };
     validate_source(state, source)?;
     let state = Arc::clone(state);
@@ -109,6 +133,21 @@ pub(super) async fn handle(
     // or cancel a history merge between its first row and revision publication.
     let snapshot = tokio::task::spawn_local(async move {
         match request {
+            Request::Snapshot { source } => {
+                let scoped = state.ssh_sessions.source(&source).await;
+                Ok(snapshot(&state, &source, &scoped).await)
+            }
+            Request::Poll { source } => {
+                let history_source = source.clone();
+                Ok(poll(&state, &source, async move {
+                    crate::ssh_sessions::list_sessions(
+                        &history_source.target,
+                        &history_source.agent_id,
+                    )
+                    .await
+                })
+                .await)
+            }
             Request::List {
                 source,
                 refresh_history,
@@ -159,23 +198,73 @@ async fn changed(state: &MasterStateInner, source: &Source, metadata: &mut Sourc
     broadcast_ext_to_helpers(state, build_changed_notification(source)).await;
 }
 
+async fn poll<F>(state: &Arc<MasterStateInner>, source: &Source, history: F) -> Snapshot
+where
+    F: Future<Output = anyhow::Result<Vec<AgentSession>>> + 'static,
+{
+    let scoped = state.ssh_sessions.source(source).await;
+    let snapshot = snapshot(state, source, &scoped).await;
+    let Ok(mut last_refresh) = Arc::clone(&scoped.refresh).try_lock_owned() else {
+        return snapshot;
+    };
+    if last_refresh.is_some_and(|last| last.elapsed() < HISTORY_POLL_INTERVAL) {
+        return snapshot;
+    }
+    let state = Arc::clone(state);
+    let source = source.clone();
+    tokio::task::spawn_local(async move {
+        if let Err(error) =
+            refresh_history(&state, &source, &scoped, &mut last_refresh, history).await
+        {
+            tracing::warn!(
+                target: "ssh_sessions",
+                destination = %source.target.display_name(),
+                agent_id = %source.agent_id,
+                ?error,
+                "Background SSH session history refresh failed; retaining cached state"
+            );
+        }
+    });
+    snapshot
+}
+
+async fn refresh_history<F>(
+    state: &MasterStateInner,
+    source: &Source,
+    scoped: &SourceState,
+    last_refresh: &mut Option<Instant>,
+    history: F,
+) -> acp::Result<()>
+where
+    F: Future<Output = anyhow::Result<Vec<AgentSession>>>,
+{
+    let rows = history.await;
+    // Throttle from completion, including failures. Hook-triggered cache
+    // reads remain independent of this potentially slow remote operation.
+    *last_refresh = Some(Instant::now());
+    merge_history(state, source, scoped, rows.map_err(request_error)?).await;
+    Ok(())
+}
+
 async fn list<F>(
     state: &MasterStateInner,
     source: &Source,
-    refresh_history: bool,
+    force_refresh: bool,
     history: F,
 ) -> acp::Result<Snapshot>
 where
     F: Future<Output = anyhow::Result<Vec<AgentSession>>>,
 {
     let scoped = state.ssh_sessions.source(source).await;
-    if !refresh_history && scoped.operations.lock().await.history_loaded {
+    if !force_refresh
+        && (scoped.operations.lock().await.history_loaded
+            || !scoped.registry.snapshot().await.is_empty())
+    {
         return Ok(snapshot(state, source, &scoped).await);
     }
-    let _refresh = scoped.refresh.lock().await;
-    if refresh_history || !scoped.operations.lock().await.history_loaded {
-        let rows = history.await.map_err(request_error)?;
-        merge_history(state, source, &scoped, rows).await;
+    let mut last_refresh = scoped.refresh.lock().await;
+    if force_refresh || !scoped.operations.lock().await.history_loaded {
+        refresh_history(state, source, &scoped, &mut last_refresh, history).await?;
     }
     Ok(snapshot(state, source, &scoped).await)
 }
@@ -275,6 +364,12 @@ async fn activate(
         Some(AgentStatus::Historical | AgentStatus::Ended)
     ) {
         let Some(pane) = info.pane_session_id else {
+            if matches!(metadata.row_routes.get(&sid), Some(HookRoute::NativeTmux(pane)) if metadata.detached_native_panes.contains(pane))
+            {
+                return Err(request_error(anyhow!(
+                    "The remote tmux session is still live but detached; attach its tmux session before focusing it"
+                )));
+            }
             // ResumeDispatched has already reserved this session. A second
             // helper sees pending Idle, and never starts a second native RPC.
             return Ok(snapshot_locked(state, source, &scoped, &metadata).await);
@@ -284,13 +379,21 @@ async fn activate(
         return Ok(snapshot(state, source, &scoped).await);
     }
 
+    let raw_sid = metadata
+        .raw_ids
+        .get(&sid)
+        .map(String::as_str)
+        .unwrap_or(session_id);
+    let cwd = info
+        .cwd
+        .to_str()
+        .ok_or_else(|| request_error(anyhow!("SSH session cwd is not UTF-8")))?;
     let commandline = crate::ssh_sessions::resume_commandline(
         &source.target,
         &source.agent_id,
-        session_id,
-        info.cwd
-            .to_str()
-            .ok_or_else(|| request_error(anyhow!("SSH session cwd is not UTF-8")))?,
+        raw_sid,
+        cwd,
+        state.ssh_hooks.enabled(),
     )
     .map_err(request_error)?;
     let wt = state
@@ -343,6 +446,7 @@ async fn activate(
             {
                 changed(state, source, &mut metadata).await;
             }
+            flush_pending_hooks(state, source, &scoped, &mut metadata, None).await;
             return Err(request_error(error.context("Create SSH resume pane")));
         }
     };
@@ -369,6 +473,10 @@ async fn activate(
     {
         changed(state, source, &mut metadata).await;
     }
+    if closed_before_ack {
+        metadata.pending_hooks.retain(|hook| hook.pane != pane);
+    }
+    flush_pending_hooks(state, source, &scoped, &mut metadata, Some(&pane)).await;
     drop(metadata);
     if !closed_before_ack {
         // Preserve create-then-focus UX. Focus also supplies fresh liveness
@@ -400,13 +508,23 @@ async fn focus(
             .contains("0x80070490")
         {
             let mut metadata = scoped.operations.lock().await;
-            if scoped
-                .registry
-                .apply_event(SessionEvent::PaneClosed {
+            let detached = uuid::Uuid::parse_str(pane).ok().filter(|pane_id| {
+                metadata
+                    .row_routes
+                    .values()
+                    .any(|route| *route == HookRoute::NativeTmux(*pane_id))
+            });
+            let event = if let Some(pane_id) = detached {
+                metadata.detached_native_panes.insert(pane_id);
+                SessionEvent::PaneDetached {
                     pane_session_id: pane.to_owned(),
-                })
-                .await
-            {
+                }
+            } else {
+                SessionEvent::PaneClosed {
+                    pane_session_id: pane.to_owned(),
+                }
+            };
+            if scoped.registry.apply_event(event).await {
                 changed(state, source, &mut metadata).await;
             }
         }
@@ -416,6 +534,14 @@ async fn focus(
 }
 
 pub(super) async fn pane_closed(state: &MasterStateInner, pane: &str) {
+    pane_unavailable(state, pane, false).await;
+}
+
+pub(super) async fn pane_detached(state: &MasterStateInner, pane: &str) {
+    pane_unavailable(state, pane, true).await;
+}
+
+async fn pane_unavailable(state: &MasterStateInner, pane: &str, detached: bool) {
     let Ok(pane_id) = uuid::Uuid::parse_str(pane) else {
         return;
     };
@@ -432,19 +558,271 @@ pub(super) async fn pane_closed(state: &MasterStateInner, pane: &str) {
         .collect();
     for (source, scoped) in sources {
         let mut metadata = scoped.operations.lock().await;
-        if metadata.outstanding_creates > 0 && metadata.early_closes.len() < MAX_EARLY_CLOSES {
+        let canonical = pane_id.hyphenated().to_string();
+        if detached {
+            let native = HookRoute::NativeTmux(pane_id);
+            if !metadata.row_routes.values().any(|route| *route == native)
+                && !metadata
+                    .pending_hooks
+                    .iter()
+                    .any(|hook| hook.route == native)
+            {
+                continue;
+            }
+            metadata.detached_native_panes.insert(pane_id);
+        }
+        metadata.pending_hooks.retain(|hook| hook.pane != canonical);
+        if !detached
+            && metadata.outstanding_creates > 0
+            && metadata.early_closes.len() < MAX_EARLY_CLOSES
+        {
             metadata.early_closes.insert(pane_id);
         }
-        if scoped
-            .registry
-            .apply_event(SessionEvent::PaneClosed {
-                pane_session_id: pane_id.hyphenated().to_string(),
-            })
-            .await
-        {
+        let event = if detached {
+            SessionEvent::PaneDetached {
+                pane_session_id: canonical,
+            }
+        } else {
+            SessionEvent::PaneClosed {
+                pane_session_id: canonical,
+            }
+        };
+        if scoped.registry.apply_event(event).await {
             changed(state, &source, &mut metadata).await;
         }
     }
+}
+
+/// Apply a v3 hook only after the control reader has resolved its live local
+/// route. The remote payload cannot select a host pane or an SSH source.
+pub(super) async fn hook_event(
+    state: &MasterStateInner,
+    target: &crate::ssh_sessions::SshTarget,
+    route: RouteId,
+    pane: &str,
+    event: HookEvent,
+) -> acp::Result<()> {
+    routed_hook_event(state, target, HookRoute::ManagedSsh(route), pane, event).await
+}
+
+/// The native controller supplies both the SSH target and pane identity after
+/// validating a v2 frame. Its pane lifetime is separate from managed SSH routes.
+pub(super) async fn tmux_hook_event(
+    state: &MasterStateInner,
+    target: &crate::ssh_sessions::SshTarget,
+    pane: &str,
+    event: HookEvent,
+) -> acp::Result<()> {
+    if !state.ssh_hooks.enabled() {
+        return Ok(());
+    }
+    let pane_id = uuid::Uuid::parse_str(pane)
+        .context("Native tmux hook has an invalid pane UUID")
+        .map_err(request_error)?;
+    if pane_id.is_nil() {
+        return Err(request_error(anyhow!(
+            "Native tmux hook has a nil pane UUID"
+        )));
+    }
+    routed_hook_event(state, target, HookRoute::NativeTmux(pane_id), pane, event).await
+}
+
+async fn routed_hook_event(
+    state: &MasterStateInner,
+    target: &crate::ssh_sessions::SshTarget,
+    route: HookRoute,
+    pane: &str,
+    event: HookEvent,
+) -> acp::Result<()> {
+    let source = Source {
+        target: target.clone(),
+        agent_id: event.cli_source.clone(),
+    };
+    validate_source(state, &source)?;
+    if event.cli_source == "copilot" && event.raw_session_id.starts_with("sidekick-") {
+        return Ok(());
+    }
+    let scoped = state.ssh_sessions.source(&source).await;
+    let mut metadata = scoped.operations.lock().await;
+    if matches!(route, HookRoute::NativeTmux(pane) if metadata.detached_native_panes.contains(&pane))
+    {
+        tracing::debug!(target: "ssh_sessions", "ignoring hook from a detached native attachment");
+        return Ok(());
+    }
+    let pane = crate::agent_sessions::pane_key(pane);
+    let pending = PendingHook { route, pane, event };
+    let bound = scoped
+        .registry
+        .snapshot()
+        .await
+        .iter()
+        .any(|row| row.pane_session_id.as_deref() == Some(pending.pane.as_str()));
+    if !bound && metadata.outstanding_creates > 0 {
+        // The native create acknowledgement identifies the reserved session's
+        // pane. Do not let a CLI's bootstrap id steal that pending binding.
+        if metadata.pending_hooks.len() >= 32 {
+            return Err(request_error(anyhow!("SSH hook create-race queue is full")));
+        }
+        metadata.pending_hooks.push_back(pending);
+        return Ok(());
+    }
+    if apply_hook_locked(&scoped, &source, &mut metadata, pending).await {
+        changed(state, &source, &mut metadata).await;
+    }
+    Ok(())
+}
+
+async fn flush_pending_hooks(
+    state: &MasterStateInner,
+    source: &Source,
+    scoped: &SourceState,
+    metadata: &mut SourceMetadata,
+    pane: Option<&str>,
+) {
+    let pending = std::mem::take(&mut metadata.pending_hooks);
+    let mut updated = false;
+    for hook in pending {
+        if metadata.outstanding_creates == 0 || pane == Some(hook.pane.as_str()) {
+            updated |= apply_hook_locked(scoped, source, metadata, hook).await;
+        } else {
+            metadata.pending_hooks.push_back(hook);
+        }
+    }
+    if updated {
+        changed(state, source, metadata).await;
+    }
+}
+
+async fn apply_hook_locked(
+    scoped: &SourceState,
+    source: &Source,
+    metadata: &mut SourceMetadata,
+    hook: PendingHook,
+) -> bool {
+    let rows = scoped.registry.snapshot().await;
+    let owner = rows
+        .iter()
+        .find(|row| row.pane_session_id.as_deref() == Some(hook.pane.as_str()));
+    let raw_id = |row: &crate::session_registry::SessionInfo| {
+        metadata
+            .raw_ids
+            .get(&row.session_id)
+            .cloned()
+            .unwrap_or_else(|| row.session_id.0.to_string())
+    };
+    let raw = if hook.event.raw_session_id.is_empty() {
+        let Some(owner) = owner.filter(|row| {
+            row.born_bound_pane || metadata.row_routes.get(&row.session_id) == Some(&hook.route)
+        }) else {
+            return false;
+        };
+        raw_id(owner)
+    } else {
+        hook.event.raw_session_id.clone()
+    };
+    if owner.is_some_and(|row| row.born_bound_pane && raw_id(row) != raw) {
+        return false;
+    }
+    let pair = (hook.route, raw.clone());
+    let cached = metadata.hook_keys.get(&pair);
+    let cached_owner = cached.and_then(|key| rows.iter().find(|row| &row.session_id == key));
+    let stale_cached_binding = cached_owner.is_some_and(|row| {
+        row.pane_session_id
+            .as_deref()
+            .is_some_and(|pane| pane != hook.pane)
+            || metadata
+                .row_routes
+                .get(&row.session_id)
+                .is_some_and(|route| *route != hook.route)
+    });
+    if stale_cached_binding
+        && !matches!(
+            hook.event.event.as_str(),
+            "agent.session.start" | "agent.prompt.submit"
+        )
+    {
+        return false;
+    }
+    let sid = if let Some(key) = cached.filter(|_| !stale_cached_binding) {
+        key.clone()
+    } else if let Some(owner) = owner.filter(|row| raw_id(row) == raw) {
+        owner.session_id.clone()
+    } else {
+        let canonical = acp::schema::v1::SessionId::new(raw.clone());
+        if rows.iter().any(|row| {
+            row.session_id == canonical
+                && row
+                    .pane_session_id
+                    .as_deref()
+                    .is_some_and(|pane| pane != hook.pane)
+        }) {
+            // Registry IDs may appear in diagnostics. Do not embed the route
+            // token itself in a collision key that leaves this ownership map.
+            let route_identity = match hook.route {
+                HookRoute::ManagedSsh(route) => format!("ssh:{route}"),
+                HookRoute::NativeTmux(pane) => format!("tmux:{pane}"),
+            };
+            let identity = format!("{route_identity}:{}:{}:{}", hook.pane, raw.len(), raw);
+            acp::schema::v1::SessionId::new(format!(
+                "ssh-hook:{:x}",
+                Sha256::digest(identity.as_bytes())
+            ))
+        } else {
+            canonical
+        }
+    };
+    let known = rows.iter().find(|row| row.session_id == sid);
+    if hook.event.event == "agent.error"
+        && known.is_some()
+        && owner.map(|row| &row.session_id) != Some(&sid)
+    {
+        return false;
+    }
+    let same_generation = known.is_some_and(|row| {
+        (!matches!(
+            row.status,
+            Some(AgentStatus::Ended | AgentStatus::Historical)
+        ) && row.pane_session_id.as_deref() == Some(hook.pane.as_str()))
+            || metadata.row_routes.get(&sid) == Some(&hook.route)
+    });
+    let facts = crate::app::AgentEventFacts {
+        key: sid.0.to_string(),
+        session_known: same_generation,
+    };
+    let plan = crate::app::plan_agent_event(
+        &hook.event.event,
+        &hook.event.payload,
+        &hook.pane,
+        &hook.event.cli(),
+        &facts,
+    );
+    if plan.events.is_empty() {
+        return false;
+    }
+    let mut updated = false;
+    for mut event in plan.events {
+        if let SessionEvent::SessionStarted { title, .. } = &mut event {
+            if known.is_some_and(|row| !crate::session_registry::title_is_synthetic(row)) {
+                title.clear();
+            }
+        }
+        updated |= scoped.registry.apply_event(event).await;
+    }
+    if scoped.registry.lookup(&sid).await.is_some() {
+        updated |= scoped
+            .registry
+            .set_location(
+                &sid,
+                SessionLocation::Ssh {
+                    target: source.target.clone(),
+                },
+            )
+            .await;
+        metadata.hook_keys.insert(pair, sid.clone());
+        metadata.raw_ids.insert(sid.clone(), raw);
+        metadata.row_routes.insert(sid, hook.route);
+    }
+    updated
 }
 
 #[cfg(test)]

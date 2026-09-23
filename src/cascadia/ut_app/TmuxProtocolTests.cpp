@@ -108,6 +108,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(RejectsInvalidResponseGuards);
         TEST_METHOD(RejectsInvalidFramingAndTruncatedStreams);
         TEST_METHOD(HandlesExitAndUnknownNotifications);
+        TEST_METHOD(DistinguishesClientExitFromRemoteServerExit);
         TEST_METHOD(BoundsLinesWithoutDroppingBytes);
         TEST_METHOD(BoundsResponseBlocksWithoutDroppingBytes);
         TEST_METHOD(EncodesInputWithoutCommandInterpolation);
@@ -118,6 +119,12 @@ namespace TerminalAppUnitTests
         TEST_METHOD(ParsesSessionInventoryWithStableIds);
         TEST_METHOD(RejectsMalformedSessionInventory);
         TEST_METHOD(BoundsSessionInventory);
+        TEST_METHOD(ParsesServerWidePaneInventory);
+        TEST_METHOD(RejectsMalformedPaneInventory);
+        TEST_METHOD(BoundsPaneInventory);
+        TEST_METHOD(MatchesPendingAndConfirmedSessionTargets);
+        TEST_METHOD(EncodesLiteralWindowRename);
+        TEST_METHOD(RejectsUnsafeWindowRename);
     };
 
     void TmuxProtocolTests::FormatsNamedSocketSessionTitle()
@@ -125,6 +132,133 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(std::string{ "it-test/demo" }, FormatSessionTitle("/tmp/tmux-1000/it-test", "demo"));
         VERIFY_ARE_EQUAL(std::string{ "it-test/worker" }, FormatSessionTitle("it-test", "worker"));
         VERIFY_ARE_EQUAL(std::string{ "it-test/demo" }, FormatSessionTitle(R"(\\.\pipe\it-test)", "demo"));
+    }
+
+    void TmuxProtocolTests::EncodesLiteralWindowRename()
+    {
+        VERIFY_ARE_EQUAL(std::string{ "rename-window -t @7 -- '#{l:work}'" }, RenameWindowCommand(7, "work"));
+        VERIFY_ARE_EQUAL(std::string{ R"(rename-window -t @42 -- '#{l:a'\''b##{#}#,}')" }, RenameWindowCommand(42, "a'b#{},"));
+        VERIFY_ARE_EQUAL(std::string{ R"(rename-window -t @7 -- '#{l:$HOME ; \path ##[fg=red] ##(printf test)}')" },
+                         RenameWindowCommand(7, R"($HOME ; \path #[fg=red] #(printf test))"));
+        VERIFY_ARE_EQUAL(std::string{ "rename-window -t @7 -- '#{l:\xe4\xbc\x9a\xe8\xaf\x9d}'" },
+                         RenameWindowCommand(7, "\xe4\xbc\x9a\xe8\xaf\x9d"));
+        VERIFY_ARE_EQUAL(std::string{ "set-option -w -t @7 automatic-rename on" }, RenameWindowCommand(7, {}));
+    }
+
+    void TmuxProtocolTests::RejectsUnsafeWindowRename()
+    {
+        for (const auto ch : { '\0', '\n', '\r', '\t', '\x1b', '\x7f' })
+        {
+            const std::string title{ 'a', ch, 'b' };
+            VERIFY_THROWS(RenameWindowCommand(7, title), ProtocolError);
+        }
+        VERIFY_THROWS(RenameWindowCommand(7, std::string(Parser::MaxLineBytes, 'a')), ProtocolError);
+        VERIFY_THROWS(RenameWindowCommand(7, std::string(Parser::MaxLineBytes / 2, '\'')), ProtocolError);
+    }
+
+    void TmuxProtocolTests::MatchesPendingAndConfirmedSessionTargets()
+    {
+        VERIFY_IS_TRUE(MatchesSessionTarget("$7", std::nullopt, {}, "$7"));
+        VERIFY_IS_FALSE(MatchesSessionTarget("$8", std::nullopt, {}, "$7"));
+        VERIFY_IS_FALSE(MatchesSessionTarget({}, std::nullopt, {}, {}));
+        VERIFY_IS_TRUE(MatchesSessionTarget("$7", Id{ 7 }, "renamed", "old-name"));
+        VERIFY_IS_TRUE(MatchesSessionTarget("$0007", Id{ 7 }, "renamed", "old-name"));
+        VERIFY_IS_TRUE(MatchesSessionTarget("renamed", Id{ 7 }, "renamed", "old-name"));
+        VERIFY_IS_FALSE(MatchesSessionTarget("old-name", Id{ 7 }, "renamed", "old-name"));
+        VERIFY_IS_FALSE(MatchesSessionTarget("$8", Id{ 7 }, "$8", "old-name"));
+        VERIFY_IS_FALSE(MatchesSessionTarget("$18446744073709551616", Id{ 7 }, "name", {}));
+        VERIFY_IS_TRUE(MatchesSessionTarget("$name", Id{ 7 }, "$name", {}));
+        VERIFY_IS_TRUE(MatchesSessionTarget("\xe4\xbc\x9a\xe8\xaf\x9d", Id{ 7 }, "\xe4\xbc\x9a\xe8\xaf\x9d", {}));
+    }
+
+    void TmuxProtocolTests::DistinguishesClientExitFromRemoteServerExit()
+    {
+        for (const auto reason : {
+                 "",
+                 "exited",
+                 "detached",
+                 "detached (from session work)",
+                 "detached and SIGHUP",
+                 "lost tty",
+                 "terminated",
+                 "unknown reason",
+                 "server exited ",
+                 "server exited unexpectedly extra",
+             })
+        {
+            Parser parser;
+            const auto events = parser.Feed(std::string{ "%exit" } + (std::string_view{ reason }.empty() ? "" : " ") + reason + "\n");
+            VERIFY_ARE_EQUAL(size_t{ 1 }, events.size());
+            VERIFY_IS_FALSE(ExitEndsRemoteServer(events[0].text));
+        }
+        for (const auto reason : { "server exited", "server exited unexpectedly" })
+        {
+            Parser parser;
+            const auto events = parser.Feed(std::string{ "%exit " } + reason + "\n");
+            VERIFY_ARE_EQUAL(size_t{ 1 }, events.size());
+            VERIFY_IS_TRUE(ExitEndsRemoteServer(events[0].text));
+        }
+    }
+
+    void TmuxProtocolTests::ParsesServerWidePaneInventory()
+    {
+        const auto panes = ParsePaneIds("%0\n%42\n%18446744073709551615");
+        VERIFY_ARE_EQUAL(size_t{ 3 }, panes.size());
+        VERIFY_IS_TRUE(panes.contains(Id{ 0 }));
+        VERIFY_IS_TRUE(panes.contains(Id{ 42 }));
+        VERIFY_IS_TRUE(panes.contains((std::numeric_limits<Id>::max)()));
+        VERIFY_IS_TRUE(ParsePaneIds({}).empty());
+        VERIFY_IS_TRUE(ParsePaneIds("%7\n").contains(Id{ 7 }));
+        VERIFY_IS_TRUE(ParsePaneIds("%0007").contains(Id{ 7 }));
+    }
+
+    void TmuxProtocolTests::RejectsMalformedPaneInventory()
+    {
+        for (const auto text : {
+                 "\n",
+                 "%",
+                 "1",
+                 "$1",
+                 "@1",
+                 "%-1",
+                 "%+1",
+                 " %1",
+                 "%1 ",
+                 "%1 extra",
+                 "%1\n\n",
+                 "%1\r\n",
+                 "%1\n%1",
+                 "%1\n%01",
+                 "%18446744073709551616",
+                 "%1.0",
+                 "%0x1",
+             })
+        {
+            VERIFY_THROWS(ParsePaneIds(text), ProtocolError);
+        }
+        for (int ch = 0; ch <= 32; ++ch)
+        {
+            VERIFY_THROWS(ParsePaneIds(std::string{ "%1" } + static_cast<char>(ch) + "2"), ProtocolError);
+        }
+        VERIFY_THROWS(ParsePaneIds("%1\x7f"), ProtocolError);
+        VERIFY_THROWS(ParsePaneIds("%1\xff"), ProtocolError);
+    }
+
+    void TmuxProtocolTests::BoundsPaneInventory()
+    {
+        std::string inventory;
+        std::string fullBuffer;
+        for (size_t id = 0; id < 4096; ++id)
+        {
+            const auto number = std::to_string(id);
+            inventory.append("%").append(number).push_back('\n');
+            fullBuffer.append("%").append(14 - number.size(), '0').append(number).push_back('\n');
+        }
+        VERIFY_ARE_EQUAL(size_t{ 4096 }, ParsePaneIds(inventory).size());
+        VERIFY_THROWS(ParsePaneIds(inventory + "%4096"), ProtocolError);
+        VERIFY_ARE_EQUAL(size_t{ 64 * 1024 }, fullBuffer.size());
+        VERIFY_ARE_EQUAL(size_t{ 4096 }, ParsePaneIds(fullBuffer).size());
+        VERIFY_THROWS(ParsePaneIds(fullBuffer + "\n"), ProtocolError);
     }
 
     void TmuxProtocolTests::ParsesSessionInventoryWithStableIds()

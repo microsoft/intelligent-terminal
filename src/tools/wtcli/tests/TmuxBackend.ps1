@@ -310,23 +310,36 @@ function Invoke-FixtureCommand([string[]]$Words) {
     $target = Get-Option $Words '-t'
     switch -CaseSensitive ($Words[0]) {
         'refresh-client' {
-            $size = Get-Option $Words '-C'
-            if ($size -cnotmatch '^([0-9]{1,4})[x,]([0-9]{1,4})$') { throw 'Expected refresh-client -C <columns>x<rows>' }
-            $width = [int]$Matches[1]
-            $height = [int]$Matches[2]
-            if ($width -lt 1 -or $width -gt 1000 -or $height -lt 1 -or $height -gt 1000) { throw 'Invalid client dimensions' }
-            foreach ($entry in $script:windows.GetEnumerator()) {
-                $entry.Value.Width = $width
-                $entry.Value.Height = $height
-                $events.Add((Get-LayoutNotification $entry.Key))
+            if ($Words -ccontains '-B') {
+                $subscription = Get-Option $Words '-B'
+                if ($subscription -cne 'it-window-order::#{W:#{window_index}=#{window_id};}') {
+                    throw 'Unsupported fixture subscription'
+                }
+                # Fixture mutations already emit layout/add/close notifications.
+                $index = 0
+                $order = @($script:windows.Keys | ForEach-Object { "$index=@$_;"; $index++ }) -join ''
+                $events.Add("%subscription-changed it-window-order `$0 - - - : $order")
+            } else {
+                $size = Get-Option $Words '-C'
+                if ($size -cnotmatch '^([0-9]{1,4})[x,]([0-9]{1,4})$') { throw 'Expected refresh-client -C <columns>x<rows>' }
+                $width = [int]$Matches[1]
+                $height = [int]$Matches[2]
+                if ($width -lt 1 -or $width -gt 1000 -or $height -lt 1 -or $height -gt 1000) { throw 'Invalid client dimensions' }
+                foreach ($entry in $script:windows.GetEnumerator()) {
+                    $entry.Value.Width = $width
+                    $entry.Value.Height = $height
+                    $events.Add((Get-LayoutNotification $entry.Key))
+                }
             }
         }
         'list-windows' {
-            $format = Get-Option $Words '-F' '#{window_id} #{window_active} #{window_layout} #{window_visible_layout}'
+            $format = Get-Option $Words '-F' '#{window_id} #{window_index} #{window_active} #{window_layout} #{window_visible_layout}'
+            $index = 0
             foreach ($entry in $script:windows.GetEnumerator()) {
                 $layouts = Get-WindowLayouts $entry.Value
                 $lines.Add((Expand-Format $format @{
                     window_id = "@$($entry.Key)"; window_active = [int]($entry.Key -eq $script:activeWindow)
+                    window_index = $index++
                     window_layout = $layouts[0]; window_visible_layout = $layouts[1]; window_name = $entry.Value.Name
                 }))
             }
