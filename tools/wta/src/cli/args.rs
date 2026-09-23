@@ -4,6 +4,45 @@ use crate::{
     agent_hooks_installer, agent_registry, agent_sessions, agent_tools::command_resolution,
 };
 
+#[cfg(test)]
+mod task_tab_tests {
+    use super::*;
+
+    #[test]
+    fn scripted_demo_is_explicit_and_inspection_cannot_reset_state() {
+        assert!(matches!(
+            Cli::try_parse_from(["wta", "demo"]).unwrap().command,
+            Some(Command::Demo {
+                state_dir: None,
+                reset: false,
+                inspect: false
+            })
+        ));
+        assert!(Cli::try_parse_from(["wta", "demo", "--reset", "--inspect"]).is_err());
+        assert!(Cli::try_parse_from(["wta", "ui", "--reset"]).is_err());
+        let parsed = Cli::try_parse_from([
+            "wta", "demo", "--state-dir", r"C:\Demo with spaces", "--inspect",
+        ])
+        .unwrap();
+        assert!(matches!(parsed.command, Some(Command::Demo { state_dir: Some(root), inspect: true, .. })
+            if root == std::path::PathBuf::from(r"C:\Demo with spaces")));
+    }
+
+    #[test]
+    fn ui_optional_work_id_is_validated_without_launching_a_provider() {
+        assert!(matches!(
+            Cli::try_parse_from(["wta", "ui"]).unwrap().command,
+            Some(Command::Ui { work: None })
+        ));
+        let id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+        let parsed = Cli::try_parse_from(["wta", "ui", "--work", id]).unwrap();
+        assert!(
+            matches!(parsed.command, Some(Command::Ui { work: Some(work) }) if work.to_string() == id)
+        );
+        assert!(Cli::try_parse_from(["wta", "ui", "--work", "bad & id"]).is_err());
+    }
+}
+
 #[derive(Parser, Debug)]
 #[command(
     name = "wta",
@@ -247,8 +286,24 @@ pub(crate) struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub(crate) enum Command {
+    /// Open Agent Center with isolated Work demo data (no agents or production work).
+    Demo {
+        /// Directory containing only this demo's state; defaults to package-private demo storage.
+        #[arg(long)]
+        state_dir: Option<std::path::PathBuf>,
+        /// Reset this demo's saved Work data before opening it.
+        #[arg(long, conflicts_with = "inspect")]
+        reset: bool,
+        /// Print saved demo state as JSON without starting the UI or changing state.
+        #[arg(long)]
+        inspect: bool,
+    },
     /// Open the experimental Agent Center Console
-    Ui,
+    Ui {
+        /// Open an existing task's conversation without starting execution.
+        #[arg(long)]
+        work: Option<uuid::Uuid>,
+    },
     /// Manage the experimental Agent Center service
     Center {
         #[command(subcommand)]

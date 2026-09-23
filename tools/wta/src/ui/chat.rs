@@ -15,6 +15,12 @@ use crate::app::{
     ToolCallOutput,
 };
 use crate::theme;
+#[cfg(test)]
+use crate::ui::conversation::MAX_RENDER_LINE_CHARS;
+use crate::ui::conversation::{
+    message_lines, push_dot_prefixed_lines, push_prefixed_lines, push_prompt_prefixed_lines,
+    truncate_render_text, MessageRole,
+};
 use crate::ui::line_diff::{self, DiffLineKind};
 use crate::ui::shimmer;
 use crate::ui::tool_presentation::{ToolPhase, ToolPresentation};
@@ -166,7 +172,6 @@ fn build_compact_tool_group_lines<'a>(messages: &'a [ChatMessage]) -> Vec<Line<'
     ])]
 }
 
-const MAX_RENDER_LINE_CHARS: usize = 4096;
 const MAX_TOOL_OUTPUT_LINES: usize = 4;
 const MAX_TOOL_OUTPUT_LINE_CHARS: usize = 240;
 const MAX_TOOL_PREVIEW_LINES: usize = 2;
@@ -2119,29 +2124,18 @@ fn build_message_lines_with_details<'a>(
             }
         }
         ChatMessage::User(text) => {
-            push_prompt_prefixed_lines(&mut lines, text, wrap_width);
-            lines.push(Line::default());
+            lines = message_lines(MessageRole::User, text, wrap_width, true);
         }
         ChatMessage::Agent(text) => {
-            push_dot_prefixed_lines(
-                &mut lines,
+            lines = message_lines(
+                MessageRole::Assistant,
                 text,
                 wrap_width,
-                theme::DOT_AGENT,
-                theme::AGENT_TEXT,
+                !agent_streaming || !is_last_message,
             );
-            if !agent_streaming || !is_last_message {
-                lines.push(Line::default());
-            }
         }
         ChatMessage::System(text) => {
-            for line_text in text.lines() {
-                lines.push(Line::from(Span::styled(
-                    truncate_render_text(line_text),
-                    theme::SYSTEM_TEXT,
-                )));
-            }
-            lines.push(Line::default());
+            lines = message_lines(MessageRole::System, text, wrap_width, true);
         }
         ChatMessage::Notice { kind, text } => {
             let (marker, style) = match kind {
@@ -2420,156 +2414,6 @@ fn thought_row_geometry(
     })
 }
 
-// Render a multi-line text block with a colored dot prefix on the first
-// visual row and a 2-cell hanging indent on every continuation row (both
-// for explicit \n breaks AND for soft-wrapped continuations of long
-// paragraphs). Without this, ratatui's Paragraph word-wrap pushes
-// continuation rows back to column 0 and the bullet alignment breaks.
-fn push_dot_prefixed_lines<'a>(
-    lines: &mut Vec<Line<'a>>,
-    text: &str,
-    wrap_width: usize,
-    dot_style: Style,
-    text_style: Style,
-) {
-    // Reserve 2 cells for either "● " or the continuation indent.
-    let body_width = wrap_width.saturating_sub(2).max(1);
-    let mut first_row = true;
-
-    for paragraph in text.trim_end_matches(['\r', '\n']).split('\n') {
-        if paragraph.is_empty() {
-            // Skip leading blanks so the dot lands on the first content row
-            // — many models prefix prose with `\n` / `\n\n`, which would
-            // otherwise burn the dot on an empty line. Blank lines between
-            // paragraphs are still preserved.
-            if first_row {
-                continue;
-            }
-            lines.push(Line::default());
-            continue;
-        }
-
-        let wrapped = textwrap::wrap(paragraph, body_width);
-        for piece in wrapped {
-            let piece_str = truncate_render_text(&piece).into_owned();
-            if first_row {
-                lines.push(Line::from(vec![
-                    Span::styled("● ", dot_style),
-                    Span::styled(piece_str, text_style),
-                ]));
-                first_row = false;
-            } else {
-                lines.push(Line::from(vec![
-                    Span::raw("  "),
-                    Span::styled(piece_str, text_style),
-                ]));
-            }
-        }
-    }
-}
-
-fn push_prefixed_lines<'a>(
-    lines: &mut Vec<Line<'a>>,
-    marker: &'static str,
-    text: &str,
-    wrap_width: usize,
-    style: Style,
-) {
-    let body_width = wrap_width.saturating_sub(2).max(1);
-    let mut first_row = true;
-
-    for paragraph in text.split('\n') {
-        if paragraph.is_empty() {
-            if first_row {
-                continue;
-            }
-            lines.push(Line::default());
-            continue;
-        }
-
-        for piece in textwrap::wrap(paragraph, body_width) {
-            let piece_str = truncate_render_text(&piece).into_owned();
-            if first_row {
-                lines.push(Line::from(vec![
-                    Span::styled(format!("{marker} "), style),
-                    Span::styled(piece_str, style),
-                ]));
-                first_row = false;
-            } else {
-                lines.push(Line::from(vec![
-                    Span::raw("  "),
-                    Span::styled(piece_str, style),
-                ]));
-            }
-        }
-    }
-}
-
-/// Mirrors `push_dot_prefixed_lines`, but for the user's own submitted
-/// prompt: splits on embedded `\n` (from Shift+Enter multi-line input) and
-/// wraps each paragraph so every line is a real `ratatui::Line` — ratatui
-/// does not turn an embedded `\n` inside a single `Span`/`Line` into
-/// multiple rows, so without this split any line after the first would
-/// never appear in the rendered transcript (see issue #492). The first
-/// rendered row gets the `"> "` prompt marker; continuation rows get a
-/// matching 2-cell indent. Height measurement consumes these same rendered
-/// lines and counts their terminal display width.
-fn push_prompt_prefixed_lines<'a>(lines: &mut Vec<Line<'a>>, text: &'a str, wrap_width: usize) {
-    let body_width = wrap_width.saturating_sub(2).max(1);
-    let mut first_row = true;
-
-    for paragraph in text.split('\n') {
-        if paragraph.is_empty() {
-            // Unlike `push_dot_prefixed_lines`, the prompt marker must never
-            // be dropped: an empty submitted prompt, or one starting with a
-            // newline, still needs a "> " row so the transcript shows the
-            // user turn happened at all.
-            if first_row {
-                lines.push(Line::from(Span::styled("> ", theme::USER_PROMPT)));
-                first_row = false;
-            } else {
-                lines.push(Line::default());
-            }
-            continue;
-        }
-
-        // `textwrap::wrap` borrows from `paragraph` (itself borrowed from the
-        // `'a` input) whenever a piece needs no reflowing, so the typical
-        // short single-line prompt renders with zero allocations here;
-        // `truncate_render_cow` preserves that borrow unless the piece is
-        // actually rewrapped or exceeds `MAX_RENDER_LINE_CHARS`.
-        let wrapped = textwrap::wrap(paragraph, body_width);
-        for piece in wrapped {
-            let piece_str = truncate_render_cow(piece);
-            if first_row {
-                lines.push(Line::from(vec![
-                    Span::styled("> ", theme::USER_PROMPT),
-                    Span::styled(piece_str, theme::USER_PROMPT),
-                ]));
-                first_row = false;
-            } else {
-                lines.push(Line::from(vec![
-                    Span::raw("  "),
-                    Span::styled(piece_str, theme::USER_PROMPT),
-                ]));
-            }
-        }
-    }
-}
-
-/// Applies `truncate_render_text`'s length cap to an already-computed
-/// `Cow`, without forcing an allocation when the input is borrowed and
-/// under the limit (unlike `truncate_render_text(&cow).into_owned()`).
-fn truncate_render_cow<'a>(text: Cow<'a, str>) -> Cow<'a, str> {
-    match text {
-        Cow::Borrowed(s) => truncate_render_text(s),
-        Cow::Owned(s) => match truncate_render_text(&s) {
-            Cow::Borrowed(_) => Cow::Owned(s),
-            Cow::Owned(truncated) => Cow::Owned(truncated),
-        },
-    }
-}
-
 /// Collapses embedded newlines (from a Shift+Enter multi-line prompt) into
 /// single spaces so a single-line preview (the folded completed-turn header)
 /// doesn't silently run separate lines together with no visible separator.
@@ -2580,30 +2424,43 @@ fn collapse_newlines_for_preview(text: &str) -> Cow<'_, str> {
     Cow::Owned(text.replace('\n', " "))
 }
 
-fn truncate_render_text(text: &str) -> Cow<'_, str> {
-    let char_count = text.chars().count();
-    if char_count <= MAX_RENDER_LINE_CHARS {
-        return Cow::Borrowed(text);
-    }
-
-    let head_chars = MAX_RENDER_LINE_CHARS * 3 / 4;
-    let tail_chars = MAX_RENDER_LINE_CHARS / 4;
-    let omitted = char_count.saturating_sub(head_chars + tail_chars);
-    let head: String = text.chars().take(head_chars).collect();
-    let tail: String = text
-        .chars()
-        .skip(char_count.saturating_sub(tail_chars))
-        .collect();
-
-    Cow::Owned(format!("{head} ...<{omitted} chars omitted>... {tail}"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn line_text(line: &Line) -> String {
         line.spans.iter().map(|s| s.content.as_ref()).collect()
+    }
+
+    #[test]
+    fn helper_messages_use_shared_conversation_presentation() {
+        for text in [
+            "",
+            "\nfirst\n\nsecond\n",
+            "**literal** 你好世界",
+            "long ".repeat(40).as_str(),
+        ] {
+            for width in [1, 8, 40] {
+                for is_last in [false, true] {
+                    for streaming in [false, true] {
+                        for (message, role, trailing_blank) in [
+                            (ChatMessage::User(text.into()), MessageRole::User, true),
+                            (
+                                ChatMessage::Agent(text.into()),
+                                MessageRole::Assistant,
+                                !streaming || !is_last,
+                            ),
+                            (ChatMessage::System(text.into()), MessageRole::System, true),
+                        ] {
+                            assert_eq!(
+                                build_message_lines(&message, is_last, streaming, None, 0, width),
+                                message_lines(role, text, width, trailing_blank),
+                            );
+                        }
+                    }
+                }
+            }
+        }
     }
 
     #[test]

@@ -1,11 +1,11 @@
 ---
 created on: 2026-09-15
-last updated: 2026-09-15
+last updated: 2026-09-17
 ---
 
 # Agent Center Collaboration Protocol v1
 
-**Normative implementation contract for the work-mode experience**
+**Normative v1 implementation contract for the task-driven Terminal pilot**
 
 This document closes the collaboration boundary described by the
 [domain specification](agent-center.md) and exercised by the
@@ -19,6 +19,13 @@ This is a design contract, not a claim that the runtime is implemented or
 production availability/security qualification is complete.
 
 ## 1. Scope and participants
+
+The product north star is a Terminal where the user expresses work goals,
+asks about progress and strategy, changes direction and accepts results without
+managing internal shells, agents or provider context. V1 is the first
+developer-work implementation boundary of that goal, not the complete OS
+automation surface. The product specification owns user stories and outcome
+metrics; this document owns supported wire semantics.
 
 V1 closes this path:
 
@@ -35,6 +42,44 @@ clients. The delivery baseline is a fixed local code snapshot/commit and
 readable reports. External publication, cloud execution and terminal screen
 transport are separate adapters, not implicit steps in this protocol. Their
 absence cannot turn local delivery into an unexplained pending operation.
+
+Natural-language and slash/CLI entry points must converge on the same scoped
+operations, guards and explicit human approvals. Answering "why this approach?"
+must use authorized plan reasons and evidence; agreeing to "change approach"
+without a recorded plan/change action is not an applied strategy. Ordinary
+work discussion must not change the execution contract or suspend eligible
+work. Cross-work questions require an appropriately authorized read scope;
+a work-bound coordinator cannot infer access to foreign-work tools merely
+because the user asked a global question. Missing supported-path capability
+is an explicit limitation and an open acceptance gate, not invented status.
+
+In the global Console, a HumanActionProposal is an inline approval card.
+Receiving it never takes composer focus or submits a command. F6 opens a
+captured review; Enter on its explicitly focused Approve/Approve and start
+button submits that exact request after freshness and inspection checks.
+Change requirements returns to the unchanged composer draft. Not now defers
+only that proposal version in the current UI; neither option changes the Work,
+grant, or proposal record. Deferred proposals remain available through F4, and
+new versions become visible again. F5 expands the authoritative preview.
+Plain Enter in the composer remains conversation input, not approval.
+
+### 1.1 Product targets versus v1 capability
+
+| Product target | V1 boundary / extension obligation |
+|---|---|
+| No mandatory shell/provider/session administration | Use configured authorized runtimes, dispatch and acknowledged inputs; configuration/consent is distinct from repeated human scheduling |
+| Existing-resource adoption or replacement continuity | Qualify each adapter's ownership, settlement and input acknowledgment; visibility of an arbitrary OS process is not authority to control it |
+| OS/application state as the actual result | Current draft delivery kinds remain `LocalCode` and `Report`; no new state-result enum, method or adapter is introduced by the product roadmap |
+| Verified state-changing work | Before future support, specify exact target, authorization, pre/postconditions, observations/freshness, effect receipts, reconciliation and rollback limits; a report or successful process exit is not proof of the target state |
+| Natural-language progress and strategy control | Use authorized domain facts and versioned plan/change operations; track missing read/intake paths against domain AC-91–AC-95 instead of treating command coverage as conversational acceptance |
+
+An unimplemented operation keeps its explicit unsupported disposition. Future
+OS capability must be specified, implemented and independently qualified before
+being included in a supported-work cohort. Existing v1 payloads, method names,
+authority and result validation are not relaxed by this scope clarification.
+Historical protocol/adapter passes do not sign off a new product scenario.
+
+### 1.2 Participants
 
 | Actor | Receives | May produce |
 |---|---|---|
@@ -53,6 +98,46 @@ Publishing an event by itself does not run a model.
 
 ## 2. Transport and common envelopes
 
+### Experimental new-project directory approval
+
+`project.configure` accepts optional `createDirectory: bool` and
+`rootPreference: EntityRef`. Omitted/false `createDirectory` retains the
+existing absolute-directory contract. True requests one absent direct child
+of an existing absolute parent and a local Git repository with an initial
+empty commit. No recursive parent creation, existing-target adoption,
+overwrite, provider shell invocation, or implicit work execution is permitted.
+
+For a global `conversation.propose_action`, the proposed root must either be
+explicitly supplied by captured human input, or, for new-directory creation,
+be a direct child of the absolute directory stated in the captured active
+User Preference keyed `workspace.code_root`. `rootPreference` pins that
+preference's exact kind/id/version. The service compares the captured record
+with its current active version at proposal and confirmation; correction or
+forgetting invalidates the proposal. This is path provenance, not execution
+authority. Other preferences, including the active project, do not grant
+permission to create within or reuse another repository.
+
+The frozen confirmation displays the exact canonical target, creation and
+Git-initialization intent, approved capabilities, limits, and model destination.
+Only human confirmation commits a `project.create` outbox operation. The
+response is `pending`, with its `operationId` and reserved `projectId`; no
+Project record is exposed until a matching successful filesystem receipt.
+The runtime's existing effect intent/receipt journal makes retries idempotent
+and reports an interrupted effect without receipt as `OUTCOME_UNKNOWN`.
+Failures preserve partial files for reconciliation instead of deleting or
+silently recreating the target.
+
+The operation is readable by the owning global conversation. Both success
+and failure attach a `completion` view to the submitted HumanActionProposal
+and emit/queue `HumanActionCompleted`; the original pending submission receipt
+remains unchanged. Pending project creation still emits `HumanActionSubmitted`
+for the Console, but does not queue a coordinator turn: its reserved project
+does not yet exist in a captured access snapshot. The terminal creation receipt
+queues the follow-up exactly once. The next coordinator turn observes refreshed project
+access and continues the user's original goal only after actual success.
+While pending, it may finish with `WaitingOnRecordedSubject` for the operation;
+it must not poll or require another human "continue" message.
+
 ### 2.1 Connection and identity
 
 The Windows v1 connection is a duplex named pipe. Frames contain a four-byte
@@ -60,6 +145,12 @@ unsigned little-endian UTF-8 byte count followed by one JSON object, with a
 maximum payload of 1,048,576 bytes. Large bodies use ArtifactRef. Malformed
 JSON/framing receives a protocol error when possible and closes the connection;
 unknown methods on a valid connection receive `unsupported`.
+
+Header and payload bytes may arrive in separate writes. Service notifications
+must preserve the in-flight frame reader, including a partially consumed length,
+while subscription events continue to flow. A new frame starts only after the
+previous frame completes; connection/service shutdown may cancel the reader.
+Fragmentation does not relax the length/JSON checks or request correlation.
 
 The first client frame is:
 
@@ -112,7 +203,7 @@ EntityRef.kind uses these exact wire names where applicable: Work, Task,
 TaskResult, Workspace, DeliveryCandidate, ChangeProposal, PlanProposal,
 GrantProposal, DecisionRequest, IntakeRequest, ContextRequest, Operation,
 Artifact, Conversation, CoordinationTurn, Plan, Attempt, TaskDispatch,
-GateResult, TaskReview and AttentionItem. Work denotes the domain WorkItem.
+GateResult, TaskReview, AttentionItem and Preference. Work denotes the domain WorkItem.
 
 ### 2.3 Request and response
 
@@ -333,11 +424,16 @@ shown. Every listed result is `ok` unless pending/needs_input is explicit.
 
 | Method | Caller -> receiver; ifMatch | Params | Recorded result / next owner |
 |---|---|---|---|
+| console.open | H -> S; empty | consoleSessionId, conversationId, scope?: Global, projectId? | immutable console/conversation registration; Global has no bound project |
+| console.configure | H or trusted S -> S; current policy on replacement | capabilityId, workerCapabilityId, checkCapabilityId, approvedModelDestination, limits | independently approved GlobalConversationPolicy; no Project or model invocation created |
+| console.get | H -> S; empty | empty object | current global assistant policy or explicit assistant-unavailable failure |
 | project.get | authorized client -> S; empty | projectId | project version, approved context, policy revision, configured capability IDs and finite allowance defaults |
-| conversation.submit | H -> S; empty | conversationId, clientMessageId, text, attachments: ArtifactRef[], declaredIntent?, context `{consoleSessionId, contextVersion, selectedWorkId?, projectId}` | messageId, intakeTurnId; driver queues intake using captured context |
+| conversation.submit | H -> S; empty | conversationId, clientMessageId, text, attachments: ArtifactRef[], declaredIntent?, context `{consoleSessionId, contextVersion, scope?: Global, selectedWorkId?, projectId?}` | recorded message/turn; Global accepts project-free intake and selection hints; a canonical WorkExecutor binding queues input for that work's executor |
 | conversation.resolve_intents | C -> S; empty, bound turn | turnId, messageId, intents: `{kind, workId?, draftGoal?, referencedMessageIds: Id[], changeProposalId?}[]` | intentIds, affectedWorkIds; display interpretation; no implicit start or scope change |
 | conversation.request_input | C -> S; empty, bound intake | turnId, conversationId, messageId, question, responseSchema | needs_input with Intake reference; no WorkItem needed |
 | conversation.answer_input | H -> S; IntakeRequest | requestId, action: Answer or Cancel, value? | recorded answer/cancellation; driver resolves the original intake with captured targets |
+| conversation.resolve_input | global C -> S; IntakeRequest | requestId, messageId, value | schema-valid interpretation of a new captured human reply to this conversation's open intake question; records provenance, not execution or human permission approval |
+| conversation.propose_action | global C -> S; empty | conversationId, messageId, method, params, ifMatch: EntityRef[], summary | immutable HumanActionProposal with server-issued commandId, precise request and authoritative preview; no execution |
 | work.create_draft | C or H -> S; empty | projectId, goal, scope: string[], exclusions: string[], criteria: `{id, description, evidenceRule}[]`, context: ArtifactRef[], delivery `{kind: LocalCode or Report, destinationWorkspaceId?}`, sourceMessageIds: Id[] | workId, specRevision, version; Draft view and reviewable brief |
 | grant.preview | H or C -> S; Work | workId, specRevision, policyRevision | grantProposalId, version, exact capabilities/scopes and finite allowances; no authority issued |
 | work.start | H -> S; Work | workId, specRevision, projectPolicyRevision, grantProposalId | work version and Active/Advance; scheduler uses applied plan or driver plans within approved resource allowance |
@@ -352,7 +448,12 @@ shown. Every listed result is `ok` unless pending/needs_input is explicit.
 | artifact.read | authorized client -> S; empty | artifactId, relativePath?, offset?, limit? | verified bounded content or manifest-entry page; explicit encoding/support status and continuation offset |
 | progress.get | authorized client -> S; empty | reportId | recorded activity, findings, artifact references and coordination request |
 | workspace.get | bound runtime or authorized human -> S; empty | workspaceId | version, local root, repository identity, current head generation and managed input/output scopes |
-| work.get | authorized client -> S; empty | workId | WorkView with spec, plan, current candidate, obligations and versions |
+| work.open | H or trusted S -> S; empty | workId | idempotent durable task-chat binding; `{workView, conversation, context, continuation}`; opens a view without starting execution |
+| work.continue | H or trusted S -> S; Work | workId, restartSession?: boolean | attach to live execution or request owned continuation; recovery may be pending; explicit reconstruction only with restartSession:true |
+| work.claim_executor | H or trusted S -> S; Work | workId, restartSession?: boolean | freeze legacy scheduling, settle writers and adopt a verified actual-worker session; returns the opening envelope even while settlement or reconstruction consent is pending |
+| work.request_input | bound executor -> S; empty | workId, question, responseSchema | needs_input with an Intake request; human resolution queues an answer to the same executor |
+| work.execution_check | bound runtime -> S; empty, read-only | workId | allowed:true, invocationId, turnId; expired, paused, cancelled, ungranted or incorrectly bound execution returns an error |
+| work.get | authorized client -> S; empty | workId | WorkView with spec, plan, current candidate, obligations, versions and continuation status |
 | work.list | authorized client -> S; empty | afterId?, limit: integer 1..100 | items: WorkView[], nextAfterId? |
 | operation.get | authorized client -> S; empty | operationId | OperationView with status, subject refs, completed steps, error and next action |
 
@@ -370,12 +471,273 @@ map to delivery.accept and delivery.request_changes. `/work pause`, resume and
 cancel map to work.control with Hold, Resume and Cancel. `/work events` maps
 to events.subscribe with a Work scope. Aliases do not create additional wire
 methods or bypass missing-argument collection.
+
+### 4.1 Task conversations and continuation
+
+`work.open` is a versioned-command mutation, not an execution approval. It
+idempotently creates or returns the selected work's durable console/conversation
+binding. `context` contains `consoleSessionId`, `conversationId`,
+`contextVersion`, `projectId` and `selectedWorkId`. For subsequent non-global
+`conversation.submit`, place `conversationId` at the request's top level and
+the remaining fields in `context`; do not copy it into that nested context.
+Reopening the same work, including
+from another task tab, returns the same persisted conversation rather than
+creating another work or a global intake. Clients retain their own unsent
+drafts. The returned conversation includes the work's recorded main dialogue;
+internal worker transcripts are not automatically promoted to human chat.
+
+New work defaults to `executionMode: WorkExecutor`. Messages for its bound
+conversation route directly to its executing agent session. Explicit
+`LegacyTasks` retains the older coordinator/task pipeline; a historical record
+without an execution mode instead requires explicit `work.claim_executor` and
+rejects ordinary submission/continuation with `WORK_EXECUTOR_CLAIM_REQUIRED`.
+Opening or viewing the task does not dispatch a model. A new message or an
+explicit continuation may cause a bounded turn, but cannot retarget another
+work or bypass an existing execution grant. Background responses retain their
+work and conversation identity across navigation.
+
+The `continuation` projection on WorkView and work.open reports observed
+`state`: `Running`, `WaitingForInput`, `Paused`, `NeedsRecovery`, `Ready`,
+`Completed`, `Cancelled` or `Unavailable`, with a reason and activity timestamp
+when available. Expired or unconfirmed invocations must not be represented as
+fresh running work solely because their durable state still says Running.
+These display states do not replace authoritative work/attempt lifecycles.
+`executionMode` projects `WorkExecutor`, `ClaimingExecutor` or `LegacyTasks`.
+`activity: Idle` accompanies a retained idle executor's Ready state.
+`pendingInputCount` counts queued `WorkExecutionTurn` records, excluding the
+current turn. Inputs are FIFO with a 256-item queue limit.
+`canClaimExecutor` is a migration-action hint, not proof of usable authority or
+session history. `canRestartSession` requires settled ownership and an available,
+approved provider/workspace as well as a genuinely unavailable saved session.
+`activeResponses` contains only live primary response `{messageId, deadlineUtc}`
+references. A task client also checks the deadline locally; historical
+Streaming messages and unrelated worker activity cannot imply live chat.
+`recoveryFailure`, when present, carries the current failed stop/release
+operation's failure and `operationId`, without changing execution authority.
+Clients keep that failure visible outside scrollable conversation history.
+Dispatch that has not yet produced a Started observation reports `Ready` with
+a startup-pending reason, not `Running`.
+
+`work.continue` requires the exact current Work reference and a stable commandId.
+Repeated commands attach to the same recorded outcome. Live execution is not
+duplicated; stale or unsettled execution must be reconciled and its writer
+settled before replacement. Existing drafts still require work.start approval,
+and terminal work is not implicitly reopened. Global conversation may propose
+work.continue or work.claim_executor through the same frozen human-action path
+rather than confusing them with scheduler-only Resume.
+Both mutations return the open-view envelope. An accepted recovery request can
+return `ok` with `NeedsRecovery`; that receipt confirms the request, not settled
+execution or a successfully resumed session. A missing provider PID alone is
+not proof that its writer tree has ended. Unverifiable legacy ownership remains
+in recovery rather than silently admitting another writer.
+
+The primary executor session is associated with its work, provider and
+working directory. Resuming loads that provider session with a fresh
+invocation-scoped work MCP binding and current authority, not stale bearer
+credentials. Missing resume support or unavailable history is explicit.
+`restartSession:true` is a separate human choice to reconstruct context in a
+new session, not a fallback taken automatically after a failed load. Legacy worker attempts retain their independent dispatch and settlement contracts.
+
+An executor retains its ACP connection, owned process tree, workspace writer
+reservation and concurrency slot while idle. Normal reply completion leaves
+Work Active; it does not settle the process tree or kill a development server.
+Each admitted prompt consumes an approved `executionAttempts` allowance and
+uses the execution-seconds deadline. Queued input has not yet consumed that
+allowance. Continue on a live running/idle executor only attaches, without
+admitting another prompt. Hold/Cancel stop the owned tree and fence admission;
+authority shutdown closes admission and waits up to 15 seconds for proven
+settlement, reporting failure if that cannot be established.
+
+`work.claim_executor` requires the exact Work guard, a stable commandId, an
+effective matching grant, an approved worker capability and an available
+non-human-owned workspace. It freezes legacy scheduling before reconciling its
+old writers. `work.executorClaim.status` is `Settling`, `NeedsConsent`,
+`Held`, `Cancelled` or `Claimed`; `executionMode` is `ClaimingExecutor` until adoption/reconstruction.
+Missing verified actual-worker history records `EXECUTOR_SESSION_UNAVAILABLE`
+and requires explicit `restartSession:true`. Coordinator history never qualifies
+as executor provenance. Adoption preserves old conversations/artifacts and
+queues a continuation prompt; `Claimed` is not proof that ACP loaded it.
+Only the resumed Started observation with `sessionLoaded:true` and the same
+provider session identity proves loading, and a real follow-up effect is needed
+to prove execution. Intervening Hold/Cancel must prevent delayed claim settlement
+from admitting that prompt.
+Hold marks the pending claim Held and revokes prior reconstruction consent;
+fresh claim/Continue explicitly resumes it, while scheduler-only Resume does not.
+Cancel marks it Cancelled. Settling exposes neither a fresh claim nor restart;
+Continue only reconciles that existing claim. NeedsConsent exposes restart only
+after its grant, provider, workspace and settled ownership are checked.
+
+`work.request_input` binds an `IntakeRequest` to the current Work executor turn.
+Its request fields are `workId`, `question` and `responseSchema`; human resolution
+uses existing `conversation.answer_input` with the exact IntakeRequest guard,
+`requestId`, `action: Answer` plus `value`, or `action: Cancel`. Resolution queues
+input to that same executor; answers also become human chat messages.
+Runtime calls the read-only `work.execution_check` before native permission
+grants and ACP writes. Its success data contains `allowed:true`, `invocationId`
+and `turnId`; invalid ownership, grant, expiry, Hold/Cancel or an open question
+returns an error instead of successful-looking `allowed:false`.
+
+This bounded implementation deliberately does not add executor-specific formal
+delivery acceptance. WorkExecutor delivery reports `EXECUTOR_DELIVERY_UNAVAILABLE`;
+ordinary replies never manufacture TaskResults, successful gates, human
+acceptance or Completed work. Explicit LegacyTasks retains the existing
+delivery/evidence contracts.
+
+A dedicated `wta ui --work <id>` tab is another presentation of this service
+binding. It does not independently adopt the workspace or instantiate a
+second helper/provider writer.
+
+For LegacyTasks, after service disconnection, a sole remaining coordinator invocation with no
+worker dispatch may recover its conversation without asserting physical
+process-tree settlement. The internal `runtime.recover_coordinator` effect
+verifies the immutable original invocation plus current approved provider
+configuration against its saved digest, pins the original provider session and
+directory, and records a separate recovered-session association. The authority
+then releases only the coordinator binding with
+`releaseKind: CoordinatorAuthorityRevoked` and `processSettlement: Unknown`.
+Old coordinator tools/reports are rejected; its incomplete reply is marked
+Interrupted. Actual worker invocations must already be Released, and their
+writer reservations and settlement evidence are never changed by this path.
+The next invocation still uses ACP session/load and must report the same
+provider session. A later Hold or Cancel prevents resuming execution, even if
+session-association recovery completes afterward.
+
+### Preference memory
+
+Preference memory is an Agent Center facility, not part of per-tab WTA or its
+session MCP. It uses `Preference` entities in the existing `work.db` records,
+without a migration, new database or dependency. No vector database, sync or
+history mining is introduced.
+
+```text
+Preference {
+  id: Id, kind: Preference, version: Revision,
+  key: string, scope: User | Project, projectId?: Id,
+  content: string, status: Active | Forgotten,
+  sourceMessageId?: Id, createdAt: string, updatedAt: string
+}
+```
+
+Project scope requires projectId; User scope has no projectId. Keys are unique
+within their scope (and project for Project scope), lowercase ASCII
+dotted/dashed keys of at most 80 bytes. Content is at most 512 Unicode
+characters. Each scope is capped at 512 records, including tombstones.
+Timestamps are service UTC strings. `sourceMessageId` references
+human input, not a quote copied into the preference.
+
+| Method (MCP tool) | Caller -> receiver; ifMatch | Params | Result / semantics |
+|---|---|---|---|
+| memory.list (`memory_list`) | authorized H or C -> S; empty | projectId?, afterId?, limit?: integer 1..100 | `{items: Preference[], nextAfterId?}`; omitted projectId means user scope only; supplied authorized projectId includes user plus that project |
+| memory.store (`memory_store`) | authorized H or conversational intake C -> S; empty for new scoped key, exact Preference for replacement | key, scope: User or Project, projectId?, content, sourceMessageId? | upsert the scoped key; replacement includes a Forgotten tombstone and requires its current version |
+| memory.forget (`memory_forget`) | authorized H or conversational intake C -> S; exact Preference | preferenceId, sourceMessageId? | set Forgotten and clear live content; retain the versioned tombstone |
+
+Lists include content-free Forgotten tombstones for `ifMatch` conflict handling
+and restoration. The ordinary mutation envelope and command-id replay rules
+apply. Both mutation MCP schemas require sourceMessageId even though direct
+human protocol callers may omit it. The reference must match the latest human
+message captured in that invocation and
+an `IntakeMessage` trigger. The source's scope is authorized separately from the
+target preference's scope. A real, authorized source proves provenance, not the
+semantic truth of the preference. Agents read current entries first and reuse
+keys/update existing entries instead of creating synonyms.
+
+Global and project-intake conversational coordinators receive all three tools.
+Work coordination with no new human intake receives only `memory_list`.
+Workers cannot read or write full preference memory; a coordinator transfers
+only relevant constraints through an approved task contract, never broad
+personal dumps or a hidden change to scope, permissions or criteria.
+
+Each coordinator snapshot includes
+`preferences: {items: Preference[], truncated: boolean, forgetVersion}`.
+The serialized items are bounded to at most 8192 bytes. Global snapshots inject
+user preferences plus an authorized current-project hint's preferences, if
+present; work snapshots inject user preferences plus that work's project.
+Use `memory_list` pagination when truncated rather than assuming absence.
+Snapshot selection and a project hint do not authorize a wider memory scope.
+Explicit current instructions take precedence; project preferences override
+user preferences only for that project. Recalled content is data, never
+authorization or higher-priority instructions, and cannot change task contracts.
+
+The conversational coordinator automatically learns only durable, non-sensitive
+interaction/workflow preferences grounded in current human input. There is no
+extra extraction model or background scan. Never persist credentials, personal,
+sensitive or third-party information, task progress, transient requests, or
+agent/tool/web output as user preferences. Do not infer cross-project scope
+from a task; ambiguous scope requires asking or skipping, never broadening.
+These extraction semantics are a behavioral policy, not a hard classifier
+guarantee. Natural-language corrections and forgetting use the same tools,
+without new commands or UI. Claim remembered/forgotten only after a successful
+tool response and expose failures.
+
+Forgetting increments the global `forgetVersion` fence, invalidating
+`memory.store` from already-captured invocations, including the forgetting
+invocation, but not subsequent `memory.forget` calls. Each forget still requires
+its exact Preference version and, for agents, the latest captured source checks.
+Complete all requested deletions, then finish the turn; do not store again
+until fresh human intake. Clearing live content is not
+full erasure: old snapshots, chat, command receipts and backups may retain
+historical content. A later fresh human request can restore the forgotten key
+using its current Preference version; neither the original source message nor
+the forgetting source message may be replayed to restore it.
+
+### Global conversation and human-action proposals
+
+Global conversation handles new goals and cross-work discussion; it is not the
+conversation used when an existing task is opened. `context.scope: Global`
+selects this explicit mode; omitting scope uses the immutable project/work-bound
+registration. Global console registration omits projectId.
+Message project/work hints may change without replacing the console/conversation
+pair. A global registration cannot adopt another window's conversation or a
+legacy project-bound identity.
+
+Global coordination has an independently approved assistant policy and finite
+allowance, not a synthetic Project. A runtime with one explicitly approved ACP
+adapter may bootstrap that policy; multiple adapters require an explicit
+conversation capability choice. This does not infer a new model destination,
+start model work at launch, replace user-owned settings, or qualify automatic
+adoption of Terminal's provider settings. Missing assistant approval is distinct
+from missing execution context.
+
+Each global invocation captures the project IDs whose policy permits the
+approved assistant capability. Its bounded summaries explicitly mark truncation;
+paginated reads remain access-filtered. Another window's conversation is not
+project data. A global assistant may read authorized work facts and propose
+briefs/changes, but cannot become a work execution coordinator or directly run
+plan, worker, grant-approval, control or acceptance mutations.
+
+`HumanActionProposal` contains id, version, status, conversationId, optional
+workId, source messageId, explanation, frozen `{method, params, ifMatch,
+commandId}` and an authoritative preview. Supported methods are explicitly
+allowlisted; an explanation cannot replace actual permissions, destinations,
+limits, scope, or fixed-candidate facts. The source is the latest captured human
+message in the same conversation. A new proposal supersedes an older open
+proposal for the same target, not another work's proposal.
+
+Only explicit human confirmation submits the frozen request. The service checks
+the proposal's open state and exact semantic envelope atomically with the normal
+operation's target/version guards. Superseded or edited previews cannot execute.
+Original committed receipts remain idempotent on exact retry; Submitted/pending
+does not mean Completed. Delivery acceptance additionally retains the Console's
+exact fixed inspection requirement.
+
+Natural-language clarification can be interpreted through
+`conversation.resolve_input`; its source message and
+`answerSource: HumanMessageInterpretation` remain recorded. This only resolves
+intake information, never a DecisionRequest, permission, work start, or delivery
+approval. It does not queue a duplicate turn while the current actor is already
+handling the reply.
 An IntakeRequest contains id, version, conversationId, source message/turn,
 question, responseSchema and `Open | Answered | Cancelled`. Answer requires
 value matching that schema; Cancel forbids value. The Console displays which
 question receives the answer. A different background question cannot intercept
 the current message. Answered/cancelled intake emits IntakeAnswered/IntakeCancelled
 and lets the driver complete or abandon the original resolved intent.
+Conversation snapshots preserve their message fields and include
+`intakeRequests`, the current records associated with that conversation.
+Conversation subscriptions also carry requested/answered/cancelled intake
+changes by the changed record's `conversationId`, including replay of events
+committed before the client subscribed. A pre-work question must remain
+discoverable without manufacturing a Work or widening to another conversation.
 
 `replacementSpec` has the same brief fields as work.create_draft plus its
 current spec revision. Grant proposals are service-created previews from the
@@ -454,6 +816,16 @@ Views are read projections, not writable status objects. TaskView includes
 `operation`, `subjects[]`, `failure?`, `nextAction?`. Record shapes are those
 defined here and in the linked domain inventory. List order is ascending ID
 within the current authorized view; event subscriptions supply live changes.
+
+Human-facing work cards, selectors and question forms consume these views and
+invoke the existing methods; they do not introduce parallel approval or
+acceptance semantics. A readable label is not an object identity. The client
+retains the exact selected IDs, expected versions and command identity while
+showing goal, project, question, evidence and impact. Response schemas retain
+their JSON value types even when input is collected through individual fields.
+Unsupported form schemas remain explicit limitations rather than fabricated
+answers. Raw requests and IDs are diagnostic details, not required user input.
+Client rendering never removes identity or provenance from the wire contract.
 
 ## 5. Admission, runtime dispatch and terminal records
 
@@ -545,6 +917,16 @@ observationId/content is acknowledged without reapplying; conflicting content
 is rejected. A sequence gap pauses interpretation of later facts until replay
 or probe establishes the missing disposition. Old binding observations may
 settle a known old execution but cannot advance replacement work.
+The adapter journals the exact pending observation and command identity before
+sending it. If cancellation or transport loss interrupts the acknowledgement,
+the next report replays that same observation before advancing the sequence,
+including before TurnEnded or Settled. A committed text chunk is never replaced
+with a new observation at the same sequence, and replay does not duplicate chat
+text. Definitively rejected observations do not consume a sequence; an unknown
+delivery outcome retains the pending observation for reconciliation.
+Each transaction persists only new or version-changed records, together with
+its events/effect receipts. Streaming a text chunk must not rewrite unrelated
+historical records; rollback and command replay retain their atomic behavior.
 Probe state Ended requires terminalObservation with the TurnEnded data and
 its original sequence; other states may include the latest such observation.
 A probe observation is explicitly reconciled as a snapshot, not presented as
@@ -804,6 +1186,23 @@ Only one coordination invocation is active per work or intake conversation.
 Its commands use their own version checks; receiving a snapshot does not lock
 the work or permit overwriting subsequent state.
 
+New human input in a global conversation supersedes its active conversational
+invocation through a scoped `runtime.stop` with reason `NewConversationInput`.
+New input remains queued until that exact invocation settles and releases;
+arrivals during settlement coalesce into the next snapshot. Existing messages,
+questions, proposals and committed actions remain recorded. Only the obsolete
+conversation turn is stopped: approved work, its coordinator/workers and other
+conversations remain independent. A turn without a terminal finish ends as
+`Superseded`, not a `PROTOCOL_INCOMPLETE` blocker; an already recorded valid
+finish remains completed when this scoped stop settles normally.
+
+Coordinators record dispatch/handoff receipts and finish rather than waiting
+or polling for execution. The driver resumes them for actionable reported
+state. The global collaborator answers simple questions and queries recorded
+progress; substantial execution belongs to approved work tasks. ACP permission
+for coordinators is limited to advertised invocation-bound work tools, not
+provider-owned shell/subagent execution (this is not provider-tool isolation).
+
 | Method | Caller -> receiver; ifMatch | Params | Result / next owner |
 |---|---|---|---|
 | coordination.finish | C -> S; empty, bound turn | turnId, outcome: Answered or ActionsRecorded or WaitingOnRecordedSubject or NoActionNeeded, commandIds: Id[], operationIds: Id[], messageId?, waitingSubject?: EntityRef, explanation | finishId; driver closes turn only after runtime settlement |
@@ -966,6 +1365,12 @@ by v1 are the following; each maps to the named record/view:
 | DeliveryProposed, DeliveryAccepted, DeliveryChangesRequested | Candidate; prepared result or human action |
 | AttentionChanged | Inbox item; subject obligation created/resolved/superseded |
 
+Allocating a coordinator response emits `MessageRecorded` with its preallocated
+assistant item in `Streaming` status, even before adapter startup or the first
+text delta. The same item is included in Conversation snapshots so a Console
+can show response activity without inferring it from work execution. Terminal
+classification emits `MessageCompleted` with `Complete` or `Interrupted`.
+
 Messages and progress are not extra model wake sources. UI refresh, internal
 scheduling, coordinator activation and human notification consume different
 subsets of this stream. A background event never changes Console selection
@@ -988,6 +1393,18 @@ cursor, if present, is the last sent position, not evidence that the client
 applied it. Resume uses the client's last applied cursor. Unsubscribe returns
 its response after the subscription is closed; later frames for that ID are
 not sent.
+
+Client-side pressure must also have an explicit bounded disposition. A slow
+event consumer cannot silently discard committed changes, indefinitely starve
+request replies or lose the terminating cause behind a full event queue.
+After a stream/connection failure, retain the underlying cause and refresh
+the affected authorized subscription by replay or a new consistent snapshot.
+Old subscription frames cannot make the refreshed projection older. Connection
+recovery does not imply mutation failure or success: preserve command identity
+and reconcile uncertain effects rather than automatically issuing a new
+mutation. A Console remains usable for its local drafts and navigation and
+labels disconnected facts stale; closing and reopening it is not the normal
+recovery path.
 
 Needs-input responses and AttentionChanged point to the same durable records.
 Delivery badges and decision items show work identity, reason, evidence and

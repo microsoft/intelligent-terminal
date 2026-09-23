@@ -273,10 +273,72 @@ system.model_unknown: "അറിയാത്ത മോഡൽ %{model} — ലഭ
 # not an agent session; a work item may contain multiple tasks.
 agent_center.title: "Agent Center" # {Locked}
 agent_center.works: "പ്രവർത്തന ഇനങ്ങൾ"
+agent_center.demo_title: "പ്രവർത്തന ഇനത്തിന്റെ കഥയുടെ പ്രദർശനം" # Title of an isolated scripted demonstration; the story fixture itself is English.
+agent_center.demo_notice: "മുൻകൂട്ടി തയ്യാറാക്കിയ പ്രദർശനം | മാതൃകാ തെളിവുകൾ, അനുകരിച്ച സെഷനുകളും ടോക്കൺ ഉപയോഗവും | ഏജന്റുകളെ ആരംഭിക്കുന്നില്ല" # Always-visible disclosure; simulated data must not be confused with live agent execution.
+agent_center.demo_scene: "രംഗം %{scene}/8" # %{scene} is the current scene number in the eight-scene story.
+agent_center.demo_next: "അടുത്തത്: %{input}" # %{input} is the literal English story input, not a translated command.
+agent_center.demo_keys: "Enter: സമർപ്പിക്കുക | Tab: അടുത്ത ഇൻപുട്ട് പൂരിപ്പിക്കുക | PgUp/PgDn: സ്ക്രോൾ ചെയ്യുക | Ctrl+Q: അടയ്ക്കുക" # {Locked="Enter","Tab","PgUp/PgDn","Ctrl+Q"}
+agent_center.demo_reset: "പ്രദർശനത്തിന്റെ സ്ഥിതി പുനഃസജ്ജമാക്കണോ? /reset confirm എന്ന് ടൈപ്പ് ചെയ്യുക. നിലവിലുള്ള പ്രവർത്തന ഇനങ്ങളെയും ക്രമീകരണങ്ങളെയും ബാധിക്കില്ല." # {Locked="/reset confirm"} Resets only the isolated demo, never real work.
+agent_center.demo_saved: "പരിഷ്കരണം %{revision} സംരക്ഷിച്ചു" # %{revision} is the persisted demo state revision.
+agent_center.demo_error: "പ്രദർശനത്തിലെ പ്രവർത്തനം പരാജയപ്പെട്ടു: %{error}" # %{error} explains the rejected action; no state change is claimed.
+agent_center.tasks_title: "ചുമതലകൾ"
+agent_center.task_new: "പുതിയ ചുമതല"
+agent_center.task_all: "എല്ലാ ചുമതലകളും"
+agent_center.task_attention: "ശ്രദ്ധ ആവശ്യമാണ്"
+agent_center.task_continue: "ചുമതല തുടരുക"
+# Messages waiting for this work's busy executor, excluding the currently running turn. {Locked="%{count}"}
+agent_center.task_queued_messages: "ക്യൂവിലുള്ള സന്ദേശങ്ങൾ: %{count}"
+# Explicit migration of an existing work from legacy orchestration to its own executing agent session.
+agent_center.task_claim_executor: "ചുമതലയുടെ ഏജന്റുമായി ബന്ധിപ്പിക്കുക"
+agent_center.task_claim_executor_confirm: "ഈ ചുമതല അതിന്റെ സ്വന്തം നിർവഹണ ഏജന്റിലേക്ക് മാറ്റുക. നിലവിലുള്ള ചാറ്റും ഫലങ്ങളും സൂക്ഷിക്കും, പഴയ സമയക്രമീകരണം നിർത്തും. യഥാർത്ഥ നിർവഹണ സെഷൻ പുനഃസ്ഥാപിക്കാൻ കഴിയുന്നില്ലെങ്കിൽ, പുതിയ സെഷൻ ആരംഭിക്കാൻ പ്രത്യേക സ്ഥിരീകരണം ആവശ്യമാണ്."
+agent_center.task_open_tab: "ടാബിൽ തുറക്കുക"
+agent_center.task_tab_unsupported: "ചുമതലയുടെ ടാബ് തുറക്കാൻ Intelligent Terminal ആവശ്യമാണ്." # {Locked="Intelligent Terminal"}
+agent_center.task_new_session: "പുതിയ സെഷൻ ആരംഭിക്കുക"
+agent_center.task_new_session_confirm: "യഥാർത്ഥ ഏജന്റ് സെഷൻ പുനരാരംഭിക്കാനാകില്ല. ഈ ചുമതലയുടെ സംരക്ഷിച്ച സന്ദർഭം ഉപയോഗിച്ച് പുതിയ സെഷൻ ആരംഭിക്കണോ?"
+agent_center.task_keys: "Up/Down തിരഞ്ഞെടുക്കുക · Enter തുറക്കുക · F4 നടപടികൾ · F5 വിശദാംശങ്ങൾ" # {Locked="Up/Down","Enter","F4","F5"}
+agent_center.task_list_keys: "F2 ചുമതലകൾ · F4 നടപടികൾ · F5 വിശദാംശങ്ങൾ" # {Locked="F2","F4","F5"}
+agent_center.task_state_running: "പ്രവർത്തിക്കുന്നു"
+agent_center.task_state_waiting: "നിങ്ങളുടെ പ്രതികരണത്തിനായി കാത്തിരിക്കുന്നു"
+agent_center.task_state_paused: "താൽക്കാലികമായി നിർത്തി"
+agent_center.task_state_recovery: "വീണ്ടെടുക്കൽ ആവശ്യമാണ്"
+agent_center.task_state_ready: "തുടരാൻ തയ്യാറാണ്"
+agent_center.task_state_completed: "പൂർത്തിയായി"
+agent_center.task_state_cancelled: "റദ്ദാക്കി"
+agent_center.task_state_unavailable: "സെഷൻ ലഭ്യമല്ല"
+agent_center.task_updated: "അവസാന പ്രവർത്തനം: %{time}"
+agent_center.ui_overview: "അവലോകനം"
+agent_center.chat_global: "പൊതുവായ സംഭാഷണം" # Conversation with the non-executing master for new goals and cross-work coordination; each work has its own executor conversation.
+agent_center.chat_welcome: "നിങ്ങൾ എന്താണ് നേടാനോ ക്രമീകരിക്കാനോ അറിയാനോ ആഗ്രഹിക്കുന്നതെന്ന് എന്നോട് പറയുക."
+agent_center.chat_keys: "Enter അയയ്ക്കുക · Shift+Enter പുതിയ വരി · F4 നടപടികൾ · F5 വിശദാംശങ്ങൾ · F7 ഡാഷ്ബോർഡ്" # {Locked="Enter","Shift+Enter","F4","F5","F7"}
+agent_center.chat_dashboard_keys: "F7 സംഭാഷണം · Esc സംഭാഷണം · F4 നടപടികൾ · F6 നടപടികളിലേക്ക് ഫോക്കസ് മാറ്റുക" # Dashboard navigation preserves the global conversation and draft. {Locked="F7","Esc","F4","F6"}
+agent_center.chat_context_hint: "സന്ദർഭ സൂചന: %{context}" # %{context} is a readable work or project name, not a binding that limits the global conversation.
+agent_center.ui_attention: "നിങ്ങളുടെ ശ്രദ്ധ ആവശ്യമാണ്" # Heading for recorded requests, draft-start reviews, and delivery reviews; not a claim that every work needs attention.
+agent_center.ui_details: "സംക്ഷിപ്ത വിവരണവും പുരോഗതിയും" # Read-only details view containing the work agreement, recorded progress, evidence, and locations.
+agent_center.ui_new_goal: "നിങ്ങൾ എന്താണ് നേടാൻ ആഗ്രഹിക്കുന്നത്?"
+agent_center.ui_empty_attention: "നിങ്ങളുടെ പ്രതികരണം ആവശ്യമുള്ള തീർപ്പാക്കാത്ത അഭ്യർത്ഥനകളില്ല."
+agent_center.ui_no_works: "പ്രവർത്തന ഇനങ്ങളൊന്നും രേഖപ്പെടുത്തിയിട്ടില്ല. ആരംഭിക്കാൻ ക്രമീകരിച്ച പ്രോജക്റ്റ് തിരഞ്ഞെടുക്കുക."
+agent_center.ui_no_conversation: "ഈ പ്രവർത്തന ഇനത്തിനായി സന്ദേശങ്ങളൊന്നും രേഖപ്പെടുത്തിയിട്ടില്ല."
+agent_center.ui_role_you: "നിങ്ങൾ" # Speaker heading for an actual recorded human message.
+agent_center.ui_role_assistant: "പ്രവർത്തന സഹായി" # Speaker heading for an actual recorded assistant message, not a provider name.
+agent_center.ui_role_service: "സേവനം" # Speaker heading for an actual recorded system or service message.
+agent_center.ui_role_unknown: "രേഖപ്പെടുത്തിയ സന്ദേശം" # Speaker heading when the service does not identify a recognized message role.
+agent_center.ui_next: "അടുത്ത ഉത്തരവാദിത്തം"
+agent_center.ui_recorded_facts: "രേഖപ്പെടുത്തിയ വസ്തുതകൾ"
+agent_center.ui_last_known: "അവസാനം അറിഞ്ഞ നില · %{status}" # %{status} is a localized recorded status. Used when cached facts do not establish current execution.
+agent_center.ui_cached_facts: "കാഷിൽ സൂക്ഷിച്ച വസ്തുതകൾ; നിലവിലെ നിർവഹണം സ്ഥിരീകരിച്ചിട്ടില്ല."
+agent_center.ui_source_root: "പ്രോജക്റ്റിന്റെ ഉറവിട സ്ഥാനം" # Configured source root, explicitly distinct from the actual managed execution directory.
+agent_center.ui_execution_root: "നിയന്ത്രിത നിർവഹണ സ്ഥാനം" # Actual execution directory reported by the service, never inferred from the project source root.
+agent_center.ui_location_unknown: "നിർവഹണ സ്ഥാനം റിപ്പോർട്ട് ചെയ്തിട്ടില്ല."
+agent_center.ui_composer: "ഇതിനുള്ള സന്ദേശം: %{work}" # %{work} is the human-readable target of this independent draft.
+agent_center.ui_composer_new: "പുതിയ പ്രവർത്തന ഇനം · %{project}" # %{project} is the configured project name, or an explicit project-selection warning.
+agent_center.ui_actions: "പ്രവർത്തന ഇനത്തിനുള്ള നടപടികൾ"
+agent_center.ui_keys: "Enter അയയ്ക്കുക · Shift+Enter പുതിയ വരി · F4 നടപടികൾ · F5 വിശദാംശങ്ങൾ · F6 നടപടികളിലേക്ക് ഫോക്കസ് മാറ്റുക" # {Locked="Enter","Shift+Enter","F4","F5","F6"}
+agent_center.ui_actions_hint: "Up/Down തിരഞ്ഞെടുക്കുക · Enter തുറക്കുക · Esc ഇൻപുട്ട്" # Keyboard focus is on a visible action, not the text editor. {Locked="Up/Down","Enter","Esc"}
+agent_center.ui_details_hint: "F5 വിശദാംശങ്ങൾ അടയ്ക്കുക · PgUp/PgDn വായിക്കുക · Esc ഇൻപുട്ട്" # Read-only detail focus; returning to input preserves the draft and selection. {Locked="F5","PgUp/PgDn","Esc"}
 agent_center.activity: "പ്രവർത്തനം · സംഭാഷണം"
-# %{work} and %{project} are identifiers of the selected work item and project.
+# %{work} and %{project} are human-readable labels for the selected work and configured project.
 agent_center.header: "പ്രവർത്തന ഇനം: %{work} | പ്രോജക്റ്റ്: %{project}"
-agent_center.welcome: "ഒരു പ്രോജക്റ്റ് തിരഞ്ഞെടുക്കുക അല്ലെങ്കിൽ /project use <id> വ്യക്തമാക്കുക. ഒരു ലക്ഷ്യം അല്ലെങ്കിൽ /help ടൈപ്പ് ചെയ്യുക." # {Locked="/project use","<id>","/help"}
+agent_center.welcome: "ക്രമീകരിച്ച പ്രോജക്റ്റ് തിരഞ്ഞെടുക്കാൻ F4 അമർത്തുക, തുടർന്ന് നിങ്ങൾ നേടാൻ ആഗ്രഹിക്കുന്നത് നൽകുക." # {Locked="F4"}
 agent_center.input_help: "Enter: അയയ്ക്കുക · Shift+Enter: പുതിയ വരി · Tab: പൂർത്തിയാക്കുക · F2: പ്രവർത്തന ഇനം മാറ്റുക · Ctrl+C: പുറത്തുകടക്കുക · PgUp/PgDn: വായിക്കുക · Ctrl+End: ഏറ്റവും പുതിയത്" # {Locked="Enter","Shift+Enter","Tab","F2","PgUp/PgDn","Ctrl+End","Ctrl+C"}
 agent_center.inbox_count: "ശ്രദ്ധ ആവശ്യമാണ്: %{count}"
 agent_center.sending: "രേഖപ്പെടുത്തിയ അഭ്യർത്ഥന അയയ്ക്കുന്നു…"
@@ -321,3 +383,84 @@ agent_center.missing_field: "പ്രതികരണത്തിലെ ഫീ�
 agent_center.invalid_command_id: "--command-id ഒരു UUID ആയിരിക്കണം." # {Locked="--command-id","UUID"}
 agent_center.worker_stopped: "അഭ്യർത്ഥനകളുടെ കണക്ഷൻ നിലച്ചു."
 agent_center.host_unavailable: "%{command}-നായി ഷെൽ ഹോസ്റ്റ് അഡാപ്റ്റർ ലഭ്യമല്ല. ഹോസ്റ്റിന്റെ കീബോർഡ് പ്രവർത്തനങ്ങൾ ഉപയോഗിക്കുക."
+agent_center.console_home: "പുതിയ പ്രവർത്തന ഇനം"
+agent_center.console_new: "പുതിയ പ്രവർത്തന ഇനം / ഹോം"
+agent_center.console_new_hint: "പുതിയ ലക്ഷ്യം നൽകുക. മറ്റ് പ്രവർത്തന ഇനങ്ങൾ സ്വതന്ത്രമായി തുടരും."
+agent_center.console_project_create_directory: "ഒരു പുതിയ ഡയറക്ടറി സൃഷ്ടിച്ച് ഒരു പ്രാദേശിക Git ശേഖരം ആരംഭിക്കുക. നിലവിലുള്ള ഫയലുകൾ തിരുത്തിയെഴുതില്ല." # {Locked="Git"}
+agent_center.console_projects: "ക്രമീകരിച്ച പ്രോജക്റ്റ് തിരഞ്ഞെടുക്കുക"
+agent_center.console_projects_hint: "പേരും സ്ഥാനവും നോക്കി പ്രോജക്റ്റ് തിരഞ്ഞെടുക്കുക. ഇവിടെ പ്രോജക്റ്റ് ഒന്നും ക്രമീകരിച്ചിട്ടില്ലേ? ഒന്ന് ക്രമീകരിക്കാൻ നിങ്ങളുടെ അഡ്മിനിസ്ട്രേറ്ററോട് ആവശ്യപ്പെടുക."
+agent_center.console_refresh: "നിലവിലെ വസ്തുതകൾ പുതുക്കുക"
+agent_center.console_open: "തുറക്കുക: %{work}"
+agent_center.console_return: "ഇതിലേക്ക് മടങ്ങുക: %{work}"
+agent_center.console_respond: "പ്രതികരിക്കുക: %{work} — %{question}"
+agent_center.console_unknown_work: "പ്രവർത്തന ഇനത്തിന്റെ വിശദാംശങ്ങൾ ലഭ്യമല്ല"
+agent_center.console_unknown_project: "പ്രോജക്റ്റ് തിരഞ്ഞെടുത്തിട്ടില്ല അല്ലെങ്കിൽ ലഭ്യമല്ല"
+# Two works can have exactly the same goal and project. The numbered choice is explicit, never a fuzzy match. %{created} is the recorded creation time.
+agent_center.console_duplicate: "%{work} · വേറിട്ട പ്രവർത്തന ഇനം %{number} · %{created}"
+agent_center.console_start: "സംക്ഷിപ്ത വിവരണം അവലോകനം ചെയ്ത് ആരംഭിക്കാൻ അംഗീകാരം നൽകുക"
+agent_center.approval_title: "അംഗീകാരം ആവശ്യമാണ്" # Title of an inline conversation card for a specific frozen human action.
+agent_center.approval_accept: "അംഗീകാരം നൽകുക" # Button that submits the exact reviewed action, not a chat message.
+agent_center.approval_start: "അംഗീകാരം നൽകി ആരംഭിക്കുക" # Button approving the displayed work brief and execution grant.
+agent_center.approval_edit: "ആവശ്യകതകൾ മാറ്റുക" # Return to the chat composer to describe changes; do not submit or approve the action.
+agent_center.approval_defer: "ഇപ്പോൾ വേണ്ട" # Defer review in this Console without cancelling the work or approving anything.
+agent_center.approval_open_hint: "F6 നിർദ്ദേശം അവലോകനം ചെയ്യുക" # Opens the inline approval card without approving it. {Locked="F6"}
+agent_center.approval_keys: "Left/Right തിരഞ്ഞെടുക്കുക · Enter തിരഞ്ഞെടുപ്പ് സ്ഥിരീകരിക്കുക · F5 വിശദാംശങ്ങൾ · Esc ഇപ്പോൾ വേണ്ട" # Keyboard help while the inline approval card owns focus. {Locked="Left/Right","Enter","F5","Esc"}
+agent_center.approval_edit_hint: "%{target} എന്നതിനുള്ള മാറ്റങ്ങൾ വിവരിക്കുക. ഒന്നിനും അംഗീകാരം നൽകിയിട്ടില്ല." # %{target} is the displayed project or work name; the user's draft is preserved.
+agent_center.approval_deferred: "%{target} എന്നതിന്റെ അവലോകനം മാറ്റിവച്ചു. തയ്യാറാകുമ്പോൾ F4 വഴി നിർദ്ദേശം വീണ്ടും തുറക്കുക." # Deferring is local presentation state, not cancellation of work. %{target} is a project or work name. {Locked="F4"}
+agent_center.console_pause: "പ്രവർത്തന ഇനം താൽക്കാലികമായി നിർത്തുക"
+agent_center.console_resume: "പ്രവർത്തന ഇനം പുനരാരംഭിക്കുക"
+agent_center.console_cancel: "പ്രവർത്തന ഇനം റദ്ദാക്കുക"
+agent_center.console_inspect: "മാറ്റമില്ലാതെ ഉറപ്പിച്ച കൈമാറ്റഫലവും തെളിവുകളും പരിശോധിക്കുക (വായിക്കാൻ മാത്രം)"
+agent_center.console_read_evidence: "തെളിവുകൾ വായിക്കുക: %{work} — %{path}"
+agent_center.console_more_evidence: "അടുത്ത തെളിവുകളുടെ പേജ് വായിക്കുക: %{work}"
+agent_center.console_accept: "പരിശോധിച്ച കൈമാറ്റഫലം സ്വീകരിക്കുക"
+agent_center.console_takeover: "നിയന്ത്രിത പ്രവർത്തനസ്ഥലത്തിന്റെ നിയന്ത്രണം ഏറ്റെടുക്കുക"
+agent_center.console_handback: "നിയന്ത്രിത പ്രവർത്തനസ്ഥലത്തിന്റെ നിയന്ത്രണം തിരികെ നൽകുക"
+agent_center.console_apply: "അംഗീകരിച്ച മാറ്റം പ്രയോഗിക്കുക"
+agent_center.console_action: "രേഖപ്പെടുത്തിയ നടപടി അവലോകനം ചെയ്യുക"
+agent_center.console_answer: "ഉത്തരം"
+agent_center.console_answer_review: "സമർപ്പിക്കാനുള്ള രേഖപ്പെടുത്തിയ ഉത്തരം:\n%{value}"
+agent_center.console_answer_invalid: "%{field} എന്ന ഫീൽഡിന് സാധുവായ മൂല്യം നൽകുക; ഫീൽഡിൽ ആവശ്യമായ തിരഞ്ഞെടുപ്പുകളും പരിധികളും അവലോകനം ചെയ്യുക."
+agent_center.console_schema_unsupported: "ഈ ചോദ്യത്തിന്റെ ഘടന ലളിതമായ ഫോമിൽ പിന്തുണയ്ക്കുന്നില്ല. ഒന്നും സമർപ്പിച്ചിട്ടില്ല; കൂടുതൽ ലളിതമായ ചോദ്യം ആവശ്യപ്പെടുക."
+agent_center.console_yes: "അതെ"
+agent_center.console_no: "ഇല്ല"
+agent_center.console_form_help: "Up/Down ഫീൽഡ് തിരഞ്ഞെടുക്കുക · Left/Right ഓപ്ഷൻ തിരഞ്ഞെടുക്കുക · Enter അടുത്ത ഫീൽഡ് · Ctrl+Enter ഉത്തരം അവലോകനം ചെയ്യുക · Esc മടങ്ങുക" # {Locked="Up/Down","Left/Right","Enter","Ctrl+Enter","Esc"}
+agent_center.console_menu_help: "F4 നടപടികൾ · Up/Down തിരഞ്ഞെടുക്കുക · Enter തുറക്കുക · Esc മടങ്ങുക · F12 ഡയഗ്നോസ്റ്റിക്സ്" # {Locked="F4","Up/Down","Enter","Esc","F12"}
+agent_center.console_hint: "F4 നടപടികൾ · F2 പ്രവർത്തന ഇനം മാറുക · F12 ഡയഗ്നോസ്റ്റിക്സ്" # {Locked="F4","F2","F12"}
+agent_center.console_scope: "ഉൾപ്പെടുത്തിയ പരിധി"
+agent_center.console_exclusions: "ഈ പ്രവർത്തന ഇനത്തിന് പുറത്ത്"
+agent_center.console_criteria: "സ്വീകാര്യതാ മാനദണ്ഡങ്ങളും ആവശ്യമായ തെളിവുകളും"
+agent_center.console_delivery: "കൈമാറ്റഫലം"
+agent_center.console_delivery_code: "നിയന്ത്രിത പ്രവർത്തനസ്ഥലത്തിലെ പ്രാദേശിക കോഡ്"
+agent_center.console_delivery_report: "രേഖപ്പെടുത്തിയ റിപ്പോർട്ട് ഫയലുകൾ"
+agent_center.console_progress: "ടാസ്കുകളുടെ പുരോഗതി"
+agent_center.console_authority: "അഭ്യർത്ഥിച്ച അധികാരവും നിർവഹണ പരിധികളും"
+agent_center.console_capabilities: "അംഗീകരിച്ച നിർവഹണ ശേഷികൾ"
+agent_center.console_data_scopes: "വായിക്കാൻ കഴിയുന്ന ഡാറ്റാ സ്ഥാനങ്ങൾ"
+agent_center.console_limits: "വിഭവ പരിധികൾ"
+agent_center.console_managed_writes: "നിയന്ത്രിത പ്രവർത്തനങ്ങൾ നടത്തുന്ന എഴുത്തുകൾ ഈ പ്രവർത്തന ഇനത്തിന്റെ പ്രവർത്തനസ്ഥലത്തേക്ക് പരിമിതപ്പെടുത്തിയിരിക്കുന്നു. ദാതാവിന്റെ ഉടമസ്ഥതയിലുള്ള ഉപകരണങ്ങൾക്ക് ഇത് ഓപ്പറേറ്റിംഗ് സിസ്റ്റത്തിന്റെ ഒറ്റപ്പെടുത്തൽ അതിർത്തിയല്ല."
+agent_center.console_frozen: "ഈ സ്ഥിരീകരണം രേഖപ്പെടുത്തിയ പ്രവർത്തന ഇനം, അഭ്യർത്ഥന, നയം, പരിഷ്കരണങ്ങൾ എന്നിവയുമായി ബന്ധിപ്പിച്ചിരിക്കുന്നു. മാറ്റങ്ങൾക്ക് പുതിയ അവലോകനം ആവശ്യമാണ്; അംഗീകാരത്തിന്റെ ലക്ഷ്യം അറിയിക്കാതെ ഒരിക്കലും മാറ്റില്ല."
+agent_center.console_stale: "നിലവിലെ വസ്തുതകൾ കാലഹരണപ്പെട്ടതാണ്. ഡ്രാഫ്റ്റുകൾ സുരക്ഷിതമാണ്. മാറ്റങ്ങൾ അംഗീകരിക്കുന്നതിനോ അയയ്ക്കുന്നതിനോ മുമ്പ് വീണ്ടും കണക്റ്റ് ചെയ്ത് പുതുക്കുക; അജ്ഞാതമായ ഫലം പരാജയമോ പൂർത്തീകരണമോ അല്ല."
+agent_center.console_diagnostics: "ഡയഗ്നോസ്റ്റിക്സിനുള്ള പ്രോട്ടോക്കോൾ വിശദാംശങ്ങൾ (വായിക്കാൻ മാത്രം)"
+agent_center.console_no_details: "നിലവിലെ പ്രവർത്തന ഇനത്തിന്റെ വിശദാംശങ്ങളില്ല. പ്രോജക്റ്റ് തിരഞ്ഞെടുക്കാനോ പ്രവർത്തന ഇനം തുറക്കാനോ പുതുക്കാനോ F4 ഉപയോഗിക്കുക." # {Locked="F4"}
+agent_center.console_draft: "ഡ്രാഫ്റ്റ് — ആരംഭിച്ചിട്ടില്ല"
+agent_center.console_active: "സജീവം — ഇതുവരെ സ്വീകരിച്ചിട്ടില്ല"
+agent_center.console_completed: "പൂർത്തിയായി — മനുഷ്യന്റെ സ്വീകാര്യത രേഖപ്പെടുത്തി"
+agent_center.console_cancelled: "റദ്ദാക്കി"
+agent_center.console_paused: "താൽക്കാലികമായി നിർത്തി"
+agent_center.console_automatic: "സ്വയമേവയുള്ള മുന്നേറ്റം"
+agent_center.console_running: "പ്രവർത്തിക്കുന്നു"
+agent_center.console_pending: "തീർപ്പാക്കാനുണ്ട് — പൂർത്തിയായിട്ടില്ല"
+agent_center.console_verified: "പരിശോധിച്ചു / ആന്തരികമായി സ്വീകരിച്ചു"
+agent_center.console_failed: "പരാജയപ്പെട്ടു / നിരസിച്ചു — തെളിവുകൾ പരിശോധിക്കുക"
+agent_center.console_waiting: "പ്രതികരണത്തിനോ ആശ്രിത ഘടകത്തിനോ കാത്തിരിക്കുന്നു"
+agent_center.console_unknown: "അജ്ഞാതം — പുതുക്കുക അല്ലെങ്കിൽ ഡയഗ്നോസ്റ്റിക്സ് വിവരങ്ങൾ പരിശോധിക്കുക"
+agent_center.console_resolved: "പ്രതികരണം രേഖപ്പെടുത്തി"
+agent_center.console_superseded: "പകരം പുതിയത് വന്നു — നിലവിലെ കൈമാറ്റഫലമല്ല"
+agent_center.console_next_done: "അടുത്തത്: സ്വീകരിച്ച കൈമാറ്റഫലം ഉപയോഗിക്കുക; കൂടുതൽ അംഗീകാരങ്ങൾ കാത്തിരിക്കുന്നില്ല."
+agent_center.console_next_cancelled: "അടുത്തത്: സ്വയമേവയുള്ള മുന്നേറ്റമില്ല; ഈ പ്രവർത്തന ഇനം റദ്ദാക്കി."
+agent_center.console_next_approve: "അടുത്തത്: നിങ്ങൾ സംക്ഷിപ്ത വിവരണം അവലോകനം ചെയ്ത് F4 വഴി കൃത്യമായി നിർദിഷ്ടമായ ആരംഭത്തിന് അംഗീകാരം നൽകുക." # {Locked="F4"}
+agent_center.console_next_accept: "അടുത്തത്: മാറ്റമില്ലാതെ ഉറപ്പിച്ച കൈമാറ്റഫലവും തെളിവുകളും പരിശോധിച്ച ശേഷം വ്യക്തമായി സ്വീകരിക്കുക."
+agent_center.console_next_attention: "അടുത്തത്: ഈ പ്രവർത്തന ഇനത്തിൽ ശ്രദ്ധ ആവശ്യമുള്ള, തീർപ്പാക്കാത്ത വിഷയങ്ങൾ F4 വഴി അവലോകനം ചെയ്യുക." # {Locked="F4"}
+agent_center.console_next_resume: "അടുത്തത്: താൽക്കാലികമായി നിർത്തിയ ഈ പ്രവർത്തന ഇനം എപ്പോൾ പുനരാരംഭിക്കണമെന്ന് നിങ്ങൾ തീരുമാനിക്കുക."
+agent_center.console_next_service: "അടുത്തത്: സേവനം അംഗീകരിച്ച പദ്ധതി മുന്നോട്ടുകൊണ്ടുപോകുന്നു. ഇത് അന്തിമ സ്വീകാര്യതയല്ല."

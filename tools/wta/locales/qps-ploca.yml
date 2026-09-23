@@ -270,10 +270,72 @@ system.model_unknown: "[!!_Unknown model %{model} — type /model to see the ava
 # record, not an agent session; a work item may contain multiple tasks.
 agent_center.title: "Agent Center" # {Locked}
 agent_center.works: "[!!_Ｗｏｒｋｓ_!!]"
+agent_center.demo_title: "[!!_Ｗｏｒｋ ｓｔｏｒｙ ｄｅｍｏ_!!]" # Title of an isolated scripted demonstration; the story fixture itself is English.
+agent_center.demo_notice: "[!!_Ｓｃｒｉｐｔｅｄ ｄｅｍｏ | Ｓａｍｐｌｅ ｅｖｉｄｅｎｃｅ, ｓｉｍｕｌａｔｅｄ ｓｅｓｓｉｏｎｓ ａｎｄ ｔｏｋｅｎ ｕｓａｇｅ | Ｎｏ ａｇｅｎｔｓ ａｒｅ ｌａｕｎｃｈｅｄ_!!]" # Always-visible disclosure; simulated data must not be confused with live agent execution.
+agent_center.demo_scene: "[!!_Ｓｃｅｎｅ %{scene}/8_!!]" # %{scene} is the current scene number in the eight-scene story.
+agent_center.demo_next: "[!!_Ｎｅｘｔ: %{input}_!!]" # %{input} is the literal English story input, not a translated command.
+agent_center.demo_keys: "[!!_Enter: ｓｕｂｍｉｔ | Tab: ｆｉｌｌ ｎｅｘｔ ｉｎｐｕｔ | PgUp/PgDn: ｓｃｒｏｌｌ | Ctrl+Q: ｃｌｏｓｅ_!!]" # {Locked="Enter","Tab","PgUp/PgDn","Ctrl+Q"}
+agent_center.demo_reset: "[!!_Ｒｅｓｅｔ ｄｅｍｏ ｓｔａｔｅ? Ｔｙｐｅ /reset confirm. Ｅｘｉｓｔｉｎｇ ｗｏｒｋ ａｎｄ ｓｅｔｔｉｎｇｓ ａｒｅ ｎｏｔ ａｆｆｅｃｔｅｄ._!!]" # {Locked="/reset confirm"} Resets only the isolated demo, never real work.
+agent_center.demo_saved: "[!!_Ｓａｖｅｄ ｒｅｖｉｓｉｏｎ %{revision}_!!]" # %{revision} is the persisted demo state revision.
+agent_center.demo_error: "[!!_Ｄｅｍｏ ａｃｔｉｏｎ ｆａｉｌｅｄ: %{error}_!!]" # %{error} explains the rejected action; no state change is claimed.
+agent_center.tasks_title: "[!!_Ｔａｓｋｓ_!!]"
+agent_center.task_new: "[!!_Ｎｅｗ ｔａｓｋ_!!]"
+agent_center.task_all: "[!!_Ａｌｌ ｔａｓｋｓ_!!]"
+agent_center.task_attention: "[!!_Ｎｅｅｄｓ ａｔｔｅｎｔｉｏｎ_!!]"
+agent_center.task_continue: "[!!_Ｃｏｎｔｉｎｕｅ ｔａｓｋ_!!]"
+# Messages waiting for this work's busy executor, excluding the currently running turn. {Locked="%{count}"}
+agent_center.task_queued_messages: "[!!_Ｑｕｅｕｅｄ ｍｅｓｓａｇｅｓ: %{count}_!!]"
+# Explicit migration of an existing work from legacy orchestration to its own executing agent session.
+agent_center.task_claim_executor: "[!!_Ｃｏｎｎｅｃｔ ｔｏ ｗｏｒｋ ａｇｅｎｔ_!!]"
+agent_center.task_claim_executor_confirm: "[!!_Ｓｗｉｔｃｈ ｔｈｉｓ ｔａｓｋ ｔｏ ｉｔｓ ｏｗｎ ｅｘｅｃｕｔｉｎｇ ａｇｅｎｔ. Ｅｘｉｓｔｉｎｇ ｃｈａｔ ａｎｄ ｒｅｓｕｌｔｓ ａｒｅ ｋｅｐｔ, ａｎｄ ｌｅｇａｃｙ ｓｃｈｅｄｕｌｉｎｇ ｓｔｏｐｓ. Ｓｔａｒｔｉｎｇ ａ ｎｅｗ ｓｅｓｓｉｏｎ ｒｅｑｕｉｒｅｓ ｓｅｐａｒａｔｅ ｃｏｎｆｉｒｍａｔｉｏｎ ｉｆ ｔｈｅ ｏｒｉｇｉｎａｌ ｅｘｅｃｕｔｉｏｎ ｓｅｓｓｉｏｎ ｃａｎｎｏｔ ｂｅ ｒｅｓｔｏｒｅｄ._!!]"
+agent_center.task_open_tab: "[!!_Ｏｐｅｎ ｉｎ ｔａｂ_!!]"
+agent_center.task_tab_unsupported: "[!!_Ｏｐｅｎｉｎｇ ａ ｔａｓｋ ｔａｂ ｒｅｑｕｉｒｅｓ Intelligent Terminal._!!]" # {Locked="Intelligent Terminal"}
+agent_center.task_new_session: "[!!_Ｓｔａｒｔ ａ ｎｅｗ ｓｅｓｓｉｏｎ_!!]"
+agent_center.task_new_session_confirm: "[!!_Ｔｈｅ ｏｒｉｇｉｎａｌ ａｇｅｎｔ ｓｅｓｓｉｏｎ ｃａｎｎｏｔ ｂｅ ｒｅｓｕｍｅｄ. Ｓｔａｒｔ ａ ｎｅｗ ｓｅｓｓｉｏｎ ｕｓｉｎｇ ｔｈｉｓ ｔａｓｋ'ｓ ｓａｖｅｄ ｃｏｎｔｅｘｔ?_!!]"
+agent_center.task_keys: "[!!_Up/Down ｓｅｌｅｃｔ · Enter ｏｐｅｎ · F4 ａｃｔｉｏｎｓ · F5 ｄｅｔａｉｌｓ_!!]" # {Locked="Up/Down","Enter","F4","F5"}
+agent_center.task_list_keys: "[!!_F2 ｔａｓｋｓ · F4 ａｃｔｉｏｎｓ · F5 ｄｅｔａｉｌｓ_!!]" # {Locked="F2","F4","F5"}
+agent_center.task_state_running: "[!!_Ｒｕｎｎｉｎｇ_!!]"
+agent_center.task_state_waiting: "[!!_Ｗａｉｔｉｎｇ ｆｏｒ ｙｏｕｒ ｒｅｓｐｏｎｓｅ_!!]"
+agent_center.task_state_paused: "[!!_Ｐａｕｓｅｄ_!!]"
+agent_center.task_state_recovery: "[!!_Ｎｅｅｄｓ ｒｅｃｏｖｅｒｙ_!!]"
+agent_center.task_state_ready: "[!!_Ｒｅａｄｙ ｔｏ ｃｏｎｔｉｎｕｅ_!!]"
+agent_center.task_state_completed: "[!!_Ｃｏｍｐｌｅｔｅｄ_!!]"
+agent_center.task_state_cancelled: "[!!_Ｃａｎｃｅｌｌｅｄ_!!]"
+agent_center.task_state_unavailable: "[!!_Ｓｅｓｓｉｏｎ ｕｎａｖａｉｌａｂｌｅ_!!]"
+agent_center.task_updated: "[!!_Ｌａｓｔ ａｃｔｉｖｉｔｙ: %{time}_!!]"
+agent_center.ui_overview: "[!!_Ｏｖｅｒｖｉｅｗ_!!]"
+agent_center.chat_global: "[!!_Ｇｌｏｂａｌ ｃｏｎｖｅｒｓａｔｉｏｎ_!!]" # Conversation with the non-executing master for new goals and cross-work coordination; each work has its own executor conversation.
+agent_center.chat_welcome: "[!!_Ｔｅｌｌ ｍｅ ｗｈａｔ ｙｏｕ ｗａｎｔ ｔｏ ａｃｈｉｅｖｅ, ａｒｒａｎｇｅ, ｏｒ ｆｉｎｄ ｏｕｔ._!!]"
+agent_center.chat_keys: "[!!_Enter ｓｅｎｄ · Shift+Enter ｎｅｗｌｉｎｅ · F4 ａｃｔｉｏｎｓ · F5 ｄｅｔａｉｌｓ · F7 ｄａｓｈｂｏａｒｄ_!!]" # {Locked="Enter","Shift+Enter","F4","F5","F7"}
+agent_center.chat_dashboard_keys: "[!!_F7 ｃｈａｔ · Esc ｃｈａｔ · F4 ａｃｔｉｏｎｓ · F6 ｆｏｃｕｓ ａｃｔｉｏｎｓ_!!]" # Dashboard navigation preserves the global conversation and draft. {Locked="F7","Esc","F4","F6"}
+agent_center.chat_context_hint: "[!!_Ｃｏｎｔｅｘｔ ｈｉｎｔ: %{context}_!!]" # %{context} is a readable work or project name, not a binding that limits the global conversation.
+agent_center.ui_attention: "[!!_Ｎｅｅｄｓ ｙｏｕｒ ａｔｔｅｎｔｉｏｎ_!!]" # Heading for recorded requests, draft-start reviews, and delivery reviews; not a claim that every work needs attention.
+agent_center.ui_details: "[!!_Ｂｒｉｅｆ ａｎｄ ｐｒｏｇｒｅｓｓ_!!]" # Read-only details view containing the work agreement, recorded progress, evidence, and locations.
+agent_center.ui_new_goal: "[!!_Ｗｈａｔ ｗｏｕｌｄ ｙｏｕ ｌｉｋｅ ｔｏ ａｃｈｉｅｖｅ?_!!]"
+agent_center.ui_empty_attention: "[!!_Ｎｏ ｏｐｅｎ ｒｅｑｕｅｓｔｓ ｎｅｅｄ ｙｏｕｒ ｒｅｓｐｏｎｓｅ._!!]"
+agent_center.ui_no_works: "[!!_Ｎｏ ｗｏｒｋ ｈａｓ ｂｅｅｎ ｒｅｃｏｒｄｅｄ. Ｃｈｏｏｓｅ ａ ｃｏｎｆｉｇｕｒｅｄ ｐｒｏｊｅｃｔ ｔｏ ｂｅｇｉｎ._!!]"
+agent_center.ui_no_conversation: "[!!_Ｎｏ ｍｅｓｓａｇｅｓ ｈａｖｅ ｂｅｅｎ ｒｅｃｏｒｄｅｄ ｆｏｒ ｔｈｉｓ ｗｏｒｋ._!!]"
+agent_center.ui_role_you: "[!!_Ｙｏｕ_!!]" # Speaker heading for an actual recorded human message.
+agent_center.ui_role_assistant: "[!!_Ｗｏｒｋ ａｓｓｉｓｔａｎｔ_!!]" # Speaker heading for an actual recorded assistant message, not a provider name.
+agent_center.ui_role_service: "[!!_Ｓｅｒｖｉｃｅ_!!]" # Speaker heading for an actual recorded system or service message.
+agent_center.ui_role_unknown: "[!!_Ｒｅｃｏｒｄｅｄ ｍｅｓｓａｇｅ_!!]" # Speaker heading when the service does not identify a recognized message role.
+agent_center.ui_next: "[!!_Ｎｅｘｔ ｒｅｓｐｏｎｓｉｂｉｌｉｔｙ_!!]"
+agent_center.ui_recorded_facts: "[!!_Ｒｅｃｏｒｄｅｄ ｆａｃｔｓ_!!]"
+agent_center.ui_last_known: "[!!_Ｌａｓｔ ｋｎｏｗｎ · %{status}_!!]" # %{status} is a localized recorded status. Used when cached facts do not establish current execution.
+agent_center.ui_cached_facts: "[!!_Ｃａｃｈｅｄ ｆａｃｔｓ; ｃｕｒｒｅｎｔ ｅｘｅｃｕｔｉｏｎ ｉｓ ｕｎｃｏｎｆｉｒｍｅｄ._!!]"
+agent_center.ui_source_root: "[!!_Ｐｒｏｊｅｃｔ ｓｏｕｒｃｅ ｌｏｃａｔｉｏｎ_!!]" # Configured source root, explicitly distinct from the actual managed execution directory.
+agent_center.ui_execution_root: "[!!_Ｍａｎａｇｅｄ ｅｘｅｃｕｔｉｏｎ ｌｏｃａｔｉｏｎ_!!]" # Actual execution directory reported by the service, never inferred from the project source root.
+agent_center.ui_location_unknown: "[!!_Ｎｏ ｅｘｅｃｕｔｉｏｎ ｌｏｃａｔｉｏｎ ｈａｓ ｂｅｅｎ ｒｅｐｏｒｔｅｄ._!!]"
+agent_center.ui_composer: "[!!_Ｍｅｓｓａｇｅ ｆｏｒ: %{work}_!!]" # %{work} is the human-readable target of this independent draft.
+agent_center.ui_composer_new: "[!!_Ｎｅｗ ｗｏｒｋ · %{project}_!!]" # %{project} is the configured project name, or an explicit project-selection warning.
+agent_center.ui_actions: "[!!_Ｗｏｒｋ ａｃｔｉｏｎｓ_!!]"
+agent_center.ui_keys: "[!!_Enter ｓｅｎｄ · Shift+Enter ｎｅｗｌｉｎｅ · F4 ａｃｔｉｏｎｓ · F5 ｄｅｔａｉｌｓ · F6 ｆｏｃｕｓ ａｃｔｉｏｎｓ_!!]" # {Locked="Enter","Shift+Enter","F4","F5","F6"}
+agent_center.ui_actions_hint: "[!!_Up/Down ｓｅｌｅｃｔ · Enter ｏｐｅｎ · Esc ｉｎｐｕｔ_!!]" # Keyboard focus is on a visible action, not the text editor. {Locked="Up/Down","Enter","Esc"}
+agent_center.ui_details_hint: "[!!_F5 ｃｌｏｓｅ ｄｅｔａｉｌｓ · PgUp/PgDn ｒｅａｄ · Esc ｉｎｐｕｔ_!!]" # Read-only detail focus; returning to input preserves the draft and selection. {Locked="F5","PgUp/PgDn","Esc"}
 agent_center.activity: "[!!_Ｃｏｎｖｅｒｓａｔｉｏｎ ａｎｄ ａｃｔｉｖｉｔｙ_!!]"
-# %{work} and %{project} are identifiers of the selected work item and project.
+# %{work} and %{project} are human-readable labels for the selected work and configured project.
 agent_center.header: "[!!_Ｃｕｒｒｅｎｔ ｗｏｒｋ: %{work} · Ｐｒｏｊｅｃｔ: %{project}_!!]"
-agent_center.welcome: "[!!_Ｃｈｏｏｓｅ ａ ｐｒｏｊｅｃｔ ｗｉｔｈ /project use <id>, ｔｈｅｎ ｅｎｔｅｒ ａ ｇｏａｌ ｏｒ /help._!!]" # {Locked="/project use","<id>","/help"}
+agent_center.welcome: "[!!_Ｐｒｅｓｓ F4 ｔｏ ｃｈｏｏｓｅ ａ ｃｏｎｆｉｇｕｒｅｄ ｐｒｏｊｅｃｔ, ｔｈｅｎ ｅｎｔｅｒ ｗｈａｔ ｙｏｕ ｗａｎｔ ｔｏ ａｃｈｉｅｖｅ._!!]" # {Locked="F4"}
 agent_center.input_help: "[!!_Enter ｓｅｎｄ · Shift+Enter ｎｅｗｌｉｎｅ · Tab ｃｏｍｐｌｅｔｅ · F2 ｓｗｉｔｃｈ ｗｏｒｋ · PgUp/PgDn ｒｅａｄ · Ctrl+End ｌａｔｅｓｔ · Ctrl+C ｅｘｉｔ_!!]" # {Locked="Enter","Shift+Enter","Tab","F2","PgUp/PgDn","Ctrl+End","Ctrl+C"}
 agent_center.inbox_count: "[!!_Ｎｅｅｄｓ ａｔｔｅｎｔｉｏｎ: %{count}_!!]"
 agent_center.sending: "[!!_Ｓｅｎｄｉｎｇ ｔｈｅ ｃａｐｔｕｒｅｄ ｒｅｑｕｅｓｔ…_!!]"
@@ -326,3 +388,84 @@ agent_center.worker_stopped: "[!!_Ｔｈｅ ｒｅｑｕｅｓｔ ｃｏｎｎ�
 # %{command} is a literal shell-presentation command. No host adapter is available;
 # suggest the host's keyboard actions without implying successful execution.
 agent_center.host_unavailable: "[!!_Ｎｏ ｓｈｅｌｌ ｈｏｓｔ ａｄａｐｔｅｒ ｉｓ ａｖａｉｌａｂｌｅ ｆｏｒ %{command}. Ｕｓｅ ｔｈｅ ｈｏｓｔ ｋｅｙｂｏａｒｄ ａｃｔｉｏｎｓ._!!]"
+agent_center.console_home: "[!!_Ｎｅｗ ｗｏｒｋ_!!]"
+agent_center.console_new: "[!!_Ｎｅｗ ｗｏｒｋ / Ｈｏｍｅ_!!]"
+agent_center.console_new_hint: "[!!_Ｅｎｔｅｒ ａ ｎｅｗ ｇｏａｌ. Ｏｔｈｅｒ ｗｏｒｋｓ ｃｏｎｔｉｎｕｅ ｉｎｄｅｐｅｎｄｅｎｔｌｙ._!!]"
+agent_center.console_project_create_directory: "[!!_Ｃｒｅａｔｅ ａ ｎｅｗ ｄｉｒｅｃｔｏｒｙ ａｎｄ ｉｎｉｔｉａｌｉｚｅ ａ ｌｏｃａｌ Git ｒｅｐｏｓｉｔｏｒｙ. Ｅｘｉｓｔｉｎｇ ｆｉｌｅｓ ｗｉｌｌ ｎｏｔ ｂｅ ｏｖｅｒｗｒｉｔｔｅｎ._!!]" # {Locked="Git"}
+agent_center.console_projects: "[!!_Ｃｈｏｏｓｅ ａ ｃｏｎｆｉｇｕｒｅｄ ｐｒｏｊｅｃｔ_!!]"
+agent_center.console_projects_hint: "[!!_Ｃｈｏｏｓｅ ｔｈｅ ｐｒｏｊｅｃｔ ｂｙ ｎａｍｅ ａｎｄ ｌｏｃａｔｉｏｎ. Ｎｏ ｐｒｏｊｅｃｔ ｉｓ ｃｏｎｆｉｇｕｒｅｄ ｈｅｒｅ? Ａｓｋ ｙｏｕｒ ａｄｍｉｎｉｓｔｒａｔｏｒ ｔｏ ｃｏｎｆｉｇｕｒｅ ｏｎｅ._!!]"
+agent_center.console_refresh: "[!!_Ｒｅｆｒｅｓｈ ｃｕｒｒｅｎｔ ｆａｃｔｓ_!!]"
+agent_center.console_open: "[!!_Ｏｐｅｎ: %{work}_!!]"
+agent_center.console_return: "[!!_Ｒｅｔｕｒｎ ｔｏ: %{work}_!!]"
+agent_center.console_respond: "[!!_Ｒｅｓｐｏｎｄ: %{work} — %{question}_!!]"
+agent_center.console_unknown_work: "[!!_Ｗｏｒｋ ｄｅｔａｉｌｓ ｕｎａｖａｉｌａｂｌｅ_!!]"
+agent_center.console_unknown_project: "[!!_Ｐｒｏｊｅｃｔ ｎｏｔ ｓｅｌｅｃｔｅｄ ｏｒ ｕｎａｖａｉｌａｂｌｅ_!!]"
+# Two works can have exactly the same goal and project. The numbered choice is explicit, never a fuzzy match. %{created} is the recorded creation time.
+agent_center.console_duplicate: "[!!_%{work} · ｓｅｐａｒａｔｅ ｗｏｒｋ %{number} · %{created}_!!]"
+agent_center.console_start: "[!!_Ｒｅｖｉｅｗ ｂｒｉｅｆ ａｎｄ ａｐｐｒｏｖｅ ｓｔａｒｔ_!!]"
+agent_center.approval_title: "[!!_Ａｐｐｒｏｖａｌ ｒｅｑｕｉｒｅｄ_!!]" # Title of an inline conversation card for a specific frozen human action.
+agent_center.approval_accept: "[!!_Ａｐｐｒｏｖｅ_!!]" # Button that submits the exact reviewed action, not a chat message.
+agent_center.approval_start: "[!!_Ａｐｐｒｏｖｅ ａｎｄ ｓｔａｒｔ_!!]" # Button approving the displayed work brief and execution grant.
+agent_center.approval_edit: "[!!_Ｃｈａｎｇｅ ｒｅｑｕｉｒｅｍｅｎｔｓ_!!]" # Return to the chat composer to describe changes; do not submit or approve the action.
+agent_center.approval_defer: "[!!_Ｎｏｔ ｎｏｗ_!!]" # Defer review in this Console without cancelling the work or approving anything.
+agent_center.approval_open_hint: "[!!_F6 ｒｅｖｉｅｗ ｐｒｏｐｏｓａｌ_!!]" # Opens the inline approval card without approving it. {Locked="F6"}
+agent_center.approval_keys: "[!!_Left/Right ｃｈｏｏｓｅ · Enter ｓｅｌｅｃｔ · F5 ｄｅｔａｉｌｓ · Esc ｎｏｔ ｎｏｗ_!!]" # Keyboard help while the inline approval card owns focus. {Locked="Left/Right","Enter","F5","Esc"}
+agent_center.approval_edit_hint: "[!!_Ｄｅｓｃｒｉｂｅ ｔｈｅ ｃｈａｎｇｅｓ ｆｏｒ %{target}. Ｎｏｔｈｉｎｇ ｈａｓ ｂｅｅｎ ａｐｐｒｏｖｅｄ._!!]" # %{target} is the displayed project or work name; the user's draft is preserved.
+agent_center.approval_deferred: "[!!_Ｄｅｆｅｒｒｅｄ %{target}. Ｒｅｏｐｅｎ ｔｈｅ ｐｒｏｐｏｓａｌ ｆｒｏｍ F4 ｗｈｅｎ ｒｅａｄｙ._!!]" # Deferring is local presentation state, not cancellation of work. %{target} is a project or work name. {Locked="F4"}
+agent_center.console_pause: "[!!_Ｐａｕｓｅ ｗｏｒｋ_!!]"
+agent_center.console_resume: "[!!_Ｒｅｓｕｍｅ ｗｏｒｋ_!!]"
+agent_center.console_cancel: "[!!_Ｃａｎｃｅｌ ｗｏｒｋ_!!]"
+agent_center.console_inspect: "[!!_Ｉｎｓｐｅｃｔ ｆｉｘｅｄ ｄｅｌｉｖｅｒｙ ａｎｄ ｃｈｅｃｋ ｅｖｉｄｅｎｃｅ (ｒｅａｄ-ｏｎｌｙ)_!!]"
+agent_center.console_read_evidence: "[!!_Ｒｅａｄ ｅｖｉｄｅｎｃｅ: %{work} — %{path}_!!]"
+agent_center.console_more_evidence: "[!!_Ｒｅａｄ ｎｅｘｔ ｅｖｉｄｅｎｃｅ ｐａｇｅ: %{work}_!!]"
+agent_center.console_accept: "[!!_Ａｃｃｅｐｔ ｔｈｅ ｉｎｓｐｅｃｔｅｄ ｄｅｌｉｖｅｒｙ_!!]"
+agent_center.console_takeover: "[!!_Ｔａｋｅ ｏｖｅｒ ｔｈｅ ｍａｎａｇｅｄ ｗｏｒｋｓｐａｃｅ_!!]"
+agent_center.console_handback: "[!!_Ｈａｎｄ ｂａｃｋ ｔｈｅ ｍａｎａｇｅｄ ｗｏｒｋｓｐａｃｅ_!!]"
+agent_center.console_apply: "[!!_Ａｐｐｌｙ ｔｈｅ ａｐｐｒｏｖｅｄ ｃｈａｎｇｅ_!!]"
+agent_center.console_action: "[!!_Ｒｅｖｉｅｗ ｔｈｅ ｃａｐｔｕｒｅｄ ａｃｔｉｏｎ_!!]"
+agent_center.console_answer: "[!!_Ａｎｓｗｅｒ_!!]"
+agent_center.console_answer_review: "[!!_Ｒｅｃｏｒｄｅｄ ａｎｓｗｅｒ ｔｏ ｓｕｂｍｉｔ:\n%{value}_!!]"
+agent_center.console_answer_invalid: "[!!_Ｅｎｔｅｒ ａ ｖａｌｉｄ ｖａｌｕｅ ｆｏｒ %{field}; ｒｅｖｉｅｗ ｔｈｅ ｆｉｅｌｄ'ｓ ｒｅｑｕｉｒｅｄ ｃｈｏｉｃｅｓ ａｎｄ ｂｏｕｎｄｓ._!!]"
+agent_center.console_schema_unsupported: "[!!_Ｔｈｉｓ ｑｕｅｓｔｉｏｎ ｕｓｅｓ ａ ｓｃｈｅｍａ ｔｈｅ ｓｉｍｐｌｅ ｆｏｒｍ ｄｏｅｓ ｎｏｔ ｓｕｐｐｏｒｔ. Ｎｏｔｈｉｎｇ ｗａｓ ｓｕｂｍｉｔｔｅｄ; ａｓｋ ｆｏｒ ａ ｓｉｍｐｌｅｒ ｑｕｅｓｔｉｏｎ._!!]"
+agent_center.console_yes: "[!!_Ｙｅｓ_!!]"
+agent_center.console_no: "[!!_Ｎｏ_!!]"
+agent_center.console_form_help: "[!!_Up/Down ｃｈｏｏｓｅ ｆｉｅｌｄ · Left/Right ｃｈｏｏｓｅ ｏｐｔｉｏｎ · Enter ｎｅｘｔ ｆｉｅｌｄ · Ctrl+Enter ｒｅｖｉｅｗ ａｎｓｗｅｒ · Esc ｂａｃｋ_!!]" # {Locked="Up/Down","Left/Right","Enter","Ctrl+Enter","Esc"}
+agent_center.console_menu_help: "[!!_F4 ａｃｔｉｏｎｓ · Up/Down ｓｅｌｅｃｔ · Enter ｏｐｅｎ · Esc ｂａｃｋ · F12 ｄｉａｇｎｏｓｔｉｃｓ_!!]" # {Locked="F4","Up/Down","Enter","Esc","F12"}
+agent_center.console_hint: "[!!_F4 ａｃｔｉｏｎｓ · F2 ｓｗｉｔｃｈ ｗｏｒｋ · F12 ｄｉａｇｎｏｓｔｉｃｓ_!!]" # {Locked="F4","F2","F12"}
+agent_center.console_scope: "[!!_Ｉｎｃｌｕｄｅｄ ｓｃｏｐｅ_!!]"
+agent_center.console_exclusions: "[!!_Ｏｕｔｓｉｄｅ ｔｈｉｓ ｗｏｒｋ_!!]"
+agent_center.console_criteria: "[!!_Ａｃｃｅｐｔａｎｃｅ ｃｒｉｔｅｒｉａ ａｎｄ ｒｅｑｕｉｒｅｄ ｅｖｉｄｅｎｃｅ_!!]"
+agent_center.console_delivery: "[!!_Ｄｅｌｉｖｅｒｙ_!!]"
+agent_center.console_delivery_code: "[!!_Ｌｏｃａｌ ｃｏｄｅ ｉｎ ｔｈｅ ｍａｎａｇｅｄ ｗｏｒｋｓｐａｃｅ_!!]"
+agent_center.console_delivery_report: "[!!_Ｃａｐｔｕｒｅｄ ｒｅｐｏｒｔ ｆｉｌｅｓ_!!]"
+agent_center.console_progress: "[!!_Ｔａｓｋ ｐｒｏｇｒｅｓｓ_!!]"
+agent_center.console_authority: "[!!_Ｒｅｑｕｅｓｔｅｄ ａｕｔｈｏｒｉｔｙ ａｎｄ ｅｘｅｃｕｔｉｏｎ ｌｉｍｉｔｓ_!!]"
+agent_center.console_capabilities: "[!!_Ａｐｐｒｏｖｅｄ ｅｘｅｃｕｔｉｏｎ ｃａｐａｂｉｌｉｔｉｅｓ_!!]"
+agent_center.console_data_scopes: "[!!_Ｒｅａｄａｂｌｅ ｄａｔａ ｌｏｃａｔｉｏｎｓ_!!]"
+agent_center.console_limits: "[!!_Ｒｅｓｏｕｒｃｅ ｌｉｍｉｔｓ_!!]"
+agent_center.console_managed_writes: "[!!_Ｍａｎａｇｅｄ-ｏｐｅｒａｔｉｏｎ ｗｒｉｔｅｓ ａｒｅ ｓｃｏｐｅｄ ｔｏ ｔｈｉｓ ｗｏｒｋ'ｓ ｗｏｒｋｓｐａｃｅ. Ｔｈｉｓ ｉｓ ｎｏｔ ａｎ ｏｐｅｒａｔｉｎｇ-ｓｙｓｔｅｍ ｉｓｏｌａｔｉｏｎ ｂｏｕｎｄａｒｙ ｆｏｒ ｐｒｏｖｉｄｅｒ-ｏｗｎｅｄ ｔｏｏｌｓ._!!]"
+agent_center.console_frozen: "[!!_Ｔｈｉｓ ｃｏｎｆｉｒｍａｔｉｏｎ ｂｉｎｄｓ ｔｈｅ ｃａｐｔｕｒｅｄ ｗｏｒｋ, ｒｅｑｕｅｓｔ, ｐｏｌｉｃｙ, ａｎｄ ｒｅｖｉｓｉｏｎｓ. Ｃｈａｎｇｅｓ ｒｅｑｕｉｒｅ ａ ｎｅｗ ｒｅｖｉｅｗ; ａｐｐｒｏｖａｌ ｎｅｖｅｒ ｓｉｌｅｎｔｌｙ ｒｅｔａｒｇｅｔｓ._!!]"
+agent_center.console_stale: "[!!_Ｌｉｖｅ ｆａｃｔｓ ａｒｅ ｓｔａｌｅ. Ｄｒａｆｔｓ ａｒｅ ｓａｆｅ. Ｒｅｃｏｎｎｅｃｔ ａｎｄ ｒｅｆｒｅｓｈ ｂｅｆｏｒｅ ａｐｐｒｏｖｉｎｇ ｏｒ ｓｅｎｄｉｎｇ ｃｈａｎｇｅｓ; ａｎ ｕｎｋｎｏｗｎ ｏｕｔｃｏｍｅ ｉｓ ｎｏｔ ａ ｆａｉｌｕｒｅ ｏｒ ｃｏｍｐｌｅｔｉｏｎ._!!]"
+agent_center.console_diagnostics: "[!!_Ｄｉａｇｎｏｓｔｉｃ ｐｒｏｔｏｃｏｌ ｄｅｔａｉｌｓ (ｒｅａｄ-ｏｎｌｙ)_!!]"
+agent_center.console_no_details: "[!!_Ｎｏ ｃｕｒｒｅｎｔ ｗｏｒｋ ｄｅｔａｉｌｓ. Ｕｓｅ F4 ｔｏ ｃｈｏｏｓｅ ａ ｐｒｏｊｅｃｔ, ｏｐｅｎ ａ ｗｏｒｋ, ｏｒ ｒｅｆｒｅｓｈ._!!]" # {Locked="F4"}
+agent_center.console_draft: "[!!_Ｄｒａｆｔ — ｎｏｔ ｓｔａｒｔｅｄ_!!]"
+agent_center.console_active: "[!!_Ａｃｔｉｖｅ — ｎｏｔ ｙｅｔ ａｃｃｅｐｔｅｄ_!!]"
+agent_center.console_completed: "[!!_Ｃｏｍｐｌｅｔｅｄ — ｈｕｍａｎ ａｃｃｅｐｔａｎｃｅ ｒｅｃｏｒｄｅｄ_!!]"
+agent_center.console_cancelled: "[!!_Ｃａｎｃｅｌｌｅｄ_!!]"
+agent_center.console_paused: "[!!_Ｐａｕｓｅｄ_!!]"
+agent_center.console_automatic: "[!!_Ａｕｔｏｍａｔｉｃ ａｄｖａｎｃｅｍｅｎｔ_!!]"
+agent_center.console_running: "[!!_Ｒｕｎｎｉｎｇ_!!]"
+agent_center.console_pending: "[!!_Ｐｅｎｄｉｎｇ — ｎｏｔ ｃｏｍｐｌｅｔｅｄ_!!]"
+agent_center.console_verified: "[!!_Ｖｅｒｉｆｉｅｄ / ａｃｃｅｐｔｅｄ ｉｎｔｅｒｎａｌｌｙ_!!]"
+agent_center.console_failed: "[!!_Ｆａｉｌｅｄ / ｒｅｊｅｃｔｅｄ — ｉｎｓｐｅｃｔ ｔｈｅ ｅｖｉｄｅｎｃｅ_!!]"
+agent_center.console_waiting: "[!!_Ｗａｉｔｉｎｇ ｆｏｒ ａ ｒｅｓｐｏｎｓｅ ｏｒ ｄｅｐｅｎｄｅｎｃｙ_!!]"
+agent_center.console_unknown: "[!!_Ｕｎｋｎｏｗｎ — ｒｅｆｒｅｓｈ ｏｒ ｉｎｓｐｅｃｔ ｄｉａｇｎｏｓｔｉｃｓ_!!]"
+agent_center.console_resolved: "[!!_Ｒｅｓｐｏｎｓｅ ｒｅｃｏｒｄｅｄ_!!]"
+agent_center.console_superseded: "[!!_Ｓｕｐｅｒｓｅｄｅｄ — ｎｏｔ ｔｈｅ ｃｕｒｒｅｎｔ ｄｅｌｉｖｅｒｙ_!!]"
+agent_center.console_next_done: "[!!_Ｎｅｘｔ: ｕｓｅ ｔｈｅ ａｃｃｅｐｔｅｄ ｄｅｌｉｖｅｒｙ; ｎｏ ｆｕｒｔｈｅｒ ａｐｐｒｏｖａｌ ｉｓ ｐｅｎｄｉｎｇ._!!]"
+agent_center.console_next_cancelled: "[!!_Ｎｅｘｔ: ｎｏ ａｕｔｏｍａｔｉｃ ａｄｖａｎｃｅｍｅｎｔ; ｔｈｉｓ ｗｏｒｋ ｗａｓ ｃａｎｃｅｌｌｅｄ._!!]"
+agent_center.console_next_approve: "[!!_Ｎｅｘｔ: ｙｏｕ ｒｅｖｉｅｗ ｔｈｅ ｂｒｉｅｆ ａｎｄ ａｐｐｒｏｖｅ ｔｈｅ ｅｘａｃｔ ｓｔａｒｔ ｆｒｏｍ F4._!!]" # {Locked="F4"}
+agent_center.console_next_accept: "[!!_Ｎｅｘｔ: ｙｏｕ ｉｎｓｐｅｃｔ ｔｈｅ ｆｉｘｅｄ ｄｅｌｉｖｅｒｙ ａｎｄ ｅｖｉｄｅｎｃｅ, ｔｈｅｎ ｅｘｐｌｉｃｉｔｌｙ ａｃｃｅｐｔ._!!]"
+agent_center.console_next_attention: "[!!_Ｎｅｘｔ: ｒｅｖｉｅｗ ｔｈｉｓ ｗｏｒｋ'ｓ ｏｕｔｓｔａｎｄｉｎｇ ａｔｔｅｎｔｉｏｎ ｉｔｅｍｓ ｆｒｏｍ F4._!!]" # {Locked="F4"}
+agent_center.console_next_resume: "[!!_Ｎｅｘｔ: ｙｏｕ ｄｅｃｉｄｅ ｗｈｅｎ ｔｏ ｒｅｓｕｍｅ ｔｈｉｓ ｐａｕｓｅｄ ｗｏｒｋ._!!]"
+agent_center.console_next_service: "[!!_Ｎｅｘｔ: ｔｈｅ ｓｅｒｖｉｃｅ ａｄｖａｎｃｅｓ ｔｈｅ ａｐｐｒｏｖｅｄ ｐｌａｎ. Ｔｈｉｓ ｉｓ ｎｏｔ ｆｉｎａｌ ａｃｃｅｐｔａｎｃｅ._!!]"

@@ -1,0 +1,6 @@
+{
+  "requiredChecks": ["compile", "unit", "integration"],
+  "executionTimeoutSeconds": 120,
+  "maximumConcurrentWorks": 2,
+  "releaseApproval": "human"
+}

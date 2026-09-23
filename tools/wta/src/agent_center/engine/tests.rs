@@ -3,8 +3,18 @@
 
 use super::*;
 
+#[path = "tests/actions.rs"]
+mod actions;
+#[path = "tests/continuation.rs"]
+mod continuation;
+#[path = "tests/executor.rs"]
+mod executor;
+#[path = "tests/global.rs"]
+mod global;
 #[path = "tests/inspection_regressions.rs"]
 mod inspection_regressions;
+#[path = "tests/memory.rs"]
+mod memory;
 
 struct Fixture {
     engine: Engine,
@@ -48,6 +58,48 @@ impl Drop for TestRoot {
             );
         }
     }
+}
+
+#[test]
+fn streaming_observations_do_not_rewrite_unrelated_history() {
+    let mut f = Fixture::new();
+    let work = f.draft("Stream without rewriting historical records");
+    f.start(&work);
+    let invocation = f.coordinator(&work);
+    f.engine.db.execute_batch("BEGIN IMMEDIATE").unwrap();
+    for _ in 0..2000 {
+        f.engine.create("RuntimeObservation", json!({
+            "invocationId":id(),"body":{"kind":"TextDelta","data":{"text":"retained historical text"}}
+        }));
+    }
+    f.engine.persist().unwrap();
+    f.engine.db.execute_batch("COMMIT").unwrap();
+    let before = f.engine.db.total_changes();
+    f.report(
+        &invocation,
+        "TextDelta",
+        json!({
+            "messageId":invocation["replyMessageId"],"partId":"turn-1","chunkIndex":0,
+            "text":"A new response"
+        }),
+    );
+    let writes = f.engine.db.total_changes() - before;
+    assert!(
+        writes < 20,
+        "A text chunk wrote {writes} rows; unchanged history must not be rewritten"
+    );
+    let stored: String = f
+        .engine
+        .db
+        .query_row(
+            "SELECT body FROM records WHERE id=?1",
+            [text(&invocation, "replyMessageId")],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let stored: Value = serde_json::from_str(&stored).unwrap();
+    assert_eq!(stored["parts"][0]["text"], "A new response");
+    assert_eq!(f.engine.all("RuntimeObservation").len(), 2002);
 }
 
 #[test]
@@ -166,7 +218,7 @@ fn failed_receipt_persistence_restores_committed_cursor_and_records() {
 }
 
 impl Fixture {
-    fn new() -> Self {
+    fn runtime_only() -> Self {
         let root = std::env::current_dir()
             .unwrap()
             .join("target")
@@ -183,11 +235,16 @@ impl Fixture {
         let response=fixture.command(Principal::Runtime{runtime_id:fixture.runtime.clone()},"runtime.register",json!({
             "runtimeInstanceId":fixture.runtime,"protocolVersions":[1],
             "capabilities":[
-                {"id":"fixture-agent","kinds":["ProduceResult","ReviewResult","Coordinate"],"supportsContinuation":true,"supportsScopedStop":true},
+                {"id":"fixture-agent","kinds":["ProduceResult","ReviewResult","Coordinate","ExecuteWork"],"supportsContinuation":true,"supportsScopedStop":true},
                 {"id":"native-check","kinds":["EvaluateGate"],"supportsContinuation":false,"supportsScopedStop":true}
             ]
         }),vec![]);
         assert_eq!(response.status, "ok", "{response:?}");
+        fixture
+    }
+
+    fn new() -> Self {
+        let mut fixture = Self::runtime_only();
         let response=fixture.command(Principal::Human,"project.configure",json!({
             "name":"Fixture","root":fixture.root.to_string_lossy(),"coordinatorCapabilityId":"fixture-agent",
             "workerCapabilityId":"fixture-agent","checkCapabilityId":"native-check",
@@ -214,7 +271,7 @@ impl Fixture {
 
     fn draft(&mut self, goal: &str) -> Value {
         let response=self.command(Principal::Human,"work.create_draft",json!({
-            "projectId":self.project,"goal":goal,"scope":["reports"],"exclusions":[],
+            "executionMode":"LegacyTasks","projectId":self.project,"goal":goal,"scope":["reports"],"exclusions":[],
             "criteria":[{"id":"report","description":"Readable report","evidenceRule":"artifact:report"}],
             "context":[],"delivery":{"kind":"Report"},"sourceMessageIds":[]
         }),vec![]);
@@ -291,6 +348,14 @@ impl Fixture {
         let mut data = json!({"adapterKind":if command{"Command"}else{"ACP"},"executionIdentity":format!("process-{}",text(invocation,"id"))});
         if !command {
             data["providerSessionId"] = json!(format!("session-{}", text(invocation, "id")));
+            data["providerConfigurationDigest"] = json!("fixture-provider-configuration");
+            data["sessionCwd"] = json!(self.root.to_string_lossy());
+            data["sessionLoaded"] = json!(false);
+            if let Some(reference) = invocation.get("sessionReuseRef").and_then(Value::as_str) {
+                let previous = self.engine.record(reference, "Invocation").unwrap();
+                data["providerSessionId"] = previous["providerSessionId"].clone();
+                data["sessionLoaded"] = json!(true);
+            }
         }
         self.report(invocation, "Started", data);
     }
@@ -1563,6 +1628,66 @@ fn immediate_question_and_busy_intake_have_real_queued_turn_identities() {
         .unwrap()
         .iter()
         .any(|event| text(event, "kind") == "MessageDelta"));
+}
+
+#[test]
+fn new_work_intake_from_a_registered_work_context_uses_a_distinct_console_binding() {
+    use crate::agent_center::{client::new_context, commands};
+    let _locale = crate::test_support::lock_locale();
+    let mut f = Fixture::new();
+    let work = f.draft("Existing work");
+    let mut context = new_context();
+    context.project_id = Some(f.project.clone());
+    context.work_id = Some(text(&work, "id").into());
+    let opened = f.command(
+        Principal::Human,
+        "work.open",
+        json!({"workId":work["id"]}),
+        vec![],
+    );
+    assert_eq!(opened.status, "ok", "{opened:?}");
+    let opened = opened.data.unwrap();
+    context.console_session_id = text(&opened["context"], "consoleSessionId").into();
+    context.conversation_id = text(&opened["context"], "conversationId").into();
+    context.context_version = number(&opened["context"], "contextVersion");
+    let original = commands::conversation("Discuss existing work".into(), &context, false).unwrap();
+    let response = f.engine.handle(
+        &Principal::Human,
+        serde_json::from_value(original.envelope()).unwrap(),
+    );
+    assert_eq!(response.status, "ok", "{response:?}");
+    let arguments = vec!["work".into(), "new".into(), "A separate goal".into()];
+    let commands::Action::Operation(intake) =
+        commands::compile(&arguments, &context, true).unwrap()
+    else {
+        panic!("expected new work intake");
+    };
+    let response = f.engine.handle(
+        &Principal::Human,
+        serde_json::from_value(intake.envelope()).unwrap(),
+    );
+    assert_eq!(response.status, "ok", "{response:?}");
+    assert_eq!(f.engine.all("ConsoleSession").len(), 2);
+    assert_eq!(f.engine.all("Conversation").len(), 2);
+    assert!(intake.params["context"].get("selectedWorkId").is_none());
+    let mut incompatible = intake.params.clone();
+    incompatible["clientMessageId"] = json!(id());
+    incompatible["context"]["consoleSessionId"] = json!(context.console_session_id);
+    let rejected = f.command(
+        Principal::Human,
+        "conversation.submit",
+        incompatible,
+        vec![],
+    );
+    assert_eq!(rejected.failure.unwrap().code, "INVALID_REFERENCE");
+    let followup =
+        commands::conversation("Continue the original discussion".into(), &context, false).unwrap();
+    let response = f.engine.handle(
+        &Principal::Human,
+        serde_json::from_value(followup.envelope()).unwrap(),
+    );
+    assert_eq!(response.status, "ok", "{response:?}");
+    assert_eq!(f.engine.all("ConsoleSession").len(), 2);
 }
 
 #[test]

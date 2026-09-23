@@ -1,0 +1,9 @@
+Implement summarizeChecks(checks) in release.cjs.
+Input is an array of objects with status passed, failed, or blocked.
+Return passed, failed, and blocked counts and a boolean releaseReady.
+A release is ready only for a nonempty list in which every check passed.
+Reject non-array input and unknown statuses. Do not modify the input.
+Run node --test release.test.cjs. Do not modify tests or this specification.
+The pipeline configuration is separate input for release-readiness review;
+the summarizer does not check required check names. Identify this limitation
+when reviewing actual coverage, rather than changing the agreed API.

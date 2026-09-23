@@ -4,7 +4,7 @@
 use super::*;
 
 impl Engine {
-    fn validate_replacement(
+    pub(super) fn validate_replacement(
         &self,
         work: &Value,
         replacement: &ReplacementSpec,
@@ -59,7 +59,7 @@ impl Engine {
                 continue;
             }
             let conversation = self.record(text(&message, "conversationId"), "Conversation")?;
-            if conversation["projectId"] != work["projectId"] {
+            if conversation["scope"] != "Global" && conversation["projectId"] != work["projectId"] {
                 return Err(bad(
                     "FORBIDDEN",
                     "Source message belongs to another project",
@@ -79,7 +79,18 @@ impl Engine {
                 let input: WorkProposeChange = parse(&request.params)?;
                 let work = self.record(&input.work_id, "Work")?;
                 if !matches!(principal, Principal::Human | Principal::Service) {
-                    self.coordinator(principal, Some(&input.work_id))?;
+                    self.proposal_coordinator(principal, &input.work_id)?;
+                    for source in &input.replacement_spec.source_message_ids {
+                        let message = self.record(source, "ConversationItem")?;
+                        let global_source = message
+                            .get("conversationId")
+                            .and_then(Value::as_str)
+                            .and_then(|id| self.records.get(id))
+                            .is_some_and(|conversation| conversation["scope"] == "Global");
+                        if global_source {
+                            self.authorized_read(principal, &message)?;
+                        }
+                    }
                 }
                 self.matched(request, &[&work])?;
                 if text(&work, "lifecycle") != "Active" {

@@ -272,10 +272,72 @@ system.model_unknown: "מודל לא ידוע %{model} — הקלד /model כד�
 # not an agent session; a work item may contain multiple tasks.
 agent_center.title: "Agent Center" # {Locked}
 agent_center.works: "פריטי עבודה"
+agent_center.demo_title: "הדגמת סיפור של פריט עבודה" # Title of an isolated scripted demonstration; the story fixture itself is English.
+agent_center.demo_notice: "הדגמה לפי תסריט | ראיות לדוגמה, הפעלות ושימוש באסימונים מדומים | לא מופעלים סוכנים" # Always-visible disclosure; simulated data must not be confused with live agent execution.
+agent_center.demo_scene: "סצנה %{scene}/8" # %{scene} is the current scene number in the eight-scene story.
+agent_center.demo_next: "הבא: %{input}" # %{input} is the literal English story input, not a translated command.
+agent_center.demo_keys: "Enter: שליחה | Tab: מילוי הקלט הבא | PgUp/PgDn: גלילה | Ctrl+Q: סגירה" # {Locked="Enter","Tab","PgUp/PgDn","Ctrl+Q"}
+agent_center.demo_reset: "לאפס את מצב ההדגמה? יש להקליד /reset confirm. פריטי העבודה וההגדרות הקיימים לא יושפעו." # {Locked="/reset confirm"} Resets only the isolated demo, never real work.
+agent_center.demo_saved: "נשמרה מהדורה %{revision}" # %{revision} is the persisted demo state revision.
+agent_center.demo_error: "פעולת ההדגמה נכשלה: %{error}" # %{error} explains the rejected action; no state change is claimed.
+agent_center.tasks_title: "משימות"
+agent_center.task_new: "משימה חדשה"
+agent_center.task_all: "כל המשימות"
+agent_center.task_attention: "דורשת תשומת לב"
+agent_center.task_continue: "המשך המשימה"
+# Messages waiting for this work's busy executor, excluding the currently running turn. {Locked="%{count}"}
+agent_center.task_queued_messages: "הודעות בתור: %{count}"
+# Explicit migration of an existing work from legacy orchestration to its own executing agent session.
+agent_center.task_claim_executor: "קישור לסוכן המשימה"
+agent_center.task_claim_executor_confirm: "העבר משימה זו לסוכן ביצוע משלה. השיחה והתוצאות הקיימות נשמרות, והתזמון הישן נעצר. אם לא ניתן לשחזר את הפעלת הביצוע המקורית, נדרש אישור נפרד כדי להתחיל הפעלה חדשה."
+agent_center.task_open_tab: "פתיחה בכרטיסייה"
+agent_center.task_tab_unsupported: "פתיחת כרטיסיית משימה דורשת את Intelligent Terminal." # {Locked="Intelligent Terminal"}
+agent_center.task_new_session: "התחלת הפעלה חדשה"
+agent_center.task_new_session_confirm: "לא ניתן לחדש את ההפעלה המקורית של הסוכן. האם להתחיל הפעלה חדשה באמצעות ההקשר השמור של משימה זו?"
+agent_center.task_keys: "Up/Down בחירה · Enter פתיחה · F4 פעולות · F5 פרטים" # {Locked="Up/Down","Enter","F4","F5"}
+agent_center.task_list_keys: "F2 משימות · F4 פעולות · F5 פרטים" # {Locked="F2","F4","F5"}
+agent_center.task_state_running: "בביצוע"
+agent_center.task_state_waiting: "ממתינה לתשובתך"
+agent_center.task_state_paused: "מושהית"
+agent_center.task_state_recovery: "דורשת שחזור"
+agent_center.task_state_ready: "מוכנה להמשך"
+agent_center.task_state_completed: "הושלמה"
+agent_center.task_state_cancelled: "בוטלה"
+agent_center.task_state_unavailable: "ההפעלה אינה זמינה"
+agent_center.task_updated: "פעילות אחרונה: %{time}"
+agent_center.ui_overview: "מבט כולל"
+agent_center.chat_global: "שיחה משותפת" # Conversation with the non-executing master for new goals and cross-work coordination; each work has its own executor conversation.
+agent_center.chat_welcome: "ספר לי מה ברצונך להשיג, לארגן או לברר."
+agent_center.chat_keys: "Enter שליחה · Shift+Enter שורה חדשה · F4 פעולות · F5 פרטים · F7 לוח מחוונים" # {Locked="Enter","Shift+Enter","F4","F5","F7"}
+agent_center.chat_dashboard_keys: "F7 שיחה · Esc שיחה · F4 פעולות · F6 העברת המוקד לפעולות" # Dashboard navigation preserves the global conversation and draft. {Locked="F7","Esc","F4","F6"}
+agent_center.chat_context_hint: "רמז להקשר: %{context}" # %{context} is a readable work or project name, not a binding that limits the global conversation.
+agent_center.ui_attention: "נדרשת תשומת לבך" # Heading for recorded requests, draft-start reviews, and delivery reviews; not a claim that every work needs attention.
+agent_center.ui_details: "תקציר והתקדמות" # Read-only details view containing the work agreement, recorded progress, evidence, and locations.
+agent_center.ui_new_goal: "מה ברצונך להשיג?"
+agent_center.ui_empty_attention: "אין בקשות פתוחות הדורשות את תגובתך."
+agent_center.ui_no_works: "לא נרשמה עבודה. בחר פרויקט מוגדר כדי להתחיל."
+agent_center.ui_no_conversation: "לא נרשמו הודעות עבור עבודה זו."
+agent_center.ui_role_you: "אתה" # Speaker heading for an actual recorded human message.
+agent_center.ui_role_assistant: "עוזר עבודה" # Speaker heading for an actual recorded assistant message, not a provider name.
+agent_center.ui_role_service: "שירות" # Speaker heading for an actual recorded system or service message.
+agent_center.ui_role_unknown: "הודעה שנרשמה" # Speaker heading when the service does not identify a recognized message role.
+agent_center.ui_next: "האחריות הבאה"
+agent_center.ui_recorded_facts: "עובדות שנרשמו"
+agent_center.ui_last_known: "המצב האחרון הידוע · %{status}" # %{status} is a localized recorded status. Used when cached facts do not establish current execution.
+agent_center.ui_cached_facts: "עובדות מהמטמון; הביצוע הנוכחי אינו מאומת."
+agent_center.ui_source_root: "מיקום המקור של הפרויקט" # Configured source root, explicitly distinct from the actual managed execution directory.
+agent_center.ui_execution_root: "מיקום הביצוע המנוהל" # Actual execution directory reported by the service, never inferred from the project source root.
+agent_center.ui_location_unknown: "לא דווח על מיקום ביצוע."
+agent_center.ui_composer: "הודעה עבור: %{work}" # %{work} is the human-readable target of this independent draft.
+agent_center.ui_composer_new: "עבודה חדשה · %{project}" # %{project} is the configured project name, or an explicit project-selection warning.
+agent_center.ui_actions: "פעולות עבודה"
+agent_center.ui_keys: "Enter שליחה · Shift+Enter שורה חדשה · F4 פעולות · F5 פרטים · F6 העברת המוקד לפעולות" # {Locked="Enter","Shift+Enter","F4","F5","F6"}
+agent_center.ui_actions_hint: "Up/Down בחירה · Enter פתיחה · Esc חזרה לקלט" # Keyboard focus is on a visible action, not the text editor. {Locked="Up/Down","Enter","Esc"}
+agent_center.ui_details_hint: "F5 סגירת הפרטים · PgUp/PgDn קריאה · Esc חזרה לקלט" # Read-only detail focus; returning to input preserves the draft and selection. {Locked="F5","PgUp/PgDn","Esc"}
 agent_center.activity: "פעילות · שיחה"
-# %{work} and %{project} are identifiers of the selected work item and project.
+# %{work} and %{project} are human-readable labels for the selected work and configured project.
 agent_center.header: "פריט עבודה: %{work} | פרויקט: %{project}"
-agent_center.welcome: "בחר פרויקט או ציין /project use <id>. הקלד יעד או /help." # {Locked="/project use","<id>","/help"}
+agent_center.welcome: "לחץ על F4 כדי לבחור פרויקט מוגדר, ולאחר מכן הזן מה ברצונך להשיג." # {Locked="F4"}
 agent_center.input_help: "Enter: שליחה · Shift+Enter: שורה חדשה · Tab: השלמה · F2: החלפת פריט עבודה · Ctrl+C: יציאה · PgUp/PgDn: קריאה · Ctrl+End: העדכני ביותר" # {Locked="Enter","Shift+Enter","Tab","F2","PgUp/PgDn","Ctrl+End","Ctrl+C"}
 agent_center.inbox_count: "דורש תשומת לב: %{count}"
 agent_center.sending: "שליחת הבקשה שנלכדה…"
@@ -320,3 +382,84 @@ agent_center.missing_field: "שדה תגובה חסר או לא חוקי: %{fiel
 agent_center.invalid_command_id: "--command-id חייב להיות UUID." # {Locked="--command-id","UUID"}
 agent_center.worker_stopped: "חיבור הבקשות נעצר."
 agent_center.host_unavailable: "אין מתאם מארח מעטפת זמין עבור %{command}. יש להשתמש בפעולות המקלדת של המארח."
+agent_center.console_home: "עבודה חדשה"
+agent_center.console_new: "עבודה חדשה / בית"
+agent_center.console_new_hint: "הזן יעד חדש. עבודות אחרות ממשיכות באופן עצמאי."
+agent_center.console_project_create_directory: "צור ספרייה חדשה ואתחל מאגר Git מקומי. קבצים קיימים לא יידרסו." # {Locked="Git"}
+agent_center.console_projects: "בחירת פרויקט מוגדר"
+agent_center.console_projects_hint: "בחר את הפרויקט לפי שם ומיקום. אין כאן פרויקט מוגדר? בקש ממנהל המערכת להגדיר אחד."
+agent_center.console_refresh: "רענון העובדות הנוכחיות"
+agent_center.console_open: "פתיחה: %{work}"
+agent_center.console_return: "חזרה אל: %{work}"
+agent_center.console_respond: "תגובה: %{work} — %{question}"
+agent_center.console_unknown_work: "פרטי העבודה אינם זמינים"
+agent_center.console_unknown_project: "הפרויקט לא נבחר או אינו זמין"
+# Two works can have exactly the same goal and project. The numbered choice is explicit, never a fuzzy match. %{created} is the recorded creation time.
+agent_center.console_duplicate: "%{work} · עבודה נפרדת %{number} · %{created}"
+agent_center.console_start: "סקירת התקציר ואישור ההתחלה"
+agent_center.approval_title: "נדרש אישור" # Title of an inline conversation card for a specific frozen human action.
+agent_center.approval_accept: "אישור" # Button that submits the exact reviewed action, not a chat message.
+agent_center.approval_start: "אישור והתחלה" # Button approving the displayed work brief and execution grant.
+agent_center.approval_edit: "שינוי הדרישות" # Return to the chat composer to describe changes; do not submit or approve the action.
+agent_center.approval_defer: "לא עכשיו" # Defer review in this Console without cancelling the work or approving anything.
+agent_center.approval_open_hint: "F6 סקירת ההצעה" # Opens the inline approval card without approving it. {Locked="F6"}
+agent_center.approval_keys: "Left/Right בחירת אפשרות · Enter בחירה · F5 פרטים · Esc לא עכשיו" # Keyboard help while the inline approval card owns focus. {Locked="Left/Right","Enter","F5","Esc"}
+agent_center.approval_edit_hint: "יש לתאר את השינויים עבור %{target}. שום דבר לא אושר." # %{target} is the displayed project or work name; the user's draft is preserved.
+agent_center.approval_deferred: "הסקירה של %{target} נדחתה למועד מאוחר יותר. כשיתאים, ניתן לפתוח שוב את ההצעה באמצעות F4." # Deferring is local presentation state, not cancellation of work. %{target} is a project or work name. {Locked="F4"}
+agent_center.console_pause: "השהיית העבודה"
+agent_center.console_resume: "המשך העבודה"
+agent_center.console_cancel: "ביטול העבודה"
+agent_center.console_inspect: "בדיקת התוצר המקובע והראיות (לקריאה בלבד)"
+agent_center.console_read_evidence: "קריאת ראיות: %{work} — %{path}"
+agent_center.console_more_evidence: "קריאת עמוד הראיות הבא: %{work}"
+agent_center.console_accept: "קבלת התוצר שנבדק"
+agent_center.console_takeover: "קבלת שליטה בסביבת העבודה המנוהלת"
+agent_center.console_handback: "החזרת השליטה בסביבת העבודה המנוהלת"
+agent_center.console_apply: "החלת השינוי שאושר"
+agent_center.console_action: "סקירת הפעולה שנלכדה"
+agent_center.console_answer: "תשובה"
+agent_center.console_answer_review: "התשובה שנרשמה לשליחה:\n%{value}"
+agent_center.console_answer_invalid: "הזן ערך חוקי עבור %{field}; בדוק את האפשרויות הנדרשות ואת הגבולות של השדה."
+agent_center.console_schema_unsupported: "שאלה זו משתמשת בסכמה שהטופס הפשוט אינו תומך בה. דבר לא נשלח; בקש שאלה פשוטה יותר."
+agent_center.console_yes: "כן"
+agent_center.console_no: "לא"
+agent_center.console_form_help: "Up/Down בחירת שדה · Left/Right בחירת אפשרות · Enter השדה הבא · Ctrl+Enter סקירת התשובה · Esc חזרה" # {Locked="Up/Down","Left/Right","Enter","Ctrl+Enter","Esc"}
+agent_center.console_menu_help: "F4 פעולות · Up/Down בחירה · Enter פתיחה · Esc חזרה · F12 אבחון" # {Locked="F4","Up/Down","Enter","Esc","F12"}
+agent_center.console_hint: "F4 פעולות · F2 מעבר בין עבודות · F12 אבחון" # {Locked="F4","F2","F12"}
+agent_center.console_scope: "הטווח הכלול"
+agent_center.console_exclusions: "מחוץ לעבודה זו"
+agent_center.console_criteria: "קריטריוני קבלה וראיות נדרשות"
+agent_center.console_delivery: "תוצר"
+agent_center.console_delivery_code: "קוד מקומי בסביבת העבודה המנוהלת"
+agent_center.console_delivery_report: "קובצי דוחות שנלכדו"
+agent_center.console_progress: "התקדמות המשימות"
+agent_center.console_authority: "הסמכות המבוקשת ומגבלות הביצוע"
+agent_center.console_capabilities: "יכולות ביצוע שאושרו"
+agent_center.console_data_scopes: "מיקומי נתונים הניתנים לקריאה"
+agent_center.console_limits: "מגבלות משאבים"
+agent_center.console_managed_writes: "הכתיבה של פעולות מנוהלות מוגבלת לסביבת העבודה של עבודה זו. אין בכך גבול בידוד של מערכת ההפעלה עבור כלים שבבעלות הספק."
+agent_center.console_frozen: "אישור זה מחייב את העבודה, הבקשה, המדיניות והגרסאות שנלכדו. שינויים מחייבים סקירה חדשה; יעד האישור לעולם אינו משתנה ללא הודעה."
+agent_center.console_stale: "העובדות החיות אינן עדכניות. הטיוטות שמורות. התחבר מחדש ורענן לפני אישור או שליחת שינויים; תוצאה לא ידועה אינה כישלון או השלמה."
+agent_center.console_diagnostics: "פרטי פרוטוקול האבחון (לקריאה בלבד)"
+agent_center.console_no_details: "אין פרטי עבודה עדכניים. השתמש ב־F4 כדי לבחור פרויקט, לפתוח עבודה או לרענן." # {Locked="F4"}
+agent_center.console_draft: "טיוטה — לא התחילה"
+agent_center.console_active: "פעילה — טרם התקבלה"
+agent_center.console_completed: "הושלמה — נרשמה קבלה על ידי אדם"
+agent_center.console_cancelled: "בוטלה"
+agent_center.console_paused: "מושהית"
+agent_center.console_automatic: "התקדמות אוטומטית"
+agent_center.console_running: "בביצוע"
+agent_center.console_pending: "ממתינה — לא הושלמה"
+agent_center.console_verified: "אומתה / התקבלה פנימית"
+agent_center.console_failed: "נכשלה / נדחתה — בדוק את הראיות"
+agent_center.console_waiting: "ממתינה לתגובה או לתלות"
+agent_center.console_unknown: "לא ידועה — רענן או בדוק את האבחון"
+agent_center.console_resolved: "התגובה נרשמה"
+agent_center.console_superseded: "הוחלפה — לא התוצר הנוכחי"
+agent_center.console_next_done: "הבא: השתמש בתוצר שהתקבל; אין עוד אישור ממתין."
+agent_center.console_next_cancelled: "הבא: אין התקדמות אוטומטית; עבודה זו בוטלה."
+agent_center.console_next_approve: "הבא: עליך לסקור את התקציר ולאשר את ההתחלה המדויקת דרך F4." # {Locked="F4"}
+agent_center.console_next_accept: "הבא: עליך לבדוק את התוצר המקובע ואת הראיות, ולאחר מכן לקבל במפורש."
+agent_center.console_next_attention: "הבא: סקור דרך F4 את הפריטים בעבודה זו שעדיין דורשים תשומת לב." # {Locked="F4"}
+agent_center.console_next_resume: "הבא: אתה מחליט מתי להמשיך עבודה מושהית זו."
+agent_center.console_next_service: "הבא: השירות מקדם את התוכנית שאושרה. זו אינה קבלה סופית."

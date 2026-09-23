@@ -6,7 +6,7 @@ use super::tab_state::TabSession;
 
 pub(super) const INPUT_HISTORY_MAX_ENTRIES: usize = 50;
 
-pub(super) struct TextEditor<'a> {
+pub(crate) struct TextEditor<'a> {
     text: &'a mut String,
     cursor_pos: &'a mut usize,
 }

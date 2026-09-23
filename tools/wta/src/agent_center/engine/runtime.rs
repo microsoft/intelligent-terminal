@@ -128,6 +128,9 @@ impl Engine {
     ) -> DomainResult<()> {
         let work_id = text(stale_work, "id");
         let mut work = self.record(work_id, "Work")?;
+        if !Self::legacy_mode(&work) {
+            return Ok(());
+        }
         let project = self.record(text(&work, "projectId"), "Project")?;
         let grant = self.record(text(&work, "currentGrantId"), "ExecutionGrant")?;
         if text(&grant, "status") != "Effective" {
@@ -143,7 +146,7 @@ impl Engine {
             .iter()
             .filter(|invocation| {
                 text(invocation, "projectId") == text(&project, "id")
-                    && text(&invocation["subject"], "kind") == "Task"
+                    && ["Task", "Work"].contains(&text(&invocation["subject"], "kind"))
                     && text(invocation, "state") != "Released"
             })
             .count() as u64;
@@ -174,6 +177,14 @@ impl Engine {
         let workspace_id = text(&task["resourceRequirements"], "workspaceId");
         let workspace = self.record(workspace_id, "Workspace")?;
         if text(&workspace, "status") != "Ready" || text(&workspace, "writer") == "Human" {
+            return Ok(());
+        }
+        if workspace
+            .get("executorInvocationId")
+            .and_then(Value::as_str)
+            .and_then(|id| self.records.get(id))
+            .is_some_and(|invocation| invocation["state"] != "Released")
+        {
             return Ok(());
         }
         // A physical workspace cannot be shared with a live writer, even for a read/check.
@@ -285,8 +296,17 @@ impl Engine {
                 "lastSequence",
                 "workId",
                 "projectId",
+                "scope",
+                "conversationId",
+                "globalPolicyId",
+                "globalPolicyVersion",
+                "authorizedProjectIds",
                 "executionIdentity",
                 "adapterKind",
+                "providerSessionId",
+                "providerConfigurationDigest",
+                "sessionCwd",
+                "sessionLoaded",
                 "terminalRecordId",
                 "waitingTurnEnd",
                 "releaseOperationId",
@@ -296,10 +316,19 @@ impl Engine {
             }
         }
         let invocation: Invocation = parse(&wire)?;
-        if invocation.dispatch.is_some() == invocation.coordination_input.is_some() {
+        if [
+            invocation.dispatch.is_some(),
+            invocation.coordination_input.is_some(),
+            invocation.executor_input.is_some(),
+        ]
+        .into_iter()
+        .filter(|present| *present)
+        .count()
+            != 1
+        {
             return Err(bad(
                 "INVALID_ARGUMENT",
-                "Invocation requires exactly one dispatch or coordination input",
+                "Invocation requires exactly one task, coordination, or work executor input",
             ));
         }
         encode(&invocation)
@@ -413,18 +442,22 @@ impl Engine {
                     Principal::Human | Principal::Service => {}
                     Principal::Invocation { invocation_id } => {
                         let invocation = self.record(invocation_id, "Invocation")?;
-                        let dispatch = &invocation["dispatch"];
-                        self.bound(
-                            principal,
-                            text(dispatch, "id"),
-                            number(dispatch, "taskRevision"),
-                            true,
-                        )?;
-                        if text(dispatch, "workspaceId") != input.workspace_id {
-                            return Err(bad(
-                                "FORBIDDEN",
-                                "Capture is outside the invocation workspace",
-                            ));
+                        if invocation["subject"]["kind"] == "Work" {
+                            self.executor_binding(principal, text(&workspace, "workId"))?;
+                        } else {
+                            let dispatch = &invocation["dispatch"];
+                            self.bound(
+                                principal,
+                                text(dispatch, "id"),
+                                number(dispatch, "taskRevision"),
+                                true,
+                            )?;
+                            if text(dispatch, "workspaceId") != input.workspace_id {
+                                return Err(bad(
+                                    "FORBIDDEN",
+                                    "Capture is outside the invocation workspace",
+                                ));
+                            }
                         }
                     }
                     _ => {
@@ -521,7 +554,9 @@ impl Engine {
                 match input.kind.as_str() {
                     "Started" => {
                         let started: Started = parse(&input.data)?;
-                        if text(&invocation, "state") != "Dispatching" {
+                        let stopping = invocation["state"] == "Stopping"
+                            && invocation.get("executionIdentity").is_none();
+                        if text(&invocation, "state") != "Dispatching" && !stopping {
                             return Err(bad("BAD_STATE", "Invocation already started"));
                         }
                         nonempty(&started.execution_identity, "executionIdentity")?;
@@ -548,23 +583,115 @@ impl Engine {
                                 "Command adapter may execute only a declared check",
                             ));
                         }
-                        invocation["state"] = json!("Running");
+                        if !stopping {
+                            invocation["state"] = json!("Running");
+                        }
                         invocation["executionIdentity"] = json!(started.execution_identity);
                         invocation["adapterKind"] = json!(started.adapter_kind);
-                        if let Some(session) = started.provider_session_id {
+                        if let Some(session) = &started.provider_session_id {
                             invocation["providerSessionId"] = json!(session);
+                        }
+                        if let Some(configuration) = &started.provider_configuration_digest {
+                            invocation["providerConfigurationDigest"] = json!(configuration);
+                        }
+                        if let Some(cwd) = &started.session_cwd {
+                            invocation["sessionCwd"] = json!(cwd);
+                        }
+                        if let Some(loaded) = started.session_loaded {
+                            invocation["sessionLoaded"] = json!(loaded);
+                        }
+                        if ["Coordination", "Work"].contains(&text(&invocation["subject"], "kind"))
+                            && !text(&invocation, "workId").is_empty()
+                        {
+                            let mut work = self.record(text(&invocation, "workId"), "Work")?;
+                            if invocation.get("sessionReuseRef").is_some() {
+                                let primary = &work[if invocation["subject"]["kind"] == "Work" {
+                                    "executorSession"
+                                } else {
+                                    "primarySession"
+                                }];
+                                if started.session_loaded != Some(true)
+                                    || primary["invocationId"] != invocation["sessionReuseRef"]
+                                    || primary["providerSessionId"].as_str()
+                                        != started.provider_session_id.as_deref()
+                                    || primary["cwd"].as_str() != started.session_cwd.as_deref()
+                                    || primary["providerConfigurationDigest"].as_str()
+                                        != started.provider_configuration_digest.as_deref()
+                                {
+                                    return Err(bad("SESSION_RESUME_UNAVAILABLE", "Runtime did not prove loading this work's saved primary session"));
+                                }
+                            }
+                            if let (Some(session), Some(configuration), Some(cwd)) = (
+                                &started.provider_session_id,
+                                &started.provider_configuration_digest,
+                                &started.session_cwd,
+                            ) {
+                                nonempty(configuration, "providerConfigurationDigest")?;
+                                nonempty(cwd, "sessionCwd")?;
+                                work["primarySession"] = json!({"invocationId":invocation["id"],"providerSessionId":session,
+                                    "capabilityId":invocation["capabilityId"],"providerConfigurationDigest":configuration,"cwd":cwd});
+                                if invocation["subject"]["kind"] == "Work" {
+                                    work["executorSession"] = work["primarySession"].clone();
+                                }
+                                work["continuationUpdatedAt"] = json!(utc_after(0));
+                                work.as_object_mut()
+                                    .map(|object| object.remove("continuationFailure"));
+                                let work = self.put(work);
+                                self.emit("WorkChanged", &work);
+                            }
                         }
                         if text(&invocation["subject"], "kind") == "Task" {
                             let mut attempt =
                                 self.record(text(&invocation["subject"], "id"), "Attempt")?;
                             attempt["state"] = json!("Running");
                             self.put(attempt);
+                        } else if invocation["subject"]["kind"] == "Work" {
+                            let mut turn = self.record(
+                                text(&invocation, "currentExecutorTurnId"),
+                                "WorkExecutionTurn",
+                            )?;
+                            turn["state"] = json!("Running");
+                            self.put(turn);
                         } else {
                             let mut turn = self
                                 .record(text(&invocation["subject"], "id"), "CoordinationTurn")?;
                             turn["state"] = json!("Running");
                             self.put(turn);
                         }
+                    }
+                    "ExecutorTurnEnded" => {
+                        closed(&input.data, &["turnId", "turnNumber", "finish"], &[])?;
+                        if invocation["subject"]["kind"] != "Work"
+                            || invocation["currentExecutorTurnId"] != input.data["turnId"]
+                            || input.data["finish"] != "Normal"
+                            || number(&input.data, "turnNumber")
+                                <= number(&invocation, "lastExecutorTurnNumber")
+                        {
+                            return Err(bad(
+                                "BAD_STATE",
+                                "Executor reply does not match its current admitted input",
+                            ));
+                        }
+                        let mut turn =
+                            self.record(text(&input.data, "turnId"), "WorkExecutionTurn")?;
+                        if turn["invocationId"] != invocation["id"]
+                            || turn["turnNumber"] != input.data["turnNumber"]
+                        {
+                            return Err(bad("INVALID_REFERENCE", "Executor turn binding mismatch"));
+                        }
+                        turn["state"] = json!("Complete");
+                        self.put(turn);
+                        invocation["lastExecutorTurnNumber"] = input.data["turnNumber"].clone();
+                        if invocation["state"] != "Stopping" {
+                            invocation["state"] = json!("Idle");
+                        }
+                        let mut message =
+                            self.record(text(&invocation, "replyMessageId"), "ConversationItem")?;
+                        message["status"] = json!("Complete");
+                        let message = self.put(message);
+                        self.emit_message("MessageCompleted", &message);
+                        let work = self.record(text(&invocation, "workId"), "Work")?;
+                        self.emit("WorkChanged", &work);
                     }
                     "TextDelta" => {
                         let delta: TextDelta = parse(&input.data)?;
@@ -680,6 +807,12 @@ impl Engine {
                 self.put(json!({"id":input.observation_id,"kind":"RuntimeObservation","invocationId":input.invocation_id,
                     "body":encode(&input)?,"createdAt":utc_after(0)}));
                 self.emit("RuntimeObserved", &invocation);
+                if input.kind == "Started"
+                    && invocation["scope"] == "Global"
+                    && invocation.get("supersededByInput").is_some()
+                {
+                    self.stop_invocation(&invocation, "NewConversationInput")?;
+                }
                 if input.kind == "TurnEnded" || input.kind == "Settled" {
                     self.classify_turn(&invocation)?;
                 }
@@ -698,11 +831,30 @@ impl Engine {
         reason: &str,
     ) -> DomainResult<String> {
         if let Some(operation) = invocation.get("stopOperationId").and_then(Value::as_str) {
-            return Ok(operation.into());
+            let retryable = reason == "WorkContinuationRecovery"
+                && self.records.get(operation).is_some_and(|operation| {
+                    ["RepairRequired", "Failed", "Running"].contains(&text(operation, "status"))
+                });
+            if !retryable {
+                return Ok(operation.into());
+            }
         }
+        let stop_operations: Vec<_> = self
+            .all("Operation")
+            .into_iter()
+            .filter(|operation| {
+                operation["effect"]["method"] == "runtime.stop"
+                    && operation["effect"]["params"]["invocationId"] == invocation["id"]
+                    && operation["status"] != "Succeeded"
+            })
+            .map(|operation| operation["id"].clone())
+            .collect();
         let mut operation = self.effect(
             "runtime.stop",
-            json!({"invocationId":invocation["id"],"reason":reason}),
+            json!({"invocationId":invocation["id"],"reason":reason,
+                "reconciliation":{"runtimeId":invocation["runtimeId"],"bindingGeneration":invocation["bindingGeneration"],
+                    "lastSequence":invocation["lastSequence"],"executionIdentity":text(invocation,"executionIdentity"),
+                    "stopOperationIds":stop_operations}}),
             invocation.get("workId").and_then(Value::as_str),
         );
         operation["effect"]["params"]["operationId"] = operation["id"].clone();
@@ -715,6 +867,34 @@ impl Engine {
         Ok(text(&operation, "id").into())
     }
 
+    pub(super) fn reconcile_invocation_release(&mut self, invocation: &Value) -> DomainResult<()> {
+        let operation = self.record(text(invocation, "releaseOperationId"), "Operation")?;
+        if !["RepairRequired", "Failed"].contains(&text(&operation, "status")) {
+            return Ok(());
+        }
+        let previous: Vec<_> = self
+            .all("Operation")
+            .into_iter()
+            .filter(|operation| {
+                operation["effect"]["method"] == "runtime.release"
+                    && operation["effect"]["params"]["invocationId"] == invocation["id"]
+                    && operation["status"] != "Succeeded"
+            })
+            .map(|operation| operation["id"].clone())
+            .collect();
+        let operation = self.effect("runtime.release", json!({
+            "invocationId":invocation["id"],"terminalDisposition":invocation["terminalDisposition"],
+            "reconcilesOperationIds":previous,
+            "reconciliation":{"runtimeId":invocation["runtimeId"],"bindingGeneration":invocation["bindingGeneration"],
+                "lastSequence":invocation["lastSequence"],"executionIdentity":text(invocation,"executionIdentity"),
+                "stopOperationIds":[]}
+        }), invocation.get("workId").and_then(Value::as_str));
+        let mut invocation = invocation.clone();
+        invocation["releaseOperationId"] = operation["id"].clone();
+        self.put(invocation);
+        Ok(())
+    }
+
     fn classify_turn(&mut self, original: &Value) -> DomainResult<()> {
         let mut invocation = self.record(text(original, "id"), "Invocation")?;
         let ended: TurnEnded = parse(&invocation["lastTurnEnd"])?;
@@ -724,6 +904,9 @@ impl Engine {
         }
         if text(&invocation, "state") == "Releasing" || text(&invocation, "state") == "Released" {
             return Ok(());
+        }
+        if invocation["subject"]["kind"] == "Work" {
+            return self.classify_executor_exit(invocation, &ended);
         }
         let task_invocation = text(&invocation["subject"], "kind") == "Task";
         let mut subject = self.record(
@@ -752,7 +935,12 @@ impl Engine {
         }
         let has_record = subject.get("terminalRecordId").is_some();
         let declined = text(&subject, "endReason") == "ContractDeclined";
-        let success = ended.finish == "Normal" && has_record && !declined;
+        let superseded = !task_invocation
+            && invocation["scope"] == "Global"
+            && invocation["stopReason"] == "NewConversationInput";
+        let success = (ended.finish == "Normal" || superseded && ended.finish == "Cancelled")
+            && has_record
+            && !declined;
         // Transport cancellation settles a declined contract; it is not a human cancel.
         let disposition = if success {
             "Succeeded"
@@ -816,12 +1004,37 @@ impl Engine {
             }
         }
         if !task_invocation {
-            subject["state"] = json!(if success { "Completed" } else { "Blocked" });
+            if let Some(error) = ended
+                .error_text
+                .as_ref()
+                .filter(|error| error.contains("SESSION_RESUME_UNAVAILABLE"))
+            {
+                if !text(&invocation, "workId").is_empty() {
+                    let mut work = self.record(text(&invocation, "workId"), "Work")?;
+                    work["continuationFailure"] =
+                        json!({"code":"SESSION_RESUME_UNAVAILABLE","message":error});
+                    let work = self.put(work);
+                    self.emit("WorkChanged", &work);
+                }
+            }
+            subject["state"] = json!(if success {
+                "Completed"
+            } else if superseded {
+                "Superseded"
+            } else {
+                "Blocked"
+            });
+            if superseded && !success {
+                subject["endReason"] = json!("NewConversationInput");
+            }
         }
         let subject = self.put(subject);
         invocation["state"] = json!("Releasing");
         invocation["terminalDisposition"] = json!(disposition);
-        let operation=self.effect("runtime.release",json!({"invocationId":invocation["id"],"terminalDisposition":invocation["terminalDisposition"]}),invocation.get("workId").and_then(Value::as_str));
+        let operation=self.effect("runtime.release",json!({"invocationId":invocation["id"],"terminalDisposition":invocation["terminalDisposition"],
+            "reconciliation":{"runtimeId":invocation["runtimeId"],"bindingGeneration":invocation["bindingGeneration"],
+                "lastSequence":invocation["lastSequence"],"executionIdentity":text(&invocation,"executionIdentity"),"stopOperationIds":[]}
+        }),invocation.get("workId").and_then(Value::as_str));
         invocation["releaseOperationId"] = operation["id"].clone();
         self.put(invocation.clone());
         if task_invocation && declined {
@@ -833,6 +1046,7 @@ impl Engine {
             )?;
         }
         if !success
+            && !superseded
             && invocation.get("specChangeId").is_none()
             && invocation.get("manualTakeoverWorkspaceId").is_none()
         {
@@ -937,7 +1151,7 @@ impl Engine {
                 .map_err(|failure| anyhow::anyhow!("{:?}", failure.failure))?;
             self.drive()
                 .map_err(|failure| anyhow::anyhow!("{:?}", failure.failure))?;
-            self.persist()?;
+            self.persist_changes(&backup)?;
             self.db.execute(
                 "UPDATE effects SET state='Completed',response=?2 WHERE id=?1",
                 params![effect_id, serde_json::to_string(&response)?],
@@ -974,20 +1188,57 @@ impl Engine {
     ) -> DomainResult<()> {
         let mut operation = self.record(effect_id, "Operation")?;
         if response.status != "ok" && !(method == "runtime.stop" && response.status == "pending") {
-            operation["status"] = json!(if method.starts_with("runtime.") {
+            operation["status"] = json!(if method.starts_with("runtime.")
+                || (method == "project.create"
+                    && response
+                        .failure
+                        .as_ref()
+                        .is_some_and(|failure| failure.code == "OUTCOME_UNKNOWN"))
+            {
                 "RepairRequired"
             } else {
                 "Failed"
             });
             operation["failure"] = encode(&response.failure)?;
-            operation["steps"] = json!([{"state":if method.starts_with("runtime.") {"Unknown"} else {"Failed"},"intent":method}]);
+            operation["steps"] = json!([{"state":if operation["status"] == "RepairRequired" {"Unknown"} else {"Failed"},"intent":method}]);
             let operation = self.put(operation);
             self.emit("OperationChanged", &operation);
             self.attention(text(&operation,"workId"),effect_id,"EffectFailed","Inspect exact operation failure and repair; no replacement effect is automatically issued");
+            if method == "project.create" {
+                self.complete_project_action(&operation)?;
+            }
             return Ok(());
         }
         let data = response.data.as_ref().unwrap_or(&Value::Null);
         match method {
+            "runtime.recover_coordinator" => self.recovered_coordinator(params, data)?,
+            "project.create" => {
+                let mut project = params["project"].clone();
+                let project_id = text(&project, "id");
+                uuid(project_id)?;
+                let root = Path::new(text(data, "root"));
+                if data["projectId"] != project["id"]
+                    || data["root"] != project["root"]
+                    || !root.is_absolute()
+                    || !root.is_dir()
+                    || text(data, "commitId").len() < 40
+                    || !text(data, "commitId")
+                        .chars()
+                        .all(|ch| ch.is_ascii_hexdigit())
+                    || self.records.contains_key(project_id)
+                {
+                    return Err(bad(
+                        "INVALID_REFERENCE",
+                        "New project receipt does not match the approved directory and repository",
+                    ));
+                }
+                project["initialCommitId"] = data["commitId"].clone();
+                let project = self.put(project);
+                operation["result"] = json!({
+                    "projectId":project["id"],"version":project["version"],
+                    "policyRevision":project["policyRevision"],"project":project
+                });
+            }
             "workspace.provision" => {
                 let mut workspace = self.record(text(params, "workspaceId"), "Workspace")?;
                 let root = text(data, "localRoot");
@@ -1091,6 +1342,15 @@ impl Engine {
                         "Runtime invoke receipt is not correlated",
                     ));
                 }
+                let mut invocation = self.record(text(data, "invocationId"), "Invocation")?;
+                invocation["dispatchRecorded"] = json!(true);
+                let invocation = self.put(invocation);
+                if invocation["scope"] == "Global"
+                    && invocation.get("supersededByInput").is_some()
+                    && ["Dispatching", "Running"].contains(&text(&invocation, "state"))
+                {
+                    self.stop_invocation(&invocation, "NewConversationInput")?;
+                }
             }
             "runtime.continue" => {
                 if data["continuationId"] != params["continuation"]["id"]
@@ -1108,6 +1368,23 @@ impl Engine {
                     self.put(continuation);
                 }
             }
+            "runtime.work_input" => {
+                if data["invocationId"] != params["invocationId"]
+                    || data["turnId"] != params["input"]["turnId"]
+                    || !["Recorded", "AlreadyRecorded"].contains(&text(data, "disposition"))
+                {
+                    return Err(bad(
+                        "EXECUTION_FAILED",
+                        "Executor input receipt is not correlated",
+                    ));
+                }
+                let mut turn =
+                    self.record(text(&params["input"], "turnId"), "WorkExecutionTurn")?;
+                if turn["state"] == "Dispatching" {
+                    turn["state"] = json!("Running");
+                    self.put(turn);
+                }
+            }
             "runtime.stop" => {
                 if text(&operation, "status") != "Succeeded" {
                     operation["status"] = json!("Running");
@@ -1122,6 +1399,29 @@ impl Engine {
                     ));
                 }
                 let mut invocation = self.record(text(params, "invocationId"), "Invocation")?;
+                for previous in values(params, "reconcilesOperationIds") {
+                    let previous_id = previous.as_str().ok_or_else(|| {
+                        bad(
+                            "INVALID_REFERENCE",
+                            "Release reconciliation operation must be an ID",
+                        )
+                    })?;
+                    let mut previous = self.record(previous_id, "Operation")?;
+                    if previous["effect"]["method"] != "runtime.release"
+                        || previous["effect"]["params"]["invocationId"] != invocation["id"]
+                    {
+                        return Err(bad(
+                            "INVALID_REFERENCE",
+                            "Release reconciliation names another execution",
+                        ));
+                    }
+                    previous["status"] = json!("Succeeded");
+                    previous["reconciledByOperationId"] = json!(effect_id);
+                    previous["steps"] = json!([{"state":"Confirmed","intent":"runtime.release"}]);
+                    let previous = self.put(previous);
+                    self.emit("OperationChanged", &previous);
+                    self.resolve_attention(previous_id);
+                }
                 invocation["state"] = json!("Released");
                 if let Some(reuse) = data.get("sessionReuseRef") {
                     invocation["sessionReuseRef"] = reuse.clone();
@@ -1153,6 +1453,16 @@ impl Engine {
                         task["state"] = json!("Blocked");
                         self.put(task);
                     }
+                } else if invocation["subject"]["kind"] == "Work" {
+                    let work = self.record(text(&invocation, "workId"), "Work")?;
+                    let mut workspace = self.record(text(&work, "workspaceId"), "Workspace")?;
+                    if workspace["executorInvocationId"] == invocation["id"] {
+                        workspace
+                            .as_object_mut()
+                            .map(|fields| fields.remove("executorInvocationId"));
+                        self.put(workspace);
+                    }
+                    self.emit("WorkChanged", &work);
                 } else {
                     let turn =
                         self.record(text(&invocation["subject"], "id"), "CoordinationTurn")?;
@@ -1173,6 +1483,9 @@ impl Engine {
         self.emit("OperationChanged", &operation);
         if text(&operation, "status") == "Succeeded" {
             self.resolve_attention(effect_id);
+        }
+        if method == "project.create" {
+            self.complete_project_action(&operation)?;
         }
         Ok(())
     }

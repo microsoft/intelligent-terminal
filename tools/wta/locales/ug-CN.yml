@@ -280,10 +280,72 @@ system.model_unknown: "نامەلۇم مودېل %{model} — ئىشلەتكىل
 # not an agent session; a work item may contain multiple tasks.
 agent_center.title: "Agent Center" # {Locked}
 agent_center.works: "خىزمەت تۈرلىرى"
+agent_center.demo_title: "خىزمەت تۈرى ھېكايىسىنىڭ ئۈلگە كۆرسىتىلىشى" # Title of an isolated scripted demonstration; the story fixture itself is English.
+agent_center.demo_notice: "ئالدىن تەييارلانغان ئۈلگە كۆرسىتىش | ئۈلگە ئىسپاتلار، تەقلىدىي سۆھبەتلەر ۋە توكېن ئىشلىتىلىشى | ھېچقانداق ۋاكالەتچى قوزغىتىلمايدۇ" # Always-visible disclosure; simulated data must not be confused with live agent execution.
+agent_center.demo_scene: "كۆرۈنۈش %{scene}/8" # %{scene} is the current scene number in the eight-scene story.
+agent_center.demo_next: "كېيىنكىسى: %{input}" # %{input} is the literal English story input, not a translated command.
+agent_center.demo_keys: "Enter: يوللاش | Tab: كېيىنكى كىرگۈزۈشنى تولدۇرۇش | PgUp/PgDn: سىيرىش | Ctrl+Q: تاقاش" # {Locked="Enter","Tab","PgUp/PgDn","Ctrl+Q"}
+agent_center.demo_reset: "ئۈلگە كۆرسىتىش ھالىتىنى ئەسلىگە قايتۇرامسىز؟ /reset confirm نى كىرگۈزۈڭ. مەۋجۇت خىزمەت تۈرلىرى ۋە تەڭشەكلەر تەسىرگە ئۇچرىمايدۇ." # {Locked="/reset confirm"} Resets only the isolated demo, never real work.
+agent_center.demo_saved: "%{revision} تۈزىتىلمىسى ساقلاندى" # %{revision} is the persisted demo state revision.
+agent_center.demo_error: "ئۈلگە كۆرسىتىش مەشغۇلاتى مەغلۇپ بولدى: %{error}" # %{error} explains the rejected action; no state change is claimed.
+agent_center.tasks_title: "ۋەزىپىلەر"
+agent_center.task_new: "يېڭى ۋەزىپە"
+agent_center.task_all: "بارلىق ۋەزىپىلەر"
+agent_center.task_attention: "دىققەت قىلىش كېرەك"
+agent_center.task_continue: "ۋەزىپىنى داۋاملاشتۇرۇش"
+# Messages waiting for this work's busy executor, excluding the currently running turn. {Locked="%{count}"}
+agent_center.task_queued_messages: "ئۆچرەتتىكى ئۇچۇرلار: %{count}"
+# Explicit migration of an existing work from legacy orchestration to its own executing agent session.
+agent_center.task_claim_executor: "ۋەزىپە ئاگېنتىغا ئۇلاش"
+agent_center.task_claim_executor_confirm: "بۇ ۋەزىپىنى ئۆزىگە خاس ئىجرا قىلغۇچى ئاگېنتقا يۆتكەڭ. مەۋجۇت سۆھبەت ۋە نەتىجىلەر ساقلىنىدۇ، كونا ۋاقىت جەدۋىلى بويىچە ئورۇنلاشتۇرۇش توختىتىلىدۇ. ئەسلى ئىجرا ئولتۇرۇشىنى ئەسلىگە كەلتۈرگىلى بولمىسا، يېڭى ئولتۇرۇش باشلاش ئۈچۈن ئايرىم جەزملەشتۈرۈش تەلەپ قىلىنىدۇ."
+agent_center.task_open_tab: "بەتكۈچتە ئېچىش"
+agent_center.task_tab_unsupported: "ۋەزىپە بەتكۈچىنى ئېچىش ئۈچۈن Intelligent Terminal كېرەك." # {Locked="Intelligent Terminal"}
+agent_center.task_new_session: "يېڭى ئولتۇرۇش باشلاش"
+agent_center.task_new_session_confirm: "ئەسلىدىكى AI ئاگېنتى ئولتۇرۇشىنى داۋاملاشتۇرغىلى بولمايدۇ. بۇ ۋەزىپىنىڭ ساقلانغان مەزمۇن مۇھىتىنى ئىشلىتىپ يېڭى ئولتۇرۇش باشلامسىز؟"
+agent_center.task_keys: "Up/Down تاللاش · Enter ئېچىش · F4 ھەرىكەتلەر · F5 تەپسىلاتلار" # {Locked="Up/Down","Enter","F4","F5"}
+agent_center.task_list_keys: "F2 ۋەزىپىلەر · F4 ھەرىكەتلەر · F5 تەپسىلاتلار" # {Locked="F2","F4","F5"}
+agent_center.task_state_running: "ئىجرا قىلىنىۋاتىدۇ"
+agent_center.task_state_waiting: "جاۋابىڭىزنى كۈتۈۋاتىدۇ"
+agent_center.task_state_paused: "ۋاقىتلىق توختىتىلغان"
+agent_center.task_state_recovery: "ئەسلىگە كەلتۈرۈش كېرەك"
+agent_center.task_state_ready: "داۋاملاشتۇرۇشقا تەييار"
+agent_center.task_state_completed: "تاماملانغان"
+agent_center.task_state_cancelled: "بىكار قىلىنغان"
+agent_center.task_state_unavailable: "ئولتۇرۇشنى ئىشلەتكىلى بولمايدۇ"
+agent_center.task_updated: "ئاخىرقى پائالىيەت: %{time}"
+agent_center.ui_overview: "ئومۇمىي كۆرۈنۈش"
+agent_center.chat_global: "بىرلىككە كەلتۈرۈلگەن سۆھبەت" # Conversation with the non-executing master for new goals and cross-work coordination; each work has its own executor conversation.
+agent_center.chat_welcome: "نېمىگە ئېرىشمەكچى، نېمىنى ئورۇنلاشتۇرماقچى ياكى بىلمەكچى ئىكەنلىكىڭىزنى ئېيتىڭ."
+agent_center.chat_keys: "Enter يوللاش · Shift+Enter يېڭى قۇر · F4 ھەرىكەتلەر · F5 تەپسىلاتلار · F7 باشقۇرۇش تاختىسى" # {Locked="Enter","Shift+Enter","F4","F5","F7"}
+agent_center.chat_dashboard_keys: "F7 سۆھبەت · Esc سۆھبەت · F4 ھەرىكەتلەر · F6 فوكۇسنى ھەرىكەتلەرگە يۆتكەش" # Dashboard navigation preserves the global conversation and draft. {Locked="F7","Esc","F4","F6"}
+agent_center.chat_context_hint: "مەزمۇن مۇھىتى بېشارىتى: %{context}" # %{context} is a readable work or project name, not a binding that limits the global conversation.
+agent_center.ui_attention: "دىققىتىڭىزنى تەلەپ قىلىدۇ" # Heading for recorded requests, draft-start reviews, and delivery reviews; not a claim that every work needs attention.
+agent_center.ui_details: "خىزمەت قىسقىچە چۈشەندۈرۈشى ۋە ئىلگىرىلەش" # Read-only details view containing the work agreement, recorded progress, evidence, and locations.
+agent_center.ui_new_goal: "نېمىگە ئېرىشمەكچىسىز؟"
+agent_center.ui_empty_attention: "جاۋابىڭىزنى تەلەپ قىلىدىغان ئوچۇق تەلەپ يوق."
+agent_center.ui_no_works: "ھېچقانداق خىزمەت تۈرى خاتىرىلەنمىگەن. باشلاش ئۈچۈن سەپلەنگەن تۈرنى تاللاڭ."
+agent_center.ui_no_conversation: "بۇ خىزمەت تۈرى ئۈچۈن ھېچقانداق ئۇچۇر خاتىرىلەنمىگەن."
+agent_center.ui_role_you: "سىز" # Speaker heading for an actual recorded human message.
+agent_center.ui_role_assistant: "خىزمەت ياردەمچىسى" # Speaker heading for an actual recorded assistant message, not a provider name.
+agent_center.ui_role_service: "مۇلازىمەت" # Speaker heading for an actual recorded system or service message.
+agent_center.ui_role_unknown: "خاتىرىلەنگەن ئۇچۇر" # Speaker heading when the service does not identify a recognized message role.
+agent_center.ui_next: "كېيىنكى قەدەمنىڭ مەسئۇلىيىتى"
+agent_center.ui_recorded_facts: "خاتىرىلەنگەن مەلۇماتلار"
+agent_center.ui_last_known: "ئەڭ ئاخىرقى بىلىنگەن ھالەت · %{status}" # %{status} is a localized recorded status. Used when cached facts do not establish current execution.
+agent_center.ui_cached_facts: "غەملەكتىكى مەلۇماتلار؛ نۆۋەتتىكى ئىجرا جەزملەشتۈرۈلمىگەن."
+agent_center.ui_source_root: "تۈرنىڭ مەنبە ھۆججەتلىرىنىڭ ئورنى" # Configured source root, explicitly distinct from the actual managed execution directory.
+agent_center.ui_execution_root: "باشقۇرۇلىدىغان ئىجرا ئورنى" # Actual execution directory reported by the service, never inferred from the project source root.
+agent_center.ui_location_unknown: "ھېچقانداق ئىجرا ئورنى دوكلات قىلىنمىغان."
+agent_center.ui_composer: "بۇنىڭ ئۈچۈن ئۇچۇر: %{work}" # %{work} is the human-readable target of this independent draft.
+agent_center.ui_composer_new: "يېڭى خىزمەت تۈرى · %{project}" # %{project} is the configured project name, or an explicit project-selection warning.
+agent_center.ui_actions: "خىزمەت تۈرىنىڭ ھەرىكەتلىرى"
+agent_center.ui_keys: "Enter يوللاش · Shift+Enter يېڭى قۇر · F4 ھەرىكەتلەر · F5 تەپسىلاتلار · F6 فوكۇسنى ھەرىكەتلەرگە يۆتكەش" # {Locked="Enter","Shift+Enter","F4","F5","F6"}
+agent_center.ui_actions_hint: "Up/Down تاللاش · Enter ئېچىش · Esc كىرگۈزۈشكە قايتىش" # Keyboard focus is on a visible action, not the text editor. {Locked="Up/Down","Enter","Esc"}
+agent_center.ui_details_hint: "F5 تەپسىلاتلارنى تاقاش · PgUp/PgDn ئوقۇش · Esc كىرگۈزۈشكە قايتىش" # Read-only detail focus; returning to input preserves the draft and selection. {Locked="F5","PgUp/PgDn","Esc"}
 agent_center.activity: "پائالىيەت · سۆھبەت"
-# %{work} and %{project} are identifiers of the selected work item and project.
+# %{work} and %{project} are human-readable labels for the selected work and configured project.
 agent_center.header: "خىزمەت تۈرى: %{work} | تۈر: %{project}"
-agent_center.welcome: "بىر تۈرنى تاللاڭ ياكى /project use <id> نى بەلگىلەڭ. نىشان ياكى /help نى كىرگۈزۈڭ." # {Locked="/project use","<id>","/help"}
+agent_center.welcome: "سەپلەنگەن تۈرنى تاللاش ئۈچۈن F4 نى بېسىڭ، ئاندىن نېمىگە ئېرىشمەكچى ئىكەنلىكىڭىزنى كىرگۈزۈڭ." # {Locked="F4"}
 agent_center.input_help: "Enter: ئەۋەتىش · Shift+Enter: يېڭى قۇر · Tab: تولۇقلاش · F2: خىزمەت تۈرىنى ئالماشتۇرۇش · Ctrl+C: چىقىش · PgUp/PgDn: ئوقۇش · Ctrl+End: ئەڭ يېڭى" # {Locked="Enter","Shift+Enter","Tab","F2","PgUp/PgDn","Ctrl+End","Ctrl+C"}
 agent_center.inbox_count: "دىققەت قىلىش كېرەك: %{count}"
 agent_center.sending: "خاتىرىلەنگەن تەلەپ يوللىنىۋاتىدۇ…"
@@ -328,3 +390,84 @@ agent_center.missing_field: "ئىنكاس بۆلىكى كەم ياكى ئىنا�
 agent_center.invalid_command_id: "--command-id چوقۇم UUID بولۇشى كېرەك." # {Locked="--command-id","UUID"}
 agent_center.worker_stopped: "تەلەپ ئۇلىنىشى توختىدى."
 agent_center.host_unavailable: "%{command} ئۈچۈن شېل ساھىبخان ماسلاشتۇرغۇچىسى يوق. ساھىبخاننىڭ كۇنۇپكا تاختىسى مەشغۇلاتلىرىنى ئىشلىتىڭ."
+agent_center.console_home: "يېڭى خىزمەت تۈرى"
+agent_center.console_new: "يېڭى خىزمەت تۈرى / باش بەت"
+agent_center.console_new_hint: "يېڭى نىشان كىرگۈزۈڭ. باشقا خىزمەت تۈرلىرى مۇستەقىل داۋاملىشىدۇ."
+agent_center.console_project_create_directory: "يېڭى مۇندەرىجە قۇرۇپ، يەرلىك Git ئامبىرىنى دەسلەپلەشتۈرۈڭ. مەۋجۇت ھۆججەتلەرنىڭ ئۈستىگە يېزىلمايدۇ." # {Locked="Git"}
+agent_center.console_projects: "سەپلەنگەن تۈرنى تاللاڭ"
+agent_center.console_projects_hint: "تۈرنى نامى ۋە ئورنى بويىچە تاللاڭ. بۇ يەردە سەپلەنگەن تۈر يوقمۇ؟ باشقۇرغۇچىڭىزدىن بىرنى سەپلەپ بېرىشنى سوراڭ."
+agent_center.console_refresh: "نۆۋەتتىكى ئۇچۇرلارنى يېڭىلاش"
+agent_center.console_open: "ئېچىش: %{work}"
+agent_center.console_return: "قايتىش: %{work}"
+agent_center.console_respond: "جاۋاب بېرىش: %{work} — %{question}"
+agent_center.console_unknown_work: "خىزمەت تۈرىنىڭ تەپسىلاتلىرى يوق"
+agent_center.console_unknown_project: "تۈر تاللانمىغان ياكى ئىشلەتكىلى بولمايدۇ"
+# Two works can have exactly the same goal and project. The numbered choice is explicit, never a fuzzy match. %{created} is the recorded creation time.
+agent_center.console_duplicate: "%{work} · ئايرىم خىزمەت تۈرى %{number} · %{created}"
+agent_center.console_start: "خىزمەت قىسقىچە چۈشەندۈرۈشىنى تەكشۈرۈپ، باشلاشنى تەستىقلاڭ"
+agent_center.approval_title: "تەستىقلاش تەلەپ قىلىنىدۇ" # Title of an inline conversation card for a specific frozen human action.
+agent_center.approval_accept: "تەستىقلاڭ" # Button that submits the exact reviewed action, not a chat message.
+agent_center.approval_start: "تەستىقلاپ باشلاڭ" # Button approving the displayed work brief and execution grant.
+agent_center.approval_edit: "تەلەپلەرنى ئۆزگەرتىڭ" # Return to the chat composer to describe changes; do not submit or approve the action.
+agent_center.approval_defer: "ھازىر ئەمەس" # Defer review in this Console without cancelling the work or approving anything.
+agent_center.approval_open_hint: "F6 تەكلىپنى تەكشۈرۈڭ" # Opens the inline approval card without approving it. {Locked="F6"}
+agent_center.approval_keys: "Left/Right تاللاڭ · Enter تاللاشنى جەزملەشتۈرۈڭ · F5 تەپسىلاتلار · Esc ھازىر ئەمەس" # Keyboard help while the inline approval card owns focus. {Locked="Left/Right","Enter","F5","Esc"}
+agent_center.approval_edit_hint: "%{target} ئۈچۈن ئۆزگەرتىشلەرنى چۈشەندۈرۈڭ. ھېچنېمە تەستىقلانمىدى." # %{target} is the displayed project or work name; the user's draft is preserved.
+agent_center.approval_deferred: "%{target} نى تەكشۈرۈش كېچىكتۈرۈلدى. تەييار بولغاندا F4 ئارقىلىق تەكلىپنى قايتا ئېچىڭ." # Deferring is local presentation state, not cancellation of work. %{target} is a project or work name. {Locked="F4"}
+agent_center.console_pause: "خىزمەتنى ۋاقىتلىق توختىتىش"
+agent_center.console_resume: "خىزمەتنى داۋاملاشتۇرۇش"
+agent_center.console_cancel: "خىزمەت تۈرىنى بىكار قىلىش"
+agent_center.console_inspect: "ئۆزگەرمەس قىلىپ بېكىتىلگەن تاپشۇرمىنى ۋە دەلىللەرنى تەكشۈرۈش (ئوقۇشقىلا بولىدۇ)"
+agent_center.console_read_evidence: "دەلىللەرنى ئوقۇش: %{work} — %{path}"
+agent_center.console_more_evidence: "دەلىللەرنىڭ كېيىنكى بېتىنى ئوقۇش: %{work}"
+agent_center.console_accept: "تەكشۈرۈلگەن تاپشۇرمىنى قوبۇل قىلىش"
+agent_center.console_takeover: "باشقۇرۇلىدىغان خىزمەت رايونىنى ئۆتكۈزۈۋېلىش"
+agent_center.console_handback: "باشقۇرۇلىدىغان خىزمەت رايونىنى قايتۇرۇپ تاپشۇرۇش"
+agent_center.console_apply: "تەستىقلانغان ئۆزگەرتىشنى قوللىنىش"
+agent_center.console_action: "خاتىرىلەنگەن ھەرىكەتنى تەكشۈرۈش"
+agent_center.console_answer: "جاۋاب"
+agent_center.console_answer_review: "يوللاش ئۈچۈن خاتىرىلەنگەن جاۋاب:\n%{value}"
+agent_center.console_answer_invalid: "%{field} ئۈچۈن ئىناۋەتلىك قىممەت كىرگۈزۈڭ؛ بۇ بۆلەكنىڭ تەلەپ قىلىنغان تاللاشلىرى ۋە چەكلىرىنى تەكشۈرۈڭ."
+agent_center.console_schema_unsupported: "بۇ سوئال ئاددىي جەدۋەل قوللىمايدىغان قۇرۇلما ئەندىزىسىنى ئىشلىتىدۇ. ھېچنېمە يوللانمىدى؛ ئاددىيراق سوئال سوراشنى تەلەپ قىلىڭ."
+agent_center.console_yes: "ھەئە"
+agent_center.console_no: "ياق"
+agent_center.console_form_help: "Up/Down بۆلەك تاللاش · Left/Right تاللانما تاللاش · Enter كېيىنكى بۆلەك · Ctrl+Enter جاۋابنى تەكشۈرۈش · Esc قايتىش" # {Locked="Up/Down","Left/Right","Enter","Ctrl+Enter","Esc"}
+agent_center.console_menu_help: "F4 ھەرىكەتلەر · Up/Down تاللاش · Enter ئېچىش · Esc قايتىش · F12 دىياگنوز" # {Locked="F4","Up/Down","Enter","Esc","F12"}
+agent_center.console_hint: "F4 ھەرىكەتلەر · F2 خىزمەت تۈرىنى ئالماشتۇرۇش · F12 دىياگنوز" # {Locked="F4","F2","F12"}
+agent_center.console_scope: "ئۆز ئىچىگە ئېلىنغان دائىرە"
+agent_center.console_exclusions: "بۇ خىزمەت تۈرىنىڭ سىرتىدا"
+agent_center.console_criteria: "قوبۇل قىلىش ئۆلچەملىرى ۋە كېرەكلىك دەلىللەر"
+agent_center.console_delivery: "تاپشۇرما"
+agent_center.console_delivery_code: "باشقۇرۇلىدىغان خىزمەت رايونىدىكى يەرلىك كود"
+agent_center.console_delivery_report: "خاتىرىلەنگەن دوكلات ھۆججەتلىرى"
+agent_center.console_progress: "ۋەزىپە ئىلگىرىلىشى"
+agent_center.console_authority: "تەلەپ قىلىنغان ھوقۇق ۋە ئىجرا چەكلىرى"
+agent_center.console_capabilities: "تەستىقلانغان ئىجرا ئىقتىدارلىرى"
+agent_center.console_data_scopes: "ئوقۇغىلى بولىدىغان سانلىق مەلۇمات ئورۇنلىرى"
+agent_center.console_limits: "مەنبە چەكلىرى"
+agent_center.console_managed_writes: "باشقۇرۇلىدىغان مەشغۇلاتلارنىڭ يېزىش دائىرىسى بۇ خىزمەت تۈرىنىڭ خىزمەت رايونى بىلەن چەكلىنىدۇ. بۇ تەمىنلىگۈچىگە تەۋە قوراللار ئۈچۈن مەشغۇلات سىستېمىسى دەرىجىسىدىكى ئايرىش چېگراسى ئەمەس."
+agent_center.console_frozen: "بۇ جەزملەشتۈرۈش خاتىرىلەنگەن خىزمەت تۈرى، تەلەپ، سىياسەت ۋە تۈزىتىلگەن نەشرلەرگە باغلانغان. ئۆزگەرتىشلەر قايتا تەكشۈرۈشنى تەلەپ قىلىدۇ؛ تەستىق ھەرگىز ئۇقتۇرماي باشقا نىشانغا يۆتكەلمەيدۇ."
+agent_center.console_stale: "نەق مەيدان ئۇچۇرلىرى كونىرىغان. دەسلەپكى نۇسخىلار بىخەتەر ساقلاندى. ئۆزگەرتىشلەرنى تەستىقلاش ياكى يوللاشتىن بۇرۇن قايتا ئۇلاپ يېڭىلاڭ؛ نامەلۇم نەتىجە مەغلۇب بولۇش ياكى تاماملىنىش دېگەنلىك ئەمەس."
+agent_center.console_diagnostics: "دىياگنوز ئۈچۈن كېلىشىم تەپسىلاتلىرى (ئوقۇشقىلا بولىدۇ)"
+agent_center.console_no_details: "خىزمەت تۈرىنىڭ نۆۋەتتىكى تەپسىلاتلىرى يوق. تۈر تاللاش، خىزمەت تۈرىنى ئېچىش ياكى يېڭىلاش ئۈچۈن F4 نى ئىشلىتىڭ." # {Locked="F4"}
+agent_center.console_draft: "دەسلەپكى نۇسخا — باشلانمىغان"
+agent_center.console_active: "ئاكتىپ — تېخى قوبۇل قىلىنمىغان"
+agent_center.console_completed: "تاماملانغان — ئادەم تەرىپىدىن قوبۇل قىلىنغانلىقى خاتىرىلەنگەن"
+agent_center.console_cancelled: "بىكار قىلىنغان"
+agent_center.console_paused: "ۋاقىتلىق توختىتىلغان"
+agent_center.console_automatic: "ئاپتوماتىك ئىلگىرىلەش"
+agent_center.console_running: "ئىجرا قىلىنىۋاتىدۇ"
+agent_center.console_pending: "كۈتۈۋاتىدۇ — تاماملانمىغان"
+agent_center.console_verified: "دەلىللەنگەن / ئىچكى جەھەتتە قوبۇل قىلىنغان"
+agent_center.console_failed: "مەغلۇپ بولغان / رەت قىلىنغان — دەلىللەرنى تەكشۈرۈڭ"
+agent_center.console_waiting: "جاۋاب ياكى بېقىنىدىغان ئىشنى كۈتۈۋاتىدۇ"
+agent_center.console_unknown: "نامەلۇم — يېڭىلاڭ ياكى دىياگنوز ئۇچۇرلىرىنى تەكشۈرۈڭ"
+agent_center.console_resolved: "جاۋاب خاتىرىلەنگەن"
+agent_center.console_superseded: "ئالماشتۇرۇلغان — نۆۋەتتىكى تاپشۇرما ئەمەس"
+agent_center.console_next_done: "كېيىنكى قەدەم: قوبۇل قىلىنغان تاپشۇرمىنى ئىشلىتىڭ؛ باشقا كۈتۈۋاتقان تەستىق يوق."
+agent_center.console_next_cancelled: "كېيىنكى قەدەم: ئاپتوماتىك ئىلگىرىلەش يوق؛ بۇ خىزمەت تۈرى بىكار قىلىنغان."
+agent_center.console_next_approve: "كېيىنكى قەدەم: خىزمەت قىسقىچە چۈشەندۈرۈشىنى تەكشۈرۈپ، دەل مۇشۇ باشلاشنى F4 ئارقىلىق تەستىقلاڭ." # {Locked="F4"}
+agent_center.console_next_accept: "كېيىنكى قەدەم: ئۆزگەرمەس قىلىپ بېكىتىلگەن تاپشۇرما ۋە دەلىللەرنى تەكشۈرۈپ، ئاندىن ئېنىق قوبۇل قىلىڭ."
+agent_center.console_next_attention: "كېيىنكى قەدەم: بۇ خىزمەت تۈرىنىڭ تېخى دىققەت قىلىش كېرەك بولغان ئىشلىرىنى F4 ئارقىلىق تەكشۈرۈڭ." # {Locked="F4"}
+agent_center.console_next_resume: "كېيىنكى قەدەم: ۋاقىتلىق توختىتىلغان بۇ خىزمەتنى قاچان داۋاملاشتۇرۇشنى سىز قارار قىلىسىز."
+agent_center.console_next_service: "كېيىنكى قەدەم: مۇلازىمەت تەستىقلانغان پىلاننى ئىلگىرى سۈرىدۇ. بۇ ئاخىرقى قوبۇل قىلىش ئەمەس."

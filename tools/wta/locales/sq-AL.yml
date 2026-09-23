@@ -271,10 +271,72 @@ system.model_unknown: "Model i panjohur %{model} — shkruani /model për të pa
 # not an agent session; a work item may contain multiple tasks.
 agent_center.title: "Agent Center" # {Locked}
 agent_center.works: "Elemente pune"
+agent_center.demo_title: "Demonstrim i historisë së një elementi pune" # Title of an isolated scripted demonstration; the story fixture itself is English.
+agent_center.demo_notice: "Demonstrim me skenar | Prova shembull, sesione dhe përdorim tokenësh të simuluar | Nuk niset asnjë agjent" # Always-visible disclosure; simulated data must not be confused with live agent execution.
+agent_center.demo_scene: "Skena %{scene}/8" # %{scene} is the current scene number in the eight-scene story.
+agent_center.demo_next: "Më tej: %{input}" # %{input} is the literal English story input, not a translated command.
+agent_center.demo_keys: "Enter: dërgo | Tab: plotëso hyrjen e radhës | PgUp/PgDn: lëviz | Ctrl+Q: mbyll" # {Locked="Enter","Tab","PgUp/PgDn","Ctrl+Q"}
+agent_center.demo_reset: "Të rivendoset gjendja e demonstrimit? Shkruani /reset confirm. Elementet e punës dhe cilësimet ekzistuese nuk preken." # {Locked="/reset confirm"} Resets only the isolated demo, never real work.
+agent_center.demo_saved: "U ruajt rishikimi %{revision}" # %{revision} is the persisted demo state revision.
+agent_center.demo_error: "Veprimi i demonstrimit dështoi: %{error}" # %{error} explains the rejected action; no state change is claimed.
+agent_center.tasks_title: "Detyrat"
+agent_center.task_new: "Detyrë e re"
+agent_center.task_all: "Të gjitha detyrat"
+agent_center.task_attention: "Kërkon vëmendje"
+agent_center.task_continue: "Vazhdoni detyrën"
+# Messages waiting for this work's busy executor, excluding the currently running turn. {Locked="%{count}"}
+agent_center.task_queued_messages: "Mesazhe në radhë: %{count}"
+# Explicit migration of an existing work from legacy orchestration to its own executing agent session.
+agent_center.task_claim_executor: "Lidhni me agjentin e detyrës"
+agent_center.task_claim_executor_confirm: "Kalojeni këtë detyrë te agjenti i saj i posaçëm ekzekutues. Biseda dhe rezultatet ekzistuese ruhen, ndërsa planifikimi i vjetër ndalet. Nëse sesioni fillestar i ekzekutimit nuk mund të rikthehet, nisja e një sesioni të ri kërkon një konfirmim të veçantë."
+agent_center.task_open_tab: "Hapni në skedë"
+agent_center.task_tab_unsupported: "Për të hapur një skedë detyre nevojitet Intelligent Terminal." # {Locked="Intelligent Terminal"}
+agent_center.task_new_session: "Nisni një sesion të ri"
+agent_center.task_new_session_confirm: "Sesioni fillestar i agjentit nuk mund të vazhdohet. Dëshironi të nisni një sesion të ri duke përdorur kontekstin e ruajtur të kësaj detyre?"
+agent_center.task_keys: "Up/Down zgjidhni · Enter hapni · F4 veprime · F5 hollësi" # {Locked="Up/Down","Enter","F4","F5"}
+agent_center.task_list_keys: "F2 detyrat · F4 veprime · F5 hollësi" # {Locked="F2","F4","F5"}
+agent_center.task_state_running: "Në ekzekutim"
+agent_center.task_state_waiting: "Në pritje të përgjigjes suaj"
+agent_center.task_state_paused: "Pezulluar"
+agent_center.task_state_recovery: "Kërkon rikuperim"
+agent_center.task_state_ready: "Gati për të vazhduar"
+agent_center.task_state_completed: "Përfunduar"
+agent_center.task_state_cancelled: "Anuluar"
+agent_center.task_state_unavailable: "Sesioni nuk është i disponueshëm"
+agent_center.task_updated: "Aktiviteti i fundit: %{time}"
+agent_center.ui_overview: "Përmbledhje"
+agent_center.chat_global: "Bisedë e përbashkët" # Conversation with the non-executing master for new goals and cross-work coordination; each work has its own executor conversation.
+agent_center.chat_welcome: "Më tregoni çfarë doni të arrini, të organizoni ose të mësoni."
+agent_center.chat_keys: "Enter dërgoni · Shift+Enter rresht i ri · F4 veprime · F5 hollësi · F7 paneli përmbledhës" # {Locked="Enter","Shift+Enter","F4","F5","F7"}
+agent_center.chat_dashboard_keys: "F7 biseda · Esc biseda · F4 veprime · F6 fokus te veprimet" # Dashboard navigation preserves the global conversation and draft. {Locked="F7","Esc","F4","F6"}
+agent_center.chat_context_hint: "Tregues konteksti: %{context}" # %{context} is a readable work or project name, not a binding that limits the global conversation.
+agent_center.ui_attention: "Kërkon vëmendjen tuaj" # Heading for recorded requests, draft-start reviews, and delivery reviews; not a claim that every work needs attention.
+agent_center.ui_details: "Përshkrimi dhe ecuria" # Read-only details view containing the work agreement, recorded progress, evidence, and locations.
+agent_center.ui_new_goal: "Çfarë dëshironi të arrini?"
+agent_center.ui_empty_attention: "Asnjë kërkesë e hapur nuk kërkon përgjigjen tuaj."
+agent_center.ui_no_works: "Nuk është regjistruar asnjë element pune. Zgjidhni një projekt të konfiguruar për të filluar."
+agent_center.ui_no_conversation: "Nuk janë regjistruar mesazhe për këtë element pune."
+agent_center.ui_role_you: "Ju" # Speaker heading for an actual recorded human message.
+agent_center.ui_role_assistant: "Asistenti i punës" # Speaker heading for an actual recorded assistant message, not a provider name.
+agent_center.ui_role_service: "Shërbimi" # Speaker heading for an actual recorded system or service message.
+agent_center.ui_role_unknown: "Mesazh i regjistruar" # Speaker heading when the service does not identify a recognized message role.
+agent_center.ui_next: "Përgjegjësia për hapin tjetër"
+agent_center.ui_recorded_facts: "Të dhëna të regjistruara"
+agent_center.ui_last_known: "Gjendja e fundit e njohur · %{status}" # %{status} is a localized recorded status. Used when cached facts do not establish current execution.
+agent_center.ui_cached_facts: "Të dhëna nga memoria e përkohshme; ekzekutimi aktual nuk është konfirmuar."
+agent_center.ui_source_root: "Vendndodhja e skedarëve burimorë të projektit" # Configured source root, explicitly distinct from the actual managed execution directory.
+agent_center.ui_execution_root: "Vendndodhja e ekzekutimit të menaxhuar" # Actual execution directory reported by the service, never inferred from the project source root.
+agent_center.ui_location_unknown: "Nuk është raportuar asnjë vendndodhje ekzekutimi."
+agent_center.ui_composer: "Mesazh për: %{work}" # %{work} is the human-readable target of this independent draft.
+agent_center.ui_composer_new: "Element i ri pune · %{project}" # %{project} is the configured project name, or an explicit project-selection warning.
+agent_center.ui_actions: "Veprimet e elementit të punës"
+agent_center.ui_keys: "Enter dërgoni · Shift+Enter rresht i ri · F4 veprime · F5 hollësi · F6 fokus te veprimet" # {Locked="Enter","Shift+Enter","F4","F5","F6"}
+agent_center.ui_actions_hint: "Up/Down zgjidhni · Enter hapni · Esc kthehuni te shkrimi" # Keyboard focus is on a visible action, not the text editor. {Locked="Up/Down","Enter","Esc"}
+agent_center.ui_details_hint: "F5 mbyllni hollësitë · PgUp/PgDn lexoni · Esc kthehuni te shkrimi" # Read-only detail focus; returning to input preserves the draft and selection. {Locked="F5","PgUp/PgDn","Esc"}
 agent_center.activity: "Aktiviteti · Biseda"
-# %{work} and %{project} are identifiers of the selected work item and project.
+# %{work} and %{project} are human-readable labels for the selected work and configured project.
 agent_center.header: "Puna: %{work} | Projekti: %{project}"
-agent_center.welcome: "Zgjidhni një projekt ose specifikoni /project use <id>. Shkruani një synim ose /help." # {Locked="/project use","<id>","/help"}
+agent_center.welcome: "Shtypni F4 për të zgjedhur një projekt të konfiguruar, pastaj shkruani çfarë doni të arrini." # {Locked="F4"}
 agent_center.input_help: "Enter: dërgo · Shift+Enter: rresht i ri · Tab: plotëso · F2: ndërro elementin e punës · Ctrl+C: dil · PgUp/PgDn: lexo · Ctrl+End: më e fundit" # {Locked="Enter","Shift+Enter","Tab","F2","PgUp/PgDn","Ctrl+End","Ctrl+C"}
 agent_center.inbox_count: "Kërkon vëmendje: %{count}"
 agent_center.sending: "Po dërgohet kërkesa e regjistruar…"
@@ -319,3 +381,84 @@ agent_center.missing_field: "Fusha e përgjigjes mungon ose është e pavlefshme
 agent_center.invalid_command_id: "--command-id duhet të jetë një UUID." # {Locked="--command-id","UUID"}
 agent_center.worker_stopped: "Lidhja e kërkesave u ndal."
 agent_center.host_unavailable: "Nuk ka përshtatës të pritësit të shell-it për %{command}. Përdorni veprimet e tastierës së pritësit."
+agent_center.console_home: "Element i ri pune"
+agent_center.console_new: "Element i ri pune / Kryefaqja"
+agent_center.console_new_hint: "Shkruani një synim të ri. Elementet e tjera të punës vazhdojnë në mënyrë të pavarur."
+agent_center.console_project_create_directory: "Krijoni një direktori të re dhe inicializoni një depo lokale Git. Skedarët ekzistues nuk do të mbishkruhen." # {Locked="Git"}
+agent_center.console_projects: "Zgjidhni një projekt të konfiguruar"
+agent_center.console_projects_hint: "Zgjidhni projektin sipas emrit dhe vendndodhjes. Nuk ka projekt të konfiguruar këtu? Kërkojini administratorit të konfigurojë një."
+agent_center.console_refresh: "Rifreskoni të dhënat aktuale"
+agent_center.console_open: "Hapni: %{work}"
+agent_center.console_return: "Kthehuni te: %{work}"
+agent_center.console_respond: "Përgjigjuni: %{work} — %{question}"
+agent_center.console_unknown_work: "Hollësitë e elementit të punës nuk janë të disponueshme"
+agent_center.console_unknown_project: "Projekti nuk është zgjedhur ose nuk është i disponueshëm"
+# Two works can have exactly the same goal and project. The numbered choice is explicit, never a fuzzy match. %{created} is the recorded creation time.
+agent_center.console_duplicate: "%{work} · element i veçantë pune %{number} · %{created}"
+agent_center.console_start: "Shqyrtoni përshkrimin dhe miratoni nisjen"
+agent_center.approval_title: "Kërkohet miratim" # Title of an inline conversation card for a specific frozen human action.
+agent_center.approval_accept: "Miratoni" # Button that submits the exact reviewed action, not a chat message.
+agent_center.approval_start: "Miratoni dhe nisni" # Button approving the displayed work brief and execution grant.
+agent_center.approval_edit: "Ndryshoni kërkesat" # Return to the chat composer to describe changes; do not submit or approve the action.
+agent_center.approval_defer: "Jo tani" # Defer review in this Console without cancelling the work or approving anything.
+agent_center.approval_open_hint: "F6 shqyrtoni propozimin" # Opens the inline approval card without approving it. {Locked="F6"}
+agent_center.approval_keys: "Left/Right zgjidhni · Enter përzgjidhni · F5 hollësitë · Esc jo tani" # Keyboard help while the inline approval card owns focus. {Locked="Left/Right","Enter","F5","Esc"}
+agent_center.approval_edit_hint: "Përshkruani ndryshimet për %{target}. Asgjë nuk është miratuar." # %{target} is the displayed project or work name; the user's draft is preserved.
+agent_center.approval_deferred: "Shqyrtimi për %{target} u shty për më vonë. Rihapni propozimin përmes F4 kur të jeni gati." # Deferring is local presentation state, not cancellation of work. %{target} is a project or work name. {Locked="F4"}
+agent_center.console_pause: "Pezulloni punën"
+agent_center.console_resume: "Rifilloni punën"
+agent_center.console_cancel: "Anuloni elementin e punës"
+agent_center.console_inspect: "Shqyrtoni rezultatin e fiksuar dhe kontrolloni provat (vetëm për lexim)"
+agent_center.console_read_evidence: "Lexoni provat: %{work} — %{path}"
+agent_center.console_more_evidence: "Lexoni faqen tjetër të provave: %{work}"
+agent_center.console_accept: "Pranoni rezultatin e shqyrtuar"
+agent_center.console_takeover: "Merrni në dorë hapësirën e menaxhuar të punës"
+agent_center.console_handback: "Riktheni hapësirën e menaxhuar të punës"
+agent_center.console_apply: "Zbatoni ndryshimin e miratuar"
+agent_center.console_action: "Shqyrtoni veprimin e regjistruar"
+agent_center.console_answer: "Përgjigje"
+agent_center.console_answer_review: "Përgjigjja e regjistruar për dorëzim:\n%{value}"
+agent_center.console_answer_invalid: "Futni një vlerë të vlefshme për %{field}; shqyrtoni zgjedhjet e kërkuara dhe kufijtë e fushës."
+agent_center.console_schema_unsupported: "Kjo pyetje përdor një skemë që formulari i thjeshtë nuk e mbështet. Nuk u dorëzua asgjë; kërkoni një pyetje më të thjeshtë."
+agent_center.console_yes: "Po"
+agent_center.console_no: "Jo"
+agent_center.console_form_help: "Up/Down zgjidhni fushën · Left/Right zgjidhni opsionin · Enter fusha tjetër · Ctrl+Enter shqyrtoni përgjigjen · Esc prapa" # {Locked="Up/Down","Left/Right","Enter","Ctrl+Enter","Esc"}
+agent_center.console_menu_help: "F4 veprime · Up/Down zgjidhni · Enter hapni · Esc prapa · F12 diagnostikim" # {Locked="F4","Up/Down","Enter","Esc","F12"}
+agent_center.console_hint: "F4 veprime · F2 ndërroni elementin e punës · F12 diagnostikim" # {Locked="F4","F2","F12"}
+agent_center.console_scope: "Fusha e përfshirë"
+agent_center.console_exclusions: "Jashtë këtij elementi pune"
+agent_center.console_criteria: "Kriteret e pranimit dhe provat e kërkuara"
+agent_center.console_delivery: "Rezultati i dorëzuar"
+agent_center.console_delivery_code: "Kodi lokal në hapësirën e menaxhuar të punës"
+agent_center.console_delivery_report: "Skedarët e raporteve të regjistruar"
+agent_center.console_progress: "Ecuria e detyrës"
+agent_center.console_authority: "Autoriteti i kërkuar dhe kufijtë e ekzekutimit"
+agent_center.console_capabilities: "Aftësitë e miratuara të ekzekutimit"
+agent_center.console_data_scopes: "Vendndodhjet e të dhënave të lexueshme"
+agent_center.console_limits: "Kufijtë e burimeve"
+agent_center.console_managed_writes: "Shkrimet në kuadër të operacioneve të menaxhuara kufizohen në hapësirën e punës së këtij elementi pune. Kjo nuk përbën kufi izolimi në nivelin e sistemit operativ për mjetet në pronësi të ofruesit."
+agent_center.console_frozen: "Ky konfirmim lidhet me elementin e punës, kërkesën, politikën dhe versionet e regjistruara. Ndryshimet kërkojnë shqyrtim të ri; miratimi nuk ridrejtohet kurrë pa njoftim."
+agent_center.console_stale: "Të dhënat e drejtpërdrejta janë të vjetruara. Skicat janë të sigurta. Rilidhuni dhe rifreskoni para se të miratoni ose dërgoni ndryshime; një rezultat i panjohur nuk është dështim ose përfundim."
+agent_center.console_diagnostics: "Hollësitë diagnostikuese të protokollit (vetëm për lexim)"
+agent_center.console_no_details: "Nuk ka hollësi aktuale të elementit të punës. Përdorni F4 për të zgjedhur projekt, për të hapur element pune ose për të rifreskuar." # {Locked="F4"}
+agent_center.console_draft: "Skicë — nuk ka nisur"
+agent_center.console_active: "Aktiv — ende i papranuar"
+agent_center.console_completed: "Përfunduar — pranimi nga njeriu është regjistruar"
+agent_center.console_cancelled: "Anuluar"
+agent_center.console_paused: "Pezulluar"
+agent_center.console_automatic: "Përparim automatik"
+agent_center.console_running: "Në ekzekutim"
+agent_center.console_pending: "Në pritje — i papërfunduar"
+agent_center.console_verified: "Verifikuar / pranuar së brendshmi"
+agent_center.console_failed: "Dështuar / refuzuar — shqyrtoni provat"
+agent_center.console_waiting: "Në pritje të një përgjigjeje ose varësie"
+agent_center.console_unknown: "I panjohur — rifreskoni ose shqyrtoni diagnostikimin"
+agent_center.console_resolved: "Përgjigjja u regjistrua"
+agent_center.console_superseded: "Zëvendësuar — nuk është rezultati aktual"
+agent_center.console_next_done: "Më tej: përdorni rezultatin e pranuar; nuk ka miratim tjetër në pritje."
+agent_center.console_next_cancelled: "Më tej: nuk ka përparim automatik; ky element pune u anulua."
+agent_center.console_next_approve: "Më tej: shqyrtoni përshkrimin dhe miratoni pikërisht këtë nisje përmes F4." # {Locked="F4"}
+agent_center.console_next_accept: "Më tej: shqyrtoni rezultatin e fiksuar dhe provat, pastaj pranojeni shprehimisht."
+agent_center.console_next_attention: "Më tej: shqyrtoni çështjet e pazgjidhura të këtij elementi pune që kërkojnë vëmendje përmes F4." # {Locked="F4"}
+agent_center.console_next_resume: "Më tej: vendosni kur ta rifilloni këtë punë të pezulluar."
+agent_center.console_next_service: "Më tej: shërbimi çon përpara planin e miratuar. Ky nuk është pranim përfundimtar."

@@ -275,10 +275,72 @@ system.model_unknown: "অজানা মডেল %{model} — উপলব্
 # not an agent session; a work item may contain multiple tasks.
 agent_center.title: "Agent Center" # {Locked}
 agent_center.works: "কাজের এককসমূহ"
+agent_center.demo_title: "কাজের এককের গল্পের প্রদর্শনী" # Title of an isolated scripted demonstration; the story fixture itself is English.
+agent_center.demo_notice: "পূর্বনির্ধারিত প্রদর্শনী | নমুনা প্রমাণ, অনুকৃত সেশন এবং টোকেন ব্যবহার | কোনো এজেন্ট চালু করা হয় না" # Always-visible disclosure; simulated data must not be confused with live agent execution.
+agent_center.demo_scene: "দৃশ্য %{scene}/8" # %{scene} is the current scene number in the eight-scene story.
+agent_center.demo_next: "পরবর্তী: %{input}" # %{input} is the literal English story input, not a translated command.
+agent_center.demo_keys: "Enter: জমা দিন | Tab: পরবর্তী ইনপুট পূরণ করুন | PgUp/PgDn: স্ক্রল করুন | Ctrl+Q: বন্ধ করুন" # {Locked="Enter","Tab","PgUp/PgDn","Ctrl+Q"}
+agent_center.demo_reset: "প্রদর্শনীর অবস্থা রিসেট করবেন? /reset confirm লিখুন। বিদ্যমান কাজের একক এবং সেটিংস প্রভাবিত হবে না।" # {Locked="/reset confirm"} Resets only the isolated demo, never real work.
+agent_center.demo_saved: "সংশোধন %{revision} সংরক্ষিত হয়েছে" # %{revision} is the persisted demo state revision.
+agent_center.demo_error: "প্রদর্শনীর ক্রিয়া ব্যর্থ হয়েছে: %{error}" # %{error} explains the rejected action; no state change is claimed.
+agent_center.tasks_title: "কাজসমূহ"
+agent_center.task_new: "নতুন কাজ"
+agent_center.task_all: "সমস্ত কাজ"
+agent_center.task_attention: "মনোযোগ প্রয়োজন"
+agent_center.task_continue: "কাজ চালিয়ে যান"
+# Messages waiting for this work's busy executor, excluding the currently running turn. {Locked="%{count}"}
+agent_center.task_queued_messages: "সারিতে থাকা বার্তা: %{count}"
+# Explicit migration of an existing work from legacy orchestration to its own executing agent session.
+agent_center.task_claim_executor: "কাজের এজেন্টের সঙ্গে যুক্ত করুন"
+agent_center.task_claim_executor_confirm: "এই কাজটি তার নিজস্ব নির্বাহকারী এজেন্টে স্থানান্তর করুন। বিদ্যমান কথোপকথন ও ফলাফল সংরক্ষিত থাকবে এবং পুরোনো সময়সূচি অনুযায়ী কাজ চালানো বন্ধ হবে। মূল নির্বাহ সেশনটি পুনরুদ্ধার করা না গেলে নতুন সেশন শুরু করতে আলাদা নিশ্চিতকরণ লাগবে।"
+agent_center.task_open_tab: "ট্যাবে খুলুন"
+agent_center.task_tab_unsupported: "কাজের ট্যাব খুলতে Intelligent Terminal প্রয়োজন।" # {Locked="Intelligent Terminal"}
+agent_center.task_new_session: "নতুন সেশন শুরু করুন"
+agent_center.task_new_session_confirm: "মূল এজেন্ট সেশনটি পুনরায় চালু করা যাচ্ছে না। এই কাজের সংরক্ষিত প্রসঙ্গ ব্যবহার করে একটি নতুন সেশন শুরু করবেন?"
+agent_center.task_keys: "Up/Down বেছে নিন · Enter খুলুন · F4 পদক্ষেপ · F5 বিবরণ" # {Locked="Up/Down","Enter","F4","F5"}
+agent_center.task_list_keys: "F2 কাজসমূহ · F4 পদক্ষেপ · F5 বিবরণ" # {Locked="F2","F4","F5"}
+agent_center.task_state_running: "চলছে"
+agent_center.task_state_waiting: "আপনার উত্তরের জন্য অপেক্ষা করছে"
+agent_center.task_state_paused: "সাময়িকভাবে থামানো হয়েছে"
+agent_center.task_state_recovery: "পুনরুদ্ধার প্রয়োজন"
+agent_center.task_state_ready: "চালিয়ে যাওয়ার জন্য প্রস্তুত"
+agent_center.task_state_completed: "সম্পূর্ণ"
+agent_center.task_state_cancelled: "বাতিল হয়েছে"
+agent_center.task_state_unavailable: "সেশন উপলব্ধ নয়"
+agent_center.task_updated: "সর্বশেষ কার্যকলাপ: %{time}"
+agent_center.ui_overview: "সংক্ষিপ্ত বিবরণ"
+agent_center.chat_global: "সমন্বিত কথোপকথন" # Conversation with the non-executing master for new goals and cross-work coordination; each work has its own executor conversation.
+agent_center.chat_welcome: "আপনি কী অর্জন করতে, ব্যবস্থা করতে বা জানতে চান আমাকে বলুন।"
+agent_center.chat_keys: "Enter পাঠান · Shift+Enter নতুন লাইন · F4 পদক্ষেপ · F5 বিবরণ · F7 ড্যাশবোর্ড" # {Locked="Enter","Shift+Enter","F4","F5","F7"}
+agent_center.chat_dashboard_keys: "F7 কথোপকথন · Esc কথোপকথন · F4 পদক্ষেপ · F6 পদক্ষেপে ফোকাস করুন" # Dashboard navigation preserves the global conversation and draft. {Locked="F7","Esc","F4","F6"}
+agent_center.chat_context_hint: "প্রসঙ্গের ইঙ্গিত: %{context}" # %{context} is a readable work or project name, not a binding that limits the global conversation.
+agent_center.ui_attention: "আপনার মনোযোগ প্রয়োজন" # Heading for recorded requests, draft-start reviews, and delivery reviews; not a claim that every work needs attention.
+agent_center.ui_details: "কাজের সংক্ষিপ্ত বিবরণ ও অগ্রগতি" # Read-only details view containing the work agreement, recorded progress, evidence, and locations.
+agent_center.ui_new_goal: "আপনি কী অর্জন করতে চান?"
+agent_center.ui_empty_attention: "কোনো খোলা অনুরোধে আপনার সাড়া দেওয়ার প্রয়োজন নেই।"
+agent_center.ui_no_works: "কোনো কাজের একক নথিভুক্ত হয়নি। শুরু করতে কনফিগার করা প্রকল্প বেছে নিন।"
+agent_center.ui_no_conversation: "এই কাজের এককের জন্য কোনো বার্তা নথিভুক্ত হয়নি।"
+agent_center.ui_role_you: "আপনি" # Speaker heading for an actual recorded human message.
+agent_center.ui_role_assistant: "কাজের সহায়ক" # Speaker heading for an actual recorded assistant message, not a provider name.
+agent_center.ui_role_service: "পরিষেবা" # Speaker heading for an actual recorded system or service message.
+agent_center.ui_role_unknown: "নথিভুক্ত বার্তা" # Speaker heading when the service does not identify a recognized message role.
+agent_center.ui_next: "পরবর্তী দায়িত্ব"
+agent_center.ui_recorded_facts: "নথিভুক্ত তথ্য"
+agent_center.ui_last_known: "সর্বশেষ জানা অবস্থা · %{status}" # %{status} is a localized recorded status. Used when cached facts do not establish current execution.
+agent_center.ui_cached_facts: "ক্যাশে রাখা তথ্য; বর্তমান কার্যসম্পাদন নিশ্চিত করা হয়নি।"
+agent_center.ui_source_root: "প্রকল্পের উৎসের অবস্থান" # Configured source root, explicitly distinct from the actual managed execution directory.
+agent_center.ui_execution_root: "পরিচালিত কার্যসম্পাদনের অবস্থান" # Actual execution directory reported by the service, never inferred from the project source root.
+agent_center.ui_location_unknown: "কোনো কার্যসম্পাদনের অবস্থান জানানো হয়নি।"
+agent_center.ui_composer: "এর জন্য বার্তা: %{work}" # %{work} is the human-readable target of this independent draft.
+agent_center.ui_composer_new: "নতুন কাজের একক · %{project}" # %{project} is the configured project name, or an explicit project-selection warning.
+agent_center.ui_actions: "কাজের এককের পদক্ষেপ"
+agent_center.ui_keys: "Enter পাঠান · Shift+Enter নতুন লাইন · F4 পদক্ষেপ · F5 বিবরণ · F6 পদক্ষেপে ফোকাস করুন" # {Locked="Enter","Shift+Enter","F4","F5","F6"}
+agent_center.ui_actions_hint: "Up/Down বেছে নিন · Enter খুলুন · Esc ইনপুট" # Keyboard focus is on a visible action, not the text editor. {Locked="Up/Down","Enter","Esc"}
+agent_center.ui_details_hint: "F5 বিবরণ বন্ধ করুন · PgUp/PgDn পড়ুন · Esc ইনপুট" # Read-only detail focus; returning to input preserves the draft and selection. {Locked="F5","PgUp/PgDn","Esc"}
 agent_center.activity: "কার্যকলাপ · কথোপকথন"
-# %{work} and %{project} are identifiers of the selected work item and project.
+# %{work} and %{project} are human-readable labels for the selected work and configured project.
 agent_center.header: "কাজ: %{work} | প্রকল্প: %{project}"
-agent_center.welcome: "একটি প্রকল্প নির্বাচন করুন বা /project use <id> নির্দিষ্ট করুন। একটি লক্ষ্য বা /help টাইপ করুন।" # {Locked="/project use","<id>","/help"}
+agent_center.welcome: "কনফিগার করা প্রকল্প বেছে নিতে F4 চাপুন, তারপর আপনি কী অর্জন করতে চান তা লিখুন।" # {Locked="F4"}
 agent_center.input_help: "Enter: পাঠান · Shift+Enter: নতুন লাইন · Tab: সম্পূর্ণ করুন · F2: কাজ বদলান · Ctrl+C: প্রস্থান · PgUp/PgDn: পড়ুন · Ctrl+End: সর্বশেষ" # {Locked="Enter","Shift+Enter","Tab","F2","PgUp/PgDn","Ctrl+End","Ctrl+C"}
 agent_center.inbox_count: "মনোযোগ প্রয়োজন: %{count}"
 agent_center.sending: "নথিভুক্ত অনুরোধটি পাঠানো হচ্ছে…"
@@ -323,3 +385,84 @@ agent_center.missing_field: "প্রতিক্রিয়ার ক্ষ�
 agent_center.invalid_command_id: "--command-id অবশ্যই একটি UUID হতে হবে।" # {Locked="--command-id","UUID"}
 agent_center.worker_stopped: "অনুরোধের সংযোগ থেমে গেছে।"
 agent_center.host_unavailable: "%{command}-এর জন্য কোনো শেল হোস্ট অ্যাডাপ্টার উপলব্ধ নেই। হোস্টের কীবোর্ড ক্রিয়াগুলি ব্যবহার করুন।"
+agent_center.console_home: "নতুন কাজের একক"
+agent_center.console_new: "নতুন কাজের একক / হোম"
+agent_center.console_new_hint: "একটি নতুন লক্ষ্য লিখুন। অন্য কাজের এককগুলি স্বাধীনভাবে চলতে থাকে।"
+agent_center.console_project_create_directory: "একটি নতুন ডিরেক্টরি তৈরি করুন এবং একটি স্থানীয় Git সংগ্রহস্থল শুরু করুন। বিদ্যমান ফাইলগুলি ওভাররাইট করা হবে না।" # {Locked="Git"}
+agent_center.console_projects: "কনফিগার করা প্রকল্প বেছে নিন"
+agent_center.console_projects_hint: "নাম ও অবস্থান অনুযায়ী প্রকল্প বেছে নিন। এখানে কোনো প্রকল্প কনফিগার করা নেই? আপনার প্রশাসককে একটি কনফিগার করতে বলুন।"
+agent_center.console_refresh: "বর্তমান তথ্য রিফ্রেশ করুন"
+agent_center.console_open: "খুলুন: %{work}"
+agent_center.console_return: "এখানে ফিরে যান: %{work}"
+agent_center.console_respond: "সাড়া দিন: %{work} — %{question}"
+agent_center.console_unknown_work: "কাজের এককের বিবরণ উপলব্ধ নেই"
+agent_center.console_unknown_project: "প্রকল্প নির্বাচন করা হয়নি বা উপলব্ধ নেই"
+# Two works can have exactly the same goal and project. The numbered choice is explicit, never a fuzzy match. %{created} is the recorded creation time.
+agent_center.console_duplicate: "%{work} · আলাদা কাজের একক %{number} · %{created}"
+agent_center.console_start: "কাজের সংক্ষিপ্ত বিবরণ পর্যালোচনা করে শুরু করার অনুমোদন দিন"
+agent_center.approval_title: "অনুমোদন প্রয়োজন" # Title of an inline conversation card for a specific frozen human action.
+agent_center.approval_accept: "অনুমোদন দিন" # Button that submits the exact reviewed action, not a chat message.
+agent_center.approval_start: "অনুমোদন দিয়ে শুরু করুন" # Button approving the displayed work brief and execution grant.
+agent_center.approval_edit: "প্রয়োজনীয়তাগুলি পরিবর্তন করুন" # Return to the chat composer to describe changes; do not submit or approve the action.
+agent_center.approval_defer: "এখন নয়" # Defer review in this Console without cancelling the work or approving anything.
+agent_center.approval_open_hint: "F6 প্রস্তাব পর্যালোচনা করুন" # Opens the inline approval card without approving it. {Locked="F6"}
+agent_center.approval_keys: "Left/Right বেছে নিন · Enter নির্বাচন করুন · F5 বিবরণ · Esc এখন নয়" # Keyboard help while the inline approval card owns focus. {Locked="Left/Right","Enter","F5","Esc"}
+agent_center.approval_edit_hint: "%{target}-এর জন্য পরিবর্তনগুলি বর্ণনা করুন। কিছুই অনুমোদন করা হয়নি।" # %{target} is the displayed project or work name; the user's draft is preserved.
+agent_center.approval_deferred: "%{target}-এর পর্যালোচনা পরে করার জন্য রাখা হয়েছে। প্রস্তুত হলে F4 থেকে প্রস্তাবটি আবার খুলুন।" # Deferring is local presentation state, not cancellation of work. %{target} is a project or work name. {Locked="F4"}
+agent_center.console_pause: "কাজের একক সাময়িকভাবে থামান"
+agent_center.console_resume: "কাজের একক আবার শুরু করুন"
+agent_center.console_cancel: "কাজের একক বাতিল করুন"
+agent_center.console_inspect: "নির্ধারিত প্রদেয় ফলাফল পরিদর্শন করুন ও প্রমাণ যাচাই করুন (শুধু পড়ার জন্য)"
+agent_center.console_read_evidence: "প্রমাণ পড়ুন: %{work} — %{path}"
+agent_center.console_more_evidence: "প্রমাণের পরের পৃষ্ঠা পড়ুন: %{work}"
+agent_center.console_accept: "পরিদর্শন করা প্রদেয় ফলাফল গ্রহণ করুন"
+agent_center.console_takeover: "পরিচালিত কর্মক্ষেত্রের নিয়ন্ত্রণ নিন"
+agent_center.console_handback: "পরিচালিত কর্মক্ষেত্রের নিয়ন্ত্রণ ফিরিয়ে দিন"
+agent_center.console_apply: "অনুমোদিত পরিবর্তন প্রয়োগ করুন"
+agent_center.console_action: "নথিভুক্ত পদক্ষেপ পর্যালোচনা করুন"
+agent_center.console_answer: "উত্তর"
+agent_center.console_answer_review: "জমা দেওয়ার জন্য নথিভুক্ত উত্তর:\n%{value}"
+agent_center.console_answer_invalid: "%{field}-এর জন্য একটি বৈধ মান লিখুন; ক্ষেত্রটির প্রয়োজনীয় বিকল্প ও সীমা পর্যালোচনা করুন।"
+agent_center.console_schema_unsupported: "এই প্রশ্নে এমন একটি স্কিমা ব্যবহার করা হয়েছে যা সরল ফর্মটি সমর্থন করে না। কিছু জমা দেওয়া হয়নি; আরও সরল প্রশ্ন চান।"
+agent_center.console_yes: "হ্যাঁ"
+agent_center.console_no: "না"
+agent_center.console_form_help: "Up/Down ক্ষেত্র বেছে নিন · Left/Right বিকল্প বেছে নিন · Enter পরের ক্ষেত্র · Ctrl+Enter উত্তর পর্যালোচনা করুন · Esc ফিরে যান" # {Locked="Up/Down","Left/Right","Enter","Ctrl+Enter","Esc"}
+agent_center.console_menu_help: "F4 পদক্ষেপ · Up/Down বেছে নিন · Enter খুলুন · Esc ফিরে যান · F12 সমস্যা নির্ণয়" # {Locked="F4","Up/Down","Enter","Esc","F12"}
+agent_center.console_hint: "F4 পদক্ষেপ · F2 কাজের একক বদলান · F12 সমস্যা নির্ণয়" # {Locked="F4","F2","F12"}
+agent_center.console_scope: "অন্তর্ভুক্ত পরিসর"
+agent_center.console_exclusions: "এই কাজের এককের বাইরে"
+agent_center.console_criteria: "গ্রহণের মানদণ্ড ও প্রয়োজনীয় প্রমাণ"
+agent_center.console_delivery: "প্রদেয় ফলাফল"
+agent_center.console_delivery_code: "পরিচালিত কর্মক্ষেত্রে থাকা স্থানীয় কোড"
+agent_center.console_delivery_report: "নথিভুক্ত প্রতিবেদনের ফাইলগুলি"
+agent_center.console_progress: "টাস্কের অগ্রগতি"
+agent_center.console_authority: "অনুরোধ করা কর্তৃত্ব ও কার্যসম্পাদনের সীমা"
+agent_center.console_capabilities: "অনুমোদিত কার্যসম্পাদনের ক্ষমতা"
+agent_center.console_data_scopes: "পড়া যায় এমন ডেটার অবস্থান"
+agent_center.console_limits: "সম্পদের সীমা"
+agent_center.console_managed_writes: "পরিচালিত ক্রিয়াগুলির লেখার কাজ এই কাজের এককের কর্মক্ষেত্রে সীমাবদ্ধ। প্রদানকারীর মালিকানাধীন সরঞ্জামগুলির জন্য এটি অপারেটিং সিস্টেমের স্তরে বিচ্ছিন্নতার সীমানা নয়।"
+agent_center.console_frozen: "এই নিশ্চিতকরণ নথিভুক্ত কাজের একক, অনুরোধ, নীতি ও সংশোধনগুলির সঙ্গে আবদ্ধ। পরিবর্তনের জন্য নতুন পর্যালোচনা প্রয়োজন; অনুমোদনের লক্ষ্য কখনো না জানিয়ে বদলানো হয় না।"
+agent_center.console_stale: "সরাসরি তথ্য পুরোনো হয়ে গেছে। খসড়াগুলি নিরাপদ। পরিবর্তন অনুমোদন বা পাঠানোর আগে আবার সংযোগ করে রিফ্রেশ করুন; অজানা ফলাফল ব্যর্থতা বা সমাপ্তি নয়।"
+agent_center.console_diagnostics: "সমস্যা নির্ণয়ের প্রোটোকলের বিবরণ (শুধু পড়ার জন্য)"
+agent_center.console_no_details: "বর্তমান কাজের এককের বিবরণ নেই। প্রকল্প বেছে নিতে, কাজের একক খুলতে বা রিফ্রেশ করতে F4 ব্যবহার করুন।" # {Locked="F4"}
+agent_center.console_draft: "খসড়া — শুরু হয়নি"
+agent_center.console_active: "সক্রিয় — এখনও গৃহীত হয়নি"
+agent_center.console_completed: "সম্পূর্ণ — মানুষের গ্রহণ নথিভুক্ত হয়েছে"
+agent_center.console_cancelled: "বাতিল হয়েছে"
+agent_center.console_paused: "সাময়িকভাবে থামানো হয়েছে"
+agent_center.console_automatic: "স্বয়ংক্রিয় অগ্রগতি"
+agent_center.console_running: "চলছে"
+agent_center.console_pending: "অপেক্ষমাণ — সম্পূর্ণ হয়নি"
+agent_center.console_verified: "যাচাই করা হয়েছে / অভ্যন্তরীণভাবে গৃহীত"
+agent_center.console_failed: "ব্যর্থ / প্রত্যাখ্যাত — প্রমাণ পরিদর্শন করুন"
+agent_center.console_waiting: "সাড়া বা নির্ভরতার জন্য অপেক্ষা করছে"
+agent_center.console_unknown: "অজানা — রিফ্রেশ করুন বা সমস্যা নির্ণয়ের তথ্য দেখুন"
+agent_center.console_resolved: "সাড়া নথিভুক্ত হয়েছে"
+agent_center.console_superseded: "প্রতিস্থাপিত — বর্তমান প্রদেয় ফলাফল নয়"
+agent_center.console_next_done: "পরবর্তী: গৃহীত প্রদেয় ফলাফল ব্যবহার করুন; আর কোনো অনুমোদন বাকি নেই।"
+agent_center.console_next_cancelled: "পরবর্তী: স্বয়ংক্রিয় অগ্রগতি নেই; এই কাজের একক বাতিল হয়েছে।"
+agent_center.console_next_approve: "পরবর্তী: কাজের সংক্ষিপ্ত বিবরণ পর্যালোচনা করে F4 থেকে সুনির্দিষ্ট শুরুর অনুমোদন দিন।" # {Locked="F4"}
+agent_center.console_next_accept: "পরবর্তী: নির্ধারিত প্রদেয় ফলাফল ও প্রমাণ পরিদর্শন করে স্পষ্টভাবে গ্রহণ করুন।"
+agent_center.console_next_attention: "পরবর্তী: F4 থেকে এই কাজের এককের মনোযোগ প্রয়োজন এমন অমীমাংসিত বিষয়গুলি পর্যালোচনা করুন।" # {Locked="F4"}
+agent_center.console_next_resume: "পরবর্তী: সাময়িকভাবে থামানো এই কাজের একক কখন আবার শুরু করবেন তা আপনি ঠিক করুন।"
+agent_center.console_next_service: "পরবর্তী: পরিষেবা অনুমোদিত পরিকল্পনা এগিয়ে নিয়ে যায়। এটি চূড়ান্ত গ্রহণ নয়।"

@@ -10,6 +10,7 @@ pub(super) mod artifacts;
 mod bridge;
 #[cfg(test)]
 mod conformance;
+mod executor;
 mod process;
 mod workspace;
 
@@ -132,8 +133,10 @@ struct Inner {
     handle: ServiceHandle,
     root: PathBuf,
     invocations: Mutex<HashMap<String, Arc<Invocation>>>,
+    invocation_threads: Mutex<Vec<std::thread::JoinHandle<()>>>,
     effects: Mutex<HashMap<String, Arc<Mutex<()>>>>,
     adapters: BTreeMap<String, Value>,
+    conversation_policy: Option<Value>,
     runtime_id: String,
     shutting_down: std::sync::atomic::AtomicBool,
 }
@@ -148,6 +151,7 @@ struct Invocation {
 
 enum Control {
     Continue(Value),
+    WorkInput(Value),
     Release,
 }
 
@@ -156,6 +160,8 @@ enum Control {
 struct InvocationState {
     state: String,
     sequence: u64,
+    #[serde(default)]
+    pending_observation: Option<Request>,
     turn: u64,
     terminal_record_ids: Vec<String>,
     terminal_observation: Option<Value>,
@@ -167,6 +173,26 @@ struct InvocationState {
     released: bool,
     settled: bool,
     execution_identity: String,
+    #[serde(default)]
+    primary_session: Option<PrimarySession>,
+    #[serde(skip)]
+    owned_job: Option<Arc<process::ProcessJob>>,
+    #[serde(default)]
+    settlement_proof: Option<String>,
+    #[serde(default)]
+    execution_kind: String,
+    #[serde(default)]
+    work_inputs: BTreeMap<String, Value>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PrimarySession {
+    work_id: String,
+    capability_id: String,
+    provider_configuration_digest: String,
+    provider_session_id: String,
+    cwd: PathBuf,
 }
 
 impl Runtime {
@@ -175,18 +201,23 @@ impl Runtime {
         std::fs::create_dir_all(root.join("invocations"))?;
         std::fs::create_dir_all(root.join("effects"))?;
         let configuration = root.join("adapters.json");
-        let adapters = if configuration.exists() {
-            read_adapters(&std::fs::read(configuration)?)?
+        let (adapters, conversation_policy) = if configuration.exists() {
+            let bytes = std::fs::read(configuration)?;
+            let adapters = read_adapters(&bytes)?;
+            let policy = read_conversation_policy(&bytes, &adapters)?;
+            (adapters, policy)
         } else {
-            BTreeMap::new()
+            (BTreeMap::new(), None)
         };
         Ok(Self {
             inner: Arc::new(Inner {
                 handle,
                 root,
                 invocations: Mutex::new(HashMap::new()),
+                invocation_threads: Mutex::new(Vec::new()),
                 effects: Mutex::new(HashMap::new()),
                 adapters,
+                conversation_policy,
                 runtime_id: Uuid::new_v4().to_string(),
                 shutting_down: std::sync::atomic::AtomicBool::new(false),
             }),
@@ -200,17 +231,23 @@ impl Runtime {
         ];
         capabilities.extend(self.inner.adapters.keys().map(|id| {
             json!({
-                "id":id,"kinds":["ProduceResult","ReviewResult","Coordinate"],
+                "id":id,"kinds":["ProduceResult","ReviewResult","Coordinate","ExecuteWork"],
                 "supportsContinuation":true,"supportsScopedStop":true
             })
         }));
         success(self.request(Principal::Runtime {runtime_id:self.inner.runtime_id.clone()}, "runtime.register", json!({
             "runtimeInstanceId":self.inner.runtime_id,"protocolVersions":[1],"capabilities":capabilities
         })).await)?;
+        if let Some(policy) = &self.inner.conversation_policy {
+            success(
+                self.request(Principal::Service, "console.configure", policy.clone())
+                    .await,
+            )?;
+        }
         Ok(())
     }
 
-    /// Revoke invocation bindings and wait for their owned process trees to settle.
+    /// Settle owned process trees and join executors before their store/files may close.
     pub async fn shutdown(&self) -> Result<()> {
         self.inner
             .shutting_down
@@ -234,12 +271,23 @@ impl Runtime {
                     unsettled.push(text(&invocation.input, "id")?.to_owned());
                 }
             }
-            if unsettled.is_empty() {
+            let mut threads = self.inner.invocation_threads.lock().await;
+            if unsettled.is_empty() && threads.iter().all(std::thread::JoinHandle::is_finished) {
+                for thread in threads.drain(..) {
+                    thread.join().map_err(|_| {
+                        anyhow::anyhow!("invocation executor thread panicked during shutdown")
+                    })?;
+                }
                 return Ok(());
             }
+            let pending_threads = threads
+                .iter()
+                .filter(|thread| !thread.is_finished())
+                .count();
+            drop(threads);
             if tokio::time::Instant::now() >= deadline {
                 bail!(
-                    "runtime shutdown could not prove settlement for invocations: {}",
+                    "runtime shutdown could not finish: unsettled invocations [{}], {pending_threads} executor threads still running",
                     unsettled.join(", ")
                 );
             }
@@ -308,7 +356,13 @@ impl Runtime {
 
     async fn effect(&self, method: &str, params: &Value) -> Result<Response> {
         match method {
+            "runtime.recover_coordinator" => Ok(Response::ok(
+                "",
+                serde_json::to_value(self.recover_coordinator_session(params).await?)?,
+            )),
+            "project.create" => Ok(Response::ok("", workspace::create_project(params).await?)),
             "runtime.invoke" => self.invoke(params["invocation"].clone()).await,
+            "runtime.work_input" => self.work_input(params).await,
             "runtime.continue" => {
                 let invocation = self.lookup(params).await?;
                 let continuation = &params["continuation"];
@@ -366,25 +420,44 @@ impl Runtime {
                 ))
             }
             "runtime.stop" => {
-                let invocation = self.lookup(params).await?;
+                let invocation = match self.lookup(params).await {
+                    Ok(invocation) => invocation,
+                    Err(_) => match self.restore_settled_invocation(params).await {
+                        Ok(invocation) => invocation,
+                        Err(error) => {
+                            return Ok(Response::fail("", "OUTCOME_UNKNOWN", format!("{error:#}")))
+                        }
+                    },
+                };
                 let operation = text(params, "operationId")?;
-                {
+                let job = {
                     let mut state = invocation.state.lock().await;
                     if !state.stop_operations.iter().any(|id| id == operation) {
                         state.stop_operations.push(operation.into());
                     }
-                    if state.settled || state.released {
-                        drop(state);
-                        self.settled(&invocation).await?;
-                        return Ok(Response::ok(
-                            "",
-                            json!({"quiescent":true,"operationId":operation}),
-                        ));
+                    invocation.cancel.cancel();
+                    let job = state.owned_job.clone();
+                    if !state.settled {
+                        state.state = "Settling".into();
                     }
-                    state.state = "Settling".into();
                     self.persist(&invocation, &state)?;
+                    job
+                };
+                if let Some(job) = job {
+                    // The job handle, not a PID lookup, identifies every descendant owned
+                    // by this invocation even when its ACP transport/terminal report stalled.
+                    job.terminate()?;
+                    job.settle().await?;
+                    self.record_settlement(&invocation).await?;
                 }
-                invocation.cancel.cancel();
+                if invocation.state.lock().await.settled {
+                    self.reconcile_settled_observation(&invocation, params)
+                        .await?;
+                    return Ok(Response::ok(
+                        "",
+                        json!({"quiescent":true,"operationId":operation}),
+                    ));
+                }
                 Ok(Response::pending(
                     "",
                     operation.into(),
@@ -392,7 +465,15 @@ impl Runtime {
                 ))
             }
             "runtime.release" => {
-                let invocation = self.lookup(params).await?;
+                let invocation = match self.lookup(params).await {
+                    Ok(invocation) => invocation,
+                    Err(_) => match self.restore_settled_invocation(params).await {
+                        Ok(invocation) => invocation,
+                        Err(error) => {
+                            return Ok(Response::fail("", "OUTCOME_UNKNOWN", format!("{error:#}")))
+                        }
+                    },
+                };
                 let mut state = invocation.state.lock().await;
                 if !state.settled || !matches!(state.state.as_str(), "Idle" | "Ended") {
                     return Ok(Response::fail(
@@ -407,6 +488,7 @@ impl Runtime {
                     }
                     state.released = true;
                     state.state = "Ended".into();
+                    state.owned_job = None;
                     invocation.cancel.cancel();
                     self.persist(&invocation, &state)?;
                 }
@@ -498,8 +580,115 @@ impl Runtime {
     fn persist(&self, invocation: &Invocation, state: &InvocationState) -> Result<()> {
         let path = self.ledger(text(&invocation.input, "id")?)?;
         // The ledger intentionally stores no provider configuration or MCP bearer.
-        std::fs::write(path, serde_json::to_vec(&json!({"inputDigest":artifacts::digest(&serde_json::to_vec(&invocation.input)?),"state":state}))?)
+        std::fs::write(path, serde_json::to_vec(&json!({"inputDigest":artifacts::digest(&serde_json::to_vec(&invocation.input)?),
+            "binding":{"invocationId":invocation.input["id"],"runtimeId":invocation.input["runtimeId"],
+                "bindingGeneration":invocation.input["bindingGeneration"]},"state":state}))?)
             .context("persist invocation ledger")
+    }
+
+    async fn restore_settled_invocation(&self, params: &Value) -> Result<Arc<Invocation>> {
+        let id = text(params, "invocationId")?;
+        let expected = &params["reconciliation"];
+        let ledger: Value =
+            serde_json::from_slice(&tokio::fs::read(self.ledger(id)?).await.context(
+                "The invocation is not owned by this runtime and has no settlement ledger",
+            )?)?;
+        let mut state: InvocationState = serde_json::from_value(ledger["state"].clone())?;
+        anyhow::ensure!(
+            state.settled
+                && (state.settlement_proof.as_deref() == Some(state.execution_identity.as_str())
+                    || state
+                        .terminal_observation
+                        .as_ref()
+                        .is_some_and(|observation| observation["data"]["quiescent"] == true)),
+            "No durable proof of process-tree settlement; a missing provider PID is not sufficient"
+        );
+        anyhow::ensure!(
+            !state.execution_identity.is_empty()
+                && expected["executionIdentity"].as_str()
+                    == Some(state.execution_identity.as_str()),
+            "Settlement ledger does not match the tracked execution identity"
+        );
+        let binding = json!({"invocationId":id,"runtimeId":expected["runtimeId"],
+            "bindingGeneration":expected["bindingGeneration"]});
+        anyhow::ensure!(
+            ledger.get("binding").is_none_or(|saved| saved == &binding),
+            "Settlement ledger belongs to another invocation binding"
+        );
+        let runtime_id = text(expected, "runtimeId")?;
+        let generation = expected["bindingGeneration"]
+            .as_u64()
+            .filter(|generation| *generation > 0)
+            .context("Missing authoritative binding generation for reconciliation")?;
+        state.state = "Idle".into();
+        let (commands, _receiver) = mpsc::channel(1);
+        let invocation = Arc::new(Invocation {
+            input: json!({"id":id,"runtimeId":runtime_id,"bindingGeneration":generation}),
+            state: Mutex::new(state),
+            report_lock: Mutex::new(()),
+            cancel: CancellationToken::new(),
+            commands,
+        });
+        invocation.cancel.cancel();
+        let mut invocations = self.inner.invocations.lock().await;
+        Ok(invocations
+            .entry(id.to_owned())
+            .or_insert(invocation)
+            .clone())
+    }
+
+    async fn reconcile_settled_observation(
+        &self,
+        invocation: &Invocation,
+        params: &Value,
+    ) -> Result<()> {
+        {
+            let _serial = invocation.report_lock.lock().await;
+            let mut state = invocation.state.lock().await;
+            anyhow::ensure!(state.settled, "Execution settlement has not been proven");
+            if let Some(expected) = params.get("reconciliation") {
+                anyhow::ensure!(
+                    expected["runtimeId"] == invocation.input["runtimeId"]
+                        && expected["bindingGeneration"] == invocation.input["bindingGeneration"],
+                    "Reconciliation targets another runtime binding"
+                );
+                let expected_identity = text(expected, "executionIdentity")?;
+                anyhow::ensure!(
+                    expected_identity.is_empty() || expected_identity == state.execution_identity,
+                    "Reconciliation targets another execution identity"
+                );
+                self.flush_observation(invocation, &mut state).await?;
+                state.sequence = state.sequence.max(
+                    expected["lastSequence"]
+                        .as_u64()
+                        .context("Missing authoritative observation sequence")?,
+                );
+                for operation in expected["stopOperationIds"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                {
+                    if !state
+                        .stop_operations
+                        .iter()
+                        .any(|existing| existing == operation)
+                    {
+                        state.stop_operations.push(operation.to_owned());
+                    }
+                }
+            }
+            state.state = "Idle".into();
+            self.persist(invocation, &state)?;
+        }
+        self.settled(invocation).await
+    }
+
+    async fn record_settlement(&self, invocation: &Invocation) -> Result<()> {
+        let mut state = invocation.state.lock().await;
+        state.settled = true;
+        state.settlement_proof = Some(state.execution_identity.clone());
+        self.persist(invocation, &state)
     }
 
     async fn invoke(&self, mut input: Value) -> Result<Response> {
@@ -522,7 +711,12 @@ impl Runtime {
             bail!("runtime is shutting down; invocation admission is closed");
         }
         if let Some(existing) = invocations.get(&id) {
-            return Ok(duplicate_receipt(&existing.input, &input));
+            let mut original = existing.input.clone();
+            if let Some(fields) = original.as_object_mut() {
+                fields.remove("resumeSession");
+                fields.remove("resumeFailure");
+            }
+            return Ok(duplicate_receipt(&original, &input));
         }
         if self.ledger(&id)?.exists() {
             return Ok(Response::fail(
@@ -530,6 +724,37 @@ impl Runtime {
                 "OUTCOME_UNKNOWN",
                 "recorded invocation needs reconciliation; it will not be prompted twice",
             ));
+        }
+        if let Some(reference) = input.get("sessionReuseRef").and_then(Value::as_str) {
+            let resumed = self.saved_primary_session(reference, &input);
+            match resumed {
+                Ok(session) => input["resumeSession"] = serde_json::to_value(session)?,
+                Err(error) => {
+                    input["resumeFailure"] = json!(format!("SESSION_RESUME_UNAVAILABLE: {error:#}"))
+                }
+            }
+        }
+        let work = input
+            .pointer("/coordinationInput/scope/workId")
+            .or_else(|| input.pointer("/executorInput/workId"))
+            .and_then(Value::as_str);
+        if let Some(work) = work {
+            for existing in invocations.values() {
+                if existing
+                    .input
+                    .pointer("/coordinationInput/scope/workId")
+                    .or_else(|| existing.input.pointer("/executorInput/workId"))
+                    .and_then(Value::as_str)
+                    == Some(work)
+                    && !existing.state.lock().await.released
+                {
+                    return Ok(Response::fail(
+                        "",
+                        "SESSION_BUSY",
+                        "The work's primary execution has not been released",
+                    ));
+                }
+            }
         }
         if invocations
             .values()
@@ -539,7 +764,6 @@ impl Runtime {
         {
             bail!("runtime invocation limit reached");
         }
-        deadline(&input)?;
         let (commands, receiver) = mpsc::channel(32);
         let invocation = Arc::new(Invocation {
             input,
@@ -555,7 +779,7 @@ impl Runtime {
         self.persist(&invocation, &*invocation.state.lock().await)?;
         invocations.insert(id.clone(), invocation.clone());
         let runtime = self.clone();
-        std::thread::Builder::new().name(format!("center-{id}")).spawn(move || {
+        let thread = std::thread::Builder::new().name(format!("center-{id}")).spawn(move || {
             let result = tokio::runtime::Builder::new_current_thread().enable_all().build();
             match result {
                 Ok(executor) => {
@@ -578,10 +802,160 @@ impl Runtime {
                 Err(error) => tracing::error!(target:"agent_center", %error, "cannot initialize invocation executor"),
             }
         }).context("spawn invocation executor thread")?;
+        self.inner.invocation_threads.lock().await.push(thread);
         Ok(Response::ok(
             "",
             json!({"invocationId":id,"disposition":"Recorded"}),
         ))
+    }
+
+    fn saved_primary_session(&self, reference: &str, input: &Value) -> Result<PrimarySession> {
+        if input.get("executorInput").is_some() {
+            return self.saved_executor_session(reference, input);
+        }
+        let ledger: Value = serde_json::from_slice(
+            &std::fs::read(self.ledger(reference)?)
+                .context("SESSION_RESUME_UNAVAILABLE: primary session ledger is missing")?,
+        )?;
+        let state: InvocationState = serde_json::from_value(ledger["state"].clone())?;
+        let session = if self.recovered_session_path(reference)?.exists() {
+            let recovered: Value =
+                serde_json::from_slice(&std::fs::read(self.recovered_session_path(reference)?)?)?;
+            anyhow::ensure!(
+                recovered["inputDigest"] == ledger["inputDigest"],
+                "SESSION_RESUME_UNAVAILABLE: recovered coordinator provenance changed"
+            );
+            serde_json::from_value(recovered["session"].clone())?
+        } else {
+            anyhow::ensure!(
+                state.released && state.settled,
+                "SESSION_RESUME_UNAVAILABLE: primary execution is not proven settled and released"
+            );
+            state
+                .primary_session
+                .context("SESSION_RESUME_UNAVAILABLE: primary session association is missing")?
+        };
+        Uuid::parse_str(&session.work_id)
+            .context("SESSION_RESUME_UNAVAILABLE: saved work identity is malformed")?;
+        anyhow::ensure!(
+            !session.provider_session_id.trim().is_empty()
+                && !session.capability_id.trim().is_empty()
+                && session.cwd.is_absolute(),
+            "SESSION_RESUME_UNAVAILABLE: saved provider session or cwd is malformed"
+        );
+        anyhow::ensure!(
+            input
+                .pointer("/coordinationInput/scope/workId")
+                .and_then(Value::as_str)
+                == Some(session.work_id.as_str())
+                && input["capabilityId"].as_str() == Some(session.capability_id.as_str())
+                && artifacts::digest(&serde_json::to_vec(&input["adapter"])?)
+                    == session.provider_configuration_digest,
+            "SESSION_RESUME_UNAVAILABLE: saved session work/provider configuration does not match"
+        );
+        Ok(session)
+    }
+
+    fn recovered_session_path(&self, id: &str) -> Result<PathBuf> {
+        Ok(self.ledger(id)?.with_extension("coordinator-session.json"))
+    }
+
+    async fn recover_coordinator_session(&self, params: &Value) -> Result<PrimarySession> {
+        let mut original = params["invocation"].clone();
+        let id = text(&original, "id")?.to_owned();
+        let capability = text(&original, "capabilityId")?.to_owned();
+        anyhow::ensure!(
+            original["subject"]["kind"] == "Coordination"
+                && original.get("dispatch").is_none()
+                && original["coordinationInput"]["scope"]["workId"] == params["workId"]
+                && original["coordinationInput"]["snapshot"]["work"]["workspaceId"] == params["workspaceId"],
+            "SESSION_RESUME_UNAVAILABLE: only the original non-writing work coordinator can be recovered"
+        );
+        anyhow::ensure!(
+            !self.inner.invocations.lock().await.contains_key(&id),
+            "SESSION_BUSY: the coordinator is still owned by this runtime"
+        );
+        let adapter = self
+            .inner
+            .adapters
+            .get(&capability)
+            .context("SESSION_RESUME_UNAVAILABLE: original provider is not configured")?;
+        original["adapter"] = adapter.clone();
+        let ledger: Value = serde_json::from_slice(&tokio::fs::read(self.ledger(&id)?).await?)?;
+        if original.get("sessionReuseRef").is_some() {
+            let saved: PrimarySession = serde_json::from_value(
+                ledger["state"]["primarySession"].clone(),
+            )
+            .context("SESSION_RESUME_UNAVAILABLE: resumed coordinator association is missing")?;
+            original["resumeSession"] = serde_json::to_value(saved)?;
+        }
+        anyhow::ensure!(
+            ledger["inputDigest"] == artifacts::digest(&serde_json::to_vec(&original)?)
+                && ledger["state"]["executionIdentity"] == params["executionIdentity"]
+                && ledger["state"]["acknowledged"] == false,
+            "SESSION_RESUME_UNAVAILABLE: original invocation/provider provenance does not match"
+        );
+        let cwd = if let Some(saved) = ledger
+            .pointer("/state/primarySession")
+            .filter(|saved| saved.is_object())
+        {
+            let saved: PrimarySession = serde_json::from_value(saved.clone())?;
+            anyhow::ensure!(
+                saved.provider_session_id == text(params, "providerSessionId")?
+                    && saved.work_id == text(params, "workId")?
+                    && saved.capability_id == capability
+                    && saved.provider_configuration_digest
+                        == artifacts::digest(&serde_json::to_vec(adapter)?),
+                "SESSION_RESUME_UNAVAILABLE: saved coordinator association changed"
+            );
+            anyhow::ensure!(
+                saved.cwd.canonicalize()? == saved.cwd,
+                "SESSION_RESUME_UNAVAILABLE: original directory was retargeted"
+            );
+            saved.cwd
+        } else {
+            let cwd = self.workspace(text(params, "workspaceId")?).await?;
+            workspace::managed(&self.inner.root, &cwd)?;
+            let expected = self
+                .inner
+                .root
+                .join("workspaces")
+                .join(text(params, "workspaceId")?)
+                .canonicalize()?;
+            anyhow::ensure!(
+                cwd == expected,
+                "SESSION_RESUME_UNAVAILABLE: original workspace identity changed"
+            );
+            cwd
+        };
+        let cwd = cwd
+            .canonicalize()
+            .context("SESSION_RESUME_UNAVAILABLE: original directory is unavailable")?;
+        let session = PrimarySession {
+            work_id: text(params, "workId")?.to_owned(),
+            capability_id: capability,
+            provider_configuration_digest: artifacts::digest(&serde_json::to_vec(adapter)?),
+            provider_session_id: text(params, "providerSessionId")?.to_owned(),
+            cwd,
+        };
+        anyhow::ensure!(
+            !session.provider_session_id.trim().is_empty(),
+            "SESSION_RESUME_UNAVAILABLE: original provider session ID is missing"
+        );
+        let record = json!({"inputDigest":ledger["inputDigest"],"session":session});
+        let path = self.recovered_session_path(&id)?;
+        if path.exists() {
+            let previous: Value = serde_json::from_slice(&tokio::fs::read(&path).await?)?;
+            anyhow::ensure!(
+                previous == record,
+                "SESSION_RESUME_UNAVAILABLE: recovered session association cannot be replaced"
+            );
+        } else {
+            let pending = path.with_extension("pending");
+            tokio::fs::write(&pending, serde_json::to_vec(&record)?).await?;
+            tokio::fs::rename(&pending, &path).await?;
+        }
+        Ok(session)
     }
 
     async fn lookup(&self, params: &Value) -> Result<Arc<Invocation>> {
@@ -616,21 +990,64 @@ impl Runtime {
     async fn report(&self, invocation: &Invocation, kind: &str, data: Value) -> Result<()> {
         let _serial = invocation.report_lock.lock().await;
         let mut state = invocation.state.lock().await;
+        self.flush_observation(invocation, &mut state).await?;
         let sequence = state.sequence + 1;
+        let observation_id = Uuid::new_v4().to_string();
         let params = json!({
-            "observationId":Uuid::new_v4().to_string(),"invocationId":invocation.input["id"],
+            "observationId":observation_id,"invocationId":invocation.input["id"],
             "bindingGeneration":invocation.input["bindingGeneration"],"sequence":sequence,"kind":kind,"data":data
         });
+        let mut request = Request::new("runtime.report", params);
+        request.command_id = Some(observation_id);
+        state.pending_observation = Some(request);
+        // Cancellation can drop the reply after the authority commits. Retain the
+        // exact command before sending so the next report replays, rather than skips it.
+        self.flush_observation(invocation, &mut state).await
+    }
+
+    async fn flush_observation(
+        &self,
+        invocation: &Invocation,
+        state: &mut InvocationState,
+    ) -> Result<()> {
+        let Some(request) = state.pending_observation.clone() else {
+            return Ok(());
+        };
+        anyhow::ensure!(
+            request.method == "runtime.report"
+                && request.params["invocationId"] == invocation.input["id"]
+                && request.params["bindingGeneration"] == invocation.input["bindingGeneration"],
+            "Pending observation belongs to another invocation binding"
+        );
+        self.persist(invocation, state)?;
         let runtime_id = text(&invocation.input, "runtimeId")?.into();
         let response = self
-            .request(Principal::Runtime { runtime_id }, "runtime.report", params)
+            .inner
+            .handle
+            .request(Principal::Runtime { runtime_id }, request.clone())
             .await;
-        success(response)?;
-        state.sequence = sequence;
-        if kind == "TurnEnded" {
-            state.terminal_observation = Some(json!({"sequence":sequence,"data":data}));
+        if response.status != "ok"
+            && response
+                .failure
+                .as_ref()
+                .is_some_and(|failure| failure.code != "EXECUTION_FAILED")
+        {
+            // A definitive rejection did not consume this sequence. Do not make an
+            // invalid observation prevent the subsequent failure/settlement report.
+            state.pending_observation = None;
+            self.persist(invocation, state)?;
         }
-        self.persist(invocation, &state)
+        success(response)?;
+        let sequence = request.params["sequence"]
+            .as_u64()
+            .context("Pending observation has no sequence")?;
+        state.sequence = state.sequence.max(sequence);
+        if request.params["kind"] == "TurnEnded" {
+            state.terminal_observation =
+                Some(json!({"sequence":sequence,"data":request.params["data"]}));
+        }
+        state.pending_observation = None;
+        self.persist(invocation, state)
     }
 
     async fn end(
@@ -690,6 +1107,16 @@ impl Runtime {
         }
     }
 
+    async fn coordination_directory(root: &Path, invocation_id: &str) -> Result<PathBuf> {
+        let path = root.join("coordination").join(invocation_id);
+        tokio::fs::create_dir_all(&path)
+            .await
+            .context("create coordination working directory")?;
+        tokio::fs::canonicalize(path)
+            .await
+            .context("resolve coordination working directory")
+    }
+
     async fn run(
         &self,
         invocation: Arc<Invocation>,
@@ -698,22 +1125,50 @@ impl Runtime {
         if invocation.cancel.is_cancelled() {
             bail!("invocation cancelled before execution");
         }
+        if let Some(failure) = invocation
+            .input
+            .get("resumeFailure")
+            .and_then(Value::as_str)
+        {
+            bail!("{failure}");
+        }
+        deadline(&invocation.input)?;
         let dispatch = &invocation.input["dispatch"];
         let cwd = if let Some(workspace) = dispatch["workspaceId"].as_str() {
+            self.workspace(workspace).await?
+        } else if let Some(workspace) = invocation.input["executorInput"]["workspaceId"].as_str() {
             self.workspace(workspace).await?
         } else if let Some(workspace) =
             invocation.input["coordinationInput"]["snapshot"]["work"]["workspaceId"].as_str()
         {
             self.workspace(workspace).await?
         } else {
-            let path = self
-                .inner
-                .root
-                .join("coordination")
-                .join(text(&invocation.input, "id")?);
-            tokio::fs::create_dir_all(&path).await?;
-            path
+            if invocation.input.get("resumeSession").is_some() {
+                let saved: PrimarySession =
+                    serde_json::from_value(invocation.input["resumeSession"].clone())?;
+                let root = tokio::fs::canonicalize(self.inner.root.join("coordination")).await?;
+                let cwd = tokio::fs::canonicalize(&saved.cwd).await.context(
+                    "SESSION_RESUME_UNAVAILABLE: saved coordination cwd no longer exists",
+                )?;
+                anyhow::ensure!(
+                    cwd.starts_with(root),
+                    "SESSION_RESUME_UNAVAILABLE: saved cwd is outside coordination storage"
+                );
+                cwd
+            } else {
+                Self::coordination_directory(&self.inner.root, text(&invocation.input, "id")?)
+                    .await?
+            }
         };
+        let cwd = process::launch_directory(&cwd).await?;
+        if invocation.input.get("resumeSession").is_some() {
+            let saved: PrimarySession =
+                serde_json::from_value(invocation.input["resumeSession"].clone())?;
+            anyhow::ensure!(
+                saved.cwd == cwd,
+                "SESSION_RESUME_UNAVAILABLE: work cwd changed since primary session startup"
+            );
+        }
         let mut inputs = Vec::new();
         let mut check_records = Vec::new();
         if let Some(refs) = dispatch["inputs"].as_array() {
@@ -804,7 +1259,7 @@ impl Runtime {
             .min(deadline(&invocation.input)?.as_secs().max(1));
         invocation.state.lock().await.settled = false;
         let outcome = process::run(&recipe, check_cwd, invocation.cancel.clone()).await?;
-        invocation.state.lock().await.settled = true;
+        self.record_settlement(invocation).await?;
         let evidence_dir = cwd
             .join(".agent-center-evidence")
             .join(text(&invocation.input, "id")?);
@@ -881,7 +1336,55 @@ fn duplicate_receipt(original: &Value, repeated: &Value) -> Response {
 }
 
 pub(super) fn validate_adapter_configuration(bytes: &[u8]) -> Result<()> {
-    read_adapters(bytes).map(|_| ())
+    let adapters = read_adapters(bytes)?;
+    read_conversation_policy(bytes, &adapters).map(|_| ())
+}
+
+fn read_conversation_policy(
+    bytes: &[u8],
+    adapters: &BTreeMap<String, Value>,
+) -> Result<Option<Value>> {
+    let config: Value = serde_json::from_slice(bytes)?;
+    let capability = if let Some(id) = config.get("conversationCapabilityId") {
+        let id = id
+            .as_str()
+            .context("conversationCapabilityId must be a capability ID")?;
+        anyhow::ensure!(
+            adapters.contains_key(id),
+            "conversationCapabilityId is not an approved configured adapter"
+        );
+        Some(id)
+    } else if adapters.len() == 1 {
+        adapters.keys().next().map(String::as_str)
+    } else {
+        None
+    };
+    let Some(capability) = capability else {
+        anyhow::ensure!(
+            config.get("conversationLimits").is_none(),
+            "conversationCapabilityId must select an approved adapter before setting conversationLimits"
+        );
+        return Ok(None);
+    };
+    let limits = config
+        .get("conversationLimits")
+        .cloned()
+        .unwrap_or_else(|| {
+            json!({
+                "concurrency":1,"executionAttempts":8,"evaluationAttempts":16,
+                "coordinationTurns":64,"contextRounds":3,
+                "executionSeconds":600,"coordinationSeconds":120
+            })
+        });
+    let typed: super::wire::Limits =
+        serde_json::from_value(limits.clone()).context("Invalid global conversation limits")?;
+    super::engine::Engine::validate_limits(&typed)
+        .map_err(|response| anyhow::anyhow!("Invalid global conversation limits: {response:?}"))?;
+    Ok(Some(json!({
+        "capabilityId":capability,"workerCapabilityId":capability,"checkCapabilityId":"native-check",
+        "approvedModelDestination":adapters[capability]["approvedModelDestination"],
+        "limits":limits
+    })))
 }
 
 fn read_adapters(bytes: &[u8]) -> Result<BTreeMap<String, Value>> {
@@ -986,6 +1489,830 @@ fn deadline(input: &Value) -> Result<Duration> {
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn executor_shutdown_waits_for_reporting_threads_after_process_settlement() -> Result<()>
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        let root = std::env::current_dir()?
+            .join("target")
+            .join(format!("executor-shutdown-{}", Uuid::new_v4()));
+        let handle = super::super::transport::start_engine(root.clone()).await?;
+        let runtime = Runtime::new(handle.clone(), root.clone())?;
+        let path = root.join("late-report.log");
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .share_mode(0)
+            .open(&path)?;
+        let (release, wait) = std::sync::mpsc::channel::<()>();
+        let (started, ready) = tokio::sync::oneshot::channel();
+        let thread = std::thread::spawn(move || {
+            started.send(()).unwrap();
+            wait.recv_timeout(Duration::from_secs(15)).unwrap();
+            drop(file);
+        });
+        runtime.inner.invocation_threads.lock().await.push(thread);
+        ready.await?;
+        let shutdown = runtime.shutdown();
+        tokio::pin!(shutdown);
+        assert!(
+            futures::poll!(&mut shutdown).is_pending(),
+            "Proven process settlement must not bypass unfinished executor reporting"
+        );
+        release.send(())?;
+        shutdown.await?;
+        assert!(runtime.inner.invocation_threads.lock().await.is_empty());
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .share_mode(0)
+            .open(&path)?;
+        drop(file);
+        handle.shutdown().await?;
+        std::fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn interrupted_observation_replays_before_text_and_terminal_reports() -> Result<()> {
+        use std::future::Future;
+        use std::task::Poll;
+
+        for committed in [false, true] {
+            let root = std::env::current_dir()?
+                .join("target")
+                .join(format!("center-report-replay-{}", Uuid::new_v4()));
+            std::fs::create_dir_all(&root)?;
+            std::fs::write(
+                root.join("adapters.json"),
+                serde_json::to_vec(&json!({"capabilities":[{
+                    "id":"fixture","adapter":{"kind":"ACP","executable":"must-not-start.exe",
+                        "args":[],"approvedModelDestination":"Observation replay fixture"}
+                }]}))?,
+            )?;
+            let handle = super::super::transport::start_engine(root.clone()).await?;
+            let runtime = Runtime::new(handle.clone(), root.clone())?;
+            let result = async {
+                runtime.register().await?;
+                let conversation = Uuid::new_v4().to_string();
+                success(runtime.request(Principal::Human, "conversation.submit", json!({
+                    "conversationId":conversation,"clientMessageId":Uuid::new_v4().to_string(),
+                    "text":"Replay fixture","attachments":[],
+                    "context":{"scope":"Global","consoleSessionId":Uuid::new_v4().to_string(),
+                        "contextVersion":1}
+                })).await)?;
+                let effect = handle
+                    .effects()
+                    .await?
+                    .into_iter()
+                    .find(|effect| effect.method == "runtime.invoke")
+                    .context("missing invocation")?;
+                let input = effect.params["invocation"].clone();
+                let id = text(&input, "id")?.to_owned();
+                let message = input["replyMessageId"].clone();
+                let (commands, _receiver) = mpsc::channel(1);
+                let mut invocation = Invocation {
+                    input,
+                    state: Mutex::new(InvocationState {
+                        state: "Running".into(),
+                        turn: 1,
+                        settled: true,
+                        execution_identity: "fixture-owned-process".into(),
+                        ..Default::default()
+                    }),
+                    report_lock: Mutex::new(()),
+                    cancel: CancellationToken::new(),
+                    commands,
+                };
+                handle
+                    .complete_effect(
+                        &effect.id,
+                        Response::ok("", json!({"invocationId":id,"disposition":"Recorded"})),
+                    )
+                    .await?;
+                runtime
+                    .report(
+                        &invocation,
+                        "Started",
+                        json!({
+                            "adapterKind":"ACP","executionIdentity":"fixture-owned-process",
+                            "providerSessionId":"fixture-session"
+                        }),
+                    )
+                    .await?;
+                let first =
+                    json!({"messageId":message,"partId":"turn-1","chunkIndex":0,"text":"before "});
+                let db = rusqlite::Connection::open(root.join("work.db"))?;
+                if committed {
+                    // Hold the database writer so the reporting future cannot receive
+                    // its acknowledgement before we cancel it.
+                    db.execute_batch("BEGIN IMMEDIATE")?;
+                    let mut reporting = Box::pin(runtime.report(&invocation, "TextDelta", first));
+                    std::future::poll_fn(|cx| {
+                        assert!(reporting.as_mut().poll(cx).is_pending());
+                        Poll::Ready(())
+                    })
+                    .await;
+                    drop(reporting);
+                    db.execute_batch("ROLLBACK")?;
+                    success(
+                        runtime
+                            .request(Principal::Human, "work.list", json!({"limit":10}))
+                            .await,
+                    )?;
+                } else {
+                    let observation_id = Uuid::new_v4().to_string();
+                    let mut request = Request::new(
+                        "runtime.report",
+                        json!({
+                            "observationId":observation_id,"invocationId":id,
+                            "bindingGeneration":invocation.input["bindingGeneration"],
+                            "sequence":2,"kind":"TextDelta","data":first
+                        }),
+                    );
+                    request.command_id = Some(observation_id);
+                    let mut state = invocation.state.lock().await;
+                    state.pending_observation = Some(request);
+                    runtime.persist(&invocation, &state)?;
+                }
+                let ledger: Value = serde_json::from_slice(&std::fs::read(runtime.ledger(&id)?)?)?;
+                assert_eq!(ledger["state"]["sequence"], 1);
+                assert_eq!(
+                    ledger["state"]["pendingObservation"]["params"]["sequence"],
+                    2
+                );
+                // Recovery must work from the persisted outbox, not just process memory.
+                invocation.state = Mutex::new(serde_json::from_value(ledger["state"].clone())?);
+                runtime
+                    .report(
+                        &invocation,
+                        "TextDelta",
+                        json!({
+                            "messageId":message,"partId":"turn-1","chunkIndex":1,"text":"after"
+                        }),
+                    )
+                    .await?;
+                assert_eq!(invocation.state.lock().await.sequence, 3);
+                assert!(invocation.state.lock().await.pending_observation.is_none());
+                let invocation = Arc::new(invocation);
+                let (events, receiver) = mpsc::channel(128);
+                for text in ["batched ", "text"] {
+                    events
+                        .send(acp::TextEvent::Chunk {
+                            turn: 2,
+                            text: text.into(),
+                        })
+                        .await?;
+                }
+                let (flushed, acknowledged) = tokio::sync::oneshot::channel();
+                events.send(acp::TextEvent::Flush(flushed)).await?;
+                events
+                    .send(acp::TextEvent::Chunk {
+                        turn: 2,
+                        text: " next".into(),
+                    })
+                    .await?;
+                events
+                    .send(acp::TextEvent::Chunk {
+                        turn: 3,
+                        text: "new turn".into(),
+                    })
+                    .await?;
+                drop(events);
+                acp::report_text_events(runtime.clone(), invocation.clone(), receiver).await?;
+                acknowledged.await?;
+                assert_eq!(invocation.state.lock().await.sequence, 6);
+                let rejected = runtime
+                    .report(
+                        &invocation,
+                        "TextDelta",
+                        json!({
+                            "messageId":message,"partId":"turn-1","chunkIndex":99,"text":"invalid"
+                        }),
+                    )
+                    .await;
+                assert!(
+                    rejected.is_err(),
+                    "Invalid chunk must not consume an observation sequence"
+                );
+                assert!(invocation.state.lock().await.pending_observation.is_none());
+                runtime
+                    .end(
+                        &invocation,
+                        "Cancelled",
+                        Some("Fixture deadline".into()),
+                        true,
+                    )
+                    .await?;
+                let saved: String =
+                    db.query_row("SELECT body FROM records WHERE id=?1", [&id], |r| r.get(0))?;
+                let saved: Value = serde_json::from_str(&saved)?;
+                assert_eq!(saved["lastSequence"], 7);
+                assert_eq!(saved["state"], "Releasing");
+                assert_eq!(saved["lastTurnEnd"]["quiescent"], true);
+                let item: String = db.query_row(
+                    "SELECT body FROM records WHERE id=?1",
+                    [message.as_str().context("fixture reply missing")?],
+                    |r| r.get(0),
+                )?;
+                let item: Value = serde_json::from_str(&item)?;
+                assert_eq!(item["parts"].as_array().unwrap().len(), 5);
+                assert_eq!(item["status"], "Interrupted");
+                assert_eq!(item["parts"][0]["text"], "before ");
+                assert_eq!(item["parts"][1]["text"], "after");
+                assert_eq!(item["parts"][2]["text"], "batched text");
+                assert_eq!(item["parts"][3]["chunkIndex"], 1);
+                assert_eq!(item["parts"][4]["partId"], "turn-3");
+                assert_eq!(item["parts"][4]["chunkIndex"], 0);
+                Ok::<_, anyhow::Error>(())
+            }
+            .await;
+            runtime.shutdown().await?;
+            handle.shutdown().await?;
+            std::fs::remove_dir_all(root)?;
+            result?;
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn project_creation_effect_replays_receipt_and_never_reexecutes_unknown_intent(
+    ) -> Result<()> {
+        fn make_writable(path: &std::path::Path) -> std::io::Result<()> {
+            for entry in std::fs::read_dir(path)? {
+                let entry = entry?;
+                if entry.file_type()?.is_dir() {
+                    make_writable(&entry.path())?;
+                } else {
+                    let mut permissions = entry.metadata()?.permissions();
+                    #[allow(clippy::permissions_set_readonly_false)]
+                    permissions.set_readonly(false);
+                    std::fs::set_permissions(entry.path(), permissions)?;
+                }
+            }
+            Ok(())
+        }
+
+        for uncertain in [false, true] {
+            let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("target")
+                .join(format!("center-project-effect-{}", Uuid::new_v4()));
+            std::fs::create_dir_all(&root)?;
+            std::fs::write(
+                root.join("adapters.json"),
+                serde_json::to_vec(&json!({
+                    "capabilities":[{"id":"fixture","adapter":{
+                        "kind":"ACP","executable":"must-not-start.exe","args":[],
+                        "approvedModelDestination":"Controlled test only"
+                    }}]
+                }))?,
+            )?;
+            let handle = super::super::transport::start_engine(root.clone()).await?;
+            let runtime = Runtime::new(handle.clone(), root.clone())?;
+            let result = async {
+                runtime.register().await?;
+                let target = root.join("new-project");
+                let pending = runtime.request(Principal::Human, "project.configure", json!({
+                    "name":"New project","root":target,"createDirectory":true,
+                    "coordinatorCapabilityId":"fixture","workerCapabilityId":"fixture","checkCapabilityId":"native-check",
+                    "limits":{"concurrency":1,"executionAttempts":2,"evaluationAttempts":2,
+                        "coordinationTurns":2,"contextRounds":1,"executionSeconds":60,"coordinationSeconds":60}
+                })).await;
+                assert_eq!(pending.status, "pending", "{pending:?}");
+                assert!(!target.exists());
+                let effect = handle.effects().await?.into_iter()
+                    .find(|effect| effect.method == "project.create").context("missing creation effect")?;
+                if uncertain {
+                    let fingerprint = artifacts::digest(&serde_json::to_vec(
+                        &json!({"method":effect.method,"params":effect.params}),
+                    )?);
+                    std::fs::write(root.join("effects").join(format!("{}.intent", effect.id)), fingerprint)?;
+                }
+                runtime.execute(effect.clone()).await?;
+                let operation = success(runtime.request(Principal::Human, "operation.get",
+                    json!({"operationId":effect.id})).await)?["operation"].clone();
+                if uncertain {
+                    assert_eq!(operation["status"], "RepairRequired");
+                    assert_eq!(operation["failure"]["code"], "OUTCOME_UNKNOWN");
+                    assert!(!target.exists());
+                } else {
+                    assert_eq!(operation["status"], "Succeeded");
+                    assert!(target.join(".git").is_dir());
+                    let project = success(runtime.request(Principal::Human, "project.get",
+                        json!({"projectId":operation["result"]["projectId"]})).await)?;
+                    assert_eq!(project["root"], effect.params["project"]["root"]);
+                    let head = workspace::git(&target, &["rev-parse", "HEAD"]).await?;
+                    assert_eq!(project["initialCommitId"], head);
+                    std::fs::write(target.join("keep.txt"), "Do not reinitialize")?;
+                }
+                runtime.execute(effect).await?;
+                let replay = success(runtime.request(Principal::Human, "operation.get",
+                    json!({"operationId":operation["id"]})).await)?["operation"].clone();
+                assert_eq!(replay, operation);
+                if !uncertain {
+                    assert_eq!(std::fs::read_to_string(target.join("keep.txt"))?, "Do not reinitialize");
+                }
+                Ok::<_, anyhow::Error>(())
+            }.await;
+            runtime.shutdown().await?;
+            handle.shutdown().await?;
+            make_writable(&root)?;
+            std::fs::remove_dir_all(&root)?;
+            result?;
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn stopping_registered_conversation_before_startup_revokes_execution() -> Result<()> {
+        let root = std::env::current_dir()?
+            .join("target")
+            .join(format!("center-stop-before-start-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&root)?;
+        std::fs::write(
+            root.join("adapters.json"),
+            serde_json::to_vec(&json!({
+                "capabilities":[{"id":"fixture","adapter":{
+                    "kind":"ACP","executable":"must-not-start.exe","args":[],
+                    "approvedModelDestination":"Controlled test only"
+                }}]
+            }))?,
+        )?;
+        let handle = super::super::transport::start_engine(root.clone()).await?;
+        let runtime = Runtime::new(handle.clone(), root.clone())?;
+        let result = async {
+            runtime.register().await?;
+            let conversation = Uuid::new_v4().to_string();
+            let console = Uuid::new_v4().to_string();
+            let submit = |message: &str| {
+                json!({
+                    "conversationId":conversation,"clientMessageId":Uuid::new_v4().to_string(),
+                    "text":message,"attachments":[],
+                    "context":{"scope":"Global","consoleSessionId":console,"contextVersion":1}
+                })
+            };
+            success(
+                runtime
+                    .request(
+                        Principal::Human,
+                        "conversation.submit",
+                        submit("Build a scene"),
+                    )
+                    .await,
+            )?;
+            let invoke = handle
+                .effects()
+                .await?
+                .into_iter()
+                .find(|effect| effect.method == "runtime.invoke")
+                .context("missing invocation")?;
+            let input = invoke.params["invocation"].clone();
+            let id = text(&input, "id")?.to_owned();
+            let (commands, receiver) = mpsc::channel(1);
+            let invocation = Arc::new(Invocation {
+                input,
+                state: Mutex::new(InvocationState {
+                    state: "NotStarted".into(),
+                    settled: true,
+                    ..Default::default()
+                }),
+                report_lock: Mutex::new(()),
+                cancel: CancellationToken::new(),
+                commands,
+            });
+            runtime
+                .inner
+                .invocations
+                .lock()
+                .await
+                .insert(id.clone(), invocation.clone());
+            handle
+                .complete_effect(
+                    &invoke.id,
+                    Response::ok(
+                        "",
+                        json!({
+                            "invocationId":id,"disposition":"Recorded"
+                        }),
+                    ),
+                )
+                .await?;
+            success(
+                runtime
+                    .request(Principal::Human, "conversation.submit", submit("hi"))
+                    .await,
+            )?;
+            let stop = handle
+                .effects()
+                .await?
+                .into_iter()
+                .find(|effect| effect.method == "runtime.stop")
+                .context("missing scoped stop")?;
+            runtime.execute(stop).await?;
+            assert!(invocation.cancel.is_cancelled());
+            assert!(runtime
+                .run(invocation.clone(), receiver)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("cancelled before execution"));
+            assert!(invocation.state.lock().await.execution_identity.is_empty());
+            let release = handle
+                .effects()
+                .await?
+                .into_iter()
+                .find(|effect| effect.method == "runtime.release")
+                .context("missing release")?;
+            runtime.execute(release).await?;
+            assert!(handle.effects().await?.iter().any(|effect| {
+                effect.method == "runtime.invoke" && effect.params["invocation"]["id"] != id
+            }));
+            Ok::<_, anyhow::Error>(())
+        }
+        .await;
+        runtime.shutdown().await?;
+        handle.shutdown().await?;
+        std::fs::remove_dir_all(&root)?;
+        result
+    }
+
+    #[tokio::test]
+    async fn expired_work_with_absent_provider_reconciles_owned_job_before_resuming() -> Result<()>
+    {
+        let root = std::env::current_dir()?
+            .join("target")
+            .join(format!("center-owned-reconciliation-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&root)?;
+        std::fs::write(
+            root.join("adapters.json"),
+            serde_json::to_vec(&json!({
+                "capabilities":[{"id":"fixture","adapter":{"kind":"ACP","executable":"must-not-start.exe","args":[],
+                    "approvedModelDestination":"Controlled reconciliation fixture"}}]
+            }))?,
+        )?;
+        let handle = super::super::transport::start_engine(root.clone()).await?;
+        let runtime = Runtime::new(handle.clone(), root.clone())?;
+        runtime.register().await?;
+        let project_root = root.join("project");
+        std::fs::create_dir_all(&project_root)?;
+        let project_root = project_root.canonicalize()?;
+        let guarded = |method: &str, params: Value, work: &Value| {
+            let mut request = Request::new(method, params);
+            request.command_id = Some(Uuid::new_v4().to_string());
+            request.if_match = vec![super::super::wire::EntityRef {
+                kind: "Work".into(),
+                id: work["id"].as_str().unwrap().into(),
+                version: work["version"].as_u64().unwrap(),
+            }];
+            request
+        };
+        let project = success(runtime.request(Principal::Human, "project.configure", json!({
+            "name":"Expired recorded work","root":project_root,"coordinatorCapabilityId":"fixture",
+            "workerCapabilityId":"fixture","checkCapabilityId":"native-check",
+            "limits":{"concurrency":1,"executionAttempts":2,"evaluationAttempts":2,"coordinationTurns":3,
+                "contextRounds":1,"executionSeconds":60,"coordinationSeconds":1}
+        })).await)?;
+        let draft = success(runtime.request(Principal::Human, "work.create_draft", json!({
+            "executionMode":"LegacyTasks","projectId":project["projectId"],"goal":"Recover the same historical work","scope":["reports"],"exclusions":[],
+            "criteria":[{"id":"report","description":"A readable report","evidenceRule":"artifact:report"}],
+            "context":[],"delivery":{"kind":"Report"},"sourceMessageIds":[]
+        })).await)?;
+        let work_id = text(&draft, "workId")?.to_owned();
+        let view = success(
+            runtime
+                .request(Principal::Human, "work.get", json!({"workId":work_id}))
+                .await,
+        )?;
+        let grant = success(
+            handle
+                .request(
+                    Principal::Human,
+                    guarded(
+                        "grant.preview",
+                        json!({"workId":work_id,"specRevision":1,"policyRevision":1}),
+                        &view["work"],
+                    ),
+                )
+                .await,
+        )?;
+        let started = handle.request(Principal::Human, guarded("work.start",
+            json!({"workId":work_id,"specRevision":1,"projectPolicyRevision":1,"grantProposalId":grant["grantProposalId"]}), &view["work"])).await;
+        assert_eq!(started.status, "pending", "{started:?}");
+        let workspace = handle
+            .effects()
+            .await?
+            .into_iter()
+            .find(|effect| effect.method == "workspace.provision")
+            .context("missing approved workspace intent")?;
+        handle
+            .complete_effect(
+                &workspace.id,
+                Response::ok(
+                    "",
+                    json!({
+                        "workspaceId":workspace.params["workspaceId"],"localRoot":project_root
+                    }),
+                ),
+            )
+            .await?;
+        let invoke = handle
+            .effects()
+            .await?
+            .into_iter()
+            .find(|effect| effect.method == "runtime.invoke")
+            .context("missing fixture invocation")?;
+        let mut input = invoke.params["invocation"].clone();
+        input["adapter"] = runtime.inner.adapters["fixture"].clone();
+        let invocation_id = text(&input, "id")?.to_owned();
+        let provider_configuration_digest =
+            artifacts::digest(&serde_json::to_vec(&input["adapter"])?);
+        let mut child = process::command("powershell.exe", &project_root)
+            .args([
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "Start-Sleep -Seconds 30",
+            ])
+            .spawn()?;
+        let identity = format!("acp:{}", child.id().context("fixture child PID missing")?);
+        let job = Arc::new(process::ProcessJob::attach(&child)?);
+        let (commands, _receiver) = mpsc::channel(1);
+        let invocation = Arc::new(Invocation {
+            input,
+            state: Mutex::new(InvocationState {
+                state: "Running".into(),
+                turn: 1,
+                execution_identity: identity.clone(),
+                owned_job: Some(job.clone()),
+                settled: false,
+                primary_session: Some(PrimarySession {
+                    work_id: work_id.clone(),
+                    capability_id: "fixture".into(),
+                    provider_configuration_digest: provider_configuration_digest.clone(),
+                    provider_session_id: "fixture-session".into(),
+                    cwd: project_root.clone(),
+                }),
+                ..Default::default()
+            }),
+            report_lock: Mutex::new(()),
+            cancel: CancellationToken::new(),
+            commands,
+        });
+        runtime
+            .inner
+            .invocations
+            .lock()
+            .await
+            .insert(invocation_id.clone(), invocation.clone());
+        handle
+            .complete_effect(
+                &invoke.id,
+                Response::ok(
+                    "",
+                    json!({"invocationId":invocation_id,"disposition":"Recorded"}),
+                ),
+            )
+            .await?;
+        runtime
+            .report(
+                &invocation,
+                "Started",
+                json!({"adapterKind":"ACP","executionIdentity":identity,
+                    "providerSessionId":"fixture-session","providerConfigurationDigest":provider_configuration_digest,
+                    "sessionCwd":project_root,"sessionLoaded":false}),
+            )
+            .await?;
+        job.terminate()?;
+        job.settle().await?;
+        child.wait().await?;
+        assert!(
+            child.try_wait()?.is_some(),
+            "The recorded provider process must already be absent"
+        );
+        // The engine still has Running. The local sequence also simulates a lost
+        // observation acknowledgment; only the authority may supply its committed cursor.
+        invocation.state.lock().await.sequence = 0;
+        if let Ok(remaining) = deadline(&invocation.input) {
+            tokio::time::sleep(remaining + Duration::from_millis(10)).await;
+        }
+        let stale = success(
+            runtime
+                .request(Principal::Human, "work.get", json!({"workId":work_id}))
+                .await,
+        )?;
+        assert_eq!(stale["continuation"]["state"], "NeedsRecovery");
+        let continued = success(
+            handle
+                .request(
+                    Principal::Human,
+                    guarded("work.continue", json!({"workId":work_id}), &stale["work"]),
+                )
+                .await,
+        )?;
+        assert_eq!(continued["continuation"]["state"], "NeedsRecovery");
+        assert_eq!(continued["continuation"]["canRestartSession"], false);
+        let effects = handle.effects().await?;
+        assert!(effects
+            .iter()
+            .all(|effect| effect.method != "runtime.invoke"));
+        let stop = effects
+            .into_iter()
+            .find(|effect| effect.method == "runtime.stop")
+            .context("missing exact scoped reconciliation")?;
+        assert_eq!(stop.params["reconciliation"]["executionIdentity"], identity);
+        assert_eq!(stop.params["reconciliation"]["lastSequence"], 1);
+        let reconciliation = stop.params.clone();
+        runtime.execute(stop).await?;
+        assert!(invocation.state.lock().await.settled);
+        assert_eq!(invocation.state.lock().await.sequence, 2);
+        let saved: Value =
+            serde_json::from_slice(&std::fs::read(runtime.ledger(&invocation_id)?)?)?;
+        assert_eq!(saved["state"]["settlementProof"], identity);
+        assert!(saved["state"]["terminalObservation"].is_null());
+        let restarted = Runtime::new(handle.clone(), root.clone())?;
+        assert!(
+            restarted
+                .restore_settled_invocation(&reconciliation)
+                .await?
+                .state
+                .lock()
+                .await
+                .settled
+        );
+        let release = handle
+            .effects()
+            .await?
+            .into_iter()
+            .find(|effect| effect.method == "runtime.release")
+            .context("proven reconciliation must release its binding")?;
+        runtime.execute(release).await?;
+        assert!(invocation.state.lock().await.released);
+        let next = handle
+            .effects()
+            .await?
+            .into_iter()
+            .find(|effect| effect.method == "runtime.invoke")
+            .context("proven release should admit same-work continuation")?;
+        assert_eq!(next.params["invocation"]["sessionReuseRef"], invocation_id);
+        assert_eq!(
+            next.params["invocation"]["coordinationInput"]["scope"]["workId"],
+            work_id
+        );
+        let mut resumed_input = next.params["invocation"].clone();
+        resumed_input["adapter"] = runtime.inner.adapters["fixture"].clone();
+        assert_eq!(
+            runtime
+                .saved_primary_session(&invocation_id, &resumed_input)?
+                .provider_session_id,
+            "fixture-session"
+        );
+        runtime.shutdown().await?;
+        handle.shutdown().await?;
+        std::fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn restored_reconciliation_requires_durable_tree_settlement_not_pid_absence() -> Result<()>
+    {
+        let root = std::env::current_dir()?
+            .join("target")
+            .join(format!("center-ledger-reconciliation-{}", Uuid::new_v4()));
+        let handle = super::super::transport::start_engine(root.clone()).await?;
+        let runtime = Runtime::new(handle.clone(), root.clone())?;
+        let invocation_id = Uuid::new_v4().to_string();
+        let runtime_id = Uuid::new_v4().to_string();
+        let params = json!({"invocationId":invocation_id,"operationId":Uuid::new_v4().to_string(),
+            "reconciliation":{"runtimeId":runtime_id,"bindingGeneration":1,"lastSequence":131,
+                "executionIdentity":"acp:28180","stopOperationIds":[]}});
+        let mut state = InvocationState {
+            state: "Running".into(),
+            execution_identity: "acp:28180".into(),
+            sequence: 130,
+            settled: false,
+            ..Default::default()
+        };
+        let save = |state: &InvocationState| -> Result<()> {
+            std::fs::write(
+                runtime.ledger(&invocation_id)?,
+                serde_json::to_vec(&json!({"state":state}))?,
+            )?;
+            Ok(())
+        };
+        save(&state)?;
+        assert!(runtime.restore_settled_invocation(&params).await.is_err());
+        state.settled = true;
+        save(&state)?;
+        assert!(runtime.restore_settled_invocation(&params).await.is_err());
+        state.terminal_observation = Some(json!({"sequence":130,"data":{"quiescent":true}}));
+        save(&state)?;
+        let mut mismatched = params.clone();
+        mismatched["reconciliation"]["executionIdentity"] = json!("acp:another-execution");
+        assert!(runtime
+            .restore_settled_invocation(&mismatched)
+            .await
+            .is_err());
+        let restored = runtime.restore_settled_invocation(&params).await?;
+        assert!(restored.state.lock().await.settled);
+        assert!(restored.cancel.is_cancelled());
+        assert!(
+            restored.state.lock().await.primary_session.is_none(),
+            "legacy settlement does not invent a resumable primary session"
+        );
+        handle.shutdown().await?;
+        std::fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    #[ignore = "launched by the parent test to verify the real process working directory"]
+    fn coordination_directory_child() {
+        let expected = PathBuf::from(std::env::var_os("WTA_TEST_COORDINATION_CWD").unwrap());
+        let actual = std::env::current_dir().unwrap().canonicalize().unwrap();
+        assert_eq!(actual, expected);
+        std::fs::write(actual.join("cwd-proof.txt"), "exact coordination directory").unwrap();
+    }
+
+    #[tokio::test]
+    async fn coordination_directory_launches_at_and_beyond_the_windows_path_boundary() {
+        use std::os::windows::ffi::OsStrExt;
+
+        let temporary = std::env::temp_dir().join(format!("wta-cwd-{}", Uuid::new_v4()));
+        tokio::fs::create_dir(&temporary).await.unwrap();
+        let executable = std::env::current_exe().unwrap();
+        for length in [180usize, 260, 300] {
+            let invocation_id = Uuid::new_v4().to_string();
+            let prefix = temporary.join("p");
+            let measured = prefix.join("coordination").join(&invocation_id);
+            let padding = length
+                .checked_sub(measured.as_os_str().encode_wide().count())
+                .expect("temporary root leaves room for the exact path boundary")
+                + 1;
+            let root = temporary.join("p".repeat(padding));
+            let plain = root.join("coordination").join(&invocation_id);
+            assert_eq!(plain.as_os_str().encode_wide().count(), length);
+            let cwd = Runtime::coordination_directory(&root, &invocation_id)
+                .await
+                .unwrap();
+            assert_eq!(cwd, plain.canonicalize().unwrap());
+            let launch_cwd = process::launch_directory(&cwd).await.unwrap();
+            let output = tokio::time::timeout(
+                Duration::from_secs(15),
+                process::command(executable.to_str().unwrap(), &launch_cwd)
+                    .args([
+                        "--exact",
+                        "agent_center::runtime::tests::coordination_directory_child",
+                        "--ignored",
+                        "--nocapture",
+                    ])
+                    .env("WTA_TEST_COORDINATION_CWD", &cwd)
+                    .output(),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            assert!(
+                output.status.success(),
+                "length {length}: {} {}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert_eq!(
+                tokio::fs::read_to_string(cwd.join("cwd-proof.txt"))
+                    .await
+                    .unwrap(),
+                "exact coordination directory"
+            );
+        }
+        let mut unshortenable = temporary.join("already83");
+        for _ in 0..35 {
+            unshortenable.push("abcdefgh");
+        }
+        tokio::fs::create_dir_all(&unshortenable).await.unwrap();
+        assert!(process::launch_directory(&unshortenable)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("no usable existing short name"));
+        let root = temporary.join("unavailable");
+        tokio::fs::create_dir_all(root.join("coordination"))
+            .await
+            .unwrap();
+        let invocation_id = Uuid::new_v4().to_string();
+        tokio::fs::write(
+            root.join("coordination").join(&invocation_id),
+            "not a directory",
+        )
+        .await
+        .unwrap();
+        assert!(Runtime::coordination_directory(&root, &invocation_id)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("create coordination working directory"));
+        tokio::fs::remove_dir_all(temporary).await.unwrap();
+    }
+
     #[test]
     fn invocation_dedup_preserves_identity_and_rejects_changed_contract() {
         let original = json!({"id":Uuid::new_v4().to_string(),"dispatch":{"id":"dispatch","contractDigest":"sha256:original"}});
@@ -996,6 +2323,252 @@ mod tests {
         changed["dispatch"]["contractDigest"] = json!("sha256:changed");
         let response = duplicate_receipt(&original, &changed);
         assert_eq!(response.failure.unwrap().code, "COMMAND_ID_REUSED");
+    }
+
+    #[tokio::test]
+    async fn recovered_coordinator_preserves_provenance_without_fabricating_settlement(
+    ) -> Result<()> {
+        for resumed in [false, true] {
+            let root = std::env::current_dir()?
+                .join("target")
+                .join(format!("center-recovered-session-{}", Uuid::new_v4()));
+            std::fs::create_dir_all(&root)?;
+            let adapter = json!({"kind":"ACP","executable":"fixture-provider","approvedModelDestination":"Controlled test only"});
+            std::fs::write(
+                root.join("adapters.json"),
+                serde_json::to_vec(&json!({
+                    "capabilities":[{"id":"fixture","adapter":adapter}]
+                }))?,
+            )?;
+            let handle = super::super::transport::start_engine(root.clone()).await?;
+            let runtime = Runtime::new(handle.clone(), root.clone())?;
+            let id = Uuid::new_v4().to_string();
+            let work = Uuid::new_v4().to_string();
+            let mut original = json!({"id":id,"capabilityId":"fixture","subject":{"kind":"Coordination","id":Uuid::new_v4().to_string()},
+            "coordinationInput":{"scope":{"workId":work},"snapshot":{"work":{"workspaceId":"workspace"}}}});
+            if resumed {
+                original["sessionReuseRef"] = json!(Uuid::new_v4().to_string());
+            }
+            let mut input = original.clone();
+            input["adapter"] = adapter.clone();
+            let session = PrimarySession {
+                work_id: work.clone(),
+                capability_id: "fixture".into(),
+                provider_configuration_digest: artifacts::digest(&serde_json::to_vec(&adapter)?),
+                provider_session_id: "original-session".into(),
+                cwd: root.canonicalize()?,
+            };
+            if resumed {
+                input["resumeSession"] = serde_json::to_value(&session)?;
+            }
+            let state = InvocationState {
+                state: "Running".into(),
+                execution_identity: "old-coordinator".into(),
+                primary_session: Some(session),
+                ..Default::default()
+            };
+            let ledger = json!({"inputDigest":artifacts::digest(&serde_json::to_vec(&input)?),"state":state});
+            let path = runtime.ledger(&id)?;
+            let bytes = serde_json::to_vec(&ledger)?;
+            std::fs::write(&path, &bytes)?;
+            let params = json!({"invocation":original,"workId":work,"workspaceId":"workspace",
+            "providerSessionId":"original-session","executionIdentity":"old-coordinator"});
+            let recovered = runtime.recover_coordinator_session(&params).await?;
+            assert_eq!(recovered.provider_session_id, "original-session");
+            assert_eq!(
+                std::fs::read(&path)?,
+                bytes,
+                "Recovery must not rewrite process settlement evidence"
+            );
+            let restarted = Runtime::new(handle.clone(), root.clone())?;
+            assert_eq!(
+                restarted
+                    .saved_primary_session(&id, &input)?
+                    .provider_session_id,
+                "original-session"
+            );
+            assert_eq!(
+                restarted
+                    .recover_coordinator_session(&params)
+                    .await?
+                    .provider_session_id,
+                "original-session"
+            );
+            for pointer in [
+                "/workId",
+                "/executionIdentity",
+                "/invocation/subject/kind",
+                "/invocation/capabilityId",
+                "/providerSessionId",
+            ] {
+                let mut changed = params.clone();
+                *changed.pointer_mut(pointer).unwrap() = json!("different");
+                assert!(
+                    runtime.recover_coordinator_session(&changed).await.is_err(),
+                    "{pointer}"
+                );
+            }
+            let mut changed = input.clone();
+            changed["adapter"]["executable"] = json!("different-provider");
+            assert!(runtime.saved_primary_session(&id, &changed).is_err());
+            handle.shutdown().await?;
+            std::fs::remove_dir_all(root)?;
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn saved_primary_session_is_durable_and_pins_work_provider_and_settlement() -> Result<()>
+    {
+        let root = std::env::current_dir()?
+            .join("target")
+            .join(format!("center-session-ledger-{}", Uuid::new_v4()));
+        let handle = super::super::transport::start_engine(root.clone()).await?;
+        let runtime = Runtime::new(handle.clone(), root.clone())?;
+        let source = Uuid::new_v4().to_string();
+        let work = Uuid::new_v4().to_string();
+        let adapter =
+            json!({"kind":"ACP","executable":"test-provider","args":[],"model":"approved-model"});
+        let session = PrimarySession {
+            work_id: work.clone(),
+            capability_id: "test-provider".into(),
+            provider_configuration_digest: artifacts::digest(&serde_json::to_vec(&adapter)?),
+            provider_session_id: "saved-main-session".into(),
+            cwd: root.clone(),
+        };
+        let mut state = InvocationState {
+            released: true,
+            settled: true,
+            primary_session: Some(session),
+            ..Default::default()
+        };
+        let input = json!({"capabilityId":"test-provider","adapter":adapter,
+            "coordinationInput":{"scope":{"workId":work}}});
+        let save = |state: &InvocationState| -> Result<()> {
+            std::fs::write(
+                runtime.ledger(&source)?,
+                serde_json::to_vec(&json!({"state":state}))?,
+            )?;
+            Ok(())
+        };
+        save(&state)?;
+        assert_eq!(
+            runtime
+                .saved_primary_session(&source, &input)?
+                .provider_session_id,
+            "saved-main-session"
+        );
+        let restarted = Runtime::new(handle.clone(), root.clone())?;
+        assert_eq!(
+            restarted
+                .saved_primary_session(&source, &input)?
+                .provider_session_id,
+            "saved-main-session"
+        );
+        for pointer in [
+            "/capabilityId",
+            "/adapter/model",
+            "/coordinationInput/scope/workId",
+        ] {
+            let mut wrong = input.clone();
+            *wrong.pointer_mut(pointer).unwrap() = json!("different");
+            assert!(runtime
+                .saved_primary_session(&source, &wrong)
+                .unwrap_err()
+                .to_string()
+                .contains("does not match"));
+        }
+        state
+            .primary_session
+            .as_mut()
+            .unwrap()
+            .provider_session_id
+            .clear();
+        save(&state)?;
+        assert!(runtime
+            .saved_primary_session(&source, &input)
+            .unwrap_err()
+            .to_string()
+            .contains("malformed"));
+        state.primary_session.as_mut().unwrap().provider_session_id = "saved-main-session".into();
+        state.primary_session.as_mut().unwrap().cwd = PathBuf::from("relative-cwd");
+        save(&state)?;
+        assert!(runtime
+            .saved_primary_session(&source, &input)
+            .unwrap_err()
+            .to_string()
+            .contains("malformed"));
+        state.primary_session.as_mut().unwrap().cwd = root.clone();
+        state.released = false;
+        save(&state)?;
+        assert!(runtime
+            .saved_primary_session(&source, &input)
+            .unwrap_err()
+            .to_string()
+            .contains("not proven settled"));
+        state.released = true;
+        state.settled = false;
+        save(&state)?;
+        assert!(runtime.saved_primary_session(&source, &input).is_err());
+        state.settled = true;
+        state.primary_session = None;
+        save(&state)?;
+        assert!(runtime
+            .saved_primary_session(&source, &input)
+            .unwrap_err()
+            .to_string()
+            .contains("association is missing"));
+        assert!(runtime
+            .saved_primary_session("..\\foreign", &input)
+            .is_err());
+        assert!(runtime
+            .saved_primary_session(&Uuid::new_v4().to_string(), &input)
+            .is_err());
+        std::fs::write(runtime.ledger(&source)?, b"{malformed ledger")?;
+        assert!(runtime.saved_primary_session(&source, &input).is_err());
+        handle.shutdown().await?;
+        std::fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn resumed_coordination_rejects_missing_or_retargeted_cwd_without_starting_provider(
+    ) -> Result<()> {
+        let root = std::env::current_dir()?
+            .join("target")
+            .join(format!("center-session-cwd-{}", Uuid::new_v4()));
+        let handle = super::super::transport::start_engine(root.clone()).await?;
+        let runtime = Runtime::new(handle.clone(), root.clone())?;
+        tokio::fs::create_dir_all(root.join("coordination")).await?;
+        for cwd in [
+            root.clone(),
+            root.join("coordination").join("missing-history"),
+        ] {
+            let (commands, controls) = mpsc::channel(1);
+            let invocation = Arc::new(Invocation {
+                input: json!({"id":Uuid::new_v4().to_string(),"limits":{"deadlineUtc":"2999-01-01T00:00:00Z"},
+                    "coordinationInput":{"scope":{"workId":"fixed-work"}},
+                    "resumeSession":{"workId":"fixed-work","capabilityId":"fixed-provider",
+                        "providerConfigurationDigest":"fixed-digest","providerSessionId":"saved-session","cwd":cwd}}),
+                state: Mutex::new(InvocationState {
+                    settled: true,
+                    ..Default::default()
+                }),
+                report_lock: Mutex::new(()),
+                cancel: CancellationToken::new(),
+                commands,
+            });
+            assert!(format!(
+                "{:#}",
+                runtime.run(invocation.clone(), controls).await.unwrap_err()
+            )
+            .contains("SESSION_RESUME_UNAVAILABLE"));
+            assert!(invocation.state.lock().await.execution_identity.is_empty());
+            assert!(invocation.state.lock().await.settled);
+        }
+        handle.shutdown().await?;
+        std::fs::remove_dir_all(root)?;
+        Ok(())
     }
 
     #[test]
@@ -1020,5 +2593,60 @@ mod tests {
         configuration["capabilities"][0]["adapter"]["approvedModelDestination"] =
             json!("Local deterministic fixture; no model service");
         validate_adapter_configuration(&serde_json::to_vec(&configuration).unwrap()).unwrap();
+    }
+
+    #[test]
+    fn a_single_approved_adapter_bootstraps_chat_without_a_project() {
+        let config = json!({"capabilities":[{"id":"approved","adapter":{
+            "kind":"ACP","executable":"controlled-agent.exe",
+            "approvedModelDestination":"Local scripted adapter"
+        }}]});
+        let bytes = serde_json::to_vec(&config).unwrap();
+        let adapters = read_adapters(&bytes).unwrap();
+        let policy = read_conversation_policy(&bytes, &adapters)
+            .unwrap()
+            .unwrap();
+        assert_eq!(policy["capabilityId"], "approved");
+        assert_eq!(policy["approvedModelDestination"], "Local scripted adapter");
+        assert_eq!(policy["limits"]["coordinationTurns"], 64);
+        assert_eq!(policy["limits"]["coordinationSeconds"], 120);
+        assert!(policy.get("projectId").is_none());
+        assert!(policy.get("root").is_none());
+    }
+
+    #[test]
+    fn multiple_approved_adapters_require_an_explicit_conversation_choice() {
+        let mut config = json!({"capabilities":[
+            {"id":"first","adapter":{"kind":"ACP","executable":"first.exe","approvedModelDestination":"First approved destination"}},
+            {"id":"second","adapter":{"kind":"ACP","executable":"second.exe","approvedModelDestination":"Second approved destination"}}
+        ]});
+        let bytes = serde_json::to_vec(&config).unwrap();
+        let adapters = read_adapters(&bytes).unwrap();
+        assert!(read_conversation_policy(&bytes, &adapters)
+            .unwrap()
+            .is_none());
+        config["conversationCapabilityId"] = json!("second");
+        let policy = read_conversation_policy(&serde_json::to_vec(&config).unwrap(), &adapters)
+            .unwrap()
+            .unwrap();
+        assert_eq!(policy["capabilityId"], "second");
+        assert_eq!(
+            policy["approvedModelDestination"],
+            "Second approved destination"
+        );
+        config["conversationCapabilityId"] = json!("not-approved");
+        assert!(
+            read_conversation_policy(&serde_json::to_vec(&config).unwrap(), &adapters).is_err()
+        );
+    }
+
+    #[test]
+    fn malformed_conversation_limits_are_not_silently_ignored() {
+        let config = json!({"capabilities":[],"conversationLimits":{"coordinationTurns":0}});
+        assert!(validate_adapter_configuration(&serde_json::to_vec(&config).unwrap()).is_err());
+        let config = json!({"capabilities":[{"id":"approved","adapter":{
+            "kind":"ACP","executable":"controlled-agent.exe","approvedModelDestination":"Approved"
+        }}],"conversationLimits":{"coordinationTurns":0}});
+        assert!(validate_adapter_configuration(&serde_json::to_vec(&config).unwrap()).is_err());
     }
 }

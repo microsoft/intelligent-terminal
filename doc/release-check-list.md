@@ -25,6 +25,82 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 ## Release sign-off metadata
 
+### Experimental task-centered work journey roadmap
+
+The north star is one human-facing work conversation for finishing tasks with
+Terminal, not requiring users to select shells/providers, manage agent sessions
+or context, copy diagnostics, or schedule internal work. Developer/Verifier
+orchestration for `LocalCode | Report` is the **first pilot**, not qualification
+of general OS/application automation.
+
+Use the [Agent Center verification plan](specs/agent-center-verification-plan.md)
+for the task-centered T-* matrix, stable J1-J8 journeys, added J9
+status/execution-location/rationale/confirmed-alternative-plan journey, and the
+human-assistance metric.
+For full current continuous-pilot sign-off, require identified-build evidence
+for every named current required journey gate J1-J9 and applicable R1-R9 defect
+gate, current AC-91 through AC-95, and two verified, explicitly human-accepted
+Completed deliveries on the same identified build. Natural language plus
+explicit confirmation is the main path; structured CLI-only evidence does not
+prove the conversational experience. Real failed-check rework (J5) cannot be replaced by a user report revision
+(J8), scripted coordination, or a native editor pass.
+
+Record the frozen cohort, separate intake funnel, verified human-accepted
+Completed outcomes, required orchestration, and all approved in-scope unique
+works, including failed/blocked/unfinished and postapproval cancelled works.
+Zero eligible approved works means N/A, not 100%; historical rounds and mixed
+builds are not an uninterrupted autonomous pass. Later managed-runtime
+adoption/replacement (US-13/AC-96) and future OS-state effect/recovery
+(US-14/AC-97/AC-98) remain explicitly unqualified until their adapter/type
+boundaries pass. Future OS-A restores an isolated test service, OS-B safely
+organizes test files, and OS-C adopts/replaces an authorized existing managed
+runtime; these are qualification targets, not current coverage.
+
+These are experimental roadmap/sign-off instructions, not new automated
+checklist items. T-*/US/AC/J identifiers are spec IDs, not `C` IDs. Do not add
+`[E2E]` credit without a real matching suite, change existing exact titles,
+or let lower-layer passes complete these product goals in a generated report.
+
+### Integrated native work-story demo
+
+C334–C344 retain their independent story/control identities but now require the
+corrected **zero-shell-tab native Agent Center Console**, using the shared Work
+list, conversations and details. The standalone storyboard renderer was removed;
+its old results cannot qualify these new exact native test titles. Regenerate
+the release report from this checklist and a new native run before incremental
+updates, rather than carrying historical shell-storyboard checkmarks forward.
+The natural-flow revision additionally requires four interactive legacy-history
+tabs, navigation-driven evidence/schema views, and autonomous attention/budget
+events. Earlier manually advanced `Show ...` runs do not qualify those behaviors.
+
+These cases qualify the explicitly opted-in native `wta ui` demo provider from
+`user-story.txt`: scripted state transitions, isolated SQLite persistence and
+native shared-view UIA projection. They do **not** qualify autonomous WorkExecutor,
+real agents, production work-service/protocol coordination or actual token use.
+Each scene requires paired state/text/UIA evidence on the pinned Dev binary.
+Retained HWND PNGs are diagnostic: cached DWM pixels may be blank/stale when
+foreground HWND is zero. Physical-screen repaint remains explicitly unqualified
+and is not credited by these cases. _(E2E: `Feature.WorkStoryDemo`.)_
+Native input uses foreground-guarded keyboard/clipboard when available. With no
+foreground desktop, a disposable child attaches only to the uniquely new,
+identity-checked `wta ui` console and sends `INPUT_RECORD` events through its real
+input loop. Artifacts distinguish this native ConsoleInput route from physical
+keyboard/clipboard qualification; neither route substitutes ordinary shell COM input.
+
+- [ ] `C334` `[new]` `[E2E]` **Native demo scene 1 exposes four distinct interactive legacy session tabs:** Left/Right switches among Fix bug, Code review, Migration and Research with distinct old histories inside one native Console, not four labels or OS shell tabs; F1 returns to the shared global conversation.
+- [ ] `C335` `[new]` `[E2E]` **Native demo scene 2 resumes the existing Work from the composer:** The exact issue phrase opens its existing scoped conversation with visible completed/blocked/pending facts; repository, branch and failed compatibility state remain authoritative and inspectable in its details.
+- [ ] `C336` `[new]` `[E2E]` **Native demo scene 3 shares Work identity across list chat and details:** F2, Enter and F5 navigate the same projected Work without mutating persisted state; failed compatibility evidence remains distinct from completed and pending steps.
+- [ ] `C337` `[new]` `[E2E]` **Native demo scene 4 confirms related Work without polluting its parent:** The migration question creates nothing before F4/menu confirmation, then one projected related Work inherits selective context and an independent simulated identity without changing the parent's evidence.
+- [ ] `C338` `[new]` `[E2E]` **Native demo scene 5 automatically exchanges structured schema in related Work details:** F5 on the migration Work exposes the automatic nonblocking request/response, schema 2.3, three breaking changes and scripted provenance, without a manual schema request or copied transcript.
+- [ ] `C339` `[new]` `[E2E]` **Native demo scene 6 receives autonomous owner-scoped attention and preserves failed evidence:** While viewing migration/list, a timed SYSTEM event shows the original issue's attention banner without a polling prompt or losing the unsent migration draft. The decision menu names the owning issue and clears stale evidence/controls; Escape restores the prior view without mutation. F6/menu choice B records fix intent and a documentation Work while evidence remains failed and acceptance pending.
+- [ ] `C340` `[new]` `[E2E]` **Native demo scene 7 sets a token cap before automatic budget progression:** The native 10K/20K/30K picker spends nothing before confirmation, and cancelling leaves state unchanged. Confirming 20K starts multiple persisted and rendered usage samples, then pauses exactly at 20,000/20,000 with concurrency one, saved findings and Performance Validation remaining; automatic events have no fabricated user inputs.
+- [ ] `C341` `[new]` `[E2E]` **Native demo scene 8 lists and opens three real projected Works:** F2 renders three actual Work cards with six categories; selecting documentation and pressing Enter/F5 opens its own scoped details rather than a text-only overview.
+- [ ] `C342` `[new]` `[E2E]` **Native demo rejects unrelated prompts and duplicate Work creation:** Unsupported native composer input leaves state unchanged with visible errors; repeated confirmation creates no duplicate projected Work.
+- [ ] `C343` `[new]` `[E2E]` **Native demo restores the same Work history and budget continuation:** Quit/reopen of the isolated native window preserves state and identities; adding 10K resumes the same migration with saved findings.
+- [ ] `C344` `[new]` `[E2E]` **Native demo inspection and reset remain isolated from production work:** Read-only inspection and rejected concurrent writers preserve state; the native `/reset` preview creates no mutation until `/reset confirm`, scoped to the owned demo store.
+
+### Recorded release metadata
+
 - [ ] `C001` `[MANUAL]` **Build under test:** Version/build number is recorded.
 - [ ] `C002` `[MANUAL]` **Package type:** Packaged MSIX / Store package / local installer is recorded.
 - [ ] `C003` `[MANUAL]` **OS matrix:** Windows 10 and Windows 11 coverage is recorded if this release targets both.
@@ -250,6 +326,31 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C084` `[E2E]` **Chat view restores:** User can return to chat view after opening session view.
 - [x] `C085` `[UT✓]` `[E2E]` **View switch preserves input:** Draft prompt text is not unexpectedly lost when switching views. _(E2E `Feature.SessionList` 'View switch preserves the draft input': types a draft, switches chat↔sessions via the bottom-bar buttons (SessionToggleButton/AgentToggleButton — not the `/sessions` slash that would type into the draft, not Esc which is overloaded), observing the view via the `AgentLabelText` UIA element (winapp get-value, no jsonl pane ambiguity), then asserts the draft survives. UT: `view_switch_preserves_chat_draft_input` drives the Esc key handler and asserts draft + cursor survive.)_
 - [ ] `C086` `[E2E]` **View switch preserves connection:** Agent connection state remains correct after switching views.
+
+### Agent Center native input
+
+- [ ] `C319` `[new]` `[E2E]` **Agent Center native paste preserves Unicode and selection replacement:** Foreground Ctrl+Shift+V from the actual clipboard retains ASCII/BMP, supplementary and joined emoji, and replaces partial/full draft selections exactly. _(Round9; E2E: `Feature.AgentCenterNativePaste`; deployed `wta ui` in an ordinary TermControl, not dedicated Console shell-key routing.)_
+- [ ] `C320` `[new]` `[E2E]` **Agent Center multiline native paste waits for explicit Enter:** A CRLF clipboard payload remains two exact draft rows through redraws without dispatch; physical Shift+Enter inserts a newline rather than submitting or concatenating the next paste; a separate physical Enter rejects an unknown slash command and preserves the rejected draft. _(Rounds9–10; E2E: `Feature.AgentCenterNativePaste`; isolated empty service, no provider/model or real work mutations.)_
+
+### Agent Center human work flow
+
+- [ ] `C329` `[new]` `[E2E]` **Agent Center chats globally without configuring a project:** A native ordinary hello receives an actual bound assistant response in one global conversation with zero Projects or Works; no project selection, UUID or slash command is required. The default view is chat, not a dashboard. _(E2E: `Feature.AgentCenterWorkFlow`; scripted local ACP, not natural-language interpretation.)_
+- [ ] `C330` `[new]` `[E2E]` **Agent Center creates an execution project only after global conversation approval:** A human message literally names an existing test-owned directory; the bound assistant records a project proposal matching approved capabilities and limits. Plain Enter/Esc create nothing; exact Ctrl+Enter creates the authoritative Project, not a Work or execution result. _(E2E: `Feature.AgentCenterWorkFlow`; separate from execution/delivery qualification.)_
+- [ ] `C331` `[new]` `[E2E]` **Agent Center preserves one global draft across dashboard and work hints:** One lifetime conversation queries actual work in two projects; optional readable selectors and F7/Esc navigation preserve the same draft rather than swapping per-work chats. F5 read-only and dashboard F6 input suppression remain protected. _(E2E: `Feature.AgentCenterWorkFlow`; supersedes independent-draft C321.)_
+- [ ] `C322` `[new]` `[E2E]` **Agent Center readable confirmation targets the selected work:** Readable Cancel previews bind the actual selected work, parameters and version; ordinary Enter and Esc send nothing, while Ctrl+Enter records the exact frozen human command. _(E2E: `Feature.AgentCenterWorkFlow`; public-API Draft fixtures, not autonomous execution.)_
+- [ ] `C332` `[new]` `[E2E]` **Agent Center preserves global input through sustained dashboard navigation:** During at least 180 seconds and 784 successful guarded updates, ten physical dashboard/work-hint/chat transitions preserve the same global draft, native caret and selection within 15 seconds each. Early, 60-second, 130-second and post-stop timings stay separate; actual selection replacement under load is required. _(E2E: `Feature.AgentCenterWorkFlow`; supersedes per-work-draft C323; not a reconnect claim.)_
+- [ ] `C324` `[new]` `[E2E]` **Agent Center restores a fresh subscription after a slow reader overflows:** An intentionally undrained test-owned subscriber must observe RESYNC_REQUIRED, then obtain a fresh same-store subscription, authoritative snapshot and subsequent event without replaying mutations. _(E2E: `Feature.AgentCenterWorkFlow`; raw subscriber recovery, not a claim that the Console itself reconnected.)_
+- [ ] `C325` `[new]` `[E2E]` **Agent Center records a typed intake answer through the native form:** A local scripted ACP coordinator requests real bound intake input; the native form submits the correctly typed answer with its exact IntakeRequest version. _(E2E: `Feature.AgentCenterWorkFlow`; not TaskInput decision continuation or real-model interpretation.)_
+- [ ] `C326` `[new]` `[E2E]` **Agent Center inspects and accepts the current captured report:** A local scripted adapter creates real captured report bytes and a service-owned candidate; native inspection is read-only and explicit acceptance targets the inspected candidate and current work. _(E2E: `Feature.AgentCenterWorkFlow`; deterministic delivery wiring, not autonomous business completion.)_
+- [ ] `C327` `[new]` `[E2E]` **Agent Center creates an initial brief and explicitly starts the captured work:** A global human goal names the approved owned directory without selecting a project first. Bound intake creates the exact Draft and Start proposal; readable authority review, Enter/Esc suppression and frozen Ctrl+Enter distinguish recorded Start from actual provisioning and context-waiting execution. _(E2E: `Feature.AgentCenterWorkFlow`; deterministic local ACP, no external model or database seeding.)_
+- [ ] `C328` `[new]` `[E2E]` **Agent Center applies a post-start decision through the bound worker continuation:** A real worker ContextRequest causes a bound TaskInput DecisionRequest; the native typed answer keeps its exact decision/version, resumes the original dispatch, resolves the decision only after acknowledgement, and produces captured report bytes from the authorized workspace. _(E2E: `Feature.AgentCenterWorkFlow`; separate from pre-work IntakeRequest and from human delivery acceptance.)_
+- [ ] `C333` `[new]` `[E2E]` **Agent Center confirms a global proposal without retargeting to another work hint:** A bound proposal targeting work B remains attached to its captured human source, parameters, nonce and version after focusing work A. Enter/Esc and preview paste do not mutate work; exact Ctrl+Enter changes only B while preserving the lifetime conversation. _(E2E: `Feature.AgentCenterWorkFlow`; actual HumanActionProposal, not a direct-CLI substitute.)_
+
+Historical C321 (**Agent Center selects named work and restores independent drafts**) and
+C323 (**Agent Center switches loaded work within fifteen seconds**) are retired from
+the active checklist by the approved global-conversation contract. Their prior
+reports remain historical evidence only; they cannot qualify the replacement
+global editor behavior. No legacy UI flag is used to preserve their old checkmarks.
 
 ## 3. Autofix flow
 

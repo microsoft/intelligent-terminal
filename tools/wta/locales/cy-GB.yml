@@ -273,10 +273,72 @@ system.model_unknown: "Model anhysbys %{model} — teipiwch /model i weld y rhes
 # not an agent session; a work item may contain multiple tasks.
 agent_center.title: "Agent Center" # {Locked}
 agent_center.works: "Eitemau gwaith"
+agent_center.demo_title: "Arddangosiad stori eitem waith" # Title of an isolated scripted demonstration; the story fixture itself is English.
+agent_center.demo_notice: "Arddangosiad wedi'i sgriptio | Tystiolaeth enghreifftiol, sesiynau a defnydd tocynnau wedi'u hefelychu | Ni chaiff unrhyw asiantau eu lansio" # Always-visible disclosure; simulated data must not be confused with live agent execution.
+agent_center.demo_scene: "Golygfa %{scene}/8" # %{scene} is the current scene number in the eight-scene story.
+agent_center.demo_next: "Nesaf: %{input}" # %{input} is the literal English story input, not a translated command.
+agent_center.demo_keys: "Enter: cyflwyno | Tab: llenwi'r mewnbwn nesaf | PgUp/PgDn: sgrolio | Ctrl+Q: cau" # {Locked="Enter","Tab","PgUp/PgDn","Ctrl+Q"}
+agent_center.demo_reset: "Ailosod cyflwr yr arddangosiad? Teipiwch /reset confirm. Ni effeithir ar eitemau gwaith na gosodiadau presennol." # {Locked="/reset confirm"} Resets only the isolated demo, never real work.
+agent_center.demo_saved: "Cadwyd diwygiad %{revision}" # %{revision} is the persisted demo state revision.
+agent_center.demo_error: "Methodd gweithred yr arddangosiad: %{error}" # %{error} explains the rejected action; no state change is claimed.
+agent_center.tasks_title: "Tasgau"
+agent_center.task_new: "Tasg newydd"
+agent_center.task_all: "Pob tasg"
+agent_center.task_attention: "Angen sylw"
+agent_center.task_continue: "Parhau â'r dasg"
+# Messages waiting for this work's busy executor, excluding the currently running turn. {Locked="%{count}"}
+agent_center.task_queued_messages: "Negeseuon yn y ciw: %{count}"
+# Explicit migration of an existing work from legacy orchestration to its own executing agent session.
+agent_center.task_claim_executor: "Cysylltu ag asiant y gwaith"
+agent_center.task_claim_executor_confirm: "Trosglwyddwch y dasg hon i'w hasiant gweithredu ei hun. Cedwir y sgwrs a'r canlyniadau presennol, a daw'r hen amserlennu i ben. Os na ellir adfer y sesiwn weithredu wreiddiol, mae angen cadarnhad ar wahân i ddechrau sesiwn newydd."
+agent_center.task_open_tab: "Agor mewn tab"
+agent_center.task_tab_unsupported: "Mae angen Intelligent Terminal i agor tab tasg." # {Locked="Intelligent Terminal"}
+agent_center.task_new_session: "Dechrau sesiwn newydd"
+agent_center.task_new_session_confirm: "Ni ellir ailddechrau sesiwn wreiddiol yr asiant. Dechrau sesiwn newydd gan ddefnyddio cyd-destun y dasg hon sydd wedi'i gadw?"
+agent_center.task_keys: "Up/Down dewis · Enter agor · F4 gweithredoedd · F5 manylion" # {Locked="Up/Down","Enter","F4","F5"}
+agent_center.task_list_keys: "F2 tasgau · F4 gweithredoedd · F5 manylion" # {Locked="F2","F4","F5"}
+agent_center.task_state_running: "Yn rhedeg"
+agent_center.task_state_waiting: "Yn aros am eich ymateb"
+agent_center.task_state_paused: "Wedi'i oedi"
+agent_center.task_state_recovery: "Angen adfer"
+agent_center.task_state_ready: "Yn barod i barhau"
+agent_center.task_state_completed: "Wedi'i gwblhau"
+agent_center.task_state_cancelled: "Wedi'i ganslo"
+agent_center.task_state_unavailable: "Sesiwn ddim ar gael"
+agent_center.task_updated: "Gweithgarwch diwethaf: %{time}"
+agent_center.ui_overview: "Trosolwg"
+agent_center.chat_global: "Sgwrs gyffredinol" # Conversation with the non-executing master for new goals and cross-work coordination; each work has its own executor conversation.
+agent_center.chat_welcome: "Dywedwch wrthyf beth rydych am ei gyflawni, ei drefnu neu ei ddarganfod."
+agent_center.chat_keys: "Enter anfon · Shift+Enter llinell newydd · F4 gweithredoedd · F5 manylion · F7 dangosfwrdd" # {Locked="Enter","Shift+Enter","F4","F5","F7"}
+agent_center.chat_dashboard_keys: "F7 sgwrs · Esc sgwrs · F4 gweithredoedd · F6 ffocysu ar weithredoedd" # Dashboard navigation preserves the global conversation and draft. {Locked="F7","Esc","F4","F6"}
+agent_center.chat_context_hint: "Awgrym cyd-destun: %{context}" # %{context} is a readable work or project name, not a binding that limits the global conversation.
+agent_center.ui_attention: "Angen eich sylw" # Heading for recorded requests, draft-start reviews, and delivery reviews; not a claim that every work needs attention.
+agent_center.ui_details: "Briff a chynnydd" # Read-only details view containing the work agreement, recorded progress, evidence, and locations.
+agent_center.ui_new_goal: "Beth hoffech chi ei gyflawni?"
+agent_center.ui_empty_attention: "Nid oes angen eich ymateb ar unrhyw geisiadau agored."
+agent_center.ui_no_works: "Nid oes eitem waith wedi'i chofnodi. Dewiswch brosiect wedi'i ffurfweddu i ddechrau."
+agent_center.ui_no_conversation: "Nid oes negeseuon wedi'u cofnodi ar gyfer yr eitem waith hon."
+agent_center.ui_role_you: "Chi" # Speaker heading for an actual recorded human message.
+agent_center.ui_role_assistant: "Cynorthwyydd gwaith" # Speaker heading for an actual recorded assistant message, not a provider name.
+agent_center.ui_role_service: "Gwasanaeth" # Speaker heading for an actual recorded system or service message.
+agent_center.ui_role_unknown: "Neges wedi'i chofnodi" # Speaker heading when the service does not identify a recognized message role.
+agent_center.ui_next: "Cyfrifoldeb nesaf"
+agent_center.ui_recorded_facts: "Ffeithiau wedi'u cofnodi"
+agent_center.ui_last_known: "Cyflwr hysbys diwethaf · %{status}" # %{status} is a localized recorded status. Used when cached facts do not establish current execution.
+agent_center.ui_cached_facts: "Ffeithiau yn y storfa dros dro; nid yw'r gweithredu presennol wedi'i gadarnhau."
+agent_center.ui_source_root: "Lleoliad ffynhonnell y prosiect" # Configured source root, explicitly distinct from the actual managed execution directory.
+agent_center.ui_execution_root: "Lleoliad gweithredu a reolir" # Actual execution directory reported by the service, never inferred from the project source root.
+agent_center.ui_location_unknown: "Nid oes lleoliad gweithredu wedi'i adrodd."
+agent_center.ui_composer: "Neges ar gyfer: %{work}" # %{work} is the human-readable target of this independent draft.
+agent_center.ui_composer_new: "Eitem waith newydd · %{project}" # %{project} is the configured project name, or an explicit project-selection warning.
+agent_center.ui_actions: "Gweithredoedd yr eitem waith"
+agent_center.ui_keys: "Enter anfon · Shift+Enter llinell newydd · F4 gweithredoedd · F5 manylion · F6 ffocysu ar weithredoedd" # {Locked="Enter","Shift+Enter","F4","F5","F6"}
+agent_center.ui_actions_hint: "Up/Down dewis · Enter agor · Esc mewnbwn" # Keyboard focus is on a visible action, not the text editor. {Locked="Up/Down","Enter","Esc"}
+agent_center.ui_details_hint: "F5 cau manylion · PgUp/PgDn darllen · Esc mewnbwn" # Read-only detail focus; returning to input preserves the draft and selection. {Locked="F5","PgUp/PgDn","Esc"}
 agent_center.activity: "Gweithgarwch · Sgwrs"
-# %{work} and %{project} are identifiers of the selected work item and project.
+# %{work} and %{project} are human-readable labels for the selected work and configured project.
 agent_center.header: "Gwaith: %{work} | Prosiect: %{project}"
-agent_center.welcome: "Dewiswch brosiect neu nodwch /project use <id>. Teipiwch nod neu /help." # {Locked="/project use","<id>","/help"}
+agent_center.welcome: "Pwyswch F4 i ddewis prosiect wedi'i ffurfweddu, yna nodwch beth rydych am ei gyflawni." # {Locked="F4"}
 agent_center.input_help: "Enter: anfon · Shift+Enter: llinell newydd · Tab: cwblhau · F2: newid eitem waith · Ctrl+C: gadael · PgUp/PgDn: darllen · Ctrl+End: diweddaraf" # {Locked="Enter","Shift+Enter","Tab","F2","PgUp/PgDn","Ctrl+End","Ctrl+C"}
 agent_center.inbox_count: "Angen sylw: %{count}"
 agent_center.sending: "Wrthi’n anfon y cais a gipiwyd…"
@@ -321,3 +383,84 @@ agent_center.missing_field: "Maes ymateb ar goll neu'n annilys: %{field}"
 agent_center.invalid_command_id: "Rhaid i --command-id fod yn UUID." # {Locked="--command-id","UUID"}
 agent_center.worker_stopped: "Mae cysylltiad y ceisiadau wedi stopio."
 agent_center.host_unavailable: "Nid oes addasydd gwesteiwr cragen ar gael ar gyfer %{command}. Defnyddiwch weithredoedd bysellfwrdd y gwesteiwr."
+agent_center.console_home: "Eitem waith newydd"
+agent_center.console_new: "Eitem waith newydd / Cartref"
+agent_center.console_new_hint: "Nodwch nod newydd. Mae eitemau gwaith eraill yn parhau'n annibynnol."
+agent_center.console_project_create_directory: "Crëwch gyfeiriadur newydd a chychwynnwch ystorfa Git leol. Ni fydd ffeiliau presennol yn cael eu trosysgrifo." # {Locked="Git"}
+agent_center.console_projects: "Dewiswch brosiect wedi'i ffurfweddu"
+agent_center.console_projects_hint: "Dewiswch y prosiect yn ôl ei enw a'i leoliad. Dim prosiect wedi'i ffurfweddu yma? Gofynnwch i'ch gweinyddwr ffurfweddu un."
+agent_center.console_refresh: "Adnewyddu'r ffeithiau cyfredol"
+agent_center.console_open: "Agor: %{work}"
+agent_center.console_return: "Dychwelyd i: %{work}"
+agent_center.console_respond: "Ymateb: %{work} — %{question}"
+agent_center.console_unknown_work: "Nid yw manylion yr eitem waith ar gael"
+agent_center.console_unknown_project: "Nid yw'r prosiect wedi'i ddewis neu nid yw ar gael"
+# Two works can have exactly the same goal and project. The numbered choice is explicit, never a fuzzy match. %{created} is the recorded creation time.
+agent_center.console_duplicate: "%{work} · eitem waith ar wahân %{number} · %{created}"
+agent_center.console_start: "Adolygu'r briff a chymeradwyo'r dechrau"
+agent_center.approval_title: "Angen cymeradwyaeth" # Title of an inline conversation card for a specific frozen human action.
+agent_center.approval_accept: "Cymeradwyo" # Button that submits the exact reviewed action, not a chat message.
+agent_center.approval_start: "Cymeradwyo a dechrau" # Button approving the displayed work brief and execution grant.
+agent_center.approval_edit: "Newid y gofynion" # Return to the chat composer to describe changes; do not submit or approve the action.
+agent_center.approval_defer: "Ddim nawr" # Defer review in this Console without cancelling the work or approving anything.
+agent_center.approval_open_hint: "F6 adolygu'r cynnig" # Opens the inline approval card without approving it. {Locked="F6"}
+agent_center.approval_keys: "Left/Right dewis · Enter dethol · F5 manylion · Esc ddim nawr" # Keyboard help while the inline approval card owns focus. {Locked="Left/Right","Enter","F5","Esc"}
+agent_center.approval_edit_hint: "Disgrifiwch y newidiadau ar gyfer %{target}. Nid oes dim wedi'i gymeradwyo." # %{target} is the displayed project or work name; the user's draft is preserved.
+agent_center.approval_deferred: "Gohiriwyd yr adolygiad o %{target}. Ailagorwch y cynnig drwy F4 pan fyddwch yn barod." # Deferring is local presentation state, not cancellation of work. %{target} is a project or work name. {Locked="F4"}
+agent_center.console_pause: "Oedi'r eitem waith"
+agent_center.console_resume: "Ailddechrau'r eitem waith"
+agent_center.console_cancel: "Canslo'r eitem waith"
+agent_center.console_inspect: "Archwilio'r cynnyrch cyflawnadwy sefydlog a gwirio'r dystiolaeth (darllen yn unig)"
+agent_center.console_read_evidence: "Darllen tystiolaeth: %{work} — %{path}"
+agent_center.console_more_evidence: "Darllen y dudalen dystiolaeth nesaf: %{work}"
+agent_center.console_accept: "Derbyn y cynnyrch cyflawnadwy a archwiliwyd"
+agent_center.console_takeover: "Cymryd rheolaeth dros y gweithle a reolir"
+agent_center.console_handback: "Rhoi rheolaeth dros y gweithle a reolir yn ôl"
+agent_center.console_apply: "Cymhwyso'r newid a gymeradwywyd"
+agent_center.console_action: "Adolygu'r weithred a gipiwyd"
+agent_center.console_answer: "Ateb"
+agent_center.console_answer_review: "Ateb wedi'i gofnodi i'w gyflwyno:\n%{value}"
+agent_center.console_answer_invalid: "Nodwch werth dilys ar gyfer %{field}; adolygwch ddewisiadau a therfynau gofynnol y maes."
+agent_center.console_schema_unsupported: "Mae'r cwestiwn hwn yn defnyddio sgema nad yw'r ffurflen syml yn ei gefnogi. Ni chyflwynwyd dim; gofynnwch am gwestiwn symlach."
+agent_center.console_yes: "Ie"
+agent_center.console_no: "Na"
+agent_center.console_form_help: "Up/Down dewis maes · Left/Right dewis opsiwn · Enter maes nesaf · Ctrl+Enter adolygu'r ateb · Esc yn ôl" # {Locked="Up/Down","Left/Right","Enter","Ctrl+Enter","Esc"}
+agent_center.console_menu_help: "F4 gweithredoedd · Up/Down dewis · Enter agor · Esc yn ôl · F12 diagnosteg" # {Locked="F4","Up/Down","Enter","Esc","F12"}
+agent_center.console_hint: "F4 gweithredoedd · F2 newid eitem waith · F12 diagnosteg" # {Locked="F4","F2","F12"}
+agent_center.console_scope: "Cwmpas wedi'i gynnwys"
+agent_center.console_exclusions: "Y tu allan i'r eitem waith hon"
+agent_center.console_criteria: "Meini prawf derbyn a thystiolaeth ofynnol"
+agent_center.console_delivery: "Cynnyrch cyflawnadwy"
+agent_center.console_delivery_code: "Cod lleol yn y gweithle a reolir"
+agent_center.console_delivery_report: "Ffeiliau adroddiad a gipiwyd"
+agent_center.console_progress: "Cynnydd tasgau"
+agent_center.console_authority: "Awdurdod y gofynnwyd amdano a therfynau gweithredu"
+agent_center.console_capabilities: "Galluoedd gweithredu a gymeradwywyd"
+agent_center.console_data_scopes: "Lleoliadau data y gellir eu darllen"
+agent_center.console_limits: "Terfynau adnoddau"
+agent_center.console_managed_writes: "Mae ysgrifennu gan weithrediadau a reolir wedi'i gyfyngu i weithle'r eitem waith hon. Nid yw hyn yn ffin ynysu ar lefel y system weithredu ar gyfer offer sy'n eiddo i'r darparwr."
+agent_center.console_frozen: "Mae'r cadarnhad hwn yn rhwym wrth yr eitem waith, y cais, y polisi a'r diwygiadau a gipiwyd. Mae angen adolygiad newydd ar gyfer newidiadau; ni chaiff targed y gymeradwyaeth ei newid yn dawel byth."
+agent_center.console_stale: "Mae'r ffeithiau byw wedi dyddio. Mae'r drafftiau'n ddiogel. Ailgysylltwch ac adnewyddwch cyn cymeradwyo neu anfon newidiadau; nid methiant na chwblhau yw canlyniad anhysbys."
+agent_center.console_diagnostics: "Manylion y protocol diagnostig (darllen yn unig)"
+agent_center.console_no_details: "Dim manylion cyfredol am yr eitem waith. Defnyddiwch F4 i ddewis prosiect, agor eitem waith neu adnewyddu." # {Locked="F4"}
+agent_center.console_draft: "Drafft — heb ddechrau"
+agent_center.console_active: "Gweithredol — heb ei dderbyn eto"
+agent_center.console_completed: "Wedi'i gwblhau — derbyniad gan berson wedi'i gofnodi"
+agent_center.console_cancelled: "Wedi'i ganslo"
+agent_center.console_paused: "Wedi'i oedi"
+agent_center.console_automatic: "Cynnydd awtomatig"
+agent_center.console_running: "Yn rhedeg"
+agent_center.console_pending: "Yn aros — heb ei gwblhau"
+agent_center.console_verified: "Wedi'i ddilysu / ei dderbyn yn fewnol"
+agent_center.console_failed: "Wedi methu / ei wrthod — archwiliwch y dystiolaeth"
+agent_center.console_waiting: "Yn aros am ymateb neu ddibyniaeth"
+agent_center.console_unknown: "Anhysbys — adnewyddwch neu archwiliwch y diagnosteg"
+agent_center.console_resolved: "Ymateb wedi'i gofnodi"
+agent_center.console_superseded: "Wedi'i ddisodli — nid dyma'r cynnyrch cyflawnadwy cyfredol"
+agent_center.console_next_done: "Nesaf: defnyddiwch y cynnyrch cyflawnadwy a dderbyniwyd; nid oes rhagor o gymeradwyaeth yn aros."
+agent_center.console_next_cancelled: "Nesaf: dim cynnydd awtomatig; cafodd yr eitem waith hon ei chanslo."
+agent_center.console_next_approve: "Nesaf: adolygwch y briff a chymeradwywch yr union ddechrau drwy F4." # {Locked="F4"}
+agent_center.console_next_accept: "Nesaf: archwiliwch y cynnyrch cyflawnadwy sefydlog a'r dystiolaeth, yna derbyniwch yn benodol."
+agent_center.console_next_attention: "Nesaf: adolygwch faterion heb eu datrys yr eitem waith hon sydd angen sylw drwy F4." # {Locked="F4"}
+agent_center.console_next_resume: "Nesaf: chi sy'n penderfynu pryd i ailddechrau'r eitem waith hon sydd wedi'i hoedi."
+agent_center.console_next_service: "Nesaf: mae'r gwasanaeth yn symud y cynllun a gymeradwywyd ymlaen. Nid derbyniad terfynol yw hyn."

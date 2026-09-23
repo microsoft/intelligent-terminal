@@ -29,6 +29,13 @@ pub fn inset_horizontal(r: Rect, n: u16) -> Rect {
     }
 }
 
+pub fn block(border_style: Style) -> Block<'static> {
+    Block::default()
+        .borders(Borders::ALL)
+        .style(theme::AGENT_TEXT.bg(theme::INPUT_BG))
+        .border_style(border_style)
+}
+
 /// Paint the card chrome (outer border + middle divider) and return the
 /// inner content/button regions. Returns `None` when `area` is smaller than
 /// `CARD_MIN_SIZE` in either dimension.
@@ -40,9 +47,7 @@ pub fn render_card_shell(
     if area.width < CARD_MIN_SIZE || area.height < CARD_MIN_SIZE {
         return None;
     }
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(border_style);
+    let block = block(border_style);
     let inner = block.inner(area);
     frame.render_widget(block, area);
     let inner_chunks = Layout::default()

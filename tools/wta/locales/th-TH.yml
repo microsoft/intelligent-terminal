@@ -272,10 +272,72 @@ system.model_unknown: "ไม่รู้จักโมเดล %{model} — �
 # not an agent session; a work item may contain multiple tasks.
 agent_center.title: "Agent Center" # {Locked}
 agent_center.works: "รายการงาน"
+agent_center.demo_title: "การสาธิตเรื่องราวของรายการงาน" # Title of an isolated scripted demonstration; the story fixture itself is English.
+agent_center.demo_notice: "การสาธิตตามบท | หลักฐานตัวอย่าง เซสชันและการใช้โทเค็นแบบจำลอง | ไม่มีการเปิดใช้เอเจนต์" # Always-visible disclosure; simulated data must not be confused with live agent execution.
+agent_center.demo_scene: "ฉาก %{scene}/8" # %{scene} is the current scene number in the eight-scene story.
+agent_center.demo_next: "ถัดไป: %{input}" # %{input} is the literal English story input, not a translated command.
+agent_center.demo_keys: "Enter: ส่ง | Tab: กรอกข้อมูลถัดไป | PgUp/PgDn: เลื่อน | Ctrl+Q: ปิด" # {Locked="Enter","Tab","PgUp/PgDn","Ctrl+Q"}
+agent_center.demo_reset: "รีเซ็ตสถานะการสาธิตหรือไม่? พิมพ์ /reset confirm รายการงานและการตั้งค่าที่มีอยู่จะไม่ได้รับผลกระทบ" # {Locked="/reset confirm"} Resets only the isolated demo, never real work.
+agent_center.demo_saved: "บันทึกฉบับแก้ไข %{revision} แล้ว" # %{revision} is the persisted demo state revision.
+agent_center.demo_error: "การดำเนินการสาธิตล้มเหลว: %{error}" # %{error} explains the rejected action; no state change is claimed.
+agent_center.tasks_title: "งาน"
+agent_center.task_new: "งานใหม่"
+agent_center.task_all: "งานทั้งหมด"
+agent_center.task_attention: "ต้องการความสนใจ"
+agent_center.task_continue: "ดำเนินงานต่อ"
+# Messages waiting for this work's busy executor, excluding the currently running turn. {Locked="%{count}"}
+agent_center.task_queued_messages: "ข้อความในคิว: %{count}"
+# Explicit migration of an existing work from legacy orchestration to its own executing agent session.
+agent_center.task_claim_executor: "เชื่อมต่อกับเอเจนต์ของงาน"
+agent_center.task_claim_executor_confirm: "ย้ายงานนี้ไปยังเอเจนต์ผู้ดำเนินงานเฉพาะของงานนี้ แชทและผลลัพธ์ที่มีอยู่จะยังคงเก็บไว้ และการจัดกำหนดการแบบเดิมจะหยุดลง หากไม่สามารถกู้คืนเซสชันการดำเนินงานเดิมได้ การเริ่มเซสชันใหม่จะต้องได้รับการยืนยันแยกต่างหาก"
+agent_center.task_open_tab: "เปิดในแท็บ"
+agent_center.task_tab_unsupported: "การเปิดแท็บงานต้องใช้ Intelligent Terminal" # {Locked="Intelligent Terminal"}
+agent_center.task_new_session: "เริ่มเซสชันใหม่"
+agent_center.task_new_session_confirm: "ไม่สามารถดำเนินเซสชันเดิมของเอเจนต์ต่อได้ ต้องการเริ่มเซสชันใหม่โดยใช้บริบทที่บันทึกไว้ของงานนี้หรือไม่?"
+agent_center.task_keys: "Up/Down เลือก · Enter เปิด · F4 การดำเนินการ · F5 รายละเอียด" # {Locked="Up/Down","Enter","F4","F5"}
+agent_center.task_list_keys: "F2 งาน · F4 การดำเนินการ · F5 รายละเอียด" # {Locked="F2","F4","F5"}
+agent_center.task_state_running: "กำลังทำงาน"
+agent_center.task_state_waiting: "กำลังรอคำตอบของคุณ"
+agent_center.task_state_paused: "หยุดชั่วคราว"
+agent_center.task_state_recovery: "ต้องการการกู้คืน"
+agent_center.task_state_ready: "พร้อมดำเนินการต่อ"
+agent_center.task_state_completed: "เสร็จสมบูรณ์"
+agent_center.task_state_cancelled: "ยกเลิกแล้ว"
+agent_center.task_state_unavailable: "เซสชันไม่พร้อมใช้งาน"
+agent_center.task_updated: "กิจกรรมล่าสุด: %{time}"
+agent_center.ui_overview: "ภาพรวม"
+agent_center.chat_global: "การสนทนารวม" # Conversation with the non-executing master for new goals and cross-work coordination; each work has its own executor conversation.
+agent_center.chat_welcome: "บอกฉันว่าคุณต้องการทำอะไรให้สำเร็จ จัดการเรื่องใด หรือค้นหาข้อมูลอะไร"
+agent_center.chat_keys: "Enter ส่ง · Shift+Enter ขึ้นบรรทัดใหม่ · F4 การดำเนินการ · F5 รายละเอียด · F7 แดชบอร์ด" # {Locked="Enter","Shift+Enter","F4","F5","F7"}
+agent_center.chat_dashboard_keys: "F7 การสนทนา · Esc การสนทนา · F4 การดำเนินการ · F6 โฟกัสการดำเนินการ" # Dashboard navigation preserves the global conversation and draft. {Locked="F7","Esc","F4","F6"}
+agent_center.chat_context_hint: "คำแนะนำบริบท: %{context}" # %{context} is a readable work or project name, not a binding that limits the global conversation.
+agent_center.ui_attention: "ต้องการความสนใจจากคุณ" # Heading for recorded requests, draft-start reviews, and delivery reviews; not a claim that every work needs attention.
+agent_center.ui_details: "สรุปงานและความคืบหน้า" # Read-only details view containing the work agreement, recorded progress, evidence, and locations.
+agent_center.ui_new_goal: "คุณต้องการทำอะไรให้สำเร็จ"
+agent_center.ui_empty_attention: "ไม่มีคำขอที่เปิดอยู่ซึ่งต้องการคำตอบจากคุณ"
+agent_center.ui_no_works: "ยังไม่มีรายการงานที่บันทึกไว้ เลือกโครงการที่กำหนดค่าไว้เพื่อเริ่มต้น"
+agent_center.ui_no_conversation: "ยังไม่มีข้อความที่บันทึกไว้สำหรับรายการงานนี้"
+agent_center.ui_role_you: "คุณ" # Speaker heading for an actual recorded human message.
+agent_center.ui_role_assistant: "ผู้ช่วยงาน" # Speaker heading for an actual recorded assistant message, not a provider name.
+agent_center.ui_role_service: "บริการ" # Speaker heading for an actual recorded system or service message.
+agent_center.ui_role_unknown: "ข้อความที่บันทึกไว้" # Speaker heading when the service does not identify a recognized message role.
+agent_center.ui_next: "ความรับผิดชอบในขั้นตอนถัดไป"
+agent_center.ui_recorded_facts: "ข้อมูลที่บันทึกไว้"
+agent_center.ui_last_known: "สถานะล่าสุดที่ทราบ · %{status}" # %{status} is a localized recorded status. Used when cached facts do not establish current execution.
+agent_center.ui_cached_facts: "ข้อมูลจากแคช ยังไม่ได้ยืนยันการดำเนินการในปัจจุบัน"
+agent_center.ui_source_root: "ตำแหน่งไฟล์ต้นฉบับของโครงการ" # Configured source root, explicitly distinct from the actual managed execution directory.
+agent_center.ui_execution_root: "ตำแหน่งการดำเนินการที่มีการจัดการ" # Actual execution directory reported by the service, never inferred from the project source root.
+agent_center.ui_location_unknown: "ยังไม่มีการรายงานตำแหน่งการดำเนินการ"
+agent_center.ui_composer: "ข้อความสำหรับ: %{work}" # %{work} is the human-readable target of this independent draft.
+agent_center.ui_composer_new: "รายการงานใหม่ · %{project}" # %{project} is the configured project name, or an explicit project-selection warning.
+agent_center.ui_actions: "การดำเนินการของรายการงาน"
+agent_center.ui_keys: "Enter ส่ง · Shift+Enter ขึ้นบรรทัดใหม่ · F4 การดำเนินการ · F5 รายละเอียด · F6 โฟกัสการดำเนินการ" # {Locked="Enter","Shift+Enter","F4","F5","F6"}
+agent_center.ui_actions_hint: "Up/Down เลือก · Enter เปิด · Esc กลับไปป้อนข้อความ" # Keyboard focus is on a visible action, not the text editor. {Locked="Up/Down","Enter","Esc"}
+agent_center.ui_details_hint: "F5 ปิดรายละเอียด · PgUp/PgDn อ่าน · Esc กลับไปป้อนข้อความ" # Read-only detail focus; returning to input preserves the draft and selection. {Locked="F5","PgUp/PgDn","Esc"}
 agent_center.activity: "กิจกรรม · การสนทนา"
-# %{work} and %{project} are identifiers of the selected work item and project.
+# %{work} and %{project} are human-readable labels for the selected work and configured project.
 agent_center.header: "รายการงาน: %{work} | โครงการ: %{project}"
-agent_center.welcome: "เลือกโครงการหรือระบุ /project use <id> พิมพ์เป้าหมายหรือ /help" # {Locked="/project use","<id>","/help"}
+agent_center.welcome: "กด F4 เพื่อเลือกโครงการที่กำหนดค่าไว้ แล้วป้อนสิ่งที่คุณต้องการทำให้สำเร็จ" # {Locked="F4"}
 agent_center.input_help: "Enter: ส่ง · Shift+Enter: ขึ้นบรรทัดใหม่ · Tab: เติมข้อความให้สมบูรณ์ · F2: สลับรายการงาน · Ctrl+C: ออก · PgUp/PgDn: อ่าน · Ctrl+End: ล่าสุด" # {Locked="Enter","Shift+Enter","Tab","F2","PgUp/PgDn","Ctrl+End","Ctrl+C"}
 agent_center.inbox_count: "ต้องดำเนินการ: %{count}"
 agent_center.sending: "กำลังส่งคำขอที่บันทึกไว้…"
@@ -320,3 +382,84 @@ agent_center.missing_field: "ฟิลด์การตอบกลับขา
 agent_center.invalid_command_id: "--command-id ต้องเป็น UUID" # {Locked="--command-id","UUID"}
 agent_center.worker_stopped: "การเชื่อมต่อคำขอหยุดแล้ว"
 agent_center.host_unavailable: "ไม่มีอะแดปเตอร์โฮสต์เชลล์สำหรับ %{command} ใช้การทำงานด้วยแป้นพิมพ์ของโฮสต์"
+agent_center.console_home: "รายการงานใหม่"
+agent_center.console_new: "รายการงานใหม่ / หน้าหลัก"
+agent_center.console_new_hint: "ป้อนเป้าหมายใหม่ รายการงานอื่นจะดำเนินต่อไปอย่างเป็นอิสระ"
+agent_center.console_project_create_directory: "สร้างไดเรกทอรีใหม่และเริ่มต้นที่เก็บ Git ภายในเครื่อง ไฟล์ที่มีอยู่จะไม่ถูกเขียนทับ" # {Locked="Git"}
+agent_center.console_projects: "เลือกโครงการที่กำหนดค่าไว้"
+agent_center.console_projects_hint: "เลือกโครงการตามชื่อและตำแหน่ง ไม่มีโครงการที่กำหนดค่าไว้ที่นี่ใช่ไหม ขอให้ผู้ดูแลระบบกำหนดค่าโครงการให้"
+agent_center.console_refresh: "รีเฟรชข้อมูลปัจจุบัน"
+agent_center.console_open: "เปิด: %{work}"
+agent_center.console_return: "กลับไปที่: %{work}"
+agent_center.console_respond: "ตอบกลับ: %{work} — %{question}"
+agent_center.console_unknown_work: "ไม่มีรายละเอียดของรายการงาน"
+agent_center.console_unknown_project: "ยังไม่ได้เลือกโครงการหรือโครงการไม่พร้อมใช้งาน"
+# Two works can have exactly the same goal and project. The numbered choice is explicit, never a fuzzy match. %{created} is the recorded creation time.
+agent_center.console_duplicate: "%{work} · รายการงานแยกต่างหาก %{number} · %{created}"
+agent_center.console_start: "ตรวจสอบสรุปงานและอนุมัติการเริ่มต้น"
+agent_center.approval_title: "ต้องได้รับการอนุมัติ" # Title of an inline conversation card for a specific frozen human action.
+agent_center.approval_accept: "อนุมัติ" # Button that submits the exact reviewed action, not a chat message.
+agent_center.approval_start: "อนุมัติและเริ่มต้น" # Button approving the displayed work brief and execution grant.
+agent_center.approval_edit: "เปลี่ยนข้อกำหนด" # Return to the chat composer to describe changes; do not submit or approve the action.
+agent_center.approval_defer: "ไม่ใช่ตอนนี้" # Defer review in this Console without cancelling the work or approving anything.
+agent_center.approval_open_hint: "F6 ตรวจสอบข้อเสนอ" # Opens the inline approval card without approving it. {Locked="F6"}
+agent_center.approval_keys: "Left/Right เลือก · Enter ยืนยันตัวเลือก · F5 รายละเอียด · Esc ไม่ใช่ตอนนี้" # Keyboard help while the inline approval card owns focus. {Locked="Left/Right","Enter","F5","Esc"}
+agent_center.approval_edit_hint: "อธิบายการเปลี่ยนแปลงสำหรับ %{target} ยังไม่มีการอนุมัติใดๆ" # %{target} is the displayed project or work name; the user's draft is preserved.
+agent_center.approval_deferred: "เลื่อนการตรวจสอบ %{target} ออกไปแล้ว เปิดข้อเสนออีกครั้งผ่าน F4 เมื่อพร้อม" # Deferring is local presentation state, not cancellation of work. %{target} is a project or work name. {Locked="F4"}
+agent_center.console_pause: "หยุดงานชั่วคราว"
+agent_center.console_resume: "ดำเนินงานต่อ"
+agent_center.console_cancel: "ยกเลิกรายการงาน"
+agent_center.console_inspect: "ตรวจสอบผลงานส่งมอบที่ตรึงไว้และตรวจหลักฐาน (อ่านอย่างเดียว)"
+agent_center.console_read_evidence: "อ่านหลักฐาน: %{work} — %{path}"
+agent_center.console_more_evidence: "อ่านหลักฐานหน้าถัดไป: %{work}"
+agent_center.console_accept: "ยอมรับผลงานส่งมอบที่ตรวจสอบแล้ว"
+agent_center.console_takeover: "รับช่วงควบคุมพื้นที่ทำงานที่มีการจัดการ"
+agent_center.console_handback: "ส่งคืนการควบคุมพื้นที่ทำงานที่มีการจัดการ"
+agent_center.console_apply: "ใช้การเปลี่ยนแปลงที่อนุมัติแล้ว"
+agent_center.console_action: "ตรวจสอบการดำเนินการที่บันทึกไว้"
+agent_center.console_answer: "คำตอบ"
+agent_center.console_answer_review: "คำตอบที่บันทึกไว้เพื่อส่ง:\n%{value}"
+agent_center.console_answer_invalid: "ป้อนค่าที่ถูกต้องสำหรับ %{field} และตรวจสอบตัวเลือกที่จำเป็นและขอบเขตของเขตข้อมูล"
+agent_center.console_schema_unsupported: "คำถามนี้ใช้เค้าร่างที่แบบฟอร์มอย่างง่ายไม่รองรับ ยังไม่ได้ส่งสิ่งใด โปรดขอคำถามที่ง่ายกว่านี้"
+agent_center.console_yes: "ใช่"
+agent_center.console_no: "ไม่ใช่"
+agent_center.console_form_help: "Up/Down เลือกเขตข้อมูล · Left/Right เลือกตัวเลือก · Enter เขตข้อมูลถัดไป · Ctrl+Enter ตรวจสอบคำตอบ · Esc ย้อนกลับ" # {Locked="Up/Down","Left/Right","Enter","Ctrl+Enter","Esc"}
+agent_center.console_menu_help: "F4 การดำเนินการ · Up/Down เลือก · Enter เปิด · Esc ย้อนกลับ · F12 การวินิจฉัย" # {Locked="F4","Up/Down","Enter","Esc","F12"}
+agent_center.console_hint: "F4 การดำเนินการ · F2 สลับรายการงาน · F12 การวินิจฉัย" # {Locked="F4","F2","F12"}
+agent_center.console_scope: "ขอบเขตที่รวมไว้"
+agent_center.console_exclusions: "นอกเหนือรายการงานนี้"
+agent_center.console_criteria: "เกณฑ์การยอมรับและหลักฐานที่จำเป็น"
+agent_center.console_delivery: "ผลงานส่งมอบ"
+agent_center.console_delivery_code: "โค้ดภายในเครื่องในพื้นที่ทำงานที่มีการจัดการ"
+agent_center.console_delivery_report: "ไฟล์รายงานที่บันทึกไว้"
+agent_center.console_progress: "ความคืบหน้าของงานย่อย"
+agent_center.console_authority: "สิทธิ์ที่ร้องขอและข้อจำกัดในการดำเนินการ"
+agent_center.console_capabilities: "ความสามารถในการดำเนินการที่อนุมัติแล้ว"
+agent_center.console_data_scopes: "ตำแหน่งข้อมูลที่อ่านได้"
+agent_center.console_limits: "ขีดจำกัดทรัพยากร"
+agent_center.console_managed_writes: "การเขียนจากการดำเนินการที่มีการจัดการมีขอบเขตอยู่ในพื้นที่ทำงานของรายการงานนี้ สิ่งนี้ไม่ใช่ขอบเขตการแยกระดับระบบปฏิบัติการสำหรับเครื่องมือที่ผู้ให้บริการเป็นเจ้าของ"
+agent_center.console_frozen: "การยืนยันนี้ผูกกับรายการงาน คำขอ นโยบาย และรุ่นแก้ไขที่บันทึกไว้ การเปลี่ยนแปลงต้องได้รับการตรวจสอบใหม่ การอนุมัติจะไม่เปลี่ยนเป้าหมายโดยไม่แจ้งให้ทราบ"
+agent_center.console_stale: "ข้อมูลสดล้าสมัยแล้ว แบบร่างยังปลอดภัย เชื่อมต่อใหม่และรีเฟรชก่อนอนุมัติหรือส่งการเปลี่ยนแปลง ผลลัพธ์ที่ไม่ทราบไม่ได้หมายถึงความล้มเหลวหรือการเสร็จสมบูรณ์"
+agent_center.console_diagnostics: "รายละเอียดโพรโทคอลเพื่อการวินิจฉัย (อ่านอย่างเดียว)"
+agent_center.console_no_details: "ไม่มีรายละเอียดปัจจุบันของรายการงาน ใช้ F4 เพื่อเลือกโครงการ เปิดรายการงาน หรือรีเฟรช" # {Locked="F4"}
+agent_center.console_draft: "แบบร่าง — ยังไม่เริ่ม"
+agent_center.console_active: "กำลังดำเนินการ — ยังไม่ได้รับการยอมรับ"
+agent_center.console_completed: "เสร็จสมบูรณ์ — บันทึกการยอมรับโดยมนุษย์แล้ว"
+agent_center.console_cancelled: "ยกเลิกแล้ว"
+agent_center.console_paused: "หยุดชั่วคราว"
+agent_center.console_automatic: "ดำเนินต่อโดยอัตโนมัติ"
+agent_center.console_running: "กำลังทำงาน"
+agent_center.console_pending: "รอดำเนินการ — ยังไม่เสร็จสมบูรณ์"
+agent_center.console_verified: "ตรวจสอบแล้ว / ยอมรับภายในแล้ว"
+agent_center.console_failed: "ล้มเหลว / ถูกปฏิเสธ — ตรวจสอบหลักฐาน"
+agent_center.console_waiting: "กำลังรอคำตอบหรือสิ่งที่ต้องพึ่งพา"
+agent_center.console_unknown: "ไม่ทราบ — รีเฟรชหรือตรวจสอบข้อมูลการวินิจฉัย"
+agent_center.console_resolved: "บันทึกคำตอบแล้ว"
+agent_center.console_superseded: "ถูกแทนที่แล้ว — ไม่ใช่ผลงานส่งมอบปัจจุบัน"
+agent_center.console_next_done: "ขั้นตอนถัดไป: ใช้ผลงานส่งมอบที่ยอมรับแล้ว ไม่มีการอนุมัติอื่นที่รอดำเนินการ"
+agent_center.console_next_cancelled: "ขั้นตอนถัดไป: จะไม่ดำเนินต่อโดยอัตโนมัติ รายการงานนี้ถูกยกเลิกแล้ว"
+agent_center.console_next_approve: "ขั้นตอนถัดไป: คุณตรวจสอบสรุปงานและอนุมัติการเริ่มต้นที่ระบุนี้ผ่าน F4" # {Locked="F4"}
+agent_center.console_next_accept: "ขั้นตอนถัดไป: คุณตรวจสอบผลงานส่งมอบที่ตรึงไว้และหลักฐาน แล้วยอมรับอย่างชัดเจน"
+agent_center.console_next_attention: "ขั้นตอนถัดไป: ตรวจสอบประเด็นที่ยังต้องให้ความสนใจของรายการงานนี้ผ่าน F4" # {Locked="F4"}
+agent_center.console_next_resume: "ขั้นตอนถัดไป: คุณตัดสินใจว่าจะดำเนินงานที่หยุดชั่วคราวนี้ต่อเมื่อใด"
+agent_center.console_next_service: "ขั้นตอนถัดไป: บริการจะดำเนินตามแผนที่อนุมัติแล้ว นี่ไม่ใช่การยอมรับขั้นสุดท้าย"

@@ -33,7 +33,7 @@ fn agent_center_clients_preserve_structured_arguments() {
     }
     assert!(matches!(
         Cli::try_parse_from(["wta", "ui"]).unwrap().command,
-        Some(Command::Ui)
+        Some(Command::Ui { work: None })
     ));
     assert!(matches!(
         Cli::try_parse_from(["wta", "center", "serve"])

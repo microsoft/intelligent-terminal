@@ -272,10 +272,72 @@ system.model_unknown: "Onbekannte Modell %{model} — tippt /model fir d'verfüg
 # not an agent session; a work item may contain multiple tasks.
 agent_center.title: "Agent Center" # {Locked}
 agent_center.works: "Aarbechtselementer"
+agent_center.demo_title: "Demo vun der Geschicht vun engem Aarbechtselement" # Title of an isolated scripted demonstration; the story fixture itself is English.
+agent_center.demo_notice: "Demo mat festem Oflaf | Beispillbeweiser, simuléiert Sessiounen an Tokenverbrauch | Keng Agente gi gestart" # Always-visible disclosure; simulated data must not be confused with live agent execution.
+agent_center.demo_scene: "Zeen %{scene}/8" # %{scene} is the current scene number in the eight-scene story.
+agent_center.demo_next: "Nächst: %{input}" # %{input} is the literal English story input, not a translated command.
+agent_center.demo_keys: "Enter: schécken | Tab: nächst Agab ausfëllen | PgUp/PgDn: scrollen | Ctrl+Q: zoumaachen" # {Locked="Enter","Tab","PgUp/PgDn","Ctrl+Q"}
+agent_center.demo_reset: "Den Demo-Zoustand zerécksetzen? Tippt /reset confirm. Besteeënd Aarbechtselementer an Astellunge sinn net betraff." # {Locked="/reset confirm"} Resets only the isolated demo, never real work.
+agent_center.demo_saved: "Revisioun %{revision} gespäichert" # %{revision} is the persisted demo state revision.
+agent_center.demo_error: "Demo-Aktioun feelgeschloen: %{error}" # %{error} explains the rejected action; no state change is claimed.
+agent_center.tasks_title: "Aufgaben"
+agent_center.task_new: "Nei Aufgab"
+agent_center.task_all: "All Aufgaben"
+agent_center.task_attention: "Braucht Opmierksamkeet"
+agent_center.task_continue: "Aufgab weiderféieren"
+# Messages waiting for this work's busy executor, excluding the currently running turn. {Locked="%{count}"}
+agent_center.task_queued_messages: "Messagen an der Waardeschlaang: %{count}"
+# Explicit migration of an existing work from legacy orchestration to its own executing agent session.
+agent_center.task_claim_executor: "Mam Agent vun der Aufgab verbannen"
+agent_center.task_claim_executor_confirm: "Iwwerdrot dës Aufgab un hiren eegenen ausféierenden Agent. De bestoende Chat an d'Resultater gi bäibehalen, an déi al Zäitplangsteierung gëtt gestoppt. Wann déi ursprénglech Ausféierungssessioun net ka restauréiert ginn, ass eng separat Bestätegung néideg fir eng nei Sessioun ze starten."
+agent_center.task_open_tab: "An engem Tab opmaachen"
+agent_center.task_tab_unsupported: "Fir en Aufgaben-Tab opzemaachen, ass Intelligent Terminal néideg." # {Locked="Intelligent Terminal"}
+agent_center.task_new_session: "Eng nei Sessioun starten"
+agent_center.task_new_session_confirm: "Déi ursprénglech Agent-Sessioun kann net weidergefouert ginn. Wëllt Dir eng nei Sessioun mam gespäicherte Kontext vun dëser Aufgab starten?"
+agent_center.task_keys: "Up/Down auswielen · Enter opmaachen · F4 Aktiounen · F5 Detailer" # {Locked="Up/Down","Enter","F4","F5"}
+agent_center.task_list_keys: "F2 Aufgaben · F4 Aktiounen · F5 Detailer" # {Locked="F2","F4","F5"}
+agent_center.task_state_running: "Leeft"
+agent_center.task_state_waiting: "Waart op Är Äntwert"
+agent_center.task_state_paused: "Pauséiert"
+agent_center.task_state_recovery: "Erhuelung néideg"
+agent_center.task_state_ready: "Prett fir weiderzefueren"
+agent_center.task_state_completed: "Ofgeschloss"
+agent_center.task_state_cancelled: "Ofgebrach"
+agent_center.task_state_unavailable: "Sessioun net disponibel"
+agent_center.task_updated: "Lescht Aktivitéit: %{time}"
+agent_center.ui_overview: "Iwwersiicht"
+agent_center.chat_global: "Iwwergräifend Gespréich" # Conversation with the non-executing master for new goals and cross-work coordination; each work has its own executor conversation.
+agent_center.chat_welcome: "Sot mir, wat Dir erreechen, organiséiere oder erausfanne wëllt."
+agent_center.chat_keys: "Enter schécken · Shift+Enter nei Zeil · F4 Aktiounen · F5 Detailer · F7 Iwwersiichtsberäich" # {Locked="Enter","Shift+Enter","F4","F5","F7"}
+agent_center.chat_dashboard_keys: "F7 Gespréich · Esc Gespréich · F4 Aktiounen · F6 Fokus op Aktiounen" # Dashboard navigation preserves the global conversation and draft. {Locked="F7","Esc","F4","F6"}
+agent_center.chat_context_hint: "Kontexthinweis: %{context}" # %{context} is a readable work or project name, not a binding that limits the global conversation.
+agent_center.ui_attention: "Erfuerdert Är Opmierksamkeet" # Heading for recorded requests, draft-start reviews, and delivery reviews; not a claim that every work needs attention.
+agent_center.ui_details: "Zesummefaassung a Fortschrëtt" # Read-only details view containing the work agreement, recorded progress, evidence, and locations.
+agent_center.ui_new_goal: "Wat géift Dir gär erreechen?"
+agent_center.ui_empty_attention: "Keng oppen Ufro erfuerdert eng Äntwert vun Iech."
+agent_center.ui_no_works: "Et gouf nach keen Aarbechtselement erfaasst. Wielt e konfiguréierte Projet, fir unzefänken."
+agent_center.ui_no_conversation: "Fir dëst Aarbechtselement goufe keng Messagen erfaasst."
+agent_center.ui_role_you: "Dir" # Speaker heading for an actual recorded human message.
+agent_center.ui_role_assistant: "Aarbechtsassistent" # Speaker heading for an actual recorded assistant message, not a provider name.
+agent_center.ui_role_service: "Déngscht" # Speaker heading for an actual recorded system or service message.
+agent_center.ui_role_unknown: "Erfaasste Message" # Speaker heading when the service does not identify a recognized message role.
+agent_center.ui_next: "Nächst Verantwortung"
+agent_center.ui_recorded_facts: "Erfaasste Fakten"
+agent_center.ui_last_known: "Lescht bekannte Stand · %{status}" # %{status} is a localized recorded status. Used when cached facts do not establish current execution.
+agent_center.ui_cached_facts: "Tëschegespäichert Fakten; déi aktuell Ausféierung ass net bestätegt."
+agent_center.ui_source_root: "Späicheruert vun de Projetquellen" # Configured source root, explicitly distinct from the actual managed execution directory.
+agent_center.ui_execution_root: "Uert vun der verwalteter Ausféierung" # Actual execution directory reported by the service, never inferred from the project source root.
+agent_center.ui_location_unknown: "Et gouf keen Ausféierungsuert gemellt."
+agent_center.ui_composer: "Message fir: %{work}" # %{work} is the human-readable target of this independent draft.
+agent_center.ui_composer_new: "Neit Aarbechtselement · %{project}" # %{project} is the configured project name, or an explicit project-selection warning.
+agent_center.ui_actions: "Aktioune fir d'Aarbechtselement"
+agent_center.ui_keys: "Enter schécken · Shift+Enter nei Zeil · F4 Aktiounen · F5 Detailer · F6 Fokus op Aktiounen" # {Locked="Enter","Shift+Enter","F4","F5","F6"}
+agent_center.ui_actions_hint: "Up/Down auswielen · Enter opmaachen · Esc Agab" # Keyboard focus is on a visible action, not the text editor. {Locked="Up/Down","Enter","Esc"}
+agent_center.ui_details_hint: "F5 Detailer zoumaachen · PgUp/PgDn liesen · Esc Agab" # Read-only detail focus; returning to input preserves the draft and selection. {Locked="F5","PgUp/PgDn","Esc"}
 agent_center.activity: "Aktivitéit · Gespréich"
-# %{work} and %{project} are identifiers of the selected work item and project.
+# %{work} and %{project} are human-readable labels for the selected work and configured project.
 agent_center.header: "Aarbechtselement: %{work} | Projet: %{project}"
-agent_center.welcome: "Wielt e Projet oder gitt /project use <id> un. Gitt en Zil oder /help an." # {Locked="/project use","<id>","/help"}
+agent_center.welcome: "Dréckt F4, fir e konfiguréierte Projet ze wielen, a gitt dann an, wat Dir erreeche wëllt." # {Locked="F4"}
 agent_center.input_help: "Enter: schécken · Shift+Enter: nei Zeil · Tab: vervollstännegen · F2: Aarbechtselement wiesselen · Ctrl+C: ophalen · PgUp/PgDn: liesen · Ctrl+End: neisten" # {Locked="Enter","Shift+Enter","Tab","F2","PgUp/PgDn","Ctrl+End","Ctrl+C"}
 agent_center.inbox_count: "Opmierksamkeet néideg: %{count}"
 agent_center.sending: "Déi erfaassten Ufro gëtt geschéckt…"
@@ -320,3 +382,84 @@ agent_center.missing_field: "Feelend oder ongëltegt Äntwertfeld: %{field}"
 agent_center.invalid_command_id: "--command-id muss eng UUID sinn." # {Locked="--command-id","UUID"}
 agent_center.worker_stopped: "D’Verbindung fir Ufroen huet opgehalen."
 agent_center.host_unavailable: "Fir %{command} ass kee Shellhostadapter disponibel. Benotzt d’Tastaturaktioune vum Host."
+agent_center.console_home: "Neit Aarbechtselement"
+agent_center.console_new: "Neit Aarbechtselement / Startsäit"
+agent_center.console_new_hint: "Gitt en neit Zil an. Aner Aarbechtselementer gi weider onofhängeg beaarbecht."
+agent_center.console_project_create_directory: "Erstellt en neie Verzeechnes an initialiséiert e lokale Git-Repository. Bestoend Fichiere ginn net iwwerschriwwen." # {Locked="Git"}
+agent_center.console_projects: "E konfiguréierte Projet wielen"
+agent_center.console_projects_hint: "Wielt de Projet nom Numm a Späicheruert. Ass hei kee Projet konfiguréiert? Frot Ären Administrateur, fir een ze konfiguréieren."
+agent_center.console_refresh: "Aktuell Fakten aktualiséieren"
+agent_center.console_open: "Opmaachen: %{work}"
+agent_center.console_return: "Zréck op: %{work}"
+agent_center.console_respond: "Äntweren: %{work} — %{question}"
+agent_center.console_unknown_work: "Detailer zum Aarbechtselement net disponibel"
+agent_center.console_unknown_project: "Projet net ausgewielt oder net disponibel"
+# Two works can have exactly the same goal and project. The numbered choice is explicit, never a fuzzy match. %{created} is the recorded creation time.
+agent_center.console_duplicate: "%{work} · separat Aarbechtselement %{number} · %{created}"
+agent_center.console_start: "Zesummefaassung iwwerpréiwen a Start approuvéieren"
+agent_center.approval_title: "Approbatioun erfuerderlech" # Title of an inline conversation card for a specific frozen human action.
+agent_center.approval_accept: "Approuvéieren" # Button that submits the exact reviewed action, not a chat message.
+agent_center.approval_start: "Approuvéieren a starten" # Button approving the displayed work brief and execution grant.
+agent_center.approval_edit: "Ufuerderungen änneren" # Return to the chat composer to describe changes; do not submit or approve the action.
+agent_center.approval_defer: "Net elo" # Defer review in this Console without cancelling the work or approving anything.
+agent_center.approval_open_hint: "F6 Virschlag iwwerpréiwen" # Opens the inline approval card without approving it. {Locked="F6"}
+agent_center.approval_keys: "Left/Right auswielen · Enter bestätegen · F5 Detailer · Esc net elo" # Keyboard help while the inline approval card owns focus. {Locked="Left/Right","Enter","F5","Esc"}
+agent_center.approval_edit_hint: "Beschreift d'Ännerunge fir %{target}. Et gouf näischt approuvéiert." # %{target} is the displayed project or work name; the user's draft is preserved.
+agent_center.approval_deferred: "Iwwerpréiwung vu %{target} verréckelt. Maacht de Virschlag iwwer F4 erëm op, wann Dir prett sidd." # Deferring is local presentation state, not cancellation of work. %{target} is a project or work name. {Locked="F4"}
+agent_center.console_pause: "Aarbechtselement pauséieren"
+agent_center.console_resume: "Aarbechtselement weiderféieren"
+agent_center.console_cancel: "Aarbechtselement ofbriechen"
+agent_center.console_inspect: "Fixéiert Liwwerung iwwerpréiwen an d'Beleeger kontrolléieren (nëmme liesen)"
+agent_center.console_read_evidence: "Beleeger liesen: %{work} — %{path}"
+agent_center.console_more_evidence: "Nächst Säit mat Beleeger liesen: %{work}"
+agent_center.console_accept: "Déi iwwerpréift Liwwerung unhuelen"
+agent_center.console_takeover: "De verwalteten Aarbechtsberäich iwwerhuelen"
+agent_center.console_handback: "De verwalteten Aarbechtsberäich zeréckginn"
+agent_center.console_apply: "Déi approuvéiert Ännerung uwenden"
+agent_center.console_action: "Déi erfaassten Aktioun iwwerpréiwen"
+agent_center.console_answer: "Äntwert"
+agent_center.console_answer_review: "Erfaassten Äntwert fir anzereechen:\n%{value}"
+agent_center.console_answer_invalid: "Gitt e gültege Wäert fir %{field} an; iwwerpréift déi erfuerderlech Optiounen a Grenze vum Feld."
+agent_center.console_schema_unsupported: "Dës Fro benotzt e Schema, dat den einfache Formulaire net ënnerstëtzt. Näischt gouf agereecht; frot no enger méi einfacher Fro."
+agent_center.console_yes: "Jo"
+agent_center.console_no: "Nee"
+agent_center.console_form_help: "Up/Down Feld wielen · Left/Right Optioun wielen · Enter nächst Feld · Ctrl+Enter Äntwert iwwerpréiwen · Esc zréck" # {Locked="Up/Down","Left/Right","Enter","Ctrl+Enter","Esc"}
+agent_center.console_menu_help: "F4 Aktiounen · Up/Down auswielen · Enter opmaachen · Esc zréck · F12 Diagnostik" # {Locked="F4","Up/Down","Enter","Esc","F12"}
+agent_center.console_hint: "F4 Aktiounen · F2 Aarbechtselement wiesselen · F12 Diagnostik" # {Locked="F4","F2","F12"}
+agent_center.console_scope: "Abegraffenen Ëmfang"
+agent_center.console_exclusions: "Ausserhalb vun dësem Aarbechtselement"
+agent_center.console_criteria: "Unhuelkrittären an erfuerderlech Beleeger"
+agent_center.console_delivery: "Liwwerung"
+agent_center.console_delivery_code: "Lokale Code am verwalteten Aarbechtsberäich"
+agent_center.console_delivery_report: "Erfaasste Rapportdateien"
+agent_center.console_progress: "Fortschrëtt vun den Aufgaben"
+agent_center.console_authority: "Ugefrote Berechtegungen an Ausféierungsgrenzen"
+agent_center.console_capabilities: "Approuvéiert Ausféierungsméiglechkeeten"
+agent_center.console_data_scopes: "Späicheruerter vun Date mat Lieszugriff"
+agent_center.console_limits: "Ressourcegrenzen"
+agent_center.console_managed_writes: "Schreiwvirgäng vu verwalteten Operatioune sinn op den Aarbechtsberäich vun dësem Aarbechtselement begrenzt. Dëst ass keng Isolatiounsgrenz vum Betribssystem fir Geschier, dat dem Ubidder gehéiert."
+agent_center.console_frozen: "Dës Bestätegung ass un dat erfaassten Aarbechtselement, d'Ufro, d'Richtlinn an d'Revisioune gebonnen. Ännerunge verlaangen eng nei Iwwerpréiwung; eng Approbatioun gëtt ni onbemierkt op en anert Zil ëmgeleet."
+agent_center.console_stale: "Déi aktuell Fakte si veralt. Entwërf si sécher. Verbannt Iech nei an aktualiséiert, ier Dir Ännerungen approuvéiert oder schéckt; en onbekannt Resultat ass weder e Feeler nach en Ofschloss."
+agent_center.console_diagnostics: "Diagnostesch Protokolldetailer (nëmme liesen)"
+agent_center.console_no_details: "Keng aktuell Detailer zum Aarbechtselement. Benotzt F4, fir e Projet ze wielen, en Aarbechtselement opzemaachen oder ze aktualiséieren." # {Locked="F4"}
+agent_center.console_draft: "Entworf — net gestart"
+agent_center.console_active: "Aktiv — nach net ugeholl"
+agent_center.console_completed: "Ofgeschloss — mënschlech Unhuelung erfaasst"
+agent_center.console_cancelled: "Ofgebrach"
+agent_center.console_paused: "Pauséiert"
+agent_center.console_automatic: "Automatescht Weidergoen"
+agent_center.console_running: "Leeft"
+agent_center.console_pending: "Ausstoend — net ofgeschloss"
+agent_center.console_verified: "Iwwerpréift / intern ugeholl"
+agent_center.console_failed: "Feelgeschloen / refuséiert — Beleeger iwwerpréiwen"
+agent_center.console_waiting: "Waart op eng Äntwert oder Ofhängegkeet"
+agent_center.console_unknown: "Onbekannt — aktualiséieren oder Diagnostik iwwerpréiwen"
+agent_center.console_resolved: "Äntwert erfaasst"
+agent_center.console_superseded: "Ersat — net déi aktuell Liwwerung"
+agent_center.console_next_done: "Als Nächst: benotzt déi ugeholl Liwwerung; keng weider Approbatioun steet aus."
+agent_center.console_next_cancelled: "Als Nächst: keen automatescht Weidergoen; dëst Aarbechtselement gouf ofgebrach."
+agent_center.console_next_approve: "Als Nächst: iwwerpréift d'Zesummefaassung an approuvéiert dee geneeë Start iwwer F4." # {Locked="F4"}
+agent_center.console_next_accept: "Als Nächst: iwwerpréift déi fixéiert Liwwerung an d'Beleeger an huelt se dann ausdrécklech un."
+agent_center.console_next_attention: "Als Nächst: iwwerpréift iwwer F4 déi ausstoend Punkten, déi bei dësem Aarbechtselement Opmierksamkeet verlaangen." # {Locked="F4"}
+agent_center.console_next_resume: "Als Nächst: Dir decidéiert, wéini dëst pauséiert Aarbechtselement weidergefouert gëtt."
+agent_center.console_next_service: "Als Nächst: den Déngscht féiert den approuvéierte Plang weider. Dëst ass keng endgülteg Unhuelung."

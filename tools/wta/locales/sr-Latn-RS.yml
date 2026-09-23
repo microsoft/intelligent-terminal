@@ -272,10 +272,72 @@ system.model_unknown: "Nepoznat model %{model} — unesite /model da vidite dost
 # not an agent session; a work item may contain multiple tasks.
 agent_center.title: "Agent Center" # {Locked}
 agent_center.works: "Radne stavke"
+agent_center.demo_title: "Demonstracija priče o radnoj stavci" # Title of an isolated scripted demonstration; the story fixture itself is English.
+agent_center.demo_notice: "Demonstracija po scenariju | Primeri dokaza, simulirane sesije i upotreba tokena | Agenti se ne pokreću" # Always-visible disclosure; simulated data must not be confused with live agent execution.
+agent_center.demo_scene: "Scena %{scene}/8" # %{scene} is the current scene number in the eight-scene story.
+agent_center.demo_next: "Sledeće: %{input}" # %{input} is the literal English story input, not a translated command.
+agent_center.demo_keys: "Enter: pošalji | Tab: popuni sledeći unos | PgUp/PgDn: pomeraj | Ctrl+Q: zatvori" # {Locked="Enter","Tab","PgUp/PgDn","Ctrl+Q"}
+agent_center.demo_reset: "Resetovati stanje demonstracije? Unesite /reset confirm. Postojeće radne stavke i postavke ostaju nepromenjene." # {Locked="/reset confirm"} Resets only the isolated demo, never real work.
+agent_center.demo_saved: "Sačuvana revizija %{revision}" # %{revision} is the persisted demo state revision.
+agent_center.demo_error: "Radnja demonstracije nije uspela: %{error}" # %{error} explains the rejected action; no state change is claimed.
+agent_center.tasks_title: "Zadaci"
+agent_center.task_new: "Novi zadatak"
+agent_center.task_all: "Svi zadaci"
+agent_center.task_attention: "Zahteva pažnju"
+agent_center.task_continue: "Nastavi zadatak"
+# Messages waiting for this work's busy executor, excluding the currently running turn. {Locked="%{count}"}
+agent_center.task_queued_messages: "Poruke u redu čekanja: %{count}"
+# Explicit migration of an existing work from legacy orchestration to its own executing agent session.
+agent_center.task_claim_executor: "Poveži sa agentom zadatka"
+agent_center.task_claim_executor_confirm: "Prebacite ovaj zadatak na njegovog sopstvenog agenta za izvršavanje. Postojeći razgovor i rezultati se čuvaju, a staro zakazivanje prestaje. Ako se prvobitna sesija izvršavanja ne može obnoviti, pokretanje nove sesije zahteva zasebnu potvrdu."
+agent_center.task_open_tab: "Otvori na kartici"
+agent_center.task_tab_unsupported: "Za otvaranje kartice zadatka potreban je Intelligent Terminal." # {Locked="Intelligent Terminal"}
+agent_center.task_new_session: "Započni novu sesiju"
+agent_center.task_new_session_confirm: "Prvobitnu sesiju agenta nije moguće nastaviti. Želite li da započnete novu sesiju koristeći sačuvani kontekst ovog zadatka?"
+agent_center.task_keys: "Up/Down izbor · Enter otvori · F4 radnje · F5 detalji" # {Locked="Up/Down","Enter","F4","F5"}
+agent_center.task_list_keys: "F2 zadaci · F4 radnje · F5 detalji" # {Locked="F2","F4","F5"}
+agent_center.task_state_running: "U toku"
+agent_center.task_state_waiting: "Čeka vaš odgovor"
+agent_center.task_state_paused: "Pauzirano"
+agent_center.task_state_recovery: "Potreban je oporavak"
+agent_center.task_state_ready: "Spremno za nastavak"
+agent_center.task_state_completed: "Završeno"
+agent_center.task_state_cancelled: "Otkazano"
+agent_center.task_state_unavailable: "Sesija nije dostupna"
+agent_center.task_updated: "Poslednja aktivnost: %{time}"
+agent_center.ui_overview: "Pregled"
+agent_center.chat_global: "Zajednički razgovor" # Conversation with the non-executing master for new goals and cross-work coordination; each work has its own executor conversation.
+agent_center.chat_welcome: "Recite mi šta želite da postignete, organizujete ili saznate."
+agent_center.chat_keys: "Enter pošalji · Shift+Enter novi red · F4 radnje · F5 detalji · F7 pregledna tabla" # {Locked="Enter","Shift+Enter","F4","F5","F7"}
+agent_center.chat_dashboard_keys: "F7 razgovor · Esc razgovor · F4 radnje · F6 fokus na radnje" # Dashboard navigation preserves the global conversation and draft. {Locked="F7","Esc","F4","F6"}
+agent_center.chat_context_hint: "Smernica za kontekst: %{context}" # %{context} is a readable work or project name, not a binding that limits the global conversation.
+agent_center.ui_attention: "Zahteva vašu pažnju" # Heading for recorded requests, draft-start reviews, and delivery reviews; not a claim that every work needs attention.
+agent_center.ui_details: "Opis posla i napredak" # Read-only details view containing the work agreement, recorded progress, evidence, and locations.
+agent_center.ui_new_goal: "Šta želite da postignete?"
+agent_center.ui_empty_attention: "Nema otvorenih zahteva koji čekaju vaš odgovor."
+agent_center.ui_no_works: "Nijedna radna stavka nije zabeležena. Za početak izaberite podešeni projekat."
+agent_center.ui_no_conversation: "Za ovu radnu stavku nisu zabeležene poruke."
+agent_center.ui_role_you: "Vi" # Speaker heading for an actual recorded human message.
+agent_center.ui_role_assistant: "Pomoćnik za rad" # Speaker heading for an actual recorded assistant message, not a provider name.
+agent_center.ui_role_service: "Usluga" # Speaker heading for an actual recorded system or service message.
+agent_center.ui_role_unknown: "Zabeležena poruka" # Speaker heading when the service does not identify a recognized message role.
+agent_center.ui_next: "Odgovornost za sledeći korak"
+agent_center.ui_recorded_facts: "Zabeleženi podaci"
+agent_center.ui_last_known: "Poslednje poznato stanje · %{status}" # %{status} is a localized recorded status. Used when cached facts do not establish current execution.
+agent_center.ui_cached_facts: "Keširani podaci; trenutno izvršavanje nije potvrđeno."
+agent_center.ui_source_root: "Lokacija izvornih datoteka projekta" # Configured source root, explicitly distinct from the actual managed execution directory.
+agent_center.ui_execution_root: "Lokacija upravljanog izvršavanja" # Actual execution directory reported by the service, never inferred from the project source root.
+agent_center.ui_location_unknown: "Nije prijavljena lokacija izvršavanja."
+agent_center.ui_composer: "Poruka za: %{work}" # %{work} is the human-readable target of this independent draft.
+agent_center.ui_composer_new: "Nova radna stavka · %{project}" # %{project} is the configured project name, or an explicit project-selection warning.
+agent_center.ui_actions: "Radnje radne stavke"
+agent_center.ui_keys: "Enter pošalji · Shift+Enter novi red · F4 radnje · F5 detalji · F6 fokus na radnje" # {Locked="Enter","Shift+Enter","F4","F5","F6"}
+agent_center.ui_actions_hint: "Up/Down izbor · Enter otvori · Esc povratak na unos" # Keyboard focus is on a visible action, not the text editor. {Locked="Up/Down","Enter","Esc"}
+agent_center.ui_details_hint: "F5 zatvori detalje · PgUp/PgDn čitanje · Esc povratak na unos" # Read-only detail focus; returning to input preserves the draft and selection. {Locked="F5","PgUp/PgDn","Esc"}
 agent_center.activity: "Aktivnost · Razgovor"
-# %{work} and %{project} are identifiers of the selected work item and project.
+# %{work} and %{project} are human-readable labels for the selected work and configured project.
 agent_center.header: "Radna stavka: %{work} | Projekat: %{project}"
-agent_center.welcome: "Izaberite projekat ili navedite /project use <id>. Unesite cilj ili /help." # {Locked="/project use","<id>","/help"}
+agent_center.welcome: "Pritisnite F4 da izaberete podešeni projekat, a zatim unesite šta želite da postignete." # {Locked="F4"}
 agent_center.input_help: "Enter: slanje · Shift+Enter: novi red · Tab: dopunjavanje · F2: promena radne stavke · Ctrl+C: izlaz · PgUp/PgDn: čitanje · Ctrl+End: najnovije" # {Locked="Enter","Shift+Enter","Tab","F2","PgUp/PgDn","Ctrl+End","Ctrl+C"}
 agent_center.inbox_count: "Zahteva pažnju: %{count}"
 agent_center.sending: "Slanje zabeleženog zahteva…"
@@ -320,3 +382,84 @@ agent_center.missing_field: "Polje odgovora nedostaje ili nije važeće: %{field
 agent_center.invalid_command_id: "--command-id mora biti UUID." # {Locked="--command-id","UUID"}
 agent_center.worker_stopped: "Veza za zahteve je prekinuta."
 agent_center.host_unavailable: "Nije dostupan adapter domaćina ljuske za %{command}. Koristite radnje tastature domaćina."
+agent_center.console_home: "Nova radna stavka"
+agent_center.console_new: "Nova radna stavka / Početna"
+agent_center.console_new_hint: "Unesite novi cilj. Ostale radne stavke nastavljaju se nezavisno."
+agent_center.console_project_create_directory: "Napravite novi direktorijum i inicijalizujte lokalno Git spremište. Postojeće datoteke neće biti prepisane." # {Locked="Git"}
+agent_center.console_projects: "Izaberite podešeni projekat"
+agent_center.console_projects_hint: "Izaberite projekat po imenu i mestu. Ovde nema podešenog projekta? Zatražite od administratora da ga podesi."
+agent_center.console_refresh: "Osvežite aktuelne podatke"
+agent_center.console_open: "Otvorite: %{work}"
+agent_center.console_return: "Vratite se na: %{work}"
+agent_center.console_respond: "Odgovorite: %{work} — %{question}"
+agent_center.console_unknown_work: "Detalji radne stavke nisu dostupni"
+agent_center.console_unknown_project: "Projekat nije izabran ili nije dostupan"
+# Two works can have exactly the same goal and project. The numbered choice is explicit, never a fuzzy match. %{created} is the recorded creation time.
+agent_center.console_duplicate: "%{work} · zasebna radna stavka %{number} · %{created}"
+agent_center.console_start: "Pregledajte opis posla i odobrite početak"
+agent_center.approval_title: "Potrebno je odobrenje" # Title of an inline conversation card for a specific frozen human action.
+agent_center.approval_accept: "Odobrite" # Button that submits the exact reviewed action, not a chat message.
+agent_center.approval_start: "Odobrite i započnite" # Button approving the displayed work brief and execution grant.
+agent_center.approval_edit: "Promenite zahteve" # Return to the chat composer to describe changes; do not submit or approve the action.
+agent_center.approval_defer: "Ne sada" # Defer review in this Console without cancelling the work or approving anything.
+agent_center.approval_open_hint: "F6 pregled predloga" # Opens the inline approval card without approving it. {Locked="F6"}
+agent_center.approval_keys: "Left/Right izbor · Enter izaberi · F5 detalji · Esc ne sada" # Keyboard help while the inline approval card owns focus. {Locked="Left/Right","Enter","F5","Esc"}
+agent_center.approval_edit_hint: "Opišite promene za %{target}. Ništa nije odobreno." # %{target} is the displayed project or work name; the user's draft is preserved.
+agent_center.approval_deferred: "Pregled za %{target} je odložen. Kada budete spremni, ponovo otvorite predlog preko F4." # Deferring is local presentation state, not cancellation of work. %{target} is a project or work name. {Locked="F4"}
+agent_center.console_pause: "Pauzirajte rad"
+agent_center.console_resume: "Nastavite rad"
+agent_center.console_cancel: "Otkažite radnu stavku"
+agent_center.console_inspect: "Pregledajte nepromenljivi isporučeni rezultat i proverite dokaze (samo za čitanje)"
+agent_center.console_read_evidence: "Pročitajte dokaze: %{work} — %{path}"
+agent_center.console_more_evidence: "Pročitajte sledeću stranicu dokaza: %{work}"
+agent_center.console_accept: "Prihvatite pregledani isporučeni rezultat"
+agent_center.console_takeover: "Preuzmite upravljani radni prostor"
+agent_center.console_handback: "Vratite upravljani radni prostor"
+agent_center.console_apply: "Primenite odobrenu promenu"
+agent_center.console_action: "Pregledajte zabeleženu radnju"
+agent_center.console_answer: "Odgovor"
+agent_center.console_answer_review: "Zabeležen odgovor za slanje:\n%{value}"
+agent_center.console_answer_invalid: "Unesite ispravnu vrednost za %{field}; pregledajte obavezne izbore i granice polja."
+agent_center.console_schema_unsupported: "Ovo pitanje koristi šemu koju jednostavan obrazac ne podržava. Ništa nije poslato; zatražite jednostavnije pitanje."
+agent_center.console_yes: "Da"
+agent_center.console_no: "Ne"
+agent_center.console_form_help: "Up/Down izbor polja · Left/Right izbor opcije · Enter sledeće polje · Ctrl+Enter pregled odgovora · Esc nazad" # {Locked="Up/Down","Left/Right","Enter","Ctrl+Enter","Esc"}
+agent_center.console_menu_help: "F4 radnje · Up/Down izbor · Enter otvori · Esc nazad · F12 dijagnostika" # {Locked="F4","Up/Down","Enter","Esc","F12"}
+agent_center.console_hint: "F4 radnje · F2 promena radne stavke · F12 dijagnostika" # {Locked="F4","F2","F12"}
+agent_center.console_scope: "Obuhvaćeni opseg"
+agent_center.console_exclusions: "Izvan ove radne stavke"
+agent_center.console_criteria: "Kriterijumi prihvatanja i potrebni dokazi"
+agent_center.console_delivery: "Isporučeni rezultat"
+agent_center.console_delivery_code: "Lokalni kod u upravljanom radnom prostoru"
+agent_center.console_delivery_report: "Zabeležene datoteke izveštaja"
+agent_center.console_progress: "Napredak zadatka"
+agent_center.console_authority: "Zatražena ovlašćenja i ograničenja izvršavanja"
+agent_center.console_capabilities: "Odobrene mogućnosti izvršavanja"
+agent_center.console_data_scopes: "Lokacije podataka dostupnih za čitanje"
+agent_center.console_limits: "Ograničenja resursa"
+agent_center.console_managed_writes: "Upisivanje u okviru upravljanih operacija ograničeno je na radni prostor ove radne stavke. Ovo nije granica izolacije na nivou operativnog sistema za alate u vlasništvu dobavljača."
+agent_center.console_frozen: "Ova potvrda je vezana za zabeleženu radnu stavku, zahtev, smernice i revizije. Promene zahtevaju novi pregled; odobrenje se nikada ne preusmerava bez obaveštenja."
+agent_center.console_stale: "Podaci uživo su zastareli. Nacrti su bezbedni. Ponovo se povežite i osvežite podatke pre odobravanja ili slanja promena; nepoznat ishod nije neuspeh niti završetak."
+agent_center.console_diagnostics: "Dijagnostički detalji protokola (samo za čitanje)"
+agent_center.console_no_details: "Nema aktuelnih detalja radne stavke. Koristite F4 da izaberete projekat, otvorite radnu stavku ili osvežite podatke." # {Locked="F4"}
+agent_center.console_draft: "Nacrt — nije započeto"
+agent_center.console_active: "Aktivno — još nije prihvaćeno"
+agent_center.console_completed: "Završeno — prihvatanje od strane čoveka je zabeleženo"
+agent_center.console_cancelled: "Otkazano"
+agent_center.console_paused: "Pauzirano"
+agent_center.console_automatic: "Automatsko napredovanje"
+agent_center.console_running: "U toku"
+agent_center.console_pending: "Na čekanju — nije završeno"
+agent_center.console_verified: "Provereno / interno prihvaćeno"
+agent_center.console_failed: "Neuspešno / odbijeno — pregledajte dokaze"
+agent_center.console_waiting: "Čeka se odgovor ili zavisnost"
+agent_center.console_unknown: "Nepoznato — osvežite podatke ili pregledajte dijagnostiku"
+agent_center.console_resolved: "Odgovor je zabeležen"
+agent_center.console_superseded: "Zamenjeno — nije aktuelni isporučeni rezultat"
+agent_center.console_next_done: "Sledeće: koristite prihvaćeni isporučeni rezultat; nema daljih odobrenja na čekanju."
+agent_center.console_next_cancelled: "Sledeće: nema automatskog napredovanja; ova radna stavka je otkazana."
+agent_center.console_next_approve: "Sledeće: pregledajte opis posla i odobrite upravo taj početak preko F4." # {Locked="F4"}
+agent_center.console_next_accept: "Sledeće: pregledajte nepromenljivi isporučeni rezultat i dokaze, a zatim ga izričito prihvatite."
+agent_center.console_next_attention: "Sledeće: preko F4 pregledajte nerešene stavke ovog posla koje zahtevaju pažnju." # {Locked="F4"}
+agent_center.console_next_resume: "Sledeće: odlučite kada ćete nastaviti ovaj pauzirani rad."
+agent_center.console_next_service: "Sledeće: usluga nastavlja odobreni plan. Ovo nije konačno prihvatanje."

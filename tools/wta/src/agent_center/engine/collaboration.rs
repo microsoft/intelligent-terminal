@@ -13,10 +13,24 @@ impl Engine {
                 "Console and conversation identities must be distinct UUIDs",
             ));
         }
-        self.record(&input.project_id, "Project")?;
+        let global = input.scope.as_deref() == Some("Global");
+        if input.scope.is_some() && !global {
+            return Err(bad("INVALID_ARGUMENT", "Unknown conversation scope"));
+        }
+        if global {
+            if input.project_id.is_some() {
+                return Err(bad(
+                    "INVALID_ARGUMENT",
+                    "Global registration has no project; capture project hints on messages",
+                ));
+            }
+        } else {
+            self.record(input.project_id.as_deref().unwrap_or(""), "Project")?;
+        }
         if let Some(console) = self.records.get(&input.console_session_id) {
             if text(console, "kind") != "ConsoleSession"
-                || text(console, "projectId") != input.project_id
+                || (console["scope"] == "Global") != global
+                || console.get("projectId").and_then(Value::as_str) != input.project_id.as_deref()
                 || text(console, "conversationId") != input.conversation_id
             {
                 return Err(bad(
@@ -28,7 +42,9 @@ impl Engine {
         }
         if let Some(conversation) = self.records.get(&input.conversation_id) {
             if text(conversation, "kind") != "Conversation"
-                || text(conversation, "projectId") != input.project_id
+                || (conversation["scope"] == "Global") != global
+                || conversation.get("projectId").and_then(Value::as_str)
+                    != input.project_id.as_deref()
                 || text(conversation, "consoleSessionId") != input.console_session_id
             {
                 return Err(bad(
@@ -37,11 +53,24 @@ impl Engine {
                 ));
             }
         } else {
-            self.put(json!({"id":input.conversation_id,"kind":"Conversation","projectId":input.project_id,
-                "consoleSessionId":input.console_session_id,"messages":[],"createdAt":utc_after(0)}));
+            let mut conversation = json!({"id":input.conversation_id,"kind":"Conversation",
+                "consoleSessionId":input.console_session_id,"messages":[],"createdAt":utc_after(0)});
+            if let Some(project) = &input.project_id {
+                conversation["projectId"] = json!(project);
+            } else {
+                conversation["scope"] = json!("Global");
+                conversation["coordinationUsed"] = json!(0);
+            }
+            self.put(conversation);
         }
-        let console = self.put(json!({"id":input.console_session_id,"kind":"ConsoleSession","projectId":input.project_id,
-            "conversationId":input.conversation_id,"contextVersion":1,"createdAt":utc_after(0)}));
+        let mut console = json!({"id":input.console_session_id,"kind":"ConsoleSession",
+            "conversationId":input.conversation_id,"contextVersion":1,"createdAt":utc_after(0)});
+        if let Some(project) = &input.project_id {
+            console["projectId"] = json!(project);
+        } else {
+            console["scope"] = json!("Global");
+        }
+        let console = self.put(console);
         Ok(console)
     }
 
@@ -69,6 +98,15 @@ impl Engine {
         reason: &str,
         subject: &Value,
     ) -> DomainResult<()> {
+        let work_conversation = if let Some(work_id) = work_id.filter(|id| !id.is_empty()) {
+            Some(self.ensure_work_conversation(work_id)?)
+        } else {
+            None
+        };
+        let conversation_id = work_conversation
+            .as_ref()
+            .map(|conversation| text(conversation, "id"))
+            .or(conversation_id);
         let scope = work_id
             .filter(|id| !id.is_empty())
             .or(conversation_id)
@@ -120,15 +158,35 @@ impl Engine {
                 continue;
             }
             let work_id = text(&trigger, "workId");
-            let conversation_id = text(&trigger, "conversationId");
+            let work_conversation = if !work_id.is_empty() {
+                Some(self.ensure_work_conversation(work_id)?)
+            } else {
+                None
+            };
+            let conversation_id = work_conversation
+                .as_ref()
+                .map(|conversation| text(conversation, "id"))
+                .unwrap_or_else(|| text(&trigger, "conversationId"));
+            if work_id.is_empty()
+                && self.record(conversation_id, "Conversation")?["scope"] == "Global"
+            {
+                self.coordinate_global(&trigger)?;
+                continue;
+            }
             let (project, work) = if !work_id.is_empty() {
                 let work = self.record(work_id, "Work")?;
-                if text(&work, "lifecycle") != "Active"
+                if !Self::legacy_mode(&work)
+                    || text(&work, "lifecycle") != "Active"
                     || text(&work, "desiredAdvancement") != "Advance"
+                    || work.get("continuationRecovery").is_some()
                     || self
                         .records
                         .get(text(&work, "workspaceId"))
-                        .is_none_or(|workspace| text(workspace, "status") != "Ready")
+                        .is_none_or(|workspace| {
+                            text(workspace, "status") != "Ready"
+                                || workspace["manualHold"] == true
+                                || workspace["writer"] == "Human"
+                        })
                     || work
                         .get("changeOperationId")
                         .and_then(Value::as_str)
@@ -201,6 +259,29 @@ impl Engine {
             if triggers.is_empty() {
                 continue;
             }
+            let session_reuse = if let Some(work) = &work {
+                match self.primary_session_ref(work) {
+                    Ok(reference) => reference,
+                    Err(failure) => {
+                        let failure = encode(&failure.failure)?;
+                        if work.get("continuationFailure") != Some(&failure) {
+                            let mut failed_work = work.clone();
+                            failed_work["continuationFailure"] = failure;
+                            let failed_work = self.put(failed_work);
+                            self.emit("WorkChanged", &failed_work);
+                        }
+                        self.attention(
+                            work_id,
+                            work_id,
+                            "SESSION_RESUME_UNAVAILABLE",
+                            "Explicitly approve context reconstruction with restartSession",
+                        );
+                        continue;
+                    }
+                }
+            } else {
+                None
+            };
             let turn_id = self
                 .related("CoordinationTurn", "scopeId", scope)
                 .into_iter()
@@ -221,6 +302,11 @@ impl Engine {
             } else {
                 self.view(&self.record(conversation_id, "Conversation")?)
             };
+            if !conversation_id.is_empty() && !work_id.is_empty() {
+                snapshot["conversation"] =
+                    self.view(&self.record(conversation_id, "Conversation")?);
+            }
+            snapshot["preferences"] = self.memory_snapshot(Some(text(&project, "id")));
             snapshot["declinedAttempts"] = json!(triggers
                 .iter()
                 .filter(|trigger| text(trigger, "reason") == "ContractDeclined")
@@ -236,7 +322,7 @@ impl Engine {
                     && text(result, "workId") == work_id)
                 .flat_map(|result| values(result, "evaluationFailures"))
                 .collect::<Vec<_>>());
-            let input = json!({"turnId":turn_id,"scope":if !work_id.is_empty(){json!({"workId":work_id,"conversationId":work_id})}else{json!({"conversationId":conversation_id})},
+            let input = json!({"turnId":turn_id,"scope":if !work_id.is_empty(){json!({"workId":work_id,"conversationId":conversation_id})}else{json!({"conversationId":conversation_id})},
                 "replyMessageId":message["id"],"snapshotVersion":work.as_ref().map_or(number(&snapshot,"version"),|work|number(work,"version")),
                 "triggerEvents":triggers.iter().map(|trigger|json!({"eventId":trigger["eventId"],"kind":trigger["reason"],
                     "subject":{"kind":trigger["subjectKind"],"id":trigger["subjectId"],"version":trigger["subjectVersion"]}})).collect::<Vec<_>>(),
@@ -247,11 +333,26 @@ impl Engine {
                 "subject":{"kind":"Coordination","id":turn_id},"runtimeId":runtime["id"],"capabilityId":project["coordinatorCapabilityId"],
                 "coordinationInput":input,"replyMessageId":message["id"],"bindingGeneration":1,
                 "limits":{"deadlineUtc":utc_after(number(&project["limits"],"coordinationSeconds")),"remainingExecutionAllowance":remaining,"remainingContextRounds":project["limits"]["contextRounds"]},
-                "availableToolNames":["project_get","work_get","work_create_draft","work_propose_change","grant_preview","plan_propose","plan_apply",
+                "availableToolNames":["memory_list","project_get","work_get","work_create_draft","work_propose_change","grant_preview","plan_propose","plan_apply",
                     "task_get","task_list","result_get","progress_get","artifact_get","artifact_read","task_answer_context","task_rework","decision_request",
                     "conversation_resolve_intents","conversation_request_input","coordination_finish"],
                 "state":"Dispatching","lastSequence":0,"createdAt":utc_after(0)});
+            if let Some(reference) = session_reuse {
+                invocation["sessionReuseRef"] = json!(reference);
+            }
+            if work_id.is_empty() {
+                invocation["availableToolNames"]
+                    .as_array_mut()
+                    .ok_or_else(|| bad("INVALID_REFERENCE", "Coordinator tool bindings missing"))?
+                    .extend([json!("memory_store"), json!("memory_forget")]);
+            }
             if !work_id.is_empty() {
+                invocation["availableToolNames"]
+                    .as_array_mut()
+                    .ok_or_else(|| bad("INVALID_REFERENCE", "Coordinator tool bindings missing"))?
+                    .retain(|tool| {
+                        tool != "work_create_draft" && tool != "conversation_resolve_intents"
+                    });
                 turn["workId"] = json!(work_id);
                 invocation["workId"] = json!(work_id);
             }
@@ -266,6 +367,8 @@ impl Engine {
                 self.put(trigger);
             }
             if let Some(mut work) = work {
+                work.as_object_mut()
+                    .map(|object| object.remove("restartPrimarySession"));
                 work["usage"]["coordinationTurns"] =
                     json!(number(&work["usage"], "coordinationTurns") + 1);
                 self.put(work);
@@ -274,6 +377,7 @@ impl Engine {
                 project["planningUsed"] = json!(number(&project, "planningUsed") + 1);
                 self.put(project);
             }
+            self.emit_message("MessageRecorded", &message);
             self.resolve_attention(scope);
             self.effect(
                 "runtime.invoke",
@@ -299,11 +403,14 @@ impl Engine {
                 self.matched(request, &[])?;
                 let input: ConsoleOpen = parse(&request.params)?;
                 let console = self.open_console(&input)?;
-                Ok(Response::ok(
-                    "",
-                    json!({"consoleSessionId":console["id"],"projectId":console["projectId"],
-                    "conversationId":console["conversationId"],"contextVersion":console["contextVersion"],"version":console["version"]}),
-                ))
+                let mut data = json!({"consoleSessionId":console["id"],
+                    "conversationId":console["conversationId"],"contextVersion":console["contextVersion"],"version":console["version"]});
+                if let Some(project) = console.get("projectId") {
+                    data["projectId"] = project.clone();
+                } else {
+                    data["scope"] = json!("Global");
+                }
+                Ok(Response::ok("", data))
             }
             "conversation.submit" => {
                 Self::human(principal)?;
@@ -318,12 +425,65 @@ impl Engine {
                         "Captured contextVersion must be positive",
                     ));
                 }
-                self.record(&input.context.project_id, "Project")?;
+                let global = input.context.scope.as_deref() == Some("Global");
+                if input.context.scope.is_some() && !global {
+                    return Err(bad("INVALID_ARGUMENT", "Unknown conversation scope"));
+                }
+                if let Some(project) = &input.context.project_id {
+                    self.record(project, "Project")?;
+                } else if !global {
+                    return Err(bad(
+                        "INVALID_ARGUMENT",
+                        "Project-scoped intake requires a project",
+                    ));
+                }
+                if global {
+                    self.global_policy()?;
+                }
                 self.open_console(&ConsoleOpen {
                     console_session_id: input.context.console_session_id.clone(),
-                    project_id: input.context.project_id.clone(),
+                    project_id: if global {
+                        None
+                    } else {
+                        input.context.project_id.clone()
+                    },
                     conversation_id: input.conversation_id.clone(),
+                    scope: input.context.scope.clone(),
                 })?;
+                let conversation = self.record(&input.conversation_id, "Conversation")?;
+                let scoped_work = conversation
+                    .get("workId")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned);
+                if !global && input.context.selected_work_id.is_some() && scoped_work.is_none() {
+                    return Err(bad(
+                        "INVALID_REFERENCE",
+                        "Open the selected work with work.open before submitting work-scoped chat",
+                    ));
+                }
+                if let Some(work_id) = &scoped_work {
+                    let console =
+                        self.record(&input.context.console_session_id, "ConsoleSession")?;
+                    if global
+                        || input.context.selected_work_id.as_deref() != Some(work_id.as_str())
+                        || console["selectedWorkId"] != *work_id
+                        || number(&console, "contextVersion") != input.context.context_version
+                    {
+                        return Err(bad(
+                            "INVALID_REFERENCE",
+                            "Work chat requires the exact opened work context",
+                        ));
+                    }
+                    let work = self.record(work_id, "Work")?;
+                    if !["Draft", "Active"].contains(&text(&work, "lifecycle"))
+                        || work["desiredAdvancement"] == "Cancel"
+                    {
+                        return Err(bad(
+                            "BAD_STATE",
+                            "Terminal or cancelling work cannot receive new execution input",
+                        ));
+                    }
+                }
                 nonempty(&input.text, "text")?;
                 self.artifacts(&input.attachments)?;
                 if let Some(intent) = &input.declared_intent {
@@ -338,10 +498,21 @@ impl Engine {
                     {
                         return Err(bad("INVALID_ARGUMENT", "Unknown declared intent"));
                     }
+                    if scoped_work.is_some() && intent == "NewWork" {
+                        return Err(bad(
+                            "INVALID_ARGUMENT",
+                            "New goals belong in global intake, not an existing work conversation",
+                        ));
+                    }
                 }
                 if let Some(work) = &input.context.selected_work_id {
                     let work = self.record(work, "Work")?;
-                    if text(&work, "projectId") != input.context.project_id {
+                    if input
+                        .context
+                        .project_id
+                        .as_deref()
+                        .is_some_and(|project| text(&work, "projectId") != project)
+                    {
                         return Err(bad(
                             "INVALID_REFERENCE",
                             "Selected work is not in captured project",
@@ -369,26 +540,78 @@ impl Engine {
                 let mut body = encode(&input)?;
                 body["role"] = json!("human");
                 body["status"] = json!("Complete");
+                if let Some(work_id) = &scoped_work {
+                    body["workId"] = json!(work_id);
+                }
                 let mut message = self.create("ConversationItem", body);
+                if let Some(work_id) = &scoped_work {
+                    let work = self.record(work_id, "Work")?;
+                    if Self::executor_mode(&work) {
+                        let turn = self.enqueue_executor_input(
+                            &work,
+                            &input.text,
+                            Some(&message),
+                            "HumanMessage",
+                        )?;
+                        message["intakeTurnId"] = turn["id"].clone();
+                        let message = self.put(message);
+                        self.emit_message("MessageRecorded", &message);
+                        return Ok(Response::ok(
+                            "",
+                            json!({"messageId":message["id"],"intakeTurnId":turn["id"]}),
+                        ));
+                    }
+                    if work.get("executionMode").is_none()
+                        || work["executionMode"] == "ClaimingExecutor"
+                    {
+                        return Err(bad("WORK_EXECUTOR_CLAIM_REQUIRED","Claim this historical work's actual executor before submitting new execution input"));
+                    }
+                }
+                let scope = scoped_work.as_deref().unwrap_or(&input.conversation_id);
                 let queued = self
-                    .related("CoordinationTurn", "scopeId", &input.conversation_id)
+                    .related("CoordinationTurn", "scopeId", scope)
                     .into_iter()
                     .find(|turn| {
                         text(turn, "state") == "Queued" && turn.get("invocationId").is_none()
                     });
-                let turn = queued.unwrap_or_else(||self.create("CoordinationTurn",json!({
-                    "scopeId":input.conversation_id,"conversationId":input.conversation_id,"state":"Queued"
-                })));
+                let turn =
+                    queued.unwrap_or_else(|| {
+                        self.create("CoordinationTurn",json!({
+                    "scopeId":scope,"conversationId":input.conversation_id,"state":"Queued"
+                }))
+                    });
                 let intake_id = turn["id"].clone();
                 message["intakeTurnId"] = intake_id.clone();
                 let message = self.put(message);
                 self.emit_message("MessageRecorded", &message);
                 self.queue_coordination(
-                    None,
+                    scoped_work.as_deref(),
                     Some(&input.conversation_id),
-                    "IntakeMessage",
+                    if scoped_work.is_some() {
+                        "WorkMessage"
+                    } else {
+                        "IntakeMessage"
+                    },
                     &message,
                 )?;
+                if global {
+                    for mut invocation in
+                        self.related("Invocation", "conversationId", &input.conversation_id)
+                    {
+                        if invocation["scope"] == "Global"
+                            && ["Dispatching", "Running"].contains(&text(&invocation, "state"))
+                        {
+                            invocation["supersededByInput"] = message["id"].clone();
+                            let invocation = self.put(invocation);
+                            // Invoke and stop effects execute independently; wait for registration.
+                            if invocation["state"] == "Running"
+                                || invocation["dispatchRecorded"] == true
+                            {
+                                self.stop_invocation(&invocation, "NewConversationInput")?;
+                            }
+                        }
+                    }
+                }
                 self.coordinate()?;
                 Ok(Response::ok(
                     "",
@@ -399,6 +622,12 @@ impl Engine {
                 self.matched(request, &[])?;
                 let input: ResolveIntents = parse(&request.params)?;
                 let turn = self.coordinator(principal, None)?;
+                if !text(&turn, "workId").is_empty() {
+                    return Err(bad(
+                        "FORBIDDEN",
+                        "Work-scoped input is already bound; it cannot be resolved as new intake",
+                    ));
+                }
                 if text(&turn, "id") != input.turn_id && !matches!(principal, Principal::Service) {
                     return Err(bad("FORBIDDEN", "Intake turn is not bound"));
                 }
@@ -438,7 +667,9 @@ impl Engine {
                         nonempty(intent.draft_goal.as_deref().unwrap_or(""), "draftGoal")?;
                     } else if intent.kind != "ImmediateQuestion" {
                         let work = self.record(intent.work_id.as_deref().unwrap_or(""), "Work")?;
-                        if work["projectId"] != message["context"]["projectId"] {
+                        if message["context"]["scope"] == "Global" {
+                            self.authorized_read(principal, &work)?;
+                        } else if work["projectId"] != message["context"]["projectId"] {
                             return Err(bad(
                                 "FORBIDDEN",
                                 "Resolved work is outside captured project",
@@ -461,7 +692,10 @@ impl Engine {
                         }
                     }
                     for reference in &intent.referenced_message_ids {
-                        self.record(reference, "ConversationItem")?;
+                        let referenced = self.record(reference, "ConversationItem")?;
+                        if message["context"]["scope"] == "Global" {
+                            self.authorized_read(principal, &referenced)?;
+                        }
                     }
                     let mut body = encode(&intent)?;
                     body["messageId"] = json!(input.message_id);
@@ -488,7 +722,15 @@ impl Engine {
                     return Err(bad("FORBIDDEN", "Question is outside bound intake"));
                 }
                 let message = self.record(&input.message_id, "ConversationItem")?;
-                if text(&message, "conversationId") != input.conversation_id {
+                let conversation = self.record(&input.conversation_id, "Conversation")?;
+                let historical_work_message = !text(&turn, "workId").is_empty()
+                    && conversation["workId"] == turn["workId"]
+                    && values(&conversation, "messages")
+                        .iter()
+                        .any(|item| item["id"] == message["id"]);
+                if text(&message, "conversationId") != input.conversation_id
+                    && !historical_work_message
+                {
                     return Err(bad(
                         "INVALID_REFERENCE",
                         "Question source message is in another conversation",
@@ -498,9 +740,12 @@ impl Engine {
                 nonempty(&input.question, "question")?;
                 let mut body = encode(&input)?;
                 body["status"] = json!("Open");
+                if let Some(work_id) = turn.get("workId") {
+                    body["workId"] = work_id.clone();
+                }
                 let question = self.create("IntakeRequest", body);
                 self.emit("IntakeRequested", &question);
-                Ok(Response::needs_input(
+                let mut response = Response::needs_input(
                     "",
                     InputRequest {
                         kind: "Intake".into(),
@@ -508,7 +753,9 @@ impl Engine {
                         version: number(&question, "version"),
                         response_schema: input.response_schema,
                     },
-                ))
+                );
+                response.subjects = vec![Self::reference(&question)];
+                Ok(response)
             }
             "conversation.answer_input" => {
                 Self::human(principal)?;
@@ -550,8 +797,31 @@ impl Engine {
                     },
                     &question,
                 );
+                if let Some(work_id) = question.get("workId").and_then(Value::as_str) {
+                    let work = self.record(work_id, "Work")?;
+                    if Self::executor_mode(&work) {
+                        self.enqueue_executor_input(
+                            &work,
+                            &format!("Typed input resolution: {}", question),
+                            Some(&question),
+                            "InputAnswered",
+                        )?;
+                        if question.get("answer").is_some() {
+                            let answer = &question["answer"];
+                            let message=self.create("ConversationItem",json!({"workId":work_id,
+                                "conversationId":question["conversationId"],"role":"human","status":"Complete",
+                                "text":answer.as_str().map(str::to_owned).unwrap_or_else(||answer.to_string()),
+                                "attachments":[],"inputRequestId":question["id"]}));
+                            self.emit_message("MessageRecorded", &message);
+                        }
+                        return Ok(Response::ok(
+                            "",
+                            json!({"requestId":question["id"],"state":question["status"]}),
+                        ));
+                    }
+                }
                 self.queue_coordination(
-                    None,
+                    question.get("workId").and_then(Value::as_str),
                     Some(text(&question, "conversationId")),
                     "IntakeAnswered",
                     &question,
@@ -903,6 +1173,12 @@ impl Engine {
                         {
                             return Err(bad("FORBIDDEN", "Waiting subject is outside this work"));
                         }
+                        if !text(&turn, "conversationId").is_empty()
+                            && self.record(text(&turn, "conversationId"), "Conversation")?["scope"]
+                                == "Global"
+                        {
+                            self.authorized_read(principal, &subject)?;
+                        }
                     }
                     "NoActionNeeded" => {
                         let triggers =
@@ -1062,7 +1338,7 @@ impl Engine {
         Ok(())
     }
 
-    fn validate_schema(schema: &Value) -> DomainResult<()> {
+    pub(super) fn validate_schema(schema: &Value) -> DomainResult<()> {
         // This explicitly bounded Draft-2020-12 subset rejects unsupported keywords, rather
         // than accepting answers against a schema the engine did not actually evaluate.
         closed(
@@ -1135,7 +1411,7 @@ impl Engine {
         Ok(())
     }
 
-    fn validate_answer(schema: &Value, value: &Value) -> DomainResult<()> {
+    pub(super) fn validate_answer(schema: &Value, value: &Value) -> DomainResult<()> {
         Self::validate_schema(schema)?;
         if let Some(choices) = schema.get("enum") {
             let choices = choices

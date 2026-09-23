@@ -616,11 +616,14 @@ function Test-UiElementExists {
 
 function Save-UiScreenshot {
     [CmdletBinding()]
-    param([Parameter(Mandatory, ValueFromPipeline)]$App, [Parameter(Mandatory)][string]$Path, [switch]$CaptureScreen)
+    param([Parameter(Mandatory, ValueFromPipeline)]$App, [Parameter(Mandatory)][string]$Path, [switch]$CaptureScreen, [switch]$RequireSuccess)
     process {
         $a = @('screenshot', '--output', $Path); if ($CaptureScreen) { $a += '--capture-screen' }
         $r = Invoke-WinAppUi -App $App -UiArgs $a
-        if ($r.ExitCode -ne 0) { Write-ItLog -Level WARN -Message "screenshot failed: $($r.StdErr.Trim())" }
+        if ($r.ExitCode -ne 0) {
+            if ($RequireSuccess) { throw "screenshot failed (exit $($r.ExitCode)): $($r.StdErr.Trim())" }
+            Write-ItLog -Level WARN -Message "screenshot failed: $($r.StdErr.Trim())"
+        }
         $Path
     }
 }

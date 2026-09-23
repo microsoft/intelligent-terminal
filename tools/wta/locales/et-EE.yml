@@ -272,10 +272,72 @@ system.model_unknown: "Tundmatu mudel %{model} — tippige /model saadaolevate m
 # not an agent session; a work item may contain multiple tasks.
 agent_center.title: "Agent Center" # {Locked}
 agent_center.works: "Tööüksused"
+agent_center.demo_title: "Tööüksuse loo demo" # Title of an isolated scripted demonstration; the story fixture itself is English.
+agent_center.demo_notice: "Etteantud stsenaariumiga demo | Näidistõendid, simuleeritud seansid ja tokenikasutus | Agente ei käivitata" # Always-visible disclosure; simulated data must not be confused with live agent execution.
+agent_center.demo_scene: "Stseen %{scene}/8" # %{scene} is the current scene number in the eight-scene story.
+agent_center.demo_next: "Järgmine: %{input}" # %{input} is the literal English story input, not a translated command.
+agent_center.demo_keys: "Enter: saada | Tab: täida järgmine sisend | PgUp/PgDn: keri | Ctrl+Q: sule" # {Locked="Enter","Tab","PgUp/PgDn","Ctrl+Q"}
+agent_center.demo_reset: "Kas lähtestada demo olek? Sisestage /reset confirm. Olemasolevaid tööüksusi ja sätteid ei muudeta." # {Locked="/reset confirm"} Resets only the isolated demo, never real work.
+agent_center.demo_saved: "Redaktsioon %{revision} salvestatud" # %{revision} is the persisted demo state revision.
+agent_center.demo_error: "Demo toiming nurjus: %{error}" # %{error} explains the rejected action; no state change is claimed.
+agent_center.tasks_title: "Ülesanded"
+agent_center.task_new: "Uus ülesanne"
+agent_center.task_all: "Kõik ülesanded"
+agent_center.task_attention: "Vajab tähelepanu"
+agent_center.task_continue: "Jätka ülesannet"
+# Messages waiting for this work's busy executor, excluding the currently running turn. {Locked="%{count}"}
+agent_center.task_queued_messages: "Järjekorras sõnumid: %{count}"
+# Explicit migration of an existing work from legacy orchestration to its own executing agent session.
+agent_center.task_claim_executor: "Seo ülesande agendiga"
+agent_center.task_claim_executor_confirm: "Vii see ülesanne üle selle enda täitvale agendile. Olemasolev vestlus ja tulemused säilivad ning vana ajastamine peatub. Kui algset täitmisseanssi ei saa taastada, nõuab uue seansi alustamine eraldi kinnitust."
+agent_center.task_open_tab: "Ava vahekaardil"
+agent_center.task_tab_unsupported: "Ülesande vahekaardi avamiseks on vaja rakendust Intelligent Terminal." # {Locked="Intelligent Terminal"}
+agent_center.task_new_session: "Alusta uut seanssi"
+agent_center.task_new_session_confirm: "Algset agendiseanssi ei saa jätkata. Kas soovid alustada uut seanssi selle ülesande salvestatud kontekstiga?"
+agent_center.task_keys: "Up/Down vali · Enter ava · F4 toimingud · F5 üksikasjad" # {Locked="Up/Down","Enter","F4","F5"}
+agent_center.task_list_keys: "F2 ülesanded · F4 toimingud · F5 üksikasjad" # {Locked="F2","F4","F5"}
+agent_center.task_state_running: "Töötab"
+agent_center.task_state_waiting: "Ootab sinu vastust"
+agent_center.task_state_paused: "Ajutiselt peatatud"
+agent_center.task_state_recovery: "Vajab taastamist"
+agent_center.task_state_ready: "Jätkamiseks valmis"
+agent_center.task_state_completed: "Lõpetatud"
+agent_center.task_state_cancelled: "Tühistatud"
+agent_center.task_state_unavailable: "Seanss pole saadaval"
+agent_center.task_updated: "Viimane tegevus: %{time}"
+agent_center.ui_overview: "Ülevaade"
+agent_center.chat_global: "Ühine vestlus" # Conversation with the non-executing master for new goals and cross-work coordination; each work has its own executor conversation.
+agent_center.chat_welcome: "Öelge mulle, mida soovite saavutada, korraldada või teada saada."
+agent_center.chat_keys: "Enter saada · Shift+Enter uus rida · F4 toimingud · F5 üksikasjad · F7 ülevaatepaneel" # {Locked="Enter","Shift+Enter","F4","F5","F7"}
+agent_center.chat_dashboard_keys: "F7 vestlus · Esc vestlus · F4 toimingud · F6 vii fookus toimingutele" # Dashboard navigation preserves the global conversation and draft. {Locked="F7","Esc","F4","F6"}
+agent_center.chat_context_hint: "Kontekstivihje: %{context}" # %{context} is a readable work or project name, not a binding that limits the global conversation.
+agent_center.ui_attention: "Vajab teie tähelepanu" # Heading for recorded requests, draft-start reviews, and delivery reviews; not a claim that every work needs attention.
+agent_center.ui_details: "Lähteülesanne ja edenemine" # Read-only details view containing the work agreement, recorded progress, evidence, and locations.
+agent_center.ui_new_goal: "Mida soovite saavutada?"
+agent_center.ui_empty_attention: "Ükski avatud taotlus ei vaja teie vastust."
+agent_center.ui_no_works: "Ühtegi tööüksust pole salvestatud. Alustamiseks valige seadistatud projekt."
+agent_center.ui_no_conversation: "Selle tööüksuse jaoks pole sõnumeid salvestatud."
+agent_center.ui_role_you: "Teie" # Speaker heading for an actual recorded human message.
+agent_center.ui_role_assistant: "Tööassistent" # Speaker heading for an actual recorded assistant message, not a provider name.
+agent_center.ui_role_service: "Teenus" # Speaker heading for an actual recorded system or service message.
+agent_center.ui_role_unknown: "Salvestatud sõnum" # Speaker heading when the service does not identify a recognized message role.
+agent_center.ui_next: "Järgmine vastutus"
+agent_center.ui_recorded_facts: "Salvestatud faktid"
+agent_center.ui_last_known: "Viimane teadaolev olek · %{status}" # %{status} is a localized recorded status. Used when cached facts do not establish current execution.
+agent_center.ui_cached_facts: "Vahemällu salvestatud faktid; praegune täitmine pole kinnitatud."
+agent_center.ui_source_root: "Projekti lähteandmete asukoht" # Configured source root, explicitly distinct from the actual managed execution directory.
+agent_center.ui_execution_root: "Hallatava täitmise asukoht" # Actual execution directory reported by the service, never inferred from the project source root.
+agent_center.ui_location_unknown: "Ühtegi täitmise asukohta pole teatatud."
+agent_center.ui_composer: "Sõnum tööüksusele: %{work}" # %{work} is the human-readable target of this independent draft.
+agent_center.ui_composer_new: "Uus tööüksus · %{project}" # %{project} is the configured project name, or an explicit project-selection warning.
+agent_center.ui_actions: "Tööüksuse toimingud"
+agent_center.ui_keys: "Enter saada · Shift+Enter uus rida · F4 toimingud · F5 üksikasjad · F6 vii fookus toimingutele" # {Locked="Enter","Shift+Enter","F4","F5","F6"}
+agent_center.ui_actions_hint: "Up/Down vali · Enter ava · Esc sisestus" # Keyboard focus is on a visible action, not the text editor. {Locked="Up/Down","Enter","Esc"}
+agent_center.ui_details_hint: "F5 sulge üksikasjad · PgUp/PgDn loe · Esc sisestus" # Read-only detail focus; returning to input preserves the draft and selection. {Locked="F5","PgUp/PgDn","Esc"}
 agent_center.activity: "Tegevus · Vestlus"
-# %{work} and %{project} are identifiers of the selected work item and project.
+# %{work} and %{project} are human-readable labels for the selected work and configured project.
 agent_center.header: "Tööüksus: %{work} | Projekt: %{project}"
-agent_center.welcome: "Valige projekt või määrake /project use <id>. Sisestage eesmärk või /help." # {Locked="/project use","<id>","/help"}
+agent_center.welcome: "Vajutage F4, et valida seadistatud projekt, ja sisestage seejärel, mida soovite saavutada." # {Locked="F4"}
 agent_center.input_help: "Enter: saada · Shift+Enter: uus rida · Tab: lõpeta sisestus · F2: vaheta tööüksust · Ctrl+C: välju · PgUp/PgDn: loe · Ctrl+End: uusim" # {Locked="Enter","Shift+Enter","Tab","F2","PgUp/PgDn","Ctrl+End","Ctrl+C"}
 agent_center.inbox_count: "Vajab tähelepanu: %{count}"
 agent_center.sending: "Salvestatud taotluse saatmine…"
@@ -320,3 +382,84 @@ agent_center.missing_field: "Puuduv või vigane vastuseväli: %{field}"
 agent_center.invalid_command_id: "--command-id peab olema UUID." # {Locked="--command-id","UUID"}
 agent_center.worker_stopped: "Taotluste ühendus on peatunud."
 agent_center.host_unavailable: "Käsu %{command} jaoks pole kestahosti adapterit saadaval. Kasutage hosti klaviatuuritoiminguid."
+agent_center.console_home: "Uus tööüksus"
+agent_center.console_new: "Uus tööüksus / Avaleht"
+agent_center.console_new_hint: "Sisestage uus eesmärk. Teised tööüksused jätkavad sõltumatult."
+agent_center.console_project_create_directory: "Looge uus kaust ja lähtestage kohalik Git-hoidla. Olemasolevaid faile ei kirjutata üle." # {Locked="Git"}
+agent_center.console_projects: "Valige seadistatud projekt"
+agent_center.console_projects_hint: "Valige projekt nime ja asukoha järgi. Siin pole ühtegi projekti seadistatud? Paluge administraatoril see seadistada."
+agent_center.console_refresh: "Värskenda praeguseid fakte"
+agent_center.console_open: "Ava: %{work}"
+agent_center.console_return: "Naase: %{work}"
+agent_center.console_respond: "Vasta: %{work} — %{question}"
+agent_center.console_unknown_work: "Tööüksuse üksikasjad pole saadaval"
+agent_center.console_unknown_project: "Projekt pole valitud või pole saadaval"
+# Two works can have exactly the same goal and project. The numbered choice is explicit, never a fuzzy match. %{created} is the recorded creation time.
+agent_center.console_duplicate: "%{work} · eraldi tööüksus %{number} · %{created}"
+agent_center.console_start: "Vaata lähteülesanne üle ja kiida alustamine heaks"
+agent_center.approval_title: "Heakskiit on vajalik" # Title of an inline conversation card for a specific frozen human action.
+agent_center.approval_accept: "Kiida heaks" # Button that submits the exact reviewed action, not a chat message.
+agent_center.approval_start: "Kiida heaks ja alusta" # Button approving the displayed work brief and execution grant.
+agent_center.approval_edit: "Muuda nõudeid" # Return to the chat composer to describe changes; do not submit or approve the action.
+agent_center.approval_defer: "Mitte praegu" # Defer review in this Console without cancelling the work or approving anything.
+agent_center.approval_open_hint: "F6 vaata ettepanek üle" # Opens the inline approval card without approving it. {Locked="F6"}
+agent_center.approval_keys: "Left/Right vali · Enter kinnita valik · F5 üksikasjad · Esc mitte praegu" # Keyboard help while the inline approval card owns focus. {Locked="Left/Right","Enter","F5","Esc"}
+agent_center.approval_edit_hint: "Kirjelda muudatusi üksusele %{target}. Midagi pole heaks kiidetud." # %{target} is the displayed project or work name; the user's draft is preserved.
+agent_center.approval_deferred: "Üksuse %{target} ülevaatus on edasi lükatud. Kui oled valmis, ava ettepanek uuesti klahviga F4." # Deferring is local presentation state, not cancellation of work. %{target} is a project or work name. {Locked="F4"}
+agent_center.console_pause: "Peata tööüksus ajutiselt"
+agent_center.console_resume: "Jätka tööüksust"
+agent_center.console_cancel: "Tühista tööüksus"
+agent_center.console_inspect: "Uuri fikseeritud tulemit ja kontrolli tõendeid (kirjutuskaitstud)"
+agent_center.console_read_evidence: "Loe tõendeid: %{work} — %{path}"
+agent_center.console_more_evidence: "Loe järgmist tõendite lehte: %{work}"
+agent_center.console_accept: "Võta uuritud tulem vastu"
+agent_center.console_takeover: "Võta hallatav tööruum üle"
+agent_center.console_handback: "Anna hallatav tööruum tagasi"
+agent_center.console_apply: "Rakenda heakskiidetud muudatus"
+agent_center.console_action: "Vaata salvestatud toiming üle"
+agent_center.console_answer: "Vastus"
+agent_center.console_answer_review: "Salvestatud vastus saatmiseks:\n%{value}"
+agent_center.console_answer_invalid: "Sisestage väljale %{field} sobiv väärtus; vaadake üle välja nõutud valikud ja piirid."
+agent_center.console_schema_unsupported: "See küsimus kasutab skeemi, mida lihtvorm ei toeta. Midagi ei saadetud; paluge lihtsamat küsimust."
+agent_center.console_yes: "Jah"
+agent_center.console_no: "Ei"
+agent_center.console_form_help: "Up/Down vali väli · Left/Right vali suvand · Enter järgmine väli · Ctrl+Enter vaata vastus üle · Esc tagasi" # {Locked="Up/Down","Left/Right","Enter","Ctrl+Enter","Esc"}
+agent_center.console_menu_help: "F4 toimingud · Up/Down vali · Enter ava · Esc tagasi · F12 diagnostika" # {Locked="F4","Up/Down","Enter","Esc","F12"}
+agent_center.console_hint: "F4 toimingud · F2 vaheta tööüksust · F12 diagnostika" # {Locked="F4","F2","F12"}
+agent_center.console_scope: "Hõlmatud ulatus"
+agent_center.console_exclusions: "Sellest tööüksusest väljaspool"
+agent_center.console_criteria: "Vastuvõtukriteeriumid ja nõutud tõendid"
+agent_center.console_delivery: "Tulem"
+agent_center.console_delivery_code: "Kohalik kood hallatavas tööruumis"
+agent_center.console_delivery_report: "Salvestatud aruandefailid"
+agent_center.console_progress: "Ülesannete edenemine"
+agent_center.console_authority: "Taotletud volitused ja täitmispiirangud"
+agent_center.console_capabilities: "Heakskiidetud täitmisvõimalused"
+agent_center.console_data_scopes: "Loetavad andmeasukohad"
+agent_center.console_limits: "Ressursipiirangud"
+agent_center.console_managed_writes: "Hallatavate toimingute kirjutamised on piiratud selle tööüksuse tööruumiga. See ei ole pakkujale kuuluvate tööriistade jaoks operatsioonisüsteemi tasemel isoleerimispiir."
+agent_center.console_frozen: "See kinnitus on seotud salvestatud tööüksuse, taotluse, poliitika ja redaktsioonidega. Muudatused nõuavad uut ülevaatust; heakskiitu ei suunata kunagi märkamatult teisele sihile."
+agent_center.console_stale: "Reaalaja faktid on aegunud. Mustandid on turvaliselt alles. Enne muudatuste heakskiitmist või saatmist ühendage uuesti ja värskendage; teadmata tulemus ei tähenda nurjumist ega lõpetamist."
+agent_center.console_diagnostics: "Diagnostikaprotokolli üksikasjad (kirjutuskaitstud)"
+agent_center.console_no_details: "Tööüksuse praegused üksikasjad puuduvad. Kasutage F4, et valida projekt, avada tööüksus või värskendada." # {Locked="F4"}
+agent_center.console_draft: "Mustand — alustamata"
+agent_center.console_active: "Aktiivne — veel vastu võtmata"
+agent_center.console_completed: "Lõpetatud — inimese vastuvõtt on salvestatud"
+agent_center.console_cancelled: "Tühistatud"
+agent_center.console_paused: "Ajutiselt peatatud"
+agent_center.console_automatic: "Automaatne edenemine"
+agent_center.console_running: "Töötab"
+agent_center.console_pending: "Ootel — lõpetamata"
+agent_center.console_verified: "Kontrollitud / sisemiselt vastu võetud"
+agent_center.console_failed: "Nurjunud / tagasi lükatud — uurige tõendeid"
+agent_center.console_waiting: "Ootab vastust või sõltuvust"
+agent_center.console_unknown: "Teadmata — värskendage või uurige diagnostikat"
+agent_center.console_resolved: "Vastus salvestatud"
+agent_center.console_superseded: "Asendatud — pole praegune tulem"
+agent_center.console_next_done: "Järgmine: kasutage vastuvõetud tulemit; rohkem heakskiite pole ootel."
+agent_center.console_next_cancelled: "Järgmine: automaatset edenemist pole; see tööüksus tühistati."
+agent_center.console_next_approve: "Järgmine: vaadake lähteülesanne üle ja kiitke täpne alustamine F4 kaudu heaks." # {Locked="F4"}
+agent_center.console_next_accept: "Järgmine: uurige fikseeritud tulemit ja tõendeid ning võtke seejärel tulem sõnaselgelt vastu."
+agent_center.console_next_attention: "Järgmine: vaadake F4 kaudu üle selle tööüksuse lahendamata tähelepanu vajavad küsimused." # {Locked="F4"}
+agent_center.console_next_resume: "Järgmine: teie otsustate, millal seda ajutiselt peatatud tööüksust jätkata."
+agent_center.console_next_service: "Järgmine: teenus viib heakskiidetud plaani edasi. See pole lõplik vastuvõtt."

@@ -266,10 +266,72 @@ system.model_unknown: "未知模型 %{model} — 輸入 /model 查看可用清�
 # Agent Center: AI agents; work items contain tasks and are not sessions.
 agent_center.title: "Agent Center" # {Locked}
 agent_center.works: "工作項目"
+agent_center.demo_title: "工作項目故事示範" # Title of an isolated scripted demonstration; the story fixture itself is English.
+agent_center.demo_notice: "預設劇情示範 | 範例證據、模擬工作階段和權杖用量 | 不會啟動任何代理程式" # Always-visible disclosure; simulated data must not be confused with live agent execution.
+agent_center.demo_scene: "場景 %{scene}/8" # %{scene} is the current scene number in the eight-scene story.
+agent_center.demo_next: "下一步：%{input}" # %{input} is the literal English story input, not a translated command.
+agent_center.demo_keys: "Enter: 提交 | Tab: 填入下一筆輸入 | PgUp/PgDn: 捲動 | Ctrl+Q: 關閉" # {Locked="Enter","Tab","PgUp/PgDn","Ctrl+Q"}
+agent_center.demo_reset: "重設示範狀態？請輸入 /reset confirm。現有工作項目和設定不受影響。" # {Locked="/reset confirm"} Resets only the isolated demo, never real work.
+agent_center.demo_saved: "已儲存修訂版本 %{revision}" # %{revision} is the persisted demo state revision.
+agent_center.demo_error: "示範操作失敗：%{error}" # %{error} explains the rejected action; no state change is claimed.
+agent_center.tasks_title: "任務"
+agent_center.task_new: "新增任務"
+agent_center.task_all: "所有任務"
+agent_center.task_attention: "需要注意"
+agent_center.task_continue: "繼續任務"
+# Messages waiting for this work's busy executor, excluding the currently running turn. {Locked="%{count}"}
+agent_center.task_queued_messages: "佇列中的訊息：%{count}"
+# Explicit migration of an existing work from legacy orchestration to its own executing agent session.
+agent_center.task_claim_executor: "連結任務智能體"
+agent_center.task_claim_executor_confirm: "將此任務切換至其專屬的執行智能體。現有的聊天記錄與結果會保留，舊版排程則會停止。如果無法還原原本的執行工作階段，啟動新的工作階段需要另外確認。"
+agent_center.task_open_tab: "在索引標籤中開啟"
+agent_center.task_tab_unsupported: "開啟任務索引標籤需要使用 Intelligent Terminal。" # {Locked="Intelligent Terminal"}
+agent_center.task_new_session: "啟動新的工作階段"
+agent_center.task_new_session_confirm: "無法繼續原本的智能體工作階段。是否使用此任務已儲存的內容脈絡啟動新的工作階段？"
+agent_center.task_keys: "Up/Down 選取 · Enter 開啟 · F4 動作 · F5 詳細資料" # {Locked="Up/Down","Enter","F4","F5"}
+agent_center.task_list_keys: "F2 任務 · F4 動作 · F5 詳細資料" # {Locked="F2","F4","F5"}
+agent_center.task_state_running: "執行中"
+agent_center.task_state_waiting: "等待你的回覆"
+agent_center.task_state_paused: "已暫停"
+agent_center.task_state_recovery: "需要復原"
+agent_center.task_state_ready: "可以繼續"
+agent_center.task_state_completed: "已完成"
+agent_center.task_state_cancelled: "已取消"
+agent_center.task_state_unavailable: "工作階段無法使用"
+agent_center.task_updated: "最近活動：%{time}"
+agent_center.ui_overview: "概觀"
+agent_center.chat_global: "全域對話" # Conversation with the non-executing master for new goals and cross-work coordination; each work has its own executor conversation.
+agent_center.chat_welcome: "告訴我您想達成什麼目標、安排什麼事情，或瞭解什麼資訊。"
+agent_center.chat_keys: "Enter 傳送 · Shift+Enter 換行 · F4 動作 · F5 詳細資料 · F7 儀表板" # {Locked="Enter","Shift+Enter","F4","F5","F7"}
+agent_center.chat_dashboard_keys: "F7 對話 · Esc 對話 · F4 動作 · F6 焦點移至動作" # Dashboard navigation preserves the global conversation and draft. {Locked="F7","Esc","F4","F6"}
+agent_center.chat_context_hint: "內容脈絡提示：%{context}" # %{context} is a readable work or project name, not a binding that limits the global conversation.
+agent_center.ui_attention: "需要您關注" # Heading for recorded requests, draft-start reviews, and delivery reviews; not a claim that every work needs attention.
+agent_center.ui_details: "工作說明與進度" # Read-only details view containing the work agreement, recorded progress, evidence, and locations.
+agent_center.ui_new_goal: "您想達成什麼目標？"
+agent_center.ui_empty_attention: "沒有需要您回覆的未解決要求。"
+agent_center.ui_no_works: "尚未記錄任何工作項目。請選取已設定的專案以開始。"
+agent_center.ui_no_conversation: "尚未記錄此工作項目的任何訊息。"
+agent_center.ui_role_you: "您" # Speaker heading for an actual recorded human message.
+agent_center.ui_role_assistant: "工作助理" # Speaker heading for an actual recorded assistant message, not a provider name.
+agent_center.ui_role_service: "服務" # Speaker heading for an actual recorded system or service message.
+agent_center.ui_role_unknown: "已記錄的訊息" # Speaker heading when the service does not identify a recognized message role.
+agent_center.ui_next: "下一步職責"
+agent_center.ui_recorded_facts: "已記錄的資訊"
+agent_center.ui_last_known: "最後已知狀態 · %{status}" # %{status} is a localized recorded status. Used when cached facts do not establish current execution.
+agent_center.ui_cached_facts: "快取資訊；目前執行情況尚未確認。"
+agent_center.ui_source_root: "專案來源檔案位置" # Configured source root, explicitly distinct from the actual managed execution directory.
+agent_center.ui_execution_root: "受控執行位置" # Actual execution directory reported by the service, never inferred from the project source root.
+agent_center.ui_location_unknown: "尚未回報執行位置。"
+agent_center.ui_composer: "訊息傳送至：%{work}" # %{work} is the human-readable target of this independent draft.
+agent_center.ui_composer_new: "新增工作項目 · %{project}" # %{project} is the configured project name, or an explicit project-selection warning.
+agent_center.ui_actions: "工作項目動作"
+agent_center.ui_keys: "Enter 傳送 · Shift+Enter 換行 · F4 動作 · F5 詳細資料 · F6 焦點移至動作" # {Locked="Enter","Shift+Enter","F4","F5","F6"}
+agent_center.ui_actions_hint: "Up/Down 選取 · Enter 開啟 · Esc 返回輸入" # Keyboard focus is on a visible action, not the text editor. {Locked="Up/Down","Enter","Esc"}
+agent_center.ui_details_hint: "F5 關閉詳細資料 · PgUp/PgDn 閱讀 · Esc 返回輸入" # Read-only detail focus; returning to input preserves the draft and selection. {Locked="F5","PgUp/PgDn","Esc"}
 agent_center.activity: "對話與活動"
-# %{work} and %{project} are identifiers.
+# %{work} and %{project} are human-readable labels for the selected work and configured project.
 agent_center.header: "目前工作項目：%{work} · 專案：%{project}"
-agent_center.welcome: "使用 /project use <id> 選取專案，然後輸入目標或 /help。" # {Locked="/project use","<id>","/help"}
+agent_center.welcome: "按 F4 選取已設定的專案，然後輸入您想達成的目標。" # {Locked="F4"}
 agent_center.input_help: "Enter：傳送 · Shift+Enter：換行 · Tab：補齊 · F2：切換工作項目 · PgUp/PgDn：閱讀 · Ctrl+End：最新內容 · Ctrl+C：結束" # {Locked="Enter","Shift+Enter","Tab","F2","PgUp/PgDn","Ctrl+End","Ctrl+C"}
 agent_center.inbox_count: "需要注意：%{count}"
 agent_center.sending: "正在傳送已記錄的要求…"
@@ -316,3 +378,84 @@ agent_center.missing_field: "服務檢視中的 %{field} 欄位遺失或無效�
 agent_center.invalid_command_id: "--command-id 必須為 UUID。" # {Locked="--command-id","UUID"}
 agent_center.worker_stopped: "要求連線已停止。"
 agent_center.host_unavailable: "沒有可用於 %{command} 的殼層主機配接器。請使用主機的鍵盤動作。"
+agent_center.console_home: "新增工作項目"
+agent_center.console_new: "新增工作項目 / 首頁"
+agent_center.console_new_hint: "輸入新目標。其他工作項目會獨立繼續進行。"
+agent_center.console_project_create_directory: "建立新目錄並初始化本機 Git 存放庫。不會覆寫現有檔案。" # {Locked="Git"}
+agent_center.console_projects: "選取已設定的專案"
+agent_center.console_projects_hint: "依名稱和位置選取專案。這裡尚未設定專案？請管理員設定一個。"
+agent_center.console_refresh: "重新整理目前資訊"
+agent_center.console_open: "開啟：%{work}"
+agent_center.console_return: "返回：%{work}"
+agent_center.console_respond: "回覆：%{work} — %{question}"
+agent_center.console_unknown_work: "無法取得工作項目詳細資料"
+agent_center.console_unknown_project: "尚未選取專案或專案無法使用"
+# Two works can have exactly the same goal and project. The numbered choice is explicit, never a fuzzy match. %{created} is the recorded creation time.
+agent_center.console_duplicate: "%{work} · 獨立工作項目 %{number} · %{created}"
+agent_center.console_start: "檢閱工作說明並核准開始"
+agent_center.approval_title: "需要核准" # Title of an inline conversation card for a specific frozen human action.
+agent_center.approval_accept: "核准" # Button that submits the exact reviewed action, not a chat message.
+agent_center.approval_start: "核准並開始" # Button approving the displayed work brief and execution grant.
+agent_center.approval_edit: "變更需求" # Return to the chat composer to describe changes; do not submit or approve the action.
+agent_center.approval_defer: "暫不處理" # Defer review in this Console without cancelling the work or approving anything.
+agent_center.approval_open_hint: "F6 檢閱提案" # Opens the inline approval card without approving it. {Locked="F6"}
+agent_center.approval_keys: "Left/Right 選取 · Enter 確認選取 · F5 詳細資料 · Esc 暫不處理" # Keyboard help while the inline approval card owns focus. {Locked="Left/Right","Enter","F5","Esc"}
+agent_center.approval_edit_hint: "請描述對 %{target} 的變更。尚未核准任何動作。" # %{target} is the displayed project or work name; the user's draft is preserved.
+agent_center.approval_deferred: "已延後檢閱 %{target}。準備好後，可透過 F4 重新開啟提案。" # Deferring is local presentation state, not cancellation of work. %{target} is a project or work name. {Locked="F4"}
+agent_center.console_pause: "暫停工作"
+agent_center.console_resume: "繼續工作"
+agent_center.console_cancel: "取消工作項目"
+agent_center.console_inspect: "檢查已定版的交付成果並核對佐證資料（唯讀）"
+agent_center.console_read_evidence: "閱讀佐證資料：%{work} — %{path}"
+agent_center.console_more_evidence: "閱讀下一頁佐證資料：%{work}"
+agent_center.console_accept: "接受已檢查的交付成果"
+agent_center.console_takeover: "接管受控工作區"
+agent_center.console_handback: "交還受控工作區"
+agent_center.console_apply: "套用已核准的變更"
+agent_center.console_action: "檢閱已記錄的動作"
+agent_center.console_answer: "回答"
+agent_center.console_answer_review: "已記錄、待提交的回答：\n%{value}"
+agent_center.console_answer_invalid: "請為 %{field} 輸入有效值；檢查該欄位要求的選項與值範圍。"
+agent_center.console_schema_unsupported: "此問題使用的結構描述不受簡易表單支援。未提交任何內容；請要求提供更簡單的問題。"
+agent_center.console_yes: "是"
+agent_center.console_no: "否"
+agent_center.console_form_help: "Up/Down 選取欄位 · Left/Right 選取選項 · Enter 下一個欄位 · Ctrl+Enter 檢閱回答 · Esc 返回" # {Locked="Up/Down","Left/Right","Enter","Ctrl+Enter","Esc"}
+agent_center.console_menu_help: "F4 動作 · Up/Down 選取 · Enter 開啟 · Esc 返回 · F12 診斷" # {Locked="F4","Up/Down","Enter","Esc","F12"}
+agent_center.console_hint: "F4 動作 · F2 切換工作項目 · F12 診斷" # {Locked="F4","F2","F12"}
+agent_center.console_scope: "包含的範圍"
+agent_center.console_exclusions: "不屬於此工作項目的內容"
+agent_center.console_criteria: "驗收準則與必要佐證資料"
+agent_center.console_delivery: "交付成果"
+agent_center.console_delivery_code: "受控工作區中的本機程式碼"
+agent_center.console_delivery_report: "已記錄的報告檔案"
+agent_center.console_progress: "工作進度"
+agent_center.console_authority: "要求的權限與執行限制"
+agent_center.console_capabilities: "已核准的執行能力"
+agent_center.console_data_scopes: "可讀取的資料位置"
+agent_center.console_limits: "資源限制"
+agent_center.console_managed_writes: "受控作業的寫入範圍限定為此工作項目的工作區。這並不構成針對提供者自有工具的作業系統層級隔離界限。"
+agent_center.console_frozen: "此確認綁定已記錄的工作項目、要求、原則與修訂版本。變更後必須重新檢閱；核准絕不會在未告知您的情況下轉向其他目標。"
+agent_center.console_stale: "即時資訊已過期。草稿已妥善保存。核准或傳送變更前，請重新連線並重新整理；結果未知不代表失敗或完成。"
+agent_center.console_diagnostics: "診斷通訊協定詳細資料（唯讀）"
+agent_center.console_no_details: "目前沒有工作項目詳細資料。使用 F4 選取專案、開啟工作項目或重新整理。" # {Locked="F4"}
+agent_center.console_draft: "草稿 — 尚未開始"
+agent_center.console_active: "進行中 — 尚未接受"
+agent_center.console_completed: "已完成 — 已記錄人工驗收"
+agent_center.console_cancelled: "已取消"
+agent_center.console_paused: "已暫停"
+agent_center.console_automatic: "自動推進"
+agent_center.console_running: "執行中"
+agent_center.console_pending: "待處理 — 尚未完成"
+agent_center.console_verified: "已驗證 / 內部已接受"
+agent_center.console_failed: "失敗 / 已拒絕 — 請檢查佐證資料"
+agent_center.console_waiting: "正在等候回覆或相依項目"
+agent_center.console_unknown: "未知 — 請重新整理或檢查診斷資訊"
+agent_center.console_resolved: "已記錄回覆"
+agent_center.console_superseded: "已被取代 — 不是目前的交付成果"
+agent_center.console_next_done: "下一步：使用已接受的交付成果；沒有其他待核准事項。"
+agent_center.console_next_cancelled: "下一步：不會自動推進；此工作項目已取消。"
+agent_center.console_next_approve: "下一步：請檢閱工作說明，並透過 F4 核准確切的啟動動作。" # {Locked="F4"}
+agent_center.console_next_accept: "下一步：請檢查已定版的交付成果與佐證資料，然後明確接受。"
+agent_center.console_next_attention: "下一步：透過 F4 檢閱此工作項目尚待關注的事項。" # {Locked="F4"}
+agent_center.console_next_resume: "下一步：由您決定何時繼續此已暫停的工作。"
+agent_center.console_next_service: "下一步：服務將推進已核准的計畫。這不代表最終驗收。"

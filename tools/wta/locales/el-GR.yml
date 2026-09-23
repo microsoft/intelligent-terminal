@@ -273,10 +273,72 @@ system.model_unknown: "Άγνωστο μοντέλο %{model} — πληκτρο
 # not an agent session; a work item may contain multiple tasks.
 agent_center.title: "Agent Center" # {Locked}
 agent_center.works: "Στοιχεία εργασίας"
+agent_center.demo_title: "Επίδειξη ιστορίας στοιχείου εργασίας" # Title of an isolated scripted demonstration; the story fixture itself is English.
+agent_center.demo_notice: "Επίδειξη με σενάριο | Ενδεικτικά αποδεικτικά στοιχεία, προσομοιωμένες συνεδρίες και χρήση διακριτικών | Δεν εκκινούνται πράκτορες" # Always-visible disclosure; simulated data must not be confused with live agent execution.
+agent_center.demo_scene: "Σκηνή %{scene}/8" # %{scene} is the current scene number in the eight-scene story.
+agent_center.demo_next: "Επόμενο: %{input}" # %{input} is the literal English story input, not a translated command.
+agent_center.demo_keys: "Enter: υποβολή | Tab: συμπλήρωση επόμενης εισόδου | PgUp/PgDn: κύλιση | Ctrl+Q: κλείσιμο" # {Locked="Enter","Tab","PgUp/PgDn","Ctrl+Q"}
+agent_center.demo_reset: "Επαναφορά της κατάστασης επίδειξης; Πληκτρολογήστε /reset confirm. Τα υπάρχοντα στοιχεία εργασίας και οι ρυθμίσεις δεν επηρεάζονται." # {Locked="/reset confirm"} Resets only the isolated demo, never real work.
+agent_center.demo_saved: "Αποθηκεύτηκε η αναθεώρηση %{revision}" # %{revision} is the persisted demo state revision.
+agent_center.demo_error: "Η ενέργεια επίδειξης απέτυχε: %{error}" # %{error} explains the rejected action; no state change is claimed.
+agent_center.tasks_title: "Εργασίες"
+agent_center.task_new: "Νέα εργασία"
+agent_center.task_all: "Όλες οι εργασίες"
+agent_center.task_attention: "Χρειάζεται προσοχή"
+agent_center.task_continue: "Συνέχιση εργασίας"
+# Messages waiting for this work's busy executor, excluding the currently running turn. {Locked="%{count}"}
+agent_center.task_queued_messages: "Μηνύματα στην ουρά: %{count}"
+# Explicit migration of an existing work from legacy orchestration to its own executing agent session.
+agent_center.task_claim_executor: "Σύνδεση με τον πράκτορα της εργασίας"
+agent_center.task_claim_executor_confirm: "Μεταφέρετε αυτή την εργασία στον δικό της πράκτορα εκτέλεσης. Η υπάρχουσα συνομιλία και τα αποτελέσματα διατηρούνται και ο παλιός χρονοπρογραμματισμός σταματά. Αν δεν είναι δυνατή η επαναφορά της αρχικής συνεδρίας εκτέλεσης, απαιτείται ξεχωριστή επιβεβαίωση για την έναρξη νέας συνεδρίας."
+agent_center.task_open_tab: "Άνοιγμα σε καρτέλα"
+agent_center.task_tab_unsupported: "Για το άνοιγμα μιας καρτέλας εργασίας απαιτείται το Intelligent Terminal." # {Locked="Intelligent Terminal"}
+agent_center.task_new_session: "Έναρξη νέας συνεδρίας"
+agent_center.task_new_session_confirm: "Δεν είναι δυνατή η συνέχιση της αρχικής συνεδρίας του πράκτορα τεχνητής νοημοσύνης. Θέλετε να ξεκινήσετε μια νέα συνεδρία με το αποθηκευμένο πλαίσιο αυτής της εργασίας;"
+agent_center.task_keys: "Up/Down επιλογή · Enter άνοιγμα · F4 ενέργειες · F5 λεπτομέρειες" # {Locked="Up/Down","Enter","F4","F5"}
+agent_center.task_list_keys: "F2 εργασίες · F4 ενέργειες · F5 λεπτομέρειες" # {Locked="F2","F4","F5"}
+agent_center.task_state_running: "Σε εκτέλεση"
+agent_center.task_state_waiting: "Αναμονή για την απάντησή σας"
+agent_center.task_state_paused: "Σε παύση"
+agent_center.task_state_recovery: "Απαιτείται ανάκτηση"
+agent_center.task_state_ready: "Έτοιμη για συνέχεια"
+agent_center.task_state_completed: "Ολοκληρωμένη"
+agent_center.task_state_cancelled: "Ακυρωμένη"
+agent_center.task_state_unavailable: "Η συνεδρία δεν είναι διαθέσιμη"
+agent_center.task_updated: "Τελευταία δραστηριότητα: %{time}"
+agent_center.ui_overview: "Επισκόπηση"
+agent_center.chat_global: "Ενιαία συνομιλία" # Conversation with the non-executing master for new goals and cross-work coordination; each work has its own executor conversation.
+agent_center.chat_welcome: "Πείτε μου τι θέλετε να επιτύχετε, να οργανώσετε ή να μάθετε."
+agent_center.chat_keys: "Enter αποστολή · Shift+Enter νέα γραμμή · F4 ενέργειες · F5 λεπτομέρειες · F7 πίνακας ελέγχου" # {Locked="Enter","Shift+Enter","F4","F5","F7"}
+agent_center.chat_dashboard_keys: "F7 συνομιλία · Esc συνομιλία · F4 ενέργειες · F6 εστίαση στις ενέργειες" # Dashboard navigation preserves the global conversation and draft. {Locked="F7","Esc","F4","F6"}
+agent_center.chat_context_hint: "Υπόδειξη περιβάλλοντος: %{context}" # %{context} is a readable work or project name, not a binding that limits the global conversation.
+agent_center.ui_attention: "Απαιτεί την προσοχή σας" # Heading for recorded requests, draft-start reviews, and delivery reviews; not a claim that every work needs attention.
+agent_center.ui_details: "Σύνοψη εργασίας και πρόοδος" # Read-only details view containing the work agreement, recorded progress, evidence, and locations.
+agent_center.ui_new_goal: "Τι θα θέλατε να επιτύχετε;"
+agent_center.ui_empty_attention: "Δεν υπάρχουν ανοιχτά αιτήματα που χρειάζονται την απάντησή σας."
+agent_center.ui_no_works: "Δεν έχει καταγραφεί κανένα στοιχείο εργασίας. Επιλέξτε ένα διαμορφωμένο έργο για να ξεκινήσετε."
+agent_center.ui_no_conversation: "Δεν έχουν καταγραφεί μηνύματα για αυτό το στοιχείο εργασίας."
+agent_center.ui_role_you: "Εσείς" # Speaker heading for an actual recorded human message.
+agent_center.ui_role_assistant: "Βοηθός εργασίας" # Speaker heading for an actual recorded assistant message, not a provider name.
+agent_center.ui_role_service: "Υπηρεσία" # Speaker heading for an actual recorded system or service message.
+agent_center.ui_role_unknown: "Καταγεγραμμένο μήνυμα" # Speaker heading when the service does not identify a recognized message role.
+agent_center.ui_next: "Επόμενη ευθύνη"
+agent_center.ui_recorded_facts: "Καταγεγραμμένα δεδομένα"
+agent_center.ui_last_known: "Τελευταία γνωστή κατάσταση · %{status}" # %{status} is a localized recorded status. Used when cached facts do not establish current execution.
+agent_center.ui_cached_facts: "Δεδομένα από την προσωρινή μνήμη· η τρέχουσα εκτέλεση δεν έχει επιβεβαιωθεί."
+agent_center.ui_source_root: "Τοποθεσία πηγής του έργου" # Configured source root, explicitly distinct from the actual managed execution directory.
+agent_center.ui_execution_root: "Τοποθεσία διαχειριζόμενης εκτέλεσης" # Actual execution directory reported by the service, never inferred from the project source root.
+agent_center.ui_location_unknown: "Δεν έχει αναφερθεί τοποθεσία εκτέλεσης."
+agent_center.ui_composer: "Μήνυμα για: %{work}" # %{work} is the human-readable target of this independent draft.
+agent_center.ui_composer_new: "Νέο στοιχείο εργασίας · %{project}" # %{project} is the configured project name, or an explicit project-selection warning.
+agent_center.ui_actions: "Ενέργειες στοιχείου εργασίας"
+agent_center.ui_keys: "Enter αποστολή · Shift+Enter νέα γραμμή · F4 ενέργειες · F5 λεπτομέρειες · F6 εστίαση στις ενέργειες" # {Locked="Enter","Shift+Enter","F4","F5","F6"}
+agent_center.ui_actions_hint: "Up/Down επιλογή · Enter άνοιγμα · Esc εισαγωγή" # Keyboard focus is on a visible action, not the text editor. {Locked="Up/Down","Enter","Esc"}
+agent_center.ui_details_hint: "F5 κλείσιμο λεπτομερειών · PgUp/PgDn ανάγνωση · Esc εισαγωγή" # Read-only detail focus; returning to input preserves the draft and selection. {Locked="F5","PgUp/PgDn","Esc"}
 agent_center.activity: "Δραστηριότητα · Συνομιλία"
-# %{work} and %{project} are identifiers of the selected work item and project.
+# %{work} and %{project} are human-readable labels for the selected work and configured project.
 agent_center.header: "Στοιχείο εργασίας: %{work} | Έργο: %{project}"
-agent_center.welcome: "Επιλέξτε ένα έργο ή καθορίστε /project use <id>. Πληκτρολογήστε έναν στόχο ή /help." # {Locked="/project use","<id>","/help"}
+agent_center.welcome: "Πατήστε F4 για να επιλέξετε ένα διαμορφωμένο έργο και μετά εισαγάγετε τι θέλετε να επιτύχετε." # {Locked="F4"}
 agent_center.input_help: "Enter: αποστολή · Shift+Enter: νέα γραμμή · Tab: συμπλήρωση · F2: εναλλαγή στοιχείου εργασίας · Ctrl+C: έξοδος · PgUp/PgDn: ανάγνωση · Ctrl+End: πιο πρόσφατα" # {Locked="Enter","Shift+Enter","Tab","F2","PgUp/PgDn","Ctrl+End","Ctrl+C"}
 agent_center.inbox_count: "Απαιτεί προσοχή: %{count}"
 agent_center.sending: "Αποστολή του καταγεγραμμένου αιτήματος…"
@@ -321,3 +383,84 @@ agent_center.missing_field: "Το πεδίο απόκρισης λείπει ή 
 agent_center.invalid_command_id: "Το --command-id πρέπει να είναι UUID." # {Locked="--command-id","UUID"}
 agent_center.worker_stopped: "Η σύνδεση αιτημάτων σταμάτησε."
 agent_center.host_unavailable: "Δεν υπάρχει διαθέσιμος προσαρμογέας κεντρικού υπολογιστή κελύφους για το %{command}. Χρησιμοποιήστε τις ενέργειες πληκτρολογίου του κεντρικού υπολογιστή."
+agent_center.console_home: "Νέο στοιχείο εργασίας"
+agent_center.console_new: "Νέο στοιχείο εργασίας / Αρχική"
+agent_center.console_new_hint: "Εισαγάγετε έναν νέο στόχο. Τα άλλα στοιχεία εργασίας συνεχίζουν ανεξάρτητα."
+agent_center.console_project_create_directory: "Δημιουργήστε έναν νέο κατάλογο και αρχικοποιήστε ένα τοπικό αποθετήριο Git. Τα υπάρχοντα αρχεία δεν θα αντικατασταθούν." # {Locked="Git"}
+agent_center.console_projects: "Επιλέξτε ένα διαμορφωμένο έργο"
+agent_center.console_projects_hint: "Επιλέξτε το έργο με βάση το όνομα και την τοποθεσία. Δεν υπάρχει διαμορφωμένο έργο εδώ; Ζητήστε από τον διαχειριστή σας να διαμορφώσει ένα."
+agent_center.console_refresh: "Ανανέωση τρεχόντων δεδομένων"
+agent_center.console_open: "Άνοιγμα: %{work}"
+agent_center.console_return: "Επιστροφή σε: %{work}"
+agent_center.console_respond: "Απάντηση: %{work} — %{question}"
+agent_center.console_unknown_work: "Οι λεπτομέρειες του στοιχείου εργασίας δεν είναι διαθέσιμες"
+agent_center.console_unknown_project: "Το έργο δεν έχει επιλεγεί ή δεν είναι διαθέσιμο"
+# Two works can have exactly the same goal and project. The numbered choice is explicit, never a fuzzy match. %{created} is the recorded creation time.
+agent_center.console_duplicate: "%{work} · ξεχωριστό στοιχείο εργασίας %{number} · %{created}"
+agent_center.console_start: "Ελέγξτε τη σύνοψη εργασίας και εγκρίνετε την έναρξη"
+agent_center.approval_title: "Απαιτείται έγκριση" # Title of an inline conversation card for a specific frozen human action.
+agent_center.approval_accept: "Έγκριση" # Button that submits the exact reviewed action, not a chat message.
+agent_center.approval_start: "Έγκριση και έναρξη" # Button approving the displayed work brief and execution grant.
+agent_center.approval_edit: "Αλλαγή απαιτήσεων" # Return to the chat composer to describe changes; do not submit or approve the action.
+agent_center.approval_defer: "Όχι τώρα" # Defer review in this Console without cancelling the work or approving anything.
+agent_center.approval_open_hint: "F6 έλεγχος πρότασης" # Opens the inline approval card without approving it. {Locked="F6"}
+agent_center.approval_keys: "Left/Right επιλογή · Enter επιβεβαίωση επιλογής · F5 λεπτομέρειες · Esc όχι τώρα" # Keyboard help while the inline approval card owns focus. {Locked="Left/Right","Enter","F5","Esc"}
+agent_center.approval_edit_hint: "Περιγράψτε τις αλλαγές για %{target}. Δεν έχει εγκριθεί τίποτα." # %{target} is the displayed project or work name; the user's draft is preserved.
+agent_center.approval_deferred: "Ο έλεγχος για %{target} αναβλήθηκε. Ανοίξτε ξανά την πρόταση μέσω F4 όταν είστε έτοιμοι." # Deferring is local presentation state, not cancellation of work. %{target} is a project or work name. {Locked="F4"}
+agent_center.console_pause: "Παύση στοιχείου εργασίας"
+agent_center.console_resume: "Συνέχιση στοιχείου εργασίας"
+agent_center.console_cancel: "Ακύρωση στοιχείου εργασίας"
+agent_center.console_inspect: "Επιθεώρηση του οριστικοποιημένου παραδοτέου και έλεγχος τεκμηρίων (μόνο για ανάγνωση)"
+agent_center.console_read_evidence: "Ανάγνωση τεκμηρίων: %{work} — %{path}"
+agent_center.console_more_evidence: "Ανάγνωση επόμενης σελίδας τεκμηρίων: %{work}"
+agent_center.console_accept: "Αποδοχή του παραδοτέου που επιθεωρήθηκε"
+agent_center.console_takeover: "Ανάληψη ελέγχου του διαχειριζόμενου χώρου εργασίας"
+agent_center.console_handback: "Επιστροφή ελέγχου του διαχειριζόμενου χώρου εργασίας"
+agent_center.console_apply: "Εφαρμογή της εγκεκριμένης αλλαγής"
+agent_center.console_action: "Έλεγχος της καταγεγραμμένης ενέργειας"
+agent_center.console_answer: "Απάντηση"
+agent_center.console_answer_review: "Καταγεγραμμένη απάντηση προς υποβολή:\n%{value}"
+agent_center.console_answer_invalid: "Εισαγάγετε μια έγκυρη τιμή για το %{field}· ελέγξτε τις απαιτούμενες επιλογές και τα όρια του πεδίου."
+agent_center.console_schema_unsupported: "Αυτή η ερώτηση χρησιμοποιεί ένα σχήμα που δεν υποστηρίζεται από την απλή φόρμα. Δεν υποβλήθηκε τίποτα· ζητήστε μια απλούστερη ερώτηση."
+agent_center.console_yes: "Ναι"
+agent_center.console_no: "Όχι"
+agent_center.console_form_help: "Up/Down επιλογή πεδίου · Left/Right επιλογή τιμής · Enter επόμενο πεδίο · Ctrl+Enter έλεγχος απάντησης · Esc πίσω" # {Locked="Up/Down","Left/Right","Enter","Ctrl+Enter","Esc"}
+agent_center.console_menu_help: "F4 ενέργειες · Up/Down επιλογή · Enter άνοιγμα · Esc πίσω · F12 διαγνωστικά" # {Locked="F4","Up/Down","Enter","Esc","F12"}
+agent_center.console_hint: "F4 ενέργειες · F2 εναλλαγή στοιχείου εργασίας · F12 διαγνωστικά" # {Locked="F4","F2","F12"}
+agent_center.console_scope: "Περιλαμβανόμενο εύρος"
+agent_center.console_exclusions: "Εκτός αυτού του στοιχείου εργασίας"
+agent_center.console_criteria: "Κριτήρια αποδοχής και απαιτούμενα τεκμήρια"
+agent_center.console_delivery: "Παραδοτέο"
+agent_center.console_delivery_code: "Τοπικός κώδικας στον διαχειριζόμενο χώρο εργασίας"
+agent_center.console_delivery_report: "Καταγεγραμμένα αρχεία αναφορών"
+agent_center.console_progress: "Πρόοδος επιμέρους εργασιών"
+agent_center.console_authority: "Ζητούμενη εξουσιοδότηση και όρια εκτέλεσης"
+agent_center.console_capabilities: "Εγκεκριμένες δυνατότητες εκτέλεσης"
+agent_center.console_data_scopes: "Τοποθεσίες δεδομένων με πρόσβαση ανάγνωσης"
+agent_center.console_limits: "Όρια πόρων"
+agent_center.console_managed_writes: "Οι εγγραφές από διαχειριζόμενες λειτουργίες περιορίζονται στον χώρο εργασίας αυτού του στοιχείου εργασίας. Αυτό δεν αποτελεί όριο απομόνωσης σε επίπεδο λειτουργικού συστήματος για εργαλεία που ανήκουν στον πάροχο."
+agent_center.console_frozen: "Αυτή η επιβεβαίωση δεσμεύεται στο καταγεγραμμένο στοιχείο εργασίας, αίτημα, πολιτική και αναθεωρήσεις. Οι αλλαγές απαιτούν νέο έλεγχο· η έγκριση δεν ανακατευθύνεται ποτέ σιωπηρά σε άλλο στόχο."
+agent_center.console_stale: "Τα ζωντανά δεδομένα είναι παρωχημένα. Τα πρόχειρα είναι ασφαλή. Επανασυνδεθείτε και ανανεώστε πριν εγκρίνετε ή στείλετε αλλαγές· ένα άγνωστο αποτέλεσμα δεν σημαίνει αποτυχία ή ολοκλήρωση."
+agent_center.console_diagnostics: "Λεπτομέρειες διαγνωστικού πρωτοκόλλου (μόνο για ανάγνωση)"
+agent_center.console_no_details: "Δεν υπάρχουν τρέχουσες λεπτομέρειες για το στοιχείο εργασίας. Χρησιμοποιήστε F4 για να επιλέξετε έργο, να ανοίξετε στοιχείο εργασίας ή να κάνετε ανανέωση." # {Locked="F4"}
+agent_center.console_draft: "Πρόχειρο — δεν έχει ξεκινήσει"
+agent_center.console_active: "Ενεργό — δεν έχει γίνει ακόμη αποδεκτό"
+agent_center.console_completed: "Ολοκληρωμένο — καταγράφηκε αποδοχή από άνθρωπο"
+agent_center.console_cancelled: "Ακυρωμένο"
+agent_center.console_paused: "Σε παύση"
+agent_center.console_automatic: "Αυτόματη πρόοδος"
+agent_center.console_running: "Σε εκτέλεση"
+agent_center.console_pending: "Σε εκκρεμότητα — δεν έχει ολοκληρωθεί"
+agent_center.console_verified: "Επαληθεύτηκε / έγινε αποδεκτό εσωτερικά"
+agent_center.console_failed: "Απέτυχε / απορρίφθηκε — επιθεωρήστε τα τεκμήρια"
+agent_center.console_waiting: "Αναμονή για απάντηση ή εξάρτηση"
+agent_center.console_unknown: "Άγνωστο — ανανεώστε ή ελέγξτε τα διαγνωστικά"
+agent_center.console_resolved: "Η απάντηση καταγράφηκε"
+agent_center.console_superseded: "Αντικαταστάθηκε — δεν είναι το τρέχον παραδοτέο"
+agent_center.console_next_done: "Επόμενο: χρησιμοποιήστε το αποδεκτό παραδοτέο· δεν εκκρεμεί άλλη έγκριση."
+agent_center.console_next_cancelled: "Επόμενο: καμία αυτόματη πρόοδος· αυτό το στοιχείο εργασίας ακυρώθηκε."
+agent_center.console_next_approve: "Επόμενο: ελέγξτε τη σύνοψη εργασίας και εγκρίνετε την ακριβή έναρξη μέσω F4." # {Locked="F4"}
+agent_center.console_next_accept: "Επόμενο: επιθεωρήστε το οριστικοποιημένο παραδοτέο και τα τεκμήρια και, στη συνέχεια, αποδεχτείτε το ρητά."
+agent_center.console_next_attention: "Επόμενο: ελέγξτε μέσω F4 τις εκκρεμότητες αυτού του στοιχείου εργασίας που απαιτούν προσοχή." # {Locked="F4"}
+agent_center.console_next_resume: "Επόμενο: εσείς αποφασίζετε πότε θα συνεχίσετε αυτό το στοιχείο εργασίας σε παύση."
+agent_center.console_next_service: "Επόμενο: η υπηρεσία προωθεί το εγκεκριμένο σχέδιο. Αυτό δεν αποτελεί τελική αποδοχή."

@@ -12,14 +12,30 @@ use args::{Command, HooksAction, SessionsAction};
 
 pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
     match command {
-        Command::Ui | Command::Center { .. } | Command::Work { .. }
-        | Command::Task { .. } | Command::Result { .. } | Command::Review { .. }
-        | Command::Plan { .. } | Command::Decision { .. } | Command::Artifact { .. }
-        | Command::Project { .. } | Command::Workspace { .. } | Command::Operation { .. }
-        | Command::Grant { .. } | Command::Inbox { .. } | Command::Intake { .. }
-        | Command::Evidence { .. } | Command::Shell { .. } | Command::Agent { .. }
-        | Command::Run { .. } | Command::Context { .. } | Command::Delivery { .. }
-        | Command::Capacity { .. } | Command::Usage { .. } => {
+        Command::Demo { .. }
+        | Command::Ui { .. }
+        | Command::Center { .. }
+        | Command::Work { .. }
+        | Command::Task { .. }
+        | Command::Result { .. }
+        | Command::Review { .. }
+        | Command::Plan { .. }
+        | Command::Decision { .. }
+        | Command::Artifact { .. }
+        | Command::Project { .. }
+        | Command::Workspace { .. }
+        | Command::Operation { .. }
+        | Command::Grant { .. }
+        | Command::Inbox { .. }
+        | Command::Intake { .. }
+        | Command::Evidence { .. }
+        | Command::Shell { .. }
+        | Command::Agent { .. }
+        | Command::Run { .. }
+        | Command::Context { .. }
+        | Command::Delivery { .. }
+        | Command::Capacity { .. }
+        | Command::Usage { .. } => {
             anyhow::bail!("Agent Center commands must use their structured dispatch")
         }
         command @ (Command::Info

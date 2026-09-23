@@ -116,12 +116,22 @@ const UNSUPPORTED: &[&str] = &[
 
 #[derive(Clone, Default, Debug)]
 pub struct CommandContext {
+    pub global_conversation: bool,
     pub work_id: Option<String>,
     pub project_id: Option<String>,
     pub conversation_id: String,
     pub console_session_id: String,
     pub context_version: u64,
     pub versions: BTreeMap<(String, String), u64>,
+}
+
+impl CommandContext {
+    fn change_conversation(&mut self, conversation_id: String) {
+        if self.conversation_id != conversation_id {
+            self.conversation_id = conversation_id;
+            self.console_session_id = uuid::Uuid::new_v4().to_string();
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -463,15 +473,19 @@ pub fn conversation(text: String, context: &CommandContext, new_work: bool) -> R
     if text.trim().is_empty() {
         bail!("{}", t!("agent_center.empty_message"));
     }
-    let project = context
-        .project_id
-        .as_ref()
-        .with_context(|| t!("agent_center.project_required").into_owned())?;
+    if !context.global_conversation && context.project_id.is_none() {
+        bail!("{}", t!("agent_center.project_required"));
+    }
     let mut captured = json!({
         "consoleSessionId": context.console_session_id,
         "contextVersion": context.context_version.max(1),
-        "projectId": project,
     });
+    if context.global_conversation {
+        captured["scope"] = json!("Global");
+    }
+    if let Some(project) = &context.project_id {
+        captured["projectId"] = json!(project);
+    }
     if let Some(work) = &context.work_id {
         captured["selectedWorkId"] = json!(work);
     }
@@ -548,12 +562,27 @@ pub fn compile(args: &[String], context: &CommandContext, interactive: bool) -> 
         "project use" => Action::SelectProject(a.id()?),
         "work new" => {
             let mut context = context.clone();
-            if interactive && context.work_id.is_some() {
-                context.conversation_id = uuid::Uuid::new_v4().to_string();
-            }
+            let previous_project = context.project_id.clone();
             context.project_id = a.take("project").or(context.project_id);
             let conversation_id = a.take("conversation");
+            if context.global_conversation
+                && conversation_id
+                    .as_ref()
+                    .is_some_and(|id| id != &context.conversation_id)
+            {
+                bail!("{}", t!("agent_center.invalid_request"));
+            }
             let message_id = a.take("message-id");
+            if interactive && !context.global_conversation {
+                let target = conversation_id.clone().unwrap_or_else(|| {
+                    if context.work_id.is_some() || context.project_id != previous_project {
+                        uuid::Uuid::new_v4().to_string()
+                    } else {
+                        context.conversation_id.clone()
+                    }
+                });
+                context.change_conversation(target);
+            }
             // NewWork intake must not borrow the selected work's context.
             context.work_id = None;
             let goal = a.id()?;
@@ -581,11 +610,27 @@ pub fn compile(args: &[String], context: &CommandContext, interactive: bool) -> 
             let mut captured = context.clone();
             captured.work_id = Some(a.work(context)?);
             captured.project_id = a.take("project").or(captured.project_id);
-            if captured.work_id != context.work_id {
-                captured.conversation_id = uuid::Uuid::new_v4().to_string();
-            }
             let conversation_id = a.take("conversation");
+            if captured.global_conversation
+                && conversation_id
+                    .as_ref()
+                    .is_some_and(|id| id != &captured.conversation_id)
+            {
+                bail!("{}", t!("agent_center.invalid_request"));
+            }
             let message_id = a.take("message-id");
+            if interactive && !captured.global_conversation {
+                let target = conversation_id.clone().unwrap_or_else(|| {
+                    if captured.work_id != context.work_id
+                        || captured.project_id != context.project_id
+                    {
+                        uuid::Uuid::new_v4().to_string()
+                    } else {
+                        captured.conversation_id.clone()
+                    }
+                });
+                captured.change_conversation(target);
+            }
             operation = conversation(a.id()?, &captured, false)?;
             operation.params["declaredIntent"] = json!("WorkDiscussion");
             if let Some(id) = &command_id {
@@ -631,14 +676,21 @@ pub fn compile(args: &[String], context: &CommandContext, interactive: bool) -> 
                 .clone()
                 .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
             let conversation_id = a.take("conversation");
+            if captured.global_conversation
+                && conversation_id
+                    .as_ref()
+                    .is_some_and(|id| id != &captured.conversation_id)
+            {
+                bail!("{}", t!("agent_center.invalid_request"));
+            }
             let message_id = a.take("message-id");
-            if interactive {
+            if interactive && !captured.global_conversation {
                 if let Some(conversation_id) = conversation_id {
-                    captured.conversation_id = conversation_id;
-                } else if !same_work {
-                    captured.conversation_id = uuid::Uuid::new_v4().to_string();
+                    captured.change_conversation(conversation_id);
+                } else if !same_work || captured.project_id != context.project_id {
+                    captured.change_conversation(uuid::Uuid::new_v4().to_string());
                 }
-            } else {
+            } else if !interactive {
                 captured.console_session_id = preparation::intake_identity(&id, "console");
                 captured.conversation_id = conversation_id
                     .unwrap_or_else(|| preparation::intake_identity(&id, "conversation"));
@@ -975,6 +1027,87 @@ mod tests {
             ..Default::default()
         }
     }
+
+    #[test]
+    fn global_conversation_omits_missing_project_and_preserves_legacy_project_requirement() {
+        let _locale = crate::test_support::lock_locale();
+        let mut context = CommandContext {
+            conversation_id: uuid::Uuid::new_v4().to_string(),
+            console_session_id: uuid::Uuid::new_v4().to_string(),
+            ..Default::default()
+        };
+        assert!(!context.global_conversation);
+        assert!(conversation("Arrange my reports".into(), &context, false).is_err());
+        context.global_conversation = true;
+        let request = conversation("Arrange my reports".into(), &context, false).unwrap();
+        assert_eq!(request.params["context"]["scope"], "Global");
+        assert!(request.params["context"].get("projectId").is_none());
+        assert!(request.params["context"].get("selectedWorkId").is_none());
+        assert_eq!(
+            request.params["context"]["consoleSessionId"],
+            context.console_session_id
+        );
+        context.project_id = Some("project-hint".into());
+        context.work_id = Some("work-hint".into());
+        let hinted = conversation("Query all works".into(), &context, false).unwrap();
+        assert_eq!(hinted.params["context"]["scope"], "Global");
+        assert_eq!(hinted.params["context"]["projectId"], "project-hint");
+        assert_eq!(hinted.params["context"]["selectedWorkId"], "work-hint");
+        assert_eq!(
+            hinted.params["conversationId"],
+            request.params["conversationId"]
+        );
+        context.global_conversation = false;
+        let legacy = conversation("Legacy scoped request".into(), &context, false).unwrap();
+        assert!(legacy.params["context"].get("scope").is_none());
+    }
+
+    #[test]
+    fn global_precise_intake_triggers_keep_the_lifetime_console_and_conversation_pair() {
+        let _locale = crate::test_support::lock_locale();
+        let mut context = context();
+        context.global_conversation = true;
+        context.conversation_id = uuid::Uuid::new_v4().to_string();
+        context.console_session_id = uuid::Uuid::new_v4().to_string();
+        let original = (
+            context.conversation_id.clone(),
+            context.console_session_id.clone(),
+        );
+        for command in [
+            "work new \"New report\" --project other-project",
+            "plan revise \"Narrow scope\" --work other-work --project other-project",
+        ] {
+            let op = operation(compile(&args(command), &context, true).unwrap());
+            assert_eq!(op.params["conversationId"], original.0);
+            assert_eq!(op.params["context"]["consoleSessionId"], original.1);
+            assert_eq!(op.params["context"]["scope"], "Global");
+        }
+        let foreign = uuid::Uuid::new_v4().to_string();
+        assert!(compile(
+            &args(&format!("work new goal --conversation {foreign}")),
+            &context,
+            true
+        )
+        .is_err());
+        assert!(compile(
+            &args(&format!("plan revise goal --conversation {foreign}")),
+            &context,
+            true
+        )
+        .is_err());
+        let Action::PrepareProposal(intake) = compile(
+            &args("work revise Clarify scope --project other-project"),
+            &context,
+            true,
+        )
+        .unwrap() else {
+            panic!("expected precise revision preparation");
+        };
+        assert_eq!(intake.context.conversation_id, original.0);
+        assert_eq!(intake.context.console_session_id, original.1);
+        assert!(intake.context.global_conversation);
+    }
+
     fn operation(action: Action) -> Operation {
         let Action::Operation(operation) = action else {
             panic!("expected operation")
@@ -1060,6 +1193,61 @@ mod tests {
         );
         captured.work_id = Some("other".into());
         assert_eq!(intake.context.work_id.as_deref(), Some("selected"));
+    }
+
+    #[test]
+    fn changed_intake_scopes_never_reuse_another_conversations_console_binding() {
+        let _locale = crate::test_support::lock_locale();
+        let captured = context();
+        for command in [
+            "work new another-goal",
+            "work new another-goal --conversation explicit-conversation",
+            "plan revise new-plan --work another-work",
+            "plan revise new-plan --conversation explicit-conversation",
+            "work revise new-scope --work another-work",
+            "work revise new-scope --conversation explicit-conversation",
+        ] {
+            let action = compile(&args(command), &captured, true).unwrap();
+            let (conversation, console) = match action {
+                Action::Operation(operation) => (
+                    operation.params["conversationId"]
+                        .as_str()
+                        .unwrap()
+                        .to_owned(),
+                    operation.params["context"]["consoleSessionId"]
+                        .as_str()
+                        .unwrap()
+                        .to_owned(),
+                ),
+                Action::PrepareProposal(intake) => (
+                    intake.context.conversation_id,
+                    intake.context.console_session_id,
+                ),
+                _ => panic!("expected intake: {command}"),
+            };
+            assert_ne!(conversation, captured.conversation_id, "{command}");
+            assert_ne!(console, captured.console_session_id, "{command}");
+            assert_ne!(console, conversation, "{command}");
+            uuid::Uuid::parse_str(&console).unwrap();
+        }
+        let mut home = captured;
+        home.work_id = None;
+        let Action::Operation(operation) = compile(
+            &args("work new another-goal --project another-project"),
+            &home,
+            true,
+        )
+        .unwrap() else {
+            panic!("expected project-scoped intake");
+        };
+        assert_ne!(
+            operation.params["conversationId"],
+            json!(home.conversation_id)
+        );
+        assert_ne!(
+            operation.params["context"]["consoleSessionId"],
+            json!(home.console_session_id)
+        );
     }
 
     #[test]

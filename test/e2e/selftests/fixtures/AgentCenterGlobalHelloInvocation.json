@@ -1,0 +1,112 @@
+{
+  "id": "66be4d23-a858-4402-8620-da0167b5299b",
+  "subject": {
+    "kind": "Coordination",
+    "id": "786fcbef-1265-4f8f-a52a-62a2b021afbd"
+  },
+  "runtimeId": "ba5aeae2-0d6b-4294-bd1d-2c4326ccafa5",
+  "capabilityId": "ite2e-local-global",
+  "coordinationInput": {
+    "turnId": "786fcbef-1265-4f8f-a52a-62a2b021afbd",
+    "scope": {
+      "conversationId": "6b25578d-e18f-42c4-8167-e08df3d7281a"
+    },
+    "replyMessageId": "d4c66265-c0da-4f46-bcbf-75c2c28ab944",
+    "snapshotVersion": 2,
+    "triggerEvents": [
+      {
+        "eventId": "18ea1d2f-0ed1-4932-b935-1ed9f34eba7f",
+        "kind": "IntakeMessage",
+        "subject": {
+          "kind": "ConversationItem",
+          "id": "5ed77ec9-9c19-488e-a37f-da52140fb588",
+          "version": 2
+        }
+      }
+    ],
+    "snapshot": {
+      "id": "6b25578d-e18f-42c4-8167-e08df3d7281a",
+      "kind": "Conversation",
+      "consoleSessionId": "6901ece5-f5ae-4d13-9564-fae5475621aa",
+      "messages": [
+        {
+          "conversationId": "6b25578d-e18f-42c4-8167-e08df3d7281a",
+          "clientMessageId": "e7be360a-5fc0-4615-88d2-5ab8ceb50280",
+          "text": "Hello.",
+          "attachments": [],
+          "context": {
+            "consoleSessionId": "6901ece5-f5ae-4d13-9564-fae5475621aa",
+            "contextVersion": 1,
+            "scope": "Global"
+          },
+          "role": "human",
+          "status": "Complete",
+          "id": "5ed77ec9-9c19-488e-a37f-da52140fb588",
+          "kind": "ConversationItem",
+          "createdAt": "2026-09-17T12:23:01Z",
+          "version": 2,
+          "intakeTurnId": "786fcbef-1265-4f8f-a52a-62a2b021afbd"
+        }
+      ],
+      "createdAt": "2026-09-17T12:23:01Z",
+      "scope": "Global",
+      "coordinationUsed": 0,
+      "version": 2,
+      "intakeRequests": [],
+      "actionProposals": [],
+      "policy": {
+        "capabilityId": "ite2e-local-global",
+        "workerCapabilityId": "ite2e-local-global",
+        "checkCapabilityId": "native-check",
+        "limits": {
+          "concurrency": 1,
+          "executionAttempts": 1,
+          "evaluationAttempts": 1,
+          "coordinationTurns": 24,
+          "contextRounds": 3,
+          "executionSeconds": 180,
+          "coordinationSeconds": 90
+        }
+      },
+      "projects": [],
+      "works": [],
+      "projectSummaryTruncated": false,
+      "workSummaryTruncated": false,
+      "projectAccessIsScoped": true
+    },
+    "remainingAllowance": 24
+  },
+  "replyMessageId": "d4c66265-c0da-4f46-bcbf-75c2c28ab944",
+  "bindingGeneration": 1,
+  "limits": {
+    "deadlineUtc": "2026-09-17T12:24:31Z",
+    "remainingExecutionAllowance": 24,
+    "remainingContextRounds": 3
+  },
+  "availableToolNames": [
+    "project_list",
+    "project_get",
+    "work_list",
+    "work_get",
+    "task_list",
+    "task_get",
+    "progress_get",
+    "result_get",
+    "artifact_get",
+    "artifact_read",
+    "delivery_list",
+    "delivery_get",
+    "decision_list",
+    "decision_get",
+    "inbox_list",
+    "operation_get",
+    "work_create_draft",
+    "work_propose_change",
+    "grant_preview",
+    "conversation_resolve_intents",
+    "conversation_request_input",
+    "conversation_resolve_input",
+    "conversation_propose_action",
+    "coordination_finish"
+  ]
+}

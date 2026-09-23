@@ -272,10 +272,72 @@ system.model_unknown: "Bilinmeyen model %{model} — kullanılabilir listeyi gö
 # not an agent session; a work item may contain multiple tasks.
 agent_center.title: "Agent Center" # {Locked}
 agent_center.works: "İş öğeleri"
+agent_center.demo_title: "İş öğesi hikayesi demosu" # Title of an isolated scripted demonstration; the story fixture itself is English.
+agent_center.demo_notice: "Senaryolu demo | Örnek kanıtlar, benzetimli oturumlar ve belirteç kullanımı | Hiçbir aracı başlatılmaz" # Always-visible disclosure; simulated data must not be confused with live agent execution.
+agent_center.demo_scene: "Sahne %{scene}/8" # %{scene} is the current scene number in the eight-scene story.
+agent_center.demo_next: "Sıradaki: %{input}" # %{input} is the literal English story input, not a translated command.
+agent_center.demo_keys: "Enter: gönder | Tab: sonraki girdiyi doldur | PgUp/PgDn: kaydır | Ctrl+Q: kapat" # {Locked="Enter","Tab","PgUp/PgDn","Ctrl+Q"}
+agent_center.demo_reset: "Demo durumu sıfırlansın mı? /reset confirm yazın. Mevcut iş öğeleri ve ayarlar etkilenmez." # {Locked="/reset confirm"} Resets only the isolated demo, never real work.
+agent_center.demo_saved: "%{revision} düzeltmesi kaydedildi" # %{revision} is the persisted demo state revision.
+agent_center.demo_error: "Demo eylemi başarısız oldu: %{error}" # %{error} explains the rejected action; no state change is claimed.
+agent_center.tasks_title: "Görevler"
+agent_center.task_new: "Yeni görev"
+agent_center.task_all: "Tüm görevler"
+agent_center.task_attention: "Dikkat gerekiyor"
+agent_center.task_continue: "Göreve devam et"
+# Messages waiting for this work's busy executor, excluding the currently running turn. {Locked="%{count}"}
+agent_center.task_queued_messages: "Kuyruktaki iletiler: %{count}"
+# Explicit migration of an existing work from legacy orchestration to its own executing agent session.
+agent_center.task_claim_executor: "Görevin aracısına bağla"
+agent_center.task_claim_executor_confirm: "Bu görevi kendi yürütücü aracısına aktarın. Mevcut sohbet ve sonuçlar korunur, eski zamanlama durdurulur. Özgün yürütme oturumu geri yüklenemiyorsa yeni bir oturum başlatmak için ayrıca onay gerekir."
+agent_center.task_open_tab: "Sekmede aç"
+agent_center.task_tab_unsupported: "Görev sekmesi açmak için Intelligent Terminal gerekir." # {Locked="Intelligent Terminal"}
+agent_center.task_new_session: "Yeni oturum başlat"
+agent_center.task_new_session_confirm: "Özgün aracı oturumu sürdürülemiyor. Bu görevin kaydedilmiş bağlamını kullanarak yeni bir oturum başlatılsın mı?"
+agent_center.task_keys: "Up/Down seç · Enter aç · F4 eylemler · F5 ayrıntılar" # {Locked="Up/Down","Enter","F4","F5"}
+agent_center.task_list_keys: "F2 görevler · F4 eylemler · F5 ayrıntılar" # {Locked="F2","F4","F5"}
+agent_center.task_state_running: "Çalışıyor"
+agent_center.task_state_waiting: "Yanıtınız bekleniyor"
+agent_center.task_state_paused: "Duraklatıldı"
+agent_center.task_state_recovery: "Kurtarma gerekiyor"
+agent_center.task_state_ready: "Devam etmeye hazır"
+agent_center.task_state_completed: "Tamamlandı"
+agent_center.task_state_cancelled: "İptal edildi"
+agent_center.task_state_unavailable: "Oturum kullanılamıyor"
+agent_center.task_updated: "Son etkinlik: %{time}"
+agent_center.ui_overview: "Genel bakış"
+agent_center.chat_global: "Ortak konuşma" # Conversation with the non-executing master for new goals and cross-work coordination; each work has its own executor conversation.
+agent_center.chat_welcome: "Neyi başarmak, düzenlemek veya öğrenmek istediğinizi söyleyin."
+agent_center.chat_keys: "Enter gönder · Shift+Enter yeni satır · F4 eylemler · F5 ayrıntılar · F7 pano" # {Locked="Enter","Shift+Enter","F4","F5","F7"}
+agent_center.chat_dashboard_keys: "F7 konuşma · Esc konuşma · F4 eylemler · F6 eylemlere odaklan" # Dashboard navigation preserves the global conversation and draft. {Locked="F7","Esc","F4","F6"}
+agent_center.chat_context_hint: "Bağlam ipucu: %{context}" # %{context} is a readable work or project name, not a binding that limits the global conversation.
+agent_center.ui_attention: "İlginizi gerektiriyor" # Heading for recorded requests, draft-start reviews, and delivery reviews; not a claim that every work needs attention.
+agent_center.ui_details: "İş tanımı ve ilerleme" # Read-only details view containing the work agreement, recorded progress, evidence, and locations.
+agent_center.ui_new_goal: "Neyi başarmak istersiniz?"
+agent_center.ui_empty_attention: "Yanıtınızı gerektiren açık istek yok."
+agent_center.ui_no_works: "Hiçbir iş öğesi kaydedilmedi. Başlamak için yapılandırılmış bir proje seçin."
+agent_center.ui_no_conversation: "Bu iş öğesi için hiçbir ileti kaydedilmedi."
+agent_center.ui_role_you: "Siz" # Speaker heading for an actual recorded human message.
+agent_center.ui_role_assistant: "İş yardımcısı" # Speaker heading for an actual recorded assistant message, not a provider name.
+agent_center.ui_role_service: "Hizmet" # Speaker heading for an actual recorded system or service message.
+agent_center.ui_role_unknown: "Kaydedilen ileti" # Speaker heading when the service does not identify a recognized message role.
+agent_center.ui_next: "Sonraki adımın sorumluluğu"
+agent_center.ui_recorded_facts: "Kaydedilen bilgiler"
+agent_center.ui_last_known: "Bilinen son durum · %{status}" # %{status} is a localized recorded status. Used when cached facts do not establish current execution.
+agent_center.ui_cached_facts: "Önbellekteki bilgiler; mevcut yürütme doğrulanmadı."
+agent_center.ui_source_root: "Projenin kaynak konumu" # Configured source root, explicitly distinct from the actual managed execution directory.
+agent_center.ui_execution_root: "Yönetilen yürütme konumu" # Actual execution directory reported by the service, never inferred from the project source root.
+agent_center.ui_location_unknown: "Hiçbir yürütme konumu bildirilmedi."
+agent_center.ui_composer: "İleti hedefi: %{work}" # %{work} is the human-readable target of this independent draft.
+agent_center.ui_composer_new: "Yeni iş öğesi · %{project}" # %{project} is the configured project name, or an explicit project-selection warning.
+agent_center.ui_actions: "İş öğesi eylemleri"
+agent_center.ui_keys: "Enter gönder · Shift+Enter yeni satır · F4 eylemler · F5 ayrıntılar · F6 eylemlere odaklan" # {Locked="Enter","Shift+Enter","F4","F5","F6"}
+agent_center.ui_actions_hint: "Up/Down seç · Enter aç · Esc girdiye dön" # Keyboard focus is on a visible action, not the text editor. {Locked="Up/Down","Enter","Esc"}
+agent_center.ui_details_hint: "F5 ayrıntıları kapat · PgUp/PgDn oku · Esc girdiye dön" # Read-only detail focus; returning to input preserves the draft and selection. {Locked="F5","PgUp/PgDn","Esc"}
 agent_center.activity: "Etkinlik · Konuşma"
-# %{work} and %{project} are identifiers of the selected work item and project.
+# %{work} and %{project} are human-readable labels for the selected work and configured project.
 agent_center.header: "İş: %{work} | Proje: %{project}"
-agent_center.welcome: "Bir proje seçin veya /project use <id> belirtin. Bir hedef veya /help yazın." # {Locked="/project use","<id>","/help"}
+agent_center.welcome: "Yapılandırılmış bir proje seçmek için F4 tuşuna basın, ardından neyi başarmak istediğinizi girin." # {Locked="F4"}
 agent_center.input_help: "Enter: gönder · Shift+Enter: yeni satır · Tab: tamamla · F2: iş öğesini değiştir · Ctrl+C: çık · PgUp/PgDn: oku · Ctrl+End: en yeni" # {Locked="Enter","Shift+Enter","Tab","F2","PgUp/PgDn","Ctrl+End","Ctrl+C"}
 agent_center.inbox_count: "İlgilenilmesi gerekiyor: %{count}"
 agent_center.sending: "Yakalanan istek gönderiliyor…"
@@ -320,3 +382,84 @@ agent_center.missing_field: "Eksik veya geçersiz yanıt alanı: %{field}"
 agent_center.invalid_command_id: "--command-id bir UUID olmalıdır." # {Locked="--command-id","UUID"}
 agent_center.worker_stopped: "İstek bağlantısı durdu."
 agent_center.host_unavailable: "%{command} için kullanılabilir kabuk konağı bağdaştırıcısı yok. Konağın klavye eylemlerini kullanın."
+agent_center.console_home: "Yeni iş öğesi"
+agent_center.console_new: "Yeni iş öğesi / Ana sayfa"
+agent_center.console_new_hint: "Yeni bir hedef girin. Diğer iş öğeleri bağımsız olarak devam eder."
+agent_center.console_project_create_directory: "Yeni bir dizin oluşturun ve yerel bir Git deposunu başlatın. Mevcut dosyaların üzerine yazılmayacaktır." # {Locked="Git"}
+agent_center.console_projects: "Yapılandırılmış bir proje seçin"
+agent_center.console_projects_hint: "Projeyi adına ve konumuna göre seçin. Burada yapılandırılmış proje yok mu? Yöneticinizden bir proje yapılandırmasını isteyin."
+agent_center.console_refresh: "Güncel bilgileri yenileyin"
+agent_center.console_open: "Aç: %{work}"
+agent_center.console_return: "Geri dön: %{work}"
+agent_center.console_respond: "Yanıtla: %{work} — %{question}"
+agent_center.console_unknown_work: "İş öğesi ayrıntıları kullanılamıyor"
+agent_center.console_unknown_project: "Proje seçilmemiş veya kullanılamıyor"
+# Two works can have exactly the same goal and project. The numbered choice is explicit, never a fuzzy match. %{created} is the recorded creation time.
+agent_center.console_duplicate: "%{work} · ayrı iş öğesi %{number} · %{created}"
+agent_center.console_start: "İş tanımını gözden geçirin ve başlangıcı onaylayın"
+agent_center.approval_title: "Onay gerekiyor" # Title of an inline conversation card for a specific frozen human action.
+agent_center.approval_accept: "Onaylayın" # Button that submits the exact reviewed action, not a chat message.
+agent_center.approval_start: "Onaylayın ve başlatın" # Button approving the displayed work brief and execution grant.
+agent_center.approval_edit: "Gereksinimleri değiştirin" # Return to the chat composer to describe changes; do not submit or approve the action.
+agent_center.approval_defer: "Şimdi değil" # Defer review in this Console without cancelling the work or approving anything.
+agent_center.approval_open_hint: "F6 öneriyi gözden geçirin" # Opens the inline approval card without approving it. {Locked="F6"}
+agent_center.approval_keys: "Left/Right seçin · Enter seçimi uygulayın · F5 ayrıntılar · Esc şimdi değil" # Keyboard help while the inline approval card owns focus. {Locked="Left/Right","Enter","F5","Esc"}
+agent_center.approval_edit_hint: "%{target} için değişiklikleri açıklayın. Hiçbir şey onaylanmadı." # %{target} is the displayed project or work name; the user's draft is preserved.
+agent_center.approval_deferred: "%{target} için gözden geçirme ertelendi. Hazır olduğunuzda F4 üzerinden öneriyi yeniden açın." # Deferring is local presentation state, not cancellation of work. %{target} is a project or work name. {Locked="F4"}
+agent_center.console_pause: "İşi duraklatın"
+agent_center.console_resume: "İşi sürdürün"
+agent_center.console_cancel: "İş öğesini iptal edin"
+agent_center.console_inspect: "Sabitlenmiş teslimatı inceleyin ve kanıtları denetleyin (salt okunur)"
+agent_center.console_read_evidence: "Kanıtları okuyun: %{work} — %{path}"
+agent_center.console_more_evidence: "Sonraki kanıt sayfasını okuyun: %{work}"
+agent_center.console_accept: "İncelenen teslimatı kabul edin"
+agent_center.console_takeover: "Yönetilen çalışma alanını devralın"
+agent_center.console_handback: "Yönetilen çalışma alanını geri devredin"
+agent_center.console_apply: "Onaylanan değişikliği uygulayın"
+agent_center.console_action: "Yakalanan eylemi gözden geçirin"
+agent_center.console_answer: "Yanıt"
+agent_center.console_answer_review: "Gönderilecek kayıtlı yanıt:\n%{value}"
+agent_center.console_answer_invalid: "%{field} için geçerli bir değer girin; alanın gerekli seçeneklerini ve sınırlarını gözden geçirin."
+agent_center.console_schema_unsupported: "Bu soru, basit formun desteklemediği bir şema kullanıyor. Hiçbir şey gönderilmedi; daha basit bir soru isteyin."
+agent_center.console_yes: "Evet"
+agent_center.console_no: "Hayır"
+agent_center.console_form_help: "Up/Down alan seç · Left/Right seçenek seç · Enter sonraki alan · Ctrl+Enter yanıtı gözden geçir · Esc geri" # {Locked="Up/Down","Left/Right","Enter","Ctrl+Enter","Esc"}
+agent_center.console_menu_help: "F4 eylemler · Up/Down seç · Enter aç · Esc geri · F12 tanılama" # {Locked="F4","Up/Down","Enter","Esc","F12"}
+agent_center.console_hint: "F4 eylemler · F2 iş öğesini değiştir · F12 tanılama" # {Locked="F4","F2","F12"}
+agent_center.console_scope: "Dahil edilen kapsam"
+agent_center.console_exclusions: "Bu iş öğesinin dışında"
+agent_center.console_criteria: "Kabul ölçütleri ve gerekli kanıtlar"
+agent_center.console_delivery: "Teslimat"
+agent_center.console_delivery_code: "Yönetilen çalışma alanındaki yerel kod"
+agent_center.console_delivery_report: "Yakalanan rapor dosyaları"
+agent_center.console_progress: "Görev ilerlemesi"
+agent_center.console_authority: "İstenen yetki ve yürütme sınırları"
+agent_center.console_capabilities: "Onaylanan yürütme yetenekleri"
+agent_center.console_data_scopes: "Okunabilir veri konumları"
+agent_center.console_limits: "Kaynak sınırları"
+agent_center.console_managed_writes: "Yönetilen işlemler kapsamındaki yazma işlemleri, bu iş öğesinin çalışma alanıyla sınırlıdır. Bu, sağlayıcıya ait araçlar için işletim sistemi düzeyinde bir yalıtım sınırı değildir."
+agent_center.console_frozen: "Bu onay, yakalanan iş öğesine, isteğe, ilkeye ve revizyonlara bağlıdır. Değişiklikler yeni bir inceleme gerektirir; onay hiçbir zaman haber verilmeden başka bir hedefe yönlendirilmez."
+agent_center.console_stale: "Canlı bilgiler güncel değil. Taslaklar güvende. Değişiklikleri onaylamadan veya göndermeden önce yeniden bağlanın ve yenileyin; bilinmeyen bir sonuç, başarısızlık veya tamamlanma değildir."
+agent_center.console_diagnostics: "Tanılama protokolü ayrıntıları (salt okunur)"
+agent_center.console_no_details: "Güncel iş öğesi ayrıntıları yok. Proje seçmek, iş öğesi açmak veya yenilemek için F4 kullanın." # {Locked="F4"}
+agent_center.console_draft: "Taslak — başlatılmadı"
+agent_center.console_active: "Etkin — henüz kabul edilmedi"
+agent_center.console_completed: "Tamamlandı — insan tarafından kabul kaydedildi"
+agent_center.console_cancelled: "İptal edildi"
+agent_center.console_paused: "Duraklatıldı"
+agent_center.console_automatic: "Otomatik ilerleme"
+agent_center.console_running: "Çalışıyor"
+agent_center.console_pending: "Bekliyor — tamamlanmadı"
+agent_center.console_verified: "Doğrulandı / dahili olarak kabul edildi"
+agent_center.console_failed: "Başarısız / reddedildi — kanıtları inceleyin"
+agent_center.console_waiting: "Yanıt veya bağımlılık bekleniyor"
+agent_center.console_unknown: "Bilinmiyor — yenileyin veya tanılamayı inceleyin"
+agent_center.console_resolved: "Yanıt kaydedildi"
+agent_center.console_superseded: "Yerine yenisi geçti — güncel teslimat değil"
+agent_center.console_next_done: "Sonraki adım: kabul edilen teslimatı kullanın; bekleyen başka onay yok."
+agent_center.console_next_cancelled: "Sonraki adım: otomatik ilerleme yok; bu iş öğesi iptal edildi."
+agent_center.console_next_approve: "Sonraki adım: iş tanımını gözden geçirin ve F4 üzerinden tam olarak bu başlangıcı onaylayın." # {Locked="F4"}
+agent_center.console_next_accept: "Sonraki adım: sabitlenmiş teslimatı ve kanıtları inceleyin, ardından açıkça kabul edin."
+agent_center.console_next_attention: "Sonraki adım: bu iş öğesinin dikkat gerektiren bekleyen maddelerini F4 üzerinden gözden geçirin." # {Locked="F4"}
+agent_center.console_next_resume: "Sonraki adım: duraklatılmış bu işi ne zaman sürdüreceğinize karar verin."
+agent_center.console_next_service: "Sonraki adım: hizmet onaylanan planı ilerletir. Bu, nihai kabul değildir."

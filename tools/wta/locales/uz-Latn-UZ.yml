@@ -272,10 +272,72 @@ system.model_unknown: "Nomaʼlum model %{model} — mavjud roʻyxatni koʻrish u
 # not an agent session; a work item may contain multiple tasks.
 agent_center.title: "Agent Center" # {Locked}
 agent_center.works: "Ish elementlari"
+agent_center.demo_title: "Ish elementi hikoyasining namoyishi" # Title of an isolated scripted demonstration; the story fixture itself is English.
+agent_center.demo_notice: "Ssenariyli namoyish | Namuna dalillar, taqlid qilingan seanslar va token sarfi | Hech qanday agent ishga tushirilmaydi" # Always-visible disclosure; simulated data must not be confused with live agent execution.
+agent_center.demo_scene: "Sahna %{scene}/8" # %{scene} is the current scene number in the eight-scene story.
+agent_center.demo_next: "Keyingi: %{input}" # %{input} is the literal English story input, not a translated command.
+agent_center.demo_keys: "Enter: yuborish | Tab: keyingi kiritishni to‘ldirish | PgUp/PgDn: aylantirish | Ctrl+Q: yopish" # {Locked="Enter","Tab","PgUp/PgDn","Ctrl+Q"}
+agent_center.demo_reset: "Namoyish holati tiklansinmi? /reset confirm deb yozing. Mavjud ish elementlari va sozlamalar o‘zgarmaydi." # {Locked="/reset confirm"} Resets only the isolated demo, never real work.
+agent_center.demo_saved: "%{revision} tahriri saqlandi" # %{revision} is the persisted demo state revision.
+agent_center.demo_error: "Namoyish amali bajarilmadi: %{error}" # %{error} explains the rejected action; no state change is claimed.
+agent_center.tasks_title: "Vazifalar"
+agent_center.task_new: "Yangi vazifa"
+agent_center.task_all: "Barcha vazifalar"
+agent_center.task_attention: "E’tibor talab qiladi"
+agent_center.task_continue: "Vazifani davom ettirish"
+# Messages waiting for this work's busy executor, excluding the currently running turn. {Locked="%{count}"}
+agent_center.task_queued_messages: "Navbatdagi xabarlar: %{count}"
+# Explicit migration of an existing work from legacy orchestration to its own executing agent session.
+agent_center.task_claim_executor: "Vazifa agentiga ulash"
+agent_center.task_claim_executor_confirm: "Bu vazifani uning o‘z ijrochi agentiga o‘tkazing. Mavjud suhbat va natijalar saqlanadi, eski rejalashtirish esa to‘xtatiladi. Dastlabki ijro seansini tiklab bo‘lmasa, yangi seans boshlash uchun alohida tasdiq talab qilinadi."
+agent_center.task_open_tab: "Varaqda ochish"
+agent_center.task_tab_unsupported: "Vazifa varag‘ini ochish uchun Intelligent Terminal kerak." # {Locked="Intelligent Terminal"}
+agent_center.task_new_session: "Yangi seans boshlash"
+agent_center.task_new_session_confirm: "Agentning dastlabki seansini davom ettirib bo‘lmaydi. Ushbu vazifaning saqlangan konteksti bilan yangi seans boshlansinmi?"
+agent_center.task_keys: "Up/Down tanlash · Enter ochish · F4 amallar · F5 tafsilotlar" # {Locked="Up/Down","Enter","F4","F5"}
+agent_center.task_list_keys: "F2 vazifalar · F4 amallar · F5 tafsilotlar" # {Locked="F2","F4","F5"}
+agent_center.task_state_running: "Bajarilmoqda"
+agent_center.task_state_waiting: "Javobingiz kutilmoqda"
+agent_center.task_state_paused: "Pauza qilingan"
+agent_center.task_state_recovery: "Tiklash talab qilinadi"
+agent_center.task_state_ready: "Davom ettirishga tayyor"
+agent_center.task_state_completed: "Yakunlangan"
+agent_center.task_state_cancelled: "Bekor qilingan"
+agent_center.task_state_unavailable: "Seans mavjud emas"
+agent_center.task_updated: "Oxirgi faollik: %{time}"
+agent_center.ui_overview: "Umumiy koʻrinish"
+agent_center.chat_global: "Umumiy suhbat" # Conversation with the non-executing master for new goals and cross-work coordination; each work has its own executor conversation.
+agent_center.chat_welcome: "Nimaga erishmoqchi, nimani tashkil qilmoqchi yoki bilib olmoqchi ekaningizni ayting."
+agent_center.chat_keys: "Enter yuborish · Shift+Enter yangi qator · F4 amallar · F5 tafsilotlar · F7 boshqaruv paneli" # {Locked="Enter","Shift+Enter","F4","F5","F7"}
+agent_center.chat_dashboard_keys: "F7 suhbat · Esc suhbat · F4 amallar · F6 fokusni amallarga oʻtkazish" # Dashboard navigation preserves the global conversation and draft. {Locked="F7","Esc","F4","F6"}
+agent_center.chat_context_hint: "Kontekst ishorasi: %{context}" # %{context} is a readable work or project name, not a binding that limits the global conversation.
+agent_center.ui_attention: "Eʼtiboringiz talab etiladi" # Heading for recorded requests, draft-start reviews, and delivery reviews; not a claim that every work needs attention.
+agent_center.ui_details: "Ish tavsifi va bajarilish jarayoni" # Read-only details view containing the work agreement, recorded progress, evidence, and locations.
+agent_center.ui_new_goal: "Nimaga erishmoqchisiz?"
+agent_center.ui_empty_attention: "Javobingizni talab qiladigan ochiq soʻrovlar yoʻq."
+agent_center.ui_no_works: "Hech qanday ish elementi qayd etilmagan. Boshlash uchun sozlangan loyihani tanlang."
+agent_center.ui_no_conversation: "Bu ish elementi uchun xabarlar qayd etilmagan."
+agent_center.ui_role_you: "Siz" # Speaker heading for an actual recorded human message.
+agent_center.ui_role_assistant: "Ish yordamchisi" # Speaker heading for an actual recorded assistant message, not a provider name.
+agent_center.ui_role_service: "Xizmat" # Speaker heading for an actual recorded system or service message.
+agent_center.ui_role_unknown: "Qayd etilgan xabar" # Speaker heading when the service does not identify a recognized message role.
+agent_center.ui_next: "Keyingi qadam uchun masʼuliyat"
+agent_center.ui_recorded_facts: "Qayd etilgan maʼlumotlar"
+agent_center.ui_last_known: "Oxirgi maʼlum holat · %{status}" # %{status} is a localized recorded status. Used when cached facts do not establish current execution.
+agent_center.ui_cached_facts: "Keshdagi maʼlumotlar; joriy bajarilish tasdiqlanmagan."
+agent_center.ui_source_root: "Loyihaning manba fayllari joylashuvi" # Configured source root, explicitly distinct from the actual managed execution directory.
+agent_center.ui_execution_root: "Boshqariladigan bajarish joylashuvi" # Actual execution directory reported by the service, never inferred from the project source root.
+agent_center.ui_location_unknown: "Bajarish joylashuvi haqida xabar berilmagan."
+agent_center.ui_composer: "Buning uchun xabar: %{work}" # %{work} is the human-readable target of this independent draft.
+agent_center.ui_composer_new: "Yangi ish elementi · %{project}" # %{project} is the configured project name, or an explicit project-selection warning.
+agent_center.ui_actions: "Ish elementi amallari"
+agent_center.ui_keys: "Enter yuborish · Shift+Enter yangi qator · F4 amallar · F5 tafsilotlar · F6 fokusni amallarga oʻtkazish" # {Locked="Enter","Shift+Enter","F4","F5","F6"}
+agent_center.ui_actions_hint: "Up/Down tanlash · Enter ochish · Esc kiritishga qaytish" # Keyboard focus is on a visible action, not the text editor. {Locked="Up/Down","Enter","Esc"}
+agent_center.ui_details_hint: "F5 tafsilotlarni yopish · PgUp/PgDn oʻqish · Esc kiritishga qaytish" # Read-only detail focus; returning to input preserves the draft and selection. {Locked="F5","PgUp/PgDn","Esc"}
 agent_center.activity: "Faoliyat · Suhbat"
-# %{work} and %{project} are identifiers of the selected work item and project.
+# %{work} and %{project} are human-readable labels for the selected work and configured project.
 agent_center.header: "Ish elementi: %{work} | Loyiha: %{project}"
-agent_center.welcome: "Loyihani tanlang yoki /project use <id> ni belgilang. Maqsad yoki /help yozing." # {Locked="/project use","<id>","/help"}
+agent_center.welcome: "Sozlangan loyihani tanlash uchun F4 tugmasini bosing, keyin nimaga erishmoqchi ekaningizni kiriting." # {Locked="F4"}
 agent_center.input_help: "Enter: yuborish · Shift+Enter: yangi qator · Tab: toʻldirish · F2: ish elementini almashtirish · Ctrl+C: chiqish · PgUp/PgDn: o‘qish · Ctrl+End: eng so‘nggi" # {Locked="Enter","Shift+Enter","Tab","F2","PgUp/PgDn","Ctrl+End","Ctrl+C"}
 agent_center.inbox_count: "E’tibor talab qiladi: %{count}"
 agent_center.sending: "Qayd etilgan so‘rov yuborilmoqda…"
@@ -320,3 +382,84 @@ agent_center.missing_field: "Javob maydoni yoʻq yoki yaroqsiz: %{field}"
 agent_center.invalid_command_id: "--command-id UUID boʻlishi kerak." # {Locked="--command-id","UUID"}
 agent_center.worker_stopped: "So‘rovlar ulanishi to‘xtadi."
 agent_center.host_unavailable: "%{command} uchun qobiq xosti adapteri mavjud emas. Xostning klaviatura amallaridan foydalaning."
+agent_center.console_home: "Yangi ish elementi"
+agent_center.console_new: "Yangi ish elementi / Bosh sahifa"
+agent_center.console_new_hint: "Yangi maqsad kiriting. Boshqa ish elementlari mustaqil davom etadi."
+agent_center.console_project_create_directory: "Yangi katalog yarating va mahalliy Git repozitoriysini ishga tushiring. Mavjud fayllar ustiga yozilmaydi." # {Locked="Git"}
+agent_center.console_projects: "Sozlangan loyihani tanlang"
+agent_center.console_projects_hint: "Loyihani nomi va joylashuviga qarab tanlang. Bu yerda hech qanday loyiha sozlanmaganmi? Administratordan bittasini sozlashni soʻrang."
+agent_center.console_refresh: "Joriy maʼlumotlarni yangilash"
+agent_center.console_open: "Ochish: %{work}"
+agent_center.console_return: "Qaytish: %{work}"
+agent_center.console_respond: "Javob berish: %{work} — %{question}"
+agent_center.console_unknown_work: "Ish elementi tafsilotlari mavjud emas"
+agent_center.console_unknown_project: "Loyiha tanlanmagan yoki mavjud emas"
+# Two works can have exactly the same goal and project. The numbered choice is explicit, never a fuzzy match. %{created} is the recorded creation time.
+agent_center.console_duplicate: "%{work} · alohida ish elementi %{number} · %{created}"
+agent_center.console_start: "Ish tavsifini koʻrib chiqish va boshlashni maʼqullash"
+agent_center.approval_title: "Maʼqullash talab qilinadi" # Title of an inline conversation card for a specific frozen human action.
+agent_center.approval_accept: "Maʼqullash" # Button that submits the exact reviewed action, not a chat message.
+agent_center.approval_start: "Maʼqullash va boshlash" # Button approving the displayed work brief and execution grant.
+agent_center.approval_edit: "Talablarni oʻzgartirish" # Return to the chat composer to describe changes; do not submit or approve the action.
+agent_center.approval_defer: "Hozir emas" # Defer review in this Console without cancelling the work or approving anything.
+agent_center.approval_open_hint: "F6 taklifni koʻrib chiqish" # Opens the inline approval card without approving it. {Locked="F6"}
+agent_center.approval_keys: "Left/Right tanlash · Enter tanlovni tasdiqlash · F5 tafsilotlar · Esc hozir emas" # Keyboard help while the inline approval card owns focus. {Locked="Left/Right","Enter","F5","Esc"}
+agent_center.approval_edit_hint: "%{target} uchun oʻzgarishlarni tavsiflang. Hech narsa maʼqullanmadi." # %{target} is the displayed project or work name; the user's draft is preserved.
+agent_center.approval_deferred: "%{target} uchun koʻrib chiqish keyinga qoldirildi. Tayyor boʻlganingizda F4 orqali taklifni qayta oching." # Deferring is local presentation state, not cancellation of work. %{target} is a project or work name. {Locked="F4"}
+agent_center.console_pause: "Ishni pauza qilish"
+agent_center.console_resume: "Ishni davom ettirish"
+agent_center.console_cancel: "Ish elementini bekor qilish"
+agent_center.console_inspect: "Oʻzgarmas qilib belgilangan natijani koʻrib chiqish va dalillarni tekshirish (faqat oʻqish)"
+agent_center.console_read_evidence: "Dalillarni oʻqish: %{work} — %{path}"
+agent_center.console_more_evidence: "Dalillarning keyingi sahifasini oʻqish: %{work}"
+agent_center.console_accept: "Koʻrib chiqilgan natijani qabul qilish"
+agent_center.console_takeover: "Boshqariladigan ish maydonini oʻz boshqaruviga olish"
+agent_center.console_handback: "Boshqariladigan ish maydonini qaytarib topshirish"
+agent_center.console_apply: "Maʼqullangan oʻzgarishni qoʻllash"
+agent_center.console_action: "Qayd etilgan amalni koʻrib chiqish"
+agent_center.console_answer: "Javob"
+agent_center.console_answer_review: "Yuborish uchun qayd etilgan javob:\n%{value}"
+agent_center.console_answer_invalid: "%{field} uchun yaroqli qiymat kiriting; maydonning talab etilgan tanlovlari va chegaralarini koʻrib chiqing."
+agent_center.console_schema_unsupported: "Bu savol oddiy shakl qoʻllab-quvvatlamaydigan sxemadan foydalanadi. Hech narsa yuborilmadi; soddaroq savol soʻrang."
+agent_center.console_yes: "Ha"
+agent_center.console_no: "Yoʻq"
+agent_center.console_form_help: "Up/Down maydonni tanlash · Left/Right variantni tanlash · Enter keyingi maydon · Ctrl+Enter javobni koʻrib chiqish · Esc orqaga" # {Locked="Up/Down","Left/Right","Enter","Ctrl+Enter","Esc"}
+agent_center.console_menu_help: "F4 amallar · Up/Down tanlash · Enter ochish · Esc orqaga · F12 diagnostika" # {Locked="F4","Up/Down","Enter","Esc","F12"}
+agent_center.console_hint: "F4 amallar · F2 ish elementini almashtirish · F12 diagnostika" # {Locked="F4","F2","F12"}
+agent_center.console_scope: "Kiritilgan qamrov"
+agent_center.console_exclusions: "Bu ish elementidan tashqarida"
+agent_center.console_criteria: "Qabul qilish mezonlari va talab etilgan dalillar"
+agent_center.console_delivery: "Topshirilgan natija"
+agent_center.console_delivery_code: "Boshqariladigan ish maydonidagi mahalliy kod"
+agent_center.console_delivery_report: "Qayd etilgan hisobot fayllari"
+agent_center.console_progress: "Vazifaning bajarilish jarayoni"
+agent_center.console_authority: "Soʻralgan vakolat va bajarish cheklovlari"
+agent_center.console_capabilities: "Maʼqullangan bajarish imkoniyatlari"
+agent_center.console_data_scopes: "Oʻqish mumkin boʻlgan maʼlumotlar joylashuvlari"
+agent_center.console_limits: "Resurs cheklovlari"
+agent_center.console_managed_writes: "Boshqariladigan amallar doirasidagi yozishlar bu ish elementining ish maydoni bilan cheklangan. Bu provayderga tegishli vositalar uchun operatsion tizim darajasidagi izolyatsiya chegarasi emas."
+agent_center.console_frozen: "Bu tasdiq qayd etilgan ish elementi, soʻrov, siyosat va tahrirlarga bogʻlangan. Oʻzgarishlar qayta koʻrib chiqishni talab qiladi; maʼqullash hech qachon bildirmasdan boshqa nishonga yoʻnaltirilmaydi."
+agent_center.console_stale: "Jonli maʼlumotlar eskirgan. Qoralamalar xavfsiz saqlangan. Oʻzgarishlarni maʼqullash yoki yuborishdan oldin qayta ulaning va yangilang; nomaʼlum natija muvaffaqiyatsizlik yoki yakunlanish degani emas."
+agent_center.console_diagnostics: "Protokol diagnostikasi tafsilotlari (faqat oʻqish)"
+agent_center.console_no_details: "Ish elementining joriy tafsilotlari yoʻq. Loyiha tanlash, ish elementini ochish yoki yangilash uchun F4 dan foydalaning." # {Locked="F4"}
+agent_center.console_draft: "Qoralama — boshlanmagan"
+agent_center.console_active: "Faol — hali qabul qilinmagan"
+agent_center.console_completed: "Yakunlangan — inson tomonidan qabul qilingani qayd etilgan"
+agent_center.console_cancelled: "Bekor qilingan"
+agent_center.console_paused: "Pauza qilingan"
+agent_center.console_automatic: "Avtomatik davom ettirish"
+agent_center.console_running: "Bajarilmoqda"
+agent_center.console_pending: "Kutilmoqda — yakunlanmagan"
+agent_center.console_verified: "Tekshirilgan / ichki tartibda qabul qilingan"
+agent_center.console_failed: "Muvaffaqiyatsiz / rad etilgan — dalillarni koʻrib chiqing"
+agent_center.console_waiting: "Javob yoki bogʻliqlik kutilmoqda"
+agent_center.console_unknown: "Nomaʼlum — yangilang yoki diagnostikani koʻrib chiqing"
+agent_center.console_resolved: "Javob qayd etilgan"
+agent_center.console_superseded: "Almashtirilgan — joriy natija emas"
+agent_center.console_next_done: "Keyingi qadam: qabul qilingan natijadan foydalaning; boshqa maʼqullash kutilmayapti."
+agent_center.console_next_cancelled: "Keyingi qadam: avtomatik davom ettirish yoʻq; bu ish elementi bekor qilingan."
+agent_center.console_next_approve: "Keyingi qadam: ish tavsifini koʻrib chiqing va aynan shu boshlashni F4 orqali maʼqullang." # {Locked="F4"}
+agent_center.console_next_accept: "Keyingi qadam: oʻzgarmas qilib belgilangan natija va dalillarni koʻrib chiqing, soʻng uni aniq qabul qiling."
+agent_center.console_next_attention: "Keyingi qadam: bu ish elementining eʼtibor talab qiladigan hal etilmagan masalalarini F4 orqali koʻrib chiqing." # {Locked="F4"}
+agent_center.console_next_resume: "Keyingi qadam: pauza qilingan bu ishni qachon davom ettirishni oʻzingiz hal qilasiz."
+agent_center.console_next_service: "Keyingi qadam: xizmat maʼqullangan rejani davom ettiradi. Bu yakuniy qabul qilish emas."

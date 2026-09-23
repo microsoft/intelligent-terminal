@@ -191,7 +191,10 @@ async fn main() -> Result<()> {
     let json_mode = cli.json;
     let command = cli.command.take();
     let result = match command {
-        Some(Command::Ui) => agent_center::ui::run_async().await,
+        Some(Command::Demo { state_dir, reset, inspect }) => {
+            agent_center::demo::run(state_dir, reset, inspect).await
+        }
+        Some(Command::Ui { work }) => agent_center::ui::run_async(work).await,
         Some(Command::Center { action: cli::args::CenterAction::Serve }) => {
             agent_center::transport::serve().await
         }
@@ -266,7 +269,8 @@ fn process_label(cli: &Cli) -> String {
     match &cli.command {
         None => "main".to_string(),
         Some(Command::Center { .. }) => "center-service".to_string(),
-        Some(Command::Ui) => "center-ui".to_string(),
+        Some(Command::Ui { .. }) => "center-ui".to_string(),
+        Some(Command::Demo { .. }) => "work-demo".to_string(),
         Some(Command::Delegate { .. }) => "delegate".to_string(),
         Some(Command::ProbeModels { .. })
         | Some(Command::ProbeAgentSources { .. })

@@ -273,10 +273,72 @@ system.model_unknown: "அறியப்படாத மாதிரி %{model
 # not an agent session; a work item may contain multiple tasks.
 agent_center.title: "Agent Center" # {Locked}
 agent_center.works: "பணி உருப்படிகள்"
+agent_center.demo_title: "பணி உருப்படியின் கதை விளக்கக்காட்சி" # Title of an isolated scripted demonstration; the story fixture itself is English.
+agent_center.demo_notice: "முன்கூட்டியே திட்டமிடப்பட்ட விளக்கக்காட்சி | மாதிரிச் சான்றுகள், உருவகப்படுத்தப்பட்ட அமர்வுகள் மற்றும் டோக்கன் பயன்பாடு | முகவர்கள் எவரும் தொடங்கப்படுவதில்லை" # Always-visible disclosure; simulated data must not be confused with live agent execution.
+agent_center.demo_scene: "காட்சி %{scene}/8" # %{scene} is the current scene number in the eight-scene story.
+agent_center.demo_next: "அடுத்து: %{input}" # %{input} is the literal English story input, not a translated command.
+agent_center.demo_keys: "Enter: சமர்ப்பி | Tab: அடுத்த உள்ளீட்டை நிரப்பு | PgUp/PgDn: உருட்டு | Ctrl+Q: மூடு" # {Locked="Enter","Tab","PgUp/PgDn","Ctrl+Q"}
+agent_center.demo_reset: "விளக்கக்காட்சி நிலையை மீட்டமைக்கவா? /reset confirm எனத் தட்டச்சு செய்யவும். ஏற்கெனவே உள்ள பணி உருப்படிகளும் அமைப்புகளும் பாதிக்கப்படாது." # {Locked="/reset confirm"} Resets only the isolated demo, never real work.
+agent_center.demo_saved: "திருத்தம் %{revision} சேமிக்கப்பட்டது" # %{revision} is the persisted demo state revision.
+agent_center.demo_error: "விளக்கக்காட்சிச் செயல் தோல்வியடைந்தது: %{error}" # %{error} explains the rejected action; no state change is claimed.
+agent_center.tasks_title: "பணிகள்"
+agent_center.task_new: "புதிய பணி"
+agent_center.task_all: "அனைத்துப் பணிகளும்"
+agent_center.task_attention: "கவனம் தேவை"
+agent_center.task_continue: "பணியைத் தொடரவும்"
+# Messages waiting for this work's busy executor, excluding the currently running turn. {Locked="%{count}"}
+agent_center.task_queued_messages: "வரிசையில் உள்ள செய்திகள்: %{count}"
+# Explicit migration of an existing work from legacy orchestration to its own executing agent session.
+agent_center.task_claim_executor: "பணியின் ஏஜெண்டுடன் இணைக்கவும்"
+agent_center.task_claim_executor_confirm: "இந்தப் பணியை அதற்கெனச் செயல்படும் தனி ஏஜெண்டுக்கு மாற்றவும். ஏற்கெனவே உள்ள அரட்டையும் முடிவுகளும் பாதுகாக்கப்படும், பழைய திட்டமிடல் நிறுத்தப்படும். அசல் செயலாக்க அமர்வை மீட்டமைக்க முடியாவிட்டால், புதிய அமர்வைத் தொடங்கத் தனி உறுதிப்படுத்தல் தேவை."
+agent_center.task_open_tab: "தாவலில் திறக்கவும்"
+agent_center.task_tab_unsupported: "பணித் தாவலைத் திறக்க Intelligent Terminal தேவை." # {Locked="Intelligent Terminal"}
+agent_center.task_new_session: "புதிய அமர்வைத் தொடங்கவும்"
+agent_center.task_new_session_confirm: "அசல் ஏஜெண்ட் அமர்வை மீண்டும் தொடர முடியாது. இந்தப் பணியின் சேமிக்கப்பட்ட சூழலைப் பயன்படுத்திப் புதிய அமர்வைத் தொடங்கவா?"
+agent_center.task_keys: "Up/Down தேர்ந்தெடு · Enter திற · F4 செயல்கள் · F5 விவரங்கள்" # {Locked="Up/Down","Enter","F4","F5"}
+agent_center.task_list_keys: "F2 பணிகள் · F4 செயல்கள் · F5 விவரங்கள்" # {Locked="F2","F4","F5"}
+agent_center.task_state_running: "இயங்குகிறது"
+agent_center.task_state_waiting: "உங்கள் பதிலுக்காகக் காத்திருக்கிறது"
+agent_center.task_state_paused: "இடைநிறுத்தப்பட்டது"
+agent_center.task_state_recovery: "மீட்பு தேவை"
+agent_center.task_state_ready: "தொடரத் தயார்"
+agent_center.task_state_completed: "நிறைவடைந்தது"
+agent_center.task_state_cancelled: "ரத்து செய்யப்பட்டது"
+agent_center.task_state_unavailable: "அமர்வு கிடைக்கவில்லை"
+agent_center.task_updated: "கடைசிச் செயல்பாடு: %{time}"
+agent_center.ui_overview: "கண்ணோட்டம்"
+agent_center.chat_global: "ஒருங்கிணைந்த உரையாடல்" # Conversation with the non-executing master for new goals and cross-work coordination; each work has its own executor conversation.
+agent_center.chat_welcome: "நீங்கள் எதை அடைய, ஏற்பாடு செய்ய அல்லது தெரிந்துகொள்ள விரும்புகிறீர்கள் என்று சொல்லுங்கள்."
+agent_center.chat_keys: "Enter அனுப்பு · Shift+Enter புதிய வரி · F4 செயல்கள் · F5 விவரங்கள் · F7 முகப்புப் பலகம்" # {Locked="Enter","Shift+Enter","F4","F5","F7"}
+agent_center.chat_dashboard_keys: "F7 உரையாடல் · Esc உரையாடல் · F4 செயல்கள் · F6 செயல்களில் கவனம் செலுத்து" # Dashboard navigation preserves the global conversation and draft. {Locked="F7","Esc","F4","F6"}
+agent_center.chat_context_hint: "சூழல் குறிப்பு: %{context}" # %{context} is a readable work or project name, not a binding that limits the global conversation.
+agent_center.ui_attention: "உங்கள் கவனம் தேவை" # Heading for recorded requests, draft-start reviews, and delivery reviews; not a claim that every work needs attention.
+agent_center.ui_details: "பணிச் சுருக்கமும் முன்னேற்றமும்" # Read-only details view containing the work agreement, recorded progress, evidence, and locations.
+agent_center.ui_new_goal: "நீங்கள் எதை அடைய விரும்புகிறீர்கள்?"
+agent_center.ui_empty_attention: "உங்கள் பதில் தேவைப்படும் திறந்த கோரிக்கைகள் எதுவும் இல்லை."
+agent_center.ui_no_works: "எந்தப் பணி உருப்படியும் பதிவுசெய்யப்படவில்லை. தொடங்குவதற்கு கட்டமைக்கப்பட்ட திட்டத்தைத் தேர்ந்தெடுக்கவும்."
+agent_center.ui_no_conversation: "இந்தப் பணி உருப்படிக்கான செய்திகள் எதுவும் பதிவுசெய்யப்படவில்லை."
+agent_center.ui_role_you: "நீங்கள்" # Speaker heading for an actual recorded human message.
+agent_center.ui_role_assistant: "பணி உதவியாளர்" # Speaker heading for an actual recorded assistant message, not a provider name.
+agent_center.ui_role_service: "சேவை" # Speaker heading for an actual recorded system or service message.
+agent_center.ui_role_unknown: "பதிவுசெய்யப்பட்ட செய்தி" # Speaker heading when the service does not identify a recognized message role.
+agent_center.ui_next: "அடுத்த படிக்கான பொறுப்பு"
+agent_center.ui_recorded_facts: "பதிவுசெய்யப்பட்ட தகவல்கள்"
+agent_center.ui_last_known: "கடைசியாக அறியப்பட்ட நிலை · %{status}" # %{status} is a localized recorded status. Used when cached facts do not establish current execution.
+agent_center.ui_cached_facts: "தற்காலிகச் சேமிப்பில் உள்ள தகவல்கள்; தற்போதைய செயலாக்கம் உறுதிப்படுத்தப்படவில்லை."
+agent_center.ui_source_root: "திட்டத்தின் மூலக் கோப்புகள் இருக்கும் இடம்" # Configured source root, explicitly distinct from the actual managed execution directory.
+agent_center.ui_execution_root: "நிர்வகிக்கப்படும் செயலாக்க இருப்பிடம்" # Actual execution directory reported by the service, never inferred from the project source root.
+agent_center.ui_location_unknown: "செயலாக்க இருப்பிடம் எதுவும் தெரிவிக்கப்படவில்லை."
+agent_center.ui_composer: "இதற்கான செய்தி: %{work}" # %{work} is the human-readable target of this independent draft.
+agent_center.ui_composer_new: "புதிய பணி உருப்படி · %{project}" # %{project} is the configured project name, or an explicit project-selection warning.
+agent_center.ui_actions: "பணி உருப்படிக்கான செயல்கள்"
+agent_center.ui_keys: "Enter அனுப்பு · Shift+Enter புதிய வரி · F4 செயல்கள் · F5 விவரங்கள் · F6 செயல்களில் கவனம் செலுத்து" # {Locked="Enter","Shift+Enter","F4","F5","F6"}
+agent_center.ui_actions_hint: "Up/Down தேர்ந்தெடு · Enter திற · Esc உள்ளீட்டிற்குத் திரும்பு" # Keyboard focus is on a visible action, not the text editor. {Locked="Up/Down","Enter","Esc"}
+agent_center.ui_details_hint: "F5 விவரங்களை மூடு · PgUp/PgDn படி · Esc உள்ளீட்டிற்குத் திரும்பு" # Read-only detail focus; returning to input preserves the draft and selection. {Locked="F5","PgUp/PgDn","Esc"}
 agent_center.activity: "செயல்பாடு · உரையாடல்"
-# %{work} and %{project} are identifiers of the selected work item and project.
+# %{work} and %{project} are human-readable labels for the selected work and configured project.
 agent_center.header: "பணி: %{work} | திட்டம்: %{project}"
-agent_center.welcome: "ஒரு திட்டத்தைத் தேர்ந்தெடுக்கவும் அல்லது /project use <id> என்பதைக் குறிப்பிடவும். ஒரு இலக்கை அல்லது /help என்பதைத் தட்டச்சு செய்யவும்." # {Locked="/project use","<id>","/help"}
+agent_center.welcome: "கட்டமைக்கப்பட்ட திட்டத்தைத் தேர்ந்தெடுக்க F4 ஐ அழுத்தி, பின்னர் நீங்கள் அடைய விரும்புவதை உள்ளிடவும்." # {Locked="F4"}
 agent_center.input_help: "Enter: அனுப்பு · Shift+Enter: புதிய வரி · Tab: நிறைவு செய் · F2: பணியை மாற்று · Ctrl+C: வெளியேறு · PgUp/PgDn: படிக்கவும் · Ctrl+End: சமீபத்தியது" # {Locked="Enter","Shift+Enter","Tab","F2","PgUp/PgDn","Ctrl+End","Ctrl+C"}
 agent_center.inbox_count: "கவனம் தேவை: %{count}"
 agent_center.sending: "பதிவுசெய்யப்பட்ட கோரிக்கையை அனுப்புகிறது…"
@@ -321,3 +383,84 @@ agent_center.missing_field: "பதிலில் புலம் இல்ல�
 agent_center.invalid_command_id: "--command-id என்பது UUID ஆக இருக்க வேண்டும்." # {Locked="--command-id","UUID"}
 agent_center.worker_stopped: "கோரிக்கைகளுக்கான இணைப்பு நின்றுவிட்டது."
 agent_center.host_unavailable: "%{command} க்கான ஷெல் ஹோஸ்ட் அடாப்டர் கிடைக்கவில்லை. ஹோஸ்டின் விசைப்பலகைச் செயல்களைப் பயன்படுத்தவும்."
+agent_center.console_home: "புதிய பணி உருப்படி"
+agent_center.console_new: "புதிய பணி உருப்படி / முகப்பு"
+agent_center.console_new_hint: "புதிய இலக்கை உள்ளிடவும். மற்ற பணி உருப்படிகள் தனித்தனியாகத் தொடரும்."
+agent_center.console_project_create_directory: "புதிய கோப்பகத்தை உருவாக்கி, உள்ளூர் Git களஞ்சியத்தைத் தொடங்கவும். ஏற்கனவே உள்ள கோப்புகள் மேலெழுதப்படாது." # {Locked="Git"}
+agent_center.console_projects: "கட்டமைக்கப்பட்ட திட்டத்தைத் தேர்ந்தெடுக்கவும்"
+agent_center.console_projects_hint: "பெயர் மற்றும் இருப்பிடத்தின் அடிப்படையில் திட்டத்தைத் தேர்ந்தெடுக்கவும். இங்கு எந்தத் திட்டமும் கட்டமைக்கப்படவில்லையா? ஒன்றைக் கட்டமைக்க உங்கள் நிர்வாகியிடம் கேட்கவும்."
+agent_center.console_refresh: "தற்போதைய தகவல்களைப் புதுப்பிக்கவும்"
+agent_center.console_open: "திறக்கவும்: %{work}"
+agent_center.console_return: "இதற்குத் திரும்பவும்: %{work}"
+agent_center.console_respond: "பதிலளிக்கவும்: %{work} — %{question}"
+agent_center.console_unknown_work: "பணி உருப்படி விவரங்கள் கிடைக்கவில்லை"
+agent_center.console_unknown_project: "திட்டம் தேர்ந்தெடுக்கப்படவில்லை அல்லது கிடைக்கவில்லை"
+# Two works can have exactly the same goal and project. The numbered choice is explicit, never a fuzzy match. %{created} is the recorded creation time.
+agent_center.console_duplicate: "%{work} · தனிப் பணி உருப்படி %{number} · %{created}"
+agent_center.console_start: "பணிச் சுருக்கத்தை மதிப்பாய்வு செய்து தொடங்க அனுமதிக்கவும்"
+agent_center.approval_title: "அனுமதி தேவை" # Title of an inline conversation card for a specific frozen human action.
+agent_center.approval_accept: "அனுமதிக்கவும்" # Button that submits the exact reviewed action, not a chat message.
+agent_center.approval_start: "அனுமதித்துத் தொடங்கவும்" # Button approving the displayed work brief and execution grant.
+agent_center.approval_edit: "தேவைகளை மாற்றவும்" # Return to the chat composer to describe changes; do not submit or approve the action.
+agent_center.approval_defer: "இப்போது வேண்டாம்" # Defer review in this Console without cancelling the work or approving anything.
+agent_center.approval_open_hint: "F6 முன்மொழிவை மதிப்பாய்வு செய்யவும்" # Opens the inline approval card without approving it. {Locked="F6"}
+agent_center.approval_keys: "Left/Right தேர்ந்தெடுக்கவும் · Enter தேர்வை உறுதிசெய்யவும் · F5 விவரங்கள் · Esc இப்போது வேண்டாம்" # Keyboard help while the inline approval card owns focus. {Locked="Left/Right","Enter","F5","Esc"}
+agent_center.approval_edit_hint: "%{target} என்பதற்கான மாற்றங்களை விவரிக்கவும். எதற்கும் அனுமதி அளிக்கப்படவில்லை." # %{target} is the displayed project or work name; the user's draft is preserved.
+agent_center.approval_deferred: "%{target} என்பதற்கான மதிப்பாய்வு ஒத்திவைக்கப்பட்டது. நீங்கள் தயாரானதும் F4 மூலம் முன்மொழிவை மீண்டும் திறக்கவும்." # Deferring is local presentation state, not cancellation of work. %{target} is a project or work name. {Locked="F4"}
+agent_center.console_pause: "பணியை இடைநிறுத்தவும்"
+agent_center.console_resume: "பணியைத் தொடரவும்"
+agent_center.console_cancel: "பணி உருப்படியை ரத்து செய்யவும்"
+agent_center.console_inspect: "மாற்றமின்றி நிலைப்படுத்தப்பட்ட ஒப்படைப்பை ஆய்வு செய்து சான்றுகளைச் சரிபார்க்கவும் (படிக்க மட்டும்)"
+agent_center.console_read_evidence: "சான்றுகளைப் படிக்கவும்: %{work} — %{path}"
+agent_center.console_more_evidence: "அடுத்த சான்றுப் பக்கத்தைப் படிக்கவும்: %{work}"
+agent_center.console_accept: "ஆய்வு செய்யப்பட்ட ஒப்படைப்பை ஏற்கவும்"
+agent_center.console_takeover: "நிர்வகிக்கப்படும் பணியிடத்தின் பொறுப்பை ஏற்கவும்"
+agent_center.console_handback: "நிர்வகிக்கப்படும் பணியிடத்தை மீண்டும் ஒப்படைக்கவும்"
+agent_center.console_apply: "அனுமதிக்கப்பட்ட மாற்றத்தைப் பயன்படுத்தவும்"
+agent_center.console_action: "பதிவுசெய்யப்பட்ட செயலை மதிப்பாய்வு செய்யவும்"
+agent_center.console_answer: "பதில்"
+agent_center.console_answer_review: "சமர்ப்பிக்கப் பதிவுசெய்யப்பட்ட பதில்:\n%{value}"
+agent_center.console_answer_invalid: "%{field} க்கு செல்லுபடியான மதிப்பை உள்ளிடவும்; புலத்திற்குத் தேவையான தேர்வுகளையும் வரம்புகளையும் மதிப்பாய்வு செய்யவும்."
+agent_center.console_schema_unsupported: "இந்தக் கேள்வி எளிய படிவம் ஆதரிக்காத திட்டவடிவத்தைப் பயன்படுத்துகிறது. எதுவும் சமர்ப்பிக்கப்படவில்லை; எளிமையான கேள்வியைக் கேட்கச் சொல்லவும்."
+agent_center.console_yes: "ஆம்"
+agent_center.console_no: "இல்லை"
+agent_center.console_form_help: "Up/Down புலத்தைத் தேர்ந்தெடு · Left/Right விருப்பத்தைத் தேர்ந்தெடு · Enter அடுத்த புலம் · Ctrl+Enter பதிலை மதிப்பாய்வு செய் · Esc பின்செல்" # {Locked="Up/Down","Left/Right","Enter","Ctrl+Enter","Esc"}
+agent_center.console_menu_help: "F4 செயல்கள் · Up/Down தேர்ந்தெடு · Enter திற · Esc பின்செல் · F12 கண்டறிதல்" # {Locked="F4","Up/Down","Enter","Esc","F12"}
+agent_center.console_hint: "F4 செயல்கள் · F2 பணி உருப்படியை மாற்று · F12 கண்டறிதல்" # {Locked="F4","F2","F12"}
+agent_center.console_scope: "சேர்க்கப்பட்ட வரம்பு"
+agent_center.console_exclusions: "இந்தப் பணி உருப்படிக்கு வெளியே"
+agent_center.console_criteria: "ஏற்பு அளவுகோல்கள் மற்றும் தேவையான சான்றுகள்"
+agent_center.console_delivery: "ஒப்படைப்பு"
+agent_center.console_delivery_code: "நிர்வகிக்கப்படும் பணியிடத்தில் உள்ள உள்ளூர் குறியீடு"
+agent_center.console_delivery_report: "பதிவுசெய்யப்பட்ட அறிக்கைக் கோப்புகள்"
+agent_center.console_progress: "செயற்பணி முன்னேற்றம்"
+agent_center.console_authority: "கோரப்பட்ட அதிகாரம் மற்றும் செயலாக்க வரம்புகள்"
+agent_center.console_capabilities: "அனுமதிக்கப்பட்ட செயலாக்கத் திறன்கள்"
+agent_center.console_data_scopes: "படிக்கக்கூடிய தரவு இருப்பிடங்கள்"
+agent_center.console_limits: "வள வரம்புகள்"
+agent_center.console_managed_writes: "நிர்வகிக்கப்படும் செயல்பாடுகளின் எழுதுதல்கள் இந்தப் பணி உருப்படியின் பணியிட வரம்பிற்குள் அடங்கும். இது வழங்குநருக்குச் சொந்தமான கருவிகளுக்கு இயக்க முறைமை அளவிலான தனிமைப்படுத்தல் எல்லை அல்ல."
+agent_center.console_frozen: "இந்த உறுதிப்படுத்தல் பதிவுசெய்யப்பட்ட பணி உருப்படி, கோரிக்கை, கொள்கை மற்றும் திருத்தப் பதிப்புகளுடன் பிணைக்கப்பட்டுள்ளது. மாற்றங்களுக்கு புதிய மதிப்பாய்வு தேவை; அனுமதி ஒருபோதும் அறிவிக்காமல் வேறு இலக்கிற்கு மாற்றப்படாது."
+agent_center.console_stale: "நேரடித் தகவல்கள் காலாவதியாகிவிட்டன. வரைவுகள் பாதுகாப்பாக உள்ளன. மாற்றங்களை அனுமதிக்கும் அல்லது அனுப்பும் முன் மீண்டும் இணைத்துப் புதுப்பிக்கவும்; தெரியாத விளைவு தோல்வியையோ நிறைவையோ குறிக்காது."
+agent_center.console_diagnostics: "கண்டறிதலுக்கான நெறிமுறை விவரங்கள் (படிக்க மட்டும்)"
+agent_center.console_no_details: "தற்போதைய பணி உருப்படி விவரங்கள் இல்லை. திட்டத்தைத் தேர்ந்தெடுக்க, பணி உருப்படியைத் திறக்க அல்லது புதுப்பிக்க F4 ஐப் பயன்படுத்தவும்." # {Locked="F4"}
+agent_center.console_draft: "வரைவு — தொடங்கப்படவில்லை"
+agent_center.console_active: "செயலில் உள்ளது — இன்னும் ஏற்கப்படவில்லை"
+agent_center.console_completed: "நிறைவடைந்தது — மனிதரின் ஏற்பு பதிவுசெய்யப்பட்டது"
+agent_center.console_cancelled: "ரத்து செய்யப்பட்டது"
+agent_center.console_paused: "இடைநிறுத்தப்பட்டது"
+agent_center.console_automatic: "தானியங்கி முன்னேற்றம்"
+agent_center.console_running: "இயங்குகிறது"
+agent_center.console_pending: "நிலுவையில் உள்ளது — நிறைவடையவில்லை"
+agent_center.console_verified: "சரிபார்க்கப்பட்டது / உள்நிலையில் ஏற்கப்பட்டது"
+agent_center.console_failed: "தோல்வியடைந்தது / நிராகரிக்கப்பட்டது — சான்றுகளை ஆய்வு செய்யவும்"
+agent_center.console_waiting: "பதிலுக்காக அல்லது சார்புக்காகக் காத்திருக்கிறது"
+agent_center.console_unknown: "தெரியவில்லை — புதுப்பிக்கவும் அல்லது கண்டறிதல் தகவல்களை ஆய்வு செய்யவும்"
+agent_center.console_resolved: "பதில் பதிவுசெய்யப்பட்டது"
+agent_center.console_superseded: "மாற்றீடு செய்யப்பட்டது — தற்போதைய ஒப்படைப்பு அல்ல"
+agent_center.console_next_done: "அடுத்து: ஏற்கப்பட்ட ஒப்படைப்பைப் பயன்படுத்தவும்; மேலும் எந்த அனுமதியும் நிலுவையில் இல்லை."
+agent_center.console_next_cancelled: "அடுத்து: தானியங்கி முன்னேற்றம் இல்லை; இந்தப் பணி உருப்படி ரத்து செய்யப்பட்டது."
+agent_center.console_next_approve: "அடுத்து: பணிச் சுருக்கத்தை மதிப்பாய்வு செய்து, குறிப்பிட்ட இந்தத் தொடக்கத்தை F4 மூலம் அனுமதிக்கவும்." # {Locked="F4"}
+agent_center.console_next_accept: "அடுத்து: மாற்றமின்றி நிலைப்படுத்தப்பட்ட ஒப்படைப்பையும் சான்றுகளையும் ஆய்வு செய்து, பின்னர் வெளிப்படையாக ஏற்கவும்."
+agent_center.console_next_attention: "அடுத்து: இந்தப் பணி உருப்படியில் இன்னும் கவனம் தேவைப்படும் விஷயங்களை F4 மூலம் மதிப்பாய்வு செய்யவும்." # {Locked="F4"}
+agent_center.console_next_resume: "அடுத்து: இடைநிறுத்தப்பட்ட இந்தப் பணியை எப்போது தொடர்வது என்பதை நீங்கள் முடிவு செய்யவும்."
+agent_center.console_next_service: "அடுத்து: சேவை அனுமதிக்கப்பட்ட திட்டத்தை முன்னெடுக்கும். இது இறுதி ஏற்பு அல்ல."

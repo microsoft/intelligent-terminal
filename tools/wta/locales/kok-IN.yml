@@ -273,10 +273,72 @@ system.model_unknown: "अज्ञात मॉडेल %{model} — उपल
 # not an agent session; a work item may contain multiple tasks.
 agent_center.title: "Agent Center" # {Locked}
 agent_center.works: "कामाचे घटक"
+agent_center.demo_title: "कामाच्या घटकाच्या कथेचें प्रात्यक्षिक" # Title of an isolated scripted demonstration; the story fixture itself is English.
+agent_center.demo_notice: "आदींच थारायिल्लें प्रात्यक्षिक | नमुन्याचे पुरावे, अनुकरण केल्लीं सत्रां आनी टोकन वापर | खंयचोच एजंट सुरू करिनात" # Always-visible disclosure; simulated data must not be confused with live agent execution.
+agent_center.demo_scene: "दृश्य %{scene}/8" # %{scene} is the current scene number in the eight-scene story.
+agent_center.demo_next: "फुडलें: %{input}" # %{input} is the literal English story input, not a translated command.
+agent_center.demo_keys: "Enter: सादर करात | Tab: फुडलें इनपुट भरात | PgUp/PgDn: स्क्रोल करात | Ctrl+Q: बंद करात" # {Locked="Enter","Tab","PgUp/PgDn","Ctrl+Q"}
+agent_center.demo_reset: "प्रात्यक्षिकाची स्थिती परत सेट करूं? /reset confirm टायप करात. आसपी कामाच्या घटकांचेर आनी मांडावळींचेर परिणाम जावचो ना." # {Locked="/reset confirm"} Resets only the isolated demo, never real work.
+agent_center.demo_saved: "सुदारणा %{revision} जतन केली" # %{revision} is the persisted demo state revision.
+agent_center.demo_error: "प्रात्यक्षिकाची कृती असफळ जाली: %{error}" # %{error} explains the rejected action; no state change is claimed.
+agent_center.tasks_title: "कामां"
+agent_center.task_new: "नवें काम"
+agent_center.task_all: "सगळीं कामां"
+agent_center.task_attention: "लक्ष दिवप गरजेचें"
+agent_center.task_continue: "काम फुडें चालू दवरात"
+# Messages waiting for this work's busy executor, excluding the currently running turn. {Locked="%{count}"}
+agent_center.task_queued_messages: "रांगेंतले संदेश: %{count}"
+# Explicit migration of an existing work from legacy orchestration to its own executing agent session.
+agent_center.task_claim_executor: "कामाच्या एजेंटाक जोडात"
+agent_center.task_claim_executor_confirm: "हें काम ताच्या स्वताच्या कार्यान्वयन करपी एजेंटाक हस्तांतरित करात. सद्याचो संवाद आनी निकाल सांबाळून दवरतात, आनी पोरनें वेळापत्रक नियोजन बंद जाता. मूळ कार्यान्वयन सत्र परत मेळोवपाक शक्य नासल्यार, नवें सत्र सुरू करपाक वेगळी खात्री जाय."
+agent_center.task_open_tab: "टॅबांत उगडात"
+agent_center.task_tab_unsupported: "कामाचो टॅब उगडपाक Intelligent Terminal जाय." # {Locked="Intelligent Terminal"}
+agent_center.task_new_session: "नवें सत्र सुरू करात"
+agent_center.task_new_session_confirm: "एजेंटाचें मूळ सत्र परत चालू करपाक शक्य ना. ह्या कामाचो सांबाळून दवरिल्लो संदर्भ वापरून नवें सत्र सुरू करचें?"
+agent_center.task_keys: "Up/Down वेंचात · Enter उगडात · F4 कृती · F5 तपशील" # {Locked="Up/Down","Enter","F4","F5"}
+agent_center.task_list_keys: "F2 कामां · F4 कृती · F5 तपशील" # {Locked="F2","F4","F5"}
+agent_center.task_state_running: "चालू आसा"
+agent_center.task_state_waiting: "तुमच्या जापेची वाट पळयता"
+agent_center.task_state_paused: "थांबयल्लें"
+agent_center.task_state_recovery: "परत मेळोवप गरजेचें"
+agent_center.task_state_ready: "फुडें चालू दवरपाक तयार"
+agent_center.task_state_completed: "पुराय"
+agent_center.task_state_cancelled: "रद्द केल्लें"
+agent_center.task_state_unavailable: "सत्र उपलब्ध ना"
+agent_center.task_updated: "निमाणी हालचाल: %{time}"
+agent_center.ui_overview: "एकंदर आढावो"
+agent_center.chat_global: "सामायीक संवाद" # Conversation with the non-executing master for new goals and cross-work coordination; each work has its own executor conversation.
+agent_center.chat_welcome: "तुमकां कितें साध्य करपाचें, मांडपाचें वा जाणून घेवपाचें आसा तें म्हाका सांगात."
+agent_center.chat_keys: "Enter धाडात · Shift+Enter नवी ओळ · F4 कृती · F5 तपशील · F7 डॅशबोर्ड" # {Locked="Enter","Shift+Enter","F4","F5","F7"}
+agent_center.chat_dashboard_keys: "F7 संवाद · Esc संवाद · F4 कृती · F6 कृतींचेर लक्ष केंद्रित करात" # Dashboard navigation preserves the global conversation and draft. {Locked="F7","Esc","F4","F6"}
+agent_center.chat_context_hint: "संदर्भाची खूण: %{context}" # %{context} is a readable work or project name, not a binding that limits the global conversation.
+agent_center.ui_attention: "तुमचें लक्ष जाय" # Heading for recorded requests, draft-start reviews, and delivery reviews; not a claim that every work needs attention.
+agent_center.ui_details: "संक्षिप्त वर्णन आनी प्रगती" # Read-only details view containing the work agreement, recorded progress, evidence, and locations.
+agent_center.ui_new_goal: "तुमकां कितें साध्य करपाचें आसा?"
+agent_center.ui_empty_attention: "तुमच्या प्रतिसादाची गरज आशिल्ली उगडी विनंती ना."
+agent_center.ui_no_works: "खंयचेंच काम नोंदूंक ना. सुरू करपाक मांडणी केल्लो प्रकल्प वेंचात."
+agent_center.ui_no_conversation: "ह्या कामाखातीर खंयचेच संदेश नोंदूंक नात."
+agent_center.ui_role_you: "तुमी" # Speaker heading for an actual recorded human message.
+agent_center.ui_role_assistant: "कामाचो मदतनीस" # Speaker heading for an actual recorded assistant message, not a provider name.
+agent_center.ui_role_service: "सेवा" # Speaker heading for an actual recorded system or service message.
+agent_center.ui_role_unknown: "नोंद केल्लो संदेश" # Speaker heading when the service does not identify a recognized message role.
+agent_center.ui_next: "फुडली जापसालदारकी"
+agent_center.ui_recorded_facts: "नोंद केल्लीं तथ्यां"
+agent_center.ui_last_known: "निमाणी खबर आशिल्ली स्थिती · %{status}" # %{status} is a localized recorded status. Used when cached facts do not establish current execution.
+agent_center.ui_cached_facts: "कॅशांत दवरिल्लीं तथ्यां; सद्याच्या अंमलबजावणेची खात्री जावंक ना."
+agent_center.ui_source_root: "प्रकल्पाच्या स्रोताची सुवात" # Configured source root, explicitly distinct from the actual managed execution directory.
+agent_center.ui_execution_root: "वेवस्थापित अंमलबजावणेची सुवात" # Actual execution directory reported by the service, never inferred from the project source root.
+agent_center.ui_location_unknown: "अंमलबजावणेची खंयचीच सुवात कळोवंक ना."
+agent_center.ui_composer: "हाचे खातीर संदेश: %{work}" # %{work} is the human-readable target of this independent draft.
+agent_center.ui_composer_new: "नवें काम · %{project}" # %{project} is the configured project name, or an explicit project-selection warning.
+agent_center.ui_actions: "कामाच्यो कृती"
+agent_center.ui_keys: "Enter धाडात · Shift+Enter नवी ओळ · F4 कृती · F5 तपशील · F6 कृतींचेर लक्ष केंद्रित करात" # {Locked="Enter","Shift+Enter","F4","F5","F6"}
+agent_center.ui_actions_hint: "Up/Down वेंचात · Enter उगडात · Esc इनपुटाक परत येयात" # Keyboard focus is on a visible action, not the text editor. {Locked="Up/Down","Enter","Esc"}
+agent_center.ui_details_hint: "F5 तपशील बंद करात · PgUp/PgDn वाचात · Esc इनपुटाक परत येयात" # Read-only detail focus; returning to input preserves the draft and selection. {Locked="F5","PgUp/PgDn","Esc"}
 agent_center.activity: "हालचाल · संवाद"
-# %{work} and %{project} are identifiers of the selected work item and project.
+# %{work} and %{project} are human-readable labels for the selected work and configured project.
 agent_center.header: "काम: %{work} | प्रकल्प: %{project}"
-agent_center.welcome: "प्रकल्प वेंचात वा /project use <id> सांगात. ध्येय वा /help टायप करात." # {Locked="/project use","<id>","/help"}
+agent_center.welcome: "मांडणी केल्लो प्रकल्प वेंचपाक F4 दामात, मागीर तुमकां कितें साध्य करपाचें आसा तें बरयात." # {Locked="F4"}
 agent_center.input_help: "Enter: धाडात · Shift+Enter: नवी ओळ · Tab: पुराय करात · F2: काम बदलात · Ctrl+C: भायर सरात · PgUp/PgDn: वाचात · Ctrl+End: सगळ्यांत नवें" # {Locked="Enter","Shift+Enter","Tab","F2","PgUp/PgDn","Ctrl+End","Ctrl+C"}
 agent_center.inbox_count: "लक्ष दिवप गरजेचें: %{count}"
 agent_center.sending: "नोंद केल्ली विनंती धाडटा…"
@@ -321,3 +383,84 @@ agent_center.missing_field: "प्रतिसादांतलें क्�
 agent_center.invalid_command_id: "--command-id हें UUID आसपाक जाय." # {Locked="--command-id","UUID"}
 agent_center.worker_stopped: "विनंतीचें कनेक्शन बंद जालां."
 agent_center.host_unavailable: "%{command} खातीर शेल होस्ट अडॅप्टर उपलब्ध ना. होस्टाच्या कीबोर्ड कृती वापरात."
+agent_center.console_home: "नवें काम"
+agent_center.console_new: "नवें काम / मुखेल पान"
+agent_center.console_new_hint: "नवें ध्येय बरयात. हेर कामां स्वतंत्रपणान चालू उरतात."
+agent_center.console_project_create_directory: "नवी डिरेक्टरी तयार करात आनी स्थानिक Git भांडार सुरू करात. आदल्या फायलींचेर परत बरयलें वचचें ना." # {Locked="Git"}
+agent_center.console_projects: "मांडणी केल्लो प्रकल्प वेंचात"
+agent_center.console_projects_hint: "नांव आनी सुवात हांचे प्रमाण प्रकल्प वेंचात. हांगा खंयच्याच प्रकल्पाची मांडणी ना? तुमच्या प्रशासकाक एक प्रकल्प मांडपाक सांगात."
+agent_center.console_refresh: "सद्याचीं तथ्यां ताजीं करात"
+agent_center.console_open: "उगडात: %{work}"
+agent_center.console_return: "परत वचात: %{work}"
+agent_center.console_respond: "प्रतिसाद दियात: %{work} — %{question}"
+agent_center.console_unknown_work: "कामाचे तपशील उपलब्ध नात"
+agent_center.console_unknown_project: "प्रकल्प वेंचूंक ना वा उपलब्ध ना"
+# Two works can have exactly the same goal and project. The numbered choice is explicit, never a fuzzy match. %{created} is the recorded creation time.
+agent_center.console_duplicate: "%{work} · वेगळें काम %{number} · %{created}"
+agent_center.console_start: "संक्षिप्त वर्णन तपासात आनी सुरवातीक मान्यताय दियात"
+agent_center.approval_title: "मान्यताय गरजेची आसा" # Title of an inline conversation card for a specific frozen human action.
+agent_center.approval_accept: "मान्यताय दियात" # Button that submits the exact reviewed action, not a chat message.
+agent_center.approval_start: "मान्यताय दियात आनी सुरू करात" # Button approving the displayed work brief and execution grant.
+agent_center.approval_edit: "गरजो बदलात" # Return to the chat composer to describe changes; do not submit or approve the action.
+agent_center.approval_defer: "आतां नाका" # Defer review in this Console without cancelling the work or approving anything.
+agent_center.approval_open_hint: "F6 प्रस्ताव तपासात" # Opens the inline approval card without approving it. {Locked="F6"}
+agent_center.approval_keys: "Left/Right निवडात · Enter निवड पक्की करात · F5 तपशील · Esc आतां नाका" # Keyboard help while the inline approval card owns focus. {Locked="Left/Right","Enter","F5","Esc"}
+agent_center.approval_edit_hint: "%{target} खातीर बदलांचें वर्णन करात. कसल्याच गजालीक मान्यताय दिवंक ना." # %{target} is the displayed project or work name; the user's draft is preserved.
+agent_center.approval_deferred: "%{target} चें पुनरावलोकन फुडें ढकल्लां. तयार जातकच F4 वरवीं प्रस्ताव परत उगडात." # Deferring is local presentation state, not cancellation of work. %{target} is a project or work name. {Locked="F4"}
+agent_center.console_pause: "काम थांबयात"
+agent_center.console_resume: "काम परत सुरू करात"
+agent_center.console_cancel: "काम रद्द करात"
+agent_center.console_inspect: "थारायिल्लो सुपूर्द करपाचो निकाल तपासात आनी पुरावे पडताळात (फकत वाचपाखातीर)"
+agent_center.console_read_evidence: "पुरावे वाचात: %{work} — %{path}"
+agent_center.console_more_evidence: "पुराव्यांचें फुडलें पान वाचात: %{work}"
+agent_center.console_accept: "तपासिल्लो सुपूर्द करपाचो निकाल स्वीकारात"
+agent_center.console_takeover: "वेवस्थापित कामाच्या जागेचो ताबो घेयात"
+agent_center.console_handback: "वेवस्थापित कामाच्या जागेचो ताबो परत दियात"
+agent_center.console_apply: "मान्यताय दिल्लो बदल लागू करात"
+agent_center.console_action: "नोंद केल्ली कृती तपासात"
+agent_center.console_answer: "जाप"
+agent_center.console_answer_review: "धाडपाखातीर नोंद केल्ली जाप:\n%{value}"
+agent_center.console_answer_invalid: "%{field} खातीर वैध मोल बरयात; क्षेत्राचे गरजेचे पर्याय आनी मर्यादा तपासात."
+agent_center.console_schema_unsupported: "हो प्रस्न अशें रचनाबंध वापरता जाका सादो अर्ज आदार दिना. कांयच धाडूंक ना; चड सादो प्रस्न मागात."
+agent_center.console_yes: "हय"
+agent_center.console_no: "ना"
+agent_center.console_form_help: "Up/Down क्षेत्र वेंचात · Left/Right पर्याय वेंचात · Enter फुडलें क्षेत्र · Ctrl+Enter जाप तपासात · Esc फाटीं" # {Locked="Up/Down","Left/Right","Enter","Ctrl+Enter","Esc"}
+agent_center.console_menu_help: "F4 कृती · Up/Down वेंचात · Enter उगडात · Esc फाटीं · F12 निदान" # {Locked="F4","Up/Down","Enter","Esc","F12"}
+agent_center.console_hint: "F4 कृती · F2 काम बदलात · F12 निदान" # {Locked="F4","F2","F12"}
+agent_center.console_scope: "आस्पाविल्ली व्याप्ती"
+agent_center.console_exclusions: "ह्या कामा भायर"
+agent_center.console_criteria: "स्वीकाराचे निकष आनी गरजेचे पुरावे"
+agent_center.console_delivery: "सुपूर्द करपाचो निकाल"
+agent_center.console_delivery_code: "वेवस्थापित कामाच्या जागेंतलो थळावो कोड"
+agent_center.console_delivery_report: "नोंद केल्ल्यो अहवाल फायली"
+agent_center.console_progress: "कार्यांची प्रगती"
+agent_center.console_authority: "मागिल्ले अधिकार आनी अंमलबजावणेच्या मर्यादा"
+agent_center.console_capabilities: "मान्यताय दिल्ल्यो अंमलबजावणेच्यो क्षमता"
+agent_center.console_data_scopes: "वाचूंक येवपी डेटाच्या सुवाती"
+agent_center.console_limits: "संसाधनांच्यो मर्यादा"
+agent_center.console_managed_writes: "वेवस्थापित कृतींवरवीं जावपी बरोवप ह्या कामाच्या जागेपुरतें मर्यादित आसा. ही पुरवणदाराच्या मालकीच्या साधनांखातीर कार्यप्रणालीच्या विलगीकरणाची शीम न्हय."
+agent_center.console_frozen: "ही खात्री नोंद केल्लें काम, विनंती, धोरण आनी आवृत्त्यो हांकां बांदता. बदलांखातीर नवें पुनरावलोकन जाय; मान्यतायेचें लक्ष्य केन्नाच कळोवचे बगर बदलना."
+agent_center.console_stale: "थेट तथ्यां पोरणीं जाल्यांत. मसुदे सुरक्षीत आसात. बदलांक मान्यताय दिवचे वा धाडचे पयलीं परत जोडात आनी ताजें करात; अज्ञात निकाल म्हळ्यार अपेस वा पूर्णत्व न्हय."
+agent_center.console_diagnostics: "निदान प्रोटोकॉलाचे तपशील (फकत वाचपाखातीर)"
+agent_center.console_no_details: "कामाचे सद्याचे तपशील नात. प्रकल्प वेंचपाक, काम उगडपाक वा ताजें करपाक F4 वापरात." # {Locked="F4"}
+agent_center.console_draft: "मसुदो — सुरू जावंक ना"
+agent_center.console_active: "सक्रीय — अजून स्वीकारूंक ना"
+agent_center.console_completed: "पुराय — मनशान केल्लो स्वीकार नोंदला"
+agent_center.console_cancelled: "रद्द केल्लें"
+agent_center.console_paused: "थांबयल्लें"
+agent_center.console_automatic: "आपोआप प्रगती"
+agent_center.console_running: "चालू आसा"
+agent_center.console_pending: "प्रलंबीत — पुराय जावंक ना"
+agent_center.console_verified: "पडताळिल्लें / अंतर्गत स्वीकारिल्लें"
+agent_center.console_failed: "अपेशी / न्हयकारिल्लें — पुरावे तपासात"
+agent_center.console_waiting: "प्रतिसादाची वा अवलंबित्वाची वाट पळयता"
+agent_center.console_unknown: "अज्ञात — ताजें करात वा निदान तपासात"
+agent_center.console_resolved: "प्रतिसाद नोंदला"
+agent_center.console_superseded: "बदलिल्लें — सद्याचो सुपूर्द करपाचो निकाल न्हय"
+agent_center.console_next_done: "फुडें: स्वीकारिल्लो सुपूर्द करपाचो निकाल वापरात; आनीक मान्यताय प्रलंबीत ना."
+agent_center.console_next_cancelled: "फुडें: आपोआप प्रगती ना; हें काम रद्द केलां."
+agent_center.console_next_approve: "फुडें: तुमी संक्षिप्त वर्णन तपासात आनी F4 वरवीं अचूक सुरवातीक मान्यताय दियात." # {Locked="F4"}
+agent_center.console_next_accept: "फुडें: तुमी थारायिल्लो सुपूर्द करपाचो निकाल आनी पुरावे तपासात, मागीर स्पश्टपणान स्वीकारात."
+agent_center.console_next_attention: "फुडें: F4 वरवीं ह्या कामाचे अजून लक्ष दिवपाची गरज आशिल्ले घटक तपासात." # {Locked="F4"}
+agent_center.console_next_resume: "फुडें: हें थांबयल्लें काम केन्ना परत सुरू करपाचें तें तुमी थारायात."
+agent_center.console_next_service: "फुडें: सेवा मान्यताय दिल्ली येवजण फुडें व्हरता. हो निमाणो स्वीकार न्हय."

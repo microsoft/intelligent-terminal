@@ -272,10 +272,72 @@ system.model_unknown: "Билгесез модель %{model} — мөмкин �
 # not an agent session; a work item may contain multiple tasks.
 agent_center.title: "Agent Center" # {Locked}
 agent_center.works: "Эш элементлары"
+agent_center.demo_title: "Эш элементы тарихын күрсәтү" # Title of an isolated scripted demonstration; the story fixture itself is English.
+agent_center.demo_notice: "Сценарий буенча күрсәтү | Дәлил үрнәкләре, охшатылган сеанслар һәм токен кулланышы | Агентлар эшләтеп җибәрелми" # Always-visible disclosure; simulated data must not be confused with live agent execution.
+agent_center.demo_scene: "Күренеш %{scene}/8" # %{scene} is the current scene number in the eight-scene story.
+agent_center.demo_next: "Киләсе: %{input}" # %{input} is the literal English story input, not a translated command.
+agent_center.demo_keys: "Enter: җибәрү | Tab: киләсе кертүне тутыру | PgUp/PgDn: әйләндерү | Ctrl+Q: ябу" # {Locked="Enter","Tab","PgUp/PgDn","Ctrl+Q"}
+agent_center.demo_reset: "Күрсәтү халәтен башлангычка кайтарыргамы? /reset confirm дип языгыз. Булган эш элементлары һәм көйләүләр үзгәрми." # {Locked="/reset confirm"} Resets only the isolated demo, never real work.
+agent_center.demo_saved: "%{revision} төзәтмәсе сакланды" # %{revision} is the persisted demo state revision.
+agent_center.demo_error: "Күрсәтү гамәле үтәлмәде: %{error}" # %{error} explains the rejected action; no state change is claimed.
+agent_center.tasks_title: "Биремнәр"
+agent_center.task_new: "Яңа бирем"
+agent_center.task_all: "Барлык биремнәр"
+agent_center.task_attention: "Игътибар кирәк"
+agent_center.task_continue: "Биремне дәвам итү"
+# Messages waiting for this work's busy executor, excluding the currently running turn. {Locked="%{count}"}
+agent_center.task_queued_messages: "Чираттагы хәбәрләр: %{count}"
+# Explicit migration of an existing work from legacy orchestration to its own executing agent session.
+agent_center.task_claim_executor: "Бирем агентына тоташтыру"
+agent_center.task_claim_executor_confirm: "Бу биремне аның үз башкаручы агентына күчерегез. Хәзерге әңгәмә һәм нәтиҗәләр саклана, ә иске планлаштыру туктатыла. Башлангыч башкару сеансын торгызып булмаса, яңа сеанс башлау өчен аерым раслау кирәк."
+agent_center.task_open_tab: "Өстәмә биттә ачу"
+agent_center.task_tab_unsupported: "Биремнең өстәмә битен ачу өчен Intelligent Terminal кирәк." # {Locked="Intelligent Terminal"}
+agent_center.task_new_session: "Яңа сеанс башлау"
+agent_center.task_new_session_confirm: "Агентның башлангыч сеансын дәвам итеп булмый. Бу биремнең сакланган контекстын кулланып, яңа сеанс башларгамы?"
+agent_center.task_keys: "Up/Down сайлау · Enter ачу · F4 гамәлләр · F5 тәфсилләр" # {Locked="Up/Down","Enter","F4","F5"}
+agent_center.task_list_keys: "F2 биремнәр · F4 гамәлләр · F5 тәфсилләр" # {Locked="F2","F4","F5"}
+agent_center.task_state_running: "Башкарыла"
+agent_center.task_state_waiting: "Җавабыгызны көтә"
+agent_center.task_state_paused: "Вакытлыча туктатылган"
+agent_center.task_state_recovery: "Торгызу кирәк"
+agent_center.task_state_ready: "Дәвам итәргә әзер"
+agent_center.task_state_completed: "Тәмамланган"
+agent_center.task_state_cancelled: "Гамәлдән чыгарылган"
+agent_center.task_state_unavailable: "Сеансны кулланып булмый"
+agent_center.task_updated: "Соңгы эшчәнлек: %{time}"
+agent_center.ui_overview: "Күзәтү"
+agent_center.chat_global: "Уртак әңгәмә" # Conversation with the non-executing master for new goals and cross-work coordination; each work has its own executor conversation.
+agent_center.chat_welcome: "Нәрсәгә ирешергә, нәрсәне оештырырга яки белергә теләвегезне әйтегез."
+agent_center.chat_keys: "Enter җибәрү · Shift+Enter яңа юл · F4 гамәлләр · F5 тәфсилләр · F7 күзәтү тактасы" # {Locked="Enter","Shift+Enter","F4","F5","F7"}
+agent_center.chat_dashboard_keys: "F7 әңгәмә · Esc әңгәмә · F4 гамәлләр · F6 гамәлләргә фокус" # Dashboard navigation preserves the global conversation and draft. {Locked="F7","Esc","F4","F6"}
+agent_center.chat_context_hint: "Контекст ишарәсе: %{context}" # %{context} is a readable work or project name, not a binding that limits the global conversation.
+agent_center.ui_attention: "Игътибарыгызны таләп итә" # Heading for recorded requests, draft-start reviews, and delivery reviews; not a claim that every work needs attention.
+agent_center.ui_details: "Эш тасвирламасы һәм барышы" # Read-only details view containing the work agreement, recorded progress, evidence, and locations.
+agent_center.ui_new_goal: "Нәрсәгә ирешергә телисез?"
+agent_center.ui_empty_attention: "Җавабыгызны таләп итүче ачык сораулар юк."
+agent_center.ui_no_works: "Бер эш элементы да теркәлмәгән. Башлау өчен көйләнгән проектны сайлагыз."
+agent_center.ui_no_conversation: "Бу эш элементы өчен хәбәрләр теркәлмәгән."
+agent_center.ui_role_you: "Сез" # Speaker heading for an actual recorded human message.
+agent_center.ui_role_assistant: "Эш ярдәмчесе" # Speaker heading for an actual recorded assistant message, not a provider name.
+agent_center.ui_role_service: "Хезмәт" # Speaker heading for an actual recorded system or service message.
+agent_center.ui_role_unknown: "Теркәлгән хәбәр" # Speaker heading when the service does not identify a recognized message role.
+agent_center.ui_next: "Киләсе адым өчен җаваплылык"
+agent_center.ui_recorded_facts: "Теркәлгән мәгълүмат"
+agent_center.ui_last_known: "Соңгы билгеле халәт · %{status}" # %{status} is a localized recorded status. Used when cached facts do not establish current execution.
+agent_center.ui_cached_facts: "Кэштагы мәгълүмат; хәзерге башкару расланмаган."
+agent_center.ui_source_root: "Проектның чыганак файллары урнашуы" # Configured source root, explicitly distinct from the actual managed execution directory.
+agent_center.ui_execution_root: "Идарә ителә торган башкару урыны" # Actual execution directory reported by the service, never inferred from the project source root.
+agent_center.ui_location_unknown: "Башкару урыны турында хәбәр ителмәгән."
+agent_center.ui_composer: "Моның өчен хәбәр: %{work}" # %{work} is the human-readable target of this independent draft.
+agent_center.ui_composer_new: "Яңа эш элементы · %{project}" # %{project} is the configured project name, or an explicit project-selection warning.
+agent_center.ui_actions: "Эш элементы гамәлләре"
+agent_center.ui_keys: "Enter җибәрү · Shift+Enter яңа юл · F4 гамәлләр · F5 тәфсилләр · F6 гамәлләргә фокус" # {Locked="Enter","Shift+Enter","F4","F5","F6"}
+agent_center.ui_actions_hint: "Up/Down сайлау · Enter ачу · Esc кертүгә кайту" # Keyboard focus is on a visible action, not the text editor. {Locked="Up/Down","Enter","Esc"}
+agent_center.ui_details_hint: "F5 тәфсилләрне ябу · PgUp/PgDn уку · Esc кертүгә кайту" # Read-only detail focus; returning to input preserves the draft and selection. {Locked="F5","PgUp/PgDn","Esc"}
 agent_center.activity: "Эшчәнлек · Әңгәмә"
-# %{work} and %{project} are identifiers of the selected work item and project.
+# %{work} and %{project} are human-readable labels for the selected work and configured project.
 agent_center.header: "Эш элементы: %{work} | Проект: %{project}"
-agent_center.welcome: "Проектны сайлагыз яки /project use <id> күрсәтегез. Максат яки /help языгыз." # {Locked="/project use","<id>","/help"}
+agent_center.welcome: "Көйләнгән проектны сайлау өчен F4 басыгыз, аннары нәрсәгә ирешергә теләвегезне кертегез." # {Locked="F4"}
 agent_center.input_help: "Enter: җибәрү · Shift+Enter: яңа юл · Tab: тулыландыру · F2: эш элементын алыштыру · Ctrl+C: чыгу · PgUp/PgDn: уку · Ctrl+End: иң соңгысы" # {Locked="Enter","Shift+Enter","Tab","F2","PgUp/PgDn","Ctrl+End","Ctrl+C"}
 agent_center.inbox_count: "Игътибар кирәк: %{count}"
 agent_center.sending: "Теркәлгән сорау җибәрелә…"
@@ -320,3 +382,84 @@ agent_center.missing_field: "Җавап кыры юк яки яраксыз: %{f
 agent_center.invalid_command_id: "--command-id UUID булырга тиеш." # {Locked="--command-id","UUID"}
 agent_center.worker_stopped: "Сораулар тоташуы туктады."
 agent_center.host_unavailable: "%{command} өчен кабык хосты адаптеры юк. Хостның төймәсар гамәлләрен кулланыгыз."
+agent_center.console_home: "Яңа эш элементы"
+agent_center.console_new: "Яңа эш элементы / Баш бит"
+agent_center.console_new_hint: "Яңа максат кертегез. Башка эш элементлары мөстәкыйль дәвам итә."
+agent_center.console_project_create_directory: "Яңа каталог төзегез һәм җирле Git репозиторийсын башлангыч хәлгә китерегез. Булган файллар өстеннән язылмаячак." # {Locked="Git"}
+agent_center.console_projects: "Көйләнгән проектны сайлагыз"
+agent_center.console_projects_hint: "Проектны исеме һәм урнашуы буенча сайлагыз. Монда көйләнгән проект юкмы? Администратордан берсен көйләүне сорагыз."
+agent_center.console_refresh: "Хәзерге мәгълүматны яңарту"
+agent_center.console_open: "Ачу: %{work}"
+agent_center.console_return: "Кире кайту: %{work}"
+agent_center.console_respond: "Җавап бирү: %{work} — %{question}"
+agent_center.console_unknown_work: "Эш элементы турында мәгълүмат юк"
+agent_center.console_unknown_project: "Проект сайланмаган яки куллану мөмкин түгел"
+# Two works can have exactly the same goal and project. The numbered choice is explicit, never a fuzzy match. %{created} is the recorded creation time.
+agent_center.console_duplicate: "%{work} · аерым эш элементы %{number} · %{created}"
+agent_center.console_start: "Эш тасвирламасын карап чыгу һәм башлауны хуплау"
+agent_center.approval_title: "Хуплау кирәк" # Title of an inline conversation card for a specific frozen human action.
+agent_center.approval_accept: "Хуплау" # Button that submits the exact reviewed action, not a chat message.
+agent_center.approval_start: "Хуплау һәм башлау" # Button approving the displayed work brief and execution grant.
+agent_center.approval_edit: "Таләпләрне үзгәртү" # Return to the chat composer to describe changes; do not submit or approve the action.
+agent_center.approval_defer: "Хәзер түгел" # Defer review in this Console without cancelling the work or approving anything.
+agent_center.approval_open_hint: "F6 тәкъдимне карап чыгу" # Opens the inline approval card without approving it. {Locked="F6"}
+agent_center.approval_keys: "Left/Right сайлау · Enter сайлауны раслау · F5 тәфсилләр · Esc хәзер түгел" # Keyboard help while the inline approval card owns focus. {Locked="Left/Right","Enter","F5","Esc"}
+agent_center.approval_edit_hint: "%{target} өчен үзгәрешләрне тасвирлагыз. Бернәрсә дә хупланмады." # %{target} is the displayed project or work name; the user's draft is preserved.
+agent_center.approval_deferred: "%{target} өчен карап чыгу кичектерелде. Әзер булгач, тәкъдимне F4 аша яңадан ачыгыз." # Deferring is local presentation state, not cancellation of work. %{target} is a project or work name. {Locked="F4"}
+agent_center.console_pause: "Эшне вакытлыча туктату"
+agent_center.console_resume: "Эшне дәвам итү"
+agent_center.console_cancel: "Эш элементын гамәлдән чыгару"
+agent_center.console_inspect: "Үзгәрмәс итеп теркәлгән нәтиҗәне карау һәм дәлилләрне тикшерү (уку гына)"
+agent_center.console_read_evidence: "Дәлилләрне уку: %{work} — %{path}"
+agent_center.console_more_evidence: "Дәлилләрнең киләсе битен уку: %{work}"
+agent_center.console_accept: "Каралган нәтиҗәне кабул итү"
+agent_center.console_takeover: "Идарә ителә торган эш өлкәсен үз идарәсенә алу"
+agent_center.console_handback: "Идарә ителә торган эш өлкәсен кире тапшыру"
+agent_center.console_apply: "Хупланган үзгәрешне куллану"
+agent_center.console_action: "Теркәлгән гамәлне карап чыгу"
+agent_center.console_answer: "Җавап"
+agent_center.console_answer_review: "Җибәрү өчен теркәлгән җавап:\n%{value}"
+agent_center.console_answer_invalid: "%{field} өчен яраклы кыйммәт кертегез; кырның мәҗбүри сайлау вариантларын һәм чикләрен карап чыгыгыз."
+agent_center.console_schema_unsupported: "Бу сорау гади форма хупламый торган схеманы куллана. Бернәрсә дә җибәрелмәде; гадирәк сорау бирүне сорагыз."
+agent_center.console_yes: "Әйе"
+agent_center.console_no: "Юк"
+agent_center.console_form_help: "Up/Down кыр сайлау · Left/Right вариант сайлау · Enter киләсе кыр · Ctrl+Enter җавапны карап чыгу · Esc кире кайту" # {Locked="Up/Down","Left/Right","Enter","Ctrl+Enter","Esc"}
+agent_center.console_menu_help: "F4 гамәлләр · Up/Down сайлау · Enter ачу · Esc кире кайту · F12 диагностика" # {Locked="F4","Up/Down","Enter","Esc","F12"}
+agent_center.console_hint: "F4 гамәлләр · F2 эш элементын алыштыру · F12 диагностика" # {Locked="F4","F2","F12"}
+agent_center.console_scope: "Кертелгән колач"
+agent_center.console_exclusions: "Бу эш элементына керми"
+agent_center.console_criteria: "Кабул итү критерийлары һәм кирәкле дәлилләр"
+agent_center.console_delivery: "Тапшырылган нәтиҗә"
+agent_center.console_delivery_code: "Идарә ителә торган эш өлкәсендәге җирле код"
+agent_center.console_delivery_report: "Теркәлгән хисап файллары"
+agent_center.console_progress: "Биремнең үтәлеше"
+agent_center.console_authority: "Соралган вәкаләтләр һәм башкару чикләре"
+agent_center.console_capabilities: "Хупланган башкару мөмкинлекләре"
+agent_center.console_data_scopes: "Уку өчен мөмкин булган мәгълүмат урыннары"
+agent_center.console_limits: "Ресурс чикләре"
+agent_center.console_managed_writes: "Идарә ителә торган операцияләрнең язу гамәлләре бу эш элементының эш өлкәсе белән чикләнгән. Бу тәэмин итүчегә караган кораллар өчен операцион система дәрәҗәсендәге изоляция чиге түгел."
+agent_center.console_frozen: "Бу раслау теркәлгән эш элементына, сорауга, сәясәткә һәм ревизияләргә бәйләнгән. Үзгәрешләр яңадан карап чыгуны таләп итә; хуплау беркайчан да хәбәр итмичә башка максатка юнәлтелми."
+agent_center.console_stale: "Тере мәгълүмат искергән. Караламалар имин саклана. Үзгәрешләрне хуплаганчы яки җибәргәнче яңадан тоташыгыз һәм мәгълүматны яңартыгыз; билгесез нәтиҗә уңышсызлык яки тәмамлану дигән сүз түгел."
+agent_center.console_diagnostics: "Протоколның диагностика мәгълүматы (уку гына)"
+agent_center.console_no_details: "Эш элементы турында хәзерге мәгълүмат юк. Проект сайлау, эш элементын ачу яки яңарту өчен F4 кулланыгыз." # {Locked="F4"}
+agent_center.console_draft: "Каралама — башланмаган"
+agent_center.console_active: "Актив — әле кабул ителмәгән"
+agent_center.console_completed: "Тәмамланган — кеше тарафыннан кабул итү теркәлгән"
+agent_center.console_cancelled: "Гамәлдән чыгарылган"
+agent_center.console_paused: "Вакытлыча туктатылган"
+agent_center.console_automatic: "Автоматик алга бару"
+agent_center.console_running: "Башкарыла"
+agent_center.console_pending: "Көтелә — тәмамланмаган"
+agent_center.console_verified: "Тикшерелгән / эчке тәртиптә кабул ителгән"
+agent_center.console_failed: "Уңышсыз / кире кагылган — дәлилләрне карагыз"
+agent_center.console_waiting: "Җавап яки бәйлелек көтелә"
+agent_center.console_unknown: "Билгесез — яңартыгыз яки диагностиканы карагыз"
+agent_center.console_resolved: "Җавап теркәлгән"
+agent_center.console_superseded: "Алыштырылган — хәзерге нәтиҗә түгел"
+agent_center.console_next_done: "Алга таба: кабул ителгән нәтиҗәне кулланыгыз; башка хуплау көтелми."
+agent_center.console_next_cancelled: "Алга таба: автоматик алга бару юк; бу эш элементы гамәлдән чыгарылган."
+agent_center.console_next_approve: "Алга таба: эш тасвирламасын карап чыгыгыз һәм нәкъ шушы башлауны F4 аша хуплагыз." # {Locked="F4"}
+agent_center.console_next_accept: "Алга таба: үзгәрмәс итеп теркәлгән нәтиҗәне һәм дәлилләрне карагыз, аннары ачыктан-ачык кабул итегез."
+agent_center.console_next_attention: "Алга таба: бу эш элементының игътибар таләп итүче хәл ителмәгән мәсьәләләрен F4 аша карап чыгыгыз." # {Locked="F4"}
+agent_center.console_next_resume: "Алга таба: вакытлыча туктатылган бу эшне кайчан дәвам итәргә икәнен сез хәл итәсез."
+agent_center.console_next_service: "Алга таба: хезмәт хупланган планны дәвам итә. Бу ахыргы кабул итү түгел."

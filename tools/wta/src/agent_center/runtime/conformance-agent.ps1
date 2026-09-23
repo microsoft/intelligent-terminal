@@ -4,6 +4,35 @@ $script:Session = 'conformance-session'
 $script:Endpoint = $null
 $script:Authorization = $null
 
+function Execute-Work($Invocation) {
+    Tool-Permission 'Write work file' @{path = 'executor-turns.txt'} $true
+    $turns = Join-Path (Get-Location).Path 'executor-turns.txt'
+    [IO.File]::AppendAllText($turns, "$($Invocation.executorInput.turnId):$PID`n")
+    $server = Join-Path (Get-Location).Path 'executor-server.json'
+    if (-not (Test-Path $server)) {
+        $escaped = $server.Replace("'", "''")
+        $script = @'
+$listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
+$listener.Start()
+[IO.File]::WriteAllText('__SERVER__', (@{pid=$PID;port=$listener.LocalEndpoint.Port} | ConvertTo-Json -Compress))
+while ($true) {
+    $client = $listener.AcceptTcpClient()
+    $bytes = [Text.Encoding]::UTF8.GetBytes('alive')
+    $client.GetStream().Write($bytes, 0, $bytes.Length)
+    $client.Dispose()
+}
+'@
+        $script = $script.Replace('__SERVER__', $escaped)
+        $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($script))
+        $null = Start-Process -FilePath (Get-Process -Id $PID).Path -ArgumentList @('-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', $encoded) -NoNewWindow -PassThru
+        $limit = [DateTime]::UtcNow.AddSeconds(15)
+        while (-not (Test-Path $server)) {
+            if ([DateTime]::UtcNow -gt $limit) { throw 'Executor test server did not start' }
+            Start-Sleep -Milliseconds 25
+        }
+    }
+}
+
 function Send-Frame($Frame) {
     [Console]::WriteLine(($Frame | ConvertTo-Json -Depth 100 -Compress))
     [Console]::Out.Flush()
@@ -390,9 +419,12 @@ while ($null -ne ($line = [Console]::ReadLine())) {
     try {
         switch ($message.method) {
             'initialize' {
-                $result = @{ protocolVersion = 1; agentCapabilities = @{mcpCapabilities = @{http = $true}} }
+                $result = @{ protocolVersion = 1; agentCapabilities = @{loadSession = $true; mcpCapabilities = @{http = $true}} }
             }
-            'session/new' {
+            { $_ -in @('session/new', 'session/load') } {
+                if ($message.method -eq 'session/load' -and $message.params.sessionId -cne $script:Session) {
+                    throw 'Controlled ACP session is unavailable'
+                }
                 $server = $message.params.mcpServers | Where-Object name -eq 'agent-center-work' | Select-Object -First 1
                 $script:Endpoint = $server.url
                 $script:Authorization = ($server.headers | Where-Object name -eq 'Authorization').value
@@ -416,7 +448,7 @@ while ($null -ne ($line = [Console]::ReadLine())) {
                     }
                     $script:CommitOutputKind = $kinds | Where-Object { $_ -ceq 'GitCommit' } | Select-Object -First 1
                 }
-                $result = @{sessionId = $script:Session}
+                $result = if ($message.method -eq 'session/load') { @{} } else { @{sessionId = $script:Session} }
             }
             'session/prompt' {
                 $prompt = $message.params.prompt[0].text
@@ -432,7 +464,9 @@ while ($null -ne ($line = [Console]::ReadLine())) {
                 Send-Frame @{jsonrpc = '2.0'; method = 'session/update'; params = @{
                     sessionId = $script:Session; update = @{sessionUpdate = 'agent_message_chunk'; content = @{type = 'text'; text = 'Controlled ACP conformance execution.'}}
                 }}
-                if ($null -ne $invocation.dispatch) { Produce $invocation $continuation } else { Coordinate $invocation }
+                if ($null -ne $invocation.executorInput) { Execute-Work $invocation }
+                elseif ($null -ne $invocation.dispatch) { Produce $invocation $continuation }
+                else { Coordinate $invocation }
                 $result = @{stopReason = 'end_turn'}
             }
             default { throw "Unsupported controlled ACP method $($message.method)" }

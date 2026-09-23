@@ -1,12 +1,12 @@
 ---
 author: Kai
 created on: 2026-09-15
-last updated: 2026-09-15
+last updated: 2026-09-18
 ---
 
-# Agent Center: Goal-to-Delivery Domain and Execution Contracts
+# Agent Center: Task-Driven Terminal Domain and Execution Contracts
 
-**Design specification v0.6 - Closed Collaboration Protocol**
+**Design specification v0.8 - Work-Owned Executor Sessions**
 
 This specification defines the domain, authority, execution, and recovery
 contracts for the complete [Agent Center product experience](agent-center-product.md).
@@ -24,9 +24,26 @@ must not invent different meanings where those summaries omit transport detail.
 
 ## 1. Purpose
 
-Agent Center turns an approved developer goal into an inspectable delivery.
+Terminal is the easiest way to get tasks done on the user's OS. Agent Center
+is its task-centered work service and conversation entry, not a requirement
+for the user to manage a collection of agents. It turns an approved goal into
+an inspectable result.
 It owns the continuity of that work: scope, planning, execution, decisions,
 evidence, acceptance, and resource disposition.
+
+The organizing unit is a work, not a command, shell, provider or chat session.
+Users discuss desired outcomes, execution location, progress, strategy and
+acceptance. Agents, commands and shells are implementation resources selected
+inside the approved policy; normal work must not require the human to launch
+the next worker, copy diagnostics, compact a provider session or rebuild its
+context. Optional expert controls remain available.
+
+The first qualification scenario is local developer work producing `LocalCode`
+or `Report` under protocol v1. Broader OS/application outcomes and adoption of
+existing execution resources are product targets, not newly implemented wire
+types or claims of unrestricted process control. A report describing a desired
+OS change is not evidence that the change occurred. Those capabilities require
+explicit adapter, effect-verification and recovery qualification before use.
 
 The human defines desired results and acceptable authority, makes consequential
 decisions, and accepts delivery. The system advances ready tasks inside that
@@ -39,7 +56,34 @@ independent XAML host. Shells are optional execution resources and presentations
 The same work capabilities are available through a standalone TUI and
 authenticated structured CLI/MCP clients.
 
-The fundamental chains are:
+The primary ownership and interaction chain is:
+
+```text
+Global conversation -> Non-executing master -> Approved Work
+                                               |
+                                      Durable executor session
+                                               |
+                          Serial work input -> Execution -> Reply / Review
+```
+
+Each Work owns its executor session. Work chat, continuation, recovery and
+opening the work in another tab target that same executor, not a per-work
+planning coordinator or a newly selected transient worker. The master manages
+work but does not execute filesystem or shell operations itself. Opening a
+view does not create an additional writer or restart execution.
+
+Idle chat completion preserves the Work's provider session and approved running
+resources, including a development server requested for human verification.
+It is distinct from Work completion, acceptance, pause and cancellation.
+New input is serialized through the same owner; recovery requires matching
+work, provider, session and workspace provenance and safe writer settlement.
+An unavailable session is not silently replaced.
+
+The existing staged task/evaluation pipeline remains a legacy compatibility
+contract for historical records and in-flight work. It is not the mandatory
+routing path for Work-owned executor chat. Migrating a legacy Work first fences
+its scheduler and settles existing writers; a coordinator session cannot be
+relabelled as the executor. The legacy chains are:
 
 ```text
 Intent -> WorkSpec -> ExecutionGrant -> Plan -> Task/Attempt
@@ -145,6 +189,13 @@ complete core work flows without activating a graphical Terminal instance.
 Host enumeration concerns registered, authorized resources rather than
 unrestricted control of arbitrary processes on the machine.
 
+Resource selection is the system's responsibility within that boundary.
+It must identify the actual authorized execution location and capabilities,
+not silently fall back to another host, directory, provider or account.
+An unavailable capability produces a named limitation or approval request;
+the user's request to "do the work" does not grant installation, elevation,
+access to new data destinations or control over unrelated running processes.
+
 ### 2.2 Collaboration ownership
 
 The user interacts with one work-organizing collaborator. Each work has its
@@ -175,7 +226,7 @@ are locators or labels rather than work identities.
 
 | Entity | Meaning and ownership |
 |---|---|
-| `Project` | Approved repositories, data sources, execution capabilities, resource policy, and context |
+| `Project` | Approved resource context, execution capabilities and policy; the v1 developer pilot uses repositories and data sources |
 | `WorkItem` | A durable goal with one current specification and advancement policy |
 | `WorkSpec` | Immutable revision of goal, scope, acceptance criteria, and delivery requirements |
 | `ExecutionGrant` | Approved capabilities, data access, side effects, and resource limits for a work |
@@ -192,7 +243,7 @@ are locators or labels rather than work identities.
 | `Workspace` | Work-owned durable resource set and integration baseline |
 | `ExecutionSandbox` | Isolated writable or read-only environment for an attempt or human |
 | `WriterReservation` | Exclusive managed writer authority for a physical writable resource |
-| `ConsoleSession` | One window/TTY client's view context, layout, and per-work draft/navigation references |
+| `ConsoleSession` | Immutable global or work conversation registration; a client separately retains its layout, drafts and reading positions |
 | `Conversation` / `ConversationItem` | UI-independent work or console-scoped interaction and streaming content |
 | `ShellSession` | An owned interactive shell with optional work association and independent liveness |
 | `ShellInputLease` | Exclusive interactive input authority for a shell, scoped to a client or managed execution |
@@ -287,6 +338,14 @@ Within an approved specification and grant, the planner may revise execution
 details autonomously: decomposition, order of independent tasks, compatible
 capability replacement, and bounded retries. Every revision records its reason.
 
+A user-requested strategy replacement first resolves the intended work and
+shows the current reason, proposed alternative, retained outputs, affected
+attempts and resource/authority impact. The confirmed choice must lead to a
+recorded compatible plan revision or specification/grant change as appropriate,
+not only conversational agreement. Ordinary exploration of alternatives does
+not itself change the plan. Already-dispatched effects are settled or reconciled
+under their original identity before incompatible replacements are admitted.
+
 Unaffected in-flight tasks can continue through an explicit carry-forward map
 between plan revisions. A carry-forward requires identical task contract,
 input identities, permissions, and relevant acceptance conditions. A changed
@@ -300,6 +359,22 @@ console context and original text. Resolved intents identify their own target
 work or proposed new work; one message can produce several explicitly displayed
 intents. Ambiguous targets or material changes wait for clarification/approval.
 The user sees what was understood and can correct the interpretation.
+
+Global questions such as "where are my works running and what needs me?"
+must be answered from authorized work, runtime, plan and attention records.
+The answer identifies each target, observation freshness and unknown state.
+Strategy explanations reference recorded plan reasons, constraints, decisions
+and evidence; plausible model narration is not authoritative progress.
+This is a target read/interaction contract, not permission to bypass a
+work-scoped invocation binding. Missing global read capability must be surfaced
+and tracked rather than filled by unrestricted provider filesystem reads.
+
+Work discussion can continue while independent authorized tasks advance.
+It must not reset the current work, pause execution, dispatch a new worker or
+rewrite pinned inputs merely because the user asks a question. A mixed message
+can create B and propose a strategy change to A, with separately displayed
+targets and approvals. Ambiguous references are clarified before mutation;
+changing the currently viewed work cannot retarget an in-flight answer.
 
 Answering a question does not dispatch a worker. Recording a new attachment
 does not silently inject it into an active attempt's pinned input manifest.
@@ -858,23 +933,84 @@ ConsoleSession
   contextVersion
   layout: AgentFocus | AgentWithShell
   selectedShellPresentationId?
-  draftAndNavigationRefsByScope
+  globalConversationId / globalDraftRef
+  workConversationRefs / draftsAndReadingPositionsByWork
+  taskListNavigation / detailNavigationRefsByWork
 ```
 
 Enforce at most one live console presentation per window identity. A recreated
 client reconnects through the verified window/console association; concurrent
 startup cannot create two competing work entry points.
 
-Selection, drafts, and reading position are scoped by console and work (or
-global console conversation). They are presentation state, not execution
-authority. Another window can select the same work without sharing its
-unsent draft or moving its cursor. Persisted drafts follow work-content access,
-retention, and deletion policy.
+The default presentation is a task list. Opening an existing work binds the
+client to that work's durable conversation, observed execution state and
+continuation controls; opening it does not start or resume execution.
+Global conversation remains available for new goals and cross-work questions.
+Immutable existing console/conversation registrations are not repurposed across
+works or rebound between global and work scopes. These wire bindings do not
+themselves qualify the verified host/window association above.
+
+Work selection identifies the conversation target, not execution authority.
+Each client retains separate unsent drafts and reading positions per work and
+for global conversation. Another window/tab can open the same persisted work
+conversation without sharing the first client's unsent draft or acquiring
+another writer. Persisted content follows access, retention and deletion policy.
 
 Command submission atomically captures resolved target IDs, current object
 versions, and the submitted input. Subsequent navigation cannot redirect that
 command, its answer application, or its output. Background changes update their
 own work projections even when another work is selected.
+
+Human-readable selectors and action cards are projections over these captured
+identities, not new domain objects or authority. Default work presentation
+shows goal, observed status, recent activity, its conversation and continuation
+actions. Genuine human questions and inspectable delivery remain accessible.
+Plans, actual locations and evidence are available
+on demand; aggregate IDs, invocation IDs, revisions and raw protocol objects
+belong in explicit diagnostics. Do not remove IDs from the authoritative
+records or rewrite user content, real paths or evidence to hide them.
+
+Ordinary creation, selection, approval, typed question answers and delivery
+acceptance must not require users to enter those internal IDs. Duplicate
+display names require a readable disambiguation and explicit selection.
+Question forms retain the declared response types; unsupported schema is an
+explicit capability limit, not an implicit approval or success-shaped default.
+Readable confirmation still freezes the exact target, payload, expected
+versions and command identity. Inspection itself never authorizes acceptance
+or acquires a writer.
+
+Presentation recovery preserves each conversation's draft, caret, selection and
+separate chat/detail navigation, marks disconnected observations stale, and refreshes authorized
+projections before treating them as current. A recovered transport cannot
+approve a frozen preview or blindly replay an uncertain mutation.
+
+The keyboard-first presentation defaults to tasks: select with arrows and open
+with Enter. Navigation labels are not three copies of the same F4 shortcut;
+the action-menu shortcut is described once. Task chat shares the agent pane's
+presentation components, while its data remains service-owned. Necessary
+questions, explicit approvals, failures and unknown outcomes remain visible.
+Grouping and detail visibility are client state, not new execution authority.
+Collapsing navigation or opening details must not change the selected work or
+discard its editor and reading state. Visible actions retain deterministic
+keyboard access; input submission depends on explicit focus, while an active
+confirmation always retains its captured target and confirmation requirement.
+
+Render hierarchy does not authorize invented facts. Progress and next-owner
+labels require observed state; cached observations are visibly stale.
+Concurrency versions are not content editions. Source-project paths cannot
+substitute for an unknown execution directory. Important authorization and
+risk information remains readable in the relevant confirmation even when
+technical diagnostics and optional detail panels are collapsed.
+
+Continuing a work is distinct from inspecting it and from setting the legacy
+`desiredAdvancement` flag. A live execution is attached to, not duplicated.
+An expired or disconnected execution requires reconciliation and proven writer
+settlement before replacement. A saved primary coordinator session is loaded
+with the matching provider, working directory and fresh work-tool binding.
+Missing provider resume support or unavailable history is an explicit failure;
+starting a new session from recorded context requires a separate human choice.
+Opening another task tab remains a client of this same service-owned session,
+not an independent provider process with competing workspace authority.
 
 ### 8.5 Conversation and streaming without a UI dependency
 
@@ -911,6 +1047,15 @@ Snapshots are bounded manifests with content-addressed references. Data access
 is checked at use time as well as at snapshot creation. Credentials and bearer
 capabilities are referenced through runtime secret mechanisms, not copied into
 work history or prompts by default.
+
+When a qualified adapter must replace a runtime or renew provider context,
+the system reconstructs permitted inputs from these records, retains the work
+identity and effective decisions, settles the old execution and obtains the
+new attempt's input acknowledgment. A provider summary/compaction alone is
+not proof that scope, evidence or pending side effects survived. Unsupported
+continuation is an explicit blocker, not an instruction to the user to relay
+context followed by an "autonomous" completion claim. Existing-resource
+adoption and recovery still require their own qualification evidence.
 
 An `Artifact` records kind, content digest, locator, producing attempt or
 human, relevant baselines, capture time, availability, and retention policy.
@@ -998,6 +1143,27 @@ Unknown external results are reconciled by operation identity before retry.
 Revision feedback references candidate criteria/evidence. The human may approve
 `Revise and advance`, which rejects/supersedes the candidate and authorizes
 bounded corrective work. Scope expansion follows the specification-change path.
+
+### 10.1 Future OS-state outcome qualification
+
+The current protocol's local code/report delivery remains unchanged. A future
+adapter that promises an OS/application state outcome must first define:
+
+- exact target resource identity and execution location;
+- approved operations, preconditions, expected postconditions and ownership;
+- before/after observations, operation receipts and verification freshness;
+- retention of result evidence and effects on resources outside the target;
+- cancellation, retry/reconciliation and rollback capability or disclosed
+  irreversibility.
+
+Acceptance must check the actual target against the approved postcondition,
+not just a successful command exit or generated report. Changed, replaced,
+unavailable or stale target state cannot retain a valid acceptance proof.
+Unknown effects remain unresolved until observed; replay is not a substitute
+for reconciliation. If an adapter cannot enforce the promised boundary or
+verify the goal, it is ineligible for that contract. These are extension
+requirements, not an implicit new entity, operation, delivery enum or arbitrary
+system-administration permission in v1.
 
 ## 11. Decisions and reliable application
 
@@ -1583,7 +1749,7 @@ use real executions and artifacts rather than scripted completion cards.
 | AC-47 | Planner repeatedly renames tasks to retry failed work | Work-level usage and attempt allowance remain cumulative | US-03 |
 | AC-48 | Hold with an approved but undispatched publication | Publication waits; inspection and safe recovery remain available | US-11 |
 | AC-49 | Start/reconnect a window without any user shell | Exactly one window Console, Agent Focus, zero required shell tabs/profile processes; work commands usable | US-01 |
-| AC-50 | Switch between five works in one Console | Per-work drafts/reading state restored; same Console client and unchanged attempt identities | US-04 |
+| AC-50 | Browse five works in one Console | Each work restores its conversation, draft, caret and reading position; detail state remains separate; opening does not change execution identities | US-04 |
 | AC-51 | Hide/show the shell region repeatedly | Layout/focus changes only; same shell and ongoing attempts; no duplicate shell creation | US-11 |
 | AC-52 | Close a named shell while Console is active | Only authorized target/session effects; Console rendering channel remains intact | US-11 |
 | AC-53 | Change work or physical shell tab while answering | Saved answer targets captured work/decision/version; current shell selection cannot redirect it | US-06 |
@@ -1605,7 +1771,7 @@ use real executions and artifacts rather than scripted completion cards.
 | AC-69 | Result fails a declared criterion | Structured changes request pins result/evidence; bounded new attempt preserves reusable output and resubmits | US-03 |
 | AC-70 | Revised result passes its task contract | Service records internal acceptance and admits the authorized next task without human information relay | US-03 |
 | AC-71 | Worker needs clarification available in approved work facts | Internal request/answer resumes recorded continuation; no unnecessary human decision | US-03 |
-| AC-72 | A needs a decision while the user drafts in B | Notify without retargeting input; inspect/answer A and return to B's draft and view | US-06 |
+| AC-72 | A needs a decision while the user drafts in B's conversation | Notify without retargeting input; inspect/answer A and retain B's draft and chat position | US-06 |
 | AC-73 | Relevant events arrive while coordination is idle or busy | Driver starts one metered turn per work or queues/coalesces; no model polling or concurrent duplicate coordinator | US-04 |
 | AC-74 | Many progress chunks arrive without a new decision | Views update without coordinator wake-per-token or user notification-per-tool | US-02 |
 | AC-75 | State changes between snapshot acquisition and event consumption | Subscription starts after the snapshot's consistent cursor; client receives the intervening change | US-10 |
@@ -1624,21 +1790,42 @@ use real executions and artifacts rather than scripted completion cards.
 | AC-88 | A named peer task has already ended when context is requested | Coordinator resolves from recorded output or planned clarification; no wait on a nonexistent live peer | US-03 |
 | AC-89 | Native command check executes a recipe | Recorded invocation, inputs, command outcome and evidence produce the declared GateResult without agent narration | US-08 |
 | AC-90 | Local final delivery is accepted after internal integration | Fixed code/report destination and tracked settlement produce WorkCompleted without an unstated external connector | US-12 |
+| AC-91 | Ask globally where works run, their progress and why an approach was chosen | Answer identifies authorized work/runtime state, observation freshness, plan reasons and evidence; unknowns stay explicit, with no mutation | US-02/04 |
+| AC-92 | One natural-language message adds B and proposes another approach for A | Resolve and display distinct targets; clarify ambiguity and confirm consequential changes before application; preserve current draft and B's independent execution | US-01/06/07 |
+| AC-93 | Discuss goals or alternatives while a work executes | Respond without pausing, restarting, changing scope or injecting new pinned inputs; eligible independent tasks keep advancing | US-04/07 |
+| AC-94 | Reject the current approach and approve a replacement | Show reasons and impact, record compatible replan or spec/grant revision, retain proven compatible results and invalidate incompatible undispatched actions; reconcile unsettled effects | US-07 |
+| AC-95 | Delegate work using configured authorized capabilities without naming a shell or provider | System selects the correct permitted location/resources and drives internal handoffs without human agent launching, shell choice, context compaction or version matching; unavailable capability is explicit | US-13 |
+| AC-96 | Adopt an existing authorized runtime or replace one during a work | Preserve Work identity, decisions and evidence; establish ownership/settlement and acknowledged context before continuation; do not seize arbitrary processes or require human context relay | US-10/13 |
+| AC-97 | Accept a promised OS/application state outcome | Qualified adapter verifies exact target identity, approved postcondition, current before/after evidence and side effects; missing, changed or unknown state blocks acceptance; report alone is insufficient | US-08/14 |
+| AC-98 | Retry or recover an operation that may have changed OS state | Reconcile prior effect by operation/target identity before replay, preserve unauthorized resources and disclose rollback limits; unknown outcome never becomes assumed success | US-10/14 |
+
+AC-01–AC-90 keep their existing identities and historical evidence. AC-91–AC-95
+extend the current task-centered conversation and resource-selection experiment;
+they are required targets, not proof of implementation. AC-96–AC-98 require
+later adapter/result qualification. They do not add protocol operations by
+being listed here. The executable-boundary and negative-control designs are
+tracked in the [verification plan](agent-center-verification-plan.md).
 
 ## 19. Work-model experiment and subsequent engineering
 
 ### 19.1 Current milestone: validate the complete work mode
 
-The experiment evaluates whether the system takes over task organization and
-information transfer while the human retains goals, consequential judgments and
-final delivery. It is not an infrastructure availability, isolation or recovery
-qualification exercise. Those target contracts remain documented and must not
-be advertised as proven by an experience demonstration.
+The experiment evaluates the first developer-work instance of a task-driven
+Terminal: the user stays in work-level conversation while the system selects
+authorized execution resources, organizes tasks and transfers information.
+The human retains goals, consequential judgments and final acceptance. It is
+not yet qualification of arbitrary OS tasks, infrastructure availability,
+isolation or recovery. Those targets remain documented and cannot be advertised
+as proven by an experience demonstration. Existing authority restrictions still
+apply throughout the experiment.
 
 Use the companion product specification's continuous journey with at least two
 real works. Include question-to-delegation, internal context exchange, a changed
 plan after a real finding, a failed task check and structured rework, a user
 decision while another work is selected, manual contribution, and final revision.
+Also exercise J9: work-grounded global status, execution location, strategy
+explanation and a confirmed alternative that changes actual execution without
+disrupting the other work. Ordinary discussion must not silently mutate plans.
 Choose a real repository, executable checks and a concrete delivery destination.
 The correction should arise from an actual discrepancy, not a fabricated failure
 notification; a repeatable fixture can provide the task and failing behavior.
@@ -1647,14 +1834,34 @@ One provider can supply multiple roles; agent count is not the success metric.
 Every purported internal handoff must have a dispatch, acknowledged contract,
 submission, evaluation and downstream input reference. Ordinary UI progress is
 driven by those events. Record manual assistance, repeated goal explanation,
-copied context, "continue" prompting and unusable deliveries as experiment
-findings; do not count assisted orchestration as system autonomy.
+copied context, "continue" prompting, mandatory internal shell/provider/session
+administration and unusable deliveries as experiment findings. Operator
+provenance setup is recorded separately from product-required human assistance;
+do not count assisted orchestration as system autonomy.
 
 AC-63 through AC-80 define collaboration behavior; the current journey focuses
-on AC-63 through AC-74, AC-76, AC-79 and AC-80. Snapshot-race and capacity-edge
+on AC-63 through AC-74, AC-76, AC-79 and AC-80, plus AC-91 through AC-95.
+Snapshot-race and capacity-edge
 fixtures do not gate the experience experiment. The basic single Console,
-work switching and command paths remain part of the journey. Compare outcomes
-against product section 12.1 before expanding infrastructure or provider coverage.
+work switching and input paths remain part of the journey. Structured command
+success cannot stand in for work-level natural-language interaction.
+
+Use the product section 12.1 north-star definition: unique verified,
+human-accepted completed works with zero required human orchestration divided
+by all approved in-scope works in a predeclared cohort and observation window.
+Failures, blocked/uncompleted works and post-approval cancellations stay in the
+denominator; retries and revised candidates are not new works. Report the intake
+funnel separately so a failure before Work creation does not disappear behind
+a zero denominator. Never pool results from different builds as one sign-off.
+
+Current milestone sign-off requires J1–J9 on identified same-build continuous
+journey evidence, both actual accepted deliveries and zero required internal
+human orchestration. A real failed-check/rework cycle in J5 cannot be replaced
+by human-requested final revision in J8 or an all-green run. Historical passes,
+component conformance, native interaction and release-report coverage remain
+separate evidence layers. New or unexercised gates are NOT RUN, not inherited
+passes; unsupported future AC-96–AC-98 stay planned/unqualified. Compare these
+outcomes before expanding infrastructure or provider coverage.
 
 ### 19.2 Subsequent production evidence
 
@@ -1663,7 +1870,7 @@ Production readiness additionally requires concrete engineering evidence:
 | Area | Required proof |
 |---|---|
 | Window Console and agent focus | Launch with no user shell, switch works in one TUI, show/hide resources, and return keyboard focus without context loss |
-| Command-complete interaction | Every principal user story has slash command coverage from the shared registry |
+| Work-level conversation and command equivalence | Principal stories support natural-language intent plus explicit confirmation; shared-registry commands are precise alternatives, not mandatory user syntax |
 | TTY and headless execution | Core work flow completes in an ordinary terminal and through structured calls with no graphical host |
 | Continuous execution | A qualified local executor remains correctly owned across window closure and service reconnect |
 | Scoped authority | Isolation, operation authorization, delegation limits, and revocation are exercised against real tools |
@@ -1672,6 +1879,8 @@ Production readiness additionally requires concrete engineering evidence:
 | Reliable decisions | Persisted answers survive callback loss and are applied to the correct continuation exactly as represented |
 | Evidence and publication | Current content is accepted and the intended external effect can be rediscovered after receipt loss |
 | Recovery | Fault injection across intent/dispatch/receipt boundaries preserves identity and prevents unsafe replay |
+| OS/application results | Qualified adapters verify the authorized target's actual postconditions and freshness, capture effects and reconcile retries before replay; local code/report delivery is not proxy evidence |
+| Resource continuity | Registered resource adoption or provider/session replacement preserves acknowledged context and work identity without manual context administration or unauthorized process control |
 | Product usefulness | The work-mode experiment demonstrates responsibility transfer; interaction timing and presentation quality are measured separately |
 
 These are not prerequisite experiments for validating the work mode. Subsequent

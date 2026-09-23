@@ -31,12 +31,22 @@
 //! versions and that exact preview. No limits reset or authority expansion occurs.
 //! Application supersedes current outputs and waits for tracked release before replanning.
 
+#[path = "engine\\actions.rs"]
+mod actions;
 #[path = "engine\\changes.rs"]
 mod changes;
 #[path = "engine\\collaboration.rs"]
 mod collaboration;
+#[path = "engine\\continuation.rs"]
+mod continuation;
 #[path = "engine\\evaluation.rs"]
 mod evaluation;
+#[path = "engine\\executor.rs"]
+mod executor;
+#[path = "engine\\global.rs"]
+mod global;
+#[path = "engine\\memory.rs"]
+mod memory;
 #[path = "engine\\planning.rs"]
 mod planning;
 #[path = "engine\\runtime.rs"]
@@ -360,6 +370,17 @@ impl Engine {
                     if text(&operation, "status") == "Succeeded" {
                         continue;
                     }
+                    if ["runtime.stop", "runtime.release"]
+                        .contains(&text(&operation["effect"], "method"))
+                        && engine
+                            .records
+                            .get(text(&operation["effect"]["params"], "invocationId"))
+                            .is_some_and(|invocation| {
+                                invocation["releaseKind"] == "CoordinatorAuthorityRevoked"
+                            })
+                    {
+                        continue;
+                    }
                     engine.db.execute(
                         "UPDATE effects SET state='Dispatched' WHERE id=?1 AND state='Pending'",
                         [&operation_id],
@@ -497,9 +518,20 @@ impl Engine {
                     )
                 });
             }
-            let mut response = match self.mutate(principal, request) {
+            let mutation = self
+                .validate_human_action(principal, request)
+                .and_then(|()| self.mutate(principal, request))
+                .and_then(|response| {
+                    self.record_human_action(request, &response)?;
+                    Ok(response)
+                });
+            let mut response = match mutation {
                 Ok(response) => {
-                    if let Err(response) = self.drive() {
+                    if let Err(response) = if request.method == "work.open" {
+                        Ok(())
+                    } else {
+                        self.drive()
+                    } {
                         self.records = backup.clone();
                         self.pending_events.clear();
                         response
@@ -513,7 +545,7 @@ impl Engine {
                     response
                 }
             };
-            self.persist()?;
+            self.persist_changes(&backup)?;
             response.cursor = Some(self.cursor());
             self.db.execute("INSERT INTO commands(principal,command_id,fingerprint,response) VALUES(?1,?2,?3,?4)",
                 params![principal.key(),command_id,fingerprint,serde_json::to_string(&response)?])?;
@@ -543,7 +575,19 @@ impl Engine {
     }
 
     fn persist(&mut self) -> Result<()> {
+        self.persist_changes(&BTreeMap::new())
+    }
+
+    fn persist_changes(&mut self, before: &BTreeMap<String, Value>) -> Result<()> {
         for (id, record) in &self.records {
+            // put() advances the version on every change; streaming one chunk must
+            // not serialize and rewrite the entire retained work history.
+            if before
+                .get(id)
+                .is_some_and(|previous| previous["version"] == record["version"])
+            {
+                continue;
+            }
             let parent = record
                 .get("workId")
                 .and_then(Value::as_str)
@@ -696,6 +740,15 @@ impl Engine {
             return Err(bad("FORBIDDEN", "Invocation is not an active coordinator"));
         }
         let turn = self.record(text(&invocation["subject"], "id"), "CoordinationTurn")?;
+        if invocation["scope"] == "Global" {
+            self.global_coordinator(principal)?;
+            if work_id.is_some() {
+                return Err(bad(
+                    "FORBIDDEN",
+                    "Global conversation may propose human actions, not operate a work coordinator",
+                ));
+            }
+        }
         if let Some(work_id) = work_id {
             let work = self.record(work_id, "Work")?;
             if work["projectId"] != invocation["projectId"] {
@@ -768,8 +821,37 @@ impl Engine {
     fn view(&self, record: &Value) -> Value {
         let id = text(record, "id");
         match text(record, "kind") {
+            "Conversation" => {
+                let mut view = record.clone();
+                if record.get("workId").is_some() {
+                    if let Some(messages) = view["messages"].as_array_mut() {
+                        for message in messages {
+                            if let Some(current) = self.records.get(text(message, "id")) {
+                                if current["kind"] == "ConversationItem" {
+                                    *message = current.clone();
+                                }
+                            }
+                        }
+                    }
+                }
+                view["intakeRequests"] = json!(self.related("IntakeRequest", "conversationId", id));
+                let mut proposals = self.related("HumanActionProposal", "conversationId", id);
+                if let Some(work_id) = record.get("workId").and_then(Value::as_str) {
+                    for proposal in self.related("HumanActionProposal", "workId", work_id) {
+                        if !proposals
+                            .iter()
+                            .any(|existing| existing["id"] == proposal["id"])
+                        {
+                            proposals.push(proposal);
+                        }
+                    }
+                }
+                view["actionProposals"] = json!(proposals);
+                view
+            }
             "Work" => {
                 let mut view = json!({"work":record,"spec":record["spec"],
+                    "continuation":self.work_continuation(record),
                     "taskSummaries":self.related("Task","workId",id),
                     "changeProposals":self.related("ChangeProposal","workId",id),
                     "humanContributions":self.related("HumanContribution","workId",id),
@@ -783,6 +865,9 @@ impl Engine {
                 }
                 if let Some(operation) = self.records.get(text(record, "changeOperationId")) {
                     view["changeOperation"] = self.view(operation);
+                }
+                if Self::executor_mode(record) {
+                    view["executionSummary"] = self.executor_summary(record);
                 }
                 view
             }
@@ -834,6 +919,9 @@ impl Engine {
             return Err(bad("FORBIDDEN", "No read binding"));
         };
         let invocation = self.record(invocation_id, "Invocation")?;
+        if invocation["scope"] == "Global" {
+            return self.authorized_global_read(principal, record);
+        }
         if text(&invocation, "state") == "Released" {
             return Err(bad("FORBIDDEN", "Invocation binding was released"));
         }
@@ -865,7 +953,22 @@ impl Engine {
     }
 
     fn read(&self, principal: &Principal, request: &Request) -> DomainResult<Value> {
+        if request.method == "work.execution_check" {
+            closed(&request.params, &["workId"], &[])?;
+            let invocation = self.executor_binding(principal, text(&request.params, "workId"))?;
+            return Ok(
+                json!({"allowed":true,"invocationId":invocation["id"],"turnId":invocation["currentExecutorTurnId"]}),
+            );
+        }
         let method = request.method.as_str();
+        if method == "memory.list" {
+            return self.memory_list(principal, request);
+        }
+        if method == "console.get" {
+            Self::human(principal)?;
+            closed(&request.params, &[], &[])?;
+            return self.global_policy();
+        }
         if method.ends_with(".list") {
             let kind = match method {
                 "project.list" => "Project",
@@ -1062,6 +1165,8 @@ impl Engine {
                     (?2='WorkList' AND (json_type(body,'$.workId')='text' OR json_extract(body,'$.subject.kind')='Work'))
                     OR (?2='Work' AND json_extract(body,'$.workId')=?3)
                     OR (?2 IN ('Conversation','Operation') AND json_extract(body,'$.subject.id')=?3)
+                    OR (?2='Conversation' AND json_extract(body,'$.subject.kind')='IntakeRequest'
+                        AND json_extract(body,'$.changes[0].view.conversationId')=?3)
                  ) ORDER BY sequence",
             )?;
             let mut events = Vec::new();
@@ -1085,6 +1190,14 @@ impl Engine {
 
     fn mutate(&mut self, principal: &Principal, request: &Request) -> DomainResult<Response> {
         match request.method.as_str() {
+            "work.claim_executor" | "work.request_input" => {
+                self.executor_command(principal, request)
+            }
+            "work.open" | "work.continue" => self.work_continuation_command(principal, request),
+            "memory.store" | "memory.forget" => self.memory_command(principal, request),
+            "console.configure" => self.configure_global_conversation(principal, request),
+            "conversation.propose_action" => self.propose_human_action(principal, request),
+            "conversation.resolve_input" => self.resolve_global_input(principal, request),
             "work.propose_change" | "work.apply_change" => self.change_command(principal, request),
             "project.configure" | "runtime.register" | "work.create_draft" | "grant.preview"
             | "work.start" | "plan.propose" | "plan.apply" | "work.control"
@@ -1129,6 +1242,8 @@ impl Engine {
         // Controllers only admit recorded work; effects are dispatched after the enclosing commit.
         self.settle_workspace_operations()?;
         self.settle_spec_changes()?;
+        self.settle_work_continuations()?;
+        self.drive_executors()?;
         self.evaluate_ready()?;
         self.schedule()?;
         self.coordinate()?;

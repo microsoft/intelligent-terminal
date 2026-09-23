@@ -79,6 +79,7 @@ fn agent_command_on_enter(input: &str, selected: Option<&AvailableAgent>) -> Opt
 mod attachments;
 mod autofix;
 mod input_edit;
+pub(crate) use input_edit::TextEditor;
 mod tab_state;
 mod turn_state;
 use autofix::*;

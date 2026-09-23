@@ -1,0 +1,453 @@
+Demo Scenario
+From Managing Agents to Managing Work
+Demo Goal
+This demo is not about:
+
+Better agents
+More agents
+Multi-agent orchestration
+Agent workforce management
+This demo proves a more fundamental shift:
+
+Today:
+Users manage agents.
+
+Tomorrow:
+Users manage work.
+Or:
+
+Today:
+Work belongs to Agents.
+
+Tomorrow:
+Agents belong to Work.
+Story Setup
+The entire demo revolves around a single Work:
+
+Fix Issue #4821
+This is intentional.
+
+We don't want the audience thinking about:
+
+Agents
+Sessions
+Tabs
+Models
+We want them thinking about:
+
+One Work
+because that is how humans naturally organize work.
+
+Scene 1: The Problem
+What the audience sees
+A terminal with multiple agent tabs:
+
+Tab 1
+Fix bug
+
+Tab 2
+Code review
+
+Tab 3
+Migration
+
+Tab 4
+Research
+The user has not touched the system for several days.
+
+Narration
+"Three days ago I was working with multiple agents."
+
+"Today I want to continue my work."
+
+The problem immediately appears:
+
+Which tab owns the bug?
+
+Which session contains the context?
+
+Which agent was working on it?
+
+What has already been done?
+
+What still remains?
+The user cannot answer.
+
+Because:
+
+Work is buried inside Agent sessions.
+Mental Model
+Today:
+
+Human
+  ↓
+Agent
+  ↓
+Work
+The user is forced to manage:
+
+Agents
+Sessions
+Tabs
+Context
+Instead of:
+
+Work
+Scene 2: Resume Work
+User Action
+The user types:
+
+Continue fixing issue #4821
+System Response
+Found Work
+
+Issue:
+#4821
+
+Repository:
+microsoft/foo
+
+Branch:
+fix-4821
+
+Status:
+Compatibility test failed
+
+Completed:
+✓ Reproduce issue
+✓ Implement fix
+✓ Unit tests
+
+Next Step:
+Investigate shell integration behavior
+Narration
+"I did not restore a session."
+
+"I did not search for a tab."
+
+"I did not choose an agent."
+
+"I resumed the Work."
+
+Key Message
+Don't resume the agent.
+
+Resume the work.
+Scene 3: Work State
+What the audience sees
+A Work Overview panel.
+
+Fix Issue #4821
+
+Completed
+✓ Reproduce issue
+
+✓ Implement fix
+
+✓ Unit tests
+
+Blocked
+× Compatibility test
+
+Pending
+• Documentation
+
+• Pull Request
+Narration
+"This status comes from evidence."
+
+"Not from an agent summary."
+
+"Not from a conversation title."
+
+"Not from a session."
+
+Key Message
+Agent finished
+≠
+Work finished
+Core Principle
+Verify outcomes,
+not agent claims.
+Scene 4: Branch Work
+User Action
+While fixing the issue, a new thought appears:
+
+Should we migrate to API v2?
+Current Session-Based World
+The user has two bad options.
+
+Option A
+Continue in the same session.
+
+Bug fix session
+
++
+Architecture discussion
+
++
+Migration planning
+The Work becomes polluted.
+
+Option B
+Create a new session.
+
+New agent
+
+New session
+
+Retell context
+
+Rebuild relationships
+The user becomes middleware.
+
+Work Model
+System offers:
+
+Create Related Work?
+New Structure
+
+Fix Issue #4821
+        │
+        │
+        ▼
+Investigate API v2 Migration
+Related Work receives:
+
+Repository context
+Relevant background
+Existing findings
+But has:
+
+Independent goal
+Independent session
+Independent lifecycle
+Narration
+"The question is related."
+
+"But it is not the same Work."
+
+"We branch the Work."
+
+"Not the conversation."
+
+Key Message
+Fork the work,
+not the conversation.
+Scene 5: Coordinate Work
+Situation
+The migration investigation needs information.
+
+Specifically:
+
+API v2 schema
+Request
+The Related Work creates a structured request.
+
+Need:
+API v2 Schema
+
+Reason:
+Migration evaluation
+
+Blocking:
+No
+
+Expected Result:
+Versioned schema
+
+Consumer:
+Migration investigation
+Response
+Schema Version:
+2.3
+
+Breaking Changes:
+3
+
+Compatibility Notes:
+Included
+
+Recommendation:
+Proceed with caution
+Narration
+"No transcript was copied."
+
+"No prompt was pasted."
+
+"No user was involved."
+
+"Work exchanged structured results."
+
+Key Message
+Share results,
+not transcripts.
+Scene 6: Attention
+Current Agent World
+Users constantly ask:
+
+Is Agent A done?
+
+Is Agent B stuck?
+
+Does Agent C need me?
+The user polls the system.
+
+Work World
+The system requests attention only when necessary.
+
+What the audience sees
+Work Needs Attention
+
+Compatibility test failed
+
+Decision Required
+
+Options
+
+A. Ignore
+
+B. Fix compatibility
+
+C. Roll back
+
+Recommended:
+B
+Narration
+"The Work explains."
+
+"What happened."
+
+"Why I am needed."
+
+"What my options are."
+
+"What the recommended path is."
+
+Key Message
+I manage decisions.
+
+Not agents.
+Core Principle
+Let work request attention.
+Scene 7: Budget and Scheduling
+Background Work
+Migration Investigation:
+
+Priority:
+Low
+
+Budget:
+20K tokens
+
+Max Concurrency:
+1
+What the audience sees
+Budget Reached
+
+Status:
+Paused
+
+Findings:
+Saved
+
+Remaining Work:
+Performance Validation
+
+Resume Condition:
+More budget available
+Narration
+"The system does not kill a session."
+
+"It pauses a Work."
+
+"It preserves progress."
+
+"It preserves findings."
+
+"It preserves intent."
+
+Key Message
+Allocate resources
+to outcomes,
+not sessions.
+Scene 8: Final View
+What the audience sees
+A Work Overview.
+
+No agents.
+
+No sessions.
+
+No tabs.
+
+Only Work.
+
+Fix Issue #4821
+
+Investigate API v2
+
+Prepare Documentation
+Each Work shows:
+
+Status
+
+Progress
+
+Blockers
+
+Decisions
+
+Deliverables
+
+Acceptance
+Final Architecture Slide
+Today
+Human
+  ↓
+Agent
+  ↓
+Work
+Users manage:
+
+Agents
+Sessions
+Tabs
+Context
+Work is hidden.
+
+Tomorrow
+Human
+  ↓
+Work
+  ↓
+Work Runtime
+  ↓
+Agents
+Sessions
+Tools
+Models
+Users manage:
+
+Work
+Agents become:
+
+Execution Resources
+Final Narration
+"For the last 40 years, Windows has managed processes."
+
+"It knows what is running."
+
+"But it does not know what the user is trying to accomplish."
+
+"In an agentic world, the next abstraction is not another agent."
+
+"It is Work."
+
+Today:
+Work belongs to Agents.
+Tomorrow:
+Agents belong to Work.
+Don't manage agents.
+
+Manage work.

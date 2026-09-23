@@ -1,0 +1,7 @@
+{
+  "goal": "Produce the human-approved decision report",
+  "prompt": "Please produce the human-approved decision report in C:\\Users\\kaitao\\codes\\intelligent-terminal\\test\\e2e\\selftests\\horizon and ask for the report details before writing.",
+  "projectId": "35746f99-7224-4adf-a395-a67ca3b5008b",
+  "projectName": "Horizon Decisions",
+  "root": "C:\\Users\\kaitao\\codes\\intelligent-terminal\\test\\e2e\\selftests\\horizon"
+}

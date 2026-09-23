@@ -272,10 +272,72 @@ system.model_unknown: "Неизвестная модель %{model} — введ
 # not an agent session; a work item may contain multiple tasks.
 agent_center.title: "Agent Center" # {Locked}
 agent_center.works: "Рабочие элементы"
+agent_center.demo_title: "Демонстрация истории рабочего элемента" # Title of an isolated scripted demonstration; the story fixture itself is English.
+agent_center.demo_notice: "Демонстрация по сценарию | Примеры свидетельств, имитация сеансов и использования токенов | Агенты не запускаются" # Always-visible disclosure; simulated data must not be confused with live agent execution.
+agent_center.demo_scene: "Сцена %{scene}/8" # %{scene} is the current scene number in the eight-scene story.
+agent_center.demo_next: "Далее: %{input}" # %{input} is the literal English story input, not a translated command.
+agent_center.demo_keys: "Enter: отправить | Tab: заполнить следующий ввод | PgUp/PgDn: прокрутка | Ctrl+Q: закрыть" # {Locked="Enter","Tab","PgUp/PgDn","Ctrl+Q"}
+agent_center.demo_reset: "Сбросить состояние демонстрации? Введите /reset confirm. Существующие рабочие элементы и параметры не изменятся." # {Locked="/reset confirm"} Resets only the isolated demo, never real work.
+agent_center.demo_saved: "Сохранена редакция %{revision}" # %{revision} is the persisted demo state revision.
+agent_center.demo_error: "Не удалось выполнить действие демонстрации: %{error}" # %{error} explains the rejected action; no state change is claimed.
+agent_center.tasks_title: "Задачи"
+agent_center.task_new: "Новая задача"
+agent_center.task_all: "Все задачи"
+agent_center.task_attention: "Требует внимания"
+agent_center.task_continue: "Продолжить задачу"
+# Messages waiting for this work's busy executor, excluding the currently running turn. {Locked="%{count}"}
+agent_center.task_queued_messages: "Сообщения в очереди: %{count}"
+# Explicit migration of an existing work from legacy orchestration to its own executing agent session.
+agent_center.task_claim_executor: "Подключить агента задачи"
+agent_center.task_claim_executor_confirm: "Передайте эту задачу её собственному агенту-исполнителю. Существующая переписка и результаты сохранятся, а прежнее планирование остановится. Если исходный сеанс выполнения невозможно восстановить, для запуска нового сеанса потребуется отдельное подтверждение."
+agent_center.task_open_tab: "Открыть во вкладке"
+agent_center.task_tab_unsupported: "Для открытия вкладки задачи требуется Intelligent Terminal." # {Locked="Intelligent Terminal"}
+agent_center.task_new_session: "Начать новый сеанс"
+agent_center.task_new_session_confirm: "Исходный сеанс агента невозможно возобновить. Начать новый сеанс с сохранённым контекстом этой задачи?"
+agent_center.task_keys: "Up/Down выбор · Enter открыть · F4 действия · F5 подробности" # {Locked="Up/Down","Enter","F4","F5"}
+agent_center.task_list_keys: "F2 задачи · F4 действия · F5 подробности" # {Locked="F2","F4","F5"}
+agent_center.task_state_running: "Выполняется"
+agent_center.task_state_waiting: "Ожидает вашего ответа"
+agent_center.task_state_paused: "Приостановлена"
+agent_center.task_state_recovery: "Требуется восстановление"
+agent_center.task_state_ready: "Готова к продолжению"
+agent_center.task_state_completed: "Завершена"
+agent_center.task_state_cancelled: "Отменена"
+agent_center.task_state_unavailable: "Сеанс недоступен"
+agent_center.task_updated: "Последняя активность: %{time}"
+agent_center.ui_overview: "Обзор"
+agent_center.chat_global: "Общая беседа" # Conversation with the non-executing master for new goals and cross-work coordination; each work has its own executor conversation.
+agent_center.chat_welcome: "Расскажите, чего вы хотите достичь, что организовать или узнать."
+agent_center.chat_keys: "Enter отправить · Shift+Enter новая строка · F4 действия · F5 подробности · F7 панель обзора" # {Locked="Enter","Shift+Enter","F4","F5","F7"}
+agent_center.chat_dashboard_keys: "F7 беседа · Esc беседа · F4 действия · F6 фокус на действиях" # Dashboard navigation preserves the global conversation and draft. {Locked="F7","Esc","F4","F6"}
+agent_center.chat_context_hint: "Подсказка контекста: %{context}" # %{context} is a readable work or project name, not a binding that limits the global conversation.
+agent_center.ui_attention: "Требует вашего внимания" # Heading for recorded requests, draft-start reviews, and delivery reviews; not a claim that every work needs attention.
+agent_center.ui_details: "Описание работы и ход выполнения" # Read-only details view containing the work agreement, recorded progress, evidence, and locations.
+agent_center.ui_new_goal: "Чего вы хотите достичь?"
+agent_center.ui_empty_attention: "Нет открытых запросов, требующих вашего ответа."
+agent_center.ui_no_works: "Рабочие элементы ещё не записаны. Для начала выберите настроенный проект."
+agent_center.ui_no_conversation: "Для этого рабочего элемента ещё нет записанных сообщений."
+agent_center.ui_role_you: "Вы" # Speaker heading for an actual recorded human message.
+agent_center.ui_role_assistant: "Помощник по работе" # Speaker heading for an actual recorded assistant message, not a provider name.
+agent_center.ui_role_service: "Служба" # Speaker heading for an actual recorded system or service message.
+agent_center.ui_role_unknown: "Записанное сообщение" # Speaker heading when the service does not identify a recognized message role.
+agent_center.ui_next: "Ответственность за следующий шаг"
+agent_center.ui_recorded_facts: "Зафиксированные сведения"
+agent_center.ui_last_known: "Последнее известное состояние · %{status}" # %{status} is a localized recorded status. Used when cached facts do not establish current execution.
+agent_center.ui_cached_facts: "Сведения из кэша; текущее выполнение не подтверждено."
+agent_center.ui_source_root: "Расположение исходных файлов проекта" # Configured source root, explicitly distinct from the actual managed execution directory.
+agent_center.ui_execution_root: "Расположение управляемого выполнения" # Actual execution directory reported by the service, never inferred from the project source root.
+agent_center.ui_location_unknown: "Сведения о расположении выполнения не поступали."
+agent_center.ui_composer: "Сообщение для: %{work}" # %{work} is the human-readable target of this independent draft.
+agent_center.ui_composer_new: "Новый рабочий элемент · %{project}" # %{project} is the configured project name, or an explicit project-selection warning.
+agent_center.ui_actions: "Действия с рабочим элементом"
+agent_center.ui_keys: "Enter отправить · Shift+Enter новая строка · F4 действия · F5 подробности · F6 фокус на действиях" # {Locked="Enter","Shift+Enter","F4","F5","F6"}
+agent_center.ui_actions_hint: "Up/Down выбор · Enter открыть · Esc к вводу" # Keyboard focus is on a visible action, not the text editor. {Locked="Up/Down","Enter","Esc"}
+agent_center.ui_details_hint: "F5 закрыть подробности · PgUp/PgDn чтение · Esc к вводу" # Read-only detail focus; returning to input preserves the draft and selection. {Locked="F5","PgUp/PgDn","Esc"}
 agent_center.activity: "Активность · Беседа"
-# %{work} and %{project} are identifiers of the selected work item and project.
+# %{work} and %{project} are human-readable labels for the selected work and configured project.
 agent_center.header: "Рабочий элемент: %{work} | Проект: %{project}"
-agent_center.welcome: "Выберите проект или укажите /project use <id>. Введите цель или /help." # {Locked="/project use","<id>","/help"}
+agent_center.welcome: "Нажмите F4, чтобы выбрать настроенный проект, затем введите, чего вы хотите достичь." # {Locked="F4"}
 agent_center.input_help: "Enter: отправить · Shift+Enter: новая строка · Tab: дополнить · F2: сменить рабочий элемент · Ctrl+C: выйти · PgUp/PgDn: чтение · Ctrl+End: последнее" # {Locked="Enter","Shift+Enter","Tab","F2","PgUp/PgDn","Ctrl+End","Ctrl+C"}
 agent_center.inbox_count: "Требует внимания: %{count}"
 agent_center.sending: "Отправка зафиксированного запроса…"
@@ -320,3 +382,84 @@ agent_center.missing_field: "Поле ответа отсутствует или
 agent_center.invalid_command_id: "--command-id должен быть UUID." # {Locked="--command-id","UUID"}
 agent_center.worker_stopped: "Соединение для запросов остановлено."
 agent_center.host_unavailable: "Для %{command} недоступен адаптер узла оболочки. Используйте клавиатурные действия узла."
+agent_center.console_home: "Новый рабочий элемент"
+agent_center.console_new: "Новый рабочий элемент / Главная"
+agent_center.console_new_hint: "Введите новую цель. Другие рабочие элементы продолжают выполняться независимо."
+agent_center.console_project_create_directory: "Создайте новый каталог и инициализируйте локальный репозиторий Git. Существующие файлы не будут перезаписаны." # {Locked="Git"}
+agent_center.console_projects: "Выберите настроенный проект"
+agent_center.console_projects_hint: "Выберите проект по имени и расположению. Здесь нет настроенных проектов? Попросите администратора настроить проект."
+agent_center.console_refresh: "Обновить текущие сведения"
+agent_center.console_open: "Открыть: %{work}"
+agent_center.console_return: "Вернуться к: %{work}"
+agent_center.console_respond: "Ответить: %{work} — %{question}"
+agent_center.console_unknown_work: "Сведения о рабочем элементе недоступны"
+agent_center.console_unknown_project: "Проект не выбран или недоступен"
+# Two works can have exactly the same goal and project. The numbered choice is explicit, never a fuzzy match. %{created} is the recorded creation time.
+agent_center.console_duplicate: "%{work} · отдельный рабочий элемент %{number} · %{created}"
+agent_center.console_start: "Проверить описание и одобрить запуск"
+agent_center.approval_title: "Требуется одобрение" # Title of an inline conversation card for a specific frozen human action.
+agent_center.approval_accept: "Одобрить" # Button that submits the exact reviewed action, not a chat message.
+agent_center.approval_start: "Одобрить и запустить" # Button approving the displayed work brief and execution grant.
+agent_center.approval_edit: "Изменить требования" # Return to the chat composer to describe changes; do not submit or approve the action.
+agent_center.approval_defer: "Не сейчас" # Defer review in this Console without cancelling the work or approving anything.
+agent_center.approval_open_hint: "F6 просмотреть предложение" # Opens the inline approval card without approving it. {Locked="F6"}
+agent_center.approval_keys: "Left/Right выбор · Enter выбрать · F5 подробности · Esc не сейчас" # Keyboard help while the inline approval card owns focus. {Locked="Left/Right","Enter","F5","Esc"}
+agent_center.approval_edit_hint: "Опишите изменения для %{target}. Ничего не одобрено." # %{target} is the displayed project or work name; the user's draft is preserved.
+agent_center.approval_deferred: "Рассмотрение %{target} отложено. Когда будете готовы, снова откройте предложение через F4." # Deferring is local presentation state, not cancellation of work. %{target} is a project or work name. {Locked="F4"}
+agent_center.console_pause: "Приостановить работу"
+agent_center.console_resume: "Возобновить работу"
+agent_center.console_cancel: "Отменить рабочий элемент"
+agent_center.console_inspect: "Просмотреть зафиксированный результат и проверить подтверждающие материалы (только чтение)"
+agent_center.console_read_evidence: "Прочитать подтверждающие материалы: %{work} — %{path}"
+agent_center.console_more_evidence: "Прочитать следующую страницу подтверждающих материалов: %{work}"
+agent_center.console_accept: "Принять просмотренный результат"
+agent_center.console_takeover: "Взять под своё управление управляемую рабочую область"
+agent_center.console_handback: "Вернуть управление рабочей областью"
+agent_center.console_apply: "Применить одобренное изменение"
+agent_center.console_action: "Просмотреть зафиксированное действие"
+agent_center.console_answer: "Ответ"
+agent_center.console_answer_review: "Записанный ответ для отправки:\n%{value}"
+agent_center.console_answer_invalid: "Введите допустимое значение для %{field}; проверьте обязательные варианты выбора и ограничения поля."
+agent_center.console_schema_unsupported: "В этом вопросе используется схема, которую простая форма не поддерживает. Ничего не отправлено; запросите более простой вопрос."
+agent_center.console_yes: "Да"
+agent_center.console_no: "Нет"
+agent_center.console_form_help: "Up/Down выбор поля · Left/Right выбор варианта · Enter следующее поле · Ctrl+Enter проверка ответа · Esc назад" # {Locked="Up/Down","Left/Right","Enter","Ctrl+Enter","Esc"}
+agent_center.console_menu_help: "F4 действия · Up/Down выбор · Enter открыть · Esc назад · F12 диагностика" # {Locked="F4","Up/Down","Enter","Esc","F12"}
+agent_center.console_hint: "F4 действия · F2 сменить рабочий элемент · F12 диагностика" # {Locked="F4","F2","F12"}
+agent_center.console_scope: "Включённая область работ"
+agent_center.console_exclusions: "За пределами этого рабочего элемента"
+agent_center.console_criteria: "Критерии приёмки и необходимые подтверждающие материалы"
+agent_center.console_delivery: "Результат работы"
+agent_center.console_delivery_code: "Локальный код в управляемой рабочей области"
+agent_center.console_delivery_report: "Зафиксированные файлы отчётов"
+agent_center.console_progress: "Ход выполнения задачи"
+agent_center.console_authority: "Запрашиваемые полномочия и ограничения выполнения"
+agent_center.console_capabilities: "Одобренные возможности выполнения"
+agent_center.console_data_scopes: "Расположения данных, доступных для чтения"
+agent_center.console_limits: "Ограничения ресурсов"
+agent_center.console_managed_writes: "Запись в рамках управляемых операций ограничена рабочей областью этого рабочего элемента. Это не является границей изоляции на уровне операционной системы для инструментов поставщика."
+agent_center.console_frozen: "Это подтверждение привязано к зафиксированным рабочему элементу, запросу, политике и версиям. Изменения требуют новой проверки; одобрение никогда не перенаправляется без уведомления."
+agent_center.console_stale: "Оперативные сведения устарели. Черновики сохранены. Восстановите соединение и обновите сведения, прежде чем одобрять или отправлять изменения; неизвестный исход не означает сбой или завершение."
+agent_center.console_diagnostics: "Диагностические сведения протокола (только чтение)"
+agent_center.console_no_details: "Нет текущих сведений о рабочем элементе. Нажмите F4, чтобы выбрать проект, открыть рабочий элемент или обновить сведения." # {Locked="F4"}
+agent_center.console_draft: "Черновик — не запущен"
+agent_center.console_active: "Активен — ещё не принят"
+agent_center.console_completed: "Завершён — приёмка человеком зафиксирована"
+agent_center.console_cancelled: "Отменён"
+agent_center.console_paused: "Приостановлен"
+agent_center.console_automatic: "Автоматическое продвижение"
+agent_center.console_running: "Выполняется"
+agent_center.console_pending: "Ожидает — не завершён"
+agent_center.console_verified: "Проверен / принят внутренней проверкой"
+agent_center.console_failed: "Сбой / отклонён — проверьте подтверждающие материалы"
+agent_center.console_waiting: "Ожидание ответа или зависимости"
+agent_center.console_unknown: "Неизвестно — обновите сведения или просмотрите диагностику"
+agent_center.console_resolved: "Ответ записан"
+agent_center.console_superseded: "Заменён — не является текущим результатом"
+agent_center.console_next_done: "Далее: используйте принятый результат; ожидающих одобрений больше нет."
+agent_center.console_next_cancelled: "Далее: автоматического продвижения нет; этот рабочий элемент отменён."
+agent_center.console_next_approve: "Далее: проверьте описание и одобрите именно этот запуск через F4." # {Locked="F4"}
+agent_center.console_next_accept: "Далее: просмотрите зафиксированный результат и подтверждающие материалы, затем явно примите его."
+agent_center.console_next_attention: "Далее: просмотрите оставшиеся вопросы этого рабочего элемента, требующие внимания, через F4." # {Locked="F4"}
+agent_center.console_next_resume: "Далее: решите, когда возобновить этот приостановленный рабочий элемент."
+agent_center.console_next_service: "Далее: служба продолжает выполнение одобренного плана. Это не окончательная приёмка."

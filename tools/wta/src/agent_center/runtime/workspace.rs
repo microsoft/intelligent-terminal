@@ -49,6 +49,69 @@ pub(super) async fn git(cwd: &Path, args: &[&str]) -> Result<String> {
         .to_owned())
 }
 
+pub(super) async fn create_project(params: &Value) -> Result<Value> {
+    let project = &params["project"];
+    let id = project["id"].as_str().context("project.id required")?;
+    Uuid::parse_str(id).context("project.id must be a UUID")?;
+    let root = project["root"]
+        .as_str()
+        .context("project.root required")?
+        .to_owned();
+    let requested_root = root.clone();
+    let (directory, _pins) = tokio::task::spawn_blocking(move || {
+        let approved = super::super::project_directory::resolve(&root, true)?;
+        if approved.as_os_str() != Path::new(&root).as_os_str() {
+            bail!("project.root must be the pre-approved canonical new-project target");
+        }
+        super::super::project_directory::create_pinned(&root)
+    })
+    .await
+    .context("new-project directory creation task failed; any partial directory remains for reconciliation")??;
+
+    let initialized: Result<Value> = async {
+        if directory.as_os_str() != Path::new(&requested_root).as_os_str() {
+            bail!("new project target changed from its pre-approved canonical spelling");
+        }
+        git(
+            &directory,
+            &["init", "--initial-branch=main", "--template=", "."],
+        )
+        .await
+        .context("initialize new project Git repository")?;
+        git(
+            &directory,
+            &[
+                "-c",
+                "user.name=Agent Center",
+                "-c",
+                "user.email=agent-center@localhost",
+                "commit",
+                "--allow-empty",
+                "--no-verify",
+                "--no-gpg-sign",
+                "-m",
+                "Initialize Agent Center project",
+            ],
+        )
+        .await
+        .context("create initial empty project commit")?;
+        let commit = git(&directory, &["rev-parse", "--verify", "HEAD^{commit}"])
+            .await
+            .context("verify initial project commit")?;
+        if !matches!(commit.len(), 40 | 64) || !commit.chars().all(|c| c.is_ascii_hexdigit()) {
+            bail!("new project Git repository returned an invalid initial commit ID");
+        }
+        Ok(json!({"projectId":id,"root":requested_root,"commitId":commit}))
+    }
+    .await;
+    initialized.with_context(|| {
+        format!(
+            "new project initialization failed; partial directory {} remains for reconciliation",
+            directory.display()
+        )
+    })
+}
+
 fn workspace_path(root: &Path, id: &str) -> Result<PathBuf> {
     Uuid::parse_str(id).context("managed workspace ID must be a UUID")?;
     Ok(root.join("workspaces").join(id))
@@ -210,6 +273,118 @@ pub(super) async fn capture_commit(root: &Path, workspace: &Path, source: &Value
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn new_project_initial_commit_supports_local_code_and_preserves_existing_paths() {
+        let root = std::env::current_dir()
+            .unwrap()
+            .join("target")
+            .join(format!("center-new-project-{}", Uuid::new_v4()));
+        tokio::fs::create_dir_all(&root).await.unwrap();
+        let source = root.canonicalize().unwrap().join("source");
+        let id = Uuid::new_v4().to_string();
+        assert!(
+            create_project(&json!({"project":{"id":"not-a-uuid","root":source}}))
+                .await
+                .is_err()
+        );
+        assert!(!source.exists());
+        assert!(
+            create_project(&json!({"project":{"id":id,"root":root.join("not-approved")}}))
+                .await
+                .is_err()
+        );
+        assert!(!root.join("not-approved").exists());
+        let params = json!({"project":{"id":id,"root":source}});
+        let created = create_project(&params).await.unwrap();
+        assert_eq!(created["projectId"], id);
+        assert_eq!(created["root"], json!(source));
+        assert_eq!(
+            created["commitId"],
+            git(&source, &["rev-parse", "--verify", "HEAD^{commit}"])
+                .await
+                .unwrap()
+        );
+        assert_eq!(
+            git(&source, &["symbolic-ref", "--short", "HEAD"])
+                .await
+                .unwrap(),
+            "main"
+        );
+        assert_eq!(
+            git(&source, &["show", "-s", "--format=%an <%ae>"])
+                .await
+                .unwrap(),
+            "Agent Center <agent-center@localhost>"
+        );
+        assert!(git(&source, &["ls-tree", "--name-only", "HEAD"])
+            .await
+            .unwrap()
+            .is_empty());
+        assert!(!source.join(".git").join("hooks").exists());
+        let config = tokio::fs::read(source.join(".git").join("config"))
+            .await
+            .unwrap();
+        tokio::fs::write(source.join("dirty.txt"), "uncommitted user work")
+            .await
+            .unwrap();
+        let duplicate = create_project(&params).await.unwrap_err();
+        assert!(duplicate.to_string().contains("already exists"));
+        assert_eq!(
+            tokio::fs::read_to_string(source.join("dirty.txt"))
+                .await
+                .unwrap(),
+            "uncommitted user work"
+        );
+        assert_eq!(
+            tokio::fs::read(source.join(".git").join("config"))
+                .await
+                .unwrap(),
+            config
+        );
+        let existing_file = root.canonicalize().unwrap().join("existing.txt");
+        tokio::fs::write(&existing_file, "existing file")
+            .await
+            .unwrap();
+        assert!(
+            create_project(&json!({"project":{"id":id,"root":existing_file}}))
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            tokio::fs::read_to_string(&existing_file).await.unwrap(),
+            "existing file"
+        );
+        let managed_id = Uuid::new_v4().to_string();
+        let workspace = create(
+            &root,
+            &json!({"workspaceId":managed_id,"sourceRoot":source,"kind":"LocalCode"}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(workspace["commitId"], created["commitId"]);
+        let managed_path = PathBuf::from(workspace["localRoot"].as_str().unwrap());
+        assert_eq!(
+            git(&managed_path, &["rev-parse", "--verify", "HEAD^{commit}"])
+                .await
+                .unwrap(),
+            created["commitId"].as_str().unwrap()
+        );
+        assert!(!managed_path.join("dirty.txt").exists());
+        git(
+            &source,
+            &[
+                "worktree",
+                "remove",
+                "--force",
+                &managed_path.to_string_lossy(),
+            ],
+        )
+        .await
+        .unwrap();
+        writable(&root);
+        tokio::fs::remove_dir_all(&root).await.unwrap();
+    }
 
     #[tokio::test]
     async fn managed_worktree_and_fixed_capture_preserve_user_checkout() {

@@ -1,7 +1,7 @@
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf, Prefix};
 use std::process::Stdio;
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncReadExt};
@@ -9,6 +9,66 @@ use tokio::process::{Child, Command};
 use tokio_util::sync::CancellationToken;
 
 const OUTPUT_LIMIT: usize = 8 * 1024 * 1024;
+
+fn working_directory_length(path: &Path) -> usize {
+    use std::os::windows::ffi::OsStrExt;
+
+    let prefix = match path.components().next() {
+        Some(Component::Prefix(prefix)) => match prefix.kind() {
+            Prefix::VerbatimDisk(_) => 4,
+            Prefix::VerbatimUNC(_, _) => 6,
+            _ => 0,
+        },
+        _ => 0,
+    };
+    path.as_os_str().encode_wide().count() - prefix
+}
+
+pub(super) async fn launch_directory(path: &Path) -> Result<PathBuf> {
+    let path = path.to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        use std::ffi::OsString;
+        use std::os::windows::ffi::{OsStrExt, OsStringExt};
+        use windows_sys::Win32::Storage::FileSystem::GetShortPathNameW;
+
+        let canonical = path
+            .canonicalize()
+            .context("resolve process working directory")?;
+        if working_directory_length(&canonical) < 259 {
+            return Ok(canonical);
+        }
+        // CreateProcess's cwd limit survives verbatim paths and longPathAware.
+        // Use only an existing spelling of the same directory, never a new location.
+        let input: Vec<u16> = canonical.as_os_str().encode_wide().chain(Some(0)).collect();
+        let mut output = vec![0u16; 32_768];
+        // SAFETY: input is NUL-terminated; output owns the advertised writable buffer.
+        let written =
+            unsafe { GetShortPathNameW(input.as_ptr(), output.as_mut_ptr(), output.len() as u32) };
+        if written == 0 {
+            return Err(std::io::Error::last_os_error())
+                .context("resolve existing short name for process working directory");
+        }
+        anyhow::ensure!(
+            (written as usize) < output.len(),
+            "process working directory short name exceeds the supported buffer"
+        );
+        let short = PathBuf::from(OsString::from_wide(&output[..written as usize]));
+        anyhow::ensure!(
+            working_directory_length(&short) < 259,
+            "Windows process working directory is too long and has no usable existing short name"
+        );
+        anyhow::ensure!(
+            short
+                .canonicalize()
+                .context("verify process working directory short name")?
+                == canonical,
+            "process working directory short name resolves to a different location"
+        );
+        Ok(short)
+    })
+    .await
+    .context("resolve process working directory task")?
+}
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -51,7 +111,7 @@ impl CommandOutcome {
     }
 }
 
-pub(super) fn command(executable: &str, cwd: &Path) -> Command {
+pub(super) fn command(executable: impl AsRef<std::ffi::OsStr>, cwd: &Path) -> Command {
     let mut command = Command::new(executable);
     command.env_clear();
     // Deliberate allowlist: never pass the parent invocation's bearer or provider tokens.
@@ -118,8 +178,35 @@ pub(super) async fn run(
     if !(1..=3600).contains(&recipe.timeout_seconds) {
         bail!("command timeout must be within 1..3600 seconds");
     }
-    let cwd = super::artifacts::resolve(workspace, &recipe.cwd_relative)?;
-    let mut process = command(&recipe.executable, &cwd);
+    let cwd =
+        launch_directory(&super::artifacts::resolve(workspace, &recipe.cwd_relative)?).await?;
+    // CreateProcess does not resolve extensionless npm/npx through PATHEXT.
+    // Resolve the declared program, then let Command quote its arguments; never
+    // interpolate a recipe into a shell command.
+    let search_path = recipe
+        .environment
+        .iter()
+        .find(|(key, _)| key.eq_ignore_ascii_case("PATH"))
+        .map(|(_, value)| std::ffi::OsString::from(value))
+        .or_else(|| std::env::var_os("PATH"));
+    let executable = match which::which_in(&recipe.executable, search_path, &cwd) {
+        Ok(executable) => executable,
+        Err(error) => {
+            return Ok(CommandOutcome {
+                exit_code: None,
+                timed_out: false,
+                cancelled: false,
+                stdout: String::new(),
+                stderr: String::new(),
+                output_truncated: false,
+                error: Some(format!(
+                    "Cannot resolve check executable {:?} in its configured PATH: {error}",
+                    recipe.executable
+                )),
+            });
+        }
+    };
+    let mut process = command(executable, &cwd);
     process.args(&recipe.args).envs(&recipe.environment);
     let mut child = match process.spawn() {
         Ok(child) => child,
@@ -178,6 +265,25 @@ pub(super) struct ProcessJob(std::os::windows::io::OwnedHandle);
 
 #[cfg(windows)]
 impl ProcessJob {
+    #[cfg(test)]
+    pub(super) fn contains(&self, process: &std::os::windows::io::OwnedHandle) -> Result<bool> {
+        use std::os::windows::io::AsRawHandle;
+        let mut contained = 0;
+        // SAFETY: both process and job handles remain owned for the duration of the query.
+        if unsafe {
+            windows_sys::Win32::System::JobObjects::IsProcessInJob(
+                process.as_raw_handle(),
+                self.0.as_raw_handle(),
+                &mut contained,
+            )
+        } == 0
+        {
+            return Err(std::io::Error::last_os_error())
+                .context("verify exact fixture process job membership");
+        }
+        Ok(contained != 0)
+    }
+
     pub fn attach(child: &Child) -> Result<Self> {
         use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
         use windows_sys::Win32::System::JobObjects::*;
@@ -222,35 +328,53 @@ impl ProcessJob {
     }
 
     pub async fn settle(&self) -> Result<()> {
-        use std::os::windows::io::AsRawHandle;
-        use windows_sys::Win32::System::JobObjects::*;
         for _ in 0..100 {
-            let mut info = JOBOBJECT_BASIC_ACCOUNTING_INFORMATION::default();
-            // The buffer type and size match the queried job information class.
-            if unsafe {
-                QueryInformationJobObject(
-                    self.0.as_raw_handle(),
-                    JobObjectBasicAccountingInformation,
-                    std::ptr::addr_of_mut!(info).cast(),
-                    std::mem::size_of_val(&info) as u32,
-                    std::ptr::null_mut(),
-                )
-            } == 0
-            {
-                return Err(std::io::Error::last_os_error()).context("query invocation settlement");
-            }
-            if info.ActiveProcesses == 0 {
+            if self.is_settled()? {
                 return Ok(());
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
         bail!("invocation descendants did not settle within five seconds")
     }
+
+    pub(super) fn is_settled(&self) -> Result<bool> {
+        use std::os::windows::io::AsRawHandle;
+        use windows_sys::Win32::System::JobObjects::*;
+        let mut info = JOBOBJECT_BASIC_ACCOUNTING_INFORMATION::default();
+        // The buffer type and size match the queried job information class.
+        if unsafe {
+            QueryInformationJobObject(
+                self.0.as_raw_handle(),
+                JobObjectBasicAccountingInformation,
+                std::ptr::addr_of_mut!(info).cast(),
+                std::mem::size_of_val(&info) as u32,
+                std::ptr::null_mut(),
+            )
+        } == 0
+        {
+            return Err(std::io::Error::last_os_error()).context("query invocation settlement");
+        }
+        Ok(info.ActiveProcesses == 0)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cwd_limit_counts_utf16_without_verbatim_prefixes() {
+        for (ordinary, verbatim) in [
+            (r"C:\folder", r"\\?\C:\folder"),
+            (r"\\server\share\folder", r"\\?\UNC\server\share\folder"),
+        ] {
+            assert_eq!(
+                working_directory_length(Path::new(ordinary)),
+                working_directory_length(Path::new(verbatim))
+            );
+        }
+        assert_eq!(working_directory_length(Path::new("C:\\\u{1f642}")), 5);
+    }
 
     fn recipe(script: &str, timeout_seconds: u64) -> Recipe {
         Recipe {
@@ -268,6 +392,40 @@ mod tests {
             environment_ref: "clean".into(),
             evidence_parser_id: "process-exit-v1".into(),
         }
+    }
+
+    #[tokio::test]
+    async fn native_check_resolves_cmd_shims_in_recipe_path() -> Result<()> {
+        let root = std::env::current_dir()?
+            .join("target")
+            .join(format!("center-command-path-{}", uuid::Uuid::new_v4()));
+        let bin = root.join("tools with spaces");
+        std::fs::create_dir_all(&bin)?;
+        std::fs::write(
+            bin.join("fixture-npm.cmd"),
+            "@echo off\r\necho %~1\r\nexit /b 7\r\n",
+        )?;
+        let result = async {
+            let mut recipe = recipe("", 30);
+            recipe.executable = "fixture-npm".into();
+            recipe.args = vec!["literal argument with spaces".into()];
+            recipe
+                .environment
+                .insert("Path".into(), bin.to_string_lossy().into_owned());
+            let outcome = run(&recipe, &root, CancellationToken::new()).await?;
+            assert_eq!(outcome.exit_code, Some(7), "{outcome:?}");
+            assert_eq!(outcome.disposition(), "Failed");
+            assert_eq!(outcome.stdout.trim(), "literal argument with spaces");
+            assert!(outcome.error.is_none());
+            recipe.executable = "fixture-missing".into();
+            let missing = run(&recipe, &root, CancellationToken::new()).await?;
+            assert_eq!(missing.disposition(), "Inconclusive");
+            assert!(missing.error.unwrap().contains("fixture-missing"));
+            Ok::<_, anyhow::Error>(())
+        }
+        .await;
+        std::fs::remove_dir_all(root)?;
+        result
     }
 
     #[tokio::test]

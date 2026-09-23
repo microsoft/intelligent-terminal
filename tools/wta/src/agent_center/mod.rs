@@ -3,7 +3,9 @@
 
 pub(crate) mod client;
 pub(crate) mod commands;
+pub(crate) mod demo;
 pub(crate) mod engine;
+mod project_directory;
 pub(crate) mod runtime;
 pub(crate) mod schemas;
 pub(crate) mod transport;

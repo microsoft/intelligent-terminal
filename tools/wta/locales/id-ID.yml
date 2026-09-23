@@ -272,10 +272,72 @@ system.model_unknown: "Model tidak dikenal %{model} — ketik /model untuk melih
 # not an agent session; a work item may contain multiple tasks.
 agent_center.title: "Agent Center" # {Locked}
 agent_center.works: "Item pekerjaan"
+agent_center.demo_title: "Demo kisah item pekerjaan" # Title of an isolated scripted demonstration; the story fixture itself is English.
+agent_center.demo_notice: "Demo dengan skenario tetap | Contoh bukti, simulasi sesi dan penggunaan token | Tidak ada agen yang dijalankan" # Always-visible disclosure; simulated data must not be confused with live agent execution.
+agent_center.demo_scene: "Adegan %{scene}/8" # %{scene} is the current scene number in the eight-scene story.
+agent_center.demo_next: "Berikutnya: %{input}" # %{input} is the literal English story input, not a translated command.
+agent_center.demo_keys: "Enter: kirim | Tab: isi input berikutnya | PgUp/PgDn: gulir | Ctrl+Q: tutup" # {Locked="Enter","Tab","PgUp/PgDn","Ctrl+Q"}
+agent_center.demo_reset: "Reset status demo? Ketik /reset confirm. Item pekerjaan dan pengaturan yang ada tidak terpengaruh." # {Locked="/reset confirm"} Resets only the isolated demo, never real work.
+agent_center.demo_saved: "Revisi %{revision} disimpan" # %{revision} is the persisted demo state revision.
+agent_center.demo_error: "Tindakan demo gagal: %{error}" # %{error} explains the rejected action; no state change is claimed.
+agent_center.tasks_title: "Tugas"
+agent_center.task_new: "Tugas baru"
+agent_center.task_all: "Semua tugas"
+agent_center.task_attention: "Perlu perhatian"
+agent_center.task_continue: "Lanjutkan tugas"
+# Messages waiting for this work's busy executor, excluding the currently running turn. {Locked="%{count}"}
+agent_center.task_queued_messages: "Pesan dalam antrean: %{count}"
+# Explicit migration of an existing work from legacy orchestration to its own executing agent session.
+agent_center.task_claim_executor: "Hubungkan ke agen tugas"
+agent_center.task_claim_executor_confirm: "Alihkan tugas ini ke agen pelaksananya sendiri. Percakapan dan hasil yang ada tetap disimpan, dan penjadwalan lama dihentikan. Jika sesi pelaksanaan semula tidak dapat dipulihkan, memulai sesi baru memerlukan konfirmasi terpisah."
+agent_center.task_open_tab: "Buka di tab"
+agent_center.task_tab_unsupported: "Intelligent Terminal diperlukan untuk membuka tab tugas." # {Locked="Intelligent Terminal"}
+agent_center.task_new_session: "Mulai sesi baru"
+agent_center.task_new_session_confirm: "Sesi agen AI semula tidak dapat dilanjutkan. Mulai sesi baru menggunakan konteks tersimpan dari tugas ini?"
+agent_center.task_keys: "Up/Down pilih · Enter buka · F4 tindakan · F5 detail" # {Locked="Up/Down","Enter","F4","F5"}
+agent_center.task_list_keys: "F2 tugas · F4 tindakan · F5 detail" # {Locked="F2","F4","F5"}
+agent_center.task_state_running: "Berjalan"
+agent_center.task_state_waiting: "Menunggu tanggapan Anda"
+agent_center.task_state_paused: "Dijeda"
+agent_center.task_state_recovery: "Perlu pemulihan"
+agent_center.task_state_ready: "Siap dilanjutkan"
+agent_center.task_state_completed: "Selesai"
+agent_center.task_state_cancelled: "Dibatalkan"
+agent_center.task_state_unavailable: "Sesi tidak tersedia"
+agent_center.task_updated: "Aktivitas terakhir: %{time}"
+agent_center.ui_overview: "Gambaran umum"
+agent_center.chat_global: "Percakapan bersama" # Conversation with the non-executing master for new goals and cross-work coordination; each work has its own executor conversation.
+agent_center.chat_welcome: "Beri tahu saya apa yang ingin Anda capai, atur, atau cari tahu."
+agent_center.chat_keys: "Enter kirim · Shift+Enter baris baru · F4 tindakan · F5 detail · F7 dasbor" # {Locked="Enter","Shift+Enter","F4","F5","F7"}
+agent_center.chat_dashboard_keys: "F7 percakapan · Esc percakapan · F4 tindakan · F6 fokus pada tindakan" # Dashboard navigation preserves the global conversation and draft. {Locked="F7","Esc","F4","F6"}
+agent_center.chat_context_hint: "Petunjuk konteks: %{context}" # %{context} is a readable work or project name, not a binding that limits the global conversation.
+agent_center.ui_attention: "Memerlukan perhatian Anda" # Heading for recorded requests, draft-start reviews, and delivery reviews; not a claim that every work needs attention.
+agent_center.ui_details: "Ringkasan dan kemajuan" # Read-only details view containing the work agreement, recorded progress, evidence, and locations.
+agent_center.ui_new_goal: "Apa yang ingin Anda capai?"
+agent_center.ui_empty_attention: "Tidak ada permintaan terbuka yang memerlukan tanggapan Anda."
+agent_center.ui_no_works: "Belum ada pekerjaan yang tercatat. Pilih proyek yang telah dikonfigurasi untuk memulai."
+agent_center.ui_no_conversation: "Belum ada pesan yang tercatat untuk pekerjaan ini."
+agent_center.ui_role_you: "Anda" # Speaker heading for an actual recorded human message.
+agent_center.ui_role_assistant: "Asisten pekerjaan" # Speaker heading for an actual recorded assistant message, not a provider name.
+agent_center.ui_role_service: "Layanan" # Speaker heading for an actual recorded system or service message.
+agent_center.ui_role_unknown: "Pesan tercatat" # Speaker heading when the service does not identify a recognized message role.
+agent_center.ui_next: "Tanggung jawab berikutnya"
+agent_center.ui_recorded_facts: "Fakta tercatat"
+agent_center.ui_last_known: "Status terakhir yang diketahui · %{status}" # %{status} is a localized recorded status. Used when cached facts do not establish current execution.
+agent_center.ui_cached_facts: "Fakta dalam cache; eksekusi saat ini belum dikonfirmasi."
+agent_center.ui_source_root: "Lokasi sumber proyek" # Configured source root, explicitly distinct from the actual managed execution directory.
+agent_center.ui_execution_root: "Lokasi eksekusi terkelola" # Actual execution directory reported by the service, never inferred from the project source root.
+agent_center.ui_location_unknown: "Belum ada lokasi eksekusi yang dilaporkan."
+agent_center.ui_composer: "Pesan untuk: %{work}" # %{work} is the human-readable target of this independent draft.
+agent_center.ui_composer_new: "Pekerjaan baru · %{project}" # %{project} is the configured project name, or an explicit project-selection warning.
+agent_center.ui_actions: "Tindakan pekerjaan"
+agent_center.ui_keys: "Enter kirim · Shift+Enter baris baru · F4 tindakan · F5 detail · F6 fokus pada tindakan" # {Locked="Enter","Shift+Enter","F4","F5","F6"}
+agent_center.ui_actions_hint: "Up/Down pilih · Enter buka · Esc kembali ke input" # Keyboard focus is on a visible action, not the text editor. {Locked="Up/Down","Enter","Esc"}
+agent_center.ui_details_hint: "F5 tutup detail · PgUp/PgDn baca · Esc kembali ke input" # Read-only detail focus; returning to input preserves the draft and selection. {Locked="F5","PgUp/PgDn","Esc"}
 agent_center.activity: "Aktivitas · Percakapan"
-# %{work} and %{project} are identifiers of the selected work item and project.
+# %{work} and %{project} are human-readable labels for the selected work and configured project.
 agent_center.header: "Item pekerjaan: %{work} | Proyek: %{project}"
-agent_center.welcome: "Pilih proyek atau tentukan /project use <id>. Ketik tujuan atau /help." # {Locked="/project use","<id>","/help"}
+agent_center.welcome: "Tekan F4 untuk memilih proyek yang telah dikonfigurasi, lalu masukkan apa yang ingin Anda capai." # {Locked="F4"}
 agent_center.input_help: "Enter: kirim · Shift+Enter: baris baru · Tab: lengkapi · F2: ganti item pekerjaan · Ctrl+C: keluar · PgUp/PgDn: baca · Ctrl+End: terbaru" # {Locked="Enter","Shift+Enter","Tab","F2","PgUp/PgDn","Ctrl+End","Ctrl+C"}
 agent_center.inbox_count: "Perlu perhatian: %{count}"
 agent_center.sending: "Mengirim permintaan yang direkam…"
@@ -320,3 +382,84 @@ agent_center.missing_field: "Kolom respons tidak ada atau tidak valid: %{field}"
 agent_center.invalid_command_id: "--command-id harus berupa UUID." # {Locked="--command-id","UUID"}
 agent_center.worker_stopped: "Koneksi permintaan telah berhenti."
 agent_center.host_unavailable: "Tidak ada adaptor host shell yang tersedia untuk %{command}. Gunakan tindakan keyboard host."
+agent_center.console_home: "Pekerjaan baru"
+agent_center.console_new: "Pekerjaan baru / Beranda"
+agent_center.console_new_hint: "Masukkan tujuan baru. Pekerjaan lain tetap berjalan secara mandiri."
+agent_center.console_project_create_directory: "Buat direktori baru dan inisialisasi repositori Git lokal. File yang sudah ada tidak akan ditimpa." # {Locked="Git"}
+agent_center.console_projects: "Pilih proyek yang telah dikonfigurasi"
+agent_center.console_projects_hint: "Pilih proyek berdasarkan nama dan lokasinya. Belum ada proyek yang dikonfigurasi di sini? Minta administrator Anda untuk mengonfigurasinya."
+agent_center.console_refresh: "Segarkan fakta terkini"
+agent_center.console_open: "Buka: %{work}"
+agent_center.console_return: "Kembali ke: %{work}"
+agent_center.console_respond: "Tanggapi: %{work} — %{question}"
+agent_center.console_unknown_work: "Detail pekerjaan tidak tersedia"
+agent_center.console_unknown_project: "Proyek belum dipilih atau tidak tersedia"
+# Two works can have exactly the same goal and project. The numbered choice is explicit, never a fuzzy match. %{created} is the recorded creation time.
+agent_center.console_duplicate: "%{work} · pekerjaan terpisah %{number} · %{created}"
+agent_center.console_start: "Tinjau ringkasan dan setujui dimulainya pekerjaan"
+agent_center.approval_title: "Persetujuan diperlukan" # Title of an inline conversation card for a specific frozen human action.
+agent_center.approval_accept: "Setujui" # Button that submits the exact reviewed action, not a chat message.
+agent_center.approval_start: "Setujui dan mulai" # Button approving the displayed work brief and execution grant.
+agent_center.approval_edit: "Ubah persyaratan" # Return to the chat composer to describe changes; do not submit or approve the action.
+agent_center.approval_defer: "Jangan sekarang" # Defer review in this Console without cancelling the work or approving anything.
+agent_center.approval_open_hint: "F6 tinjau usulan" # Opens the inline approval card without approving it. {Locked="F6"}
+agent_center.approval_keys: "Left/Right pilih · Enter tetapkan pilihan · F5 detail · Esc jangan sekarang" # Keyboard help while the inline approval card owns focus. {Locked="Left/Right","Enter","F5","Esc"}
+agent_center.approval_edit_hint: "Jelaskan perubahan untuk %{target}. Belum ada yang disetujui." # %{target} is the displayed project or work name; the user's draft is preserved.
+agent_center.approval_deferred: "Peninjauan %{target} ditunda. Buka kembali usulan dengan F4 saat Anda siap." # Deferring is local presentation state, not cancellation of work. %{target} is a project or work name. {Locked="F4"}
+agent_center.console_pause: "Jeda pekerjaan"
+agent_center.console_resume: "Lanjutkan pekerjaan"
+agent_center.console_cancel: "Batalkan pekerjaan"
+agent_center.console_inspect: "Periksa hasil penyerahan yang telah ditetapkan dan periksa bukti (baca-saja)"
+agent_center.console_read_evidence: "Baca bukti: %{work} — %{path}"
+agent_center.console_more_evidence: "Baca halaman bukti berikutnya: %{work}"
+agent_center.console_accept: "Terima hasil penyerahan yang telah diperiksa"
+agent_center.console_takeover: "Ambil alih ruang kerja terkelola"
+agent_center.console_handback: "Serahkan kembali ruang kerja terkelola"
+agent_center.console_apply: "Terapkan perubahan yang disetujui"
+agent_center.console_action: "Tinjau tindakan yang direkam"
+agent_center.console_answer: "Jawaban"
+agent_center.console_answer_review: "Jawaban tercatat untuk dikirim:\n%{value}"
+agent_center.console_answer_invalid: "Masukkan nilai yang valid untuk %{field}; tinjau pilihan wajib dan batas bidang tersebut."
+agent_center.console_schema_unsupported: "Pertanyaan ini menggunakan skema yang tidak didukung formulir sederhana. Tidak ada yang dikirim; mintalah pertanyaan yang lebih sederhana."
+agent_center.console_yes: "Ya"
+agent_center.console_no: "Tidak"
+agent_center.console_form_help: "Up/Down pilih bidang · Left/Right pilih opsi · Enter bidang berikutnya · Ctrl+Enter tinjau jawaban · Esc kembali" # {Locked="Up/Down","Left/Right","Enter","Ctrl+Enter","Esc"}
+agent_center.console_menu_help: "F4 tindakan · Up/Down pilih · Enter buka · Esc kembali · F12 diagnostik" # {Locked="F4","Up/Down","Enter","Esc","F12"}
+agent_center.console_hint: "F4 tindakan · F2 beralih pekerjaan · F12 diagnostik" # {Locked="F4","F2","F12"}
+agent_center.console_scope: "Cakupan yang disertakan"
+agent_center.console_exclusions: "Di luar pekerjaan ini"
+agent_center.console_criteria: "Kriteria penerimaan dan bukti yang diperlukan"
+agent_center.console_delivery: "Hasil penyerahan"
+agent_center.console_delivery_code: "Kode lokal di ruang kerja terkelola"
+agent_center.console_delivery_report: "File laporan yang direkam"
+agent_center.console_progress: "Kemajuan tugas"
+agent_center.console_authority: "Wewenang yang diminta dan batas eksekusi"
+agent_center.console_capabilities: "Kemampuan eksekusi yang disetujui"
+agent_center.console_data_scopes: "Lokasi data yang dapat dibaca"
+agent_center.console_limits: "Batas sumber daya"
+agent_center.console_managed_writes: "Penulisan oleh operasi terkelola dibatasi pada ruang kerja pekerjaan ini. Ini bukan batas isolasi sistem operasi bagi alat milik penyedia."
+agent_center.console_frozen: "Konfirmasi ini mengikat pekerjaan, permintaan, kebijakan, dan revisi yang direkam. Perubahan memerlukan peninjauan baru; persetujuan tidak pernah dialihkan ke target lain secara diam-diam."
+agent_center.console_stale: "Fakta langsung sudah usang. Draf tetap aman. Sambungkan kembali dan segarkan sebelum menyetujui atau mengirim perubahan; hasil yang tidak diketahui bukan kegagalan maupun penyelesaian."
+agent_center.console_diagnostics: "Detail protokol diagnostik (baca-saja)"
+agent_center.console_no_details: "Tidak ada detail pekerjaan terkini. Gunakan F4 untuk memilih proyek, membuka pekerjaan, atau menyegarkan." # {Locked="F4"}
+agent_center.console_draft: "Draf — belum dimulai"
+agent_center.console_active: "Aktif — belum diterima"
+agent_center.console_completed: "Selesai — penerimaan oleh manusia tercatat"
+agent_center.console_cancelled: "Dibatalkan"
+agent_center.console_paused: "Dijeda"
+agent_center.console_automatic: "Kemajuan otomatis"
+agent_center.console_running: "Berjalan"
+agent_center.console_pending: "Tertunda — belum selesai"
+agent_center.console_verified: "Terverifikasi / diterima secara internal"
+agent_center.console_failed: "Gagal / ditolak — periksa bukti"
+agent_center.console_waiting: "Menunggu tanggapan atau dependensi"
+agent_center.console_unknown: "Tidak diketahui — segarkan atau periksa diagnostik"
+agent_center.console_resolved: "Tanggapan tercatat"
+agent_center.console_superseded: "Digantikan — bukan hasil penyerahan saat ini"
+agent_center.console_next_done: "Berikutnya: gunakan hasil penyerahan yang diterima; tidak ada persetujuan lain yang tertunda."
+agent_center.console_next_cancelled: "Berikutnya: tidak ada kemajuan otomatis; pekerjaan ini dibatalkan."
+agent_center.console_next_approve: "Berikutnya: Anda meninjau ringkasan dan menyetujui dimulainya pekerjaan secara tepat dari F4." # {Locked="F4"}
+agent_center.console_next_accept: "Berikutnya: Anda memeriksa hasil penyerahan yang telah ditetapkan dan buktinya, lalu menerimanya secara eksplisit."
+agent_center.console_next_attention: "Berikutnya: tinjau item pekerjaan ini yang masih memerlukan perhatian dari F4." # {Locked="F4"}
+agent_center.console_next_resume: "Berikutnya: Anda memutuskan kapan melanjutkan pekerjaan yang dijeda ini."
+agent_center.console_next_service: "Berikutnya: layanan memajukan rencana yang disetujui. Ini bukan penerimaan akhir."

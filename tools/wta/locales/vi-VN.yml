@@ -272,10 +272,72 @@ system.model_unknown: "Mô hình không xác định %{model} — nhập /model 
 # not an agent session; a work item may contain multiple tasks.
 agent_center.title: "Agent Center" # {Locked}
 agent_center.works: "Mục công việc"
+agent_center.demo_title: "Bản minh họa câu chuyện về mục công việc" # Title of an isolated scripted demonstration; the story fixture itself is English.
+agent_center.demo_notice: "Bản minh họa theo kịch bản | Bằng chứng mẫu, phiên và mức sử dụng token mô phỏng | Không khởi chạy tác tử nào" # Always-visible disclosure; simulated data must not be confused with live agent execution.
+agent_center.demo_scene: "Cảnh %{scene}/8" # %{scene} is the current scene number in the eight-scene story.
+agent_center.demo_next: "Tiếp theo: %{input}" # %{input} is the literal English story input, not a translated command.
+agent_center.demo_keys: "Enter: gửi | Tab: điền nội dung nhập tiếp theo | PgUp/PgDn: cuộn | Ctrl+Q: đóng" # {Locked="Enter","Tab","PgUp/PgDn","Ctrl+Q"}
+agent_center.demo_reset: "Đặt lại trạng thái bản minh họa? Nhập /reset confirm. Các mục công việc và cài đặt hiện có không bị ảnh hưởng." # {Locked="/reset confirm"} Resets only the isolated demo, never real work.
+agent_center.demo_saved: "Đã lưu bản sửa đổi %{revision}" # %{revision} is the persisted demo state revision.
+agent_center.demo_error: "Thao tác minh họa thất bại: %{error}" # %{error} explains the rejected action; no state change is claimed.
+agent_center.tasks_title: "Nhiệm vụ"
+agent_center.task_new: "Nhiệm vụ mới"
+agent_center.task_all: "Tất cả nhiệm vụ"
+agent_center.task_attention: "Cần chú ý"
+agent_center.task_continue: "Tiếp tục nhiệm vụ"
+# Messages waiting for this work's busy executor, excluding the currently running turn. {Locked="%{count}"}
+agent_center.task_queued_messages: "Tin nhắn trong hàng đợi: %{count}"
+# Explicit migration of an existing work from legacy orchestration to its own executing agent session.
+agent_center.task_claim_executor: "Liên kết với tác nhân của nhiệm vụ"
+agent_center.task_claim_executor_confirm: "Chuyển nhiệm vụ này sang tác nhân thực thi riêng của nó. Cuộc trò chuyện và kết quả hiện có được giữ lại, đồng thời việc lập lịch cũ sẽ dừng. Nếu không thể khôi phục phiên thực thi ban đầu, việc bắt đầu phiên mới cần được xác nhận riêng."
+agent_center.task_open_tab: "Mở trong tab"
+agent_center.task_tab_unsupported: "Cần có Intelligent Terminal để mở tab nhiệm vụ." # {Locked="Intelligent Terminal"}
+agent_center.task_new_session: "Bắt đầu phiên mới"
+agent_center.task_new_session_confirm: "Không thể tiếp tục phiên tác nhân AI ban đầu. Bạn có muốn bắt đầu phiên mới bằng ngữ cảnh đã lưu của nhiệm vụ này không?"
+agent_center.task_keys: "Up/Down chọn · Enter mở · F4 hành động · F5 chi tiết" # {Locked="Up/Down","Enter","F4","F5"}
+agent_center.task_list_keys: "F2 nhiệm vụ · F4 hành động · F5 chi tiết" # {Locked="F2","F4","F5"}
+agent_center.task_state_running: "Đang chạy"
+agent_center.task_state_waiting: "Đang chờ phản hồi của bạn"
+agent_center.task_state_paused: "Đã tạm dừng"
+agent_center.task_state_recovery: "Cần khôi phục"
+agent_center.task_state_ready: "Sẵn sàng tiếp tục"
+agent_center.task_state_completed: "Đã hoàn tất"
+agent_center.task_state_cancelled: "Đã hủy"
+agent_center.task_state_unavailable: "Phiên không khả dụng"
+agent_center.task_updated: "Hoạt động gần nhất: %{time}"
+agent_center.ui_overview: "Tổng quan"
+agent_center.chat_global: "Hội thoại chung" # Conversation with the non-executing master for new goals and cross-work coordination; each work has its own executor conversation.
+agent_center.chat_welcome: "Hãy cho tôi biết bạn muốn đạt được, sắp xếp hoặc tìm hiểu điều gì."
+agent_center.chat_keys: "Enter gửi · Shift+Enter xuống dòng · F4 hành động · F5 chi tiết · F7 bảng tổng quan" # {Locked="Enter","Shift+Enter","F4","F5","F7"}
+agent_center.chat_dashboard_keys: "F7 hội thoại · Esc hội thoại · F4 hành động · F6 chuyển tiêu điểm sang hành động" # Dashboard navigation preserves the global conversation and draft. {Locked="F7","Esc","F4","F6"}
+agent_center.chat_context_hint: "Gợi ý ngữ cảnh: %{context}" # %{context} is a readable work or project name, not a binding that limits the global conversation.
+agent_center.ui_attention: "Cần bạn chú ý" # Heading for recorded requests, draft-start reviews, and delivery reviews; not a claim that every work needs attention.
+agent_center.ui_details: "Bản mô tả công việc và tiến độ" # Read-only details view containing the work agreement, recorded progress, evidence, and locations.
+agent_center.ui_new_goal: "Bạn muốn đạt được điều gì?"
+agent_center.ui_empty_attention: "Không có yêu cầu đang mở nào cần bạn phản hồi."
+agent_center.ui_no_works: "Chưa ghi nhận mục công việc nào. Chọn dự án đã cấu hình để bắt đầu."
+agent_center.ui_no_conversation: "Chưa ghi nhận tin nhắn nào cho mục công việc này."
+agent_center.ui_role_you: "Bạn" # Speaker heading for an actual recorded human message.
+agent_center.ui_role_assistant: "Trợ lý công việc" # Speaker heading for an actual recorded assistant message, not a provider name.
+agent_center.ui_role_service: "Dịch vụ" # Speaker heading for an actual recorded system or service message.
+agent_center.ui_role_unknown: "Tin nhắn đã ghi nhận" # Speaker heading when the service does not identify a recognized message role.
+agent_center.ui_next: "Trách nhiệm ở bước tiếp theo"
+agent_center.ui_recorded_facts: "Thông tin đã ghi nhận"
+agent_center.ui_last_known: "Trạng thái gần nhất đã biết · %{status}" # %{status} is a localized recorded status. Used when cached facts do not establish current execution.
+agent_center.ui_cached_facts: "Thông tin được lưu trong bộ nhớ đệm; chưa xác nhận việc thực thi hiện tại."
+agent_center.ui_source_root: "Vị trí tệp nguồn của dự án" # Configured source root, explicitly distinct from the actual managed execution directory.
+agent_center.ui_execution_root: "Vị trí thực thi được quản lý" # Actual execution directory reported by the service, never inferred from the project source root.
+agent_center.ui_location_unknown: "Chưa có vị trí thực thi nào được báo cáo."
+agent_center.ui_composer: "Tin nhắn cho: %{work}" # %{work} is the human-readable target of this independent draft.
+agent_center.ui_composer_new: "Mục công việc mới · %{project}" # %{project} is the configured project name, or an explicit project-selection warning.
+agent_center.ui_actions: "Hành động của mục công việc"
+agent_center.ui_keys: "Enter gửi · Shift+Enter xuống dòng · F4 hành động · F5 chi tiết · F6 chuyển tiêu điểm sang hành động" # {Locked="Enter","Shift+Enter","F4","F5","F6"}
+agent_center.ui_actions_hint: "Up/Down chọn · Enter mở · Esc trở về nhập liệu" # Keyboard focus is on a visible action, not the text editor. {Locked="Up/Down","Enter","Esc"}
+agent_center.ui_details_hint: "F5 đóng chi tiết · PgUp/PgDn đọc · Esc trở về nhập liệu" # Read-only detail focus; returning to input preserves the draft and selection. {Locked="F5","PgUp/PgDn","Esc"}
 agent_center.activity: "Hoạt động · Hội thoại"
-# %{work} and %{project} are identifiers of the selected work item and project.
+# %{work} and %{project} are human-readable labels for the selected work and configured project.
 agent_center.header: "Mục công việc: %{work} | Dự án: %{project}"
-agent_center.welcome: "Chọn một dự án hoặc chỉ định /project use <id>. Nhập mục tiêu hoặc /help." # {Locked="/project use","<id>","/help"}
+agent_center.welcome: "Nhấn F4 để chọn dự án đã cấu hình, rồi nhập điều bạn muốn đạt được." # {Locked="F4"}
 agent_center.input_help: "Enter: gửi · Shift+Enter: xuống dòng · Tab: hoàn thành tự động · F2: chuyển mục công việc · Ctrl+C: thoát · PgUp/PgDn: đọc · Ctrl+End: mới nhất" # {Locked="Enter","Shift+Enter","Tab","F2","PgUp/PgDn","Ctrl+End","Ctrl+C"}
 agent_center.inbox_count: "Cần chú ý: %{count}"
 agent_center.sending: "Đang gửi yêu cầu đã ghi lại…"
@@ -320,3 +382,84 @@ agent_center.missing_field: "Trường phản hồi bị thiếu hoặc không h
 agent_center.invalid_command_id: "--command-id phải là UUID." # {Locked="--command-id","UUID"}
 agent_center.worker_stopped: "Kết nối yêu cầu đã dừng."
 agent_center.host_unavailable: "Không có bộ điều hợp máy chủ shell cho %{command}. Hãy dùng các thao tác bàn phím của máy chủ."
+agent_center.console_home: "Mục công việc mới"
+agent_center.console_new: "Mục công việc mới / Trang chủ"
+agent_center.console_new_hint: "Nhập mục tiêu mới. Các mục công việc khác tiếp tục độc lập."
+agent_center.console_project_create_directory: "Tạo thư mục mới và khởi tạo kho lưu trữ Git cục bộ. Các tệp hiện có sẽ không bị ghi đè." # {Locked="Git"}
+agent_center.console_projects: "Chọn dự án đã cấu hình"
+agent_center.console_projects_hint: "Chọn dự án theo tên và vị trí. Chưa có dự án nào được cấu hình ở đây? Hãy nhờ quản trị viên cấu hình một dự án."
+agent_center.console_refresh: "Làm mới thông tin hiện tại"
+agent_center.console_open: "Mở: %{work}"
+agent_center.console_return: "Quay lại: %{work}"
+agent_center.console_respond: "Phản hồi: %{work} — %{question}"
+agent_center.console_unknown_work: "Không có thông tin chi tiết về mục công việc"
+agent_center.console_unknown_project: "Chưa chọn dự án hoặc dự án không khả dụng"
+# Two works can have exactly the same goal and project. The numbered choice is explicit, never a fuzzy match. %{created} is the recorded creation time.
+agent_center.console_duplicate: "%{work} · mục công việc riêng biệt %{number} · %{created}"
+agent_center.console_start: "Xem xét bản mô tả công việc và phê duyệt việc bắt đầu"
+agent_center.approval_title: "Cần phê duyệt" # Title of an inline conversation card for a specific frozen human action.
+agent_center.approval_accept: "Phê duyệt" # Button that submits the exact reviewed action, not a chat message.
+agent_center.approval_start: "Phê duyệt và bắt đầu" # Button approving the displayed work brief and execution grant.
+agent_center.approval_edit: "Thay đổi yêu cầu" # Return to the chat composer to describe changes; do not submit or approve the action.
+agent_center.approval_defer: "Không phải bây giờ" # Defer review in this Console without cancelling the work or approving anything.
+agent_center.approval_open_hint: "F6 xem xét đề xuất" # Opens the inline approval card without approving it. {Locked="F6"}
+agent_center.approval_keys: "Left/Right chọn · Enter xác nhận lựa chọn · F5 chi tiết · Esc không phải bây giờ" # Keyboard help while the inline approval card owns focus. {Locked="Left/Right","Enter","F5","Esc"}
+agent_center.approval_edit_hint: "Mô tả các thay đổi cho %{target}. Chưa có gì được phê duyệt." # %{target} is the displayed project or work name; the user's draft is preserved.
+agent_center.approval_deferred: "Đã hoãn việc xem xét %{target}. Mở lại đề xuất qua F4 khi bạn sẵn sàng." # Deferring is local presentation state, not cancellation of work. %{target} is a project or work name. {Locked="F4"}
+agent_center.console_pause: "Tạm dừng công việc"
+agent_center.console_resume: "Tiếp tục công việc"
+agent_center.console_cancel: "Hủy mục công việc"
+agent_center.console_inspect: "Kiểm tra bản bàn giao đã chốt và bằng chứng (chỉ đọc)"
+agent_center.console_read_evidence: "Đọc bằng chứng: %{work} — %{path}"
+agent_center.console_more_evidence: "Đọc trang bằng chứng tiếp theo: %{work}"
+agent_center.console_accept: "Chấp nhận bản bàn giao đã kiểm tra"
+agent_center.console_takeover: "Tiếp quản không gian làm việc được quản lý"
+agent_center.console_handback: "Bàn giao lại không gian làm việc được quản lý"
+agent_center.console_apply: "Áp dụng thay đổi đã phê duyệt"
+agent_center.console_action: "Xem xét hành động đã ghi lại"
+agent_center.console_answer: "Câu trả lời"
+agent_center.console_answer_review: "Câu trả lời đã ghi lại để gửi:\n%{value}"
+agent_center.console_answer_invalid: "Nhập giá trị hợp lệ cho %{field}; xem lại các lựa chọn bắt buộc và giới hạn của trường."
+agent_center.console_schema_unsupported: "Câu hỏi này dùng lược đồ mà biểu mẫu đơn giản không hỗ trợ. Chưa gửi nội dung nào; hãy yêu cầu câu hỏi đơn giản hơn."
+agent_center.console_yes: "Có"
+agent_center.console_no: "Không"
+agent_center.console_form_help: "Up/Down chọn trường · Left/Right chọn tùy chọn · Enter trường tiếp theo · Ctrl+Enter xem lại câu trả lời · Esc quay lại" # {Locked="Up/Down","Left/Right","Enter","Ctrl+Enter","Esc"}
+agent_center.console_menu_help: "F4 hành động · Up/Down chọn · Enter mở · Esc quay lại · F12 chẩn đoán" # {Locked="F4","Up/Down","Enter","Esc","F12"}
+agent_center.console_hint: "F4 hành động · F2 chuyển mục công việc · F12 chẩn đoán" # {Locked="F4","F2","F12"}
+agent_center.console_scope: "Phạm vi bao gồm"
+agent_center.console_exclusions: "Ngoài mục công việc này"
+agent_center.console_criteria: "Tiêu chí nghiệm thu và bằng chứng bắt buộc"
+agent_center.console_delivery: "Bản bàn giao"
+agent_center.console_delivery_code: "Mã cục bộ trong không gian làm việc được quản lý"
+agent_center.console_delivery_report: "Các tệp báo cáo đã ghi lại"
+agent_center.console_progress: "Tiến độ tác vụ"
+agent_center.console_authority: "Quyền hạn được yêu cầu và giới hạn thực thi"
+agent_center.console_capabilities: "Các khả năng thực thi đã phê duyệt"
+agent_center.console_data_scopes: "Các vị trí dữ liệu có thể đọc"
+agent_center.console_limits: "Giới hạn tài nguyên"
+agent_center.console_managed_writes: "Các thao tác ghi trong những hoạt động được quản lý có phạm vi giới hạn trong không gian làm việc của mục công việc này. Đây không phải là ranh giới cách ly ở cấp hệ điều hành đối với công cụ thuộc sở hữu nhà cung cấp."
+agent_center.console_frozen: "Xác nhận này gắn với mục công việc, yêu cầu, chính sách và các bản sửa đổi đã ghi lại. Thay đổi cần được xem xét lại; việc phê duyệt không bao giờ âm thầm chuyển sang đích khác."
+agent_center.console_stale: "Thông tin trực tiếp đã lỗi thời. Bản nháp vẫn an toàn. Hãy kết nối lại và làm mới trước khi phê duyệt hoặc gửi thay đổi; kết quả chưa biết không có nghĩa là thất bại hay hoàn tất."
+agent_center.console_diagnostics: "Chi tiết chẩn đoán giao thức (chỉ đọc)"
+agent_center.console_no_details: "Không có thông tin chi tiết hiện tại về mục công việc. Dùng F4 để chọn dự án, mở mục công việc hoặc làm mới." # {Locked="F4"}
+agent_center.console_draft: "Bản nháp — chưa bắt đầu"
+agent_center.console_active: "Đang hoạt động — chưa được chấp nhận"
+agent_center.console_completed: "Đã hoàn tất — đã ghi nhận sự chấp nhận của con người"
+agent_center.console_cancelled: "Đã hủy"
+agent_center.console_paused: "Đã tạm dừng"
+agent_center.console_automatic: "Tự động tiến hành"
+agent_center.console_running: "Đang chạy"
+agent_center.console_pending: "Đang chờ — chưa hoàn tất"
+agent_center.console_verified: "Đã xác minh / được chấp nhận nội bộ"
+agent_center.console_failed: "Thất bại / bị từ chối — kiểm tra bằng chứng"
+agent_center.console_waiting: "Đang chờ phản hồi hoặc yếu tố phụ thuộc"
+agent_center.console_unknown: "Chưa biết — làm mới hoặc kiểm tra thông tin chẩn đoán"
+agent_center.console_resolved: "Đã ghi nhận phản hồi"
+agent_center.console_superseded: "Đã bị thay thế — không phải bản bàn giao hiện tại"
+agent_center.console_next_done: "Tiếp theo: sử dụng bản bàn giao đã được chấp nhận; không còn phê duyệt nào đang chờ."
+agent_center.console_next_cancelled: "Tiếp theo: không tự động tiến hành; mục công việc này đã bị hủy."
+agent_center.console_next_approve: "Tiếp theo: bạn xem xét bản mô tả công việc và phê duyệt chính xác việc bắt đầu này qua F4." # {Locked="F4"}
+agent_center.console_next_accept: "Tiếp theo: bạn kiểm tra bản bàn giao đã chốt và bằng chứng, rồi chấp nhận một cách tường minh."
+agent_center.console_next_attention: "Tiếp theo: xem xét các vấn đề còn cần chú ý của mục công việc này qua F4." # {Locked="F4"}
+agent_center.console_next_resume: "Tiếp theo: bạn quyết định khi nào tiếp tục công việc đang tạm dừng này."
+agent_center.console_next_service: "Tiếp theo: dịch vụ tiếp tục thực hiện kế hoạch đã phê duyệt. Đây không phải là sự chấp nhận cuối cùng."

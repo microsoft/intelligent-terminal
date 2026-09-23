@@ -272,10 +272,72 @@ system.model_unknown: "Nežinomas modelis %{model} — įveskite /model, kad pam
 # not an agent session; a work item may contain multiple tasks.
 agent_center.title: "Agent Center" # {Locked}
 agent_center.works: "Darbo elementai"
+agent_center.demo_title: "Darbo elemento istorijos demonstracija" # Title of an isolated scripted demonstration; the story fixture itself is English.
+agent_center.demo_notice: "Demonstracija pagal scenarijų | Pavyzdiniai įrodymai, imituojami seansai ir žetonų naudojimas | Jokie agentai nepaleidžiami" # Always-visible disclosure; simulated data must not be confused with live agent execution.
+agent_center.demo_scene: "Scena %{scene}/8" # %{scene} is the current scene number in the eight-scene story.
+agent_center.demo_next: "Toliau: %{input}" # %{input} is the literal English story input, not a translated command.
+agent_center.demo_keys: "Enter: pateikti | Tab: užpildyti kitą įvestį | PgUp/PgDn: slinkti | Ctrl+Q: uždaryti" # {Locked="Enter","Tab","PgUp/PgDn","Ctrl+Q"}
+agent_center.demo_reset: "Nustatyti demonstracijos būseną iš naujo? Įveskite /reset confirm. Esami darbo elementai ir parametrai nebus paveikti." # {Locked="/reset confirm"} Resets only the isolated demo, never real work.
+agent_center.demo_saved: "Įrašyta redakcija %{revision}" # %{revision} is the persisted demo state revision.
+agent_center.demo_error: "Demonstracijos veiksmas nepavyko: %{error}" # %{error} explains the rejected action; no state change is claimed.
+agent_center.tasks_title: "Užduotys"
+agent_center.task_new: "Nauja užduotis"
+agent_center.task_all: "Visos užduotys"
+agent_center.task_attention: "Reikia dėmesio"
+agent_center.task_continue: "Tęsti užduotį"
+# Messages waiting for this work's busy executor, excluding the currently running turn. {Locked="%{count}"}
+agent_center.task_queued_messages: "Pranešimai eilėje: %{count}"
+# Explicit migration of an existing work from legacy orchestration to its own executing agent session.
+agent_center.task_claim_executor: "Susieti su užduoties agentu"
+agent_center.task_claim_executor_confirm: "Perduokite šią užduotį jai skirtam vykdančiajam agentui. Esamas pokalbis ir rezultatai išsaugomi, o senasis planavimas sustabdomas. Jei pradinio vykdymo seanso atkurti nepavyksta, naujam seansui pradėti reikia atskiro patvirtinimo."
+agent_center.task_open_tab: "Atidaryti skirtuke"
+agent_center.task_tab_unsupported: "Užduoties skirtukui atidaryti reikia Intelligent Terminal." # {Locked="Intelligent Terminal"}
+agent_center.task_new_session: "Pradėti naują seansą"
+agent_center.task_new_session_confirm: "Pradinio agento seanso tęsti negalima. Ar norite pradėti naują seansą naudodami išsaugotą šios užduoties kontekstą?"
+agent_center.task_keys: "Up/Down pasirinkti · Enter atidaryti · F4 veiksmai · F5 išsami informacija" # {Locked="Up/Down","Enter","F4","F5"}
+agent_center.task_list_keys: "F2 užduotys · F4 veiksmai · F5 išsami informacija" # {Locked="F2","F4","F5"}
+agent_center.task_state_running: "Vykdoma"
+agent_center.task_state_waiting: "Laukiama jūsų atsakymo"
+agent_center.task_state_paused: "Pristabdyta"
+agent_center.task_state_recovery: "Reikia atkurti"
+agent_center.task_state_ready: "Parengta tęsti"
+agent_center.task_state_completed: "Užbaigta"
+agent_center.task_state_cancelled: "Atšaukta"
+agent_center.task_state_unavailable: "Seansas nepasiekiamas"
+agent_center.task_updated: "Paskutinė veikla: %{time}"
+agent_center.ui_overview: "Apžvalga"
+agent_center.chat_global: "Bendras pokalbis" # Conversation with the non-executing master for new goals and cross-work coordination; each work has its own executor conversation.
+agent_center.chat_welcome: "Pasakykite, ką norite pasiekti, suorganizuoti ar sužinoti."
+agent_center.chat_keys: "Enter siųsti · Shift+Enter nauja eilutė · F4 veiksmai · F5 išsami informacija · F7 suvestinė" # {Locked="Enter","Shift+Enter","F4","F5","F7"}
+agent_center.chat_dashboard_keys: "F7 pokalbis · Esc pokalbis · F4 veiksmai · F6 perkelti įvesties vietą į veiksmus" # Dashboard navigation preserves the global conversation and draft. {Locked="F7","Esc","F4","F6"}
+agent_center.chat_context_hint: "Konteksto užuomina: %{context}" # %{context} is a readable work or project name, not a binding that limits the global conversation.
+agent_center.ui_attention: "Reikia jūsų dėmesio" # Heading for recorded requests, draft-start reviews, and delivery reviews; not a claim that every work needs attention.
+agent_center.ui_details: "Aprašas ir eiga" # Read-only details view containing the work agreement, recorded progress, evidence, and locations.
+agent_center.ui_new_goal: "Ką norėtumėte pasiekti?"
+agent_center.ui_empty_attention: "Nėra atvirų užklausų, kurioms reikėtų jūsų atsakymo."
+agent_center.ui_no_works: "Nėra užfiksuotų darbų. Norėdami pradėti, pasirinkite sukonfigūruotą projektą."
+agent_center.ui_no_conversation: "Šiam darbui neužfiksuota jokių pranešimų."
+agent_center.ui_role_you: "Jūs" # Speaker heading for an actual recorded human message.
+agent_center.ui_role_assistant: "Darbo asistentas" # Speaker heading for an actual recorded assistant message, not a provider name.
+agent_center.ui_role_service: "Tarnyba" # Speaker heading for an actual recorded system or service message.
+agent_center.ui_role_unknown: "Užfiksuotas pranešimas" # Speaker heading when the service does not identify a recognized message role.
+agent_center.ui_next: "Tolesnė atsakomybė"
+agent_center.ui_recorded_facts: "Užfiksuoti faktai"
+agent_center.ui_last_known: "Paskutinė žinoma būsena · %{status}" # %{status} is a localized recorded status. Used when cached facts do not establish current execution.
+agent_center.ui_cached_facts: "Faktai iš podėlio; dabartinis vykdymas nepatvirtintas."
+agent_center.ui_source_root: "Projekto šaltinių vieta" # Configured source root, explicitly distinct from the actual managed execution directory.
+agent_center.ui_execution_root: "Valdomo vykdymo vieta" # Actual execution directory reported by the service, never inferred from the project source root.
+agent_center.ui_location_unknown: "Vykdymo vieta nepranešta."
+agent_center.ui_composer: "Pranešimas darbui: %{work}" # %{work} is the human-readable target of this independent draft.
+agent_center.ui_composer_new: "Naujas darbas · %{project}" # %{project} is the configured project name, or an explicit project-selection warning.
+agent_center.ui_actions: "Darbo veiksmai"
+agent_center.ui_keys: "Enter siųsti · Shift+Enter nauja eilutė · F4 veiksmai · F5 išsami informacija · F6 perkelti įvesties vietą į veiksmus" # {Locked="Enter","Shift+Enter","F4","F5","F6"}
+agent_center.ui_actions_hint: "Up/Down pasirinkti · Enter atidaryti · Esc įvestis" # Keyboard focus is on a visible action, not the text editor. {Locked="Up/Down","Enter","Esc"}
+agent_center.ui_details_hint: "F5 užverti išsamią informaciją · PgUp/PgDn skaityti · Esc įvestis" # Read-only detail focus; returning to input preserves the draft and selection. {Locked="F5","PgUp/PgDn","Esc"}
 agent_center.activity: "Veikla · Pokalbis"
-# %{work} and %{project} are identifiers of the selected work item and project.
+# %{work} and %{project} are human-readable labels for the selected work and configured project.
 agent_center.header: "Darbas: %{work} | Projektas: %{project}"
-agent_center.welcome: "Pasirinkite projektą arba nurodykite /project use <id>. Įveskite tikslą arba /help." # {Locked="/project use","<id>","/help"}
+agent_center.welcome: "Paspauskite F4, kad pasirinktumėte sukonfigūruotą projektą, tada įveskite, ką norite pasiekti." # {Locked="F4"}
 agent_center.input_help: "Enter: siųsti · Shift+Enter: nauja eilutė · Tab: užbaigti · F2: perjungti darbo elementą · Ctrl+C: išeiti · PgUp/PgDn: skaityti · Ctrl+End: naujausia" # {Locked="Enter","Shift+Enter","Tab","F2","PgUp/PgDn","Ctrl+End","Ctrl+C"}
 agent_center.inbox_count: "Reikia dėmesio: %{count}"
 agent_center.sending: "Siunčiama užfiksuota užklausa…"
@@ -320,3 +382,84 @@ agent_center.missing_field: "Trūksta atsakymo lauko arba jis netinkamas: %{fiel
 agent_center.invalid_command_id: "--command-id turi būti UUID." # {Locked="--command-id","UUID"}
 agent_center.worker_stopped: "Užklausų ryšys sustojo."
 agent_center.host_unavailable: "Komandai %{command} nėra apvalkalo pagrindinio kompiuterio adapterio. Naudokite pagrindinio kompiuterio klaviatūros veiksmus."
+agent_center.console_home: "Naujas darbas"
+agent_center.console_new: "Naujas darbas / Pradžia"
+agent_center.console_new_hint: "Įveskite naują tikslą. Kiti darbai tęsiami nepriklausomai."
+agent_center.console_project_create_directory: "Sukurkite naują katalogą ir inicijuokite vietinę Git saugyklą. Esami failai nebus perrašyti." # {Locked="Git"}
+agent_center.console_projects: "Pasirinkti sukonfigūruotą projektą"
+agent_center.console_projects_hint: "Pasirinkite projektą pagal pavadinimą ir vietą. Čia nėra sukonfigūruoto projekto? Paprašykite administratoriaus jį sukonfigūruoti."
+agent_center.console_refresh: "Atnaujinti dabartinius faktus"
+agent_center.console_open: "Atidaryti: %{work}"
+agent_center.console_return: "Grįžti į: %{work}"
+agent_center.console_respond: "Atsakyti: %{work} — %{question}"
+agent_center.console_unknown_work: "Darbo informacija nepasiekiama"
+agent_center.console_unknown_project: "Projektas nepasirinktas arba nepasiekiamas"
+# Two works can have exactly the same goal and project. The numbered choice is explicit, never a fuzzy match. %{created} is the recorded creation time.
+agent_center.console_duplicate: "%{work} · atskiras darbas %{number} · %{created}"
+agent_center.console_start: "Peržiūrėti aprašą ir patvirtinti pradžią"
+agent_center.approval_title: "Reikia patvirtinimo" # Title of an inline conversation card for a specific frozen human action.
+agent_center.approval_accept: "Patvirtinti" # Button that submits the exact reviewed action, not a chat message.
+agent_center.approval_start: "Patvirtinti ir pradėti" # Button approving the displayed work brief and execution grant.
+agent_center.approval_edit: "Keisti reikalavimus" # Return to the chat composer to describe changes; do not submit or approve the action.
+agent_center.approval_defer: "Ne dabar" # Defer review in this Console without cancelling the work or approving anything.
+agent_center.approval_open_hint: "F6 peržiūrėti pasiūlymą" # Opens the inline approval card without approving it. {Locked="F6"}
+agent_center.approval_keys: "Left/Right pasirinkti · Enter patvirtinti pasirinkimą · F5 išsami informacija · Esc ne dabar" # Keyboard help while the inline approval card owns focus. {Locked="Left/Right","Enter","F5","Esc"}
+agent_center.approval_edit_hint: "Aprašykite %{target} pakeitimus. Nieko nepatvirtinta." # %{target} is the displayed project or work name; the user's draft is preserved.
+agent_center.approval_deferred: "%{target} peržiūra atidėta. Kai būsite pasirengę, vėl atverkite pasiūlymą naudodami F4." # Deferring is local presentation state, not cancellation of work. %{target} is a project or work name. {Locked="F4"}
+agent_center.console_pause: "Pristabdyti darbą"
+agent_center.console_resume: "Tęsti darbą"
+agent_center.console_cancel: "Atšaukti darbą"
+agent_center.console_inspect: "Patikrinti užfiksuotą rezultatą ir įrodymus (tik skaityti)"
+agent_center.console_read_evidence: "Skaityti įrodymus: %{work} — %{path}"
+agent_center.console_more_evidence: "Skaityti kitą įrodymų puslapį: %{work}"
+agent_center.console_accept: "Priimti patikrintą rezultatą"
+agent_center.console_takeover: "Perimti valdomą darbo sritį"
+agent_center.console_handback: "Grąžinti valdomą darbo sritį"
+agent_center.console_apply: "Taikyti patvirtintą pakeitimą"
+agent_center.console_action: "Peržiūrėti užfiksuotą veiksmą"
+agent_center.console_answer: "Atsakymas"
+agent_center.console_answer_review: "Užfiksuotas atsakymas, kuris bus pateiktas:\n%{value}"
+agent_center.console_answer_invalid: "Įveskite tinkamą lauko %{field} reikšmę; peržiūrėkite privalomus lauko pasirinkimus ir ribas."
+agent_center.console_schema_unsupported: "Šio klausimo schema paprastoje formoje nepalaikoma. Nieko nepateikta; paprašykite paprastesnio klausimo."
+agent_center.console_yes: "Taip"
+agent_center.console_no: "Ne"
+agent_center.console_form_help: "Up/Down pasirinkti lauką · Left/Right pasirinkti parinktį · Enter kitas laukas · Ctrl+Enter peržiūrėti atsakymą · Esc atgal" # {Locked="Up/Down","Left/Right","Enter","Ctrl+Enter","Esc"}
+agent_center.console_menu_help: "F4 veiksmai · Up/Down pasirinkti · Enter atidaryti · Esc atgal · F12 diagnostika" # {Locked="F4","Up/Down","Enter","Esc","F12"}
+agent_center.console_hint: "F4 veiksmai · F2 perjungti darbą · F12 diagnostika" # {Locked="F4","F2","F12"}
+agent_center.console_scope: "Įtraukta aprėptis"
+agent_center.console_exclusions: "Neįtraukta į šį darbą"
+agent_center.console_criteria: "Priėmimo kriterijai ir privalomi įrodymai"
+agent_center.console_delivery: "Pateikiamas rezultatas"
+agent_center.console_delivery_code: "Vietinis kodas valdomoje darbo srityje"
+agent_center.console_delivery_report: "Užfiksuoti ataskaitų failai"
+agent_center.console_progress: "Užduočių eiga"
+agent_center.console_authority: "Prašomi įgaliojimai ir vykdymo ribos"
+agent_center.console_capabilities: "Patvirtintos vykdymo galimybės"
+agent_center.console_data_scopes: "Duomenų vietos, iš kurių galima skaityti"
+agent_center.console_limits: "Išteklių ribos"
+agent_center.console_managed_writes: "Valdomų operacijų atliekamas rašymas apribotas šiam darbui skirta darbo sritimi. Tai nėra operacinės sistemos izoliavimo riba teikėjui priklausantiems įrankiams."
+agent_center.console_frozen: "Šis patvirtinimas susietas su užfiksuotu darbu, užklausa, strategija ir redakcijomis. Pakeitus būtina nauja peržiūra; patvirtinimas niekada nepastebimai neperkeliamas kitam objektui."
+agent_center.console_stale: "Dabartiniai faktai pasenę. Juodraščiai saugūs. Prieš patvirtindami arba siųsdami pakeitimus prisijunkite iš naujo ir atnaujinkite; nežinomas rezultatas nėra nei nesėkmė, nei užbaigimas."
+agent_center.console_diagnostics: "Diagnostinė protokolo informacija (tik skaityti)"
+agent_center.console_no_details: "Nėra dabartinės darbo informacijos. Naudokite F4, kad pasirinktumėte projektą, atidarytumėte darbą arba atnaujintumėte." # {Locked="F4"}
+agent_center.console_draft: "Juodraštis — nepradėtas"
+agent_center.console_active: "Aktyvus — dar nepriimtas"
+agent_center.console_completed: "Užbaigtas — užfiksuotas žmogaus priėmimas"
+agent_center.console_cancelled: "Atšauktas"
+agent_center.console_paused: "Pristabdytas"
+agent_center.console_automatic: "Automatinė eiga"
+agent_center.console_running: "Vykdomas"
+agent_center.console_pending: "Laukiama — neužbaigtas"
+agent_center.console_verified: "Patikrintas / priimtas viduje"
+agent_center.console_failed: "Nepavyko / atmestas — patikrinkite įrodymus"
+agent_center.console_waiting: "Laukiama atsakymo arba priklausomybės"
+agent_center.console_unknown: "Nežinoma — atnaujinkite arba patikrinkite diagnostiką"
+agent_center.console_resolved: "Atsakymas užfiksuotas"
+agent_center.console_superseded: "Pakeistas naujesniu — ne dabartinis rezultatas"
+agent_center.console_next_done: "Toliau: naudokite priimtą rezultatą; daugiau patvirtinimų nelaukiama."
+agent_center.console_next_cancelled: "Toliau: automatinės eigos nebus; šis darbas atšauktas."
+agent_center.console_next_approve: "Toliau: peržiūrėkite aprašą ir naudodami F4 patvirtinkite būtent nurodytą pradžią." # {Locked="F4"}
+agent_center.console_next_accept: "Toliau: patikrinkite užfiksuotą rezultatą bei įrodymus ir aiškiai patvirtinkite priėmimą."
+agent_center.console_next_attention: "Toliau: naudodami F4 peržiūrėkite likusius šio darbo dėmesio reikalaujančius punktus." # {Locked="F4"}
+agent_center.console_next_resume: "Toliau: jūs sprendžiate, kada tęsti šį pristabdytą darbą."
+agent_center.console_next_service: "Toliau: tarnyba vykdo patvirtintą planą. Tai nėra galutinis priėmimas."

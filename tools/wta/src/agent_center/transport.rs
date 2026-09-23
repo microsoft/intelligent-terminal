@@ -21,6 +21,8 @@ use crate::agent_tools::action_proposal::pipe_security;
 pub(crate) const MAX_FRAME_BYTES: usize = 1_048_576;
 const MAX_QUEUED_FRAMES: usize = 256;
 const MAX_QUEUED_BYTES: usize = 8 * 1024 * 1024;
+const RESERVED_CONTROL_FRAMES: usize = 8;
+const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
 enum EngineMessage {
     Shutdown(oneshot::Sender<()>),
@@ -213,7 +215,21 @@ fn ok(request_id: &str, data: Value, cursor: Option<&str>) -> Result<Response> {
 }
 
 pub(crate) fn state_root() -> Result<PathBuf> {
-    crate::runtime_paths::intelligent_terminal_root()
+    resolve_state_root(
+        std::env::var_os("INTELLIGENT_TERMINAL_AGENT_CENTER_STATE").map(PathBuf::from),
+        crate::runtime_paths::intelligent_terminal_root(),
+    )
+}
+
+fn resolve_state_root(explicit: Option<PathBuf>, application: Option<PathBuf>) -> Result<PathBuf> {
+    if let Some(root) = explicit {
+        anyhow::ensure!(
+            root.is_absolute(),
+            "INTELLIGENT_TERMINAL_AGENT_CENTER_STATE must be an absolute directory"
+        );
+        return Ok(root);
+    }
+    application
         .map(|root| root.join("agent-center"))
         .context("Agent Center requires an available application state directory")
 }
@@ -492,6 +508,32 @@ fn queue(sender: &mpsc::Sender<Outbound>, budget: &Arc<Semaphore>, value: &Value
         .map_err(|_| anyhow!("RESYNC_REQUIRED: outbound frame queue exceeded or closed"))
 }
 
+async fn queue_control(
+    sender: &mpsc::Sender<Outbound>,
+    budget: &Arc<Semaphore>,
+    value: &Value,
+) -> Result<()> {
+    let bytes = serde_json::to_vec(value)?;
+    if bytes.len() > MAX_FRAME_BYTES {
+        bail!("response exceeds maximum frame size");
+    }
+    tokio::time::timeout(REQUEST_TIMEOUT, async {
+        let permit = budget
+            .clone()
+            .acquire_many_owned(bytes.len() as u32)
+            .await?;
+        sender
+            .send(Outbound {
+                bytes,
+                _permit: permit,
+            })
+            .await
+            .map_err(|_| anyhow!("outbound writer closed"))
+    })
+    .await
+    .context("OUTBOUND_TIMEOUT: peer stopped reading replies or recovery diagnostics")?
+}
+
 struct Subscription {
     scope: Value,
     cursor: String,
@@ -536,8 +578,8 @@ async fn negotiate<S: AsyncRead + AsyncWrite + Unpin>(
     Ok(Some(hello))
 }
 
-async fn connection(
-    mut pipe: NamedPipeServer,
+async fn connection<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
+    mut pipe: S,
     handle: ServiceHandle,
     instance: String,
 ) -> Result<()> {
@@ -560,23 +602,27 @@ async fn connection(
     let mut subscriptions = HashMap::<String, Subscription>::new();
     let result: Result<()> = async {
         loop {
+            // Keep consumed header/payload bytes when a service notification wins.
+            let pending_frame = read_frame(&mut reader);
+            tokio::pin!(pending_frame);
+            loop {
             tokio::select! {
-                frame = read_frame(&mut reader) => {
+                frame = &mut pending_frame => {
                     let frame = match frame {
                         Ok(frame) => frame,
                         Err(error) => {
-                            queue(&sender, &budget, &json!({"type":"protocol_error","code":"INVALID_FRAME","message":error.to_string()}))?;
+                            queue_control(&sender, &budget, &json!({"type":"protocol_error","code":"INVALID_FRAME","message":format!("{error:#}")})).await?;
                             return Err(error);
                         }
                     };
                     if frame["type"] != "request" {
-                        queue(&sender, &budget, &json!({"type":"protocol_error","code":"INVALID_FRAME","message":"Expected a request frame"}))?;
+                        queue_control(&sender, &budget, &json!({"type":"protocol_error","code":"INVALID_FRAME","message":"Expected a request frame"})).await?;
                         return Err(anyhow!("expected request frame"));
                     }
                     let request: Request = match serde_json::from_value(frame) {
                         Ok(request) => request,
                         Err(error) => {
-                            queue(&sender, &budget, &json!({"type":"protocol_error","code":"INVALID_FRAME","message":error.to_string()}))?;
+                            queue_control(&sender, &budget, &json!({"type":"protocol_error","code":"INVALID_FRAME","message":error.to_string()})).await?;
                             return Err(error.into());
                         }
                     };
@@ -628,14 +674,16 @@ async fn connection(
                     } else {
                         handle.request(Principal::Human,request).await
                     };
-                    queue(&sender,&budget,&serde_json::to_value(response)?)?;
+                    queue_control(&sender,&budget,&serde_json::to_value(response)?).await?;
                     send_events(&handle,&mut subscriptions,&sender,&budget).await?;
+                    break;
                 }
                 changed = changes.changed() => {
                     changed.context("work event service stopped")?;
                     send_events(&handle,&mut subscriptions,&sender,&budget).await?;
                 }
                 result = &mut writer_task => { return result.context("outbound writer failed")?; }
+            }
             }
         }
     }.await;
@@ -659,7 +707,7 @@ async fn send_events(
     budget: &Arc<Semaphore>,
 ) -> Result<()> {
     let mut closed = Vec::new();
-    for (id, subscription) in subscriptions.iter_mut() {
+    'subscriptions: for (id, subscription) in subscriptions.iter_mut() {
         match handle
             .events(subscription.cursor.clone(), subscription.scope.clone())
             .await
@@ -668,17 +716,37 @@ async fn send_events(
                 for mut event in events {
                     event["type"] = json!("event");
                     event["subscriptionId"] = json!(id);
+                    // Reserve bounded space for replies and the recovery marker.
+                    // The cursor advances only after the entire batch was queued.
+                    let bytes = serde_json::to_vec(&event)?.len();
+                    if sender.capacity() <= RESERVED_CONTROL_FRAMES
+                        || budget.available_permits() < bytes + MAX_FRAME_BYTES
+                    {
+                        let failure = Response::fail("", "RESYNC_REQUIRED",
+                            "Service event consumer exceeded the bounded outbound budget; resubscribe with a snapshot").failure;
+                        queue_control(
+                            sender,
+                            budget,
+                            &json!({"type":"stream_error","subscriptionId":id,
+                                "failure":failure,
+                                "cursor":subscription.cursor}),
+                        )
+                        .await?;
+                        tracing::warn!(target:"agent_center", subscription_id=%id, "RESYNC_REQUIRED: outbound event budget exhausted");
+                        closed.push(id.clone());
+                        continue 'subscriptions;
+                    }
                     queue(sender, budget, &event)?;
                 }
                 subscription.cursor = cursor;
             }
             Err(response) => {
                 let response = serde_json::to_value(response)?;
-                queue(
+                queue_control(
                     sender,
                     budget,
                     &json!({"type":"stream_error","subscriptionId":id,"failure":response["failure"],"cursor":subscription.cursor}),
-                )?;
+                ).await?;
                 closed.push(id.clone());
             }
         }
@@ -689,19 +757,107 @@ async fn send_events(
     Ok(())
 }
 
-type PendingReplies = Arc<Mutex<HashMap<String, oneshot::Sender<Result<Response>>>>>;
+#[derive(Default)]
+struct ReplyState {
+    pending: HashMap<String, oneshot::Sender<Result<Response>>>,
+    failure: Option<String>,
+}
+
+type PendingReplies = Arc<Mutex<ReplyState>>;
+
+struct PendingRequest {
+    replies: PendingReplies,
+    id: String,
+}
+
+impl Drop for PendingRequest {
+    fn drop(&mut self) {
+        if let Ok(mut replies) = self.replies.lock() {
+            replies.pending.remove(&self.id);
+        }
+    }
+}
+
+#[derive(Clone)]
+enum EventStatus {
+    Live,
+    ResyncRequired(String),
+    Closed(String),
+}
+
+fn publish_resync_required(status: &watch::Sender<EventStatus>, message: String) {
+    // abort() cannot interrupt a reader poll already running on another thread.
+    // Never let its delayed overflow notification replace a terminal failure.
+    status.send_if_modified(|current| {
+        if matches!(current, EventStatus::Live) {
+            *current = EventStatus::ResyncRequired(message);
+            true
+        } else {
+            false
+        }
+    });
+}
+
+fn publish_connection_failure(
+    replies: &PendingReplies,
+    status: &watch::Sender<EventStatus>,
+    message: String,
+) {
+    let message = if let Ok(mut replies) = replies.lock() {
+        let message = replies.failure.get_or_insert(message).clone();
+        for (_, reply) in replies.pending.drain() {
+            let _ = reply.send(Err(anyhow!(message.clone())));
+        }
+        message
+    } else {
+        message
+    };
+    status.send_if_modified(|current| {
+        if matches!(current, EventStatus::Closed(_)) {
+            false
+        } else {
+            *current = EventStatus::Closed(message);
+            true
+        }
+    });
+}
+
+struct InboundEvent {
+    value: Value,
+    _permit: OwnedSemaphorePermit,
+}
 
 pub(crate) struct Client {
     writer:
         tokio::sync::Mutex<tokio::io::WriteHalf<tokio::net::windows::named_pipe::NamedPipeClient>>,
     pending: PendingReplies,
-    events: tokio::sync::Mutex<mpsc::Receiver<Result<Value>>>,
+    events: tokio::sync::Mutex<mpsc::Receiver<InboundEvent>>,
+    event_status: watch::Receiver<EventStatus>,
+    status_sender: watch::Sender<EventStatus>,
+    pipe_name: String,
+    store_id: String,
     reader_task: tokio::task::JoinHandle<()>,
 }
 
 impl Drop for Client {
     fn drop(&mut self) {
         self.reader_task.abort();
+    }
+}
+
+struct RequestWrite<'a> {
+    client: &'a Client,
+    complete: bool,
+}
+
+impl Drop for RequestWrite<'_> {
+    fn drop(&mut self) {
+        if !self.complete {
+            // A cancelled length/payload write cannot safely share this stream
+            // with the next request, even if the caller no longer wants a reply.
+            self.client
+                .close("WRITE_CANCELLED: request frame may be incomplete; reconnect and reconcile");
+        }
     }
 }
 
@@ -713,7 +869,7 @@ impl Client {
             .context("creating Agent Center state directory")?;
         let name = pipe_name(&root)?;
         match ClientOptions::new().open(&name) {
-            Ok(pipe) => return Self::from_pipe(pipe).await,
+            Ok(pipe) => return Self::from_pipe(pipe, name).await,
             Err(error) if matches!(error.raw_os_error(), Some(2 | 231)) => {}
             Err(error) => return Err(error).context("connecting to private Agent Center service"),
         }
@@ -721,7 +877,7 @@ impl Client {
         let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(15);
         loop {
             match ClientOptions::new().open(&name) {
-                Ok(pipe) => return Self::from_pipe(pipe).await,
+                Ok(pipe) => return Self::from_pipe(pipe, name).await,
                 Err(error) if matches!(error.raw_os_error(), Some(2 | 231)) => {}
                 Err(error) => return Err(error).context("connecting to new Agent Center service"),
             }
@@ -740,10 +896,35 @@ impl Client {
         let pipe = ClientOptions::new()
             .open(name)
             .context("Agent Center is unavailable; run `wta center serve` in another terminal")?;
-        Self::from_pipe(pipe).await
+        Self::from_pipe(pipe, name.to_owned()).await
     }
 
-    async fn from_pipe(mut pipe: tokio::net::windows::named_pipe::NamedPipeClient) -> Result<Self> {
+    pub(crate) async fn reconnect(&self) -> Result<Self> {
+        // Reconnect only to this authority. Never spawn a replacement authority or
+        // replay a request whose effect might already have been committed.
+        let pipe = ClientOptions::new()
+            .open(&self.pipe_name)
+            .context("reconnecting to the same Agent Center authority")?;
+        let client = Self::from_pipe(pipe, self.pipe_name.clone()).await?;
+        if client.store_id != self.store_id {
+            bail!("STORE_CHANGED: Agent Center authority changed; automatic recovery refused");
+        }
+        Ok(client)
+    }
+
+    async fn from_pipe(
+        pipe: tokio::net::windows::named_pipe::NamedPipeClient,
+        name: String,
+    ) -> Result<Self> {
+        tokio::time::timeout(REQUEST_TIMEOUT, Self::negotiate_pipe(pipe, name))
+            .await
+            .context("Agent Center handshake timed out")?
+    }
+
+    async fn negotiate_pipe(
+        mut pipe: tokio::net::windows::named_pipe::NamedPipeClient,
+        name: String,
+    ) -> Result<Self> {
         write_frame(&mut pipe,&json!({"type":"hello","versions":[1],"clientInstanceId":Uuid::new_v4().to_string(),"clientKind":"Console"})).await?;
         let welcome = read_frame(&mut pipe).await?;
         if welcome["type"] != "welcome"
@@ -757,7 +938,11 @@ impl Client {
         let pending = PendingReplies::default();
         let replies = pending.clone();
         let (event_sender, events) = mpsc::channel(MAX_QUEUED_FRAMES);
+        let event_budget = Arc::new(Semaphore::new(MAX_QUEUED_BYTES));
+        let (status_sender, event_status) = watch::channel(EventStatus::Live);
+        let reader_status = status_sender.clone();
         let reader_task = tokio::spawn(async move {
+            let mut resync_required = false;
             let failure = loop {
                 let frame = match read_frame(&mut reader).await {
                     Ok(frame) => frame,
@@ -770,35 +955,67 @@ impl Client {
                             Err(error) => break error.into(),
                         };
                         let reply = match replies.lock() {
-                            Ok(mut replies) => replies.remove(&response.request_id),
+                            Ok(mut replies) => replies.pending.remove(&response.request_id),
                             Err(_) => break anyhow!("response routing lock poisoned"),
                         };
                         if let Some(reply) = reply {
                             let _ = reply.send(Ok(response));
                         } else {
-                            break anyhow!("response has no matching request");
+                            // A cancelled caller no longer needs its reply.
+                            tracing::debug!(target:"agent_center", request_id=%response.request_id, "Discarding reply for a cancelled request");
                         }
                     }
                     Some("event" | "stream_error") => {
-                        if event_sender.try_send(Ok(frame)).is_err() {
-                            break anyhow!("RESYNC_REQUIRED: client event consumer fell behind");
+                        if resync_required {
+                            continue;
+                        }
+                        let bytes = match serde_json::to_vec(&frame) {
+                            Ok(bytes) => bytes.len(),
+                            Err(error) => break error.into(),
+                        };
+                        let queued = match event_budget.clone().try_acquire_many_owned(bytes as u32)
+                        {
+                            Ok(permit) => event_sender
+                                .try_send(InboundEvent {
+                                    value: frame,
+                                    _permit: permit,
+                                })
+                                .map_err(|_| "frame queue"),
+                            Err(_) => Err("byte budget"),
+                        };
+                        if let Err(limit) = queued {
+                            // Stop delivering this generation, not reading the pipe.
+                            // The out-of-band marker cannot be hidden by a full queue.
+                            resync_required = true;
+                            let message = format!("RESYNC_REQUIRED: client event {limit} exhausted (maximum {MAX_QUEUED_FRAMES} frames, {MAX_QUEUED_BYTES} bytes); reconnect and resubscribe with snapshots");
+                            tracing::warn!(target:"agent_center", cause=%message, "Client event consumer fell behind");
+                            publish_resync_required(&reader_status, message);
                         }
                     }
-                    _ => break anyhow!("unexpected Agent Center frame: {frame}"),
+                    Some("protocol_error") => {
+                        break anyhow!(
+                            "Agent Center protocol error {}: {}",
+                            frame["code"].as_str().unwrap_or("UNKNOWN"),
+                            frame["message"]
+                                .as_str()
+                                .unwrap_or("No diagnostic supplied")
+                        )
+                    }
+                    _ => break anyhow!("unexpected Agent Center frame type"),
                 }
             };
-            let message = failure.to_string();
-            if let Ok(mut replies) = replies.lock() {
-                for (_, reply) in replies.drain() {
-                    let _ = reply.send(Err(anyhow!(message.clone())));
-                }
-            }
-            let _ = event_sender.try_send(Err(failure));
+            let message = format!("Agent Center transport closed: {failure:#}");
+            tracing::warn!(target:"agent_center", cause=%message, "Agent Center connection reader stopped");
+            publish_connection_failure(&replies, &reader_status, message);
         });
         Ok(Self {
             writer: tokio::sync::Mutex::new(writer),
             pending,
             events: tokio::sync::Mutex::new(events),
+            event_status,
+            status_sender,
+            pipe_name: name,
+            store_id: welcome["storeId"].as_str().unwrap_or_default().to_owned(),
             reader_task,
         })
     }
@@ -820,9 +1037,29 @@ impl Client {
     }
 
     pub(crate) async fn request(&self, request: Request) -> Result<Response> {
-        if self.reader_task.is_finished() {
-            bail!("Agent Center connection is closed");
+        let identity = if let Some(command) = request.command_id.as_deref() {
+            format!("OUTCOME_UNKNOWN: requestId={} commandId={command}; reconcile the recorded command before any retry", request.request_id)
+        } else {
+            format!("Agent Center read requestId={}", request.request_id)
+        };
+        match tokio::time::timeout(REQUEST_TIMEOUT, self.request_inner(request)).await {
+            Ok(result) => result.with_context(|| identity),
+            Err(_) => {
+                let message = "REQUEST_TIMEOUT: Agent Center did not respond within 10 seconds; reconnect and reconcile";
+                self.close(message);
+                Err(anyhow!(message)).with_context(|| identity)
+            }
         }
+    }
+
+    fn close(&self, message: &str) {
+        tracing::warn!(target:"agent_center", cause=message, "Closing Agent Center client transport");
+        publish_connection_failure(&self.pending, &self.status_sender, message.to_owned());
+        self.reader_task.abort();
+    }
+
+    async fn request_inner(&self, request: Request) -> Result<Response> {
+        let value = serde_json::to_value(&request)?;
         let id = request.request_id.clone();
         let (sender, receiver) = oneshot::channel();
         {
@@ -830,21 +1067,38 @@ impl Client {
                 .pending
                 .lock()
                 .map_err(|_| anyhow!("request routing lock poisoned"))?;
-            if pending.contains_key(&id) {
+            if let Some(failure) = &pending.failure {
+                bail!("{failure}");
+            }
+            if pending.pending.contains_key(&id) {
                 bail!("requestId is already outstanding");
             }
-            pending.insert(id.clone(), sender);
+            pending.pending.insert(id.clone(), sender);
         }
-        let result = write_frame(
-            &mut *self.writer.lock().await,
-            &serde_json::to_value(request)?,
-        )
-        .await;
-        if let Err(error) = result {
-            self.pending
+        let _pending = PendingRequest {
+            replies: self.pending.clone(),
+            id,
+        };
+        let result = {
+            let mut writer = self.writer.lock().await;
+            if let Some(failure) = &self
+                .pending
                 .lock()
                 .map_err(|_| anyhow!("request routing lock poisoned"))?
-                .remove(&id);
+                .failure
+            {
+                bail!("{failure}");
+            }
+            let mut write = RequestWrite {
+                client: self,
+                complete: false,
+            };
+            let result = write_frame(&mut *writer, &value).await;
+            write.complete = true;
+            result
+        };
+        if let Err(error) = result {
+            self.close(&format!("Agent Center request write failed: {error:#}"));
             return Err(error);
         }
         receiver
@@ -853,18 +1107,456 @@ impl Client {
     }
 
     pub(crate) async fn next_event(&self) -> Result<Value> {
-        self.events
-            .lock()
-            .await
-            .recv()
-            .await
-            .context("Agent Center event stream closed")?
+        let mut events = self.events.lock().await;
+        let mut status = self.event_status.clone();
+        loop {
+            match status.borrow_and_update().clone() {
+                EventStatus::Live => {}
+                EventStatus::ResyncRequired(message) => bail!("{message}"),
+                EventStatus::Closed(message) => bail!("{message}"),
+            }
+            tokio::select! {
+                biased;
+                changed = status.changed() => {
+                    changed.context("Agent Center event status closed")?;
+                }
+                event = events.recv() => {
+                    return event.map(|event| event.value)
+                        .context("Agent Center event stream closed without a diagnostic");
+                }
+            }
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn explicit_agent_center_state_is_absolute_and_does_not_change_the_default() {
+        let application = PathBuf::from(r"C:\LocalState\IntelligentTerminal");
+        assert_eq!(
+            super::resolve_state_root(None, Some(application.clone())).unwrap(),
+            application.join("agent-center")
+        );
+        let isolated = PathBuf::from(r"C:\Experiments\real-work");
+        assert_eq!(
+            super::resolve_state_root(Some(isolated.clone()), None).unwrap(),
+            isolated
+        );
+        for value in ["", "relative", r"C:relative", r"\root-relative"] {
+            assert!(super::resolve_state_root(
+                Some(PathBuf::from(value)),
+                Some(application.clone())
+            )
+            .is_err());
+        }
+        assert!(super::resolve_state_root(None, None).is_err());
+    }
+
     use super::*;
+    use std::future::Future;
+    use std::pin::Pin;
+    use std::task::{Context as TaskContext, Poll};
+    use tokio::io::ReadBuf;
+
+    struct ObservedPipe {
+        pipe: NamedPipeServer,
+        consumed: watch::Sender<usize>,
+    }
+
+    impl AsyncRead for ObservedPipe {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            cx: &mut TaskContext<'_>,
+            buffer: &mut ReadBuf<'_>,
+        ) -> Poll<std::io::Result<()>> {
+            let before = buffer.filled().len();
+            let result = Pin::new(&mut self.pipe).poll_read(cx, buffer);
+            let count = buffer.filled().len() - before;
+            if count != 0 {
+                self.consumed.send_modify(|total| *total += count);
+            }
+            result
+        }
+    }
+
+    impl AsyncWrite for ObservedPipe {
+        fn poll_write(
+            mut self: Pin<&mut Self>,
+            cx: &mut TaskContext<'_>,
+            bytes: &[u8],
+        ) -> Poll<std::io::Result<usize>> {
+            Pin::new(&mut self.pipe).poll_write(cx, bytes)
+        }
+
+        fn poll_flush(
+            mut self: Pin<&mut Self>,
+            cx: &mut TaskContext<'_>,
+        ) -> Poll<std::io::Result<()>> {
+            Pin::new(&mut self.pipe).poll_flush(cx)
+        }
+
+        fn poll_shutdown(
+            mut self: Pin<&mut Self>,
+            cx: &mut TaskContext<'_>,
+        ) -> Poll<std::io::Result<()>> {
+            Pin::new(&mut self.pipe).poll_shutdown(cx)
+        }
+    }
+
+    struct GatedWriter {
+        pipe: NamedPipeServer,
+        release: oneshot::Receiver<()>,
+        negotiated: bool,
+        released: bool,
+    }
+
+    impl AsyncRead for GatedWriter {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            cx: &mut TaskContext<'_>,
+            buffer: &mut ReadBuf<'_>,
+        ) -> Poll<std::io::Result<()>> {
+            Pin::new(&mut self.pipe).poll_read(cx, buffer)
+        }
+    }
+
+    impl AsyncWrite for GatedWriter {
+        fn poll_write(
+            mut self: Pin<&mut Self>,
+            cx: &mut TaskContext<'_>,
+            bytes: &[u8],
+        ) -> Poll<std::io::Result<usize>> {
+            if self.negotiated && !self.released {
+                if Pin::new(&mut self.release).poll(cx).is_pending() {
+                    return Poll::Pending;
+                }
+                self.released = true;
+            }
+            Pin::new(&mut self.pipe).poll_write(cx, bytes)
+        }
+
+        fn poll_flush(
+            mut self: Pin<&mut Self>,
+            cx: &mut TaskContext<'_>,
+        ) -> Poll<std::io::Result<()>> {
+            let result = Pin::new(&mut self.pipe).poll_flush(cx);
+            if result.is_ready() {
+                self.negotiated = true;
+            }
+            result
+        }
+
+        fn poll_shutdown(
+            mut self: Pin<&mut Self>,
+            cx: &mut TaskContext<'_>,
+        ) -> Poll<std::io::Result<()>> {
+            Pin::new(&mut self.pipe).poll_shutdown(cx)
+        }
+    }
+
+    #[tokio::test]
+    async fn named_pipe_service_event_overflow_reserves_replies_and_resync_marker() {
+        let (sender, mut requests) = mpsc::channel(16);
+        let (_changes, changes) = watch::channel(0);
+        let (processed, processing) = oneshot::channel();
+        let actor = tokio::spawn(async move {
+            let mut processed = Some(processed);
+            let mut event_reads = 0;
+            while let Some(message) = requests.recv().await {
+                match message {
+                    EngineMessage::Snapshot(_, reply) => {
+                        reply
+                            .send(Ok((json!({"items":[]}), "store:0".to_owned())))
+                            .unwrap();
+                    }
+                    EngineMessage::Events(_, _, reply) => {
+                        event_reads += 1;
+                        assert_eq!(event_reads, 1, "overflowed subscription must be removed");
+                        reply.send(Ok(((1..=MAX_QUEUED_FRAMES + 32)
+                                .map(|sequence| json!({"cursor":format!("store:{sequence}"),"kind":"WorkUpdated"}))
+                                .collect(), "store:288".to_owned()))).unwrap();
+                    }
+                    EngineMessage::Request(_, request, reply) => {
+                        reply
+                            .send(Response::ok(request.request_id, json!({"items":[]})))
+                            .unwrap();
+                        if let Some(processed) = processed.take() {
+                            processed.send(()).unwrap();
+                        }
+                    }
+                    _ => panic!("unexpected fixture request"),
+                }
+            }
+        });
+        let handle = ServiceHandle {
+            sender,
+            changes,
+            store_id: "store".to_owned(),
+        };
+        let name = format!(
+            r"\\.\pipe\AgentCenter-server-backpressure-{}",
+            Uuid::new_v4()
+        );
+        let server = create_pipe(&name, true).unwrap();
+        let (release, released) = oneshot::channel();
+        let server_task = tokio::spawn(async move {
+            server.connect().await.unwrap();
+            connection(
+                GatedWriter {
+                    pipe: server,
+                    release: released,
+                    negotiated: false,
+                    released: false,
+                },
+                handle,
+                "instance".to_owned(),
+            )
+            .await
+        });
+        let mut client = ClientOptions::new().open(&name).unwrap();
+        let result = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            write_frame(
+                &mut client,
+                &json!({"type":"hello","versions":[1],
+                    "clientInstanceId":Uuid::new_v4().to_string(),"clientKind":"Console"}),
+            )
+            .await?;
+            anyhow::ensure!(read_frame(&mut client).await?["type"] == "welcome");
+            let subscribe = Request::new("events.subscribe", json!({"scope":{"kind":"WorkList"}}));
+            let read = Request::new("work.list", json!({"limit":10}));
+            write_frame(&mut client, &serde_json::to_value(&subscribe)?).await?;
+            write_frame(&mut client, &serde_json::to_value(&read)?).await?;
+            processing.await?;
+            release.send(()).unwrap();
+            let mut saw_resync = false;
+            let mut responses = Vec::new();
+            loop {
+                let frame = read_frame(&mut client).await?;
+                match frame["type"].as_str() {
+                    Some("response") => responses.push(frame["requestId"].clone()),
+                    Some("stream_error") => {
+                        anyhow::ensure!(frame["failure"]["code"] == "RESYNC_REQUIRED");
+                        saw_resync = true;
+                    }
+                    Some("event") => {
+                        anyhow::ensure!(!saw_resync, "event arrived after its subscription closed")
+                    }
+                    _ => bail!("unexpected frame: {frame}"),
+                }
+                if responses.len() == 2 {
+                    break;
+                }
+            }
+            anyhow::ensure!(saw_resync);
+            anyhow::ensure!(responses == vec![json!(subscribe.request_id), json!(read.request_id)]);
+            let read = Request::new("project.list", json!({"limit":10}));
+            write_frame(&mut client, &serde_json::to_value(&read)?).await?;
+            anyhow::ensure!(read_frame(&mut client).await?["requestId"] == read.request_id);
+            Ok::<(), anyhow::Error>(())
+        })
+        .await;
+        drop(client);
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(5), server_task)
+            .await
+            .unwrap()
+            .unwrap();
+        actor.await.unwrap();
+        result.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn fragmented_requests_survive_service_changes_and_keep_delivering_events() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join(format!("wta-center-fragments-{}", Uuid::new_v4()));
+        tokio::fs::create_dir_all(&root).await.unwrap();
+        let handle = start_engine(root.clone()).await.unwrap();
+        let runtime_id = Uuid::new_v4().to_string();
+        let mut registration = Request::new(
+            "runtime.register",
+            json!({
+                "runtimeInstanceId":runtime_id,"protocolVersions":[1],"capabilities":[
+                    {"id":"fragment-fixture","kinds":["ProduceResult","Coordinate"],"supportsContinuation":true,"supportsScopedStop":true},
+                    {"id":"native-check","kinds":["EvaluateGate"],"supportsContinuation":false,"supportsScopedStop":true}
+                ]
+            }),
+        );
+        registration.command_id = Some(Uuid::new_v4().to_string());
+        assert_eq!(
+            handle
+                .request(Principal::Runtime { runtime_id }, registration)
+                .await
+                .status,
+            "ok"
+        );
+        let mut configure = Request::new(
+            "project.configure",
+            json!({
+                "name":"Fragmented pipe fixture","root":root,
+                "coordinatorCapabilityId":"fragment-fixture","workerCapabilityId":"fragment-fixture","checkCapabilityId":"native-check",
+                "limits":{"concurrency":1,"executionAttempts":1,"evaluationAttempts":1,"coordinationTurns":1,
+                    "contextRounds":1,"executionSeconds":30,"coordinationSeconds":30}
+            }),
+        );
+        configure.command_id = Some(Uuid::new_v4().to_string());
+        let project = handle.request(Principal::Human, configure).await;
+        assert_eq!(project.status, "ok", "{project:?}");
+        let project_id = project.data.unwrap()["projectId"].clone();
+
+        let name = format!(r"\\.\pipe\AgentCenter-fragments-{}", Uuid::new_v4());
+        let server = create_pipe(&name, true).unwrap();
+        let mut client = ClientOptions::new().open(&name).unwrap();
+        server.connect().await.unwrap();
+        let (consumed, mut observed) = watch::channel(0);
+        let service = handle.clone();
+        let server_task = tokio::spawn(connection(
+            ObservedPipe {
+                pipe: server,
+                consumed,
+            },
+            service,
+            Uuid::new_v4().to_string(),
+        ));
+        let trigger_name = format!(r"\\.\pipe\AgentCenter-trigger-{}", Uuid::new_v4());
+        let trigger_server = create_pipe(&trigger_name, true).unwrap();
+        let service = handle.clone();
+        let trigger_task = tokio::spawn(async move {
+            trigger_server.connect().await?;
+            connection(trigger_server, service, Uuid::new_v4().to_string()).await
+        });
+        let trigger = Client::connect_to(&trigger_name).await.unwrap();
+        let result = tokio::time::timeout(std::time::Duration::from_secs(15), async {
+            write_frame(&mut client, &json!({
+                "type":"hello","versions":[1],"clientInstanceId":Uuid::new_v4().to_string(),"clientKind":"Console"
+            })).await?;
+            anyhow::ensure!(read_frame(&mut client).await?["type"] == "welcome");
+            let subscribe = Request::new("events.subscribe", json!({"scope":{"kind":"WorkList"}}));
+            write_frame(&mut client, &serde_json::to_value(&subscribe)?).await?;
+            let subscribed = read_frame(&mut client).await?;
+            anyhow::ensure!(subscribed["requestId"] == subscribe.request_id && subscribed["status"] == "ok");
+            let subscription = subscribed["data"]["subscriptionId"].clone();
+
+            // Consumption and event receipts, not sleeps, establish the race ordering.
+            for fragmented in [false, true] {
+                let request = Request::new("work.list", json!({"limit":10}));
+                let payload = serde_json::to_vec(&request)?;
+                let mut packet = (payload.len() as u32).to_le_bytes().to_vec();
+                packet.extend_from_slice(&payload);
+                let base = *observed.borrow();
+                let boundaries = if fragmented {
+                    vec![1, 2, 3, 4, 5, 11, packet.len() - 1]
+                } else {
+                    vec![4]
+                };
+                let mut sent = 0;
+                for end in boundaries {
+                    client.write_all(&packet[sent..end]).await?;
+                    client.flush().await?;
+                    observed.wait_for(|total| *total >= base + end).await?;
+                    let mut draft = Request::new("work.create_draft", json!({
+                        "projectId":project_id,"goal":"Notification without model execution",
+                        "scope":["report.txt"],"exclusions":[],"context":[],"sourceMessageIds":[],
+                        "criteria":[{"id":"report","description":"A report exists","evidenceRule":"artifact:report"}],
+                        "delivery":{"kind":"Report"}
+                    }));
+                    draft.command_id = Some(Uuid::new_v4().to_string());
+                    let response = trigger.request(draft).await?;
+                    anyhow::ensure!(response.status == "ok", "change trigger failed: {response:?}");
+                    loop {
+                        let event = read_frame(&mut client).await?;
+                        anyhow::ensure!(event["type"] == "event" && event["subscriptionId"] == subscription,
+                            "service event did not arrive during a partial frame: {event}");
+                        if event["cursor"].as_str() == response.cursor.as_deref() {
+                            break;
+                        }
+                    }
+                    sent = end;
+                }
+                client.write_all(&packet[sent..]).await?;
+                client.flush().await?;
+                let response = read_frame(&mut client).await?;
+                anyhow::ensure!(response["type"] == "response"
+                    && response["requestId"] == request.request_id && response["status"] == "ok",
+                    "valid fragmented request lost framing or correlation: {response}");
+            }
+            let request = Request::new("project.list", json!({"limit":10}));
+            write_frame(&mut client, &serde_json::to_value(&request)?).await?;
+            let response = read_frame(&mut client).await?;
+            anyhow::ensure!(response["requestId"] == request.request_id && response["status"] == "ok");
+            let base = *observed.borrow();
+            client.write_all(&[32, 0]).await?;
+            observed.wait_for(|total| *total >= base + 2).await?;
+            Ok::<(), anyhow::Error>(())
+        }).await.context("fragmented pipe did not make bounded progress").and_then(|result| result);
+        drop(client);
+        drop(trigger);
+        for task in [server_task, trigger_task] {
+            assert!(
+                tokio::time::timeout(std::time::Duration::from_secs(5), task)
+                    .await
+                    .expect("partial disconnect must release the pipe handler")
+                    .unwrap()
+                    .is_err()
+            );
+        }
+        handle.shutdown().await.unwrap();
+        tokio::fs::remove_dir_all(root).await.unwrap();
+        result.unwrap();
+    }
+
+    #[tokio::test]
+    async fn partial_payload_disconnect_and_service_shutdown_release_the_reader() {
+        for stop_service in [false, true] {
+            let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("target")
+                .join(format!("wta-center-disconnect-{}", Uuid::new_v4()));
+            tokio::fs::create_dir_all(&root).await.unwrap();
+            let handle = start_engine(root.clone()).await.unwrap();
+            let name = format!(r"\\.\pipe\AgentCenter-partial-close-{}", Uuid::new_v4());
+            let server = create_pipe(&name, true).unwrap();
+            let mut client = ClientOptions::new().open(&name).unwrap();
+            server.connect().await.unwrap();
+            let (consumed, mut observed) = watch::channel(0);
+            let task = tokio::spawn(connection(
+                ObservedPipe {
+                    pipe: server,
+                    consumed,
+                },
+                handle.clone(),
+                Uuid::new_v4().to_string(),
+            ));
+            write_frame(&mut client, &json!({
+                "type":"hello","versions":[1],"clientInstanceId":Uuid::new_v4().to_string(),"clientKind":"CLI"
+            })).await.unwrap();
+            assert_eq!(read_frame(&mut client).await.unwrap()["type"], "welcome");
+            let base = *observed.borrow();
+            client.write_all(&[32, 0, 0, 0, b'{']).await.unwrap();
+            tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                observed.wait_for(|total| *total >= base + 5),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            if stop_service {
+                handle.shutdown().await.unwrap();
+            } else {
+                drop(client);
+            }
+            assert!(
+                tokio::time::timeout(std::time::Duration::from_secs(5), task)
+                    .await
+                    .expect("incomplete payload must not keep a dead connection alive")
+                    .unwrap()
+                    .is_err()
+            );
+            if !stop_service {
+                handle.shutdown().await.unwrap();
+            }
+            tokio::fs::remove_dir_all(root).await.unwrap();
+        }
+    }
 
     #[tokio::test]
     async fn private_pipe_routes_requests_to_the_durable_actor() {
@@ -963,27 +1655,28 @@ mod tests {
         let value = json!({"message":"\u{4ea4}\u{4ed8}","id":Uuid::new_v4().to_string()});
         write_frame(&mut writer, &value).await.unwrap();
         assert_eq!(read_frame(&mut reader).await.unwrap(), value);
-        writer.write_u32_le(2).await.unwrap();
-        writer.write_all(b"[]").await.unwrap();
-        assert!(read_frame(&mut reader)
-            .await
-            .unwrap_err()
-            .to_string()
-            .contains("INVALID_FRAME"));
+        for invalid in [b"[]".as_slice(), b"{".as_slice(), b"\xff".as_slice()] {
+            writer.write_u32_le(invalid.len() as u32).await.unwrap();
+            writer.write_all(invalid).await.unwrap();
+            assert!(read_frame(&mut reader)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("INVALID_FRAME"));
+        }
     }
 
     #[tokio::test]
     async fn oversized_frame_is_rejected_before_allocating_body() {
         let (mut writer, mut reader) = tokio::io::duplex(32);
-        writer
-            .write_u32_le(MAX_FRAME_BYTES as u32 + 1)
-            .await
-            .unwrap();
-        assert!(read_frame(&mut reader)
-            .await
-            .unwrap_err()
-            .to_string()
-            .contains("INVALID_FRAME"));
+        for length in [0, MAX_FRAME_BYTES as u32 + 1, u32::MAX] {
+            writer.write_u32_le(length).await.unwrap();
+            assert!(read_frame(&mut reader)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("INVALID_FRAME"));
+        }
     }
 
     #[test]
@@ -1025,6 +1718,7 @@ mod tests {
     async fn client_correlates_reversed_responses_and_interleaved_events() {
         let name = format!(r"\\.\pipe\AgentCenter-client-test-{}", Uuid::new_v4());
         let mut server = create_pipe(&name, true).unwrap();
+        let (release, released) = oneshot::channel();
         let server_task = tokio::spawn(async move {
             server.connect().await.unwrap();
             negotiate(&mut server, "test-store", "test-instance")
@@ -1049,6 +1743,7 @@ mod tests {
                 .await
                 .unwrap();
             }
+            let _ = released.await;
         });
         let client = Client::connect_to(&name).await.unwrap();
         let request = |method| {
@@ -1071,6 +1766,384 @@ mod tests {
             "project.list"
         );
         assert_eq!(client.next_event().await.unwrap()["cursor"], "one");
+        release.send(()).unwrap();
         server_task.await.unwrap();
+    }
+
+    async fn loaded_client_boundary(event_count: usize, payload_bytes: usize, overflow: bool) {
+        let name = format!(r"\\.\pipe\AgentCenter-loaded-{}", Uuid::new_v4());
+        let mut server = create_pipe(&name, true).unwrap();
+        let (release, released) = oneshot::channel();
+        let server_task = tokio::spawn(async move {
+            server.connect().await.unwrap();
+            negotiate(&mut server, "loaded-store", "loaded-instance")
+                .await
+                .unwrap();
+            let first = read_frame(&mut server).await.unwrap();
+            let second = read_frame(&mut server).await.unwrap();
+            for sequence in 0..event_count {
+                write_frame(
+                    &mut server,
+                    &json!({
+                        "type":"event","subscriptionId":"loaded-subscription",
+                        "cursor":sequence.to_string(),"payload":"x".repeat(payload_bytes)
+                    }),
+                )
+                .await
+                .unwrap();
+            }
+            for request in [second, first] {
+                write_frame(&mut server, &json!({
+                    "type":"response","requestId":request["requestId"],"status":"ok","subjects":[],
+                    "data":{"method":request["method"],"commandId":request["commandId"]}
+                })).await.unwrap();
+            }
+            let _ = released.await;
+        });
+        let client = Client::connect_to(&name).await.unwrap();
+        let command_id = Uuid::new_v4().to_string();
+        let mut mutation = Request::new("work.update", json!({}));
+        mutation.command_id = Some(command_id.clone());
+        let (read, mutation) = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            tokio::join!(
+                client.request(Request::new("work.list", json!({"limit":10}))),
+                client.request(mutation)
+            )
+        })
+        .await
+        .expect("event load must not strand correlated replies");
+        assert_eq!(read.unwrap().data.unwrap()["method"], "work.list");
+        assert_eq!(mutation.unwrap().data.unwrap()["commandId"], command_id);
+        if overflow {
+            let error = client.next_event().await.unwrap_err().to_string();
+            assert!(error.contains("RESYNC_REQUIRED"), "{error}");
+        }
+        // A physical EOF must replace, not be hidden by, a full event queue or
+        // the earlier overflow marker.
+        release.send(()).unwrap();
+        server_task.await.unwrap();
+        let mut status = client.event_status.clone();
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            status.wait_for(|status| matches!(status, EventStatus::Closed(_))),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let error = client.next_event().await.unwrap_err().to_string();
+        assert!(
+            error.contains("transport closed") && error.contains("reading frame length"),
+            "{error}"
+        );
+        let error = client
+            .request(Request::new("work.list", json!({})))
+            .await
+            .unwrap_err();
+        assert!(format!("{error:#}").contains("reading frame length"));
+    }
+
+    #[tokio::test]
+    async fn named_pipe_event_overflow_preserves_concurrent_read_and_mutation_receipts() {
+        loaded_client_boundary(MAX_QUEUED_FRAMES + 32, 0, true).await;
+    }
+
+    #[tokio::test]
+    async fn named_pipe_event_byte_budget_has_explicit_recovery() {
+        loaded_client_boundary(12, 800_000, true).await;
+    }
+
+    #[tokio::test]
+    async fn named_pipe_physical_loss_cause_survives_a_full_event_queue() {
+        loaded_client_boundary(MAX_QUEUED_FRAMES, 0, false).await;
+    }
+
+    #[tokio::test]
+    async fn named_pipe_terminal_close_survives_late_overflow_publication() {
+        let name = format!(r"\\.\pipe\AgentCenter-terminal-status-{}", Uuid::new_v4());
+        let mut server = create_pipe(&name, true).unwrap();
+        let (release, released) = oneshot::channel();
+        let server_task = tokio::spawn(async move {
+            server.connect().await.unwrap();
+            negotiate(&mut server, "store", "instance").await.unwrap();
+            released.await.unwrap();
+        });
+        let client = Client::connect_to(&name).await.unwrap();
+        let delayed_reader = client.status_sender.clone();
+        let original = "WRITE_CANCELLED: original incomplete request frame";
+        client.close(original);
+        // Model an overflow already detected by a concurrent reader poll: it
+        // publishes after close(), despite that reader's abort being requested.
+        publish_resync_required(&delayed_reader, "RESYNC_REQUIRED: late overflow".to_owned());
+        assert_eq!(client.next_event().await.unwrap_err().to_string(), original);
+        publish_connection_failure(&client.pending, &delayed_reader, "later EOF".to_owned());
+        assert_eq!(client.next_event().await.unwrap_err().to_string(), original);
+        let error = client
+            .request(Request::new("work.list", json!({})))
+            .await
+            .unwrap_err();
+        assert!(format!("{error:#}").contains(original));
+        assert_eq!(
+            client.pending.lock().unwrap().failure.as_deref(),
+            Some(original)
+        );
+        release.send(()).unwrap();
+        server_task.await.unwrap();
+    }
+
+    #[test]
+    fn event_status_allows_only_live_to_resync_and_resync_to_closed() {
+        let replies = PendingReplies::default();
+        let (sender, receiver) = watch::channel(EventStatus::Live);
+        publish_resync_required(&sender, "first overflow".to_owned());
+        publish_resync_required(&sender, "later overflow".to_owned());
+        assert!(matches!(&*receiver.borrow(),
+            EventStatus::ResyncRequired(message) if message == "first overflow"));
+        publish_connection_failure(&replies, &sender, "physical EOF".to_owned());
+        publish_resync_required(&sender, "late overflow".to_owned());
+        assert!(matches!(&*receiver.borrow(),
+            EventStatus::Closed(message) if message == "physical EOF"));
+    }
+
+    #[tokio::test]
+    async fn named_pipe_lost_mutation_receipt_reports_original_command_identity() {
+        let name = format!(r"\\.\pipe\AgentCenter-indeterminate-{}", Uuid::new_v4());
+        let mut server = create_pipe(&name, true).unwrap();
+        let server_task = tokio::spawn(async move {
+            server.connect().await.unwrap();
+            negotiate(&mut server, "store", "instance").await.unwrap();
+            let request = read_frame(&mut server).await.unwrap();
+            for sequence in 0..MAX_QUEUED_FRAMES {
+                write_frame(
+                    &mut server,
+                    &json!({"type":"event",
+                    "subscriptionId":"old","cursor":sequence.to_string()}),
+                )
+                .await
+                .unwrap();
+            }
+            request
+        });
+        let client = Client::connect_to(&name).await.unwrap();
+        let mut request = Request::new("work.update", json!({}));
+        let command_id = Uuid::new_v4().to_string();
+        request.command_id = Some(command_id.clone());
+        let request_id = request.request_id.clone();
+        let error =
+            tokio::time::timeout(std::time::Duration::from_secs(5), client.request(request))
+                .await
+                .unwrap()
+                .unwrap_err();
+        let error = format!("{error:#}");
+        assert!(
+            error.contains("OUTCOME_UNKNOWN")
+                && error.contains(&command_id)
+                && error.contains(&request_id)
+                && error.contains("reading frame length"),
+            "{error}"
+        );
+        let observed = server_task.await.unwrap();
+        assert_eq!(observed["commandId"], command_id);
+        assert_eq!(observed["requestId"], request_id);
+        assert!(client.pending.lock().unwrap().pending.is_empty());
+    }
+
+    #[tokio::test]
+    async fn named_pipe_cancelled_reply_does_not_strand_later_reads() {
+        let name = format!(r"\\.\pipe\AgentCenter-cancelled-{}", Uuid::new_v4());
+        let mut server = create_pipe(&name, true).unwrap();
+        let (received, receipt) = oneshot::channel();
+        let (release, released) = oneshot::channel();
+        let (finish, finished) = oneshot::channel();
+        let server_task = tokio::spawn(async move {
+            server.connect().await.unwrap();
+            negotiate(&mut server, "store", "instance").await.unwrap();
+            let first = read_frame(&mut server).await.unwrap();
+            received.send(()).unwrap();
+            released.await.unwrap();
+            write_frame(
+                &mut server,
+                &json!({"type":"response","requestId":first["requestId"],
+                "status":"ok","data":{},"subjects":[]}),
+            )
+            .await
+            .unwrap();
+            let second = read_frame(&mut server).await.unwrap();
+            assert_eq!(second["method"], "project.list");
+            write_frame(
+                &mut server,
+                &json!({"type":"response","requestId":second["requestId"],
+                "status":"ok","data":{},"subjects":[]}),
+            )
+            .await
+            .unwrap();
+            finished.await.unwrap();
+        });
+        let client = Arc::new(Client::connect_to(&name).await.unwrap());
+        let worker = client.clone();
+        let caller =
+            tokio::spawn(async move { worker.request(Request::new("work.list", json!({}))).await });
+        tokio::time::timeout(std::time::Duration::from_secs(5), receipt)
+            .await
+            .unwrap()
+            .unwrap();
+        drop(client.writer.lock().await);
+        caller.abort();
+        assert!(caller.await.unwrap_err().is_cancelled());
+        assert!(client.pending.lock().unwrap().pending.is_empty());
+        release.send(()).unwrap();
+        assert_eq!(
+            client
+                .request(Request::new("project.list", json!({})))
+                .await
+                .unwrap()
+                .status,
+            "ok"
+        );
+        finish.send(()).unwrap();
+        server_task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn named_pipe_reconnect_refuses_a_different_store() {
+        let name = format!(r"\\.\pipe\AgentCenter-store-change-{}", Uuid::new_v4());
+        let mut first = create_pipe(&name, true).unwrap();
+        let first_task = tokio::spawn(async move {
+            first.connect().await.unwrap();
+            negotiate(&mut first, "original-store", "instance")
+                .await
+                .unwrap();
+        });
+        let client = Client::connect_to(&name).await.unwrap();
+        first_task.await.unwrap();
+        let mut second = create_pipe(&name, false).unwrap();
+        let second_task = tokio::spawn(async move {
+            second.connect().await.unwrap();
+            negotiate(&mut second, "different-store", "instance")
+                .await
+                .unwrap();
+        });
+        assert!(client
+            .reconnect()
+            .await
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("STORE_CHANGED"));
+        second_task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn named_pipe_recovery_installs_snapshot_then_replays_committed_events() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join(format!("wta-center-recovery-{}", Uuid::new_v4()));
+        tokio::fs::create_dir_all(&root).await.unwrap();
+        let handle = start_engine(root.clone()).await.unwrap();
+        let runtime_id = Uuid::new_v4().to_string();
+        let mut registration = Request::new(
+            "runtime.register",
+            json!({
+                "runtimeInstanceId":runtime_id,"protocolVersions":[1],"capabilities":[
+                    {"id":"recovery-fixture","kinds":["ProduceResult","Coordinate"],"supportsContinuation":true,"supportsScopedStop":true},
+                    {"id":"native-check","kinds":["EvaluateGate"],"supportsContinuation":false,"supportsScopedStop":true}
+                ]
+            }),
+        );
+        registration.command_id = Some(Uuid::new_v4().to_string());
+        assert_eq!(
+            handle
+                .request(Principal::Runtime { runtime_id }, registration)
+                .await
+                .status,
+            "ok"
+        );
+        let mut configure = Request::new(
+            "project.configure",
+            json!({
+                "name":"Recovery fixture","root":root,
+                "coordinatorCapabilityId":"recovery-fixture","workerCapabilityId":"recovery-fixture","checkCapabilityId":"native-check",
+                "limits":{"concurrency":1,"executionAttempts":1,"evaluationAttempts":1,"coordinationTurns":1,
+                    "contextRounds":1,"executionSeconds":30,"coordinationSeconds":30}
+            }),
+        );
+        configure.command_id = Some(Uuid::new_v4().to_string());
+        let configured = handle.request(Principal::Human, configure).await;
+        assert_eq!(configured.status, "ok", "{configured:?}");
+        let project_id = configured.data.unwrap()["projectId"].clone();
+        let name = format!(r"\\.\pipe\AgentCenter-recovery-{}", Uuid::new_v4());
+        let server = create_pipe(&name, true).unwrap();
+        let service = handle.clone();
+        let first_task = tokio::spawn(async move {
+            server.connect().await.unwrap();
+            connection(server, service, "recovery-instance".to_owned()).await
+        });
+        let client = Client::connect_to(&name).await.unwrap();
+        let initial = client
+            .request(Request::new(
+                "events.subscribe",
+                json!({"scope":{"kind":"WorkList"}}),
+            ))
+            .await
+            .unwrap();
+        let old_id = initial.data.as_ref().unwrap()["subscriptionId"].clone();
+        let cursor = initial.cursor.unwrap();
+        first_task.abort();
+        assert!(first_task.await.unwrap_err().is_cancelled());
+        let mut disconnected = client.event_status.clone();
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            disconnected.wait_for(|status| matches!(status, EventStatus::Closed(_))),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        // Recover only presentation subscriptions, never a submitted mutation.
+        let second = create_pipe(&name, false).unwrap();
+        let service = handle.clone();
+        let second_task = tokio::spawn(async move {
+            second.connect().await.unwrap();
+            connection(second, service, "recovery-instance".to_owned()).await
+        });
+        let recovered = client.reconnect().await.unwrap();
+        let result = tokio::time::timeout(std::time::Duration::from_secs(15), async {
+            let mut draft = Request::new("work.create_draft", json!({
+                "projectId":project_id,"goal":"Retain committed recovery evidence",
+                "scope":["report.txt"],"exclusions":[],"context":[],"sourceMessageIds":[],
+                "criteria":[{"id":"report","description":"A report exists","evidenceRule":"artifact:report"}],
+                "delivery":{"kind":"Report"}
+            }));
+            draft.command_id = Some(Uuid::new_v4().to_string());
+            let receipt = recovered.request(draft).await?;
+            anyhow::ensure!(receipt.status == "ok", "{receipt:?}");
+            let snapshot = recovered.request(Request::new("events.subscribe",
+                json!({"scope":{"kind":"WorkList"}}))).await?;
+            anyhow::ensure!(snapshot.status == "ok", "{snapshot:?}");
+            let snapshot = snapshot.data.unwrap();
+            anyhow::ensure!(snapshot["subscriptionId"] != old_id);
+            anyhow::ensure!(snapshot["snapshot"]["items"].as_array().is_some_and(|items| items.len() == 1),
+                "fresh snapshot omitted committed work: {snapshot}");
+            let replay = recovered.request(Request::new("events.subscribe",
+                json!({"scope":{"kind":"WorkList"},"afterCursor":cursor}))).await?;
+            anyhow::ensure!(replay.status == "ok", "{replay:?}");
+            let replay_id = replay.data.unwrap()["subscriptionId"].clone();
+            loop {
+                let event = recovered.next_event().await?;
+                anyhow::ensure!(event["subscriptionId"] == replay_id && event["subscriptionId"] != old_id,
+                    "old scope leaked across reconnect: {event}");
+                if event["cursor"].as_str() == receipt.cursor.as_deref() {
+                    break;
+                }
+            }
+            Ok::<(), anyhow::Error>(())
+        }).await;
+        drop(client);
+        drop(recovered);
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(5), second_task)
+            .await
+            .unwrap()
+            .unwrap();
+        handle.shutdown().await.unwrap();
+        tokio::fs::remove_dir_all(root).await.unwrap();
+        result.unwrap().unwrap();
     }
 }

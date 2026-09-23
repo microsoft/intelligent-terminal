@@ -356,7 +356,7 @@ impl Engine {
                     ));
                 }
                 let work = self.record(text(&task, "workId"), "Work")?;
-                if text(&work, "desiredAdvancement") != "Advance" {
+                if !Self::legacy_mode(&work) || text(&work, "desiredAdvancement") != "Advance" {
                     return Err(bad("BAD_STATE", "Work advancement is held"));
                 }
                 if input
@@ -427,6 +427,9 @@ impl Engine {
             "delivery.prepare" => {
                 let input: DeliveryPrepare = parse(&request.params)?;
                 let work = self.record(&input.work_id, "Work")?;
+                if !Self::legacy_mode(&work) {
+                    return Err(bad("EXECUTOR_DELIVERY_UNAVAILABLE","Executor delivery requires a separately approved evidence and acceptance contract; a chat reply is not acceptance"));
+                }
                 let result = self.record(&input.integration_result_id, "TaskResult")?;
                 self.coordinator(principal, Some(&input.work_id))?;
                 self.matched(request, &[&work, &result])?;
@@ -441,6 +444,9 @@ impl Engine {
                 let input: DeliveryAccept = parse(&request.params)?;
                 let mut candidate = self.record(&input.candidate_id, "DeliveryCandidate")?;
                 let mut work = self.record(text(&candidate, "workId"), "Work")?;
+                if !Self::legacy_mode(&work) {
+                    return Err(bad("EXECUTOR_DELIVERY_UNAVAILABLE","Legacy delivery evidence cannot accept work modified by the persistent executor"));
+                }
                 self.matched(request, &[&work, &candidate])?;
                 if text(&candidate, "status") != "Proposed"
                     || text(&work, "currentCandidateId") != input.candidate_id
@@ -621,7 +627,7 @@ impl Engine {
                 continue;
             }
             let work = self.record(text(&original, "workId"), "Work")?;
-            if text(&work, "desiredAdvancement") != "Advance" {
+            if !Self::legacy_mode(&work) || text(&work, "desiredAdvancement") != "Advance" {
                 continue;
             }
             let attempt = self.record(text(&original, "attemptId"), "Attempt")?;
@@ -935,7 +941,7 @@ impl Engine {
         Ok(inputs)
     }
 
-    fn acceptance_ready(&self, result: &Value) -> DomainResult<bool> {
+    pub(super) fn acceptance_ready(&self, result: &Value) -> DomainResult<bool> {
         let task = self.record(text(result, "taskId"), "Task")?;
         if text(&task, "currentResultId") != text(result, "id") {
             return Ok(false);
@@ -1022,7 +1028,7 @@ impl Engine {
         Ok(true)
     }
 
-    fn validate_instruction(
+    pub(super) fn validate_instruction(
         &self,
         result: &Value,
         instruction: &ReworkInstruction,
@@ -1263,7 +1269,7 @@ impl Engine {
         Ok(())
     }
 
-    fn inherited_delivery_code(&self, result: &Value) -> DomainResult<(Value, Value)> {
+    pub(super) fn inherited_delivery_code(&self, result: &Value) -> DomainResult<(Value, Value)> {
         let dispatch = self.producing_dispatch(result)?;
         let attempt = self.record(text(result, "attemptId"), "Attempt")?;
         if text(&dispatch, "role") != "Integration" || text(&attempt, "mode") != "ReadOnly" {

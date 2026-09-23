@@ -272,10 +272,72 @@ system.model_unknown: "Modelo descoñecido %{model} — escriba /model para ver 
 # not an agent session; a work item may contain multiple tasks.
 agent_center.title: "Agent Center" # {Locked}
 agent_center.works: "Elementos de traballo"
+agent_center.demo_title: "Demostración da historia dun elemento de traballo" # Title of an isolated scripted demonstration; the story fixture itself is English.
+agent_center.demo_notice: "Demostración con guión | Probas de exemplo, sesións e uso de tokens simulados | Non se inicia ningún axente" # Always-visible disclosure; simulated data must not be confused with live agent execution.
+agent_center.demo_scene: "Escena %{scene}/8" # %{scene} is the current scene number in the eight-scene story.
+agent_center.demo_next: "Seguinte: %{input}" # %{input} is the literal English story input, not a translated command.
+agent_center.demo_keys: "Enter: enviar | Tab: encher a seguinte entrada | PgUp/PgDn: desprazarse | Ctrl+Q: pechar" # {Locked="Enter","Tab","PgUp/PgDn","Ctrl+Q"}
+agent_center.demo_reset: "Restablecer o estado da demostración? Escriba /reset confirm. Non se modifican os elementos de traballo nin a configuración existentes." # {Locked="/reset confirm"} Resets only the isolated demo, never real work.
+agent_center.demo_saved: "Revisión %{revision} gardada" # %{revision} is the persisted demo state revision.
+agent_center.demo_error: "Fallou a acción da demostración: %{error}" # %{error} explains the rejected action; no state change is claimed.
+agent_center.tasks_title: "Tarefas"
+agent_center.task_new: "Nova tarefa"
+agent_center.task_all: "Todas as tarefas"
+agent_center.task_attention: "Require atención"
+agent_center.task_continue: "Continuar a tarefa"
+# Messages waiting for this work's busy executor, excluding the currently running turn. {Locked="%{count}"}
+agent_center.task_queued_messages: "Mensaxes na cola: %{count}"
+# Explicit migration of an existing work from legacy orchestration to its own executing agent session.
+agent_center.task_claim_executor: "Conectar co axente da tarefa"
+agent_center.task_claim_executor_confirm: "Transfire esta tarefa ao seu propio axente executor. Consérvanse a conversa e os resultados existentes, e detense a programación antiga. Se non se pode restaurar a sesión de execución orixinal, iniciar unha nova sesión require unha confirmación independente."
+agent_center.task_open_tab: "Abrir nunha pestana"
+agent_center.task_tab_unsupported: "Precísase Intelligent Terminal para abrir unha pestana de tarefa." # {Locked="Intelligent Terminal"}
+agent_center.task_new_session: "Iniciar unha nova sesión"
+agent_center.task_new_session_confirm: "Non se pode retomar a sesión orixinal do axente. Queres iniciar unha nova sesión co contexto gardado desta tarefa?"
+agent_center.task_keys: "Up/Down seleccionar · Enter abrir · F4 accións · F5 detalles" # {Locked="Up/Down","Enter","F4","F5"}
+agent_center.task_list_keys: "F2 tarefas · F4 accións · F5 detalles" # {Locked="F2","F4","F5"}
+agent_center.task_state_running: "En execución"
+agent_center.task_state_waiting: "Agardando pola túa resposta"
+agent_center.task_state_paused: "En pausa"
+agent_center.task_state_recovery: "Require recuperación"
+agent_center.task_state_ready: "Lista para continuar"
+agent_center.task_state_completed: "Completada"
+agent_center.task_state_cancelled: "Cancelada"
+agent_center.task_state_unavailable: "Sesión non dispoñible"
+agent_center.task_updated: "Última actividade: %{time}"
+agent_center.ui_overview: "Visión xeral"
+agent_center.chat_global: "Conversa global" # Conversation with the non-executing master for new goals and cross-work coordination; each work has its own executor conversation.
+agent_center.chat_welcome: "Dígame que quere conseguir, organizar ou descubrir."
+agent_center.chat_keys: "Enter enviar · Shift+Enter nova liña · F4 accións · F5 detalles · F7 panel de control" # {Locked="Enter","Shift+Enter","F4","F5","F7"}
+agent_center.chat_dashboard_keys: "F7 conversa · Esc conversa · F4 accións · F6 enfocar as accións" # Dashboard navigation preserves the global conversation and draft. {Locked="F7","Esc","F4","F6"}
+agent_center.chat_context_hint: "Indicación de contexto: %{context}" # %{context} is a readable work or project name, not a binding that limits the global conversation.
+agent_center.ui_attention: "Precisa a súa atención" # Heading for recorded requests, draft-start reviews, and delivery reviews; not a claim that every work needs attention.
+agent_center.ui_details: "Resumo e progreso" # Read-only details view containing the work agreement, recorded progress, evidence, and locations.
+agent_center.ui_new_goal: "Que lle gustaría conseguir?"
+agent_center.ui_empty_attention: "Non hai solicitudes abertas que precisen a súa resposta."
+agent_center.ui_no_works: "Non se rexistrou ningún traballo. Escolla un proxecto configurado para comezar."
+agent_center.ui_no_conversation: "Non se rexistrou ningunha mensaxe para este traballo."
+agent_center.ui_role_you: "Vostede" # Speaker heading for an actual recorded human message.
+agent_center.ui_role_assistant: "Asistente de traballo" # Speaker heading for an actual recorded assistant message, not a provider name.
+agent_center.ui_role_service: "Servizo" # Speaker heading for an actual recorded system or service message.
+agent_center.ui_role_unknown: "Mensaxe rexistrada" # Speaker heading when the service does not identify a recognized message role.
+agent_center.ui_next: "Seguinte responsabilidade"
+agent_center.ui_recorded_facts: "Feitos rexistrados"
+agent_center.ui_last_known: "Último estado coñecido · %{status}" # %{status} is a localized recorded status. Used when cached facts do not establish current execution.
+agent_center.ui_cached_facts: "Feitos na caché; a execución actual non está confirmada."
+agent_center.ui_source_root: "Localización das fontes do proxecto" # Configured source root, explicitly distinct from the actual managed execution directory.
+agent_center.ui_execution_root: "Localización de execución xestionada" # Actual execution directory reported by the service, never inferred from the project source root.
+agent_center.ui_location_unknown: "Non se notificou ningunha localización de execución."
+agent_center.ui_composer: "Mensaxe para: %{work}" # %{work} is the human-readable target of this independent draft.
+agent_center.ui_composer_new: "Novo traballo · %{project}" # %{project} is the configured project name, or an explicit project-selection warning.
+agent_center.ui_actions: "Accións do traballo"
+agent_center.ui_keys: "Enter enviar · Shift+Enter nova liña · F4 accións · F5 detalles · F6 enfocar as accións" # {Locked="Enter","Shift+Enter","F4","F5","F6"}
+agent_center.ui_actions_hint: "Up/Down seleccionar · Enter abrir · Esc volver á entrada" # Keyboard focus is on a visible action, not the text editor. {Locked="Up/Down","Enter","Esc"}
+agent_center.ui_details_hint: "F5 pechar os detalles · PgUp/PgDn ler · Esc volver á entrada" # Read-only detail focus; returning to input preserves the draft and selection. {Locked="F5","PgUp/PgDn","Esc"}
 agent_center.activity: "Actividade · Conversa"
-# %{work} and %{project} are identifiers of the selected work item and project.
+# %{work} and %{project} are human-readable labels for the selected work and configured project.
 agent_center.header: "Traballo: %{work} | Proxecto: %{project}"
-agent_center.welcome: "Seleccione un proxecto ou especifique /project use <id>. Escriba un obxectivo ou /help." # {Locked="/project use","<id>","/help"}
+agent_center.welcome: "Prema F4 para escoller un proxecto configurado e, a continuación, introduza o que quere conseguir." # {Locked="F4"}
 agent_center.input_help: "Enter: enviar · Shift+Enter: nova liña · Tab: completar · F2: cambiar de traballo · Ctrl+C: saír · PgUp/PgDn: ler · Ctrl+End: máis recente" # {Locked="Enter","Shift+Enter","Tab","F2","PgUp/PgDn","Ctrl+End","Ctrl+C"}
 agent_center.inbox_count: "Require atención: %{count}"
 agent_center.sending: "Enviando a solicitude capturada…"
@@ -320,3 +382,84 @@ agent_center.missing_field: "Falta un campo de resposta ou non é válido: %{fie
 agent_center.invalid_command_id: "--command-id debe ser un UUID." # {Locked="--command-id","UUID"}
 agent_center.worker_stopped: "A conexión das solicitudes detívose."
 agent_center.host_unavailable: "Non hai ningún adaptador de host de shell dispoñible para %{command}. Use as accións de teclado do host."
+agent_center.console_home: "Novo traballo"
+agent_center.console_new: "Novo traballo / Inicio"
+agent_center.console_new_hint: "Introduza un novo obxectivo. Os demais traballos continúan de forma independente."
+agent_center.console_project_create_directory: "Cree un novo directorio e inicialice un repositorio Git local. Non se sobrescribirán os ficheiros existentes." # {Locked="Git"}
+agent_center.console_projects: "Escoller un proxecto configurado"
+agent_center.console_projects_hint: "Escolla o proxecto polo nome e a localización. Non hai ningún proxecto configurado aquí? Pídalle ao administrador que configure un."
+agent_center.console_refresh: "Actualizar os feitos actuais"
+agent_center.console_open: "Abrir: %{work}"
+agent_center.console_return: "Volver a: %{work}"
+agent_center.console_respond: "Responder: %{work} — %{question}"
+agent_center.console_unknown_work: "Detalles do traballo non dispoñibles"
+agent_center.console_unknown_project: "Proxecto non seleccionado ou non dispoñible"
+# Two works can have exactly the same goal and project. The numbered choice is explicit, never a fuzzy match. %{created} is the recorded creation time.
+agent_center.console_duplicate: "%{work} · traballo independente %{number} · %{created}"
+agent_center.console_start: "Revisar o resumo e aprobar o inicio"
+agent_center.approval_title: "Requírese aprobación" # Title of an inline conversation card for a specific frozen human action.
+agent_center.approval_accept: "Aprobar" # Button that submits the exact reviewed action, not a chat message.
+agent_center.approval_start: "Aprobar e iniciar" # Button approving the displayed work brief and execution grant.
+agent_center.approval_edit: "Cambiar os requisitos" # Return to the chat composer to describe changes; do not submit or approve the action.
+agent_center.approval_defer: "Agora non" # Defer review in this Console without cancelling the work or approving anything.
+agent_center.approval_open_hint: "F6 revisar a proposta" # Opens the inline approval card without approving it. {Locked="F6"}
+agent_center.approval_keys: "Left/Right escoller · Enter seleccionar · F5 detalles · Esc agora non" # Keyboard help while the inline approval card owns focus. {Locked="Left/Right","Enter","F5","Esc"}
+agent_center.approval_edit_hint: "Describe os cambios para %{target}. Non se aprobou nada." # %{target} is the displayed project or work name; the user's draft is preserved.
+agent_center.approval_deferred: "Aprazouse a revisión de %{target}. Volve abrir a proposta con F4 cando esteas listo." # Deferring is local presentation state, not cancellation of work. %{target} is a project or work name. {Locked="F4"}
+agent_center.console_pause: "Pausar o traballo"
+agent_center.console_resume: "Retomar o traballo"
+agent_center.console_cancel: "Cancelar o traballo"
+agent_center.console_inspect: "Inspeccionar a entrega fixada e comprobar as probas (só lectura)"
+agent_center.console_read_evidence: "Ler as probas: %{work} — %{path}"
+agent_center.console_more_evidence: "Ler a seguinte páxina de probas: %{work}"
+agent_center.console_accept: "Aceptar a entrega inspeccionada"
+agent_center.console_takeover: "Asumir o control do espazo de traballo xestionado"
+agent_center.console_handback: "Devolver o control do espazo de traballo xestionado"
+agent_center.console_apply: "Aplicar o cambio aprobado"
+agent_center.console_action: "Revisar a acción capturada"
+agent_center.console_answer: "Resposta"
+agent_center.console_answer_review: "Resposta rexistrada para enviar:\n%{value}"
+agent_center.console_answer_invalid: "Introduza un valor válido para %{field}; revise as opcións obrigatorias e os límites do campo."
+agent_center.console_schema_unsupported: "Esta pregunta usa un esquema que o formulario simple non admite. Non se enviou nada; solicite unha pregunta máis sinxela."
+agent_center.console_yes: "Si"
+agent_center.console_no: "Non"
+agent_center.console_form_help: "Up/Down escoller campo · Left/Right escoller opción · Enter seguinte campo · Ctrl+Enter revisar resposta · Esc volver" # {Locked="Up/Down","Left/Right","Enter","Ctrl+Enter","Esc"}
+agent_center.console_menu_help: "F4 accións · Up/Down seleccionar · Enter abrir · Esc volver · F12 diagnóstico" # {Locked="F4","Up/Down","Enter","Esc","F12"}
+agent_center.console_hint: "F4 accións · F2 cambiar de traballo · F12 diagnóstico" # {Locked="F4","F2","F12"}
+agent_center.console_scope: "Ámbito incluído"
+agent_center.console_exclusions: "Fóra deste traballo"
+agent_center.console_criteria: "Criterios de aceptación e probas requiridas"
+agent_center.console_delivery: "Entrega"
+agent_center.console_delivery_code: "Código local no espazo de traballo xestionado"
+agent_center.console_delivery_report: "Ficheiros de informe capturados"
+agent_center.console_progress: "Progreso das tarefas"
+agent_center.console_authority: "Autoridade solicitada e límites de execución"
+agent_center.console_capabilities: "Capacidades de execución aprobadas"
+agent_center.console_data_scopes: "Localizacións de datos accesibles para lectura"
+agent_center.console_limits: "Límites de recursos"
+agent_center.console_managed_writes: "As escrituras das operacións xestionadas limítanse ao espazo de traballo deste traballo. Isto non constitúe un límite de illamento do sistema operativo para as ferramentas propiedade do provedor."
+agent_center.console_frozen: "Esta confirmación vincula o traballo, a solicitude, a política e as revisións capturados. Os cambios requiren unha nova revisión; a aprobación nunca cambia de destino de forma silenciosa."
+agent_center.console_stale: "Os feitos en directo están desactualizados. Os borradores están a salvo. Volva conectar e actualice antes de aprobar ou enviar cambios; un resultado descoñecido non é un fallo nin unha finalización."
+agent_center.console_diagnostics: "Detalles do protocolo de diagnóstico (só lectura)"
+agent_center.console_no_details: "Non hai detalles actuais do traballo. Use F4 para escoller un proxecto, abrir un traballo ou actualizar." # {Locked="F4"}
+agent_center.console_draft: "Borrador — non iniciado"
+agent_center.console_active: "Activo — aínda non aceptado"
+agent_center.console_completed: "Completado — aceptación humana rexistrada"
+agent_center.console_cancelled: "Cancelado"
+agent_center.console_paused: "En pausa"
+agent_center.console_automatic: "Avance automático"
+agent_center.console_running: "En execución"
+agent_center.console_pending: "Pendente — non completado"
+agent_center.console_verified: "Verificado / aceptado internamente"
+agent_center.console_failed: "Fallou / rexeitado — inspeccione as probas"
+agent_center.console_waiting: "Agardando unha resposta ou dependencia"
+agent_center.console_unknown: "Descoñecido — actualice ou inspeccione o diagnóstico"
+agent_center.console_resolved: "Resposta rexistrada"
+agent_center.console_superseded: "Substituída — non é a entrega actual"
+agent_center.console_next_done: "Seguinte: use a entrega aceptada; non hai máis aprobacións pendentes."
+agent_center.console_next_cancelled: "Seguinte: sen avance automático; este traballo foi cancelado."
+agent_center.console_next_approve: "Seguinte: revise o resumo e aprobe o inicio exacto desde F4." # {Locked="F4"}
+agent_center.console_next_accept: "Seguinte: inspeccione a entrega fixada e as probas e, a continuación, acepte explicitamente."
+agent_center.console_next_attention: "Seguinte: revise desde F4 os elementos deste traballo que aínda requiren atención." # {Locked="F4"}
+agent_center.console_next_resume: "Seguinte: vostede decide cando retomar este traballo en pausa."
+agent_center.console_next_service: "Seguinte: o servizo fai avanzar o plan aprobado. Isto non é a aceptación final."

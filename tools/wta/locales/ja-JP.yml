@@ -267,10 +267,72 @@ system.model_unknown: "不明なモデル %{model} — 利用可能な一覧を�
 # not an agent session; a work item may contain multiple tasks.
 agent_center.title: "Agent Center" # {Locked}
 agent_center.works: "作業項目"
+agent_center.demo_title: "作業項目のストーリーデモ" # Title of an isolated scripted demonstration; the story fixture itself is English.
+agent_center.demo_notice: "台本に沿ったデモ | サンプルの証拠、模擬セッションとトークン使用量 | エージェントは起動されません" # Always-visible disclosure; simulated data must not be confused with live agent execution.
+agent_center.demo_scene: "シーン %{scene}/8" # %{scene} is the current scene number in the eight-scene story.
+agent_center.demo_next: "次の入力: %{input}" # %{input} is the literal English story input, not a translated command.
+agent_center.demo_keys: "Enter: 送信 | Tab: 次の入力を補完 | PgUp/PgDn: スクロール | Ctrl+Q: 閉じる" # {Locked="Enter","Tab","PgUp/PgDn","Ctrl+Q"}
+agent_center.demo_reset: "デモの状態をリセットしますか? /reset confirm と入力してください。既存の作業項目や設定には影響しません。" # {Locked="/reset confirm"} Resets only the isolated demo, never real work.
+agent_center.demo_saved: "リビジョン %{revision} を保存しました" # %{revision} is the persisted demo state revision.
+agent_center.demo_error: "デモの操作に失敗しました: %{error}" # %{error} explains the rejected action; no state change is claimed.
+agent_center.tasks_title: "タスク"
+agent_center.task_new: "新しいタスク"
+agent_center.task_all: "すべてのタスク"
+agent_center.task_attention: "対応が必要"
+agent_center.task_continue: "タスクを続行"
+# Messages waiting for this work's busy executor, excluding the currently running turn. {Locked="%{count}"}
+agent_center.task_queued_messages: "待機中のメッセージ: %{count}"
+# Explicit migration of an existing work from legacy orchestration to its own executing agent session.
+agent_center.task_claim_executor: "タスクのエージェントに接続"
+agent_center.task_claim_executor_confirm: "このタスクを専用の実行エージェントに切り替えます。既存のチャットと結果は保持され、従来のスケジューリングは停止します。元の実行セッションを復元できない場合、新しいセッションを開始するには別途確認が必要です。"
+agent_center.task_open_tab: "タブで開く"
+agent_center.task_tab_unsupported: "タスクのタブを開くには Intelligent Terminal が必要です。" # {Locked="Intelligent Terminal"}
+agent_center.task_new_session: "新しいセッションを開始"
+agent_center.task_new_session_confirm: "元のエージェント セッションは再開できません。このタスクの保存済みコンテキストを使用して、新しいセッションを開始しますか?"
+agent_center.task_keys: "Up/Down 選択 · Enter 開く · F4 操作 · F5 詳細" # {Locked="Up/Down","Enter","F4","F5"}
+agent_center.task_list_keys: "F2 タスク · F4 操作 · F5 詳細" # {Locked="F2","F4","F5"}
+agent_center.task_state_running: "実行中"
+agent_center.task_state_waiting: "ユーザーの応答待ち"
+agent_center.task_state_paused: "一時停止中"
+agent_center.task_state_recovery: "復旧が必要"
+agent_center.task_state_ready: "続行可能"
+agent_center.task_state_completed: "完了"
+agent_center.task_state_cancelled: "キャンセル済み"
+agent_center.task_state_unavailable: "セッションを利用できません"
+agent_center.task_updated: "最終アクティビティ: %{time}"
+agent_center.ui_overview: "概要"
+agent_center.chat_global: "共通の会話" # Conversation with the non-executing master for new goals and cross-work coordination; each work has its own executor conversation.
+agent_center.chat_welcome: "実現したいこと、手配したいこと、調べたいことを教えてください。"
+agent_center.chat_keys: "Enter 送信 · Shift+Enter 改行 · F4 操作 · F5 詳細 · F7 ダッシュボード" # {Locked="Enter","Shift+Enter","F4","F5","F7"}
+agent_center.chat_dashboard_keys: "F7 会話 · Esc 会話 · F4 操作 · F6 操作にフォーカス" # Dashboard navigation preserves the global conversation and draft. {Locked="F7","Esc","F4","F6"}
+agent_center.chat_context_hint: "コンテキストのヒント: %{context}" # %{context} is a readable work or project name, not a binding that limits the global conversation.
+agent_center.ui_attention: "対応が必要な項目" # Heading for recorded requests, draft-start reviews, and delivery reviews; not a claim that every work needs attention.
+agent_center.ui_details: "作業概要と進行状況" # Read-only details view containing the work agreement, recorded progress, evidence, and locations.
+agent_center.ui_new_goal: "何を実現したいですか?"
+agent_center.ui_empty_attention: "応答が必要な未解決の要求はありません。"
+agent_center.ui_no_works: "作業はまだ記録されていません。構成済みのプロジェクトを選択して開始してください。"
+agent_center.ui_no_conversation: "この作業のメッセージはまだ記録されていません。"
+agent_center.ui_role_you: "あなた" # Speaker heading for an actual recorded human message.
+agent_center.ui_role_assistant: "作業アシスタント" # Speaker heading for an actual recorded assistant message, not a provider name.
+agent_center.ui_role_service: "サービス" # Speaker heading for an actual recorded system or service message.
+agent_center.ui_role_unknown: "記録されたメッセージ" # Speaker heading when the service does not identify a recognized message role.
+agent_center.ui_next: "次の担当事項"
+agent_center.ui_recorded_facts: "記録された事実"
+agent_center.ui_last_known: "最後に確認された状態 · %{status}" # %{status} is a localized recorded status. Used when cached facts do not establish current execution.
+agent_center.ui_cached_facts: "キャッシュされた事実です。現在の実行状況は確認されていません。"
+agent_center.ui_source_root: "プロジェクトのソースの場所" # Configured source root, explicitly distinct from the actual managed execution directory.
+agent_center.ui_execution_root: "管理対象の実行場所" # Actual execution directory reported by the service, never inferred from the project source root.
+agent_center.ui_location_unknown: "実行場所は報告されていません。"
+agent_center.ui_composer: "メッセージの対象: %{work}" # %{work} is the human-readable target of this independent draft.
+agent_center.ui_composer_new: "新しい作業 · %{project}" # %{project} is the configured project name, or an explicit project-selection warning.
+agent_center.ui_actions: "作業の操作"
+agent_center.ui_keys: "Enter 送信 · Shift+Enter 改行 · F4 操作 · F5 詳細 · F6 操作にフォーカス" # {Locked="Enter","Shift+Enter","F4","F5","F6"}
+agent_center.ui_actions_hint: "Up/Down 選択 · Enter 開く · Esc 入力に戻る" # Keyboard focus is on a visible action, not the text editor. {Locked="Up/Down","Enter","Esc"}
+agent_center.ui_details_hint: "F5 詳細を閉じる · PgUp/PgDn 読む · Esc 入力に戻る" # Read-only detail focus; returning to input preserves the draft and selection. {Locked="F5","PgUp/PgDn","Esc"}
 agent_center.activity: "アクティビティ · 会話"
-# %{work} and %{project} are identifiers of the selected work item and project.
+# %{work} and %{project} are human-readable labels for the selected work and configured project.
 agent_center.header: "作業項目: %{work} | プロジェクト: %{project}"
-agent_center.welcome: "プロジェクトを選択するか、/project use <id> を指定してください。 目標または /help を入力してください。" # {Locked="/project use","<id>","/help"}
+agent_center.welcome: "F4 を押して構成済みのプロジェクトを選択し、実現したいことを入力してください。" # {Locked="F4"}
 agent_center.input_help: "Enter: 送信 · Shift+Enter: 改行 · Tab: 補完 · F2: 作業項目の切り替え · Ctrl+C: 終了 · PgUp/PgDn: 読む · Ctrl+End: 最新" # {Locked="Enter","Shift+Enter","Tab","F2","PgUp/PgDn","Ctrl+End","Ctrl+C"}
 agent_center.inbox_count: "対応が必要: %{count}"
 agent_center.sending: "取り込んだ要求を送信中…"
@@ -315,3 +377,84 @@ agent_center.missing_field: "応答フィールドが存在しないか無効で
 agent_center.invalid_command_id: "--command-id は UUID である必要があります。" # {Locked="--command-id","UUID"}
 agent_center.worker_stopped: "要求用の接続が停止しました。"
 agent_center.host_unavailable: "%{command} に使用できるシェルホストアダプターがありません。ホストのキーボード操作を使用してください。"
+agent_center.console_home: "新しい作業"
+agent_center.console_new: "新しい作業 / ホーム"
+agent_center.console_new_hint: "新しい目標を入力してください。他の作業は独立して継続されます。"
+agent_center.console_project_create_directory: "新しいディレクトリを作成し、ローカル Git リポジトリを初期化します。既存のファイルは上書きされません。" # {Locked="Git"}
+agent_center.console_projects: "構成済みのプロジェクトを選択"
+agent_center.console_projects_hint: "名前と場所でプロジェクトを選択してください。ここに構成済みのプロジェクトがない場合は、管理者に構成を依頼してください。"
+agent_center.console_refresh: "現在の事実を更新"
+agent_center.console_open: "開く: %{work}"
+agent_center.console_return: "戻る: %{work}"
+agent_center.console_respond: "応答: %{work} — %{question}"
+agent_center.console_unknown_work: "作業の詳細を取得できません"
+agent_center.console_unknown_project: "プロジェクトが未選択か、利用できません"
+# Two works can have exactly the same goal and project. The numbered choice is explicit, never a fuzzy match. %{created} is the recorded creation time.
+agent_center.console_duplicate: "%{work} · 別の作業 %{number} · %{created}"
+agent_center.console_start: "概要を確認して開始を承認"
+agent_center.approval_title: "承認が必要です" # Title of an inline conversation card for a specific frozen human action.
+agent_center.approval_accept: "承認" # Button that submits the exact reviewed action, not a chat message.
+agent_center.approval_start: "承認して開始" # Button approving the displayed work brief and execution grant.
+agent_center.approval_edit: "要件を変更" # Return to the chat composer to describe changes; do not submit or approve the action.
+agent_center.approval_defer: "今はしない" # Defer review in this Console without cancelling the work or approving anything.
+agent_center.approval_open_hint: "F6 提案を確認" # Opens the inline approval card without approving it. {Locked="F6"}
+agent_center.approval_keys: "Left/Right 選択 · Enter 決定 · F5 詳細 · Esc 今はしない" # Keyboard help while the inline approval card owns focus. {Locked="Left/Right","Enter","F5","Esc"}
+agent_center.approval_edit_hint: "%{target} の変更内容を入力してください。まだ何も承認されていません。" # %{target} is the displayed project or work name; the user's draft is preserved.
+agent_center.approval_deferred: "%{target} の確認を後回しにしました。準備ができたら F4 から提案を再度開いてください。" # Deferring is local presentation state, not cancellation of work. %{target} is a project or work name. {Locked="F4"}
+agent_center.console_pause: "作業を一時停止"
+agent_center.console_resume: "作業を再開"
+agent_center.console_cancel: "作業をキャンセル"
+agent_center.console_inspect: "固定された成果物を検査し、証拠を確認 (読み取り専用)"
+agent_center.console_read_evidence: "証拠を読む: %{work} — %{path}"
+agent_center.console_more_evidence: "証拠の次のページを読む: %{work}"
+agent_center.console_accept: "検査済みの成果物を受け入れる"
+agent_center.console_takeover: "管理対象のワークスペースを引き継ぐ"
+agent_center.console_handback: "管理対象のワークスペースを返還"
+agent_center.console_apply: "承認済みの変更を適用"
+agent_center.console_action: "取り込んだ操作を確認"
+agent_center.console_answer: "回答"
+agent_center.console_answer_review: "送信する記録済みの回答:\n%{value}"
+agent_center.console_answer_invalid: "%{field} に有効な値を入力してください。フィールドで必要な選択肢と範囲の制限を確認してください。"
+agent_center.console_schema_unsupported: "この質問は簡易フォームが対応していないスキーマを使用しています。何も送信されていません。より簡単な質問を依頼してください。"
+agent_center.console_yes: "はい"
+agent_center.console_no: "いいえ"
+agent_center.console_form_help: "Up/Down フィールドを選択 · Left/Right 選択肢を選択 · Enter 次のフィールド · Ctrl+Enter 回答を確認 · Esc 戻る" # {Locked="Up/Down","Left/Right","Enter","Ctrl+Enter","Esc"}
+agent_center.console_menu_help: "F4 操作 · Up/Down 選択 · Enter 開く · Esc 戻る · F12 診断" # {Locked="F4","Up/Down","Enter","Esc","F12"}
+agent_center.console_hint: "F4 操作 · F2 作業を切り替え · F12 診断" # {Locked="F4","F2","F12"}
+agent_center.console_scope: "含まれる範囲"
+agent_center.console_exclusions: "この作業の対象外"
+agent_center.console_criteria: "受け入れ基準と必要な証拠"
+agent_center.console_delivery: "成果物"
+agent_center.console_delivery_code: "管理対象ワークスペース内のローカル コード"
+agent_center.console_delivery_report: "取り込んだレポート ファイル"
+agent_center.console_progress: "タスクの進行状況"
+agent_center.console_authority: "要求された権限と実行の制限"
+agent_center.console_capabilities: "承認済みの実行機能"
+agent_center.console_data_scopes: "読み取り可能なデータの場所"
+agent_center.console_limits: "リソースの制限"
+agent_center.console_managed_writes: "管理対象の操作による書き込みの範囲は、この作業のワークスペースに限定されます。これは、プロバイダー所有のツールに対するオペレーティング システムの分離境界ではありません。"
+agent_center.console_frozen: "この確認は、取り込んだ作業、要求、ポリシー、リビジョンに結び付けられます。変更には再確認が必要です。承認の対象が通知なく変更されることはありません。"
+agent_center.console_stale: "リアルタイムの事実が古くなっています。下書きは安全に保持されています。変更を承認または送信する前に、再接続して更新してください。結果が不明であることは、失敗や完了を意味しません。"
+agent_center.console_diagnostics: "診断プロトコルの詳細 (読み取り専用)"
+agent_center.console_no_details: "現在の作業の詳細がありません。F4 を使用してプロジェクトを選択するか、作業を開くか、更新してください。" # {Locked="F4"}
+agent_center.console_draft: "下書き — 未開始"
+agent_center.console_active: "アクティブ — 未受け入れ"
+agent_center.console_completed: "完了 — 人による受け入れを記録済み"
+agent_center.console_cancelled: "キャンセル済み"
+agent_center.console_paused: "一時停止中"
+agent_center.console_automatic: "自動進行"
+agent_center.console_running: "実行中"
+agent_center.console_pending: "保留中 — 未完了"
+agent_center.console_verified: "検証済み / 内部で受け入れ済み"
+agent_center.console_failed: "失敗 / 却下 — 証拠を検査してください"
+agent_center.console_waiting: "応答または依存関係を待機中"
+agent_center.console_unknown: "不明 — 更新するか診断を確認してください"
+agent_center.console_resolved: "応答を記録済み"
+agent_center.console_superseded: "置き換え済み — 現在の成果物ではありません"
+agent_center.console_next_done: "次: 受け入れた成果物を使用してください。保留中の承認はもうありません。"
+agent_center.console_next_cancelled: "次: 自動進行はありません。この作業はキャンセルされました。"
+agent_center.console_next_approve: "次: 概要を確認し、F4 から正確な開始内容を承認してください。" # {Locked="F4"}
+agent_center.console_next_accept: "次: 固定された成果物と証拠を検査し、明示的に受け入れてください。"
+agent_center.console_next_attention: "次: F4 から、この作業でまだ対応が必要な項目を確認してください。" # {Locked="F4"}
+agent_center.console_next_resume: "次: 一時停止中のこの作業をいつ再開するかを決めてください。"
+agent_center.console_next_service: "次: サービスが承認済みの計画を進めます。これは最終的な受け入れではありません。"

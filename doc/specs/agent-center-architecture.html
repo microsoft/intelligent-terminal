@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Task-driven Terminal · Agent Center 架构</title>
+  <style>
+    :root {
+      --ink: #292a2c;
+      --paper: #fffef9;
+      --yellow: #fff0a7;
+      --pink: #f6cecb;
+      --blue: #b7d9fa;
+      --green: #d6ebcc;
+      --gray: #e9ebef;
+      --purple: #e2d7f3;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    }
+    main { max-width: 1500px; margin: auto; padding: 36px 24px 48px; }
+    header { display: flex; gap: 24px; justify-content: space-between; align-items: start; }
+    .eyebrow { margin: 0 0 10px; font-size: 12px; font-weight: 700; letter-spacing: 2px; }
+    h1 { margin: 0; font-size: clamp(25px, 3vw, 42px); letter-spacing: -1px; }
+    .intro { max-width: 880px; line-height: 1.8; margin: 14px 0 22px; color: #51535a; }
+    .print {
+      border: 2px solid var(--ink); border-radius: 9px 12px 8px 11px;
+      padding: 10px 16px; background: white; font: inherit; cursor: pointer; white-space: nowrap;
+    }
+    .print:hover { background: var(--yellow); }
+    a { color: #275b7e; text-underline-offset: 3px; }
+    button:focus-visible, a:focus-visible, summary:focus-visible { outline: 3px solid #275b7e; outline-offset: 4px; }
+    .legend { display: flex; flex-wrap: wrap; gap: 12px 24px; font-size: 13px; margin-bottom: 18px; }
+    .legend span { display: inline-flex; gap: 8px; align-items: center; }
+    .swatch { width: 17px; height: 17px; border: 1.5px solid var(--ink); border-radius: 5px 3px 4px 6px; }
+    .diagram { overflow-x: auto; border-radius: 26px; }
+    svg { display: block; width: 100%; min-width: 920px; height: auto; }
+    svg text { fill: var(--ink); font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+    svg .hand { font-family: "Segoe Print", "Comic Sans MS", "Microsoft YaHei", cursive; }
+    svg .title { font-size: 25px; font-weight: 600; }
+    svg .body { font-size: 18px; }
+    svg .small { font-size: 15px; }
+    svg .muted { fill: #555963; }
+    svg .box { stroke: var(--ink); stroke-width: 2.3; stroke-linejoin: round; }
+    svg .arrow { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; marker-end: url(#arrow); }
+    svg .event { stroke-dasharray: 7 5; }
+    svg .future { stroke-dasharray: 7 5; }
+    svg .badge { fill: #fffef9; stroke: var(--ink); stroke-width: 1.8; }
+    svg .number { font-size: 16px; font-weight: 700; text-anchor: middle; }
+    .caption { margin: 12px 8px 28px; font-size: 13px; line-height: 1.8; color: #575b62; }
+    h2 { margin: 28px 0 16px; font-size: 24px; }
+    .gaps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .gap {
+      border: 1.5px solid var(--ink); border-radius: 12px 16px 11px 14px;
+      padding: 18px 20px; background: #fff; line-height: 1.75;
+    }
+    .gap h3 { margin: 0 0 8px; font-size: 17px; }
+    .gap p { margin: 0; font-size: 14px; color: #51535a; }
+    .gap:nth-child(1), .gap:nth-child(2) { background: #edf5e9; }
+    .gap:nth-child(4), .gap:nth-child(5) { background: #f4eefb; }
+    .boundary { margin-top: 24px; padding: 20px 24px; border-left: 4px solid #897440; background: #fff6d5; line-height: 1.8; }
+    .boundary p { margin: 6px 0; }
+    details { margin-top: 22px; border-top: 1px solid #c8c4b7; padding-top: 16px; line-height: 1.8; }
+    summary { cursor: pointer; font-weight: 600; }
+    .mapping { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 28px; margin-top: 14px; }
+    .mapping p { margin: 0; font-size: 14px; }
+    code { font-size: 0.9em; overflow-wrap: anywhere; }
+    footer { margin-top: 28px; font-size: 13px; line-height: 1.8; color: #62646c; }
+    @media (max-width: 850px) {
+      main { padding: 24px 14px; }
+      header { flex-direction: column; gap: 12px; }
+      .gaps, .mapping { grid-template-columns: 1fr; }
+    }
+    @media print {
+      @page { size: A3 portrait; margin: 12mm; }
+      body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      main { max-width: none; padding: 0; }
+      .print, details { display: none; }
+      .diagram { overflow: visible; }
+      svg { min-width: 0; }
+      .gap, .boundary { break-inside: avoid; }
+      .gaps { grid-template-columns: repeat(3, 1fr); }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <p class="eyebrow">INTELLIGENT TERMINAL / TARGET ARCHITECTURE</p>
+      <h1>管理工作，而不是管理工具。</h1>
+      <p class="intro">Terminal is the easiest way to get tasks done on your OS.<br>
+        保留一个对话入口和按需使用的 shell，把“理解意图”与“可靠推进工作”分开：Agent 提出方案，工作服务持有事实、校验权限并驱动执行。</p>
+    </div>
+    <button class="print" type="button" id="print">打印 / 保存 PDF</button>
+  </header>
+  <div class="legend" aria-label="图例">
+    <span><i class="swatch" style="background:var(--pink)"></i>理解与规划</span>
+    <span><i class="swatch" style="background:var(--green)"></i>工作服务 / 权威状态</span>
+    <span><i class="swatch" style="background:var(--blue)"></i>执行资源 / 现场</span>
+    <span><i class="swatch" style="background:var(--purple)"></i>验证 / 人的控制</span>
+    <span>实线箭头：请求与执行 · 虚线箭头：观测与回传</span>
+  </div>
+
+  <div class="diagram" tabindex="0" role="region" aria-label="架构图，小屏幕可横向滚动">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 1260" role="img" aria-labelledby="diagram-title diagram-description">
+      <title id="diagram-title">Task-driven Terminal 目标架构</title>
+      <desc id="diagram-description">用户通过统一工作入口对话和确认，或主动打开 shell。
+        Orchestration Agent 理解和提议；Work Service 校验权限、预算与版本，持久化工作并调度获准的 Agent、shell 和适配器。
+        工作包含目标、上下文、计划、状态、证据和资源引用，不等于一个进程。
+        执行结果经过检查，失败返回协调者返工，通过形成候选交付，由人最终验收。
+        状态、事件和操作回执持久化，窗口或模型会话不是唯一事实来源。更广泛的 OS 适配器属于后续能力。</desc>
+      <defs>
+        <marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+          <path d="M2 2 L10 6 L2 10" fill="none" stroke="#292a2c" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+      <path class="box" fill="#fff0a7" d="M48 18 Q20 20 21 51 L18 1206 Q19 1236 50 1238 L1388 1241 Q1418 1239 1419 1208 L1421 52 Q1420 19 1389 19 Z"/>
+      <text class="hand title" x="70" y="63">Terminal — one entry, many works</text>
+      <text class="small muted" x="1370" y="61" text-anchor="end">目标架构 · 不是实现完成度图</text>
+
+      <!-- One human entry; shell remains an explicit expert path. -->
+      <path class="box" fill="#e9ebef" d="M83 96 Q70 96 71 111 L69 147 Q70 161 86 160 L1356 162 Q1371 161 1370 146 L1371 111 Q1370 96 1356 97 Z"/>
+      <path class="box" fill="none" d="M1048 97 L1049 161"/>
+      <text class="hand" font-size="23" x="103" y="126">“What's my work's status? Why this approach?”</text>
+      <text class="small" x="104" y="148">委托 · 全局进度 · 换个方案 · 新问题同时做 · 我来验收</text>
+      <text class="hand" font-size="22" x="1090" y="125">$ git status</text>
+      <text class="small muted" x="1090" y="149">可选命令 / 主动进入现场</text>
+      <path class="arrow" d="M365 163 Q365 190 364 217"/>
+      <text class="small" x="384" y="195">表达意图，不管理内部会话</text>
+      <path class="arrow" d="M1233 164 L1234 217"/>
+      <path class="arrow" d="M1018 164 L1060 184 L1060 463 L1034 463"/>
+      <text class="small" transform="translate(1052 385) rotate(-90)">人确认 → 服务校验</text>
+
+      <path class="box" fill="#f6cecb" d="M95 220 Q69 220 70 247 L72 315 Q73 340 98 339 L1004 341 Q1031 340 1030 314 L1031 247 Q1030 221 1003 220 Z"/>
+      <text class="hand title" x="103" y="261">Orchestration Agent</text>
+      <text class="body" x="103" y="294">理解目标 / 消解指代 / 提议计划 / 解释方案 / 组织澄清与返工</text>
+      <text class="small muted" x="103" y="319">从工作事实回答；一个协作入口 ≠ 一个无限上下文的全局模型会话</text>
+      <rect class="box" x="786" y="238" width="222" height="36" rx="11" fill="#fff6dc"/>
+      <text class="small" x="897" y="262" text-anchor="middle">Agent 提议 ≠ 授权 / 完成</text>
+
+      <path class="box" fill="#b7d9fa" d="M1116 220 Q1090 220 1091 246 L1090 316 Q1091 340 1116 341 L1343 340 Q1371 340 1370 314 L1369 246 Q1370 221 1343 220 Z"/>
+      <text class="hand title" x="1122" y="263">Shell / live view</text>
+      <text class="body" x="1122" y="295">查看不等于接管</text>
+      <text class="small" x="1122" y="320">编辑需明确交接输入权 / 写入权</text>
+
+      <path class="arrow" d="M333 342 L332 396"/>
+      <text class="small" x="349" y="373">typed proposals / scoped work tools</text>
+      <path class="arrow event" d="M779 397 L780 344"/>
+      <text class="small" x="797" y="373">事实 + 事件 → 定向唤醒</text>
+
+      <!-- Work records live inside the service, not inside model memory. -->
+      <path class="box" fill="#d6ebcc" d="M91 400 Q70 400 71 424 L69 720 Q70 744 94 745 L1007 744 Q1031 744 1030 720 L1031 425 Q1030 400 1006 399 Z"/>
+      <circle class="badge" cx="103" cy="434" r="16"/><text class="number" x="103" y="440">1</text>
+      <text class="hand title" x="132" y="443">Work Service — authority, not another agent</text>
+      <text class="body" x="101" y="480">工作 API · 权限 / 预算 / 版本校验 · Scheduler · Coordinator driver</text>
+      <text class="small muted" x="101" y="508">服务提交真实状态、推进就绪任务；必要时调用模型。不是每个 token 都唤醒协调者。</text>
+
+      <path class="box" fill="#e9ebef" d="M107 534 Q91 533 92 550 L93 703 Q94 719 110 718 L525 720 Q540 719 539 701 L541 550 Q540 534 525 535 Z"/>
+      <circle class="badge" cx="120" cy="562" r="15"/><text class="number" x="120" y="568">2</text>
+      <text class="hand" font-size="22" x="148" y="569">Work A · 修好这个问题</text>
+      <text class="body" x="115" y="604">目标 + 完成标准 + 授权 + 执行位置</text>
+      <text class="body" x="115" y="636">上下文 + 计划 / 依赖 + 状态 / 决定</text>
+      <text class="body" x="115" y="668">产物 / 证据 + Agent / shell 资源引用</text>
+      <text class="small muted" x="115" y="701">Work ID 持久；Attempt / Session 可替换</text>
+
+      <path class="box" fill="#e9ebef" d="M577 535 Q560 535 561 551 L559 702 Q560 719 577 720 L992 718 Q1007 719 1006 701 L1008 551 Q1007 534 990 534 Z"/>
+      <text class="hand" font-size="22" x="584" y="571">Work B · 同时调查新问题</text>
+      <text class="body" x="583" y="604">独立目标 / 授权 / 工作区 / 进度</text>
+      <text class="body" x="583" y="636">独立草稿 / 待办 / 验收与交付</text>
+      <text class="body" x="583" y="668">跨工作引用必须明确版本与权限</text>
+      <text class="small muted" x="583" y="701">切换工作 ≠ 重启 Agent ≠ 切换 shell</text>
+
+      <path class="box" fill="#e9ebef" d="M1112 400 Q1090 400 1091 422 L1090 718 Q1091 744 1115 743 L1346 745 Q1370 744 1369 721 L1370 423 Q1370 400 1346 399 Z"/>
+      <circle class="badge" cx="1122" cy="434" r="16"/><text class="number" x="1122" y="440">3</text>
+      <text class="hand" font-size="21" x="1149" y="442">Durable state</text>
+      <text class="body" x="1115" y="484">Work store / event log</text>
+      <text class="body" x="1115" y="525">Context / artifact store</text>
+      <text class="body" x="1115" y="566">Operation receipts</text>
+      <path class="box" fill="none" d="M1116 589 Q1220 591 1345 588"/>
+      <text class="small" x="1115" y="620">持久化目标、决定与证据</text>
+      <text class="small" x="1115" y="650">重连、去重与副作用核对</text>
+      <text class="small" x="1115" y="680">上下文重建不靠用户转贴</text>
+      <text class="small muted" x="1115" y="713">关闭视图不删除工作</text>
+      <path class="arrow" marker-start="url(#arrow)" d="M1034 541 L1086 541"/>
+
+      <path class="arrow" d="M340 746 L340 808"/>
+      <text class="small" x="356" y="780">dispatch · exact inputs · bounded authority</text>
+      <path class="arrow event" d="M848 808 L848 748"/>
+      <text class="small" x="866" y="781">观测 / 回执</text>
+
+      <path class="box" fill="#b7d9fa" d="M96 813 Q71 811 71 837 L70 943 Q71 967 97 966 L1006 968 Q1031 967 1030 943 L1031 838 Q1030 812 1005 813 Z"/>
+      <circle class="badge" cx="103" cy="839" r="16"/><text class="number" x="103" y="845">6</text>
+      <text class="hand title" x="132" y="848">Runtime &amp; resource adapters</text>
+      <text class="small" x="102" y="875">工作区 / 实际 cwd 与环境 / 进程或 PTY / 写入所有权 / 停止与续接</text>
+      <rect class="box" x="97" y="895" width="285" height="49" rx="10" fill="#eaf4ff"/>
+      <text class="body" x="239" y="926" text-anchor="middle">Agents · ACP / work MCP</text>
+      <rect class="box" x="400" y="895" width="240" height="49" rx="10" fill="#eaf4ff"/>
+      <text class="body" x="520" y="926" text-anchor="middle">Shells / native checks</text>
+      <rect class="box future" x="659" y="895" width="344" height="49" rx="10" fill="#fffaf0"/>
+      <text class="body" x="831" y="926" text-anchor="middle">OS / app adapters · 后续资格验证</text>
+      <path class="arrow" d="M1230 343 L1230 370 L1392 370 L1392 899 L1034 899"/>
+      <text class="small" x="1111" y="833">现场连接 / 人工交接</text>
+      <text class="small muted" x="1111" y="859">不是授权旁路</text>
+
+      <path class="arrow" d="M526 970 L526 1031"/>
+      <text class="small" x="548" y="1006">固定提交 + 独立检查 / review + 真实证据</text>
+      <path class="box" fill="#e2d7f3" d="M96 1034 Q70 1033 70 1058 L71 1164 Q70 1188 97 1188 L1005 1190 Q1031 1189 1030 1163 L1031 1059 Q1030 1034 1005 1035 Z"/>
+      <circle class="badge" cx="103" cy="1068" r="16"/><text class="number" x="103" y="1074">4</text>
+      <text class="hand title" x="132" y="1077">Check → rework OR delivery candidate</text>
+      <text class="body" x="101" y="1112">失败：记录原因和证据 → 协调者安排修订 → 新提交重新检查</text>
+      <text class="body" x="101" y="1146">通过：固定版本 / 目标结果 + 完成标准 + 证据 + 已知限制</text>
+      <text class="small muted" x="101" y="1175">属于工作服务的评估与交付职责；“Agent 说完成”或 exit 0 不等于工作已验收</text>
+      <path class="arrow event" d="M68 1107 L41 1107 L41 455 L68 455"/>
+      <text class="small" transform="translate(35 928) rotate(-90)">failed check → recorded rework trigger</text>
+
+      <path class="box" fill="#e2d7f3" d="M1114 1034 Q1091 1034 1090 1058 L1091 1165 Q1090 1189 1116 1188 L1345 1190 Q1370 1189 1369 1164 L1370 1059 Q1370 1033 1344 1034 Z"/>
+      <circle class="badge" cx="1122" cy="1068" r="16"/><text class="number" x="1122" y="1074">5</text>
+      <text class="hand" font-size="21" x="1149" y="1076">Human control</text>
+      <text class="body" x="1115" y="1114">范围 / 方案 / 权限 / 预算</text>
+      <text class="body" x="1115" y="1147">暂停 / 接管 / 最终验收</text>
+      <text class="small" x="1115" y="1176">通过统一入口确认 → 服务校验</text>
+      <path class="arrow event" d="M1034 1103 L1086 1103"/>
+      <text class="small" x="1060" y="1087" text-anchor="middle">待验收</text>
+      <path class="arrow event" d="M1373 1100 L1406 1100 L1406 129 L1376 129"/>
+      <text class="small" x="1109" y="1006">决定 / 验收 → 同一入口</text>
+      <text class="small muted" x="75" y="1220">请求 → 校验 → 调度 → 观测 → 验证 → 返工 / 人工验收；闭环属于产品，不属于用户的手工接力。</text>
+    </svg>
+  </div>
+  <p class="caption">对原图的关键修正：delegate 变为受校验的提议与派发；publish 拆成有来源的进度/证据回传和需要人处理的待办。
+    Work 是持久领域对象，不是自己“发布状态”的进程。普通人工 shell 命令也不会自动变成已验证的 Work 结果。</p>
+
+  <h2>原图还缺的，不是更多 Agent，而是这些责任。</h2>
+  <section class="gaps" aria-label="需要补充的架构职责">
+    <article class="gap">
+      <h3>① 确定性的工作控制层</h3>
+      <p>Orchestration Agent 擅长理解与推理，但不应该独占状态或自行授权。服务负责校验、调度、事件驱动、预算、取消与去重；Agent 重启后工作仍然存在。</p>
+    </article>
+    <article class="gap">
+      <h3>② 完整的 Work 模型</h3>
+      <p>不只是 status + agents + shell。还要有目标、完成条件、位置、上下文、计划与依赖、授权、决定和证据。资源通过身份关联，而不是每个 Work 必须捆绑一套 shell。</p>
+    </article>
+    <article class="gap">
+      <h3>③ 持久状态与上下文连续性</h3>
+      <p>保存工作事实、输入版本、事件、操作回执与结果。模型会话不是数据库；换执行者不应要求用户转贴上下文。未知副作用必须先核对，不能直接重跑。</p>
+    </article>
+    <article class="gap">
+      <h3>④ 检查、返工与交付闭环</h3>
+      <p>执行者提交，检查者依据固定输入验证，失败自动回到协调流程。内部通过只产生候选交付；最终验收与必要的交付回执完成后，才能记录工作完成。</p>
+    </article>
+    <article class="gap">
+      <h3>⑤ 人的决定与注意力</h3>
+      <p>全局待办解释“为什么找你”。用户可询问方案、改变方向、暂停、接管和验收；这些操作绑定具体工作与版本，不能只得到一句“好的”，也不能抢走另一工作的输入。</p>
+    </article>
+    <article class="gap">
+      <h3>⑥ 受管的 OS 执行边界</h3>
+      <p>明确 Agent、shell、文件、应用资源在哪里运行，谁有写入权，如何停止和恢复。已有进程可见不等于可接管；OS 任务要验证实际目标状态，不能用报告代替真实效果。</p>
+    </article>
+  </section>
+
+  <aside class="boundary" aria-label="实现范围说明">
+    <strong>这是补齐职责的目标图，不代表这些模块都是新缺失的代码。</strong>
+    <p>当前实现已具有工作引擎、持久存储、运行适配器、检查与交付等基础。首个试点是本地
+      <code>LocalCode</code> / <code>Report</code>。全局事实对话、完整自主返工、输入可靠性等是否完成，以对应验收记录为准。</p>
+    <p>更广泛的 OS / 应用状态操作、已有现场纳管和执行者更换后的连续性，需要逐适配器资格验证。
+      “所有资源可调度”始终指已注册、已授权、可确认身份和所有权的资源，而不是无限权限。</p>
+  </aside>
+
+  <details>
+    <summary>对应现有实现与规格</summary>
+    <div class="mapping">
+      <p><strong>窗口 / 单一入口</strong><br><code>TerminalPage.cpp</code> + 窗口级 <code>wta ui</code><br>不等同于旧的 per-tab helper。</p>
+      <p><strong>工作服务 / 协作</strong><br><code>agent_center/engine*.rs</code>、<code>engine/collaboration.rs</code>、<code>engine/planning.rs</code></p>
+      <p><strong>运行与受管工作区</strong><br><code>agent_center/runtime.rs</code>、<code>runtime/acp.rs</code>、<code>runtime/workspace.rs</code>、<code>runtime/bridge.rs</code></p>
+      <p><strong>评估 / 证据 / 交付</strong><br><code>engine/evaluation.rs</code>、<code>runtime/artifacts.rs</code><br>内部接受与最终用户验收分离。</p>
+    </div>
+  </details>
+  <footer>
+    设计依据：
+    <a href="agent-center-product.md">产品目标与用户故事</a> ·
+    <a href="agent-center.md">领域与职责边界</a> ·
+    <a href="agent-center-protocol.md">协议契约</a> ·
+    <a href="agent-center-verification-plan.md">验收计划</a><br>
+    架构讨论稿 · 2026-09-17 · 单文件 HTML + SVG，无外部字体、脚本或网络依赖。
+  </footer>
+</main>
+<script>
+  document.getElementById('print').addEventListener('click', () => window.print());
+</script>
+</body>
+</html>

@@ -1,23 +1,11 @@
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Padding, Paragraph};
 use unicode_width::UnicodeWidthChar;
 
+use super::composer;
 use crate::app::{App, ConnectionState};
 use crate::theme;
 
-pub(crate) const INPUT_MIN_HEIGHT: u16 = 3;
-pub(crate) const INPUT_MAX_HEIGHT: u16 = 8;
-const INPUT_LEFT_PAD: u16 = 1;
-// Persistent prompt prefix: rendered in its own column at the very left of
-// every visible line so it stays put when the user types, and so the
-// placeholder, typed text and cursor all align under it. Width matches the
-// span's literal cell width.
-const INPUT_PROMPT: &str = "> ";
-const INPUT_PROMPT_WIDTH: u16 = 2;
-// Continuation lines (wrap rows past the first) get a space-only prefix of
-// the same width so typed text stays vertically aligned with the column
-// right of "> ".
-const INPUT_PROMPT_CONT: &str = "  ";
+pub(crate) use super::composer::{INPUT_MAX_HEIGHT, INPUT_MIN_HEIGHT};
 const INPUT_MIN_INNER_ROWS: usize = (INPUT_MIN_HEIGHT - 2) as usize;
 const INPUT_MAX_INNER_ROWS: usize = (INPUT_MAX_HEIGHT - 2) as usize;
 
@@ -40,22 +28,12 @@ struct WrappedInput {
 
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     let tab = app.current_tab();
-    let border_style = if app.pane_focused {
-        theme::INPUT_BORDER_FOCUSED
-    } else {
-        theme::INPUT_BORDER
-    };
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(border_style)
-        .style(Style::new().bg(theme::INPUT_BG))
-        .padding(Padding::new(INPUT_LEFT_PAD, 0, 0, 0));
-    let text_width = input_text_width(area.width);
+    let text = composer::layout(area, true).text;
     let viewport = input_viewport_with_max_rows(
         &tab.input,
         tab.cursor_pos,
-        text_width,
-        area.height.saturating_sub(2) as usize,
+        text.width,
+        usize::from(text.height),
     );
     let attachment_ranges = tab.attachments.token_ranges().collect::<Vec<_>>();
     let prepared_command_range = app.prepared_command_range();
@@ -69,9 +47,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     let input_active = app.pane_focused && tab.input_has_nav_focus();
 
     let lines: Vec<Line> = if tab.input.is_empty() {
-        // Show a placeholder reflecting connection state. The "> " is its
-        // own span so the placeholder/typed text/cursor all sit in the same
-        // column regardless of whether the input is empty.
+        // Show a placeholder reflecting connection state.
         let placeholder = match &app.state {
             ConnectionState::Connected => t!("input.placeholder.connected").into_owned(),
             ConnectionState::Connecting(_) => t!("input.placeholder.connecting").into_owned(),
@@ -84,7 +60,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         // schemes once the pane background follows the scheme (#234). The OS
         // cursor stays hidden (`terminal.hide_cursor`), so this painted cell
         // is the only caret.
-        let mut placeholder_spans = vec![Span::styled(INPUT_PROMPT, theme::DIM)];
+        let mut placeholder_spans = Vec::new();
         let mut chars = placeholder.chars();
         if let Some(first) = chars.next() {
             let first_style = if input_active {
@@ -110,21 +86,12 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
             .iter()
             .enumerate()
             .map(|(i, line)| {
-                // The "> " marker only marks wrap-row 0 of the input;
-                // continuations get a same-width space prefix so text stays
-                // column-aligned.
-                let absolute_row = viewport.scroll_row + i;
-                let prefix = if absolute_row == 0 {
-                    Span::styled(INPUT_PROMPT, theme::DIM)
-                } else {
-                    Span::raw(INPUT_PROMPT_CONT)
-                };
                 // Paint the caret as an inverse cell on the row/column the
                 // cursor sits on. This replaces the OS block cursor so there
                 // is nothing for WT to blink or tear, and lets `draw_frame`
                 // keep the OS cursor hidden in every state.
                 if input_active && tab.input_all_selected {
-                    let mut spans = vec![prefix];
+                    let mut spans = Vec::new();
                     push_styled_input(
                         &mut spans,
                         line,
@@ -132,12 +99,12 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
                         &attachment_ranges,
                         prepared_command_range.as_ref(),
                     );
-                    for span in spans.iter_mut().skip(1) {
+                    for span in &mut spans {
                         span.style = span.style.add_modifier(Modifier::REVERSED);
                     }
                     Line::from(spans)
                 } else if input_active && i == viewport.cursor_row {
-                    let mut spans = vec![prefix];
+                    let mut spans = Vec::new();
                     push_caret_spans(
                         &mut spans,
                         line,
@@ -149,7 +116,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
                     );
                     Line::from(spans)
                 } else {
-                    let mut spans = vec![prefix];
+                    let mut spans = Vec::new();
                     push_styled_input(
                         &mut spans,
                         line,
@@ -168,8 +135,14 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
             .collect()
     };
 
-    let paragraph = Paragraph::new(lines).block(block);
-    frame.render_widget(paragraph, area);
+    composer::render(
+        frame,
+        area,
+        true,
+        app.pane_focused,
+        lines,
+        viewport.scroll_row,
+    );
 }
 
 pub(crate) fn input_height(input: &str, cursor_pos: usize, total_width: u16) -> u16 {
@@ -293,8 +266,9 @@ pub(crate) fn input_viewport(input: &str, cursor_pos: usize, total_width: u16) -
 }
 
 fn input_text_width(total_width: u16) -> u16 {
-    total_width
-        .saturating_sub(INPUT_LEFT_PAD + 2 + INPUT_PROMPT_WIDTH)
+    composer::layout(Rect::new(0, 0, total_width, INPUT_MIN_HEIGHT), true)
+        .text
+        .width
         .max(1)
 }
 
@@ -498,11 +472,25 @@ mod tests {
         assert_eq!(viewport.cursor_row, 1);
         assert_eq!(viewport.cursor_col, 2);
 
-        // `input_height` subtracts INPUT_LEFT_PAD + 2 (borders) +
-        // INPUT_PROMPT_WIDTH from the total width before wrapping, so the
+        // The shared composer reserves padding, borders and prompt columns
+        // from the total width before wrapping, so the
         // usable inner text width here is 8 - 5 = 3. "abcdefghij" wraps to
         // 4 rows of width 3 → box height = 4 + 2 (borders) = 6.
         assert_eq!(input_height("abcdefghij", 10, 8), 6);
+    }
+
+    #[test]
+    fn narrow_input_wraps_using_the_shared_text_rectangle() {
+        for width in 1..=8 {
+            let text = super::composer::layout(
+                ratatui::layout::Rect::new(0, 0, width, super::INPUT_MIN_HEIGHT),
+                true,
+            )
+            .text;
+            assert_eq!(super::input_text_width(width), text.width);
+            let viewport = input_viewport("abc", 3, text.width);
+            assert!(viewport.cursor_col < usize::from(text.width));
+        }
     }
 
     #[test]

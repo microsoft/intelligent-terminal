@@ -271,10 +271,72 @@ system.model_unknown: "Tauira kāore e mōhiotia %{model} — patohia /model kia
 # not an agent session; a work item may contain multiple tasks.
 agent_center.title: "Agent Center" # {Locked}
 agent_center.works: "Ngā tūemi mahi"
+agent_center.demo_title: "Whakaaturanga kōrero mō tētahi tūemi mahi" # Title of an isolated scripted demonstration; the story fixture itself is English.
+agent_center.demo_notice: "Whakaaturanga whai hōtuhi | Taunakitanga tauira, wātū me te whakamahinga maimai kua whakatauiratia | Kāore he māngai e whakarewahia" # Always-visible disclosure; simulated data must not be confused with live agent execution.
+agent_center.demo_scene: "Wāhanga %{scene}/8" # %{scene} is the current scene number in the eight-scene story.
+agent_center.demo_next: "Panuku: %{input}" # %{input} is the literal English story input, not a translated command.
+agent_center.demo_keys: "Enter: tuku | Tab: whakakī i te tāuru panuku | PgUp/PgDn: panuku | Ctrl+Q: kati" # {Locked="Enter","Tab","PgUp/PgDn","Ctrl+Q"}
+agent_center.demo_reset: "Tautuhi anō i te āhua o te whakaaturanga? Patohia /reset confirm. Kāore ngā tūemi mahi me ngā tautuhinga o nāianei e pāngia." # {Locked="/reset confirm"} Resets only the isolated demo, never real work.
+agent_center.demo_saved: "Kua tiakina te whakahoutanga %{revision}" # %{revision} is the persisted demo state revision.
+agent_center.demo_error: "I rahua te hohenga whakaaturanga: %{error}" # %{error} explains the rejected action; no state change is claimed.
+agent_center.tasks_title: "Ngā tūmahi"
+agent_center.task_new: "Tūmahi hou"
+agent_center.task_all: "Ngā tūmahi katoa"
+agent_center.task_attention: "Me aro atu"
+agent_center.task_continue: "Haere tonu ki te tūmahi"
+# Messages waiting for this work's busy executor, excluding the currently running turn. {Locked="%{count}"}
+agent_center.task_queued_messages: "Ngā karere kei te rārangi tatari: %{count}"
+# Explicit migration of an existing work from legacy orchestration to its own executing agent session.
+agent_center.task_claim_executor: "Hono ki te agent o te tūmahi"
+agent_center.task_claim_executor_confirm: "Whakawhitia tēnei tūmahi ki tōna ake agent hei kawe i te mahi. Ka puritia te kōrerorero me ngā hua o nāianei, ā, ka mutu te whakarite hōtaka tawhito. Ki te kore e taea te whakaora te wātū whakatutuki taketake, me whakaū motuhake i mua i te tīmatanga o tētahi wātū hou."
+agent_center.task_open_tab: "Whakatuwhera ki tētahi ripa"
+agent_center.task_tab_unsupported: "Me whai Intelligent Terminal hei whakatuwhera i tētahi ripa tūmahi." # {Locked="Intelligent Terminal"}
+agent_center.task_new_session: "Tīmata i tētahi wātū hou"
+agent_center.task_new_session_confirm: "Kāore e taea te haere tonu i te wātū taketake o te agent. Me tīmata he wātū hou mā te whakamahi i te horopaki kua tiakina mō tēnei tūmahi?"
+agent_center.task_keys: "Up/Down kōwhiri · Enter whakatuwhera · F4 hohenga · F5 taipitopito" # {Locked="Up/Down","Enter","F4","F5"}
+agent_center.task_list_keys: "F2 tūmahi · F4 hohenga · F5 taipitopito" # {Locked="F2","F4","F5"}
+agent_center.task_state_running: "Kei te haere"
+agent_center.task_state_waiting: "Kei te tatari ki tō whakautu"
+agent_center.task_state_paused: "Kua whakatārewatia"
+agent_center.task_state_recovery: "Me whakaora"
+agent_center.task_state_ready: "Kua rite ki te haere tonu"
+agent_center.task_state_completed: "Kua oti"
+agent_center.task_state_cancelled: "Kua whakakorea"
+agent_center.task_state_unavailable: "Kāore te wātū i te wātea"
+agent_center.task_updated: "Hohenga whakamutunga: %{time}"
+agent_center.ui_overview: "Tirohanga whānui"
+agent_center.chat_global: "Kōrerorero whānui" # Conversation with the non-executing master for new goals and cross-work coordination; each work has its own executor conversation.
+agent_center.chat_welcome: "Kōrerotia mai he aha tāu e hiahia ana ki te whakatutuki, ki te whakarite, ki te kimi mōhiohio rānei."
+agent_center.chat_keys: "Enter tuku · Shift+Enter rārangi hou · F4 hohenga · F5 taipitopito · F7 papatohu" # {Locked="Enter","Shift+Enter","F4","F5","F7"}
+agent_center.chat_dashboard_keys: "F7 kōrerorero · Esc kōrerorero · F4 hohenga · F6 arotahi ki ngā hohenga" # Dashboard navigation preserves the global conversation and draft. {Locked="F7","Esc","F4","F6"}
+agent_center.chat_context_hint: "Tohu horopaki: %{context}" # %{context} is a readable work or project name, not a binding that limits the global conversation.
+agent_center.ui_attention: "Me aro koe" # Heading for recorded requests, draft-start reviews, and delivery reviews; not a claim that every work needs attention.
+agent_center.ui_details: "Whakarāpopototanga me te ahunga whakamua" # Read-only details view containing the work agreement, recorded progress, evidence, and locations.
+agent_center.ui_new_goal: "He aha tāu e hiahia ana ki te whakatutuki?"
+agent_center.ui_empty_attention: "Kāore he tono tuwhera e hiahia ana ki tō whakautu."
+agent_center.ui_no_works: "Kāore anō he mahi kia tuhia. Kōwhiria he kaupapa kua whirihoratia hei tīmata."
+agent_center.ui_no_conversation: "Kāore he karere i tuhia mō tēnei mahi."
+agent_center.ui_role_you: "Koe" # Speaker heading for an actual recorded human message.
+agent_center.ui_role_assistant: "Kaiāwhina mahi" # Speaker heading for an actual recorded assistant message, not a provider name.
+agent_center.ui_role_service: "Ratonga" # Speaker heading for an actual recorded system or service message.
+agent_center.ui_role_unknown: "Karere kua tuhia" # Speaker heading when the service does not identify a recognized message role.
+agent_center.ui_next: "Te kawenga e whai ake nei"
+agent_center.ui_recorded_facts: "Ngā meka kua tuhia"
+agent_center.ui_last_known: "Te tūnga i mōhiotia whakamutunga · %{status}" # %{status} is a localized recorded status. Used when cached facts do not establish current execution.
+agent_center.ui_cached_facts: "Ngā meka kei te keteroki; kāore anō te whakatutukitanga o nāianei kia whakaūngia."
+agent_center.ui_source_root: "Te tauwāhi pūtake o te kaupapa" # Configured source root, explicitly distinct from the actual managed execution directory.
+agent_center.ui_execution_root: "Te tauwāhi whakatutuki e whakahaeretia ana" # Actual execution directory reported by the service, never inferred from the project source root.
+agent_center.ui_location_unknown: "Kāore anō he tauwāhi whakatutuki kia pūrongotia."
+agent_center.ui_composer: "Karere mō: %{work}" # %{work} is the human-readable target of this independent draft.
+agent_center.ui_composer_new: "Mahi hou · %{project}" # %{project} is the configured project name, or an explicit project-selection warning.
+agent_center.ui_actions: "Ngā hohenga mahi"
+agent_center.ui_keys: "Enter tuku · Shift+Enter rārangi hou · F4 hohenga · F5 taipitopito · F6 arotahi ki ngā hohenga" # {Locked="Enter","Shift+Enter","F4","F5","F6"}
+agent_center.ui_actions_hint: "Up/Down kōwhiri · Enter whakatuwhera · Esc tāuru" # Keyboard focus is on a visible action, not the text editor. {Locked="Up/Down","Enter","Esc"}
+agent_center.ui_details_hint: "F5 kati taipitopito · PgUp/PgDn pānui · Esc tāuru" # Read-only detail focus; returning to input preserves the draft and selection. {Locked="F5","PgUp/PgDn","Esc"}
 agent_center.activity: "Ngā hohenga · Kōrerorero"
-# %{work} and %{project} are identifiers of the selected work item and project.
+# %{work} and %{project} are human-readable labels for the selected work and configured project.
 agent_center.header: "Mahi: %{work} | Kaupapa: %{project}"
-agent_center.welcome: "Kōwhiria he kaupapa, tautuhia rānei /project use <id>. Patohia he whāinga, he /help rānei." # {Locked="/project use","<id>","/help"}
+agent_center.welcome: "Pēhia F4 hei kōwhiri kaupapa kua whirihoratia, kātahi ka tāuru i tāu e hiahia ana ki te whakatutuki." # {Locked="F4"}
 agent_center.input_help: "Enter: tuku · Shift+Enter: rārangi hou · Tab: whakaoti · F2: whakawhiti tūemi mahi · Ctrl+C: puta · PgUp/PgDn: pānui · Ctrl+End: hou rawa" # {Locked="Enter","Shift+Enter","Tab","F2","PgUp/PgDn","Ctrl+End","Ctrl+C"}
 agent_center.inbox_count: "Me aro atu: %{count}"
 agent_center.sending: "E tuku ana i te tono kua hopukina…"
@@ -319,3 +381,84 @@ agent_center.missing_field: "Kei te ngaro, kei te muhu rānei te āpure whakautu
 agent_center.invalid_command_id: "Me UUID te --command-id." # {Locked="--command-id","UUID"}
 agent_center.worker_stopped: "Kua mutu te hononga tono."
 agent_center.host_unavailable: "Kāore he pūurutau kaihautū anga mō %{command}. Whakamahia ngā hohenga papapātuhi a te kaihautū."
+agent_center.console_home: "Mahi hou"
+agent_center.console_new: "Mahi hou / Kāinga"
+agent_center.console_new_hint: "Tāurua he whāinga hou. Ka haere tonu ngā mahi kē me te noho motuhake."
+agent_center.console_project_create_directory: "Waihangatia he whaiaronga hōu, ka arawhiti ai i tētahi putunga Git paetata. E kore ngā kōnae o nāianei e tuhiruatia." # {Locked="Git"}
+agent_center.console_projects: "Kōwhiria he kaupapa kua whirihoratia"
+agent_center.console_projects_hint: "Kōwhiria te kaupapa mā te ingoa me te tauwāhi. Kāore he kaupapa kua whirihoratia i konei? Tonoa tō kaiwhakahaere kia whirihora i tētahi."
+agent_center.console_refresh: "Tāmatahia ngā meka o nāianei"
+agent_center.console_open: "Whakatuwhera: %{work}"
+agent_center.console_return: "Hoki ki: %{work}"
+agent_center.console_respond: "Whakautu: %{work} — %{question}"
+agent_center.console_unknown_work: "Kāore ngā taipitopito mahi i te wātea"
+agent_center.console_unknown_project: "Kāore anō te kaupapa kia kōwhiria, kāore rānei i te wātea"
+# Two works can have exactly the same goal and project. The numbered choice is explicit, never a fuzzy match. %{created} is the recorded creation time.
+agent_center.console_duplicate: "%{work} · mahi motuhake %{number} · %{created}"
+agent_center.console_start: "Arotakengia te whakarāpopototanga, ka whakaaetia te tīmatanga"
+agent_center.approval_title: "Me whai whakaaetanga" # Title of an inline conversation card for a specific frozen human action.
+agent_center.approval_accept: "Whakaaetia" # Button that submits the exact reviewed action, not a chat message.
+agent_center.approval_start: "Whakaaetia, ka tīmata" # Button approving the displayed work brief and execution grant.
+agent_center.approval_edit: "Hurihia ngā whakaritenga" # Return to the chat composer to describe changes; do not submit or approve the action.
+agent_center.approval_defer: "Kaua i tēnei wā" # Defer review in this Console without cancelling the work or approving anything.
+agent_center.approval_open_hint: "F6 arotakengia te tono" # Opens the inline approval card without approving it. {Locked="F6"}
+agent_center.approval_keys: "Left/Right kōwhiria · Enter whakaūngia te kōwhiringa · F5 ngā taipitopito · Esc kaua i tēnei wā" # Keyboard help while the inline approval card owns focus. {Locked="Left/Right","Enter","F5","Esc"}
+agent_center.approval_edit_hint: "Whakaahuatia ngā panonitanga mō %{target}. Kāore anō tētahi mea kia whakaaetia." # %{target} is the displayed project or work name; the user's draft is preserved.
+agent_center.approval_deferred: "Kua nukuhia te arotake o %{target} ki muri. Ina rite koe, whakatuwheratia anō te tono mā F4." # Deferring is local presentation state, not cancellation of work. %{target} is a project or work name. {Locked="F4"}
+agent_center.console_pause: "Whakatārewatia te mahi"
+agent_center.console_resume: "Haere anō ki te mahi"
+agent_center.console_cancel: "Whakakorea te mahi"
+agent_center.console_inspect: "Tirohia te tukunga kua pūmautia me ngā taunakitanga (pānui-anake)"
+agent_center.console_read_evidence: "Pānuitia ngā taunakitanga: %{work} — %{path}"
+agent_center.console_more_evidence: "Pānuitia te whārangi taunakitanga e whai ake nei: %{work}"
+agent_center.console_accept: "Whakaaetia te tukunga kua tirohia"
+agent_center.console_takeover: "Tangohia te mana whakahaere o te mokowāmahi e whakahaeretia ana"
+agent_center.console_handback: "Whakahokia te mana whakahaere o te mokowāmahi e whakahaeretia ana"
+agent_center.console_apply: "Hoatu te huringa kua whakaaetia"
+agent_center.console_action: "Arotakengia te hohenga kua hopukina"
+agent_center.console_answer: "Whakautu"
+agent_center.console_answer_review: "Te whakautu kua tuhia hei tuku:\n%{value}"
+agent_center.console_answer_invalid: "Tāurua he uara whaimana mō %{field}; arotakengia ngā kōwhiringa me ngā tepenga e hiahiatia ana mō te āpure."
+agent_center.console_schema_unsupported: "E whakamahi ana tēnei pātai i tētahi hanganga kāore e tautokona e te puka māmā. Kāore he mea i tukuna; tonoa he pātai māmā ake."
+agent_center.console_yes: "Āe"
+agent_center.console_no: "Kāo"
+agent_center.console_form_help: "Up/Down kōwhiri āpure · Left/Right kōwhiri kōwhiringa · Enter āpure panuku · Ctrl+Enter arotake whakautu · Esc hoki" # {Locked="Up/Down","Left/Right","Enter","Ctrl+Enter","Esc"}
+agent_center.console_menu_help: "F4 hohenga · Up/Down kōwhiri · Enter whakatuwhera · Esc hoki · F12 tātaritanga" # {Locked="F4","Up/Down","Enter","Esc","F12"}
+agent_center.console_hint: "F4 hohenga · F2 whakawhiti mahi · F12 tātaritanga" # {Locked="F4","F2","F12"}
+agent_center.console_scope: "Te whānuitanga kua whakaurua"
+agent_center.console_exclusions: "Kei waho i tēnei mahi"
+agent_center.console_criteria: "Ngā paearu whakaaetanga me ngā taunakitanga e hiahiatia ana"
+agent_center.console_delivery: "Tukunga"
+agent_center.console_delivery_code: "Waehere paetata i te mokowāmahi e whakahaeretia ana"
+agent_center.console_delivery_report: "Ngā kōnae pūrongo kua hopukina"
+agent_center.console_progress: "Te ahunga whakamua o ngā tūmahi"
+agent_center.console_authority: "Te mana e tonoa ana me ngā tepenga whakatutuki"
+agent_center.console_capabilities: "Ngā āheinga whakatutuki kua whakaaetia"
+agent_center.console_data_scopes: "Ngā tauwāhi raraunga ka taea te pānui"
+agent_center.console_limits: "Ngā tepenga rauemi"
+agent_center.console_managed_writes: "Ka herea te tuhi a ngā whakahaerenga e whakahaeretia ana ki te mokowāmahi o tēnei mahi. Ehara tēnei i te rohe whakawehe o te pūnaha whakahaere mō ngā utauta a te kaiwhakarato."
+agent_center.console_frozen: "Ka herea tēnei whakaūnga ki te mahi, te tono, te kaupapa here me ngā whakahoutanga kua hopukina. Me arotake anō mō ngā huringa; e kore te whakaaetanga e whakawhitia huna ki tētahi atu ūnga."
+agent_center.console_stale: "Kua tawhito ngā meka o nāianei. Kei te haumaru ngā hukihuki. Hono anō, ka tāmata i mua i te whakaae, i te tuku huringa rānei; ehara te putanga kāore i te mōhiotia i te rahunga, i te otinga rānei."
+agent_center.console_diagnostics: "Ngā taipitopito kawa tātaritanga (pānui-anake)"
+agent_center.console_no_details: "Kāore he taipitopito mahi o nāianei. Whakamahia F4 hei kōwhiri kaupapa, hei whakatuwhera mahi, hei tāmata rānei." # {Locked="F4"}
+agent_center.console_draft: "Hukihuki — kāore anō kia tīmata"
+agent_center.console_active: "Hohe — kāore anō kia whakaaetia"
+agent_center.console_completed: "Kua oti — kua tuhia te whakaaetanga a te tangata"
+agent_center.console_cancelled: "Kua whakakorea"
+agent_center.console_paused: "Kua whakatārewatia"
+agent_center.console_automatic: "Te ahunga whakamua aunoa"
+agent_center.console_running: "Kei te haere"
+agent_center.console_pending: "E tārewa ana — kāore anō kia oti"
+agent_center.console_verified: "Kua manatoko / kua whakaaetia ā-roto"
+agent_center.console_failed: "Kua rahua / kua whakahēngia — tirohia ngā taunakitanga"
+agent_center.console_waiting: "E tatari ana ki tētahi whakautu, ki tētahi whakawhirinakitanga rānei"
+agent_center.console_unknown: "Kāore i te mōhiotia — tāmatahia, tirohia rānei ngā tātaritanga"
+agent_center.console_resolved: "Kua tuhia te whakautu"
+agent_center.console_superseded: "Kua whakakapia — ehara i te tukunga o nāianei"
+agent_center.console_next_done: "Whai muri: whakamahia te tukunga kua whakaaetia; kāore he whakaaetanga atu e tārewa ana."
+agent_center.console_next_cancelled: "Whai muri: kāore he ahunga whakamua aunoa; kua whakakorea tēnei mahi."
+agent_center.console_next_approve: "Whai muri: māu te whakarāpopototanga e arotake, ā, mā F4 e whakaae ki te tīmatanga tika kua tohua." # {Locked="F4"}
+agent_center.console_next_accept: "Whai muri: māu te tukunga kua pūmautia me ngā taunakitanga e tirotiro, kātahi ka āta whakaae."
+agent_center.console_next_attention: "Whai muri: arotakengia mā F4 ngā take e tārewa ana o tēnei mahi, e hiahia ana ki tō aro." # {Locked="F4"}
+agent_center.console_next_resume: "Whai muri: māu e whakatau āhea haere anō ai tēnei mahi kua whakatārewatia."
+agent_center.console_next_service: "Whai muri: ka kōkiritia e te ratonga te mahere kua whakaaetia. Ehara tēnei i te whakaaetanga whakamutunga."

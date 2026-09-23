@@ -191,6 +191,23 @@ macro_rules! payload {
     };
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+pub enum PreferenceScope {
+    User,
+    Project,
+}
+
+payload!(MemoryList {
+    project_id: Option<String>, after_id: Option<String>, limit: Option<u64>
+});
+payload!(MemoryStore {
+    key: String, scope: PreferenceScope, project_id: Option<String>,
+    content: String, source_message_id: Option<String>
+});
+payload!(MemoryForget {
+    preference_id: String, source_message_id: Option<String>
+});
+
 payload!(ArtifactRef {
     artifact_id: String,
     digest: String
@@ -233,6 +250,7 @@ payload!(Invocation {
     id: String, subject: InvocationSubject, runtime_id: String, capability_id: String,
     session_reuse_ref: Option<String>, dispatch: Option<TaskDispatch>,
     coordination_input: Option<CoordinationInput>, reply_message_id: Option<String>,
+    executor_input: Option<Value>,
     transcript_message_id: Option<String>, binding_generation: u64, limits: InvocationLimits,
     available_tool_names: Vec<String>
 });
@@ -307,7 +325,7 @@ payload!(Delivery { kind: String, destination_workspace_id: Option<String> });
 payload!(CreateDraft {
     project_id: String, goal: String, scope: Vec<String>, exclusions: Vec<String>,
     criteria: Vec<WorkCriterion>, context: Vec<ArtifactRef>, delivery: Delivery,
-    source_message_ids: Vec<String>
+    source_message_ids: Vec<String>, execution_mode: Option<String>
 });
 payload!(ReplacementSpec {
     revision: u64, project_id: String, goal: String, scope: Vec<String>, exclusions: Vec<String>,
@@ -332,6 +350,7 @@ payload!(Limits {
 });
 payload!(ProjectConfigure {
     project_id: Option<String>, name: String, root: String,
+    create_directory: Option<bool>, root_preference: Option<EntityRef>,
     coordinator_capability_id: String, worker_capability_id: String, check_capability_id: String,
     limits: Limits, capability_ids: Option<Vec<String>>, environment_refs: Option<Vec<String>>
 });
@@ -420,7 +439,9 @@ payload!(RuntimeReport {
     data: Value
 });
 payload!(Started {
-    adapter_kind: String, execution_identity: String, provider_session_id: Option<String>
+    adapter_kind: String, execution_identity: String, provider_session_id: Option<String>,
+    provider_configuration_digest: Option<String>, session_cwd: Option<String>,
+    session_loaded: Option<bool>
 });
 payload!(TextDelta {
     message_id: String,
@@ -441,12 +462,30 @@ payload!(CoordinationFinish {
     message_id: Option<String>, waiting_subject: Option<EntityRef>, explanation: String
 });
 payload!(ConversationContext {
-    console_session_id: String, context_version: u64, selected_work_id: Option<String>, project_id: String
+    console_session_id: String, context_version: u64, selected_work_id: Option<String>,
+    project_id: Option<String>, scope: Option<String>
 });
 payload!(ConsoleOpen {
     console_session_id: String,
-    project_id: String,
-    conversation_id: String
+    project_id: Option<String>,
+    conversation_id: String,
+    scope: Option<String>
+});
+payload!(ConsoleConfigure {
+    capability_id: String,
+    worker_capability_id: String,
+    check_capability_id: String,
+    approved_model_destination: String,
+    limits: Limits
+});
+payload!(ProposeHumanAction {
+    conversation_id: String, message_id: String, method: String, params: Value,
+    if_match: Vec<EntityRef>, summary: String
+});
+payload!(ResolveGlobalInput {
+    request_id: String,
+    message_id: String,
+    value: Value
 });
 payload!(ConversationSubmit {
     conversation_id: String, client_message_id: String, text: String,
@@ -495,6 +534,16 @@ payload!(DeliveryChanges {
 payload!(WorkControl {
     work_id: String,
     action: String
+});
+payload!(WorkContinue {
+    work_id: String,
+    restart_session: Option<bool>
+});
+payload!(ClaimExecutor { work_id: String, restart_session: Option<bool> });
+payload!(ExecutorInputRequest {
+    work_id: String,
+    question: String,
+    response_schema: Value
 });
 payload!(WorkspaceTakeover {
     workspace_id: String

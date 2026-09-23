@@ -15,28 +15,12 @@ impl Engine {
                 self.matched(request, &[])?;
                 let input: ProjectConfigure = parse(&request.params)?;
                 nonempty(&input.name, "name")?;
-                let path = Path::new(&input.root);
-                if !path.is_absolute() || !path.is_dir() {
-                    return Err(bad(
-                        "INVALID_ARGUMENT",
-                        "Project root must be an existing absolute directory",
-                    ));
-                }
-                for (key, value) in encode(&input.limits)?.as_object().into_iter().flatten() {
-                    let value = value.as_u64().unwrap_or(0);
-                    if value == 0 || value > 86_400 {
-                        return Err(bad(
-                            "INVALID_ARGUMENT",
-                            format!("Finite nonzero limit required: {key}"),
-                        ));
-                    }
-                }
-                if input.limits.concurrency > 64 || input.limits.context_rounds > 64 {
-                    return Err(bad(
-                        "INVALID_ARGUMENT",
-                        "Experiment supports at most 64 execution slots/context rounds",
-                    ));
-                }
+                let create_directory = input.create_directory.unwrap_or(false);
+                let canonical =
+                    super::super::project_directory::resolve(&input.root, create_directory)
+                        .map_err(|error| bad("INVALID_ARGUMENT", format!("{error:#}")))?;
+                self.project_root_preference(&input, None)?;
+                Self::validate_limits(&input.limits)?;
                 for capability in [
                     &input.coordinator_capability_id,
                     &input.worker_capability_id,
@@ -55,9 +39,6 @@ impl Engine {
                         )));
                     }
                 }
-                let canonical = std::fs::canonicalize(path).map_err(|error| {
-                    bad("INVALID_ARGUMENT", format!("Resolve project root: {error}"))
-                })?;
                 if input.project_id.is_some() {
                     return Err(bad(
                         "METHOD_UNSUPPORTED",
@@ -82,6 +63,23 @@ impl Engine {
                     .unwrap_or_else(|| vec!["local-default".into()]));
                 body["approvedContext"] = json!([]);
                 body["experimental"] = json!(true);
+                if create_directory {
+                    body["id"] = json!(id());
+                    body["kind"] = json!("Project");
+                    body["createdAt"] = json!(utc_after(0));
+                    let mut operation =
+                        self.effect("project.create", json!({"project":body}), None);
+                    if let Some(proposal) = self.human_action_for_request(request) {
+                        operation["conversationId"] = proposal["conversationId"].clone();
+                        operation = self.put(operation);
+                        self.emit("OperationChanged", &operation);
+                    }
+                    return Ok(Response::pending(
+                        "",
+                        text(&operation, "id").into(),
+                        json!({"projectId":body["id"],"state":"Creating"}),
+                    ));
+                }
                 let project = self.create("Project", body);
                 Ok(Response::ok(
                     "",
@@ -118,6 +116,7 @@ impl Engine {
                             "EvaluateGate",
                             "ReviewResult",
                             "Coordinate",
+                            "ExecuteWork",
                         ]
                         .contains(&kind.as_str())
                         {
@@ -144,10 +143,40 @@ impl Engine {
                 }
                 self.matched(request, &[])?;
                 let input: CreateDraft = parse(&request.params)?;
+                let execution_mode = input.execution_mode.as_deref().unwrap_or("WorkExecutor");
+                if !["WorkExecutor", "LegacyTasks"].contains(&execution_mode)
+                    || execution_mode == "LegacyTasks"
+                        && matches!(principal, Principal::Invocation { .. })
+                {
+                    return Err(bad(
+                        "INVALID_ARGUMENT",
+                        "New agent-created work must use WorkExecutor mode",
+                    ));
+                }
                 let project = self.record(&input.project_id, "Project")?;
                 if let Principal::Invocation { invocation_id } = principal {
                     let invocation = self.record(invocation_id, "Invocation")?;
-                    if text(&invocation, "projectId") != input.project_id {
+                    if !text(&invocation, "workId").is_empty() {
+                        return Err(bad(
+                            "FORBIDDEN",
+                            "A work coordinator cannot create a duplicate or unrelated work",
+                        ));
+                    }
+                    if invocation["scope"] == "Global" {
+                        self.authorized_read(principal, &project)?;
+                        for source in &input.source_message_ids {
+                            self.authorized_read(
+                                principal,
+                                &self.record(source, "ConversationItem")?,
+                            )?;
+                        }
+                        for artifact in &input.context {
+                            self.authorized_read(
+                                principal,
+                                &self.record(&artifact.artifact_id, "Artifact")?,
+                            )?;
+                        }
+                    } else if text(&invocation, "projectId") != input.project_id {
                         return Err(bad(
                             "FORBIDDEN",
                             "Draft project is outside the intake grant",
@@ -186,8 +215,11 @@ impl Engine {
                 for source in &input.source_message_ids {
                     self.record(source, "ConversationItem")?;
                 }
-                let work = self.create("Work",json!({"projectId":input.project_id,"title":input.goal,
-                    "spec":encode(&input)?,"currentSpecRevision":1,"currentPlanRevision":0,
+                let mut spec = encode(&input)?;
+                spec.as_object_mut()
+                    .map(|fields| fields.remove("executionMode"));
+                let work = self.create("Work",json!({"projectId":input.project_id,"title":input.goal,"executionMode":execution_mode,
+                    "spec":spec,"currentSpecRevision":1,"currentPlanRevision":0,
                     "lifecycle":"Draft","desiredAdvancement":"Hold","priority":0,
                     "usage":{"executionAttempts":0,"evaluationAttempts":0,"coordinationTurns":0},"headGeneration":0}));
                 let work_id = text(&work, "id").to_owned();
@@ -214,7 +246,7 @@ impl Engine {
                 let input: GrantPreview = parse(&request.params)?;
                 let work = self.record(&input.work_id, "Work")?;
                 if !matches!(principal, Principal::Human | Principal::Service) {
-                    self.coordinator(principal, Some(&input.work_id))?;
+                    self.proposal_coordinator(principal, &input.work_id)?;
                 }
                 self.matched(request, &[&work])?;
                 let project = self.record(text(&work, "projectId"), "Project")?;
@@ -294,7 +326,22 @@ impl Engine {
                 let workspace = self.record(text(&work, "workspaceId"), "Workspace")?;
                 let operation = self.effect("workspace.provision",json!({"workspaceId":workspace["id"],"workId":work["id"],
                     "projectId":work["projectId"],"sourceRoot":project["root"],"kind":work["spec"]["delivery"]["kind"]}),Some(&input.work_id));
-                self.queue_coordination(Some(&input.work_id), None, "WorkStarted", &work)?;
+                if Self::executor_mode(&work) {
+                    if !self
+                        .related("WorkExecutionTurn", "workId", &input.work_id)
+                        .iter()
+                        .any(|turn| turn["state"] == "Queued")
+                    {
+                        self.enqueue_executor_input(
+                            &work,
+                            text(&work["spec"], "goal"),
+                            None,
+                            "WorkApproved",
+                        )?;
+                    }
+                } else {
+                    self.queue_coordination(Some(&input.work_id), None, "WorkStarted", &work)?;
+                }
                 Ok(Response::pending(
                     "",
                     text(&operation, "id").into(),
@@ -547,11 +594,33 @@ impl Engine {
                 }
                 let mut operations = Vec::new();
                 if input.action != "Resume" {
+                    if let Some(fields) = work.as_object_mut() {
+                        fields.remove("continuationRecovery");
+                        fields.remove("restartPrimarySession");
+                    }
+                    if work["executionMode"] == "ClaimingExecutor" {
+                        work["executorClaim"]["status"] = json!(if input.action == "Cancel" {
+                            "Cancelled"
+                        } else {
+                            "Held"
+                        });
+                        work["executorClaim"]["restartSession"] = json!(false);
+                    }
                     for invocation in self.related("Invocation", "workId", &input.work_id) {
                         if !["Released", "Ended", "Releasing"].contains(&text(&invocation, "state"))
                         {
                             operations
                                 .push(json!(self.stop_invocation(&invocation, &input.action)?));
+                        }
+                        if input.action == "Cancel" {
+                            for mut turn in
+                                self.related("WorkExecutionTurn", "workId", &input.work_id)
+                            {
+                                if turn["state"] == "Queued" {
+                                    turn["state"] = json!("Cancelled");
+                                    self.put(turn);
+                                }
+                            }
                         }
                     }
                 }
@@ -1012,9 +1081,11 @@ impl Engine {
 
     pub(super) fn schedule(&mut self) -> DomainResult<()> {
         for work in self.all("Work") {
-            if text(&work, "lifecycle") != "Active"
+            if !Self::legacy_mode(&work)
+                || text(&work, "lifecycle") != "Active"
                 || text(&work, "desiredAdvancement") != "Advance"
                 || work["requiresReplan"] == true
+                || work.get("continuationRecovery").is_some()
             {
                 continue;
             }

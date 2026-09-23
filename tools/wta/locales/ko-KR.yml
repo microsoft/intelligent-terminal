@@ -267,10 +267,72 @@ system.model_unknown: "알 수 없는 모델 %{model} — 사용 가능한 목�
 # not an agent session; a work item may contain multiple tasks.
 agent_center.title: "Agent Center" # {Locked}
 agent_center.works: "작업 항목"
+agent_center.demo_title: "작업 항목 스토리 데모" # Title of an isolated scripted demonstration; the story fixture itself is English.
+agent_center.demo_notice: "각본에 따른 데모 | 샘플 증거, 모의 세션 및 토큰 사용량 | 에이전트는 실행되지 않습니다" # Always-visible disclosure; simulated data must not be confused with live agent execution.
+agent_center.demo_scene: "장면 %{scene}/8" # %{scene} is the current scene number in the eight-scene story.
+agent_center.demo_next: "다음 입력: %{input}" # %{input} is the literal English story input, not a translated command.
+agent_center.demo_keys: "Enter: 제출 | Tab: 다음 입력 채우기 | PgUp/PgDn: 스크롤 | Ctrl+Q: 닫기" # {Locked="Enter","Tab","PgUp/PgDn","Ctrl+Q"}
+agent_center.demo_reset: "데모 상태를 초기화하시겠습니까? /reset confirm을 입력하세요. 기존 작업 항목과 설정에는 영향을 주지 않습니다." # {Locked="/reset confirm"} Resets only the isolated demo, never real work.
+agent_center.demo_saved: "수정 버전 %{revision} 저장됨" # %{revision} is the persisted demo state revision.
+agent_center.demo_error: "데모 작업 실패: %{error}" # %{error} explains the rejected action; no state change is claimed.
+agent_center.tasks_title: "작업"
+agent_center.task_new: "새 작업"
+agent_center.task_all: "모든 작업"
+agent_center.task_attention: "주의 필요"
+agent_center.task_continue: "작업 계속"
+# Messages waiting for this work's busy executor, excluding the currently running turn. {Locked="%{count}"}
+agent_center.task_queued_messages: "대기 중인 메시지: %{count}"
+# Explicit migration of an existing work from legacy orchestration to its own executing agent session.
+agent_center.task_claim_executor: "작업 에이전트에 연결"
+agent_center.task_claim_executor_confirm: "이 작업을 전용 실행 에이전트로 전환합니다. 기존 채팅과 결과는 유지되고 이전 예약 방식은 중지됩니다. 원래 실행 세션을 복원할 수 없는 경우 새 세션을 시작하려면 별도의 확인이 필요합니다."
+agent_center.task_open_tab: "탭에서 열기"
+agent_center.task_tab_unsupported: "작업 탭을 열려면 Intelligent Terminal이 필요합니다." # {Locked="Intelligent Terminal"}
+agent_center.task_new_session: "새 세션 시작"
+agent_center.task_new_session_confirm: "원래 에이전트 세션을 다시 시작할 수 없습니다. 이 작업에 저장된 컨텍스트를 사용하여 새 세션을 시작하시겠습니까?"
+agent_center.task_keys: "Up/Down 선택 · Enter 열기 · F4 동작 · F5 세부 정보" # {Locked="Up/Down","Enter","F4","F5"}
+agent_center.task_list_keys: "F2 작업 · F4 동작 · F5 세부 정보" # {Locked="F2","F4","F5"}
+agent_center.task_state_running: "실행 중"
+agent_center.task_state_waiting: "사용자 응답 대기 중"
+agent_center.task_state_paused: "일시 중지됨"
+agent_center.task_state_recovery: "복구 필요"
+agent_center.task_state_ready: "계속할 준비 완료"
+agent_center.task_state_completed: "완료"
+agent_center.task_state_cancelled: "취소됨"
+agent_center.task_state_unavailable: "세션을 사용할 수 없음"
+agent_center.task_updated: "마지막 활동: %{time}"
+agent_center.ui_overview: "개요"
+agent_center.chat_global: "공통 대화" # Conversation with the non-executing master for new goals and cross-work coordination; each work has its own executor conversation.
+agent_center.chat_welcome: "달성하거나 준비하거나 알아보고 싶은 것을 알려 주세요."
+agent_center.chat_keys: "Enter 보내기 · Shift+Enter 줄 바꿈 · F4 동작 · F5 세부 정보 · F7 대시보드" # {Locked="Enter","Shift+Enter","F4","F5","F7"}
+agent_center.chat_dashboard_keys: "F7 대화 · Esc 대화 · F4 동작 · F6 동작에 포커스" # Dashboard navigation preserves the global conversation and draft. {Locked="F7","Esc","F4","F6"}
+agent_center.chat_context_hint: "컨텍스트 힌트: %{context}" # %{context} is a readable work or project name, not a binding that limits the global conversation.
+agent_center.ui_attention: "주의가 필요한 항목" # Heading for recorded requests, draft-start reviews, and delivery reviews; not a claim that every work needs attention.
+agent_center.ui_details: "요약 설명 및 진행 상황" # Read-only details view containing the work agreement, recorded progress, evidence, and locations.
+agent_center.ui_new_goal: "무엇을 달성하고 싶으신가요?"
+agent_center.ui_empty_attention: "응답이 필요한 미해결 요청이 없습니다."
+agent_center.ui_no_works: "기록된 작업이 없습니다. 구성된 프로젝트를 선택하여 시작하세요."
+agent_center.ui_no_conversation: "이 작업에 대해 기록된 메시지가 없습니다."
+agent_center.ui_role_you: "사용자" # Speaker heading for an actual recorded human message.
+agent_center.ui_role_assistant: "작업 도우미" # Speaker heading for an actual recorded assistant message, not a provider name.
+agent_center.ui_role_service: "서비스" # Speaker heading for an actual recorded system or service message.
+agent_center.ui_role_unknown: "기록된 메시지" # Speaker heading when the service does not identify a recognized message role.
+agent_center.ui_next: "다음 담당 사항"
+agent_center.ui_recorded_facts: "기록된 사실"
+agent_center.ui_last_known: "마지막으로 알려진 상태 · %{status}" # %{status} is a localized recorded status. Used when cached facts do not establish current execution.
+agent_center.ui_cached_facts: "캐시된 사실입니다. 현재 실행 여부는 확인되지 않았습니다."
+agent_center.ui_source_root: "프로젝트 소스 위치" # Configured source root, explicitly distinct from the actual managed execution directory.
+agent_center.ui_execution_root: "관리되는 실행 위치" # Actual execution directory reported by the service, never inferred from the project source root.
+agent_center.ui_location_unknown: "보고된 실행 위치가 없습니다."
+agent_center.ui_composer: "메시지 대상: %{work}" # %{work} is the human-readable target of this independent draft.
+agent_center.ui_composer_new: "새 작업 · %{project}" # %{project} is the configured project name, or an explicit project-selection warning.
+agent_center.ui_actions: "작업 동작"
+agent_center.ui_keys: "Enter 보내기 · Shift+Enter 줄 바꿈 · F4 동작 · F5 세부 정보 · F6 동작에 포커스" # {Locked="Enter","Shift+Enter","F4","F5","F6"}
+agent_center.ui_actions_hint: "Up/Down 선택 · Enter 열기 · Esc 입력으로 돌아가기" # Keyboard focus is on a visible action, not the text editor. {Locked="Up/Down","Enter","Esc"}
+agent_center.ui_details_hint: "F5 세부 정보 닫기 · PgUp/PgDn 읽기 · Esc 입력으로 돌아가기" # Read-only detail focus; returning to input preserves the draft and selection. {Locked="F5","PgUp/PgDn","Esc"}
 agent_center.activity: "활동 · 대화"
-# %{work} and %{project} are identifiers of the selected work item and project.
+# %{work} and %{project} are human-readable labels for the selected work and configured project.
 agent_center.header: "작업 항목: %{work} | 프로젝트: %{project}"
-agent_center.welcome: "프로젝트를 선택하거나 /project use <id>를 지정하세요. 목표 또는 /help를 입력하세요." # {Locked="/project use","<id>","/help"}
+agent_center.welcome: "F4를 눌러 구성된 프로젝트를 선택한 다음 달성하려는 목표를 입력하세요." # {Locked="F4"}
 agent_center.input_help: "Enter: 보내기 · Shift+Enter: 줄 바꿈 · Tab: 자동 완성 · F2: 작업 항목 전환 · Ctrl+C: 종료 · PgUp/PgDn: 읽기 · Ctrl+End: 최신" # {Locked="Enter","Shift+Enter","Tab","F2","PgUp/PgDn","Ctrl+End","Ctrl+C"}
 agent_center.inbox_count: "주의 필요: %{count}"
 agent_center.sending: "캡처한 요청을 보내는 중…"
@@ -315,3 +377,84 @@ agent_center.missing_field: "응답 필드가 누락되었거나 잘못되었습
 agent_center.invalid_command_id: "--command-id는 UUID여야 합니다." # {Locked="--command-id","UUID"}
 agent_center.worker_stopped: "요청 연결이 중지되었습니다."
 agent_center.host_unavailable: "%{command}에 사용할 수 있는 셸 호스트 어댑터가 없습니다. 호스트의 키보드 작업을 사용하세요."
+agent_center.console_home: "새 작업"
+agent_center.console_new: "새 작업 / 홈"
+agent_center.console_new_hint: "새 목표를 입력하세요. 다른 작업은 독립적으로 계속 진행됩니다."
+agent_center.console_project_create_directory: "새 디렉터리를 만들고 로컬 Git 리포지토리를 초기화합니다. 기존 파일은 덮어쓰지 않습니다." # {Locked="Git"}
+agent_center.console_projects: "구성된 프로젝트 선택"
+agent_center.console_projects_hint: "이름과 위치로 프로젝트를 선택하세요. 여기에 구성된 프로젝트가 없나요? 관리자에게 프로젝트 구성을 요청하세요."
+agent_center.console_refresh: "현재 사실 새로 고침"
+agent_center.console_open: "열기: %{work}"
+agent_center.console_return: "돌아가기: %{work}"
+agent_center.console_respond: "응답: %{work} — %{question}"
+agent_center.console_unknown_work: "작업 세부 정보를 사용할 수 없음"
+agent_center.console_unknown_project: "프로젝트를 선택하지 않았거나 사용할 수 없음"
+# Two works can have exactly the same goal and project. The numbered choice is explicit, never a fuzzy match. %{created} is the recorded creation time.
+agent_center.console_duplicate: "%{work} · 별도 작업 %{number} · %{created}"
+agent_center.console_start: "요약 설명 검토 및 시작 승인"
+agent_center.approval_title: "승인 필요" # Title of an inline conversation card for a specific frozen human action.
+agent_center.approval_accept: "승인" # Button that submits the exact reviewed action, not a chat message.
+agent_center.approval_start: "승인 및 시작" # Button approving the displayed work brief and execution grant.
+agent_center.approval_edit: "요구 사항 변경" # Return to the chat composer to describe changes; do not submit or approve the action.
+agent_center.approval_defer: "나중에" # Defer review in this Console without cancelling the work or approving anything.
+agent_center.approval_open_hint: "F6 제안 검토" # Opens the inline approval card without approving it. {Locked="F6"}
+agent_center.approval_keys: "Left/Right 선택 · Enter 확정 · F5 세부 정보 · Esc 나중에" # Keyboard help while the inline approval card owns focus. {Locked="Left/Right","Enter","F5","Esc"}
+agent_center.approval_edit_hint: "%{target}에 대한 변경 사항을 입력하세요. 아직 아무것도 승인되지 않았습니다." # %{target} is the displayed project or work name; the user's draft is preserved.
+agent_center.approval_deferred: "%{target} 검토를 나중으로 미뤘습니다. 준비되면 F4에서 제안을 다시 여세요." # Deferring is local presentation state, not cancellation of work. %{target} is a project or work name. {Locked="F4"}
+agent_center.console_pause: "작업 일시 중지"
+agent_center.console_resume: "작업 다시 시작"
+agent_center.console_cancel: "작업 취소"
+agent_center.console_inspect: "고정된 산출물 검사 및 증거 확인(읽기 전용)"
+agent_center.console_read_evidence: "증거 읽기: %{work} — %{path}"
+agent_center.console_more_evidence: "다음 증거 페이지 읽기: %{work}"
+agent_center.console_accept: "검사한 산출물 수락"
+agent_center.console_takeover: "관리되는 작업 영역 인계받기"
+agent_center.console_handback: "관리되는 작업 영역 돌려주기"
+agent_center.console_apply: "승인된 변경 내용 적용"
+agent_center.console_action: "캡처한 동작 검토"
+agent_center.console_answer: "답변"
+agent_center.console_answer_review: "제출할 기록된 답변:\n%{value}"
+agent_center.console_answer_invalid: "%{field}에 유효한 값을 입력하세요. 필드의 필수 선택 항목과 범위 제한을 검토하세요."
+agent_center.console_schema_unsupported: "이 질문은 간단한 양식이 지원하지 않는 스키마를 사용합니다. 아무것도 제출되지 않았습니다. 더 간단한 질문을 요청하세요."
+agent_center.console_yes: "예"
+agent_center.console_no: "아니요"
+agent_center.console_form_help: "Up/Down 필드 선택 · Left/Right 옵션 선택 · Enter 다음 필드 · Ctrl+Enter 답변 검토 · Esc 뒤로" # {Locked="Up/Down","Left/Right","Enter","Ctrl+Enter","Esc"}
+agent_center.console_menu_help: "F4 동작 · Up/Down 선택 · Enter 열기 · Esc 뒤로 · F12 진단" # {Locked="F4","Up/Down","Enter","Esc","F12"}
+agent_center.console_hint: "F4 동작 · F2 작업 전환 · F12 진단" # {Locked="F4","F2","F12"}
+agent_center.console_scope: "포함 범위"
+agent_center.console_exclusions: "이 작업의 범위 밖"
+agent_center.console_criteria: "수락 기준 및 필수 증거"
+agent_center.console_delivery: "산출물"
+agent_center.console_delivery_code: "관리되는 작업 영역의 로컬 코드"
+agent_center.console_delivery_report: "캡처한 보고서 파일"
+agent_center.console_progress: "태스크 진행률"
+agent_center.console_authority: "요청된 권한 및 실행 제한"
+agent_center.console_capabilities: "승인된 실행 기능"
+agent_center.console_data_scopes: "읽을 수 있는 데이터 위치"
+agent_center.console_limits: "리소스 제한"
+agent_center.console_managed_writes: "관리되는 동작에 의한 쓰기는 이 작업 항목의 작업 영역으로 제한됩니다. 이는 공급자 소유 도구에 대한 운영 체제의 격리 경계가 아닙니다."
+agent_center.console_frozen: "이 확인은 캡처한 작업, 요청, 정책 및 수정 버전에 결부됩니다. 변경하려면 새 검토가 필요하며 승인 대상은 알림 없이 바뀌지 않습니다."
+agent_center.console_stale: "실시간 사실이 오래되었습니다. 초안은 안전하게 보존됩니다. 변경을 승인하거나 보내기 전에 다시 연결하고 새로 고치세요. 알 수 없는 결과는 실패나 완료를 의미하지 않습니다."
+agent_center.console_diagnostics: "진단 프로토콜 세부 정보(읽기 전용)"
+agent_center.console_no_details: "현재 작업 세부 정보가 없습니다. F4를 사용하여 프로젝트를 선택하거나 작업을 열거나 새로 고치세요." # {Locked="F4"}
+agent_center.console_draft: "초안 — 시작되지 않음"
+agent_center.console_active: "활성 — 아직 수락되지 않음"
+agent_center.console_completed: "완료 — 사람의 수락이 기록됨"
+agent_center.console_cancelled: "취소됨"
+agent_center.console_paused: "일시 중지됨"
+agent_center.console_automatic: "자동 진행"
+agent_center.console_running: "실행 중"
+agent_center.console_pending: "보류 중 — 완료되지 않음"
+agent_center.console_verified: "검증됨 / 내부적으로 수락됨"
+agent_center.console_failed: "실패 / 거부됨 — 증거를 검사하세요"
+agent_center.console_waiting: "응답 또는 종속성 대기 중"
+agent_center.console_unknown: "알 수 없음 — 새로 고치거나 진단을 검사하세요"
+agent_center.console_resolved: "응답이 기록됨"
+agent_center.console_superseded: "대체됨 — 현재 산출물이 아님"
+agent_center.console_next_done: "다음: 수락한 산출물을 사용하세요. 더 이상 대기 중인 승인은 없습니다."
+agent_center.console_next_cancelled: "다음: 자동 진행이 없습니다. 이 작업은 취소되었습니다."
+agent_center.console_next_approve: "다음: 요약 설명을 검토하고 F4에서 정확한 시작 내용을 승인하세요." # {Locked="F4"}
+agent_center.console_next_accept: "다음: 고정된 산출물과 증거를 검사한 다음 명시적으로 수락하세요."
+agent_center.console_next_attention: "다음: F4에서 이 작업의 아직 주의가 필요한 항목을 검토하세요." # {Locked="F4"}
+agent_center.console_next_resume: "다음: 일시 중지된 이 작업을 언제 다시 시작할지 결정하세요."
+agent_center.console_next_service: "다음: 서비스가 승인된 계획을 진행합니다. 이는 최종 수락이 아닙니다."

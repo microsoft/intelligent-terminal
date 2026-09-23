@@ -516,6 +516,100 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn memory_http_tools_round_trip_through_the_bound_authority() -> Result<()> {
+        let root = std::env::current_dir()?
+            .join("target")
+            .join(format!("center-memory-mcp-{}", Uuid::new_v4()));
+        let handle = super::super::super::transport::start_engine(root.clone()).await?;
+        let runtime = Runtime::new(handle.clone(), root.clone())?;
+        let result = async {
+            let runtime_id = runtime.inner.runtime_id.clone();
+            super::super::success(runtime.request(
+                Principal::Runtime { runtime_id:runtime_id.clone() },
+                "runtime.register",
+                json!({"runtimeInstanceId":runtime_id,"protocolVersions":[1],"capabilities":[
+                    {"id":"memory-test","kinds":["Coordinate","ProduceResult","ReviewResult"],
+                        "supportsContinuation":true,"supportsScopedStop":true},
+                    {"id":"native-check","kinds":["EvaluateGate"],
+                        "supportsContinuation":false,"supportsScopedStop":true}
+                ]}),
+            ).await)?;
+            super::super::success(runtime.request(Principal::Human, "console.configure", json!({
+                "capabilityId":"memory-test","workerCapabilityId":"memory-test",
+                "checkCapabilityId":"native-check","approvedModelDestination":"Local scripted test",
+                "limits":{"concurrency":1,"executionAttempts":2,"evaluationAttempts":2,
+                    "coordinationTurns":4,"contextRounds":1,"executionSeconds":60,"coordinationSeconds":60}
+            })).await)?;
+            let submitted = super::super::success(runtime.request(Principal::Human, "conversation.submit", json!({
+                "conversationId":Uuid::new_v4().to_string(),
+                "clientMessageId":Uuid::new_v4().to_string(),
+                "text":"Prefer concise responses across my work.","attachments":[],
+                "context":{"scope":"Global","consoleSessionId":Uuid::new_v4().to_string(),"contextVersion":1}
+            })).await)?;
+            let effect = handle.effects().await?.into_iter()
+                .find(|effect| effect.method == "runtime.invoke")
+                .context("missing memory test invocation")?;
+            let (commands, _receiver) = mpsc::channel(1);
+            let invocation = Arc::new(Invocation {
+                input:effect.params["invocation"].clone(),
+                state:Mutex::new(Default::default()),report_lock:Mutex::new(()),
+                cancel:CancellationToken::new(),commands,
+            });
+            handle.complete_effect(&effect.id, Response::ok("", json!({
+                "invocationId":invocation.input["id"],"disposition":"Recorded"
+            }))).await?;
+            runtime.report(&invocation, "Started", json!({
+                "adapterKind":"ACP","executionIdentity":"memory-test","providerSessionId":"memory-test-session"
+            })).await?;
+            let (_, listed) = exchange(&runtime, invocation.clone(), json!({
+                "jsonrpc":"2.0","id":1,"method":"tools/list"
+            })).await?;
+            for name in ["memory_list","memory_store","memory_forget"] {
+                assert!(listed["result"]["tools"].as_array().unwrap().iter().any(|tool| tool["name"] == name));
+            }
+            let source = submitted["messageId"].clone();
+            let (_, stored) = exchange(&runtime, invocation.clone(), json!({
+                "jsonrpc":"2.0","id":2,"method":"tools/call","params":{
+                    "name":"memory_store","arguments":{"commandId":Uuid::new_v4().to_string(),"ifMatch":[],
+                        "params":{"key":"response.style","scope":"User","content":"Prefer concise responses.","sourceMessageId":source}}
+                }
+            })).await?;
+            assert_eq!(stored["result"]["isError"], false, "{stored}");
+            let response: Value = serde_json::from_str(stored["result"]["content"][0]["text"].as_str().unwrap())?;
+            let record = &response["data"];
+            let (_, listed) = exchange(&runtime, invocation.clone(), json!({
+                "jsonrpc":"2.0","id":3,"method":"tools/call",
+                "params":{"name":"memory_list","arguments":{"params":{}}}
+            })).await?;
+            assert_eq!(listed["result"]["isError"], false, "{listed}");
+            let response: Value = serde_json::from_str(listed["result"]["content"][0]["text"].as_str().unwrap())?;
+            assert_eq!(response["data"]["items"], json!([record]));
+            let (_, forgotten) = exchange(&runtime, invocation.clone(), json!({
+                "jsonrpc":"2.0","id":4,"method":"tools/call","params":{
+                    "name":"memory_forget","arguments":{"commandId":Uuid::new_v4().to_string(),
+                        "ifMatch":[{"kind":"Preference","id":record["id"],"version":record["version"]}],
+                        "params":{"preferenceId":record["id"],"sourceMessageId":source}}
+                }
+            })).await?;
+            assert_eq!(forgotten["result"]["isError"], false, "{forgotten}");
+            let response: Value = serde_json::from_str(forgotten["result"]["content"][0]["text"].as_str().unwrap())?;
+            assert_eq!(response["data"]["status"], "Forgotten");
+            assert!(response["data"].get("content").is_none());
+            invocation.cancel.cancel();
+            let (_, rejected) = exchange(&runtime, invocation, json!({
+                "jsonrpc":"2.0","id":5,"method":"tools/call",
+                "params":{"name":"memory_list","arguments":{"params":{}}}
+            })).await?;
+            assert_eq!(rejected["result"]["isError"], true);
+            Ok::<_, anyhow::Error>(())
+        }.await;
+        runtime.shutdown().await?;
+        handle.shutdown().await?;
+        std::fs::remove_dir_all(&root)?;
+        result
+    }
+
+    #[tokio::test]
     async fn http_initialize_negotiates_newer_offers_and_keeps_bound_tools_usable() -> Result<()> {
         let root = std::env::current_dir()?
             .join("target")

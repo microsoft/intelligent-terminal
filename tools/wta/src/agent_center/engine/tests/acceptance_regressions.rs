@@ -9,7 +9,7 @@ fn approved_check(f: &mut Fixture, evidence_rule: &str) -> Value {
         Principal::Human,
         "work.create_draft",
         json!({
-            "projectId":f.project,"goal":"Deliver only after the approved boundary check",
+            "executionMode":"LegacyTasks","projectId":f.project,"goal":"Deliver only after the approved boundary check",
             "scope":["reports"],"exclusions":[],
             "criteria":[{"id":"report","description":"Readable report","evidenceRule":evidence_rule}],
             "context":[],"delivery":{"kind":"Report"},"sourceMessageIds":[]
