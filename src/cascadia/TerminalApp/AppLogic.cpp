@@ -5,6 +5,7 @@
 #include "AppLogic.h"
 #include "AppLogic.g.cpp"
 #include "SettingsLoadEventArgs.h"
+#include "../TerminalSettingsModel/SettingsTelemetry.h"
 
 #include <WtExeUtils.h>
 #include <wil/token_helpers.h>
@@ -190,28 +191,47 @@ namespace winrt::TerminalApp::implementation
         // this as a MTA, before the app is Create()'d
         WINRT_ASSERT(_loadedInitialSettings);
 
-        // AppHost calls Create for every window. These inventories describe the
-        // application launch, so only the first window may emit them.
-        if (!_launchTelemetryLogged.exchange(true, std::memory_order_relaxed))
-        {
-            _settings.LogAgentConfigurationOnLaunch(_usingDefaultSettings);
-            TraceLoggingWrite(
-                g_hTerminalAppProvider,
-                "SidebarStateOnLaunch",
-                TraceLoggingDescription("Configured sidebar state once per application launch"),
-                TraceLoggingBool(_settings.GlobalSettings().TabLayout() == TabLayout::Vertical, "enabled"),
-                TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
-                TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
-        }
+        // AppHost calls Create for each window, including subsequent windows.
+        _LogAppCreatedTelemetry();
+    }
+
+    void AppLogic::_LogAppCreatedTelemetry() const noexcept
+    try
+    {
+        namespace Telemetry = Microsoft::Terminal::Settings::Model::implementation::AgentSettingsTelemetry;
+        const auto globals = _settings.GlobalSettings();
+        const auto primary = Telemetry::GetProviderSnapshot(globals, true);
+        const auto delegate = Telemetry::GetProviderSnapshot(globals, false);
+        const auto policy = Telemetry::SummarizePolicy(*::Microsoft::Terminal::Settings::Model::AgentPolicy::GetSnapshot());
 
         TraceLoggingWrite(
             g_hTerminalAppProvider,
             "AppCreated",
             TraceLoggingDescription("Event emitted when the application is started"),
-            TraceLoggingBool(_settings.GlobalSettings().ShowTabsInTitlebar(), "TabsInTitlebar"),
+            TraceLoggingBool(globals.ShowTabsInTitlebar(), "TabsInTitlebar"),
+            TraceLoggingString(primary.configured, "PrimaryProvider"),
+            TraceLoggingString(primary.effective, "PrimaryEffectiveProvider"),
+            TraceLoggingString(primary.origin, "PrimarySelectionOrigin"),
+            TraceLoggingUInt32(primary.custom.count, "PrimaryCustomConfiguredCount"),
+            TraceLoggingBool(primary.custom.selected, "PrimaryCustomSelected"),
+            TraceLoggingBool(primary.custom.selectedCommandConfigured, "PrimaryCustomSelectedCommandConfigured"),
+            TraceLoggingString(delegate.configured, "DelegateProvider"),
+            TraceLoggingString(delegate.effective, "DelegateEffectiveProvider"),
+            TraceLoggingString(delegate.origin, "DelegateSelectionOrigin"),
+            TraceLoggingUInt32(delegate.custom.count, "DelegateCustomConfiguredCount"),
+            TraceLoggingBool(delegate.custom.selected, "DelegateCustomSelected"),
+            TraceLoggingBool(delegate.custom.selectedCommandConfigured, "DelegateCustomSelectedCommandConfigured"),
+            TraceLoggingBool(policy.allowedAgentsPolicySet, "AllowedAgentsPolicySet"),
+            TraceLoggingBool(policy.allowCustomAgentsPolicySet, "AllowCustomAgentsPolicySet"),
+            TraceLoggingString(policy.allowedAgentsCategory, "AllowedAgentsPolicy"),
+            TraceLoggingString(policy.allowCustomAgentsCategory, "AllowCustomAgentsPolicy"),
+            TraceLoggingString(policy.effectiveCustomPolicy, "EffectiveCustomPolicy"),
+            TraceLoggingBool(globals.TabLayout() == TabLayout::Vertical, "SidebarEnabled"),
+            TraceLoggingBool(_usingDefaultSettings, "DefaultsFallback"),
             TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
             TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
     }
+    CATCH_LOG()
 
     // Method Description:
     // - Attempt to load the settings. If we fail for any reason, returns an error.
@@ -461,16 +481,17 @@ namespace winrt::TerminalApp::implementation
         {
             _usingDefaultSettings = false;
             _settings.LogSettingChanges(true);
+        }
 
-            if (_hasAgentProviderTelemetryBaseline)
-            {
-                _settings.LogAgentProviderChanges(_lastTelemetryAcpAgent, _lastTelemetryDelegateAgent);
-            }
-            // Retain values, not the mutable settings object: UI writes can mutate it
-            // before the file watcher delivers this accepted settings reload.
-            _lastTelemetryAcpAgent = _settings.GlobalSettings().AcpAgent();
-            _lastTelemetryDelegateAgent = _settings.GlobalSettings().DelegateAgent();
-            _hasAgentProviderTelemetryBaseline = true;
+        // Seed from the settings actually applied, including initial-load defaults.
+        // Failed later reloads returned above and must not replace this baseline.
+        const auto globalsForTelemetry = _settings.GlobalSettings();
+        if (const auto previous = _agentProviderTelemetryBaseline.ObserveLoad(
+                initialLoad,
+                SUCCEEDED(_settingsLoadedResult),
+                { globalsForTelemetry.AcpAgent(), globalsForTelemetry.DelegateAgent() }))
+        {
+            _settings.LogAgentProviderChanges(previous->primary, previous->delegate);
         }
 
         if (const auto globals = _settings.GlobalSettings();

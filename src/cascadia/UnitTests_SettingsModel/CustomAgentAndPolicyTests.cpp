@@ -28,6 +28,7 @@
 #include "../TerminalSettingsModel/CascadiaSettings.h"
 #include "../TerminalSettingsModel/AcpRuntimeState.h"
 #include "../TerminalSettingsModel/SettingsTelemetry.h"
+#include "../TerminalApp/AgentProviderTelemetry.h"
 #include "../inc/AgentPolicy.h"
 #include "../inc/AgentRegistry.h"
 #include "../inc/CustomModelProviderUtils.h"
@@ -58,6 +59,8 @@ namespace SettingsModelUnitTests
         TEST_METHOD(AgentTelemetryUnusedCustomInventory);
         TEST_METHOD(AgentTelemetryCustomInventoryDeduplicates);
         TEST_METHOD(AgentTelemetryPolicyCategories);
+        TEST_METHOD(AgentTelemetryAppliedSettingsLifecycle);
+        TEST_METHOD(AgentTelemetryProviderSnapshots);
 
         // Policy: AcpAgent
         TEST_METHOD(EffectiveAcpAgentEmptyStaysEmpty);
@@ -213,16 +216,91 @@ namespace SettingsModelUnitTests
         const auto explicitDefault = MakeSettings(R"("acpAgent":"copilot","delegateAgent":"")");
         const auto globals = defaults->GlobalSettings();
         const auto configured = explicitDefault->GlobalSettings();
-        const auto globalsImpl = winrt::get_self<implementation::GlobalAppSettings>(globals);
         const auto configuredImpl = winrt::get_self<implementation::GlobalAppSettings>(configured);
         VERIFY_ARE_EQUAL(globals.AcpAgent(), configured.AcpAgent());
-        VERIFY_ARE_EQUAL(std::string{ "default" }, std::string{ SelectionOrigin(globals.HasAcpAgent(), globalsImpl->AcpAgentOverrideSource() != nullptr) });
-        VERIFY_ARE_EQUAL(std::string{ "user" }, std::string{ SelectionOrigin(configured.HasAcpAgent(), configuredImpl->AcpAgentOverrideSource() != nullptr) });
-        VERIFY_ARE_EQUAL(std::string{ "user" }, std::string{ SelectionOrigin(configured.HasDelegateAgent(), configuredImpl->DelegateAgentOverrideSource() != nullptr) });
+        VERIFY_ARE_EQUAL(std::string{ "default" }, std::string{ SelectionOrigin(globals.HasAcpAgent(), globals.AcpAgentOverrideSource() != nullptr) });
+        VERIFY_ARE_EQUAL(std::string{ "user" }, std::string{ SelectionOrigin(configured.HasAcpAgent(), configured.AcpAgentOverrideSource() != nullptr) });
+        VERIFY_ARE_EQUAL(std::string{ "user" }, std::string{ SelectionOrigin(configured.HasDelegateAgent(), configured.DelegateAgentOverrideSource() != nullptr) });
         VERIFY_ARE_EQUAL(std::string{ "none" }, std::string{ ProviderId(configured.DelegateAgent()) });
 
         const auto inherited = configuredImpl->CreateChild();
         VERIFY_ARE_EQUAL(std::string{ "inherited" }, std::string{ SelectionOrigin(inherited->HasAcpAgent(), inherited->AcpAgentOverrideSource() != nullptr) });
+    }
+
+    void CustomAgentAndPolicyTests::AgentTelemetryAppliedSettingsLifecycle()
+    {
+        using namespace implementation::AgentSettingsTelemetry;
+        for (const auto initialSucceeded : { false, true })
+        {
+            ::TerminalApp::AgentProviderTelemetryBaseline baseline;
+            const auto globals = initialSucceeded ?
+                                     MakeSettings(R"("acpAgent":"codex","delegateAgent":"gemini")")->GlobalSettings() :
+                                     implementation::CascadiaSettings::LoadDefaults().GlobalSettings();
+            const auto initialPrimary = globals.AcpAgent();
+            const auto initialDelegate = globals.DelegateAgent();
+
+            // A failed initial load applies defaults; neither startup path is a change.
+            VERIFY_IS_FALSE(baseline.ObserveLoad(true, initialSucceeded, { initialPrimary, initialDelegate }).has_value());
+            VERIFY_IS_FALSE(baseline.ObserveLoad(false, false, { L"codex", L"custom:rejected" }).has_value());
+
+            globals.AcpAgent(L"claude");
+            const auto recovered = baseline.ObserveLoad(false, true, { globals.AcpAgent(), globals.DelegateAgent() });
+            VERIFY_IS_TRUE(recovered.has_value());
+            VERIFY_ARE_EQUAL(initialPrimary, recovered->primary);
+            VERIFY_ARE_EQUAL(initialDelegate, recovered->delegate);
+            const auto change = GetProviderChange(recovered->primary, globals.AcpAgent());
+            VERIFY_IS_TRUE(change.has_value());
+            VERIFY_ARE_EQUAL(std::string{ "claude" }, std::string{ change->to });
+            VERIFY_IS_FALSE(GetProviderChange(recovered->delegate, globals.DelegateAgent()).has_value());
+
+            VERIFY_IS_FALSE(baseline.ObserveLoad(false, false, { L"gemini", L"custom:rejected-again" }).has_value());
+            const auto unchanged = baseline.ObserveLoad(false, true, { L"claude", initialDelegate });
+            VERIFY_IS_TRUE(unchanged.has_value());
+            VERIFY_IS_FALSE(GetProviderChange(unchanged->primary, L"claude").has_value());
+            VERIFY_ARE_EQUAL(initialDelegate, unchanged->delegate);
+
+            const auto customFirst = baseline.ObserveLoad(false, true, { L"custom:first", L"custom:delegate-first" });
+            VERIFY_IS_TRUE(customFirst.has_value());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, customFirst->primary);
+            const auto customNext = baseline.ObserveLoad(false, true, { L"custom:second", L"custom:delegate-second" });
+            VERIFY_IS_TRUE(customNext.has_value());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:first" }, customNext->primary);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:delegate-first" }, customNext->delegate);
+            VERIFY_IS_TRUE(GetProviderChange(customNext->primary, L"custom:second").has_value());
+            VERIFY_IS_TRUE(GetProviderChange(customNext->delegate, L"custom:delegate-second").has_value());
+        }
+    }
+
+    void CustomAgentAndPolicyTests::AgentTelemetryProviderSnapshots()
+    {
+        using namespace implementation::AgentSettingsTelemetry;
+        const auto settings = MakeSettings(R"(
+            "acpAgent":"copilot",
+            "acpCustomCommands":["unused --acp"],
+            "delegateAgent":"custom:delegate",
+            "delegateCustomCommands":["delegate --stdio"])");
+        SetPolicy(MakePolicy(std::set<std::wstring, AgentPolicy::CaseInsensitiveLess>{}, AgentPolicy::PolicyState::Blocked));
+        const auto globals = settings->GlobalSettings();
+        const auto primary = GetProviderSnapshot(globals, true);
+        const auto delegate = GetProviderSnapshot(globals, false);
+        VERIFY_ARE_EQUAL(std::string{ "copilot" }, std::string{ primary.configured });
+        VERIFY_ARE_EQUAL(std::string{ "none" }, std::string{ primary.effective });
+        VERIFY_ARE_EQUAL(std::string{ "user" }, std::string{ primary.origin });
+        VERIFY_ARE_EQUAL(uint32_t{ 1 }, primary.custom.count);
+        VERIFY_IS_FALSE(primary.custom.selected);
+        VERIFY_IS_FALSE(primary.custom.selectedCommandConfigured);
+        VERIFY_ARE_EQUAL(std::string{ "custom" }, std::string{ delegate.configured });
+        VERIFY_ARE_EQUAL(std::string{ "none" }, std::string{ delegate.effective });
+        VERIFY_ARE_EQUAL(std::string{ "user" }, std::string{ delegate.origin });
+        VERIFY_ARE_EQUAL(uint32_t{ 1 }, delegate.custom.count);
+        VERIFY_IS_TRUE(delegate.custom.selected);
+        VERIFY_IS_TRUE(delegate.custom.selectedCommandConfigured);
+
+        const auto inherited = winrt::get_self<implementation::GlobalAppSettings>(globals)->CreateChild().as<GlobalAppSettings>();
+        VERIFY_ARE_EQUAL(std::string{ "inherited" }, std::string{ GetProviderSnapshot(inherited, true).origin });
+        VERIFY_ARE_EQUAL(std::string{ "inherited" }, std::string{ GetProviderSnapshot(inherited, false).origin });
+        const auto defaults = MakeSettings({});
+        VERIFY_ARE_EQUAL(std::string{ "default" }, std::string{ GetProviderSnapshot(defaults->GlobalSettings(), true).origin });
     }
 
     void CustomAgentAndPolicyTests::AgentTelemetryPolicyAndInPlaceChanges()

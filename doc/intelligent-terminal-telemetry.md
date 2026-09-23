@@ -4,8 +4,9 @@ This document defines the telemetry emitted by Intelligent Terminal's AI
 integration: what each event measures, when it is emitted, its complete
 business payload, and the limits on interpreting that payload.
 
-The scope is **29 event definitions**: 7 App, 16 WTA, 3 Settings Model,
-and 3 Settings Editor.
+The scope is **27 event definitions**: 7 App, 16 WTA, 1 Settings Model,
+and 3 Settings Editor. This includes the existing `AppCreated` event,
+extended with the startup configuration snapshot.
 An event is identified by **provider name plus event name**, not by event
 name alone. In particular, App and WTA each define their own `ErrorDetected`
 and `DelegateInvoked`.
@@ -36,9 +37,9 @@ established separately. See [privacy information](../PRIVACY.md).
 | Which agents and configurations are used at session start? | App `AgentSessionStarted` settings snapshot | Session-weighted configuration, not installation or user adoption |
 | How often is the assistant opened through an instrumented UI entry point? | App `AgentPaneOpened`, grouped by `TriggerSource` | Not every pane creation or restoration path |
 | How often is foreground agent prompt mode entered or submitted? | App `CommandPaletteAgentPromptEntered` and `CommandPaletteDispatchedAgentPrompt` | Entry and submission are separate boundaries; neither proves task completion |
-| Is the sidebar enabled at application launch? | App `SidebarStateOnLaunch.enabled` | Vertical tab layout at application creation, not a session-weighted snapshot |
-| Which providers are configured at launch or changed later? | Model `AgentProviderConfigured` and `AgentProviderChanged`, split by `role` | Configuration, not CLI installation, authentication, or successful session use |
-| How many custom agents are configured under policy? | Model `CustomAgentConfigured` | Per-role launch inventory, including unused entries and zero counts; no commands or custom names |
+| Is the sidebar enabled at window creation? | App `AppCreated.SidebarEnabled` | Vertical tab layout at window creation, not a session-weighted snapshot |
+| Which providers are configured at startup or changed later? | App `AppCreated` snapshot and Model `AgentProviderChanged` | Configuration, not CLI installation, authentication, or successful session use |
+| How many custom agents are configured under policy? | App `AppCreated` custom-agent inventory fields | Both roles in the same window-created snapshot, including unused entries and zero counts; no commands or custom names |
 | How often are prompts dispatched? | WTA `AgentPromptSent`, grouped by `AgentId`, `IsAutofix`, `IsByok`, `TemplateKind` | ACP prompt dispatches; Command Palette delegation is a separate path |
 | How responsive are agent turns? | WTA `AgentResponseFirstToken` and `AgentResponseComplete` | Dispatch-to-first-counted-text and dispatch-to-RPC-completion durations |
 | How reliable and fast are ACP operations? | WTA `AcpInitializeComplete`, `AcpNewSessionComplete`, `AcpLoadSessionComplete` | RPC outcomes; initialize/new timings must be separated by `Route` |
@@ -62,7 +63,7 @@ not a usage or cost measurement.
 |---|---|---|---|
 | App | `Microsoft.Windows.Terminal.App` | `{24a1622f-7da7-5c77-3303-d850bd1ab2ed}` | 7 |
 | WTA | `Microsoft.Windows.Terminal.WTA` | `{4cfcff80-4e6b-5bfd-8ea1-d38e1226f70b}` | 16 |
-| Model | `Microsoft.Windows.Terminal.Setting.Model` | `{be579944-4d33-5202-e5d6-a7a57f1935cb}` | 3 |
+| Model | `Microsoft.Windows.Terminal.Setting.Model` | `{be579944-4d33-5202-e5d6-a7a57f1935cb}` | 1 |
 | Editor | `Microsoft.Windows.Terminal.Settings.Editor` | `{1b16317d-b594-51f8-c552-5d50572b5efc}` | 3 |
 
 App, WTA, and dedicated Model events use level `Verbose` and
@@ -103,9 +104,11 @@ empty `SessionId`.
 
 The agent category set is `copilot`, `claude`, `codex`, `gemini`,
 `opencode`, and `custom`. WTA and the App snapshot bucket unrecognized agent
-identifiers as `custom`; Editor probes bucket custom-provider IDs as
+identifiers as `custom` in session snapshots; Editor probes bucket custom-provider IDs as
 `custom`. `DelegateAgentId` additionally permits `none` when no delegate
-is resolved. Custom names and command lines are not reported.
+is resolved. Startup configuration and provider-change events distinguish
+`unknown` from explicit `custom:` IDs and use `none` for an empty selection.
+Custom names and command lines are not reported.
 
 `Branding` is `0` for other/development, `1` for Canary, `2` for Preview,
 and `3` for Release. `Distribution` is `0` for other/unpackaged, `1` for
@@ -120,7 +123,7 @@ Business-field counts exclude the common `PartA_PrivTags` field.
 | App | [AgentPaneOpened](#appagentpaneopened) | 2 | Usage |
 | App | [CommandPaletteAgentPromptEntered](#appcommandpaletteagentpromptentered) | 0 | Usage |
 | App | [CommandPaletteDispatchedAgentPrompt](#appcommandpalettedispatchedagentprompt) | 1 | Usage |
-| App | [SidebarStateOnLaunch](#appsidebarstateonlaunch) | 1 | Usage |
+| App | [AppCreated](#appappcreated) | 20 | Usage |
 | App | [DelegateInvoked](#appdelegateinvoked) | 1 | Usage |
 | App | [ErrorDetected](#apperrordetected) | 1 | Usage |
 | App | [AgentSessionStarted](#appagentsessionstarted) | 24 | Usage |
@@ -140,9 +143,7 @@ Business-field counts exclude the common `PartA_PrivTags` field.
 | WTA | [DelegateInvoked](#wtadelegateinvoked) | 1 | Usage |
 | WTA | [SessionMcpToolCalled](#wtasessionmcptoolcalled) | 1 | Usage |
 | WTA | [HookOperationCompleted](#wtahookoperationcompleted) | 3 | Usage |
-| Model | [AgentProviderConfigured](#modelagentproviderconfigured) | 6 | Usage |
 | Model | [AgentProviderChanged](#modelagentproviderchanged) | 3 | Usage |
-| Model | [CustomAgentConfigured](#modelcustomagentconfigured) | 10 | Usage |
 | Editor | [AcpModelProbeStarted](#editoracpmodelprobestarted) | 2 | Performance |
 | Editor | [AcpModelProbeDiscarded](#editoracpmodelprobediscarded) | 1 | Performance |
 | Editor | [AcpModelProbeCompleted](#editoracpmodelprobecompleted) | 3 | Performance |
@@ -172,7 +173,8 @@ mode, or a visible palette switches into that mode (for example, by typing
 
 **Business fields:** none. The common `PartA_PrivTags` is still present.
 
-Hidden mode preparation, repeated selection of the same visible mode,
+Hidden mode preparation (including a shortcut that closes an already-visible
+palette), repeated selection of the same visible mode,
 background `&` mode, and editing the prompt do not emit another entry.
 Leaving and reentering foreground mode, or closing and reopening it, emits
 a new entry. No submission is required, so entering bare `?` and abandoning
@@ -191,19 +193,53 @@ No prompt text is included. This is a submission event, not evidence that
 the selected mode launched or completed an agent task. In particular,
 the reserved background entry point is not a completed background workflow.
 
-### App.SidebarStateOnLaunch
+### App.AppCreated
 
-**Trigger:** application creation records the loaded settings, including
-launches that never connect an agent session.
+**Trigger:** each `AppLogic::Create()` calls `_LogAppCreatedTelemetry()`
+after settings have loaded or fallen back to defaults. This preserves the
+existing **per-window** creation boundary, including secondary windows in
+the same process and windows that never connect an agent session.
 
 | Field | Type | Meaning / values |
 |---|---|---|
-| `enabled` | Bool | Whether the configured tab layout is vertical |
+| `TabsInTitlebar` | Bool | Existing configured tabs-in-titlebar field |
+| `PrimaryProvider` | String | Configured primary provider: `copilot`, `claude`, `codex`, `gemini`, `opencode`, `custom`, `unknown`, or `none` |
+| `PrimaryEffectiveProvider` | String | Settings-layer effective primary provider in the same bucket set, after fallback/policy resolution |
+| `PrimarySelectionOrigin` | String | `user` for a local override, `inherited` for a parent setting, or `default` |
+| `PrimaryCustomConfiguredCount` | UInt32 | Distinct executable-derived custom IDs in the primary role's plural and legacy command settings |
+| `PrimaryCustomSelected` | Bool | Whether the configured primary provider starts with `custom:` |
+| `PrimaryCustomSelectedCommandConfigured` | Bool | Whether that selected custom ID has a matching configured command entry |
+| `DelegateProvider` | String | Configured delegate provider, using the same bucket set |
+| `DelegateEffectiveProvider` | String | Settings-layer effective delegate provider, using the same bucket set |
+| `DelegateSelectionOrigin` | String | `user`, `inherited`, or `default` for the delegate selection |
+| `DelegateCustomConfiguredCount` | UInt32 | Distinct executable-derived custom IDs in the delegate role's plural and legacy command settings |
+| `DelegateCustomSelected` | Bool | Whether the configured delegate provider starts with `custom:` |
+| `DelegateCustomSelectedCommandConfigured` | Bool | Whether that selected custom ID has a matching configured command entry |
+| `AllowedAgentsPolicySet` | Bool | Whether `AllowedAgents` is present, including an empty allowlist |
+| `AllowCustomAgentsPolicySet` | Bool | Whether `AllowCustomAgents` is explicitly configured |
+| `AllowedAgentsPolicy` | String | `not_configured`, `empty`, or `allowlist`; never the allowlist entries |
+| `AllowCustomAgentsPolicy` | String | `not_configured`, `allowed`, or `blocked` |
+| `EffectiveCustomPolicy` | String | `allowed` or `blocked` by the custom-agent gate |
+| `SidebarEnabled` | Bool | Whether the configured tab layout is vertical |
+| `DefaultsFallback` | Bool | Whether the currently accepted settings came from initial load-failure fallback |
 
-This event measures the existing vertical-tab sidebar, not whether search,
-pinning, or rich row fields are available. It is not emitted on settings
-reload or agent session creation/load. Secondary windows in the same
-application process do not each represent a new application launch.
+Both roles and shared policy/sidebar state belong to this single record;
+there are no separate startup configuration or sidebar events. Later
+windows reflect the then-current settings, not a frozen process-start
+snapshot. Settings reload and agent session creation/load do not emit
+`AppCreated`.
+
+An empty provider is `none`; a `custom:` ID is `custom`; other unrecognized
+values are `unknown`. This does not prove a CLI is installed, authenticated,
+or usable. WTA/App session events remain the source for connected-agent
+identity.
+
+Custom counts include unused configured entries, deduplicated using the
+editor's executable-ID derivation; different arguments for the same derived
+ID do not create additional agents. Empty/invalid derivations are excluded.
+`AllowedAgents` gates built-in providers; custom agents are governed
+separately by `AllowCustomAgents`. `SidebarEnabled` measures the existing
+vertical-tab sidebar, not the availability of search, pinning, or rich rows.
 
 ### App.DelegateInvoked
 
@@ -547,44 +583,24 @@ that hook notifications are currently arriving.
 
 ## Settings Model event schemas
 
-These three events use the existing `Microsoft.Windows.Terminal.Setting.Model`
-provider. They are not emitted by model deserialization, provider probes,
-or agent session creation.
-
-Launch inventory is emitted by the first `AppLogic::Create()` in an
-application instance, after initial settings have loaded or fallen back to
-defaults. An atomic guard prevents extra windows from repeating it.
-Each launch produces one record for each `role` (`primary`, `delegate`)
-in each inventory event, including empty or zero configurations.
-Group by role rather than summing both as two launches.
-
-### Model.AgentProviderConfigured
-
-| Field | Type | Meaning / values |
-|---|---|---|
-| `schema_version` | UInt8 | Constant `2`, distinguishing this launch-only contract from the retired historical event |
-| `role` | String | `primary` or `delegate` |
-| `provider` | String | Configured `copilot`, `claude`, `codex`, `gemini`, `opencode`, `custom`, `unknown`, or `none` |
-| `effective_provider` | String | Settings-layer effective provider in the same bucket set, after fallback/policy resolution |
-| `selection_origin` | String | `user` for a local override, `inherited` for a parent setting, or `default` |
-| `defaults_fallback` | Bool | Whether the currently loaded settings came from initial load-failure fallback |
-
-An empty value is `none`; a `custom:` ID is `custom`; other unrecognized
-values are `unknown`. No custom name or command is emitted. This does not
-prove the CLI is installed, authenticated, or usable. WTA/App session
-events remain the source for connected-agent identity.
+The provider-change event uses the existing
+`Microsoft.Windows.Terminal.Setting.Model` provider. It is not emitted by
+model deserialization, provider probes, or agent session creation.
+Startup inventory belongs to `App.AppCreated`, not separate Model events.
 
 ### Model.AgentProviderChanged
 
 **Trigger:** a successful subsequent settings reload changes a provider's
-raw configured ID relative to the previous successful-load baseline.
+raw configured ID relative to the previous accepted settings baseline.
 Raw IDs are retained only in memory for comparison; payloads are bucketed.
+Initial load-failure fallback establishes a baseline from the defaults
+actually applied, so a later valid provider change is still counted.
 
 | Field | Type | Meaning / values |
 |---|---|---|
 | `role` | String | `primary` or `delegate` |
-| `from` | String | Previous configured provider, using the launch event's bucket set |
-| `to` | String | New configured provider, using the launch event's bucket set |
+| `from` | String | Previous configured provider: `copilot`, `claude`, `codex`, `gemini`, `opencode`, `custom`, `unknown`, or `none` |
+| `to` | String | New configured provider, using the same bucket set |
 
 This covers accepted Settings UI saves and external settings-file changes,
 including in-place mutations of the old settings object. Initial baseline
@@ -593,28 +609,6 @@ emit. Switching between two custom agents emits `custom` to `custom`.
 Per-tab overrides, session resume, and CLI installation are not settings
 changes. Intermediate writes coalesced by the existing settings watcher
 are not a complete click-by-click edit history.
-
-### Model.CustomAgentConfigured
-
-| Field | Type | Meaning / values |
-|---|---|---|
-| `role` | String | `primary` or `delegate` |
-| `configured_count` | UInt32 | Distinct executable-derived custom agent IDs in the role's plural and legacy command settings |
-| `selected` | Bool | Whether the configured provider ID starts with `custom:` |
-| `selected_command_configured` | Bool | Whether the selected custom ID has a matching configured command entry |
-| `allowed_agents_policy_set` | Bool | Whether the `AllowedAgents` policy is present, including an empty allowlist |
-| `allow_custom_agents_policy_set` | Bool | Whether `AllowCustomAgents` is explicitly configured |
-| `allowed_agents_policy` | String | `not_configured`, `empty`, or `allowlist`; never the allowlist entries |
-| `allow_custom_agents_policy` | String | `not_configured`, `allowed`, or `blocked` |
-| `effective_custom_policy` | String | `allowed` or `blocked` by the custom-agent gate |
-| `defaults_fallback` | Bool | Whether initial load-failure fallback settings are active |
-
-Counts include unused configured entries, deduplicated using the editor's
-custom executable-ID derivation; different arguments for the same derived
-ID do not create additional agents. Invalid/empty derivations are not
-entries. This is configuration inventory, not installed-agent discovery.
-`AllowedAgents` gates built-in providers; custom agents are governed
-separately by `AllowCustomAgents`.
 
 ## Settings Editor event schemas
 
@@ -664,6 +658,7 @@ does not assume a particular backend table or query language.
 
 | Metric | Aggregation | Required qualification |
 |---|---|---|
+| Startup configuration share | `AppCreated` records matching the configuration / all `AppCreated` records in the same population | Window-created observations, not unique users or processes; primary and delegate are fields on one record |
 | Successful starts | Distinct `StartId` on App `AgentSessionStarted` | Split `New` and `Load`; includes prewarm |
 | Configuration share at start | Distinct starts matching a snapshot value / all distinct starts in the same population | Session-weighted, not user-weighted; display `unknown` separately |
 | ACP operation success rate | Successful completion events / all completion events for the same event and route | Measures observed RPC attempts; exclude probes from chat analysis |
@@ -709,7 +704,8 @@ before comparing counts.
 | Retired event or field | Replacement / interpretation |
 |---|---|
 | `WTA.SlashCommandInvoked.CommandName` | Renamed to `WTA.AgentSlashCommandUsed.command`; no dual-write. Union old and new spellings across the deployment boundary when querying history |
-| Legacy `AgentProviderConfigured` without `schema_version=2` | Reintroduced as a launch-only, per-role configuration event with `schema_version=2`; keep historical counts separate. Connected-agent identity still comes from `App.AgentSessionStarted` |
+| Legacy `AgentProviderConfigured` | Startup configuration is now carried by `App.AppCreated`; do not compare historical event counts directly. Connected-agent identity still comes from `App.AgentSessionStarted` |
+| Proposed `AgentProviderConfigured(schema_version=2)`, `CustomAgentConfigured`, and `SidebarStateOnLaunch` | Consolidated into `App.AppCreated` before this change lands; no standalone emissions or dual-write |
 | `CustomModelProviderConfigured` | Use `ModelSource` for active session category; unused configured providers are not inventoried |
 | `IntelligentFeatureConfigured` | Use the selected configuration fields on `AgentSessionStarted` |
 | `ErrorFixResolved` | No reliable fix-success replacement; clearing a pending UI state is not proof a fix worked |
@@ -734,11 +730,11 @@ excluded. It is not a blanket filter for all future AI settings.
 
 Other Terminal settings retain their existing telemetry behavior, including
 `tabLayout` and `firstWindowPreference`. The inherited `ActionDispatched`
-event can also describe AI actions; it is not one of these 29 dedicated
+event can also describe AI actions; it is not one of these 27 cataloged
 events. The Settings Model provider,
 `Microsoft.Windows.Terminal.Setting.Model`
 (`{be579944-4d33-5202-e5d6-a7a57f1935cb}`), remains in use for inherited
-settings telemetry and the three dedicated configuration events above.
+settings telemetry and the independent `AgentProviderChanged` event.
 
 ## Privacy and collection boundaries
 
@@ -768,8 +764,8 @@ these event definitions.
 |---|---|
 | App pane, delegate, error, and snapshot emission | [TerminalPage.cpp](../src/cascadia/TerminalApp/TerminalPage.cpp) |
 | Command Palette entry and submission | [CommandPalette.cpp](../src/cascadia/TerminalApp/CommandPalette.cpp), [CommandPaletteTelemetry.h](../src/cascadia/TerminalApp/CommandPaletteTelemetry.h) |
-| Application-launch sidebar state | [AppLogic.cpp](../src/cascadia/TerminalApp/AppLogic.cpp) |
-| Provider launch/change and custom inventory | [AppLogic.cpp](../src/cascadia/TerminalApp/AppLogic.cpp), [CascadiaSettingsSerialization.cpp](../src/cascadia/TerminalSettingsModel/CascadiaSettingsSerialization.cpp), [SettingsTelemetry.h](../src/cascadia/TerminalSettingsModel/SettingsTelemetry.h) |
+| Window-created configuration and provider-change tracking | [AppLogic.cpp](../src/cascadia/TerminalApp/AppLogic.cpp), [AgentProviderTelemetry.h](../src/cascadia/TerminalApp/AgentProviderTelemetry.h) |
+| Provider-change emission and shared configuration helpers | [CascadiaSettingsSerialization.cpp](../src/cascadia/TerminalSettingsModel/CascadiaSettingsSerialization.cpp), [SettingsTelemetry.h](../src/cascadia/TerminalSettingsModel/SettingsTelemetry.h) |
 | Snapshot validation and categories | [AgentSessionTelemetry.h](../src/cascadia/TerminalApp/AgentSessionTelemetry.h) |
 | Helper snapshot production | [app_status_projection.rs](../tools/wta/src/app_status_projection.rs), [app_events.rs](../tools/wta/src/app_events.rs) |
 | WTA event schemas and privacy tags | [telemetry.rs](../tools/wta/src/telemetry.rs) |

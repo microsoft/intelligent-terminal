@@ -7,6 +7,7 @@
 #include <optional>
 #include <set>
 #include <winrt/Windows.Foundation.Collections.h>
+#include <winrt/Microsoft.Terminal.Settings.Model.h>
 
 #include "../inc/AgentPolicy.h"
 #include "../inc/CustomAgentId.h"
@@ -163,6 +164,29 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             const char* allowCustomAgentsCategory;
             const char* effectiveCustomPolicy;
         };
+
+        struct ProviderSnapshot
+        {
+            const char* configured;
+            const char* effective;
+            const char* origin;
+            CustomInventory custom;
+        };
+
+        inline ProviderSnapshot GetProviderSnapshot(const Model::GlobalAppSettings& globals, const bool primary)
+        {
+            const auto selected = primary ? globals.AcpAgent() : globals.DelegateAgent();
+            const auto effective = primary ? globals.EffectiveAcpAgent() : globals.EffectiveDelegateAgent();
+            const auto local = primary ? globals.HasAcpAgent() : globals.HasDelegateAgent();
+            const auto source = primary ? globals.AcpAgentOverrideSource() : globals.DelegateAgentOverrideSource();
+            return {
+                ProviderId(selected),
+                ProviderId(effective),
+                SelectionOrigin(local, source != nullptr),
+                primary ? GetCustomInventory(selected, globals.AcpCustomCommand(), globals.AcpCustomCommands()) :
+                          GetCustomInventory(selected, globals.DelegateCustomCommand(), globals.DelegateCustomCommands()),
+            };
+        }
 
         inline PolicySummary SummarizePolicy(const ::Microsoft::Terminal::Settings::Model::AgentPolicy::PolicySnapshot& policy) noexcept
         {

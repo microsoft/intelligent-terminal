@@ -1902,54 +1902,6 @@ void CascadiaSettings::_resolveNewTabMenuProfilesSet(const IVector<Model::NewTab
     }
 }
 
-void CascadiaSettings::LogAgentConfigurationOnLaunch(const bool defaultsFallback) const noexcept
-try
-{
-    const auto policy = AgentSettingsTelemetry::SummarizePolicy(*::Microsoft::Terminal::Settings::Model::AgentPolicy::GetSnapshot());
-    const auto logRole = [&](const bool primary) {
-        const auto selected = primary ? _globals->AcpAgent() : _globals->DelegateAgent();
-        const auto effective = primary ? _globals->EffectiveAcpAgent() : _globals->EffectiveDelegateAgent();
-        const auto local = primary ? _globals->HasAcpAgent() : _globals->HasDelegateAgent();
-        const auto source = primary ? _globals->AcpAgentOverrideSource() : _globals->DelegateAgentOverrideSource();
-        const auto role = primary ? "primary" : "delegate";
-        TraceLoggingWrite(
-            g_hSettingsModelProvider,
-            "AgentProviderConfigured",
-            TraceLoggingDescription("Configured provider inventory once per role at application launch, not an installation or session probe"),
-            TraceLoggingUInt8(2, "schema_version"),
-            TraceLoggingString(role, "role"),
-            TraceLoggingString(AgentSettingsTelemetry::ProviderId(selected), "provider"),
-            TraceLoggingString(AgentSettingsTelemetry::ProviderId(effective), "effective_provider"),
-            TraceLoggingString(AgentSettingsTelemetry::SelectionOrigin(local, source != nullptr), "selection_origin"),
-            TraceLoggingBool(defaultsFallback, "defaults_fallback"),
-            TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
-            TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
-
-        const auto inventory = primary ?
-                                   AgentSettingsTelemetry::GetCustomInventory(selected, _globals->AcpCustomCommand(), _globals->AcpCustomCommands()) :
-                                   AgentSettingsTelemetry::GetCustomInventory(selected, _globals->DelegateCustomCommand(), _globals->DelegateCustomCommands());
-        TraceLoggingWrite(
-            g_hSettingsModelProvider,
-            "CustomAgentConfigured",
-            TraceLoggingDescription("Custom command inventory once per role at application launch, including unused entries"),
-            TraceLoggingString(role, "role"),
-            TraceLoggingUInt32(inventory.count, "configured_count"),
-            TraceLoggingBool(inventory.selected, "selected"),
-            TraceLoggingBool(inventory.selectedCommandConfigured, "selected_command_configured"),
-            TraceLoggingBool(policy.allowedAgentsPolicySet, "allowed_agents_policy_set"),
-            TraceLoggingBool(policy.allowCustomAgentsPolicySet, "allow_custom_agents_policy_set"),
-            TraceLoggingString(policy.allowedAgentsCategory, "allowed_agents_policy"),
-            TraceLoggingString(policy.allowCustomAgentsCategory, "allow_custom_agents_policy"),
-            TraceLoggingString(policy.effectiveCustomPolicy, "effective_custom_policy"),
-            TraceLoggingBool(defaultsFallback, "defaults_fallback"),
-            TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
-            TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
-    };
-    logRole(true);
-    logRole(false);
-}
-CATCH_LOG()
-
 void CascadiaSettings::LogAgentProviderChanges(const winrt::hstring& previousAcpAgent, const winrt::hstring& previousDelegateAgent) const noexcept
 try
 {

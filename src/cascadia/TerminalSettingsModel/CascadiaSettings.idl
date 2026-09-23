@@ -33,8 +33,6 @@ namespace Microsoft.Terminal.Settings.Model
         void ResetToDefaultSettings();
         Boolean WriteSettingsToDisk();
         void LogSettingChanges(Boolean isJsonLoad);
-        void LogAgentConfigurationOnLaunch(Boolean defaultsFallback);
-        void LogAgentProviderChanges(String previousAcpAgent, String previousDelegateAgent);
 
         String Hash { get; };
 
@@ -69,6 +67,9 @@ namespace Microsoft.Terminal.Settings.Model
         void UpdateCommandID(Command cmd, String newID);
 
         void ResolveMediaResources();
+
+        // Keep new members append-only to preserve existing WinRT vtable slots.
+        void LogAgentProviderChanges(String previousAcpAgent, String previousDelegateAgent);
     }
 
     runtimeclass FragmentProfileEntry

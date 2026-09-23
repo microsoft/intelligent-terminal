@@ -360,6 +360,7 @@ namespace TerminalAppLocalTests
 
         TEST_METHOD(NextMRUTab);
         TEST_METHOD(VerifyCommandPaletteTabSwitcherOrder);
+        TEST_METHOD(CommandPaletteTogglePreparesModeWhileHidden);
 
         TEST_METHOD(TestWindowRenameSuccessful);
         TEST_METHOD(TestWindowRenameFailure);
@@ -5421,6 +5422,54 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(L"d", page->_mruTabs.GetAt(1).Title());
             VERIFY_ARE_EQUAL(L"b", page->_mruTabs.GetAt(2).Title());
             VERIFY_ARE_EQUAL(L"a", page->_mruTabs.GetAt(3).Title());
+        });
+    }
+
+    void TabTests::CommandPaletteTogglePreparesModeWhileHidden()
+    {
+        auto page = _commonSetup();
+        TestOnUIThread([&page]() {
+            const auto palette = page->LoadCommandPalette();
+            auto modeChangedWhileVisible = false;
+            auto prefixChanges = 0u;
+            const auto revoker = palette.PropertyChanged(winrt::auto_revoke, [&](auto&&, const winrt::WUX::Data::PropertyChangedEventArgs& args) {
+                if (args.PropertyName() == L"PrefixCharacter")
+                {
+                    ++prefixChanges;
+                    modeChangedWhileVisible |= palette.Visibility() == Visibility::Visible;
+                }
+            });
+
+            const auto toggle = [&](const ToggleCommandPaletteArgs& args) {
+                ActionEventArgs eventArgs{ args };
+                page->_HandleToggleCommandPalette(nullptr, eventArgs);
+                VERIFY_IS_TRUE(eventArgs.Handled());
+            };
+
+            const auto actions = ActionAndArgs::Deserialize(LR"({"actions":[
+                {"action":"commandPalette","launchMode":"action"},
+                {"action":"commandPalette","launchMode":"agentDelegation"}
+            ]})");
+            VERIFY_ARE_EQUAL(2u, actions.Size());
+            const auto normal = actions.GetAt(0).Args().as<ToggleCommandPaletteArgs>();
+            toggle(normal);
+            VERIFY_ARE_EQUAL(Visibility::Visible, palette.Visibility());
+
+            const auto agent = actions.GetAt(1).Args().as<ToggleCommandPaletteArgs>();
+            toggle(agent);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, palette.Visibility());
+            VERIFY_IS_GREATER_THAN(prefixChanges, 0u);
+            VERIFY_IS_FALSE(modeChangedWhileVisible, L"Closing a visible palette must not briefly enter foreground agent mode.");
+
+            toggle(agent);
+            VERIFY_ARE_EQUAL(Visibility::Visible, palette.Visibility());
+            VERIFY_ARE_EQUAL(L"?", palette.PrefixCharacter());
+            toggle(agent);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, palette.Visibility());
+            toggle(normal);
+            VERIFY_ARE_EQUAL(Visibility::Visible, palette.Visibility());
+            VERIFY_ARE_EQUAL(L">", palette.PrefixCharacter());
+            VERIFY_IS_FALSE(modeChangedWhileVisible);
         });
     }
 
