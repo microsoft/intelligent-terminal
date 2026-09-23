@@ -218,8 +218,8 @@ namespace winrt::TerminalApp::implementation
         TabsToolbar().Padding(_isRailCollapsed ? WUX::Thickness{} : WUX::Thickness{ 12, 0, 8, 0 });
         WUX::Controls::Grid::SetColumn(SearchTabsButton(), _isRailCollapsed ? 0 : 1);
         WUX::Controls::Grid::SetColumnSpan(SearchTabsButton(), _isRailCollapsed ? 4 : 1);
-        SearchTabsButton().Width(_isRailCollapsed ? 40.0 : 32.0);
-        SearchTabsButton().Height(_isRailCollapsed ? 40.0 : 32.0);
+        SearchTabsButton().Width(40.0);
+        SearchTabsButton().Height(40.0);
         ItemsList().Visibility(_tabsVisible ? Visibility::Visible : Visibility::Collapsed);
 
         if (_isRailCollapsed)
