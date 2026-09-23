@@ -59,6 +59,27 @@ not a usage or cost measurement.
 
 ## Providers and common metadata
 
+The original usage funnel also depends on inherited
+`Microsoft.Windows.Terminal.Win32Host.SessionBecameInteractive` and
+`App.ConnectionCreated`, outside the dedicated agent-event catalog below.
+The opt-in `Feature.TelemetryFunnels` suite captures those sources as well as
+the agent events, checks real triggers and negative controls, and records
+process-scoped typed ETW evidence. See the [live validation instructions](../test/e2e/README.md#opt-in-telemetry-funnel-validation).
+Local event capture does not establish backend ingestion or D7/D28 retention.
+Startup policy segmentation and live policy refresh are separate acceptance boundaries:
+the suite's startup-policy cases require typed WTA `ErrorDetected` raw-policy and
+effective-flag values after real failures with policy configured before launch.
+Enabled policy uses shell-failure `Method=vt_sequence`. Blocked policy suppresses
+OSC forwarding, which the test asserts independently of rendered shell-error
+completion. Its typed `disabled`/`false` evidence instead comes from a controlled
+nonzero shell exit with `Method=connection_state`, keeping the helper alive via
+`closeOnExit=never`. That notification must not create an Autofix prompt or offer;
+it does not establish observation of a policy-blocked VT failure.
+Hot-policy notification remains unresolved on the validation host, is tracked in
+[issue #991](https://github.com/microsoft/intelligent-terminal/issues/991), and is reported
+by separate, unchanged tests. Preparing startup coverage does not establish a live pass
+or resolve that hot-refresh limitation.
+
 | Alias | Provider name | GUID | Dedicated events |
 |---|---|---|---|
 | App | `Microsoft.Windows.Terminal.App` | `{24a1622f-7da7-5c77-3303-d850bd1ab2ed}` | 7 |

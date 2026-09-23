@@ -70,6 +70,9 @@ namespace ItE2E
                     byte[] guid = new byte[16];
                     Marshal.Copy(IntPtr.Add(buffer, 0), guid, 0, 16);
                     string provider = new Guid(guid).ToString();
+                    // Only the inherited interaction event belongs to this funnel;
+                    // other Win32Host events can contain structured diagnostic data.
+                    if (provider == "56c06166-2e2e-5f4d-7ff3-74f4b78c87d6" && name != "SessionBecameInteractive") return;
                     int processId = Marshal.ReadInt32(record, 12);
                     int count = Marshal.ReadInt32(buffer, 104);
                     var types = new Dictionary<string, string>();
@@ -77,7 +80,7 @@ namespace ItE2E
                     {
                         int property = 112 + 24 * i;
                         int flags = Marshal.ReadInt32(buffer, property);
-                        if ((flags & 1) != 0) throw new NotSupportedException("Structured telemetry fields require explicit decoding.");
+                        if ((flags & 1) != 0) throw new NotSupportedException("Structured telemetry fields require explicit decoding: " + provider + "/" + name);
                         string field = Text(buffer, property + 4);
                         ushort inputType = unchecked((ushort)Marshal.ReadInt16(buffer, property + 8));
                         types.Add(field, TypeName(inputType));

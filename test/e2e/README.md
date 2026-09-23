@@ -14,7 +14,7 @@ authenticated ACP agents. Available suites (results depend on the selected packa
 | Suite (file) | Covers | Cases |
 |---|---|---|
 | `Feature.Packaging.Tests.ps1` | §9 packaging/protocol (incl. WT_COM_CLSID injected into pane shells) + §10 logging + log retention/cleanup | 18 |
-| `Feature.TelemetryFunnels.Tests.ps1` | PR #990: opt-in, elevated provider-only ETW startup snapshot, slash rename, and real ACP-status/native-host/helper Autofix ready payloads in both settings states | 4 (requires `ITE2E_TELEMETRY=1`) |
+| `Feature.TelemetryFunnels.Tests.ps1` | PR #990: opt-in, provider-only ETW adoption/engagement, per-window startup inventory/sidebar, slash rename, concrete Autofix offer/Run, palette entry, provider changes, and native-ready/startup-policy state; hot-policy checks remain separately visible | 18 (requires `ITE2E_TELEMETRY=1` and explicit policy approval) |
 | `Feature.WtcliPublishStdin.Tests.ps1` | PR #652: WTA/wtcli stdin transport delivers command-line-limit-sized events intact and preserves positional compatibility | 3 |
 | `Feature.Settings.Tests.ps1` | §1 Settings>AI Agents + §0 FRE settings/positions/auto-error/session-mgmt | 18 |
 | `Feature.FreFlow.Tests.ps1` | §0 FRE overlay click-through (Next→Save, privacy link, close-safety) | 5 |
@@ -160,18 +160,29 @@ does not modify the user's PowerShell profile or consume model quota.
 
 `Feature.TelemetryFunnels` requires an unused **Dev** package built from the target revision,
 the build receipt's `ITE2E_EXPECTED_WTA_SHA256` and `ITE2E_EXPECTED_APP_SHA256`
-(`TerminalApp.dll`), and explicit UAC approval. It refuses existing Dev processes
+(`TerminalApp.dll`), explicit UAC approval, and permission for temporary HKCU policy
+changes (`ITE2E_TELEMETRY_POLICY_APPROVED=1`). It refuses existing Dev processes
 rather than adopting or closing user windows. Set `ITE2E_TELEMETRY=1` and
 `ITE2E_PACKAGE=Dev`, then pass the suite to `Invoke-ItE2EReport.ps1`.
 
-One bounded elevated `Collect-TelemetryTrace.ps1` capture covers the suite: only the App, WTA,
-and Settings Model providers are enabled. No kernel/session-wide process tracing or
+One bounded elevated `Collect-TelemetryTrace.ps1` capture covers the suite: only the Win32Host,
+App, WTA, and Settings Model providers are enabled. No kernel/session-wide process tracing or
 third-party upload is used. Captures contain these providers' events from any concurrently
-running process; `scoped-events.json` includes only the owned App/helper PIDs.
+running process; `scoped-events.json` includes only owned App/master/helper PIDs.
+For Win32Host, the typed funnel output includes only `SessionBecameInteractive`;
+unrelated structured diagnostics remain available in the raw ETL/XML.
 Raw ETL, tracerpt XML, TDH-extracted TraceLogging schemas, logman results, and package hashes remain
 in a unique artifact directory. Missing/ambiguous self-describing metadata fails validation;
 diagnostic logs never substitute for typed telemetry. The collector stops only its unique
-session, including on timeout. Settings/state bytes are restored and hash-checked.
+session, including on timeout (20 minutes by default, at most 30 minutes).
+Settings/state bytes are restored and hash-checked. Only the approved HKCU
+`AllowAutoFix`, `AllowedAgents`, and `AllowCustomAgents` values are temporarily changed;
+original presence, registry types, and values are retained for verified restoration.
+Machine policy takes precedence and causes a refusal rather than an override.
+Keep the UI/COM test runner non-elevated. Windows may protect the HKCU policy path
+from normal writes, while an elevated UI runner cannot necessarily reach the
+ordinary packaged COM server. The approved elevated collector handles the three
+allowlisted policy values separately; it must not change registry ACLs or HKLM.
 
 The readiness regression uses real fixture ACP model/config updates to produce repeated
 Connected statuses. Native responses must include the boolean Autofix flag in both settings
@@ -181,8 +192,42 @@ telemetry carries the effective flag separately from raw policy. This verifies t
 boundary and downstream state, not recovery of artificially stale helper state. It neither
 publishes privileged host config events nor suspends processes.
 
-The initial suite does not claim coverage of offer acceptance, palette entry, secondary-window
-counts, or provider changes. Those scenarios still require separate live validation.
+The expanded suite triggers the original funnel's 12 distinct client events through real
+UI, shell, ACP, settings, and Session MCP paths. It checks matching offer/acceptance IDs,
+Run versus Insert/Reject, redraw deduplication, foreground palette entry versus hiding and
+submission, both-role provider changes, same-session ordinary prompts, inventory/sidebar
+variants, policy categories, and a second window in the same process versus reactivation.
+Phase-scoped ETW evidence records typed fields and negatives;
+an incomplete trigger phase fails rather than being interpreted as an absent event.
+
+The 18 cases include two independent **Startup Autofix policy labels match effective
+helper state** variants. They set approved `AllowAutoFix=0/1` before a fresh owned host
+launch and require typed WTA `ErrorDetected` values `disabled`/`false` and
+`enabled`/`true`, respectively. Enabled policy uses an actual shell failure with
+`Method=vt_sequence`. Blocked policy intentionally suppresses OSC forwarding:
+the test discovers the sole owned helper without an OSC tab probe, proves a unique
+shell exception rendered, and asserts no forwarded VT event or Autofix prompt.
+It then exits that controlled shell with code 37 and `closeOnExit=never`, retaining
+the helper to observe the real `connection_state` failure. Its disabled-policy
+`ErrorDetected` must have `Method=connection_state`, with no Autofix prompt or offer;
+it is not evidence that the blocked shell failure's VT event was captured.
+These cases can establish the original funnel requirement 3.1 only
+after those fields and controls pass; event names alone are insufficient.
+
+The two existing hot-policy cases remain strict, separately reported tests. Policy
+notification/hot refresh is currently unresolved on the validation host and tracked in
+[issue #991](https://github.com/microsoft/intelligent-terminal/issues/991); startup-policy
+acceptance neither fixes nor establishes hot-refresh behavior. Consequently, a run may
+validate startup field segmentation while still reporting the hot-policy failures.
+New startup-policy coverage is prepared, not a claim of a completed live pass.
+
+The original requirement rows are not equivalent to event counts: several share `AppCreated`
+or ACP session creation. Eight rows concern absent sidebar/keep-running features and remain
+deferred. D7/D28 retention still requires backend device identity, elapsed days, and cohort
+queries; two-prompt depth can be demonstrated locally but does not validate a backend query.
+`DefaultsFallback=true` and compatibility-only unknown categories are not credited by the
+normal-startup scenarios. Results belong to the selected build's generated report and retained
+capture, not a blanket assertion that every environment or backend metric passed.
 
 Three planes, all built on self-verifying primitives:
 
