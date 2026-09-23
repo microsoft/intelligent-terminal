@@ -14,6 +14,7 @@ authenticated ACP agents. Available suites (results depend on the selected packa
 | Suite (file) | Covers | Cases |
 |---|---|---|
 | `Feature.Packaging.Tests.ps1` | §9 packaging/protocol (incl. WT_COM_CLSID injected into pane shells) + §10 logging + log retention/cleanup | 18 |
+| `Feature.TelemetryFunnels.Tests.ps1` | PR #990: opt-in, elevated provider-only ETW startup snapshot, slash rename, and real ACP-status/native-host/helper Autofix ready payloads in both settings states | 4 (requires `ITE2E_TELEMETRY=1`) |
 | `Feature.WtcliPublishStdin.Tests.ps1` | PR #652: WTA/wtcli stdin transport delivers command-line-limit-sized events intact and preserves positional compatibility | 3 |
 | `Feature.Settings.Tests.ps1` | §1 Settings>AI Agents + §0 FRE settings/positions/auto-error/session-mgmt | 18 |
 | `Feature.FreFlow.Tests.ps1` | §0 FRE overlay click-through (Next→Save, privacy link, close-safety) | 5 |
@@ -154,6 +155,34 @@ results, and scoped helper logs. The fixture uses disposable command files and
 does not modify the user's PowerShell profile or consume model quota.
 
 ## What it gives you
+
+### Opt-in telemetry funnel validation
+
+`Feature.TelemetryFunnels` requires an unused **Dev** package built from the target revision,
+the build receipt's `ITE2E_EXPECTED_WTA_SHA256` and `ITE2E_EXPECTED_APP_SHA256`
+(`TerminalApp.dll`), and explicit UAC approval. It refuses existing Dev processes
+rather than adopting or closing user windows. Set `ITE2E_TELEMETRY=1` and
+`ITE2E_PACKAGE=Dev`, then pass the suite to `Invoke-ItE2EReport.ps1`.
+
+One bounded elevated `Collect-TelemetryTrace.ps1` capture covers the suite: only the App, WTA,
+and Settings Model providers are enabled. No kernel/session-wide process tracing or
+third-party upload is used. Captures contain these providers' events from any concurrently
+running process; `scoped-events.json` includes only the owned App/helper PIDs.
+Raw ETL, tracerpt XML, TDH-extracted TraceLogging schemas, logman results, and package hashes remain
+in a unique artifact directory. Missing/ambiguous self-describing metadata fails validation;
+diagnostic logs never substitute for typed telemetry. The collector stops only its unique
+session, including on timeout. Settings/state bytes are restored and hash-checked.
+
+The readiness regression uses real fixture ACP model/config updates to produce repeated
+Connected statuses. Native responses must include the boolean Autofix flag in both settings
+states and the correct tab/window scope. The pre-fix native payload is missing this field.
+A wrong-tab status elicits no response; old errors are not replayed, and new helper error
+telemetry carries the effective flag separately from raw policy. This verifies the native
+boundary and downstream state, not recovery of artificially stale helper state. It neither
+publishes privileged host config events nor suspends processes.
+
+The initial suite does not claim coverage of offer acceptance, palette entry, secondary-window
+counts, or provider changes. Those scenarios still require separate live validation.
 
 Three planes, all built on self-verifying primitives:
 

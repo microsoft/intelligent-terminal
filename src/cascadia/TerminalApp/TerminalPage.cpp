@@ -2476,6 +2476,7 @@ namespace winrt::TerminalApp::implementation
         params["automatic_yolo_target"] = config.yoloEnabled;
         params["yolo_enabled"] = config.yoloEnabled;
         params["yolo_policy_blocked"] = config.yoloPolicyBlocked;
+        params["autofix_enabled"] = config.autofixEnabled;
         params["autofix_policy_state"] = config.autofixPolicyState;
         return params;
     }
@@ -6952,7 +6953,7 @@ namespace winrt::TerminalApp::implementation
         // command line. Once this specific helper reports Connected without a
         // host catalog, deliver the credential-free catalogs over the existing
         // protocol event channel. Every Connected status resends the current
-        // Yolo default/policy in case this helper missed a one-shot hot update
+        // Yolo default/policy and Autofix state in case this helper missed a one-shot hot update
         // between argv capture and event subscription. Applying unchanged
         // values is idempotent and emits no follow-up status. The tab id scopes
         // the broadcast to the requesting helper; its follow-up status marks

@@ -468,6 +468,9 @@ it through scoped runtime configuration. Older hosts and manual launches
 without metadata report `unknown`; a disabled effective switch is never
 used to infer a policy block. Policy-only changes are propagated even when
 the effective autofix switch remains off.
+On helper connection, the host resends both the raw policy and the current
+effective switch, recovering updates missed between bootstrap argument
+capture and event subscription. This refresh does not replay earlier errors.
 
 ### WTA.ErrorFixOffered
 

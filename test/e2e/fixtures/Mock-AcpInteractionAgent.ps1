@@ -428,6 +428,26 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
                     result = @{ stopReason = 'end_turn' }
                 }
             }
+            elseif ($promptText -match '(?m)^TELEMETRY_READY_REFRESH_[0-9a-f]{32}\s*$') {
+                Send-AcpMessage @{
+                    jsonrpc = '2.0'
+                    method = 'session/update'
+                    params = @{
+                        sessionId = $sessionId
+                        update = @{
+                            sessionUpdate = 'config_option_update'
+                            configOptions = @(Get-SessionConfigOptions)
+                        }
+                    }
+                }
+                Send-TextUpdate -SessionId $sessionId -Text 'TELEMETRY_READY_REFRESH_DONE'
+                Write-FixtureLog -Message "telemetry-ready-complete|$($Matches[0].Trim())"
+                Send-AcpMessage @{
+                    jsonrpc = '2.0'
+                    id = $request.id
+                    result = @{ stopReason = 'end_turn' }
+                }
+            }
             elseif ($promptText -match '(?m)^LIFETIME_(?:[0-9a-f]{12}|[0-9a-f]{32})\s*$') {
                 $marker = $Matches[0].Trim()
                 Send-TextUpdate -SessionId $sessionId -Text "ACK:$marker"

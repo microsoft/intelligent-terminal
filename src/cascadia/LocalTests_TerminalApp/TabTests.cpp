@@ -5219,6 +5219,7 @@ namespace TerminalAppLocalTests
         winrt::TerminalApp::implementation::TerminalPage::AgentRuntimeConfigSnapshot config;
         config.yoloEnabled = false;
         config.yoloPolicyBlocked = true;
+        config.autofixEnabled = false;
         config.autofixPolicyState = "disabled";
 
         const auto payload = winrt::TerminalApp::implementation::TerminalPage::_BuildAgentReadyRuntimeConfigPayload(
@@ -5234,7 +5235,19 @@ namespace TerminalAppLocalTests
         VERIFY_IS_FALSE(payload["yolo_enabled"].asBool());
         VERIFY_IS_TRUE(payload["yolo_policy_blocked"].isBool());
         VERIFY_IS_TRUE(payload["yolo_policy_blocked"].asBool());
+        VERIFY_IS_TRUE(payload["autofix_enabled"].isBool());
+        VERIFY_IS_FALSE(payload["autofix_enabled"].asBool());
         VERIFY_ARE_EQUAL("disabled", payload["autofix_policy_state"].asString());
+
+        config.autofixEnabled = true;
+        config.autofixPolicyState = "enabled";
+        const auto enabledPayload = winrt::TerminalApp::implementation::TerminalPage::_BuildAgentReadyRuntimeConfigPayload(
+            "tab-a",
+            "42",
+            config);
+        VERIFY_IS_TRUE(enabledPayload["autofix_enabled"].isBool());
+        VERIFY_IS_TRUE(enabledPayload["autofix_enabled"].asBool());
+        VERIFY_ARE_EQUAL("enabled", enabledPayload["autofix_policy_state"].asString());
     }
 
     void TabTests::NextMRUTab()

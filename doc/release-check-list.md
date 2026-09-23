@@ -469,6 +469,10 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 ## 10. Diagnostics, logging, and supportability
 
+- [ ] `C329` `[new]` `[E2E]` **Window startup telemetry has one consolidated typed snapshot:** A fresh Dev window emits exactly one AppCreated with 13 business fields and no retired standalone configuration/sidebar events. _(PR #990; opt-in E2E: `Feature.TelemetryFunnels`.)_
+- [ ] `C330` `[new]` `[E2E]` **Agent slash telemetry uses only the renamed event:** A completed config-picker action emits AgentSlashCommandUsed with its typed command field, never the legacy name. _(PR #990; opt-in E2E: `Feature.TelemetryFunnels`.)_
+- [ ] `C331` `[new]` `[E2E]` **Connected helpers receive current native Autofix configuration:** Repeated authentic ACP status updates elicit scoped native ready payloads with a boolean Autofix flag matching both settings values, without replaying old errors; helper ErrorDetected reports the effective flag separately from raw policy. This does not reproduce artificially stale helper state. _(PR #990; opt-in E2E: `Feature.TelemetryFunnels`.)_
+
 **Feature definition:** Release builds should leave enough diagnostics for support without overwhelming the user.
 
 - [ ] `C188` `[E2E]` **WTA logs are written:** WTA process logs are created in the expected package-private log directory.
