@@ -234,7 +234,6 @@ void Terminal::SetWorkingDirectory(std::wstring_view uri)
     }
 
     _workingDirectory = uri;
-    _workingDirectoryReportedByShell = true;
 }
 
 void Terminal::SetShellType(std::wstring_view shellName, std::wstring_view shellVersion)

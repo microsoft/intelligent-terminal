@@ -71,13 +71,6 @@ namespace TerminalApp
         Boolean TabsVisible;
         Boolean IsRailCollapsed;
         TabStripFilterMode FilterMode;
-        Boolean RichTabRepositoryVisible;
-        Boolean RichTabBranchVisible;
-        Boolean RichTabStatusVisible;
-        Boolean RichTabWorkingDirectoryVisible;
-        Boolean RichTabAgentUsageCostVisible;
-        Boolean RichTabAgentContextWindowVisible;
-        Boolean RichTabAgentModelVisible;
 
         // Hosts the complete vertical chrome when no titlebar is available.
         Windows.UI.Xaml.UIElement TopChromeContent;
@@ -94,6 +87,5 @@ namespace TerminalApp
         event Windows.Foundation.TypedEventHandler<TabStrip, Object> CompactNewTabRequested;
         event Windows.Foundation.TypedEventHandler<TabStrip, Object> CompactNewTabMenuRequested;
         event Windows.Foundation.TypedEventHandler<TabStrip, Object> FilterChanged;
-        event Windows.Foundation.TypedEventHandler<TabStrip, Object> VisibleFieldsChanged;
     };
 }

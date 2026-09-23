@@ -98,7 +98,7 @@ namespace winrt::TerminalApp::implementation
                                     RS_(L"VerticalTabsFilterStatusSingle") :
                                     winrt::hstring{ RS_fmt(L"VerticalTabsFilterStatusPlural", visibleTabCount) });
         HiddenCurrentTabIndicator().Visibility(selectedTabVisible ? Visibility::Collapsed : Visibility::Visible);
-        FilterStatusBar().Visibility(_filterMode != TerminalApp::TabStripFilterMode::AllTabs ?
+        FilterStatusBar().Visibility(_filterMode == TerminalApp::TabStripFilterMode::AgentsOnly ?
                                          Visibility::Visible :
                                          Visibility::Collapsed);
     }
@@ -153,55 +153,13 @@ namespace winrt::TerminalApp::implementation
         _filterMode = value;
         AllTabsFilterItem().IsChecked(value == TerminalApp::TabStripFilterMode::AllTabs);
         AgentsOnlyFilterItem().IsChecked(value == TerminalApp::TabStripFilterMode::AgentsOnly);
-        FilterStatusBar().Visibility(value != TerminalApp::TabStripFilterMode::AllTabs ?
+        FilterStatusBar().Visibility(value == TerminalApp::TabStripFilterMode::AgentsOnly ?
                                          Visibility::Visible :
                                          Visibility::Collapsed);
         if (changed)
         {
             FilterChanged.raise(*this, nullptr);
         }
-    }
-
-    void TabStrip::RichTabRepositoryVisible(bool value)
-    {
-        _richTabRepositoryVisible = value;
-        RichTabRepositoryVisibleItem().IsChecked(value);
-    }
-
-    void TabStrip::RichTabBranchVisible(bool value)
-    {
-        _richTabBranchVisible = value;
-        RichTabBranchVisibleItem().IsChecked(value);
-    }
-
-    void TabStrip::RichTabStatusVisible(bool value)
-    {
-        _richTabStatusVisible = value;
-        RichTabStatusVisibleItem().IsChecked(value);
-    }
-
-    void TabStrip::RichTabWorkingDirectoryVisible(bool value)
-    {
-        _richTabWorkingDirectoryVisible = value;
-        RichTabWorkingDirectoryVisibleItem().IsChecked(value);
-    }
-
-    void TabStrip::RichTabAgentUsageCostVisible(bool value)
-    {
-        _richTabAgentUsageCostVisible = value;
-        RichTabAgentUsageCostVisibleItem().IsChecked(value);
-    }
-
-    void TabStrip::RichTabAgentContextWindowVisible(bool value)
-    {
-        _richTabAgentContextWindowVisible = value;
-        RichTabAgentContextWindowVisibleItem().IsChecked(value);
-    }
-
-    void TabStrip::RichTabAgentModelVisible(bool value)
-    {
-        _richTabAgentModelVisible = value;
-        RichTabAgentModelVisibleItem().IsChecked(value);
     }
 
     UIElement TabStrip::TopChromeContent()
@@ -237,48 +195,6 @@ namespace winrt::TerminalApp::implementation
     void TabStrip::OnAgentsOnlyFilterClick(IInspectable const&, WUX::RoutedEventArgs const&)
     {
         FilterMode(TerminalApp::TabStripFilterMode::AgentsOnly);
-    }
-
-    void TabStrip::OnRichTabRepositoryVisibleClick(IInspectable const&, WUX::RoutedEventArgs const&)
-    {
-        _richTabRepositoryVisible = RichTabRepositoryVisibleItem().IsChecked();
-        VisibleFieldsChanged.raise(*this, nullptr);
-    }
-
-    void TabStrip::OnRichTabBranchVisibleClick(IInspectable const&, WUX::RoutedEventArgs const&)
-    {
-        _richTabBranchVisible = RichTabBranchVisibleItem().IsChecked();
-        VisibleFieldsChanged.raise(*this, nullptr);
-    }
-
-    void TabStrip::OnRichTabStatusVisibleClick(IInspectable const&, WUX::RoutedEventArgs const&)
-    {
-        _richTabStatusVisible = RichTabStatusVisibleItem().IsChecked();
-        VisibleFieldsChanged.raise(*this, nullptr);
-    }
-
-    void TabStrip::OnRichTabWorkingDirectoryVisibleClick(IInspectable const&, WUX::RoutedEventArgs const&)
-    {
-        _richTabWorkingDirectoryVisible = RichTabWorkingDirectoryVisibleItem().IsChecked();
-        VisibleFieldsChanged.raise(*this, nullptr);
-    }
-
-    void TabStrip::OnRichTabAgentUsageCostVisibleClick(IInspectable const&, WUX::RoutedEventArgs const&)
-    {
-        _richTabAgentUsageCostVisible = RichTabAgentUsageCostVisibleItem().IsChecked();
-        VisibleFieldsChanged.raise(*this, nullptr);
-    }
-
-    void TabStrip::OnRichTabAgentContextWindowVisibleClick(IInspectable const&, WUX::RoutedEventArgs const&)
-    {
-        _richTabAgentContextWindowVisible = RichTabAgentContextWindowVisibleItem().IsChecked();
-        VisibleFieldsChanged.raise(*this, nullptr);
-    }
-
-    void TabStrip::OnRichTabAgentModelVisibleClick(IInspectable const&, WUX::RoutedEventArgs const&)
-    {
-        _richTabAgentModelVisible = RichTabAgentModelVisibleItem().IsChecked();
-        VisibleFieldsChanged.raise(*this, nullptr);
     }
 
     void TabStrip::OnShowAllTabsClick(IInspectable const&, WUX::RoutedEventArgs const&)

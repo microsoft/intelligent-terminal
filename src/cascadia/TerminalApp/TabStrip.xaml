@@ -131,8 +131,6 @@
                 </Button.Content>
                 <Button.Flyout>
                     <MenuFlyout>
-                        <MenuFlyoutItem x:Uid="VerticalTabsFilterSection"
-                                        IsEnabled="False" />
                         <ToggleMenuFlyoutItem x:Name="AllTabsFilterItem"
                                               x:Uid="VerticalTabsFilterAllTabs"
                                               IsChecked="True"
@@ -140,37 +138,6 @@
                         <ToggleMenuFlyoutItem x:Name="AgentsOnlyFilterItem"
                                               x:Uid="VerticalTabsFilterAgentsOnly"
                                               Click="OnAgentsOnlyFilterClick" />
-                        <MenuFlyoutSeparator />
-                        <MenuFlyoutItem x:Uid="VerticalTabsVisibleSection"
-                                        IsEnabled="False" />
-                        <ToggleMenuFlyoutItem x:Name="RichTabStatusVisibleItem"
-                                              x:Uid="VerticalTabsVisibleStatus"
-                                              IsChecked="True"
-                                              Click="OnRichTabStatusVisibleClick" />
-                        <ToggleMenuFlyoutItem x:Name="RichTabWorkingDirectoryVisibleItem"
-                                              x:Uid="VerticalTabsVisibleWorkingDirectory"
-                                              IsChecked="True"
-                                              Click="OnRichTabWorkingDirectoryVisibleClick" />
-                        <ToggleMenuFlyoutItem x:Name="RichTabRepositoryVisibleItem"
-                                              x:Uid="VerticalTabsVisibleRepository"
-                                              IsChecked="True"
-                                              Click="OnRichTabRepositoryVisibleClick" />
-                        <ToggleMenuFlyoutItem x:Name="RichTabBranchVisibleItem"
-                                              x:Uid="VerticalTabsVisibleBranch"
-                                              IsChecked="True"
-                                              Click="OnRichTabBranchVisibleClick" />
-                        <ToggleMenuFlyoutItem x:Name="RichTabAgentUsageCostVisibleItem"
-                                              x:Uid="VerticalTabsVisibleAgentUsageCost"
-                                              IsChecked="True"
-                                              Click="OnRichTabAgentUsageCostVisibleClick" />
-                        <ToggleMenuFlyoutItem x:Name="RichTabAgentContextWindowVisibleItem"
-                                              x:Uid="VerticalTabsVisibleAgentContextWindow"
-                                              IsChecked="True"
-                                              Click="OnRichTabAgentContextWindowVisibleClick" />
-                        <ToggleMenuFlyoutItem x:Name="RichTabAgentModelVisibleItem"
-                                              x:Uid="VerticalTabsVisibleAgentModel"
-                                              IsChecked="True"
-                                              Click="OnRichTabAgentModelVisibleClick" />
                     </MenuFlyout>
                 </Button.Flyout>
             </Button>

@@ -99,9 +99,6 @@ public:
     void SetOptionalFeatures(winrt::Microsoft::Terminal::Core::ICoreSettings settings);
     bool IsXtermBracketedPasteModeEnabled() const noexcept;
     std::wstring_view GetWorkingDirectory() noexcept;
-    bool IsWorkingDirectoryReportedByShell() const noexcept;
-    void SetInitialWorkingDirectory(std::wstring_view path);
-    void ResetShellIntegrationState() noexcept;
     std::wstring_view GetShellName() const noexcept;
     std::wstring_view GetShellVersion() const noexcept;
 
@@ -391,7 +388,6 @@ private:
 
     std::wstring _answerbackMessage;
     std::wstring _workingDirectory;
-    bool _workingDirectoryReportedByShell = false;
     std::wstring _shellName;
     std::wstring _shellVersion;
     bool _highContrastMode = false;

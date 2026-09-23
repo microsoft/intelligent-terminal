@@ -304,7 +304,6 @@ namespace
                 fullText += L")";
 
                 displayItems.emplace_back(PrimaryDisplayItem{
-                    .displayKind = DisplayKind::Context,
                     .text = std::move(text),
                     .fullText = std::move(fullText),
                 });
@@ -318,7 +317,6 @@ namespace
                 text += L" ";
                 text += til::u8u16(item->unitDisplayText);
                 displayItems.emplace_back(PrimaryDisplayItem{
-                    .displayKind = DisplayKind::Billing,
                     .text = std::move(text),
                     .fullText = std::move(fullText),
                 });

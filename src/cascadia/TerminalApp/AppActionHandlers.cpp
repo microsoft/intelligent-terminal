@@ -819,7 +819,7 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_HandleCloseOtherTabs(const IInspectable& /*sender*/,
                                              const ActionEventArgs& actionArgs)
     {
-        if (_IsTabFilterEffective())
+        if (_IsAgentFilterEffective())
         {
             actionArgs.Handled(false);
             return;
@@ -863,7 +863,7 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_HandleCloseTabsAfter(const IInspectable& /*sender*/,
                                              const ActionEventArgs& actionArgs)
     {
-        if (_IsTabFilterEffective())
+        if (_IsAgentFilterEffective())
         {
             actionArgs.Handled(false);
             return;
@@ -917,7 +917,7 @@ namespace winrt::TerminalApp::implementation
     {
         if (const auto& realArgs = actionArgs.ActionArgs().try_as<MoveTabArgs>())
         {
-            if (_IsTabFilterEffective() && realArgs.Window().empty())
+            if (_IsAgentFilterEffective() && realArgs.Window().empty())
             {
                 actionArgs.Handled(false);
                 return;

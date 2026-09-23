@@ -825,7 +825,6 @@ namespace winrt::TerminalApp::implementation
         {
             _NotifyPanesClosing(rootPaneForClose);
         }
-        _ReleaseRichTabAttachments(rootPaneForClose);
 
         // NOTE: Workspace persistence for named windows used to live here,
         // but by the time _RemoveTab runs the pane content may already be
@@ -1253,7 +1252,6 @@ namespace winrt::TerminalApp::implementation
         // happen before `pane->Close()` since Close destroys the
         // TermControl and the SessionId becomes unresolvable.
         _NotifyPanesClosing(pane);
-        _ReleaseRichTabAttachments(pane);
 
         pane->Close();
     }
@@ -1646,7 +1644,7 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        const bool filterEffective = _IsTabFilterEffective();
+        const bool filterEffective = _IsAgentFilterEffective();
         uint32_t visibleTabCount = 0;
         bool selectedTabVisible = true;
         const auto selectedItem = _selectedTabItem();
@@ -1655,19 +1653,8 @@ namespace winrt::TerminalApp::implementation
         {
             const auto item = tab.TabViewItem();
             const auto tabImpl = _GetTabImpl(tab);
-            auto visible = !filterEffective;
-            if (filterEffective && tabImpl)
-            {
-                switch (_tabFilterMode)
-                {
-                case TerminalApp::TabStripFilterMode::AgentsOnly:
-                    visible = tabImpl->IsAgentTab() || _TabHasCliAgent(tabImpl);
-                    break;
-                default:
-                    visible = true;
-                    break;
-                }
-            }
+            const auto visible = !filterEffective ||
+                                 (tabImpl && (tabImpl->IsAgentTab() || _TabHasCliAgent(tabImpl)));
             if (tabImpl)
             {
                 tabImpl->SetTabFilterActive(filterEffective);
@@ -1746,12 +1733,7 @@ namespace winrt::TerminalApp::implementation
                 uint32_t selectedIndex{};
                 if (_tabItems().IndexOf(selectedItem, selectedIndex) && selectedIndex < _tabs.Size())
                 {
-                    const auto selectedTab = _tabs.GetAt(selectedIndex);
-                    _UpdatedSelectedTab(selectedTab);
-                    if (const auto tab = _GetTabImpl(selectedTab))
-                    {
-                        _RefreshRichTabForTab(*tab, true);
-                    }
+                    _UpdatedSelectedTab(_tabs.GetAt(selectedIndex));
                 }
             }
             // Flush any deferred agent-stack rebuild now that a real
