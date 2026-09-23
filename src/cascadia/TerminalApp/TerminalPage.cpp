@@ -5641,6 +5641,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         _tabStrip.IsRailCollapsed(_isVerticalRailCollapsed);
+        _ApplyTabFilter();
 
         const bool expanded = visible && !_isVerticalRailCollapsed;
         const auto width = visible ? (_isVerticalRailCollapsed ? railCollapsedWidth : _verticalRailWidth) : 0.0;
@@ -14216,7 +14217,9 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_OnTabStripDragStarting(const winrt::Windows::Foundation::IInspectable& sender,
                                                const TerminalApp::TabStripDragStartingEventArgs& e)
     {
-        if (_changingTabLayout || !_IsActiveTabControl(sender))
+        if (_changingTabLayout ||
+            !_IsActiveTabControl(sender) ||
+            _IsCollapsedVerticalRail())
         {
             e.Cancel(true);
             return;
@@ -14279,6 +14282,12 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
+        if (_IsCollapsedVerticalRail())
+        {
+            e.AcceptedOperation(DataPackageOperation::None);
+            e.Handled(true);
+            return;
+        }
 
         // We must mark that we can accept the drag/drop. The system will never
         // call TabStripDrop on us if we don't indicate that we're willing.
@@ -14303,7 +14312,9 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_onTabStripDrop(winrt::Windows::Foundation::IInspectable sender,
                                        winrt::Windows::UI::Xaml::DragEventArgs e)
     {
-        if (_changingTabLayout || !_IsActiveTabControl(sender))
+        if (_changingTabLayout ||
+            !_IsActiveTabControl(sender) ||
+            _IsCollapsedVerticalRail())
         {
             return;
         }
@@ -14379,6 +14390,11 @@ namespace winrt::TerminalApp::implementation
     //   can largely reuse that.
     void TerminalPage::SendContentToOther(winrt::TerminalApp::RequestReceiveContentArgs args)
     {
+        if (_IsCollapsedVerticalRail())
+        {
+            return;
+        }
+
         // validate that we're the source window of the tab in this request
         if (args.SourceWindow() != _WindowProperties.WindowId())
         {
@@ -14407,7 +14423,9 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_OnTabStripDroppedOutside(const winrt::Windows::Foundation::IInspectable& sender,
                                                  const TerminalApp::TabStripDroppedOutsideEventArgs& /*e*/)
     {
-        if (_changingTabLayout || !_IsActiveTabControl(sender))
+        if (_changingTabLayout ||
+            !_IsActiveTabControl(sender) ||
+            _IsCollapsedVerticalRail())
         {
             return;
         }

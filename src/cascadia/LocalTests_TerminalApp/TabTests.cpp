@@ -1981,6 +1981,7 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(333.0, page->VerticalRailColumn().Width().Value);
             VERIFY_ARE_EQUAL(Visibility::Visible, page->_verticalRailSplitter.Visibility());
             VERIFY_IS_TRUE(page->_verticalRailSplitter.IsHitTestVisible());
+
         });
     }
 
@@ -1991,6 +1992,8 @@ namespace TerminalAppLocalTests
         TestOnUIThread([&]() {
             page->_verticalRailWidth = 333.0;
             page->_SetVerticalRailVisibility(true);
+            const auto firstTabItem = page->_tabs.GetAt(0).TabViewItem();
+            VERIFY_IS_NOT_NULL(firstTabItem.ContextFlyout());
 
             page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
 
@@ -2001,6 +2004,15 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Visible, tabStrip->CompactNewTabToolbar().Visibility());
             VERIFY_ARE_EQUAL(Visibility::Visible, tabStrip->SearchTabsButton().Visibility());
             VERIFY_ARE_EQUAL(Visibility::Visible, tabStrip->ItemsList().Visibility());
+            VERIFY_IS_TRUE(tabStrip->CompactNewTabButton().IsHitTestVisible());
+            VERIFY_IS_TRUE(tabStrip->CompactNewTabMenuButton().IsHitTestVisible());
+            VERIFY_IS_FALSE(tabStrip->SearchTabsButton().IsHitTestVisible());
+            VERIFY_IS_FALSE(tabStrip->FilterTabsButton().IsHitTestVisible());
+            VERIFY_IS_FALSE(tabStrip->FilterStatusBar().IsHitTestVisible());
+            VERIFY_IS_FALSE(tabStrip->ItemsList().AllowDrop());
+            VERIFY_IS_FALSE(tabStrip->ItemsList().CanDragItems());
+            VERIFY_IS_FALSE(tabStrip->ItemsList().CanReorderItems());
+            VERIFY_IS_NULL(firstTabItem.ContextFlyout());
             VERIFY_ARE_EQUAL(40.0, page->VerticalRailColumn().Width().Value);
             VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_verticalRailSplitter.Visibility());
             VERIFY_IS_FALSE(page->_verticalRailSplitter.IsHitTestVisible());
@@ -2010,9 +2022,27 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(page->_isVerticalRailCollapsed);
             VERIFY_IS_FALSE(page->_tabStrip.IsRailCollapsed());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, tabStrip->CompactNewTabToolbar().Visibility());
+            VERIFY_IS_TRUE(tabStrip->SearchTabsButton().IsHitTestVisible());
+            VERIFY_IS_TRUE(tabStrip->FilterTabsButton().IsHitTestVisible());
+            VERIFY_IS_TRUE(tabStrip->FilterStatusBar().IsHitTestVisible());
+            VERIFY_IS_TRUE(tabStrip->ItemsList().AllowDrop());
+            VERIFY_ARE_EQUAL(page->CanDragDrop(), tabStrip->ItemsList().CanDragItems());
+            VERIFY_ARE_EQUAL(page->CanDragDrop(), tabStrip->ItemsList().CanReorderItems());
+            VERIFY_IS_NOT_NULL(firstTabItem.ContextFlyout());
             VERIFY_ARE_EQUAL(333.0, page->VerticalRailColumn().Width().Value);
             VERIFY_ARE_EQUAL(Visibility::Visible, page->_verticalRailSplitter.Visibility());
             VERIFY_IS_TRUE(page->_verticalRailSplitter.IsHitTestVisible());
+
+            page->_tabFilterMode = winrt::TerminalApp::TabStripFilterMode::AgentsOnly;
+            page->_ApplyTabFilter();
+            VERIFY_IS_FALSE(tabStrip->ItemsList().CanDragItems());
+            VERIFY_IS_FALSE(tabStrip->ItemsList().CanReorderItems());
+
+            page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
+            page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
+            VERIFY_IS_FALSE(page->_isVerticalRailCollapsed);
+            VERIFY_IS_FALSE(tabStrip->ItemsList().CanDragItems());
+            VERIFY_IS_FALSE(tabStrip->ItemsList().CanReorderItems());
         });
     }
 

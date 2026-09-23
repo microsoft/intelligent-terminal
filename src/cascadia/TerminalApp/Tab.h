@@ -118,6 +118,7 @@ namespace winrt::TerminalApp::implementation
             _tabFilterActive = active;
             _EnableMenuItems();
         }
+        void SetTabPointerInteractionRestricted(bool restricted);
 
         // Hide the agent pane without detaching it from the tree. The pane
         // stays alive (so TermControl + conpty + wta-helper survive), but
@@ -266,6 +267,8 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _switchTabLayoutMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _closeOtherTabsMenuItem{};
         bool _tabFilterActive{ false };
+        bool _tabPointerInteractionRestricted{ false };
+        winrt::Windows::UI::Xaml::Controls::MenuFlyout _contextMenuFlyout{ nullptr };
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _closeTabsAfterMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _closePaneMenuItem{};
         winrt::TerminalApp::ShortcutActionDispatch _dispatch;

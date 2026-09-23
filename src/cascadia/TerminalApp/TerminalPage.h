@@ -904,6 +904,12 @@ namespace winrt::TerminalApp::implementation
             return _isVerticalLayout &&
                    _tabFilterMode == TerminalApp::TabStripFilterMode::AgentsOnly;
         }
+        bool _IsCollapsedVerticalRail() const noexcept
+        {
+            return _isVerticalLayout &&
+                   _isVerticalRailVisible &&
+                   _isVerticalRailCollapsed;
+        }
         void _UpdateTabWidthMode();
         void _SetBackgroundImage(const winrt::Microsoft::Terminal::Settings::Model::IAppearanceConfig& newAppearance);
 

@@ -210,12 +210,25 @@ namespace winrt::TerminalApp::implementation
         MinWidth(_isRailCollapsed ? 40.0 : 180.0);
         CompactNewTabToolbar().Visibility(collapsedVisibility);
         VerticalTabsHeader().Visibility(expandedVisibility);
+        SearchTabsButton().IsHitTestVisible(!_isRailCollapsed);
+        FilterTabsButton().IsHitTestVisible(!_isRailCollapsed);
+        TabHistoryButton().IsHitTestVisible(!_isRailCollapsed);
+        FilterStatusBar().IsHitTestVisible(!_isRailCollapsed);
+        ItemsList().AllowDrop(!_isRailCollapsed);
         TabsToolbar().Padding(_isRailCollapsed ? WUX::Thickness{} : WUX::Thickness{ 12, 0, 8, 0 });
         WUX::Controls::Grid::SetColumn(SearchTabsButton(), _isRailCollapsed ? 0 : 1);
         WUX::Controls::Grid::SetColumnSpan(SearchTabsButton(), _isRailCollapsed ? 4 : 1);
         SearchTabsButton().Width(_isRailCollapsed ? 40.0 : 32.0);
         SearchTabsButton().Height(_isRailCollapsed ? 40.0 : 32.0);
         ItemsList().Visibility(_tabsVisible ? Visibility::Visible : Visibility::Collapsed);
+
+        if (_isRailCollapsed)
+        {
+            if (const auto flyout = FilterTabsButton().Flyout())
+            {
+                flyout.Hide();
+            }
+        }
 
         for (uint32_t index = 0; index < _tabItems.Size(); ++index)
         {
@@ -246,6 +259,8 @@ namespace winrt::TerminalApp::implementation
             item.MinWidth(0.0);
             item.MaxWidth(std::numeric_limits<double>::infinity());
         }
+
+        _refreshCloseButton(item);
     }
 
     void TabStrip::_applyTabItemVisibility(MUX::Controls::TabViewItem const& item)
@@ -342,6 +357,8 @@ namespace winrt::TerminalApp::implementation
             item.ApplyTemplate();
             if (const auto button = _findCloseButton(item))
             {
+                button.IsHitTestVisible(!_isRailCollapsed);
+
                 if (const auto currentButton = found->second.CloseButton.get();
                     currentButton && currentButton == button)
                 {

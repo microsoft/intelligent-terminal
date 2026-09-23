@@ -1455,9 +1455,18 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_OnTabPointerPressed(const IInspectable& sender, const Windows::UI::Xaml::Input::PointerRoutedEventArgs& e)
     {
+        const auto point = e.GetCurrentPoint(nullptr);
+        if (_IsCollapsedVerticalRail() &&
+            e.Pointer().PointerDeviceType() == Windows::Devices::Input::PointerDeviceType::Mouse &&
+            !point.Properties().IsLeftButtonPressed())
+        {
+            e.Handled(true);
+            return;
+        }
+
         if (_changingTabLayout ||
             ((!_isVerticalLayout && !_tabItemMiddleClickHookEnabled) ||
-             !e.GetCurrentPoint(nullptr).Properties().IsMiddleButtonPressed()))
+             !point.Properties().IsMiddleButtonPressed()))
         {
             return;
         }
@@ -1511,7 +1520,9 @@ namespace winrt::TerminalApp::implementation
         {
             co_return;
         }
-        if (strong->_changingTabLayout || strong->_tabLayoutGeneration != layoutGeneration)
+        if (strong->_changingTabLayout ||
+            strong->_tabLayoutGeneration != layoutGeneration ||
+            strong->_IsCollapsedVerticalRail())
         {
             co_return;
         }
@@ -1658,6 +1669,7 @@ namespace winrt::TerminalApp::implementation
             if (tabImpl)
             {
                 tabImpl->SetTabFilterActive(filterEffective);
+                tabImpl->SetTabPointerInteractionRestricted(_IsCollapsedVerticalRail());
             }
             _tabStrip.SetTabItemVisibility(item, visible);
             visibleTabCount += visible ? 1u : 0u;
@@ -1669,7 +1681,9 @@ namespace winrt::TerminalApp::implementation
 
         _tabStrip.SetFilterStatus(filterEffective ? visibleTabCount : _tabs.Size(),
                                   !filterEffective || selectedTabVisible);
-        const auto canDragDrop = CanDragDrop() && !filterEffective;
+        const auto canDragDrop = CanDragDrop() &&
+                                 !filterEffective &&
+                                 !_IsCollapsedVerticalRail();
         _tabStrip.CanReorderTabs(canDragDrop);
         _tabStrip.CanDragTabs(canDragDrop);
     }
@@ -1816,7 +1830,9 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_TabDragStarted(const IInspectable& sender,
                                        const IInspectable& /*eventArgs*/)
     {
-        if (_changingTabLayout || !_IsActiveTabControl(sender))
+        if (_changingTabLayout ||
+            !_IsActiveTabControl(sender) ||
+            _IsCollapsedVerticalRail())
         {
             return;
         }
@@ -1835,7 +1851,10 @@ namespace winrt::TerminalApp::implementation
         auto& from{ _rearrangeFrom };
         auto& to{ _rearrangeTo };
 
-        if (from.has_value() && to.has_value() && to != from)
+        const auto canCommitReorder = !_IsCollapsedVerticalRail() &&
+                                      !_IsAgentFilterEffective();
+
+        if (canCommitReorder && from.has_value() && to.has_value() && to != from)
         {
             try
             {
@@ -1850,7 +1869,10 @@ namespace winrt::TerminalApp::implementation
 
         _rearranging = false;
 
-        if (to.has_value() && *to >= 0 && *to < gsl::narrow_cast<int32_t>(_tabs.Size()))
+        if (canCommitReorder &&
+            to.has_value() &&
+            *to >= 0 &&
+            *to < gsl::narrow_cast<int32_t>(_tabs.Size()))
         {
             _selectedTabItem(_tabs.GetAt(gsl::narrow_cast<uint32_t>(*to)).TabViewItem());
         }

@@ -160,10 +160,38 @@ namespace winrt::TerminalApp::implementation
         // [^1]: microsoft-ui-xaml/blob/92fbfcd55f05c92ac65569f5d284c5b36492091e/dev/TabView/TabView.cpp#L751-L758
         TabViewItem().Content(winrt::WUX::Controls::Border{});
 
-        TabViewItem().DoubleTapped([weakThis = get_weak()](auto&& /*s*/, auto&& /*e*/) {
+        TabViewItem().DoubleTapped([weakThis = get_weak()](auto&& /*s*/, const WUX::Input::DoubleTappedRoutedEventArgs& e) {
             if (auto tab{ weakThis.get() })
             {
+                if (tab->_tabPointerInteractionRestricted)
+                {
+                    e.Handled(true);
+                    return;
+                }
                 tab->ActivateTabRenamer();
+            }
+        });
+        TabViewItem().RightTapped([weakThis = get_weak()](auto&& /*s*/, const WUX::Input::RightTappedRoutedEventArgs& e) {
+            if (const auto tab{ weakThis.get() };
+                tab && tab->_tabPointerInteractionRestricted)
+            {
+                e.Handled(true);
+            }
+        });
+        TabViewItem().ContextRequested([weakThis = get_weak()](auto&& /*s*/, const WUX::Input::ContextRequestedEventArgs& e) {
+            if (const auto tab{ weakThis.get() };
+                tab && tab->_tabPointerInteractionRestricted)
+            {
+                Windows::Foundation::Point pointerPosition;
+                if (e.TryGetPosition(tab->TabViewItem(), pointerPosition))
+                {
+                    e.Handled(true);
+                }
+                else if (tab->_contextMenuFlyout)
+                {
+                    tab->_contextMenuFlyout.ShowAt(tab->TabViewItem());
+                    e.Handled(true);
+                }
             }
         });
 
@@ -2113,7 +2141,32 @@ namespace winrt::TerminalApp::implementation
             }
         });
 
-        TabViewItem().ContextFlyout(contextMenuFlyout);
+        _contextMenuFlyout = contextMenuFlyout;
+        TabViewItem().ContextFlyout(_contextMenuFlyout);
+    }
+
+    void Tab::SetTabPointerInteractionRestricted(const bool restricted)
+    {
+        ASSERT_UI_THREAD();
+
+        if (_tabPointerInteractionRestricted == restricted)
+        {
+            return;
+        }
+
+        _tabPointerInteractionRestricted = restricted;
+        if (restricted)
+        {
+            if (_contextMenuFlyout)
+            {
+                _contextMenuFlyout.Hide();
+            }
+            TabViewItem().ContextFlyout(nullptr);
+        }
+        else
+        {
+            TabViewItem().ContextFlyout(_contextMenuFlyout);
+        }
     }
 
     // Method Description:
