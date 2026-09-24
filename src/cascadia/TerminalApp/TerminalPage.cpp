@@ -578,7 +578,6 @@ namespace winrt::TerminalApp::implementation
         // without accumulating duplicate handlers.
         _tabStrip.CanReorderTabs(canDragDrop);
         _tabStrip.CanDragTabs(canDragDrop);
-        _tabStrip.TabDragStarting({ get_weak(), &TerminalPage::_TabDragStarted });
         _tabStrip.TabDragCompleted({ get_weak(), &TerminalPage::_TabDragCompleted });
         _tabStrip.SelectionChanged({ this, &TerminalPage::_OnTabStripSelectionChanged });
         _tabStrip.TabCloseRequested({ this, &TerminalPage::_OnTabStripCloseRequested });
@@ -591,7 +590,40 @@ namespace winrt::TerminalApp::implementation
             if (const auto page = weakThis.get())
             {
                 page->_tabFilterMode = sender.FilterMode();
-                page->_ApplyTabFilter();
+                page->_ApplyTabListProjection();
+            }
+        });
+        _tabStrip.SearchActivationRequested([weakThis{ get_weak() }](auto&&, auto&&) {
+            if (const auto page = weakThis.get())
+            {
+                page->_suppressTabFocusRequests = true;
+                for (const auto& tab : page->_tabs)
+                {
+                    if (const auto tabImpl = page->_GetTabImpl(tab))
+                    {
+                        tabImpl->CancelTabRename();
+                    }
+                }
+                page->_DismissTabContextMenus();
+                if (page->_tabColorPicker)
+                {
+                    page->_tabColorPicker.Hide();
+                }
+                page->Dispatcher().RunAsync(CoreDispatcherPriority::Low, [weakPage = page->get_weak()]() {
+                    if (const auto currentPage = weakPage.get())
+                    {
+                        currentPage->_suppressTabFocusRequests = false;
+                    }
+                });
+            }
+        });
+        _tabStrip.SearchChanged([weakThis{ get_weak() }](const auto& sender, auto&&) {
+            if (const auto page = weakThis.get())
+            {
+                page->_tabSearchActive = sender.SearchActive();
+                page->_tabSearchQuery = sender.SearchQuery();
+                page->_ApplyTabListProjection();
+                page->_suppressTabFocusRequests = false;
             }
         });
         _tabRow.RailCollapseRequested({ this, &TerminalPage::_OnVerticalRailCollapseRequested });
@@ -3888,7 +3920,7 @@ namespace winrt::TerminalApp::implementation
                 {
                     self->_UpdateTabIcon(*owner);
                 }
-                self->_ApplyTabFilter();
+                self->_ApplyTabListProjection();
 
                 const auto activeTab = self->_GetFocusedTabImpl();
                 if (activeTab && activeTab->FindAgentPaneContent() == sender)
@@ -5445,6 +5477,7 @@ namespace winrt::TerminalApp::implementation
             _changingTabLayout = false;
             _tabLayoutTransitionTarget.reset();
             _tabLayoutTransitionSelectedItem = nullptr;
+            _ApplyTabListProjection();
             return false;
         }
     }
@@ -5517,7 +5550,7 @@ namespace winrt::TerminalApp::implementation
         _updateAllTabCloseButtons();
         stage = "update tab visibility";
         _UpdateTabView();
-        _ApplyTabFilter();
+        _ApplyTabListProjection();
         stage = "update theme";
         _updateThemeColors();
     }
@@ -5561,9 +5594,15 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
+        if (succeeded && !targetVertical)
+        {
+            _ClearTabSearch();
+        }
+
         _changingTabLayout = false;
         _tabLayoutTransitionTarget.reset();
         _tabLayoutTransitionSelectedItem = nullptr;
+        _ApplyTabListProjection();
 
         if (const auto infoBar = FindName(L"TabLayoutRestartInfoBar").try_as<MUX::Controls::InfoBar>())
         {
@@ -5644,6 +5683,10 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
+        if (!visible)
+        {
+            _ClearTabSearch();
+        }
         _isVerticalRailVisible = visible;
 
         if (_tabView)
@@ -5656,7 +5699,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         _tabStrip.IsRailCollapsed(_isVerticalRailCollapsed);
-        _ApplyTabFilter();
+        _ApplyTabListProjection();
 
         const bool expanded = visible && !_isVerticalRailCollapsed;
         const auto width = visible ? (_isVerticalRailCollapsed ? railCollapsedWidth : _verticalRailWidth) : 0.0;
@@ -5687,7 +5730,10 @@ namespace winrt::TerminalApp::implementation
 
             if (focusWasInRail)
             {
-                _FocusActiveControl(nullptr, nullptr);
+                if (auto tab{ _GetFocusedTab() })
+                {
+                    tab.Focus(FocusState::Programmatic);
+                }
             }
         }
 
@@ -5723,8 +5769,29 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        _isVerticalRailCollapsed = !_isVerticalRailCollapsed;
+        const auto collapsing = !_isVerticalRailCollapsed;
+        if (collapsing)
+        {
+            _ClearTabSearch();
+        }
+        _isVerticalRailCollapsed = collapsing;
         _SetVerticalRailVisibility(true);
+    }
+
+    void TerminalPage::_ClearTabSearch()
+    {
+        if (!_tabSearchActive && _tabSearchQuery.empty())
+        {
+            return;
+        }
+
+        _tabSearchActive = false;
+        _tabSearchQuery.clear();
+        if (_tabStrip)
+        {
+            _tabStrip.SearchActive(false);
+            _tabStrip.SearchQuery(L"");
+        }
     }
 
     void TerminalPage::_CancelRailSplitterDrag()
@@ -7950,7 +8017,7 @@ namespace winrt::TerminalApp::implementation
                 _UpdateBottomBarState();
             }
         }
-        _ApplyTabFilter();
+        _ApplyTabListProjection();
     }
 
     // Inbound event from WTA: {method:"close_agent_pane", params:{tab_id}}.
@@ -8770,7 +8837,7 @@ namespace winrt::TerminalApp::implementation
                             _agentPaneLog("OnPaneAgentSessionChanged: ignored prompt session " + agentSessionId + " for already-bound pane " + paneId);
                         }
                     }
-                    _ApplyTabFilter();
+                    _ApplyTabListProjection();
                     return;
                 }
             }
@@ -9484,7 +9551,7 @@ namespace winrt::TerminalApp::implementation
                 if (propertyName == L"Title")
                 {
                     page->_UpdateTitle(*tab);
-                    page->_ApplyTabFilter();
+                    page->_ApplyTabListProjection();
                 }
                 else if (propertyName == L"Content")
                 {
@@ -14285,11 +14352,13 @@ namespace winrt::TerminalApp::implementation
     {
         if (_changingTabLayout ||
             !_IsActiveTabControl(sender) ||
-            _IsCollapsedVerticalRail())
+            _IsCollapsedVerticalRail() ||
+            _IsTabListPositionOperationBlocked())
         {
             e.Cancel(true);
             return;
         }
+        _TabDragStarted(sender, nullptr);
         if (const auto tab = e.Tab())
         {
             _OnTabDragStartingCore(tab, e.Data());
@@ -14348,7 +14417,7 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
-        if (_IsCollapsedVerticalRail())
+        if (_IsCollapsedVerticalRail() || _IsTabListPositionOperationBlocked())
         {
             e.AcceptedOperation(DataPackageOperation::None);
             e.Handled(true);
@@ -14380,8 +14449,11 @@ namespace winrt::TerminalApp::implementation
     {
         if (_changingTabLayout ||
             !_IsActiveTabControl(sender) ||
-            _IsCollapsedVerticalRail())
+            _IsCollapsedVerticalRail() ||
+            _IsTabListPositionOperationBlocked())
         {
+            e.AcceptedOperation(DataPackageOperation::None);
+            e.Handled(true);
             return;
         }
 
@@ -14456,7 +14528,7 @@ namespace winrt::TerminalApp::implementation
     //   can largely reuse that.
     void TerminalPage::SendContentToOther(winrt::TerminalApp::RequestReceiveContentArgs args)
     {
-        if (_IsCollapsedVerticalRail())
+        if (_IsCollapsedVerticalRail() || _IsTabListPositionOperationBlocked())
         {
             return;
         }
@@ -14491,7 +14563,8 @@ namespace winrt::TerminalApp::implementation
     {
         if (_changingTabLayout ||
             !_IsActiveTabControl(sender) ||
-            _IsCollapsedVerticalRail())
+            _IsCollapsedVerticalRail() ||
+            _IsTabListPositionOperationBlocked())
         {
             return;
         }

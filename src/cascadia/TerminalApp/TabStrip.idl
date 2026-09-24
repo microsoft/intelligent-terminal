@@ -71,6 +71,8 @@ namespace TerminalApp
         Boolean TabsVisible;
         Boolean IsRailCollapsed;
         TabStripFilterMode FilterMode;
+        Boolean SearchActive;
+        String SearchQuery;
 
         // Hosts the complete vertical chrome when no titlebar is available.
         Windows.UI.Xaml.UIElement TopChromeContent;
@@ -87,5 +89,7 @@ namespace TerminalApp
         event Windows.Foundation.TypedEventHandler<TabStrip, Object> CompactNewTabRequested;
         event Windows.Foundation.TypedEventHandler<TabStrip, Object> CompactNewTabMenuRequested;
         event Windows.Foundation.TypedEventHandler<TabStrip, Object> FilterChanged;
+        event Windows.Foundation.TypedEventHandler<TabStrip, Object> SearchActivationRequested;
+        event Windows.Foundation.TypedEventHandler<TabStrip, Object> SearchChanged;
     };
 }

@@ -13,6 +13,7 @@ namespace TerminalApp
 
         TabHeaderControl();
         void BeginRename();
+        void CancelRename();
 
         Boolean InRename { get; };
 

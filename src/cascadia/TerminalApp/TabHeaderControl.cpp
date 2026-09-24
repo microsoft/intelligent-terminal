@@ -90,6 +90,15 @@ namespace winrt::TerminalApp::implementation
             TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
     }
 
+    void TabHeaderControl::CancelRename()
+    {
+        if (InRename())
+        {
+            _renameCancelled = true;
+            _CloseRenameBox();
+        }
+    }
+
     // Method Description:
     // - Event handler for when the rename box loses focus
     // - When the rename box loses focus, we send a request for the title change depending

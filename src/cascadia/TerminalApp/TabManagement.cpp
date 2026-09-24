@@ -23,6 +23,7 @@
 #include "ShellIntegrationSweep.h"
 #include "SharedWta.h"
 #include "TabRowControl.h"
+#include "TabStrip.h"
 #include "DebugTapConnection.h"
 #include "DesktopNotification.h"
 #include "..\TerminalSettingsModel\FileUtils.h"
@@ -173,10 +174,19 @@ namespace winrt::TerminalApp::implementation
         });
 
         auto tabViewItem = newTabImpl->TabViewItem();
-        _tabItems().InsertAt(insertPosition, tabViewItem);
 
-        // Set this tab's icon to the icon from the content
+        // Initialize the icon before the item enters the visual collection so
+        // the tab header does not render a text-only first frame.
         _UpdateTabIcon(*newTabImpl);
+
+        // Prepare vertical chrome before the item enters the visual collection
+        // so its first rendered frame already has the final shape.
+        if (_isVerticalLayout)
+        {
+            winrt::get_self<implementation::TabStrip>(_tabStrip)->PrepareTabItem(tabViewItem);
+        }
+
+        _tabItems().InsertAt(insertPosition, tabViewItem);
 
         tabViewItem.PointerPressed({ this, &TerminalPage::_OnTabPointerPressed });
 
@@ -207,7 +217,10 @@ namespace winrt::TerminalApp::implementation
         newTabImpl->RequestFocusActiveControl([weakThis{ get_weak() }]() {
             if (const auto page{ weakThis.get() })
             {
-                page->_FocusCurrentTab(false);
+                if (!page->_suppressTabFocusRequests)
+                {
+                    page->_FocusCurrentTab(false);
+                }
             }
         });
 
@@ -1074,6 +1087,10 @@ namespace winrt::TerminalApp::implementation
             _rearranging = false;
             _rearrangeFrom = std::nullopt;
             _rearrangeTo = std::nullopt;
+            _tabDragReorderAuthorized = false;
+            _tabDragSelectedItem = nullptr;
+            winrt::get_self<implementation::TabStrip>(_tabStrip)->ProjectionControlsEnabled(true);
+            _ApplyTabListProjection();
         }
     }
 
@@ -1617,12 +1634,17 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
+        if (_mutatingTabCollections)
+        {
+            return;
+        }
+
         if (const auto p = CommandPaletteElement())
         {
             p.Visibility(Visibility::Collapsed);
         }
         _UpdateTabView();
-        _ApplyTabFilter();
+        _ApplyTabListProjection();
     }
 
     void TerminalPage::_OnTabPointerPressed(const IInspectable& sender, const Windows::UI::Xaml::Input::PointerRoutedEventArgs& e)
@@ -1817,47 +1839,100 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         _OnSelectionChangedCore();
-        _ApplyTabFilter();
+        _ApplyTabListProjection();
     }
 
-    void TerminalPage::_ApplyTabFilter()
+    void TerminalPage::_ApplyTabListProjection()
     {
         if (!_tabStrip)
         {
             return;
         }
 
-        const bool filterEffective = _IsAgentFilterEffective();
-        uint32_t visibleTabCount = 0;
-        bool selectedTabVisible = true;
+        if (_rearranging || _mutatingTabCollections)
+        {
+            _pendingTabProjectionRefresh = true;
+            return;
+        }
+
+        _pendingTabProjectionRefresh = false;
+        const bool agentScopeEffective = _IsAgentScopeEffective();
+        const bool positionOperationsBlocked = _IsTabListPositionOperationBlocked();
+        uint32_t scopeVisibleTabCount = 0;
+        bool selectedTabMatchesScope = true;
         const auto selectedItem = _selectedTabItem();
 
         for (const auto& tab : _tabs)
         {
             const auto item = tab.TabViewItem();
             const auto tabImpl = _GetTabImpl(tab);
-            const auto visible = !filterEffective ||
-                                 (tabImpl && (tabImpl->IsAgentTab() || _TabHasCliAgent(tabImpl)));
+            const auto matchesScope = !agentScopeEffective || _MatchesTabScope(tabImpl);
+            const auto visible = _IsTabVisibleInProjection(tabImpl);
             if (tabImpl)
             {
-                tabImpl->SetTabFilterActive(filterEffective);
+                tabImpl->SetTabListPositionOperationsRestricted(positionOperationsBlocked);
                 tabImpl->SetTabPointerInteractionRestricted(_IsCollapsedVerticalRail());
             }
             _tabStrip.SetTabItemVisibility(item, visible);
-            visibleTabCount += visible ? 1u : 0u;
+            scopeVisibleTabCount += matchesScope ? 1u : 0u;
             if (selectedItem && winrt::get_abi(selectedItem) == winrt::get_abi(item))
             {
-                selectedTabVisible = visible;
+                selectedTabMatchesScope = matchesScope;
             }
         }
 
-        _tabStrip.SetFilterStatus(filterEffective ? visibleTabCount : _tabs.Size(),
-                                  !filterEffective || selectedTabVisible);
+        _tabStrip.SetFilterStatus(agentScopeEffective ? scopeVisibleTabCount : _tabs.Size(),
+                                 !agentScopeEffective || selectedTabMatchesScope);
         const auto canDragDrop = CanDragDrop() &&
-                                 !filterEffective &&
+                                 !positionOperationsBlocked &&
                                  !_IsCollapsedVerticalRail();
         _tabStrip.CanReorderTabs(canDragDrop);
         _tabStrip.CanDragTabs(canDragDrop);
+    }
+
+    bool TerminalPage::_MatchesTabScope(const winrt::com_ptr<Tab>& tab) const
+    {
+        return tab && (tab->IsAgentTab() || _TabHasCliAgent(tab));
+    }
+
+    bool TerminalPage::_MatchesTabSearch(const Tab& tab) const
+    {
+        if (!_IsTabSearchEffective())
+        {
+            return true;
+        }
+
+        const std::wstring_view query{ _tabSearchQuery.c_str(), _tabSearchQuery.size() };
+        if (query.empty())
+        {
+            return false;
+        }
+
+        const auto titleValue = tab.Title();
+        const std::wstring_view title{ titleValue.c_str(), titleValue.size() };
+        if (query.size() > title.size())
+        {
+            return false;
+        }
+
+        for (size_t offset = 0; offset + query.size() <= title.size(); ++offset)
+        {
+            if (til::compare_ordinal_insensitive(title.substr(offset, query.size()), query) == 0)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool TerminalPage::_IsTabVisibleInProjection(const winrt::com_ptr<Tab>& tab) const
+    {
+        if (!tab)
+        {
+            return !_IsTabSearchEffective() && !_IsAgentScopeEffective();
+        }
+        return (!_IsAgentScopeEffective() || _MatchesTabScope(tab)) &&
+               _MatchesTabSearch(*tab);
     }
 
     bool TerminalPage::_IsKnownAgentCliTitle(const std::wstring_view title) noexcept
@@ -1904,12 +1979,12 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         _OnSelectionChangedCore();
-        _ApplyTabFilter();
+        _ApplyTabListProjection();
     }
 
     void TerminalPage::_OnSelectionChangedCore()
     {
-        if (!_changingTabLayout && !_rearranging && !_removing)
+        if (!_changingTabLayout && !_rearranging && !_removing && !_mutatingTabCollections)
         {
             // Look up selection via the router — works for both TabView and
             // TabStrip because _selectedTabItem and _tabItems both branch on
@@ -1978,6 +2053,11 @@ namespace winrt::TerminalApp::implementation
         auto newTabIndex = gsl::narrow_cast<uint32_t>(std::clamp<int32_t>(suggestedNewTabIndex, 0, _tabs.Size() - 1));
         if (currentTabIndex != newTabIndex)
         {
+            _mutatingTabCollections = true;
+            auto endMutation = wil::scope_exit([&]() noexcept {
+                _mutatingTabCollections = false;
+            });
+
             auto tab = _tabs.GetAt(currentTabIndex);
             auto tabViewItem = tab.TabViewItem();
             _tabs.RemoveAt(currentTabIndex);
@@ -1987,6 +2067,11 @@ namespace winrt::TerminalApp::implementation
             _tabItems().RemoveAt(currentTabIndex);
             _tabItems().InsertAt(newTabIndex, tabViewItem);
             _selectedTabItem(tabViewItem);
+
+            _mutatingTabCollections = false;
+            endMutation.release();
+            _UpdateTabView();
+            _ApplyTabListProjection();
 
             if (auto autoPeer = Automation::Peers::FrameworkElementAutomationPeer::FromElement(*this))
             {
@@ -2004,13 +2089,17 @@ namespace winrt::TerminalApp::implementation
     {
         if (_changingTabLayout ||
             !_IsActiveTabControl(sender) ||
-            _IsCollapsedVerticalRail())
+            _IsCollapsedVerticalRail() ||
+            _IsTabListPositionOperationBlocked())
         {
             return;
         }
         _rearranging = true;
+        _tabDragReorderAuthorized = true;
+        _tabDragSelectedItem = _selectedTabItem();
         _rearrangeFrom = std::nullopt;
         _rearrangeTo = std::nullopt;
+        winrt::get_self<implementation::TabStrip>(_tabStrip)->ProjectionControlsEnabled(false);
     }
 
     void TerminalPage::_TabDragCompleted(const IInspectable& sender,
@@ -2020,11 +2109,21 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
+
+        if (!_rearranging)
+        {
+            winrt::get_self<implementation::TabStrip>(_tabStrip)->ProjectionControlsEnabled(true);
+            if (_pendingTabProjectionRefresh)
+            {
+                _ApplyTabListProjection();
+            }
+            return;
+        }
+
         auto& from{ _rearrangeFrom };
         auto& to{ _rearrangeTo };
 
-        const auto canCommitReorder = !_IsCollapsedVerticalRail() &&
-                                      !_IsAgentFilterEffective();
+        const auto canCommitReorder = _tabDragReorderAuthorized;
 
         if (canCommitReorder && from.has_value() && to.has_value() && to != from)
         {
@@ -2037,6 +2136,25 @@ namespace winrt::TerminalApp::implementation
                 _UpdateTabIndices();
             }
             CATCH_LOG();
+        }
+        else if (from.has_value() && to.has_value() && to != from)
+        {
+            _mutatingTabCollections = true;
+            auto endMutation = wil::scope_exit([&]() noexcept {
+                _mutatingTabCollections = false;
+            });
+            const auto items = _tabItems();
+            items.Clear();
+            for (const auto& tab : _tabs)
+            {
+                items.Append(tab.TabViewItem());
+            }
+            if (_tabDragSelectedItem)
+            {
+                _selectedTabItem(_tabDragSelectedItem);
+            }
+            _mutatingTabCollections = false;
+            endMutation.release();
         }
 
         _rearranging = false;
@@ -2051,6 +2169,10 @@ namespace winrt::TerminalApp::implementation
 
         from = std::nullopt;
         to = std::nullopt;
+        _tabDragReorderAuthorized = false;
+        _tabDragSelectedItem = nullptr;
+        winrt::get_self<implementation::TabStrip>(_tabStrip)->ProjectionControlsEnabled(true);
+        _ApplyTabListProjection();
 
         if (_pendingTabLayout)
         {

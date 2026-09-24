@@ -91,8 +91,14 @@ namespace winrt::TerminalApp::implementation
         void TabsVisible(bool value);
         bool IsRailCollapsed() const noexcept { return _isRailCollapsed; }
         void IsRailCollapsed(bool value);
+        void PrepareTabItem(winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& item);
         TerminalApp::TabStripFilterMode FilterMode() const noexcept { return _filterMode; }
         void FilterMode(TerminalApp::TabStripFilterMode value);
+        bool SearchActive() const noexcept { return _searchActive; }
+        void SearchActive(bool value);
+        winrt::hstring SearchQuery() const { return _searchQuery; }
+        void SearchQuery(winrt::hstring const& value);
+        void ProjectionControlsEnabled(bool value);
 
         winrt::Windows::UI::Xaml::UIElement TopChromeContent();
         void TopChromeContent(winrt::Windows::UI::Xaml::UIElement const& value);
@@ -122,6 +128,18 @@ namespace winrt::TerminalApp::implementation
                                      winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnShowAllTabsClick(winrt::Windows::Foundation::IInspectable const& sender,
                                 winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void OnSearchToggleClick(winrt::Windows::Foundation::IInspectable const& sender,
+                                 winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void OnSearchPointerPressed(winrt::Windows::Foundation::IInspectable const& sender,
+                                    winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e);
+        void OnSearchTextChanged(winrt::Windows::Foundation::IInspectable const& sender,
+                                 winrt::Windows::UI::Xaml::Controls::TextChangedEventArgs const& e);
+        void OnSearchBoxKeyDown(winrt::Windows::Foundation::IInspectable const& sender,
+                                winrt::Windows::UI::Xaml::Input::KeyRoutedEventArgs const& e);
+        void OnClearSearchClick(winrt::Windows::Foundation::IInspectable const& sender,
+                                winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void OnContainerContentChanging(winrt::Windows::UI::Xaml::Controls::ListViewBase const& sender,
+                                        winrt::Windows::UI::Xaml::Controls::ContainerContentChangingEventArgs const& e);
 
         // Spec A §2.4: reports the rail as an AutomationControlType::Tab
         // container so screen readers (Narrator / third-party AT) treat it
@@ -140,11 +158,17 @@ namespace winrt::TerminalApp::implementation
         til::typed_event<TerminalApp::TabStrip, winrt::Windows::Foundation::IInspectable> CompactNewTabRequested;
         til::typed_event<TerminalApp::TabStrip, winrt::Windows::Foundation::IInspectable> CompactNewTabMenuRequested;
         til::typed_event<TerminalApp::TabStrip, winrt::Windows::Foundation::IInspectable> FilterChanged;
+        til::typed_event<TerminalApp::TabStrip, winrt::Windows::Foundation::IInspectable> SearchActivationRequested;
+        til::typed_event<TerminalApp::TabStrip, winrt::Windows::Foundation::IInspectable> SearchChanged;
 
     private:
         TerminalApp::TabStripOrientation _orientation{ TerminalApp::TabStripOrientation::Vertical };
         bool _tabsVisible{ true };
         bool _isRailCollapsed{ false };
+        bool _searchActive{ false };
+        bool _syncingSearchState{ false };
+        bool _projectionControlsEnabled{ true };
+        winrt::hstring _searchQuery;
         TerminalApp::TabStripFilterMode _filterMode{ TerminalApp::TabStripFilterMode::AllTabs };
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Windows::Foundation::IInspectable> _tabItems{ nullptr };
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Windows::Foundation::IInspectable>::VectorChanged_revoker _vectorChangedRevoker;
@@ -153,11 +177,17 @@ namespace winrt::TerminalApp::implementation
         {
             winrt::weak_ref<winrt::Microsoft::UI::Xaml::Controls::TabViewItem> Item;
             winrt::event_token LoadedToken;
+            winrt::event_token LayoutUpdatedToken;
             winrt::weak_ref<winrt::Windows::UI::Xaml::Controls::Button> CloseButton;
             winrt::event_token ClickToken;
         };
         std::unordered_map<void*, CloseRequestedSubscription> _closeRequestedSubscriptions;
-        std::unordered_map<void*, bool> _tabItemVisibility;
+        struct TabItemVisibilityState
+        {
+            winrt::weak_ref<winrt::Microsoft::UI::Xaml::Controls::TabViewItem> Item;
+            bool Visible{ true };
+        };
+        std::unordered_map<void*, TabItemVisibilityState> _tabItemVisibility;
 
         // The item currently being dragged. Set in OnDragItemsStarting, cleared in
         // OnDragItemsCompleted. If DropResult is None, this is the item to fire
@@ -172,7 +202,12 @@ namespace winrt::TerminalApp::implementation
         void _clearCloseRequestedSubscriptions();
         void _applyRailState();
         void _applyTabItemRailState(winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& item);
+        void _restoreTabItemRailState(winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& item);
         void _applyTabItemVisibility(winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& item);
+        void _applyTabItemVisibility(winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& item,
+                                     winrt::Windows::UI::Xaml::Controls::ListViewItem const& container);
+        void _pruneTabItemVisibility();
+        void _updateSearchVisualState();
 
         // Axis-parameterized per B→C rules. Returns -1 to mean "append at end."
         // Non-const because it reaches into the XAML-generated ItemsList().

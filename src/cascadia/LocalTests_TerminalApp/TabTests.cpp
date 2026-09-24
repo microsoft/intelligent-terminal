@@ -274,6 +274,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TabLayoutSwitchMenuTracksOrientation);
         TEST_METHOD(VerticalTabStripPreservesClosePolicy);
         TEST_METHOD(VerticalTabStripCollapsedItemsPreserveSelection);
+        TEST_METHOD(VerticalTabSearchMatchesCommittedTitle);
+        TEST_METHOD(VerticalTabSearchUiState);
         TEST_METHOD(WindowActivationToleratesTabWithoutStatus);
         TEST_METHOD(AgentTabClassificationTracksSession);
         TEST_METHOD(CliAgentClassifiesTab);
@@ -2365,7 +2367,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(page->_verticalRailSplitter.IsHitTestVisible());
 
             page->_tabFilterMode = winrt::TerminalApp::TabStripFilterMode::AgentsOnly;
-            page->_ApplyTabFilter();
+            page->_ApplyTabListProjection();
             VERIFY_IS_FALSE(tabStrip->ItemsList().CanDragItems());
             VERIFY_IS_FALSE(tabStrip->ItemsList().CanReorderItems());
 
@@ -2448,6 +2450,60 @@ namespace TerminalAppLocalTests
             tab.IsClosable(false);
             strip.TabItems().Append(tab);
             VERIFY_IS_FALSE(tab.IsClosable());
+        });
+    }
+
+    void TabTests::VerticalTabSearchMatchesCommittedTitle()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(tab);
+
+            tab->Title(L"PowerShell");
+            page->_tabSearchActive = true;
+            page->_tabSearchQuery = L"shell";
+            VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
+
+            page->_tabSearchQuery = L"POWER";
+            VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
+
+            page->_tabSearchQuery = L"copilot";
+            VERIFY_IS_FALSE(page->_MatchesTabSearch(*tab));
+
+            page->_tabSearchQuery = L"";
+            VERIFY_IS_FALSE(page->_MatchesTabSearch(*tab));
+
+            page->_tabSearchActive = false;
+            VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
+        });
+    }
+
+    void TabTests::VerticalTabSearchUiState()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+
+            strip.SearchActive(true);
+            strip.SearchQuery(L"power");
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->SearchPanel().Visibility());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"power" }, stripImpl->SearchTextBox().Text());
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->ClearSearchButton().Visibility());
+
+            strip.IsRailCollapsed(true);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->SearchPanel().Visibility());
+            VERIFY_IS_FALSE(stripImpl->SearchTabsButton().IsEnabled());
+
+            strip.IsRailCollapsed(false);
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->SearchPanel().Visibility());
+            VERIFY_IS_TRUE(stripImpl->SearchTabsButton().IsEnabled());
+
+            strip.SearchQuery(L"");
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->ClearSearchButton().Visibility());
+            strip.SearchActive(false);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->SearchPanel().Visibility());
         });
     }
 

@@ -13,6 +13,7 @@ namespace winrt::TerminalApp::implementation
     {
         TabHeaderControl();
         void BeginRename();
+        void CancelRename();
 
         void RenameBoxLostFocusHandler(const winrt::Windows::Foundation::IInspectable& sender,
                                        const winrt::Windows::UI::Xaml::RoutedEventArgs& e);
