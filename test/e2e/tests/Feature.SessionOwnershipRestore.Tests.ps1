@@ -13,6 +13,18 @@ Describe 'Feature §8 hook session ownership persistence' -Tag 'Feature' -Skip:(
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         $script:app = $null
         $script:restoreApp = $null
+        function script:Stop-SessionEndWta {
+            param([int[]]$ProcessIds)
+            foreach ($processId in $ProcessIds) {
+                try {
+                    Stop-Process -Id $processId -Force -ErrorAction Stop
+                }
+                catch {
+                    if (Get-Process -Id $processId -ErrorAction SilentlyContinue) { throw }
+                    Write-ItLog -Level INFO -Message "Owned WTA process $processId already exited during session-end cleanup."
+                }
+            }
+        }
         if (-not ('ItE2E.SessionEndWindow' -as [type])) {
             Add-Type -TypeDefinition @'
 using System;
@@ -131,11 +143,7 @@ namespace ItE2E
         Test-Until -TimeoutSec 15 -IntervalSec 0.5 -Condition {
             $null -eq (Get-Process -Id $script:app.Pid -ErrorAction SilentlyContinue)
         } | Should -BeTrue
-        foreach ($id in $wtaIds) {
-            if (Get-Process -Id $id -ErrorAction SilentlyContinue) {
-                Stop-Process -Id $id -Force
-            }
-        }
+        script:Stop-SessionEndWta -ProcessIds $wtaIds
         $script:app = $null
 
         $state = Get-Content -Raw -LiteralPath $script:restoreApp.StatePath
@@ -218,9 +226,7 @@ namespace ItE2E
         Test-Until -TimeoutSec 15 -IntervalSec 0.5 -Condition {
             $null -eq (Get-Process -Id $script:app.Pid -ErrorAction SilentlyContinue)
         } | Should -BeTrue
-        foreach ($processId in $ownedWta) {
-            if (Get-Process -Id $processId -ErrorAction SilentlyContinue) { Stop-Process -Id $processId -Force }
-        }
+        script:Stop-SessionEndWta -ProcessIds $ownedWta
         $script:app = $null
         $state = Get-Content -LiteralPath $script:restoreApp.StatePath -Raw | ConvertFrom-Json -AsHashtable -Depth 100
         function Find-ResumeCommand($value) {
