@@ -50,6 +50,7 @@ Add or update tests for:
 - invalid or empty delegate executable rejection;
 - canonical identity versus interactive/ACP executable aliases;
 - case-insensitive configured IDs through command resolution and profile gates;
+- mixed-case hook CLI arguments through canonical payload and WSL source enrichment;
 - missing companion executables, earlier partial PATH entries and native WSL symlinks;
 - source-specific master command reconstruction and Helper reconnect;
 - observed Session MCP tool-name qualification, master-bound server identity,

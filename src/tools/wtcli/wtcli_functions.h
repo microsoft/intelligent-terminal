@@ -478,7 +478,7 @@ namespace wtcli
         }
 
         Json::Value params;
-        params["cli_source"] = cliSource;
+        params["cli_source"] = normalizedCli == "antigravity" ? normalizedCli : cliSource;
         params["agent_session_id"] = agentSessionId;
         params["event"] = outgoingEvent;
         params["pane_id"] = paneId;

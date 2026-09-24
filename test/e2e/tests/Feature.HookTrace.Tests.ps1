@@ -143,11 +143,12 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
         $listener = Start-WtEventListener -App $script:app -WaitForReady
         try {
             Invoke-RunCommand -App $script:app -SessionId $paneId -SettleSec 3 `
-                -Command "Get-Content -Raw -LiteralPath '$payloadFile' | wtcli.exe agent-hook --cli-source antigravity --event agent.prompt.submit" | Out-Null
+                -Command "Get-Content -Raw -LiteralPath '$payloadFile' | wtcli.exe agent-hook --cli-source AnTiGrAvItY --event agent.prompt.submit" | Out-Null
             $event = Wait-WtEvent -Listener $listener -TimeoutSec 20 -Predicate {
                 $_.method -eq 'agent_event' -and $_.params.cli_source -eq 'antigravity' -and $_.params.pane_id -eq $paneId
             }
             $event.params.agent_session_id | Should -BeExactly $sessionId
+            $event.params.cli_source | Should -BeExactly 'antigravity'
             $event.params.payload.cwd | Should -BeExactly $cwd
             ($event.params.payload | ConvertTo-Json -Depth 10 -Compress) |
                 Should -Not -Match ([regex]::Escape($secret))

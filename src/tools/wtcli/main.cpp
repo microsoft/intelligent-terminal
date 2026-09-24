@@ -1146,7 +1146,7 @@ int wmain(int argc, wchar_t** argv)
                 return;
             }
 
-            if (agentHookCliSource == "antigravity")
+            if (event["params"]["cli_source"].asString() == "antigravity")
             {
                 const auto distro = EnvironmentValue(L"WSL_DISTRO_NAME");
                 if (!distro.empty())
