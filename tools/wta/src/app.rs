@@ -3102,6 +3102,14 @@ impl App {
         }
 
         let key = s.key.clone();
+        if !crate::agent_sessions::is_safe_cli_resume_id(&key) {
+            tracing::warn!(
+                target: "agents_view",
+                cli = cli_id,
+                "refusing CLI resume with an unsafe session identifier"
+            );
+            return;
+        }
         let resume_invocation =
             format!("{} {} {}", profile.cli_executable, profile.resume_flag, key);
         // WSL rows run the distro's own CLI *inside* the distro. Two

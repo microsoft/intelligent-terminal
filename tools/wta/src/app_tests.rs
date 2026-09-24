@@ -23826,6 +23826,53 @@ fn antigravity_resume_keeps_acp_and_cli_sessions_in_their_own_stores() {
 }
 
 #[test]
+fn cli_resume_rejects_unsafe_session_ids_before_dispatch() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionLocation};
+    for key in [
+        "bad;echo marker",
+        "bad&echo marker",
+        "$(echo marker)",
+        "`echo marker`",
+        "id%PATH%",
+        "bad\nid",
+        "",
+        "sidekick-child",
+    ] {
+        for location in [
+            SessionLocation::Host,
+            SessionLocation::Wsl {
+                distro: "Ubuntu".into(),
+            },
+        ] {
+            let mut app = test_app();
+            let event = SessionEvent::SessionStarted {
+                key: key.to_string(),
+                cli_source: CliSource::Antigravity,
+                pane_session_id: "owner-pane".into(),
+                cwd: std::path::PathBuf::from("/tmp/owned"),
+                title: "untrusted identifier".into(),
+            };
+            app.agent_sessions.apply(event);
+            app.agent_sessions.apply(SessionEvent::SessionStopped {
+                key: key.to_string(),
+                reason: "test".into(),
+            });
+            let mut row = app.agent_sessions.get(&key.to_string()).unwrap().clone();
+            row.location = location;
+            app.dispatch_resume(&row);
+            assert!(
+                app.last_dispatched_command_for_test().is_none(),
+                "unsafe id was dispatched: {key:?}"
+            );
+            assert_eq!(
+                app.agent_sessions.get(&key.to_string()).unwrap().status,
+                AgentStatus::Ended
+            );
+        }
+    }
+}
+
+#[test]
 fn enter_on_wsl_history_row_resumes_inside_distro() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};

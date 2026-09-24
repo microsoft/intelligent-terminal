@@ -5,6 +5,7 @@
 
 #include "AgentRegistry.h"
 #include "AgentPaneBackend.h"
+#include "AgentSessionId.h"
 
 #include <algorithm>
 #include <cctype>
@@ -234,13 +235,7 @@ namespace Microsoft::Terminal::AgentPaneRestore
                                                const std::wstring_view agentSessionId,
                                                const std::wstring_view cwd = {})
     {
-        if (agentSessionId.empty() ||
-            agentSessionId.starts_with(L"sidekick-") ||
-            agentSessionId.size() > 256 ||
-            !std::all_of(agentSessionId.begin(), agentSessionId.end(), [](const wchar_t ch) {
-                return (ch < 128 && std::isalnum(static_cast<unsigned char>(ch))) ||
-                       ch == L'-' || ch == L'_' || ch == L'.' || ch == L':';
-            }))
+        if (!::Microsoft::Terminal::AgentSessionId::IsSafeForCliResume(agentSessionId))
         {
             return {};
         }

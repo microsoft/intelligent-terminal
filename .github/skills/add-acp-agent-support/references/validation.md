@@ -51,6 +51,7 @@ Add or update tests for:
 - canonical identity versus interactive/ACP executable aliases;
 - case-insensitive configured IDs through command resolution and profile gates;
 - mixed-case hook CLI arguments through canonical payload and WSL source enrichment;
+- unsafe and overlong provider conversation IDs at hook publication and CLI resume;
 - missing companion executables, earlier partial PATH entries and native WSL symlinks;
 - source-specific master command reconstruction and Helper reconnect;
 - observed Session MCP tool-name qualification, master-bound server identity,

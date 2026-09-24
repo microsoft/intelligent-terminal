@@ -162,6 +162,36 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
         }
     }
 
+    It 'Antigravity rejects unsafe conversation IDs before hook publication' {
+        $paneId = (Get-ActivePane -App $script:app).session_id
+        $marker = [guid]::NewGuid().ToString('N')
+        $unsafe = @("bad;$marker", "bad&$marker", "bad`"$marker", "bad $marker", "bad%$marker", "bad`n$marker", ('x' * 257))
+        $controlId = "safe-$marker"
+        $listener = Start-WtEventListener -App $script:app -WaitForReady
+        try {
+            $index = 0
+            foreach ($id in @($unsafe) + @($controlId)) {
+                $file = script:Write-HookPayload -Name "conversation-id-$index" -Dir $TestDrive -Json (@{
+                    conversationId = $id
+                    workspacePaths = @('C:\antigravity-hook')
+                    transcriptPath = 'C:\test\.gemini\antigravity-cli\brain\session\transcript.jsonl'
+                } | ConvertTo-Json -Compress)
+                Invoke-RunCommand -App $script:app -SessionId $paneId -SettleSec 1 `
+                    -Command "Get-Content -Raw -LiteralPath '$file' | wtcli.exe agent-hook --cli-source antigravity --event agent.prompt.submit" | Out-Null
+                $index++
+            }
+            Wait-WtEvent -Listener $listener -TimeoutSec 20 -Predicate {
+                $_.method -eq 'agent_event' -and $_.params.agent_session_id -eq $controlId
+            } | Should -Not -BeNullOrEmpty
+            @(Get-WtEvents -Listener $listener -Predicate {
+                $_.method -eq 'agent_event' -and $_.params.agent_session_id -in $unsafe
+            }).Count | Should -Be 0
+        }
+        finally {
+            Stop-WtEventListener -Listener $listener
+        }
+    }
+
     It 'Antigravity stop hooks preserve working and error states' {
         $originalPane = (Get-ActivePane -App $script:app).session_id
         $paneId = (New-WtTab -App $script:app -Command 'pwsh.exe -NoLogo -NoProfile').session_id

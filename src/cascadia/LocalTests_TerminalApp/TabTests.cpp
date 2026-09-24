@@ -537,6 +537,12 @@ namespace TerminalAppLocalTests
         VERIFY_IS_TRUE(Restore::BuildResumeCommandline(L"claude", L"bad id & calc.exe").empty());
         VERIFY_IS_TRUE(Restore::BuildResumeCommandline(L"claude", L"sidekick-1").empty());
         VERIFY_IS_TRUE(Restore::BuildResumeCommandline(L"nosuchagent", L"agent-session-1").empty());
+        VERIFY_IS_FALSE(Restore::BuildResumeCommandline(L"antigravity", std::wstring(256, L'a')).empty());
+        VERIFY_IS_TRUE(Restore::BuildResumeCommandline(L"antigravity", std::wstring(257, L'a')).empty());
+        for (const auto id : { L"bad;id", L"bad&id", L"bad%id", L"bad$id", L"bad`id", L"bad\"id", L"bad/id", L"bad\\id", L"bad\nid" })
+        {
+            VERIFY_IS_TRUE(Restore::BuildResumeCommandline(L"antigravity", id).empty());
+        }
 
         // Every built-in agent whose `resume_flag` is non-empty in
         // `tools/wta/src/agent_registry.rs` has to be spellable here, or a

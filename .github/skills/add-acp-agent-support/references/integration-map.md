@@ -144,6 +144,10 @@ Normalize a supported CLI identity before provider-specific handling, and make
 later source enrichment consume the same canonical identity rather than the raw
 command-line spelling.
 
+Treat provider session identifiers as untrusted. Any identifier that reaches a
+shell-based CLI resume command must satisfy the same bounded safe-token contract
+at publication and at the unquoted execution boundary; ACP-only IDs remain opaque.
+
 Follow the current implementations in `agent_hooks_installer.rs`,
 `wt-agent-hooks`, and the session registry rather than assuming every CLI has a
 marketplace. Some CLIs require a command-driven plugin install, while others

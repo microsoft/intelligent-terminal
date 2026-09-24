@@ -16,6 +16,7 @@
 
 #include <Windows.h>
 #include <json/json.h>
+#include "../../cascadia/inc/AgentSessionId.h"
 
 namespace wtcli
 {
@@ -318,7 +319,9 @@ namespace wtcli
             }
             const auto conversationId = payload.get("conversationId", Json::Value{});
             const auto transcriptPath = payload.get("transcriptPath", Json::Value{});
-            if (!conversationId.isString() || conversationId.asString().empty() || !transcriptPath.isString())
+            if (!conversationId.isString() ||
+                !::Microsoft::Terminal::AgentSessionId::IsSafeForCliResume(std::string_view{ conversationId.asString() }) ||
+                !transcriptPath.isString())
             {
                 return false;
             }
