@@ -426,4 +426,125 @@
     <value>ഏജന്റ് · കണക്ട് ചെയ്യുന്നു</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="TabCloseBelow" xml:space="preserve">
+    <value>താഴെയുള്ള ടാബുകൾ അടയ്ക്കുക</value>
+  </data>
+  <data name="VerticalTabsCollapsePane" xml:space="preserve">
+    <value>ടാബുകളുടെ പാളി ചുരുക്കുക</value>
+  </data>
+  <data name="VerticalTabsExpandPane" xml:space="preserve">
+    <value>ടാബുകളുടെ പാളി വികസിപ്പിക്കുക</value>
+  </data>
+  <data name="VerticalTabsHeader.Text" xml:space="preserve">
+    <value>ടാബുകൾ</value>
+  </data>
+  <data name="VerticalTabsSearchButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>ടാബുകൾ തിരയുക</value>
+  </data>
+  <data name="VerticalTabsSearchButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>ടാബുകൾ തിരയുക</value>
+  </data>
+  <data name="VerticalTabsSearchBox.PlaceholderText" xml:space="preserve">
+    <value>ടാബുകൾ തിരയുക</value>
+  </data>
+  <data name="VerticalTabsSearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>ടാബുകൾ തിരയുക</value>
+  </data>
+  <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>ടാബുകൾ ഫിൽട്ടർ ചെയ്യുക</value>
+  </data>
+  <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>ടാബുകൾ ഫിൽട്ടർ ചെയ്യുക</value>
+  </data>
+  <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
+    <value>എല്ലാ ടാബുകളും</value>
+  </data>
+  <data name="VerticalTabsFilterAgentsOnly.Text" xml:space="preserve">
+    <value>ഏജന്റുകൾ മാത്രം</value>
+  </data>
+  <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
+    <value>1 ഏജന്റ് സെഷൻ കാണിക്കുന്നു</value>
+  </data>
+  <data name="VerticalTabsFilterStatusPlural" xml:space="preserve">
+    <value>{0} ഏജന്റ് സെഷനുകൾ കാണിക്കുന്നു</value>
+  </data>
+  <data name="VerticalTabsFilterCurrentHidden.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>നിലവിലെ ടാബ് ഈ ഫിൽട്ടർ മറച്ചിരിക്കുന്നു</value>
+  </data>
+  <data name="VerticalTabsFilterCurrentHidden.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>നിലവിലെ ടാബ് ഈ ഫിൽട്ടർ മറച്ചിരിക്കുന്നു</value>
+  </data>
+  <data name="VerticalTabsFilterShowAll.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>എല്ലാ ടാബുകളും കാണിക്കുക</value>
+  </data>
+  <data name="VerticalTabsFilterShowAll.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>എല്ലാ ടാബുകളും കാണിക്കുക</value>
+  </data>
+  <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>ഏജന്റ് ചരിത്രം</value>
+  </data>
+  <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>ഏജന്റ് ചരിത്രം</value>
+  </data>
+  <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
+    <value>ഏജന്റ് ചരിത്രം</value>
+  </data>
+  <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>ഏജന്റ് ചരിത്രം അടയ്ക്കുക</value>
+  </data>
+  <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>ഏജന്റ് ചരിത്രം അടയ്ക്കുക</value>
+  </data>
+  <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
+    <value>ഏജന്റ് ചരിത്രത്തിൽ തിരയുക</value>
+  </data>
+  <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>ഏജന്റ് ചരിത്രത്തിൽ തിരയുക</value>
+  </data>
+  <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
+    <value>ഏജന്റ് സെഷനുകളൊന്നും കണ്ടെത്തിയില്ല.</value>
+  </data>
+  <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
+    <value>പൊരുത്തപ്പെടുന്ന ഏജന്റ് സെഷനുകളൊന്നുമില്ല.</value>
+  </data>
+  <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
+    <value>ഏജന്റ് ചരിത്രം ലോഡ് ചെയ്യാനായില്ല.</value>
+  </data>
+  <data name="VerticalTabsHistoryInvalidResponse" xml:space="preserve">
+    <value>ഏജന്റ് ചരിത്രം അസാധുവായ പ്രതികരണം നൽകി.</value>
+  </data>
+  <data name="VerticalTabsHistoryActivationError" xml:space="preserve">
+    <value>തിരഞ്ഞെടുത്ത സെഷൻ സജീവമാക്കാനായില്ല.</value>
+  </data>
+  <data name="VerticalTabsHistoryLiveAgentTitleFormat" xml:space="preserve">
+    <value>{0} ഏജന്റ് സെഷൻ</value>
+    <comment>History row title for a live agent-pane session whose provider did not supply a conversation title. {0} is the provider display name.</comment>
+  </data>
+  <data name="CompactNewTabButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>പുതിയ ടാബ്</value>
+  </data>
+  <data name="CompactNewTabButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>പുതിയ ടാബ്</value>
+  </data>
+  <data name="CompactNewTabMenuButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>പുതിയ ടാബ് മെനു</value>
+  </data>
+  <data name="CompactNewTabMenuButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>പുതിയ ടാബ് മെനു</value>
+  </data>
+  <data name="SwitchToHorizontalTabsText" xml:space="preserve">
+    <value>തിരശ്ചീന ടാബുകളിലേക്ക് മാറുക</value>
+  </data>
+  <data name="SwitchToHorizontalTabsToolTip" xml:space="preserve">
+    <value>എല്ലാ Terminal വിൻഡോകളിലും തിരശ്ചീന ടാബുകൾ ഉപയോഗിക്കുക</value>
+  </data>
+  <data name="SwitchToVerticalTabsText" xml:space="preserve">
+    <value>ലംബ ടാബുകളിലേക്ക് മാറുക</value>
+  </data>
+  <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
+    <value>എല്ലാ Terminal വിൻഡോകളിലും ലംബ ടാബുകൾ ഉപയോഗിക്കുക</value>
+  </data>
+  <data name="TabCloseBelowToolTip" xml:space="preserve">
+    <value>ഈ ടാബിന് താഴെയുള്ള എല്ലാ ടാബുകളും അടയ്ക്കുക</value>
+  </data>
 </root>

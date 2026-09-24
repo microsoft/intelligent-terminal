@@ -2998,4 +2998,8 @@ Alt+Shift+/ saisir une requête ; Alt+Shift+B lancer sans requête initiale.</va
     <value>Supprimer</value>
     <comment>Tooltip for the X button that removes a custom agent from the agent list.</comment>
   </data>
+  <data name="Globals_TabLayout.HelpText" xml:space="preserve">
+    <value>Les onglets verticaux s&apos;affichent dans une colonne redimensionnable à gauche de la fenêtre. Les modifications s&apos;appliquent immédiatement à toutes les fenêtres de Terminal.</value>
+    <comment>A description for what the &quot;tab layout&quot; setting does. Presented near &quot;Globals_TabLayout.Header&quot;.</comment>
+  </data>
 </root>
