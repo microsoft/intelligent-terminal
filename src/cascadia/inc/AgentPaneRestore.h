@@ -314,7 +314,12 @@ namespace Microsoft::Terminal::AgentPaneRestore
             prefix.push_back(L' ');
             if (inner.starts_with(prefix))
             {
-                return { std::wstring{ agentId }, std::wstring{ inner.substr(prefix.size()) } };
+                const auto sessionId = inner.substr(prefix.size());
+                if (::Microsoft::Terminal::AgentSessionId::IsSafeForCliResume(sessionId))
+                {
+                    return { std::wstring{ agentId }, std::wstring{ sessionId } };
+                }
+                return {};
             }
         }
         return {};

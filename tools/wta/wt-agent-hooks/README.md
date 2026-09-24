@@ -99,9 +99,10 @@ separate ownership/version marker. `wta hooks install --cli antigravity` invokes
 `agy plugin install` and verifies the copied files under
 `~/.gemini/config/plugins/wt-agent-hooks`; it commits the version marker last.
 The status reader combines `import_manifest.json` and the plugin's enablement in
-`config.json`. Upgrade uses the same native reinstall operation. Uninstall removes
-only managed files and matching metadata entries, preserving user plugins and
-keeping ownership markers when cleanup fails.
+`config.json`. Upgrade uses the same native reinstall operation. Uninstall checks
+ownership and invokes the native plugin manager, then verifies removal. If the
+native CLI is absent, cleanup fails explicitly without rewriting shared JSON or
+discarding managed files. This does not claim a cross-provider filesystem transaction.
 
 `PreInvocation` maps to `agent.prompt.submit`, `PreToolUse` to
 `agent.tool.starting`, and `Stop` to `agent.stop` only when `fullyIdle` is true;
@@ -115,7 +116,8 @@ shared ACP processes.
 The Windows command explicitly invokes Windows PowerShell, guards a missing
 `wtcli.exe`, and emits no stdout. The `antigravity-wsl` bundle uses the same native
 bridge with a Bash launch guard and child-scoped `WSLENV` distro propagation;
-it never answers provider tool permissions. WSL plugins are installed separately
+it also forwards the actual hook cwd for callbacks without mounted-workspace metadata.
+The bridge never answers provider tool permissions. WSL plugins are installed separately
 with the in-distro `agy plugin install`, not by host-profile reconciliation.
 The bridge uses that source metadata, or queries only the exact pane's shell
 metadata (no terminal text), so WSL sessions keep their distro even when a

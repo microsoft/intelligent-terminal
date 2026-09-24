@@ -30,6 +30,7 @@
 #include <io.h>
 #include <iostream>
 #include <string>
+#include <filesystem>
 #include <string_view>
 #include <thread>
 #include <vector>
@@ -1169,6 +1170,32 @@ int wmain(int argc, wchar_t** argv)
                     if (shell.isString() && shell.asString().starts_with("wsl:"))
                     {
                         event["params"]["wsl_distro"] = shell.asString().substr(4);
+                    }
+                }
+                auto& payload = event["params"]["payload"];
+                const auto currentCwd = payload.get("cwd", Json::Value{});
+                if (!currentCwd.isString() || currentCwd.asString().empty())
+                {
+                    if (event["params"].isMember("wsl_distro"))
+                    {
+                        const auto cwd = EnvironmentValue(L"WTA_HOOK_CWD");
+                        if (cwd.starts_with('/'))
+                        {
+                            payload["cwd"] = cwd;
+                        }
+                    }
+                    else
+                    {
+                        std::error_code error;
+                        const auto cwd = std::filesystem::current_path(error);
+                        if (error)
+                        {
+                            LOG_HR(HRESULT_FROM_WIN32(error.value()));
+                        }
+                        else
+                        {
+                            payload["cwd"] = winrt::to_string(cwd.native());
+                        }
                     }
                 }
             }

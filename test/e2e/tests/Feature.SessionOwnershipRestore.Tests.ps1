@@ -190,13 +190,13 @@ namespace ItE2E
         $sessionId = "antigravity-source-$([guid]::NewGuid())"
         $payload = @{
             conversationId = $sessionId
-            workspacePaths = @('/tmp')
+            workspacePaths = @()
             transcriptPath = '/test/.gemini/antigravity-cli/brain/session/transcript.jsonl'
         } | ConvertTo-Json -Compress
         $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($payload))
         $listener = Start-WtEventListener -App $script:app -WaitForReady
         try {
-            $hook = "printf '%s' '$encoded' | base64 -d | WSLENV=`"`$WSLENV`:WSL_DISTRO_NAME/w`" powershell.exe -NoLogo -NoProfile -NonInteractive -Command 'wtcli.exe agent-hook --cli-source AnTiGrAvItY --event agent.prompt.submit'"
+            $hook = "printf '%s' '$encoded' | base64 -d | WTA_HOOK_CWD=`"`$PWD`" WSLENV=`"`$WSLENV`:WSL_DISTRO_NAME/w:WTA_HOOK_CWD/w`" powershell.exe -NoLogo -NoProfile -NonInteractive -Command 'wtcli.exe agent-hook --cli-source AnTiGrAvItY --event agent.prompt.submit'"
             Invoke-RunCommand -App $script:app -SessionId $paneId -Command $hook -SettleSec 3 | Out-Null
             $event = Wait-WtEvent -Listener $listener -TimeoutSec 20 -Predicate {
                 $_.method -eq 'agent_event' -and $_.params.agent_session_id -eq $sessionId

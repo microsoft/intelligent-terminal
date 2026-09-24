@@ -3,7 +3,7 @@
     "PreInvocation": [
       {
         "type": "command",
-        "command": "[ -n \"${WT_SESSION:-}\" ] && [ -n \"${WT_COM_CLSID:-}\" ] && command -v powershell.exe >/dev/null 2>&1 && WSLENV=\"${WSLENV:+$WSLENV:}WSL_DISTRO_NAME/w\" powershell.exe -NoLogo -NoProfile -NonInteractive -Command 'try { wtcli.exe agent-hook --cli-source antigravity --event agent.prompt.submit } catch { }; exit 0'; exit 0",
+        "command": "[ -n \"${WT_SESSION:-}\" ] && [ -n \"${WT_COM_CLSID:-}\" ] && command -v powershell.exe >/dev/null 2>&1 && WTA_HOOK_CWD=\"$PWD\" WSLENV=\"${WSLENV:+$WSLENV:}WSL_DISTRO_NAME/w:WTA_HOOK_CWD/w\" powershell.exe -NoLogo -NoProfile -NonInteractive -Command 'try { wtcli.exe agent-hook --cli-source antigravity --event agent.prompt.submit } catch { }; exit 0'; exit 0",
         "timeout": 5
       }
     ],
@@ -13,7 +13,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -n \"${WT_SESSION:-}\" ] && [ -n \"${WT_COM_CLSID:-}\" ] && command -v powershell.exe >/dev/null 2>&1 && WSLENV=\"${WSLENV:+$WSLENV:}WSL_DISTRO_NAME/w\" powershell.exe -NoLogo -NoProfile -NonInteractive -Command 'try { wtcli.exe agent-hook --cli-source antigravity --event agent.tool.starting } catch { }; exit 0'; exit 0",
+            "command": "[ -n \"${WT_SESSION:-}\" ] && [ -n \"${WT_COM_CLSID:-}\" ] && command -v powershell.exe >/dev/null 2>&1 && WTA_HOOK_CWD=\"$PWD\" WSLENV=\"${WSLENV:+$WSLENV:}WSL_DISTRO_NAME/w:WTA_HOOK_CWD/w\" powershell.exe -NoLogo -NoProfile -NonInteractive -Command 'try { wtcli.exe agent-hook --cli-source antigravity --event agent.tool.starting } catch { }; exit 0'; exit 0",
             "timeout": 5
           }
         ]
@@ -22,7 +22,7 @@
     "Stop": [
       {
         "type": "command",
-        "command": "[ -n \"${WT_SESSION:-}\" ] && [ -n \"${WT_COM_CLSID:-}\" ] && command -v powershell.exe >/dev/null 2>&1 && WSLENV=\"${WSLENV:+$WSLENV:}WSL_DISTRO_NAME/w\" powershell.exe -NoLogo -NoProfile -NonInteractive -Command 'try { wtcli.exe agent-hook --cli-source antigravity --event agent.stop } catch { }; exit 0'; exit 0",
+        "command": "[ -n \"${WT_SESSION:-}\" ] && [ -n \"${WT_COM_CLSID:-}\" ] && command -v powershell.exe >/dev/null 2>&1 && WTA_HOOK_CWD=\"$PWD\" WSLENV=\"${WSLENV:+$WSLENV:}WSL_DISTRO_NAME/w:WTA_HOOK_CWD/w\" powershell.exe -NoLogo -NoProfile -NonInteractive -Command 'try { wtcli.exe agent-hook --cli-source antigravity --event agent.stop } catch { }; exit 0'; exit 0",
         "timeout": 5
       }
     ]

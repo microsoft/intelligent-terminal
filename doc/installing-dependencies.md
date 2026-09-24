@@ -365,8 +365,10 @@ setting.
 
 For Windows hooks, enable Sessions and run `wta hooks install --cli antigravity`.
 The managed plugin uses `~/.gemini/config/plugins/wt-agent-hooks`; installation,
-repair and version updates use `agy plugin install`, while removal preserves other
-plugin and configuration entries even if `agy` has been removed.
+repair and version updates use `agy plugin install`. Removal uses the native
+`agy plugin uninstall` command and verifies its result. If `agy` is absent,
+Intelligent Terminal refuses to rewrite the provider's shared metadata and reports
+that the native CLI is required; managed files are not silently discarded.
 
 Windows hook reconciliation does not install inside a WSL distro. In that distro,
 run `agy plugin install "<Linux path to the installed Terminal package>/wt-agent-hooks/antigravity-wsl"`
@@ -375,6 +377,8 @@ installation. The packaged bridge uses Windows PowerShell and `wtcli.exe` throug
 WSL interoperability, which must be enabled and resolvable from the Terminal shell.
 The WSL command forwards the distro through child-scoped `WSLENV`, so tracking
 does not depend on an interactive Bash prompt having emitted shell metadata.
+Provider workspace roots can be empty; the bridge then uses the actual hook cwd
+and preserves it for session tracking and resume.
 Only CLI transcript callbacks are forwarded; shared ACP processes and other
 Antigravity frontends do not create duplicate shell-session rows.
 

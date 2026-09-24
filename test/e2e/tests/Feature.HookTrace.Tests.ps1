@@ -192,6 +192,28 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
         }
     }
 
+    It 'Antigravity hooks retain the CLI cwd when workspace roots are absent' {
+        $paneId = (Get-ActivePane -App $script:app).session_id
+        $sessionId = "empty-workspaces-$([guid]::NewGuid())"
+        $file = script:Write-HookPayload -Name 'empty-workspace-roots' -Dir $TestDrive -Json (@{
+            conversationId = $sessionId
+            workspacePaths = @()
+            transcriptPath = 'C:\test\.gemini\antigravity-cli\brain\session\transcript.jsonl'
+        } | ConvertTo-Json -Compress)
+        $listener = Start-WtEventListener -App $script:app -WaitForReady
+        try {
+            Invoke-RunCommand -App $script:app -SessionId $paneId -SettleSec 2 `
+                -Command "Push-Location '$TestDrive'; try { Get-Content -Raw -LiteralPath '$file' | wtcli.exe agent-hook --cli-source antigravity --event agent.prompt.submit } finally { Pop-Location }" | Out-Null
+            $event = Wait-WtEvent -Listener $listener -TimeoutSec 20 -Predicate {
+                $_.method -eq 'agent_event' -and $_.params.agent_session_id -eq $sessionId
+            }
+            $event.params.payload.cwd | Should -Be $TestDrive
+        }
+        finally {
+            Stop-WtEventListener -Listener $listener
+        }
+    }
+
     It 'Antigravity stop hooks preserve working and error states' {
         $originalPane = (Get-ActivePane -App $script:app).session_id
         $paneId = (New-WtTab -App $script:app -Command 'pwsh.exe -NoLogo -NoProfile').session_id

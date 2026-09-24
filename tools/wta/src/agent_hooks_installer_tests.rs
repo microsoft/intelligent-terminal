@@ -162,6 +162,14 @@ fn write_opencode_test_bundle(root: &Path, js: &str) {
     .unwrap();
 }
 
+fn antigravity_test_home(label: &str) -> PathBuf {
+    let home = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("target")
+        .join(format!("antigravity-{label}-{}", uuid::Uuid::new_v4()));
+    fs::create_dir_all(&home).unwrap();
+    home
+}
+
 fn write_antigravity_test_install(home: &Path) -> PathBuf {
     let config = home.join(".gemini").join("config");
     let plugin = config.join("plugins").join(PLUGIN_NAME);
@@ -178,7 +186,7 @@ fn write_antigravity_test_install(home: &Path) -> PathBuf {
     .unwrap();
     fs::write(
         plugin.join("intelligent-terminal.json"),
-        r#"{"name":"wt-agent-hooks","managed_by":"Intelligent Terminal: wt-agent-hooks","version":"0.1.0"}"#,
+        r#"{"name":"wt-agent-hooks","managed_by":"Intelligent Terminal: wt-agent-hooks","version":"0.1.1"}"#,
     )
     .unwrap();
     fs::write(
@@ -194,17 +202,65 @@ fn write_antigravity_test_install(home: &Path) -> PathBuf {
     plugin
 }
 
+fn emulate_antigravity_uninstall(home: &Path, registration: bool, assets: bool) {
+    let config = home.join(".gemini").join("config");
+    if registration {
+        let imports = config.join("import_manifest.json");
+        let mut value: Value = serde_json::from_slice(&fs::read(&imports).unwrap()).unwrap();
+        value["imports"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|entry| entry["name"].as_str() != Some(PLUGIN_NAME));
+        fs::write(imports, serde_json::to_vec(&value).unwrap()).unwrap();
+        let settings = config.join("config.json");
+        let mut value: Value = serde_json::from_slice(&fs::read(&settings).unwrap()).unwrap();
+        value["plugins"]
+            .as_object_mut()
+            .unwrap()
+            .remove(PLUGIN_NAME);
+        fs::write(settings, serde_json::to_vec(&value).unwrap()).unwrap();
+    }
+    if assets {
+        fs::remove_dir_all(config.join("plugins").join(PLUGIN_NAME)).unwrap();
+    }
+}
+
+#[test]
+fn antigravity_hooks_uninstall_without_agy_preserves_managed_state() {
+    let home = antigravity_test_home("missing-cli");
+    let plugin = write_antigravity_test_install(&home);
+    let files = [
+        plugin.join("plugin.json"),
+        plugin.join("hooks.json"),
+        plugin.join("intelligent-terminal.json"),
+        home.join(".gemini")
+            .join("config")
+            .join("import_manifest.json"),
+        home.join(".gemini").join("config").join("config.json"),
+    ];
+    let before: Vec<_> = files.iter().map(|path| fs::read(path).ok()).collect();
+    let result = antigravity::uninstall_with(Some(&home), false, |_, _, _| {
+        panic!("must not run an unavailable provider")
+    });
+    let after: Vec<_> = files.iter().map(|path| fs::read(path).ok()).collect();
+    fs::remove_dir_all(home).unwrap();
+    assert_eq!(result.plugin_uninstalled, Some(false));
+    assert!(!result.attempted);
+    assert_eq!(before, after);
+    assert!(result.messages.join(" ").contains("agy"));
+}
+
 #[test]
 fn antigravity_hooks_report_native_import_enablement_and_partial_state() {
     let cli = CliKind::from_name("antigravity").expect("Antigravity hook integration");
     assert_eq!(CliKind::from_name("ANTIGRAVITY"), Some(cli));
     assert!(CliKind::ALL.contains(&cli));
-    let home = unique_dir("antigravity-status");
+    let home = antigravity_test_home("status");
     let plugin = write_antigravity_test_install(&home);
     let status = status_for(cli, Some(&home));
     assert!(status.marketplace_registered && status.marketplace_path_valid);
     assert!(status.plugin_installed && status.plugin_enabled);
-    assert_eq!(status.installed_version.as_deref(), Some("0.1.0"));
+    assert_eq!(status.installed_version.as_deref(), Some("0.1.1"));
     let installed = probe_installed(cli, &home).unwrap().unwrap();
     assert_eq!(
         decide_upgrade(cli, Some("0.2.0".parse().unwrap()), Some(&installed), None),
@@ -231,20 +287,39 @@ fn antigravity_hooks_report_native_import_enablement_and_partial_state() {
 
 #[test]
 fn antigravity_hooks_uninstall_preserves_user_data_and_ownership_on_failure() {
-    let cli = CliKind::from_name("antigravity").expect("Antigravity hook integration");
-    let home = unique_dir("antigravity-uninstall");
+    let home = antigravity_test_home("uninstall");
     let plugin = write_antigravity_test_install(&home);
     let config = home.join(".gemini/config");
     let imports = fs::read(config.join("import_manifest.json")).unwrap();
     fs::write(config.join("import_manifest.json"), "not json").unwrap();
-    let failed = uninstall_for(cli, Some(&home));
+    let failed = antigravity::uninstall_with(Some(&home), true, |_, _, _| {
+        panic!("must not uninstall with malformed metadata")
+    });
     assert_eq!(failed.plugin_uninstalled, Some(false));
     assert!(plugin.join("intelligent-terminal.json").is_file());
     assert!(plugin.join("hooks.json").is_file());
 
     fs::write(config.join("import_manifest.json"), imports).unwrap();
-    let removed = uninstall_for(cli, Some(&home));
+    let removed = antigravity::uninstall_with(Some(&home), true, |exe, args, environment| {
+        assert_eq!(exe, "agy");
+        assert_eq!(args, ["plugin", "uninstall", PLUGIN_NAME]);
+        let scoped_home = home.to_string_lossy();
+        assert_eq!(
+            environment,
+            [
+                ("USERPROFILE", scoped_home.as_ref()),
+                ("HOME", scoped_home.as_ref())
+            ]
+        );
+        let settings = config.join("config.json");
+        let mut latest: Value = serde_json::from_slice(&fs::read(&settings).unwrap()).unwrap();
+        latest["providerEdit"] = serde_json::json!("preserve");
+        fs::write(&settings, serde_json::to_vec(&latest).unwrap()).unwrap();
+        emulate_antigravity_uninstall(&home, true, true);
+        Ok(())
+    });
     assert_eq!(removed.plugin_uninstalled, Some(true));
+    assert!(removed.attempted);
     assert!(!plugin.join("hooks.json").exists());
     assert!(!plugin.join("intelligent-terminal.json").exists());
     let imports: Value =
@@ -257,6 +332,7 @@ fn antigravity_hooks_uninstall_preserves_user_data_and_ownership_on_failure() {
     assert!(settings["plugins"].get(PLUGIN_NAME).is_none());
     assert_eq!(settings["plugins"]["user-plugin"]["enabled"], false);
     assert_eq!(settings["unrelated"]["keep"], true);
+    assert_eq!(settings["providerEdit"], "preserve");
 
     fs::create_dir_all(&plugin).unwrap();
     fs::write(
@@ -265,12 +341,145 @@ fn antigravity_hooks_uninstall_preserves_user_data_and_ownership_on_failure() {
     )
     .unwrap();
     fs::write(plugin.join("hooks.json"), "user hooks").unwrap();
-    let rejected = uninstall_for(cli, Some(&home));
+    let rejected = antigravity::uninstall_with(Some(&home), true, |_, _, _| {
+        panic!("must not remove unowned hooks")
+    });
     assert_eq!(rejected.plugin_uninstalled, Some(false));
     assert_eq!(
         fs::read_to_string(plugin.join("hooks.json")).unwrap(),
         "user hooks"
     );
+    fs::remove_dir_all(home).unwrap();
+}
+
+#[test]
+fn antigravity_hooks_uninstall_rejects_collisions_before_native_runner() {
+    for collision in [
+        "extra-file",
+        "extra-directory",
+        "hooks-directory",
+        "descriptor",
+        "marker",
+    ] {
+        let home = antigravity_test_home(collision);
+        let plugin = write_antigravity_test_install(&home);
+        match collision {
+            "extra-file" => fs::write(plugin.join("user.txt"), "user data").unwrap(),
+            "extra-directory" => fs::create_dir(plugin.join("user-directory")).unwrap(),
+            "hooks-directory" => {
+                fs::remove_file(plugin.join("hooks.json")).unwrap();
+                fs::create_dir(plugin.join("hooks.json")).unwrap();
+            }
+            "descriptor" => fs::write(
+                plugin.join("plugin.json"),
+                r#"{"name":"wt-agent-hooks","description":"user owned"}"#,
+            )
+            .unwrap(),
+            "marker" => fs::write(
+                plugin.join("intelligent-terminal.json"),
+                r#"{"name":"wt-agent-hooks","managed_by":"user"}"#,
+            )
+            .unwrap(),
+            _ => unreachable!(),
+        }
+        let imports = home
+            .join(".gemini")
+            .join("config")
+            .join("import_manifest.json");
+        let original = fs::read(&imports).unwrap();
+        let result = antigravity::uninstall_with(Some(&home), true, |_, _, _| {
+            panic!("must reject {collision} before invoking native recursive uninstall")
+        });
+        assert_eq!(result.plugin_uninstalled, Some(false), "{collision}");
+        assert!(!result.attempted);
+        assert_eq!(fs::read(imports).unwrap(), original);
+        assert!(plugin.join("intelligent-terminal.json").exists());
+        fs::remove_dir_all(home).unwrap();
+    }
+}
+
+#[test]
+fn antigravity_hooks_uninstall_verifies_native_result_and_reports_failure() {
+    for (registration, assets) in [(false, false), (false, true), (true, false)] {
+        let home = antigravity_test_home("incomplete-native");
+        write_antigravity_test_install(&home);
+        let result = antigravity::uninstall_with(Some(&home), true, |_, _, _| {
+            emulate_antigravity_uninstall(&home, registration, assets);
+            Ok(())
+        });
+        assert_eq!(result.plugin_uninstalled, Some(false));
+        assert!(result.attempted);
+        assert!(result.messages.join(" ").contains("did not remove"));
+        fs::remove_dir_all(home).unwrap();
+    }
+    let home = antigravity_test_home("native-failure");
+    let plugin = write_antigravity_test_install(&home);
+    let config = home.join(".gemini").join("config").join("config.json");
+    let original = fs::read(&config).unwrap();
+    let failed = antigravity::uninstall_with(Some(&home), true, |_, _, _| {
+        Err(std::io::Error::other("native failure"))
+    });
+    assert_eq!(failed.plugin_uninstalled, Some(false));
+    assert!(failed.attempted);
+    assert!(failed.messages.join(" ").contains("native failure"));
+    assert_eq!(fs::read(config).unwrap(), original);
+    assert!(plugin.join("intelligent-terminal.json").is_file());
+    fs::remove_dir_all(home).unwrap();
+}
+
+#[test]
+fn antigravity_hooks_uninstall_detects_config_only_residue_and_is_idempotent() {
+    let home = antigravity_test_home("residue");
+    write_antigravity_test_install(&home);
+    let config = home.join(".gemini").join("config").join("config.json");
+    let failed = antigravity::uninstall_with(Some(&home), true, |_, _, _| {
+        emulate_antigravity_uninstall(&home, true, true);
+        fs::write(
+            &config,
+            r#"{"plugins":{"wt-agent-hooks":{"enabled":false}}}"#,
+        )
+        .unwrap();
+        Ok(())
+    });
+    assert_eq!(failed.plugin_uninstalled, Some(false));
+    let refused = antigravity::uninstall_with(Some(&home), false, |_, _, _| {
+        panic!("must not invoke a missing provider")
+    });
+    assert_eq!(refused.plugin_uninstalled, Some(false));
+    fs::write(config, r#"{"plugins":{}}"#).unwrap();
+    let absent = antigravity::uninstall_with(Some(&home), false, |_, _, _| {
+        panic!("must not invoke provider for absent hooks")
+    });
+    assert_eq!(absent.plugin_uninstalled, Some(true));
+    assert!(!absent.attempted);
+    fs::remove_dir_all(home).unwrap();
+}
+
+#[test]
+#[cfg(windows)]
+fn antigravity_hooks_uninstall_rejects_plugin_directory_junction() {
+    let home = antigravity_test_home("junction");
+    let plugin = write_antigravity_test_install(&home);
+    let saved = home.join("user-plugin");
+    fs::rename(&plugin, &saved).unwrap();
+    let output = std::process::Command::new("cmd.exe")
+        .args(["/d", "/c", "mklink", "/J"])
+        .arg(&plugin)
+        .arg(&saved)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let result = antigravity::uninstall_with(Some(&home), true, |_, _, _| {
+        panic!("must not invoke native uninstall through a junction")
+    });
+    assert_eq!(result.plugin_uninstalled, Some(false));
+    assert!(!result.attempted);
+    assert!(saved.join("hooks.json").is_file());
+    fs::remove_dir(&plugin).unwrap();
     fs::remove_dir_all(home).unwrap();
 }
 
@@ -1083,6 +1292,8 @@ fn antigravity_hooks_are_guarded_in_every_supported_shell() {
                     for entry in entries {
                         let command = entry["command"].as_str().unwrap();
                         assert!(command.contains("WSL_DISTRO_NAME/w"));
+                        assert!(command.contains("WTA_HOOK_CWD=\"$PWD\""));
+                        assert!(command.contains("WTA_HOOK_CWD/w"));
                         if let Some(output) = run_hook_command(HookShell::Bash, command) {
                             assert!(output.status.success());
                             assert!(output.stdout.is_empty() && output.stderr.is_empty());

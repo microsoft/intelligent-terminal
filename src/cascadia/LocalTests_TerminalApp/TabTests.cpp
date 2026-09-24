@@ -542,6 +542,9 @@ namespace TerminalAppLocalTests
         for (const auto id : { L"bad;id", L"bad&id", L"bad%id", L"bad$id", L"bad`id", L"bad\"id", L"bad/id", L"bad\\id", L"bad\nid" })
         {
             VERIFY_IS_TRUE(Restore::BuildResumeCommandline(L"antigravity", id).empty());
+            const std::wstring malformed = std::wstring{ Restore::ResumeShellPrefix } + L"agy --conversation " + id + L"\"";
+            VERIFY_IS_TRUE(Restore::ParseResumeCommandline(malformed).agent.empty());
+            VERIFY_IS_FALSE(Restore::IsResumeCommandline(malformed));
         }
 
         // Every built-in agent whose `resume_flag` is non-empty in
