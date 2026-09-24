@@ -7032,7 +7032,7 @@ async fn handle_session_activate(
         liveness: liveness_from_status(&status, row.pane_session_id.clone()),
         key: row.session_id.to_string(),
         cli_source: cli_source.clone(),
-        load_session_supported: true,
+        load_session_capability: crate::session_mgmt::LoadSessionCapability::Unknown,
         cli_supports_resume_flag: profile.is_some_and(|profile| !profile.resume_flag.is_empty()),
         is_wsl: row.location.is_wsl(),
     });
@@ -7130,13 +7130,42 @@ async fn handle_session_activate(
                 params["title"] = serde_json::Value::String(title.clone());
             }
             match wt.request("create_tab", params).await {
-                Ok(_) => {
+                Ok(result) => {
                     state
                         .registry
                         .apply_event(crate::agent_sessions::SessionEvent::ResumeDispatched {
                             key: row.session_id.to_string(),
                         })
                         .await;
+                    if let Some(pane_session_id) = result
+                        .get("session_id")
+                        .or_else(|| result.get("SessionId"))
+                        .or_else(|| result.get("sessionId"))
+                        .and_then(serde_json::Value::as_str)
+                        .map(|value| {
+                            value
+                                .trim()
+                                .trim_matches(|ch| ch == '{' || ch == '}')
+                                .to_string()
+                        })
+                        .filter(|value| !value.is_empty())
+                    {
+                        if let Some(binding) = crate::wt_protocol_events::resumed_pane_binding_event(
+                            &provider_id,
+                            row.session_id.0.as_ref(),
+                            &pane_session_id,
+                            &row.location,
+                        ) {
+                            crate::wt_protocol_events::send(binding);
+                        }
+                        state
+                            .registry
+                            .apply_event(crate::agent_sessions::SessionEvent::ResumePaneAssigned {
+                                key: row.session_id.to_string(),
+                                pane_session_id,
+                            })
+                            .await;
+                    }
                     respond!("resume_cli", true, None)
                 }
                 Err(error) => respond!("resume_cli", false, Some(error.to_string())),
@@ -7231,6 +7260,24 @@ async fn apply_master_session_event(
     // Error, where the title is whatever it already was, so skipping
     // the refresh is fine.
     let refresh_key = session_event_key(&event).map(str::to_owned);
+
+    if matches!(
+        &event,
+        crate::agent_sessions::SessionEvent::ResumeFailed { .. }
+    ) {
+        let Some(key) = &refresh_key else {
+            return (false, None);
+        };
+        let sid = acp::schema::v1::SessionId::new(key.clone());
+        let gate = session_lifecycle_gate(state, &sid).await;
+        let _gate_guard = gate.lock().await;
+        let applied = state.registry.apply_event(event).await;
+        if applied {
+            state.hook_owned.lock().await.remove(&sid);
+            state.born_bound.lock().await.remove(&sid);
+        }
+        return (applied, refresh_key);
+    }
 
     // Resume binding events (`ResumeDispatched` / `ResumePaneAssigned`) are the
     // hook-free born-bound binding for `/sessions` resume (published over the
@@ -9309,6 +9356,7 @@ fn session_event_key(event: &crate::agent_sessions::SessionEvent) -> Option<&str
         | SessionEvent::Notification { key, .. }
         | SessionEvent::SessionStopped { key, .. }
         | SessionEvent::ResumeDispatched { key }
+        | SessionEvent::ResumeFailed { key, .. }
         | SessionEvent::ResumePaneAssigned { key, .. } => Some(key.as_str()),
         SessionEvent::PaneClosed { .. } | SessionEvent::ConnectionFailed { .. } => None,
     }

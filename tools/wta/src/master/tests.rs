@@ -9975,6 +9975,76 @@ async fn sidebar_activation_uses_exact_collision_row_and_replays_receipt() {
 }
 
 #[tokio::test]
+async fn sidebar_cli_resume_binds_created_pane_for_agent_filtering() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
+    use crate::session_registry::{
+        HistoryRowKey, SessionActivateParams, SessionIdentity, SessionInfo,
+    };
+    use std::path::PathBuf;
+
+    let mock = Arc::new(MockWtChannel::responding(serde_json::json!({
+        "ok": true,
+        "session_id": "{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}"
+    })));
+    let state = make_state_with_wt(mock.clone());
+    let _capture = crate::wt_protocol_events::capture_test_published_events();
+
+    let mut row = SessionInfo::new(SessionId::new("copilot-history"), PathBuf::from("C:\\repo"));
+    row.provider_id = Some("copilot".to_string());
+    row.location = SessionLocation::Host;
+    row.status = Some(AgentStatus::Historical);
+    row.cli_source = Some(CliSource::Copilot);
+    row.origin = Some(SessionOrigin::Unknown);
+    state.registry.upsert(row).await;
+
+    let params = SessionActivateParams {
+        identity: SessionIdentity {
+            session_id: SessionId::new("copilot-history"),
+            history_key: HistoryRowKey::new(
+                "copilot",
+                SessionLocation::Host,
+                "copilot-history",
+                None,
+            ),
+        },
+        window_id: 42,
+        activation_id: "resume-copilot-history".to_string(),
+    };
+
+    let response = handle_session_activate(&state, &params)
+        .await
+        .expect("sidebar activation succeeds");
+    let response = crate::session_registry::parse_session_activate_response(&response.0).unwrap();
+    assert!(response.accepted);
+    assert_eq!(response.action, "resume_cli");
+
+    let restored = state
+        .registry
+        .lookup(&SessionId::new("copilot-history"))
+        .await
+        .expect("restored row remains registered");
+    assert_eq!(
+        restored.pane_session_id.as_deref(),
+        Some("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+    );
+
+    let events = crate::wt_protocol_events::take_test_published_events();
+    let binding = events
+        .iter()
+        .filter_map(|event| serde_json::from_str::<serde_json::Value>(event).ok())
+        .find(|event| event["method"] == "pane_agent_session_changed")
+        .expect("created pane binding is published to Terminal");
+    assert_eq!(binding["params"]["agent"], "copilot");
+    assert_eq!(binding["params"]["agent_session_id"], "copilot-history");
+    assert_eq!(
+        binding["params"]["pane_id"],
+        "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"
+    );
+
+    assert_eq!(mock.calls()[0].0, "create_tab");
+}
+
+#[tokio::test]
 async fn drop_sessions_for_helper_broadcasts_sessions_changed() {
     use crate::session_registry::{self, SessionInfo};
     use std::path::PathBuf;

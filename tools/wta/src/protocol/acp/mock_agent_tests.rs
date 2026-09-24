@@ -4447,16 +4447,35 @@ async fn dispatch_load_session_failure_handler_restores_prior_binding() {
                 false,
             );
 
-            match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
-                Ok(Some(AppEvent::TabError { tab_id, message })) => {
-                    assert_eq!(tab_id, "t1");
-                    assert!(
-                        message.contains("Failed to resume session"),
-                        "unexpected error message: {message}"
-                    );
+            let mut saw_resume_failed = false;
+            let mut saw_tab_error = false;
+            for _ in 0..4 {
+                match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await
+                {
+                    Ok(Some(AppEvent::AgentSessionEvent(
+                        crate::agent_sessions::SessionEvent::ResumeFailed { key, reason },
+                    ))) => {
+                        assert_eq!(key, "hist-sess-7");
+                        assert!(reason.contains("Failed to resume session"));
+                        saw_resume_failed = true;
+                    }
+                    Ok(Some(AppEvent::TabError { tab_id, message })) => {
+                        assert_eq!(tab_id, "t1");
+                        assert!(
+                            message.contains("Failed to resume session"),
+                            "unexpected error message: {message}"
+                        );
+                        saw_tab_error = true;
+                    }
+                    Ok(Some(_)) => {}
+                    _ => break,
                 }
-                _ => panic!("expected TabError"),
+                if saw_resume_failed && saw_tab_error {
+                    break;
+                }
             }
+            assert!(saw_resume_failed, "expected ResumeFailed");
+            assert!(saw_tab_error, "expected TabError");
             assert_eq!(
                 tab_to_session.lock().await.get("t1").map(|s| s.to_string()),
                 Some("old-sess".to_string()),

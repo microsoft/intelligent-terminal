@@ -2838,6 +2838,7 @@ async fn apply_native_yolo_checked(
 ///     was always created.
 async fn handle_load_failure(
     old_sid: Option<&acp::schema::v1::SessionId>,
+    failed_sid: String,
     tab_id: String,
     binding_generation: u64,
     cwd: std::path::PathBuf,
@@ -2851,6 +2852,12 @@ async fn handle_load_failure(
     client_state: Arc<ClientState>,
     tab_aliases: SharedTabAliases,
 ) {
+    let _ = event_tx.send(AppEvent::AgentSessionEvent(
+        crate::agent_sessions::SessionEvent::ResumeFailed {
+            key: failed_sid,
+            reason: error_message.clone(),
+        },
+    ));
     let Some(current_tab_id) = current_tab_binding_operation(
         &tab_aliases,
         &tab_binding_generations,
@@ -4764,6 +4771,7 @@ fn dispatch_load_session_with_aliases(
                 dispatch_load_failure(
                     use_load_failure_handler,
                     old_sid.as_ref(),
+                    req.session_id.to_string(),
                     &request_tab_id,
                     binding_generation,
                     &cwd,
@@ -4798,6 +4806,7 @@ fn dispatch_load_session_with_aliases(
                 dispatch_load_failure(
                     use_load_failure_handler,
                     old_sid.as_ref(),
+                    req.session_id.to_string(),
                     &request_tab_id,
                     binding_generation,
                     &cwd,
@@ -4825,6 +4834,7 @@ fn dispatch_load_session_with_aliases(
 async fn dispatch_load_failure(
     use_load_failure_handler: bool,
     old_sid: Option<&acp::schema::v1::SessionId>,
+    failed_sid: String,
     tab_id: &str,
     binding_generation: u64,
     cwd: &std::path::Path,
@@ -4841,6 +4851,7 @@ async fn dispatch_load_failure(
     if use_load_failure_handler {
         handle_load_failure(
             old_sid,
+            failed_sid,
             tab_id.to_string(),
             binding_generation,
             cwd.to_path_buf(),

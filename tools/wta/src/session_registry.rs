@@ -933,6 +933,10 @@ pub enum SessionHookParams {
     ResumeDispatched {
         key: crate::agent_sessions::AgentKey,
     },
+    ResumeFailed {
+        key: crate::agent_sessions::AgentKey,
+        reason: String,
+    },
     ResumePaneAssigned {
         key: crate::agent_sessions::AgentKey,
         pane_session_id: String,
@@ -980,6 +984,10 @@ impl From<&crate::agent_sessions::SessionEvent> for SessionHookParams {
                 pane_session_id: pane_session_id.clone(),
             },
             SessionEvent::ResumeDispatched { key } => Self::ResumeDispatched { key: key.clone() },
+            SessionEvent::ResumeFailed { key, reason } => Self::ResumeFailed {
+                key: key.clone(),
+                reason: reason.clone(),
+            },
             SessionEvent::ResumePaneAssigned {
                 key,
                 pane_session_id,
@@ -1026,6 +1034,7 @@ impl From<SessionHookParams> for crate::agent_sessions::SessionEvent {
                 Self::PaneClosed { pane_session_id }
             }
             SessionHookParams::ResumeDispatched { key } => Self::ResumeDispatched { key },
+            SessionHookParams::ResumeFailed { key, reason } => Self::ResumeFailed { key, reason },
             SessionHookParams::ResumePaneAssigned {
                 key,
                 pane_session_id,
@@ -2199,6 +2208,22 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
                 Some(AgentStatus::Historical | AgentStatus::Ended)
             ) {
                 entry.status = Some(AgentStatus::Idle);
+                entry.last_activity_at_ms = Some(now);
+                return true;
+            }
+            false
+        }
+        SessionEvent::ResumeFailed { key, reason } => {
+            let sid = acp::schema::v1::SessionId::new(key);
+            let Some(identity) = unique_identity_for_raw(state, &sid) else {
+                return false;
+            };
+            let Some(entry) = state.sessions.get_mut(&identity) else {
+                return false;
+            };
+            if entry.status == Some(AgentStatus::Idle) && entry.pane_session_id.is_none() {
+                entry.status = Some(AgentStatus::Historical);
+                entry.last_error = Some(reason);
                 entry.last_activity_at_ms = Some(now);
                 return true;
             }
