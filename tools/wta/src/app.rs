@@ -705,7 +705,32 @@ pub fn route_agent_event_to_registry(
     pane_session_id: &str,
     params: &serde_json::Value,
 ) -> bool {
-    route_agent_event_to_registry_with_hook_sink(reg, pane_session_id, params, |_| {})
+    route_agent_event_to_registry_scoped(reg, pane_session_id, params, None)
+}
+
+pub fn route_agent_event_to_registry_scoped(
+    reg: &mut crate::agent_sessions::AgentSessionRegistry,
+    pane_session_id: &str,
+    params: &serde_json::Value,
+    origin_scope: Option<&crate::agent_pane_origin::OriginScope>,
+) -> bool {
+    route_agent_event_to_registry_with_scope_and_hook_sink(
+        reg,
+        pane_session_id,
+        params,
+        origin_scope,
+        |_| {},
+    )
+}
+
+fn session_removed_matches_scope(
+    params: &crate::session_registry::SessionRemovedParams,
+    agent_id: &str,
+    location: &crate::agent_sessions::SessionLocation,
+) -> bool {
+    params.history_key.as_ref().is_none_or(|key| {
+        key.provider_id.eq_ignore_ascii_case(agent_id) && &key.location == location
+    })
 }
 
 /// As [`route_agent_event_to_registry`], but reports every event it applied.
@@ -714,6 +739,25 @@ pub fn route_agent_event_to_registry_with_hook_sink<F>(
     reg: &mut crate::agent_sessions::AgentSessionRegistry,
     pane_session_id: &str,
     params: &serde_json::Value,
+    mut hook_sink: F,
+) -> bool
+where
+    F: FnMut(crate::agent_sessions::SessionEvent),
+{
+    route_agent_event_to_registry_with_scope_and_hook_sink(
+        reg,
+        pane_session_id,
+        params,
+        None,
+        &mut hook_sink,
+    )
+}
+
+fn route_agent_event_to_registry_with_scope_and_hook_sink<F>(
+    reg: &mut crate::agent_sessions::AgentSessionRegistry,
+    pane_session_id: &str,
+    params: &serde_json::Value,
+    origin_scope: Option<&crate::agent_pane_origin::OriginScope>,
     mut hook_sink: F,
 ) -> bool
 where
@@ -845,8 +889,11 @@ where
     // event) rather than caching, to stay correct after a new session
     // is created while wta is already running.
     if !key_for_refresh.is_empty() {
-        let agent_pane_keys = crate::agent_pane_origin::load_default_set();
-        if agent_pane_keys.contains(&key_for_refresh) {
+        if origin_scope.is_some_and(|scope| {
+            scope.row_key(&key_for_refresh).is_some_and(|key| {
+                crate::agent_pane_origin::load_default_index().contains_key(&key)
+            })
+        }) {
             reg.set_origin(
                 &key_for_refresh,
                 crate::agent_sessions::SessionOrigin::AgentPane,

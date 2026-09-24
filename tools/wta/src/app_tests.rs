@@ -5,10 +5,39 @@
 //! this was an inline `mod tests { ... }` block.
 
 use super::*;
+use crate::agent_sessions::SessionLocation;
 use crate::app::tab_state::{collapsed_prompt_preview, PendingTerminalActionProposal};
 use crate::app_contracts::{PermOption, PlanEntry};
 use serde_json::json;
 use std::sync::Mutex;
+
+#[test]
+fn qualified_session_removal_only_demotes_matching_helper_scope() {
+    let params = crate::session_registry::SessionRemovedParams {
+        session_id: agent_client_protocol::schema::v1::SessionId::new("same-id"),
+        history_key: crate::session_registry::HistoryRowKey::new(
+            "claude",
+            SessionLocation::Wsl {
+                distro: "Ubuntu".to_string(),
+            },
+            "same-id",
+            None,
+        ),
+    };
+
+    assert!(session_removed_matches_scope(
+        &params,
+        "claude",
+        &SessionLocation::Wsl {
+            distro: "Ubuntu".to_string(),
+        }
+    ));
+    assert!(!session_removed_matches_scope(
+        &params,
+        "copilot",
+        &SessionLocation::Host
+    ));
+}
 
 /// Custom-agent preflight regression: when the user's `acpAgent` is a
 /// `custom:*` id, the preflight must NOT gate the TUI into Setup mode.

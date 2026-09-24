@@ -9868,6 +9868,252 @@ async fn route_for_rejects_same_raw_id_owned_by_another_agent_instance() {
     );
 }
 
+#[test]
+fn live_origin_union_ignores_equal_raw_id_from_foreign_agent_instance() {
+    let current_instance = AgentInstanceId::new_v4();
+    let foreign_instance = AgentInstanceId::new_v4();
+    let sid = SessionId::new("same-raw-id");
+    let (tx, _rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+    let mut routes = LiveRouteTable::default();
+    routes.insert(
+        sid.clone(),
+        HelperRoute {
+            helper_id: HelperId(42),
+            agent_instance_id: foreign_instance,
+            notif_tx: tx,
+            forwarder: None,
+            consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        },
+    );
+    let mut index = crate::agent_pane_origin::OriginIndex::default();
+
+    extend_live_origin_index_for_agent(
+        &mut index,
+        &routes,
+        current_instance,
+        "copilot",
+        crate::agent_sessions::SessionLocation::Host,
+    );
+
+    assert!(
+        !index.contains(
+            "copilot",
+            &crate::agent_sessions::SessionLocation::Host,
+            sid.0.as_ref(),
+        ),
+        "a foreign live route must not hide the current agent's historical row"
+    );
+}
+
+#[tokio::test]
+async fn exact_retirement_preserves_colliding_route_capability_usage_and_registry_row() {
+    let state = make_state();
+    let sid = SessionId::new("same-raw-id");
+    let retired_owner = AgentInstanceId::new_v4();
+    let surviving_owner = AgentInstanceId::new_v4();
+    let retired_capability = state
+        .session_mcp_capabilities
+        .prepare(retired_owner, None)
+        .await;
+    let surviving_capability = state
+        .session_mcp_capabilities
+        .prepare(surviving_owner, None)
+        .await;
+    assert!(
+        state
+            .session_mcp_capabilities
+            .bind(&retired_capability, sid.clone())
+            .await
+    );
+    assert!(
+        state
+            .session_mcp_capabilities
+            .bind(&surviving_capability, sid.clone())
+            .await
+    );
+
+    state.pending_usage.lock().await.insert_for_instance(
+        sid.clone(),
+        retired_owner,
+        (HelperId(41), make_notif(&sid)),
+    );
+    state.pending_usage.lock().await.insert_for_instance(
+        sid.clone(),
+        surviving_owner,
+        (HelperId(42), make_notif(&sid)),
+    );
+    let (surviving_tx, _surviving_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+    state.session_to_helper.lock().await.insert(
+        sid.clone(),
+        HelperRoute {
+            helper_id: HelperId(42),
+            agent_instance_id: surviving_owner,
+            notif_tx: surviving_tx,
+            forwarder: None,
+            consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        },
+    );
+
+    let retired_identity = crate::session_registry::SessionIdentity {
+        session_id: sid.clone(),
+        history_key: crate::session_registry::HistoryRowKey::new(
+            "copilot",
+            crate::agent_sessions::SessionLocation::Host,
+            sid.to_string(),
+            None,
+        ),
+    };
+    let surviving_identity = crate::session_registry::SessionIdentity {
+        session_id: sid.clone(),
+        history_key: crate::session_registry::HistoryRowKey::new(
+            "claude",
+            crate::agent_sessions::SessionLocation::Wsl {
+                distro: "Ubuntu".to_string(),
+            },
+            sid.to_string(),
+            None,
+        ),
+    };
+    for (identity, provider, location) in [
+        (
+            &retired_identity,
+            "copilot",
+            crate::agent_sessions::SessionLocation::Host,
+        ),
+        (
+            &surviving_identity,
+            "claude",
+            crate::agent_sessions::SessionLocation::Wsl {
+                distro: "Ubuntu".to_string(),
+            },
+        ),
+    ] {
+        let mut info = crate::session_registry::SessionInfo::new(
+            sid.clone(),
+            std::path::PathBuf::from("C:\\repo"),
+        );
+        info.provider_id = Some(provider.to_string());
+        info.location = location;
+        info.origin = Some(crate::agent_sessions::SessionOrigin::AgentPane);
+        info.status = Some(crate::agent_sessions::AgentStatus::Idle);
+        assert_eq!(
+            crate::session_registry::SessionIdentity::from_info(&info),
+            *identity
+        );
+        state.registry.upsert(info).await;
+    }
+
+    retire_exact_session_state_gate_held(
+        &state,
+        &LiveRouteKey::new(retired_owner, sid.clone()),
+        Some(&retired_identity),
+    )
+    .await;
+    assert!(
+        !retire_unbound_session_state_gate_held(&state, &sid).await,
+        "raw cleanup must refuse to run while the colliding route survives"
+    );
+
+    assert!(state
+        .pending_usage
+        .lock()
+        .await
+        .get_for_instance(&sid, retired_owner)
+        .is_none());
+    assert!(state
+        .pending_usage
+        .lock()
+        .await
+        .get_for_instance(&sid, surviving_owner)
+        .is_some());
+    assert!(state
+        .registry
+        .lookup_identity(&retired_identity)
+        .await
+        .is_none());
+    assert!(state
+        .registry
+        .lookup_identity(&surviving_identity)
+        .await
+        .is_some());
+    assert!(
+        !state
+            .session_mcp_capabilities
+            .remove_for_instance(&sid, retired_owner)
+            .await
+    );
+    assert!(
+        state
+            .session_mcp_capabilities
+            .remove_for_instance(&sid, surviving_owner)
+            .await,
+        "surviving capability must remain bound"
+    );
+}
+
+#[tokio::test]
+async fn ownerless_retirement_cleans_all_colliding_live_state_after_routes_are_gone() {
+    let state = make_state();
+    let sid = SessionId::new("ownerless-shared-id");
+    let first_owner = AgentInstanceId::new_v4();
+    let second_owner = AgentInstanceId::new_v4();
+    for owner in [first_owner, second_owner] {
+        let capability = state.session_mcp_capabilities.prepare(owner, None).await;
+        assert!(
+            state
+                .session_mcp_capabilities
+                .bind(&capability, sid.clone())
+                .await
+        );
+        state.pending_usage.lock().await.insert_for_instance(
+            sid.clone(),
+            owner,
+            (HelperId(51), make_notif(&sid)),
+        );
+    }
+    for (provider, location) in [
+        ("copilot", crate::agent_sessions::SessionLocation::Host),
+        (
+            "claude",
+            crate::agent_sessions::SessionLocation::Wsl {
+                distro: "Ubuntu".to_string(),
+            },
+        ),
+    ] {
+        let mut info = crate::session_registry::SessionInfo::new(
+            sid.clone(),
+            std::path::PathBuf::from("C:\\repo"),
+        );
+        info.provider_id = Some(provider.to_string());
+        info.location = location;
+        info.origin = Some(crate::agent_sessions::SessionOrigin::AgentPane);
+        info.status = Some(crate::agent_sessions::AgentStatus::Idle);
+        state.registry.upsert(info).await;
+    }
+
+    assert!(retire_unbound_session_state_gate_held(&state, &sid).await);
+
+    assert!(state
+        .registry
+        .snapshot()
+        .await
+        .iter()
+        .all(|row| row.session_id != sid));
+    assert!(!state.pending_usage.lock().await.contains_key(&sid));
+    assert!(
+        !state
+            .session_mcp_capabilities
+            .remove_for_instance(&sid, first_owner)
+            .await
+    );
+    assert!(
+        !state
+            .session_mcp_capabilities
+            .remove_for_instance(&sid, second_owner)
+            .await
+    );
+}
+
 /// End-to-end through one of the forwarder methods: a Client-trait
 /// request on `MasterClient` for an unknown session_id propagates
 /// the same `internal_error` (rather than the trait default

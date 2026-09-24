@@ -43,7 +43,9 @@
 // in the index are harmless because the index is only ever consulted as a
 // filter against session ids the agent itself still reports.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+#[cfg(test)]
+use std::collections::HashSet;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
@@ -104,6 +106,10 @@ pub struct OriginIndex {
 }
 
 impl OriginIndex {
+    pub fn contains_key(&self, key: &crate::session_registry::HistoryRowKey) -> bool {
+        self.qualified.contains_key(key) || self.legacy.contains_key(&key.session_id)
+    }
+
     pub fn contains(
         &self,
         provider_id: &str,
@@ -111,8 +117,7 @@ impl OriginIndex {
         session_id: &str,
     ) -> bool {
         crate::session_registry::HistoryRowKey::new(provider_id, location.clone(), session_id, None)
-            .is_some_and(|key| self.qualified.contains_key(&key))
-            || self.legacy.contains_key(session_id)
+            .is_some_and(|key| self.contains_key(&key))
     }
 
     pub fn insert_qualified(
@@ -251,23 +256,6 @@ pub fn append_qualified_to(
     Ok(())
 }
 
-/// Load the default index into a `HashSet<String>` of session ids. Empty
-/// set if the file does not exist, cannot be opened, or is empty — never
-/// errors out to the caller, so the history scan still proceeds on a fresh
-/// install or after a manual delete.
-///
-/// Unpackaged dev binaries also merge the installed Intelligent Terminal
-/// package's LocalState index when present. That keeps diagnostics such as
-/// `probe-host-sessions` using the same Class-A filter as the packaged app
-/// that actually created the agent-pane sessions.
-///
-/// Use this when the caller only needs membership-check. For callers that
-/// need the per-record `pane_session_id` (e.g. post-restart reconcile),
-/// see [`load_default_records`].
-pub fn load_default_set() -> HashSet<String> {
-    load_default_records().into_keys().collect()
-}
-
 pub fn load_default_index() -> OriginIndex {
     let mut out = OriginIndex::default();
     for path in default_index_paths() {
@@ -278,28 +266,16 @@ pub fn load_default_index() -> OriginIndex {
     out
 }
 
-/// Load an index file from `path` into a HashSet. Public for unit tests.
+/// Load legacy v1/v2 records from `path` into a HashSet. Public for unit tests.
+#[cfg(test)]
 pub fn load_set_from(path: &std::path::Path) -> HashSet<String> {
     load_records_from(path).into_keys().collect()
 }
 
-/// Load the default index, retaining each record's per-session metadata
-/// (notably `pane_session_id` for v2 entries). Duplicate `session_id`s
-/// collapse to the last-written record. Empty map on any IO error.
-pub fn load_default_records() -> HashMap<String, OriginRecord> {
-    let mut out = HashMap::new();
-    for path in default_index_paths() {
-        out.extend(load_records_from(&path));
-    }
-    out
-}
-
 fn default_index_paths() -> Vec<PathBuf> {
-    // Order matters: `load_default_records` merges these via `HashMap::extend`
-    // (last write wins on a duplicate `session_id`). Load installed-package
-    // indices FIRST (dev/unpackaged only) and the current runtime's index LAST
-    // so the current runtime's record wins on key collisions and keeps its
-    // newer per-record metadata.
+    // Load installed-package indices first (dev/unpackaged only) and the
+    // current runtime's index last so current qualified/legacy records win
+    // within their own identity bucket.
     let mut paths = Vec::new();
     if crate::runtime_paths::current_package_family_name().is_none() {
         paths.extend(installed_package_index_paths());
@@ -312,7 +288,7 @@ fn default_index_paths() -> Vec<PathBuf> {
 
 fn installed_package_index_paths() -> Vec<PathBuf> {
     // Memoize the `%LOCALAPPDATA%\Packages` walk for the process lifetime:
-    // `load_default_set` calls this on every routed event in unpackaged/dev mode,
+    // `load_default_index` calls this on every routed event in unpackaged/dev mode,
     // and the relevant package directories don't change mid-run.
     static CACHE: std::sync::OnceLock<Vec<PathBuf>> = std::sync::OnceLock::new();
     CACHE
@@ -354,15 +330,10 @@ fn installed_package_index_paths_uncached() -> Vec<PathBuf> {
     dev
 }
 
-/// Same as [`load_default_records`] but against a caller-supplied path.
-/// Public for unit tests.
+/// Load the legacy compatibility bucket from a caller-supplied path.
+#[cfg(test)]
 pub fn load_records_from(path: &std::path::Path) -> HashMap<String, OriginRecord> {
-    let index = load_index_from(path);
-    let mut out = index.legacy;
-    for (key, record) in index.qualified {
-        out.insert(key.session_id, record);
-    }
-    out
+    load_index_from(path).legacy
 }
 
 pub fn load_index_from(path: &std::path::Path) -> OriginIndex {
@@ -390,6 +361,11 @@ pub fn load_index_from(path: &std::path::Path) -> OriginIndex {
             .filter(|s| !s.is_empty())
             .map(|s| s.to_string());
         let record = OriginRecord { pane_session_id };
+        let version = value.get("v").and_then(|v| v.as_u64()).unwrap_or(1);
+        if version < SCHEMA_VERSION as u64 {
+            out.legacy.insert(id.to_string(), record);
+            continue;
+        }
         let qualified = value
             .get("provider_id")
             .and_then(|v| v.as_str())
@@ -411,8 +387,6 @@ pub fn load_index_from(path: &std::path::Path) -> OriginIndex {
             });
         if let Some(key) = qualified {
             out.qualified.insert(key, record);
-        } else {
-            out.legacy.insert(id.to_string(), record);
         }
     }
     out
@@ -548,6 +522,10 @@ mod tests {
             &crate::agent_sessions::SessionLocation::Host,
             "same-id"
         ));
+        assert!(
+            load_records_from(&path).is_empty(),
+            "qualified records must never enter the raw compatibility map"
+        );
     }
 
     #[test]
@@ -570,6 +548,33 @@ mod tests {
         )
         .unwrap();
         assert!(index.qualified.contains_key(&key));
+        assert!(index.contains_key(&key));
+        let other_universe = crate::session_registry::HistoryRowKey::new(
+            "claude",
+            crate::agent_sessions::SessionLocation::Host,
+            "session-1",
+            Some("tenant-b".to_string()),
+        )
+        .unwrap();
+        assert!(!index.contains_key(&other_universe));
+    }
+
+    #[test]
+    fn malformed_v3_record_does_not_fall_back_to_legacy_raw_id() {
+        let path = tmp_index_path("malformed-v3");
+        std::fs::write(
+            &path,
+            "{\"v\":3,\"session_id\":\"same-id\",\"provider_id\":\"copilot\",\"origin\":\"agent_pane\"}\n",
+        )
+        .unwrap();
+
+        let index = load_index_from(&path);
+        assert!(!index.contains(
+            "copilot",
+            &crate::agent_sessions::SessionLocation::Host,
+            "same-id"
+        ));
+        assert!(load_records_from(&path).is_empty());
     }
 
     #[test]

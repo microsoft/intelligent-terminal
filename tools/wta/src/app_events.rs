@@ -2584,8 +2584,14 @@ impl App {
                 // `apply_alive_pane_snapshot` is only called at startup
                 // and `AliveSessionRemoved` had no path into the reducer
                 // (the bug rubber-duck Finding 2 surfaced post-B-12).
-                self.agent_sessions
-                    .apply_master_session_ended(params.session_id.0.as_ref());
+                if session_removed_matches_scope(
+                    &params,
+                    &self.current_agent_id,
+                    &self.current_agent_source.session_location(),
+                ) {
+                    self.agent_sessions
+                        .apply_master_session_ended(params.session_id.0.as_ref());
+                }
                 let reg = std::sync::Arc::clone(&self.alive);
                 tokio::task::spawn_local(async move {
                     if params.history_key.is_some() {
@@ -2727,10 +2733,22 @@ impl App {
                     // from here would apply one real hook once per live helper.
                     // What the helper still needs is the pane→session binding
                     // its OSC 133;A and autofix paths read synchronously.
-                    let _ = route_agent_event_to_registry(
+                    let origin_scope = self
+                        .pane_id
+                        .as_deref()
+                        .filter(|own_pane| own_pane.eq_ignore_ascii_case(pane_id.as_str()))
+                        .and_then(|_| {
+                            crate::agent_pane_origin::OriginScope::new(
+                                &self.current_agent_id,
+                                self.current_agent_source.session_location(),
+                                None,
+                            )
+                        });
+                    let _ = route_agent_event_to_registry_scoped(
                         &mut self.agent_sessions,
                         pane_id.as_str(),
                         &params,
+                        origin_scope.as_ref(),
                     );
                     // Diagnostics aid: surface the raw event payload in the
                     // active tab's chat so a developer can correlate hook

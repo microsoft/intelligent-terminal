@@ -995,31 +995,87 @@ async fn close_and_retire_replaced_session(
     .await
 }
 
-async fn remove_routed_registry_row(
-    state: &MasterStateInner,
+fn session_identity_for_agent(
+    agent: &AgentCli,
     session_id: &acp::schema::v1::SessionId,
 ) -> crate::session_registry::SessionIdentity {
+    crate::session_registry::SessionIdentity {
+        session_id: session_id.clone(),
+        history_key: crate::session_registry::HistoryRowKey::new(
+            &agent.resolved_agent_id,
+            agent.source.session_location(),
+            session_id.to_string(),
+            None,
+        ),
+    }
+}
+
+fn is_live_routed_registry_row(row: &crate::session_registry::SessionInfo) -> bool {
+    !matches!(
+        row.status,
+        Some(
+            crate::agent_sessions::AgentStatus::Historical
+                | crate::agent_sessions::AgentStatus::Ended
+        )
+    )
+}
+
+async fn remove_routed_registry_identity(
+    state: &MasterStateInner,
+    identity: &crate::session_registry::SessionIdentity,
+) -> bool {
     let removed = state
         .registry
-        .remove_if(session_id, &|row| {
-            row.origin == Some(crate::agent_sessions::SessionOrigin::AgentPane)
-                && !matches!(
-                    row.status,
-                    Some(
-                        crate::agent_sessions::AgentStatus::Historical
-                            | crate::agent_sessions::AgentStatus::Ended
-                    )
-                )
-        })
+        .remove_identity_if(identity, &is_live_routed_registry_row)
         .await;
-    let removed = match removed {
-        Some(row) => Some(row),
-        None => state.registry.remove(session_id).await,
-    };
-    removed
-        .as_ref()
-        .map(crate::session_registry::SessionIdentity::from_info)
-        .unwrap_or_else(|| crate::session_registry::SessionIdentity::legacy(session_id.clone()))
+    if removed.is_none() {
+        tracing::warn!(
+            target: "master_retirement",
+            session_id = %identity.session_id,
+            history_key = ?identity.history_key,
+            "exact routed registry row was not present during retirement; notifying mirrors from route identity"
+        );
+    }
+    broadcast_ext_to_helpers(
+        state,
+        crate::session_registry::build_session_removed_notification(identity),
+    )
+    .await;
+    removed.is_some()
+}
+
+async fn retire_exact_session_state_gate_held(
+    state: &MasterStateInner,
+    route_key: &LiveRouteKey,
+    identity: Option<&crate::session_registry::SessionIdentity>,
+) {
+    state
+        .pending_usage
+        .lock()
+        .await
+        .remove_for_instance(&route_key.session_id, route_key.agent_instance_id);
+    state
+        .session_mcp_capabilities
+        .remove_for_instance(&route_key.session_id, route_key.agent_instance_id)
+        .await;
+    if let Some(identity) = identity {
+        remove_routed_registry_identity(state, identity).await;
+    }
+    if identity.is_some() {
+        broadcast_ext_to_helpers(
+            state,
+            crate::session_registry::build_sessions_changed_notification(),
+        )
+        .await;
+    }
+    if !state
+        .session_to_helper
+        .lock()
+        .await
+        .contains_key(&route_key.session_id)
+    {
+        retire_unbound_session_state_gate_held(state, &route_key.session_id).await;
+    }
 }
 
 async fn close_and_retire_owned_session(
@@ -1205,26 +1261,9 @@ async fn close_and_retire_owned_session(
         routes.remove_for_instance(session_id, agent.instance_id);
     }
 
-    state
-        .pending_usage
-        .lock()
-        .await
-        .remove_for_instance(session_id, agent.instance_id);
-    state
-        .session_mcp_capabilities
-        .remove_for_instance(session_id, agent.instance_id)
-        .await;
-    let identity = remove_routed_registry_row(state, session_id).await;
-    broadcast_ext_to_helpers(
-        state,
-        crate::session_registry::build_session_removed_notification(&identity),
-    )
-    .await;
-    broadcast_ext_to_helpers(
-        state,
-        crate::session_registry::build_sessions_changed_notification(),
-    )
-    .await;
+    let route_key = LiveRouteKey::new(agent.instance_id, session_id.clone());
+    let identity = session_identity_for_agent(agent, session_id);
+    retire_exact_session_state_gate_held(state, &route_key, Some(&identity)).await;
     Ok(cleanup)
 }
 
@@ -1255,23 +1294,45 @@ async fn retire_unbound_session_state(
 async fn retire_unbound_session_state_gate_held(
     state: &MasterStateInner,
     session_id: &acp::schema::v1::SessionId,
-) {
+) -> bool {
+    if state
+        .session_to_helper
+        .lock()
+        .await
+        .contains_key(session_id)
+    {
+        tracing::warn!(
+            target: "master_retirement",
+            session_id = %session_id,
+            "skipping raw ownerless cleanup because a qualified live route remains"
+        );
+        return false;
+    }
     state.pending_usage.lock().await.remove_all(session_id);
     state
         .session_mcp_capabilities
-        .remove_session(session_id)
+        .remove_all_sessions(session_id)
         .await;
-    let identity = remove_routed_registry_row(state, session_id).await;
-    broadcast_ext_to_helpers(
-        state,
-        crate::session_registry::build_session_removed_notification(&identity),
-    )
-    .await;
-    broadcast_ext_to_helpers(
-        state,
-        crate::session_registry::build_sessions_changed_notification(),
-    )
-    .await;
+    let identities = state
+        .registry
+        .snapshot()
+        .await
+        .into_iter()
+        .filter(|row| row.session_id == *session_id && is_live_routed_registry_row(row))
+        .map(|row| crate::session_registry::SessionIdentity::from_info(&row))
+        .collect::<Vec<_>>();
+    let mut registry_changed = false;
+    for identity in identities {
+        registry_changed |= remove_routed_registry_identity(state, &identity).await;
+    }
+    if registry_changed {
+        broadcast_ext_to_helpers(
+            state,
+            crate::session_registry::build_sessions_changed_notification(),
+        )
+        .await;
+    }
+    true
 }
 
 async fn force_retire_owned_session_state(
@@ -1281,22 +1342,44 @@ async fn force_retire_owned_session_state(
 ) -> ReplacedSessionCleanup {
     let gate = session_lifecycle_gate(state, session_id).await;
     let _guard = gate.lock().await;
-    let removed = {
+    let removed_route = {
         let mut routes = state.session_to_helper.lock().await;
         let agent_instance_id = routes
             .get_for_helper(session_id, helper_id)
             .map(|route| route.agent_instance_id);
         agent_instance_id
             .and_then(|instance_id| routes.remove_for_instance(session_id, instance_id))
-            .is_some()
     };
-    if !removed {
+    let Some(removed_route) = removed_route else {
         return ReplacedSessionCleanup::NotOwned;
+    };
+    let agent = {
+        let agents = state.agents.lock().await;
+        agents
+            .values()
+            .filter_map(|cell| cell.get())
+            .find(|agent| agent.instance_id == removed_route.agent_instance_id)
+            .cloned()
+    };
+    let route_key = LiveRouteKey::new(removed_route.agent_instance_id, session_id.clone());
+    let identity = agent
+        .as_deref()
+        .map(|agent| session_identity_for_agent(agent, session_id));
+    retire_exact_session_state_gate_held(state, &route_key, identity.as_ref()).await;
+    if identity.is_none()
+        && state
+            .session_to_helper
+            .lock()
+            .await
+            .contains_key(session_id)
+    {
+        tracing::warn!(
+            target: "master_retirement",
+            session_id = %session_id,
+            agent_instance_id = %removed_route.agent_instance_id,
+            "retired an exact route without registry provenance; preserving colliding live registry rows"
+        );
     }
-    // Keep the SessionId gate across ownership validation, route removal,
-    // registry/MCP cleanup, and broadcasts. A rebound route cannot appear
-    // between the absence check and destructive cleanup.
-    retire_unbound_session_state_gate_held(state, session_id).await;
     ReplacedSessionCleanup::LogicalFallback
 }
 
@@ -1456,6 +1539,9 @@ async fn retire_tab_session(
                 agents.get(&agent_key).and_then(|cell| cell.get()).cloned()
             };
             let orphan_agent_instance_id = agent.as_ref().map(|agent| agent.instance_id);
+            let orphan_identity = agent
+                .as_deref()
+                .map(|agent| session_identity_for_agent(agent, &orphan_session_id));
 
             let cleanup = if let Some(agent) = agent {
                 let cancel = tokio::time::timeout_at(
@@ -1573,41 +1659,22 @@ async fn retire_tab_session(
                 }
             }
             state.orphaned_tabs.lock().await.remove(&tab_id);
-            state
-                .pending_usage
-                .lock()
-                .await
-                .remove_all(&orphan_session_id);
             if let Some(agent_instance_id) = orphan_agent_instance_id {
-                state
-                    .session_mcp_capabilities
-                    .remove_for_instance(&orphan_session_id, agent_instance_id)
-                    .await;
+                retire_exact_session_state_gate_held(
+                    state,
+                    &LiveRouteKey::new(agent_instance_id, orphan_session_id.clone()),
+                    orphan_identity.as_ref(),
+                )
+                .await;
             } else {
-                state
-                    .session_mcp_capabilities
-                    .remove_session(&orphan_session_id)
-                    .await;
+                retire_unbound_session_state_gate_held(state, &orphan_session_id).await;
             }
-            let identity = remove_routed_registry_row(state, &orphan_session_id).await;
             state.helper_meta.lock().await.remove(&orphan_helper_id);
             state
                 .pending_session_helpers
                 .lock()
                 .await
                 .remove(&orphan_helper_id);
-            // Disconnect consumes the closing tombstone after its orphan
-            // publication phase has observed this physical retirement.
-            broadcast_ext_to_helpers(
-                state,
-                crate::session_registry::build_session_removed_notification(&identity),
-            )
-            .await;
-            broadcast_ext_to_helpers(
-                state,
-                crate::session_registry::build_sessions_changed_notification(),
-            )
-            .await;
             tracing::info!(
                 target: "master",
                 tab_id,
@@ -6430,32 +6497,19 @@ async fn drop_sessions_for_helper(
         if !removed {
             continue;
         }
-        state
-            .pending_usage
-            .lock()
-            .await
-            .remove_for_instance(&session_id, agent_instance_id);
-        state
-            .session_mcp_capabilities
-            .remove_for_instance(&session_id, agent_instance_id)
-            .await;
-        let identity = remove_routed_registry_row(state, &session_id).await;
-        // Broadcast removal so every still-attached helper drops the
-        // row from its mirror. The disconnecting helper itself has
-        // (almost always) already been removed from
-        // `helper_ext_subscribers` by `serve_helper`'s cleanup path
-        // before this is called, so the broadcast only reaches the
-        // peers it should reach.
-        broadcast_ext_to_helpers(
-            state,
-            crate::session_registry::build_session_removed_notification(&identity),
-        )
-        .await;
-        broadcast_ext_to_helpers(
-            state,
-            crate::session_registry::build_sessions_changed_notification(),
-        )
-        .await;
+        let agent = {
+            let agents = state.agents.lock().await;
+            agents
+                .values()
+                .filter_map(|cell| cell.get())
+                .find(|agent| agent.instance_id == agent_instance_id)
+                .cloned()
+        };
+        let route_key = LiveRouteKey::new(agent_instance_id, session_id.clone());
+        let identity = agent
+            .as_deref()
+            .map(|agent| session_identity_for_agent(agent, &session_id));
+        retire_exact_session_state_gate_held(state, &route_key, identity.as_ref()).await;
         victims.push(session_id);
     }
     victims
@@ -6610,21 +6664,15 @@ async fn host_history_via_acp(
     // Master routes every session/new, so its live `session_to_helper` keys are the
     // authoritative live-pane set — union them in to close that race.
     let mut idx = crate::agent_pane_origin::load_default_index();
-    for sid in state.session_to_helper.lock().await.keys() {
-        if let Some(key) = crate::session_registry::HistoryRowKey::new(
-            &agent.resolved_agent_id,
-            agent.source.session_location(),
-            sid.to_string(),
-            None,
-        ) {
-            idx.insert_qualified(
-                key,
-                crate::agent_pane_origin::OriginRecord {
-                    pane_session_id: None,
-                },
-            );
-        }
-    }
+    let routes = state.session_to_helper.lock().await;
+    extend_live_origin_index_for_agent(
+        &mut idx,
+        &routes,
+        agent.instance_id,
+        &agent.resolved_agent_id,
+        agent.source.session_location(),
+    );
+    drop(routes);
     Some(crate::session_history::classify_and_map(
         &sessions,
         &idx,
@@ -6637,6 +6685,33 @@ async fn host_history_via_acp(
         agent.source.session_location(),
         &cli,
     ))
+}
+
+fn extend_live_origin_index_for_agent(
+    idx: &mut crate::agent_pane_origin::OriginIndex,
+    routes: &LiveRouteTable,
+    agent_instance_id: AgentInstanceId,
+    provider_id: &str,
+    location: crate::agent_sessions::SessionLocation,
+) {
+    for (route_key, _) in routes.iter_qualified() {
+        if route_key.agent_instance_id != agent_instance_id {
+            continue;
+        }
+        if let Some(key) = crate::session_registry::HistoryRowKey::new(
+            provider_id,
+            location.clone(),
+            route_key.session_id.to_string(),
+            None,
+        ) {
+            idx.insert_qualified(
+                key,
+                crate::agent_pane_origin::OriginRecord {
+                    pane_session_id: None,
+                },
+            );
+        }
+    }
 }
 
 /// Raw host `session/list` as session_id → title, UNFILTERED (includes Class-A
