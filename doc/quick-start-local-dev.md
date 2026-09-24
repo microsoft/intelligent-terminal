@@ -27,7 +27,9 @@ the setup needed.
 
    For instance,
    ```powershell
-   cargo build --target x86_64-pc-windows-msvc --manifest-path tools/wta/Cargo.toml
+   Push-Location tools/wta
+   cargo build --target x86_64-pc-windows-msvc
+   Pop-Location
    ```
 2. In Visual Studio:
    - Set startup project: **`CascadiaPackage`**
@@ -43,7 +45,7 @@ first build is slow; later ones are incremental.
 
 | Changed | Do this |
 |---------|---------|
-| **Rust** (`tools/wta/`) | Rebuild via `cargo build`. For instance,<br>`cargo build --target x86_64-pc-windows-msvc --manifest-path tools/wta/Cargo.toml` |
+| **Rust** (`tools/wta/`) | Rebuild from `tools/wta` so Cargo uses the pinned toolchain. For instance,<br>`Push-Location tools/wta; cargo build --target x86_64-pc-windows-msvc; Pop-Location` |
 | **C++** (`src/`) | Press **F5** in Visual Studio |
 
 `cargo build` is incremental (seconds for a small change). To see a WTA change inside the running
@@ -56,7 +58,7 @@ Terminal (agent pane, autofix), press **F5** afterward so the new `wta.exe` is c
 
 | Side | Command |
 |------|---------|
-| **Rust** | `cargo test --manifest-path tools/wta/Cargo.toml` |
+| **Rust** | `Push-Location tools/wta; cargo test; Pop-Location` |
 | **C++** (TAEF) | `runut.cmd` (unit), `runft.cmd` (feature), `runuia.cmd` (UIA), from a dev environment |
 
 Run one C++ test with `te.exe <Tests.dll> /name:<pattern>`. See [building.md](./building.md) for
