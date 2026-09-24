@@ -17,7 +17,11 @@ BeforeDiscovery { $script:Ready = [bool](Get-AppxPackage | Where-Object { $_.Nam
 Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
+            agentSessionManagementEnabled = $false
+            autoErrorDetectionEnabled = $false
+            autoFixEnabled = $false
+        }
 
         # Prefer the bundle inside the installed package: that is the artifact that
         # actually ships, so a guard that landed in source but never made it into the
@@ -37,6 +41,7 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
             claude  = 'claude\wt-agent-hooks\hooks\hooks.json'
             gemini  = 'gemini-extension\hooks\hooks.json'
             codex   = 'codex\wt-agent-hooks\hooks\hooks.json'
+            antigravity = 'antigravity\hooks.json'
         }
 
         # Claude pins its hooks to bash (`"shell": "bash"`); without one installed the
@@ -55,6 +60,17 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
             # Guarded forms terminate the event name with ';' (bash) or ' }' (PowerShell
             # try-block), so the delimiter class must cover both, not just whitespace.
             $needle = '--event ' + [regex]::Escape($Event) + '(?=[\s;]|$)'
+            if ($Cli -eq 'antigravity') {
+                foreach ($topic in $json.'wt-agent-hooks'.PSObject.Properties) {
+                    foreach ($handler in $topic.Value) {
+                        $handlers = if ($handler.hooks) { $handler.hooks } else { @($handler) }
+                        foreach ($hook in $handlers) {
+                            if ($hook.command -match $needle) { return $hook }
+                        }
+                    }
+                }
+                throw "no shipped hook for '$Cli' / '$Event'"
+            }
             foreach ($topic in $json.hooks.PSObject.Properties) {
                 foreach ($matcher in $topic.Value) {
                     foreach ($h in $matcher.hooks) {
@@ -108,6 +124,185 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
     }
 
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
+
+    It 'Antigravity hooks preserve CLI identity without broadcasting provider metadata' {
+        $originalPane = (Get-ActivePane -App $script:app).session_id
+        $paneId = (New-WtTab -App $script:app -Command 'pwsh.exe -NoLogo -NoProfile').session_id
+        $sessionId = "antigravity-hook-$([guid]::NewGuid())"
+        $secret = 'provider-metadata-must-not-cross-the-bridge'
+        $cwd = 'C:\antigravity-hook\' + [char]0x6D4B + [char]0x8BD5
+        $payloadFile = script:Write-HookPayload -Name 'antigravity-metadata' -Dir $TestDrive -Json (@{
+            conversationId = $sessionId
+            workspacePaths = @($cwd)
+            transcriptPath = 'C:\test\.gemini\antigravity-cli\brain\session\transcript.jsonl'
+            artifactDirectoryPath = $secret
+            modelName = $secret
+            injectSteps = @(@{ userMessage = $secret })
+            invocationNum = 0
+        } | ConvertTo-Json -Depth 10 -Compress)
+        $listener = Start-WtEventListener -App $script:app -WaitForReady
+        try {
+            Invoke-RunCommand -App $script:app -SessionId $paneId -SettleSec 3 `
+                -Command "Get-Content -Raw -LiteralPath '$payloadFile' | wtcli.exe agent-hook --cli-source AnTiGrAvItY --event agent.prompt.submit" | Out-Null
+            $event = Wait-WtEvent -Listener $listener -TimeoutSec 20 -Predicate {
+                $_.method -eq 'agent_event' -and $_.params.cli_source -eq 'antigravity' -and $_.params.pane_id -eq $paneId
+            }
+            $event.params.agent_session_id | Should -BeExactly $sessionId
+            $event.params.cli_source | Should -BeExactly 'antigravity'
+            $event.params.payload.cwd | Should -BeExactly $cwd
+            ($event.params.payload | ConvertTo-Json -Depth 10 -Compress) |
+                Should -Not -Match ([regex]::Escape($secret))
+            foreach ($key in @('workspacePaths', 'transcriptPath', 'artifactDirectoryPath', 'modelName', 'injectSteps')) {
+                @($event.params.payload.PSObject.Properties.Name) | Should -Not -Contain $key
+            }
+        }
+        finally {
+            Stop-WtEventListener -Listener $listener
+            Set-WtPaneFocus -App $script:app -SessionId $originalPane
+        }
+    }
+
+    It 'Antigravity rejects unsafe conversation IDs before hook publication' {
+        $paneId = (Get-ActivePane -App $script:app).session_id
+        $marker = [guid]::NewGuid().ToString('N')
+        $unsafe = @("bad;$marker", "bad&$marker", "bad`"$marker", "bad $marker", "bad%$marker", "bad`n$marker", ('x' * 257))
+        $controlId = "safe-$marker"
+        $listener = Start-WtEventListener -App $script:app -WaitForReady
+        try {
+            $index = 0
+            foreach ($id in @($unsafe) + @($controlId)) {
+                $file = script:Write-HookPayload -Name "conversation-id-$index" -Dir $TestDrive -Json (@{
+                    conversationId = $id
+                    workspacePaths = @('C:\antigravity-hook')
+                    transcriptPath = 'C:\test\.gemini\antigravity-cli\brain\session\transcript.jsonl'
+                } | ConvertTo-Json -Compress)
+                Invoke-RunCommand -App $script:app -SessionId $paneId -SettleSec 1 `
+                    -Command "Get-Content -Raw -LiteralPath '$file' | wtcli.exe agent-hook --cli-source antigravity --event agent.prompt.submit" | Out-Null
+                $index++
+            }
+            Wait-WtEvent -Listener $listener -TimeoutSec 20 -Predicate {
+                $_.method -eq 'agent_event' -and $_.params.agent_session_id -eq $controlId
+            } | Should -Not -BeNullOrEmpty
+            @(Get-WtEvents -Listener $listener -Predicate {
+                $_.method -eq 'agent_event' -and $_.params.agent_session_id -in $unsafe
+            }).Count | Should -Be 0
+        }
+        finally {
+            Stop-WtEventListener -Listener $listener
+        }
+    }
+
+    It 'Antigravity hooks retain the CLI cwd when workspace roots are absent' {
+        $paneId = (Get-ActivePane -App $script:app).session_id
+        $sessionId = "empty-workspaces-$([guid]::NewGuid())"
+        $file = script:Write-HookPayload -Name 'empty-workspace-roots' -Dir $TestDrive -Json (@{
+            conversationId = $sessionId
+            workspacePaths = @()
+            transcriptPath = 'C:\test\.gemini\antigravity-cli\brain\session\transcript.jsonl'
+        } | ConvertTo-Json -Compress)
+        $listener = Start-WtEventListener -App $script:app -WaitForReady
+        try {
+            Invoke-RunCommand -App $script:app -SessionId $paneId -SettleSec 2 `
+                -Command "`$savedDistro=`$env:WSL_DISTRO_NAME; `$savedCwd=`$env:WTA_HOOK_CWD; Push-Location '$TestDrive'; try { `$env:WSL_DISTRO_NAME='Unrelated-WSL'; `$env:WTA_HOOK_CWD=''; Get-Content -Raw -LiteralPath '$file' | wtcli.exe agent-hook --cli-source antigravity --event agent.prompt.submit } finally { `$env:WSL_DISTRO_NAME=`$savedDistro; `$env:WTA_HOOK_CWD=`$savedCwd; Pop-Location }" | Out-Null
+            $event = Wait-WtEvent -Listener $listener -TimeoutSec 20 -Predicate {
+                $_.method -eq 'agent_event' -and $_.params.agent_session_id -eq $sessionId
+            }
+            $event.params.payload.cwd | Should -Be $TestDrive
+            @($event.params.PSObject.Properties.Name) | Should -Not -Contain 'wsl_distro'
+        }
+        finally {
+            Stop-WtEventListener -Listener $listener
+        }
+    }
+
+    It 'Antigravity rejects unsafe and unregistered WSL source metadata' {
+        $paneId = (Get-ActivePane -App $script:app).session_id
+        $marker = [guid]::NewGuid().ToString('N')
+        $ids = @()
+        $control = "source-control-$marker"
+        $listener = Start-WtEventListener -App $script:app -WaitForReady
+        try {
+            $index = 0
+            foreach ($distro in @('Ubuntu&echo marker', 'Ubuntu;echo marker', 'Ubuntu extra', "it-unregistered-$marker")) {
+                $id = "source-invalid-$index-$marker"
+                $ids += $id
+                $file = script:Write-HookPayload -Name "source-id-$index" -Dir $TestDrive -Json (@{
+                    conversationId = $id
+                    workspacePaths = @('/tmp')
+                    transcriptPath = '/test/.gemini/antigravity-cli/brain/session/transcript.jsonl'
+                } | ConvertTo-Json -Compress)
+                $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($distro))
+                $command = "`$savedDistro=`$env:WSL_DISTRO_NAME; `$savedCwd=`$env:WTA_HOOK_CWD; try { `$env:WSL_DISTRO_NAME=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$encoded')); `$env:WTA_HOOK_CWD='/tmp'; Get-Content -Raw -LiteralPath '$file' | wtcli.exe agent-hook --cli-source antigravity --event agent.prompt.submit } finally { `$env:WSL_DISTRO_NAME=`$savedDistro; `$env:WTA_HOOK_CWD=`$savedCwd }"
+                Invoke-RunCommand -App $script:app -SessionId $paneId -Command $command -SettleSec 1 | Out-Null
+                $index++
+            }
+            $file = script:Write-HookPayload -Name 'source-control' -Dir $TestDrive -Json (@{
+                conversationId = $control
+                workspacePaths = @($TestDrive)
+                transcriptPath = 'C:\test\.gemini\antigravity-cli\brain\session\transcript.jsonl'
+            } | ConvertTo-Json -Compress)
+            Invoke-RunCommand -App $script:app -SessionId $paneId -SettleSec 1 `
+                -Command "Get-Content -Raw -LiteralPath '$file' | wtcli.exe agent-hook --cli-source antigravity --event agent.prompt.submit" | Out-Null
+            Wait-WtEvent -Listener $listener -TimeoutSec 20 -Predicate {
+                $_.method -eq 'agent_event' -and $_.params.agent_session_id -eq $control
+            } | Should -Not -BeNullOrEmpty
+            @(Get-WtEvents -Listener $listener -Predicate {
+                $_.method -eq 'agent_event' -and $_.params.agent_session_id -in $ids
+            }).Count | Should -Be 0
+        }
+        finally {
+            Stop-WtEventListener -Listener $listener
+        }
+    }
+
+    It 'Antigravity stop hooks preserve working and error states' {
+        $originalPane = (Get-ActivePane -App $script:app).session_id
+        $paneId = (New-WtTab -App $script:app -Command 'pwsh.exe -NoLogo -NoProfile').session_id
+        $waitingId = "antigravity-working-$([guid]::NewGuid())"
+        $idleId = "antigravity-idle-$([guid]::NewGuid())"
+        $errorId = "antigravity-error-$([guid]::NewGuid())"
+        $ideId = "antigravity-ide-$([guid]::NewGuid())"
+        $listener = Start-WtEventListener -App $script:app -WaitForReady
+        try {
+            foreach ($sample in @(
+                @{ id = $waitingId; idle = $false; error = ''; product = 'antigravity-cli' },
+                @{ id = $ideId; idle = $true; error = ''; product = 'antigravity-ide' },
+                @{ id = $idleId; idle = $true; error = ''; product = 'antigravity-cli' },
+                @{ id = $errorId; idle = $true; error = 'controlled provider error'; product = 'antigravity-cli' }
+            )) {
+                $payloadFile = script:Write-HookPayload -Name $sample.id -Dir $TestDrive -Json (@{
+                    conversationId = $sample.id
+                    workspacePaths = @('C:\antigravity-hook')
+                    transcriptPath = "C:\test\.gemini\$($sample.product)\brain\session\transcript.jsonl"
+                    fullyIdle = $sample.idle
+                    error = $sample.error
+                    terminationReason = if ($sample.error) { 'ERROR' } else { 'NO_TOOL_CALL' }
+                } | ConvertTo-Json -Compress)
+                Invoke-RunCommand -App $script:app -SessionId $paneId -SettleSec 3 `
+                    -Command "Get-Content -Raw -LiteralPath '$payloadFile' | wtcli.exe agent-hook --cli-source antigravity --event agent.stop" | Out-Null
+            }
+            $idle = Wait-WtEvent -Listener $listener -TimeoutSec 20 -Predicate {
+                $_.method -eq 'agent_event' -and
+                    ($_.params.agent_session_id -eq $idleId -or $_.params.payload.conversationId -eq $idleId)
+            }
+            $idle.params.event | Should -Be 'agent.stop'
+            @(Get-WtEvents -Listener $listener -Predicate {
+                $_.method -eq 'agent_event' -and
+                    ($_.params.agent_session_id -in @($waitingId, $ideId) -or
+                     $_.params.payload.conversationId -in @($waitingId, $ideId))
+            }).Count | Should -Be 0 -Because 'unfinished background work and non-CLI frontends must not terminate the CLI status'
+            $errorEvent = Wait-WtEvent -Listener $listener -TimeoutSec 20 -Predicate {
+                $_.method -eq 'agent_event' -and
+                    ($_.params.agent_session_id -eq $errorId -or $_.params.payload.conversationId -eq $errorId)
+            }
+            $errorEvent.params.event | Should -Be 'agent.error'
+            $errorEvent.params.payload.error | Should -BeExactly 'controlled provider error'
+        }
+        finally {
+            Stop-WtEventListener -Listener $listener
+            Set-WtPaneFocus -App $script:app -SessionId $originalPane
+        }
+    }
 
     It 'Native hook bridge publishes events (wtcli agent-hook publishes a pane-scoped, redacted agent event)' {
         $paneId = (Get-ActivePane -App $script:app).session_id
@@ -212,7 +407,7 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
             "Get-Content -Raw -LiteralPath '$gated' | wtcli.exe agent-hook --cli-source copilot --event agent.stop; " +
             '"GATED_EXIT=$LASTEXITCODE"'
             $out = Invoke-RunCommand -App $script:app -SessionId $paneId -Command $gatedCmd -SettleSec 10
-            $out | Should -Match 'GATED_EXIT=0' -Because 'a gated hook must still succeed, or a fail-closed CLI would break'
+            Assert-Pane -App $script:app -SessionId $paneId -Match 'GATED_EXIT=0' -TimeoutSec 10
 
             # Positive control: the same pane with the gate restored. Waiting for THIS
             # event is what makes the negative assertion below sound — it proves the
@@ -261,7 +456,7 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
             $cmd = "Get-Content -Raw -LiteralPath '$payload' | wtcli.exe agent-hook --cli-source copilot --event agent.session.start; " +
             '"BOUND" + "_EXIT=$LASTEXITCODE"'
             $out = Invoke-RunCommand -App $script:app -SessionId $paneId -Command $cmd -SettleSec 20
-            $out | Should -Match 'BOUND_EXIT=0' -Because 'the bridge must never fail its CLI, whatever it decides to publish'
+            Assert-Pane -App $script:app -SessionId $paneId -Match 'BOUND_EXIT=0' -TimeoutSec 10
 
             # A control event proves the listener was live, so "no oversized
             # event arrived" means it was dropped rather than merely missed.
@@ -309,21 +504,32 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
             @{ Cli = 'claude'; Variant = 'auto'; Label = 'claude (shell-pinned bash guard)' }
             @{ Cli = 'gemini'; Variant = 'auto'; Label = 'gemini (PowerShell try/catch)' }
             @{ Cli = 'codex'; Variant = 'auto'; Label = 'codex (unguarded)' }
+            @{ Cli = 'antigravity'; Variant = 'auto'; Label = 'Antigravity (explicit PowerShell guard)' }
         )
 
         $listener = Start-WtEventListener -App $script:app
         try {
             foreach ($c in $cases) {
                 $sid = "shipped-$($c.Cli)-$($c.Variant)-$([guid]::NewGuid())"
-                $file = script:Write-HookPayload -Name "shipped-$($c.Cli)-$($c.Variant)" -Dir $TestDrive -Json (@{ session_id = $sid } | ConvertTo-Json -Compress)
-                $invocation = script:New-HookInvocation -Cli $c.Cli -Event 'agent.session.start' -PayloadFile $file -Variant $c.Variant
+                $payload = @{ session_id = $sid }
+                $topic = 'agent.session.start'
+                if ($c.Cli -eq 'antigravity') {
+                    $payload = @{
+                        conversationId = $sid
+                        workspacePaths = @('C:\antigravity-hook')
+                        transcriptPath = 'C:\test\.gemini\antigravity-cli\brain\session\transcript.jsonl'
+                    }
+                    $topic = 'agent.prompt.submit'
+                }
+                $file = script:Write-HookPayload -Name "shipped-$($c.Cli)-$($c.Variant)" -Dir $TestDrive -Json ($payload | ConvertTo-Json -Compress)
+                $invocation = script:New-HookInvocation -Cli $c.Cli -Event $topic -PayloadFile $file -Variant $c.Variant
                 if (-not $invocation) {
                     Set-ItResult -Inconclusive -Because "no Git Bash on this machine, so the bash-dispatched bundle ($($c.Label)) cannot be exercised"
                     return
                 }
 
                 $out = Invoke-RunCommand -App $script:app -SessionId $paneId -Command ($invocation + '; "SHIPPED_EXIT=$LASTEXITCODE"') -SettleSec 15
-                $out | Should -Match 'SHIPPED_EXIT=0' -Because "the shipped hook for $($c.Label) must never fail its CLI"
+                Assert-Pane -App $script:app -SessionId $paneId -Match 'SHIPPED_EXIT=0' -TimeoutSec 10
 
                 # Wait-WtEvent throws on timeout, which would surface as a bare "timed out"
                 # with no hint of WHICH bundle broke. Catching it lets the assertion below

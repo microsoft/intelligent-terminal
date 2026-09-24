@@ -80,7 +80,7 @@ winget install --id Microsoft.IntelligentTerminal -e
 
 ## Get Started
 
-1. On first launch, choose your agent. Intelligent Terminal auto-detects several [ACP-compatible](https://agentclientprotocol.com/get-started/agents) agent CLIs on your machine (Copilot/Claude/Codex/Gemini/OpenCode). If none are found, it defaults to GitHub Copilot CLI and installs it for you via WinGet.
+1. On first launch, choose your agent. Intelligent Terminal auto-detects several [ACP-compatible](https://agentclientprotocol.com/get-started/agents) agents on your machine (Copilot/Claude/Codex/Gemini/OpenCode/Antigravity). Antigravity uses its separately installed native ACP server, not the ordinary `agy` CLI. If none are found, it defaults to GitHub Copilot CLI and installs it for you via WinGet.
 2. If you aren't already authenticated, the agent pane walks you through sign-in. For GitHub Copilot Enterprise, press <kbd>E</kbd> at the sign-in prompt and enter your enterprise host (for example, `your-org.ghe.com`); the last host you used is remembered.
 3. Start asking questions and using the agent pane for assistance. The agent has context on your shell output, no copy-pasting needed. The agent pane does not run commands in your shell without your explicit approval: you choose whether to run its suggested command, copy it into your shell to run yourself, or dismiss it.
 
@@ -124,6 +124,14 @@ Everything is configurable through Intelligent Terminal settings, under "Agent" 
 | Token usage display | Show or hide token usage and cost in the agent status bar |
 
 You can also pin a specific agent to a profile. Open a profile in Settings (for example, "PowerShell" or "Ubuntu") and set the agent you want its agent pane to use. For a WSL profile, the picker also lists agents installed inside that distro, so an Ubuntu profile can run a Linux-side agent. Profiles you don't configure keep using the global agent.
+
+Google Antigravity is supported in the agent pane on Windows and inside WSL.
+Install the native ACP package for the selected source and keep its server directory
+on that source's `PATH`; see [Antigravity setup](./doc/installing-dependencies.md#google-antigravity-acp-windows-and-wsl).
+Authentication, model selection, and permission modes use the server's ACP APIs.
+Install the separate `agy` CLI for interactive delegation and shell-session hooks.
+ACP conversations and CLI conversations retain their own source and resume path;
+the upstream ACP interface does not enumerate the CLI's cold-start history.
 
 When **Settings > Agents > Sessions** is off, session management shows a subtle reminder below its title to turn it on for the best experience. Existing hooks are not removed and may continue to report activity; the setting controls their installation and updates. The reminder disappears when Sessions is enabled and is not shown when organization policy prevents enabling it.
 

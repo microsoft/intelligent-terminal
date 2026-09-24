@@ -129,10 +129,9 @@ pub struct RowSnapshot {
     /// this is sourced from `AgentProfile::resume_flag` rather than
     /// assumed.
     pub cli_supports_resume_flag: bool,
-    /// Whether the session lives inside a WSL distro. The helper and
-    /// the agent run on the host, so ACP `session/load` can't rehydrate
-    /// a Linux session into a host agent pane — WSL rows always resume
-    /// through the in-distro CLI's own resume flag.
+    /// Whether CLI resume can read the provider's ACP conversation store.
+    pub cli_can_resume_acp_sessions: bool,
+    /// Whether the session lives inside a WSL distro.
     pub is_wsl: bool,
 }
 
@@ -160,9 +159,9 @@ pub fn decide_enter_action(row: &RowSnapshot) -> EnterAction {
             // One resume style per origin:
             //   Class A (AgentPane): ResumeInAgentPane.
             //   Class B (Unknown):   ResumeCliFlag.
-            // WSL rows are always CLI-flag: the agent pane is host-side.
+            // Preserve the existing WSL CLI route only for shared stores.
             let want_agent_pane = match row.origin {
-                SessionOrigin::AgentPane => !row.is_wsl,
+                SessionOrigin::AgentPane => !row.is_wsl || !row.cli_can_resume_acp_sessions,
                 SessionOrigin::Unknown => false,
             };
 
@@ -229,6 +228,7 @@ mod tests {
             cli_source: cli,
             load_session_supported,
             cli_supports_resume_flag,
+            cli_can_resume_acp_sessions: true,
             is_wsl: false,
         }
     }

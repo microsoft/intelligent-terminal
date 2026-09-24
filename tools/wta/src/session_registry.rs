@@ -731,6 +731,7 @@ impl From<&crate::agent_sessions::CliSource> for SessionHookCliSource {
             crate::agent_sessions::CliSource::Copilot => Self::Known("Copilot".to_string()),
             crate::agent_sessions::CliSource::Gemini => Self::Known("Gemini".to_string()),
             crate::agent_sessions::CliSource::OpenCode => Self::Known("OpenCode".to_string()),
+            crate::agent_sessions::CliSource::Antigravity => Self::Known("Antigravity".to_string()),
             crate::agent_sessions::CliSource::Unknown(value) => Self::Unknown {
                 value: value.clone(),
             },
@@ -747,6 +748,7 @@ impl From<SessionHookCliSource> for crate::agent_sessions::CliSource {
                 "Copilot" | "copilot" => Self::Copilot,
                 "Gemini" | "gemini" => Self::Gemini,
                 "OpenCode" | "opencode" => Self::OpenCode,
+                "Antigravity" | "antigravity" => Self::Antigravity,
                 other => Self::Unknown(other.to_string()),
             },
             SessionHookCliSource::Unknown { value } => Self::Unknown(value),
@@ -4139,6 +4141,20 @@ mod tests {
         assert!(matches!(wire, SessionHookCliSource::Known(ref s) if s == "OpenCode"));
         let typed: CliSource = wire.into();
         assert_eq!(typed, CliSource::OpenCode);
+    }
+
+    #[test]
+    fn antigravity_session_source_survives_the_helper_master_boundary() {
+        use crate::agent_sessions::CliSource;
+        let source = CliSource::from_agent_id("antigravity")
+            .expect("the built-in provider must have a typed session source");
+        assert_eq!(CliSource::parse(Some("ANTIGRAVITY")), source);
+        let wire: SessionHookCliSource = (&source).into();
+        assert_eq!(wire, SessionHookCliSource::Known("Antigravity".to_string()));
+        let restored: CliSource = wire.into();
+        assert_eq!(restored, source);
+        let lowercase: CliSource = SessionHookCliSource::Known("antigravity".to_string()).into();
+        assert_eq!(lowercase, source);
     }
 
     #[test]

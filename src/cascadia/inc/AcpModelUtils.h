@@ -14,6 +14,7 @@
 #include <json/json.h>
 
 #include "CustomModelSelection.h"
+#include "AgentRegistry.h"
 
 namespace Microsoft::Terminal::AcpModels
 {
@@ -54,8 +55,13 @@ namespace Microsoft::Terminal::AcpModels
 
     inline std::wstring BuildAgentCommandLine(
         const std::wstring_view agentId,
-        const std::optional<std::wstring_view> model = std::nullopt)
+        const std::optional<std::wstring_view> model = std::nullopt,
+        const bool runsInWsl = false)
     {
+        if (::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(agentId, L"antigravity"))
+        {
+            return runsInWsl ? L"agy_acp_server.par --uid=" : L"agy_acp_server.exe";
+        }
         if (agentId == L"claude")
         {
             return L"npx -y @agentclientprotocol/claude-agent-acp@0.65.0";

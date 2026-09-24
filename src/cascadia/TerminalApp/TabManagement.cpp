@@ -654,8 +654,9 @@ namespace winrt::TerminalApp::implementation
             auto resume = binding->second.agent.empty() ?
                               winrt::hstring{} :
                               winrt::hstring{ Restore::BuildResumeCommandline(
-                                  binding->second.agent,
-                                  binding->second.sessionId) };
+                                  binding->second.backend.empty() ? binding->second.agent : binding->second.backend,
+                                  binding->second.sessionId,
+                                  binding->second.cwd) };
             if (resume.empty())
             {
                 resume = binding->second.resumeCommandline;

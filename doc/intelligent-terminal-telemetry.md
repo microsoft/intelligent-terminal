@@ -124,7 +124,7 @@ omitted field. In particular, failed `AcpNewSessionComplete` events carry an
 empty `SessionId`.
 
 The agent category set is `copilot`, `claude`, `codex`, `gemini`,
-`opencode`, and `custom`. WTA and the App snapshot bucket unrecognized agent
+`opencode`, `antigravity`, and `custom`. WTA and the App snapshot bucket unrecognized agent
 identifiers as `custom` in session snapshots; Editor probes bucket custom-provider IDs as
 `custom`. `DelegateAgentId` additionally permits `none` when no delegate
 is resolved. Startup configuration and provider-change events distinguish
@@ -224,7 +224,7 @@ the same process and windows that never connect an agent session.
 | Field | Type | Meaning / values |
 |---|---|---|
 | `TabsInTitlebar` | Bool | Existing configured tabs-in-titlebar field |
-| `PrimaryProvider` | String | Configured primary provider: `copilot`, `claude`, `codex`, `gemini`, `opencode`, `custom`, `unknown`, or `none` |
+| `PrimaryProvider` | String | Configured primary provider: `copilot`, `claude`, `codex`, `gemini`, `opencode`, `antigravity`, `custom`, `unknown`, or `none` |
 | `PrimaryEffectiveProvider` | String | Settings-layer effective primary provider in the same bucket set, after fallback/policy resolution |
 | `PrimaryCustomConfiguredCount` | UInt32 | Distinct executable-derived custom IDs in the primary role's plural and legacy command settings |
 | `PrimaryCustomSelectedCommandConfigured` | Bool | Whether that selected custom ID has a matching configured command entry |
@@ -598,7 +598,7 @@ CLI.
 | Field | Type | Meaning / values |
 |---|---|---|
 | `Operation` | String | `Install` or `Uninstall` |
-| `Cli` | String | `copilot`, `claude`, `gemini`, `codex`, or `opencode` |
+| `Cli` | String | `copilot`, `claude`, `gemini`, `codex`, `opencode`, or `antigravity` |
 | `Outcome` | String | Install: `installed`, `skipped`, `failed`; uninstall: `succeeded`, `skipped`, `failed` |
 
 One command can affect multiple CLIs and emit multiple events.
@@ -624,7 +624,7 @@ actually applied, so a later valid provider change is still counted.
 | Field | Type | Meaning / values |
 |---|---|---|
 | `role` | String | `primary` or `delegate` |
-| `from` | String | Previous configured provider: `copilot`, `claude`, `codex`, `gemini`, `opencode`, `custom`, `unknown`, or `none` |
+| `from` | String | Previous configured provider: `copilot`, `claude`, `codex`, `gemini`, `opencode`, `antigravity`, `custom`, `unknown`, or `none` |
 | `to` | String | New configured provider, using the same bucket set |
 
 This covers accepted Settings UI saves and external settings-file changes,

@@ -11,7 +11,7 @@ This document exists for the circumstances where the FRE cannot do the job
 on its own, including:
 
 - You are switching to (or adding) **Claude Code**, **OpenAI Codex**,
-  **Gemini**, or **OpenCode** — agent CLIs the FRE does **not** install for you.
+  **Gemini**, **OpenCode**, or **Antigravity** — agent CLIs the FRE does **not** install for you.
 - An FRE step failed — for example, `winget` is missing or blocked, your
   PowerShell execution policy is locked down by Group Policy, or the
   Node.js install did not pick up on `PATH` — and you need to finish the
@@ -29,6 +29,7 @@ on its own, including:
    - 3.2 [Claude Code (bring your own)](#32-claude-code-bring-your-own)
    - 3.3 [OpenAI Codex (bring your own)](#33-openai-codex-bring-your-own)
    - 3.4 [Gemini CLI (bring your own)](#34-gemini-cli-bring-your-own)
+   - [Google Antigravity (Windows and WSL)](#google-antigravity-acp-windows-and-wsl)
    - 3.5 [Signing in to your agent](#35-signing-in-to-your-agent)
    - 3.6 [Agent hooks for session management](#36-agent-hooks-for-session-management)
 4. [Shell integration](#4-shell-integration) — supported shells + setup
@@ -125,25 +126,27 @@ finishes, close and reopen your terminal so `PATH` picks up `node.exe`,
 
 ## Agent CLIs
 
-Intelligent Terminal supports five agents out of the box — **GitHub
-Copilot**, **Claude Code**, **OpenAI Codex**, **Gemini**, and **OpenCode**. The
+Intelligent Terminal supports six agents out of the box — **GitHub
+Copilot**, **Claude Code**, **OpenAI Codex**, **Gemini**, **OpenCode**, and **Antigravity**. The
 agent pane can install **GitHub Copilot** (the default) after the FRE;
-the other four are **bring-your-own** — install the CLI yourself
+the others are **bring-your-own** — install the CLI yourself
 (sub-sections below) before selecting it.
 
-Intelligent Terminal talks to all five through the
+Intelligent Terminal talks to all six through the
 [**Agent Client Protocol (ACP)**](https://agentclientprotocol.com/get-started/agents).
 **Copilot**, **Gemini**, and **OpenCode** speak ACP natively, so no extra layer is
 required. **Claude Code** and **OpenAI Codex** do not speak ACP directly
 — Intelligent Terminal launches them through an `npx` wrapper that is
 fetched on demand at run time, so its only prerequisite is Node.js.
+Antigravity ships a separate native ACP server; neither it nor the native `agy`
+CLI requires Node.js or a user-installed Python runtime.
 
 > [!NOTE]
 > **Bringing your own ACP agent.** Any CLI that speaks ACP can also be
 > wired up from **Settings → AI Agents → Add custom agent**. Custom
 > agents work in the agent pane today, but **session management** (the
 > multi-session sidebar in the agent pane) is not yet supported for
-> custom agents — only the five built-in agents above get the full
+> custom agents — the built-in agents above provide the supported
 > session experience.
 
 ### 3.1 GitHub Copilot CLI
@@ -312,6 +315,85 @@ Gemini speaks ACP natively, so no wrapper is required.
 
 ---
 
+### Google Antigravity ACP (Windows and WSL)
+
+Antigravity's ACP server is distributed separately from the interactive `agy` CLI.
+Download the platform-specific `antigravity-acp` archive from the
+[official ACP Registry](https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json).
+The integration uses the standalone server's stdio protocol; do not substitute
+`agy`, `agy -p`, or an invented `agy --acp` invocation.
+
+| Execution source | Files to keep together | Native ACP command |
+| --- | --- | --- |
+| Windows | `agy_acp_server.exe`, `localharness_external.exe` | `agy_acp_server.exe` |
+| WSL Linux | `agy_acp_server.par`, `localharness_external` | `agy_acp_server.par --uid=` |
+
+Extract the complete archive and add its directory to the selected source's `PATH`.
+On Linux, make both files executable. Preserve the empty `--uid=` argument.
+Discovery requires the matching companion beside the resolved server. An incomplete
+installation earlier on `PATH` is not bypassed in favor of a later complete one.
+Install the Linux archive inside the intended distro; a Windows executable exposed
+through WSL interop is not a Linux ACP installation.
+
+For a Windows agent pane, select **Google Antigravity** in agent settings. For WSL,
+open that distro's profile settings and select its Antigravity backend. Authentication
+is offered through ACP in the agent pane; keep the connection alive while completing
+any browser authorization. Do not copy credentials between Windows and Linux.
+
+Model selection and native permission modes use the options advertised by the
+connected ACP session. Intelligent Terminal's shared BYOK configuration is not
+supported for Antigravity; provider-specific API-key authentication offered by ACP
+is a separate capability. Usage displays only standard ACP fields when reported,
+not inferred quota or subscription balances.
+
+Install and authenticate the separate [official `agy` CLI](https://antigravity.google/docs/cli/install)
+for interactive delegation and shell-session tracking. Delegation uses
+`agy -i "<prompt>"` and remains interactive after the initial response. Known CLI
+sessions resume with `agy --conversation "<id>"`; a configured delegate model uses
+the CLI's `--model` option, never an ACP server flag.
+
+The CLI and ACP server have separate default conversation stores. The ACP server's
+`session/list` does not expose CLI history, including when tested in an isolated
+process pointed at the CLI home. Cold-start discovery of earlier CLI history is
+therefore not available; hooks track live CLI sessions, and known-session/saved-layout
+resume remains source-aware. Do not copy credentials or globally change provider
+homes to make the stores appear interchangeable.
+Picker resume follows the CLI's model selection behavior rather than reapplying a
+one-off delegate model override. WSL backends currently identify a distro and use
+its default user; an independent per-session Linux user is not part of the source
+setting.
+
+For Windows hooks, enable Sessions and run `wta hooks install --cli antigravity`.
+The managed plugin uses `~/.gemini/config/plugins/wt-agent-hooks`; installation,
+repair and version updates use `agy plugin install`. Removal uses the native
+`agy plugin uninstall` command and verifies its result. If `agy` is absent,
+Intelligent Terminal refuses to rewrite the provider's shared metadata and reports
+that the native CLI is required; managed files are not silently discarded.
+
+Windows hook reconciliation does not install inside a WSL distro. In that distro,
+run `agy plugin install "<Linux path to the installed Terminal package>/wt-agent-hooks/antigravity-wsl"`
+and restart the CLI; `agy plugin uninstall wt-agent-hooks` removes that in-distro
+installation. The packaged bridge uses Windows PowerShell and `wtcli.exe` through
+WSL interoperability, which must be enabled and resolvable from the Terminal shell.
+The WSL command forwards the distro through child-scoped `WSLENV`, so tracking
+does not depend on an interactive Bash prompt having emitted shell metadata.
+Provider workspace roots can be empty; the bridge then uses the actual hook cwd
+and preserves it for session tracking and resume.
+Only CLI transcript callbacks are forwarded; shared ACP processes and other
+Antigravity frontends do not create duplicate shell-session rows.
+
+Antigravity has no dedicated session-start, session-end or notification hook in
+the exercised API. Tracking starts at `PreInvocation`, tools update activity,
+`Stop` reports idle only when `fullyIdle` is true, and shell/pane lifecycle detects
+exit. Permission-wait status is limited to callbacks the provider actually emits.
+
+If a machine's application-control policy prevents a native server from starting,
+use an administrator-approved runtime/environment rather than weakening the policy.
+Windows and WSL installations are independent; a working Linux server does not
+prove that the native Windows executable can start on that machine.
+
+---
+
 ### 3.5 Signing in to your agent
 
 Installing an agent's CLI is not enough — you must also sign in before
@@ -324,6 +406,7 @@ installed:
 | Claude Code       | `claude login`                                             | [Claude Code setup](https://docs.claude.com/en/docs/claude-code/setup) |
 | OpenAI Codex      | `codex auth` *(or set the `OPENAI_API_KEY` environment variable)* | [OpenAI Codex CLI docs](https://developers.openai.com/codex/cli/) |
 | Gemini CLI        | Run `gemini` once — it opens a browser to sign in with your Google account *(or set the `GEMINI_API_KEY` environment variable)* | [Gemini CLI authentication](https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/authentication.md) |
+| Google Antigravity ACP | Use the authentication method offered in the agent pane; no external `agy login` command is generated | [Antigravity documentation](https://antigravity.google/docs/ide/extensions) |
 
 After signing in, restart Intelligent Terminal once so the agent pane picks
 up the new credentials.
@@ -383,6 +466,7 @@ wta hooks install --cli claude
 wta hooks install --cli codex
 wta hooks install --cli gemini
 wta hooks install --cli opencode
+wta hooks install --cli antigravity
 ```
 
 Or install for every agent CLI that is currently on `PATH` in one go:
@@ -402,6 +486,7 @@ Intelligent Terminal package:
 | OpenAI Codex   | `codex plugin marketplace add <bundle>\codex` then `codex plugin add wt-agent-hooks@wt-local` *(note: `add`, not `install`)* |
 | Gemini CLI     | `gemini extensions install <bundle>\gemini-extension --consent --skip-settings` *(with `GEMINI_CLI_TRUST_WORKSPACE=true` to bypass Gemini's folder-trust prompt)* |
 | OpenCode       | Copies the bundled plugin to `%XDG_CONFIG_HOME%\opencode\plugins\wt-agent-hooks.js` when `XDG_CONFIG_HOME` is set; otherwise it uses `%USERPROFILE%\.config\opencode\plugins\wt-agent-hooks.js`, without modifying `opencode.json` |
+| Antigravity    | `agy plugin install <staged-bundle>`; repairs enablement with `agy plugin enable wt-agent-hooks` when needed |
 
 For OpenCode, the plugin is globally discoverable but emits events only from
 interactive sessions running inside Intelligent Terminal. OpenCode ACP

@@ -1805,6 +1805,13 @@ namespace TerminalAppLocalTests
                     "native_cli_found": false,
                     "launch_ready": false,
                     "requires_npx": false
+                },
+                {
+                    "id": "antigravity",
+                    "display_name": "Google Antigravity",
+                    "native_cli_found": false,
+                    "launch_ready": false,
+                    "requires_npx": false
                 }
             ],
             "npx_found": false
@@ -1813,7 +1820,9 @@ namespace TerminalAppLocalTests
         const auto snapshot = ParseHostAgentSnapshot(payload);
         VERIFY_IS_TRUE(snapshot.has_value());
         VERIFY_IS_FALSE(snapshot->npxFound);
-        VERIFY_ARE_EQUAL(static_cast<size_t>(2), snapshot->availability.size());
+        VERIFY_ARE_EQUAL(
+            ::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinAcpAgents.size(),
+            snapshot->availability.size());
 
         const auto copilot = snapshot->availability.find(L"copilot");
         VERIFY_IS_TRUE(copilot != snapshot->availability.end());
@@ -1854,7 +1863,8 @@ namespace TerminalAppLocalTests
                 { "id": "claude", "native_cli_found": true, "launch_ready": false, "requires_npx": true },
                 { "id": "codex", "native_cli_found": false, "launch_ready": false, "requires_npx": true },
                 { "id": "gemini", "native_cli_found": false, "launch_ready": false, "requires_npx": false },
-                { "id": "opencode", "native_cli_found": false, "launch_ready": false, "requires_npx": false }
+                { "id": "opencode", "native_cli_found": false, "launch_ready": false, "requires_npx": false },
+                { "id": "antigravity", "native_cli_found": false, "launch_ready": false, "requires_npx": false }
             ],
             "npx_found": false
         })")
@@ -1865,7 +1875,8 @@ namespace TerminalAppLocalTests
                 { "id": "claude", "native_cli_found": true, "launch_ready": false, "requires_npx": true },
                 { "id": "codex", "native_cli_found": false, "launch_ready": false, "requires_npx": true },
                 { "id": "gemini", "native_cli_found": false, "launch_ready": false, "requires_npx": false },
-                { "id": "opencode", "native_cli_found": false, "launch_ready": false, "requires_npx": false }
+                { "id": "opencode", "native_cli_found": false, "launch_ready": false, "requires_npx": false },
+                { "id": "antigravity", "native_cli_found": false, "launch_ready": false, "requires_npx": false }
             ],
             "npx_found": false
         })")
@@ -2221,6 +2232,14 @@ namespace TerminalAppLocalTests
             L"override-model",
             L"",
         });
+
+        for (const auto backend : { L"host:ANTIGRAVITY", L"wsl:Ubuntu:Antigravity" })
+        {
+            Request request;
+            request.profileBackend = backend;
+            const auto binding = Page::_ResolveAgentPaneSettingsBinding(request);
+            VERIFY_IS_TRUE(binding.launchable);
+        }
 
         for (const auto& test : cases)
         {

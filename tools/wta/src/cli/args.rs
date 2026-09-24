@@ -22,7 +22,7 @@ pub(crate) struct Cli {
     pub(crate) agent: String,
 
     /// Canonical agent identifier (`copilot` / `claude` / `codex` / `gemini`
-    /// / `opencode` / `custom:<name>`). When the host (Windows Terminal) launches wta it
+    /// / `opencode` / `antigravity` / `custom:<name>`). When the host (Windows Terminal) launches wta it
     /// already knows which entry the user picked in settings, so it passes
     /// the original `acpAgent` value through here. wta uses this id as the
     /// authoritative identity for `current_agent_id` — driving the session-
@@ -561,6 +561,7 @@ pub(crate) enum HooksCliFilter {
     Codex,
     #[value(name = "opencode")]
     OpenCode,
+    Antigravity,
 }
 
 impl HooksCliFilter {
@@ -573,6 +574,7 @@ impl HooksCliFilter {
             HooksCliFilter::Gemini => CliScope::One(CliKind::Gemini),
             HooksCliFilter::Codex => CliScope::One(CliKind::Codex),
             HooksCliFilter::OpenCode => CliScope::One(CliKind::OpenCode),
+            HooksCliFilter::Antigravity => CliScope::One(CliKind::Antigravity),
         }
     }
 }

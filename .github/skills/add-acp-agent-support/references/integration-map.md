@@ -11,7 +11,7 @@ Record these facts before implementation:
 | Field | Evidence required |
 |-------|-------------------|
 | Canonical ID and display name | Stable lowercase ID and official product name |
-| Executable and search order | Actual Windows shims (`.exe`, `.cmd`, and others if needed) |
+| Executable and search order | Canonical ID, interactive CLI, and ACP server may differ; record native Windows and WSL executables separately |
 | ACP ownership | Native CLI or named adapter package/repository |
 | Exact ACP command | Long-running stdio command, including required subcommand/flags |
 | ACP version behavior | Tested CLI/adapter version and protocol initialization result |
@@ -22,10 +22,20 @@ Record these facts before implementation:
 | Session hooks | Official hook/plugin API, lifecycle events, install location, ACP-mode suppression, or unsupported |
 | Installation | Official package ID/command and documentation URL |
 | Branding | Official SVG source and license/usage terms |
-| Known limitations | Hooks, history, WSL, models, auth refresh, or delegate omissions |
+| Known limitations | Hooks, history, source/platform coverage, models, auth refresh, or delegate omissions |
 
 Do not infer capabilities from another agent. Exercise the installed CLI's
 help and ACP behavior directly.
+
+An agent can ship a standalone ACP executable independently of its interactive
+CLI. Detect the executable required by the selected ACP source, not merely the
+provider ID or presence of the ordinary CLI.
+When the native archive includes required companion executables, validate the
+complete selected installation, not just the server filename. Preserve PATH
+precedence and distinguish native WSL targets from Windows-interoperability links.
+Preserve platform-specific arguments without duplicating authentication/session/protocol
+handling for Windows and Linux.
+Use the existing host/WSL source abstraction and never silently fall back to the host.
 
 ## WTA (Rust)
 
@@ -69,13 +79,20 @@ surfaces:
   serialization instead of degrading it to `Unknown`;
 - `session_history.rs`, `main.rs`, and `ui/agents_view.rs`: keep diagnostic and
   UI labels exhaustive;
-- `wsl_acp.rs`: add ACP session discovery only when the agent's ACP server
-  actually supports `session/list`.
+- `master/mod.rs` and its listing/cache helpers: add source-aware ACP session
+  discovery only when the server actually supports `session/list`.
+- `session_mgmt.rs` and dispatch callers: distinguish ACP-owned sessions from
+  ordinary CLI history, and preserve the selected source when resuming.
 
 Add regression tests for ID parsing, wire round-trips, current-agent filtering,
 resume dispatch, and the exact CLI resume command. For CLI resume tabs, pass the
 stored session title to `wtcli new-tab`; do not force suppression of later
 application-title updates unless the product explicitly requires a fixed title.
+
+Prove whether native ACP and ordinary CLI sessions share storage and identifiers.
+Working `session/load` and CLI resume APIs do not establish cross-interface
+compatibility. When their stores differ, choose resume by session origin and
+execution source rather than merely by the presence of a CLI resume flag.
 
 The characteristic missed-mapping failure is:
 
@@ -123,6 +140,29 @@ can observe normal interactive sessions. Inventory the complete lifecycle:
   hook-backed sessions;
 - UTF-8 payload handling through every process boundary.
 
+Normalize a supported CLI identity before provider-specific handling, and make
+later source enrichment consume the same canonical identity rather than the raw
+command-line spelling.
+
+Treat provider session identifiers as untrusted. Any identifier that reaches a
+shell-based CLI resume command must satisfy the same bounded safe-token contract
+at publication and at the unquoted execution boundary; ACP-only IDs remain opaque.
+
+Mounted workspace roots are not guaranteed to contain the CLI launch directory.
+When that metadata is absent, preserve an observed hook/process cwd rather than
+inventing a home directory, including across WSL interoperability.
+Do not infer WSL execution from a distro environment variable alone; require the
+source-specific forwarded context or the owning pane's reported shell.
+Validate distro grammar before any shell-based resume and verify registration
+before publishing forwarded distro metadata; reject a known pane/source mismatch.
+
+Shared provider configuration belongs to the provider. Prefer its native mutation
+API; a WTA-only mutex or read-then-rename check does not serialize another client's
+writes. If safe native cleanup is unavailable, fail explicitly and preserve state.
+Check every existing ownership document for conflicts before invoking a native
+installer; a surviving managed marker does not authorize replacing a conflicting
+descriptor. Missing managed files may still be repaired.
+
 Follow the current implementations in `agent_hooks_installer.rs`,
 `wt-agent-hooks`, and the session registry rather than assuming every CLI has a
 marketplace. Some CLIs require a command-driven plugin install, while others
@@ -138,6 +178,14 @@ Add the agent to the ACP built-in list. Add it to the delegate list only when
 interactive delegation is supported. Update fixed array sizes and preserve GPO
 filtering through `FilteredAcpAgents()` and `FilteredDelegateAgents()`.
 
+Treat delegate and hook support as separate capabilities. First-run setup must
+not assign an ACP-only provider as the default delegate or attempt a hook
+installation the provider does not support.
+
+If canonical ID, ACP executable and interactive CLI differ, use role-specific
+discovery in Settings and FRE. Finding only the ACP server must not select an
+uninstalled delegate CLI, and CLI hook reconciliation must resolve the actual CLI.
+
 ### ACP command resolution
 
 Search `src/cascadia/TerminalApp/TerminalPage.cpp` and settings code for the
@@ -152,12 +200,20 @@ An ACP server may accept model changes through protocol even when its
 interactive CLI accepts a `--model` flag. Do not append unsupported flags to
 the server command.
 
+Also follow profile binding, per-tab switching, settings reconciliation, and
+Helper reconnect paths. C++ command resolution and master-derived commands must
+both select the native executable for the requested source. Keep host catalogs
+separate from the same provider's WSL catalogs.
+
 ### Settings, telemetry, and discoverability
 
 Search these areas for explicit current-agent lists:
 
-- `TerminalSettingsModel/CascadiaSettingsSerialization.cpp` for sanitized
-  telemetry IDs;
+- `TerminalApp/AgentSessionTelemetry.h` and `tools/wta/src/telemetry.rs` for
+  sanitized session/provider IDs;
+- `TerminalSettingsModel/SettingsTelemetry.h` for provider-change/startup buckets
+  and the generic AI-setting suppression boundary; do not restore retired
+  per-setting telemetry;
 - Settings Editor and TerminalApp resources for localized/fallback names;
 - first-run experience and quick selector consumers of `AgentRegistry.h`;
 - CLI help text and settings schema/default descriptions.
@@ -170,6 +226,22 @@ Settings hook status/remove surface. Keep the WTA JSON status schema and the C++
 parser synchronized. A detected CLI with no hooks should have an intentional
 UI state, and an install left on disk after the CLI is removed must remain
 removable.
+
+### Permission modes and usage
+
+Register each family with `protocol/acp/native_yolo/providers` and
+`usage/providers`. Native automatic approval uses a reviewed advertised mode or
+config option through the shared state machine; preserve the prior mode and
+require acknowledgement. Never replace user permission responses with automatic
+approval. A provider without a reviewed capability must explicitly remain unsupported.
+Use standard ACP usage by default; do not infer private quota/cost APIs.
+
+Inspect Session MCP tool-name qualification in `agent_tools/session_mcp.rs` and
+the ACP client's permission/update correlation. Providers can represent the same
+scoped tool as `server/tool`, `server-tool`, `server_tool`, or
+`mcp__server__tool`. Match the exact current server identity stamped by master;
+never recognize a tool by a bare name or suffix alone. The existing invocation-only
+permission handling must preserve the helper's final action or question UI.
 
 ### Branding
 

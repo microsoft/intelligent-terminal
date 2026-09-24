@@ -98,6 +98,10 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             {
                 return "opencode";
             }
+            if (value == L"antigravity")
+            {
+                return "antigravity";
+            }
             return value.starts_with(L"custom:") ? "custom" : "unknown";
         }
 

@@ -31,6 +31,15 @@ use std::time::SystemTime;
 
 pub type AgentKey = String;
 
+pub(crate) fn is_safe_cli_resume_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 256
+        && !value.starts_with("sidekick-")
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':'))
+}
+
 /// Canonical pane identity across native GUIDs, WT_SESSION and registry keys.
 /// Preserve non-GUID identifiers used by synthetic panes, apart from case.
 pub(crate) fn pane_key(pane_session_id: &str) -> String {
@@ -46,6 +55,7 @@ pub enum CliSource {
     Copilot,
     Gemini,
     OpenCode,
+    Antigravity,
     Unknown(String),
 }
 
@@ -57,6 +67,7 @@ impl CliSource {
             "copilot" => Self::Copilot,
             "gemini" => Self::Gemini,
             "opencode" => Self::OpenCode,
+            "antigravity" => Self::Antigravity,
             "" => Self::Unknown(String::new()),
             other => Self::Unknown(other.to_string()),
         }
@@ -74,6 +85,7 @@ impl CliSource {
             "copilot" => Some(Self::Copilot),
             "gemini" => Some(Self::Gemini),
             "opencode" => Some(Self::OpenCode),
+            "antigravity" => Some(Self::Antigravity),
             _ => None,
         }
     }
@@ -1460,6 +1472,32 @@ impl AgentSessionRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cli_resume_identifier_grammar_is_bounded_and_shell_safe() {
+        for id in ["session-123", "session_id.part:one", "A", "9"] {
+            assert!(is_safe_cli_resume_id(id), "{id}");
+        }
+        assert!(is_safe_cli_resume_id(&"a".repeat(256)));
+        assert!(!is_safe_cli_resume_id(&"a".repeat(257)));
+        for id in [
+            "",
+            "sidekick-worker",
+            "bad id",
+            "bad;id",
+            "bad&id",
+            "bad%id",
+            "bad$id",
+            "bad`id",
+            "bad\"id",
+            "bad/id",
+            "bad\\id",
+            "bad\nid",
+            "\u{e9}",
+        ] {
+            assert!(!is_safe_cli_resume_id(id), "{id:?}");
+        }
+    }
     use std::path::PathBuf;
 
     fn k(s: &str) -> AgentKey {

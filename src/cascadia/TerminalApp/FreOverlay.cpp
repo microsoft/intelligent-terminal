@@ -1637,7 +1637,13 @@ namespace winrt::TerminalApp::implementation
             if (agentDecision.persistSelection)
             {
                 globals.AcpAgent(displayedAgentId);
-                globals.DelegateAgent(displayedAgentId);
+                namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+                if (Reg::SupportsDelegate(displayedAgentId) &&
+                    (Reg::AgentIdEquals(Reg::CliExecutable(displayedAgentId), displayedAgentId) ||
+                     ::Microsoft::Terminal::AgentAvailability::IsAgentCliInstalled(displayedAgentId)))
+                {
+                    globals.DelegateAgent(displayedAgentId);
+                }
             }
             globals.AgentPaneYoloMode(AutomaticApprovalToggle().IsOn());
             globals.ClearAgentPaneYoloModeIfUnavailableDefault();
@@ -1965,7 +1971,8 @@ namespace winrt::TerminalApp::implementation
         // 5. Hooks — skip if GPO blocks it or settings unavailable.
         if (SessionManagementToggle().IsOn() &&
             _settings &&
-            !_settings.GlobalSettings().IsAgentSessionHooksPolicyLocked())
+            !_settings.GlobalSettings().IsAgentSessionHooksPolicyLocked() &&
+            ::Microsoft::Terminal::Settings::Model::AgentRegistry::SupportsSessionHooks(agentId))
         {
             auto self = weak.get();
             if (!self)

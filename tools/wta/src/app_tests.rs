@@ -718,7 +718,7 @@ fn restored_session_birth_is_forwarded_only_by_the_owning_helper() {
             }),
         });
         if expected {
-            let crate::protocol::acp::client::MasterExtRequest::SessionBornBound { event } = rx
+            let crate::protocol::acp::client::MasterExtRequest::SessionBornBound { event, .. } = rx
                 .try_recv()
                 .expect("owning helper forwards the restored birth")
             else {
@@ -3385,7 +3385,9 @@ fn born_bound_registration_uses_current_master_request_sender() {
         .try_recv()
         .expect("registration should use the replacement sender")
     {
-        crate::protocol::acp::client::MasterExtRequest::SessionBornBound { event: actual } => {
+        crate::protocol::acp::client::MasterExtRequest::SessionBornBound {
+            event: actual, ..
+        } => {
             assert_eq!(actual, event)
         }
         other => panic!("expected SessionBornBound, got {other:?}"),
@@ -3431,6 +3433,7 @@ fn restored_shell_agent_session_registers_as_born_bound() {
                 pane_session_id,
                 ..
             },
+            ..
         }) if key == agent_session_id && pane_session_id == pane_id
     ));
 }
@@ -23761,6 +23764,151 @@ fn known_cli_id_returns_none_for_unknown_variant() {
         known_cli_id(&CliSource::Unknown("anything".to_string())),
         None
     );
+}
+
+#[test]
+fn antigravity_resume_keeps_acp_and_cli_sessions_in_their_own_stores() {
+    use crate::agent_sessions::{
+        AgentSession, AgentStatus, CliSource, SessionLocation, SessionOrigin,
+    };
+    for origin in [SessionOrigin::AgentPane, SessionOrigin::Unknown] {
+        let _capture = crate::wt_protocol_events::capture_test_published_events();
+        let row = AgentSession {
+            key: "antigravity-history".into(),
+            cli_source: CliSource::Antigravity,
+            pane_session_id: None,
+            window_id: None,
+            tab_id: None,
+            title: "Antigravity history".into(),
+            cwd: std::path::PathBuf::from("/home/u/project with spaces"),
+            started_at: std::time::SystemTime::UNIX_EPOCH,
+            last_activity_at: std::time::SystemTime::UNIX_EPOCH,
+            status: AgentStatus::Historical,
+            last_error: None,
+            current_tool: None,
+            attention_reason: None,
+            log_path: None,
+            origin: origin.clone(),
+            location: SessionLocation::Wsl {
+                distro: "Ubuntu".into(),
+            },
+        };
+        let mut app = test_app();
+        app.owner_tab_id = Some("caller-tab".into());
+        app.window_id = Some("41".into());
+        app.agent_supports_load_session = true;
+        app.agent_sessions.merge_historical(vec![row.clone()]);
+        app.activate_agent_session_routed(&row);
+        let command = app.last_dispatched_command_for_test().unwrap();
+        let events = crate::wt_protocol_events::take_test_published_events();
+        if origin == SessionOrigin::AgentPane {
+            assert_eq!(command.kind, DispatchedCommandKind::ResumeInAgentPane);
+            let event = events
+                .iter()
+                .map(|event| serde_json::from_str::<serde_json::Value>(event).unwrap())
+                .find(|event| event["method"] == "resume_in_new_agent_tab")
+                .expect("ACP resume must publish the actual new-agent-tab event");
+            assert_eq!(event["params"]["agent_backend"], "wsl:Ubuntu:antigravity");
+            assert_eq!(event["params"]["cwd"], "/home/u/project with spaces");
+            assert_eq!(event["params"]["session_id"], "antigravity-history");
+            assert_eq!(event["params"]["tab_id"], "caller-tab");
+            assert_eq!(event["params"]["window_id"], "41");
+        } else {
+            assert_eq!(command.kind, DispatchedCommandKind::NewTabResume);
+            assert!(command.argv.join(" ").contains(
+                "wsl -d Ubuntu --cd \"/home/u/project with spaces\" -- bash -lc \"agy --conversation antigravity-history\""
+            ));
+            assert!(!events
+                .iter()
+                .any(|event| event.contains("resume_in_new_agent_tab")));
+        }
+    }
+}
+
+#[test]
+fn cli_resume_rejects_unsafe_session_ids_before_dispatch() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionLocation};
+    for key in [
+        "bad;echo marker",
+        "bad&echo marker",
+        "$(echo marker)",
+        "`echo marker`",
+        "id%PATH%",
+        "bad\nid",
+        "",
+        "sidekick-child",
+    ] {
+        for location in [
+            SessionLocation::Host,
+            SessionLocation::Wsl {
+                distro: "Ubuntu".into(),
+            },
+        ] {
+            let mut app = test_app();
+            let event = SessionEvent::SessionStarted {
+                key: key.to_string(),
+                cli_source: CliSource::Antigravity,
+                pane_session_id: "owner-pane".into(),
+                cwd: std::path::PathBuf::from("/tmp/owned"),
+                title: "untrusted identifier".into(),
+            };
+            app.agent_sessions.apply(event);
+            app.agent_sessions.apply(SessionEvent::SessionStopped {
+                key: key.to_string(),
+                reason: "test".into(),
+            });
+            let mut row = app.agent_sessions.get(&key.to_string()).unwrap().clone();
+            row.location = location;
+            app.dispatch_resume(&row);
+            assert!(
+                app.last_dispatched_command_for_test().is_none(),
+                "unsafe id was dispatched: {key:?}"
+            );
+            assert_eq!(
+                app.agent_sessions.get(&key.to_string()).unwrap().status,
+                AgentStatus::Ended
+            );
+        }
+    }
+}
+
+#[test]
+fn cli_resume_rejects_unsafe_wsl_distro_before_dispatch() {
+    use crate::agent_sessions::{CliSource, SessionEvent, SessionLocation};
+    for distro in [
+        "Ubuntu&echo marker",
+        "Ubuntu;echo marker",
+        "Ubuntu extra",
+        "Ubuntu\"x",
+        "$(echo marker)",
+        "",
+    ] {
+        let mut app = test_app();
+        app.agent_sessions.apply(SessionEvent::SessionStarted {
+            key: "safe-session".into(),
+            cli_source: CliSource::Antigravity,
+            pane_session_id: "owner".into(),
+            cwd: std::path::PathBuf::from("/tmp/owned"),
+            title: "source validation".into(),
+        });
+        app.agent_sessions.apply(SessionEvent::SessionStopped {
+            key: "safe-session".into(),
+            reason: "test".into(),
+        });
+        let mut row = app
+            .agent_sessions
+            .get(&"safe-session".to_string())
+            .unwrap()
+            .clone();
+        row.location = SessionLocation::Wsl {
+            distro: distro.into(),
+        };
+        app.dispatch_resume(&row);
+        assert!(
+            app.last_dispatched_command_for_test().is_none(),
+            "{distro:?}"
+        );
+    }
 }
 
 #[test]

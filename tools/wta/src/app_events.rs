@@ -435,11 +435,20 @@ impl App {
         Some(request)
     }
 
-    fn register_born_bound_session(&mut self, event: crate::agent_sessions::SessionEvent) {
+    fn register_born_bound_session(
+        &mut self,
+        event: crate::agent_sessions::SessionEvent,
+        wsl_distro: Option<String>,
+    ) {
         self.agent_sessions.apply(event.clone());
         if self
             .master_request_tx
-            .send(crate::protocol::acp::client::MasterExtRequest::SessionBornBound { event })
+            .send(
+                crate::protocol::acp::client::MasterExtRequest::SessionBornBound {
+                    event,
+                    wsl_distro,
+                },
+            )
             .is_err()
         {
             tracing::warn!(
@@ -2645,7 +2654,7 @@ impl App {
                 self.handle_agents_snapshot_failed(request_id);
             }
             AppEvent::RegisterBornBoundSession { event } => {
-                self.register_born_bound_session(event);
+                self.register_born_bound_session(event, None);
             }
             AppEvent::MasterMutationCompleted { request_id } => {
                 tracing::debug!(target: "agents_view", request_id, "master mutation completed; refetching open views");
@@ -2787,6 +2796,11 @@ impl App {
                                 .unwrap_or_default(),
                             title: String::new(),
                         },
+                        params
+                            .get("wsl_distro")
+                            .and_then(serde_json::Value::as_str)
+                            .filter(|distro| !distro.is_empty())
+                            .map(str::to_string),
                     );
                     return;
                 }
@@ -4045,7 +4059,7 @@ impl App {
                     // its channels), create a fresh DeferredAcpParams so
                     // try_start_acp can spawn a new ACP client.
                     if self.deferred_acp.is_none() {
-                        let new_cmd = self.build_agent_cmd(&agent_id);
+                        let new_cmd = self.build_agent_cmd(&agent_id, &self.current_agent_source);
                         tracing::info!(
                             "LoginComplete: creating deferred_acp for reconnect cmd={}",
                             new_cmd
