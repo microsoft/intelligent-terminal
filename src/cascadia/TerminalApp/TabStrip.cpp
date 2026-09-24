@@ -407,6 +407,7 @@ namespace winrt::TerminalApp::implementation
         _projectionControlsEnabled = value;
         SearchTabsButton().IsEnabled(value && !_isRailCollapsed);
         FilterTabsButton().IsEnabled(value && !_isRailCollapsed);
+        TabHistoryButton().IsEnabled(value && !_isRailCollapsed);
     }
 
     UIElement TabStrip::TopChromeContent()

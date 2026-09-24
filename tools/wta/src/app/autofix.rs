@@ -17,6 +17,8 @@ use super::*;
 /// active, and re-emits the active tab's snapshot on tab_changed.
 #[derive(Debug, Clone, Default)]
 pub struct TabAutofixState {
+    /// One concrete recommendation, not the Detected/Pending/Review projection.
+    pub(super) offer: Option<ErrorFixOffer>,
     /// Failing pane for Pending/Armed. Cleared when the user dismisses
     /// (Esc), the error resolves (exit 0 on the same pane), or the fix
     /// is executed.
@@ -45,6 +47,14 @@ pub struct TabAutofixState {
     /// the user. Cleared when the echo A arrives, or when the state
     /// transitions out (set_bar_snapshot → Idle).
     pub trigger_echo_pane: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct ErrorFixOffer {
+    pub(super) id: uuid::Uuid,
+    pub(super) prompt_id: u64,
+    pub(super) offered: bool,
+    pub(super) accepted: bool,
 }
 
 /// Snapshot of the bottom-bar autofix state for one tab. Mirrors the
@@ -101,6 +111,45 @@ fn autofix_pane_matches(tab: &TabSession, pane_id: &str) -> (bool, bool) {
 }
 
 impl App {
+    /// Called only after a successfully flushed frame. Hidden/stashed cards
+    /// remain eligible until they are actually displayed.
+    pub(super) fn log_error_fix_offered_if_visible(&mut self) {
+        if !self.recommendation_rendered || !self.current_tab().pane_open {
+            return;
+        }
+        let tab = self.current_tab_mut();
+        if !tab.turn.is_autofix()
+            || tab.turn.recommendations().is_none()
+            || tab.turn.autofix_generation() != Some(tab.autofix.generation)
+        {
+            return;
+        }
+        let Some(offer) = tab.autofix.offer.as_mut() else {
+            return;
+        };
+        if tab.turn.prompt_id() == Some(offer.prompt_id) && !offer.offered {
+            offer.offered = true;
+            crate::telemetry::log_error_fix_offered(offer.id);
+        }
+    }
+
+    pub(super) fn log_error_fix_accepted(&mut self, session_id: &str) {
+        let tab = self.session_tab_mut(session_id);
+        if !tab.turn.is_autofix()
+            || tab.turn.recommendations().is_none()
+            || tab.turn.autofix_generation() != Some(tab.autofix.generation)
+        {
+            return;
+        }
+        let Some(offer) = tab.autofix.offer.as_mut() else {
+            return;
+        };
+        if tab.turn.prompt_id() == Some(offer.prompt_id) && offer.offered && !offer.accepted {
+            offer.accepted = true;
+            crate::telemetry::log_error_fix_accepted(offer.id);
+        }
+    }
+
     /// Auto-fix: when a command fails in another pane, ask the coordinator
     /// agent to suggest a fix. The user confirms before execution.
     pub(super) fn maybe_trigger_autofix(&mut self, notification: &WtNotification) {

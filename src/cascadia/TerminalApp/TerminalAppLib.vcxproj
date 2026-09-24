@@ -94,9 +94,12 @@
   <ItemGroup>
     <ClInclude Include="App.base.h" />
     <ClInclude Include="AgentSessionTelemetry.h" />
+    <ClInclude Include="AgentPolicyTelemetry.h" />
+    <ClInclude Include="AgentProviderTelemetry.h" />
     <ClInclude Include="AppCommandlineArgs.h" />
     <ClInclude Include="Commandline.h" />
     <ClInclude Include="CommandPaletteItems.h" />
+    <ClInclude Include="CommandPaletteTelemetry.h" />
     <ClInclude Include="Jumplist.h" />
     <ClInclude Include="LanguageProfileNotifier.h" />
     <ClInclude Include="MinMaxCloseControl.h">

@@ -21,19 +21,19 @@ use crate::ui::card::{self, CARD_MIN_SIZE};
 /// height that fits — `render_card` lets cassowary squash the inner content
 /// area, so the user keeps the border, button, and as many content rows as
 /// fit. This avoids the previous "tall card in squashed pane → nothing
-/// renders" failure mode.
-pub fn render(frame: &mut Frame, app: &App, area: Rect, mode: PanelMode) {
+/// renders" failure mode. Returns the bounds of cards with painted content.
+pub fn render(frame: &mut Frame, app: &App, area: Rect, mode: PanelMode) -> Option<Rect> {
     let Some(recs) = app.current_tab().turn.recommendations() else {
-        return;
+        return None;
     };
     if mode == PanelMode::Hidden || area.width == 0 || area.height == 0 {
-        return;
+        return None;
     }
     if mode == PanelMode::Compact {
-        render_compact(frame, app, area);
-        return;
+        return render_compact(frame, app, area).then_some(area);
     }
 
+    let mut rendered: Option<Rect> = None;
     let rec_scroll = app.current_tab().rec_scroll.offset;
     let cards_bottom = area.y.saturating_add(area.height);
 
@@ -64,22 +64,25 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect, mode: PanelMode) {
                 width: area.width,
                 height: render_h,
             };
-            render_card(frame, app, card_area, choice, idx);
+            if render_card(frame, app, card_area, choice, idx) {
+                rendered = Some(rendered.map_or(card_area, |bounds| bounds.union(card_area)));
+            }
         }
         canvas_top += h;
     }
+    rendered
 }
 
-fn render_compact(frame: &mut Frame, app: &App, area: Rect) {
+fn render_compact(frame: &mut Frame, app: &App, area: Rect) -> bool {
     let Some(recommendations) = app.current_tab().turn.recommendations() else {
-        return;
+        return false;
     };
     let selected = app
         .current_tab()
         .selected_recommendation
         .min(recommendations.choices.len().saturating_sub(1));
     let Some(choice) = recommendations.choices.get(selected) else {
-        return;
+        return false;
     };
     let (summary, buttons, body_kind) = extract_card_content(choice);
     let marker = "○";
@@ -118,6 +121,7 @@ fn render_compact(frame: &mut Frame, app: &App, area: Rect) {
             .then_some(app.current_tab().selected_button);
         card::render_buttons(frame, button_area, &buttons, focused);
     }
+    summary_width > 1
 }
 
 fn truncate_compact(text: &str, width: usize) -> String {
@@ -167,9 +171,9 @@ fn render_card(
     area: Rect,
     choice: &RecommendationChoice,
     idx: usize,
-) {
+) -> bool {
     if area.width < CARD_MIN_SIZE || area.height < CARD_MIN_SIZE {
-        return;
+        return false;
     }
 
     // A selected card only paints button focus while recommendation navigation
@@ -184,7 +188,7 @@ fn render_card(
 
     let Some((content_area, button_area)) = card::render_card_shell(frame, area, border_style)
     else {
-        return;
+        return false;
     };
 
     let (command_text, buttons, body_kind) = extract_card_content(choice);
@@ -211,6 +215,7 @@ fn render_card(
         };
         card::render_buttons(frame, button_inner, &buttons, focused);
     }
+    content_inner.width > 0 && content_inner.height > 0
 }
 
 enum CardBodyKind {

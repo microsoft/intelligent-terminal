@@ -39,6 +39,7 @@ namespace winrt::TerminalApp::implementation
         // Whatever is hosting us will enable us by setting our visibility to
         // "Visible". When that happens, set focus to our search box.
         RegisterPropertyChangedCallback(UIElement::VisibilityProperty(), [this](auto&&, auto&&) {
+            _recordAgentPromptEntry();
             if (Visibility() == Visibility::Visible)
             {
                 // Force immediate binding update so we can select an item
@@ -1256,6 +1257,20 @@ namespace winrt::TerminalApp::implementation
         // clear + append when switching between modes.
         _filteredActions.Clear();
         _updateFilteredActions();
+        _recordAgentPromptEntry();
+    }
+
+    void CommandPalette::_recordAgentPromptEntry()
+    {
+        if (_agentPromptEntry.Update(Visibility() == Visibility::Visible, _currentMode == CommandPaletteMode::AgentForegroundMode))
+        {
+            TraceLoggingWrite(
+                g_hTerminalAppProvider,
+                "CommandPaletteAgentPromptEntered",
+                TraceLoggingDescription("Event emitted when the user enters the visible foreground agent prompt mode"),
+                TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+        }
     }
 
     // Method Description:

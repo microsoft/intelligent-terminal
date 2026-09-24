@@ -242,4 +242,125 @@
     <value>ដើម្បីទទួលបានបទពិសោធន៍គ្រប់គ្រងវគ្គល្អបំផុត សូមបើក Sessions នៅក្នុង Settings &gt; Agents។</value>
     <comment>Subtle hint below the agent sessions title, shown only in session management when Sessions is off and policy permits changes. Navigation is Settings &gt; Agents, then turn on Sessions. Match the displayed labels: Settings uses SettingsMenuItem/SettingsTab, Agents uses Nav_AIAgents.Content, and Sessions uses AIAgents_SessionManagement.Header, including fallback labels where a locale has no translation. Turning Sessions off only prevents hook updates; existing hooks and session functionality can keep working. Do not imply that tracking, data refresh, or functionality stops.</comment>
   </data>
+  <data name="TabCloseBelow" xml:space="preserve">
+    <value>បិទផ្ទាំងខាងក្រោម</value>
+  </data>
+  <data name="VerticalTabsCollapsePane" xml:space="preserve">
+    <value>បង្រួមផ្ទាំងថេប</value>
+  </data>
+  <data name="VerticalTabsExpandPane" xml:space="preserve">
+    <value>ពង្រីកផ្ទាំងថេប</value>
+  </data>
+  <data name="VerticalTabsHeader.Text" xml:space="preserve">
+    <value>ផ្ទាំង</value>
+  </data>
+  <data name="VerticalTabsSearchButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>ស្វែងរកផ្ទាំង</value>
+  </data>
+  <data name="VerticalTabsSearchButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>ស្វែងរកផ្ទាំង</value>
+  </data>
+  <data name="VerticalTabsSearchBox.PlaceholderText" xml:space="preserve">
+    <value>ស្វែងរកផ្ទាំង</value>
+  </data>
+  <data name="VerticalTabsSearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>ស្វែងរកផ្ទាំង</value>
+  </data>
+  <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>ត្រងផ្ទាំង</value>
+  </data>
+  <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>ត្រងផ្ទាំង</value>
+  </data>
+  <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
+    <value>ផ្ទាំងទាំងអស់</value>
+  </data>
+  <data name="VerticalTabsFilterAgentsOnly.Text" xml:space="preserve">
+    <value>តែភ្នាក់ងារប៉ុណ្ណោះ</value>
+  </data>
+  <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
+    <value>កំពុងបង្ហាញវគ្គភ្នាក់ងារ 1</value>
+  </data>
+  <data name="VerticalTabsFilterStatusPlural" xml:space="preserve">
+    <value>កំពុងបង្ហាញវគ្គភ្នាក់ងារ {0}</value>
+  </data>
+  <data name="VerticalTabsFilterCurrentHidden.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>ផ្ទាំងបច្ចុប្បន្នត្រូវបានលាក់ដោយតម្រងនេះ</value>
+  </data>
+  <data name="VerticalTabsFilterCurrentHidden.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>ផ្ទាំងបច្ចុប្បន្នត្រូវបានលាក់ដោយតម្រងនេះ</value>
+  </data>
+  <data name="VerticalTabsFilterShowAll.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>បង្ហាញផ្ទាំងទាំងអស់</value>
+  </data>
+  <data name="VerticalTabsFilterShowAll.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>បង្ហាញផ្ទាំងទាំងអស់</value>
+  </data>
+  <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>ប្រវត្តិភ្នាក់ងារ</value>
+  </data>
+  <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>ប្រវត្តិភ្នាក់ងារ</value>
+  </data>
+  <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
+    <value>ប្រវត្តិភ្នាក់ងារ</value>
+  </data>
+  <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>បិទប្រវត្តិភ្នាក់ងារ</value>
+  </data>
+  <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>បិទប្រវត្តិភ្នាក់ងារ</value>
+  </data>
+  <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
+    <value>ស្វែងរកប្រវត្តិភ្នាក់ងារ</value>
+  </data>
+  <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>ស្វែងរកប្រវត្តិភ្នាក់ងារ</value>
+  </data>
+  <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
+    <value>រកមិនឃើញវគ្គភ្នាក់ងារទេ។</value>
+  </data>
+  <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
+    <value>គ្មានវគ្គភ្នាក់ងារដែលត្រូវគ្នាទេ។</value>
+  </data>
+  <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
+    <value>មិនអាចផ្ទុកប្រវត្តិភ្នាក់ងារបានទេ។</value>
+  </data>
+  <data name="VerticalTabsHistoryInvalidResponse" xml:space="preserve">
+    <value>ប្រវត្តិភ្នាក់ងារបានត្រឡប់ការឆ្លើយតបមិនត្រឹមត្រូវ។</value>
+  </data>
+  <data name="VerticalTabsHistoryActivationError" xml:space="preserve">
+    <value>មិនអាចធ្វើឱ្យវគ្គដែលបានជ្រើសសកម្មបានទេ។</value>
+  </data>
+  <data name="VerticalTabsHistoryLiveAgentTitleFormat" xml:space="preserve">
+    <value>វគ្គភ្នាក់ងារ {0}</value>
+    <comment>History row title for a live agent-pane session whose provider did not supply a conversation title. {0} is the provider display name.</comment>
+  </data>
+  <data name="CompactNewTabButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>ផ្ទាំងថ្មី</value>
+  </data>
+  <data name="CompactNewTabButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>ផ្ទាំងថ្មី</value>
+  </data>
+  <data name="CompactNewTabMenuButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>ម៉ឺនុយផ្ទាំងថ្មី</value>
+  </data>
+  <data name="CompactNewTabMenuButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>ម៉ឺនុយផ្ទាំងថ្មី</value>
+  </data>
+  <data name="SwitchToHorizontalTabsText" xml:space="preserve">
+    <value>ប្ដូរទៅផ្ទាំងផ្ដេក</value>
+  </data>
+  <data name="SwitchToHorizontalTabsToolTip" xml:space="preserve">
+    <value>ប្រើផ្ទាំងផ្ដេកនៅក្នុងបង្អួច Terminal ទាំងអស់</value>
+  </data>
+  <data name="SwitchToVerticalTabsText" xml:space="preserve">
+    <value>ប្ដូរទៅផ្ទាំងបញ្ឈរ</value>
+  </data>
+  <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
+    <value>ប្រើផ្ទាំងបញ្ឈរនៅក្នុងបង្អួច Terminal ទាំងអស់</value>
+  </data>
+  <data name="TabCloseBelowToolTip" xml:space="preserve">
+    <value>បិទផ្ទាំងទាំងអស់នៅខាងក្រោមផ្ទាំងនេះ</value>
+  </data>
 </root>

@@ -33,6 +33,7 @@
 #include "ContentTransfer.h"
 #include "AgentPaneLog.h"
 #include "AgentSessionTelemetry.h"
+#include "AgentPolicyTelemetry.h"
 #include "App.h"
 #include "DebugTapConnection.h"
 #include "FreOverlay.h"
@@ -2474,6 +2475,7 @@ namespace winrt::TerminalApp::implementation
             std::wstring{ globals.EffectiveAcpAgent() },
             globals.AgentPaneYoloMode(),
             globals.IsYoloModePolicyLocked(),
+            AgentPolicyTelemetry::AutoFixPolicyName(AgentPolicy::GetAutoFixPolicy()),
         };
     }
 
@@ -2488,6 +2490,8 @@ namespace winrt::TerminalApp::implementation
         params["automatic_yolo_target"] = config.yoloEnabled;
         params["yolo_enabled"] = config.yoloEnabled;
         params["yolo_policy_blocked"] = config.yoloPolicyBlocked;
+        params["autofix_enabled"] = config.autofixEnabled;
+        params["autofix_policy_state"] = config.autofixPolicyState;
         return params;
     }
 
@@ -2495,6 +2499,7 @@ namespace winrt::TerminalApp::implementation
     // protocol event channel. A single consolidated `agent_config_changed`
     // event carries only the fields that changed:
     //   - autofix_enabled : the auto-suggest gate (was its own event)
+    //   - autofix_policy_state : raw policy category for telemetry, not enforcement
     //   - delegate_agent + delegate_model : the delegate-tab agent identity
     //   - cloud_models + custom_models + custom_model_selection :
     //     credential-free picker metadata and its selected entry.
@@ -2517,6 +2522,7 @@ namespace winrt::TerminalApp::implementation
 
         const auto& last = _lastAgentRuntimeConfig;
         const bool autofixChanged = last.autofixEnabled != current.autofixEnabled;
+        const bool autofixPolicyChanged = last.autofixPolicyState != current.autofixPolicyState;
         const bool delegateChanged = last.delegateAgent != current.delegateAgent ||
                                      last.delegateModel != current.delegateModel;
         const bool customModelsChanged =
@@ -2526,7 +2532,7 @@ namespace winrt::TerminalApp::implementation
                                  last.yoloEnabled != current.yoloEnabled ||
                                  last.yoloPolicyBlocked != current.yoloPolicyBlocked;
 
-        if (!autofixChanged && !delegateChanged && !customModelsChanged && !yoloChanged)
+        if (!autofixChanged && !autofixPolicyChanged && !delegateChanged && !customModelsChanged && !yoloChanged)
         {
             _lastAgentRuntimeConfig = current;
             return;
@@ -2537,6 +2543,10 @@ namespace winrt::TerminalApp::implementation
         if (autofixChanged)
         {
             params["autofix_enabled"] = current.autofixEnabled;
+        }
+        if (autofixPolicyChanged)
+        {
+            params["autofix_policy_state"] = current.autofixPolicyState;
         }
         if (delegateChanged)
         {
@@ -2549,7 +2559,7 @@ namespace winrt::TerminalApp::implementation
             params["custom_models"] =
                 ::Microsoft::Terminal::CustomModels::CatalogToJson(current.customModels);
         }
-        const bool commonChanged = autofixChanged || delegateChanged || customModelsChanged;
+        const bool commonChanged = autofixChanged || autofixPolicyChanged || delegateChanged || customModelsChanged;
         if (commonChanged)
         {
             _agentPaneLog("emitting agent_config_changed (hot settings update)");
@@ -3304,6 +3314,7 @@ namespace winrt::TerminalApp::implementation
         {
             extraArgs.emplace_back(L"--no-autofix");
         }
+        pushFlagValue(L"--autofix-policy-state", winrt::to_hstring(AgentPolicyTelemetry::AutoFixPolicyName(AgentPolicy::GetAutoFixPolicy())));
         if (!globals.EffectiveAgentSessionManagementEnabled())
         {
             extraArgs.emplace_back(L"--no-session-management");
@@ -3634,6 +3645,7 @@ namespace winrt::TerminalApp::implementation
         {
             helperCmd.append(L" --no-autofix");
         }
+        appendHelperFlagValue(L"--autofix-policy-state", winrt::to_hstring(AgentPolicyTelemetry::AutoFixPolicyName(AgentPolicy::GetAutoFixPolicy())));
         // Settings-owned automatic approval for this binding. The shared
         // ShouldRequestAutomaticEnable decision applies the stored preference,
         // policy, provider support, and canonical default/current provider
@@ -7917,7 +7929,7 @@ namespace winrt::TerminalApp::implementation
         // command line. Once this specific helper reports Connected without a
         // host catalog, deliver the credential-free catalogs over the existing
         // protocol event channel. Every Connected status resends the current
-        // Yolo default/policy in case this helper missed a one-shot hot update
+        // Yolo default/policy and Autofix state in case this helper missed a one-shot hot update
         // between argv capture and event subscription. Applying unchanged
         // values is idempotent and emits no follow-up status. The tab id scopes
         // the broadcast to the requesting helper; its follow-up status marks

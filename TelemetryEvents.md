@@ -3,7 +3,7 @@
 For the maintained event contract, read the
 **[Intelligent Terminal telemetry reference](./doc/intelligent-terminal-telemetry.md)**.
 It contains the complete typed schemas, trigger definitions, measurement
-rules, and privacy boundaries for all 22 dedicated events.
+rules, and privacy boundaries for the dedicated events.
 
 This document preserves the inherited Windows Terminal / OpenConsole
 reference. Intelligent Terminal-specific schemas are maintained in the

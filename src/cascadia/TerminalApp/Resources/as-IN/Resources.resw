@@ -426,4 +426,125 @@
     <value>এজেণ্ট · সংযোগ হৈ আছে</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="TabCloseBelow" xml:space="preserve">
+    <value>তলৰ টেবসমূহ বন্ধ কৰক</value>
+  </data>
+  <data name="VerticalTabsCollapsePane" xml:space="preserve">
+    <value>টেব ফলক সংকুচিত কৰক</value>
+  </data>
+  <data name="VerticalTabsExpandPane" xml:space="preserve">
+    <value>টেব ফলক বিস্তাৰ কৰক</value>
+  </data>
+  <data name="VerticalTabsHeader.Text" xml:space="preserve">
+    <value>টেবসমূহ</value>
+  </data>
+  <data name="VerticalTabsSearchButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>টেবসমূহ সন্ধান কৰক</value>
+  </data>
+  <data name="VerticalTabsSearchButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>টেবসমূহ সন্ধান কৰক</value>
+  </data>
+  <data name="VerticalTabsSearchBox.PlaceholderText" xml:space="preserve">
+    <value>টেবসমূহ সন্ধান কৰক</value>
+  </data>
+  <data name="VerticalTabsSearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>টেবসমূহ সন্ধান কৰক</value>
+  </data>
+  <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>টেবসমূহ ফিল্টাৰ কৰক</value>
+  </data>
+  <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>টেবসমূহ ফিল্টাৰ কৰক</value>
+  </data>
+  <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
+    <value>সকলো টেব</value>
+  </data>
+  <data name="VerticalTabsFilterAgentsOnly.Text" xml:space="preserve">
+    <value>কেৱল এজেণ্ট</value>
+  </data>
+  <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
+    <value>১টা এজেণ্ট অধিৱেশন দেখুওৱা হৈছে</value>
+  </data>
+  <data name="VerticalTabsFilterStatusPlural" xml:space="preserve">
+    <value>{0}টা এজেণ্ট অধিৱেশন দেখুওৱা হৈছে</value>
+  </data>
+  <data name="VerticalTabsFilterCurrentHidden.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>এই ফিল্টাৰে বৰ্তমানৰ টেবটো লুকুৱাইছে</value>
+  </data>
+  <data name="VerticalTabsFilterCurrentHidden.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>এই ফিল্টাৰে বৰ্তমানৰ টেবটো লুকুৱাইছে</value>
+  </data>
+  <data name="VerticalTabsFilterShowAll.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>সকলো টেব দেখুৱাওক</value>
+  </data>
+  <data name="VerticalTabsFilterShowAll.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>সকলো টেব দেখুৱাওক</value>
+  </data>
+  <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>এজেণ্ট ইতিহাস</value>
+  </data>
+  <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>এজেণ্ট ইতিহাস</value>
+  </data>
+  <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
+    <value>এজেণ্ট ইতিহাস</value>
+  </data>
+  <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>এজেণ্ট ইতিহাস বন্ধ কৰক</value>
+  </data>
+  <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>এজেণ্ট ইতিহাস বন্ধ কৰক</value>
+  </data>
+  <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
+    <value>এজেণ্ট ইতিহাস সন্ধান কৰক</value>
+  </data>
+  <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>এজেণ্ট ইতিহাস সন্ধান কৰক</value>
+  </data>
+  <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
+    <value>কোনো এজেণ্ট অধিৱেশন পোৱা নগ&apos;ল।</value>
+  </data>
+  <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
+    <value>মিল থকা কোনো এজেণ্ট অধিৱেশন নাই।</value>
+  </data>
+  <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
+    <value>এজেণ্ট ইতিহাস ল&apos;ড কৰিব পৰা নগ&apos;ল।</value>
+  </data>
+  <data name="VerticalTabsHistoryInvalidResponse" xml:space="preserve">
+    <value>এজেণ্ট ইতিহাসে এটা অবৈধ সঁহাৰি ঘূৰাইছে।</value>
+  </data>
+  <data name="VerticalTabsHistoryActivationError" xml:space="preserve">
+    <value>নিৰ্বাচিত অধিৱেশনটো সক্ৰিয় কৰিব পৰা নগ&apos;ল।</value>
+  </data>
+  <data name="VerticalTabsHistoryLiveAgentTitleFormat" xml:space="preserve">
+    <value>{0} এজেণ্ট অধিৱেশন</value>
+    <comment>History row title for a live agent-pane session whose provider did not supply a conversation title. {0} is the provider display name.</comment>
+  </data>
+  <data name="CompactNewTabButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>নতুন টেব</value>
+  </data>
+  <data name="CompactNewTabButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>নতুন টেব</value>
+  </data>
+  <data name="CompactNewTabMenuButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>নতুন টেব মেনু</value>
+  </data>
+  <data name="CompactNewTabMenuButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>নতুন টেব মেনু</value>
+  </data>
+  <data name="SwitchToHorizontalTabsText" xml:space="preserve">
+    <value>অনুভূমিক টেবলৈ সলনি কৰক</value>
+  </data>
+  <data name="SwitchToHorizontalTabsToolTip" xml:space="preserve">
+    <value>সকলো Terminal উইণ্ড&apos;ত অনুভূমিক টেব ব্যৱহাৰ কৰক</value>
+  </data>
+  <data name="SwitchToVerticalTabsText" xml:space="preserve">
+    <value>উলম্ব টেবলৈ সলনি কৰক</value>
+  </data>
+  <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
+    <value>সকলো Terminal উইণ্ড&apos;ত উলম্ব টেব ব্যৱহাৰ কৰক</value>
+  </data>
+  <data name="TabCloseBelowToolTip" xml:space="preserve">
+    <value>এই টেবৰ তলৰ সকলো টেব বন্ধ কৰক</value>
+  </data>
 </root>

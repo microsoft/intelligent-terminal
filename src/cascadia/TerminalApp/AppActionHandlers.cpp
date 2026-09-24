@@ -705,6 +705,8 @@ namespace winrt::TerminalApp::implementation
         {
             const auto p = LoadCommandPalette();
             const auto v = p.Visibility() == Visibility::Visible ? Visibility::Collapsed : Visibility::Visible;
+            // Prepare the next mode while hidden, including when this action closes the palette.
+            p.Visibility(Visibility::Collapsed);
             p.EnableCommandPaletteMode(realArgs.LaunchMode());
             p.Visibility(v);
             args.Handled(true);

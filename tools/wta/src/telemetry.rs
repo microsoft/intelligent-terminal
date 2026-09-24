@@ -22,7 +22,9 @@
 //   - AgentResponseFirstToken  (ACP returns the first text chunk)
 //   - AgentResponseComplete    (ACP prompt request completes)
 //   - ErrorDetected            (classify_wt_event positively classifies an error)
-//   - SlashCommandInvoked      (a built-in slash command is dispatched)
+//   - AgentSlashCommandUsed    (a built-in slash command is dispatched)
+//   - ErrorFixOffered          (a concrete autofix recommendation is displayed)
+//   - ErrorFixAccepted         (the user confirms running that recommendation)
 //   - SessionsViewOpened       (the agent sessions view is opened)
 //   - SessionResumeInvoked     (a session resume route is dispatched)
 //   - SessionMcpToolCalled     (a session MCP tool is invoked)
@@ -61,6 +63,36 @@ fn sanitize_agent_id(agent_id: &str) -> &str {
     match agent_id {
         "copilot" | "claude" | "codex" | "gemini" | "opencode" => agent_id,
         _ => "custom",
+    }
+}
+
+/// Host-supplied AllowAutoFix policy, independent of the effective user setting.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum AutoFixPolicyState {
+    #[default]
+    Unknown,
+    NotConfigured,
+    Enabled,
+    Disabled,
+}
+
+impl AutoFixPolicyState {
+    pub(crate) fn from_wire(value: &str) -> Self {
+        match value {
+            "notConfigured" => Self::NotConfigured,
+            "enabled" => Self::Enabled,
+            "disabled" => Self::Disabled,
+            _ => Self::Unknown,
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Unknown => "unknown",
+            Self::NotConfigured => "notConfigured",
+            Self::Enabled => "enabled",
+            Self::Disabled => "disabled",
+        }
     }
 }
 
@@ -271,14 +303,57 @@ pub fn log_agent_response_complete(
     );
 }
 
-/// Emitted when WTA dispatches one of its registered slash commands.
-pub fn log_slash_command_invoked(command_name: &str) {
+fn builtin_slash_command(command: &str) -> Option<&'static str> {
+    crate::commands::REGISTRY
+        .iter()
+        .find(|spec| spec.name == command)
+        .map(|spec| spec.name)
+}
+
+/// Emitted on built-in dispatch, before busy guards. Agent-provided names and
+/// arguments are never collected, even if this wrapper receives them.
+pub fn log_agent_slash_command_used(command: &str) {
+    let Some(command) = builtin_slash_command(command) else {
+        return;
+    };
+    #[cfg(test)]
+    capture::record(capture::Event::AgentSlashCommandUsed(command));
     tlg::write_event!(
         AGENT_PROVIDER,
-        "SlashCommandInvoked",
+        "AgentSlashCommandUsed",
         level(Verbose),
         keyword(MICROSOFT_KEYWORD_MEASURES),
-        str8("CommandName", command_name),
+        str8("command", command),
+        u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_USAGE),
+    );
+}
+
+/// Emitted once after a concrete, turn-attributed autofix card is painted and
+/// flushed in an open agent pane. The ID is random, not agent-provided content.
+pub fn log_error_fix_offered(offer_id: uuid::Uuid) {
+    #[cfg(test)]
+    capture::record(capture::Event::ErrorFixOffered(offer_id));
+    tlg::write_event!(
+        AGENT_PROVIDER,
+        "ErrorFixOffered",
+        level(Verbose),
+        keyword(MICROSOFT_KEYWORD_MEASURES),
+        str8("OfferId", &offer_id.to_string()),
+        u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_USAGE),
+    );
+}
+
+/// Emitted once when the user confirms Run for a previously displayed autofix
+/// card and its execution request is queued. Not Insert, analysis, or success.
+pub fn log_error_fix_accepted(offer_id: uuid::Uuid) {
+    #[cfg(test)]
+    capture::record(capture::Event::ErrorFixAccepted(offer_id));
+    tlg::write_event!(
+        AGENT_PROVIDER,
+        "ErrorFixAccepted",
+        level(Verbose),
+        keyword(MICROSOFT_KEYWORD_MEASURES),
+        str8("OfferId", &offer_id.to_string()),
         u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_USAGE),
     );
 }
@@ -386,7 +461,22 @@ pub fn log_agent_cold_start_complete(
 
 /// Emitted when the WTA event classifier positively identifies an error in
 /// a pane (e.g., connection failed, process exited with non-zero code).
-pub fn log_error_detected(severity: &str, method: &str, pane_id: &str) {
+/// `AllowAutoFixPolicy` comes from the host's raw GPO state; `AutoFixEnabled`
+/// is the independent effective runtime switch. Unknown policy is not inferred
+/// from that switch on manual launches or with older hosts.
+pub fn log_error_detected(
+    severity: &str,
+    method: &str,
+    pane_id: &str,
+    autofix_policy_state: AutoFixPolicyState,
+    autofix_enabled: bool,
+) {
+    let autofix_enabled_i32 = i32::from(autofix_enabled);
+    #[cfg(test)]
+    capture::record(capture::Event::ErrorDetected {
+        policy: autofix_policy_state,
+        enabled: autofix_enabled,
+    });
     tlg::write_event!(
         AGENT_PROVIDER,
         "ErrorDetected",
@@ -395,14 +485,113 @@ pub fn log_error_detected(severity: &str, method: &str, pane_id: &str) {
         str8("Severity", severity),
         str8("Method", method),
         str8("PaneId", pane_id),
+        str8("AllowAutoFixPolicy", autofix_policy_state.as_str()),
+        bool32("AutoFixEnabled", &autofix_enabled_i32),
         u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_USAGE),
     );
+}
+
+#[cfg(test)]
+pub(crate) mod capture {
+    use super::AutoFixPolicyState;
+    use std::cell::RefCell;
+
+    #[derive(Debug, PartialEq, Eq)]
+    pub(crate) enum Event {
+        AgentSlashCommandUsed(&'static str),
+        ErrorFixOffered(uuid::Uuid),
+        ErrorFixAccepted(uuid::Uuid),
+        ErrorDetected {
+            policy: AutoFixPolicyState,
+            enabled: bool,
+        },
+    }
+
+    thread_local! {
+        static EVENTS: RefCell<Vec<Event>> = const { RefCell::new(Vec::new()) };
+    }
+
+    pub(super) fn record(event: Event) {
+        EVENTS.with_borrow_mut(|events| events.push(event));
+    }
+
+    pub(crate) fn take() -> Vec<Event> {
+        EVENTS.with_borrow_mut(std::mem::take)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::agent_tools::session_mcp::SessionMcpTool;
+
+    #[test]
+    fn slash_telemetry_only_accepts_canonical_builtins() {
+        capture::take();
+        for spec in crate::commands::REGISTRY {
+            assert_eq!(builtin_slash_command(spec.name), Some(spec.name));
+            log_agent_slash_command_used(spec.name);
+        }
+        for name in [
+            "",
+            "private-command",
+            "fix secret",
+            "/fix",
+            "FIX",
+            "custom:help",
+        ] {
+            assert_eq!(builtin_slash_command(name), None);
+            log_agent_slash_command_used(name);
+        }
+        assert_eq!(
+            capture::take(),
+            crate::commands::REGISTRY
+                .iter()
+                .map(|spec| capture::Event::AgentSlashCommandUsed(spec.name))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn autofix_policy_telemetry_is_bounded_and_defaults_to_unknown() {
+        assert_eq!(AutoFixPolicyState::default().as_str(), "unknown");
+        for value in ["notConfigured", "enabled", "disabled", "unknown"] {
+            assert_eq!(AutoFixPolicyState::from_wire(value).as_str(), value);
+        }
+        assert_eq!(
+            AutoFixPolicyState::from_wire("private-value").as_str(),
+            "unknown"
+        );
+    }
+
+    #[test]
+    fn autofix_policy_bootstrap_preserves_host_state_without_inferring_from_setting() {
+        use clap::Parser;
+
+        for value in ["notConfigured", "enabled", "disabled", "unknown"] {
+            let cli = crate::cli::args::Cli::try_parse_from([
+                "wta",
+                "--no-autofix",
+                "--autofix-policy-state",
+                value,
+            ])
+            .unwrap();
+            let config = crate::helper_config(cli);
+            assert!(config.no_autofix);
+            assert_eq!(config.autofix_policy_state.as_str(), value);
+        }
+        let cli = crate::cli::args::Cli::try_parse_from(["wta", "--no-autofix"]).unwrap();
+        assert_eq!(
+            crate::helper_config(cli).autofix_policy_state,
+            AutoFixPolicyState::Unknown
+        );
+        assert!(crate::cli::args::Cli::try_parse_from([
+            "wta",
+            "--autofix-policy-state",
+            "arbitrary-private-value",
+        ])
+        .is_err());
+    }
 
     #[test]
     fn session_mcp_telemetry_uses_canonical_names() {

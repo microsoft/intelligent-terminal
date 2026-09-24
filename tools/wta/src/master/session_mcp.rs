@@ -380,6 +380,7 @@ impl CapabilityRegistry {
         count
     }
 
+    #[cfg(test)]
     pub(super) async fn remove_session(&self, session_id: &acp::schema::v1::SessionId) -> bool {
         let mut routes = self.routes.lock().await;
         let mut matches = routes
@@ -395,6 +396,23 @@ impl CapabilityRegistry {
         let hash = *hash;
         Self::remove_capability(&mut routes, &hash);
         true
+    }
+
+    pub(super) async fn remove_all_sessions(
+        &self,
+        session_id: &acp::schema::v1::SessionId,
+    ) -> usize {
+        let mut routes = self.routes.lock().await;
+        let hashes = routes
+            .by_session
+            .iter()
+            .filter_map(|(key, hash)| (&key.session_id == session_id).then_some(*hash))
+            .collect::<Vec<_>>();
+        let count = hashes.len();
+        for hash in hashes {
+            Self::remove_capability(&mut routes, &hash);
+        }
+        count
     }
 
     pub(super) async fn remove_for_instance(
@@ -1466,6 +1484,26 @@ mod tests {
             registry.resolve(&second.secret).await,
             CapabilityResolution::Bound(route_key)
                 if route_key == super::super::LiveRouteKey::new(second_owner, session_id)
+        ));
+    }
+
+    #[tokio::test]
+    async fn ownerless_raw_cleanup_revokes_all_colliding_capabilities() {
+        let registry = CapabilityRegistry::default();
+        let session_id = acp::schema::v1::SessionId::new("shared-session");
+        let first = registry.prepare(AgentInstanceId::new_v4(), None).await;
+        let second = registry.prepare(AgentInstanceId::new_v4(), None).await;
+        assert!(registry.bind(&first, session_id.clone()).await);
+        assert!(registry.bind(&second, session_id.clone()).await);
+
+        assert_eq!(registry.remove_all_sessions(&session_id).await, 2);
+        assert!(matches!(
+            registry.resolve(&first.secret).await,
+            CapabilityResolution::Unknown
+        ));
+        assert!(matches!(
+            registry.resolve(&second.secret).await,
+            CapabilityResolution::Unknown
         ));
     }
 

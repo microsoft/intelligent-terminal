@@ -9,12 +9,37 @@
 # multiline cases both use the live OS clipboard; deterministic Rust tests separately cover text
 # normalization, target routing, cursor insertion, stale completion, and non-live input gating.
 
-BeforeDiscovery { $script:Ready = [bool]((Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }) -and (Get-Command pwsh -ErrorAction SilentlyContinue) -and (Get-Command winapp -ErrorAction SilentlyContinue)) }
+BeforeDiscovery {
+    Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+    $selectedPackage = Resolve-ItApp -Package (Get-ItTestPackage) -IfInstalled
+    $script:Ready = [bool]($selectedPackage -and (Get-Command pwsh -ErrorAction SilentlyContinue) -and (Get-Command winapp -ErrorAction SilentlyContinue))
+}
 
 Describe 'Feature §2 agent pane paste' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:originalClipboard = Get-Clipboard -Raw -ErrorAction SilentlyContinue
+        . (Join-Path $PSScriptRoot 'helpers\TestTerminalCleanup.ps1')
+        $script:app = $null
+        $script:target = $null
+        $script:launchStarted = $null
+        $script:clipboardSaved = $false
+        $script:cursorSaved = $false
+        $script:fixtureDir = $null
+        $script:fixtureLog = $null
+        $script:evidenceDir = $null
+        $script:target = Resolve-ItApp -Package (Get-ItTestPackage)
+        if (@(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables).Count) {
+            throw 'The paste suite requires an unused selected package; it will not close user sessions.'
+        }
+        $binaryHash = (Get-FileHash -LiteralPath $script:target.WtaPath).Hash
+        if ($env:ITE2E_EXPECTED_WTA_SHA256) {
+            $binaryHash | Should -Be $env:ITE2E_EXPECTED_WTA_SHA256 -Because 'the selected package must contain the intended source build'
+        }
+        $script:originalClipboard = Get-ClipboardSnapshot
+        $script:clipboardSaved = $true
+        Add-Type -AssemblyName System.Windows.Forms
+        $script:originalCursor = [System.Windows.Forms.Cursor]::Position
+        $script:cursorSaved = $true
         $fixtureSource = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-AcpChatAgent.ps1')).Path
         $script:fixtureDir = Join-Path $env:TEMP "ItE2E paste $([guid]::NewGuid().ToString('N'))"
         New-Item -ItemType Directory -Path $script:fixtureDir | Out-Null
@@ -24,8 +49,12 @@ Describe 'Feature §2 agent pane paste' -Tag 'Feature' -Skip:(-not $script:Ready
         $fixtureInvocation = "& '$($fixture.Replace("'", "''"))' -LogPath '$($script:fixtureLog.Replace("'", "''"))'"
         $encodedInvocation = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($fixtureInvocation))
         $command = "pwsh -NoProfile -EncodedCommand $encodedInvocation"
-        $script:evidenceDir = Join-Path $PSScriptRoot '..\artifacts\right-click-copy\green'
+        $artifactRoot = if ($env:ITE2E_ARTIFACT_ROOT) { $env:ITE2E_ARTIFACT_ROOT } else { Join-Path $PSScriptRoot '..\artifacts' }
+        $script:evidenceDir = Join-Path ([IO.Path]::GetFullPath($artifactRoot)) "paste\$([guid]::NewGuid().ToString('N'))"
         New-Item -ItemType Directory -Force -Path $script:evidenceDir | Out-Null
+        @{ Package = $script:target.Package; WtaPath = $script:target.WtaPath; WtaSha256 = $binaryHash } |
+            ConvertTo-Json | Set-Content (Join-Path $script:evidenceDir 'package.json') -Encoding utf8
+        $script:launchStarted = Get-Date
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
             acpAgent = 'custom:paste-fixture'
             acpCustomCommand = $command
@@ -43,9 +72,8 @@ Describe 'Feature §2 agent pane paste' -Tag 'Feature' -Skip:(-not $script:Ready
             }
             Set-WtWindowForeground -App $script:app | Out-Null
             Start-Sleep -Milliseconds 300
-            $listener = Start-WtEventListener -App $script:app
+            $listener = Start-WtEventListener -App $script:app -WaitForReady
             try {
-                Start-Sleep -Milliseconds 400
                 Send-WtWindowKey -App $script:app -Vk 0x56 -Ctrl -Shift:$Shift -RequireForeground | Out-Null
                 return Wait-WtEvent -Listener $listener -TimeoutSec 5 -Predicate {
                     $_.method -eq 'agent_paste_text' -and
@@ -92,10 +120,32 @@ Describe 'Feature §2 agent pane paste' -Tag 'Feature' -Skip:(-not $script:Ready
         & $script:clearPasteDraft
     }
     AfterAll {
-        if ($script:app) { Stop-Terminal -App $script:app }
-        if ($null -ne $script:originalClipboard) { Set-Clipboard -Value $script:originalClipboard }
-        if ($script:fixtureDir -and (Test-Path -LiteralPath $script:fixtureDir)) {
-            Remove-Item -LiteralPath $script:fixtureDir -Recurse -Force
+        $fixtureArchived = $false
+        try {
+            Stop-TestTerminal -App $script:app -Target $script:target -LaunchStarted $script:launchStarted
+        }
+        finally {
+            try {
+                if ($script:clipboardSaved) { Restore-ClipboardSnapshot -Snapshot $script:originalClipboard }
+            }
+            finally {
+                try {
+                    if ($script:fixtureLog -and (Test-Path -LiteralPath $script:fixtureLog)) {
+                        Copy-Item -LiteralPath $script:fixtureLog -Destination (Join-Path $script:evidenceDir 'fixture.log') -Force
+                    }
+                    $fixtureArchived = $true
+                }
+                finally {
+                    try {
+                        if ($script:cursorSaved) { [System.Windows.Forms.Cursor]::Position = $script:originalCursor }
+                    }
+                    finally {
+                        if ($fixtureArchived -and $script:fixtureDir -and (Test-Path -LiteralPath $script:fixtureDir)) {
+                            Remove-Item -LiteralPath $script:fixtureDir -Recurse -Force
+                        }
+                    }
+                }
+            }
         }
     }
 

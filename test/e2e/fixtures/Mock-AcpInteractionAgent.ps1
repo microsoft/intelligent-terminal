@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory)][string]$LogPath,
-    [string]$ResolverFixturePath
+    [string]$ResolverFixturePath,
+    [string]$TelemetryFixturePath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -278,7 +279,37 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
             $promptText = (@($request.params.prompt) | ForEach-Object text) -join "`n"
             Write-FixtureLog -Message "session/prompt|$sessionId|$promptText"
 
-            if ($resolverFixture) {
+            $telemetryCase = if ($TelemetryFixturePath -and (Test-Path -LiteralPath $TelemetryFixturePath)) {
+                Get-Content -LiteralPath $TelemetryFixturePath -Raw | ConvertFrom-Json
+            }
+            if ($telemetryCase -and $telemetryCase.mode -eq 'offer' -and
+                $promptText.Contains([string]$telemetryCase.marker)) {
+                try {
+                    $server = $sessionMcpServers[$sessionId]
+                    if (-not $server) { throw 'Telemetry Autofix session has no Session MCP server' }
+                    $output = ([string]$telemetryCase.outputPath).Replace("'", "''")
+                    $marker = [string]$telemetryCase.marker
+                    if ($marker -notmatch '^TELEMETRY_FIX_[0-9a-f]{32}$') { throw 'Invalid telemetry fixture marker' }
+                    Write-FixtureLog -Message "telemetry-proposal-start|$sessionId|$marker"
+                    $response = Invoke-SessionMcpTool -Server $server -Name 'run_command_in_current_shell' -Id 990 -Arguments @{
+                        summary = "$marker harmless file marker"
+                        command = "`$m='$marker'; Set-Content -LiteralPath '$output' -Value `$m; Write-Output `$m"
+                    }
+                    Write-FixtureLog -Message "telemetry-proposal-result|$marker|$($response | ConvertTo-Json -Depth 20 -Compress)"
+                    Send-AcpMessage @{ jsonrpc = '2.0'; id = $request.id; result = @{ stopReason = 'end_turn' } }
+                }
+                catch {
+                    Write-FixtureLog -Message "telemetry-proposal-error|$($_.Exception.Message)"
+                    Send-AcpMessage @{ jsonrpc = '2.0'; id = $request.id; error = @{ code = -32603; message = $_.Exception.Message } }
+                }
+            }
+            elseif ($promptText -match '(?m)TELEMETRY_CHAT_[0-9a-f]{32}') {
+                $marker = $Matches[0]
+                Send-TextUpdate -SessionId $sessionId -Text "ACK:$marker"
+                Send-AcpMessage @{ jsonrpc = '2.0'; id = $request.id; result = @{ stopReason = 'end_turn' } }
+                Write-FixtureLog -Message "telemetry-chat-complete|$sessionId|$marker"
+            }
+            elseif ($resolverFixture) {
                 try {
                     Invoke-ResolverFixtureTurn -SessionId $sessionId -PromptText $promptText
                     Send-AcpMessage @{
@@ -422,6 +453,26 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
                 }
                 $result = $response.result.structuredContent | ConvertTo-Json -Depth 20 -Compress
                 Write-FixtureLog -Message "delegate-workspace-result|$result"
+                Send-AcpMessage @{
+                    jsonrpc = '2.0'
+                    id = $request.id
+                    result = @{ stopReason = 'end_turn' }
+                }
+            }
+            elseif ($promptText -match '(?m)^TELEMETRY_READY_REFRESH_[0-9a-f]{32}\s*$') {
+                Send-AcpMessage @{
+                    jsonrpc = '2.0'
+                    method = 'session/update'
+                    params = @{
+                        sessionId = $sessionId
+                        update = @{
+                            sessionUpdate = 'config_option_update'
+                            configOptions = @(Get-SessionConfigOptions)
+                        }
+                    }
+                }
+                Send-TextUpdate -SessionId $sessionId -Text 'TELEMETRY_READY_REFRESH_DONE'
+                Write-FixtureLog -Message "telemetry-ready-complete|$($Matches[0].Trim())"
                 Send-AcpMessage @{
                     jsonrpc = '2.0'
                     id = $request.id

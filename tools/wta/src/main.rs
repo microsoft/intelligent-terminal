@@ -121,6 +121,11 @@ fn helper_config(cli: Cli) -> helper::config::HelperConfig {
         delegate_agent: cli.delegate_agent,
         delegate_model: cli.delegate_model,
         no_autofix: cli.no_autofix,
+        autofix_policy_state: cli
+            .autofix_policy_state
+            .as_deref()
+            .map(crate::telemetry::AutoFixPolicyState::from_wire)
+            .unwrap_or_default(),
         yolo_mode: cli.yolo_mode,
         yolo_policy_blocked: cli.yolo_policy_blocked,
         setup: cli.setup,

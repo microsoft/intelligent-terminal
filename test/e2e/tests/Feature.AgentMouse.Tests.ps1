@@ -240,8 +240,10 @@ Describe 'Feature: agent pane physical wheel routing' -Tag 'Feature' -Skip:(-not
 }
 
 BeforeDiscovery {
+    Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+    $selectedPackage = Resolve-ItApp -Package (Get-ItTestPackage) -IfInstalled
     $script:TriangleClickReady = [bool](
-        (Get-AppxPackage | Where-Object { $_.PackageFamilyName -eq 'IntelligentTerminal_rd9vj3e6a2mbr' }) -and
+        $selectedPackage -and
         (Get-Command pwsh -ErrorAction SilentlyContinue) -and
         (Get-Command winapp -ErrorAction SilentlyContinue)
     )
@@ -250,6 +252,25 @@ BeforeDiscovery {
 Describe 'Feature: completed-turn triangle mouse click' -Tag 'CompletedTurnMouse' -Skip:(-not $script:TriangleClickReady) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        . (Join-Path $PSScriptRoot 'helpers\TestTerminalCleanup.ps1')
+        $script:app = $null
+        $script:target = $null
+        $script:launchStarted = $null
+        $script:clipboardSaved = $false
+        $script:cursorSaved = $false
+        $script:fixtureDir = $null
+        $script:fixtureLog = $null
+        $script:evidenceDir = $null
+        $script:caseNumber = 0
+        $target = Resolve-ItApp -Package (Get-ItTestPackage)
+        $script:target = $target
+        if (@(Get-WtProcessesForApp -App $target -IncludePackageExecutables).Count) {
+            throw 'The mouse suite requires an unused selected package; it will not close user sessions.'
+        }
+        $binaryHash = (Get-FileHash -LiteralPath $target.WtaPath).Hash
+        if ($env:ITE2E_EXPECTED_WTA_SHA256) {
+            $binaryHash | Should -Be $env:ITE2E_EXPECTED_WTA_SHA256 -Because 'the selected package must contain the intended source build'
+        }
         $fixtureSource = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-AcpChatAgent.ps1')).Path
         $script:fixtureDir = Join-Path $env:TEMP "ItE2E mouse triangle $([guid]::NewGuid().ToString('N'))"
         New-Item -ItemType Directory -Path $script:fixtureDir | Out-Null
@@ -259,17 +280,19 @@ Describe 'Feature: completed-turn triangle mouse click' -Tag 'CompletedTurnMouse
         $fixtureInvocation = "& '$($fixture.Replace("'", "''"))' -LogPath '$($script:fixtureLog.Replace("'", "''"))'"
         $encodedInvocation = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($fixtureInvocation))
         $command = "pwsh -NoProfile -EncodedCommand $encodedInvocation"
-        $evidencePhase = if ($env:ITE2E_MOUSE_EVIDENCE_PHASE -in @('red', 'green', 'extension-red', 'extension-green')) {
-            $env:ITE2E_MOUSE_EVIDENCE_PHASE
-        }
-        else {
-            'current'
-        }
-        $script:evidenceDir = Join-Path $PSScriptRoot "..\artifacts\mouse-interactions\$evidencePhase"
+        $artifactRoot = if ($env:ITE2E_ARTIFACT_ROOT) { $env:ITE2E_ARTIFACT_ROOT } else { Join-Path $PSScriptRoot '..\artifacts' }
+        $script:evidenceDir = Join-Path ([IO.Path]::GetFullPath($artifactRoot)) "mouse-interactions\$([guid]::NewGuid().ToString('N'))"
         New-Item -ItemType Directory -Force -Path $script:evidenceDir | Out-Null
-        $script:originalClipboard = Get-Clipboard -Raw -ErrorAction SilentlyContinue
+        $script:originalClipboard = Get-ClipboardSnapshot
+        $script:clipboardSaved = $true
+        Add-Type -AssemblyName System.Windows.Forms
+        $script:originalCursor = [System.Windows.Forms.Cursor]::Position
+        $script:cursorSaved = $true
+        @{ Package = $target.Package; WtaPath = $target.WtaPath; WtaSha256 = $binaryHash } |
+            ConvertTo-Json | Set-Content (Join-Path $script:evidenceDir 'package.json') -Encoding utf8
 
-        $script:app = Start-Terminal -Package 'Dev' -PassFre $true -Settings @{
+        $script:launchStarted = Get-Date
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
             acpAgent = 'custom:chat-fixture'
             acpCustomCommand = $command
             rightClickContextMenu = $false
@@ -312,18 +335,68 @@ Describe 'Feature: completed-turn triangle mouse click' -Tag 'CompletedTurnMouse
         }
     }
 
-    AfterAll {
+    BeforeEach {
+        $script:caseNumber++
+        Clear-AgentInput -App $script:app -PaneSessionId $script:agentPane | Out-Null
+        Wait-AgentReady -App $script:app -PaneSessionId $script:agentPane -TimeoutSec 5 |
+            Should -BeTrue -Because 'each mouse case must start with the connected empty draft'
+        if ($script:caseNumber -gt 1) {
+            $previous = Get-AgentPaneSession -App $script:app -PaneSessionId $script:agentPane
+            Invoke-AgentMenuItem -App $script:app -PaneSessionId $script:agentPane -Name '/new'
+            Wait-Until -TimeoutSec 20 -Because 'a fresh fixture session for the next mouse case' -Condition {
+                $session = Get-AgentPaneSession -App $script:app -PaneSessionId $script:agentPane
+                $session -and $session.AcpSessionId -and $session.AcpSessionId -ne $previous.AcpSessionId
+            } | Should -BeTrue
+            Wait-AgentReady -App $script:app -PaneSessionId $script:agentPane -TimeoutSec 10 |
+                Should -BeTrue -Because 'the replacement fixture session must be ready before input'
+        }
+        (Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100) |
+            Should -Not -Match 'SCROLL_TURN_' -Because 'prior chat history must not change the next case layout or hide its copy hint'
+    }
+
+    AfterEach {
         if ($script:app) {
-            Stop-Terminal -App $script:app
+            try {
+                $prefix = Join-Path $script:evidenceDir ('case-{0:D2}-before-cleanup' -f $script:caseNumber)
+                Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 150 |
+                    Set-Content -LiteralPath "$prefix.txt" -Encoding utf8
+                Save-UiScreenshot -App $script:app -Path "$prefix.png" | Out-Null
+            }
+            finally {
+                Clear-AgentInput -App $script:app -PaneSessionId $script:agentPane | Out-Null
+                Wait-AgentReady -App $script:app -PaneSessionId $script:agentPane -TimeoutSec 5 |
+                    Should -BeTrue -Because 'mouse cases must not leave a draft for the next case'
+            }
         }
-        if ($null -ne $script:originalClipboard) {
-            Set-Clipboard -Value $script:originalClipboard
+    }
+
+    AfterAll {
+        $fixtureArchived = $false
+        try {
+            Stop-TestTerminal -App $script:app -Target $script:target -LaunchStarted $script:launchStarted
         }
-        if ($script:fixtureLog -and (Test-Path -LiteralPath $script:fixtureLog)) {
-            Copy-Item -LiteralPath $script:fixtureLog -Destination (Join-Path $script:evidenceDir 'fixture.log') -Force
-        }
-        if ($script:fixtureDir -and (Test-Path -LiteralPath $script:fixtureDir)) {
-            Remove-Item -LiteralPath $script:fixtureDir -Recurse -Force
+        finally {
+            try {
+                if ($script:clipboardSaved) { Restore-ClipboardSnapshot -Snapshot $script:originalClipboard }
+            }
+            finally {
+                try {
+                    if ($script:fixtureLog -and (Test-Path -LiteralPath $script:fixtureLog)) {
+                        Copy-Item -LiteralPath $script:fixtureLog -Destination (Join-Path $script:evidenceDir 'fixture.log') -Force
+                    }
+                    $fixtureArchived = $true
+                }
+                finally {
+                    try {
+                        if ($script:cursorSaved) { [System.Windows.Forms.Cursor]::Position = $script:originalCursor }
+                    }
+                    finally {
+                        if ($fixtureArchived -and $script:fixtureDir -and (Test-Path -LiteralPath $script:fixtureDir)) {
+                            Remove-Item -LiteralPath $script:fixtureDir -Recurse -Force
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -532,7 +605,7 @@ Describe 'Feature: completed-turn triangle mouse click' -Tag 'CompletedTurnMouse
         $prompt = "SCROLL_TURN_00_$id"
         $reply = "ACK_$prompt"
         $replyPattern = [regex]::Escape($reply)
-        $rightClickEvidenceDir = Join-Path $PSScriptRoot '..\artifacts\right-click-copy\green'
+        $rightClickEvidenceDir = Join-Path $script:evidenceDir 'right-click-copy'
         New-Item -ItemType Directory -Force -Path $rightClickEvidenceDir | Out-Null
 
         Send-AgentKey -App $script:app -PaneSessionId $script:agentPane -Key Escape | Out-Null
@@ -571,24 +644,29 @@ Describe 'Feature: completed-turn triangle mouse click' -Tag 'CompletedTurnMouse
             $copiedPattern = Get-WtaLocalizedTextRegex -Key 'system.selection_copied'
             if (-not $copiedPattern) { $copiedPattern = '(?i)Copied' }
             Start-Sleep -Milliseconds 1800
-            (Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100) |
-                Should -Not -Match $copiedPattern -Because 'the Ctrl+C confirmation must expire before right-click tests its own hint'
 
             Invoke-UiMouseDrag -App $script:app -FromX $fromX -FromY $y -ToX $toX -ToY $y | Out-Null
-            Start-Sleep -Milliseconds 300
+            Test-Until -TimeoutSec 3 -IntervalSec 0.1 -Condition {
+                (Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100) -notmatch $copiedPattern
+            } | Should -BeTrue -Because 'the reselection redraw must expire the old Ctrl+C confirmation before right-click'
             $sentinel = "RIGHT_CLICK_SENTINEL_$id"
             Set-Clipboard -Value $sentinel
             $clickX = [Math]::Round(($fromX + $toX) / 2)
-            $copyListener = Start-WtEventListener -App $script:app
+            $copyListener = Start-WtEventListener -App $script:app -WaitForReady
             try {
-                Start-Sleep -Milliseconds 400
+                $clickTimer = [Diagnostics.Stopwatch]::StartNew()
                 Invoke-UiMouseDrag -App $script:app -FromX $clickX -FromY $y -ToX $clickX -ToY $y -Right | Out-Null
-                Start-Sleep -Milliseconds 300
+                $clickElapsed = $clickTimer.Elapsed.TotalMilliseconds
+                $copyHintObserved = Test-Until -TimeoutSec 3 -IntervalSec 0.1 -Condition {
+                    (Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100) -match $copiedPattern
+                }
+                @{ ClickMilliseconds = $clickElapsed; ObservationMilliseconds = $clickTimer.Elapsed.TotalMilliseconds; CopiedHintObserved = $copyHintObserved } |
+                    ConvertTo-Json | Set-Content -LiteralPath (Join-Path $rightClickEvidenceDir 'copy-observation.json') -Encoding utf8
 
                 (Get-Clipboard -Raw) | Should -Be $reply -Because 'right-click must copy the exact physical WTA selection'
                 @(Get-WtEvents -Listener $copyListener -Predicate { $_.method -eq 'agent_paste_text' }).Count |
                     Should -Be 0 -Because 'an actual text selection must copy without also requesting Default Paste'
-                Assert-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -Pattern $copiedPattern -TimeoutSec 5
+                $copyHintObserved | Should -BeTrue -Because 'the transient Copied hint must be observed before slower follow-up checks'
                 Save-UiScreenshot -App $script:app -Path (Join-Path $rightClickEvidenceDir 'after-right-click-copy.png') | Out-Null
             }
             finally {
@@ -597,10 +675,9 @@ Describe 'Feature: completed-turn triangle mouse click' -Tag 'CompletedTurnMouse
 
             $pasteMarker = "RIGHT_CLICK_AFTER_COPY_$id"
             Set-Clipboard -Value $pasteMarker
-            $pasteListener = Start-WtEventListener -App $script:app
+            $pasteListener = Start-WtEventListener -App $script:app -WaitForReady
             $secondPasteObserved = $false
             try {
-                Start-Sleep -Milliseconds 400
                 Invoke-UiMouseDrag -App $script:app -FromX $clickX -FromY $y -ToX $clickX -ToY $y -Right | Out-Null
                 $pasteEvent = Wait-WtEvent -Listener $pasteListener -TimeoutSec 5 -Predicate {
                     $_.method -eq 'agent_paste_text' -and
@@ -676,9 +753,8 @@ Describe 'Feature: completed-turn triangle mouse click' -Tag 'CompletedTurnMouse
         foreach ($point in $points) {
             $marker = "RIGHT_CLICK_PASTE_$($point.Name)_$([guid]::NewGuid().ToString('N'))"
             Set-Clipboard -Value $marker
-            $listener = Start-WtEventListener -App $script:app
+            $listener = Start-WtEventListener -App $script:app -WaitForReady
             try {
-                Start-Sleep -Milliseconds 400
                 try {
                     Invoke-UiMouseDrag -App $script:app -FromX $point.X -FromY $point.Y -ToX $point.X -ToY $point.Y -Right | Out-Null
                 }
@@ -728,9 +804,8 @@ Describe 'Feature: completed-turn triangle mouse click' -Tag 'CompletedTurnMouse
 
         $marker = "RIGHT_CLICK_PASTE_highlight_$([guid]::NewGuid().ToString('N'))"
         Set-Clipboard -Value $marker
-        $listener = Start-WtEventListener -App $script:app
+        $listener = Start-WtEventListener -App $script:app -WaitForReady
         try {
-            Start-Sleep -Milliseconds 400
             try {
                 Invoke-UiMouseDrag -App $script:app -FromX $promptX -FromY $promptY -ToX $promptX -ToY $promptY -Right | Out-Null
             }
