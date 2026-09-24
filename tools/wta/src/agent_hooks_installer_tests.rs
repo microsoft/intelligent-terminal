@@ -202,6 +202,99 @@ fn write_antigravity_test_install(home: &Path) -> PathBuf {
     plugin
 }
 
+#[test]
+fn antigravity_staging_cleanup_preserves_install_errors_and_removes_copies() {
+    for phase in ["native install", "verification", "ownership copy"] {
+        let home = antigravity_test_home("staging-failure");
+        let source = write_antigravity_test_install(&home);
+        let root = home.join("staging");
+        let sibling = root.join("unrelated-run");
+        fs::create_dir_all(&sibling).unwrap();
+        fs::write(sibling.join("user.txt"), "preserve").unwrap();
+        let expected = format!("{phase} failed");
+        let result = antigravity::with_staged_bundle(&source, &root, |staging| {
+            assert!(staging.join("hooks.json").is_file());
+            assert!(!staging.join("intelligent-terminal.json").exists());
+            Err(expected.clone())
+        });
+        let remaining = fs::read_dir(&root).unwrap().count();
+        let sibling_untouched = fs::read_to_string(sibling.join("user.txt")).unwrap();
+        let source_untouched = source.join("intelligent-terminal.json").is_file();
+        fs::remove_dir_all(home).unwrap();
+        assert_eq!(result, Err(expected));
+        assert_eq!(remaining, 1, "{phase} left a staging copy");
+        assert_eq!(sibling_untouched, "preserve");
+        assert!(source_untouched);
+    }
+}
+
+#[test]
+fn antigravity_staging_cleanup_removes_successful_and_partial_copies() {
+    for scenario in ["success", "missing-source", "missing-marker"] {
+        let home = antigravity_test_home("staging-setup");
+        let mut source = write_antigravity_test_install(&home);
+        if scenario == "missing-source" {
+            source = home.join("missing");
+        } else if scenario == "missing-marker" {
+            fs::remove_file(source.join("intelligent-terminal.json")).unwrap();
+        }
+        let root = home.join("staging");
+        let mut called = false;
+        let result = antigravity::with_staged_bundle(&source, &root, |staging| {
+            called = true;
+            assert!(staging.join("hooks.json").is_file());
+            assert!(staging.join("plugin.json").is_file());
+            assert!(!staging.join("intelligent-terminal.json").exists());
+            Ok(())
+        });
+        let remaining = fs::read_dir(&root).unwrap().count();
+        fs::remove_dir_all(home).unwrap();
+        assert_eq!(called, scenario == "success", "{scenario}");
+        assert_eq!(
+            result.is_ok(),
+            scenario == "success",
+            "{scenario}: {result:?}"
+        );
+        assert_eq!(remaining, 0, "{scenario} left a staging copy");
+    }
+}
+
+#[test]
+#[cfg(windows)]
+fn antigravity_staging_cleanup_reports_errors_without_hiding_install_failure() {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    for install_failed in [false, true] {
+        let home = antigravity_test_home("staging-cleanup-error");
+        let source = write_antigravity_test_install(&home);
+        let root = home.join("staging");
+        let mut locked = None;
+        let result = antigravity::with_staged_bundle(&source, &root, |staging| {
+            locked = Some(
+                fs::OpenOptions::new()
+                    .read(true)
+                    .share_mode(0)
+                    .open(staging.join("hooks.json"))
+                    .unwrap(),
+            );
+            if install_failed {
+                Err("original native install failure".into())
+            } else {
+                Ok(())
+            }
+        });
+        drop(locked);
+        fs::remove_dir_all(home).unwrap();
+        let error = result.expect_err("cleanup failure must not report installation success");
+        assert!(error.contains("cannot clean Antigravity hook staging"));
+        assert!(error.contains(root.to_string_lossy().as_ref()));
+        assert_eq!(
+            error.contains("original native install failure"),
+            install_failed
+        );
+    }
+}
+
 fn emulate_antigravity_uninstall(home: &Path, registration: bool, assets: bool) {
     let config = home.join(".gemini").join("config");
     if registration {

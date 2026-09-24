@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use super::{
-    bundle, cli_binary_on_path, restage_bundle_dir, run_plugin_cli_with_env, CliKind, CliStatus,
+    bundle, cli_binary_on_path, copy_dir_recursive, run_plugin_cli_with_env, CliKind, CliStatus,
     CliUninstallResult, InstallOutcome, InstalledInfo, InstalledProbe, Version, PLUGIN_NAME,
     STAGING_SUBDIR,
 };
@@ -237,6 +237,40 @@ fn validate_files(directory: &Path) -> Result<(), String> {
     Ok(())
 }
 
+pub(super) fn with_staged_bundle(
+    source: &Path,
+    staging_root: &Path,
+    action: impl FnOnce(&Path) -> Result<(), String>,
+) -> Result<(), String> {
+    fs::create_dir_all(staging_root)
+        .map_err(|error| format!("cannot prepare Antigravity hook staging: {error}"))?;
+    let staging = staging_root.join(uuid::Uuid::new_v4().to_string());
+    fs::create_dir(&staging)
+        .map_err(|error| format!("cannot create Antigravity hook staging: {error}"))?;
+    // Reserve our unique directory before copying, and clean it after every ordinary exit.
+    let result = (|| {
+        copy_dir_recursive(source, &staging)
+            .map_err(|error| format!("cannot stage Antigravity hooks: {error}"))?;
+        fs::remove_file(staging.join(MANIFEST)).map_err(|error| error.to_string())?;
+        action(&staging)
+    })();
+    match fs::remove_dir_all(&staging) {
+        Ok(()) => result,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => result,
+        Err(error) => {
+            tracing::warn!(target: "agent_hooks", path = %staging.display(), %error, "failed to remove Antigravity hook staging");
+            let cleanup = format!(
+                "cannot clean Antigravity hook staging {}: {error}",
+                staging.display()
+            );
+            Err(match result {
+                Ok(()) => cleanup,
+                Err(original) => format!("{original}; {cleanup}"),
+            })
+        }
+    }
+}
+
 pub(super) fn install(home: &Path) -> InstallOutcome {
     if !cli_binary_on_path(CliKind::Antigravity) {
         tracing::debug!(target: "agent_hooks", "agy is not installed; skipping Antigravity hooks");
@@ -277,56 +311,49 @@ pub(super) fn install(home: &Path) -> InstallOutcome {
             .and_then(Value::as_str)
             .and_then(|value| value.parse::<Version>().ok())
             .ok_or("the bundled Antigravity hook version is invalid")?;
-        let staging = crate::runtime_paths::intelligent_terminal_local_root()
+        let staging_root = crate::runtime_paths::intelligent_terminal_local_root()
             .ok_or("the Intelligent Terminal cache directory is unavailable")?
             .join(STAGING_SUBDIR)
-            .join("antigravity")
-            .join(uuid::Uuid::new_v4().to_string());
-        restage_bundle_dir(&source, &staging)
-            .map_err(|error| format!("cannot stage Antigravity hooks: {error}"))?;
+            .join("antigravity");
         // The provider copies its payload; publish our version only after verification.
-        fs::remove_file(staging.join(MANIFEST)).map_err(|error| error.to_string())?;
-        let staged = staging.to_string_lossy();
-        let home_value = home.to_string_lossy();
-        let environment = [
-            ("USERPROFILE", home_value.as_ref()),
-            ("HOME", home_value.as_ref()),
-        ];
-        run_plugin_cli_with_env(
-            "agy",
-            &["plugin", "install", &staged],
-            &environment,
-            "agent_hooks",
-            &[],
-        )
-        .map_err(|error| format!("Antigravity plugin install failed: {error}"))?;
-        let copied = load(home)?;
-        if !copied.registered || !copied.owned || !copied.directory.join("hooks.json").is_file() {
-            return Err("Antigravity did not install the managed hooks in its expected configuration directory".into());
-        }
-        if !copied.enabled {
+        with_staged_bundle(&source, &staging_root, |staging| {
+            let staged = staging.to_string_lossy();
+            let home_value = home.to_string_lossy();
+            let environment = [
+                ("USERPROFILE", home_value.as_ref()),
+                ("HOME", home_value.as_ref()),
+            ];
             run_plugin_cli_with_env(
                 "agy",
-                &["plugin", "enable", PLUGIN_NAME],
+                &["plugin", "install", &staged],
                 &environment,
                 "agent_hooks",
                 &[],
             )
-            .map_err(|error| format!("Antigravity plugin enable failed: {error}"))?;
-        }
-        fs::copy(source.join(MANIFEST), copied.directory.join(MANIFEST))
-            .map_err(|error| format!("cannot commit Antigravity hook ownership: {error}"))?;
-        let after = load(home)?;
-        if !after.complete || !after.enabled || after.version != Some(version) {
-            return Err("Antigravity hook installation did not pass verification".into());
-        }
-        for name in ["hooks.json", "plugin.json"] {
-            fs::remove_file(staging.join(name))
-                .map_err(|error| format!("cannot clean Antigravity hook staging: {error}"))?;
-        }
-        fs::remove_dir(&staging)
-            .map_err(|error| format!("cannot clean Antigravity hook staging: {error}"))?;
-        Ok(())
+            .map_err(|error| format!("Antigravity plugin install failed: {error}"))?;
+            let copied = load(home)?;
+            if !copied.registered || !copied.owned || !copied.directory.join("hooks.json").is_file()
+            {
+                return Err("Antigravity did not install the managed hooks in its expected configuration directory".into());
+            }
+            if !copied.enabled {
+                run_plugin_cli_with_env(
+                    "agy",
+                    &["plugin", "enable", PLUGIN_NAME],
+                    &environment,
+                    "agent_hooks",
+                    &[],
+                )
+                .map_err(|error| format!("Antigravity plugin enable failed: {error}"))?;
+            }
+            fs::copy(source.join(MANIFEST), copied.directory.join(MANIFEST))
+                .map_err(|error| format!("cannot commit Antigravity hook ownership: {error}"))?;
+            let after = load(home)?;
+            if !after.complete || !after.enabled || after.version != Some(version) {
+                return Err("Antigravity hook installation did not pass verification".into());
+            }
+            Ok(())
+        })
     })();
     match result {
         Ok(()) => InstallOutcome::Installed,
