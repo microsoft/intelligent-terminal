@@ -4,6 +4,7 @@
 
 #include "pch.h"
 #include "TerminalPage.h"
+#include "TabStrip.h"
 
 #include <iomanip>
 
@@ -624,6 +625,27 @@ namespace winrt::TerminalApp::implementation
                 page->_tabSearchQuery = sender.SearchQuery();
                 page->_ApplyTabListProjection();
                 page->_suppressTabFocusRequests = false;
+            }
+        });
+        _tabStrip.HistoryRequested([weakThis{ get_weak() }](auto&&, auto&&) {
+            if (const auto page = weakThis.get())
+            {
+                page->_StartSidebarHistoryRefreshTimer();
+                page->_RequestSidebarHistoryRefresh(true);
+            }
+        });
+        _tabStrip.HistoryClosed([weakThis{ get_weak() }](auto&&, auto&&) {
+            if (const auto page = weakThis.get())
+            {
+                page->_StopSidebarHistoryRefreshTimer();
+                page->_tabStrip.HistoryLoading(false);
+                page->_tabStrip.HistoryError(L"");
+            }
+        });
+        _tabStrip.HistoryActivationRequested([weakThis{ get_weak() }](auto&&, const auto& args) {
+            if (const auto page = weakThis.get(); page && args)
+            {
+                page->_ActivateSidebarHistoryItem(args.Item());
             }
         });
         _tabRow.RailCollapseRequested({ this, &TerminalPage::_OnVerticalRailCollapseRequested });
@@ -3066,6 +3088,14 @@ namespace winrt::TerminalApp::implementation
                 std::to_string(params["failed_tabs"].size()) + " tab(s)");
         }
         _CompleteAgentSessionRetirement(operationId, false);
+    }
+
+    void TerminalPage::OnSessionRegistryChanged(hstring)
+    {
+        if (_tabStrip.HistoryActive())
+        {
+            _RequestSidebarHistoryRefresh(false);
+        }
     }
 
     // Tells wta that a tab has been destroyed so it can drop the per-tab
@@ -5758,9 +5788,367 @@ namespace winrt::TerminalApp::implementation
         if (collapsing)
         {
             _ClearTabSearch();
+            if (_tabStrip.HistoryActive())
+            {
+                _StopSidebarHistoryRefreshTimer();
+                _tabStrip.HistoryActive(false);
+                _tabStrip.HistoryLoading(false);
+            }
         }
         _isVerticalRailCollapsed = collapsing;
         _SetVerticalRailVisibility(true);
+    }
+
+    void TerminalPage::_StartSidebarHistoryRefreshTimer()
+    {
+        if (!_historyRefreshTimer)
+        {
+            _historyRefreshTimer = Windows::UI::Xaml::DispatcherTimer{};
+            _historyRefreshTimer.Interval(std::chrono::seconds{ 5 });
+            _historyRefreshTimer.Tick([weakThis{ get_weak() }](auto&&, auto&&) {
+                if (const auto page = weakThis.get(); page && page->_tabStrip.HistoryActive())
+                {
+                    page->_RequestSidebarHistoryRefresh(false);
+                }
+            });
+        }
+        _historyRefreshTimer.Start();
+    }
+
+    void TerminalPage::_StopSidebarHistoryRefreshTimer()
+    {
+        if (_historyRefreshTimer)
+        {
+            _historyRefreshTimer.Stop();
+        }
+        ++_historyRequestGeneration;
+        _historyRefreshPending = false;
+    }
+
+    void TerminalPage::_RequestSidebarHistoryRefresh(const bool initialLoad)
+    {
+        if (!_tabStrip.HistoryActive())
+        {
+            return;
+        }
+        if (initialLoad)
+        {
+            _tabStrip.HistoryError(L"");
+            _tabStrip.HistoryLoading(true);
+        }
+        if (_historyRefreshInFlight)
+        {
+            _historyRefreshPending = true;
+            return;
+        }
+
+        _historyRefreshInFlight = true;
+        _historyRefreshPending = false;
+        const auto generation = ++_historyRequestGeneration;
+        _LoadSidebarHistory(generation, initialLoad);
+    }
+
+    safe_void_coroutine TerminalPage::_LoadSidebarHistory(const uint64_t generation, const bool initialLoad)
+    {
+        const auto weakThis = get_weak();
+        const auto dispatcher = Dispatcher();
+
+        co_await winrt::resume_background();
+
+        namespace Wta = ::Microsoft::Terminal::WtaProcess;
+        const auto wtaPath = Wta::ResolveWtaExePath();
+        const auto result = Wta::RunWtaCapture(
+            wtaPath,
+            // Match the Agent Management MVP visibility contract: Agent-pane
+            // sessions remain in the registry for routing, but are not shown
+            // until both surfaces opt into managing them.
+            L"sessions list --origin shell --json",
+            15'000,
+            nullptr,
+            false);
+
+        std::vector<TerminalApp::TabStripHistoryItem> items;
+        std::string parseError;
+        if (result.completed && result.exitCode == 0)
+        {
+            std::istringstream lines{ result.output };
+            for (std::string line; std::getline(lines, line);)
+            {
+                if (line.empty())
+                {
+                    continue;
+                }
+
+                Json::Value row;
+                Json::CharReaderBuilder builder;
+                std::istringstream json{ line };
+                std::string errors;
+                if (!Json::parseFromStream(builder, json, &row, &errors) || !row.isObject())
+                {
+                    parseError = errors.empty() ? "Invalid session history response." : errors;
+                    items.clear();
+                    break;
+                }
+
+                const auto sessionId = row.get("session_id", "").asString();
+                auto providerId = row.get("provider_id", "").asString();
+                if (providerId.empty() && row["cli_source"].isString())
+                {
+                    providerId = row["cli_source"].asString();
+                    std::ranges::transform(providerId, providerId.begin(), [](const unsigned char ch) {
+                        return static_cast<char>(std::tolower(ch));
+                    });
+                }
+                if (sessionId.empty() || providerId.empty())
+                {
+                    continue;
+                }
+
+                std::string agentSource;
+                std::string wslDistro;
+                std::string locationLabel;
+                const auto& location = row["location"];
+                if (location.isString() && location.asString() == "Host")
+                {
+                    agentSource = "host";
+                    locationLabel = "Host";
+                }
+                else if (location.isObject() &&
+                         location["Wsl"].isObject() &&
+                         location["Wsl"]["distro"].isString())
+                {
+                    agentSource = "wsl";
+                    wslDistro = location["Wsl"]["distro"].asString();
+                    if (wslDistro.empty())
+                    {
+                        continue;
+                    }
+                    locationLabel = wslDistro + " (WSL)";
+                }
+                else
+                {
+                    continue;
+                }
+
+                const auto status = row["status"].isString() ? row["status"].asString() : std::string{};
+                const auto isLive = status == "Idle" ||
+                                    status == "Working" ||
+                                    status == "Attention" ||
+                                    status == "Error";
+                const auto origin = row["origin"].isString() ? row["origin"].asString() : std::string{};
+                const auto isAgentPane = origin == "AgentPane";
+                const auto providerDisplayName = [&]() -> std::string {
+                    if (providerId == "copilot")
+                    {
+                        return "Copilot";
+                    }
+                    if (providerId == "claude")
+                    {
+                        return "Claude";
+                    }
+                    if (providerId == "codex")
+                    {
+                        return "Codex";
+                    }
+                    if (providerId == "gemini")
+                    {
+                        return "Gemini";
+                    }
+                    if (providerId == "opencode")
+                    {
+                        return "OpenCode";
+                    }
+                    return providerId;
+                }();
+
+                auto title = row.get("title", "").asString();
+                const auto cwd = row.get("cwd", "").asString();
+                if (title.empty() && isLive && isAgentPane)
+                {
+                    title = winrt::to_string(winrt::hstring{
+                        RS_fmt(L"VerticalTabsHistoryLiveAgentTitleFormat", winrt::to_hstring(providerDisplayName)) });
+                }
+                else if (title.empty() && !cwd.empty())
+                {
+                    title = std::filesystem::path{ winrt::to_hstring(cwd).c_str() }.filename().string();
+                }
+                if (title.empty())
+                {
+                    title = providerId + " session " + sessionId.substr(0, (std::min)(sessionId.size(), size_t{ 8 }));
+                }
+
+                auto item = winrt::make<TerminalApp::implementation::TabStripHistoryItem>();
+                item.SessionId(winrt::to_hstring(sessionId));
+                item.Title(winrt::to_hstring(title));
+                item.Subtitle(winrt::to_hstring(
+                    providerId + " - " + locationLabel + " - " + (isLive ? "Live" : "History")));
+                item.Cwd(winrt::to_hstring(cwd));
+                item.PaneSessionId(winrt::to_hstring(row.get("pane_session_id", "").asString()));
+                item.AgentId(winrt::to_hstring(providerId));
+                item.AgentSource(winrt::to_hstring(agentSource));
+                item.WslDistro(winrt::to_hstring(wslDistro));
+                item.SessionUniverse(winrt::to_hstring(row.get("session_universe", "").asString()));
+                item.IsLive(isLive);
+                item.IsAgentPane(isAgentPane);
+                items.emplace_back(std::move(item));
+            }
+        }
+
+        co_await wil::resume_foreground(dispatcher);
+        const auto page = weakThis.get();
+        if (page)
+        {
+            page->_historyRefreshInFlight = false;
+        }
+        if (!page || page->_historyRequestGeneration != generation || !page->_tabStrip.HistoryActive())
+        {
+            if (page && page->_historyRefreshPending && page->_tabStrip.HistoryActive())
+            {
+                page->_historyRefreshPending = false;
+                page->_RequestSidebarHistoryRefresh(page->_tabStrip.HistoryLoading());
+            }
+            co_return;
+        }
+
+        if (!result.completed || result.exitCode != 0)
+        {
+            if (initialLoad)
+            {
+                page->_tabStrip.HistoryItems().Clear();
+                page->_tabStrip.HistoryError(RS_(L"VerticalTabsHistoryLoadError"));
+            }
+        }
+        else if (!parseError.empty())
+        {
+            if (initialLoad)
+            {
+                page->_tabStrip.HistoryItems().Clear();
+                page->_tabStrip.HistoryError(RS_(L"VerticalTabsHistoryInvalidResponse"));
+            }
+        }
+        else
+        {
+            page->_tabStrip.HistoryItems().Clear();
+            for (const auto& item : items)
+            {
+                page->_tabStrip.HistoryItems().Append(item);
+            }
+            page->_tabStrip.HistoryError(L"");
+        }
+        page->_tabStrip.HistoryLoading(false);
+        if (page->_historyRefreshPending)
+        {
+            page->_historyRefreshPending = false;
+            page->_RequestSidebarHistoryRefresh(false);
+        }
+    }
+
+    safe_void_coroutine TerminalPage::_ActivateSidebarHistoryItem(TerminalApp::TabStripHistoryItem item)
+    {
+        if (!item)
+        {
+            co_return;
+        }
+
+        const auto weakThis = get_weak();
+        const auto dispatcher = Dispatcher();
+        const auto windowId = _WindowProperties.WindowId();
+        _StopSidebarHistoryRefreshTimer();
+        _tabStrip.HistoryLoading(true);
+        _tabStrip.HistoryError(L"");
+
+        const auto quote = [](std::wstring_view value) {
+            std::wstring quoted{ L"\"" };
+            size_t slashes = 0;
+            for (const auto ch : value)
+            {
+                if (ch == L'\\')
+                {
+                    ++slashes;
+                    continue;
+                }
+                if (ch == L'"')
+                {
+                    quoted.append(slashes * 2 + 1, L'\\');
+                    quoted.push_back(L'"');
+                    slashes = 0;
+                    continue;
+                }
+                quoted.append(slashes, L'\\');
+                slashes = 0;
+                quoted.push_back(ch);
+            }
+            quoted.append(slashes * 2, L'\\');
+            quoted.push_back(L'"');
+            return quoted;
+        };
+
+        winrt::guid activationGuid{};
+        THROW_IF_FAILED(CoCreateGuid(reinterpret_cast<GUID*>(&activationGuid)));
+        const auto activationId = winrt::to_hstring(activationGuid);
+        std::wstring args{
+            L"sessions activate --json --session-id " + quote(item.SessionId()) +
+            L" --provider " + quote(item.AgentId()) +
+            L" --location " + quote(item.AgentSource()) +
+            L" --window-id " + std::to_wstring(windowId) +
+            L" --activation-id " + quote(activationId)
+        };
+        if (!item.WslDistro().empty())
+        {
+            args.append(L" --wsl-distro ").append(quote(item.WslDistro()));
+        }
+        if (!item.SessionUniverse().empty())
+        {
+            args.append(L" --universe ").append(quote(item.SessionUniverse()));
+        }
+
+        co_await winrt::resume_background();
+        namespace Wta = ::Microsoft::Terminal::WtaProcess;
+        const auto result = Wta::RunWtaCapture(
+            Wta::ResolveWtaExePath(),
+            args,
+            15'000,
+            nullptr,
+            false);
+
+        bool accepted = false;
+        std::string detail;
+        if (result.completed && result.exitCode == 0)
+        {
+            Json::Value response;
+            Json::CharReaderBuilder builder;
+            std::istringstream json{ result.output };
+            std::string errors;
+            if (Json::parseFromStream(builder, json, &response, &errors) && response.isObject())
+            {
+                accepted = response.get("accepted", false).asBool();
+                detail = response.get("detail", "").asString();
+            }
+            else
+            {
+                detail = errors;
+            }
+        }
+
+        co_await wil::resume_foreground(dispatcher);
+        const auto page = weakThis.get();
+        if (!page)
+        {
+            co_return;
+        }
+        page->_tabStrip.HistoryLoading(false);
+        if (accepted)
+        {
+            page->_tabStrip.HistoryActive(false);
+            page->_tabStrip.HistoryError(L"");
+        }
+        else
+        {
+            page->_tabStrip.HistoryError(
+                detail.empty() ? RS_(L"VerticalTabsHistoryActivationError") : winrt::to_hstring(detail));
+            page->_StartSidebarHistoryRefreshTimer();
+            page->_RequestSidebarHistoryRefresh(false);
+        }
     }
 
     void TerminalPage::_ClearTabSearch()
@@ -8560,13 +8948,14 @@ namespace winrt::TerminalApp::implementation
     }
 
     // Inbound event from WTA: {method:"resume_in_new_agent_tab",
-    //                          params:{session_id, cwd}}.
+    //                          params:{window_id, session_id, cwd, agent_id,
+    //                                  agent_model, agent_source, wsl_distro}}.
     // Sent by the session view's Enter handler on a Historical/Ended row
     // (Plan-C ResumeInAgentPane path). We:
-    //   1. Create a new tab with the default profile (using the historical
-    //      session's cwd as the starting directory when provided).
-    //   2. Stash the (session_id, cwd) in `_pendingLoadSessions` keyed by
-    //      the new tab's StableId.
+    //   1. Reserve the exact Agent provider and load request before creating
+    //      a new tab, suppressing its ordinary deferred Agent pre-warm.
+    //   2. Bind the reservation to the new tab's StableId during
+    //      `_InitializeTab`.
     //   3. Ask wta to mark the new tab's agent pane as open. wta echoes
     //      `agent_state_changed{pane_open:true, tab_id:<new>}` which
     //      lands in `OnAgentStateChanged`; the pending entry is consumed
@@ -8608,11 +8997,46 @@ namespace winrt::TerminalApp::implementation
         const auto& params = evt["params"];
         const std::string sessionIdStr = params.get("session_id", "").asString();
         const std::string cwdStr = params.get("cwd", "").asString();
-        if (sessionIdStr.empty())
+        const std::string windowIdStr = params.get("window_id", "").asString();
+        const std::string agentIdStr = params.get("agent_id", "").asString();
+        const std::string agentModelStr = params.get("agent_model", "").asString();
+        const std::string agentSourceStr = params.get("agent_source", "").asString();
+        const std::string agentWslDistroStr = params.get("wsl_distro", "").asString();
+        if (windowIdStr != std::to_string(_WindowProperties.WindowId()))
         {
-            _agentPaneLog("OnResumeInNewAgentTabRequested: empty session_id — ignoring");
+            _agentPaneLog("OnResumeInNewAgentTabRequested: window mismatch");
             return;
         }
+        if (sessionIdStr.empty() || agentIdStr.empty())
+        {
+            _agentPaneLog("OnResumeInNewAgentTabRequested: missing session or agent identity");
+            return;
+        }
+        if (agentSourceStr != "host" && agentSourceStr != "wsl")
+        {
+            _agentPaneLog("OnResumeInNewAgentTabRequested: invalid agent source");
+            return;
+        }
+        if (agentSourceStr == "wsl" && agentWslDistroStr.empty())
+        {
+            _agentPaneLog("OnResumeInNewAgentTabRequested: WSL source missing distro");
+            return;
+        }
+
+        // Reserve the next tab before constructing it so `_InitializeTab`
+        // suppresses ordinary pre-warm and binds the exact resume provider
+        // before its deferred initialization callback can run.
+        _pendingNewTabLoadSession = _PendingLoadSession{
+            sessionIdStr,
+            cwdStr,
+            winrt::to_hstring(agentIdStr),
+            winrt::to_hstring(agentModelStr),
+            winrt::to_hstring(agentSourceStr),
+            winrt::to_hstring(agentWslDistroStr),
+        };
+        const auto clearReservation = wil::scope_exit([&]() {
+            _pendingNewTabLoadSession.reset();
+        });
 
         // Step 1: create a new tab.
         Settings::Model::NewTerminalArgs newTerminalArgs{};
@@ -8627,8 +9051,9 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        // Step 2: register the pending load-session for the new tab and
-        // ask wta to mark it as having an open agent pane. The resulting
+        // Step 2: ask wta to mark the new tab as having an open agent pane.
+        // `_InitializeTab` already moved the reservation into
+        // `_pendingLoadSessions` before queueing ordinary pre-warm. The resulting
         // `agent_state_changed{pane_open:true}` lands in
         // `OnAgentStateChanged`, which consumes the pending entry and
         // spawns the helper with the bundled resume request.
@@ -8644,8 +9069,12 @@ namespace winrt::TerminalApp::implementation
             _agentPaneLog("OnResumeInNewAgentTabRequested: new tab has empty StableId");
             return;
         }
-        _pendingLoadSessions[newStableId] = _PendingLoadSession{ sessionIdStr, cwdStr };
-        _agentPaneLog("OnResumeInNewAgentTabRequested: stashed pending load_session for tab " +
+        if (!_pendingLoadSessions.contains(newStableId))
+        {
+            _agentPaneLog("OnResumeInNewAgentTabRequested: reservation was not bound to new tab");
+            return;
+        }
+        _agentPaneLog("OnResumeInNewAgentTabRequested: bound pending load_session for tab " +
                       winrt::to_string(newStableId) + " session_id=" + sessionIdStr);
         _RequestAgentStateForTab(newTab, std::nullopt, /*pane_open*/ true);
     }

@@ -190,11 +190,12 @@ namespace TerminalApp
         void OnAgentStateChanged(String eventJson);
 
         // Inbound event from WTA carrying
-        // {method:"resume_in_new_agent_tab",params:{session_id,cwd}}.
-        // Emitted by the session view's Shift+Enter handler. The page
-        // creates a new tab, reconciles the shared agent pane onto it, then
-        // publishes a `load_session` event back to wta carrying the new
-        // tab's StableId so wta calls ACP `session/load` for that tab.
+        // {method:"resume_in_new_agent_tab",
+        //  params:{window_id,session_id,cwd,agent_id,agent_model,
+        //          agent_source,wsl_distro}}.
+        // Emitted by the session view's Enter handler. The page reserves
+        // the exact provider before creating a tab, then starts its agent
+        // pane with a bundled ACP `session/load`.
         void OnResumeInNewAgentTabRequested(String eventJson);
 
         // Inbound event from a hookless WTA delegate carrying
@@ -222,5 +223,10 @@ namespace TerminalApp
         // Inbound completion for a destructive agent-session retirement:
         // {method:"agent_sessions_retired",params:{operation_id,success,reason,failed_tabs}}.
         void OnAgentSessionsRetired(String eventJson);
+
+        // Inbound notification that the master Session Registry changed.
+        // Refreshes an open Sidebar History view immediately; the periodic
+        // refresh remains as a missed-notification fallback.
+        void OnSessionRegistryChanged(String eventJson);
     }
 }

@@ -1053,6 +1053,10 @@ impl WtChannel for CliChannel {
             }
             "create_tab" => {
                 let mut args = vec!["new-tab"];
+                let window_id = params
+                    .get("window_id")
+                    .and_then(json_id_as_str)
+                    .unwrap_or_default();
                 let cmd = params
                     .get("commandline")
                     .and_then(|v| v.as_str())
@@ -1064,6 +1068,11 @@ impl WtChannel for CliChannel {
                 let title_owned;
                 let cwd_owned;
                 let profile_owned;
+                let window_id_owned;
+                if !window_id.is_empty() {
+                    window_id_owned = window_id.to_string();
+                    args.extend(["--window-id", &window_id_owned]);
+                }
                 if !cmd.is_empty() {
                     cmd_owned = cmd.to_string();
                     args.extend(["-c", &cmd_owned]);

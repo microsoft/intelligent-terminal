@@ -110,6 +110,24 @@ namespace winrt::TerminalApp::implementation
     {
         newTabImpl->Initialize();
 
+        if (_pendingNewTabLoadSession)
+        {
+            auto pending = std::move(*_pendingNewTabLoadSession);
+            _pendingNewTabLoadSession.reset();
+            newTabImpl->SuppressAgentPrewarm();
+            if (!pending.agentId.empty())
+            {
+                newTabImpl->SetAgentOverride(
+                    pending.agentId,
+                    pending.agentModel,
+                    {},
+                    pending.agentSource,
+                    pending.agentWslDistro,
+                    Tab::AgentOverrideOrigin::Restore);
+            }
+            _pendingLoadSessions[newTabImpl->StableId()] = std::move(pending);
+        }
+
         // If insert position is not passed, calculate it
         if (insertPosition == -1)
         {

@@ -631,7 +631,7 @@ fn cli_suffix_for(s: &AgentSession, selected: bool) -> String {
     };
     let distro = match &s.location {
         SessionLocation::Wsl { distro } => Some(distro.as_str()),
-        SessionLocation::Host => None,
+        SessionLocation::Host | SessionLocation::Unknown => None,
     };
     [cli, distro]
         .into_iter()

@@ -7424,6 +7424,8 @@ fn session_info_for_test(id: &str) -> crate::session_registry::SessionInfo {
     info.title = Some(id.to_string());
     info.status = Some(crate::agent_sessions::AgentStatus::Idle);
     info.cli_source = Some(crate::agent_sessions::CliSource::Claude);
+    info.provider_id = Some("claude".to_string());
+    info.location = crate::agent_sessions::SessionLocation::Host;
     info.last_activity_at_ms = Some(1);
     info
 }
@@ -7731,6 +7733,7 @@ fn enter_on_history_row_dispatches_new_tab_with_resume() {
     let real_cwd = std::env::temp_dir();
     let real_cwd_str = real_cwd.to_string_lossy().to_string();
     let mut app = test_app();
+    app.window_id = Some("42".into());
     app.agent_sessions.apply(SessionEvent::SessionStarted {
         key: "abc-123".into(),
         cli_source: CliSource::Claude,
@@ -7756,6 +7759,10 @@ fn enter_on_history_row_dispatches_new_tab_with_resume() {
     // resumed CLI lands in its own WT tab instead of carving up the
     // originating tab.
     assert!(argv.contains("new-tab"), "argv: {}", argv);
+    assert!(
+        argv.contains("--window-id 42"),
+        "resume must target the owning window: {argv}"
+    );
     assert!(
         !argv.contains("split-pane"),
         "argv must NOT use split-pane: {}",
@@ -7829,6 +7836,7 @@ fn enter_on_history_row_with_missing_cwd_omits_d_flag() {
     };
     assert!(!missing.exists());
     let mut app = test_app();
+    app.window_id = Some("42".into());
     app.agent_sessions.apply(SessionEvent::SessionStarted {
         key: "abc-stale".into(),
         cli_source: CliSource::Claude,
@@ -7871,6 +7879,7 @@ fn modified_enter_on_live_row_dispatches_nothing() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::path::PathBuf;
     let mut app = test_app();
+    app.window_id = Some("42".into());
     app.agent_sessions.apply(SessionEvent::SessionStarted {
         key: "a".into(),
         cli_source: CliSource::Claude,
@@ -7920,6 +7929,7 @@ fn enter_on_class_a_dead_row_dispatches_resume_in_agent_pane() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::path::PathBuf;
     let mut app = test_app();
+    app.window_id = Some("42".into());
     // This test exercises the Class A (AgentPane) Enter routing,
     // which the MVP sessions filter hides. Opt out so the row is
     // visible to the cursor; the dispatch logic under test is
@@ -7950,7 +7960,36 @@ fn enter_on_class_a_dead_row_dispatches_resume_in_agent_pane() {
     assert_eq!(cmd.kind, DispatchedCommandKind::ResumeInAgentPane);
     let argv = cmd.argv.join(" ");
     assert!(argv.contains("resume_in_new_agent_tab"), "argv: {}", argv);
+    assert!(argv.contains("--window-id 42"), "argv: {}", argv);
     assert!(argv.contains("--session-id abc-class-a"), "argv: {}", argv);
+}
+
+#[test]
+fn dead_row_without_owner_window_does_not_dispatch_resume() {
+    use crate::agent_sessions::{CliSource, SessionEvent};
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use std::path::PathBuf;
+    let mut app = test_app();
+    app.agent_sessions.apply(SessionEvent::SessionStarted {
+        key: "missing-window".into(),
+        cli_source: CliSource::Claude,
+        pane_session_id: "p".into(),
+        cwd: PathBuf::from("/work/project"),
+        title: "t".into(),
+    });
+    app.agent_sessions.apply(SessionEvent::SessionStopped {
+        key: "missing-window".into(),
+        reason: "user_exit".into(),
+    });
+    app.current_tab_mut().current_view = View::Agents;
+    app.current_tab_mut().agents_list_state.select(Some(0));
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert!(
+        app.last_dispatched_command_for_test().is_none(),
+        "resume must fail closed without an owning window"
+    );
 }
 
 /// Class A (AgentPane origin) dead row + modified Enter: no dispatch.
@@ -7961,6 +8000,7 @@ fn modified_enter_on_class_a_dead_row_dispatches_nothing() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::path::PathBuf;
     let mut app = test_app();
+    app.window_id = Some("42".into());
     // See enter_on_class_a_dead_row_dispatches_resume_in_agent_pane
     // for the OriginFilter::All rationale — the MVP filter hides
     // Class A rows from the cursor model; this test exercises the
@@ -8007,6 +8047,7 @@ fn modified_enter_on_class_b_dead_row_dispatches_nothing() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::path::PathBuf;
     let mut app = test_app();
+    app.window_id = Some("42".into());
     // loadSession IS advertised: a modifier must not divert a Class B
     // row into an agent pane, nor resume it in a shell pane.
     app.agent_supports_load_session = true;
@@ -9269,6 +9310,7 @@ fn hookless_session_snapshot_renders_and_dispatches_resume() {
         request_id,
         sessions: vec![row],
     });
+    app.window_id = Some("42".into());
     assert!(
         app.agent_sessions.iter_sorted().is_empty(),
         "history must not need a local hook row"
@@ -23451,6 +23493,7 @@ fn enter_on_wsl_history_row_resumes_inside_distro() {
         },
     };
     let mut app = test_app();
+    app.window_id = Some("42".into());
     app.current_agent_source = crate::agent_source::AgentSource::Wsl {
         distro: "Ubuntu".into(),
     };

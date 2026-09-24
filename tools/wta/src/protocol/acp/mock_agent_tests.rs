@@ -549,6 +549,7 @@ fn connect_with(
             crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
         ),
         hidden_tool_calls: Mutex::new(HashMap::new()),
+        origin_scope: std::sync::OnceLock::new(),
     });
     let wta = WtaClient { state };
 
@@ -976,6 +977,7 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         standard_usage_sessions: Mutex::new(HashSet::new()),
         proposal_channels: Arc::clone(&proposal_channels),
         hidden_tool_calls: Mutex::new(HashMap::new()),
+        origin_scope: std::sync::OnceLock::new(),
     });
     let wta = WtaClient { state };
 
@@ -5746,6 +5748,7 @@ fn bare_client() -> (WtaClient, mpsc::UnboundedReceiver<AppEvent>) {
             crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
         ),
         hidden_tool_calls: Mutex::new(HashMap::new()),
+        origin_scope: std::sync::OnceLock::new(),
     });
     (WtaClient { state }, event_rx)
 }

@@ -23,6 +23,26 @@ namespace TerminalApp
         AgentsOnly = 1,
     };
 
+    [default_interface] runtimeclass TabStripHistoryItem
+    {
+        String SessionId;
+        String Title;
+        String Subtitle;
+        String Cwd;
+        String PaneSessionId;
+        String AgentId;
+        String AgentSource;
+        String WslDistro;
+        String SessionUniverse;
+        Boolean IsLive;
+        Boolean IsAgentPane;
+    };
+
+    [default_interface] runtimeclass TabStripHistoryActivationEventArgs
+    {
+        TabStripHistoryItem Item { get; };
+    };
+
     [default_interface] runtimeclass TabStripSelectionChangedEventArgs
     {
         Object AddedItem { get; };
@@ -73,6 +93,10 @@ namespace TerminalApp
         TabStripFilterMode FilterMode;
         Boolean SearchActive;
         String SearchQuery;
+        Windows.Foundation.Collections.IObservableVector<TabStripHistoryItem> HistoryItems { get; };
+        Boolean HistoryActive;
+        Boolean HistoryLoading;
+        String HistoryError;
 
         // Hosts the complete vertical chrome when no titlebar is available.
         Windows.UI.Xaml.UIElement TopChromeContent;
@@ -91,5 +115,8 @@ namespace TerminalApp
         event Windows.Foundation.TypedEventHandler<TabStrip, Object> FilterChanged;
         event Windows.Foundation.TypedEventHandler<TabStrip, Object> SearchActivationRequested;
         event Windows.Foundation.TypedEventHandler<TabStrip, Object> SearchChanged;
+        event Windows.Foundation.TypedEventHandler<TabStrip, Object> HistoryRequested;
+        event Windows.Foundation.TypedEventHandler<TabStrip, Object> HistoryClosed;
+        event Windows.Foundation.TypedEventHandler<TabStrip, TabStripHistoryActivationEventArgs> HistoryActivationRequested;
     };
 }

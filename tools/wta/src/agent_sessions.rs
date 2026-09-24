@@ -77,6 +77,18 @@ impl CliSource {
             _ => None,
         }
     }
+
+    pub fn canonical_provider_id(&self) -> Option<String> {
+        let id = match self {
+            Self::Claude => "claude",
+            Self::Codex => "codex",
+            Self::Copilot => "copilot",
+            Self::Gemini => "gemini",
+            Self::OpenCode => "opencode",
+            Self::Unknown(id) => id.trim(),
+        };
+        (!id.is_empty()).then(|| id.to_ascii_lowercase())
+    }
 }
 
 /// OpenCode persists untouched sessions with a timestamped default title.
@@ -180,28 +192,36 @@ pub enum SessionOrigin {
 
 /// Where this session's on-disk artefacts live. `Host` = the Windows
 /// user profile (`%USERPROFILE%`); `Wsl` = inside a WSL distro's ext4
-/// `$HOME`. Used for the `/sessions` row prefix and to route resume
-/// back into the distro. Defaults to `Host`; only the WSL history
-/// scanner stamps `Wsl`.
+/// `$HOME`. `Unknown` means provenance was not supplied and must not be
+/// guessed for resume routing.
 ///
 /// Serde-serializable so `SessionInfo` can carry it across the
 /// master→helper `sessions/list` wire boundary (the `/sessions` view
 /// renders from master's `SessionInfo` snapshot, not the helper's
 /// `AgentSession` registry).  `#[serde(default)]` on the `SessionInfo`
-/// field ensures that older peers without the field deserialize as `Host`.
-#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+/// field ensures that older peers without the field deserialize as `Unknown`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum SessionLocation {
-    #[default]
     Host,
     Wsl {
         distro: String,
     },
+    #[default]
+    Unknown,
 }
 
 impl SessionLocation {
     /// True for in-distro sessions.
     pub fn is_wsl(&self) -> bool {
         matches!(self, SessionLocation::Wsl { .. })
+    }
+
+    pub fn is_actionable(&self) -> bool {
+        match self {
+            SessionLocation::Host => true,
+            SessionLocation::Wsl { distro } => !distro.trim().is_empty(),
+            SessionLocation::Unknown => false,
+        }
     }
 
     /// The distro name for `Wsl`, else `None`.
@@ -211,7 +231,7 @@ impl SessionLocation {
     pub fn distro(&self) -> Option<&str> {
         match self {
             SessionLocation::Wsl { distro } => Some(distro.as_str()),
-            SessionLocation::Host => None,
+            SessionLocation::Host | SessionLocation::Unknown => None,
         }
     }
 }
@@ -3596,15 +3616,19 @@ mod tests {
     }
 
     #[test]
-    fn session_location_defaults_to_host_and_reports_wsl() {
+    fn session_location_defaults_to_unknown_and_reports_actionability() {
         use super::SessionLocation;
-        assert_eq!(SessionLocation::default(), SessionLocation::Host);
+        assert_eq!(SessionLocation::default(), SessionLocation::Unknown);
+        assert!(!SessionLocation::Unknown.is_actionable());
         assert!(!SessionLocation::Host.is_wsl());
+        assert!(SessionLocation::Host.is_actionable());
         let w = SessionLocation::Wsl {
             distro: "Ubuntu".to_string(),
         };
         assert!(w.is_wsl());
+        assert!(w.is_actionable());
         assert_eq!(w.distro(), Some("Ubuntu"));
         assert_eq!(SessionLocation::Host.distro(), None);
+        assert_eq!(SessionLocation::Unknown.distro(), None);
     }
 }

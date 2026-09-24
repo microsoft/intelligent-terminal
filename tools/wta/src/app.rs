@@ -3075,6 +3075,20 @@ impl App {
     ///      Host resumes also publish the known agent/session/pane identity to
     ///      Terminal's persistence map, independently of CLI hooks or banners.
     fn dispatch_resume(&mut self, s: &crate::agent_sessions::AgentSession) {
+        let Some(window_id) = self
+            .window_id
+            .as_deref()
+            .and_then(|value| value.parse::<u64>().ok())
+            .filter(|value| *value != 0)
+        else {
+            tracing::warn!(
+                target: "agents_view",
+                key = %s.key,
+                window_id = ?self.window_id,
+                "dispatch_resume: missing or invalid owner window id",
+            );
+            return;
+        };
         let cli_id = match known_cli_id(&s.cli_source) {
             Some(id) => id,
             None => {
@@ -3119,6 +3133,14 @@ impl App {
                 None => format!("wsl -d {distro} -- {login_invocation}"),
             },
             crate::agent_sessions::SessionLocation::Host => resume_invocation,
+            crate::agent_sessions::SessionLocation::Unknown => {
+                tracing::warn!(
+                    target: "agents_view",
+                    key = %s.key,
+                    "dispatch_resume: session location is unknown",
+                );
+                return;
+            }
         };
 
         // Per-CLI session stores are keyed by an encoding of the *current*
@@ -3185,10 +3207,13 @@ impl App {
             crate::agent_sessions::SessionLocation::Host => {
                 format!("Resuming {cli_id} session {short_key}...")
             }
+            crate::agent_sessions::SessionLocation::Unknown => return,
         };
         let launch_commandline = format!("cmd /c echo \x1b[2;37m{banner}\x1b[0m && {commandline}");
         let mut argv = vec![
             "new-tab".to_string(),
+            "--window-id".to_string(),
+            window_id.to_string(),
             "-c".to_string(),
             launch_commandline.clone(),
         ];
@@ -3343,6 +3368,20 @@ impl App {
             }
             return;
         }
+        let Some(window_id) = self
+            .window_id
+            .as_deref()
+            .and_then(|value| value.parse::<u64>().ok())
+            .filter(|value| *value != 0)
+        else {
+            tracing::warn!(
+                target: "agents_view",
+                key = %s.key,
+                window_id = ?self.window_id,
+                "dispatch_resume_in_agent_pane: missing or invalid owner window id",
+            );
+            return;
+        };
 
         let key = s.key.clone();
         let raw_cwd_string = s.cwd.to_string_lossy().to_string();
@@ -3369,6 +3408,30 @@ impl App {
             "session_id".to_string(),
             serde_json::Value::String(key.clone()),
         );
+        params.insert(
+            "window_id".to_string(),
+            serde_json::Value::String(window_id.to_string()),
+        );
+        params.insert(
+            "agent_id".to_string(),
+            serde_json::Value::String(self.current_agent_id.clone()),
+        );
+        params.insert(
+            "agent_source".to_string(),
+            serde_json::Value::String(self.current_agent_source.kind().to_string()),
+        );
+        if let Some(distro) = self.current_agent_source.distro() {
+            params.insert(
+                "wsl_distro".to_string(),
+                serde_json::Value::String(distro.to_string()),
+            );
+        }
+        if let Some(model) = self.current_model_id_for_picker() {
+            params.insert(
+                "agent_model".to_string(),
+                serde_json::Value::String(model.to_string()),
+            );
+        }
         if !cwd_string.is_empty() {
             params.insert(
                 "cwd".to_string(),
@@ -3392,6 +3455,8 @@ impl App {
         {
             let mut argv = vec![
                 "resume_in_new_agent_tab".to_string(),
+                "--window-id".to_string(),
+                window_id.to_string(),
                 "--session-id".to_string(),
                 s.key.clone(),
             ];

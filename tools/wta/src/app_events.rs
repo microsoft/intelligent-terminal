@@ -2571,10 +2571,10 @@ impl App {
                     reg.upsert(info).await;
                 });
             }
-            AppEvent::AliveSessionRemoved(sid) => {
+            AppEvent::AliveSessionRemoved(params) => {
                 tracing::debug!(
                     target: "alive_mirror",
-                    session_id = %sid.0,
+                    session_id = %params.session_id.0,
                     "alive session removed by master"
                 );
                 // Mirror PaneClosed's reducer for this sid synchronously,
@@ -2585,10 +2585,14 @@ impl App {
                 // and `AliveSessionRemoved` had no path into the reducer
                 // (the bug rubber-duck Finding 2 surfaced post-B-12).
                 self.agent_sessions
-                    .apply_master_session_ended(sid.0.as_ref());
+                    .apply_master_session_ended(params.session_id.0.as_ref());
                 let reg = std::sync::Arc::clone(&self.alive);
                 tokio::task::spawn_local(async move {
-                    reg.remove(&sid).await;
+                    if params.history_key.is_some() {
+                        reg.remove_identity(&params.identity()).await;
+                    } else {
+                        reg.remove(&params.session_id).await;
+                    }
                 });
             }
             AppEvent::AliveJoinUpgrade(tuples) => {

@@ -87,6 +87,15 @@ pub(crate) fn restart_agent_stack_event() -> String {
     restart_agent_stack_event_with_id(&uuid::Uuid::new_v4().to_string())
 }
 
+pub(crate) fn session_registry_changed_event() -> String {
+    serde_json::json!({
+        "type": "event",
+        "method": "session_registry_changed",
+        "params": {},
+    })
+    .to_string()
+}
+
 pub(crate) fn restart_agent_stack_event_with_id(request_id: &str) -> String {
     serde_json::json!({
         "type": "event",

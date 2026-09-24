@@ -12,9 +12,36 @@
 #include "TabStripCloseRequestedEventArgs.g.h"
 #include "TabStripDragStartingEventArgs.g.h"
 #include "TabStripDroppedOutsideEventArgs.g.h"
+#include "TabStripHistoryItem.g.h"
+#include "TabStripHistoryActivationEventArgs.g.h"
 
 namespace winrt::TerminalApp::implementation
 {
+    struct TabStripHistoryItem : TabStripHistoryItemT<TabStripHistoryItem>
+    {
+        TabStripHistoryItem() = default;
+        WINRT_PROPERTY(winrt::hstring, SessionId);
+        WINRT_PROPERTY(winrt::hstring, Title);
+        WINRT_PROPERTY(winrt::hstring, Subtitle);
+        WINRT_PROPERTY(winrt::hstring, Cwd);
+        WINRT_PROPERTY(winrt::hstring, PaneSessionId);
+        WINRT_PROPERTY(winrt::hstring, AgentId);
+        WINRT_PROPERTY(winrt::hstring, AgentSource);
+        WINRT_PROPERTY(winrt::hstring, WslDistro);
+        WINRT_PROPERTY(winrt::hstring, SessionUniverse);
+        WINRT_PROPERTY(bool, IsLive, false);
+        WINRT_PROPERTY(bool, IsAgentPane, false);
+    };
+
+    struct TabStripHistoryActivationEventArgs : TabStripHistoryActivationEventArgsT<TabStripHistoryActivationEventArgs>
+    {
+        WINRT_PROPERTY(TerminalApp::TabStripHistoryItem, Item, nullptr);
+
+    public:
+        explicit TabStripHistoryActivationEventArgs(TerminalApp::TabStripHistoryItem item) :
+            _Item{ std::move(item) } {}
+    };
+
     struct TabStripSelectionChangedEventArgs : TabStripSelectionChangedEventArgsT<TabStripSelectionChangedEventArgs>
     {
         WINRT_PROPERTY(winrt::Windows::Foundation::IInspectable, AddedItem, nullptr);
@@ -98,6 +125,13 @@ namespace winrt::TerminalApp::implementation
         void SearchActive(bool value);
         winrt::hstring SearchQuery() const { return _searchQuery; }
         void SearchQuery(winrt::hstring const& value);
+        winrt::Windows::Foundation::Collections::IObservableVector<TerminalApp::TabStripHistoryItem> HistoryItems() const { return _historyItems; }
+        bool HistoryActive() const noexcept { return _historyActive; }
+        void HistoryActive(bool value);
+        bool HistoryLoading() const noexcept { return _historyLoading; }
+        void HistoryLoading(bool value);
+        winrt::hstring HistoryError() const { return _historyError; }
+        void HistoryError(winrt::hstring const& value);
         void ProjectionControlsEnabled(bool value);
 
         winrt::Windows::UI::Xaml::UIElement TopChromeContent();
@@ -138,6 +172,12 @@ namespace winrt::TerminalApp::implementation
                                 winrt::Windows::UI::Xaml::Input::KeyRoutedEventArgs const& e);
         void OnClearSearchClick(winrt::Windows::Foundation::IInspectable const& sender,
                                 winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void OnHistoryClick(winrt::Windows::Foundation::IInspectable const& sender,
+                            winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void OnHistoryCloseClick(winrt::Windows::Foundation::IInspectable const& sender,
+                                 winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void OnHistoryItemClick(winrt::Windows::Foundation::IInspectable const& sender,
+                                winrt::Windows::UI::Xaml::Controls::ItemClickEventArgs const& e);
         void OnContainerContentChanging(winrt::Windows::UI::Xaml::Controls::ListViewBase const& sender,
                                         winrt::Windows::UI::Xaml::Controls::ContainerContentChangingEventArgs const& e);
 
@@ -160,6 +200,9 @@ namespace winrt::TerminalApp::implementation
         til::typed_event<TerminalApp::TabStrip, winrt::Windows::Foundation::IInspectable> FilterChanged;
         til::typed_event<TerminalApp::TabStrip, winrt::Windows::Foundation::IInspectable> SearchActivationRequested;
         til::typed_event<TerminalApp::TabStrip, winrt::Windows::Foundation::IInspectable> SearchChanged;
+        til::typed_event<TerminalApp::TabStrip, winrt::Windows::Foundation::IInspectable> HistoryRequested;
+        til::typed_event<TerminalApp::TabStrip, winrt::Windows::Foundation::IInspectable> HistoryClosed;
+        til::typed_event<TerminalApp::TabStrip, TerminalApp::TabStripHistoryActivationEventArgs> HistoryActivationRequested;
 
     private:
         TerminalApp::TabStripOrientation _orientation{ TerminalApp::TabStripOrientation::Vertical };
@@ -169,8 +212,12 @@ namespace winrt::TerminalApp::implementation
         bool _syncingSearchState{ false };
         bool _projectionControlsEnabled{ true };
         winrt::hstring _searchQuery;
+        bool _historyActive{ false };
+        bool _historyLoading{ false };
+        winrt::hstring _historyError;
         TerminalApp::TabStripFilterMode _filterMode{ TerminalApp::TabStripFilterMode::AllTabs };
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Windows::Foundation::IInspectable> _tabItems{ nullptr };
+        winrt::Windows::Foundation::Collections::IObservableVector<TerminalApp::TabStripHistoryItem> _historyItems{ nullptr };
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Windows::Foundation::IInspectable>::VectorChanged_revoker _vectorChangedRevoker;
 
         struct CloseRequestedSubscription
@@ -208,6 +255,7 @@ namespace winrt::TerminalApp::implementation
                                      winrt::Windows::UI::Xaml::Controls::ListViewItem const& container);
         void _pruneTabItemVisibility();
         void _updateSearchVisualState();
+        void _updateHistoryVisualState();
 
         // Axis-parameterized per B→C rules. Returns -1 to mean "append at end."
         // Non-const because it reaches into the XAML-generated ItemsList().

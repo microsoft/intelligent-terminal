@@ -683,6 +683,15 @@ struct ClientState {
     standard_usage_sessions: Mutex<HashSet<String>>,
     proposal_channels: Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     hidden_tool_calls: std::sync::Mutex<HashMap<(String, String), HiddenToolCall>>,
+    origin_scope: std::sync::OnceLock<crate::agent_pane_origin::OriginScope>,
+}
+
+fn record_agent_pane_origin(state: &ClientState, session_id: &str, pane_session_id: Option<&str>) {
+    if let Some(scope) = state.origin_scope.get() {
+        crate::agent_pane_origin::append_default_qualified(scope, session_id, pane_session_id);
+    } else {
+        crate::agent_pane_origin::append_default(session_id, pane_session_id);
+    }
 }
 
 #[derive(Default)]
@@ -2463,8 +2472,11 @@ impl WtaClient {
             WtaExtNotification::SessionAdded(info) => {
                 let _ = self.state.event_tx.send(AppEvent::AliveSessionAdded(info));
             }
-            WtaExtNotification::SessionRemoved(sid) => {
-                let _ = self.state.event_tx.send(AppEvent::AliveSessionRemoved(sid));
+            WtaExtNotification::SessionRemoved(params) => {
+                let _ = self
+                    .state
+                    .event_tx
+                    .send(AppEvent::AliveSessionRemoved(params));
             }
             WtaExtNotification::SessionsChanged => {
                 let _ = self.state.event_tx.send(AppEvent::SessionsChanged);
@@ -2911,7 +2923,7 @@ async fn handle_load_failure(
             } else {
                 Some(pane_session_id.as_str())
             };
-            crate::agent_pane_origin::append_default(new_sid.0.as_ref(), pane_for_index);
+            record_agent_pane_origin(&client_state, new_sid.0.as_ref(), pane_for_index);
             let (available_models, current_model_id) =
                 crate::protocol::acp::model_select::models_from_new_session(&resp);
             record_native_yolo(&resp, &client_state);
@@ -3094,6 +3106,7 @@ pub async fn run_acp_client_over_pipe(
         standard_usage_sessions: Mutex::new(HashSet::new()),
         proposal_channels: Arc::clone(&proposal_channels),
         hidden_tool_calls: std::sync::Mutex::new(std::collections::HashMap::new()),
+        origin_scope: std::sync::OnceLock::new(),
     });
     let client = WtaClient {
         state: state.clone(),
@@ -3344,6 +3357,20 @@ pub async fn run_acp_client_over_pipe(
             .context("initialize over master pipe failed")
         })?;
     let wta_meta = crate::session_registry::extract_wta_meta(&mut init_resp.meta);
+    if let Some(scope) = wta_meta
+        .resolved_agent_id
+        .as_deref()
+        .or(agent_id.as_deref())
+        .and_then(|provider_id| {
+            crate::agent_pane_origin::OriginScope::new(
+                provider_id,
+                agent_source.session_location(),
+                None,
+            )
+        })
+    {
+        let _ = state.origin_scope.set(scope);
+    }
     let telemetry_byok_binding = match wta_meta.resolved_model_source.as_deref() {
         Some("byok") => Some(true),
         Some("provider") => Some(false),
@@ -3637,7 +3664,7 @@ pub async fn run_acp_client_over_pipe(
                     pane_session_id = %pane_session_id,
                     "recording agent-pane session origin (startup over pipe)",
                 );
-                crate::agent_pane_origin::append_default(session_id.0.as_ref(), pane_for_index);
+                record_agent_pane_origin(&state, session_id.0.as_ref(), pane_for_index);
             }
 
             let (available_models, current_model_id) =
@@ -4965,7 +4992,7 @@ fn dispatch_new_session_with_aliases(
                 pane_session_id = %pane_session_id,
                 "recording agent-pane session origin (new_session_for_tab)",
             );
-            crate::agent_pane_origin::append_default(new_sid.0.as_ref(), pane_for_index);
+            record_agent_pane_origin(&client_state, new_sid.0.as_ref(), pane_for_index);
         }
         let (available_models, current_model_id) =
             crate::protocol::acp::model_select::models_from_new_session(&new_session);
@@ -5609,7 +5636,7 @@ async fn dispatch_prompt_body(
                     pane_session_id = %pane_session_id,
                     "recording agent-pane session origin (lazy_create_on_first_prompt)",
                 );
-                crate::agent_pane_origin::append_default(new_sid.0.as_ref(), pane_for_index);
+                record_agent_pane_origin(&client_task.state, new_sid.0.as_ref(), pane_for_index);
             }
             let (available_models, current_model_id) =
                 crate::protocol::acp::model_select::models_from_new_session(&new_session);
@@ -6537,6 +6564,7 @@ mod tests {
             standard_usage_sessions: Mutex::new(HashSet::new()),
             proposal_channels: manager,
             hidden_tool_calls: Mutex::new(HashMap::new()),
+            origin_scope: std::sync::OnceLock::new(),
         });
         (WtaClient { state }, event_rx)
     }
@@ -7989,6 +8017,7 @@ mod tests {
                     crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
                 ),
                 hidden_tool_calls: std::sync::Mutex::new(std::collections::HashMap::new()),
+                origin_scope: std::sync::OnceLock::new(),
             });
             (WtaClient { state }, rx)
         }
@@ -8031,7 +8060,10 @@ mod tests {
             client.ext_notification(ext).await.unwrap();
 
             match rx.try_recv() {
-                Ok(AppEvent::AliveSessionRemoved(got)) => assert_eq!(got, sid),
+                Ok(AppEvent::AliveSessionRemoved(got)) => {
+                    assert_eq!(got.session_id, sid);
+                    assert!(got.history_key.is_none());
+                }
                 other => panic!(
                     "expected AliveSessionRemoved, got something else: {}",
                     match &other {
