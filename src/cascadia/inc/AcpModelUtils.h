@@ -14,6 +14,7 @@
 #include <json/json.h>
 
 #include "CustomModelSelection.h"
+#include "AgentRegistry.h"
 
 namespace Microsoft::Terminal::AcpModels
 {
@@ -57,7 +58,7 @@ namespace Microsoft::Terminal::AcpModels
         const std::optional<std::wstring_view> model = std::nullopt,
         const bool runsInWsl = false)
     {
-        if (agentId == L"antigravity")
+        if (::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(agentId, L"antigravity"))
         {
             return runsInWsl ? L"agy_acp_server.par --uid=" : L"agy_acp_server.exe";
         }

@@ -114,10 +114,24 @@ pub fn find_acp_exe(agent_id: &str) -> Option<String> {
     let path = spawn_path()
         .map(std::ffi::OsString::from)
         .or_else(|| std::env::var_os("PATH"))?;
-    std::env::split_paths(&path)
-        .map(|directory| directory.join(executable))
-        .find(|candidate| candidate.is_file())
+    find_standalone_acp_executable_in_path(profile, &path, Path::is_file)
         .map(|candidate| candidate.to_string_lossy().into_owned())
+}
+
+fn find_standalone_acp_executable_in_path(
+    profile: &agent_registry::AgentProfile,
+    path: &OsStr,
+    is_file: impl Fn(&Path) -> bool,
+) -> Option<PathBuf> {
+    let executable = profile.acp_executable(&crate::agent_source::AgentSource::Host);
+    std::env::split_paths(path)
+        .map(|directory| directory.join(executable))
+        .find(|candidate| is_file(candidate))
+        .filter(|candidate| {
+            profile
+                .acp_companion_executable
+                .is_none_or(|companion| is_file(&candidate.with_file_name(companion)))
+        })
 }
 
 fn find_claude_executable_in_path(
@@ -205,7 +219,7 @@ pub async fn find_wsl_exe(distro: &str, executable: &str) -> Option<String> {
         let mut cmd = tokio::process::Command::new("wsl.exe");
         cmd.arg("-d")
             .arg(distro)
-            .arg("--")
+            .arg("--exec")
             .arg("bash")
             .arg("-lc")
             .arg(wsl_agent_probe_script(executable))
@@ -305,6 +319,31 @@ pub async fn wsl_agent_available(distro: &str, agent_id: &str) -> bool {
 }
 
 pub(crate) fn wsl_agent_probe_script(executable: &str) -> String {
+    let profile = agent_registry::lookup_profile(executable);
+    let basename = executable.rsplit(['/', '\\']).next().unwrap_or(executable);
+    if profile
+        .wsl_acp_launch_command
+        .split_ascii_whitespace()
+        .next()
+        == Some(basename)
+    {
+        if let Some(companion) = profile.wsl_acp_companion_executable {
+            return format!(
+                "printf '__WTA_PROBE_BEGIN__\\n'; \
+                 resolved=$(command -v {} 2>/dev/null); \
+                 native=$(readlink -f -- \"$resolved\" 2>/dev/null); \
+                 companion=$(readlink -f -- \"${{native%/*}}/\"{} 2>/dev/null); \
+                 case \"$native\" in /mnt/*|'') ;; *) \
+                 case \"$companion\" in /mnt/*|'') ;; *) \
+                 if [ -f \"$native\" ] && [ -x \"$native\" ] && \
+                 [ -f \"$companion\" ] && [ -x \"$companion\" ]; then \
+                 printf '%s\\n' \"$resolved\"; fi ;; esac ;; esac; \
+                 printf '__WTA_PROBE_END__\\n'",
+                crate::coordinator::sh_quote(executable),
+                crate::coordinator::sh_quote(companion)
+            );
+        }
+    }
     format!(
         "printf '__WTA_PROBE_BEGIN__\\n'; command -v {} 2>/dev/null; \
          printf '__WTA_PROBE_END__\\n'",
@@ -902,6 +941,51 @@ fn expand_env_vars(s: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn antigravity_host_discovery_requires_the_server_and_its_sibling() {
+        let profile = agent_registry::lookup_profile_by_id("antigravity");
+        let root = Path::new(r"C:\Agent Tools");
+        let server = root.join("agy_acp_server.exe");
+        let companion = root.join("localharness_external.exe");
+        assert_eq!(
+            find_standalone_acp_executable_in_path(profile, root.as_os_str(), |path| path
+                == server),
+            None
+        );
+        assert_eq!(
+            find_standalone_acp_executable_in_path(profile, root.as_os_str(), |path| {
+                path == server || path == companion
+            }),
+            Some(server)
+        );
+    }
+
+    #[test]
+    fn antigravity_host_discovery_rejects_a_shadowing_partial_install() {
+        let profile = agent_registry::lookup_profile_by_id("antigravity");
+        let first = Path::new(r"C:\Partial\agy_acp_server.exe");
+        let later = Path::new(r"C:\Complete\agy_acp_server.exe");
+        let companion = Path::new(r"C:\Complete\localharness_external.exe");
+        assert_eq!(
+            find_standalone_acp_executable_in_path(
+                profile,
+                OsStr::new(r"C:\Partial;C:\Complete"),
+                |path| path == first || path == later || path == companion,
+            ),
+            None,
+            "launch resolves the first PATH match, not a later complete installation"
+        );
+    }
+
+    #[test]
+    fn antigravity_wsl_discovery_requires_a_native_companion() {
+        let script = wsl_agent_probe_script("agy_acp_server.par");
+        assert!(script.contains("localharness_external"));
+        assert!(script.contains("readlink -f"));
+        assert!(!wsl_agent_probe_script("agy").contains("localharness_external"));
+        println!("__ANTIGRAVITY_PROBE_SCRIPT_BEGIN__\n{script}\n__ANTIGRAVITY_PROBE_SCRIPT_END__");
+    }
 
     #[test]
     fn claude_resolution_prefers_configured_native_executable() {

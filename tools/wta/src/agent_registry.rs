@@ -67,6 +67,9 @@ pub struct AgentProfile {
     pub acp_launch_command: &'static str,
     /// Native WSL command when it differs from the host command.
     pub wsl_acp_launch_command: &'static str,
+    /// Required sibling executable for standalone ACP distributions.
+    pub acp_companion_executable: Option<&'static str>,
+    pub wsl_acp_companion_executable: Option<&'static str>,
     /// Model flags accepted by the ACP server command. This may differ from
     /// `model_flags` when ACP model selection is protocol-only.
     pub acp_model_flags: &'static [&'static str],
@@ -139,6 +142,8 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         acp_flags: &["--acp", "--stdio"],
         acp_launch_command: "",
         wsl_acp_launch_command: "",
+        acp_companion_executable: None,
+        wsl_acp_companion_executable: None,
         acp_model_flags: &["--model", "-m"],
         acp_auth_flow: AcpAuthFlow::External,
         byok_mode: ByokMode::CopilotProviderEnvironment,
@@ -166,6 +171,8 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         // `@zed-industries/claude-code-acp`; see issue #257.)
         acp_launch_command: "npx -y @agentclientprotocol/claude-agent-acp@0.65.0",
         wsl_acp_launch_command: "",
+        acp_companion_executable: None,
+        wsl_acp_companion_executable: None,
         acp_model_flags: &[],
         acp_auth_flow: AcpAuthFlow::External,
         byok_mode: ByokMode::Unsupported,
@@ -190,6 +197,8 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         // adapter, pinned so a future npm release cannot silently break startup.
         acp_launch_command: "npx -y @agentclientprotocol/codex-acp@1.1.13",
         wsl_acp_launch_command: "",
+        acp_companion_executable: None,
+        wsl_acp_companion_executable: None,
         acp_model_flags: &[],
         acp_auth_flow: AcpAuthFlow::External,
         byok_mode: ByokMode::Unsupported,
@@ -215,6 +224,8 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         acp_flags: &["--acp"],
         acp_launch_command: "",
         wsl_acp_launch_command: "",
+        acp_companion_executable: None,
+        wsl_acp_companion_executable: None,
         acp_model_flags: &["--model", "-m"],
         acp_auth_flow: AcpAuthFlow::InProtocol,
         byok_mode: ByokMode::Unsupported,
@@ -237,6 +248,8 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         acp_flags: &["acp"],
         acp_launch_command: "",
         wsl_acp_launch_command: "",
+        acp_companion_executable: None,
+        wsl_acp_companion_executable: None,
         // `opencode acp` accepts model changes through ACP, while the
         // interactive TUI accepts `--model` and an initial `--prompt`.
         acp_model_flags: &[],
@@ -261,6 +274,8 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         acp_flags: &[],
         acp_launch_command: "agy_acp_server.exe",
         wsl_acp_launch_command: "agy_acp_server.par --uid=",
+        acp_companion_executable: Some("localharness_external.exe"),
+        wsl_acp_companion_executable: Some("localharness_external"),
         acp_model_flags: &[],
         acp_auth_flow: AcpAuthFlow::InProtocol,
         byok_mode: ByokMode::Unsupported,
@@ -285,6 +300,8 @@ pub const DEFAULT_PROFILE: AgentProfile = AgentProfile {
     acp_flags: &[],
     acp_launch_command: "",
     wsl_acp_launch_command: "",
+    acp_companion_executable: None,
+    wsl_acp_companion_executable: None,
     acp_model_flags: &[],
     acp_auth_flow: AcpAuthFlow::None,
     byok_mode: ByokMode::Unsupported,

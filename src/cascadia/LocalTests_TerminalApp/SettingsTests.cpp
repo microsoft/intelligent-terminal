@@ -2233,6 +2233,14 @@ namespace TerminalAppLocalTests
             L"",
         });
 
+        for (const auto backend : { L"host:ANTIGRAVITY", L"wsl:Ubuntu:Antigravity" })
+        {
+            Request request;
+            request.profileBackend = backend;
+            const auto binding = Page::_ResolveAgentPaneSettingsBinding(request);
+            VERIFY_IS_TRUE(binding.launchable);
+        }
+
         for (const auto& test : cases)
         {
             Log::Comment(test.name);

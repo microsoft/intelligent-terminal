@@ -330,6 +330,8 @@ The integration uses the standalone server's stdio protocol; do not substitute
 
 Extract the complete archive and add its directory to the selected source's `PATH`.
 On Linux, make both files executable. Preserve the empty `--uid=` argument.
+Discovery requires the matching companion beside the resolved server. An incomplete
+installation earlier on `PATH` is not bypassed in favor of a later complete one.
 Install the Linux archive inside the intended distro; a Windows executable exposed
 through WSL interop is not a Linux ACP installation.
 

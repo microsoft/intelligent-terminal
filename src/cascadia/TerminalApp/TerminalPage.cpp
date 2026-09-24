@@ -2244,7 +2244,7 @@ namespace winrt::TerminalApp::implementation
 
                 const auto allowedAgents = Registry::FilteredAcpAgents();
                 const auto knownAndAllowed = std::ranges::any_of(allowedAgents, [&](const auto& agent) {
-                    return agent.id == binding.agentId;
+                    return Registry::AgentIdEquals(agent.id, binding.agentId);
                 });
                 if (knownAndAllowed)
                 {
@@ -3417,7 +3417,7 @@ namespace winrt::TerminalApp::implementation
                     allowedAgents.begin(),
                     allowedAgents.end(),
                     [&](const auto& agent) {
-                        return agent.id == std::wstring_view{ effectiveAgentId };
+                        return Registry::AgentIdEquals(agent.id, std::wstring_view{ effectiveAgentId });
                     });
                 if (knownAndAllowed)
                 {

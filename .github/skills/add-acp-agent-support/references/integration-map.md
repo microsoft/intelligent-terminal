@@ -29,8 +29,12 @@ help and ACP behavior directly.
 
 An agent can ship a standalone ACP executable independently of its interactive
 CLI. Detect the executable required by the selected ACP source, not merely the
-provider ID or presence of the ordinary CLI. Preserve platform-specific arguments
-without duplicating authentication/session/protocol handling for Windows and Linux.
+provider ID or presence of the ordinary CLI.
+When the native archive includes required companion executables, validate the
+complete selected installation, not just the server filename. Preserve PATH
+precedence and distinguish native WSL targets from Windows-interoperability links.
+Preserve platform-specific arguments without duplicating authentication/session/protocol
+handling for Windows and Linux.
 Use the existing host/WSL source abstraction and never silently fall back to the host.
 
 ## WTA (Rust)

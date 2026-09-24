@@ -58,6 +58,8 @@ namespace TerminalAppUnitTests
     {
         namespace Registry = Microsoft::Terminal::Settings::Model::AgentRegistry;
         VERIFY_ARE_EQUAL(std::wstring{ L"agy_acp_server.exe" }, BuildAgentCommandLine(L"antigravity"));
+        VERIFY_ARE_EQUAL(std::wstring{ L"agy_acp_server.exe" }, BuildAgentCommandLine(L"ANTIGRAVITY"));
+        VERIFY_ARE_EQUAL(std::wstring{ L"agy_acp_server.par --uid=" }, BuildAgentCommandLine(L"Antigravity", L"provider-model", true));
         VERIFY_ARE_EQUAL(std::wstring{ L"agy_acp_server.exe" }, BuildAgentCommandLine(L"antigravity", L"provider-model"));
         VERIFY_ARE_EQUAL(std::wstring{ L"agy_acp_server.par --uid=" }, BuildAgentCommandLine(L"antigravity", L"provider-model", true));
         VERIFY_IS_TRUE(std::ranges::any_of(Registry::BuiltinAcpAgents, [](const auto& agent) {
