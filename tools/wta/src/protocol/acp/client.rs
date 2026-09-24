@@ -2852,12 +2852,6 @@ async fn handle_load_failure(
     client_state: Arc<ClientState>,
     tab_aliases: SharedTabAliases,
 ) {
-    let _ = event_tx.send(AppEvent::AgentSessionEvent(
-        crate::agent_sessions::SessionEvent::ResumeFailed {
-            key: failed_sid,
-            reason: error_message.clone(),
-        },
-    ));
     let Some(current_tab_id) = current_tab_binding_operation(
         &tab_aliases,
         &tab_binding_generations,
@@ -2866,6 +2860,12 @@ async fn handle_load_failure(
     ) else {
         return;
     };
+    let _ = event_tx.send(AppEvent::AgentSessionEvent(
+        crate::agent_sessions::SessionEvent::ResumeFailed {
+            key: failed_sid,
+            reason: error_message.clone(),
+        },
+    ));
     if let Some(old) = old_sid {
         // Mid-life session management load failure path: restore prior binding.
         let mut g = tab_to_session.lock().await;

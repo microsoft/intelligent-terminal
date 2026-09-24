@@ -4485,6 +4485,60 @@ async fn dispatch_load_session_failure_handler_restores_prior_binding() {
         .await;
 }
 
+#[tokio::test]
+async fn stale_load_failure_does_not_rollback_newer_binding_operation() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            let tab_to_session = Arc::new(tokio::sync::Mutex::new(HashMap::from([(
+                "t1".to_string(),
+                acp::schema::v1::SessionId::new("newer-session"),
+            )])));
+            let tab_aliases = Arc::new(Mutex::new(HashMap::new()));
+            let tab_binding_generations = Arc::new(Mutex::new(HashMap::new()));
+            let (_, stale_generation) =
+                super::begin_tab_binding_operation(&tab_aliases, &tab_binding_generations, "t1");
+            let _ =
+                super::begin_tab_binding_operation(&tab_aliases, &tab_binding_generations, "t1");
+            let mut event_rx = h.event_rx;
+            let old_session = acp::schema::v1::SessionId::new("old-session");
+
+            super::handle_load_failure(
+                Some(&old_session),
+                "stale-failed-session".to_string(),
+                "t1".to_string(),
+                stale_generation,
+                std::path::PathBuf::from("C:\\repo"),
+                h.conn,
+                Arc::clone(&tab_to_session),
+                Arc::clone(&tab_binding_generations),
+                h.event_tx,
+                "Failed to resume session".to_string(),
+                h.proposal_channels,
+                false,
+                Arc::clone(&h.client.state),
+                tab_aliases,
+            )
+            .await;
+
+            assert_eq!(
+                tab_to_session
+                    .lock()
+                    .await
+                    .get("t1")
+                    .map(|sid| sid.to_string()),
+                Some("newer-session".to_string())
+            );
+            tokio::task::yield_now().await;
+            assert!(
+                event_rx.try_recv().is_err(),
+                "stale failure must not emit ResumeFailed or TabError"
+            );
+        })
+        .await;
+}
+
 /// `dispatch_load_session` timeout path: when the agent does not respond
 /// within the injected timeout, a `TabError` is surfaced (here via the direct
 /// inline strategy).
