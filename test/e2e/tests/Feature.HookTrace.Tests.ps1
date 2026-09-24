@@ -203,11 +203,12 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
         $listener = Start-WtEventListener -App $script:app -WaitForReady
         try {
             Invoke-RunCommand -App $script:app -SessionId $paneId -SettleSec 2 `
-                -Command "Push-Location '$TestDrive'; try { Get-Content -Raw -LiteralPath '$file' | wtcli.exe agent-hook --cli-source antigravity --event agent.prompt.submit } finally { Pop-Location }" | Out-Null
+                -Command "`$savedDistro=`$env:WSL_DISTRO_NAME; `$savedCwd=`$env:WTA_HOOK_CWD; Push-Location '$TestDrive'; try { `$env:WSL_DISTRO_NAME='Unrelated-WSL'; `$env:WTA_HOOK_CWD=''; Get-Content -Raw -LiteralPath '$file' | wtcli.exe agent-hook --cli-source antigravity --event agent.prompt.submit } finally { `$env:WSL_DISTRO_NAME=`$savedDistro; `$env:WTA_HOOK_CWD=`$savedCwd; Pop-Location }" | Out-Null
             $event = Wait-WtEvent -Listener $listener -TimeoutSec 20 -Predicate {
                 $_.method -eq 'agent_event' -and $_.params.agent_session_id -eq $sessionId
             }
             $event.params.payload.cwd | Should -Be $TestDrive
+            @($event.params.PSObject.Properties.Name) | Should -Not -Contain 'wsl_distro'
         }
         finally {
             Stop-WtEventListener -Listener $listener

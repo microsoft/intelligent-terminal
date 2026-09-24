@@ -1150,7 +1150,8 @@ int wmain(int argc, wchar_t** argv)
             if (event["params"]["cli_source"].asString() == "antigravity")
             {
                 const auto distro = EnvironmentValue(L"WSL_DISTRO_NAME");
-                if (!distro.empty())
+                const auto hookCwd = EnvironmentValue(L"WTA_HOOK_CWD");
+                if (!distro.empty() && hookCwd.starts_with('/'))
                 {
                     event["params"]["wsl_distro"] = distro;
                 }
@@ -1178,10 +1179,9 @@ int wmain(int argc, wchar_t** argv)
                 {
                     if (event["params"].isMember("wsl_distro"))
                     {
-                        const auto cwd = EnvironmentValue(L"WTA_HOOK_CWD");
-                        if (cwd.starts_with('/'))
+                        if (hookCwd.starts_with('/'))
                         {
-                            payload["cwd"] = cwd;
+                            payload["cwd"] = hookCwd;
                         }
                     }
                     else

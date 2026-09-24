@@ -203,6 +203,113 @@ fn write_antigravity_test_install(home: &Path) -> PathBuf {
 }
 
 #[test]
+fn antigravity_install_preflight_rejects_conflicting_ownership_before_native_runner() {
+    for collision in [
+        "descriptor",
+        "marker",
+        "unowned-hooks",
+        "hooks-directory",
+        "malformed-descriptor",
+        "malformed-marker",
+    ] {
+        let home = antigravity_test_home("install-collision");
+        let plugin = write_antigravity_test_install(&home);
+        let source = write_antigravity_test_install(&home.join("source-home"));
+        match collision {
+            "descriptor" => fs::write(
+                plugin.join("plugin.json"),
+                r#"{"name":"wt-agent-hooks","description":"user owned"}"#,
+            )
+            .unwrap(),
+            "marker" => fs::write(
+                plugin.join("intelligent-terminal.json"),
+                r#"{"name":"wt-agent-hooks","managed_by":"user"}"#,
+            )
+            .unwrap(),
+            "unowned-hooks" => {
+                fs::remove_file(plugin.join("plugin.json")).unwrap();
+                fs::remove_file(plugin.join("intelligent-terminal.json")).unwrap();
+            }
+            "hooks-directory" => {
+                fs::remove_file(plugin.join("hooks.json")).unwrap();
+                fs::create_dir(plugin.join("hooks.json")).unwrap();
+            }
+            "malformed-descriptor" => fs::write(plugin.join("plugin.json"), "invalid").unwrap(),
+            "malformed-marker" => {
+                fs::write(plugin.join("intelligent-terminal.json"), "invalid").unwrap()
+            }
+            _ => unreachable!(),
+        }
+        let files = ["plugin.json", "intelligent-terminal.json", "hooks.json"];
+        let before: Vec<_> = files
+            .iter()
+            .map(|name| fs::read(plugin.join(name)).ok())
+            .collect();
+        let mut called = false;
+        let result = antigravity::install_with(&home, &source, &home.join("staging"), |_, _, _| {
+            called = true;
+            Err(std::io::Error::other("stop at native runner"))
+        });
+        let after: Vec<_> = files
+            .iter()
+            .map(|name| fs::read(plugin.join(name)).ok())
+            .collect();
+        fs::remove_dir_all(home).unwrap();
+        assert!(result.is_err(), "{collision}");
+        assert!(!called, "native runner was called for {collision}");
+        assert_eq!(before, after, "{collision}");
+    }
+}
+
+#[test]
+fn antigravity_install_preflight_repairs_missing_managed_files() {
+    for missing in [
+        Some("plugin.json"),
+        Some("intelligent-terminal.json"),
+        Some("hooks.json"),
+        None,
+    ] {
+        let home = antigravity_test_home("install-repair");
+        let plugin = write_antigravity_test_install(&home);
+        let source = write_antigravity_test_install(&home.join("source-home"));
+        if let Some(name) = missing {
+            fs::remove_file(plugin.join(name)).unwrap();
+        } else {
+            fs::remove_dir_all(&plugin).unwrap();
+        }
+        let root = home.join("staging");
+        let mut calls = 0;
+        let result = antigravity::install_with(&home, &source, &root, |exe, args, environment| {
+            calls += 1;
+            assert_eq!(exe, "agy");
+            assert_eq!(&args[..2], &["plugin", "install"]);
+            let home_value = home.to_string_lossy();
+            assert_eq!(
+                environment,
+                [
+                    ("USERPROFILE", home_value.as_ref()),
+                    ("HOME", home_value.as_ref())
+                ]
+            );
+            let staged = Path::new(args[2]);
+            assert!(!staged.join("intelligent-terminal.json").exists());
+            fs::create_dir_all(&plugin).unwrap();
+            for name in ["plugin.json", "hooks.json"] {
+                fs::copy(staged.join(name), plugin.join(name)).unwrap();
+            }
+            Ok(())
+        });
+        let complete = antigravity::installed(&home).unwrap().unwrap();
+        let empty = fs::read_dir(root).unwrap().next().is_none();
+        fs::remove_dir_all(home).unwrap();
+        assert_eq!(result, Ok(()), "{missing:?}");
+        assert_eq!(calls, 1);
+        assert_eq!(complete.version, Some("0.1.1".parse().unwrap()));
+        assert!(complete.enabled && empty);
+    }
+}
+
+#[test]
 fn antigravity_staging_cleanup_preserves_install_errors_and_removes_copies() {
     for phase in ["native install", "verification", "ownership copy"] {
         let home = antigravity_test_home("staging-failure");

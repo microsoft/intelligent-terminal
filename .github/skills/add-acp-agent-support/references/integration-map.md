@@ -151,10 +151,15 @@ at publication and at the unquoted execution boundary; ACP-only IDs remain opaqu
 Mounted workspace roots are not guaranteed to contain the CLI launch directory.
 When that metadata is absent, preserve an observed hook/process cwd rather than
 inventing a home directory, including across WSL interoperability.
+Do not infer WSL execution from a distro environment variable alone; require the
+source-specific forwarded context or the owning pane's reported shell.
 
 Shared provider configuration belongs to the provider. Prefer its native mutation
 API; a WTA-only mutex or read-then-rename check does not serialize another client's
 writes. If safe native cleanup is unavailable, fail explicitly and preserve state.
+Check every existing ownership document for conflicts before invoking a native
+installer; a surviving managed marker does not authorize replacing a conflicting
+descriptor. Missing managed files may still be repaired.
 
 Follow the current implementations in `agent_hooks_installer.rs`,
 `wt-agent-hooks`, and the session registry rather than assuming every CLI has a

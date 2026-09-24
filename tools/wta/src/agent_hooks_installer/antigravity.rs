@@ -237,6 +237,34 @@ fn validate_files(directory: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_owned_files(directory: &Path) -> Result<(), String> {
+    validate_files(directory)?;
+    for (name, marker) in [("plugin.json", false), (MANIFEST, true)] {
+        if let Some(document) = JsonFile::read(directory.join(name))? {
+            if !owns(&document, marker) {
+                return Err(format!(
+                    "refusing to change conflicting Antigravity ownership in {name}"
+                ));
+            }
+        }
+    }
+    if directory.is_dir() {
+        for entry in fs::read_dir(directory).map_err(|error| error.to_string())? {
+            let entry = entry.map_err(|error| error.to_string())?;
+            if !FILES
+                .iter()
+                .any(|name| entry.file_name() == std::ffi::OsStr::new(name))
+            {
+                return Err(format!(
+                    "preserve additional plugin file before changing hooks: {}",
+                    entry.path().display()
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 pub(super) fn with_staged_bundle(
     source: &Path,
     staging_root: &Path,
@@ -258,7 +286,7 @@ pub(super) fn with_staged_bundle(
         Ok(()) => result,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => result,
         Err(error) => {
-            tracing::warn!(target: "agent_hooks", path = %staging.display(), %error, "failed to remove Antigravity hook staging");
+            tracing::warn!(target: "agent_hooks", path = tracing::field::display(staging.display()), %error, "failed to remove Antigravity hook staging");
             let cleanup = format!(
                 "cannot clean Antigravity hook staging {}: {error}",
                 staging.display()
@@ -279,80 +307,12 @@ pub(super) fn install(home: &Path) -> InstallOutcome {
     let result = (|| -> Result<(), String> {
         let source = bundle::resolve_cli_dir(CliKind::Antigravity)
             .ok_or("the packaged Antigravity hook bundle was not found")?;
-        let before = load(home)?;
-        if before.directory.exists() && !before.owned {
-            return Err(format!(
-                "refusing to overwrite user-owned plugin {}",
-                before.directory.display()
-            ));
-        }
-        validate_files(&before.directory)?;
-        if before.directory.is_dir() {
-            for entry in fs::read_dir(&before.directory).map_err(|error| error.to_string())? {
-                let entry = entry.map_err(|error| error.to_string())?;
-                if !FILES
-                    .iter()
-                    .any(|name| entry.file_name() == std::ffi::OsStr::new(name))
-                {
-                    return Err(format!(
-                        "preserve additional plugin file before reinstalling: {}",
-                        entry.path().display()
-                    ));
-                }
-            }
-        }
-
-        let marker = JsonFile::read(source.join(MANIFEST))?
-            .filter(|file| owns(file, true))
-            .ok_or("the bundled Antigravity ownership marker is invalid")?;
-        let version = marker
-            .value
-            .get("version")
-            .and_then(Value::as_str)
-            .and_then(|value| value.parse::<Version>().ok())
-            .ok_or("the bundled Antigravity hook version is invalid")?;
         let staging_root = crate::runtime_paths::intelligent_terminal_local_root()
             .ok_or("the Intelligent Terminal cache directory is unavailable")?
             .join(STAGING_SUBDIR)
             .join("antigravity");
-        // The provider copies its payload; publish our version only after verification.
-        with_staged_bundle(&source, &staging_root, |staging| {
-            let staged = staging.to_string_lossy();
-            let home_value = home.to_string_lossy();
-            let environment = [
-                ("USERPROFILE", home_value.as_ref()),
-                ("HOME", home_value.as_ref()),
-            ];
-            run_plugin_cli_with_env(
-                "agy",
-                &["plugin", "install", &staged],
-                &environment,
-                "agent_hooks",
-                &[],
-            )
-            .map_err(|error| format!("Antigravity plugin install failed: {error}"))?;
-            let copied = load(home)?;
-            if !copied.registered || !copied.owned || !copied.directory.join("hooks.json").is_file()
-            {
-                return Err("Antigravity did not install the managed hooks in its expected configuration directory".into());
-            }
-            if !copied.enabled {
-                run_plugin_cli_with_env(
-                    "agy",
-                    &["plugin", "enable", PLUGIN_NAME],
-                    &environment,
-                    "agent_hooks",
-                    &[],
-                )
-                .map_err(|error| format!("Antigravity plugin enable failed: {error}"))?;
-            }
-            fs::copy(source.join(MANIFEST), copied.directory.join(MANIFEST))
-                .map_err(|error| format!("cannot commit Antigravity hook ownership: {error}"))?;
-            let after = load(home)?;
-            if !after.complete || !after.enabled || after.version != Some(version) {
-                return Err("Antigravity hook installation did not pass verification".into());
-            }
-            Ok(())
+        install_with(home, &source, &staging_root, |exe, args, environment| {
+            run_plugin_cli_with_env(exe, args, environment, "agent_hooks", &[])
         })
     })();
     match result {
@@ -362,6 +322,58 @@ pub(super) fn install(home: &Path) -> InstallOutcome {
             InstallOutcome::Failed(error)
         }
     }
+}
+
+pub(super) fn install_with(
+    home: &Path,
+    source: &Path,
+    staging_root: &Path,
+    mut run: impl FnMut(&str, &[&str], &[(&str, &str)]) -> std::io::Result<()>,
+) -> Result<(), String> {
+    let before = load(home)?;
+    if before.directory.exists() && !before.owned {
+        return Err(format!(
+            "refusing to overwrite user-owned plugin {}",
+            before.directory.display()
+        ));
+    }
+    validate_owned_files(&before.directory)?;
+
+    let marker = JsonFile::read(source.join(MANIFEST))?
+        .filter(|file| owns(file, true))
+        .ok_or("the bundled Antigravity ownership marker is invalid")?;
+    let version = marker
+        .value
+        .get("version")
+        .and_then(Value::as_str)
+        .and_then(|value| value.parse::<Version>().ok())
+        .ok_or("the bundled Antigravity hook version is invalid")?;
+    // The provider copies its payload; publish our version only after verification.
+    with_staged_bundle(source, staging_root, |staging| {
+        let staged = staging.to_string_lossy();
+        let home_value = home.to_string_lossy();
+        let environment = [
+            ("USERPROFILE", home_value.as_ref()),
+            ("HOME", home_value.as_ref()),
+        ];
+        run("agy", &["plugin", "install", &staged], &environment)
+            .map_err(|error| format!("Antigravity plugin install failed: {error}"))?;
+        let copied = load(home)?;
+        if !copied.registered || !copied.owned || !copied.directory.join("hooks.json").is_file() {
+            return Err("Antigravity did not install the managed hooks in its expected configuration directory".into());
+        }
+        if !copied.enabled {
+            run("agy", &["plugin", "enable", PLUGIN_NAME], &environment)
+                .map_err(|error| format!("Antigravity plugin enable failed: {error}"))?;
+        }
+        fs::copy(source.join(MANIFEST), copied.directory.join(MANIFEST))
+            .map_err(|error| format!("cannot commit Antigravity hook ownership: {error}"))?;
+        let after = load(home)?;
+        if !after.complete || !after.enabled || after.version != Some(version) {
+            return Err("Antigravity hook installation did not pass verification".into());
+        }
+        Ok(())
+    })
 }
 
 fn has_registration(installation: &Installation) -> bool {
@@ -412,28 +424,7 @@ fn remove(
             installation.directory.display()
         ));
     }
-    validate_files(&installation.directory)?;
-    for (name, marker) in [("plugin.json", false), (MANIFEST, true)] {
-        if let Some(document) = JsonFile::read(installation.directory.join(name))? {
-            if !owns(&document, marker) {
-                return Err(format!(
-                    "refusing to remove conflicting Antigravity ownership in {name}"
-                ));
-            }
-        }
-    }
-    for entry in fs::read_dir(&installation.directory).map_err(|error| error.to_string())? {
-        let entry = entry.map_err(|error| error.to_string())?;
-        if !FILES
-            .iter()
-            .any(|name| entry.file_name() == std::ffi::OsStr::new(name))
-        {
-            return Err(format!(
-                "preserve additional plugin file before uninstalling: {}",
-                entry.path().display()
-            ));
-        }
-    }
+    validate_owned_files(&installation.directory)?;
     if !cli_available {
         return Err("agy is not available; Antigravity hooks and configuration were not changed. Reinstall agy or restore it to PATH, then retry hook uninstall.".into());
     }
