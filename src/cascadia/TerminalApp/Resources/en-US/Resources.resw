@@ -240,8 +240,23 @@
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>Agent history</value>
   </data>
+  <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Close agent history</value>
+  </data>
+  <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Close agent history</value>
+  </data>
+  <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
+    <value>Search agent history</value>
+  </data>
+  <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Search agent history</value>
+  </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>No agent sessions found.</value>
+  </data>
+  <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
+    <value>No matching agent sessions.</value>
   </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
     <value>Unable to load agent history.</value>

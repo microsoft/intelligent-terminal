@@ -31,9 +31,11 @@ namespace TerminalApp
         String Cwd;
         String PaneSessionId;
         String AgentId;
+        String ProviderDisplayName;
         String AgentSource;
         String WslDistro;
         String SessionUniverse;
+        String Status;
         Boolean IsLive;
         Boolean IsAgentPane;
     };

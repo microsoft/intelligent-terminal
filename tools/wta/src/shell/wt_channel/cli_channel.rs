@@ -1064,6 +1064,10 @@ impl WtChannel for CliChannel {
                 let title = params.get("title").and_then(|v| v.as_str()).unwrap_or("");
                 let cwd = params.get("cwd").and_then(|v| v.as_str()).unwrap_or("");
                 let profile = params.get("profile").and_then(|v| v.as_str()).unwrap_or("");
+                let background = params
+                    .get("background")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 let cmd_owned;
                 let title_owned;
                 let cwd_owned;
@@ -1088,6 +1092,9 @@ impl WtChannel for CliChannel {
                 if !profile.is_empty() {
                     profile_owned = profile.to_string();
                     args.extend(["-p", &profile_owned]);
+                }
+                if background {
+                    args.push("--background");
                 }
                 self.run_wtcli(&args).await
             }

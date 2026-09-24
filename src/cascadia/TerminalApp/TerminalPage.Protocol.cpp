@@ -775,14 +775,24 @@ namespace winrt::TerminalApp::implementation
         if (!pane)
             co_return result;
 
-        _CreateNewTabFromPane(pane, -1, /*openInBackground=*/background);
-        _tabContent.UpdateLayout(); // Force synchronous terminal initialization
-
-        if (_tabs.Size() == 0)
+        const auto newTab = _CreateNewTabFromPane(pane, -1, /*openInBackground=*/background);
+        if (!newTab)
             co_return result;
 
-        const auto newTabIdx = _tabs.Size() - 1;
-        const auto newTab = _tabs.GetAt(newTabIdx);
+        _tabContent.UpdateLayout(); // Force synchronous terminal initialization
+
+        // UpdateLayout can realize the vertical ListView after the History
+        // overlay closes and restore its previous row selection. Reassert the
+        // protocol-created foreground tab after layout has settled.
+        if (!background)
+        {
+            _selectedTabItem(newTab.TabViewItem());
+        }
+
+        uint32_t newTabIdx{};
+        if (!_tabs.IndexOf(newTab, newTabIdx))
+            co_return result;
+
         const auto tabImpl = _GetTabImpl(newTab);
 
         result.TabId = newTabIdx;

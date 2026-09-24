@@ -637,9 +637,7 @@ namespace winrt::TerminalApp::implementation
         _tabStrip.HistoryClosed([weakThis{ get_weak() }](auto&&, auto&&) {
             if (const auto page = weakThis.get())
             {
-                page->_StopSidebarHistoryRefreshTimer();
-                page->_tabStrip.HistoryLoading(false);
-                page->_tabStrip.HistoryError(L"");
+                page->_CloseSidebarHistory(true);
             }
         });
         _tabStrip.HistoryActivationRequested([weakThis{ get_weak() }](auto&&, const auto& args) {
@@ -5611,6 +5609,7 @@ namespace winrt::TerminalApp::implementation
 
         if (succeeded && !targetVertical)
         {
+            _CloseSidebarHistory(false);
             _ClearTabSearch();
         }
 
@@ -5700,6 +5699,7 @@ namespace winrt::TerminalApp::implementation
 
         if (!visible)
         {
+            _CloseSidebarHistory(false);
             _ClearTabSearch();
         }
         _isVerticalRailVisible = visible;
@@ -5788,12 +5788,7 @@ namespace winrt::TerminalApp::implementation
         if (collapsing)
         {
             _ClearTabSearch();
-            if (_tabStrip.HistoryActive())
-            {
-                _StopSidebarHistoryRefreshTimer();
-                _tabStrip.HistoryActive(false);
-                _tabStrip.HistoryLoading(false);
-            }
+            _CloseSidebarHistory(false);
         }
         _isVerticalRailCollapsed = collapsing;
         _SetVerticalRailVisibility(true);
@@ -5823,6 +5818,57 @@ namespace winrt::TerminalApp::implementation
         }
         ++_historyRequestGeneration;
         _historyRefreshPending = false;
+    }
+
+    void TerminalPage::_CloseSidebarHistory(const bool restoreFocus)
+    {
+        if (!_tabStrip || !_tabStrip.HistoryActive())
+        {
+            return;
+        }
+
+        const auto selectedTabItem = _selectedTabItem();
+        bool focusWasInHistory = false;
+        if (restoreFocus)
+        {
+            if (const auto xamlRoot = _tabStrip.XamlRoot())
+            {
+                const auto historyPanel = winrt::get_self<implementation::TabStrip>(_tabStrip)->HistoryPanel();
+                auto focused = WUX::Input::FocusManager::GetFocusedElement(xamlRoot).try_as<DependencyObject>();
+                while (focused)
+                {
+                    if (focused == historyPanel)
+                    {
+                        focusWasInHistory = true;
+                        break;
+                    }
+                    focused = Media::VisualTreeHelper::GetParent(focused);
+                }
+            }
+        }
+
+        ++_historyActivationSerial;
+        _StopSidebarHistoryRefreshTimer();
+        _tabStrip.HistoryActive(false);
+        _tabStrip.HistoryLoading(false);
+        _tabStrip.HistoryError(L"");
+
+        // Collapsing the focused History overlay can make XAML select the
+        // previously realized ListView row. Preserve the tab that was active
+        // when History closed, including a foreground tab created by restore.
+        uint32_t selectedTabIndex{};
+        if (selectedTabItem && _tabItems().IndexOf(selectedTabItem, selectedTabIndex))
+        {
+            _selectedTabItem(selectedTabItem);
+        }
+
+        if (focusWasInHistory)
+        {
+            if (const auto tab = _GetFocusedTab())
+            {
+                tab.Focus(FocusState::Programmatic);
+            }
+        }
     }
 
     void TerminalPage::_RequestSidebarHistoryRefresh(const bool initialLoad)
@@ -5985,9 +6031,11 @@ namespace winrt::TerminalApp::implementation
                 item.Cwd(winrt::to_hstring(cwd));
                 item.PaneSessionId(winrt::to_hstring(row.get("pane_session_id", "").asString()));
                 item.AgentId(winrt::to_hstring(providerId));
+                item.ProviderDisplayName(winrt::to_hstring(providerDisplayName));
                 item.AgentSource(winrt::to_hstring(agentSource));
                 item.WslDistro(winrt::to_hstring(wslDistro));
                 item.SessionUniverse(winrt::to_hstring(row.get("session_universe", "").asString()));
+                item.Status(winrt::to_hstring(status));
                 item.IsLive(isLive);
                 item.IsAgentPane(isAgentPane);
                 items.emplace_back(std::move(item));
@@ -6014,7 +6062,7 @@ namespace winrt::TerminalApp::implementation
         {
             if (initialLoad)
             {
-                page->_tabStrip.HistoryItems().Clear();
+                winrt::get_self<implementation::TabStrip>(page->_tabStrip)->ClearHistorySnapshot();
                 page->_tabStrip.HistoryError(RS_(L"VerticalTabsHistoryLoadError"));
             }
         }
@@ -6022,17 +6070,13 @@ namespace winrt::TerminalApp::implementation
         {
             if (initialLoad)
             {
-                page->_tabStrip.HistoryItems().Clear();
+                winrt::get_self<implementation::TabStrip>(page->_tabStrip)->ClearHistorySnapshot();
                 page->_tabStrip.HistoryError(RS_(L"VerticalTabsHistoryInvalidResponse"));
             }
         }
         else
         {
-            page->_tabStrip.HistoryItems().Clear();
-            for (const auto& item : items)
-            {
-                page->_tabStrip.HistoryItems().Append(item);
-            }
+            winrt::get_self<implementation::TabStrip>(page->_tabStrip)->CommitHistorySnapshot(std::move(items));
             page->_tabStrip.HistoryError(L"");
         }
         page->_tabStrip.HistoryLoading(false);
@@ -6053,6 +6097,7 @@ namespace winrt::TerminalApp::implementation
         const auto weakThis = get_weak();
         const auto dispatcher = Dispatcher();
         const auto windowId = _WindowProperties.WindowId();
+        const auto activationSerial = ++_historyActivationSerial;
         _StopSidebarHistoryRefreshTimer();
         _tabStrip.HistoryLoading(true);
         _tabStrip.HistoryError(L"");
@@ -6136,11 +6181,14 @@ namespace winrt::TerminalApp::implementation
         {
             co_return;
         }
+        if (page->_historyActivationSerial != activationSerial || !page->_tabStrip.HistoryActive())
+        {
+            co_return;
+        }
         page->_tabStrip.HistoryLoading(false);
         if (accepted)
         {
-            page->_tabStrip.HistoryActive(false);
-            page->_tabStrip.HistoryError(L"");
+            page->_CloseSidebarHistory(false);
         }
         else
         {
@@ -8296,14 +8344,20 @@ namespace winrt::TerminalApp::implementation
                     // tab_changed echo) doesn't accidentally re-spawn.
                     std::string pendingSid;
                     std::string pendingCwd;
+                    bool resumedPendingSession = false;
                     if (const auto it = _pendingLoadSessions.find(tabId); it != _pendingLoadSessions.end())
                     {
                         pendingSid = std::move(it->second.sessionId);
                         pendingCwd = std::move(it->second.cwd);
                         _pendingLoadSessions.erase(it);
+                        resumedPendingSession = true;
                         _agentPaneLog("OnAgentStateChanged: consuming pending load_session for tab " + winrt::to_string(tabId));
                     }
                     _AutoCreateHiddenAgentPaneShared(targetTab, intoSessions, /*autoStash*/ false, pendingSid, pendingCwd);
+                    if (resumedPendingSession)
+                    {
+                        _selectedTabItem(targetTab->TabViewItem());
+                    }
                 }
             }
             else

@@ -348,6 +348,7 @@ namespace winrt::TerminalApp::implementation
         bool _mutatingTabCollections{ false };
         bool _suppressTabFocusRequests{ false };
         uint64_t _historyRequestGeneration{ 0 };
+        uint64_t _historyActivationSerial{ 0 };
         Windows::UI::Xaml::DispatcherTimer _historyRefreshTimer{ nullptr };
         bool _historyRefreshInFlight{ false };
         bool _historyRefreshPending{ false };
@@ -942,6 +943,7 @@ namespace winrt::TerminalApp::implementation
         void _ClearTabSearch();
         void _StartSidebarHistoryRefreshTimer();
         void _StopSidebarHistoryRefreshTimer();
+        void _CloseSidebarHistory(bool restoreFocus);
         void _RequestSidebarHistoryRefresh(bool initialLoad);
         safe_void_coroutine _LoadSidebarHistory(uint64_t generation, bool initialLoad);
         safe_void_coroutine _ActivateSidebarHistoryItem(TerminalApp::TabStripHistoryItem item);

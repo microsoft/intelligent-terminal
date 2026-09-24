@@ -280,6 +280,7 @@
               Visibility="Collapsed">
             <Grid.RowDefinitions>
                 <RowDefinition Height="44" />
+                <RowDefinition Height="40" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
             <Grid Padding="12,0,8,0"
@@ -292,7 +293,8 @@
                 <TextBlock x:Uid="VerticalTabsHistoryHeader"
                            VerticalAlignment="Center"
                            FontWeight="SemiBold" />
-                <Button Grid.Column="1"
+                <Button x:Uid="VerticalTabsHistoryCloseButton"
+                        Grid.Column="1"
                         Width="40"
                         Height="40"
                         Padding="0"
@@ -304,7 +306,17 @@
                               Glyph="&#xE711;" />
                 </Button>
             </Grid>
-            <Grid Grid.Row="1">
+            <TextBox x:Name="HistorySearchTextBox"
+                     x:Uid="VerticalTabsHistorySearchBox"
+                     Grid.Row="1"
+                     Height="32"
+                     Margin="6,4"
+                     Padding="8,6,8,0"
+                     VerticalAlignment="Center"
+                     VerticalContentAlignment="Center"
+                     KeyDown="OnHistorySearchBoxKeyDown"
+                     TextChanged="OnHistorySearchTextChanged" />
+            <Grid Grid.Row="2">
                 <ListView x:Name="HistoryList"
                           ItemsSource="{x:Bind HistoryItems}"
                           IsItemClickEnabled="True"
