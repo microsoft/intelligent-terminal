@@ -159,6 +159,7 @@ system.selection_copied: "Kopiert"  # Brief hint shown after selected terminal t
 system.cancelled: "Avbrote."
 system.no_prompt_in_flight: "Ingen førespurnad pågår."
 system.authentication_failed: "Autentisering mislukkast"
+system.localization_workflow_retest: "Melding om ny testing av utgjeving av lokalisering for WTA-terminalen."
 system.stopped_max_tokens: "Svaret blei avkorta etter at utdatagrensa til modellen blei nådd."
 system.stopped_max_turn_requests: "Agenten stoppa etter at førespurnadsgrensa for denne runden blei nådd."
 system.stopped_refusal: "Agenten avviste å halde fram med denne førespurnaden."

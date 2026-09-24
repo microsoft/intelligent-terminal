@@ -173,6 +173,7 @@ system.selection_copied: "কপি কৰা হৈছে"  # Brief hint shown 
 system.cancelled: "বাতিল কৰা হৈছে।"
 system.no_prompt_in_flight: "প্ৰগতিত কোনো প্ৰমপ্ট নাই।"
 system.authentication_failed: "প্ৰমাণীকৰণ বিফল"
+system.localization_workflow_retest: "WTA টাৰ্মিনেল স্থানীয়কৰণ প্ৰকাশ পুনৰ পৰীক্ষা বাৰ্তা।"
 system.stopped_max_tokens: "মডেলৰ আউটপুট সীমাত উপনীত হোৱাৰ পিছত প্ৰতিক্ৰিয়াটো কাটি পেলোৱা হ’ল।"
 system.stopped_max_turn_requests: "এই পালিৰ বাবে অনুৰোধ সীমাত উপনীত হোৱাৰ পিছত এজেণ্টটো বন্ধ হ’ল।"
 system.stopped_refusal: "এজেণ্টে এই অনুৰোধটো আগবঢ়াই নিয়াত অমান্তি হ’ল।"

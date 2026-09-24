@@ -160,6 +160,7 @@ system.selection_copied: "S'ha copiat"  # Brief hint shown after selected termin
 system.cancelled: "Cancel·lat."
 system.no_prompt_in_flight: "No hi ha cap indicació en curs."
 system.authentication_failed: "L'autenticació ha fallat"
+system.localization_workflow_retest: "Missatge de nova prova de publicació de la localització del terminal WTA."
 system.stopped_max_tokens: "La resposta s'ha tallat en arribar al límit d'eixida del model."
 system.stopped_max_turn_requests: "L'agent s'ha parat en arribar al seu límit de sol·licituds per a este torn."
 system.stopped_refusal: "L'agent ha rebutjat continuar amb esta sol·licitud."

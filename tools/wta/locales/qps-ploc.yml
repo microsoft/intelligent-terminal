@@ -161,6 +161,7 @@ system.selection_copied: "[Çöṗïéð!!!]"  # Brief hint shown after selected
 system.cancelled: "[Çåñçéĺĺéď.!!]"
 system.no_prompt_in_flight: "[Ñö ṗŕöḿṗţ ïñ ƒĺïğĥţ.!!!! !!!!]"
 system.authentication_failed: "[Àûţĥéñţïçåţïöñ ƒåïĺéď!!!! !!!!]"
+system.localization_workflow_retest: "[Ẃţá ţёŕмїñáĺ ĺőςáĺїзáţїőñ ρúвĺїςáţїőñ ŕёţёśţ мёśśáğё.!!!! !!!!]"
 system.stopped_max_tokens: "[Ţĥé ŕéśṗöñśé ŵåś çûţ öƒƒ åƒţéŕ ŕéåçĥïñǧ ţĥé ḿöďéĺ'ś öûţṗûţ ĺïḿïţ.!!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!!]"
 system.stopped_max_turn_requests: "[Ţĥé åǧéñţ śţöṗṗéď åƒţéŕ ŕéåçĥïñǧ ïţś ŕéqûéśţ ĺïḿïţ ƒöŕ ţĥïś ţûŕñ.!!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!!]"
 system.stopped_refusal: "[Ţĥé åǧéñţ ďéçĺïñéď ţö çöñţïñûé ŵïţĥ ţĥïś ŕéqûéśţ.!!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!!]"

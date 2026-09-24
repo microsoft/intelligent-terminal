@@ -159,6 +159,7 @@ system.selection_copied: "Đã sao chép"  # Brief hint shown after selected ter
 system.cancelled: "Đã hủy."
 system.no_prompt_in_flight: "Không có lệnh nào đang chạy."
 system.authentication_failed: "Xác thực thất bại"
+system.localization_workflow_retest: "Thông báo kiểm tra lại việc xuất bản bản địa hóa terminal WTA."
 system.stopped_max_tokens: "Phản hồi đã bị cắt sau khi đạt đến giới hạn đầu ra của mô hình."
 system.stopped_max_turn_requests: "Tác nhân đã dừng sau khi đạt đến giới hạn yêu cầu cho lượt này."
 system.stopped_refusal: "Tác nhân đã từ chối tiếp tục với yêu cầu này."

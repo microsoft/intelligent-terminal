@@ -185,6 +185,7 @@ system.selection_copied: "Պատճենված է"  # Brief hint shown after selec
 system.cancelled: "Չեղարկված է։"
 system.no_prompt_in_flight: "Գործընթացում գտնվող հարցում չկա։"
 system.authentication_failed: "Նույնականացումը ձախողվեց"
+system.localization_workflow_retest: "WTA տերմինալի տեղայնացման հրապարակման կրկնակի փորձարկման հաղորդագրություն։"
 system.stopped_max_tokens: "Պատասխանը կտրվեց՝ հասնելով մոդելի ելքի սահմանաչափին։"
 system.stopped_max_turn_requests: "Գործակալը կանգ առավ՝ հասնելով այս հերթի հարցումների սահմանաչափին։"
 system.stopped_refusal: "Գործակալը հրաժարվեց շարունակել այս հարցումը։"
