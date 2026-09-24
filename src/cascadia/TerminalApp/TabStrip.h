@@ -31,6 +31,7 @@ namespace winrt::TerminalApp::implementation
         WINRT_PROPERTY(winrt::hstring, WslDistro);
         WINRT_PROPERTY(winrt::hstring, SessionUniverse);
         WINRT_PROPERTY(winrt::hstring, Status);
+        WINRT_PROPERTY(winrt::hstring, SearchQuery);
         WINRT_PROPERTY(bool, IsLive, false);
         WINRT_PROPERTY(bool, IsAgentPane, false);
     };

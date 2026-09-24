@@ -276,6 +276,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabStripCollapsedItemsPreserveSelection);
         TEST_METHOD(VerticalTabSearchMatchesCommittedTitle);
         TEST_METHOD(VerticalTabSearchUiState);
+        TEST_METHOD(LiteralSearchHighlighting);
         TEST_METHOD(VerticalTabHistorySearchProjection);
         TEST_METHOD(VerticalTabHistoryPreservesLiveSearch);
         TEST_METHOD(VerticalTabHistoryClosePreservesForegroundSelection);
@@ -2179,6 +2180,27 @@ namespace TerminalAppLocalTests
         });
     }
 
+    void TabTests::LiteralSearchHighlighting()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::HighlightedTextControl control;
+            control.Text(L"PowerShell");
+            control.SearchText(L"shell");
+            control.ApplyTemplate();
+
+            const auto textBlock = Media::VisualTreeHelper::GetChild(control, 0).as<TextBlock>();
+            VERIFY_ARE_EQUAL(2u, textBlock.Inlines().Size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Power" }, textBlock.Inlines().GetAt(0).as<Documents::Run>().Text());
+            const auto highlighted = textBlock.Inlines().GetAt(1).as<Documents::Run>();
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Shell" }, highlighted.Text());
+            VERIFY_ARE_EQUAL(FontWeights::Bold().Weight, highlighted.FontWeight().Weight);
+
+            control.SearchText(L"");
+            VERIFY_ARE_EQUAL(1u, textBlock.Inlines().Size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"PowerShell" }, textBlock.Inlines().GetAt(0).as<Documents::Run>().Text());
+        });
+    }
+
     void TabTests::VerticalTabHistorySearchProjection()
     {
         TestOnUIThread([&]() {
@@ -2210,6 +2232,7 @@ namespace TerminalAppLocalTests
             stripImpl->HistorySearchTextBox().Text(L"ubuntu");
             VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Deploy service" }, strip.HistoryItems().GetAt(0).Title());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"ubuntu" }, strip.HistoryItems().GetAt(0).SearchQuery());
 
             stripImpl->HistorySearchTextBox().Text(L"idle");
             VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());

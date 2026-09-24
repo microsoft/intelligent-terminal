@@ -25,6 +25,7 @@ namespace winrt::TerminalApp::implementation
 
         til::property_changed_event PropertyChanged;
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, Title, PropertyChanged.raise);
+        WINRT_OBSERVABLE_PROPERTY(winrt::hstring, SearchText, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(double, RenamerMaxWidth, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(winrt::TerminalApp::TerminalTabStatus, TabStatus, PropertyChanged.raise);
 

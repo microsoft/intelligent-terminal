@@ -36,6 +36,7 @@ namespace TerminalApp
         String WslDistro;
         String SessionUniverse;
         String Status;
+        String SearchQuery;
         Boolean IsLive;
         Boolean IsAgentPane;
     };

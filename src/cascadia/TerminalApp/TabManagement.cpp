@@ -1715,10 +1715,15 @@ namespace winrt::TerminalApp::implementation
         uint32_t scopeVisibleTabCount = 0;
         bool selectedTabMatchesScope = true;
         const auto selectedItem = _selectedTabItem();
+        const auto highlightQuery = _IsTabSearchEffective() ? _tabSearchQuery : winrt::hstring{};
 
         for (const auto& tab : _tabs)
         {
             const auto item = tab.TabViewItem();
+            if (const auto header = item.Header().try_as<TerminalApp::TabHeaderControl>())
+            {
+                header.SearchText(highlightQuery);
+            }
             const auto tabImpl = _GetTabImpl(tab);
             const auto matchesScope = !agentScopeEffective || _MatchesTabScope(tabImpl);
             const auto visible = _IsTabVisibleInProjection(tabImpl);

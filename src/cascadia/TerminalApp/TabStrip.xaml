@@ -22,6 +22,17 @@
     <UserControl.Resources>
         <!--  Remove the native horizontal tab border within this vertical-only scope.  -->
         <Thickness x:Key="TabViewItemBorderThickness">0</Thickness>
+        <Style x:Key="HistoryTitleTextStyle"
+               TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+        <Style x:Key="HistorySubtitleTextStyle"
+               TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Opacity" Value="0.72" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
     </UserControl.Resources>
 
     <Grid Background="{ThemeResource TabViewBackground}">
@@ -329,15 +340,14 @@
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
-                                <TextBlock Text="{x:Bind Title}"
-                                           FontWeight="SemiBold"
-                                           TextTrimming="CharacterEllipsis" />
-                                <TextBlock Grid.Row="1"
-                                           Margin="0,2,0,0"
-                                           Text="{x:Bind Subtitle}"
-                                           FontSize="11"
-                                           Opacity="0.72"
-                                           TextTrimming="CharacterEllipsis" />
+                                <local:HighlightedTextControl Text="{x:Bind Title}"
+                                                              SearchText="{x:Bind SearchQuery}"
+                                                              TextBlockStyle="{StaticResource HistoryTitleTextStyle}" />
+                                <local:HighlightedTextControl Grid.Row="1"
+                                                              Margin="0,2,0,0"
+                                                              Text="{x:Bind Subtitle}"
+                                                              SearchText="{x:Bind SearchQuery}"
+                                                              TextBlockStyle="{StaticResource HistorySubtitleTextStyle}" />
                             </Grid>
                         </DataTemplate>
                     </ListView.ItemTemplate>

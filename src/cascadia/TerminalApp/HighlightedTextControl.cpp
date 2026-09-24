@@ -23,6 +23,7 @@ namespace winrt::TerminalApp::implementation
     // To allow this we need to register a Dependency Property Identifier to be used by the property system
     // (https://docs.microsoft.com/en-us/windows/uwp/xaml-platform/custom-dependency-properties)
     DependencyProperty HighlightedTextControl::_TextProperty{ nullptr };
+    DependencyProperty HighlightedTextControl::_SearchTextProperty{ nullptr };
     DependencyProperty HighlightedTextControl::_HighlightedRunsProperty{ nullptr };
     DependencyProperty HighlightedTextControl::_TextBlockStyleProperty{ nullptr };
     DependencyProperty HighlightedTextControl::_HighlightedRunStyleProperty{ nullptr };
@@ -37,6 +38,12 @@ namespace winrt::TerminalApp::implementation
         static auto [[maybe_unused]] registered = [] {
             _TextProperty = DependencyProperty::Register(
                 L"Text",
+                xaml_typename<winrt::hstring>(),
+                xaml_typename<winrt::TerminalApp::HighlightedTextControl>(),
+                PropertyMetadata(nullptr, HighlightedTextControl::_onPropertyChanged));
+
+            _SearchTextProperty = DependencyProperty::Register(
+                L"SearchText",
                 xaml_typename<winrt::hstring>(),
                 xaml_typename<winrt::TerminalApp::HighlightedTextControl>(),
                 PropertyMetadata(nullptr, HighlightedTextControl::_onPropertyChanged));
@@ -117,6 +124,28 @@ namespace winrt::TerminalApp::implementation
 
         const auto text = Text();
         const auto runs = HighlightedRuns();
+        std::vector<TerminalApp::HighlightedRun> searchRuns;
+        if ((!runs || runs.Size() == 0) && !text.empty())
+        {
+            const auto searchText = SearchText();
+            const std::wstring_view query{ searchText.c_str(), searchText.size() };
+            const std::wstring_view candidate{ text.c_str(), text.size() };
+            if (!query.empty() && query.size() <= candidate.size())
+            {
+                for (size_t offset = 0; offset + query.size() <= candidate.size();)
+                {
+                    if (til::compare_ordinal_insensitive(candidate.substr(offset, query.size()), query) == 0)
+                    {
+                        searchRuns.emplace_back(offset, offset + query.size() - 1);
+                        offset += query.size();
+                    }
+                    else
+                    {
+                        ++offset;
+                    }
+                }
+            }
+        }
 
         const auto inlinesCollection = textBlock.Inlines();
         inlinesCollection.Clear();
@@ -128,36 +157,45 @@ namespace winrt::TerminalApp::implementation
         if (!text.empty())
         {
             size_t lastPos = 0;
+            const auto appendHighlightedRun = [&](const TerminalApp::HighlightedRun& highlightedRun) {
+                const auto [start, end] = highlightedRun;
+                if (start > lastPos)
+                {
+                    const hstring nonMatch{ til::safe_slice_abs(text, lastPos, static_cast<size_t>(start)) };
+                    Documents::Run run;
+                    run.Text(nonMatch);
+                    inlinesCollection.Append(run);
+                }
+
+                const hstring matchSeg{ til::safe_slice_abs(text, static_cast<size_t>(start), static_cast<size_t>(end + 1)) };
+                Documents::Run run;
+                run.Text(matchSeg);
+
+                if (const auto runStyle = HighlightedRunStyle())
+                {
+                    _applyStyleToObject(runStyle, run);
+                }
+                else
+                {
+                    run.FontWeight(FontWeights::Bold());
+                }
+                inlinesCollection.Append(run);
+
+                lastPos = static_cast<size_t>(end + 1);
+            };
+
             if (runs && runs.Size())
             {
-                const auto runStyle = HighlightedRunStyle();
-
-                for (const auto& [start, end] : runs)
+                for (const auto& highlightedRun : runs)
                 {
-                    if (start > lastPos)
-                    {
-                        const hstring nonMatch{ til::safe_slice_abs(text, lastPos, static_cast<size_t>(start)) };
-                        Documents::Run run;
-                        run.Text(nonMatch);
-                        inlinesCollection.Append(run);
-                    }
-
-                    const hstring matchSeg{ til::safe_slice_abs(text, static_cast<size_t>(start), static_cast<size_t>(end + 1)) };
-                    Documents::Run run;
-                    run.Text(matchSeg);
-
-                    if (runStyle) [[unlikely]]
-                    {
-                        _applyStyleToObject(runStyle, run);
-                    }
-                    else
-                    {
-                        // Default style: bold
-                        run.FontWeight(FontWeights::Bold());
-                    }
-                    inlinesCollection.Append(run);
-
-                    lastPos = static_cast<size_t>(end + 1);
+                    appendHighlightedRun(highlightedRun);
+                }
+            }
+            else
+            {
+                for (const auto& highlightedRun : searchRuns)
+                {
+                    appendHighlightedRun(highlightedRun);
                 }
             }
 

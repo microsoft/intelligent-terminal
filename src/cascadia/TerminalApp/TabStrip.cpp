@@ -855,6 +855,7 @@ namespace winrt::TerminalApp::implementation
         visibleItems.reserve(_historySnapshot.size());
         for (size_t index = 0; index < _historySnapshot.size(); ++index)
         {
+            _historySnapshot[index].SearchQuery(_historySearchQuery);
             if (_matchesHistorySearch(index))
             {
                 visibleItems.emplace_back(_historySnapshot[index]);
