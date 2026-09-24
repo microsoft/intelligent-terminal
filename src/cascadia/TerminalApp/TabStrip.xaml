@@ -166,30 +166,19 @@
 
         <Grid x:Name="SearchPanel"
               Grid.Row="3"
-              Height="32"
-              Margin="6,4"
+              Height="0"
+              Opacity="0"
               Visibility="Collapsed">
-            <TextBox x:Name="SearchTextBox"
-                     x:Uid="VerticalTabsSearchBox"
-                     Padding="8,0,32,0"
-                     VerticalContentAlignment="Center"
-                     KeyDown="OnSearchBoxKeyDown"
-                     TextChanged="OnSearchTextChanged" />
-            <Button x:Name="ClearSearchButton"
-                    x:Uid="VerticalTabsClearSearchButton"
-                    Width="28"
-                    Height="28"
-                    Margin="0,2,2,2"
-                    Padding="0"
-                    HorizontalAlignment="Right"
-                    Background="Transparent"
-                    BorderThickness="0"
-                    Click="OnClearSearchClick"
-                    Visibility="Collapsed">
-                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                          FontSize="10"
-                          Glyph="&#xE711;" />
-            </Button>
+            <Grid Margin="6,4">
+                <TextBox x:Name="SearchTextBox"
+                         x:Uid="VerticalTabsSearchBox"
+                         Height="32"
+                         Padding="8,6,8,0"
+                         VerticalAlignment="Center"
+                         VerticalContentAlignment="Center"
+                         KeyDown="OnSearchBoxKeyDown"
+                         TextChanged="OnSearchTextChanged" />
+            </Grid>
         </Grid>
 
         <!--

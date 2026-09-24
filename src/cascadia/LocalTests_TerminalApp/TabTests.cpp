@@ -2142,7 +2142,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(page->_MatchesTabSearch(*tab));
 
             page->_tabSearchQuery = L"";
-            VERIFY_IS_FALSE(page->_MatchesTabSearch(*tab));
+            VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
 
             page->_tabSearchActive = false;
             VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
@@ -2158,8 +2158,8 @@ namespace TerminalAppLocalTests
             strip.SearchActive(true);
             strip.SearchQuery(L"power");
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->SearchPanel().Visibility());
+            VERIFY_ARE_EQUAL(40.0, stripImpl->SearchPanel().Height());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"power" }, stripImpl->SearchTextBox().Text());
-            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->ClearSearchButton().Visibility());
 
             strip.IsRailCollapsed(true);
             VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->SearchPanel().Visibility());
@@ -2168,11 +2168,11 @@ namespace TerminalAppLocalTests
             strip.IsRailCollapsed(false);
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->SearchPanel().Visibility());
             VERIFY_IS_TRUE(stripImpl->SearchTabsButton().IsEnabled());
-
             strip.SearchQuery(L"");
-            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->ClearSearchButton().Visibility());
+            strip.SearchQuery(L"");
             strip.SearchActive(false);
             VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->SearchPanel().Visibility());
+            VERIFY_ARE_EQUAL(0.0, stripImpl->SearchPanel().Height());
         });
     }
 

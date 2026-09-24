@@ -1751,7 +1751,7 @@ namespace winrt::TerminalApp::implementation
         const std::wstring_view query{ _tabSearchQuery.c_str(), _tabSearchQuery.size() };
         if (query.empty())
         {
-            return false;
+            return true;
         }
 
         const auto titleValue = tab.Title();

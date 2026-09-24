@@ -170,8 +170,6 @@ namespace winrt::TerminalApp::implementation
                                  winrt::Windows::UI::Xaml::Controls::TextChangedEventArgs const& e);
         void OnSearchBoxKeyDown(winrt::Windows::Foundation::IInspectable const& sender,
                                 winrt::Windows::UI::Xaml::Input::KeyRoutedEventArgs const& e);
-        void OnClearSearchClick(winrt::Windows::Foundation::IInspectable const& sender,
-                                winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnHistoryClick(winrt::Windows::Foundation::IInspectable const& sender,
                             winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnHistoryCloseClick(winrt::Windows::Foundation::IInspectable const& sender,
@@ -210,6 +208,10 @@ namespace winrt::TerminalApp::implementation
         bool _isRailCollapsed{ false };
         bool _searchActive{ false };
         bool _syncingSearchState{ false };
+        bool _searchPanelExpanded{ false };
+        bool _searchAnimationEnabled{ false };
+        uint64_t _searchAnimationGeneration{ 0 };
+        winrt::Windows::UI::Xaml::Media::Animation::Storyboard _searchPanelStoryboard{ nullptr };
         bool _projectionControlsEnabled{ true };
         winrt::hstring _searchQuery;
         bool _historyActive{ false };
@@ -254,6 +256,7 @@ namespace winrt::TerminalApp::implementation
         void _applyTabItemVisibility(winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& item,
                                      winrt::Windows::UI::Xaml::Controls::ListViewItem const& container);
         void _pruneTabItemVisibility();
+        void _setSearchPanelExpanded(bool expanded, bool animate);
         void _updateSearchVisualState();
         void _updateHistoryVisualState();
 

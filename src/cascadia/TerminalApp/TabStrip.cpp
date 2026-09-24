@@ -19,6 +19,9 @@ using namespace winrt::Windows::Foundation::Collections;
 using namespace winrt::Windows::UI::Xaml;
 using namespace winrt::Windows::UI::Xaml::Controls;
 
+static constexpr double SearchPanelExpandedHeight = 40.0;
+static constexpr auto SearchPanelAnimationDuration = std::chrono::milliseconds{ 200 };
+
 namespace winrt
 {
     namespace MUX = Microsoft::UI::Xaml;
@@ -175,6 +178,20 @@ namespace winrt::TerminalApp::implementation
 
         ItemsList().ItemsSource(_tabItems);
         _vectorChangedRevoker = _tabItems.VectorChanged(auto_revoke, { get_weak(), &TabStrip::_onItemsVectorChanged });
+        Loaded([weakThis{ get_weak() }](auto&&, auto&&) {
+            if (const auto self = weakThis.get())
+            {
+                self->_searchAnimationEnabled = true;
+                self->_updateSearchVisualState();
+            }
+        });
+        Unloaded([weakThis{ get_weak() }](auto&&, auto&&) {
+            if (const auto self = weakThis.get())
+            {
+                self->_searchAnimationEnabled = false;
+                self->_setSearchPanelExpanded(false, false);
+            }
+        });
         _applyRailState();
         _updateHistoryVisualState();
     }
@@ -452,12 +469,6 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    void TabStrip::OnClearSearchClick(IInspectable const&, WUX::RoutedEventArgs const&)
-    {
-        SearchTextBox().Text(L"");
-        SearchTextBox().Focus(WUX::FocusState::Programmatic);
-    }
-
     void TabStrip::OnHistoryClick(IInspectable const&, WUX::RoutedEventArgs const&)
     {
         if (_isRailCollapsed || !_projectionControlsEnabled)
@@ -535,7 +546,6 @@ namespace winrt::TerminalApp::implementation
         if (_isRailCollapsed)
         {
             _historyActive = false;
-            SearchPanel().Visibility(Visibility::Collapsed);
             if (const auto flyout = FilterTabsButton().Flyout())
             {
                 flyout.Hide();
@@ -551,6 +561,8 @@ namespace winrt::TerminalApp::implementation
                 _applyTabItemVisibility(item);
             }
         }
+
+        _updateSearchVisualState();
     }
 
     void TabStrip::_applyTabItemRailState(MUX::Controls::TabViewItem const& item)
@@ -634,14 +646,91 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void TabStrip::_setSearchPanelExpanded(const bool expanded, const bool animate)
+    {
+        if (_searchPanelExpanded == expanded && !_searchPanelStoryboard)
+        {
+            return;
+        }
+
+        _searchPanelExpanded = expanded;
+        const auto generation = ++_searchAnimationGeneration;
+        const auto panel = SearchPanel();
+        const auto startHeight = panel.ActualHeight();
+        const auto startOpacity = panel.Opacity();
+
+        if (_searchPanelStoryboard)
+        {
+            _searchPanelStoryboard.Stop();
+            _searchPanelStoryboard = nullptr;
+        }
+
+        panel.Visibility(Visibility::Visible);
+        panel.IsHitTestVisible(expanded);
+
+        if (!animate)
+        {
+            panel.Height(expanded ? SearchPanelExpandedHeight : 0.0);
+            panel.Opacity(expanded ? 1.0 : 0.0);
+            panel.Visibility(expanded ? Visibility::Visible : Visibility::Collapsed);
+            return;
+        }
+
+        namespace Animation = WUX::Media::Animation;
+        const auto duration = DurationHelper::FromTimeSpan(TimeSpan{ SearchPanelAnimationDuration });
+
+        Animation::DoubleAnimation heightAnimation;
+        heightAnimation.Duration(duration);
+        heightAnimation.From(startHeight);
+        heightAnimation.To(expanded ? SearchPanelExpandedHeight : 0.0);
+        auto heightEasing = Animation::QuadraticEase{};
+        heightEasing.EasingMode(Animation::EasingMode::EaseOut);
+        heightAnimation.EasingFunction(heightEasing);
+        heightAnimation.EnableDependentAnimation(true);
+
+        Animation::DoubleAnimation opacityAnimation;
+        opacityAnimation.Duration(duration);
+        opacityAnimation.From(startOpacity);
+        opacityAnimation.To(expanded ? 1.0 : 0.0);
+        auto opacityEasing = Animation::QuadraticEase{};
+        opacityEasing.EasingMode(Animation::EasingMode::EaseOut);
+        opacityAnimation.EasingFunction(opacityEasing);
+        opacityAnimation.EnableDependentAnimation(true);
+
+        Animation::Storyboard storyboard;
+        storyboard.Duration(duration);
+        storyboard.FillBehavior(Animation::FillBehavior::Stop);
+        storyboard.Children().Append(heightAnimation);
+        storyboard.Children().Append(opacityAnimation);
+        storyboard.SetTarget(heightAnimation, panel);
+        storyboard.SetTargetProperty(heightAnimation, L"Height");
+        storyboard.SetTarget(opacityAnimation, panel);
+        storyboard.SetTargetProperty(opacityAnimation, L"Opacity");
+
+        heightAnimation.Completed([weakThis{ get_weak() }, generation, expanded](auto&&, auto&&) {
+            if (const auto self = weakThis.get();
+                self && self->_searchAnimationGeneration == generation)
+            {
+                const auto panel = self->SearchPanel();
+                panel.Height(expanded ? SearchPanelExpandedHeight : 0.0);
+                panel.Opacity(expanded ? 1.0 : 0.0);
+                panel.Visibility(expanded ? Visibility::Visible : Visibility::Collapsed);
+                self->_searchPanelStoryboard = nullptr;
+            }
+        });
+
+        _searchPanelStoryboard = storyboard;
+        storyboard.Begin();
+    }
+
     void TabStrip::_updateSearchVisualState()
     {
         _syncingSearchState = true;
         SearchTabsButton().IsChecked(_searchActive);
         _syncingSearchState = false;
 
-        SearchPanel().Visibility(_searchActive && !_isRailCollapsed ? Visibility::Visible : Visibility::Collapsed);
-        ClearSearchButton().Visibility(_searchActive && !_searchQuery.empty() ? Visibility::Visible : Visibility::Collapsed);
+        const auto expanded = _searchActive && !_isRailCollapsed;
+        _setSearchPanelExpanded(expanded, _searchAnimationEnabled && !_isRailCollapsed);
     }
 
     void TabStrip::_updateHistoryVisualState()
