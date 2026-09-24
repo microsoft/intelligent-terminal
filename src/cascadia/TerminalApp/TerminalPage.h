@@ -903,6 +903,8 @@ namespace winrt::TerminalApp::implementation
             winrt::hstring sessionId;
             winrt::hstring agent;
             winrt::hstring resumeCommandline;
+            winrt::hstring backend;
+            winrt::hstring cwd;
         };
         // Most recent resumable agent session observed in each shell pane.
         // Retained after the CLI exits so a persisted-layout restore can
@@ -914,6 +916,7 @@ namespace winrt::TerminalApp::implementation
             winrt::hstring sessionId;
             winrt::hstring agent;
             winrt::hstring cwd;
+            winrt::hstring backend;
         };
         // Layout replay precedes WTA startup. Keep births until the owning
         // helper acknowledges its COM subscription, not merely ACP readiness.

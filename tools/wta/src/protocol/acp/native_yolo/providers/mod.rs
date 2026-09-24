@@ -1,3 +1,4 @@
+mod antigravity;
 mod claude;
 mod codex;
 mod copilot;
@@ -139,12 +140,13 @@ pub(super) trait NativeYoloProvider: Sync {
     fn observe_current_mode(&self, _state: &mut ProviderSessionState, _current_mode_id: &str) {}
 }
 
-static PROVIDERS: [&dyn NativeYoloProvider; 5] = [
+static PROVIDERS: [&dyn NativeYoloProvider; 6] = [
     &copilot::ADAPTER,
     &claude::ADAPTER,
     &codex::ADAPTER,
     &gemini::ADAPTER,
     &opencode::ADAPTER,
+    &antigravity::ADAPTER,
 ];
 
 pub(super) fn lookup(family_id: &str) -> Option<&'static dyn NativeYoloProvider> {
@@ -512,6 +514,55 @@ mod tests {
             provider.enable(&state),
             Err("opencode does not support ACP session Yolo mode".to_string())
         );
+    }
+
+    #[test]
+    fn antigravity_uses_advertised_mode_and_restores_the_prior_value() {
+        let options = serde_json::from_value::<Vec<acp::schema::v1::SessionConfigOption>>(
+            serde_json::json!([{
+                "id": "mode",
+                "name": "Session Mode",
+                "type": "select",
+                "category": "mode",
+                "currentValue": "auto_edit",
+                "options": [
+                    { "value": "default", "name": "Default" },
+                    { "value": "auto_edit", "name": "Auto Edit" },
+                    { "value": "yolo", "name": "YOLO" }
+                ]
+            }]),
+        )
+        .unwrap();
+        let provider = lookup("antigravity").unwrap();
+        let state = provider.discover(DiscoveryInput {
+            config_options: Some(&options),
+            modes: None,
+            previous: None,
+            loaded: false,
+        });
+        assert_eq!(
+            provider.enable(&state),
+            Ok(NativeYoloAction::SetConfigOption {
+                config_id: "mode".to_string(),
+                value: "yolo".to_string(),
+            })
+        );
+        assert_eq!(
+            provider.disable(&state),
+            Ok(NativeYoloAction::SetConfigOption {
+                config_id: "mode".to_string(),
+                value: "auto_edit".to_string(),
+            })
+        );
+        assert!(matches!(
+            provider.discover(DiscoveryInput {
+                config_options: None,
+                modes: None,
+                previous: None,
+                loaded: false,
+            }),
+            ProviderSessionState::MissingCapability { loaded: false }
+        ));
     }
 
     #[test]

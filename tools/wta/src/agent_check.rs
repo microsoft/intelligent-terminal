@@ -69,7 +69,12 @@ pub fn find_exe(agent_id: &str) -> Option<String> {
         }
     }
 
-    let resolved = agent_registry::resolve_bare_agent_name(agent_id);
+    let executable = if profile.cli_executable.is_empty() {
+        agent_id
+    } else {
+        profile.cli_executable
+    };
+    let resolved = agent_registry::resolve_bare_agent_name(executable);
 
     // Try resolved name first (e.g. "copilot.exe")
     for dir in std::env::split_paths(&path_var) {
@@ -96,6 +101,23 @@ pub fn find_exe(agent_id: &str) -> Option<String> {
     }
 
     None
+}
+
+/// Find the native executable required by the ACP entry point, independently
+/// of an optional interactive CLI distributed by the same provider.
+pub fn find_acp_exe(agent_id: &str) -> Option<String> {
+    let profile = agent_registry::lookup_profile_by_id(agent_id);
+    let executable = profile.acp_executable(&crate::agent_source::AgentSource::Host);
+    if executable.is_empty() || executable == profile.cli_executable {
+        return find_exe(agent_id);
+    }
+    let path = spawn_path()
+        .map(std::ffi::OsString::from)
+        .or_else(|| std::env::var_os("PATH"))?;
+    std::env::split_paths(&path)
+        .map(|directory| directory.join(executable))
+        .find(|candidate| candidate.is_file())
+        .map(|candidate| candidate.to_string_lossy().into_owned())
 }
 
 fn find_claude_executable_in_path(
@@ -262,12 +284,21 @@ pub async fn find_wsl_exe(distro: &str, executable: &str) -> Option<String> {
 
 /// Whether a known ACP agent can start inside `distro`.
 pub async fn wsl_agent_available(distro: &str, agent_id: &str) -> bool {
-    if find_wsl_exe(distro, agent_id).await.is_none() {
+    let profile = agent_registry::lookup_profile_by_id(agent_id);
+    let source = crate::agent_source::AgentSource::Wsl {
+        distro: distro.to_string(),
+    };
+    let executable = profile.acp_executable(&source);
+    let executable = if executable.is_empty() {
+        agent_id
+    } else {
+        executable
+    };
+    if find_wsl_exe(distro, executable).await.is_none() {
         return false;
     }
 
-    let profile = agent_registry::lookup_profile_by_id(agent_id);
-    if profile.acp_launch_command.starts_with("npx ") {
+    if profile.acp_command_override(&source).starts_with("npx ") {
         return find_wsl_exe(distro, "npx").await.is_some();
     }
     true
@@ -510,7 +541,7 @@ pub fn host_npx_available() -> bool {
 
 pub fn check_host_agent_availability(agent_id: &str, npx_found: bool) -> HostAgentAvailability {
     let profile = agent_registry::lookup_profile_by_id(agent_id);
-    let cli_path = find_exe(agent_id);
+    let cli_path = find_acp_exe(agent_id);
     let native_cli_found = cli_path.is_some();
     let requires_npx = profile.acp_launch_command.starts_with("npx ");
     let launch_ready = host_requirements_available(profile, native_cli_found, || npx_found);
@@ -539,12 +570,18 @@ pub async fn check_agent_in_source(
         crate::agent_source::AgentSource::Host => check_agent(agent_id),
         crate::agent_source::AgentSource::Wsl { distro } => {
             let profile = agent_registry::lookup_profile_by_id(agent_id);
-            let cli_path = find_wsl_exe(distro, agent_id).await;
+            let executable = profile.acp_executable(source);
+            let executable = if executable.is_empty() {
+                agent_id
+            } else {
+                executable
+            };
+            let cli_path = find_wsl_exe(distro, executable).await;
             AgentStatus {
                 id: agent_id.to_string(),
                 display_name: format!("{} — {} (WSL)", profile.display_name, distro),
                 cli_found: cli_path.is_some()
-                    && (!profile.acp_launch_command.starts_with("npx ")
+                    && (!profile.acp_command_override(source).starts_with("npx ")
                         || find_wsl_exe(distro, "npx").await.is_some()),
                 cli_path,
                 install_hint: profile.install_hint.to_string(),

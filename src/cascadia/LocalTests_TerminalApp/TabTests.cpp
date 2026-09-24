@@ -545,7 +545,20 @@ namespace TerminalAppLocalTests
         VERIFY_ARE_EQUAL(
             std::wstring{ LR"(cmd.exe /d /s /c "opencode --session agent-session-1")" },
             Restore::BuildResumeCommandline(L"opencode", L"agent-session-1"));
-        for (const auto agent : { L"copilot", L"claude", L"codex", L"gemini", L"opencode" })
+        VERIFY_ARE_EQUAL(
+            std::wstring{ LR"(cmd.exe /d /s /c "agy --conversation agent-session-1")" },
+            Restore::BuildResumeCommandline(L"antigravity", L"agent-session-1"));
+        VERIFY_ARE_EQUAL(
+            std::wstring{ LR"(wsl.exe -d Ubuntu --exec bash -lc "exec agy --conversation agent-session-1")" },
+            Restore::BuildResumeCommandline(L"wsl:Ubuntu:antigravity", L"agent-session-1"));
+        const auto wslResume = Restore::BuildResumeCommandline(
+            L"wsl:Ubuntu:antigravity", L"agent-session-1", L"/home/u/project with spaces");
+        const auto wslTarget = Restore::ParseResumeCommandline(wslResume);
+        VERIFY_ARE_EQUAL(std::wstring{ L"antigravity" }, wslTarget.agent);
+        VERIFY_ARE_EQUAL(std::wstring{ L"wsl:Ubuntu:antigravity" }, wslTarget.backend);
+        VERIFY_ARE_EQUAL(std::wstring{ L"/home/u/project with spaces" }, wslTarget.cwd);
+        VERIFY_IS_TRUE(Restore::IsResumeCommandline(wslResume));
+        for (const auto agent : { L"copilot", L"claude", L"codex", L"gemini", L"opencode", L"antigravity" })
         {
             const auto built = Restore::BuildResumeCommandline(agent, L"agent-session-1");
             VERIFY_IS_FALSE(built.empty());

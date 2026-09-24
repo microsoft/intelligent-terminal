@@ -690,6 +690,35 @@ fn known_agent_selection_preserves_wsl_source() {
 }
 
 #[test]
+fn antigravity_selection_uses_the_native_command_for_each_source() {
+    for (source, distro, expected_command) in [
+        (Some("host"), None, "agy_acp_server.exe"),
+        (Some("wsl"), Some("Ubuntu"), "agy_acp_server.par --uid="),
+    ] {
+        let selection = resolve_agent_selection(
+            DEFAULT_CMD,
+            Some("copilot"),
+            Some(&allow_set(&["antigravity"])),
+            Some("AnTiGrAvItY"),
+            Some("provider-model"),
+            source,
+            distro,
+            HelperId(1),
+        );
+        assert_eq!(selection.command, expected_command);
+        assert_eq!(selection.agent_id.as_deref(), Some("antigravity"));
+        assert_eq!(
+            selection.explicit_selection,
+            ExplicitAgentSelection::Accepted
+        );
+        assert_eq!(
+            selection.source,
+            crate::agent_source::AgentSource::from_wire(source, distro)
+        );
+    }
+}
+
+#[test]
 fn agent_pool_key_includes_authoritative_identity() {
     let command = "copilot --acp --stdio";
     let source = crate::agent_source::AgentSource::Host;
@@ -10708,6 +10737,7 @@ fn listing_agent_from(
         Some(crate::agent_sessions::CliSource::Copilot) => "copilot".to_string(),
         Some(crate::agent_sessions::CliSource::Gemini) => "gemini".to_string(),
         Some(crate::agent_sessions::CliSource::OpenCode) => "opencode".to_string(),
+        Some(crate::agent_sessions::CliSource::Antigravity) => "antigravity".to_string(),
         Some(crate::agent_sessions::CliSource::Unknown(id)) => id.clone(),
         None => "unknown".to_string(),
     };
@@ -11683,6 +11713,38 @@ async fn born_bound_delegate_clears_a_stale_hook_ownership_claim() {
 /// The authoritative hook path is the master's own COM subscription, not a
 /// helper's pipe. One `agent_event` for an unseen session must create the row,
 /// apply the reported transition, and claim hook ownership in one pass.
+#[tokio::test]
+async fn antigravity_wsl_hook_keeps_its_execution_source() {
+    let state = make_state();
+    let sid = acp::schema::v1::SessionId::new("antigravity-wsl-hook");
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_event",
+            "params": {
+                "event": "agent.prompt.submit",
+                "cli_source": "antigravity",
+                "agent_session_id": "antigravity-wsl-hook",
+                "pane_id": "wsl-owner",
+                "wsl_distro": "Ubuntu",
+                "payload": { "cwd": "/home/u/project" }
+            }
+        }),
+    )
+    .await;
+    let row = state.registry.lookup(&sid).await.unwrap();
+    assert_eq!(
+        row.cli_source,
+        Some(crate::agent_sessions::CliSource::Antigravity)
+    );
+    assert_eq!(
+        row.location,
+        crate::agent_sessions::SessionLocation::Wsl {
+            distro: "Ubuntu".into()
+        }
+    );
+}
+
 #[tokio::test]
 async fn master_com_agent_event_routes_directly_into_the_registry() {
     let state = make_state();

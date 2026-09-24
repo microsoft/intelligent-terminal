@@ -33,6 +33,7 @@ namespace winrt::TerminalApp::implementation
             Gemini,
             Codex,
             OpenCode,
+            Antigravity,
         };
 
         // Map the agent's display name (case-insensitive substring) to its
@@ -41,6 +42,8 @@ namespace winrt::TerminalApp::implementation
         {
             std::wstring lower{ name };
             std::transform(lower.begin(), lower.end(), lower.begin(), [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
+            if (lower.find(L"antigravity") != std::wstring::npos)
+                return AgentLogoKind::Antigravity;
             if (lower.find(L"claude") != std::wstring::npos)
                 return AgentLogoKind::Claude;
             if (lower.find(L"codex") != std::wstring::npos)
@@ -282,6 +285,7 @@ namespace winrt::TerminalApp::implementation
         GeminiLogo().Visibility(logo == AgentLogoKind::Gemini ? Visibility::Visible : Visibility::Collapsed);
         CodexLogo().Visibility(logo == AgentLogoKind::Codex ? Visibility::Visible : Visibility::Collapsed);
         OpenCodeLogo().Visibility(logo == AgentLogoKind::OpenCode ? Visibility::Visible : Visibility::Collapsed);
+        AntigravityLogo().Visibility(logo == AgentLogoKind::Antigravity ? Visibility::Visible : Visibility::Collapsed);
         AgentLogo().Visibility(Visibility::Visible);
     }
 

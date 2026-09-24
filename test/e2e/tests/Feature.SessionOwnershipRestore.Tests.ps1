@@ -78,6 +78,9 @@ namespace ItE2E
         try {
             $script:app = Start-Terminal -Package $package -PassFre $true -Settings @{
                 firstWindowPreference = 'persistedLayoutAndContent'
+                agentSessionManagementEnabled = $false
+                autoErrorDetectionEnabled = $false
+                autoFixEnabled = $false
             }
             $script:restoreApp = $script:app
         }
@@ -138,5 +141,99 @@ namespace ItE2E
         $state = Get-Content -Raw -LiteralPath $script:restoreApp.StatePath
         $state | Should -Match ([regex]::Escape($rootId)) -Because 'the pane must restore the resumable root session'
         $state | Should -Not -Match ([regex]::Escape($childId)) -Because 'a nested prompt ID is not a resumable pane owner'
+    }
+
+    It 'Antigravity WSL sessions persist an in-distro resume command' {
+        $distro = $env:ITE2E_ANTIGRAVITY_WSL_DISTRO
+        if ([string]::IsNullOrWhiteSpace($distro)) {
+            Set-ItResult -Skipped -Because 'set ITE2E_ANTIGRAVITY_WSL_DISTRO to an installed distro with Windows interoperability'
+            return
+        }
+        if ($distro -notmatch '^[A-Za-z0-9_.-]+$') {
+            throw 'This fixture requires an unambiguous registered distro name.'
+        }
+        if ($script:restoreApp) {
+            Restore-WtConfig -App $script:restoreApp
+            $script:restoreApp = $null
+        }
+        $userArgument = ''
+        if ($env:ITE2E_ANTIGRAVITY_WSL_USER) {
+            if ($env:ITE2E_ANTIGRAVITY_WSL_USER -notmatch '^[A-Za-z0-9_.-]+$') {
+                throw 'This fixture requires an unambiguous WSL user name.'
+            }
+            $userArgument = ' -u ' + $env:ITE2E_ANTIGRAVITY_WSL_USER
+        }
+        $command = 'wsl.exe -d ' + $distro + $userArgument + ' --cd /tmp --exec bash -l'
+        $profileId = '{' + [guid]::NewGuid().ToString() + '}'
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
+            firstWindowPreference = 'persistedLayoutAndContent'
+            agentSessionManagementEnabled = $false
+            autoErrorDetectionEnabled = $false
+            autoFixEnabled = $false
+            defaultProfile = $profileId
+            profiles = @{
+                defaults = @{}
+                list = @(@{ guid = $profileId; name = 'Antigravity source regression'; commandline = $command })
+            }
+        }
+        $script:restoreApp = $script:app
+        $paneId = (Get-ActivePane -App $script:app).session_id
+
+        $sessionId = "antigravity-source-$([guid]::NewGuid())"
+        $payload = @{
+            conversationId = $sessionId
+            workspacePaths = @('/tmp')
+            transcriptPath = '/test/.gemini/antigravity-cli/brain/session/transcript.jsonl'
+        } | ConvertTo-Json -Compress
+        $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($payload))
+        $listener = Start-WtEventListener -App $script:app -WaitForReady
+        try {
+            $hook = "printf '%s' '$encoded' | base64 -d | WSLENV=`"`$WSLENV`:WSL_DISTRO_NAME/w`" powershell.exe -NoLogo -NoProfile -NonInteractive -Command 'wtcli.exe agent-hook --cli-source antigravity --event agent.prompt.submit'"
+            Invoke-RunCommand -App $script:app -SessionId $paneId -Command $hook -SettleSec 3 | Out-Null
+            $event = Wait-WtEvent -Listener $listener -TimeoutSec 20 -Predicate {
+                $_.method -eq 'agent_event' -and $_.params.agent_session_id -eq $sessionId
+            }
+            $event.params.wsl_distro | Should -BeExactly $distro
+            $event.params.pane_id | Should -Be $paneId
+            Wait-Until -TimeoutSec 15 -Because 'the native persistence map to bind this exact shell session' -Condition {
+                (Get-ItLogText -App $script:app -Name 'terminal-agent-pane.log' -SinceStart) -match
+                    "bound pane .* to session $([regex]::Escape($sessionId))"
+            } | Should -BeTrue
+        }
+        catch {
+            $artifactDirectory = if ($env:ITE2E_ARTIFACT_ROOT) { $env:ITE2E_ARTIFACT_ROOT } else { $TestDrive }
+            Get-WtCapture -App $script:app -SessionId $paneId -MaxLines 30 |
+                Set-Content -LiteralPath (Join-Path $artifactDirectory 'antigravity-wsl-source-failure.txt') -Encoding utf8
+            throw
+        }
+        finally {
+            Stop-WtEventListener -Listener $listener
+        }
+
+        $emperor = [ItE2E.SessionEndWindow]::FindEmperorWindow([uint32]$script:app.Pid)
+        $emperor | Should -Not -Be ([IntPtr]::Zero)
+        [void][ItE2E.SessionEndWindow]::SendMessage($emperor, 0x0011, [IntPtr]::Zero, [IntPtr]::Zero)
+        $ownedWta = @(Get-DescendantWtaIds -RootPid ([int]$script:app.Pid))
+        [void][ItE2E.SessionEndWindow]::SendMessage($emperor, 0x0016, [IntPtr]::new(1), [IntPtr]::new(1))
+        Test-Until -TimeoutSec 15 -IntervalSec 0.5 -Condition {
+            $null -eq (Get-Process -Id $script:app.Pid -ErrorAction SilentlyContinue)
+        } | Should -BeTrue
+        foreach ($processId in $ownedWta) {
+            if (Get-Process -Id $processId -ErrorAction SilentlyContinue) { Stop-Process -Id $processId -Force }
+        }
+        $script:app = $null
+        $state = Get-Content -LiteralPath $script:restoreApp.StatePath -Raw | ConvertFrom-Json -AsHashtable -Depth 100
+        function Find-ResumeCommand($value) {
+            if ($value -is [System.Collections.IDictionary]) {
+                if ($value.commandline -and $value.commandline.Contains($sessionId)) { $value.commandline }
+                foreach ($child in $value.Values) { Find-ResumeCommand $child }
+            }
+            elseif ($value -is [array]) {
+                foreach ($child in $value) { Find-ResumeCommand $child }
+            }
+        }
+        $commands = @(Find-ResumeCommand $state)
+        $commands.Count | Should -Be 1
+        $commands[0] | Should -BeExactly ('wsl.exe -d ' + $distro + ' --cd "/tmp" --exec bash -lc "exec agy --conversation ' + $sessionId + '"')
     }
 }

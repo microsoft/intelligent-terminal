@@ -13,7 +13,10 @@ BeforeDiscovery { $script:Ready = [bool]((Get-AppxPackage | Where-Object { $_.Na
 Describe 'Feature §8 per-CLI hook install/status' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot' }
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
+            acpAgent = 'copilot'
+            agentSessionManagementEnabled = $false
+        }
     }
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
 
@@ -23,9 +26,8 @@ Describe 'Feature §8 per-CLI hook install/status' -Tag 'Feature' -Skip:(-not $s
         $st = $raw | ConvertFrom-Json
         $st.clis | Should -Not -BeNullOrEmpty -Because 'status must enumerate the supported CLIs'
 
-        # Each of the three built-in supported CLIs (copilot/claude/gemini) plus codex must be present.
         $names = @($st.clis.name)
-        foreach ($cli in 'copilot', 'claude', 'gemini') {
+        foreach ($cli in 'copilot', 'claude', 'gemini', 'codex', 'opencode', 'antigravity') {
             $names | Should -Contain $cli -Because "status must report the $cli CLI"
         }
 

@@ -305,6 +305,78 @@ namespace wtcli
             payload = Json::Value{ Json::nullValue };
         }
 
+        auto normalizedCli = cliSource;
+        std::transform(normalizedCli.begin(), normalizedCli.end(), normalizedCli.begin(), [](const unsigned char ch) {
+            return static_cast<char>(std::tolower(ch));
+        });
+        auto outgoingEvent = eventType;
+        if (normalizedCli == "antigravity")
+        {
+            if (!payload.isObject())
+            {
+                return false;
+            }
+            const auto conversationId = payload.get("conversationId", Json::Value{});
+            const auto transcriptPath = payload.get("transcriptPath", Json::Value{});
+            if (!conversationId.isString() || conversationId.asString().empty() || !transcriptPath.isString())
+            {
+                return false;
+            }
+            auto transcript = transcriptPath.asString();
+            std::replace(transcript.begin(), transcript.end(), '\\', '/');
+            std::transform(transcript.begin(), transcript.end(), transcript.begin(), [](const unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+            // The shared plugin directory also serves IDE frontends without a CLI pane.
+            if (transcript.find("/antigravity-cli/") == std::string::npos)
+            {
+                return false;
+            }
+
+            Json::Value normalized{ Json::objectValue };
+            normalized["session_id"] = conversationId;
+            const auto workspaces = payload.get("workspacePaths", Json::Value{});
+            if (workspaces.isArray() && !workspaces.empty() && workspaces[0].isString())
+            {
+                normalized["cwd"] = workspaces[0];
+            }
+            if (eventType == "agent.stop")
+            {
+                const auto error = payload.get("error", Json::Value{});
+                if (error.isString() && !error.asString().empty())
+                {
+                    outgoingEvent = "agent.error";
+                    normalized["error"] = error;
+                }
+                else
+                {
+                    const auto idle = payload.get("fullyIdle", Json::Value{});
+                    if (!idle.isBool() || !idle.asBool())
+                    {
+                        return false;
+                    }
+                }
+            }
+            if (eventType == "agent.tool.starting")
+            {
+                const auto tool = payload.get("toolCall", Json::Value{});
+                if (tool.isObject())
+                {
+                    const auto name = tool.get("name", Json::Value{});
+                    const auto arguments = tool.get("args", Json::Value{});
+                    if (name.isString())
+                    {
+                        normalized["tool_name"] = name;
+                    }
+                    if (arguments.isObject())
+                    {
+                        normalized["tool_input"] = arguments;
+                    }
+                }
+            }
+            payload = std::move(normalized);
+        }
+
         std::string agentSessionId = environmentSessionId;
         if (payload.isObject())
         {
@@ -408,7 +480,7 @@ namespace wtcli
         Json::Value params;
         params["cli_source"] = cliSource;
         params["agent_session_id"] = agentSessionId;
-        params["event"] = eventType;
+        params["event"] = outgoingEvent;
         params["pane_id"] = paneId;
         params["payload"] = payload;
 

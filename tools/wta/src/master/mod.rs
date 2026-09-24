@@ -4657,9 +4657,10 @@ fn resolve_agent_selection(
             let model = requested_model.map(str::trim).filter(|s| !s.is_empty());
             let launch_model =
                 model.filter(|_| !crate::agent_registry::supports_live_model_switch(id));
-            let cmd = crate::agent_registry::build_acp_command(id, launch_model);
             let source =
                 crate::agent_source::AgentSource::from_wire(requested_source, requested_wsl_distro);
+            let cmd =
+                crate::agent_registry::build_acp_command_for_source(id, launch_model, &source);
             return ResolvedAgentSelection {
                 command: cmd,
                 agent_id: Some(id.to_string()),
@@ -8224,6 +8225,21 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
         if let Some(key) = refresh_key {
             refresh_keys.insert(key);
         }
+    }
+    if let Some(distro) = params
+        .get("wsl_distro")
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.is_empty())
+    {
+        changed |= state
+            .registry
+            .set_location(
+                &acp::schema::v1::SessionId::new(session_key.clone()),
+                crate::agent_sessions::SessionLocation::Wsl {
+                    distro: distro.to_string(),
+                },
+            )
+            .await;
     }
     let final_status = state
         .registry

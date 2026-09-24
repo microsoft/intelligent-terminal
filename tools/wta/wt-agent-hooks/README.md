@@ -1,7 +1,7 @@
 # wt-agent-hooks
 
 Static plugin/extension bundle that forwards CLI agent lifecycle events from
-**Claude Code**, **Copilot CLI**, **Codex CLI**, **Gemini CLI**, and **OpenCode**
+**Claude Code**, **Copilot CLI**, **Codex CLI**, **Gemini CLI**, **OpenCode**, and **Antigravity**
 to Windows Terminal (WTA)
 via `wtcli`. This lets the WTA agent pane display real-time tool
 use, prompts, and session events from any agent CLI session running in another
@@ -91,6 +91,40 @@ Bundle resolution chain (first hit wins, see
    `candidate_roots`".
 
 ## Event vocabulary
+
+### Antigravity CLI
+
+The `antigravity` subtree contains a native `plugin.json`, `hooks.json`, and a
+separate ownership/version marker. `wta hooks install --cli antigravity` invokes
+`agy plugin install` and verifies the copied files under
+`~/.gemini/config/plugins/wt-agent-hooks`; it commits the version marker last.
+The status reader combines `import_manifest.json` and the plugin's enablement in
+`config.json`. Upgrade uses the same native reinstall operation. Uninstall removes
+only managed files and matching metadata entries, preserving user plugins and
+keeping ownership markers when cleanup fails.
+
+`PreInvocation` maps to `agent.prompt.submit`, `PreToolUse` to
+`agent.tool.starting`, and `Stop` to `agent.stop` only when `fullyIdle` is true;
+provider errors become `agent.error`. The native bridge projects `conversationId`
+and the first `workspacePaths` entry onto the shared session/cwd fields and drops
+transcript, model, artifact and injected-content metadata. Only callbacks with a
+CLI transcript are accepted, because the upstream plugin directory is also shared
+by other Antigravity frontends. The ordinary `WT_SESSION`/COM gate still suppresses
+shared ACP processes.
+
+The Windows command explicitly invokes Windows PowerShell, guards a missing
+`wtcli.exe`, and emits no stdout. The `antigravity-wsl` bundle uses the same native
+bridge with a Bash launch guard and child-scoped `WSLENV` distro propagation;
+it never answers provider tool permissions. WSL plugins are installed separately
+with the in-distro `agy plugin install`, not by host-profile reconciliation.
+The bridge uses that source metadata, or queries only the exact pane's shell
+metadata (no terminal text), so WSL sessions keep their distro even when a
+delegated CLI starts without an interactive shell prompt. No dedicated session-start/end or notification hook
+exists in the exercised API; shell/pane lifecycle supplies exit detection.
+
+The ordinary CLI and native ACP server use different default history stores.
+Do not treat an ACP session ID as a CLI `--conversation` ID or claim cold-start
+CLI history enumeration from ACP `session/list`.
 
 WTA normalises hook events from all supported CLIs into a single set of topic
 names. Event vocabularies differ per CLI:

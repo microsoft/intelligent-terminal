@@ -46,6 +46,7 @@ pub enum CliSource {
     Copilot,
     Gemini,
     OpenCode,
+    Antigravity,
     Unknown(String),
 }
 
@@ -57,6 +58,7 @@ impl CliSource {
             "copilot" => Self::Copilot,
             "gemini" => Self::Gemini,
             "opencode" => Self::OpenCode,
+            "antigravity" => Self::Antigravity,
             "" => Self::Unknown(String::new()),
             other => Self::Unknown(other.to_string()),
         }
@@ -74,6 +76,7 @@ impl CliSource {
             "copilot" => Some(Self::Copilot),
             "gemini" => Some(Self::Gemini),
             "opencode" => Some(Self::OpenCode),
+            "antigravity" => Some(Self::Antigravity),
             _ => None,
         }
     }

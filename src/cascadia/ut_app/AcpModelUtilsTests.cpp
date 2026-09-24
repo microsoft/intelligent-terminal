@@ -5,6 +5,7 @@
 
 #include "../inc/AcpModelUtils.h"
 #include "../inc/AgentRegistry.h"
+#include "../inc/AgentAvailability.h"
 #include "../inc/CustomModelProviderUtils.h"
 
 using namespace WEX::TestExecution;
@@ -17,6 +18,7 @@ namespace TerminalAppUnitTests
         TEST_CLASS(AcpModelUtilsTests);
 
         TEST_METHOD(MapsAgentIdsToAcpCommands);
+        TEST_METHOD(AntigravityUsesStandaloneAcpWithProtocolModels);
         TEST_METHOD(AppendsSupportedModelFlags);
         TEST_METHOD(SuppressesCustomSelectionModelFlags);
         TEST_METHOD(CustomProvidersSupportOnlyChatCompletionsAgents);
@@ -50,6 +52,45 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(std::wstring{ L"npx -y @agentclientprotocol/codex-acp@1.1.13" }, BuildAgentCommandLine(L"codex", model));
         VERIFY_ARE_EQUAL(std::wstring{ L"opencode acp" }, BuildAgentCommandLine(L"opencode", model));
         VERIFY_ARE_EQUAL(std::wstring{ L"other-agent" }, BuildAgentCommandLine(L"other-agent", model));
+    }
+
+    void AcpModelUtilsTests::AntigravityUsesStandaloneAcpWithProtocolModels()
+    {
+        namespace Registry = Microsoft::Terminal::Settings::Model::AgentRegistry;
+        VERIFY_ARE_EQUAL(std::wstring{ L"agy_acp_server.exe" }, BuildAgentCommandLine(L"antigravity"));
+        VERIFY_ARE_EQUAL(std::wstring{ L"agy_acp_server.exe" }, BuildAgentCommandLine(L"antigravity", L"provider-model"));
+        VERIFY_ARE_EQUAL(std::wstring{ L"agy_acp_server.par --uid=" }, BuildAgentCommandLine(L"antigravity", L"provider-model", true));
+        VERIFY_IS_TRUE(std::ranges::any_of(Registry::BuiltinAcpAgents, [](const auto& agent) {
+            return agent.id == L"antigravity";
+        }));
+        VERIFY_IS_FALSE(Registry::SupportsByok(L"antigravity"));
+        VERIFY_IS_TRUE(Registry::SupportsLiveModelSwitch(L"antigravity"));
+        VERIFY_IS_TRUE(Registry::SupportsDelegate(L"antigravity"));
+        VERIFY_ARE_EQUAL(std::wstring{ L"agy" }, std::wstring{ Registry::CliExecutable(L"antigravity") });
+        VERIFY_ARE_EQUAL(std::wstring{ L"agy" }, std::wstring{ Registry::CliExecutable(L"ANTIGRAVITY") });
+        VERIFY_ARE_EQUAL(std::wstring{ L"copilot" }, std::wstring{ Registry::CliExecutable(L"copilot") });
+        VERIFY_ARE_EQUAL(std::wstring{ L"custom-cli" }, std::wstring{ Registry::CliExecutable(L"custom-cli") });
+        VERIFY_IS_TRUE(Registry::SupportsSessionHooks(L"antigravity"));
+        VERIFY_IS_TRUE(Registry::SupportsDelegate(L"copilot"));
+        VERIFY_IS_TRUE(Registry::SupportsSessionHooks(L"copilot"));
+
+        Json::Value payload{ Json::objectValue };
+        payload["npx_found"] = false;
+        payload["availability"] = Json::Value{ Json::arrayValue };
+        for (const auto& agent : Registry::BuiltinAcpAgents)
+        {
+            Json::Value entry{ Json::objectValue };
+            entry["id"] = winrt::to_string(agent.id);
+            entry["native_cli_found"] = agent.id == L"antigravity";
+            entry["launch_ready"] = agent.id == L"antigravity";
+            entry["requires_npx"] = false;
+            payload["availability"].append(std::move(entry));
+        }
+        const auto snapshot = ::Microsoft::Terminal::AgentAvailability::ParseHostAgentSnapshot(
+            Json::writeString(Json::StreamWriterBuilder{}, payload));
+        VERIFY_IS_TRUE(snapshot.has_value());
+        VERIFY_IS_TRUE(snapshot->availability.at(L"antigravity").launchReady);
+        VERIFY_IS_FALSE(snapshot->availability.at(L"antigravity").requiresNpx);
     }
 
     void AcpModelUtilsTests::SuppressesCustomSelectionModelFlags()

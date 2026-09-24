@@ -44,7 +44,14 @@ pub(crate) fn acp_session_to_agent_session(
         current_tool: None,
         attention_reason: None,
         log_path: None,
-        origin: SessionOrigin::default(),
+        origin: if crate::agent_registry::is_known_id(cli_label(cli))
+            && !crate::agent_registry::lookup_profile_by_id(cli_label(cli))
+                .cli_can_resume_acp_sessions
+        {
+            SessionOrigin::AgentPane
+        } else {
+            SessionOrigin::default()
+        },
         location,
     }
 }
@@ -74,6 +81,7 @@ pub(crate) fn cli_label(cli: &CliSource) -> &'static str {
         CliSource::Codex => "codex",
         CliSource::Gemini => "gemini",
         CliSource::OpenCode => "opencode",
+        CliSource::Antigravity => "antigravity",
         CliSource::Unknown(_) => "agent",
     }
 }
@@ -122,6 +130,20 @@ mod tests {
             acp::schema::v1::SessionId::new(id.to_string()),
             PathBuf::from(cwd),
         )
+    }
+
+    #[test]
+    fn antigravity_acp_history_does_not_masquerade_as_cli_history() {
+        let rows = classify_and_map(
+            &[info("acp-only-session", "/home/u/project")],
+            &HashSet::new(),
+            SessionLocation::Wsl {
+                distro: "Ubuntu".into(),
+            },
+            &CliSource::Antigravity,
+        );
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].origin, SessionOrigin::AgentPane);
     }
 
     #[test]

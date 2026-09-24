@@ -162,6 +162,118 @@ fn write_opencode_test_bundle(root: &Path, js: &str) {
     .unwrap();
 }
 
+fn write_antigravity_test_install(home: &Path) -> PathBuf {
+    let config = home.join(".gemini").join("config");
+    let plugin = config.join("plugins").join(PLUGIN_NAME);
+    fs::create_dir_all(&plugin).unwrap();
+    fs::write(
+        plugin.join("plugin.json"),
+        r#"{"name":"wt-agent-hooks","description":"Managed by Intelligent Terminal: wt-agent-hooks"}"#,
+    )
+    .unwrap();
+    fs::write(
+        plugin.join("hooks.json"),
+        r#"{"wt-agent-hooks":{"PreInvocation":[{"type":"command","command":"wtcli.exe agent-hook --cli-source antigravity --event agent.prompt.submit"}],"Stop":[{"type":"command","command":"wtcli.exe agent-hook --cli-source antigravity --event agent.stop"}]}}"#,
+    )
+    .unwrap();
+    fs::write(
+        plugin.join("intelligent-terminal.json"),
+        r#"{"name":"wt-agent-hooks","managed_by":"Intelligent Terminal: wt-agent-hooks","version":"0.1.0"}"#,
+    )
+    .unwrap();
+    fs::write(
+        config.join("import_manifest.json"),
+        r#"{"imports":[{"name":"wt-agent-hooks","source":"antigravity","components":["hooks"]},{"name":"user-plugin","source":"antigravity","components":["rules"]}],"userField":"keep"}"#,
+    )
+    .unwrap();
+    fs::write(
+        config.join("config.json"),
+        r#"{"plugins":{"wt-agent-hooks":{"enabled":true},"user-plugin":{"enabled":false}},"unrelated":{"keep":true}}"#,
+    )
+    .unwrap();
+    plugin
+}
+
+#[test]
+fn antigravity_hooks_report_native_import_enablement_and_partial_state() {
+    let cli = CliKind::from_name("antigravity").expect("Antigravity hook integration");
+    assert_eq!(CliKind::from_name("ANTIGRAVITY"), Some(cli));
+    assert!(CliKind::ALL.contains(&cli));
+    let home = unique_dir("antigravity-status");
+    let plugin = write_antigravity_test_install(&home);
+    let status = status_for(cli, Some(&home));
+    assert!(status.marketplace_registered && status.marketplace_path_valid);
+    assert!(status.plugin_installed && status.plugin_enabled);
+    assert_eq!(status.installed_version.as_deref(), Some("0.1.0"));
+    let installed = probe_installed(cli, &home).unwrap().unwrap();
+    assert_eq!(
+        decide_upgrade(cli, Some("0.2.0".parse().unwrap()), Some(&installed), None),
+        UpgradeAction::UpdatePlugin
+    );
+
+    fs::write(
+        home.join(".gemini/config/config.json"),
+        r#"{"plugins":{"wt-agent-hooks":{"enabled":false}}}"#,
+    )
+    .unwrap();
+    assert!(!status_for(cli, Some(&home)).plugin_enabled);
+    fs::remove_file(plugin.join("hooks.json")).unwrap();
+    let mut partial = status_for(cli, Some(&home));
+    assert!(partial.marketplace_registered);
+    assert!(!partial.plugin_installed);
+    partial.binary_on_path = true;
+    assert_eq!(
+        decide_install_action(cli, &partial, None),
+        InstallAction::Install
+    );
+    fs::remove_dir_all(home).unwrap();
+}
+
+#[test]
+fn antigravity_hooks_uninstall_preserves_user_data_and_ownership_on_failure() {
+    let cli = CliKind::from_name("antigravity").expect("Antigravity hook integration");
+    let home = unique_dir("antigravity-uninstall");
+    let plugin = write_antigravity_test_install(&home);
+    let config = home.join(".gemini/config");
+    let imports = fs::read(config.join("import_manifest.json")).unwrap();
+    fs::write(config.join("import_manifest.json"), "not json").unwrap();
+    let failed = uninstall_for(cli, Some(&home));
+    assert_eq!(failed.plugin_uninstalled, Some(false));
+    assert!(plugin.join("intelligent-terminal.json").is_file());
+    assert!(plugin.join("hooks.json").is_file());
+
+    fs::write(config.join("import_manifest.json"), imports).unwrap();
+    let removed = uninstall_for(cli, Some(&home));
+    assert_eq!(removed.plugin_uninstalled, Some(true));
+    assert!(!plugin.join("hooks.json").exists());
+    assert!(!plugin.join("intelligent-terminal.json").exists());
+    let imports: Value =
+        serde_json::from_slice(&fs::read(config.join("import_manifest.json")).unwrap()).unwrap();
+    assert_eq!(imports["imports"].as_array().unwrap().len(), 1);
+    assert_eq!(imports["imports"][0]["name"], "user-plugin");
+    assert_eq!(imports["userField"], "keep");
+    let settings: Value =
+        serde_json::from_slice(&fs::read(config.join("config.json")).unwrap()).unwrap();
+    assert!(settings["plugins"].get(PLUGIN_NAME).is_none());
+    assert_eq!(settings["plugins"]["user-plugin"]["enabled"], false);
+    assert_eq!(settings["unrelated"]["keep"], true);
+
+    fs::create_dir_all(&plugin).unwrap();
+    fs::write(
+        plugin.join("plugin.json"),
+        r#"{"name":"wt-agent-hooks","description":"user owned"}"#,
+    )
+    .unwrap();
+    fs::write(plugin.join("hooks.json"), "user hooks").unwrap();
+    let rejected = uninstall_for(cli, Some(&home));
+    assert_eq!(rejected.plugin_uninstalled, Some(false));
+    assert_eq!(
+        fs::read_to_string(plugin.join("hooks.json")).unwrap(),
+        "user hooks"
+    );
+    fs::remove_dir_all(home).unwrap();
+}
+
 #[test]
 fn copy_opencode_bundle_installs_managed_files() {
     let source = unique_dir("opencode-source");
@@ -894,6 +1006,94 @@ fn run_hook_command(shell: HookShell, command: &str) -> Option<std::process::Out
 /// reason that has nothing to do with its spelling. Behaviour without the
 /// bridge is the subject of the `*_exit_zero_when_the_bridge_is_missing` tests,
 /// which substitute [`MISSING_BRIDGE`] so they hold either way.
+#[test]
+fn antigravity_hooks_are_guarded_in_every_supported_shell() {
+    let manifest: Value =
+        serde_json::from_str(include_str!("../wt-agent-hooks/antigravity/hooks.json")).unwrap();
+    let mut commands = Vec::new();
+    for handlers in manifest["wt-agent-hooks"].as_object().unwrap().values() {
+        for handler in handlers.as_array().unwrap() {
+            if let Some(command) = handler.get("command").and_then(Value::as_str) {
+                commands.push(command);
+            }
+            if let Some(hooks) = handler.get("hooks").and_then(Value::as_array) {
+                commands.extend(
+                    hooks
+                        .iter()
+                        .filter_map(|hook| hook.get("command").and_then(Value::as_str)),
+                );
+            }
+        }
+    }
+    assert_eq!(commands.len(), 3);
+    for command in commands {
+        for shell in HOOK_SHELLS {
+            for candidate in [
+                command.to_string(),
+                command.replace("wtcli.exe", MISSING_BRIDGE),
+            ] {
+                if let Some(output) = run_hook_command(shell, &candidate) {
+                    assert!(
+                        output.status.success(),
+                        "{shell:?}: {}",
+                        String::from_utf8_lossy(&output.stderr)
+                    );
+                    assert!(
+                        output.stdout.is_empty() && output.stderr.is_empty(),
+                        "{shell:?}: {candidate}"
+                    );
+                }
+            }
+            let wsl: Value =
+                serde_json::from_str(include_str!("../wt-agent-hooks/antigravity-wsl/hooks.json"))
+                    .unwrap();
+            assert_eq!(
+                manifest["wt-agent-hooks"]
+                    .as_object()
+                    .unwrap()
+                    .keys()
+                    .collect::<Vec<_>>(),
+                wsl["wt-agent-hooks"]
+                    .as_object()
+                    .unwrap()
+                    .keys()
+                    .collect::<Vec<_>>()
+            );
+            for (native, linux) in [
+                (
+                    include_str!("../wt-agent-hooks/antigravity/plugin.json"),
+                    include_str!("../wt-agent-hooks/antigravity-wsl/plugin.json"),
+                ),
+                (
+                    include_str!("../wt-agent-hooks/antigravity/intelligent-terminal.json"),
+                    include_str!("../wt-agent-hooks/antigravity-wsl/intelligent-terminal.json"),
+                ),
+            ] {
+                assert_eq!(
+                    serde_json::from_str::<Value>(native).unwrap(),
+                    serde_json::from_str::<Value>(linux).unwrap()
+                );
+            }
+            for handlers in wsl["wt-agent-hooks"].as_object().unwrap().values() {
+                for handler in handlers.as_array().unwrap() {
+                    let hooks = handler.get("hooks").and_then(Value::as_array);
+                    let entries: Vec<&Value> = hooks
+                        .map(|hooks| hooks.iter().collect())
+                        .unwrap_or_else(|| vec![handler]);
+                    for entry in entries {
+                        let command = entry["command"].as_str().unwrap();
+                        assert!(command.contains("WSL_DISTRO_NAME/w"));
+                        if let Some(output) = run_hook_command(HookShell::Bash, command) {
+                            assert!(output.status.success());
+                            assert!(output.stdout.is_empty() && output.stderr.is_empty());
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[test]
 fn bundled_hook_commands_run_in_every_shell() {
     if !hook_bridge_on_path() {
@@ -2151,7 +2351,7 @@ fn bundle_resolve_source_returns_none_when_nothing_resolves() {
 /// as a test failure.
 #[test]
 fn schema_versions_are_pinned() {
-    assert_eq!(STATUS_SCHEMA_VERSION, 4);
+    assert_eq!(STATUS_SCHEMA_VERSION, 5);
     assert_eq!(UNINSTALL_SCHEMA_VERSION, 2);
 }
 

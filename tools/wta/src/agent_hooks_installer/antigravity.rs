@@ -1,0 +1,467 @@
+use std::fs;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+
+use serde_json::Value;
+
+use super::{
+    bundle, cli_binary_on_path, restage_bundle_dir, run_plugin_cli_with_env, CliKind, CliStatus,
+    CliUninstallResult, InstallOutcome, InstalledInfo, InstalledProbe, Version, PLUGIN_NAME,
+    STAGING_SUBDIR,
+};
+
+pub(super) const MANIFEST: &str = "intelligent-terminal.json";
+const DESCRIPTION: &str = "Managed by Intelligent Terminal: wt-agent-hooks";
+const MANAGED_BY: &str = "Intelligent Terminal: wt-agent-hooks";
+const FILES: [&str; 3] = ["plugin.json", "hooks.json", MANIFEST];
+
+struct JsonFile {
+    path: PathBuf,
+    original: Vec<u8>,
+    value: Value,
+}
+
+impl JsonFile {
+    fn read(path: PathBuf) -> Result<Option<Self>, String> {
+        let metadata = match fs::symlink_metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(format!("cannot inspect {}: {error}", path.display())),
+        };
+        if !metadata.file_type().is_file() {
+            return Err(format!("{} is not a regular file", path.display()));
+        }
+        let original =
+            fs::read(&path).map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+        let value: Value = serde_json::from_slice(&original)
+            .map_err(|error| format!("cannot parse {}: {error}", path.display()))?;
+        if !value.is_object() {
+            return Err(format!("{} must contain a JSON object", path.display()));
+        }
+        Ok(Some(Self {
+            path,
+            original,
+            value,
+        }))
+    }
+
+    fn replace(&self, value: Value) -> Result<(), String> {
+        if value == self.value {
+            return Ok(());
+        }
+        let current = fs::read(&self.path)
+            .map_err(|error| format!("cannot reread {}: {error}", self.path.display()))?;
+        if current != self.original {
+            return Err(format!(
+                "{} changed during hook cleanup; retry",
+                self.path.display()
+            ));
+        }
+        let contents = serde_json::to_vec_pretty(&value)
+            .map_err(|error| format!("cannot serialize {}: {error}", self.path.display()))?;
+        let temporary = self
+            .path
+            .with_extension(format!("wta-{}.tmp", uuid::Uuid::new_v4()));
+        let result = (|| -> std::io::Result<()> {
+            {
+                let mut file = fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&temporary)?;
+                file.write_all(&contents)?;
+                file.sync_all()?;
+            }
+            fs::rename(&temporary, &self.path)
+        })();
+        if let Err(error) = result {
+            if let Err(cleanup) = fs::remove_file(&temporary) {
+                if cleanup.kind() != std::io::ErrorKind::NotFound {
+                    tracing::warn!(target: "agent_hooks", path = %temporary.display(), %cleanup, "failed to remove temporary Antigravity metadata");
+                }
+            }
+            return Err(format!("cannot update {}: {error}", self.path.display()));
+        }
+        Ok(())
+    }
+}
+
+struct Installation {
+    directory: PathBuf,
+    imports: Option<JsonFile>,
+    config: Option<JsonFile>,
+    registered: bool,
+    owned: bool,
+    complete: bool,
+    enabled: bool,
+    version: Option<Version>,
+}
+
+fn owns(document: &JsonFile, marker: bool) -> bool {
+    document.value.get("name").and_then(Value::as_str) == Some(PLUGIN_NAME)
+        && if marker {
+            document.value.get("managed_by").and_then(Value::as_str) == Some(MANAGED_BY)
+        } else {
+            document.value.get("description").and_then(Value::as_str) == Some(DESCRIPTION)
+        }
+}
+
+fn load(home: &Path) -> Result<Installation, String> {
+    // Plugin configuration is shared; it is not the CLI/ACP conversation home.
+    let root = home.join(".gemini").join("config");
+    let directory = root.join("plugins").join(PLUGIN_NAME);
+    match fs::symlink_metadata(&directory) {
+        Ok(metadata) if !metadata.file_type().is_dir() => {
+            return Err(format!(
+                "{} is not a regular plugin directory",
+                directory.display()
+            ));
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(format!("cannot inspect {}: {error}", directory.display())),
+    }
+
+    let descriptor = JsonFile::read(directory.join("plugin.json"));
+    let marker = JsonFile::read(directory.join(MANIFEST));
+    let descriptor_owned = descriptor
+        .as_ref()
+        .ok()
+        .and_then(Option::as_ref)
+        .is_some_and(|document| owns(document, false));
+    let marker_owned = marker
+        .as_ref()
+        .ok()
+        .and_then(Option::as_ref)
+        .is_some_and(|document| owns(document, true));
+    let owned = descriptor_owned || marker_owned;
+    for result in [&descriptor, &marker] {
+        if let Err(error) = result {
+            if !owned {
+                return Err(error.clone());
+            }
+            tracing::warn!(target: "agent_hooks", %error, "partial managed Antigravity plugin needs repair");
+        }
+    }
+
+    let imports = JsonFile::read(root.join("import_manifest.json"))?;
+    let mut registered = false;
+    if let Some(entries) = imports.as_ref().and_then(|file| file.value.get("imports")) {
+        if !entries.is_null() {
+            let entries = entries
+                .as_array()
+                .ok_or("Antigravity imports must be an array or null")?;
+            for entry in entries
+                .iter()
+                .filter(|entry| entry.get("name").and_then(Value::as_str) == Some(PLUGIN_NAME))
+            {
+                if registered || entry.get("source").and_then(Value::as_str) != Some("antigravity")
+                {
+                    return Err("conflicting Antigravity hook import registration".into());
+                }
+                registered = entry
+                    .get("components")
+                    .and_then(Value::as_array)
+                    .is_some_and(|components| {
+                        components
+                            .iter()
+                            .any(|component| component.as_str() == Some("hooks"))
+                    });
+            }
+        }
+    }
+    let config = JsonFile::read(root.join("config.json"))?;
+    let mut enabled = true;
+    if let Some(plugins) = config.as_ref().and_then(|file| file.value.get("plugins")) {
+        if !plugins.is_null() {
+            let plugins = plugins
+                .as_object()
+                .ok_or("Antigravity plugins configuration must be an object")?;
+            if let Some(plugin) = plugins.get(PLUGIN_NAME) {
+                let plugin = plugin
+                    .as_object()
+                    .ok_or("Antigravity hook configuration must be an object")?;
+                if let Some(value) = plugin.get("enabled") {
+                    enabled = value
+                        .as_bool()
+                        .ok_or("Antigravity hook enabled value must be boolean")?;
+                }
+            }
+        }
+    }
+    let version = marker
+        .as_ref()
+        .ok()
+        .and_then(Option::as_ref)
+        .filter(|document| owns(document, true))
+        .and_then(|document| document.value.get("version"))
+        .and_then(Value::as_str)
+        .and_then(|value| value.parse().ok());
+    let complete = registered
+        && descriptor_owned
+        && marker_owned
+        && version.is_some()
+        && directory.join("hooks.json").is_file();
+    Ok(Installation {
+        directory,
+        imports,
+        config,
+        registered,
+        owned,
+        complete,
+        enabled,
+        version,
+    })
+}
+
+pub(super) fn status(on_path: bool, binary_path: Option<String>, home: Option<&Path>) -> CliStatus {
+    let mut result = CliStatus {
+        name: "antigravity",
+        binary_on_path: on_path,
+        binary_path,
+        marketplace_registered: false,
+        marketplace_path: None,
+        marketplace_path_valid: false,
+        plugin_installed: false,
+        plugin_enabled: false,
+        installed_version: None,
+        bundle_version: None,
+        detection_fallback: None,
+    };
+    let Some(home) = home else { return result };
+    match load(home) {
+        Ok(installation) => {
+            result.marketplace_registered = installation.registered || installation.owned;
+            result.marketplace_path = result
+                .marketplace_registered
+                .then(|| installation.directory.to_string_lossy().into_owned());
+            result.marketplace_path_valid = installation.complete;
+            result.plugin_installed = installation.complete;
+            result.plugin_enabled = installation.complete && installation.enabled;
+            result.installed_version = installation.version.map(|version| version.to_string());
+        }
+        Err(error) => {
+            result.detection_fallback = Some("fs");
+            tracing::warn!(target: "agent_hooks", %error, "cannot read Antigravity hook state");
+        }
+    }
+    result
+}
+
+pub(super) fn installed(home: &Path) -> InstalledProbe {
+    let installation = load(home)?;
+    if !installation.owned {
+        return Ok(None);
+    }
+    Ok(Some(InstalledInfo {
+        version: installation
+            .complete
+            .then_some(installation.version)
+            .flatten(),
+        enabled: installation.enabled,
+        loads_live: false,
+        registered_source: None,
+        gemini_source: None,
+        gemini_type: None,
+    }))
+}
+
+fn validate_files(directory: &Path) -> Result<(), String> {
+    for name in FILES {
+        let path = directory.join(name);
+        match fs::symlink_metadata(&path) {
+            Ok(metadata) if !metadata.file_type().is_file() => {
+                return Err(format!(
+                    "refusing to replace or remove non-regular file {}",
+                    path.display()
+                ));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(format!("cannot inspect {}: {error}", path.display())),
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn install(home: &Path) -> InstallOutcome {
+    if !cli_binary_on_path(CliKind::Antigravity) {
+        tracing::debug!(target: "agent_hooks", "agy is not installed; skipping Antigravity hooks");
+        return InstallOutcome::Skipped;
+    }
+    let result = (|| -> Result<(), String> {
+        let source = bundle::resolve_cli_dir(CliKind::Antigravity)
+            .ok_or("the packaged Antigravity hook bundle was not found")?;
+        let before = load(home)?;
+        if before.directory.exists() && !before.owned {
+            return Err(format!(
+                "refusing to overwrite user-owned plugin {}",
+                before.directory.display()
+            ));
+        }
+        validate_files(&before.directory)?;
+        if before.directory.is_dir() {
+            for entry in fs::read_dir(&before.directory).map_err(|error| error.to_string())? {
+                let entry = entry.map_err(|error| error.to_string())?;
+                if !FILES
+                    .iter()
+                    .any(|name| entry.file_name() == std::ffi::OsStr::new(name))
+                {
+                    return Err(format!(
+                        "preserve additional plugin file before reinstalling: {}",
+                        entry.path().display()
+                    ));
+                }
+            }
+        }
+
+        let marker = JsonFile::read(source.join(MANIFEST))?
+            .filter(|file| owns(file, true))
+            .ok_or("the bundled Antigravity ownership marker is invalid")?;
+        let version = marker
+            .value
+            .get("version")
+            .and_then(Value::as_str)
+            .and_then(|value| value.parse::<Version>().ok())
+            .ok_or("the bundled Antigravity hook version is invalid")?;
+        let staging = crate::runtime_paths::intelligent_terminal_local_root()
+            .ok_or("the Intelligent Terminal cache directory is unavailable")?
+            .join(STAGING_SUBDIR)
+            .join("antigravity")
+            .join(uuid::Uuid::new_v4().to_string());
+        restage_bundle_dir(&source, &staging)
+            .map_err(|error| format!("cannot stage Antigravity hooks: {error}"))?;
+        // The provider copies its payload; publish our version only after verification.
+        fs::remove_file(staging.join(MANIFEST)).map_err(|error| error.to_string())?;
+        let staged = staging.to_string_lossy();
+        let home_value = home.to_string_lossy();
+        let environment = [
+            ("USERPROFILE", home_value.as_ref()),
+            ("HOME", home_value.as_ref()),
+        ];
+        run_plugin_cli_with_env(
+            "agy",
+            &["plugin", "install", &staged],
+            &environment,
+            "agent_hooks",
+            &[],
+        )
+        .map_err(|error| format!("Antigravity plugin install failed: {error}"))?;
+        let copied = load(home)?;
+        if !copied.registered || !copied.owned || !copied.directory.join("hooks.json").is_file() {
+            return Err("Antigravity did not install the managed hooks in its expected configuration directory".into());
+        }
+        if !copied.enabled {
+            run_plugin_cli_with_env(
+                "agy",
+                &["plugin", "enable", PLUGIN_NAME],
+                &environment,
+                "agent_hooks",
+                &[],
+            )
+            .map_err(|error| format!("Antigravity plugin enable failed: {error}"))?;
+        }
+        fs::copy(source.join(MANIFEST), copied.directory.join(MANIFEST))
+            .map_err(|error| format!("cannot commit Antigravity hook ownership: {error}"))?;
+        let after = load(home)?;
+        if !after.complete || !after.enabled || after.version != Some(version) {
+            return Err("Antigravity hook installation did not pass verification".into());
+        }
+        for name in ["hooks.json", "plugin.json"] {
+            fs::remove_file(staging.join(name))
+                .map_err(|error| format!("cannot clean Antigravity hook staging: {error}"))?;
+        }
+        fs::remove_dir(&staging)
+            .map_err(|error| format!("cannot clean Antigravity hook staging: {error}"))?;
+        Ok(())
+    })();
+    match result {
+        Ok(()) => InstallOutcome::Installed,
+        Err(error) => {
+            tracing::warn!(target: "agent_hooks", %error, "Antigravity hook install failed");
+            InstallOutcome::Failed(error)
+        }
+    }
+}
+
+fn remove(home: &Path) -> Result<bool, String> {
+    let installation = load(home)?;
+    if !installation.directory.exists() && !installation.registered {
+        return Ok(false);
+    }
+    if !installation.owned {
+        return Err(format!(
+            "refusing to remove unowned Antigravity hooks from {}",
+            installation.directory.display()
+        ));
+    }
+    validate_files(&installation.directory)?;
+
+    // Keep ownership until shared metadata and all executable hook assets are removed.
+    // This path also works after agy itself has been uninstalled.
+    if let Some(imports) = &installation.imports {
+        let mut value = imports.value.clone();
+        if let Some(entries) = value.get_mut("imports").and_then(Value::as_array_mut) {
+            entries.retain(|entry| entry.get("name").and_then(Value::as_str) != Some(PLUGIN_NAME));
+        }
+        imports.replace(value)?;
+    }
+    if let Some(config) = &installation.config {
+        let mut value = config.value.clone();
+        if let Some(plugins) = value.get_mut("plugins").and_then(Value::as_object_mut) {
+            plugins.remove(PLUGIN_NAME);
+        }
+        config.replace(value)?;
+    }
+    for name in ["hooks.json", "plugin.json", MANIFEST] {
+        let path = installation.directory.join(name);
+        match fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(format!("cannot remove {}: {error}", path.display())),
+        }
+    }
+    if installation.directory.is_dir()
+        && fs::read_dir(&installation.directory)
+            .map_err(|error| error.to_string())?
+            .next()
+            .is_none()
+    {
+        fs::remove_dir(&installation.directory).map_err(|error| error.to_string())?;
+    }
+    Ok(true)
+}
+
+pub(super) fn uninstall(home: Option<&Path>) -> CliUninstallResult {
+    let mut result = CliUninstallResult {
+        name: "antigravity",
+        attempted: false,
+        plugin_uninstalled: None,
+        marketplace_removed: None,
+        staging_dir_removed: true,
+        messages: Vec::new(),
+    };
+    let Some(home) = home else {
+        result.plugin_uninstalled = Some(false);
+        result
+            .messages
+            .push("home directory unavailable; Antigravity hooks were not changed".into());
+        return result;
+    };
+    match remove(home) {
+        Ok(attempted) => {
+            result.attempted = attempted;
+            result.plugin_uninstalled = Some(true);
+            result.messages.push(if attempted {
+                "removed managed Antigravity hooks; unrelated configuration was preserved".into()
+            } else {
+                "Antigravity hooks are not installed".into()
+            });
+        }
+        Err(error) => {
+            tracing::warn!(target: "agent_hooks", %error, "Antigravity hook removal failed");
+            result.plugin_uninstalled = Some(false);
+            result.messages.push(error);
+        }
+    }
+    result
+}

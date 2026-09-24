@@ -1146,9 +1146,41 @@ int wmain(int argc, wchar_t** argv)
                 return;
             }
 
+            if (agentHookCliSource == "antigravity")
+            {
+                const auto distro = EnvironmentValue(L"WSL_DISTRO_NAME");
+                if (!distro.empty())
+                {
+                    event["params"]["wsl_distro"] = distro;
+                }
+                else
+                {
+                    Json::Value context;
+                    const auto hr = CallJson([&](BSTR* json) {
+                        return server->GetPaneContext(paneGuid, true, 0, 0, json);
+                    },
+                                             context);
+                    if (FAILED(hr))
+                    {
+                        LOG_HR(hr);
+                        return;
+                    }
+                    const auto& shell = context["pane"]["shell"];
+                    if (shell.isString() && shell.asString().starts_with("wsl:"))
+                    {
+                        event["params"]["wsl_distro"] = shell.asString().substr(4);
+                    }
+                }
+            }
+
             Json::StreamWriterBuilder writer;
             writer["indentation"] = "";
-            wil::unique_bstr eventJson{ Bstr(Json::writeString(writer, event)) };
+            const auto serialized = Json::writeString(writer, event);
+            if (serialized.size() > wtcli::kMaxHookEventChars)
+            {
+                return;
+            }
+            wil::unique_bstr eventJson{ Bstr(serialized) };
             if (eventJson)
             {
                 server->SendEvent(eventJson.get());

@@ -4,13 +4,15 @@
 // executable resolution, ACP server flags, delegate prompt delivery, display
 // names, model selection, and authentication flow.
 //
-// To add a new agent, just add an entry to KNOWN_AGENTS below.
+// Keep this metadata synchronized with the C++ registries and source-aware
+// command builder, plus the session, telemetry, and capability consumers.
 
 pub const COPILOT_AGENT_ID: &str = "copilot";
 pub const CLAUDE_AGENT_ID: &str = "claude";
 pub const CODEX_AGENT_ID: &str = "codex";
 pub const GEMINI_AGENT_ID: &str = "gemini";
 pub const OPENCODE_AGENT_ID: &str = "opencode";
+pub const ANTIGRAVITY_AGENT_ID: &str = "antigravity";
 
 /// How the agent CLI accepts a startup prompt in delegate mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,6 +49,7 @@ pub struct AgentProfile {
     pub id: &'static str,
     /// Human-friendly display name, e.g. "GitHub Copilot".
     pub display_name: &'static str,
+    pub cli_executable: &'static str,
 
     // ── CLI resolution ──
     /// Preferred extension search order when resolving a bare name on PATH.
@@ -62,6 +65,8 @@ pub struct AgentProfile {
     /// `"npx -y @agentclientprotocol/claude-agent-acp"` for an adapter package).
     /// When empty, `build_acp_command` falls back to `id + acp_flags`.
     pub acp_launch_command: &'static str,
+    /// Native WSL command when it differs from the host command.
+    pub wsl_acp_launch_command: &'static str,
     /// Model flags accepted by the ACP server command. This may differ from
     /// `model_flags` when ACP model selection is protocol-only.
     pub acp_model_flags: &'static [&'static str],
@@ -73,6 +78,7 @@ pub struct AgentProfile {
     // ── Delegate mode ──
     /// How the agent CLI accepts a startup prompt.
     pub delegate_prompt_flag: PromptFlag,
+    pub delegate_supported: bool,
 
     // ── Model selection ──
     /// Flag names used to specify a model (e.g. `["--model", "-m"]`).
@@ -91,9 +97,35 @@ pub struct AgentProfile {
     /// Flag the CLI uses to resume a session, e.g. `"--resume"` for Claude.
     /// Empty when resume is unsupported.
     pub resume_flag: &'static str,
+    /// Whether CLI resume can also load conversations created through ACP.
+    pub cli_can_resume_acp_sessions: bool,
     /// Flag the CLI uses to pin a caller-chosen id on a NEW session,
     /// e.g. "--session-id". `None` when unsupported.
     pub new_session_id_flag: Option<&'static str>,
+}
+
+impl AgentProfile {
+    pub fn acp_command_override(&self, source: &crate::agent_source::AgentSource) -> &'static str {
+        if matches!(source, crate::agent_source::AgentSource::Wsl { .. })
+            && !self.wsl_acp_launch_command.is_empty()
+        {
+            self.wsl_acp_launch_command
+        } else {
+            self.acp_launch_command
+        }
+    }
+
+    pub fn acp_executable(&self, source: &crate::agent_source::AgentSource) -> &'static str {
+        let command = self.acp_command_override(source);
+        if command.starts_with("npx ") {
+            self.cli_executable
+        } else {
+            command
+                .split_ascii_whitespace()
+                .next()
+                .unwrap_or(self.cli_executable)
+        }
+    }
 }
 
 // ─── Registry ────────────────────────────────────────────────────────────────
@@ -102,24 +134,29 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
     AgentProfile {
         id: COPILOT_AGENT_ID,
         display_name: "GitHub Copilot",
+        cli_executable: "copilot",
         exe_search_order: &[".exe", ".cmd"],
         acp_flags: &["--acp", "--stdio"],
         acp_launch_command: "",
+        wsl_acp_launch_command: "",
         acp_model_flags: &["--model", "-m"],
         acp_auth_flow: AcpAuthFlow::External,
         byok_mode: ByokMode::CopilotProviderEnvironment,
         delegate_prompt_flag: PromptFlag::Flag("-i"),
+        delegate_supported: true,
         model_flags: &["--model", "-m"],
         install_hint: "npm install -g @github/copilot",
         install_url: "https://github.com/github/copilot-cli",
         auth_check_command: "",
         auth_hint: "Run 'copilot' to launch the CLI, then type /login to sign in.",
         resume_flag: "--resume",
+        cli_can_resume_acp_sessions: true,
         new_session_id_flag: Some("--session-id"),
     },
     AgentProfile {
         id: CLAUDE_AGENT_ID,
         display_name: "Claude",
+        cli_executable: "claude",
         exe_search_order: &[".exe", ".cmd"],
         acp_flags: &[],
         // Claude CLI itself doesn't speak ACP. We launch the
@@ -128,30 +165,36 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         // delegate mode does. (Renamed from the deprecated
         // `@zed-industries/claude-code-acp`; see issue #257.)
         acp_launch_command: "npx -y @agentclientprotocol/claude-agent-acp@0.65.0",
+        wsl_acp_launch_command: "",
         acp_model_flags: &[],
         acp_auth_flow: AcpAuthFlow::External,
         byok_mode: ByokMode::Unsupported,
         delegate_prompt_flag: PromptFlag::Positional,
+        delegate_supported: true,
         model_flags: &[],
         install_hint: "npm install -g @anthropic-ai/claude-code",
         install_url: "https://docs.anthropic.com/en/docs/claude-code",
         auth_check_command: "",
         auth_hint: "Run: claude login",
         resume_flag: "--resume",
+        cli_can_resume_acp_sessions: true,
         new_session_id_flag: Some("--session-id"),
     },
     AgentProfile {
         id: CODEX_AGENT_ID,
         display_name: "Codex",
+        cli_executable: "codex",
         exe_search_order: &[".exe", ".cmd"],
         acp_flags: &[],
         // Codex CLI itself doesn't speak ACP. Use the ACP-project-maintained
         // adapter, pinned so a future npm release cannot silently break startup.
         acp_launch_command: "npx -y @agentclientprotocol/codex-acp@1.1.13",
+        wsl_acp_launch_command: "",
         acp_model_flags: &[],
         acp_auth_flow: AcpAuthFlow::External,
         byok_mode: ByokMode::Unsupported,
         delegate_prompt_flag: PromptFlag::Positional,
+        delegate_supported: true,
         model_flags: &[],
         install_hint: "npm install -g @openai/codex",
         install_url: "https://github.com/openai/codex",
@@ -160,45 +203,76 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         // the command-synthesis template `format!("{cli} {flag} {key}")`
         // produces `codex resume <uuid>` which Codex CLI accepts.
         resume_flag: "resume",
+        cli_can_resume_acp_sessions: true,
         new_session_id_flag: None,
         auth_hint: "Run: codex auth (or set OPENAI_API_KEY)",
     },
     AgentProfile {
         id: GEMINI_AGENT_ID,
         display_name: "Gemini",
+        cli_executable: "gemini",
         exe_search_order: &[".exe", ".cmd"],
         acp_flags: &["--acp"],
         acp_launch_command: "",
+        wsl_acp_launch_command: "",
         acp_model_flags: &["--model", "-m"],
         acp_auth_flow: AcpAuthFlow::InProtocol,
         byok_mode: ByokMode::Unsupported,
         delegate_prompt_flag: PromptFlag::Positional,
+        delegate_supported: true,
         model_flags: &["--model", "-m"],
         install_hint: "npm install -g @google/gemini-cli",
         install_url: "https://github.com/google-gemini/gemini-cli",
         auth_check_command: "",
         auth_hint: "Authentication is handled in-protocol during connection.",
         resume_flag: "--resume",
+        cli_can_resume_acp_sessions: true,
         new_session_id_flag: Some("--session-id"),
     },
     AgentProfile {
         id: OPENCODE_AGENT_ID,
         display_name: "OpenCode",
+        cli_executable: "opencode",
         exe_search_order: &[".exe", ".cmd"],
         acp_flags: &["acp"],
         acp_launch_command: "",
+        wsl_acp_launch_command: "",
         // `opencode acp` accepts model changes through ACP, while the
         // interactive TUI accepts `--model` and an initial `--prompt`.
         acp_model_flags: &[],
         acp_auth_flow: AcpAuthFlow::External,
         byok_mode: ByokMode::OpenCodeConfigContent,
         delegate_prompt_flag: PromptFlag::Flag("--prompt"),
+        delegate_supported: true,
         model_flags: &["--model", "-m"],
         install_hint: "npm install -g opencode-ai",
         install_url: "https://opencode.ai/docs/",
         auth_check_command: "",
         auth_hint: "Run: opencode auth login",
         resume_flag: "--session",
+        cli_can_resume_acp_sessions: true,
+        new_session_id_flag: None,
+    },
+    AgentProfile {
+        id: ANTIGRAVITY_AGENT_ID,
+        display_name: "Google Antigravity",
+        cli_executable: "agy",
+        exe_search_order: &[".exe"],
+        acp_flags: &[],
+        acp_launch_command: "agy_acp_server.exe",
+        wsl_acp_launch_command: "agy_acp_server.par --uid=",
+        acp_model_flags: &[],
+        acp_auth_flow: AcpAuthFlow::InProtocol,
+        byok_mode: ByokMode::Unsupported,
+        delegate_prompt_flag: PromptFlag::Flag("-i"),
+        delegate_supported: true,
+        model_flags: &["--model"],
+        install_hint: "Install the official Antigravity ACP package, keep its companion executable beside the server, and add that directory to PATH.",
+        install_url: "https://antigravity.google/docs/ide/extensions",
+        auth_check_command: "",
+        auth_hint: "Authentication is handled in-protocol during connection.",
+        resume_flag: "--conversation",
+        cli_can_resume_acp_sessions: false,
         new_session_id_flag: None,
     },
 ];
@@ -206,19 +280,23 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
 pub const DEFAULT_PROFILE: AgentProfile = AgentProfile {
     id: "unknown",
     display_name: "Agent",
+    cli_executable: "",
     exe_search_order: &[".exe", ".cmd"],
     acp_flags: &[],
     acp_launch_command: "",
+    wsl_acp_launch_command: "",
     acp_model_flags: &[],
     acp_auth_flow: AcpAuthFlow::None,
     byok_mode: ByokMode::Unsupported,
     delegate_prompt_flag: PromptFlag::Flag("-i"),
+    delegate_supported: false,
     model_flags: &["--model", "-m"],
     install_hint: "",
     install_url: "",
     auth_check_command: "",
     auth_hint: "",
     resume_flag: "",
+    cli_can_resume_acp_sessions: false,
     new_session_id_flag: None,
 };
 
@@ -242,7 +320,12 @@ pub fn lookup_profile(executable: &str) -> &'static AgentProfile {
         .unwrap_or(&lower);
     KNOWN_AGENTS
         .iter()
-        .find(|p| p.id == normalized)
+        .find(|p| {
+            p.id == normalized
+                || p.cli_executable == normalized
+                || (p.id == ANTIGRAVITY_AGENT_ID
+                    && matches!(normalized, "agy_acp_server" | "agy_acp_server.par"))
+        })
         .unwrap_or(&DEFAULT_PROFILE)
 }
 
@@ -278,7 +361,9 @@ fn adapter_profile_from_tokens(tokens: &[String]) -> Option<&'static AgentProfil
     KNOWN_AGENTS
         .iter()
         .find(|profile| {
-            !profile.acp_launch_command.is_empty() && matches_command(profile.acp_launch_command)
+            [profile.acp_launch_command, profile.wsl_acp_launch_command]
+                .iter()
+                .any(|command| !command.is_empty() && matches_command(command))
         })
         .or_else(|| {
             ACP_LAUNCH_COMMAND_ALIASES
@@ -290,7 +375,7 @@ fn adapter_profile_from_tokens(tokens: &[String]) -> Option<&'static AgentProfil
 
 /// Returns `true` iff `id` is a real, selectable agent id present in
 /// [`KNOWN_AGENTS`] (`"copilot"`, `"claude"`, `"codex"`, `"gemini"`,
-/// `"opencode"`).
+/// `"opencode"`, `"antigravity"`).
 ///
 /// Prefer this over `lookup_profile_by_id(id).id != DEFAULT_PROFILE.id` when
 /// distinguishing a known agent from the unknown/custom fallback: this checks
@@ -311,7 +396,7 @@ pub fn supports_live_model_switch(id: &str) -> bool {
 
 /// Resolve a full agent command line (e.g. the value of `--agent`) into the
 /// canonical agent id known to [`KNOWN_AGENTS`] — `"copilot"`, `"claude"`,
-/// `"codex"`, `"gemini"`, `"opencode"` — or `"unknown"` if nothing matches.
+/// `"codex"`, `"gemini"`, `"opencode"`, `"antigravity"` — or `"unknown"` if nothing matches.
 ///
 /// This is the right thing to use whenever we need to *identify* the agent
 /// from a launch command rather than execute it. It handles three input
@@ -356,14 +441,23 @@ pub fn resolve_agent_id_from_cmd(agent_cmd: &str) -> &'static str {
 /// returns the adapter launch command instead — e.g.
 /// `build_acp_command("claude", None)` → `"npx -y @agentclientprotocol/claude-agent-acp@0.65.0"`.
 pub fn build_acp_command(agent_id: &str, model: Option<&str>) -> String {
+    build_acp_command_for_source(agent_id, model, &crate::agent_source::AgentSource::Host)
+}
+
+pub fn build_acp_command_for_source(
+    agent_id: &str,
+    model: Option<&str>,
+    source: &crate::agent_source::AgentSource,
+) -> String {
     let profile = lookup_profile_by_id(agent_id);
 
     // Adapter-style launch (e.g. claude, codex via npx). The adapter doesn't
     // accept --model on the command line — model is sent via ACP setSessionModel
     // after handshake — so we ignore the `model` arg here.
-    if !profile.acp_launch_command.is_empty() {
+    let override_command = profile.acp_command_override(source);
+    if !override_command.is_empty() {
         let _ = model;
-        return profile.acp_launch_command.to_string();
+        return override_command.to_string();
     }
 
     let mut parts = vec![agent_id.to_string()];
@@ -396,10 +490,29 @@ pub fn strip_acp_flags_for_delegate(agent_cmd: &str) -> Option<String> {
     // "npx -y @agentclientprotocol/claude-agent-acp".
     // Find which agent owns this launch command and return its bare id.
     if let Some(profile) = adapter_profile_from_tokens(&tokens) {
-        return Some(profile.id.to_string());
+        return profile
+            .delegate_supported
+            .then(|| profile.cli_executable.to_string());
     }
 
     let profile = lookup_profile(command);
+    if !profile.delegate_supported {
+        return None;
+    }
+    if profile.cli_executable != profile.id && command.eq_ignore_ascii_case(profile.id) {
+        let mut cli_tokens = tokens.clone();
+        cli_tokens[0] = profile.cli_executable.to_string();
+        let args: Vec<&str> = cli_tokens.iter().map(String::as_str).collect();
+        return Some(crate::coordinator::join_windows_commandline(&args));
+    }
+    let executable = command.rsplit(['\\', '/']).next().unwrap_or(command);
+    if [profile.acp_launch_command, profile.wsl_acp_launch_command]
+        .iter()
+        .filter_map(|command| command.split_ascii_whitespace().next())
+        .any(|declared| executable.eq_ignore_ascii_case(declared))
+    {
+        return Some(profile.cli_executable.to_string());
+    }
     if profile.acp_flags.is_empty() {
         return None; // Not an ACP agent, nothing to strip.
     }
@@ -511,16 +624,17 @@ pub fn is_cli_available(bare_name: &str) -> bool {
 
 // ─── Delegate Agent Helpers ──────────────────────────────────────────────────
 
-/// List all agents that can serve as delegates (all known agents).
+/// List agents with a supported interactive delegate launch.
 pub fn supported_delegate_agents() -> Vec<crate::coordinator::SupportedDelegateAgent> {
     KNOWN_AGENTS
         .iter()
+        .filter(|profile| profile.delegate_supported)
         .map(|p| crate::coordinator::SupportedDelegateAgent {
             id: p.id.to_string(),
             name: p.display_name.to_string(),
             description: format!(
                 "Launches `{}` in a new terminal target with a self-contained startup task prompt.",
-                p.id
+                p.cli_executable
             ),
         })
         .collect()
@@ -663,6 +777,74 @@ mod tests {
     #[test]
     fn gemini_uses_official_acp_flag() {
         assert_eq!(build_acp_command("gemini", None), "gemini --acp");
+    }
+
+    #[test]
+    fn antigravity_identifies_native_cli_and_both_acp_executables() {
+        for command in [
+            "antigravity",
+            "agy",
+            r#""C:\Agent Tools\agy.exe" --prompt-interactive hello"#,
+            r#""C:\Agent Tools\agy_acp_server.exe""#,
+            "/opt/antigravity/agy_acp_server.par --uid=",
+        ] {
+            assert_eq!(
+                resolve_agent_id_from_cmd(command),
+                "antigravity",
+                "{command}"
+            );
+        }
+        assert_eq!(
+            resolve_agent_id_from_cmd("agy_acp_server_extra.exe"),
+            "unknown"
+        );
+        assert_eq!(resolve_agent_id_from_cmd("copilot.par"), "unknown");
+    }
+
+    #[test]
+    fn antigravity_uses_standalone_acp_and_protocol_model_selection() {
+        let profile = lookup_profile_by_id("antigravity");
+        assert_eq!(profile.id, "antigravity");
+        assert_eq!(profile.acp_auth_flow, AcpAuthFlow::InProtocol);
+        assert_eq!(profile.byok_mode, ByokMode::Unsupported);
+        assert_eq!(build_acp_command("antigravity", None), "agy_acp_server.exe");
+        assert_eq!(
+            build_acp_command("antigravity", Some("provider-model")),
+            "agy_acp_server.exe"
+        );
+        assert!(supports_live_model_switch("antigravity"));
+    }
+
+    #[test]
+    fn antigravity_delegation_uses_verified_native_cli() {
+        assert!(supported_delegate_agents()
+            .iter()
+            .any(|agent| agent.id == "antigravity"));
+        for command in [
+            "antigravity",
+            "agy_acp_server.exe",
+            "agy_acp_server.par --uid=",
+            r#""C:\Agent Tools\agy_acp_server.exe""#,
+            "/opt/antigravity/agy_acp_server.par --uid=",
+        ] {
+            assert_eq!(
+                strip_acp_flags_for_delegate(command),
+                Some("agy".to_string()),
+                "{command}"
+            );
+        }
+        let runtimes =
+            crate::coordinator::default_delegate_agent_runtimes(Some("antigravity"), None, None);
+        assert_eq!(runtimes[0].id, "antigravity");
+        assert_eq!(runtimes[0].commandline, "agy");
+        assert_eq!(
+            strip_acp_flags_for_delegate("antigravity --model cli-model"),
+            Some("agy --model cli-model".to_string())
+        );
+        assert_eq!(
+            strip_acp_flags_for_delegate(r#""C:\Agent Tools\agy.exe" --model cli-model"#),
+            None
+        );
     }
 
     #[test]

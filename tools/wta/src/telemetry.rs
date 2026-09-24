@@ -61,7 +61,7 @@ include!(concat!(env!("OUT_DIR"), "/telemetry_codegen.rs"));
 
 fn sanitize_agent_id(agent_id: &str) -> &str {
     match agent_id {
-        "copilot" | "claude" | "codex" | "gemini" | "opencode" => agent_id,
+        "copilot" | "claude" | "codex" | "gemini" | "opencode" | "antigravity" => agent_id,
         _ => "custom",
     }
 }

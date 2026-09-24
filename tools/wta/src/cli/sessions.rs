@@ -255,6 +255,7 @@ fn cli_source_label(source: Option<&crate::agent_sessions::CliSource>) -> String
         Some(crate::agent_sessions::CliSource::Copilot) => "Copilot".to_string(),
         Some(crate::agent_sessions::CliSource::Gemini) => "Gemini".to_string(),
         Some(crate::agent_sessions::CliSource::OpenCode) => "OpenCode".to_string(),
+        Some(crate::agent_sessions::CliSource::Antigravity) => "Antigravity".to_string(),
         Some(crate::agent_sessions::CliSource::Unknown(s)) if !s.is_empty() => s.clone(),
         _ => "-".to_string(),
     }

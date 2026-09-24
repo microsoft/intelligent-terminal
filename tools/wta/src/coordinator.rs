@@ -803,6 +803,16 @@ pub fn build_delegate_launch_commandline_with_session(
     build_delegate_launch_commandline(runtime, input, session_id)
 }
 
+fn ensure_delegate_supported(profile: &agent_registry::AgentProfile) -> Result<()> {
+    if agent_registry::is_known_id(profile.id) && !profile.delegate_supported {
+        bail!(
+            "{} is available through the agent pane, not interactive delegation",
+            profile.display_name
+        );
+    }
+    Ok(())
+}
+
 fn build_delegate_launch_commandline(
     runtime: &DelegateAgentRuntime,
     input: Option<&str>,
@@ -832,6 +842,7 @@ fn build_delegate_launch_commandline(
     let profile = agent_registry::lookup_profile_by_id(agent_registry::resolve_agent_id_from_cmd(
         commandline,
     ));
+    ensure_delegate_supported(profile)?;
 
     // If a model is configured, append --model <value> using the agent's model flags.
     let with_model = if let Some(ref model) = runtime.model {
@@ -1330,6 +1341,7 @@ pub(crate) fn build_wsl_delegate_commandline(
     }
     let profile =
         agent_registry::lookup_profile_by_id(agent_registry::resolve_agent_id_from_cmd(agent_cmd));
+    ensure_delegate_supported(profile)?;
 
     // Agent invocation: the CLI tokens plus model / session-id flags, each
     // single-quoted for the inner bash.
@@ -1392,6 +1404,7 @@ pub(crate) fn build_delegate_resume_commandline(
     let profile = agent_registry::lookup_profile_by_id(agent_registry::resolve_agent_id_from_cmd(
         commandline,
     ));
+    ensure_delegate_supported(profile)?;
     if profile.resume_flag.is_empty() {
         bail!("delegate agent does not support resume");
     }
@@ -1419,6 +1432,7 @@ pub(crate) fn build_wsl_delegate_resume_commandline(
     }
     let profile =
         agent_registry::lookup_profile_by_id(agent_registry::resolve_agent_id_from_cmd(agent_cmd));
+    ensure_delegate_supported(profile)?;
     if profile.resume_flag.is_empty() {
         bail!("delegate agent does not support resume");
     }
@@ -3051,6 +3065,47 @@ mod tests {
         assert_eq!(
             cmd,
             r#"C:\tools\opencode.exe --model anthropic/claude-sonnet-4-5 --prompt "hi there""#
+        );
+    }
+
+    #[test]
+    fn antigravity_delegate_uses_interactive_cli_in_each_shell() {
+        let mut runtime = default_delegate_agent_runtimes(
+            Some("antigravity"),
+            None,
+            Some("gemini-3.7-flash-high"),
+        )
+        .remove(0);
+        let prompt = "hi\nthere";
+        let cmd = build_wsl_delegate_commandline(&runtime, Some(prompt), None).unwrap();
+        let b64 = crate::osc52::base64_encode(prompt.as_bytes());
+        assert_eq!(
+            cmd,
+            format!(
+                "prompt=\\$(base64 -d <<< '{b64}'); exec 'agy' '--model' 'gemini-3.7-flash-high' '-i' \"\\$prompt\""
+            )
+        );
+
+        let profile = crate::agent_registry::lookup_profile_by_id("antigravity");
+        let cmd = build_pwsh_base64_launch("agy", profile, runtime.model.as_deref(), None, prompt);
+        assert!(
+            cmd.contains("& 'agy' '--model' 'gemini-3.7-flash-high' '-i' $p; exit $LASTEXITCODE")
+        );
+        let cmd = build_windows_powershell_base64_launch(
+            "agy",
+            profile,
+            runtime.model.as_deref(),
+            None,
+            prompt,
+        );
+        assert!(
+            cmd.contains("& 'agy' '--model' 'gemini-3.7-flash-high' '-i' $p;exit $LASTEXITCODE")
+        );
+
+        runtime.commandline = r#""C:\Agent Tools\agy.exe""#.to_string();
+        assert_eq!(
+            build_delegate_launch_commandline(&runtime, Some("hi there"), None).unwrap(),
+            r#""C:\Agent Tools\agy.exe" --model gemini-3.7-flash-high -i "hi there""#
         );
     }
 

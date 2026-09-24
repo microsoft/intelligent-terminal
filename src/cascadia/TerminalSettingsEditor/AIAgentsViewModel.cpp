@@ -97,15 +97,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     // ── Helpers ──────────────────────────────────────────────────────────
 
-    bool AIAgentsViewModel::_IsAgentInstalled(const wchar_t* name)
-    {
-        wchar_t buf[MAX_PATH];
-        if (SearchPathW(nullptr, name, L".exe", MAX_PATH, buf, nullptr) > 0) return true;
-        const auto cmdName = std::wstring(name) + L".cmd";
-        if (SearchPathW(nullptr, cmdName.c_str(), nullptr, MAX_PATH, buf, nullptr) > 0) return true;
-        return false;
-    }
-
     bool AIAgentsViewModel::_IsKnownAgent(const winrt::hstring& id)
     {
         namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
@@ -505,7 +496,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         std::vector<Editor::AgentEntry> delegateEntries;
         for (const auto& a : filteredDelegate)
         {
-            if (!_IsAgentInstalled(std::wstring{ a.id }.c_str()))
+            if (!::Microsoft::Terminal::AgentAvailability::IsAgentCliInstalled(a.id))
             {
                 continue;
             }
