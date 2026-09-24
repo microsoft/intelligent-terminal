@@ -153,6 +153,8 @@ When that metadata is absent, preserve an observed hook/process cwd rather than
 inventing a home directory, including across WSL interoperability.
 Do not infer WSL execution from a distro environment variable alone; require the
 source-specific forwarded context or the owning pane's reported shell.
+Validate distro grammar before any shell-based resume and verify registration
+before publishing forwarded distro metadata; reject a known pane/source mismatch.
 
 Shared provider configuration belongs to the provider. Prefer its native mutation
 API; a WTA-only mutex or read-then-rename check does not serialize another client's

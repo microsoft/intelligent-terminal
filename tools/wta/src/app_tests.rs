@@ -23873,6 +23873,45 @@ fn cli_resume_rejects_unsafe_session_ids_before_dispatch() {
 }
 
 #[test]
+fn cli_resume_rejects_unsafe_wsl_distro_before_dispatch() {
+    use crate::agent_sessions::{CliSource, SessionEvent, SessionLocation};
+    for distro in [
+        "Ubuntu&echo marker",
+        "Ubuntu;echo marker",
+        "Ubuntu extra",
+        "Ubuntu\"x",
+        "$(echo marker)",
+        "",
+    ] {
+        let mut app = test_app();
+        app.agent_sessions.apply(SessionEvent::SessionStarted {
+            key: "safe-session".into(),
+            cli_source: CliSource::Antigravity,
+            pane_session_id: "owner".into(),
+            cwd: std::path::PathBuf::from("/tmp/owned"),
+            title: "source validation".into(),
+        });
+        app.agent_sessions.apply(SessionEvent::SessionStopped {
+            key: "safe-session".into(),
+            reason: "test".into(),
+        });
+        let mut row = app
+            .agent_sessions
+            .get(&"safe-session".to_string())
+            .unwrap()
+            .clone();
+        row.location = SessionLocation::Wsl {
+            distro: distro.into(),
+        };
+        app.dispatch_resume(&row);
+        assert!(
+            app.last_dispatched_command_for_test().is_none(),
+            "{distro:?}"
+        );
+    }
+}
+
+#[test]
 fn enter_on_wsl_history_row_resumes_inside_distro() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};

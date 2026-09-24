@@ -3110,6 +3110,12 @@ impl App {
             );
             return;
         }
+        if let crate::agent_sessions::SessionLocation::Wsl { distro } = &s.location {
+            if !crate::agent_source::is_safe_wsl_distro_name(distro) {
+                tracing::warn!(target: "agents_view", "refusing CLI resume with an unsafe WSL source");
+                return;
+            }
+        }
         let resume_invocation =
             format!("{} {} {}", profile.cli_executable, profile.resume_flag, key);
         // WSL rows run the distro's own CLI *inside* the distro. Two

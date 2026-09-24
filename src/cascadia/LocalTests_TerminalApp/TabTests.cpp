@@ -567,6 +567,10 @@ namespace TerminalAppLocalTests
         VERIFY_ARE_EQUAL(std::wstring{ L"wsl:Ubuntu:antigravity" }, wslTarget.backend);
         VERIFY_ARE_EQUAL(std::wstring{ L"/home/u/project with spaces" }, wslTarget.cwd);
         VERIFY_IS_TRUE(Restore::IsResumeCommandline(wslResume));
+        for (const auto backend : { L"wsl:Ubuntu&echo marker:antigravity", L"wsl:Ubuntu;echo marker:antigravity", L"wsl:Ubuntu extra:antigravity" })
+        {
+            VERIFY_IS_TRUE(Restore::BuildResumeCommandline(backend, L"safe-session", L"/tmp").empty());
+        }
         for (const auto agent : { L"copilot", L"claude", L"codex", L"gemini", L"opencode", L"antigravity" })
         {
             const auto built = Restore::BuildResumeCommandline(agent, L"agent-session-1");

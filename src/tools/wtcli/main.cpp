@@ -14,6 +14,7 @@
 // proxy/stub (NOT WinRT MBM), so activation/marshaling never hits the combase
 // WinRT activation catalog.
 #include "ITerminalProtocol.h"
+#include "../../cascadia/inc/WslDistroName.h"
 
 #include <CLI/CLI.hpp>
 
@@ -284,6 +285,43 @@ static std::string EnvironmentValue(const wchar_t* name)
     }
     value.resize(written);
     return winrt::to_string(winrt::hstring{ value });
+}
+
+static bool IsRegisteredWslDistro(const std::string_view name)
+{
+    if (!::Microsoft::Terminal::WslDistroName::IsSafe(name))
+    {
+        return false;
+    }
+    wil::unique_hkey root;
+    const auto opened = RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Lxss", 0, KEY_READ, root.put());
+    if (opened != ERROR_SUCCESS)
+    {
+        return false;
+    }
+    const std::wstring expected{ name.begin(), name.end() };
+    for (DWORD index = 0;; ++index)
+    {
+        wchar_t keyName[256]{};
+        DWORD keyLength = ARRAYSIZE(keyName);
+        const auto result = RegEnumKeyExW(root.get(), index, keyName, &keyLength, nullptr, nullptr, nullptr, nullptr);
+        if (result == ERROR_NO_MORE_ITEMS)
+        {
+            return false;
+        }
+        if (result != ERROR_SUCCESS)
+        {
+            LOG_WIN32(result);
+            return false;
+        }
+        wchar_t registeredName[257]{};
+        DWORD bytes = sizeof(registeredName);
+        if (RegGetValueW(root.get(), keyName, L"DistributionName", RRF_RT_REG_SZ, nullptr, registeredName, &bytes) == ERROR_SUCCESS &&
+            CompareStringOrdinal(registeredName, -1, expected.c_str(), -1, TRUE) == CSTR_EQUAL)
+        {
+            return true;
+        }
+    }
 }
 
 static std::string AgentSessionIdFromEnvironment(const std::string& cliSource)
@@ -1151,27 +1189,35 @@ int wmain(int argc, wchar_t** argv)
             {
                 const auto distro = EnvironmentValue(L"WSL_DISTRO_NAME");
                 const auto hookCwd = EnvironmentValue(L"WTA_HOOK_CWD");
-                if (!distro.empty() && hookCwd.starts_with('/'))
+                Json::Value context;
+                const auto hr = CallJson([&](BSTR* json) {
+                    return server->GetPaneContext(paneGuid, true, 0, 0, json);
+                },
+                                         context);
+                if (FAILED(hr))
                 {
-                    event["params"]["wsl_distro"] = distro;
+                    LOG_HR(hr);
+                    return;
                 }
-                else
+                const auto& shellValue = context["pane"]["shell"];
+                const auto shell = shellValue.isString() ? shellValue.asString() : std::string{};
+                if (shell.starts_with("wsl:"))
                 {
-                    Json::Value context;
-                    const auto hr = CallJson([&](BSTR* json) {
-                        return server->GetPaneContext(paneGuid, true, 0, 0, json);
-                    },
-                                             context);
-                    if (FAILED(hr))
+                    const auto actualDistro = shell.substr(4);
+                    if (!IsRegisteredWslDistro(actualDistro) ||
+                        (!distro.empty() && hookCwd.starts_with('/') && _stricmp(distro.c_str(), actualDistro.c_str()) != 0))
                     {
-                        LOG_HR(hr);
                         return;
                     }
-                    const auto& shell = context["pane"]["shell"];
-                    if (shell.isString() && shell.asString().starts_with("wsl:"))
+                    event["params"]["wsl_distro"] = actualDistro;
+                }
+                else if (!distro.empty() && hookCwd.starts_with('/'))
+                {
+                    if (!shell.empty() || !IsRegisteredWslDistro(distro))
                     {
-                        event["params"]["wsl_distro"] = shell.asString().substr(4);
+                        return;
                     }
+                    event["params"]["wsl_distro"] = distro;
                 }
                 auto& payload = event["params"]["payload"];
                 const auto currentCwd = payload.get("cwd", Json::Value{});

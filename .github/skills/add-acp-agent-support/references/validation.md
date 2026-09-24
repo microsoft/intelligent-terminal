@@ -54,6 +54,7 @@ Add or update tests for:
 - unsafe and overlong provider conversation IDs at hook publication and CLI resume;
 - empty mounted-workspace metadata with actual Windows/WSL hook cwd preservation;
 - stale host-side WSL variables and conflicting per-file plugin ownership;
+- unsafe/unregistered distro metadata at publication and the unquoted resume sink;
 - shared-config cleanup ownership and explicit refusal when the native manager is absent;
 - missing companion executables, earlier partial PATH entries and native WSL symlinks;
 - source-specific master command reconstruction and Helper reconnect;

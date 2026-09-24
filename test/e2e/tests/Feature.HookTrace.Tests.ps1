@@ -215,6 +215,46 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
         }
     }
 
+    It 'Antigravity rejects unsafe and unregistered WSL source metadata' {
+        $paneId = (Get-ActivePane -App $script:app).session_id
+        $marker = [guid]::NewGuid().ToString('N')
+        $ids = @()
+        $control = "source-control-$marker"
+        $listener = Start-WtEventListener -App $script:app -WaitForReady
+        try {
+            $index = 0
+            foreach ($distro in @('Ubuntu&echo marker', 'Ubuntu;echo marker', 'Ubuntu extra', "it-unregistered-$marker")) {
+                $id = "source-invalid-$index-$marker"
+                $ids += $id
+                $file = script:Write-HookPayload -Name "source-id-$index" -Dir $TestDrive -Json (@{
+                    conversationId = $id
+                    workspacePaths = @('/tmp')
+                    transcriptPath = '/test/.gemini/antigravity-cli/brain/session/transcript.jsonl'
+                } | ConvertTo-Json -Compress)
+                $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($distro))
+                $command = "`$savedDistro=`$env:WSL_DISTRO_NAME; `$savedCwd=`$env:WTA_HOOK_CWD; try { `$env:WSL_DISTRO_NAME=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$encoded')); `$env:WTA_HOOK_CWD='/tmp'; Get-Content -Raw -LiteralPath '$file' | wtcli.exe agent-hook --cli-source antigravity --event agent.prompt.submit } finally { `$env:WSL_DISTRO_NAME=`$savedDistro; `$env:WTA_HOOK_CWD=`$savedCwd }"
+                Invoke-RunCommand -App $script:app -SessionId $paneId -Command $command -SettleSec 1 | Out-Null
+                $index++
+            }
+            $file = script:Write-HookPayload -Name 'source-control' -Dir $TestDrive -Json (@{
+                conversationId = $control
+                workspacePaths = @($TestDrive)
+                transcriptPath = 'C:\test\.gemini\antigravity-cli\brain\session\transcript.jsonl'
+            } | ConvertTo-Json -Compress)
+            Invoke-RunCommand -App $script:app -SessionId $paneId -SettleSec 1 `
+                -Command "Get-Content -Raw -LiteralPath '$file' | wtcli.exe agent-hook --cli-source antigravity --event agent.prompt.submit" | Out-Null
+            Wait-WtEvent -Listener $listener -TimeoutSec 20 -Predicate {
+                $_.method -eq 'agent_event' -and $_.params.agent_session_id -eq $control
+            } | Should -Not -BeNullOrEmpty
+            @(Get-WtEvents -Listener $listener -Predicate {
+                $_.method -eq 'agent_event' -and $_.params.agent_session_id -in $ids
+            }).Count | Should -Be 0
+        }
+        finally {
+            Stop-WtEventListener -Listener $listener
+        }
+    }
+
     It 'Antigravity stop hooks preserve working and error states' {
         $originalPane = (Get-ActivePane -App $script:app).session_id
         $paneId = (New-WtTab -App $script:app -Command 'pwsh.exe -NoLogo -NoProfile').session_id
