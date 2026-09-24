@@ -1,0 +1,158 @@
+name: Globalization Review
+run-name: Globalization Review for PR #${{ github.event.pull_request.number }}
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+    paths:
+      - 'src/cascadia/**'
+      - 'src/buffer/**'
+      - 'src/terminal/**'
+      - 'src/renderer/**'
+      - 'src/types/**'
+      - 'src/inc/**'
+      - 'tools/wta/**'
+
+permissions:
+  actions: write
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: globalization-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  globalization-review:
+    name: Globalization review
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout trusted base
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Resolve immutable comparison
+        id: comparison
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $remoteRef = "refs/remotes/origin/globalization-pr-$env:PR_NUMBER"
+          git -c credential.helper= -c 'credential.helper=!gh auth git-credential' fetch --no-tags origin "refs/pull/$env:PR_NUMBER/head:$remoteRef"
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to fetch PR head.' }
+          $head = (git rev-parse $remoteRef).Trim().ToLowerInvariant()
+          if ($head -cne $env:HEAD_SHA.ToLowerInvariant()) { throw "PR head changed before review: $head." }
+          $base = (git merge-base $env:BASE_SHA $head).Trim().ToLowerInvariant()
+          if ($base -notmatch '^[0-9a-f]{40}$') { throw 'Could not resolve merge base.' }
+          "comparison_base_sha=$base" >> $env:GITHUB_OUTPUT
+      - name: Dispatch and wait for globalization worker
+        id: worker
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          COMPARISON_BASE_SHA: ${{ steps.comparison.outputs.comparison_base_sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          SAME_REPO: ${{ github.event.pull_request.head.repo.id == github.repository_id }}
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const sameRepo = process.env.SAME_REPO === 'true';
+            const dispatchId = `globalization-${pr.number}-${process.env.HEAD_SHA}-${context.runId}-${context.runAttempt}`;
+            const workflow = sameRepo
+              ? 'ghaw-pr-globalization-repair.lock.yml'
+              : 'ghaw-pr-globalization.lock.yml';
+            const awContext = sameRepo ? JSON.stringify({
+              item_type: 'pull_request',
+              item_number: pr.number,
+              repo: `${context.repo.owner}/${context.repo.repo}`,
+              event_type: 'pull_request',
+              head_sha: process.env.HEAD_SHA,
+              base_sha: process.env.EXPECTED_BASE_SHA,
+              comparison_base_sha: process.env.COMPARISON_BASE_SHA,
+              root_repo: `${context.repo.owner}/${context.repo.repo}`,
+              root_run_id: String(context.runId),
+              root_workflow_id: 'ghaw-pr-globalization-controller'
+            }) : JSON.stringify({
+              event_type: 'workflow_dispatch',
+              source_pr_number: pr.number,
+              head_sha: process.env.HEAD_SHA,
+              base_sha: process.env.EXPECTED_BASE_SHA,
+              comparison_base_sha: process.env.COMPARISON_BASE_SHA,
+              root_repo: `${context.repo.owner}/${context.repo.repo}`,
+              root_run_id: String(context.runId),
+              root_workflow_id: 'ghaw-pr-globalization-controller'
+            });
+            const startedAt = Date.now() - 5000;
+            const response = await github.request('POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches', {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: workflow,
+              ref: process.env.BASE_REF,
+              inputs: {
+                dispatch_id: dispatchId,
+                pr_number: String(pr.number),
+                repo: `${context.repo.owner}/${context.repo.repo}`,
+                expected_head_sha: process.env.HEAD_SHA,
+                expected_base_sha: process.env.EXPECTED_BASE_SHA,
+                comparison_base_sha: process.env.COMPARISON_BASE_SHA,
+                head_ref: process.env.HEAD_REF,
+                base_ref: process.env.BASE_REF,
+                head_repo: process.env.HEAD_REPO,
+                same_repo: String(sameRepo),
+                aw_context: awContext
+              }
+            });
+            let runId = response.data?.workflow_run_id;
+            let run;
+            for (let attempt = 0; !runId && attempt < 20; attempt++) {
+              await new Promise(resolve => setTimeout(resolve, 3000));
+              const runs = await github.rest.actions.listWorkflowRuns({
+                owner: context.repo.owner, repo: context.repo.repo, workflow_id: workflow,
+                event: 'workflow_dispatch', branch: process.env.BASE_REF, per_page: 50
+              });
+              run = runs.data.workflow_runs.find(candidate =>
+                Date.parse(candidate.created_at) >= startedAt && candidate.display_title.includes(dispatchId));
+              runId = run?.id;
+            }
+            if (!runId) throw new Error(`Could not correlate worker ${dispatchId}.`);
+            const deadline = Date.now() + 55 * 60 * 1000;
+            while (Date.now() < deadline) {
+              run = (await github.rest.actions.getWorkflowRun({
+                owner: context.repo.owner, repo: context.repo.repo, run_id: runId
+              })).data;
+              if (run.status === 'completed') {
+                core.setOutput('run_id', String(runId));
+                core.setOutput('run_url', run.html_url);
+                core.setOutput('conclusion', run.conclusion || 'failure');
+                return;
+              }
+              await new Promise(resolve => setTimeout(resolve, 15000));
+            }
+            throw new Error(`Worker ${runId} exceeded 55 minutes.`);
+      - name: Publish check summary
+        if: always()
+        shell: bash
+        env:
+          RUN_ID: ${{ steps.worker.outputs.run_id }}
+          RUN_URL: ${{ steps.worker.outputs.run_url }}
+          CONCLUSION: ${{ steps.worker.outputs.conclusion }}
+        run: |
+          {
+            echo "## Globalization review"
+            echo
+            echo "- Result: **${CONCLUSION:-failure}**"
+            echo "- Immutable head: \`${{ github.event.pull_request.head.sha }}\`"
+            echo "- Internal GHAW run: [${RUN_ID:-unavailable}](${RUN_URL:-${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}})"
+            echo "- Same-repository worker may push one constrained repair; fork worker is read-only."
+          } >> "$GITHUB_STEP_SUMMARY"
+          test "${CONCLUSION:-failure}" = success

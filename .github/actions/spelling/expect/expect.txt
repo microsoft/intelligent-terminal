@@ -12,6 +12,7 @@ acp
 Acq
 actctx
 ACTCTXW
+actionlint
 activedir
 ADDALIAS
 ADDREF
@@ -195,6 +196,7 @@ cmw
 CNL
 cnn
 Codeflow
+CODEOWNERS
 codepages
 coinit
 colorizing
@@ -673,6 +675,7 @@ GETWHEELSCROLLCHARS
 GETWHEELSCROLLLINES
 gfx
 GGI
+ghaw
 GHgh
 GHIJK
 GHIJKL
