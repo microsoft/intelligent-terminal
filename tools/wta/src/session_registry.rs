@@ -1399,6 +1399,19 @@ pub trait SessionRegistry: Send + Sync {
         sid: &acp::schema::v1::SessionId,
     ) -> Option<(bool, String)>;
 
+    /// Atomically flip the exact qualified row for resume dispatch.
+    async fn mark_resume_dispatched_identity(
+        &self,
+        identity: &SessionIdentity,
+    ) -> Option<(bool, String)>;
+
+    /// Bind a newly created resume pane to the exact qualified row.
+    async fn assign_resume_pane_identity(
+        &self,
+        identity: &SessionIdentity,
+        pane_session_id: String,
+    ) -> bool;
+
     /// Atomically replace `title` for `sid` only if the current title is
     /// "synthetic" (`None`, empty, or equal to the cwd basename). Returns
     /// `true` iff the title was actually changed. The candidate must be
@@ -1660,18 +1673,24 @@ impl SessionRegistry for InMemoryRegistry {
     ) -> Option<(bool, String)> {
         let mut guard = self.inner.lock().await;
         let identity = unique_identity_for_raw(&guard, sid)?;
-        let row = guard.sessions.get_mut(&identity)?;
-        let current_label = match &row.status {
-            Some(s) => format!("{:?}", s),
-            None => "Idle".to_string(),
-        };
-        if matches!(row.status, Some(AgentStatus::Historical)) {
-            row.status = Some(AgentStatus::Idle);
-            row.last_activity_at_ms = Some(now_ms());
-            Some((true, "Idle".to_string()))
-        } else {
-            Some((false, current_label))
-        }
+        mark_resume_dispatched_identity_locked(&mut guard, &identity)
+    }
+
+    async fn mark_resume_dispatched_identity(
+        &self,
+        identity: &SessionIdentity,
+    ) -> Option<(bool, String)> {
+        let mut guard = self.inner.lock().await;
+        mark_resume_dispatched_identity_locked(&mut guard, identity)
+    }
+
+    async fn assign_resume_pane_identity(
+        &self,
+        identity: &SessionIdentity,
+        pane_session_id: String,
+    ) -> bool {
+        let mut guard = self.inner.lock().await;
+        assign_resume_pane_identity_locked(&mut guard, identity, pane_session_id, now_ms())
     }
 
     async fn upgrade_title_if_synthetic(
@@ -1816,6 +1835,59 @@ fn unique_identity_for_raw(
     let mut identities = state.identities_by_raw.get(sid)?.iter();
     let identity = identities.next()?.clone();
     identities.next().is_none().then_some(identity)
+}
+
+fn mark_resume_dispatched_identity_locked(
+    state: &mut RegistryState,
+    identity: &SessionIdentity,
+) -> Option<(bool, String)> {
+    let row = state.sessions.get_mut(identity)?;
+    let current_label = match &row.status {
+        Some(status) => format!("{status:?}"),
+        None => "Idle".to_string(),
+    };
+    if matches!(
+        row.status,
+        Some(AgentStatus::Historical | AgentStatus::Ended)
+    ) {
+        row.status = Some(AgentStatus::Idle);
+        row.last_activity_at_ms = Some(now_ms());
+        Some((true, "Idle".to_string()))
+    } else {
+        Some((false, current_label))
+    }
+}
+
+fn assign_resume_pane_identity_locked(
+    state: &mut RegistryState,
+    identity: &SessionIdentity,
+    pane_session_id: String,
+    now: u64,
+) -> bool {
+    let pane_session_id = pane_key(&pane_session_id);
+    if let Some(previous) = state.active_by_pane.get(&pane_session_id).cloned() {
+        if &previous != identity {
+            let _ = end_entry(state, &previous, now);
+        }
+    }
+    let Some(entry) = state.sessions.get_mut(identity) else {
+        return false;
+    };
+    if entry.pane_session_id.as_deref() == Some(pane_session_id.as_str()) {
+        return false;
+    }
+    if let Some(old_pane) = entry.pane_session_id.take() {
+        if old_pane != pane_session_id {
+            state.active_by_pane.remove(&pane_key(&old_pane));
+        }
+    }
+    entry.pane_session_id = Some(pane_session_id.clone());
+    entry.last_activity_at_ms = Some(now);
+    entry.born_bound_pane = true;
+    state
+        .active_by_pane
+        .insert(pane_session_id, identity.clone());
+    true
 }
 
 fn unique_matching_identity_for_raw(
@@ -2200,18 +2272,8 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             let Some(identity) = unique_identity_for_raw(state, &sid) else {
                 return false;
             };
-            let Some(entry) = state.sessions.get_mut(&identity) else {
-                return false;
-            };
-            if matches!(
-                entry.status,
-                Some(AgentStatus::Historical | AgentStatus::Ended)
-            ) {
-                entry.status = Some(AgentStatus::Idle);
-                entry.last_activity_at_ms = Some(now);
-                return true;
-            }
-            false
+            mark_resume_dispatched_identity_locked(state, &identity)
+                .is_some_and(|(flipped, _)| flipped)
         }
         SessionEvent::ResumeFailed { key, reason } => {
             let sid = acp::schema::v1::SessionId::new(key);
@@ -2237,30 +2299,7 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             let Some(identity) = unique_identity_for_raw(state, &sid) else {
                 return false;
             };
-            if let Some(previous) = state.active_by_pane.get(&pane_session_id).cloned() {
-                if previous != identity {
-                    let _ = end_entry(state, &previous, now);
-                }
-            }
-            let Some(entry) = state.sessions.get_mut(&identity) else {
-                return false;
-            };
-            if entry.pane_session_id.as_deref() == Some(pane_session_id.as_str()) {
-                return false;
-            }
-            if let Some(old_pane) = entry.pane_session_id.take() {
-                if old_pane != pane_session_id {
-                    state.active_by_pane.remove(&pane_key(&old_pane));
-                }
-            }
-            entry.pane_session_id = Some(pane_session_id.clone());
-            entry.last_activity_at_ms = Some(now);
-            // WTA created this pane and bound it before the agent CLI started,
-            // so until the CLI's own hook confirms the binding, no other
-            // session id may claim the pane. See `born_bound_pane`.
-            entry.born_bound_pane = true;
-            state.active_by_pane.insert(pane_session_id, identity);
-            true
+            assign_resume_pane_identity_locked(state, &identity, pane_session_id, now)
         }
     }
 }

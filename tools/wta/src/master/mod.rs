@@ -1044,6 +1044,33 @@ async fn remove_routed_registry_identity(
     removed.is_some()
 }
 
+async fn live_route_survives_identity(
+    state: &MasterStateInner,
+    identity: &crate::session_registry::SessionIdentity,
+) -> bool {
+    let agent_instance_ids = {
+        let routes = state.session_to_helper.lock().await;
+        routes
+            .iter_qualified()
+            .filter(|(key, _)| key.session_id == identity.session_id)
+            .map(|(key, _)| key.agent_instance_id)
+            .collect::<Vec<_>>()
+    };
+    if agent_instance_ids.is_empty() {
+        return false;
+    }
+    let agents = state.agents.lock().await;
+    agent_instance_ids.into_iter().any(|instance_id| {
+        agents
+            .values()
+            .filter_map(|cell| cell.get())
+            .find(|agent| agent.instance_id == instance_id)
+            .is_some_and(|agent| {
+                session_identity_for_agent(agent, &identity.session_id) == *identity
+            })
+    })
+}
+
 async fn retire_exact_session_state_gate_held(
     state: &MasterStateInner,
     route_key: &LiveRouteKey,
@@ -1058,10 +1085,22 @@ async fn retire_exact_session_state_gate_held(
         .session_mcp_capabilities
         .remove_for_instance(&route_key.session_id, route_key.agent_instance_id)
         .await;
+    let mut registry_retired = false;
     if let Some(identity) = identity {
-        remove_routed_registry_identity(state, identity).await;
+        if live_route_survives_identity(state, identity).await {
+            tracing::info!(
+                target: "master_retirement",
+                session_id = %identity.session_id,
+                history_key = ?identity.history_key,
+                retired_agent_instance_id = %route_key.agent_instance_id,
+                "preserving shared registry identity because an equivalent live route survives"
+            );
+        } else {
+            remove_routed_registry_identity(state, identity).await;
+            registry_retired = true;
+        }
     }
-    if identity.is_some() {
+    if registry_retired {
         broadcast_ext_to_helpers(
             state,
             crate::session_registry::build_sessions_changed_notification(),
@@ -7147,6 +7186,18 @@ async fn handle_session_activate(
                     );
                 }
             };
+            if state
+                .registry
+                .mark_resume_dispatched_identity(&parsed.identity)
+                .await
+                .is_none()
+            {
+                return respond!(
+                    "resume_agent_pane",
+                    false,
+                    Some("The selected session changed before it could be resumed.".to_string())
+                );
+            }
             let event = serde_json::json!({
                 "type": "event",
                 "method": "resume_in_new_agent_tab",
@@ -7160,12 +7211,6 @@ async fn handle_session_activate(
                 }
             });
             crate::wt_protocol_events::send(event.to_string());
-            state
-                .registry
-                .apply_event(crate::agent_sessions::SessionEvent::ResumeDispatched {
-                    key: row.session_id.to_string(),
-                })
-                .await;
             respond!("resume_agent_pane", true, None)
         }
         EnterAction::ResumeCliFlag { .. } => {
@@ -7206,12 +7251,21 @@ async fn handle_session_activate(
             }
             match wt.request("create_tab", params).await {
                 Ok(result) => {
-                    state
+                    if state
                         .registry
-                        .apply_event(crate::agent_sessions::SessionEvent::ResumeDispatched {
-                            key: row.session_id.to_string(),
-                        })
-                        .await;
+                        .mark_resume_dispatched_identity(&parsed.identity)
+                        .await
+                        .is_none()
+                    {
+                        return respond!(
+                            "resume_cli",
+                            false,
+                            Some(
+                                "The selected session changed before it could be resumed."
+                                    .to_string()
+                            )
+                        );
+                    }
                     if let Some(pane_session_id) = result
                         .get("session_id")
                         .or_else(|| result.get("SessionId"))
@@ -7225,6 +7279,20 @@ async fn handle_session_activate(
                         })
                         .filter(|value| !value.is_empty())
                     {
+                        if !state
+                            .registry
+                            .assign_resume_pane_identity(&parsed.identity, pane_session_id.clone())
+                            .await
+                        {
+                            return respond!(
+                                "resume_cli",
+                                false,
+                                Some(
+                                    "The created pane could not be bound to the selected session."
+                                        .to_string()
+                                )
+                            );
+                        }
                         if let Some(binding) = crate::wt_protocol_events::resumed_pane_binding_event(
                             &provider_id,
                             row.session_id.0.as_ref(),
@@ -7233,13 +7301,6 @@ async fn handle_session_activate(
                         ) {
                             crate::wt_protocol_events::send(binding);
                         }
-                        state
-                            .registry
-                            .apply_event(crate::agent_sessions::SessionEvent::ResumePaneAssigned {
-                                key: row.session_id.to_string(),
-                                pane_session_id,
-                            })
-                            .await;
                     }
                     respond!("resume_cli", true, None)
                 }
