@@ -1,0 +1,20 @@
+## Summary
+
+Track the shared E2E lifecycle findings from #971 separately from its mouse/keyboard testing improvements.
+
+## Scenarios
+
+- **Startup ownership:** a package can start after the idle check but before `Stop-StaleItInstances`, allowing the test framework to close a concurrently launched session. Reported in the mouse and paste fixture threads.
+- **Process identity:** a returned PID/`Launched` flag does not protect teardown if the original process exits and its PID is reused.
+- **Configuration restoration:** another launch can occur between the inactivity check and `Restore-WtConfig`, exposing temporary settings or overwriting configuration while that instance is active.
+
+## Expected behavior
+
+Define a shared lifecycle and configuration-ownership contract that prevents unrelated process termination and unsafe restoration. Keep uncertain ownership fail-closed and retain recovery evidence/backups. Cover each principal behavior with a representative regression.
+
+A harness-only mutex coordinates participating tests, but does not by itself prevent manual application launches; document the guarantees and remaining limits explicitly.
+
+## Evidence
+
+These are conditional interleavings identified through code review, not claimed live destructive reproductions. Source: the four active review threads in #971, covering `TestTerminalCleanup.ps1`, `Feature.AgentMouse.Tests.ps1` and `Feature.Paste.Tests.ps1`. The common lifecycle implementations discussed there predate that PR.
+
