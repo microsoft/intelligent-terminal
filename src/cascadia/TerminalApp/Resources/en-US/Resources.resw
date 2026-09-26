@@ -1481,4 +1481,12 @@ For all available options, run 'wt new-tab --help'.</value>
     <value>Agent · Connecting</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="KeepTabRunningText" xml:space="preserve">
+    <value>Keep tab running</value>
+    <comment>Checkable item at the top of a vertical terminal tab's context menu. When enabled, all panes in this tab keep running after the tab or window is closed. This does not pin the tab or save it for a restart.</comment>
+  </data>
+  <data name="KeepTabRunningToolTip" xml:space="preserve">
+    <value>Keep all panes in this tab running after closing the tab or window.</value>
+    <comment>Tooltip and accessibility help for Keep tab running. Includes shell panes and the AI assistant; their current processes and sessions stay alive, rather than restarting later.</comment>
+  </data>
 </root>

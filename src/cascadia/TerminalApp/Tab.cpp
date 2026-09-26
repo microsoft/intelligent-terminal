@@ -1664,6 +1664,8 @@ namespace winrt::TerminalApp::implementation
 
     void Tab::_UpdateMenuItemStates()
     {
+        _UpdateKeepRunningMenuItem();
+
         // Terminal-specific menu items
         const auto content = _activePane ? _activePane->GetContent() : nullptr;
         const auto isTerm = content && content.try_as<winrt::TerminalApp::TerminalPaneContent>() != nullptr;
@@ -1947,6 +1949,9 @@ namespace winrt::TerminalApp::implementation
 
     void Tab::SetVerticalTabLayout(const bool vertical)
     {
+        _isVerticalTabLayout = vertical;
+        _UpdateKeepRunningMenuItem();
+
         const auto label = vertical ? RS_(L"TabCloseBelow") : RS_(L"TabCloseAfter");
         const auto tooltip = vertical ? RS_(L"TabCloseBelowToolTip") : RS_(L"TabCloseAfterToolTip");
         _closeTabsAfterMenuItem.Text(label);
@@ -1972,6 +1977,18 @@ namespace winrt::TerminalApp::implementation
     void Tab::_CreateContextMenu()
     {
         auto weakThis{ get_weak() };
+
+        _keepRunningMenuItem.Text(RS_(L"KeepTabRunningText"));
+        const auto keepRunningToolTip = RS_(L"KeepTabRunningToolTip");
+        WUX::Controls::ToolTipService::SetToolTip(_keepRunningMenuItem, box_value(keepRunningToolTip));
+        Automation::AutomationProperties::SetHelpText(_keepRunningMenuItem, keepRunningToolTip);
+        Automation::AutomationProperties::SetAutomationId(_keepRunningMenuItem, L"KeepTabRunningMenuItem");
+        _keepRunningMenuItem.Click([weakThis](auto&&, auto&&) {
+            if (const auto tab = weakThis.get())
+            {
+                tab->KeepRunning(tab->_keepRunningMenuItem.IsChecked());
+            }
+        });
 
         // "Change tab color..."
         Controls::MenuFlyoutItem chooseColorMenuItem;
@@ -2115,6 +2132,7 @@ namespace winrt::TerminalApp::implementation
         // Build the menu
         Controls::MenuFlyout contextMenuFlyout;
         Controls::MenuFlyoutSeparator menuSeparator;
+        contextMenuFlyout.Items().Append(_keepRunningMenuItem);
         contextMenuFlyout.Items().Append(chooseColorMenuItem);
         contextMenuFlyout.Items().Append(renameTabMenuItem);
         contextMenuFlyout.Items().Append(_duplicateTabMenuItem);
@@ -2128,6 +2146,13 @@ namespace winrt::TerminalApp::implementation
 
         auto closeSubMenu = _AppendCloseMenuItems(contextMenuFlyout);
         closeSubMenu.Items().Append(_closePaneMenuItem);
+
+        contextMenuFlyout.Opening([weakThis](auto&&, auto&&) {
+            if (const auto tab = weakThis.get())
+            {
+                tab->_UpdateKeepRunningMenuItem();
+            }
+        });
 
         // GH#5750 - When the context menu is dismissed with ESC, toss the focus
         // back to our control.
@@ -2161,6 +2186,21 @@ namespace winrt::TerminalApp::implementation
 
         _contextMenuFlyout = contextMenuFlyout;
         TabViewItem().ContextFlyout(_contextMenuFlyout);
+    }
+
+    bool Tab::CanKeepRunning() const
+    {
+        return _rootPane && _rootPane->WalkTree([](const auto& pane) -> std::shared_ptr<Pane> {
+            return pane->GetTerminalControl() ? pane : nullptr;
+        });
+    }
+
+    void Tab::_UpdateKeepRunningMenuItem()
+    {
+        const auto available = _isVerticalTabLayout && CanKeepRunning();
+        _keepRunningMenuItem.Visibility(available ? WUX::Visibility::Visible : WUX::Visibility::Collapsed);
+        _keepRunningMenuItem.IsEnabled(available);
+        _keepRunningMenuItem.IsChecked(KeepRunning());
     }
 
     void Tab::SetTabPointerInteractionRestricted(const bool restricted)

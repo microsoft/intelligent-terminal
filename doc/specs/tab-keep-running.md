@@ -2,7 +2,14 @@
 
 Keep running is an explicit, runtime-only choice for an entire terminal tab.
 It is available to ordinary shell tabs without an agent CLI or lifecycle hooks,
-and is independent of startup-layout restoration. The tab-menu UX is separate.
+and is independent of startup-layout restoration.
+
+In vertical layout, right-click a terminal tab and select **Keep tab running**,
+the first menu item. Its checkmark reflects that tab's current choice; selecting
+it again disables keep running. It targets the clicked tab even when another
+tab has focus. The item is absent from horizontal-tab and pane context menus,
+and from nonterminal tabs such as Settings. Changing tab orientation does not
+reset an existing choice.
 
 ## UI integration contract
 
@@ -63,7 +70,7 @@ twice and continues keeping the process alive.
 - This is in-process headless execution, not a separate daemon. Process crashes,
   forced exit, updates, sign-out and reboot are not survivable.
 - Preferences are not saved to settings or persisted layouts.
-- Keep-running menu/chips in the tab rail are not implemented here.
+- Keep-running badges and a horizontal-tab menu entry are not implemented here.
 - Missing hooks may delay agent status updates but do not gate keeping a tab.
 
 Focused coverage lives in `TabTests::KeepRunning*` in

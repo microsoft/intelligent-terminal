@@ -430,4 +430,12 @@
     <value>പുനഃസ്ഥാപിക്കുക</value>
     <comment>Command in the notification-area menu that brings a background tab and its still-running terminal panes back into a window. It does not restart the processes or restore a file backup.</comment>
   </data>
+  <data name="KeepTabRunningText" xml:space="preserve">
+    <value>ടാബ് പ്രവർത്തിച്ചുകൊണ്ടിരിക്കട്ടെ</value>
+    <comment>Checkable item at the top of a vertical terminal tab&apos;s context menu. When enabled, all panes in this tab keep running after the tab or window is closed. This does not pin the tab or save it for a restart.</comment>
+  </data>
+  <data name="KeepTabRunningToolTip" xml:space="preserve">
+    <value>ടാബോ വിൻഡോയോ അടച്ച ശേഷവും ഈ ടാബിലെ എല്ലാ പേനുകളും പ്രവർത്തിച്ചുകൊണ്ടിരിക്കട്ടെ.</value>
+    <comment>Tooltip and accessibility help for Keep tab running. Includes shell panes and the AI assistant; their current processes and sessions stay alive, rather than restarting later.</comment>
+  </data>
 </root>

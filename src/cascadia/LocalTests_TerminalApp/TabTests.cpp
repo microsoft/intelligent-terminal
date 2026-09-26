@@ -25,6 +25,8 @@
 
 #include <cmath>
 #include <winrt/Windows.UI.Xaml.Automation.h>
+#include <winrt/Windows.UI.Xaml.Automation.Peers.h>
+#include <winrt/Windows.UI.Xaml.Automation.Provider.h>
 
 using namespace Microsoft::Console;
 using namespace TerminalApp;
@@ -294,6 +296,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(AgentPaneRestoreDoesNotRequireAgentSession);
         TEST_METHOD(PaneAgentSessionEndClearsAgentBinding);
         TEST_METHOD(KeepRunningAcceptsPlainTerminalTabs);
+        TEST_METHOD(KeepRunningMenuIsFirstAndVerticalOnly);
+        TEST_METHOD(KeepRunningMenuTogglesOwningTab);
         TEST_METHOD(KeepRunningMixedTabCloseRestoresSameContent);
         TEST_METHOD(KeepRunningDirectPaneCloseTerminates);
         TEST_METHOD(KeepRunningCliExitRetainsDetachedShell);
@@ -955,6 +959,66 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(0u, kept->CloseCount());
             VERIFY_THROWS(page->RestoreKeptGroup(groupId), winrt::hresult_error);
             restored->Close();
+        });
+    }
+
+    void TabTests::KeepRunningMenuIsFirstAndVerticalOnly()
+    {
+        const auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto item = tab->_keepRunningMenuItem;
+            const auto menu = tab->TabViewItem().ContextFlyout().as<MenuFlyout>();
+            VERIFY_IS_TRUE(menu.Items().GetAt(0) == item);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Keep tab running" }, item.Text());
+            VERIFY_ARE_EQUAL(Visibility::Visible, item.Visibility());
+            VERIFY_IS_TRUE(item.IsEnabled());
+            VERIFY_IS_FALSE(item.IsChecked());
+
+            const winrt::guid id{ tab->StableId() };
+            page->SetTabKeepRunning(id, true);
+            tab->_UpdateKeepRunningMenuItem();
+            VERIFY_IS_TRUE(item.IsChecked());
+            tab->SetVerticalTabLayout(false);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, item.Visibility());
+            VERIFY_IS_FALSE(item.IsEnabled());
+            VERIFY_IS_TRUE(page->IsTabKeepRunning(id));
+            tab->SetVerticalTabLayout(true);
+            VERIFY_ARE_EQUAL(Visibility::Visible, item.Visibility());
+            VERIFY_IS_TRUE(item.IsChecked());
+            page->SetTabKeepRunning(id, false);
+            tab->_UpdateKeepRunningMenuItem();
+            VERIFY_IS_FALSE(item.IsChecked());
+
+            const auto root = tab->_rootPane;
+            tab->_rootPane = nullptr;
+            tab->_UpdateKeepRunningMenuItem();
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, item.Visibility());
+            VERIFY_IS_FALSE(item.IsEnabled());
+            tab->_rootPane = root;
+            tab->_UpdateKeepRunningMenuItem();
+        });
+    }
+
+    void TabTests::KeepRunningMenuTogglesOwningTab()
+    {
+        using namespace winrt::Windows::UI::Xaml::Automation;
+        const auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto owner = page->_GetFocusedTabImpl();
+            const auto siblingPane = page->_MakePane(nullptr, nullptr, nullptr);
+            page->_CreateNewTabFromPane(siblingPane);
+            const auto focused = page->_GetFocusedTabImpl();
+            VERIFY_IS_TRUE(owner != focused);
+            const Peers::ToggleMenuFlyoutItemAutomationPeer peer{ owner->_keepRunningMenuItem };
+            const auto toggle = peer.GetPattern(Peers::PatternInterface::Toggle).as<Provider::IToggleProvider>();
+            toggle.Toggle();
+            VERIFY_IS_TRUE(owner->_keepRunningMenuItem.IsChecked());
+            VERIFY_IS_TRUE(page->IsTabKeepRunning(winrt::guid{ owner->StableId() }));
+            VERIFY_IS_FALSE(focused->KeepRunning());
+            toggle.Toggle();
+            VERIFY_IS_FALSE(owner->_keepRunningMenuItem.IsChecked());
+            VERIFY_IS_FALSE(owner->KeepRunning());
         });
     }
 

@@ -800,10 +800,7 @@ namespace winrt::TerminalApp::implementation
     bool TerminalPage::CanKeepTabRunning(const winrt::guid& tabId)
     {
         const auto tab = _FindTabByStableId(winrt::hstring{ ::Microsoft::Console::Utils::GuidToString(tabId) });
-        const auto root = tab ? tab->GetRootPane() : nullptr;
-        return root && _GetTabIndex(*tab) && root->WalkTree([](const auto& pane) -> std::shared_ptr<Pane> {
-            return pane->GetTerminalControl() ? pane : nullptr;
-        });
+        return tab && _GetTabIndex(*tab) && tab->CanKeepRunning();
     }
 
     bool TerminalPage::IsTabKeepRunning(const winrt::guid& tabId)
