@@ -545,4 +545,16 @@
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Uždaryti visus skirtukus po šiuo skirtuku</value>
   </data>
+  <data name="NotificationIconRestoreKeptTab" xml:space="preserve">
+    <value>Atkurti</value>
+    <comment>Command in the notification-area menu that brings a background tab and its still-running terminal panes back into a window. It does not restart the processes or restore a file backup.</comment>
+  </data>
+  <data name="KeepTabRunningText" xml:space="preserve">
+    <value>Tęsti skirtuko veikimą</value>
+    <comment>Checkable item at the top of a vertical terminal tab&apos;s context menu. When enabled, all panes in this tab keep running after the tab or window is closed. This does not pin the tab or save it for a restart.</comment>
+  </data>
+  <data name="KeepTabRunningToolTip" xml:space="preserve">
+    <value>Tęsti šio skirtuko veikimą fone uždarius skirtuką arba langą.</value>
+    <comment>Tooltip and accessibility help for Keep tab running. Includes shell panes and the AI assistant; their current processes and sessions stay alive, rather than restarting later.</comment>
+  </data>
 </root>

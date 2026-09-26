@@ -18,7 +18,7 @@ namespace winrt::TerminalApp::implementation
     struct Tab : TabT<Tab>
     {
     public:
-        Tab(std::shared_ptr<Pane> rootPane);
+        Tab(std::shared_ptr<Pane> rootPane, winrt::hstring stableId = {});
 
         // Called after construction to perform the necessary setup, which relies on weak_ptr
         void Initialize();
@@ -207,6 +207,10 @@ namespace winrt::TerminalApp::implementation
         // _tabs which is reused when tabs close. Used as the tab_id for
         // wta's per-tab TabSession routing.
         const winrt::hstring& StableId() const noexcept { return _stableId; }
+        bool CanKeepRunning() const;
+        bool KeepRunning() const noexcept { return _keepRunning; }
+        void KeepRunning(bool enabled) noexcept { _keepRunning = enabled; }
+        void RestoreKeptTabState(const Tab& source);
 
         winrt::TerminalApp::TerminalTabStatus TabStatus()
         {
@@ -257,6 +261,8 @@ namespace winrt::TerminalApp::implementation
         static constexpr double HeaderRenameBoxWidthTitleLength{ std::numeric_limits<double>::infinity() };
 
         winrt::Windows::UI::Xaml::FocusState _focusState{ winrt::Windows::UI::Xaml::FocusState::Unfocused };
+        winrt::Windows::UI::Xaml::Controls::ToggleMenuFlyoutItem _keepRunningMenuItem{};
+        bool _isVerticalTabLayout{ false };
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _duplicateTabMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _splitTabMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _moveToNewWindowMenuItem{};
@@ -349,6 +355,7 @@ namespace winrt::TerminalApp::implementation
         bool _agentPrewarmSuppressed{ false };
 
         winrt::hstring _stableId{};
+        bool _keepRunning{ false };
 
         winrt::hstring _runtimeTabText{};
         bool _inRename{ false };
@@ -362,6 +369,7 @@ namespace winrt::TerminalApp::implementation
         void _UpdateHeaderControlMaxWidth();
 
         void _CreateContextMenu();
+        void _UpdateKeepRunningMenuItem();
         winrt::hstring _CreateToolTipTitle();
 
         void _DetachEventHandlersFromContent(const uint32_t paneId);

@@ -244,6 +244,12 @@ namespace winrt::TerminalApp::implementation
         void SendContentToOther(winrt::TerminalApp::RequestReceiveContentArgs args);
 
         uint32_t NumberOfTabs() const;
+        bool CanKeepTabRunning(const winrt::guid& tabId);
+        bool IsTabKeepRunning(const winrt::guid& tabId);
+        void SetTabKeepRunning(const winrt::guid& tabId, bool enabled);
+        bool RestoreKeptGroup(const winrt::guid& groupId);
+        void ShutdownPanes();
+        void SetStartupKeptGroup(const winrt::guid& groupId) noexcept { _startupKeptGroup = groupId; }
 
         // Terminal Protocol Bridge Methods
         uint32_t TabCount() const;
@@ -901,6 +907,12 @@ namespace winrt::TerminalApp::implementation
         void _OpenNewTerminalViaDropdown(const Microsoft::Terminal::Settings::Model::NewTerminalArgs newTerminalArgs);
 
         bool _displayingCloseDialog{ false };
+        bool _windowCloseAccepted{ false };
+        bool _windowPanesShutdown{ false };
+        winrt::guid _startupKeptGroup{};
+        std::vector<winrt::TerminalApp::Tab> _RuntimeTabs() const;
+        bool _KeepTabRunning(const winrt::com_ptr<Tab>& tab);
+        friend struct ContentManager;
         void _SettingsButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
         void _CommandPaletteButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
         void _AboutButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
@@ -994,7 +1006,7 @@ namespace winrt::TerminalApp::implementation
 
         winrt::Windows::Foundation::IAsyncAction _HandleCloseTabRequested(winrt::TerminalApp::Tab tab, bool skipConfirmClose = false);
         void _CloseTabAtIndex(uint32_t index);
-        void _RemoveTab(const winrt::TerminalApp::Tab& tab, bool movingAway = false);
+        void _RemoveTab(const winrt::TerminalApp::Tab& tab, bool movingAway = false, bool keepAlive = false);
         safe_void_coroutine _RemoveTabs(const std::vector<winrt::TerminalApp::Tab> tabs);
         void _SaveWorkspaceIfNeeded();
 
@@ -1287,6 +1299,7 @@ namespace winrt::TerminalApp::implementation
         struct ReceivingContentTransfer
         {
             winrt::com_ptr<Tab> sourceTab;
+            bool restoringKeptTab{ false };
             uint64_t firstContentId{ 0 };
             uint32_t actionIndex{ 0 };
             // Reader-thread callbacks may publish only after UI ownership commits.

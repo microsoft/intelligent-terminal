@@ -206,15 +206,16 @@ namespace winrt::TerminalApp::implementation
         co_await wil::resume_foreground(Dispatcher());
 
         Protocol::PaneContext result{};
+        const auto runtimeTabs = _RuntimeTabs();
         std::shared_ptr<Pane> targetPane;
         uint32_t targetTabIndex = UINT32_MAX;
         const char* missingReason = "no_focused_tab";
 
         if (hasExplicitSource)
         {
-            for (uint32_t tabIndex = 0; tabIndex < _tabs.Size() && !targetPane; ++tabIndex)
+            for (uint32_t tabIndex = 0; tabIndex < runtimeTabs.size() && !targetPane; ++tabIndex)
             {
-                const auto tabImpl = _GetTabImpl(_tabs.GetAt(tabIndex));
+                const auto tabImpl = _GetTabImpl(runtimeTabs.at(tabIndex));
                 const auto rootPane = tabImpl ? tabImpl->GetRootPane() : nullptr;
                 if (rootPane)
                 {
@@ -230,7 +231,7 @@ namespace winrt::TerminalApp::implementation
         {
             targetTabIndex = focusedTabIndex.value();
             missingReason = "tab_unavailable";
-            if (const auto tabImpl = _GetTabImpl(_tabs.GetAt(targetTabIndex)))
+            if (const auto tabImpl = _GetTabImpl(runtimeTabs.at(targetTabIndex)))
             {
                 missingReason = "no_active_pane";
                 targetPane = _getProtocolSourcePane(tabImpl);
@@ -270,7 +271,7 @@ namespace winrt::TerminalApp::implementation
         paneInfo.SessionId = sessionId;
         paneInfo.TabId = targetTabIndex;
 
-        if (const auto tabImpl = _GetTabImpl(_tabs.GetAt(targetTabIndex)))
+        if (const auto tabImpl = _GetTabImpl(runtimeTabs.at(targetTabIndex)))
         {
             const auto activePane = tabImpl->GetActivePane();
             paneInfo.IsActive = activePane && activePane->IsAgentPane()
@@ -345,10 +346,11 @@ namespace winrt::TerminalApp::implementation
 
         auto tabs = winrt::single_threaded_vector<Protocol::TabInfo>();
         const auto focusedIdx = _GetFocusedTabIndex();
+        const auto runtimeTabs = _RuntimeTabs();
 
-        for (uint32_t i = 0; i < _tabs.Size(); ++i)
+        for (uint32_t i = 0; i < runtimeTabs.size(); ++i)
         {
-            const auto tab = _tabs.GetAt(i);
+            const auto tab = runtimeTabs.at(i);
             const auto tabImpl = _GetTabImpl(tab);
             if (!tabImpl)
                 continue;
@@ -380,13 +382,14 @@ namespace winrt::TerminalApp::implementation
         co_await wil::resume_foreground(Dispatcher());
 
         auto panes = winrt::single_threaded_vector<Protocol::PaneInfo>();
+        const auto runtimeTabs = _RuntimeTabs();
 
-        for (uint32_t tabIdx = 0; tabIdx < _tabs.Size(); ++tabIdx)
+        for (uint32_t tabIdx = 0; tabIdx < runtimeTabs.size(); ++tabIdx)
         {
             if (tabIdFilter != UINT32_MAX && tabIdx != tabIdFilter)
                 continue;
 
-            const auto tab = _tabs.GetAt(tabIdx);
+            const auto tab = runtimeTabs.at(tabIdx);
             const auto tabImpl = _GetTabImpl(tab);
             if (!tabImpl)
                 continue;
@@ -440,7 +443,7 @@ namespace winrt::TerminalApp::implementation
         // UI-thread work: find pane, read buffer.
         hstring fullBuffer;
         int32_t viewHeight = 0;
-        for (const auto& tab : _tabs)
+        for (const auto& tab : _RuntimeTabs())
         {
             const auto tabImpl = _GetTabImpl(tab);
             if (!tabImpl)
@@ -573,7 +576,7 @@ namespace winrt::TerminalApp::implementation
 
         Protocol::ProcessStatus result{};
 
-        for (const auto& tab : _tabs)
+        for (const auto& tab : _RuntimeTabs())
         {
             const auto tabImpl = _GetTabImpl(tab);
             if (!tabImpl)
@@ -646,7 +649,7 @@ namespace winrt::TerminalApp::implementation
 
         Protocol::SessionVariable result{};
 
-        for (const auto& tab : _tabs)
+        for (const auto& tab : _RuntimeTabs())
         {
             const auto tabImpl = _GetTabImpl(tab);
             if (!tabImpl)
@@ -691,7 +694,7 @@ namespace winrt::TerminalApp::implementation
 
         co_await wil::resume_foreground(Dispatcher());
 
-        for (const auto& tab : _tabs)
+        for (const auto& tab : _RuntimeTabs())
         {
             const auto tabImpl = _GetTabImpl(tab);
             if (!tabImpl)
@@ -863,7 +866,7 @@ namespace winrt::TerminalApp::implementation
 
         co_await wil::resume_foreground(Dispatcher());
 
-        for (const auto& tab : _tabs)
+        for (const auto& tab : _RuntimeTabs())
         {
             const auto tabImpl = _GetTabImpl(tab);
             if (!tabImpl)
@@ -894,7 +897,7 @@ namespace winrt::TerminalApp::implementation
 
         co_await wil::resume_foreground(Dispatcher());
 
-        for (const auto& tab : _tabs)
+        for (const auto& tab : _RuntimeTabs())
         {
             const auto tabImpl = _GetTabImpl(tab);
             if (!tabImpl)

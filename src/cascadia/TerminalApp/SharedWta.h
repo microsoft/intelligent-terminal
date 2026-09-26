@@ -291,6 +291,7 @@ namespace winrt::TerminalApp::implementation
         SharedWtaLease AcquirePane(const std::wstring_view wtaPath,
                                    std::span<const std::wstring> extraArgs = {},
                                    std::span<const std::pair<std::wstring, std::wstring>> environment = {});
+        SharedWtaLease AcquireKeepRunningLease();
 
         /// Force-restart the wta-master process, bypassing the
         /// lease reference count. Used by the

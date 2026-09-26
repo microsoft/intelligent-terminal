@@ -1458,4 +1458,16 @@ Für alle verfügbaren Optionen führen Sie 'wt new-tab --help' aus.</value>
     <value>Agent · Verbindung wird hergestellt</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="NotificationIconRestoreKeptTab" xml:space="preserve">
+    <value>Wiederherstellen</value>
+    <comment>Command in the notification-area menu that brings a background tab and its still-running terminal panes back into a window. It does not restart the processes or restore a file backup.</comment>
+  </data>
+  <data name="KeepTabRunningText" xml:space="preserve">
+    <value>Registerkarte weiter ausführen</value>
+    <comment>Checkable item at the top of a vertical terminal tab&apos;s context menu. When enabled, all panes in this tab keep running after the tab or window is closed. This does not pin the tab or save it for a restart.</comment>
+  </data>
+  <data name="KeepTabRunningToolTip" xml:space="preserve">
+    <value>Diese Registerkarte nach dem Schließen der Registerkarte oder des Fensters im Hintergrund weiter ausführen.</value>
+    <comment>Tooltip and accessibility help for Keep tab running. Includes shell panes and the AI assistant; their current processes and sessions stay alive, rather than restarting later.</comment>
+  </data>
 </root>

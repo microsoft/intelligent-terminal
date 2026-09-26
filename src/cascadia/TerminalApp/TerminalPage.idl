@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 import "TaskbarState.idl";
 import "Remoting.idl";
+import "Tab.idl";
 // Microsoft.Terminal.Protocol types are available via project reference (.winmd)
 
 namespace TerminalApp
@@ -14,6 +15,22 @@ namespace TerminalApp
 
         Microsoft.Terminal.Control.ControlInteractivity TryLookupCore(UInt64 id);
         void Detach(Microsoft.Terminal.Control.TermControl control);
+
+        void OnPaneAgentSessionChanged(String eventJson);
+        String AgentSessionEvent(UInt64 contentId);
+
+        void KeepTab(TerminalPage owner, Tab tab);
+        Boolean HasKeptSessions();
+        Boolean IsKeptContent(UInt64 contentId);
+        Windows.Foundation.Collections.IMapView<Guid, String> KeptGroups();
+        Windows.Foundation.Collections.IVectorView<TerminalPage> KeptPages();
+        Windows.Foundation.Collections.IVectorView<Tab> KeptTabs(TerminalPage owner);
+        TerminalPage KeptGroupOwner(Guid groupId);
+        Tab BeginReattachKeptGroup(Guid groupId);
+        void CompleteKeptGroupReattach(Guid groupId, Boolean committed);
+        void DiscardKeptGroup(Guid groupId);
+        event Windows.Foundation.TypedEventHandler<ContentManager, Object> KeptSessionsChanged;
+        event Windows.Foundation.TypedEventHandler<ContentManager, String> DetachedSessionEvent;
     }
 
     [default_interface] runtimeclass RenameWindowRequestedArgs
@@ -78,6 +95,14 @@ namespace TerminalApp
     [default_interface] runtimeclass TerminalPage : Windows.UI.Xaml.Controls.Page, Windows.UI.Xaml.Data.INotifyPropertyChanged, Microsoft.Terminal.UI.IDirectKeyListener
     {
         TerminalPage(WindowProperties properties, ContentManager manager);
+
+        // Runtime-only whole-tab policy, keyed by Tab.StableId, not its mutable index.
+        // Direct pane close always terminates that pane.
+        Boolean CanKeepTabRunning(Guid tabId);
+        Boolean IsTabKeepRunning(Guid tabId);
+        void SetTabKeepRunning(Guid tabId, Boolean enabled);
+        Boolean RestoreKeptGroup(Guid groupId);
+        void ShutdownPanes();
 
         // XAML bound properties
         String ApplicationDisplayName { get; };
