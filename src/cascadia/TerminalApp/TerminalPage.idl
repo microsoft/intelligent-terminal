@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 import "TaskbarState.idl";
 import "Remoting.idl";
+import "Tab.idl";
 // Microsoft.Terminal.Protocol types are available via project reference (.winmd)
 
 namespace TerminalApp
@@ -15,19 +16,17 @@ namespace TerminalApp
         Microsoft.Terminal.Control.ControlInteractivity TryLookupCore(UInt64 id);
         void Detach(Microsoft.Terminal.Control.TermControl control);
 
-        Boolean CanKeepRunning(UInt64 contentId);
-        Boolean IsKeepRunning(UInt64 contentId);
-        void SetKeepRunning(UInt64 contentId, Boolean enabled);
         void OnPaneAgentSessionChanged(String eventJson);
         String AgentSessionEvent(UInt64 contentId);
 
-        Boolean DetachForKeepRunning(Guid groupId, String title,
-                                    Microsoft.Terminal.Settings.Model.NewTerminalArgs args,
-                                    Microsoft.Terminal.Control.TermControl control);
+        void KeepTab(TerminalPage owner, Tab tab);
         Boolean HasKeptSessions();
         Boolean IsKeptContent(UInt64 contentId);
         Windows.Foundation.Collections.IMapView<Guid, String> KeptGroups();
-        Windows.Foundation.Collections.IVectorView<Microsoft.Terminal.Settings.Model.NewTerminalArgs> BeginReattachKeptGroup(Guid groupId);
+        Windows.Foundation.Collections.IVectorView<TerminalPage> KeptPages();
+        Windows.Foundation.Collections.IVectorView<Tab> KeptTabs(TerminalPage owner);
+        TerminalPage KeptGroupOwner(Guid groupId);
+        Tab BeginReattachKeptGroup(Guid groupId);
         void CompleteKeptGroupReattach(Guid groupId, Boolean committed);
         void DiscardKeptGroup(Guid groupId);
         event Windows.Foundation.TypedEventHandler<ContentManager, Object> KeptSessionsChanged;
@@ -97,11 +96,11 @@ namespace TerminalApp
     {
         TerminalPage(WindowProperties properties, ContentManager manager);
 
-        // Runtime-only pane policy for the future pane menu. The identity is WT_SESSION,
-        // not the pane's mutable index. Direct pane close always terminates it.
-        Boolean CanKeepPaneRunning(Guid paneSessionId);
-        Boolean IsPaneKeepRunning(Guid paneSessionId);
-        void SetPaneKeepRunning(Guid paneSessionId, Boolean enabled);
+        // Runtime-only whole-tab policy, keyed by Tab.StableId, not its mutable index.
+        // Direct pane close always terminates that pane.
+        Boolean CanKeepTabRunning(Guid tabId);
+        Boolean IsTabKeepRunning(Guid tabId);
+        void SetTabKeepRunning(Guid tabId, Boolean enabled);
         Boolean RestoreKeptGroup(Guid groupId);
         void ShutdownPanes();
 

@@ -1156,12 +1156,40 @@ void WindowEmperor::_setupKeptSessions()
 {
     _keptManager = _app.Logic().ContentManager();
     _keptDispatcher = winrt::Windows::System::DispatcherQueue::GetForCurrentThread();
-    _keptChanged = _keptManager.KeptSessionsChanged(winrt::auto_revoke, [hwnd = _window.get()](auto&&, auto&&) {
-        LOG_IF_WIN32_BOOL_FALSE(PostMessageW(hwnd, WM_KEPT_SESSIONS_CHANGED, 0, 0));
+    _keptChanged = _keptManager.KeptSessionsChanged(winrt::auto_revoke, [this](auto&&, auto&&) {
+        const auto pages = _keptManager.KeptPages();
+        {
+            std::lock_guard lock{ _keptPagesMutex };
+            _keptPages.assign(pages.begin(), pages.end());
+        }
+        LOG_IF_WIN32_BOOL_FALSE(PostMessageW(_window.get(), WM_KEPT_SESSIONS_CHANGED, 0, 0));
     });
     _keptEvents = _keptManager.DetachedSessionEvent(winrt::auto_revoke, [](auto&&, const winrt::hstring& eventJson) {
         TerminalProtocolComServer::s_NotifyEventToComClients(winrt::to_string(eventJson));
     });
+}
+
+std::vector<winrt::TerminalApp::TerminalPage> WindowEmperor::GetProtocolPages() const
+{
+    std::vector<winrt::TerminalApp::TerminalPage> pages;
+    for (const auto& host : GetWindows())
+    {
+        const auto logic = host->Logic();
+        const auto page = logic ? logic.GetRoot().try_as<winrt::TerminalApp::TerminalPage>() : nullptr;
+        if (page)
+        {
+            pages.emplace_back(page);
+        }
+    }
+    std::lock_guard lock{ _keptPagesMutex };
+    for (const auto& page : _keptPages)
+    {
+        if (std::ranges::find(pages, page) == pages.end())
+        {
+            pages.emplace_back(page);
+        }
+    }
+    return pages;
 }
 
 void WindowEmperor::TrackPaneAgentSession(const winrt::hstring& eventJson)

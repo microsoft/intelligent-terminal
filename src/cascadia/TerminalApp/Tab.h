@@ -207,6 +207,9 @@ namespace winrt::TerminalApp::implementation
         // _tabs which is reused when tabs close. Used as the tab_id for
         // wta's per-tab TabSession routing.
         const winrt::hstring& StableId() const noexcept { return _stableId; }
+        bool KeepRunning() const noexcept { return _keepRunning; }
+        void KeepRunning(bool enabled) noexcept { _keepRunning = enabled; }
+        void RestoreKeptTabState(const Tab& source);
 
         winrt::TerminalApp::TerminalTabStatus TabStatus()
         {
@@ -349,6 +352,7 @@ namespace winrt::TerminalApp::implementation
         bool _agentPrewarmSuppressed{ false };
 
         winrt::hstring _stableId{};
+        bool _keepRunning{ false };
 
         winrt::hstring _runtimeTabText{};
         bool _inRename{ false };

@@ -2508,6 +2508,39 @@ namespace winrt::TerminalApp::implementation
         return _hiddenPane != nullptr;
     }
 
+    void Tab::RestoreKeptTabState(const Tab& source)
+    {
+        ASSERT_UI_THREAD();
+        _keepRunning = source._keepRunning;
+        _agentCurrentId = source._agentCurrentId;
+        SetAgentChipOverride(source._agentChipOverride);
+        if (_tabStatus.IsInputBroadcastActive() != source._tabStatus.IsInputBroadcastActive())
+        {
+            ToggleBroadcastInput();
+        }
+        if (source._hiddenPane)
+        {
+            // Content transfer reproduces the tree shape but renumbers pane IDs.
+            const auto findHidden = [&](auto&& self, const auto& oldPane, const auto& newPane) -> std::shared_ptr<Pane> {
+                if (oldPane == source._hiddenPane)
+                {
+                    return newPane;
+                }
+                if (oldPane->_IsLeaf() || newPane->_IsLeaf())
+                {
+                    return nullptr;
+                }
+                const auto first = self(self, oldPane->_firstChild, newPane->_firstChild);
+                return first ? first : self(self, oldPane->_secondChild, newPane->_secondChild);
+            };
+            _hiddenPane = findHidden(findHidden, source._rootPane, _rootPane);
+            THROW_HR_IF(E_UNEXPECTED, !_hiddenPane);
+            const auto parent = _rootPane->_FindParentOfPane(_hiddenPane);
+            THROW_HR_IF(E_UNEXPECTED, !parent);
+            parent->HidePane(_hiddenPane);
+        }
+    }
+
     TermControl _termControlFromPane(const auto& pane)
     {
         if (const auto content{ pane->GetContent() })

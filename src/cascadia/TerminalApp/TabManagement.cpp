@@ -397,7 +397,8 @@ namespace winrt::TerminalApp::implementation
                 get_strong(),
                 _shellIntegrationDesiredEnabled,
                 _shellIntegrationReconcileMutex);
-            auto newTabImpl = winrt::make_self<Tab>(pane);
+            auto newTabImpl = winrt::make_self<Tab>(
+                pane, _receivingContentTransfer && _receivingContentTransfer->restoringKeptTab ? _receivingContentTransfer->sourceTab->StableId() : winrt::hstring{});
             if (_receivingContentTransfer)
             {
                 _receivingContentTransfer->tabs.push_back(newTabImpl);
@@ -759,19 +760,6 @@ namespace winrt::TerminalApp::implementation
 
         auto t = winrt::get_self<implementation::Tab>(tab);
         auto actions = t->BuildStartupActions(BuildStartupKind::None);
-        std::vector<std::pair<winrt::guid, INewContentArgs>> closedPaneArgs;
-        t->GetRootPane()->WalkTree([&](const auto& pane) {
-            if (pane->GetContent())
-            {
-                const auto control = pane->GetTerminalControl();
-                const auto connection = control ? control.Connection() : nullptr;
-                closedPaneArgs.emplace_back(connection ? connection.SessionId() : winrt::guid{},
-                                            pane->GetTerminalArgsForPane(BuildStartupKind::None));
-            }
-        });
-
-        // Per-tab model: each tab owns its own agent pane. Closing a tab
-        // takes its agent pane with it — no rescue needed.
 
         // If this is the last tab in a named window, persist the workspace
         // layout while tab content is still alive. After tab.Close() the pane
@@ -785,25 +773,9 @@ namespace winrt::TerminalApp::implementation
             CATCH_LOG()
         }
 
-        _DetachKeepRunningPanes(_GetTabImpl(tab));
-        if (std::ranges::any_of(closedPaneArgs, [&](const auto& pane) { return _detachedPaneIds.contains(pane.first); }))
+        if (_KeepTabRunning(_GetTabImpl(tab)))
         {
-            // Undo-close must never launch a second copy of a still-running CLI.
-            actions.clear();
-            for (const auto& [id, args] : closedPaneArgs)
-            {
-                if (args && !_detachedPaneIds.contains(id))
-                {
-                    if (actions.empty())
-                    {
-                        actions.emplace_back(ShortcutAction::NewTab, NewTabArgs{ args });
-                    }
-                    else
-                    {
-                        actions.emplace_back(ShortcutAction::SplitPane, SplitPaneArgs{ SplitDirection::Automatic, args });
-                    }
-                }
-            }
+            co_return;
         }
         if (!actions.empty())
         {
@@ -812,142 +784,106 @@ namespace winrt::TerminalApp::implementation
         tab.Close();
     }
 
-    std::shared_ptr<Pane> TerminalPage::_FindKeepRunningPane(const winrt::guid& sessionId) const
+    std::vector<winrt::TerminalApp::Tab> TerminalPage::_RuntimeTabs() const
     {
-        if (sessionId == winrt::guid{})
+        std::vector<winrt::TerminalApp::Tab> result{ _tabs.begin(), _tabs.end() };
+        for (const auto& tab : _manager.KeptTabs(*this))
         {
-            return nullptr;
-        }
-        for (const auto& tab : _tabs)
-        {
-            const auto impl = _GetTabImpl(tab);
-            const auto root = impl ? impl->GetRootPane() : nullptr;
-            if (const auto pane = root ? root->FindPaneBySessionId(sessionId) : nullptr;
-                pane && !pane->IsAgentPane() && pane->GetContent().try_as<winrt::TerminalApp::TerminalPaneContent>())
+            if (std::ranges::find(result, tab) == result.end())
             {
-                return pane;
+                result.emplace_back(tab);
             }
         }
-        return nullptr;
+        return result;
     }
 
-    bool TerminalPage::CanKeepPaneRunning(const winrt::guid& sessionId)
+    bool TerminalPage::CanKeepTabRunning(const winrt::guid& tabId)
     {
-        const auto pane = _FindKeepRunningPane(sessionId);
-        const auto control = pane ? pane->GetTerminalControl() : nullptr;
-        return control && _manager.CanKeepRunning(control.ContentId());
+        const auto tab = _FindTabByStableId(winrt::hstring{ ::Microsoft::Console::Utils::GuidToString(tabId) });
+        const auto root = tab ? tab->GetRootPane() : nullptr;
+        return root && _GetTabIndex(*tab) && root->WalkTree([](const auto& pane) -> std::shared_ptr<Pane> {
+            return pane->GetTerminalControl() ? pane : nullptr;
+        });
     }
 
-    bool TerminalPage::IsPaneKeepRunning(const winrt::guid& sessionId)
+    bool TerminalPage::IsTabKeepRunning(const winrt::guid& tabId)
     {
-        const auto pane = _FindKeepRunningPane(sessionId);
-        const auto control = pane ? pane->GetTerminalControl() : nullptr;
-        return control && _manager.IsKeepRunning(control.ContentId());
+        const auto tab = _FindTabByStableId(winrt::hstring{ ::Microsoft::Console::Utils::GuidToString(tabId) });
+        return tab && tab->KeepRunning();
     }
 
-    void TerminalPage::SetPaneKeepRunning(const winrt::guid& sessionId, const bool enabled)
+    void TerminalPage::SetTabKeepRunning(const winrt::guid& tabId, const bool enabled)
     {
-        const auto pane = _FindKeepRunningPane(sessionId);
-        THROW_HR_IF(E_INVALIDARG, !pane);
-        _manager.SetKeepRunning(pane->GetTerminalControl().ContentId(), enabled);
+        const auto tab = _FindTabByStableId(winrt::hstring{ ::Microsoft::Console::Utils::GuidToString(tabId) });
+        THROW_HR_IF(E_INVALIDARG, !tab || !_GetTabIndex(*tab));
+        THROW_HR_IF(E_ILLEGAL_METHOD_CALL, enabled && !CanKeepTabRunning(tabId));
+        tab->KeepRunning(enabled);
     }
 
-    void TerminalPage::_DetachKeepRunningPanes(const winrt::com_ptr<Tab>& tab)
+    bool TerminalPage::_KeepTabRunning(const winrt::com_ptr<Tab>& tab)
     {
-        if (!tab || !tab->GetRootPane())
+        if (!tab || !tab->KeepRunning() || !_GetTabIndex(*tab))
         {
-            return;
+            return false;
         }
-        const winrt::guid groupId{ tab->StableId() };
-        tab->GetRootPane()->WalkTree([&](const auto& pane) {
-            if (pane->IsAgentPane())
+        _manager.KeepTab(*this, *tab);
+        auto rollback = wil::scope_exit([&]() noexcept {
+            if (_GetTabIndex(*tab))
             {
-                return;
-            }
-            const auto control = pane->GetTerminalControl();
-            if (!control || !_manager.IsKeepRunning(control.ContentId()))
-            {
-                return;
-            }
-            const auto sessionId = control.Connection().SessionId();
-            const auto args = pane->GetTerminalArgsForPane(BuildStartupKind::Content).template as<NewTerminalArgs>();
-            _detachedPaneIds.emplace(sessionId);
-            auto rollback = wil::scope_exit([&]() noexcept { _detachedPaneIds.erase(sessionId); });
-            if (_manager.DetachForKeepRunning(groupId, tab->Title(), args, control))
-            {
-                rollback.release();
+                try
+                {
+                    const winrt::guid id{ tab->StableId() };
+                    _manager.BeginReattachKeptGroup(id);
+                    _manager.CompleteKeptGroupReattach(id, true);
+                    tab->GetRootPane()->WalkTree([&](const auto& pane) {
+                        if (const auto control = pane->GetTerminalControl())
+                        {
+                            control.WindowVisibilityChanged(_visible);
+                            control.OwningHwnd(_hostingHwnd ? reinterpret_cast<uint64_t>(*_hostingHwnd) : 0);
+                        }
+                    });
+                }
+                CATCH_LOG()
             }
         });
+        tab->Focus(FocusState::Unfocused);
+        tab->GetRootPane()->WalkTree([](const auto& pane) {
+            if (const auto control = pane->GetTerminalControl())
+            {
+                control.WindowVisibilityChanged(false);
+                control.OwningHwnd(0);
+            }
+        });
+        _RemoveTab(*tab, true, true);
+        rollback.release();
+        return true;
     }
 
     bool TerminalPage::RestoreKeptGroup(const winrt::guid& groupId)
     {
         const auto keepAlive = get_strong();
-        const auto previousFocus = _GetFocusedTab();
-        const auto args = _manager.BeginReattachKeptGroup(groupId);
-        std::vector<TermControl> controls;
-        std::vector<winrt::hstring> bindings;
-        std::shared_ptr<Pane> root;
-        winrt::com_ptr<Tab> tab;
+        const auto owner = _manager.KeptGroupOwner(groupId);
+        THROW_HR_IF(E_INVALIDARG, !owner);
+        const auto sourceTab = _GetTabImpl(_manager.BeginReattachKeptGroup(groupId));
         auto rollback = wil::scope_exit([&]() noexcept {
-            for (const auto& control : controls)
-            {
-                try
-                {
-                    control.Detach();
-                    control.Close();
-                }
-                CATCH_LOG()
-            }
             try
             {
-                if (tab)
-                {
-                    _RemoveTab(*tab, true);
-                }
                 _manager.CompleteKeptGroupReattach(groupId, false);
-                if (const auto index = _GetTabIndex(previousFocus))
-                {
-                    _SelectTab(*index);
-                }
             }
             CATCH_LOG()
         });
-
-        for (const auto& terminalArgs : args)
-        {
-            const auto content = _manager.TryLookupCore(terminalArgs.ContentId());
-            const auto profile = _settings.GetProfileForArgs(terminalArgs);
-            THROW_HR_IF(E_INVALIDARG, !content || !profile);
-            THROW_HR_IF(E_ABORT, content.Core().ConnectionState() >= ConnectionState::Closed);
-            const auto control = TermControl::PrepareControlByAttachingContent(content);
-            controls.emplace_back(control);
-            _SetupControl(control);
-            bindings.emplace_back(_manager.AgentSessionEvent(terminalArgs.ContentId()));
-            auto pane = std::make_shared<Pane>(winrt::make<TerminalPaneContent>(profile, _terminalSettingsCache, control));
-            root = root ? std::make_shared<Pane>(root, pane, SplitState::Vertical, static_cast<float>(controls.size() - 1) / controls.size()) :
-                          std::move(pane);
-        }
-        THROW_HR_IF(E_UNEXPECTED, !root);
-        tab = winrt::make_self<Tab>(root, winrt::hstring{ ::Microsoft::Console::Utils::GuidToString(groupId) });
-        _InitializeTab(tab, -1, false);
-        for (const auto& control : controls)
-        {
-            THROW_HR_IF(E_ABORT, control.TransferState() != Microsoft::Terminal::Control::ContentTransferState::Prepared || control.ConnectionState() >= ConnectionState::Closed);
-        }
-        for (const auto& control : controls)
-        {
-            control.CommitContentTransfer();
-        }
+        auto actions = winrt::single_threaded_vector(sourceTab->BuildStartupActions(BuildStartupKind::Content));
+        THROW_HR_IF(E_ABORT, !_AttachTransferredContent(*winrt::get_self<TerminalPage>(owner), sourceTab, sourceTab->GetRootPane(), actions, -1));
         _manager.CompleteKeptGroupReattach(groupId, true);
         rollback.release();
-        for (const auto& binding : bindings)
-        {
+        _GetFocusedTabImpl()->GetRootPane()->WalkTree([&](const auto& pane) {
+            const auto control = pane->GetTerminalControl();
+            const auto binding = control ? _manager.AgentSessionEvent(control.ContentId()) : winrt::hstring{};
             if (!binding.empty())
             {
                 OnPaneAgentSessionChanged(binding);
             }
-        }
+        });
         return true;
     }
 
@@ -956,12 +892,23 @@ namespace winrt::TerminalApp::implementation
     // - movingAway: true when this _RemoveTab is the tail of a cross-window
     //   move (the tab's terminal content is being reattached in another
     //   window via ContentId).
-    void TerminalPage::_RemoveTab(const winrt::TerminalApp::Tab& tab, bool movingAway)
+    void TerminalPage::_RemoveTab(const winrt::TerminalApp::Tab& tab, bool movingAway, bool keepAlive)
     {
         uint32_t tabIndex{};
         if (!_tabs.IndexOf(tab, tabIndex))
         {
-            // The tab is already removed
+            const auto impl = _GetTabImpl(tab);
+            if (impl && _manager.KeptGroupOwner(winrt::guid{ impl->StableId() }) == *this)
+            {
+                if (movingAway)
+                {
+                    tab.Shutdown();
+                }
+                else
+                {
+                    _manager.DiscardKeptGroup(winrt::guid{ impl->StableId() });
+                }
+            }
             return;
         }
 
@@ -1028,7 +975,18 @@ namespace winrt::TerminalApp::implementation
 
         // Removing the tab from the collection should destroy its control and disconnect its connection,
         // but it doesn't always do so. The UI tree may still be holding the control and preventing its destruction.
-        tab.Shutdown();
+        if (!keepAlive)
+        {
+            tab.Shutdown();
+        }
+        else
+        {
+            uint32_t contentIndex{};
+            if (_tabContent.Children().IndexOf(tab.Content(), contentIndex))
+            {
+                _tabContent.Children().RemoveAt(contentIndex);
+            }
+        }
 
         uint32_t mruIndex{};
         if (_mruTabs.IndexOf(tab, mruIndex))
@@ -1061,7 +1019,10 @@ namespace winrt::TerminalApp::implementation
             // if the user manually closed all tabs.
             // Do this only if we are the last window; the monarch will notice
             // we are missing and remove us that way otherwise.
-            CloseWindowRequested.raise(*this, nullptr);
+            if (!_windowCloseAccepted)
+            {
+                CloseWindowRequested.raise(*this, nullptr);
+            }
         }
         else if (focusedTabIndex.has_value() && focusedTabIndex.value() == gsl::narrow_cast<uint32_t>(tabIndex))
         {
@@ -1396,7 +1357,7 @@ namespace winrt::TerminalApp::implementation
         _AddPreviouslyClosedPaneOrTab(std::move(state.args));
 
         winrt::com_ptr<Tab> owningTab;
-        for (const auto& tab : _tabs)
+        for (const auto& tab : _RuntimeTabs())
         {
             const auto tabImpl = _GetTabImpl(tab);
             if (!tabImpl)

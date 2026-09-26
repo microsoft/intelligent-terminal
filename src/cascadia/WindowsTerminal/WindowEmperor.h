@@ -61,6 +61,7 @@ public:
     // Protocol server access
     const std::wstring& GetComClsid() const noexcept { return _comClsid; }
     std::vector<std::shared_ptr<::AppHost>> GetWindows() const;
+    std::vector<winrt::TerminalApp::TerminalPage> GetProtocolPages() const;
     AppHost* GetMostRecentWindow() const noexcept { return _mostRecentWindow(); }
     void TrackPaneAgentSession(const winrt::hstring& eventJson);
 
@@ -118,6 +119,8 @@ private:
     HMENU _currentWindowMenu = nullptr;
     bool _notificationIconShown = false;
     winrt::TerminalApp::ContentManager _keptManager{ nullptr };
+    mutable std::mutex _keptPagesMutex;
+    std::vector<winrt::TerminalApp::TerminalPage> _keptPages;
     winrt::Windows::System::DispatcherQueue _keptDispatcher{ nullptr };
     winrt::TerminalApp::ContentManager::KeptSessionsChanged_revoker _keptChanged;
     winrt::TerminalApp::ContentManager::DetachedSessionEvent_revoker _keptEvents;

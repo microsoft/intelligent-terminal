@@ -2015,6 +2015,41 @@ fn tab_renamed_with_missing_fields_is_dropped() {
     assert!(app.tab_sessions.contains_key("AAAA"));
 }
 
+#[test]
+fn tab_renamed_kept_tab_updates_only_its_helpers_window() {
+    let mut app = test_app();
+    app.tab_id = Some("kept-tab".into());
+    app.owner_tab_id = Some("kept-tab".into());
+    app.window_id = Some("old-window".into());
+    app.tab_sessions
+        .insert("kept-tab".into(), TabSession::default());
+    app.session_to_tab
+        .insert("acp-session".into(), "kept-tab".into());
+    let tab_count = app.tab_sessions.len();
+
+    for (tab, window, expected) in [
+        ("other-tab", Some("unrelated-window"), "old-window"),
+        ("kept-tab", None, "old-window"),
+        ("kept-tab", Some("new-window"), "new-window"),
+    ] {
+        app.handle_event(AppEvent::WtEvent {
+            method: "tab_renamed".into(),
+            pane_id: String::new(),
+            tab_id: None,
+            params: json!({
+                "old_tab_id": tab,
+                "new_tab_id": tab,
+                "window_id": window,
+            }),
+        });
+        assert_eq!(app.window_id.as_deref(), Some(expected));
+        assert_eq!(app.owner_tab_id.as_deref(), Some("kept-tab"));
+        assert_eq!(app.tab_id.as_deref(), Some("kept-tab"));
+        assert_eq!(app.tab_sessions.len(), tab_count);
+        assert_eq!(app.session_to_tab["acp-session"], "kept-tab");
+    }
+}
+
 // ─── load_session owner_tab_id filter ───────────────────────────────────
 //
 // WT broadcasts `load_session` over shared COM, so every helper in every

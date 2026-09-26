@@ -6532,7 +6532,9 @@ impl App {
     /// re-projection so the bottom-bar autofix snapshot, agent-pane view,
     /// and pane_open flag are republished under the new identity.
     ///
-    /// No-op when `new_tab_id == old_tab_id`. If the old tab id is unknown,
+    /// An unchanged tab id can still move to another window after keep-running
+    /// restore; update the owner's window without rekeying its ACP session.
+    /// If the old tab id is unknown,
     /// still updates `self.tab_id` when it pointed there — this defends
     /// against a missed `tab_changed` race where WTA's view of the active
     /// tab and tab_sessions disagree.
@@ -6543,6 +6545,21 @@ impl App {
         new_window_id: Option<&str>,
     ) {
         if old_tab_id == new_tab_id {
+            if self.owner_tab_id.as_deref() == Some(old_tab_id) {
+                if let Some(window_id) = new_window_id.filter(|id| !id.is_empty()) {
+                    if self.window_id.as_deref() != Some(window_id) {
+                        tracing::info!(
+                            target: "helper",
+                            tab_id = old_tab_id,
+                            old_window_id = ?self.window_id,
+                            new_window_id = window_id,
+                            "restored kept tab in another window"
+                        );
+                        self.window_id = Some(window_id.to_string());
+                        self.project_active_tab_state();
+                    }
+                }
+            }
             tracing::debug!(
                 target: "helper",
                 old_tab_id,

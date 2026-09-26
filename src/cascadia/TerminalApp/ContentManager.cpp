@@ -4,6 +4,7 @@
 #include "pch.h"
 #include "ContentManager.h"
 #include "ContentManager.g.cpp"
+#include "TerminalPage.h"
 
 #include <wil/token_helpers.h>
 #include <json/json.h>
@@ -64,7 +65,12 @@ namespace winrt::TerminalApp::implementation
                 std::lock_guard lock{ _mutex };
                 _content.erase(contentId);
             }
-            _QueueReap();
+            LOG_HR_IF(E_ABORT, !_dispatcher.TryEnqueue([weak = get_weak(), contentId]() {
+                if (const auto self = weak.get())
+                {
+                    self->_agentBindings.erase(contentId);
+                }
+            }));
         }
     }
 
@@ -73,36 +79,11 @@ namespace winrt::TerminalApp::implementation
         THROW_HR_IF(RPC_E_WRONG_THREAD, !_dispatcher || !_dispatcher.HasThreadAccess());
     }
 
-    bool ContentManager::CanKeepRunning(const uint64_t contentId)
-    {
-        _CheckThread();
-        const auto policy = _panePolicies.find(contentId);
-        const auto content = TryLookupCore(contentId);
-        const auto connection = content ? content.Core().Connection() : nullptr;
-        return policy != _panePolicies.end() && !policy->second.agentSessionId.empty() &&
-               connection && connection.State() == ConnectionState::Connected;
-    }
-
-    bool ContentManager::IsKeepRunning(const uint64_t contentId)
-    {
-        _CheckThread();
-        const auto policy = _panePolicies.find(contentId);
-        return policy != _panePolicies.end() && policy->second.keepRunning && CanKeepRunning(contentId);
-    }
-
-    void ContentManager::SetKeepRunning(const uint64_t contentId, const bool enabled)
-    {
-        _CheckThread();
-        THROW_HR_IF(E_INVALIDARG, !TryLookupCore(contentId) || IsKeptContent(contentId));
-        THROW_HR_IF(E_ILLEGAL_METHOD_CALL, enabled && !CanKeepRunning(contentId));
-        _panePolicies[contentId].keepRunning = enabled;
-    }
-
     winrt::hstring ContentManager::AgentSessionEvent(const uint64_t contentId)
     {
         _CheckThread();
-        const auto it = _panePolicies.find(contentId);
-        return it == _panePolicies.end() ? winrt::hstring{} : it->second.eventJson;
+        const auto it = _agentBindings.find(contentId);
+        return it == _agentBindings.end() ? winrt::hstring{} : it->second.eventJson;
     }
 
     void ContentManager::OnPaneAgentSessionChanged(const winrt::hstring& eventJson)
@@ -158,103 +139,30 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
-        auto& policy = _panePolicies[contentId];
+        auto& policy = _agentBindings[contentId];
         if (ended)
         {
             if (agentSessionId.empty() || agentSessionId == policy.agentSessionId)
             {
-                // Ending the CLI cancels future detachment, not an already-kept shell.
                 policy = {};
             }
         }
         else if (!(prompt && agent == L"copilot" && !policy.agentSessionId.empty()))
         {
-            if (policy.agentSessionId != agentSessionId)
-            {
-                policy.keepRunning = false;
-            }
             policy.agentSessionId = agentSessionId;
             policy.eventJson = eventJson;
         }
     }
 
-    bool ContentManager::DetachForKeepRunning(const winrt::guid& groupId, const winrt::hstring& title, const NewTerminalArgs& args, const TermControl& control)
+    void ContentManager::KeepTab(const winrt::TerminalApp::TerminalPage& owner, const winrt::TerminalApp::Tab& tab)
     {
         _CheckThread();
-        THROW_HR_IF(E_INVALIDARG, groupId == winrt::guid{} || !args || !control);
-        const auto contentId = control.ContentId();
-        if (!IsKeepRunning(contentId))
-        {
-            return false;
-        }
-        THROW_HR_IF(E_ILLEGAL_METHOD_CALL, IsKeptContent(contentId));
-        const auto content = TryLookupCore(contentId);
-        auto copiedArgs = args.Copy().as<NewTerminalArgs>();
-        copiedArgs.ContentId(contentId);
-        const auto sessionId = control.Connection().SessionId();
-        copiedArgs.SessionId(sessionId);
-        KeptPane pane;
-        pane.contentId = contentId;
-        pane.sessionId = sessionId;
-        pane.args = std::move(copiedArgs);
-        pane.stateChanged = content.Core().ConnectionStateChanged(winrt::auto_revoke, [weak = get_weak()](auto&&, auto&&) {
-            if (const auto self = weak.get())
-            {
-                self->_QueueReap();
-            }
-        });
-        pane.vtSequence = content.Core().VtSequenceReceived(winrt::auto_revoke, [weak = get_weak(), dispatcher = _dispatcher, sessionId, contentId](auto&&, const winrt::hstring& sequence) {
-            if (!std::wstring_view{ sequence }.starts_with(L"AgentEvent;"))
-            {
-                return;
-            }
-            LOG_HR_IF(E_ABORT, !dispatcher.TryEnqueue([weak, sessionId, contentId, sequence]() {
-                if (const auto self = weak.get())
-                {
-                    try
-                    {
-                        const ControlInteractivity liveContent{ self->TryLookupCore(contentId) };
-                        if (!liveContent || liveContent.Core().ConnectionState() >= ConnectionState::Closed)
-                        {
-                            return;
-                        }
-                        Json::Value params;
-                        Json::CharReaderBuilder reader;
-                        std::string errors;
-                        std::istringstream stream{ winrt::to_string(sequence).substr(11) };
-                        THROW_HR_IF(E_INVALIDARG, !Json::parseFromStream(reader, stream, &params, &errors) || !params.isObject());
-                        params["pane_id"] = winrt::to_string(::Microsoft::Console::Utils::GuidToPlainString(sessionId));
-                        Json::Value event;
-                        event["method"] = "agent_event";
-                        event["params"] = std::move(params);
-                        const auto json = winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, event));
-                        self->OnPaneAgentSessionChanged(json);
-                        self->DetachedSessionEvent.raise(*self, json);
-                    }
-                    CATCH_LOG()
-                }
-            }));
-        });
-        auto [it, inserted] = _keptGroups.try_emplace(groupId);
-        auto& group = it->second;
-        THROW_HR_IF(E_ILLEGAL_METHOD_CALL, group.restoring);
-        auto rollback = wil::scope_exit([&]() noexcept {
-            if (inserted)
-            {
-                _keptGroups.erase(groupId);
-            }
-        });
-        if (inserted)
-        {
-            group.title = title;
-            group.lease = SharedWta::Instance().AcquireKeepRunningLease();
-        }
-        group.panes.reserve(group.panes.size() + 1);
-        control.Detach();
-        group.panes.emplace_back(std::move(pane));
-        rollback.release();
+        THROW_HR_IF(E_INVALIDARG, !owner || !tab);
+        const auto impl = winrt::get_self<Tab>(tab);
+        const winrt::guid id{ impl->StableId() };
+        THROW_HR_IF(E_ILLEGAL_METHOD_CALL, !impl->KeepRunning() || _keptGroups.contains(id));
+        _keptGroups.emplace(id, KeptGroup{ owner, tab, false, SharedWta::Instance().AcquireKeepRunningLease() });
         _NotifyKeptSessionsChanged();
-        return true;
     }
 
     bool ContentManager::IsKeptContent(const uint64_t contentId)
@@ -262,12 +170,13 @@ namespace winrt::TerminalApp::implementation
         _CheckThread();
         for (const auto& [id, group] : _keptGroups)
         {
-            for (const auto& pane : group.panes)
+            const auto root = winrt::get_self<Tab>(group.tab)->GetRootPane();
+            if (root && root->WalkTree([&](const auto& pane) -> std::shared_ptr<Pane> {
+                    const auto control = pane->GetTerminalControl();
+                    return control && control.ContentId() == contentId ? pane : nullptr;
+                }))
             {
-                if (pane.contentId == contentId)
-                {
-                    return true;
-                }
+                return true;
             }
         }
         return false;
@@ -276,40 +185,66 @@ namespace winrt::TerminalApp::implementation
     bool ContentManager::HasKeptSessions()
     {
         _CheckThread();
-        _ReapClosedSessions();
         return !_keptGroups.empty();
     }
 
     winrt::Windows::Foundation::Collections::IMapView<winrt::guid, winrt::hstring> ContentManager::KeptGroups()
     {
         _CheckThread();
-        _ReapClosedSessions();
         auto result = winrt::single_threaded_map<winrt::guid, winrt::hstring>();
         for (const auto& [id, group] : _keptGroups)
         {
             if (!group.restoring)
             {
-                result.Insert(id, group.title);
+                result.Insert(id, group.tab.Title());
             }
         }
         return result.GetView();
     }
 
-    winrt::Windows::Foundation::Collections::IVectorView<NewTerminalArgs> ContentManager::BeginReattachKeptGroup(const winrt::guid& groupId)
+    winrt::Windows::Foundation::Collections::IVectorView<winrt::TerminalApp::TerminalPage> ContentManager::KeptPages()
     {
         _CheckThread();
-        _ReapClosedSessions();
+        std::vector<winrt::TerminalApp::TerminalPage> pages;
+        for (const auto& [id, group] : _keptGroups)
+        {
+            if (std::ranges::find(pages, group.owner) == pages.end())
+            {
+                pages.emplace_back(group.owner);
+            }
+        }
+        return winrt::single_threaded_vector(std::move(pages)).GetView();
+    }
+
+    winrt::Windows::Foundation::Collections::IVectorView<winrt::TerminalApp::Tab> ContentManager::KeptTabs(const winrt::TerminalApp::TerminalPage& owner)
+    {
+        _CheckThread();
+        std::vector<winrt::TerminalApp::Tab> tabs;
+        for (const auto& [id, group] : _keptGroups)
+        {
+            if (group.owner == owner)
+            {
+                tabs.emplace_back(group.tab);
+            }
+        }
+        return winrt::single_threaded_vector(std::move(tabs)).GetView();
+    }
+
+    winrt::TerminalApp::TerminalPage ContentManager::KeptGroupOwner(const winrt::guid& groupId)
+    {
+        _CheckThread();
+        const auto it = _keptGroups.find(groupId);
+        return it == _keptGroups.end() ? nullptr : it->second.owner;
+    }
+
+    winrt::TerminalApp::Tab ContentManager::BeginReattachKeptGroup(const winrt::guid& groupId)
+    {
+        _CheckThread();
         const auto it = _keptGroups.find(groupId);
         THROW_HR_IF(E_INVALIDARG, it == _keptGroups.end());
         THROW_HR_IF(E_ILLEGAL_METHOD_CALL, it->second.restoring);
-        std::vector<NewTerminalArgs> result;
-        for (const auto& pane : it->second.panes)
-        {
-            result.emplace_back(pane.args.Copy().as<NewTerminalArgs>());
-        }
-        const auto args = winrt::single_threaded_vector<NewTerminalArgs>(std::move(result)).GetView();
         it->second.restoring = true;
-        return args;
+        return it->second.tab;
     }
 
     void ContentManager::CompleteKeptGroupReattach(const winrt::guid& groupId, const bool committed)
@@ -328,32 +263,8 @@ namespace winrt::TerminalApp::implementation
         else
         {
             it->second.restoring = false;
-            _ReapClosedSessions();
         }
         _NotifyKeptSessionsChanged();
-    }
-
-    void ContentManager::_CloseKeptPane(KeptPane pane)
-    {
-        pane.stateChanged.revoke();
-        pane.vtSequence.revoke();
-        const auto content = TryLookupCore(pane.contentId);
-        const auto connection = content ? content.Core().Connection() : nullptr;
-        Json::Value event;
-        event["method"] = "connection_state";
-        event["params"]["pane_id"] = winrt::to_string(::Microsoft::Console::Utils::GuidToPlainString(pane.sessionId));
-        event["params"]["state"] = connection && connection.State() == ConnectionState::Failed ? "failed" : "closed";
-        _panePolicies.erase(pane.contentId);
-        // Publish while a group's lease still keeps the master listening.
-        try
-        {
-            DetachedSessionEvent.raise(*this, winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, event)));
-        }
-        CATCH_LOG()
-        if (content)
-        {
-            content.Close();
-        }
     }
 
     void ContentManager::DiscardKeptGroup(const winrt::guid& groupId)
@@ -362,81 +273,24 @@ namespace winrt::TerminalApp::implementation
         const auto it = _keptGroups.find(groupId);
         THROW_HR_IF(E_INVALIDARG, it == _keptGroups.end());
         THROW_HR_IF(E_ILLEGAL_METHOD_CALL, it->second.restoring);
-        auto group = std::move(it->second);
-        _keptGroups.erase(it);
-        for (auto& pane : group.panes)
+        it->second.restoring = true;
+        const auto owner = it->second.owner;
+        const auto tab = it->second.tab;
+        try
         {
-            _CloseKeptPane(std::move(pane));
+            const auto page = winrt::get_self<TerminalPage>(owner);
+            const auto impl = winrt::get_self<Tab>(tab);
+            page->_NotifyPanesClosing(impl->GetRootPane());
+            page->_NotifyAgentTabClosed(impl->StableId());
         }
-        group.lease.Retire();
-        _NotifyKeptSessionsChanged();
-    }
-
-    void ContentManager::_QueueReap()
-    {
-        LOG_HR_IF(E_ABORT, !_dispatcher || !_dispatcher.TryEnqueue([weak = get_weak()]() {
-            if (const auto self = weak.get())
-            {
-                try
-                {
-                    self->_ReapClosedSessions();
-                }
-                CATCH_LOG()
-            }
-        }));
-    }
-
-    void ContentManager::_ReapClosedSessions()
-    {
-        _CheckThread();
-        std::vector<KeptPane> closed;
-        std::vector<SharedWtaLease> leases;
-        for (auto group = _keptGroups.begin(); group != _keptGroups.end();)
-        {
-            // A restore owns the borrowed controls until its synchronous commit/rollback.
-            if (group->second.restoring)
-            {
-                ++group;
-                continue;
-            }
-            auto& panes = group->second.panes;
-            for (auto pane = panes.begin(); pane != panes.end();)
-            {
-                const auto content = TryLookupCore(pane->contentId);
-                const auto connection = content ? content.Core().Connection() : nullptr;
-                if (!connection || connection.State() >= ConnectionState::Closed)
-                {
-                    closed.emplace_back(std::move(*pane));
-                    pane = panes.erase(pane);
-                }
-                else
-                {
-                    ++pane;
-                }
-            }
-            if (panes.empty())
-            {
-                leases.emplace_back(std::move(group->second.lease));
-                group = _keptGroups.erase(group);
-            }
-            else
-            {
-                ++group;
-            }
-        }
-        for (auto& pane : closed)
-        {
-            _CloseKeptPane(std::move(pane));
-        }
-        for (auto& lease : leases)
-        {
-            lease.Retire();
-        }
-        std::erase_if(_panePolicies, [&](const auto& entry) { return !TryLookupCore(entry.first); });
-        if (!closed.empty())
-        {
+        CATCH_LOG()
+        auto group = std::move(_keptGroups.at(groupId));
+        _keptGroups.erase(groupId);
+        const auto notify = wil::scope_exit([&]() noexcept {
+            group.lease.Retire();
             _NotifyKeptSessionsChanged();
-        }
+        });
+        group.tab.Shutdown();
     }
 
     void ContentManager::_NotifyKeptSessionsChanged() noexcept

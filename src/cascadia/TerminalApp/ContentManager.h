@@ -42,16 +42,16 @@ namespace winrt::TerminalApp::implementation
 
         void Detach(const Microsoft::Terminal::Control::TermControl& control);
 
-        bool CanKeepRunning(uint64_t contentId);
-        bool IsKeepRunning(uint64_t contentId);
-        void SetKeepRunning(uint64_t contentId, bool enabled);
         void OnPaneAgentSessionChanged(const winrt::hstring& eventJson);
         winrt::hstring AgentSessionEvent(uint64_t contentId);
-        bool DetachForKeepRunning(const winrt::guid& groupId, const winrt::hstring& title, const Microsoft::Terminal::Settings::Model::NewTerminalArgs& args, const Microsoft::Terminal::Control::TermControl& control);
+        void KeepTab(const winrt::TerminalApp::TerminalPage& owner, const winrt::TerminalApp::Tab& tab);
         bool HasKeptSessions();
         bool IsKeptContent(uint64_t contentId);
         winrt::Windows::Foundation::Collections::IMapView<winrt::guid, winrt::hstring> KeptGroups();
-        winrt::Windows::Foundation::Collections::IVectorView<Microsoft::Terminal::Settings::Model::NewTerminalArgs> BeginReattachKeptGroup(const winrt::guid& groupId);
+        winrt::Windows::Foundation::Collections::IVectorView<winrt::TerminalApp::TerminalPage> KeptPages();
+        winrt::Windows::Foundation::Collections::IVectorView<winrt::TerminalApp::Tab> KeptTabs(const winrt::TerminalApp::TerminalPage& owner);
+        winrt::TerminalApp::TerminalPage KeptGroupOwner(const winrt::guid& groupId);
+        winrt::TerminalApp::Tab BeginReattachKeptGroup(const winrt::guid& groupId);
         void CompleteKeptGroupReattach(const winrt::guid& groupId, bool committed);
         void DiscardKeptGroup(const winrt::guid& groupId);
 
@@ -62,37 +62,24 @@ namespace winrt::TerminalApp::implementation
         std::mutex _mutex;
         std::unordered_map<uint64_t, Microsoft::Terminal::Control::ControlInteractivity> _content;
 
-        // Runtime policy follows the content through tab/pane moves, not its XAML control.
-        struct PanePolicy
+        struct AgentBinding
         {
             winrt::hstring agentSessionId;
             winrt::hstring eventJson;
-            bool keepRunning{ false };
-        };
-        struct KeptPane
-        {
-            uint64_t contentId{};
-            winrt::guid sessionId{};
-            Microsoft::Terminal::Settings::Model::NewTerminalArgs args{ nullptr };
-            Microsoft::Terminal::Control::ControlCore::ConnectionStateChanged_revoker stateChanged;
-            Microsoft::Terminal::Control::ControlCore::VtSequenceReceived_revoker vtSequence;
         };
         struct KeptGroup
         {
-            winrt::hstring title;
+            winrt::TerminalApp::TerminalPage owner{ nullptr };
+            winrt::TerminalApp::Tab tab{ nullptr };
             bool restoring{ false };
-            std::vector<KeptPane> panes;
             SharedWtaLease lease;
         };
-        // Policy and detached metadata belong to the process-lifetime UI dispatcher.
-        // Connection callbacks only enqueue work; they never destroy XAML-bound args.
+        // All windows share this dispatcher. Retaining the tab and its event owner
+        // preserves the live pane tree, helper lifetime and background protocol routing.
         winrt::Windows::System::DispatcherQueue _dispatcher{ winrt::Windows::System::DispatcherQueue::GetForCurrentThread() };
-        std::unordered_map<uint64_t, PanePolicy> _panePolicies;
+        std::unordered_map<uint64_t, AgentBinding> _agentBindings;
         std::unordered_map<winrt::guid, KeptGroup> _keptGroups;
         void _CheckThread() const;
-        void _QueueReap();
-        void _ReapClosedSessions();
-        void _CloseKeptPane(KeptPane pane);
         void _NotifyKeptSessionsChanged() noexcept;
 
         void _closedHandler(const winrt::Windows::Foundation::IInspectable& sender,
