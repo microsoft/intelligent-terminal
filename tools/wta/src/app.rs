@@ -705,7 +705,32 @@ pub fn route_agent_event_to_registry(
     pane_session_id: &str,
     params: &serde_json::Value,
 ) -> bool {
-    route_agent_event_to_registry_with_hook_sink(reg, pane_session_id, params, |_| {})
+    route_agent_event_to_registry_scoped(reg, pane_session_id, params, None)
+}
+
+pub fn route_agent_event_to_registry_scoped(
+    reg: &mut crate::agent_sessions::AgentSessionRegistry,
+    pane_session_id: &str,
+    params: &serde_json::Value,
+    origin_scope: Option<&crate::agent_pane_origin::OriginScope>,
+) -> bool {
+    route_agent_event_to_registry_with_scope_and_hook_sink(
+        reg,
+        pane_session_id,
+        params,
+        origin_scope,
+        |_| {},
+    )
+}
+
+fn session_removed_matches_scope(
+    params: &crate::session_registry::SessionRemovedParams,
+    agent_id: &str,
+    location: &crate::agent_sessions::SessionLocation,
+) -> bool {
+    params.history_key.as_ref().is_none_or(|key| {
+        key.provider_id.eq_ignore_ascii_case(agent_id) && &key.location == location
+    })
 }
 
 /// As [`route_agent_event_to_registry`], but reports every event it applied.
@@ -714,6 +739,25 @@ pub fn route_agent_event_to_registry_with_hook_sink<F>(
     reg: &mut crate::agent_sessions::AgentSessionRegistry,
     pane_session_id: &str,
     params: &serde_json::Value,
+    mut hook_sink: F,
+) -> bool
+where
+    F: FnMut(crate::agent_sessions::SessionEvent),
+{
+    route_agent_event_to_registry_with_scope_and_hook_sink(
+        reg,
+        pane_session_id,
+        params,
+        None,
+        &mut hook_sink,
+    )
+}
+
+fn route_agent_event_to_registry_with_scope_and_hook_sink<F>(
+    reg: &mut crate::agent_sessions::AgentSessionRegistry,
+    pane_session_id: &str,
+    params: &serde_json::Value,
+    origin_scope: Option<&crate::agent_pane_origin::OriginScope>,
     mut hook_sink: F,
 ) -> bool
 where
@@ -845,8 +889,11 @@ where
     // event) rather than caching, to stay correct after a new session
     // is created while wta is already running.
     if !key_for_refresh.is_empty() {
-        let agent_pane_keys = crate::agent_pane_origin::load_default_set();
-        if agent_pane_keys.contains(&key_for_refresh) {
+        if origin_scope.is_some_and(|scope| {
+            scope.row_key(&key_for_refresh).is_some_and(|key| {
+                crate::agent_pane_origin::load_default_index().contains_key(&key)
+            })
+        }) {
             reg.set_origin(
                 &key_for_refresh,
                 crate::agent_sessions::SessionOrigin::AgentPane,
@@ -2928,7 +2975,8 @@ impl App {
     /// CLI's own resume flag/verb.
     fn activate_agent_session_routed(&mut self, s: &crate::agent_sessions::AgentSession) {
         use crate::session_mgmt::{
-            decide_enter_action, liveness_from_status, EnterAction, NotResumableReason, RowSnapshot,
+            decide_enter_action, liveness_from_status, EnterAction, LoadSessionCapability,
+            NotResumableReason, RowSnapshot,
         };
         // Ambient: load_session capability is set during ACP init;
         // resume-flag support is a per-CLI profile constant — true for
@@ -2942,12 +2990,25 @@ impl App {
                 .is_empty(),
             None => false,
         };
+        let selected_agent_id = known_cli_id(&s.cli_source);
+        let targets_current_agent = selected_agent_id
+            .is_some_and(|id| id.eq_ignore_ascii_case(&self.current_agent_id))
+            && s.location == self.current_agent_source.session_location();
+        let load_session_capability = if targets_current_agent {
+            if self.agent_supports_load_session {
+                LoadSessionCapability::Supported
+            } else {
+                LoadSessionCapability::Unsupported
+            }
+        } else {
+            LoadSessionCapability::Unknown
+        };
         let row = RowSnapshot {
             origin: s.origin.clone(),
             liveness: liveness_from_status(&s.status, s.pane_session_id.clone()),
             key: s.key.clone(),
             cli_source: s.cli_source.clone(),
-            load_session_supported: self.agent_supports_load_session,
+            load_session_capability,
             cli_supports_resume_flag,
             is_wsl: s.location.is_wsl(),
         };
@@ -2981,8 +3042,7 @@ impl App {
                 self.dispatch_focus_pane(&pane_session_id, &s.key);
             }
             EnterAction::ResumeInAgentPane { .. } => {
-                // dispatch_resume_in_agent_pane owns the loadSession
-                // capability gate (also re-checked),
+                // dispatch_resume_in_agent_pane owns target validation,
                 // optimistic ResumeDispatched, and emit
                 // resume_in_new_agent_tab to WT.
                 self.dispatch_resume_in_agent_pane(s);
@@ -3075,6 +3135,20 @@ impl App {
     ///      Host resumes also publish the known agent/session/pane identity to
     ///      Terminal's persistence map, independently of CLI hooks or banners.
     fn dispatch_resume(&mut self, s: &crate::agent_sessions::AgentSession) {
+        let Some(window_id) = self
+            .window_id
+            .as_deref()
+            .and_then(|value| value.parse::<u64>().ok())
+            .filter(|value| *value != 0)
+        else {
+            tracing::warn!(
+                target: "agents_view",
+                key = %s.key,
+                window_id = ?self.window_id,
+                "dispatch_resume: missing or invalid owner window id",
+            );
+            return;
+        };
         let cli_id = match known_cli_id(&s.cli_source) {
             Some(id) => id,
             None => {
@@ -3114,11 +3188,32 @@ impl App {
         //     found"). A login shell sources the profile that adds it.
         let login_invocation = format!("bash -lc \"{resume_invocation}\"");
         let commandline = match &s.location {
-            crate::agent_sessions::SessionLocation::Wsl { distro } => match linux_cwd_arg(&s.cwd) {
-                Some(cwd) => format!("wsl -d {distro} --cd \"{cwd}\" -- {login_invocation}"),
-                None => format!("wsl -d {distro} -- {login_invocation}"),
-            },
+            crate::agent_sessions::SessionLocation::Wsl { distro } => {
+                let distro = distro.trim();
+                if distro.is_empty() {
+                    tracing::warn!(
+                        target: "agents_view",
+                        key = %s.key,
+                        "dispatch_resume: WSL session has an empty distro",
+                    );
+                    return;
+                }
+                match linux_cwd_arg(&s.cwd) {
+                    Some(cwd) => {
+                        format!("wsl -d {distro} --cd \"{cwd}\" -- {login_invocation}")
+                    }
+                    None => format!("wsl -d {distro} -- {login_invocation}"),
+                }
+            }
             crate::agent_sessions::SessionLocation::Host => resume_invocation,
+            crate::agent_sessions::SessionLocation::Unknown => {
+                tracing::warn!(
+                    target: "agents_view",
+                    key = %s.key,
+                    "dispatch_resume: session location is unknown",
+                );
+                return;
+            }
         };
 
         // Per-CLI session stores are keyed by an encoding of the *current*
@@ -3185,10 +3280,13 @@ impl App {
             crate::agent_sessions::SessionLocation::Host => {
                 format!("Resuming {cli_id} session {short_key}...")
             }
+            crate::agent_sessions::SessionLocation::Unknown => return,
         };
         let launch_commandline = format!("cmd /c echo \x1b[2;37m{banner}\x1b[0m && {commandline}");
         let mut argv = vec![
             "new-tab".to_string(),
+            "--window-id".to_string(),
+            window_id.to_string(),
             "-c".to_string(),
             launch_commandline.clone(),
         ];
@@ -3304,45 +3402,52 @@ impl App {
             "dispatch_resume_in_agent_pane: Enter on row",
         );
 
-        // Capability gate. ACP's `session/load` is opt-in (initialize
-        // advertises `agentCapabilities.loadSession: bool`). Without it
-        // the agent will reject the call — and we'd burn a new WT tab
-        // to land on an error message. Short-circuit here instead and
-        // keep the session management view focused so the user can
-        // press plain Enter to fall back to the split-pane resume path.
-        if !self.agent_supports_load_session {
-            let agent: String = if self.agent_name.is_empty() {
-                t!("system.fallback.connected_agent").into_owned()
-            } else {
-                self.agent_name.clone()
-            };
-            let msg = t!(
-                "system.cannot_resume_no_load_session",
-                agent = agent.as_str()
-            )
-            .into_owned();
+        let Some(window_id) = self
+            .window_id
+            .as_deref()
+            .and_then(|value| value.parse::<u64>().ok())
+            .filter(|value| *value != 0)
+        else {
             tracing::warn!(
                 target: "agents_view",
                 key = %s.key,
-                agent = %self.agent_name,
-                "dispatch_resume_in_agent_pane: agent does not support loadSession",
+                window_id = ?self.window_id,
+                "dispatch_resume_in_agent_pane: missing or invalid owner window id",
             );
-            let tab = self.current_tab_mut();
-            tab.messages.push(ChatMessage::warning(msg));
-            tab.scroll_to_bottom();
-            #[cfg(test)]
-            {
-                self.last_dispatched_command = Some(DispatchedCommand {
-                    kind: DispatchedCommandKind::ResumeInAgentPane,
-                    session_id: Some(s.key.clone()),
-                    argv: vec![
-                        "resume_in_new_agent_tab".to_string(),
-                        "--unsupported".to_string(),
-                    ],
-                });
-            }
             return;
-        }
+        };
+        let Some(agent_id) = known_cli_id(&s.cli_source) else {
+            tracing::warn!(
+                target: "agents_view",
+                key = %s.key,
+                cli = ?s.cli_source,
+                "dispatch_resume_in_agent_pane: selected provider is not resumable",
+            );
+            return;
+        };
+        let (agent_source, wsl_distro) = match &s.location {
+            crate::agent_sessions::SessionLocation::Host => ("host", None),
+            crate::agent_sessions::SessionLocation::Wsl { distro } => {
+                let distro = distro.trim();
+                if distro.is_empty() {
+                    tracing::warn!(
+                        target: "agents_view",
+                        key = %s.key,
+                        "dispatch_resume_in_agent_pane: WSL session has an empty distro",
+                    );
+                    return;
+                }
+                ("wsl", Some(distro))
+            }
+            crate::agent_sessions::SessionLocation::Unknown => {
+                tracing::warn!(
+                    target: "agents_view",
+                    key = %s.key,
+                    "dispatch_resume_in_agent_pane: session location is unknown",
+                );
+                return;
+            }
+        };
 
         let key = s.key.clone();
         let raw_cwd_string = s.cwd.to_string_lossy().to_string();
@@ -3369,6 +3474,24 @@ impl App {
             "session_id".to_string(),
             serde_json::Value::String(key.clone()),
         );
+        params.insert(
+            "window_id".to_string(),
+            serde_json::Value::String(window_id.to_string()),
+        );
+        params.insert(
+            "agent_id".to_string(),
+            serde_json::Value::String(agent_id.to_string()),
+        );
+        params.insert(
+            "agent_source".to_string(),
+            serde_json::Value::String(agent_source.to_string()),
+        );
+        if let Some(distro) = wsl_distro {
+            params.insert(
+                "wsl_distro".to_string(),
+                serde_json::Value::String(distro.to_string()),
+            );
+        }
         if !cwd_string.is_empty() {
             params.insert(
                 "cwd".to_string(),
@@ -3392,6 +3515,8 @@ impl App {
         {
             let mut argv = vec![
                 "resume_in_new_agent_tab".to_string(),
+                "--window-id".to_string(),
+                window_id.to_string(),
                 "--session-id".to_string(),
                 s.key.clone(),
             ];

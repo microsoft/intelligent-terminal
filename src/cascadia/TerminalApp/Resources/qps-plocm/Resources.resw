@@ -177,6 +177,112 @@
   <data name="TabCloseAfter" xml:space="preserve">
     <value>Ċĺοşέ ţаъş ťό ŧђé яΐğђт !!! !!! </value>
   </data>
+  <data name="TabCloseBelow" xml:space="preserve">
+    <value>Ċĺőѕé ťªвѕ вéĺőŵ !!! !!!</value>
+  </data>
+  <data name="VerticalTabsCollapsePane" xml:space="preserve">
+    <value>Ċőĺĺªρѕé ťªвѕ ρªñé !!! !!!</value>
+  </data>
+  <data name="VerticalTabsExpandPane" xml:space="preserve">
+    <value>É×ρªñđ ťªвѕ ρªñé !!! !!!</value>
+  </data>
+  <data name="VerticalTabsHeader.Text" xml:space="preserve">
+    <value>Ťªвѕ !!!</value>
+  </data>
+  <data name="VerticalTabsSearchButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Ѕéªяċħ ťªвѕ !!!</value>
+  </data>
+  <data name="VerticalTabsSearchButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Ѕéªяċħ ťªвѕ !!!</value>
+  </data>
+  <data name="VerticalTabsSearchBox.PlaceholderText" xml:space="preserve">
+    <value>Ѕéªяċħ ťªвѕ !!!</value>
+  </data>
+  <data name="VerticalTabsSearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Ѕéªяċħ ťªвѕ !!!</value>
+  </data>
+  <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>₣ĭĺťéя ťªвѕ !!!</value>
+  </data>
+  <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>₣ĭĺťéя ťªвѕ !!!</value>
+  </data>
+  <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
+    <value>Āĺĺ ťªвѕ !!!</value>
+  </data>
+  <data name="VerticalTabsFilterAgentsOnly.Text" xml:space="preserve">
+    <value>Āğéñťѕ őñĺý !!!</value>
+  </data>
+  <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
+    <value>Ѕħőŵĭñğ 1 ªğéñť ѕéѕѕĭőñ !!! !!!</value>
+  </data>
+  <data name="VerticalTabsFilterStatusPlural" xml:space="preserve">
+    <value>Ѕħőŵĭñğ {0} ªğéñť ѕéѕѕĭőñѕ !!! !!!</value>
+  </data>
+  <data name="VerticalTabsFilterCurrentHidden.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Ċūяяéñť ťªв ĭѕ ħĭđđéñ вý ťħĭѕ ƒĭĺťéя !!! !!! !!! !!!</value>
+  </data>
+  <data name="VerticalTabsFilterCurrentHidden.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Ċūяяéñť ťªв ĭѕ ħĭđđéñ вý ťħĭѕ ƒĭĺťéя !!! !!! !!! !!!</value>
+  </data>
+  <data name="VerticalTabsFilterShowAll.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Ѕħőŵ ªĺĺ ťªвѕ !!! !!!</value>
+  </data>
+  <data name="VerticalTabsFilterShowAll.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Ѕħőŵ ªĺĺ ťªвѕ !!! !!!</value>
+  </data>
+  <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Āğéñť ħĭѕťőяý !!!</value>
+  </data>
+  <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Āğéñť ħĭѕťőяý !!!</value>
+  </data>
+  <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
+    <value>Āğéñť ħĭѕťőяý !!!</value>
+  </data>
+  <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Ċĺőѕé ªğéñť ħĭѕťőяý !!! !!!</value>
+  </data>
+  <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Ċĺőѕé ªğéñť ħĭѕťőяý !!! !!!</value>
+  </data>
+  <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
+    <value>Ѕéªяċħ ªğéñť ħĭѕťőяý !!! !!!</value>
+  </data>
+  <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Ѕéªяċħ ªğéñť ħĭѕťőяý !!! !!!</value>
+  </data>
+  <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
+    <value>Ñő ªğéñť ѕéѕѕĭőñѕ ƒőūñđ. !!! !!!</value>
+  </data>
+  <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
+    <value>Ñő мªťċħĭñğ ªğéñť ѕéѕѕĭőñѕ. !!! !!!</value>
+  </data>
+  <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
+    <value>Ūñªвĺé ťő ĺőªđ ªğéñť ħĭѕťőяý. !!! !!! !!!</value>
+  </data>
+  <data name="VerticalTabsHistoryInvalidResponse" xml:space="preserve">
+    <value>Āğéñť ħĭѕťőяý яéťūяñéđ ªñ ĭñνªĺĭđ яéѕρőñѕé. !!! !!! !!!</value>
+  </data>
+  <data name="VerticalTabsHistoryActivationError" xml:space="preserve">
+    <value>Ūñªвĺé ťő ªċťĭνªťé ťħé ѕéĺéċťéđ ѕéѕѕĭőñ. !!! !!! !!!</value>
+  </data>
+  <data name="VerticalTabsHistoryLiveAgentTitleFormat" xml:space="preserve">
+    <value>{0} ªğéñť ѕéѕѕĭőñ !!! !!!</value>
+    <comment>History row title for a live agent-pane session whose provider did not supply a conversation title. {0} is the provider display name.</comment>
+  </data>
+  <data name="CompactNewTabButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Ñéŵ ťªв !!!</value>
+  </data>
+  <data name="CompactNewTabButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Ñéŵ ťªв !!!</value>
+  </data>
+  <data name="CompactNewTabMenuButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Ñéŵ ťªв мéñū !!! !!!</value>
+  </data>
+  <data name="CompactNewTabMenuButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Ñéŵ ťªв мéñū !!! !!!</value>
+  </data>
   <data name="TabCloseOther" xml:space="preserve">
     <value>Ćĺόѕ℮ őтђèř ŧâьś !!! !</value>
   </data>
@@ -828,6 +934,18 @@
   <data name="FindText" xml:space="preserve">
     <value>₣ìпđ !</value>
   </data>
+  <data name="SwitchToHorizontalTabsText" xml:space="preserve">
+    <value>Ѕŵĭťċħ ťő ħőяĭžőñťªĺ ťªвѕ !!! !!!</value>
+  </data>
+  <data name="SwitchToHorizontalTabsToolTip" xml:space="preserve">
+    <value>Ūѕé ħőяĭžőñťªĺ ťªвѕ ĭñ ªĺĺ Ťéямĭñªĺ ŵĭñđőŵѕ !!! !!! !!! !!!</value>
+  </data>
+  <data name="SwitchToVerticalTabsText" xml:space="preserve">
+    <value>Ѕŵĭťċħ ťő νéяťĭċªĺ ťªвѕ !!! !!!</value>
+  </data>
+  <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
+    <value>Ūѕé νéяťĭċªĺ ťªвѕ ĭñ ªĺĺ Ťéямĭñªĺ ŵĭñđőŵѕ !!! !!! !!! !!!</value>
+  </data>
   <data name="CloseOnExitInfoBar.Message" xml:space="preserve">
     <value>Ťéямїлâŧîόň ь℮ћäνįőř čªή вĕ ċοñƒĩġџřèδ įŋ ăδνåл¢êð ряòƒιļє şėŧтіиĝś. !!! !!! !!! !!! !!! !!! !!</value>
   </data>
@@ -890,6 +1008,9 @@
   </data>
   <data name="TabCloseAfterToolTip" xml:space="preserve">
     <value>Сłǿśе ǻĺľ τăвś ţô ŧн℮ яîĝħť őƒ τђїş тάв !!! !!! !!! !!!</value>
+  </data>
+  <data name="TabCloseBelowToolTip" xml:space="preserve">
+    <value>Ċĺőѕé ªĺĺ ťªвѕ вéĺőŵ ťħĭѕ ťªв !!! !!! !!!</value>
   </data>
   <data name="TabCloseOtherToolTip" xml:space="preserve">
     <value>€ļόѕĕ ªŀŀ ŧáвѕ έ×ćèρт ŧнìş ŧåв !!! !!! !!!</value>

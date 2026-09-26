@@ -56,9 +56,10 @@
                   FontSize="12"
                   Glyph="&#xEC05;"
                   Visibility="{x:Bind TabStatus.IsInputBroadcastActive, Mode=OneWay}" />
-        <TextBlock x:Name="HeaderTextBlock"
-                   Text="{x:Bind Title, Mode=OneWay}"
-                   Visibility="Visible" />
+        <local:HighlightedTextControl x:Name="HeaderTextBlock"
+                                      SearchText="{x:Bind SearchText, Mode=OneWay}"
+                                      Text="{x:Bind Title, Mode=OneWay}"
+                                      Visibility="Visible" />
         <TextBox x:Name="HeaderRenamerTextBox"
                  Height="24"
                  MinHeight="0"

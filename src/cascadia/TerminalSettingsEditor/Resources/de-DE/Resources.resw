@@ -2997,4 +2997,8 @@ Alt+Shift+/ einen Prompt eingeben; Alt+Shift+B ohne anfänglichen Prompt starten
     <value>Entfernen</value>
     <comment>Tooltip for the X button that removes a custom agent from the agent list.</comment>
   </data>
+  <data name="Globals_TabLayout.HelpText" xml:space="preserve">
+    <value>Vertikale Tabs werden in einer größenveränderbaren Spalte auf der linken Seite des Fensters angezeigt. Änderungen werden sofort auf alle Terminal-Fenster angewendet.</value>
+    <comment>A description for what the &quot;tab layout&quot; setting does. Presented near &quot;Globals_TabLayout.Header&quot;.</comment>
+  </data>
 </root>

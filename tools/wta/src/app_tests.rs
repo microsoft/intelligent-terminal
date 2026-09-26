@@ -5,10 +5,39 @@
 //! this was an inline `mod tests { ... }` block.
 
 use super::*;
+use crate::agent_sessions::SessionLocation;
 use crate::app::tab_state::{collapsed_prompt_preview, PendingTerminalActionProposal};
 use crate::app_contracts::{PermOption, PlanEntry};
 use serde_json::json;
 use std::sync::Mutex;
+
+#[test]
+fn qualified_session_removal_only_demotes_matching_helper_scope() {
+    let params = crate::session_registry::SessionRemovedParams {
+        session_id: agent_client_protocol::schema::v1::SessionId::new("same-id"),
+        history_key: crate::session_registry::HistoryRowKey::new(
+            "claude",
+            SessionLocation::Wsl {
+                distro: "Ubuntu".to_string(),
+            },
+            "same-id",
+            None,
+        ),
+    };
+
+    assert!(session_removed_matches_scope(
+        &params,
+        "claude",
+        &SessionLocation::Wsl {
+            distro: "Ubuntu".to_string(),
+        }
+    ));
+    assert!(!session_removed_matches_scope(
+        &params,
+        "copilot",
+        &SessionLocation::Host
+    ));
+}
 
 /// Custom-agent preflight regression: when the user's `acpAgent` is a
 /// `custom:*` id, the preflight must NOT gate the TUI into Setup mode.
@@ -7459,6 +7488,8 @@ fn session_info_for_test(id: &str) -> crate::session_registry::SessionInfo {
     info.title = Some(id.to_string());
     info.status = Some(crate::agent_sessions::AgentStatus::Idle);
     info.cli_source = Some(crate::agent_sessions::CliSource::Claude);
+    info.provider_id = Some("claude".to_string());
+    info.location = crate::agent_sessions::SessionLocation::Host;
     info.last_activity_at_ms = Some(1);
     info
 }
@@ -7766,6 +7797,7 @@ fn enter_on_history_row_dispatches_new_tab_with_resume() {
     let real_cwd = std::env::temp_dir();
     let real_cwd_str = real_cwd.to_string_lossy().to_string();
     let mut app = test_app();
+    app.window_id = Some("42".into());
     app.agent_sessions.apply(SessionEvent::SessionStarted {
         key: "abc-123".into(),
         cli_source: CliSource::Claude,
@@ -7791,6 +7823,10 @@ fn enter_on_history_row_dispatches_new_tab_with_resume() {
     // resumed CLI lands in its own WT tab instead of carving up the
     // originating tab.
     assert!(argv.contains("new-tab"), "argv: {}", argv);
+    assert!(
+        argv.contains("--window-id 42"),
+        "resume must target the owning window: {argv}"
+    );
     assert!(
         !argv.contains("split-pane"),
         "argv must NOT use split-pane: {}",
@@ -7864,6 +7900,7 @@ fn enter_on_history_row_with_missing_cwd_omits_d_flag() {
     };
     assert!(!missing.exists());
     let mut app = test_app();
+    app.window_id = Some("42".into());
     app.agent_sessions.apply(SessionEvent::SessionStarted {
         key: "abc-stale".into(),
         cli_source: CliSource::Claude,
@@ -7906,6 +7943,7 @@ fn modified_enter_on_live_row_dispatches_nothing() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::path::PathBuf;
     let mut app = test_app();
+    app.window_id = Some("42".into());
     app.agent_sessions.apply(SessionEvent::SessionStarted {
         key: "a".into(),
         cli_source: CliSource::Claude,
@@ -7947,20 +7985,26 @@ fn modified_enter_on_live_row_dispatches_nothing() {
 // effect (or NotResumable hint). One or two representative cases
 // per variant is enough; session_mgmt holds the truth table.
 
-/// Class A (AgentPane origin) dead row + plain Enter:
-/// the state machine routes to ResumeInAgentPane (ACP load).
+/// A Class A row selected from a cross-provider history surface routes to
+/// ResumeInAgentPane using the selected row's provider and location.
 #[test]
-fn enter_on_class_a_dead_row_dispatches_resume_in_agent_pane() {
-    use crate::agent_sessions::{CliSource, OriginFilter, SessionEvent, SessionOrigin};
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+fn cross_provider_class_a_row_dispatches_resume_in_agent_pane() {
+    use crate::agent_sessions::{
+        CliSource, OriginFilter, SessionEvent, SessionLocation, SessionOrigin,
+    };
     use std::path::PathBuf;
     let mut app = test_app();
+    let _capture = crate::wt_protocol_events::capture_test_published_events();
+    app.window_id = Some("42".into());
+    app.current_agent_id = "copilot".into();
+    app.current_agent_source = crate::agent_source::AgentSource::Host;
+    app.acp_model = Some("caller-model-must-not-leak".into());
     // This test exercises the Class A (AgentPane) Enter routing,
     // which the MVP sessions filter hides. Opt out so the row is
     // visible to the cursor; the dispatch logic under test is
     // unchanged by the filter.
     app.sessions_origin_filter = OriginFilter::All;
-    app.agent_supports_load_session = true;
+    app.agent_supports_load_session = false;
     app.agent_sessions.apply(SessionEvent::SessionStarted {
         key: "abc-class-a".into(),
         cli_source: CliSource::Claude,
@@ -7974,10 +8018,15 @@ fn enter_on_class_a_dead_row_dispatches_resume_in_agent_pane() {
     });
     app.agent_sessions
         .set_origin("abc-class-a", SessionOrigin::AgentPane);
+    app.agent_sessions
+        .set_location("abc-class-a", SessionLocation::Host);
 
-    app.current_tab_mut().current_view = View::Agents;
-    app.current_tab_mut().agents_list_state.select(Some(0));
-    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let row = app
+        .agent_sessions
+        .get(&"abc-class-a".to_string())
+        .expect("row exists")
+        .clone();
+    app.activate_agent_session_routed(&row);
 
     let cmd = app
         .last_dispatched_command_for_test()
@@ -7985,17 +8034,105 @@ fn enter_on_class_a_dead_row_dispatches_resume_in_agent_pane() {
     assert_eq!(cmd.kind, DispatchedCommandKind::ResumeInAgentPane);
     let argv = cmd.argv.join(" ");
     assert!(argv.contains("resume_in_new_agent_tab"), "argv: {}", argv);
+    assert!(argv.contains("--window-id 42"), "argv: {}", argv);
     assert!(argv.contains("--session-id abc-class-a"), "argv: {}", argv);
+    let event = crate::wt_protocol_events::take_test_published_events()
+        .into_iter()
+        .filter_map(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        .find(|event| event["method"] == "resume_in_new_agent_tab")
+        .expect("resume event should be published");
+    assert_eq!(event["params"]["agent_id"], "claude");
+    assert_eq!(event["params"]["agent_source"], "host");
+    assert!(event["params"].get("wsl_distro").is_none());
+    assert!(event["params"].get("agent_model").is_none());
+}
+
+#[test]
+fn same_target_without_load_session_capability_is_rejected() {
+    use crate::agent_sessions::{
+        CliSource, OriginFilter, SessionEvent, SessionLocation, SessionOrigin,
+    };
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use std::path::PathBuf;
+
+    let mut app = test_app();
+    let _capture = crate::wt_protocol_events::capture_test_published_events();
+    app.window_id = Some("42".into());
+    app.current_agent_id = "claude".into();
+    app.current_agent_source = crate::agent_source::AgentSource::Host;
+    app.agent_supports_load_session = false;
+    app.sessions_origin_filter = OriginFilter::All;
+    app.agent_sessions.apply(SessionEvent::SessionStarted {
+        key: "same-target-unsupported".into(),
+        cli_source: CliSource::Claude,
+        pane_session_id: "p".into(),
+        cwd: PathBuf::from("/work/project"),
+        title: "t".into(),
+    });
+    app.agent_sessions.apply(SessionEvent::SessionStopped {
+        key: "same-target-unsupported".into(),
+        reason: "user_exit".into(),
+    });
+    app.agent_sessions
+        .set_origin("same-target-unsupported", SessionOrigin::AgentPane);
+    app.agent_sessions
+        .set_location("same-target-unsupported", SessionLocation::Host);
+    app.current_tab_mut().current_view = View::Agents;
+    app.current_tab_mut().agents_list_state.select(Some(0));
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    let command = app
+        .last_dispatched_command_for_test()
+        .expect("not-resumable result should be recorded");
+    assert_eq!(command.kind, DispatchedCommandKind::NotResumable);
+    assert!(
+        crate::wt_protocol_events::take_test_published_events()
+            .into_iter()
+            .all(|raw| !raw.contains("resume_in_new_agent_tab")),
+        "unsupported same-target restore must not publish a resume event"
+    );
+}
+
+#[test]
+fn dead_row_without_owner_window_does_not_dispatch_resume() {
+    use crate::agent_sessions::{CliSource, SessionEvent};
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use std::path::PathBuf;
+    let mut app = test_app();
+    app.agent_sessions.apply(SessionEvent::SessionStarted {
+        key: "missing-window".into(),
+        cli_source: CliSource::Claude,
+        pane_session_id: "p".into(),
+        cwd: PathBuf::from("/work/project"),
+        title: "t".into(),
+    });
+    app.agent_sessions.apply(SessionEvent::SessionStopped {
+        key: "missing-window".into(),
+        reason: "user_exit".into(),
+    });
+    app.current_tab_mut().current_view = View::Agents;
+    app.current_tab_mut().agents_list_state.select(Some(0));
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert!(
+        app.last_dispatched_command_for_test().is_none(),
+        "resume must fail closed without an owning window"
+    );
 }
 
 /// Class A (AgentPane origin) dead row + modified Enter: no dispatch.
 /// The row's only resume style is reachable through a bare Enter.
 #[test]
 fn modified_enter_on_class_a_dead_row_dispatches_nothing() {
-    use crate::agent_sessions::{CliSource, OriginFilter, SessionEvent, SessionOrigin};
+    use crate::agent_sessions::{
+        CliSource, OriginFilter, SessionEvent, SessionLocation, SessionOrigin,
+    };
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::path::PathBuf;
     let mut app = test_app();
+    app.window_id = Some("42".into());
     // See enter_on_class_a_dead_row_dispatches_resume_in_agent_pane
     // for the OriginFilter::All rationale — the MVP filter hides
     // Class A rows from the cursor model; this test exercises the
@@ -8015,6 +8152,8 @@ fn modified_enter_on_class_a_dead_row_dispatches_nothing() {
     });
     app.agent_sessions
         .set_origin("abc-class-a-shift", SessionOrigin::AgentPane);
+    app.agent_sessions
+        .set_location("abc-class-a-shift", SessionLocation::Host);
 
     app.current_tab_mut().current_view = View::Agents;
     app.current_tab_mut().agents_list_state.select(Some(0));
@@ -8042,6 +8181,7 @@ fn modified_enter_on_class_b_dead_row_dispatches_nothing() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::path::PathBuf;
     let mut app = test_app();
+    app.window_id = Some("42".into());
     // loadSession IS advertised: a modifier must not divert a Class B
     // row into an agent pane, nor resume it in a shell pane.
     app.agent_supports_load_session = true;
@@ -9304,6 +9444,7 @@ fn hookless_session_snapshot_renders_and_dispatches_resume() {
         request_id,
         sessions: vec![row],
     });
+    app.window_id = Some("42".into());
     assert!(
         app.agent_sessions.iter_sorted().is_empty(),
         "history must not need a local hook row"
@@ -23486,6 +23627,7 @@ fn enter_on_wsl_history_row_resumes_inside_distro() {
         },
     };
     let mut app = test_app();
+    app.window_id = Some("42".into());
     app.current_agent_source = crate::agent_source::AgentSource::Wsl {
         distro: "Ubuntu".into(),
     };

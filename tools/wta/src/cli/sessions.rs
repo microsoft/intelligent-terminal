@@ -3,6 +3,26 @@ use anyhow::{Context, Result};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 const MASTER_NOT_RUNNING: &str = "wta-master not running. Start Windows Terminal first.";
+const SIDEBAR_HISTORY_CONTROL_CLIENT: &str = "sidebar-history-v1";
+
+fn control_initialize_request(
+    name: &'static str,
+    title: &'static str,
+) -> acp::schema::v1::InitializeRequest {
+    let mut request = acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
+        .client_capabilities(acp::schema::v1::ClientCapabilities::new())
+        .client_info(
+            acp::schema::v1::Implementation::new(name, env!("CARGO_PKG_VERSION")).title(title),
+        );
+    crate::session_registry::inject_wta_meta(
+        &mut request.meta,
+        &crate::session_registry::WtaMeta {
+            control_client: Some(SIDEBAR_HISTORY_CONTROL_CLIENT.to_string()),
+            ..Default::default()
+        },
+    );
+    request
+}
 
 pub(crate) async fn run_list(
     master_override: Option<String>,
@@ -43,42 +63,131 @@ async fn fetch_from_master(
         acp::Client.builder().name("wta-sessions"),
         crate::protocol::acp::conn::byte_streams(outgoing, incoming),
     );
-    tokio::task::spawn_local(async move {
+    let io_task = tokio::task::spawn_local(async move {
         let _ = handle_io.await;
     });
 
-    let init_started = std::time::Instant::now();
-    let init_result = conn
-        .initialize(
-            acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
-                .client_capabilities(acp::schema::v1::ClientCapabilities::new())
-                .client_info(
-                    acp::schema::v1::Implementation::new("wta-sessions", env!("CARGO_PKG_VERSION"))
-                        .title("Windows Terminal Agent sessions CLI"),
-                ),
-        )
-        .await;
-    crate::telemetry::log_acp_initialize_complete(
-        init_started.elapsed().as_secs_f64() * 1000.0,
-        init_result.is_ok(),
-        "SessionsCli",
-        if init_result.is_ok() { "" } else { "AcpError" },
-        init_result
-            .as_ref()
-            .err()
-            .map(|e| e.code.into())
-            .unwrap_or(0),
-    );
-    init_result.map_err(|_| anyhow::anyhow!(MASTER_NOT_RUNNING))?;
+    let result = async {
+        let init_started = std::time::Instant::now();
+        let init_result = conn
+            .initialize(control_initialize_request(
+                "wta-sessions",
+                "Windows Terminal Agent sessions CLI",
+            ))
+            .await;
+        crate::telemetry::log_acp_initialize_complete(
+            init_started.elapsed().as_secs_f64() * 1000.0,
+            init_result.is_ok(),
+            "SessionsCli",
+            if init_result.is_ok() { "" } else { "AcpError" },
+            init_result
+                .as_ref()
+                .err()
+                .map(|e| e.code.into())
+                .unwrap_or(0),
+        );
+        init_result.map_err(|_| anyhow::anyhow!(MASTER_NOT_RUNNING))?;
 
-    let req = crate::session_registry::build_sessions_list_request(false);
-    let resp = conn
-        .ext_method(req)
-        .await
-        .map_err(|_| anyhow::anyhow!(MASTER_NOT_RUNNING))?;
-    let parsed = crate::session_registry::parse_sessions_list_response(&resp.0)
-        .context("parse sessions/list response")?;
+        let req = crate::session_registry::build_sessions_list_request(false);
+        let resp = conn
+            .ext_method(req)
+            .await
+            .map_err(|_| anyhow::anyhow!(MASTER_NOT_RUNNING))?;
+        crate::session_registry::parse_sessions_list_response(&resp.0)
+            .context("parse sessions/list response")
+    }
+    .await;
+    drop(conn);
+    io_task.abort();
+    let _ = io_task.await;
+    let parsed = result?;
     Ok(parsed.sessions)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn run_activate(
+    session_id: &str,
+    provider: &str,
+    location: &str,
+    wsl_distro: Option<&str>,
+    universe: Option<String>,
+    window_id: u64,
+    activation_id: String,
+    json_mode: bool,
+) -> Result<()> {
+    let location = match location {
+        "host" => crate::agent_sessions::SessionLocation::Host,
+        "wsl" => crate::agent_sessions::SessionLocation::Wsl {
+            distro: wsl_distro
+                .filter(|value| !value.trim().is_empty())
+                .context("--wsl-distro is required for WSL sessions")?
+                .to_string(),
+        },
+        _ => anyhow::bail!("unsupported session location"),
+    };
+    let history_key =
+        crate::session_registry::HistoryRowKey::new(provider, location, session_id, universe)
+            .context("session identity is incomplete")?;
+    let identity = crate::session_registry::SessionIdentity {
+        session_id: acp::schema::v1::SessionId::new(session_id.to_string()),
+        history_key: Some(history_key),
+    };
+
+    let local = tokio::task::LocalSet::new();
+    let response = local
+        .run_until(async move {
+            let pipe_name = resolve_master_pipe(None).await?;
+            let pipe = open_master_pipe(&pipe_name).await?;
+            let (read_half, write_half) = tokio::io::split(pipe);
+            let outgoing = write_half.compat_write();
+            let incoming = read_half.compat();
+            let (conn, handle_io) = crate::protocol::acp::conn::spawn_client(
+                acp::Client.builder().name("wta-sidebar-history"),
+                crate::protocol::acp::conn::byte_streams(outgoing, incoming),
+            );
+            let io_task = tokio::task::spawn_local(async move {
+                let _ = handle_io.await;
+            });
+            let result = async {
+                conn.initialize(control_initialize_request(
+                    "wta-sidebar-history",
+                    "Windows Terminal Sidebar History",
+                ))
+                .await
+                .map_err(|_| anyhow::anyhow!(MASTER_NOT_RUNNING))?;
+                let request = crate::session_registry::build_session_activate_request(
+                    identity,
+                    window_id,
+                    activation_id,
+                );
+                let raw = conn
+                    .ext_method(request)
+                    .await
+                    .map_err(|error| anyhow::anyhow!("session activation failed: {error}"))?;
+                crate::session_registry::parse_session_activate_response(&raw.0)
+                    .context("parse session activation response")
+            }
+            .await;
+            drop(conn);
+            io_task.abort();
+            let _ = io_task.await;
+            result
+        })
+        .await?;
+
+    if json_mode {
+        println!("{}", serde_json::to_string(&response)?);
+    } else if response.accepted {
+        println!("{}", response.action);
+    } else {
+        anyhow::bail!(
+            "{}",
+            response
+                .detail
+                .unwrap_or_else(|| "session is not resumable".to_string())
+        );
+    }
+    Ok(())
 }
 
 /// Best-effort: register a WTA-launched CLI session with `wta-master` as a
@@ -280,6 +389,7 @@ fn location_label(location: &crate::agent_sessions::SessionLocation) -> String {
     match location {
         crate::agent_sessions::SessionLocation::Host => "host".to_string(),
         crate::agent_sessions::SessionLocation::Wsl { distro } => format!("wsl:{distro}"),
+        crate::agent_sessions::SessionLocation::Unknown => "unknown".to_string(),
     }
 }
 

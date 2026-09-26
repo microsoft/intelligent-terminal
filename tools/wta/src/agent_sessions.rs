@@ -77,6 +77,18 @@ impl CliSource {
             _ => None,
         }
     }
+
+    pub fn canonical_provider_id(&self) -> Option<String> {
+        let id = match self {
+            Self::Claude => "claude",
+            Self::Codex => "codex",
+            Self::Copilot => "copilot",
+            Self::Gemini => "gemini",
+            Self::OpenCode => "opencode",
+            Self::Unknown(id) => id.trim(),
+        };
+        (!id.is_empty()).then(|| id.to_ascii_lowercase())
+    }
 }
 
 /// OpenCode persists untouched sessions with a timestamped default title.
@@ -180,28 +192,36 @@ pub enum SessionOrigin {
 
 /// Where this session's on-disk artefacts live. `Host` = the Windows
 /// user profile (`%USERPROFILE%`); `Wsl` = inside a WSL distro's ext4
-/// `$HOME`. Used for the `/sessions` row prefix and to route resume
-/// back into the distro. Defaults to `Host`; only the WSL history
-/// scanner stamps `Wsl`.
+/// `$HOME`. `Unknown` means provenance was not supplied and must not be
+/// guessed for resume routing.
 ///
 /// Serde-serializable so `SessionInfo` can carry it across the
 /// master→helper `sessions/list` wire boundary (the `/sessions` view
 /// renders from master's `SessionInfo` snapshot, not the helper's
 /// `AgentSession` registry).  `#[serde(default)]` on the `SessionInfo`
-/// field ensures that older peers without the field deserialize as `Host`.
-#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+/// field ensures that older peers without the field deserialize as `Unknown`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum SessionLocation {
-    #[default]
     Host,
     Wsl {
         distro: String,
     },
+    #[default]
+    Unknown,
 }
 
 impl SessionLocation {
     /// True for in-distro sessions.
     pub fn is_wsl(&self) -> bool {
         matches!(self, SessionLocation::Wsl { .. })
+    }
+
+    pub fn is_actionable(&self) -> bool {
+        match self {
+            SessionLocation::Host => true,
+            SessionLocation::Wsl { distro } => !distro.trim().is_empty(),
+            SessionLocation::Unknown => false,
+        }
     }
 
     /// The distro name for `Wsl`, else `None`.
@@ -211,7 +231,7 @@ impl SessionLocation {
     pub fn distro(&self) -> Option<&str> {
         match self {
             SessionLocation::Wsl { distro } => Some(distro.as_str()),
-            SessionLocation::Host => None,
+            SessionLocation::Host | SessionLocation::Unknown => None,
         }
     }
 }
@@ -364,6 +384,12 @@ pub enum SessionEvent {
     /// focus-pane branch is a no-op while pane_session_id is None.
     ResumeDispatched {
         key: AgentKey,
+    },
+    /// A dispatched ACP `session/load` did not complete. Revert an optimistic
+    /// live-without-pane row to a retryable historical state.
+    ResumeFailed {
+        key: AgentKey,
+        reason: String,
     },
     /// Bind a freshly-spawned resume pane's GUID to its session row, BEFORE
     /// any SessionStarted hook fires. Sourced from the JSON output of
@@ -797,6 +823,17 @@ impl AgentSessionRegistry {
                 }
             }
 
+            SessionEvent::ResumeFailed { key, reason } => {
+                if let Some(entry) = self.sessions.get_mut(&key) {
+                    if entry.status == AgentStatus::Idle && entry.pane_session_id.is_none() {
+                        entry.status = AgentStatus::Historical;
+                        entry.last_error = Some(reason);
+                        entry.last_activity_at = now;
+                        self.dirty = true;
+                    }
+                }
+            }
+
             SessionEvent::ResumePaneAssigned {
                 key,
                 pane_session_id,
@@ -974,6 +1011,16 @@ impl AgentSessionRegistry {
         if let Some(entry) = self.sessions.get_mut(key) {
             if entry.origin != origin {
                 entry.origin = origin;
+                self.dirty = true;
+            }
+        }
+    }
+
+    /// Update the execution location on an existing session entry.
+    pub fn set_location(&mut self, key: &str, location: SessionLocation) {
+        if let Some(entry) = self.sessions.get_mut(key) {
+            if entry.location != location {
+                entry.location = location;
                 self.dirty = true;
             }
         }
@@ -2166,6 +2213,56 @@ mod tests {
     fn resume_dispatched_for_unknown_key_is_noop() {
         let mut reg = AgentSessionRegistry::new();
         reg.apply(SessionEvent::ResumeDispatched { key: k("ghost") });
+        assert!(reg.sessions.is_empty());
+    }
+
+    #[test]
+    fn resume_failed_restores_retryable_historical_state() {
+        let mut reg = AgentSessionRegistry::new();
+        reg.merge_historical(vec![make_historical("retry")]);
+        reg.apply(SessionEvent::ResumeDispatched { key: k("retry") });
+        reg.apply(SessionEvent::ResumeFailed {
+            key: k("retry"),
+            reason: "target rejected session/load".into(),
+        });
+
+        let session = reg.sessions.get("retry").unwrap();
+        assert_eq!(session.status, AgentStatus::Historical);
+        assert!(session.pane_session_id.is_none());
+        assert_eq!(
+            session.last_error.as_deref(),
+            Some("target rejected session/load")
+        );
+    }
+
+    #[test]
+    fn resume_failed_does_not_demote_live_row_with_pane() {
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("live"),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "pane".into(),
+            cwd: PathBuf::new(),
+            title: "Live session".into(),
+        });
+        reg.apply(SessionEvent::ResumeFailed {
+            key: k("live"),
+            reason: "stale failure".into(),
+        });
+
+        let session = reg.sessions.get("live").unwrap();
+        assert_eq!(session.status, AgentStatus::Idle);
+        assert_eq!(session.pane_session_id.as_deref(), Some("pane"));
+        assert!(session.last_error.is_none());
+    }
+
+    #[test]
+    fn resume_failed_for_unknown_key_is_noop() {
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::ResumeFailed {
+            key: k("ghost"),
+            reason: "not found".into(),
+        });
         assert!(reg.sessions.is_empty());
     }
 
@@ -3596,15 +3693,19 @@ mod tests {
     }
 
     #[test]
-    fn session_location_defaults_to_host_and_reports_wsl() {
+    fn session_location_defaults_to_unknown_and_reports_actionability() {
         use super::SessionLocation;
-        assert_eq!(SessionLocation::default(), SessionLocation::Host);
+        assert_eq!(SessionLocation::default(), SessionLocation::Unknown);
+        assert!(!SessionLocation::Unknown.is_actionable());
         assert!(!SessionLocation::Host.is_wsl());
+        assert!(SessionLocation::Host.is_actionable());
         let w = SessionLocation::Wsl {
             distro: "Ubuntu".to_string(),
         };
         assert!(w.is_wsl());
+        assert!(w.is_actionable());
         assert_eq!(w.distro(), Some("Ubuntu"));
         assert_eq!(SessionLocation::Host.distro(), None);
+        assert_eq!(SessionLocation::Unknown.distro(), None);
     }
 }

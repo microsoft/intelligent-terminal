@@ -19,6 +19,9 @@ using namespace winrt::Windows::Foundation::Collections;
 using namespace winrt::Windows::UI::Xaml;
 using namespace winrt::Windows::UI::Xaml::Controls;
 
+static constexpr double SearchPanelExpandedHeight = 40.0;
+static constexpr auto SearchPanelAnimationDuration = std::chrono::milliseconds{ 200 };
+
 namespace winrt
 {
     namespace MUX = Microsoft::UI::Xaml;
@@ -169,12 +172,28 @@ namespace winrt::TerminalApp::implementation
     TabStrip::TabStrip()
     {
         _tabItems = single_threaded_observable_vector<IInspectable>();
+        _historyItems = single_threaded_observable_vector<TerminalApp::TabStripHistoryItem>();
 
         InitializeComponent();
 
         ItemsList().ItemsSource(_tabItems);
         _vectorChangedRevoker = _tabItems.VectorChanged(auto_revoke, { get_weak(), &TabStrip::_onItemsVectorChanged });
+        Loaded([weakThis{ get_weak() }](auto&&, auto&&) {
+            if (const auto self = weakThis.get())
+            {
+                self->_searchAnimationEnabled = true;
+                self->_updateSearchVisualState();
+            }
+        });
+        Unloaded([weakThis{ get_weak() }](auto&&, auto&&) {
+            if (const auto self = weakThis.get())
+            {
+                self->_searchAnimationEnabled = false;
+                self->_setSearchPanelExpanded(false, false);
+            }
+        });
         _applyRailState();
+        _updateHistoryVisualState();
     }
 
     IInspectable TabStrip::SelectedItem()
@@ -183,7 +202,17 @@ namespace winrt::TerminalApp::implementation
     }
     void TabStrip::SelectedItem(IInspectable const& value)
     {
-        ItemsList().SelectedItem(value);
+        if (!value)
+        {
+            ItemsList().SelectedIndex(-1);
+            return;
+        }
+
+        uint32_t index{};
+        if (_tabItems.IndexOf(value, index))
+        {
+            ItemsList().SelectedIndex(gsl::narrow_cast<int32_t>(index));
+        }
     }
     int32_t TabStrip::SelectedIndex()
     {
@@ -311,11 +340,74 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void TabStrip::CommitHistorySnapshot(std::vector<TerminalApp::TabStripHistoryItem> items)
+    {
+        _historySnapshot = std::move(items);
+        _historySearchTerms.clear();
+        _historySearchTerms.reserve(_historySnapshot.size());
+        for (const auto& item : _historySnapshot)
+        {
+            _historySearchTerms.emplace_back(_buildHistorySearchTerms(item));
+        }
+        _applyHistoryProjection();
+    }
+
+    void TabStrip::ClearHistorySnapshot()
+    {
+        _historySnapshot.clear();
+        _historySearchTerms.clear();
+        _historyItems.Clear();
+        _updateHistoryVisualState();
+    }
+
+    void TabStrip::ClearHistorySearch()
+    {
+        if (_historySearchQuery.empty() && HistorySearchTextBox().Text().empty())
+        {
+            return;
+        }
+
+        _historySearchQuery.clear();
+        _syncingHistorySearchState = true;
+        HistorySearchTextBox().Text(L"");
+        _syncingHistorySearchState = false;
+        _applyHistoryProjection();
+    }
+
+    void TabStrip::HistoryActive(bool value)
+    {
+        if (_historyActive != value)
+        {
+            _historyActive = value;
+            ClearHistorySearch();
+            _updateHistoryVisualState();
+        }
+    }
+
+    void TabStrip::HistoryLoading(bool value)
+    {
+        if (_historyLoading != value)
+        {
+            _historyLoading = value;
+            _updateHistoryVisualState();
+        }
+    }
+
+    void TabStrip::HistoryError(winrt::hstring const& value)
+    {
+        if (_historyError != value)
+        {
+            _historyError = value;
+            _updateHistoryVisualState();
+        }
+    }
+
     void TabStrip::ProjectionControlsEnabled(bool value)
     {
         _projectionControlsEnabled = value;
         SearchTabsButton().IsEnabled(value && !_isRailCollapsed);
         FilterTabsButton().IsEnabled(value && !_isRailCollapsed);
+        TabHistoryButton().IsEnabled(value && !_isRailCollapsed);
     }
 
     UIElement TabStrip::TopChromeContent()
@@ -418,10 +510,60 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    void TabStrip::OnClearSearchClick(IInspectable const&, WUX::RoutedEventArgs const&)
+    void TabStrip::OnHistoryClick(IInspectable const&, WUX::RoutedEventArgs const&)
     {
-        SearchTextBox().Text(L"");
-        SearchTextBox().Focus(WUX::FocusState::Programmatic);
+        if (_isRailCollapsed || !_projectionControlsEnabled)
+        {
+            return;
+        }
+        HistoryActive(true);
+        HistoryRequested.raise(*this, nullptr);
+        HistorySearchTextBox().Focus(WUX::FocusState::Programmatic);
+    }
+
+    void TabStrip::OnHistoryCloseClick(IInspectable const&, WUX::RoutedEventArgs const&)
+    {
+        HistoryClosed.raise(*this, nullptr);
+    }
+
+    void TabStrip::OnHistorySearchTextChanged(IInspectable const&, TextChangedEventArgs const&)
+    {
+        if (_syncingHistorySearchState)
+        {
+            return;
+        }
+
+        _historySearchQuery = HistorySearchTextBox().Text();
+        _applyHistoryProjection();
+    }
+
+    void TabStrip::OnHistorySearchBoxKeyDown(IInspectable const&, WUX::Input::KeyRoutedEventArgs const& e)
+    {
+        if (e.OriginalKey() != Windows::System::VirtualKey::Escape)
+        {
+            return;
+        }
+
+        if (!_historySearchQuery.empty())
+        {
+            ClearHistorySearch();
+            HistorySearchTextBox().Focus(WUX::FocusState::Programmatic);
+        }
+        else
+        {
+            HistoryClosed.raise(*this, nullptr);
+        }
+        e.Handled(true);
+    }
+
+    void TabStrip::OnHistoryItemClick(IInspectable const&, ItemClickEventArgs const& e)
+    {
+        if (const auto item = e.ClickedItem().try_as<TerminalApp::TabStripHistoryItem>())
+        {
+            HistoryActivationRequested.raise(
+                *this,
+                winrt::make<TabStripHistoryActivationEventArgs>(item));
+        }
     }
 
     void TabStrip::OnContainerContentChanging(ListViewBase const&,
@@ -462,6 +604,7 @@ namespace winrt::TerminalApp::implementation
         FilterTabsButton().IsHitTestVisible(!_isRailCollapsed);
         FilterTabsButton().IsEnabled(_projectionControlsEnabled && !_isRailCollapsed);
         TabHistoryButton().IsHitTestVisible(!_isRailCollapsed);
+        TabHistoryButton().IsEnabled(_projectionControlsEnabled && !_isRailCollapsed);
         FilterStatusBar().IsHitTestVisible(!_isRailCollapsed);
         ItemsList().AllowDrop(!_isRailCollapsed);
         TabsToolbar().Padding(_isRailCollapsed ? WUX::Thickness{} : WUX::Thickness{ 12, 0, 8, 0 });
@@ -473,11 +616,11 @@ namespace winrt::TerminalApp::implementation
 
         if (_isRailCollapsed)
         {
-            SearchPanel().Visibility(Visibility::Collapsed);
             if (const auto flyout = FilterTabsButton().Flyout())
             {
                 flyout.Hide();
             }
+            _updateHistoryVisualState();
         }
 
         for (uint32_t index = 0; index < _tabItems.Size(); ++index)
@@ -488,6 +631,8 @@ namespace winrt::TerminalApp::implementation
                 _applyTabItemVisibility(item);
             }
         }
+
+        _updateSearchVisualState();
     }
 
     void TabStrip::_applyTabItemRailState(MUX::Controls::TabViewItem const& item)
@@ -571,14 +716,185 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void TabStrip::_setSearchPanelExpanded(const bool expanded, const bool animate)
+    {
+        if (_searchPanelExpanded == expanded && !_searchPanelStoryboard)
+        {
+            return;
+        }
+
+        _searchPanelExpanded = expanded;
+        const auto generation = ++_searchAnimationGeneration;
+        const auto panel = SearchPanel();
+        const auto startHeight = panel.ActualHeight();
+        const auto startOpacity = panel.Opacity();
+
+        if (_searchPanelStoryboard)
+        {
+            _searchPanelStoryboard.Stop();
+            _searchPanelStoryboard = nullptr;
+        }
+
+        panel.Visibility(Visibility::Visible);
+        panel.IsHitTestVisible(expanded);
+
+        if (!animate)
+        {
+            panel.Height(expanded ? SearchPanelExpandedHeight : 0.0);
+            panel.Opacity(expanded ? 1.0 : 0.0);
+            panel.Visibility(expanded ? Visibility::Visible : Visibility::Collapsed);
+            return;
+        }
+
+        namespace Animation = WUX::Media::Animation;
+        const auto duration = DurationHelper::FromTimeSpan(TimeSpan{ SearchPanelAnimationDuration });
+
+        Animation::DoubleAnimation heightAnimation;
+        heightAnimation.Duration(duration);
+        heightAnimation.From(startHeight);
+        heightAnimation.To(expanded ? SearchPanelExpandedHeight : 0.0);
+        auto heightEasing = Animation::QuadraticEase{};
+        heightEasing.EasingMode(Animation::EasingMode::EaseOut);
+        heightAnimation.EasingFunction(heightEasing);
+        heightAnimation.EnableDependentAnimation(true);
+
+        Animation::DoubleAnimation opacityAnimation;
+        opacityAnimation.Duration(duration);
+        opacityAnimation.From(startOpacity);
+        opacityAnimation.To(expanded ? 1.0 : 0.0);
+        auto opacityEasing = Animation::QuadraticEase{};
+        opacityEasing.EasingMode(Animation::EasingMode::EaseOut);
+        opacityAnimation.EasingFunction(opacityEasing);
+        opacityAnimation.EnableDependentAnimation(true);
+
+        Animation::Storyboard storyboard;
+        storyboard.Duration(duration);
+        storyboard.FillBehavior(Animation::FillBehavior::Stop);
+        storyboard.Children().Append(heightAnimation);
+        storyboard.Children().Append(opacityAnimation);
+        storyboard.SetTarget(heightAnimation, panel);
+        storyboard.SetTargetProperty(heightAnimation, L"Height");
+        storyboard.SetTarget(opacityAnimation, panel);
+        storyboard.SetTargetProperty(opacityAnimation, L"Opacity");
+
+        heightAnimation.Completed([weakThis{ get_weak() }, generation, expanded](auto&&, auto&&) {
+            if (const auto self = weakThis.get();
+                self && self->_searchAnimationGeneration == generation)
+            {
+                const auto panel = self->SearchPanel();
+                panel.Height(expanded ? SearchPanelExpandedHeight : 0.0);
+                panel.Opacity(expanded ? 1.0 : 0.0);
+                panel.Visibility(expanded ? Visibility::Visible : Visibility::Collapsed);
+                self->_searchPanelStoryboard = nullptr;
+            }
+        });
+
+        _searchPanelStoryboard = storyboard;
+        storyboard.Begin();
+    }
+
     void TabStrip::_updateSearchVisualState()
     {
         _syncingSearchState = true;
         SearchTabsButton().IsChecked(_searchActive);
         _syncingSearchState = false;
 
-        SearchPanel().Visibility(_searchActive && !_isRailCollapsed ? Visibility::Visible : Visibility::Collapsed);
-        ClearSearchButton().Visibility(_searchActive && !_searchQuery.empty() ? Visibility::Visible : Visibility::Collapsed);
+        const auto expanded = _searchActive && !_isRailCollapsed;
+        _setSearchPanelExpanded(expanded, _searchAnimationEnabled && !_isRailCollapsed);
+    }
+
+    std::vector<winrt::hstring> TabStrip::_buildHistorySearchTerms(TerminalApp::TabStripHistoryItem const& item)
+    {
+        std::vector<winrt::hstring> terms;
+        const auto append = [&terms](const winrt::hstring& value) {
+            if (!value.empty())
+            {
+                terms.emplace_back(value);
+            }
+        };
+
+        append(item.Title());
+        append(item.AgentId());
+        append(item.ProviderDisplayName());
+        append(item.AgentSource());
+        append(item.WslDistro());
+        append(item.Status());
+        terms.emplace_back(item.IsLive() ? L"live" : L"history");
+        return terms;
+    }
+
+    bool TabStrip::_matchesHistorySearch(const size_t index) const
+    {
+        if (_historySearchQuery.empty())
+        {
+            return true;
+        }
+
+        const std::wstring_view query{ _historySearchQuery.c_str(), _historySearchQuery.size() };
+        for (const auto& value : _historySearchTerms.at(index))
+        {
+            const std::wstring_view candidate{ value.c_str(), value.size() };
+            if (query.size() > candidate.size())
+            {
+                continue;
+            }
+
+            for (size_t offset = 0; offset + query.size() <= candidate.size(); ++offset)
+            {
+                if (til::compare_ordinal_insensitive(candidate.substr(offset, query.size()), query) == 0)
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    void TabStrip::_applyHistoryProjection()
+    {
+        std::vector<TerminalApp::TabStripHistoryItem> visibleItems;
+        visibleItems.reserve(_historySnapshot.size());
+        for (size_t index = 0; index < _historySnapshot.size(); ++index)
+        {
+            _historySnapshot[index].SearchQuery(_historySearchQuery);
+            if (_matchesHistorySearch(index))
+            {
+                visibleItems.emplace_back(_historySnapshot[index]);
+            }
+        }
+        _historyItems.ReplaceAll(visibleItems);
+        _updateHistoryVisualState();
+    }
+
+    void TabStrip::_updateHistoryVisualState()
+    {
+        const auto visible = _historyActive && !_isRailCollapsed;
+        HistoryPanel().Visibility(visible ? Visibility::Visible : Visibility::Collapsed);
+        HistoryLoadingIndicator().IsActive(visible && _historyLoading);
+        HistoryLoadingIndicator().Visibility(visible && _historyLoading ? Visibility::Visible : Visibility::Collapsed);
+        HistoryList().Visibility(visible && !_historyLoading && _historyError.empty() && _historyItems.Size() > 0 ?
+                                     Visibility::Visible :
+                                     Visibility::Collapsed);
+        if (!visible || _historyLoading)
+        {
+            HistoryMessage().Visibility(Visibility::Collapsed);
+        }
+        else if (!_historyError.empty())
+        {
+            HistoryMessage().Text(_historyError);
+            HistoryMessage().Visibility(Visibility::Visible);
+        }
+        else if (_historyItems.Size() == 0)
+        {
+            HistoryMessage().Text(_historySnapshot.empty() ?
+                                      RS_(L"VerticalTabsHistoryEmpty") :
+                                      RS_(L"VerticalTabsHistoryNoMatches"));
+            HistoryMessage().Visibility(Visibility::Visible);
+        }
+        else
+        {
+            HistoryMessage().Visibility(Visibility::Collapsed);
+        }
     }
 
     void TabStrip::_onItemsVectorChanged(IObservableVector<IInspectable> const& sender,

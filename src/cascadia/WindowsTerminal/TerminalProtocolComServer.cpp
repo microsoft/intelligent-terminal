@@ -1223,6 +1223,9 @@ try
     case ProtocolParsing::SendEventRoute::AgentSessionsRetired:
         _dispatchAgentSessionsRetiredToPage(eventH);
         return S_OK;
+    case ProtocolParsing::SendEventRoute::SessionRegistryChanged:
+        _dispatchSessionRegistryChangedToPage(eventH);
+        return S_OK;
     case ProtocolParsing::SendEventRoute::Broadcast:
     {
         Json::StreamWriterBuilder wb;
@@ -1524,6 +1527,38 @@ void TerminalProtocolComServer::_dispatchAgentSessionsRetiredToPage(const winrt:
     }
 }
 
+void TerminalProtocolComServer::_dispatchSessionRegistryChangedToPage(const winrt::hstring& eventJson)
+{
+    if (!s_emperor)
+    {
+        return;
+    }
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        auto page = _getPage(host.get());
+        if (!page)
+        {
+            continue;
+        }
+        const auto dispatcher = page.Dispatcher();
+        if (!dispatcher)
+        {
+            continue;
+        }
+        dispatcher.RunAsync(
+            winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
+            [page, eventJson]() {
+                try
+                {
+                    page.OnSessionRegistryChanged(eventJson);
+                }
+                catch (...)
+                {
+                }
+            });
+    }
+}
+
 void TerminalProtocolComServer::_dispatchAgentStateChangedToPage(const winrt::hstring& eventJson)
 {
     if (!s_emperor)
@@ -1565,20 +1600,48 @@ void TerminalProtocolComServer::_dispatchResumeInNewAgentTabToPage(const winrt::
     {
         return;
     }
-    // Same fan-out shape as the other dispatchers. The shared agent pane
-    // lives in exactly one window; pages with no agent pane no-op the call
-    // (see OnResumeInNewAgentTabRequested).
+
+    Json::Value event;
+    if (!ProtocolParsing::ParseJson(winrt::to_string(eventJson), event))
+    {
+        return;
+    }
+    const auto& params = event["params"];
+    if (!params.isObject() || !params["window_id"].isString())
+    {
+        return;
+    }
+
+    uint64_t windowId = 0;
+    try
+    {
+        windowId = std::stoull(params["window_id"].asString());
+    }
+    catch (...)
+    {
+        return;
+    }
+    if (windowId == 0)
+    {
+        return;
+    }
+
     for (const auto& host : s_emperor->GetWindows())
     {
+        const auto logic = host->Logic();
+        if (!logic || logic.WindowProperties().WindowId() != windowId)
+        {
+            continue;
+        }
         auto page = _getPage(host.get());
         if (!page)
         {
-            continue;
+            return;
         }
         const auto dispatcher = page.Dispatcher();
         if (!dispatcher)
         {
-            continue;
+            return;
         }
         dispatcher.RunAsync(
             winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
@@ -1592,6 +1655,7 @@ void TerminalProtocolComServer::_dispatchResumeInNewAgentTabToPage(const winrt::
                     // Swallow: page may have been torn down during dispatch.
                 }
             });
+        return;
     }
 }
 

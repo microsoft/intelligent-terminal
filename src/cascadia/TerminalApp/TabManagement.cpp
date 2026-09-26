@@ -110,6 +110,24 @@ namespace winrt::TerminalApp::implementation
     {
         newTabImpl->Initialize();
 
+        if (_pendingNewTabLoadSession)
+        {
+            auto pending = std::move(*_pendingNewTabLoadSession);
+            _pendingNewTabLoadSession.reset();
+            newTabImpl->SuppressAgentPrewarm();
+            if (!pending.agentId.empty())
+            {
+                newTabImpl->SetAgentOverride(
+                    pending.agentId,
+                    pending.agentModel,
+                    {},
+                    pending.agentSource,
+                    pending.agentWslDistro,
+                    Tab::AgentOverrideOrigin::Restore);
+            }
+            _pendingLoadSessions[newTabImpl->StableId()] = std::move(pending);
+        }
+
         // If insert position is not passed, calculate it
         if (insertPosition == -1)
         {
@@ -235,6 +253,14 @@ namespace winrt::TerminalApp::implementation
         // we'll attach the terminal's Xaml control to the Xaml root.
         if (!openInBackground)
         {
+            // A foreground tab must become the active live tab. Dismiss the
+            // History overlay before changing selection so its focused
+            // ListView cannot restore the previously selected row afterward.
+            const auto historyWasActive = _tabStrip && _tabStrip.HistoryActive();
+            if (historyWasActive)
+            {
+                _CloseSidebarHistory(false);
+            }
             _selectedTabItem(tabViewItem);
         }
         else
@@ -1819,10 +1845,15 @@ namespace winrt::TerminalApp::implementation
         uint32_t scopeVisibleTabCount = 0;
         bool selectedTabMatchesScope = true;
         const auto selectedItem = _selectedTabItem();
+        const auto highlightQuery = _IsTabSearchEffective() ? _tabSearchQuery : winrt::hstring{};
 
         for (const auto& tab : _tabs)
         {
             const auto item = tab.TabViewItem();
+            if (const auto header = item.Header().try_as<TerminalApp::TabHeaderControl>())
+            {
+                header.SearchText(highlightQuery);
+            }
             const auto tabImpl = _GetTabImpl(tab);
             const auto matchesScope = !agentScopeEffective || _MatchesTabScope(tabImpl);
             const auto visible = _IsTabVisibleInProjection(tabImpl);
@@ -1863,7 +1894,7 @@ namespace winrt::TerminalApp::implementation
         const std::wstring_view query{ _tabSearchQuery.c_str(), _tabSearchQuery.size() };
         if (query.empty())
         {
-            return false;
+            return true;
         }
 
         const auto titleValue = tab.Title();

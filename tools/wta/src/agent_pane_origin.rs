@@ -21,22 +21,19 @@
 //   v1 (legacy, still readable):
 //     {"v":1,"session_id":"<uuid>","origin":"agent_pane","started_at":"<RFC3339-ish>"}
 //
-//   v2 (current, adds `pane_session_id` so future reconcile logic can
-//   tell whether a Historical-looking session was actually hosted in a
-//   pane that is still alive — see GitHub issue #58 for the planned
-//   ENTER-routing work that will consume this field):
+//   v2 (legacy, adds `pane_session_id`):
 //     {"v":2,"session_id":"<uuid>","origin":"agent_pane","pane_session_id":"<WT pane GUID>","started_at":"<RFC3339-ish>"}
 //
-// We deliberately do NOT record `cli_source` — the session's own agent
-// reports it, so duplicating it here would create a second source of truth
-// that could drift. Same rationale for `owner_tab_id`: no caller needs it
-// yet, and we can always recover it via WT itself.
+//   v3 (current, qualifies the raw ACP id by provider and location):
+//     {"v":3,"provider_id":"copilot","location":"Host","session_id":"<uuid>",
+//      "origin":"agent_pane","pane_session_id":"<WT pane GUID>","started_at":"<RFC3339-ish>"}
 //
-// Duplicates are tolerated. Loaders collapse on `session_id`; if a session
-// appears twice (e.g. v1 line plus v2 line for the same id after a wta
-// upgrade), last-write wins for the `pane_session_id` field. Lines that
-// fail to parse are skipped and the next line is processed — corruption in
-// one record does not invalidate the rest of the file.
+// The provider/location pair is master-resolved provenance, not inferred from
+// the ACP session id. It prevents equal raw ids reported by different agents
+// or WSL distributions from hiding each other in history. Legacy v1/v2 rows
+// remain readable through a raw-id compatibility bucket. Duplicates are
+// tolerated and last-write wins within the same qualified or legacy key.
+// Corrupt lines are skipped without invalidating the rest of the file.
 //
 // Lifetime
 // --------
@@ -46,23 +43,95 @@
 // in the index are harmless because the index is only ever consulted as a
 // filter against session ids the agent itself still reports.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+#[cfg(test)]
+use std::collections::HashSet;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::time::SystemTime;
 
 const INDEX_FILENAME: &str = "agent-pane-sessions.jsonl";
-const SCHEMA_VERSION: u32 = 2;
+const SCHEMA_VERSION: u32 = 3;
 
-/// Per-session metadata stored in the index. The owning `session_id` is
-/// always the key in the returned map (e.g. `HashMap<String, OriginRecord>`)
-/// — we deliberately don't duplicate it here. `pane_session_id` is the WT
-/// pane GUID that hosted this session; `None` for legacy v1 entries
-/// written before that field existed.
+/// Per-session metadata stored in the index. Identity lives in either the
+/// qualified [`crate::session_registry::HistoryRowKey`] map or the legacy
+/// raw-id compatibility map. `pane_session_id` is the WT pane GUID that
+/// hosted this session; `None` for records written before that field existed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OriginRecord {
     pub pane_session_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OriginScope {
+    pub provider_id: String,
+    pub location: crate::agent_sessions::SessionLocation,
+    pub session_universe: Option<String>,
+}
+
+impl OriginScope {
+    pub fn new(
+        provider_id: impl AsRef<str>,
+        location: crate::agent_sessions::SessionLocation,
+        session_universe: Option<String>,
+    ) -> Option<Self> {
+        let provider_id = provider_id.as_ref().trim().to_ascii_lowercase();
+        if provider_id.is_empty() || !location.is_actionable() {
+            return None;
+        }
+        Some(Self {
+            provider_id,
+            location,
+            session_universe: session_universe
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty()),
+        })
+    }
+
+    pub fn row_key(&self, session_id: &str) -> Option<crate::session_registry::HistoryRowKey> {
+        crate::session_registry::HistoryRowKey::new(
+            &self.provider_id,
+            self.location.clone(),
+            session_id,
+            self.session_universe.clone(),
+        )
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct OriginIndex {
+    qualified: HashMap<crate::session_registry::HistoryRowKey, OriginRecord>,
+    legacy: HashMap<String, OriginRecord>,
+}
+
+impl OriginIndex {
+    pub fn contains_key(&self, key: &crate::session_registry::HistoryRowKey) -> bool {
+        self.qualified.contains_key(key) || self.legacy.contains_key(&key.session_id)
+    }
+
+    pub fn contains(
+        &self,
+        provider_id: &str,
+        location: &crate::agent_sessions::SessionLocation,
+        session_id: &str,
+    ) -> bool {
+        crate::session_registry::HistoryRowKey::new(provider_id, location.clone(), session_id, None)
+            .is_some_and(|key| self.contains_key(&key))
+    }
+
+    pub fn insert_qualified(
+        &mut self,
+        key: crate::session_registry::HistoryRowKey,
+        record: OriginRecord,
+    ) {
+        self.qualified.insert(key, record);
+    }
+
+    #[cfg(test)]
+    fn qualified_len(&self) -> usize {
+        self.qualified.len()
+    }
 }
 
 /// Resolve the canonical on-disk location for the index. Returns `None`
@@ -100,6 +169,29 @@ pub fn append_default(session_id: &str, pane_session_id: Option<&str>) {
     }
 }
 
+pub fn append_default_qualified(
+    scope: &OriginScope,
+    session_id: &str,
+    pane_session_id: Option<&str>,
+) {
+    let Some(path) = default_index_path() else {
+        tracing::warn!(
+            target: "agent_pane_origin",
+            session_id = %session_id,
+            "skipping qualified append: no runtime root available",
+        );
+        return;
+    };
+    if let Err(err) = append_qualified_to(&path, scope, session_id, pane_session_id) {
+        tracing::warn!(
+            target: "agent_pane_origin",
+            session_id = %session_id,
+            error = %err,
+            "failed to append qualified origin record",
+        );
+    }
+}
+
 /// Append an `agent_pane` record to a caller-supplied path. Public to
 /// support unit tests that exercise round-tripping against a tempdir.
 pub fn append_to(
@@ -113,14 +205,14 @@ pub fn append_to(
     let mut file = OpenOptions::new().create(true).append(true).open(path)?;
     let record = match pane_session_id {
         Some(pane) if !pane.is_empty() => serde_json::json!({
-            "v": SCHEMA_VERSION,
+            "v": 2,
             "session_id": session_id,
             "origin": "agent_pane",
             "pane_session_id": pane,
             "started_at": rfc3339_now(),
         }),
         _ => serde_json::json!({
-            "v": SCHEMA_VERSION,
+            "v": 2,
             "session_id": session_id,
             "origin": "agent_pane",
             "started_at": rfc3339_now(),
@@ -130,45 +222,60 @@ pub fn append_to(
     Ok(())
 }
 
-/// Load the default index into a `HashSet<String>` of session ids. Empty
-/// set if the file does not exist, cannot be opened, or is empty — never
-/// errors out to the caller, so the history scan still proceeds on a fresh
-/// install or after a manual delete.
-///
-/// Unpackaged dev binaries also merge the installed Intelligent Terminal
-/// package's LocalState index when present. That keeps diagnostics such as
-/// `probe-host-sessions` using the same Class-A filter as the packaged app
-/// that actually created the agent-pane sessions.
-///
-/// Use this when the caller only needs membership-check. For callers that
-/// need the per-record `pane_session_id` (e.g. post-restart reconcile),
-/// see [`load_default_records`].
-pub fn load_default_set() -> HashSet<String> {
-    load_default_records().into_keys().collect()
+pub fn append_qualified_to(
+    path: &std::path::Path,
+    scope: &OriginScope,
+    session_id: &str,
+    pane_session_id: Option<&str>,
+) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let Some(key) = scope.row_key(session_id) else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "origin record requires provider, location, and session id",
+        ));
+    };
+    let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+    let mut record = serde_json::json!({
+        "v": SCHEMA_VERSION,
+        "session_id": key.session_id,
+        "provider_id": key.provider_id,
+        "location": key.location,
+        "origin": "agent_pane",
+        "started_at": rfc3339_now(),
+    });
+    if let Some(universe) = key.session_universe {
+        record["session_universe"] = serde_json::Value::String(universe);
+    }
+    if let Some(pane) = pane_session_id.filter(|pane| !pane.is_empty()) {
+        record["pane_session_id"] = serde_json::Value::String(pane.to_string());
+    }
+    writeln!(file, "{}", record)?;
+    Ok(())
 }
 
-/// Load an index file from `path` into a HashSet. Public for unit tests.
-pub fn load_set_from(path: &std::path::Path) -> HashSet<String> {
-    load_records_from(path).into_keys().collect()
-}
-
-/// Load the default index, retaining each record's per-session metadata
-/// (notably `pane_session_id` for v2 entries). Duplicate `session_id`s
-/// collapse to the last-written record. Empty map on any IO error.
-pub fn load_default_records() -> HashMap<String, OriginRecord> {
-    let mut out = HashMap::new();
+pub fn load_default_index() -> OriginIndex {
+    let mut out = OriginIndex::default();
     for path in default_index_paths() {
-        out.extend(load_records_from(&path));
+        let next = load_index_from(&path);
+        out.qualified.extend(next.qualified);
+        out.legacy.extend(next.legacy);
     }
     out
 }
 
+/// Load legacy v1/v2 records from `path` into a HashSet. Public for unit tests.
+#[cfg(test)]
+pub fn load_set_from(path: &std::path::Path) -> HashSet<String> {
+    load_records_from(path).into_keys().collect()
+}
+
 fn default_index_paths() -> Vec<PathBuf> {
-    // Order matters: `load_default_records` merges these via `HashMap::extend`
-    // (last write wins on a duplicate `session_id`). Load installed-package
-    // indices FIRST (dev/unpackaged only) and the current runtime's index LAST
-    // so the current runtime's record wins on key collisions and keeps its
-    // newer per-record metadata.
+    // Load installed-package indices first (dev/unpackaged only) and the
+    // current runtime's index last so current qualified/legacy records win
+    // within their own identity bucket.
     let mut paths = Vec::new();
     if crate::runtime_paths::current_package_family_name().is_none() {
         paths.extend(installed_package_index_paths());
@@ -181,7 +288,7 @@ fn default_index_paths() -> Vec<PathBuf> {
 
 fn installed_package_index_paths() -> Vec<PathBuf> {
     // Memoize the `%LOCALAPPDATA%\Packages` walk for the process lifetime:
-    // `load_default_set` calls this on every routed event in unpackaged/dev mode,
+    // `load_default_index` calls this on every routed event in unpackaged/dev mode,
     // and the relevant package directories don't change mid-run.
     static CACHE: std::sync::OnceLock<Vec<PathBuf>> = std::sync::OnceLock::new();
     CACHE
@@ -223,10 +330,14 @@ fn installed_package_index_paths_uncached() -> Vec<PathBuf> {
     dev
 }
 
-/// Same as [`load_default_records`] but against a caller-supplied path.
-/// Public for unit tests.
+/// Load the legacy compatibility bucket from a caller-supplied path.
+#[cfg(test)]
 pub fn load_records_from(path: &std::path::Path) -> HashMap<String, OriginRecord> {
-    let mut out: HashMap<String, OriginRecord> = HashMap::new();
+    load_index_from(path).legacy
+}
+
+pub fn load_index_from(path: &std::path::Path) -> OriginIndex {
+    let mut out = OriginIndex::default();
     let file = match File::open(path) {
         Ok(f) => f,
         Err(_) => return out, // most commonly: file does not exist yet
@@ -249,9 +360,34 @@ pub fn load_records_from(path: &std::path::Path) -> HashMap<String, OriginRecord
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
             .map(|s| s.to_string());
-        // Last-write wins on duplicate session_ids — preserves the latest
-        // pane binding if a session was somehow re-appended.
-        out.insert(id.to_string(), OriginRecord { pane_session_id });
+        let record = OriginRecord { pane_session_id };
+        let version = value.get("v").and_then(|v| v.as_u64()).unwrap_or(1);
+        if version < SCHEMA_VERSION as u64 {
+            out.legacy.insert(id.to_string(), record);
+            continue;
+        }
+        let qualified = value
+            .get("provider_id")
+            .and_then(|v| v.as_str())
+            .zip(value.get("location"))
+            .and_then(|(provider_id, location)| {
+                serde_json::from_value::<crate::agent_sessions::SessionLocation>(location.clone())
+                    .ok()
+                    .and_then(|location| {
+                        crate::session_registry::HistoryRowKey::new(
+                            provider_id,
+                            location,
+                            id,
+                            value
+                                .get("session_universe")
+                                .and_then(|v| v.as_str())
+                                .map(str::to_string),
+                        )
+                    })
+            });
+        if let Some(key) = qualified {
+            out.qualified.insert(key, record);
+        }
     }
     out
 }
@@ -345,6 +481,100 @@ mod tests {
                 .and_then(|r| r.pane_session_id.as_deref()),
             Some("pane-xyz")
         );
+    }
+
+    #[test]
+    fn qualified_records_keep_same_raw_id_separate() {
+        let path = tmp_index_path("qualified-collision");
+        let host = OriginScope::new(
+            "copilot",
+            crate::agent_sessions::SessionLocation::Host,
+            None,
+        )
+        .unwrap();
+        let wsl = OriginScope::new(
+            "copilot",
+            crate::agent_sessions::SessionLocation::Wsl {
+                distro: "Ubuntu".to_string(),
+            },
+            None,
+        )
+        .unwrap();
+        append_qualified_to(&path, &host, "same-id", Some("pane-host")).unwrap();
+        append_qualified_to(&path, &wsl, "same-id", Some("pane-wsl")).unwrap();
+
+        let index = load_index_from(&path);
+        assert_eq!(index.qualified_len(), 2);
+        assert!(index.contains(
+            "copilot",
+            &crate::agent_sessions::SessionLocation::Host,
+            "same-id"
+        ));
+        assert!(index.contains(
+            "copilot",
+            &crate::agent_sessions::SessionLocation::Wsl {
+                distro: "Ubuntu".to_string(),
+            },
+            "same-id"
+        ));
+        assert!(!index.contains(
+            "claude",
+            &crate::agent_sessions::SessionLocation::Host,
+            "same-id"
+        ));
+        assert!(
+            load_records_from(&path).is_empty(),
+            "qualified records must never enter the raw compatibility map"
+        );
+    }
+
+    #[test]
+    fn qualified_record_round_trips_provider_and_location() {
+        let path = tmp_index_path("qualified-roundtrip");
+        let scope = OriginScope::new(
+            "Claude",
+            crate::agent_sessions::SessionLocation::Host,
+            Some("tenant-a".to_string()),
+        )
+        .unwrap();
+        append_qualified_to(&path, &scope, "session-1", None).unwrap();
+
+        let index = load_index_from(&path);
+        let key = crate::session_registry::HistoryRowKey::new(
+            "claude",
+            crate::agent_sessions::SessionLocation::Host,
+            "session-1",
+            Some("tenant-a".to_string()),
+        )
+        .unwrap();
+        assert!(index.qualified.contains_key(&key));
+        assert!(index.contains_key(&key));
+        let other_universe = crate::session_registry::HistoryRowKey::new(
+            "claude",
+            crate::agent_sessions::SessionLocation::Host,
+            "session-1",
+            Some("tenant-b".to_string()),
+        )
+        .unwrap();
+        assert!(!index.contains_key(&other_universe));
+    }
+
+    #[test]
+    fn malformed_v3_record_does_not_fall_back_to_legacy_raw_id() {
+        let path = tmp_index_path("malformed-v3");
+        std::fs::write(
+            &path,
+            "{\"v\":3,\"session_id\":\"same-id\",\"provider_id\":\"copilot\",\"origin\":\"agent_pane\"}\n",
+        )
+        .unwrap();
+
+        let index = load_index_from(&path);
+        assert!(!index.contains(
+            "copilot",
+            &crate::agent_sessions::SessionLocation::Host,
+            "same-id"
+        ));
+        assert!(load_records_from(&path).is_empty());
     }
 
     #[test]

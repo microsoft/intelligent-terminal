@@ -692,18 +692,22 @@ int wmain(int argc, wchar_t** argv)
 
     // ── new-tab ──
     std::string newTabCommand, newTabTitle, newTabCwd, newTabProfile;
+    uint64_t newTabWindowId = 0;
+    bool newTabBackground = false;
     auto* newTabCmd = app.add_subcommand("new-tab", "Create a new tab")->alias("neww");
     newTabCmd->add_option("-c,--command", newTabCommand, "Command to run");
     newTabCmd->add_option("-n,--title", newTabTitle, "Tab title");
     newTabCmd->add_option("-d,--cwd", newTabCwd, "Starting directory");
     newTabCmd->add_option("-p,--profile", newTabProfile, "Profile");
+    newTabCmd->add_option("-w,--window-id", newTabWindowId, "Target window ID (0 uses the most recent window)");
+    newTabCmd->add_flag("--background", newTabBackground, "Create the tab without selecting it");
     newTabCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
         wil::unique_bstr profile{ Bstr(newTabProfile) }, command{ Bstr(newTabCommand) }, title{ Bstr(newTabTitle) }, cwd{ Bstr(newTabCwd) };
         Json::Value result;
         auto hr = CallJson([&](BSTR* j) {
-            return server->CreateTab(0, profile.get(), command.get(), title.get(), cwd.get(), false, true, j);
+            return server->CreateTab(newTabWindowId, profile.get(), command.get(), title.get(), cwd.get(), false, newTabBackground, j);
         }, result);
         if (FAILED(hr)) { fprintf(stderr, "CreateTab failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
         if (jsonMode)

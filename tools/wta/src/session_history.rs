@@ -8,7 +8,6 @@
 //! returns them, so we subtract them here.
 
 use crate::agent_sessions::{AgentSession, AgentStatus, CliSource, SessionLocation, SessionOrigin};
-use std::collections::HashSet;
 use std::time::{Duration, SystemTime};
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
@@ -51,10 +50,11 @@ pub(crate) fn acp_session_to_agent_session(
 
 pub(crate) fn classify_and_map(
     sessions: &[agent_client_protocol::schema::v1::SessionInfo],
-    agent_pane_index: &HashSet<String>,
+    agent_pane_index: &crate::agent_pane_origin::OriginIndex,
     location: SessionLocation,
     cli: &CliSource,
 ) -> Vec<AgentSession> {
+    let provider_id = cli.canonical_provider_id().unwrap_or_default();
     sessions
         .iter()
         .filter(|s| {
@@ -63,7 +63,7 @@ pub(crate) fn classify_and_map(
                 .is_some_and(|title| crate::agent_sessions::title_is_placeholder(cli, title))
         })
         .map(|s| acp_session_to_agent_session(s, location.clone(), cli))
-        .filter(|s| !agent_pane_index.contains(&s.key))
+        .filter(|s| !agent_pane_index.contains(&provider_id, &location, &s.key))
         .collect()
 }
 
@@ -114,7 +114,6 @@ mod tests {
     use super::*;
     use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
     use agent_client_protocol as acp;
-    use std::collections::HashSet;
     use std::path::PathBuf;
 
     fn info(id: &str, cwd: &str) -> acp::schema::v1::SessionInfo {
@@ -140,11 +139,60 @@ mod tests {
     #[test]
     fn classify_filters_class_a_by_session_id() {
         let rows = vec![info("keep-b", "C:/p"), info("hide-a", "C:/q")];
-        let mut idx = HashSet::new();
-        idx.insert("hide-a".to_string());
+        let mut idx = crate::agent_pane_origin::OriginIndex::default();
+        idx.insert_qualified(
+            crate::session_registry::HistoryRowKey::new(
+                "copilot",
+                SessionLocation::Host,
+                "hide-a",
+                None,
+            )
+            .unwrap(),
+            crate::agent_pane_origin::OriginRecord {
+                pane_session_id: None,
+            },
+        );
         let out = classify_and_map(&rows, &idx, SessionLocation::Host, &CliSource::Copilot);
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].key, "keep-b");
+    }
+
+    #[test]
+    fn classify_does_not_cross_provider_or_location_boundaries() {
+        let rows = vec![info("same-id", "C:/p")];
+        let mut idx = crate::agent_pane_origin::OriginIndex::default();
+        idx.insert_qualified(
+            crate::session_registry::HistoryRowKey::new(
+                "copilot",
+                SessionLocation::Host,
+                "same-id",
+                None,
+            )
+            .unwrap(),
+            crate::agent_pane_origin::OriginRecord {
+                pane_session_id: None,
+            },
+        );
+
+        assert!(
+            classify_and_map(&rows, &idx, SessionLocation::Host, &CliSource::Copilot).is_empty()
+        );
+        assert_eq!(
+            classify_and_map(&rows, &idx, SessionLocation::Host, &CliSource::Claude).len(),
+            1
+        );
+        assert_eq!(
+            classify_and_map(
+                &rows,
+                &idx,
+                SessionLocation::Wsl {
+                    distro: "Ubuntu".to_string(),
+                },
+                &CliSource::Copilot,
+            )
+            .len(),
+            1
+        );
     }
 
     #[test]
@@ -157,7 +205,7 @@ mod tests {
 
         let opencode = classify_and_map(
             &rows,
-            &HashSet::new(),
+            &crate::agent_pane_origin::OriginIndex::default(),
             SessionLocation::Host,
             &CliSource::OpenCode,
         );
@@ -166,7 +214,7 @@ mod tests {
 
         let copilot = classify_and_map(
             &[placeholder],
-            &HashSet::new(),
+            &crate::agent_pane_origin::OriginIndex::default(),
             SessionLocation::Host,
             &CliSource::Copilot,
         );

@@ -279,6 +279,7 @@ namespace winrt::TerminalApp::implementation
         void OnAgentChipTargetChanged(hstring eventJson);
         void OnRestartAgentStackRequested(hstring eventJson);
         void OnAgentSessionsRetired(hstring eventJson);
+        void OnSessionRegistryChanged(hstring eventJson);
 
         til::property_changed_event PropertyChanged;
 
@@ -352,6 +353,11 @@ namespace winrt::TerminalApp::implementation
         bool _pendingTabProjectionRefresh{ false };
         bool _mutatingTabCollections{ false };
         bool _suppressTabFocusRequests{ false };
+        uint64_t _historyRequestGeneration{ 0 };
+        uint64_t _historyActivationSerial{ 0 };
+        Windows::UI::Xaml::DispatcherTimer _historyRefreshTimer{ nullptr };
+        bool _historyRefreshInFlight{ false };
+        bool _historyRefreshPending{ false };
         bool _tabDragReorderAuthorized{ false };
         Windows::Foundation::IInspectable _tabDragSelectedItem{ nullptr };
         // Spec A §5.2: hand-rolled splitter for resizing the vertical rail.
@@ -607,7 +613,12 @@ namespace winrt::TerminalApp::implementation
         {
             std::string sessionId;
             std::string cwd;
+            winrt::hstring agentId;
+            winrt::hstring agentModel;
+            winrt::hstring agentSource;
+            winrt::hstring agentWslDistro;
         };
+        std::optional<_PendingLoadSession> _pendingNewTabLoadSession;
         std::unordered_map<winrt::hstring, _PendingLoadSession> _pendingLoadSessions;
 
         // Depth of in-flight `ProcessStartupActions` replays. A restored agent
@@ -942,6 +953,12 @@ namespace winrt::TerminalApp::implementation
         bool _MatchesTabSearch(const Tab& tab) const;
         bool _IsTabVisibleInProjection(const winrt::com_ptr<Tab>& tab) const;
         void _ClearTabSearch();
+        void _StartSidebarHistoryRefreshTimer();
+        void _StopSidebarHistoryRefreshTimer();
+        void _CloseSidebarHistory(bool restoreFocus);
+        void _RequestSidebarHistoryRefresh(bool initialLoad);
+        safe_void_coroutine _LoadSidebarHistory(uint64_t generation, bool initialLoad);
+        safe_void_coroutine _ActivateSidebarHistoryItem(TerminalApp::TabStripHistoryItem item);
         bool _IsCollapsedVerticalRail() const noexcept
         {
             return _isVerticalLayout &&

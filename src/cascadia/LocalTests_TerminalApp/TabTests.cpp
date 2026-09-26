@@ -278,6 +278,10 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabStripCollapsedItemsPreserveSelection);
         TEST_METHOD(VerticalTabSearchMatchesCommittedTitle);
         TEST_METHOD(VerticalTabSearchUiState);
+        TEST_METHOD(LiteralSearchHighlighting);
+        TEST_METHOD(VerticalTabHistorySearchProjection);
+        TEST_METHOD(VerticalTabHistoryPreservesLiveSearch);
+        TEST_METHOD(VerticalTabHistoryClosePreservesForegroundSelection);
         TEST_METHOD(WindowActivationToleratesTabWithoutStatus);
         TEST_METHOD(AgentTabClassificationTracksSession);
         TEST_METHOD(CliAgentClassifiesTab);
@@ -2658,7 +2662,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(page->_MatchesTabSearch(*tab));
 
             page->_tabSearchQuery = L"";
-            VERIFY_IS_FALSE(page->_MatchesTabSearch(*tab));
+            VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
 
             page->_tabSearchActive = false;
             VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
@@ -2674,21 +2678,145 @@ namespace TerminalAppLocalTests
             strip.SearchActive(true);
             strip.SearchQuery(L"power");
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->SearchPanel().Visibility());
+            VERIFY_ARE_EQUAL(40.0, stripImpl->SearchPanel().Height());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"power" }, stripImpl->SearchTextBox().Text());
-            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->ClearSearchButton().Visibility());
+            VERIFY_IS_TRUE(stripImpl->FilterTabsButton().IsTabStop());
+            VERIFY_IS_TRUE(stripImpl->TabHistoryButton().IsTabStop());
 
             strip.IsRailCollapsed(true);
             VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->SearchPanel().Visibility());
             VERIFY_IS_FALSE(stripImpl->SearchTabsButton().IsEnabled());
+            VERIFY_IS_FALSE(stripImpl->FilterTabsButton().IsEnabled());
+            VERIFY_IS_FALSE(stripImpl->TabHistoryButton().IsEnabled());
 
             strip.IsRailCollapsed(false);
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->SearchPanel().Visibility());
             VERIFY_IS_TRUE(stripImpl->SearchTabsButton().IsEnabled());
-
+            VERIFY_IS_TRUE(stripImpl->FilterTabsButton().IsEnabled());
+            VERIFY_IS_TRUE(stripImpl->TabHistoryButton().IsEnabled());
+            stripImpl->ProjectionControlsEnabled(false);
+            VERIFY_IS_FALSE(stripImpl->SearchTabsButton().IsEnabled());
+            VERIFY_IS_FALSE(stripImpl->FilterTabsButton().IsEnabled());
+            VERIFY_IS_FALSE(stripImpl->TabHistoryButton().IsEnabled());
+            stripImpl->ProjectionControlsEnabled(true);
+            VERIFY_IS_TRUE(stripImpl->SearchTabsButton().IsEnabled());
+            VERIFY_IS_TRUE(stripImpl->FilterTabsButton().IsEnabled());
+            VERIFY_IS_TRUE(stripImpl->TabHistoryButton().IsEnabled());
             strip.SearchQuery(L"");
-            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->ClearSearchButton().Visibility());
+            strip.SearchQuery(L"");
             strip.SearchActive(false);
             VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->SearchPanel().Visibility());
+            VERIFY_ARE_EQUAL(0.0, stripImpl->SearchPanel().Height());
+        });
+    }
+
+    void TabTests::LiteralSearchHighlighting()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::HighlightedTextControl control;
+            control.Text(L"PowerShell");
+            control.SearchText(L"shell");
+            control.ApplyTemplate();
+
+            const auto textBlock = Media::VisualTreeHelper::GetChild(control, 0).as<TextBlock>();
+            VERIFY_ARE_EQUAL(2u, textBlock.Inlines().Size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Power" }, textBlock.Inlines().GetAt(0).as<Documents::Run>().Text());
+            const auto highlighted = textBlock.Inlines().GetAt(1).as<Documents::Run>();
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Shell" }, highlighted.Text());
+            VERIFY_ARE_EQUAL(FontWeights::Bold().Weight, highlighted.FontWeight().Weight);
+
+            control.SearchText(L"");
+            VERIFY_ARE_EQUAL(1u, textBlock.Inlines().Size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"PowerShell" }, textBlock.Inlines().GetAt(0).as<Documents::Run>().Text());
+        });
+    }
+
+    void TabTests::VerticalTabHistorySearchProjection()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            const auto visibleItems = strip.HistoryItems();
+
+            auto host = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            host.Title(L"Fix build");
+            host.AgentId(L"copilot");
+            host.ProviderDisplayName(L"Copilot");
+            host.AgentSource(L"host");
+            host.Status(L"Idle");
+            host.IsLive(true);
+
+            auto wsl = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            wsl.Title(L"Deploy service");
+            wsl.AgentId(L"claude");
+            wsl.ProviderDisplayName(L"Claude");
+            wsl.AgentSource(L"wsl");
+            wsl.WslDistro(L"Ubuntu");
+            wsl.Status(L"Historical");
+            wsl.IsLive(false);
+
+            stripImpl->CommitHistorySnapshot({ host, wsl });
+            VERIFY_ARE_EQUAL(winrt::get_abi(visibleItems), winrt::get_abi(strip.HistoryItems()));
+            VERIFY_ARE_EQUAL(2u, strip.HistoryItems().Size());
+
+            stripImpl->HistorySearchTextBox().Text(L"ubuntu");
+            VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Deploy service" }, strip.HistoryItems().GetAt(0).Title());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"ubuntu" }, strip.HistoryItems().GetAt(0).SearchQuery());
+
+            stripImpl->HistorySearchTextBox().Text(L"idle");
+            VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Fix build" }, strip.HistoryItems().GetAt(0).Title());
+
+            stripImpl->HistorySearchTextBox().Text(L"missing");
+            VERIFY_ARE_EQUAL(0u, strip.HistoryItems().Size());
+
+            stripImpl->HistorySearchTextBox().Text(L"");
+            VERIFY_ARE_EQUAL(2u, strip.HistoryItems().Size());
+        });
+    }
+
+    void TabTests::VerticalTabHistoryPreservesLiveSearch()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+
+            strip.SearchActive(true);
+            strip.SearchQuery(L"power");
+            strip.HistoryActive(true);
+
+            VERIFY_IS_TRUE(strip.SearchActive());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"power" }, strip.SearchQuery());
+
+            strip.HistoryActive(false);
+            VERIFY_IS_TRUE(strip.SearchActive());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"power" }, strip.SearchQuery());
+        });
+    }
+
+    void TabTests::VerticalTabHistoryClosePreservesForegroundSelection()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            page->_tabStrip.HistoryActive(true);
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            stripImpl->HistorySearchTextBox().Focus(FocusState::Programmatic);
+
+            NewTerminalArgs newTerminalArgs{ 1 };
+            VERIFY_SUCCEEDED(page->_OpenNewTab(newTerminalArgs, false));
+            VERIFY_ARE_EQUAL(2u, page->_tabs.Size());
+
+            const auto foregroundItem = page->_tabs.GetAt(1).TabViewItem();
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryActive());
+            VERIFY_IS_TRUE(page->_selectedTabItem() == foregroundItem);
+            VERIFY_ARE_EQUAL(1u, page->_GetFocusedTabIndex().value_or(0));
+        });
+
+        TestOnUIThread([&]() {
+            const auto foregroundItem = page->_tabs.GetAt(1).TabViewItem();
+            VERIFY_IS_TRUE(page->_selectedTabItem() == foregroundItem);
+            VERIFY_ARE_EQUAL(1u, page->_GetFocusedTabIndex().value_or(0));
         });
     }
 
