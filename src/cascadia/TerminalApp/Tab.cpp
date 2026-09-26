@@ -1979,6 +1979,12 @@ namespace winrt::TerminalApp::implementation
         auto weakThis{ get_weak() };
 
         _keepRunningMenuItem.Text(RS_(L"KeepTabRunningText"));
+        Controls::BitmapIcon keepRunningIcon;
+        keepRunningIcon.UriSource(Windows::Foundation::Uri{ L"ms-appx:///Images/KeepTabRunning.png" });
+        keepRunningIcon.ShowAsMonochrome(true);
+        keepRunningIcon.Width(12);
+        keepRunningIcon.Height(12);
+        _keepRunningMenuItem.Icon(keepRunningIcon);
         const auto keepRunningToolTip = RS_(L"KeepTabRunningToolTip");
         WUX::Controls::ToolTipService::SetToolTip(_keepRunningMenuItem, box_value(keepRunningToolTip));
         Automation::AutomationProperties::SetHelpText(_keepRunningMenuItem, keepRunningToolTip);

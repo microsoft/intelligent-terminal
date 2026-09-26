@@ -485,7 +485,7 @@
     <comment>Checkable item at the top of a vertical terminal tab&apos;s context menu. When enabled, all panes in this tab keep running after the tab or window is closed. This does not pin the tab or save it for a restart.</comment>
   </data>
   <data name="KeepTabRunningToolTip" xml:space="preserve">
-    <value>Panatilihing tumatakbo ang lahat ng pane sa tab na ito pagkatapos isara ang tab o window.</value>
+    <value>Panatilihing tumatakbo ang tab na ito sa background pagkatapos isara ang tab o window.</value>
     <comment>Tooltip and accessibility help for Keep tab running. Includes shell panes and the AI assistant; their current processes and sessions stay alive, rather than restarting later.</comment>
   </data>
 </root>

@@ -1497,7 +1497,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>Checkable item at the top of a vertical terminal tab&apos;s context menu. When enabled, all panes in this tab keep running after the tab or window is closed. This does not pin the tab or save it for a restart.</comment>
   </data>
   <data name="KeepTabRunningToolTip" xml:space="preserve">
-    <value>탭이나 창을 닫은 후에도 이 탭의 모든 창을 계속 실행합니다.</value>
+    <value>탭이나 창을 닫은 후에도 이 탭을 백그라운드에서 계속 실행합니다.</value>
     <comment>Tooltip and accessibility help for Keep tab running. Includes shell panes and the AI assistant; their current processes and sessions stay alive, rather than restarting later.</comment>
   </data>
 </root>

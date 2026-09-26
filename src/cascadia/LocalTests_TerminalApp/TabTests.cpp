@@ -975,6 +975,12 @@ namespace TerminalAppLocalTests
             const auto menu = tab->TabViewItem().ContextFlyout().as<MenuFlyout>();
             VERIFY_IS_TRUE(menu.Items().GetAt(0) == item);
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Keep tab running" }, item.Text());
+            const auto icon = item.Icon().as<BitmapIcon>();
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"ms-appx:///Images/KeepTabRunning.png" }, icon.UriSource().AbsoluteUri());
+            VERIFY_IS_TRUE(icon.ShowAsMonochrome());
+            const winrt::hstring tooltip{ L"Keep this tab running in the background after closing the tab or window." };
+            VERIFY_ARE_EQUAL(tooltip, winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(item)));
+            VERIFY_ARE_EQUAL(tooltip, winrt::Windows::UI::Xaml::Automation::AutomationProperties::GetHelpText(item));
             VERIFY_ARE_EQUAL(Visibility::Visible, item.Visibility());
             VERIFY_IS_TRUE(item.IsEnabled());
             VERIFY_IS_FALSE(item.IsChecked());

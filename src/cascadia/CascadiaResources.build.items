@@ -11,6 +11,10 @@
       <DeploymentContent>true</DeploymentContent>
       <Link>Images\%(RecursiveDir)%(FileName)%(Extension)</Link>
     </Content>
+    <Content Include="$(OpenConsoleDir)res\terminal\KeepTabRunning.png">
+      <DeploymentContent>true</DeploymentContent>
+      <Link>Images\KeepTabRunning.png</Link>
+    </Content>
     <!-- Fonts -->
     <Content Include="$(OpenConsoleDir)res\fonts\*.ttf" Condition="'$(WindowsTerminalOfficialBuild)'=='true'">
       <DeploymentContent>true</DeploymentContent>

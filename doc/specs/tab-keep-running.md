@@ -11,6 +11,9 @@ tab has focus. The item is absent from horizontal-tab and pane context menus,
 and from nonterminal tabs such as Settings. Changing tab orientation does not
 reset an existing choice.
 
+The menu item includes a monochrome icon and the tooltip: "Keep this tab
+running in the background after closing the tab or window."
+
 ## UI integration contract
 
 `TerminalPage` exposes APIs keyed by `Tab::StableId()`, parsed as a GUID, not

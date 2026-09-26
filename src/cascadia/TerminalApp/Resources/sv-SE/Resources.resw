@@ -532,7 +532,7 @@
     <comment>Checkable item at the top of a vertical terminal tab&apos;s context menu. When enabled, all panes in this tab keep running after the tab or window is closed. This does not pin the tab or save it for a restart.</comment>
   </data>
   <data name="KeepTabRunningToolTip" xml:space="preserve">
-    <value>Fortsätt köra alla paneler på den här fliken efter att fliken eller fönstret har stängts.</value>
+    <value>Fortsätt köra den här fliken i bakgrunden efter att fliken eller fönstret har stängts.</value>
     <comment>Tooltip and accessibility help for Keep tab running. Includes shell panes and the AI assistant; their current processes and sessions stay alive, rather than restarting later.</comment>
   </data>
 </root>
