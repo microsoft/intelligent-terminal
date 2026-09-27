@@ -95,7 +95,7 @@ Describe 'Feature: focus kept sessions' -Tag 'Feature', 'KeepRunning' -Skip:(-no
         }
     }
 
-    It 'Bare launch restores all kept tabs after the last window closes' {
+    It 'Bare launch opens a new tab without attaching kept tabs' {
         Wait-NewAgentPaneSession -App $script:app -TimeoutSec 40 | Out-Null
         $retained = @()
         foreach ($index in 1..2) {
@@ -148,16 +148,17 @@ Describe 'Feature: focus kept sessions' -Tag 'Feature', 'KeepRunning' -Skip:(-no
 
         $script:app.AppUserModelId | Should -Not -BeNullOrEmpty
         Start-Process -FilePath explorer.exe -ArgumentList "shell:AppsFolder\$($script:app.AppUserModelId)" | Out-Null
-        $restoredWindow = Wait-Until -TimeoutSec 25 -Because 'Start menu activation to restore both kept tabs into one window' -Condition {
+        $newWindow = Wait-Until -TimeoutSec 25 -Because 'Start menu activation to open one new ordinary tab' -Condition {
             $windows = @(Get-WtWindows -App $script:app)
-            if ($windows.Count -eq 1 -and $windows[0].tab_count -eq 2) { $windows[0] }
+            if ($windows.Count -eq 1 -and $windows[0].tab_count -eq 1) { $windows[0] }
         }
-        $script:app.Hwnd = Wait-Until -TimeoutSec 15 -Because 'the restored window to become visible' -Condition {
+        $script:app.Hwnd = Wait-Until -TimeoutSec 15 -Because 'the new window to become visible' -Condition {
             Get-WtWindowHwnds -App $script:app | Where-Object pid -eq $script:app.Pid | Select-Object -First 1 -ExpandProperty hwnd
         }
-        $script:app.WindowId = [string]$restoredWindow.window_id
+        $script:app.WindowId = [string]$newWindow.window_id
+        (Get-ActivePane -App $script:app).session_id | Should -Not -BeIn @($retained.Shell)
         foreach ($tab in $retained) {
-            Wait-UiElement -App $script:app -Selector $tab.Title -TimeoutSec 10 | Out-Null
+            Test-UiElementExists -App $script:app -Selector $tab.Title | Should -BeFalse -Because 'ordinary launch must leave kept tabs detached'
             foreach ($id in $tab.Pids.Keys) {
                 $status = Get-WtPaneStatus -App $script:app -SessionId $id
                 $status.pid | Should -Be $tab.Pids[$id]
@@ -165,9 +166,15 @@ Describe 'Feature: focus kept sessions' -Tag 'Feature', 'KeepRunning' -Skip:(-no
             }
             $helper = Get-AgentPaneSession -App $script:app -PaneSessionId $tab.Helper.PaneSessionId
             $helper.AcpSessionId | Should -Be $tab.Helper.AcpSessionId
+        }
+        $expectedTabs = 1
+        foreach ($tab in $retained) {
             Set-WtPaneFocus -App $script:app -SessionId $tab.Shell
+            Wait-UiElement -App $script:app -Selector $tab.Title -TimeoutSec 10 | Out-Null
+            $expectedTabs++
+            (Get-WtWindows -App $script:app).tab_count | Should -Be $expectedTabs -Because 'only explicit session activation should attach each kept tab'
         }
         @(Get-WtWindows -App $script:app).Count | Should -Be 1
-        (Get-WtWindows -App $script:app).tab_count | Should -Be 2
+        (Get-WtWindows -App $script:app).tab_count | Should -Be 3
     }
 }

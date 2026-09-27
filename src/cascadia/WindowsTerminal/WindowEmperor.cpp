@@ -1409,10 +1409,6 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
                 // toast's Activated event, so just ignore this handoff.
                 if (argv.size() != 2 || argv[1] != L"--from-toast")
                 {
-                    if (argv.size() == 1 && _windows.empty() && _restoreAllKeptGroups())
-                    {
-                        return 0;
-                    }
                     // A bare `wt` handoff is a plain "open the Terminal"
                     // activation: bring the deferred layout back and, if that
                     // produced windows, don't stack a default one on top.
