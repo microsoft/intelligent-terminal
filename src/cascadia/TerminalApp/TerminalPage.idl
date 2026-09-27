@@ -98,14 +98,6 @@ namespace TerminalApp
     {
         TerminalPage(WindowProperties properties, ContentManager manager);
 
-        // Runtime-only whole-tab policy, keyed by Tab.StableId, not its mutable index.
-        // Direct pane close always terminates that pane.
-        Boolean CanKeepTabRunning(Guid tabId);
-        Boolean IsTabKeepRunning(Guid tabId);
-        void SetTabKeepRunning(Guid tabId, Boolean enabled);
-        Boolean RestoreKeptGroup(Guid groupId);
-        void ShutdownPanes();
-
         // XAML bound properties
         String ApplicationDisplayName { get; };
         String ApplicationVersion { get; };
@@ -255,5 +247,13 @@ namespace TerminalApp
         // Refreshes an open Sidebar History view immediately; the periodic
         // refresh remains as a missed-notification fallback.
         void OnSessionRegistryChanged(String eventJson);
+
+        // Runtime-only whole-tab policy, keyed by Tab.StableId, not its mutable index.
+        // Direct pane close always terminates that pane.
+        Boolean CanKeepTabRunning(Guid tabId);
+        Boolean IsTabKeepRunning(Guid tabId);
+        void SetTabKeepRunning(Guid tabId, Boolean enabled);
+        Boolean RestoreKeptGroup(Guid groupId);
+        void ShutdownPanes();
     }
 }
