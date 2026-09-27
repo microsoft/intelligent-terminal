@@ -5,19 +5,24 @@ It is available to ordinary shell tabs without an agent CLI or lifecycle hooks,
 and is independent of startup-layout restoration.
 
 In vertical layout, right-click a terminal tab and select **Keep tab running**,
-the first menu item. Its checkmark reflects that tab's current choice; selecting
-it again disables keep running. It targets the clicked tab even when another
+the first menu item. When enabled, that action changes to **Turn off keep running**;
+selecting it disables background retention without closing the tab or stopping
+its current processes. It targets the clicked tab even when another
 tab has focus. The item is absent from horizontal-tab and pane context menus,
 and from nonterminal tabs such as Settings. Changing tab orientation does not
 reset an existing choice.
 
-The menu item uses the system RepeatAll (`E8EE`) font icon and the tooltip:
+The enable action uses the system RepeatAll (`E8EE`) font icon and the tooltip:
 "Keep this tab running in the background after closing the tab or window."
-The same icon appears after the title of a tab with keep running enabled,
+The disable action uses the system Cancel (`E711`) cross icon and the tooltip:
+"This tab will no longer stay running after you close the tab or window."
+The menu shows an action rather than a checked state, and refreshes its label,
+icon, tooltip, and accessibility help when the choice changes or the menu opens.
+The RepeatAll icon appears after the title of a tab with keep running enabled,
 including after restore, whole-tab moves, and switching to horizontal layout.
 Disabling keep running removes the title icon. Long titles truncate before the
 indicator so it stays visible.
-Both indicators use Segoe Fluent Icons with Segoe MDL2 Assets as a fallback,
+The menu icons and title indicator use Segoe Fluent Icons with Segoe MDL2 Assets as a fallback,
 not a bitmap asset.
 
 ## UI integration contract

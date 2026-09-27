@@ -1451,10 +1451,18 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="KeepTabRunningText" xml:space="preserve">
     <value>[!! ‮Keep tab running‬ !!]</value>
-    <comment>Checkable item at the top of a vertical terminal tab&apos;s context menu. When enabled, all panes in this tab keep running after the tab or window is closed. This does not pin the tab or save it for a restart.</comment>
+    <comment>Command at the top of a vertical terminal tab's context menu that enables keeping all panes running after the tab or window is closed. Also labels the tab's keep-running status indicator. This does not pin the tab or save it for a restart.</comment>
   </data>
   <data name="KeepTabRunningToolTip" xml:space="preserve">
     <value>[!! ‮Keep this tab running in the background after closing the tab or window.‬ !!]</value>
     <comment>Tooltip and accessibility help for Keep tab running. Includes shell panes and the AI assistant; their current processes and sessions stay alive, rather than restarting later.</comment>
+  </data>
+  <data name="TurnOffKeepTabRunningText" xml:space="preserve">
+    <value>[!! ‮Turn off keep running‬ !!]</value>
+    <comment>Command shown instead of Keep tab running when that tab already has keep running enabled. It only turns off the background-running behavior; it does not close the tab or stop its current processes immediately.</comment>
+  </data>
+  <data name="TurnOffKeepTabRunningToolTip" xml:space="preserve">
+    <value>[!! ‮This tab will no longer stay running after you close the tab or window.‬ !!]</value>
+    <comment>Tooltip and accessibility help for Turn off keep running. After this action, closing the tab or its window closes its panes normally instead of retaining them in the background. The current tab and processes are not closed by this action.</comment>
   </data>
 </root>

@@ -969,6 +969,8 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(std::wstring_view{ restoredControl.ReadEntireBuffer() }.find(L"still running while detached") != std::wstring_view::npos);
             VERIFY_IS_TRUE(page->IsTabKeepRunning(groupId));
             VERIFY_IS_TRUE(restored->TabStatus().IsKeepRunning());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Turn off keep running" }, restored->_keepRunningMenuItem.Text());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE711" }, restored->_keepRunningMenuItem.Icon().as<FontIcon>().Glyph());
             VERIFY_IS_FALSE(page->_manager.HasKeptSessions());
             VERIFY_ARE_EQUAL(0u, kept->CloseCount());
             VERIFY_THROWS(page->RestoreKeptGroup(groupId), winrt::hresult_error);
@@ -997,13 +999,16 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(tooltip, winrt::Windows::UI::Xaml::Automation::AutomationProperties::GetHelpText(item));
             VERIFY_ARE_EQUAL(Visibility::Visible, item.Visibility());
             VERIFY_IS_TRUE(item.IsEnabled());
-            VERIFY_IS_FALSE(item.IsChecked());
             VERIFY_IS_FALSE(tab->TabStatus().IsKeepRunning());
 
             const winrt::guid id{ tab->StableId() };
             page->SetTabKeepRunning(id, true);
-            tab->_UpdateKeepRunningMenuItem();
-            VERIFY_IS_TRUE(item.IsChecked());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Turn off keep running" }, item.Text());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE711" }, icon.Glyph());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE8EE" }, badge.Glyph());
+            const winrt::hstring turnOffTooltip{ L"This tab will no longer stay running after you close the tab or window." };
+            VERIFY_ARE_EQUAL(turnOffTooltip, winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(item)));
+            VERIFY_ARE_EQUAL(turnOffTooltip, winrt::Windows::UI::Xaml::Automation::AutomationProperties::GetHelpText(item));
             VERIFY_IS_TRUE(tab->TabStatus().IsKeepRunning());
             tab->SetVerticalTabLayout(false);
             VERIFY_ARE_EQUAL(Visibility::Collapsed, item.Visibility());
@@ -1012,10 +1017,13 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(tab->TabStatus().IsKeepRunning());
             tab->SetVerticalTabLayout(true);
             VERIFY_ARE_EQUAL(Visibility::Visible, item.Visibility());
-            VERIFY_IS_TRUE(item.IsChecked());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Turn off keep running" }, item.Text());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE711" }, icon.Glyph());
             page->SetTabKeepRunning(id, false);
-            tab->_UpdateKeepRunningMenuItem();
-            VERIFY_IS_FALSE(item.IsChecked());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Keep tab running" }, item.Text());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE8EE" }, icon.Glyph());
+            VERIFY_ARE_EQUAL(tooltip, winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(item)));
+            VERIFY_ARE_EQUAL(tooltip, winrt::Windows::UI::Xaml::Automation::AutomationProperties::GetHelpText(item));
             VERIFY_IS_FALSE(tab->TabStatus().IsKeepRunning());
 
             const auto root = tab->_rootPane;
@@ -1031,25 +1039,40 @@ namespace TerminalAppLocalTests
     void TabTests::KeepRunningMenuTogglesOwningTab()
     {
         using namespace winrt::Windows::UI::Xaml::Automation;
-        const auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto connection = winrt::make_self<TestConnection>(winrt::guid{ L"{13f7aa41-8837-473e-92a3-f1e682ab1030}" }, State::Connected);
+        const auto page = _commonSetup(*connection, nullptr, std::nullopt, true);
         TestOnUIThread([&]() {
             const auto owner = page->_GetFocusedTabImpl();
+            const auto control = owner->GetRootPane()->GetTerminalControl();
+            const auto contentId = control.ContentId();
             const auto siblingPane = page->_MakePane(nullptr, nullptr, nullptr);
             page->_CreateNewTabFromPane(siblingPane);
             const auto focused = page->_GetFocusedTabImpl();
             VERIFY_IS_TRUE(owner != focused);
-            const Peers::ToggleMenuFlyoutItemAutomationPeer peer{ owner->_keepRunningMenuItem };
-            const auto toggle = peer.GetPattern(Peers::PatternInterface::Toggle).as<Provider::IToggleProvider>();
-            toggle.Toggle();
-            VERIFY_IS_TRUE(owner->_keepRunningMenuItem.IsChecked());
+            const Peers::MenuFlyoutItemAutomationPeer peer{ owner->_keepRunningMenuItem };
+            const auto invoke = peer.GetPattern(Peers::PatternInterface::Invoke).as<Provider::IInvokeProvider>();
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Keep tab running" }, peer.GetName());
+            invoke.Invoke();
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Turn off keep running" }, peer.GetName());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE711" }, owner->_keepRunningMenuItem.Icon().as<FontIcon>().Glyph());
             VERIFY_IS_TRUE(page->IsTabKeepRunning(winrt::guid{ owner->StableId() }));
             VERIFY_IS_TRUE(owner->TabStatus().IsKeepRunning());
             VERIFY_IS_FALSE(focused->KeepRunning());
             VERIFY_IS_FALSE(focused->TabStatus().IsKeepRunning());
-            toggle.Toggle();
-            VERIFY_IS_FALSE(owner->_keepRunningMenuItem.IsChecked());
+            invoke.Invoke();
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Keep tab running" }, peer.GetName());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE8EE" }, owner->_keepRunningMenuItem.Icon().as<FontIcon>().Glyph());
             VERIFY_IS_FALSE(owner->KeepRunning());
             VERIFY_IS_FALSE(owner->TabStatus().IsKeepRunning());
+            VERIFY_IS_FALSE(page->IsTabKeepRunning(winrt::guid{ owner->StableId() }));
+            VERIFY_ARE_EQUAL(2u, page->_tabs.Size());
+            VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == focused);
+            VERIFY_IS_TRUE(owner->GetRootPane()->GetTerminalControl() == control);
+            VERIFY_ARE_EQUAL(contentId, control.ContentId());
+            VERIFY_ARE_EQUAL(State::Connected, connection->State());
+            VERIFY_ARE_EQUAL(0u, connection->CloseCount());
+            VERIFY_IS_FALSE(page->_manager.HasKeptSessions());
         });
     }
 

@@ -261,7 +261,7 @@ namespace winrt::TerminalApp::implementation
         static constexpr double HeaderRenameBoxWidthTitleLength{ std::numeric_limits<double>::infinity() };
 
         winrt::Windows::UI::Xaml::FocusState _focusState{ winrt::Windows::UI::Xaml::FocusState::Unfocused };
-        winrt::Windows::UI::Xaml::Controls::ToggleMenuFlyoutItem _keepRunningMenuItem{};
+        winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _keepRunningMenuItem{};
         bool _isVerticalTabLayout{ false };
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _duplicateTabMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _splitTabMenuItem{};

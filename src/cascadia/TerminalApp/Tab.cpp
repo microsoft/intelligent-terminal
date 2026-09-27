@@ -1978,19 +1978,14 @@ namespace winrt::TerminalApp::implementation
     {
         auto weakThis{ get_weak() };
 
-        _keepRunningMenuItem.Text(RS_(L"KeepTabRunningText"));
         Controls::FontIcon keepRunningIcon;
         keepRunningIcon.FontFamily(Media::FontFamily{ L"Segoe Fluent Icons, Segoe MDL2 Assets" });
-        keepRunningIcon.Glyph(L"\xE8EE");
         _keepRunningMenuItem.Icon(keepRunningIcon);
-        const auto keepRunningToolTip = RS_(L"KeepTabRunningToolTip");
-        WUX::Controls::ToolTipService::SetToolTip(_keepRunningMenuItem, box_value(keepRunningToolTip));
-        Automation::AutomationProperties::SetHelpText(_keepRunningMenuItem, keepRunningToolTip);
         Automation::AutomationProperties::SetAutomationId(_keepRunningMenuItem, L"KeepTabRunningMenuItem");
         _keepRunningMenuItem.Click([weakThis](auto&&, auto&&) {
             if (const auto tab = weakThis.get())
             {
-                tab->KeepRunning(tab->_keepRunningMenuItem.IsChecked());
+                tab->KeepRunning(!tab->KeepRunning());
             }
         });
 
@@ -2204,7 +2199,7 @@ namespace winrt::TerminalApp::implementation
         ASSERT_UI_THREAD();
         _keepRunning = enabled;
         _tabStatus.IsKeepRunning(enabled);
-        _keepRunningMenuItem.IsChecked(enabled);
+        _UpdateKeepRunningMenuItem();
     }
 
     void Tab::_UpdateKeepRunningMenuItem()
@@ -2212,7 +2207,12 @@ namespace winrt::TerminalApp::implementation
         const auto available = _isVerticalTabLayout && CanKeepRunning();
         _keepRunningMenuItem.Visibility(available ? WUX::Visibility::Visible : WUX::Visibility::Collapsed);
         _keepRunningMenuItem.IsEnabled(available);
-        _keepRunningMenuItem.IsChecked(KeepRunning());
+        const auto enabled = KeepRunning();
+        _keepRunningMenuItem.Text(enabled ? RS_(L"TurnOffKeepTabRunningText") : RS_(L"KeepTabRunningText"));
+        _keepRunningMenuItem.Icon().as<Controls::FontIcon>().Glyph(enabled ? L"\xE711" : L"\xE8EE");
+        const auto tooltip = enabled ? RS_(L"TurnOffKeepTabRunningToolTip") : RS_(L"KeepTabRunningToolTip");
+        WUX::Controls::ToolTipService::SetToolTip(_keepRunningMenuItem, box_value(tooltip));
+        Automation::AutomationProperties::SetHelpText(_keepRunningMenuItem, tooltip);
     }
 
     void Tab::SetTabPointerInteractionRestricted(const bool restricted)
