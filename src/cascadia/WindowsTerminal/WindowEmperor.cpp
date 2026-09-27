@@ -1777,7 +1777,7 @@ void WindowEmperor::_notificationAreaMenuClicked(const WPARAM wParam, const LPAR
         {
             _restoreKeptGroup(groupId);
         }
-        else if (windowId == 1)
+        else if (windowId == 1 && _keptManager.KeptGroups().HasKey(groupId))
         {
             _keptManager.DiscardKeptGroup(groupId);
         }
