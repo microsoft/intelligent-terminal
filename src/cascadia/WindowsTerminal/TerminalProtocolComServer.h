@@ -67,6 +67,7 @@ TerminalProtocolComServer : public Microsoft::WRL::RuntimeClass<
     static void s_setEmperor(WindowEmperor* emperor) noexcept;
 
     static HRESULT s_StartListening();
+    [[nodiscard]] static HRESULT s_StopHookListening() noexcept;
     static HRESULT s_StopListening();
 
     // Re-runs per-window page event registration after a new AppHost is added.

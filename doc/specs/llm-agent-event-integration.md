@@ -52,6 +52,10 @@ Shell integration is standard
 Agent integration need to extened standard
 Channel 2 (`wtcli send-event`) works for **any process** requires with `wtcli` binary and `WT_COM_CLSID` env var.
 
+For `agent.*` topics, Terminal must already be running: `send-event` resolves its
+active factory using the fixed `WT_COM_CLSID` without starting a COM server.
+Non-agent topics retain normal COM activation.
+
 Both converge on the same `wtcli listen` stream.
 
 ### Key components

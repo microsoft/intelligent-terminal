@@ -1146,6 +1146,7 @@ void WindowEmperor::_postQuitMessageIfNeeded() const
         _windowCount <= 0 &&
         !_app.Logic().Settings().GlobalSettings().AllowHeadless())
     {
+        LOG_IF_FAILED(TerminalProtocolComServer::s_StopHookListening());
         PostQuitMessage(0);
     }
 }
@@ -1371,6 +1372,7 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
             RegisterApplicationRestart(nullptr, RESTART_NO_CRASH | RESTART_NO_HANG);
             return TRUE;
         case WM_ENDSESSION:
+            LOG_IF_FAILED(TerminalProtocolComServer::s_StopHookListening());
             _finalizeSessionPersistence();
             _skipPersistence = true;
             PostQuitMessage(0);

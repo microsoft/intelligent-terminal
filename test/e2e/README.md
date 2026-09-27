@@ -14,6 +14,7 @@ authenticated ACP agents. Available suites (results depend on the selected packa
 | Suite (file) | Covers | Cases |
 |---|---|---|
 | `Feature.Packaging.Tests.ps1` | §9 packaging/protocol (incl. WT_COM_CLSID injected into pane shells) + §10 logging + log retention/cleanup | 18 |
+| `Feature.HookShutdown.Tests.ps1` | Fixed-CLSID native/cached hook delivery without COM activation, late-hook suppression, and ordinary headless COM compatibility; no windows, agents, or configuration edits | 3 |
 | `Feature.TelemetryFunnels.Tests.ps1` | PR #990: opt-in, provider-only ETW adoption/engagement, per-window startup inventory/sidebar, slash rename, concrete Autofix offer/Run, palette entry, provider changes, and native-ready/startup-policy state; hot-policy checks remain separately visible | 18 (requires `ITE2E_TELEMETRY=1` and explicit policy approval) |
 | `Feature.WtcliPublishStdin.Tests.ps1` | PR #652: WTA/wtcli stdin transport delivers command-line-limit-sized events intact and preserves positional compatibility | 3 |
 | `Feature.Settings.Tests.ps1` | §1 Settings>AI Agents + §0 FRE settings/positions/auto-error/session-mgmt | 18 |

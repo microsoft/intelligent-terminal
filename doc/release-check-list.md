@@ -454,6 +454,10 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 **Feature definition:** Packaged Intelligent Terminal includes WTA/wtcli integration and uses the packaged COM protocol server correctly.
 
+- [ ] `C342` `[new]` `[E2E]` **Hooks do not activate a stopped Terminal:** Native and cached lifecycle hooks with a valid fixed package CLSID cannot start a windowless COM server. _(E2E: `Feature.HookShutdown`.)_
+- [ ] `C343` `[new]` `[E2E]` **Live hooks reuse the fixed COM class:** Native, cached, and external agent notifications reach a running server using only the existing COM address; legitimate headless listeners remain connected. _(E2E: `Feature.HookShutdown`.)_
+- [ ] `C344` `[new]` `[E2E]` **Late hooks cannot restart Terminal:** Repeated hooks after the original server exits do not create a replacement or change saved state; non-agent notifications retain explicit COM activation. _(E2E: `Feature.HookShutdown`.)_
+
 - [ ] `C177` `[E2E]` **Packaged `wta.exe` is present:** WTA is deployed next to WindowsTerminal in the package layout.
 - [ ] `C178` `[E2E]` **Packaged identity works:** WTA/wtcli can activate the Terminal protocol COM server from packaged context.
 - [ ] `C179` `[E2E]` **Wrong unpackaged WTA is not used:** Agent pane/autofix does not accidentally use a stale dev-build WTA.

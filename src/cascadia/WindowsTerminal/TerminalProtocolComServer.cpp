@@ -18,6 +18,7 @@
 
 #include <wrl/module.h>
 #include <wil/resource.h>
+#include <oleauto.h>
 
 using namespace Microsoft::WRL;
 
@@ -29,9 +30,20 @@ namespace Protocol = winrt::Microsoft::Terminal::Protocol;
 WindowEmperor* TerminalProtocolComServer::s_emperor = nullptr;
 
 static DWORD g_comRegistration = 0;
+static DWORD g_activeRegistration = 0;
 static std::shared_mutex g_mtx;
 static std::thread g_comMtaThread;
 static wil::unique_event g_comMtaStop;
+
+static HRESULT RevokeActiveRegistrationUnderLock() noexcept
+{
+    if (g_activeRegistration)
+    {
+        RETURN_IF_FAILED(RevokeActiveObject(g_activeRegistration, nullptr));
+        g_activeRegistration = 0;
+    }
+    return S_OK;
+}
 
 // Static instance tracking for event delivery to COM clients
 std::mutex TerminalProtocolComServer::s_instancesMutex;
@@ -79,6 +91,16 @@ try
                     CLSCTX_LOCAL_SERVER,
                     REGCLS_MULTIPLEUSE,
                     &g_comRegistration);
+                if (SUCCEEDED(regHr))
+                {
+                    // Publish the same factory under the fixed CLSID for non-activating
+                    // hook lookups. A ROT failure must not disable ordinary COM clients.
+                    LOG_IF_FAILED(RegisterActiveObject(
+                        unk.Get(),
+                        __uuidof(TerminalProtocolComServer),
+                        ACTIVEOBJECT_STRONG,
+                        &g_activeRegistration));
+                }
             }
         }
 
@@ -94,9 +116,19 @@ try
 }
 CATCH_RETURN()
 
+HRESULT TerminalProtocolComServer::s_StopHookListening() noexcept
+try
+{
+    std::unique_lock lock{ g_mtx };
+    return RevokeActiveRegistrationUnderLock();
+}
+CATCH_RETURN()
+
 HRESULT TerminalProtocolComServer::s_StopListening()
 {
     std::unique_lock lock{ g_mtx };
+
+    const auto activeResult = RevokeActiveRegistrationUnderLock();
 
     HRESULT result = S_OK;
     if (g_comRegistration)
@@ -115,7 +147,7 @@ HRESULT TerminalProtocolComServer::s_StopListening()
         g_comMtaThread.join();
     }
 
-    return result;
+    return FAILED(activeResult) ? activeResult : result;
 }
 
 TerminalProtocolComServer::~TerminalProtocolComServer()
