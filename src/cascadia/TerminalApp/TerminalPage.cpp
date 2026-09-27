@@ -9279,7 +9279,8 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::OnPaneAgentSessionChanged(hstring eventJson)
     {
-        _manager.OnPaneAgentSessionChanged(eventJson);
+        // COM ingress updates the manager once through TrackPaneAgentSession.
+        // Page fan-out and restore replay must not write older bindings back.
         Json::Value evt;
         Json::CharReaderBuilder reader;
         std::string errors;

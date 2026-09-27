@@ -1813,8 +1813,12 @@ try
         _createWindowForKeptGroups({ groupId });
         return true;
     }
-    THROW_HR_IF(E_UNEXPECTED, _windows.empty());
-    const auto host = _windows.front();
+    const auto recent = _mostRecentWindow();
+    const auto selected = std::ranges::find_if(_windows, [recent](const auto& window) {
+        return window.get() == recent;
+    });
+    THROW_HR_IF(E_UNEXPECTED, selected == _windows.end());
+    const auto host = *selected;
     const auto page = host->Logic().GetRoot().as<winrt::TerminalApp::TerminalPage>();
     const auto restored = page.RestoreKeptGroup(groupId);
     if (restored)

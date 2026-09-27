@@ -63,6 +63,8 @@ with zero windows. Its menu preserves the original Focus Terminal action and
 Windows submenu for selecting an existing window. Kept tabs add their own
 Restore and Close submenus without removing inherited tray actions. Restore reattaches
 the same live content; Close terminates the entire kept tab, including its helper.
+Tray Restore targets the most recently active terminal window, or creates a
+receiver window when none exists.
 An ordinary Start-menu or command-line launch follows the original startup
 logic, opening a new tab/window without attaching the kept tabs. They remain
 detached and available in the tray or Agent history.
