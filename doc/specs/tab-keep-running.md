@@ -65,6 +65,11 @@ Restore and Close submenus without removing inherited tray actions. Restore reat
 the same live content; Close terminates the entire kept tab, including its helper.
 A bare launch or tray activation with no windows restores the kept tabs.
 No default shell or disk snapshot is launched in place of a headless group.
+All requested tabs are queued into one receiver window, sized from the retained
+windows. Restoration waits for host registration and a nonzero content layout,
+then runs on a later UI turn. A failed tab remains available in the tray and
+does not close the receiver before other tabs in the batch can restore.
+Explicit profile launches keep their normal new-tab behavior.
 
 Selecting a live session in Agent history or the agent session list also
 reattaches its kept tab and focuses the original pane. The shared `focus-pane`

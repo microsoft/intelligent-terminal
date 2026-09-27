@@ -27,6 +27,7 @@ namespace TerminalApp
         Windows.Foundation.Collections.IVectorView<TerminalPage> KeptPages();
         Windows.Foundation.Collections.IVectorView<Tab> KeptTabs(TerminalPage owner);
         TerminalPage KeptGroupOwner(Guid groupId);
+        Windows.Foundation.Rect KeptGroupBounds(Guid groupId);
         Tab BeginReattachKeptGroup(Guid groupId);
         void CompleteKeptGroupReattach(Guid groupId, Boolean committed);
         void DiscardKeptGroup(Guid groupId);

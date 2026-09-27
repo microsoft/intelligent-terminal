@@ -1042,7 +1042,7 @@ namespace winrt::TerminalApp::implementation
             // if the user manually closed all tabs.
             // Do this only if we are the last window; the monarch will notice
             // we are missing and remove us that way otherwise.
-            if (!_windowCloseAccepted)
+            if (!_windowCloseAccepted && !_restoringStartupKeptGroups)
             {
                 CloseWindowRequested.raise(*this, nullptr);
             }

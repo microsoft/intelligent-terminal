@@ -161,7 +161,10 @@ namespace winrt::TerminalApp::implementation
         const auto impl = winrt::get_self<Tab>(tab);
         const winrt::guid id{ impl->StableId() };
         THROW_HR_IF(E_ILLEGAL_METHOD_CALL, !impl->KeepRunning() || _keptGroups.contains(id));
-        _keptGroups.emplace(id, KeptGroup{ owner, tab, false, SharedWta::Instance().AcquireKeepRunningLease() });
+        const winrt::Windows::Foundation::Rect bounds{
+            0, 0, static_cast<float>(owner.ActualWidth()), static_cast<float>(owner.ActualHeight())
+        };
+        _keptGroups.emplace(id, KeptGroup{ owner, tab, bounds, false, SharedWta::Instance().AcquireKeepRunningLease() });
         _NotifyKeptSessionsChanged();
     }
 
@@ -262,6 +265,14 @@ namespace winrt::TerminalApp::implementation
         THROW_HR_IF(E_ILLEGAL_METHOD_CALL, it->second.restoring);
         it->second.restoring = true;
         return it->second.tab;
+    }
+
+    winrt::Windows::Foundation::Rect ContentManager::KeptGroupBounds(const winrt::guid& groupId)
+    {
+        _CheckThread();
+        const auto it = _keptGroups.find(groupId);
+        THROW_HR_IF(E_INVALIDARG, it == _keptGroups.end());
+        return it->second.bounds;
     }
 
     void ContentManager::CompleteKeptGroupReattach(const winrt::guid& groupId, const bool committed)

@@ -1814,9 +1814,7 @@ try
     const auto createWindow = _windows.empty();
     if (createWindow)
     {
-        winrt::TerminalApp::WindowRequestedArgs args{ winrt::hstring{}, winrt::hstring{}, nullptr };
-        args.KeptGroupId(groupId);
-        CreateNewWindow(args);
+        _createWindowForKeptGroups({ groupId });
         return true;
     }
     THROW_HR_IF(E_UNEXPECTED, _windows.empty());
@@ -1838,12 +1836,37 @@ catch (...)
     return false;
 }
 
+void WindowEmperor::_createWindowForKeptGroups(std::vector<winrt::guid> groups)
+{
+    winrt::Windows::Foundation::Rect bounds{};
+    for (const auto& group : groups)
+    {
+        const auto saved = _keptManager.KeptGroupBounds(group);
+        bounds.Width = std::max(bounds.Width, saved.Width);
+        bounds.Height = std::max(bounds.Height, saved.Height);
+    }
+    winrt::TerminalApp::WindowRequestedArgs args{ winrt::hstring{}, winrt::hstring{}, bounds };
+    args.KeptGroupIds(winrt::single_threaded_vector<winrt::guid>(std::move(groups)));
+    CreateNewWindow(args);
+}
+
 bool WindowEmperor::_restoreAllKeptGroups()
 {
     std::vector<winrt::guid> groups;
     for (const auto& group : _keptManager.KeptGroups())
     {
         groups.emplace_back(group.Key());
+    }
+    if (groups.empty())
+    {
+        return false;
+    }
+    if (_windows.empty())
+    {
+        // One receiver owns the complete batch. Later groups must not race the
+        // first window's startup by attaching to its still-unmeasured page.
+        _createWindowForKeptGroups(std::move(groups));
+        return true;
     }
     bool restored = false;
     for (const auto& group : groups)

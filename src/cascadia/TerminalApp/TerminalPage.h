@@ -249,7 +249,7 @@ namespace winrt::TerminalApp::implementation
         void SetTabKeepRunning(const winrt::guid& tabId, bool enabled);
         bool RestoreKeptGroup(const winrt::guid& groupId);
         void ShutdownPanes();
-        void SetStartupKeptGroup(const winrt::guid& groupId) noexcept { _startupKeptGroup = groupId; }
+        void SetStartupKeptGroups(std::vector<winrt::guid> groups) noexcept { _startupKeptGroups = std::move(groups); }
 
         // Terminal Protocol Bridge Methods
         uint32_t TabCount() const;
@@ -910,7 +910,8 @@ namespace winrt::TerminalApp::implementation
         bool _displayingCloseDialog{ false };
         bool _windowCloseAccepted{ false };
         bool _windowPanesShutdown{ false };
-        winrt::guid _startupKeptGroup{};
+        std::vector<winrt::guid> _startupKeptGroups;
+        bool _restoringStartupKeptGroups{ false };
         std::vector<winrt::TerminalApp::Tab> _RuntimeTabs() const;
         bool _KeepTabRunning(const winrt::com_ptr<Tab>& tab);
         friend struct ContentManager;

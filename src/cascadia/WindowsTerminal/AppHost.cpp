@@ -133,9 +133,9 @@ void AppHost::_HandleCommandlineArgs(const winrt::TerminalApp::WindowRequestedAr
     // We don't have XAML yet, but we do have other stuff.
     _windowLogic = _appLogic.CreateNewWindow();
 
-    if (windowArgs.KeptGroupId() != winrt::guid{})
+    if (const auto groups = windowArgs.KeptGroupIds(); groups && groups.Size() > 0)
     {
-        _windowLogic.StartupKeptGroup(windowArgs.KeptGroupId());
+        _windowLogic.SetStartupKeptGroups(groups.GetView(), windowArgs.InitialBounds());
         _launchShowWindowCommand = SW_NORMAL;
     }
     else if (const auto layout = windowArgs.PersistedLayout())

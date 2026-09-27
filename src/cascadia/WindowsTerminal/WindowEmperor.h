@@ -91,6 +91,7 @@ private:
     void _notificationAreaMenuRequested(WPARAM wParam);
     void _notificationAreaMenuClicked(WPARAM wParam, LPARAM lParam);
     bool _restoreKeptGroup(const winrt::guid& groupId);
+    void _createWindowForKeptGroups(std::vector<winrt::guid> groups);
     bool _restoreAllKeptGroups();
     void _setupKeptSessions();
     void _hotkeyPressed(long hotkeyIndex);

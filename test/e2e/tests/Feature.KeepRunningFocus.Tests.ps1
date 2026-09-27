@@ -8,24 +8,27 @@ BeforeDiscovery {
 }
 
 Describe 'Feature: focus kept sessions' -Tag 'Feature', 'KeepRunning' -Skip:(-not $script:Ready) {
-    BeforeAll {
+    BeforeEach {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         $script:app = $null
         $fixture = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-AcpInteractionAgent.ps1')).Path
-        $requestLog = Join-Path $TestDrive 'keep-running-acp.log'
+        $requestLog = Join-Path $TestDrive ("keep-running-acp-{0}.log" -f [guid]::NewGuid().ToString('N'))
         $invocation = "& '$($fixture.Replace("'", "''"))' -LogPath '$($requestLog.Replace("'", "''"))'"
         $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($invocation))
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
             language = 'en-US'
             tabLayout = 'vertical'
             confirmOnClose = 'never'
+            firstWindowPreference = 'defaultProfile'
+            startupActions = ''
+            windowingBehavior = 'useNew'
             autoErrorDetectionEnabled = $false
             acpAgent = 'custom:keep-running-fixture'
             acpCustomCommand = "pwsh -NoProfile -EncodedCommand $encoded"
             acpModel = ''
         }
     }
-    AfterAll {
+    AfterEach {
         if ($script:app) { Stop-Terminal -App $script:app }
     }
 
@@ -90,5 +93,81 @@ Describe 'Feature: focus kept sessions' -Tag 'Feature', 'KeepRunning' -Skip:(-no
             Set-WtPaneFocus -App $script:app -SessionId $target.session_id
             (& $getTabCount) | Should -Be $tabCount -Because 'repeated activation must not duplicate the tab'
         }
+    }
+
+    It 'Bare launch restores all kept tabs after the last window closes' {
+        Wait-NewAgentPaneSession -App $script:app -TimeoutSec 40 | Out-Null
+        $retained = @()
+        foreach ($index in 1..2) {
+            $oldHelpers = @(Get-AgentPaneSessions -App $script:app).PaneSessionId
+            $title = 'IT-startup-kept-' + [guid]::NewGuid().ToString('N').Substring(0, 12)
+            $tab = New-WtTab -App $script:app -Command 'pwsh -NoProfile' -Title $title
+            $helper = Wait-NewAgentPaneSession -App $script:app -ExcludePaneSessionId $oldHelpers -TimeoutSec 40
+            $helper.AcpSessionId | Should -Not -BeNullOrEmpty
+            $paneIds = @($tab.session_id, $helper.PaneSessionId)
+            if ($index -eq 1) {
+                $split = Split-WtPane -App $script:app -SessionId $tab.session_id -Direction right -Size 0.35 -Command 'pwsh -NoProfile'
+                $paneIds += $split.session_id
+            }
+            $pids = @{}
+            foreach ($id in $paneIds) {
+                $pids[$id] = (Get-WtPaneStatus -App $script:app -SessionId $id).pid
+            }
+            Set-WtPaneFocus -App $script:app -SessionId $tab.session_id
+            Invoke-UiClick -App $script:app -Selector $title -Right | Out-Null
+            Invoke-UiElement -App $script:app -Selector 'KeepTabRunningMenuItem' | Out-Null
+            Invoke-UiClick -App $script:app -Selector $title -Right | Out-Null
+            Invoke-UiElement -App $script:app -Selector 'Close tab' | Out-Null
+            $retained += [pscustomobject]@{ Title = $title; Shell = $tab.session_id; Helper = $helper; Pids = $pids }
+        }
+
+        Send-WtWindowKey -App $script:app -Vk 0x73 -Alt -RequireForeground | Out-Null
+        Wait-Until -TimeoutSec 15 -Because 'all terminal windows to close while the kept tabs stay alive' -Condition {
+            @(Get-WtWindows -App $script:app).Count -eq 0
+        } | Out-Null
+        Get-Process -Id $script:app.Pid -ErrorAction Stop | Should -Not -BeNullOrEmpty
+
+        # Explicit profile launches still open a new tab instead of consuming the
+        # kept groups. The following bare AUMID activation matches Start menu Open.
+        $profile = Get-WtSetting -App $script:app -Key 'defaultProfile'
+        $profile | Should -Not -BeNullOrEmpty
+        $launch = Invoke-Native -FilePath (Join-Path $script:app.InstallLocation 'WindowsTerminal.exe') -Arguments @('-p', [string]$profile) -TimeoutSec 20
+        $launch.ExitCode | Should -Be 0
+        $profileWindow = Wait-Until -TimeoutSec 20 -Because 'the explicit profile launch to open one ordinary tab' -Condition {
+            $windows = @(Get-WtWindows -App $script:app)
+            if ($windows.Count -eq 1 -and $windows[0].tab_count -eq 1) { $windows[0] }
+        }
+        $script:app.Hwnd = Wait-Until -TimeoutSec 15 -Because 'the profile window to become visible' -Condition {
+            Get-WtWindowHwnds -App $script:app | Where-Object pid -eq $script:app.Pid | Select-Object -First 1 -ExpandProperty hwnd
+        }
+        $script:app.WindowId = [string]$profileWindow.window_id
+        Send-WtWindowKey -App $script:app -Vk 0x73 -Alt -RequireForeground | Out-Null
+        Wait-Until -TimeoutSec 15 -Because 'the profile window to close without terminating kept tabs' -Condition {
+            @(Get-WtWindows -App $script:app).Count -eq 0
+        } | Out-Null
+
+        $script:app.AppUserModelId | Should -Not -BeNullOrEmpty
+        Start-Process -FilePath explorer.exe -ArgumentList "shell:AppsFolder\$($script:app.AppUserModelId)" | Out-Null
+        $restoredWindow = Wait-Until -TimeoutSec 25 -Because 'Start menu activation to restore both kept tabs into one window' -Condition {
+            $windows = @(Get-WtWindows -App $script:app)
+            if ($windows.Count -eq 1 -and $windows[0].tab_count -eq 2) { $windows[0] }
+        }
+        $script:app.Hwnd = Wait-Until -TimeoutSec 15 -Because 'the restored window to become visible' -Condition {
+            Get-WtWindowHwnds -App $script:app | Where-Object pid -eq $script:app.Pid | Select-Object -First 1 -ExpandProperty hwnd
+        }
+        $script:app.WindowId = [string]$restoredWindow.window_id
+        foreach ($tab in $retained) {
+            Wait-UiElement -App $script:app -Selector $tab.Title -TimeoutSec 10 | Out-Null
+            foreach ($id in $tab.Pids.Keys) {
+                $status = Get-WtPaneStatus -App $script:app -SessionId $id
+                $status.pid | Should -Be $tab.Pids[$id]
+                $status.state | Should -Be 'running'
+            }
+            $helper = Get-AgentPaneSession -App $script:app -PaneSessionId $tab.Helper.PaneSessionId
+            $helper.AcpSessionId | Should -Be $tab.Helper.AcpSessionId
+            Set-WtPaneFocus -App $script:app -SessionId $tab.Shell
+        }
+        @(Get-WtWindows -App $script:app).Count | Should -Be 1
+        (Get-WtWindows -App $script:app).tab_count | Should -Be 2
     }
 }

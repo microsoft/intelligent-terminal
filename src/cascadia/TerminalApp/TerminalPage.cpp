@@ -5204,6 +5204,19 @@ namespace winrt::TerminalApp::implementation
     // - <none>
     void TerminalPage::_OnFirstLayout(const IInspectable& /*sender*/, const IInspectable& /*eventArgs*/)
     {
+        if (!_startupKeptGroups.empty())
+        {
+            if ((_tabContent.ActualWidth() <= 0 && ActualWidth() <= 0) ||
+                (_tabContent.ActualHeight() <= 0 && ActualHeight() <= 0))
+            {
+                return;
+            }
+            _layoutUpdatedRevoker.revoke();
+            _startupState = StartupState::InStartup;
+            _TryCompleteStartupTransfer();
+            return;
+        }
+
         // Only let this succeed once.
         _layoutUpdatedRevoker.revoke();
 
@@ -5215,7 +5228,7 @@ namespace winrt::TerminalApp::implementation
         if (_startupState == StartupState::NotInitialized)
         {
             _startupState = StartupState::InStartup;
-            if (_startupTransferId || _startupKeptGroup != winrt::guid{})
+            if (_startupTransferId)
             {
                 _TryCompleteStartupTransfer();
                 return;
@@ -5258,15 +5271,49 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_TryCompleteStartupTransfer()
     {
-        if (_startupKeptGroup != winrt::guid{} && _transferReceiverReady && _startupState == StartupState::InStartup)
+        if (!_startupKeptGroups.empty() && _transferReceiverReady && _startupState == StartupState::InStartup)
         {
-            const auto groupId = std::exchange(_startupKeptGroup, winrt::guid{});
-            try
+            if (_restoringStartupKeptGroups)
             {
-                RestoreKeptGroup(groupId);
+                return;
             }
-            CATCH_LOG()
-            _CompleteInitialization();
+            _restoringStartupKeptGroups = true;
+            auto rollback = wil::scope_exit([&]() noexcept { _restoringStartupKeptGroups = false; });
+            // LayoutUpdated can run before the new island's layout has settled.
+            // Match ordinary startup replay by executing on a later UI turn.
+            Dispatcher().RunAsync(CoreDispatcherPriority::Low, [weak = get_weak()]() {
+                if (const auto self = weak.get(); self && !self->_windowPanesShutdown)
+                {
+                    if ((self->_tabContent.ActualWidth() <= 0 && self->ActualWidth() <= 0) ||
+                        (self->_tabContent.ActualHeight() <= 0 && self->ActualHeight() <= 0))
+                    {
+                        self->_restoringStartupKeptGroups = false;
+                        self->_layoutUpdatedRevoker = self->_tabContent.LayoutUpdated(winrt::auto_revoke, { self.get(), &TerminalPage::_OnFirstLayout });
+                        return;
+                    }
+                    self->_layoutUpdatedRevoker.revoke();
+                    const auto groups = std::exchange(self->_startupKeptGroups, {});
+                    _agentPaneLog(fmt::format("restoring kept startup tabs count={} content_width={} content_height={}",
+                                              groups.size(),
+                                              self->_tabContent.ActualWidth(),
+                                              self->_tabContent.ActualHeight()));
+                    for (const auto& groupId : groups)
+                    {
+                        try
+                        {
+                            self->RestoreKeptGroup(groupId);
+                        }
+                        catch (...)
+                        {
+                            LOG_CAUGHT_EXCEPTION();
+                            _agentPaneLog(fmt::format("kept startup tab restore failed tab={}", winrt::to_string(winrt::to_hstring(groupId))));
+                        }
+                    }
+                    self->_restoringStartupKeptGroups = false;
+                    self->_CompleteInitialization();
+                }
+            });
+            rollback.release();
             return;
         }
         if (_startupTransferId && _transferReceiverReady && _startupState == StartupState::InStartup)
@@ -11071,6 +11118,12 @@ namespace winrt::TerminalApp::implementation
                     destinationTab = transfer.tabs.front();
                     THROW_HR_IF(E_ABORT, _GetFocusedTab() != *destinationTab);
                 }
+                if (_restoringStartupKeptGroups)
+                {
+                    // Give each newly attached control real layout before the
+                    // next split, without suspending the ownership transaction.
+                    _tabContent.UpdateLayout();
+                }
             };
             for (uint32_t i = 0; i < layoutActionCount; ++i)
             {
@@ -11377,6 +11430,11 @@ namespace winrt::TerminalApp::implementation
         const auto realSplitType = activeTab->PreCalculateCanSplit(splitDirection, splitSize, availableSpace);
         if (!realSplitType)
         {
+            _agentPaneLog(fmt::format("pane split rejected: available_width={} available_height={} split_size={} restoring_kept_tab={}",
+                                      availableSpace.Width,
+                                      availableSpace.Height,
+                                      splitSize,
+                                      _receivingContentTransfer && _receivingContentTransfer->restoringKeptTab));
             return false;
         }
 
