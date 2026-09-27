@@ -72,12 +72,13 @@ Describe 'Feature: non-activating hook delivery' -Tag 'Feature', 'HookShutdown' 
 
         function Assert-NoTestServer {
             $observation = @{ Unexpected = @() }
-            $watch = [Diagnostics.Stopwatch]::StartNew()
-            Wait-Until -TimeoutSec 5 -IntervalSec 0.1 -Because 'no replacement after the completed hook' -Condition {
+            # Cached hooks return before their asynchronous wtcli child finishes.
+            Wait-Until -TimeoutSec 5 -IntervalSec 0.1 -Quiet -Because 'no replacement after the completed hook' -Condition {
                 $observation.Unexpected = @(Get-TestServers)
-                $observation.Unexpected.Count -gt 0 -or $watch.Elapsed.TotalSeconds -ge 2
+                $observation.Unexpected.Count -gt 0
             } | Out-Null
             Register-TestServers
+            $observation.Unexpected += @(Get-TestServers)
             $observation.Unexpected.Count | Should -Be 0 -Because 'notifications must never activate a package COM server'
         }
 
