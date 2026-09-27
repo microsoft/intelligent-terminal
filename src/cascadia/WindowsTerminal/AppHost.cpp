@@ -133,7 +133,12 @@ void AppHost::_HandleCommandlineArgs(const winrt::TerminalApp::WindowRequestedAr
     // We don't have XAML yet, but we do have other stuff.
     _windowLogic = _appLogic.CreateNewWindow();
 
-    if (const auto layout = windowArgs.PersistedLayout())
+    if (windowArgs.KeptGroupId() != winrt::guid{})
+    {
+        _windowLogic.StartupKeptGroup(windowArgs.KeptGroupId());
+        _launchShowWindowCommand = SW_NORMAL;
+    }
+    else if (const auto layout = windowArgs.PersistedLayout())
     {
         _windowLogic.SetPersistedLayout(layout);
         _launchShowWindowCommand = SW_NORMAL;
@@ -332,6 +337,12 @@ void AppHost::Close()
 
     _revokeWindowCallbacks();
 
+    // Headless content outlives this window. Explicitly close everything still
+    // owned by its controls rather than relying on XAML to release them.
+    if (const auto page = _windowLogic ? _windowLogic.GetRoot().try_as<winrt::TerminalApp::TerminalPage>() : nullptr)
+    {
+        page.ShutdownPanes();
+    }
     _window->Close();
 
     winrt::TerminalApp::TerminalWindow logic{ nullptr };

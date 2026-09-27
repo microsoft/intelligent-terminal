@@ -323,6 +323,8 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 **Feature definition:** Session management lists known live and historical agent sessions, shows their state, and lets users focus or resume supported sessions.
 
+- [ ] `C342` `[new]` `[E2E]` **Focusing a kept session reattaches its original tab:** The shared history/session focus path restores a detached whole tab, focuses the original pane, preserves shell/helper processes and state, and does not duplicate tabs or restore unrelated stale targets. _(E2E: `Feature.KeepRunningFocus`.)_
+
 ### Surfaces
 
 - [ ] `C109` `[E2E]` **Session button works:** The session-management button opens the session view.

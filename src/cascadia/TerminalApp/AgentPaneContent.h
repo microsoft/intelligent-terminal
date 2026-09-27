@@ -101,6 +101,15 @@ namespace winrt::TerminalApp::implementation
             _wtaExecutablePath = source._wtaExecutablePath;
         }
 
+        void CopyLiveStateFrom(const AgentPaneContent& source)
+        {
+            UpdateAgentStatus(source._agentName, source._agentVersion, source._agentModel, source._agentState, source._agentBackend);
+            _helperEventReady = source._helperEventReady;
+            _yoloControlOwner = source._yoloControlOwner;
+            _agentUsage = source._agentUsage;
+            ApplyAutofixState(source._autofixState, source._lastErrorPaneId, source._detectedSummary, source._fixPreview, source._hotkeyHint, source._suggestionTitle);
+        }
+
         // --- Per-pane autofix / diagnostics state ---
         // Driven by inbound `autofix_state_changed` events for this pane's
         // owning tab. The window-level bottom bar reads these accessors
