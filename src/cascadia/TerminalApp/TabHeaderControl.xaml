@@ -92,9 +92,9 @@
         <FontIcon x:Name="HeaderKeepRunningIcon"
                   Grid.Column="2"
                   Margin="8,0,0,0"
-                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                  FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                   FontSize="12"
-                  Glyph="&#xE895;"
+                  Glyph="&#xE8EE;"
                   Visibility="{x:Bind TabStatus.IsKeepRunning, Mode=OneWay}" />
     </Grid>
 </UserControl>

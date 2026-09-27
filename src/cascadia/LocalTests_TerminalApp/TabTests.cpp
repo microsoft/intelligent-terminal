@@ -986,9 +986,10 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(menu.Items().GetAt(0) == item);
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Keep tab running" }, item.Text());
             const auto icon = item.Icon().as<FontIcon>();
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE895" }, icon.Glyph());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE8EE" }, icon.Glyph());
             const auto badge = tab->_headerControl.FindName(L"HeaderKeepRunningIcon").as<FontIcon>();
             VERIFY_ARE_EQUAL(icon.Glyph(), badge.Glyph());
+            VERIFY_ARE_EQUAL(icon.FontFamily().Source(), badge.FontFamily().Source());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Keep tab running" },
                              winrt::Windows::UI::Xaml::Automation::AutomationProperties::GetName(badge));
             const winrt::hstring tooltip{ L"Keep this tab running in the background after closing the tab or window." };

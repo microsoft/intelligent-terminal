@@ -1981,7 +1981,7 @@ namespace winrt::TerminalApp::implementation
         _keepRunningMenuItem.Text(RS_(L"KeepTabRunningText"));
         Controls::FontIcon keepRunningIcon;
         keepRunningIcon.FontFamily(Media::FontFamily{ L"Segoe Fluent Icons, Segoe MDL2 Assets" });
-        keepRunningIcon.Glyph(L"\xE895");
+        keepRunningIcon.Glyph(L"\xE8EE");
         _keepRunningMenuItem.Icon(keepRunningIcon);
         const auto keepRunningToolTip = RS_(L"KeepTabRunningToolTip");
         WUX::Controls::ToolTipService::SetToolTip(_keepRunningMenuItem, box_value(keepRunningToolTip));

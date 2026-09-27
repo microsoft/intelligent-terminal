@@ -11,12 +11,14 @@ tab has focus. The item is absent from horizontal-tab and pane context menus,
 and from nonterminal tabs such as Settings. Changing tab orientation does not
 reset an existing choice.
 
-The menu item uses a theme-aware circular-arrows font icon and the tooltip:
+The menu item uses the system RepeatAll (`E8EE`) font icon and the tooltip:
 "Keep this tab running in the background after closing the tab or window."
 The same icon appears after the title of a tab with keep running enabled,
 including after restore, whole-tab moves, and switching to horizontal layout.
 Disabling keep running removes the title icon. Long titles truncate before the
 indicator so it stays visible.
+Both indicators use Segoe Fluent Icons with Segoe MDL2 Assets as a fallback,
+not a bitmap asset.
 
 ## UI integration contract
 
