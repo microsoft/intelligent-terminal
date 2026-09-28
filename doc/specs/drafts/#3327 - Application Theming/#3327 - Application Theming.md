@@ -233,9 +233,12 @@ controlling:
 
 Intelligent Terminal's vertical sidebar uses the same resolved background as
 the horizontal tab row and custom titlebar, including the search/filter area
-and session history view. The current `useAcrylicInTabRow` setting enables a
-host-backdrop Acrylic brush with a 0.5 tint opacity; the active theme's
-`tabRow.background` / `tabRow.unfocusedBackground` supplies its tint.
+and session history view. The current `useAcrylicInTabRow` setting enables an
+Acrylic brush with a 0.5 tint opacity; the active theme's `tabRow.background` /
+`tabRow.unfocusedBackground` supplies its tint. Its backdrop source follows the
+active terminal's Acrylic brush, or uses host backdrop when that terminal is
+not using Acrylic. This avoids mixing host-backdrop chrome with in-app Acrylic.
+Unchanged chrome brushes are reused across background notifications.
 `compatibility.enableUnfocusedAcrylic` controls whether the app requests Acrylic
 while inactive. Windows can still substitute a solid fallback when transparency
 effects are unavailable or disabled. Profile `useAcrylic` / `opacity` settings

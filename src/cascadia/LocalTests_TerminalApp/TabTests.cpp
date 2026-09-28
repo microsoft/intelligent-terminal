@@ -273,6 +273,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalRailVisibilityRestoresWidth);
         TEST_METHOD(VerticalRailCollapseRestoresWidth);
         TEST_METHOD(VerticalTabChromeBackgroundTracksTheme);
+        TEST_METHOD(ChromeAcrylicTracksTerminalBackdrop);
         TEST_METHOD(NewTabButtonSharesAcrylicBackdrop);
         TEST_METHOD(VerticalTabHistorySharesBackdrop);
         TEST_METHOD(LiveTabLayoutRoundTripPreservesState);
@@ -3113,6 +3114,8 @@ namespace TerminalAppLocalTests
                                 VERIFY_ARE_EQUAL(0.5, acrylic.TintOpacity());
                                 VERIFY_ARE_EQUAL(expectedColor, acrylic.TintColor());
                                 VERIFY_ARE_EQUAL(expectedColor, acrylic.FallbackColor());
+                                page->_updateThemeColors();
+                                VERIFY_IS_TRUE(page->TitlebarBrush() == brush);
                             }
                             else
                             {
@@ -3132,6 +3135,86 @@ namespace TerminalAppLocalTests
                 }
             }
             page->_hasTitlebarHost = false;
+        });
+    }
+
+    void TabTests::ChromeAcrylicTracksTerminalBackdrop()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            const auto globals = page->_settings.GlobalSettings();
+            globals.UseAcrylicInTabRow(true);
+            globals.EnableUnfocusedAcrylic(true);
+            page->WindowActivated(true);
+            const auto control = page->_GetActiveControl();
+            VERIFY_IS_NOT_NULL(control);
+            const auto originalHost = page->_hasTitlebarHost;
+            const auto restore = wil::scope_exit([&]() {
+                page->_hasTitlebarHost = originalHost;
+            });
+
+            for (const auto hasTitlebarHost : { false, true })
+            {
+                page->_hasTitlebarHost = hasTitlebarHost;
+                for (const auto useAcrylic : { true, false, true })
+                {
+                    for (const auto unfocusedAcrylic : { true, false, true })
+                    {
+                        const auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
+                        settings->UseAcrylic(useAcrylic);
+                        settings->Opacity(0.75f);
+                        settings->EnableUnfocusedAcrylic(unfocusedAcrylic);
+                        control.UpdateControlSettings(*settings, *settings);
+
+                        const auto terminalBrush = control.BackgroundBrush();
+                        const auto terminalAcrylic = terminalBrush.try_as<Media::AcrylicBrush>();
+                        const auto expectedSource = useAcrylic && unfocusedAcrylic ?
+                                                        Media::AcrylicBackgroundSource::Backdrop :
+                                                        Media::AcrylicBackgroundSource::HostBackdrop;
+                        if (useAcrylic)
+                        {
+                            VERIFY_IS_NOT_NULL(terminalAcrylic);
+                            VERIFY_ARE_EQUAL(expectedSource, terminalAcrylic.BackgroundSource());
+                            VERIFY_ARE_EQUAL(0.75, terminalAcrylic.TintOpacity());
+                        }
+                        else
+                        {
+                            VERIFY_IS_NULL(terminalAcrylic);
+                        }
+
+                        // UpdateControlSettings raises BackgroundBrush; the page must
+                        // follow its source without requiring an activation round trip.
+                        const auto brush = page->TitlebarBrush().as<Media::AcrylicBrush>();
+                        VERIFY_ARE_EQUAL(expectedSource, brush.BackgroundSource());
+                        VERIFY_ARE_EQUAL(0.5, brush.TintOpacity());
+                        VERIFY_IS_FALSE(brush == terminalBrush);
+                        VERIFY_IS_TRUE(page->_tabStrip.Background() == brush);
+                        if (hasTitlebarHost)
+                        {
+                            VERIFY_ARE_EQUAL(uint8_t{ 0 }, page->_tabRow.Background().as<Media::SolidColorBrush>().Color().A);
+                        }
+                        else
+                        {
+                            VERIFY_IS_TRUE(page->_tabRow.Background() == brush);
+                        }
+
+                        page->_updateThemeColors();
+                        VERIFY_IS_TRUE(page->TitlebarBrush() == brush);
+
+                        if (useAcrylic)
+                        {
+                            // A theme can supply the terminal brush before chrome
+                            // acrylic is enabled. It must retain its own opacity.
+                            page->TitlebarBrush(terminalBrush);
+                            page->_updateThemeColors();
+                            VERIFY_IS_FALSE(page->TitlebarBrush() == terminalBrush);
+                            VERIFY_ARE_EQUAL(0.75, terminalAcrylic.TintOpacity());
+                            VERIFY_ARE_EQUAL(0.5, page->TitlebarBrush().as<Media::AcrylicBrush>().TintOpacity());
+                        }
+                    }
+                }
+            }
         });
     }
 
