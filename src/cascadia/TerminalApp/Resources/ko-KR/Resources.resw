@@ -1533,4 +1533,32 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>탭이나 창을 닫으면 이 탭이 더 이상 계속 실행되지 않습니다.</value>
     <comment>Tooltip and accessibility help for Turn off keep running. After this action, closing the tab or its window closes its panes normally instead of retaining them in the background. The current tab and processes are not closed by this action.</comment>
   </data>
+  <data name="VerticalTabsHistoryStatusIdle" xml:space="preserve">
+    <value>유휴</value>
+    <comment>Agent History session status: the session is live but has no active work.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusWorking" xml:space="preserve">
+    <value>활성</value>
+    <comment>Agent History session status: the agent is actively processing a request.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusAttention" xml:space="preserve">
+    <value>입력 대기 중</value>
+    <comment>Agent History session status: the agent needs a response or approval from the user.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusError" xml:space="preserve">
+    <value>오류</value>
+    <comment>Agent History session status: the session encountered an error.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusEnded" xml:space="preserve">
+    <value>종료됨</value>
+    <comment>Agent History session status: the session&apos;s process or pane has ended. This does not imply that its task succeeded.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusHistorical" xml:space="preserve">
+    <value>기록</value>
+    <comment>Agent History session status: a saved session with no live pane, discovered from the agent&apos;s history.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusUnknown" xml:space="preserve">
+    <value>알 수 없음</value>
+    <comment>Agent History session status: the registry did not provide a recognized status.</comment>
+  </data>
 </root>
