@@ -174,7 +174,58 @@ fn sessions_list_cli_parses_origin_agent_pane() {
                 agent_sessions::OriginFilter::AgentPaneOnly,
             );
         }
+
         other => panic!("expected sessions list command, got {other:?}"),
+    }
+}
+
+#[test]
+fn sessions_activate_cli_parses_qualified_identity_and_target_window() {
+    let cli = Cli::try_parse_from([
+        "wta",
+        "sessions",
+        "activate",
+        "--session-id",
+        "same-raw-id",
+        "--provider",
+        "copilot",
+        "--location",
+        "wsl",
+        "--wsl-distro",
+        "Ubuntu",
+        "--universe",
+        "tenant-a",
+        "--window-id",
+        "42",
+        "--activation-id",
+        "activation-1",
+        "--json",
+    ])
+    .expect("sessions activate parses");
+
+    assert!(cli.json);
+    match cli.command {
+        Some(Command::Sessions {
+            action:
+                SessionsAction::Activate {
+                    session_id,
+                    provider,
+                    location,
+                    wsl_distro,
+                    universe,
+                    window_id,
+                    activation_id,
+                },
+        }) => {
+            assert_eq!(session_id, "same-raw-id");
+            assert_eq!(provider, "copilot");
+            assert_eq!(location, "wsl");
+            assert_eq!(wsl_distro.as_deref(), Some("Ubuntu"));
+            assert_eq!(universe.as_deref(), Some("tenant-a"));
+            assert_eq!(window_id, 42);
+            assert_eq!(activation_id, "activation-1");
+        }
+        other => panic!("expected sessions activate command, got {other:?}"),
     }
 }
 

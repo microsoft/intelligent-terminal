@@ -760,6 +760,11 @@ namespace winrt::TerminalApp::implementation
     {
         if (const auto activeTab{ _senderOrFocusedTab(sender) })
         {
+            if (_IsTabListProjectionActive() && !_IsTabVisibleInProjection(activeTab))
+            {
+                args.Handled(false);
+                return;
+            }
             if (!_tabColorPicker)
             {
                 _tabColorPicker = winrt::make<ColorPickupFlyout>();
@@ -799,6 +804,11 @@ namespace winrt::TerminalApp::implementation
     {
         if (const auto activeTab{ _senderOrFocusedTab(sender) })
         {
+            if (_IsTabListProjectionActive() && !_IsTabVisibleInProjection(activeTab))
+            {
+                args.Handled(false);
+                return;
+            }
             activeTab->ActivateTabRenamer();
         }
         args.Handled(true);
@@ -821,6 +831,11 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_HandleCloseOtherTabs(const IInspectable& /*sender*/,
                                              const ActionEventArgs& actionArgs)
     {
+        if (_IsTabListPositionOperationBlocked())
+        {
+            actionArgs.Handled(false);
+            return;
+        }
         if (const auto& realArgs = actionArgs.ActionArgs().try_as<CloseOtherTabsArgs>())
         {
             uint32_t index;
@@ -860,6 +875,11 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_HandleCloseTabsAfter(const IInspectable& /*sender*/,
                                              const ActionEventArgs& actionArgs)
     {
+        if (_IsTabListPositionOperationBlocked())
+        {
+            actionArgs.Handled(false);
+            return;
+        }
         if (const auto& realArgs = actionArgs.ActionArgs().try_as<CloseTabsAfterArgs>())
         {
             uint32_t index;
@@ -909,6 +929,11 @@ namespace winrt::TerminalApp::implementation
     {
         if (const auto& realArgs = actionArgs.ActionArgs().try_as<MoveTabArgs>())
         {
+            if (_IsTabListPositionOperationBlocked() && realArgs.Window().empty())
+            {
+                actionArgs.Handled(false);
+                return;
+            }
             const auto moved = _MoveTab(_senderOrFocusedTab(sender), realArgs);
             actionArgs.Handled(moved);
         }

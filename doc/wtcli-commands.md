@@ -2,11 +2,20 @@
 
 `wtcli` is the CLI client for the Windows Terminal Protocol. It looks up the
 running Terminal via the `WT_COM_CLSID` environment variable, calls
-`CoCreateInstance(CLSCTX_LOCAL_SERVER)` to obtain `IProtocolServer`, and
+`CoCreateInstance(CLSCTX_LOCAL_SERVER)` to obtain `ITerminalProtocol`, and
 exposes a tmux-style command surface over its IDL methods.
 
+`agent-hook` and `send-event` with an `agent.` topic instead use `GetActiveObject`
+with the same fixed `WT_COM_CLSID`, then call the existing factory's
+`CreateInstance`. These notifications never activate Terminal or retry through
+`CoCreateInstance` if it is stopped or exits during the call. Native hooks remain
+silent and exit successfully when disconnected; `send-event` reports the
+connection failure, which cached hook wrappers already suppress. External
+`agent.*` publishers still need only `WT_COM_CLSID`, but Terminal must be running.
+Other commands and non-agent `send-event` topics retain normal COM activation.
+
 - Source: `src/tools/wtcli/main.cpp`
-- IDL: `src/cascadia/TerminalProtocol/TerminalProtocol.idl`
+- Classic COM IDL: `src/host/proxy/ITerminalProtocol.idl`
 - Primary in-tree caller: `tools/wta/src/shell/wt_channel/cli_channel.rs` (and
   `tools/wta/src/app.rs` for `publish`).
 

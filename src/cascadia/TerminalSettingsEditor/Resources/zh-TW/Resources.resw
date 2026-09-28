@@ -2997,4 +2997,8 @@ Alt+Shift+/ 輸入提問；Alt+Shift+B 不帶初始提問啟動。</value><comme
     <value>移除</value>
     <comment>Tooltip for the X button that removes a custom agent from the agent list.</comment>
   </data>
+  <data name="Globals_TabLayout.HelpText" xml:space="preserve">
+    <value>垂直索引標籤會顯示在視窗左側可調整大小的欄中。變更會立即套用至所有 Terminal 視窗。</value>
+    <comment>A description for what the &quot;tab layout&quot; setting does. Presented near &quot;Globals_TabLayout.Header&quot;.</comment>
+  </data>
 </root>

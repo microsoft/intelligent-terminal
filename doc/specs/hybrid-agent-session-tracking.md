@@ -332,6 +332,15 @@ starts `Idle`; terminal states are `Historical` (startup history scan) and
 `Ended` (pane/process gone); the 5 s reaper or a hook taking over moves a row out
 of the live states.
 
+The vertical sidebar's Agent History displays each registry status separately:
+`Idle` (Idle), `Working` (Active), `Attention` (Waiting for input), `Error`
+(Error), `Ended` (Ended), and `Historical` (Historical), with localized labels.
+Missing or unrecognized states display Unknown rather than implying a historical
+session. Search matches both the displayed status and the raw registry value;
+the existing `live` and `history` search terms remain available. This presentation
+does not change shell-session visibility, liveness classification, or focus/resume
+routing.
+
 - **Claude** (`classify_claude.rs`) — **turn-based, keyed on `stop_reason`**.
   Claude re-writes the same assistant message id several times as it streams
   (text first, then `+tool_use`), so classifying by content presence flickers;

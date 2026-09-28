@@ -549,6 +549,7 @@ fn connect_with(
             crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
         ),
         hidden_tool_calls: Mutex::new(HashMap::new()),
+        origin_scope: std::sync::OnceLock::new(),
     });
     let wta = WtaClient { state };
 
@@ -976,6 +977,7 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         standard_usage_sessions: Mutex::new(HashSet::new()),
         proposal_channels: Arc::clone(&proposal_channels),
         hidden_tool_calls: Mutex::new(HashMap::new()),
+        origin_scope: std::sync::OnceLock::new(),
     });
     let wta = WtaClient { state };
 
@@ -4445,20 +4447,93 @@ async fn dispatch_load_session_failure_handler_restores_prior_binding() {
                 false,
             );
 
-            match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
-                Ok(Some(AppEvent::TabError { tab_id, message })) => {
-                    assert_eq!(tab_id, "t1");
-                    assert!(
-                        message.contains("Failed to resume session"),
-                        "unexpected error message: {message}"
-                    );
+            let mut saw_resume_failed = false;
+            let mut saw_tab_error = false;
+            for _ in 0..4 {
+                match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await
+                {
+                    Ok(Some(AppEvent::AgentSessionEvent(
+                        crate::agent_sessions::SessionEvent::ResumeFailed { key, reason },
+                    ))) => {
+                        assert_eq!(key, "hist-sess-7");
+                        assert!(reason.contains("Failed to resume session"));
+                        saw_resume_failed = true;
+                    }
+                    Ok(Some(AppEvent::TabError { tab_id, message })) => {
+                        assert_eq!(tab_id, "t1");
+                        assert!(
+                            message.contains("Failed to resume session"),
+                            "unexpected error message: {message}"
+                        );
+                        saw_tab_error = true;
+                    }
+                    Ok(Some(_)) => {}
+                    _ => break,
                 }
-                _ => panic!("expected TabError"),
+                if saw_resume_failed && saw_tab_error {
+                    break;
+                }
             }
+            assert!(saw_resume_failed, "expected ResumeFailed");
+            assert!(saw_tab_error, "expected TabError");
             assert_eq!(
                 tab_to_session.lock().await.get("t1").map(|s| s.to_string()),
                 Some("old-sess".to_string()),
                 "failure handler must restore the prior session binding"
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn stale_load_failure_does_not_rollback_newer_binding_operation() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            let tab_to_session = Arc::new(tokio::sync::Mutex::new(HashMap::from([(
+                "t1".to_string(),
+                acp::schema::v1::SessionId::new("newer-session"),
+            )])));
+            let tab_aliases = Arc::new(Mutex::new(HashMap::new()));
+            let tab_binding_generations = Arc::new(Mutex::new(HashMap::new()));
+            let (_, stale_generation) =
+                super::begin_tab_binding_operation(&tab_aliases, &tab_binding_generations, "t1");
+            let _ =
+                super::begin_tab_binding_operation(&tab_aliases, &tab_binding_generations, "t1");
+            let mut event_rx = h.event_rx;
+            let old_session = acp::schema::v1::SessionId::new("old-session");
+
+            super::handle_load_failure(
+                Some(&old_session),
+                "stale-failed-session".to_string(),
+                "t1".to_string(),
+                stale_generation,
+                std::path::PathBuf::from("C:\\repo"),
+                h.conn,
+                Arc::clone(&tab_to_session),
+                Arc::clone(&tab_binding_generations),
+                h.event_tx,
+                "Failed to resume session".to_string(),
+                h.proposal_channels,
+                false,
+                Arc::clone(&h.client.state),
+                tab_aliases,
+            )
+            .await;
+
+            assert_eq!(
+                tab_to_session
+                    .lock()
+                    .await
+                    .get("t1")
+                    .map(|sid| sid.to_string()),
+                Some("newer-session".to_string())
+            );
+            tokio::task::yield_now().await;
+            assert!(
+                event_rx.try_recv().is_err(),
+                "stale failure must not emit ResumeFailed or TabError"
             );
         })
         .await;
@@ -5746,6 +5821,7 @@ fn bare_client() -> (WtaClient, mpsc::UnboundedReceiver<AppEvent>) {
             crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
         ),
         hidden_tool_calls: Mutex::new(HashMap::new()),
+        origin_scope: std::sync::OnceLock::new(),
     });
     (WtaClient { state }, event_rx)
 }

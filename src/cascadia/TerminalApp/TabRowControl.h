@@ -18,11 +18,13 @@ namespace winrt::TerminalApp::implementation
         void OnNewTabButtonDragOver(const winrt::Windows::Foundation::IInspectable& sender, const winrt::Windows::UI::Xaml::DragEventArgs& e);
 
         til::property_changed_event PropertyChanged;
-        WINRT_OBSERVABLE_PROPERTY(bool, ShowElevationShield, PropertyChanged.raise, false);
         WINRT_OBSERVABLE_PROPERTY(bool, ShowWorkspacesButton, PropertyChanged.raise, true);
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, WorkspaceName, PropertyChanged.raise, L"");
 
     public:
+        bool ShowElevationShield() const noexcept { return _showElevationShield; }
+        void ShowElevationShield(bool value);
+
         // PROTOTYPE — flipping this at Initialize hides the MUX TabView and
         // shows the local:TabStrip (see investigation-vertical-tabs.md).
         // WINRT_OBSERVABLE_PROPERTY above leaves the access modifier at
@@ -30,17 +32,26 @@ namespace winrt::TerminalApp::implementation
         bool IsVerticalLayout() const noexcept { return _isVerticalLayout; }
         void IsVerticalLayout(bool value);
 
-        // Spec A §5.1: in vertical mode the shield + workspaces button ride
-        // in the titlebar (same bar as min/max/close). Returns the container
-        // that TerminalPage passes to SetTitleBarContent; null in horizontal.
+        // In vertical mode, this complete chrome row is hosted in the window
+        // titlebar when available and falls back to the top of the rail.
         winrt::Windows::UI::Xaml::UIElement VerticalTitleBarContent() const noexcept { return _verticalTitleBarContent; }
+        winrt::Microsoft::UI::Xaml::Controls::SplitButton VerticalNewTabButton() const noexcept { return _verticalNewTabButton; }
+        void SetVerticalRailState(bool visible, bool collapsed, double width);
+        til::typed_event<TerminalApp::TabRowControl, winrt::Windows::Foundation::IInspectable> RailCollapseRequested;
 
     private:
+        bool _showElevationShield{ false };
         bool _isVerticalLayout{ false };
-        bool _chromeReparentedToVertical{ false };
         winrt::Windows::UI::Xaml::UIElement _verticalTitleBarContent{ nullptr };
+        winrt::Windows::UI::Xaml::UIElement _verticalExpandedChrome{ nullptr };
+        winrt::Windows::UI::Xaml::Controls::StackPanel _verticalLeadingChrome{ nullptr };
+        winrt::Windows::UI::Xaml::Controls::Grid _verticalNewTabHost{ nullptr };
+        winrt::Windows::UI::Xaml::Controls::PathIcon _verticalRailToggleIcon{ nullptr };
+        winrt::Microsoft::UI::Xaml::Controls::SplitButton _verticalNewTabButton{ nullptr };
         void _applyLayoutVisibility();
-        void _reparentChromeToVertical();
+        void _ensureVerticalChrome();
+        void _attachChromeToVertical();
+        void _attachChromeToHorizontal();
     };
 }
 

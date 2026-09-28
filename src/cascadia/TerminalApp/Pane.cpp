@@ -1501,6 +1501,7 @@ bool Pane::RepositionAgentPane(SplitDirection splitDirection)
             Controls::Grid::SetColumn(visibleBorder, 0);
         }
 
+        StructureChanged.raise();
         return true;
     }
 
@@ -1533,6 +1534,7 @@ bool Pane::RepositionAgentPane(SplitDirection splitDirection)
     _CreateRowColDefinitions();
     _ApplySplitDefinitions();
 
+    StructureChanged.raise();
     return true;
 }
 
@@ -1646,6 +1648,7 @@ void Pane::_CloseChild(const bool closeFirst)
         // by `Tab::Shutdown` once our Closed bubbles up) takes the leaf
         // branch instead of dereferencing the now-null children.
         _splitState = SplitState::None;
+        StructureChanged.raise();
         Closed.raise(nullptr, nullptr);
         return;
     }
@@ -1666,6 +1669,7 @@ void Pane::_CloseChild(const bool closeFirst)
         {
             // GH#18071: our content is still null after taking the other pane's content,
             //           so just notify our parent that we're closed.
+            StructureChanged.raise();
             Closed.raise(nullptr, nullptr);
             return;
         }
@@ -1830,6 +1834,7 @@ void Pane::_CloseChild(const bool closeFirst)
 
     // Notify the discarded child that it was closed by its parent
     closedChild->ClosedByParent.raise();
+    StructureChanged.raise();
 }
 
 void Pane::_CloseChildRoutine(const bool closeFirst)
@@ -2762,6 +2767,7 @@ void Pane::HidePane(std::shared_ptr<Pane> hiddenPane)
             visibleBorder.BorderThickness(ThicknessHelper::FromLengths(0, 0, 0, 0));
         }
     }
+    StructureChanged.raise();
 }
 
 // Method Description:
@@ -2794,6 +2800,7 @@ void Pane::RestorePane(std::shared_ptr<Pane> hiddenPane)
             _ApplySplitDefinitions();
         }
     }
+    StructureChanged.raise();
 }
 
 // Method Description:

@@ -626,7 +626,7 @@
     <comment>Header for a control to choose whether tabs are laid out horizontally across the top of the window or vertically down the left side.</comment>
   </data>
   <data name="Globals_TabLayout.HelpText" xml:space="preserve">
-    <value>Vertical tabs are shown in a resizable column on the left side of the window. Requires a restart to apply.</value>
+    <value>Vertical tabs are shown in a resizable column on the left side of the window. Changes apply immediately to all Terminal windows.</value>
     <comment>A description for what the "tab layout" setting does. Presented near "Globals_TabLayout.Header".</comment>
   </data>
   <data name="Globals_TabLayoutHorizontal.Content" xml:space="preserve">

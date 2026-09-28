@@ -5,8 +5,10 @@
 
 #include "../TerminalApp/TerminalPage.h"
 #include "../TerminalApp/TerminalWindow.h"
+#include "../TerminalApp/SettingsLoadEventArgs.h"
 #include "../TerminalApp/MinMaxCloseControl.h"
 #include "../TerminalApp/TabRowControl.h"
+#include "../TerminalApp/TabStrip.h"
 #include "../TerminalApp/ShortcutActionDispatch.h"
 #include "../TerminalApp/AgentPaneContent.h"
 #include "../TerminalApp/AgentPaneDragStash.h"
@@ -24,6 +26,8 @@
 
 #include <cmath>
 #include <winrt/Windows.UI.Xaml.Automation.h>
+#include <winrt/Windows.UI.Xaml.Automation.Peers.h>
+#include <winrt/Windows.UI.Xaml.Automation.Provider.h>
 
 using namespace Microsoft::Console;
 using namespace TerminalApp;
@@ -266,6 +270,27 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TryCreateXamlObjects);
 
         TEST_METHOD(TryInitializePage);
+        TEST_METHOD(VerticalRailVisibilityRestoresWidth);
+        TEST_METHOD(VerticalRailCollapseRestoresWidth);
+        TEST_METHOD(LiveTabLayoutRoundTripPreservesState);
+        TEST_METHOD(LiveTabLayoutLatestRequestWins);
+        TEST_METHOD(TabLayoutSwitchMenuTracksOrientation);
+        TEST_METHOD(VerticalTabStripPreservesClosePolicy);
+        TEST_METHOD(VerticalTabStripCollapsedItemsPreserveSelection);
+        TEST_METHOD(VerticalTabStripHostsPaneGroups);
+        TEST_METHOD(AgentViewFiltersSplitPaneChildren);
+        TEST_METHOD(VerticalTabSearchMatchesCommittedTitle);
+        TEST_METHOD(VerticalTabSearchUiState);
+        TEST_METHOD(LiteralSearchHighlighting);
+        TEST_METHOD(AgentViewOpensHistory);
+        TEST_METHOD(AgentViewAllTabsStopsHistoryRefresh);
+        TEST_METHOD(VerticalTabHistoryStatusText);
+        TEST_METHOD(VerticalTabHistorySearchProjection);
+        TEST_METHOD(VerticalTabHistoryPreservesLiveSearch);
+        TEST_METHOD(VerticalTabHistoryClosePreservesForegroundSelection);
+        TEST_METHOD(WindowActivationToleratesTabWithoutStatus);
+        TEST_METHOD(AgentTabClassificationTracksSession);
+        TEST_METHOD(CliAgentClassifiesTab);
 
         TEST_METHOD(CreateSimpleTerminalXamlType);
         TEST_METHOD(CreateTerminalMuxXamlType);
@@ -280,6 +305,25 @@ namespace TerminalAppLocalTests
         TEST_METHOD(PaneAgentSessionBindingRequiresPaneIdentity);
         TEST_METHOD(AgentPaneRestoreDoesNotRequireAgentSession);
         TEST_METHOD(PaneAgentSessionEndClearsAgentBinding);
+        TEST_METHOD(KeepRunningAcceptsPlainTerminalTabs);
+        TEST_METHOD(KeepRunningMenuIsFirstAndVerticalOnly);
+        TEST_METHOD(KeepRunningMenuTogglesOwningTab);
+        TEST_METHOD(KeepRunningBadgeFitsLongTitle);
+        TEST_METHOD(KeepRunningMixedTabCloseRestoresSameContent);
+        TEST_METHOD(KeepRunningDirectPaneCloseTerminates);
+        TEST_METHOD(KeepRunningDetachedPaneCloseDiscardsGroup);
+        TEST_METHOD(KeepRunningPageProjectionDoesNotRewriteManagerBinding);
+        TEST_METHOD(KeepRunningCliExitRetainsDetachedShell);
+        TEST_METHOD(KeepRunningReattachClaimAndRollback);
+        TEST_METHOD(KeepRunningFailedRestorePreservesGroup);
+        TEST_METHOD(KeepRunningConnectionExitPreservesTabLayout);
+        TEST_METHOD(KeepRunningPreservesAssistantAndLayout);
+        TEST_METHOD(KeepRunningHeadlessProtocolRetainsPaneRouting);
+        TEST_METHOD(KeepRunningFocusReattachesOriginalTab);
+        TEST_METHOD(KeepRunningFocusPreservesFailedRestore);
+        TEST_METHOD(KeepRunningWindowCloseIsIdempotent);
+        TEST_METHOD(KeepRunningStartupWaitsForHostRegistration);
+        TEST_METHOD(KeepRunningStartupRestoresBatchAfterLayout);
         TEST_METHOD(ContentIdAttachedPaneEmitsEndStateForItsConnection);
         TEST_METHOD(GetWindowLayoutIncludesAgentRestoreMetadata);
         TEST_METHOD(ResumedPaneIdentityPersistsWithoutHooksOrBannerParsing);
@@ -415,7 +459,8 @@ namespace TerminalAppLocalTests
         winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> _commonSetup(
             winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection connection = nullptr,
             Grid layoutHost = nullptr,
-            std::optional<int32_t> historySize = std::nullopt);
+            std::optional<int32_t> historySize = std::nullopt,
+            bool verticalLayout = false);
         winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> _restoreBindingsSetup();
         winrt::com_ptr<winrt::TerminalApp::implementation::WindowProperties> _windowProperties;
         winrt::com_ptr<winrt::TerminalApp::implementation::ContentManager> _contentManager;
@@ -865,6 +910,763 @@ namespace TerminalAppLocalTests
         });
     }
 
+    static winrt::hstring _keepRunningHook(const winrt::guid& paneId, std::string_view name, std::string_view session = "keep-running-session", std::string_view agent = "copilot")
+    {
+        Json::Value event;
+        event["params"]["pane_id"] = _formatPaneId(paneId);
+        event["params"]["event"] = std::string{ name };
+        event["params"]["agent_session_id"] = std::string{ session };
+        event["params"]["agent"] = std::string{ agent };
+        return winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, event));
+    }
+
+    void TabTests::KeepRunningAcceptsPlainTerminalTabs()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const winrt::guid id{ L"{13f7aa41-8837-473e-92a3-f1e682ab1001}" };
+        const auto connection = winrt::make_self<TestConnection>(id, State::Connected);
+        const auto page = _commonSetup(*connection);
+        TestOnUIThread([&]() {
+            const winrt::guid tabId{ page->_GetFocusedTabImpl()->StableId() };
+            VERIFY_IS_TRUE(page->CanKeepTabRunning(tabId));
+            VERIFY_IS_FALSE(page->IsTabKeepRunning(tabId));
+            page->SetTabKeepRunning(tabId, true);
+            VERIFY_IS_TRUE(page->IsTabKeepRunning(tabId));
+            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.start"));
+            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.prompt.submit", "nested-session"));
+            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.end", "stale-session"));
+            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.end"));
+            VERIFY_IS_TRUE(page->IsTabKeepRunning(tabId));
+            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.start", "new-session"));
+            VERIFY_IS_TRUE(page->IsTabKeepRunning(tabId));
+            page->SetTabKeepRunning(tabId, false);
+            VERIFY_IS_FALSE(page->IsTabKeepRunning(tabId));
+            VERIFY_IS_FALSE(page->CanKeepTabRunning(id));
+            VERIFY_THROWS(page->SetTabKeepRunning(id, true), winrt::hresult_error);
+            VERIFY_IS_FALSE(page->CanKeepTabRunning(winrt::guid{}));
+        });
+    }
+
+    void TabTests::KeepRunningMixedTabCloseRestoresSameContent()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const winrt::guid keptId{ L"{13f7aa41-8837-473e-92a3-f1e682ab1002}" };
+        const winrt::guid closedId{ L"{13f7aa41-8837-473e-92a3-f1e682ab1003}" };
+        const auto kept = winrt::make_self<TestConnection>(keptId, State::Connected);
+        const auto closed = winrt::make_self<TestConnection>(closedId, State::Connected);
+        const auto page = _commonSetup(*kept);
+        std::vector<ConnectionStateEventRecord> events;
+        TestOnUIThread([&]() {
+            page->_settings.GlobalSettings().ConfirmOnClose(ConfirmOnClose::Never);
+            const auto eventToken = page->ProtocolVtSequenceReceived([&](auto&&, const auto& json) { _recordConnectionStateEvent(json, events); });
+            const auto revoke = wil::scope_exit([&]() noexcept { page->ProtocolVtSequenceReceived(eventToken); });
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto control = tab->GetRootPane()->GetTerminalControl();
+            const auto contentId = control.ContentId();
+            const auto content = page->_manager.TryLookupCore(contentId);
+            const auto stableId = tab->StableId();
+            const winrt::guid groupId{ stableId };
+            const auto otherPane = page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *closed);
+            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, otherPane));
+            page->OnPaneAgentSessionChanged(_keepRunningHook(keptId, "agent.session.start"));
+            page->OnPaneAgentSessionChanged(_keepRunningHook(closedId, "agent.session.start"));
+            page->_manager.OnPaneAgentSessionChanged(_keepRunningHook(keptId, "agent.session.start"));
+            page->_manager.OnPaneAgentSessionChanged(_keepRunningHook(closedId, "agent.session.start"));
+            page->SetTabKeepRunning(groupId, true);
+            page->_HandleCloseTabRequested(*tab, true);
+
+            VERIFY_ARE_EQUAL(0u, page->_tabs.Size());
+            VERIFY_ARE_EQUAL(0u, kept->CloseCount());
+            VERIFY_ARE_EQUAL(0u, closed->CloseCount());
+            VERIFY_IS_TRUE(page->_manager.HasKeptSessions());
+            VERIFY_ARE_EQUAL(1u, page->_manager.KeptGroups().Size());
+            VERIFY_IS_TRUE(page->_manager.KeptGroups().HasKey(groupId));
+            VERIFY_IS_TRUE(_statesForPane(events, _formatPaneId(keptId)).empty());
+            VERIFY_IS_TRUE(_statesForPane(events, _formatPaneId(closedId)).empty());
+            VERIFY_IS_TRUE(page->_previouslyClosedPanesAndTabs.empty());
+            const std::u16string output{ u"still running while detached\r\n" };
+            kept->TerminalOutput.raise(winrt::array_view<const char16_t>{ output.data(), output.data() + output.size() });
+            VERIFY_IS_TRUE(std::wstring_view{ content.Core().ReadEntireBuffer() }.find(L"still running while detached") != std::wstring_view::npos);
+
+            VERIFY_IS_TRUE(page->RestoreKeptGroup(groupId));
+            const auto restored = page->_GetFocusedTabImpl();
+            VERIFY_ARE_EQUAL(stableId, restored->StableId());
+            VERIFY_ARE_EQUAL(2, restored->GetLeafPaneCount());
+            const auto restoredControl = restored->GetRootPane()->FindPaneBySessionId(keptId)->GetTerminalControl();
+            VERIFY_ARE_EQUAL(contentId, restoredControl.ContentId());
+            VERIFY_IS_TRUE(content == page->_manager.TryLookupCore(restoredControl.ContentId()));
+            VERIFY_IS_TRUE(restoredControl.Connection() == *kept);
+            VERIFY_ARE_EQUAL(keptId, restoredControl.Connection().SessionId());
+            VERIFY_IS_TRUE(std::wstring_view{ restoredControl.ReadEntireBuffer() }.find(L"still running while detached") != std::wstring_view::npos);
+            VERIFY_IS_TRUE(page->IsTabKeepRunning(groupId));
+            VERIFY_IS_TRUE(restored->TabStatus().IsKeepRunning());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Turn off keep running" }, restored->_keepRunningMenuItem.Text());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE711" }, restored->_keepRunningMenuItem.Icon().as<FontIcon>().Glyph());
+            VERIFY_IS_FALSE(page->_manager.HasKeptSessions());
+            VERIFY_ARE_EQUAL(0u, kept->CloseCount());
+            VERIFY_THROWS(page->RestoreKeptGroup(groupId), winrt::hresult_error);
+            restored->Close();
+        });
+    }
+
+    void TabTests::KeepRunningMenuIsFirstAndVerticalOnly()
+    {
+        const auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto item = tab->_keepRunningMenuItem;
+            const auto menu = tab->TabViewItem().ContextFlyout().as<MenuFlyout>();
+            VERIFY_IS_TRUE(menu.Items().GetAt(0) == item);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Keep tab running" }, item.Text());
+            const auto icon = item.Icon().as<FontIcon>();
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE8EE" }, icon.Glyph());
+            const auto badge = tab->_headerControl.FindName(L"HeaderKeepRunningIcon").as<FontIcon>();
+            VERIFY_ARE_EQUAL(icon.Glyph(), badge.Glyph());
+            VERIFY_ARE_EQUAL(icon.FontFamily().Source(), badge.FontFamily().Source());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Keep tab running" },
+                             winrt::Windows::UI::Xaml::Automation::AutomationProperties::GetName(badge));
+            const winrt::hstring tooltip{ L"Keep this tab running in the background after closing the tab or window." };
+            VERIFY_ARE_EQUAL(tooltip, winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(item)));
+            VERIFY_ARE_EQUAL(tooltip, winrt::Windows::UI::Xaml::Automation::AutomationProperties::GetHelpText(item));
+            VERIFY_ARE_EQUAL(Visibility::Visible, item.Visibility());
+            VERIFY_IS_TRUE(item.IsEnabled());
+            VERIFY_IS_FALSE(tab->TabStatus().IsKeepRunning());
+
+            const winrt::guid id{ tab->StableId() };
+            page->SetTabKeepRunning(id, true);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Turn off keep running" }, item.Text());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE711" }, icon.Glyph());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE8EE" }, badge.Glyph());
+            const winrt::hstring turnOffTooltip{ L"This tab will no longer stay running after you close the tab or window." };
+            VERIFY_ARE_EQUAL(turnOffTooltip, winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(item)));
+            VERIFY_ARE_EQUAL(turnOffTooltip, winrt::Windows::UI::Xaml::Automation::AutomationProperties::GetHelpText(item));
+            VERIFY_IS_TRUE(tab->TabStatus().IsKeepRunning());
+            tab->SetVerticalTabLayout(false);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, item.Visibility());
+            VERIFY_IS_FALSE(item.IsEnabled());
+            VERIFY_IS_TRUE(page->IsTabKeepRunning(id));
+            VERIFY_IS_TRUE(tab->TabStatus().IsKeepRunning());
+            tab->SetVerticalTabLayout(true);
+            VERIFY_ARE_EQUAL(Visibility::Visible, item.Visibility());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Turn off keep running" }, item.Text());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE711" }, icon.Glyph());
+            page->SetTabKeepRunning(id, false);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Keep tab running" }, item.Text());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE8EE" }, icon.Glyph());
+            VERIFY_ARE_EQUAL(tooltip, winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(item)));
+            VERIFY_ARE_EQUAL(tooltip, winrt::Windows::UI::Xaml::Automation::AutomationProperties::GetHelpText(item));
+            VERIFY_IS_FALSE(tab->TabStatus().IsKeepRunning());
+
+            const auto root = tab->_rootPane;
+            tab->_rootPane = nullptr;
+            tab->_UpdateKeepRunningMenuItem();
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, item.Visibility());
+            VERIFY_IS_FALSE(item.IsEnabled());
+            tab->_rootPane = root;
+            tab->_UpdateKeepRunningMenuItem();
+        });
+    }
+
+    void TabTests::KeepRunningMenuTogglesOwningTab()
+    {
+        using namespace winrt::Windows::UI::Xaml::Automation;
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto connection = winrt::make_self<TestConnection>(winrt::guid{ L"{13f7aa41-8837-473e-92a3-f1e682ab1030}" }, State::Connected);
+        const auto page = _commonSetup(*connection, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto owner = page->_GetFocusedTabImpl();
+            const auto control = owner->GetRootPane()->GetTerminalControl();
+            const auto contentId = control.ContentId();
+            const auto siblingPane = page->_MakePane(nullptr, nullptr, nullptr);
+            page->_CreateNewTabFromPane(siblingPane);
+            const auto focused = page->_GetFocusedTabImpl();
+            VERIFY_IS_TRUE(owner != focused);
+            const Peers::MenuFlyoutItemAutomationPeer peer{ owner->_keepRunningMenuItem };
+            const auto invoke = peer.GetPattern(Peers::PatternInterface::Invoke).as<Provider::IInvokeProvider>();
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Keep tab running" }, peer.GetName());
+            invoke.Invoke();
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Turn off keep running" }, peer.GetName());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE711" }, owner->_keepRunningMenuItem.Icon().as<FontIcon>().Glyph());
+            VERIFY_IS_TRUE(page->IsTabKeepRunning(winrt::guid{ owner->StableId() }));
+            VERIFY_IS_TRUE(owner->TabStatus().IsKeepRunning());
+            VERIFY_IS_FALSE(focused->KeepRunning());
+            VERIFY_IS_FALSE(focused->TabStatus().IsKeepRunning());
+            invoke.Invoke();
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Keep tab running" }, peer.GetName());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE8EE" }, owner->_keepRunningMenuItem.Icon().as<FontIcon>().Glyph());
+            VERIFY_IS_FALSE(owner->KeepRunning());
+            VERIFY_IS_FALSE(owner->TabStatus().IsKeepRunning());
+            VERIFY_IS_FALSE(page->IsTabKeepRunning(winrt::guid{ owner->StableId() }));
+            VERIFY_ARE_EQUAL(2u, page->_tabs.Size());
+            VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == focused);
+            VERIFY_IS_TRUE(owner->GetRootPane()->GetTerminalControl() == control);
+            VERIFY_ARE_EQUAL(contentId, control.ContentId());
+            VERIFY_ARE_EQUAL(State::Connected, connection->State());
+            VERIFY_ARE_EQUAL(0u, connection->CloseCount());
+            VERIFY_IS_FALSE(page->_manager.HasKeptSessions());
+        });
+    }
+
+    void TabTests::KeepRunningBadgeFitsLongTitle()
+    {
+        const auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto header = tab->_headerControl;
+            const auto badge = header.FindName(L"HeaderKeepRunningIcon").as<FontIcon>();
+            tab->SetTabText(winrt::hstring{ std::wstring(240, L'W') });
+            tab->KeepRunning(true);
+            header.Width(120);
+            header.Measure({ 120, 32 });
+            header.Arrange({ 0, 0, 120, 32 });
+            header.UpdateLayout();
+            VERIFY_ARE_EQUAL(Visibility::Visible, badge.Visibility());
+            VERIFY_IS_TRUE(badge.ActualWidth() > 0);
+            const auto position = badge.TransformToVisual(header).TransformPoint({ 0, 0 });
+            VERIFY_IS_TRUE(position.X >= 0);
+            VERIFY_IS_TRUE(position.X + badge.ActualWidth() <= header.ActualWidth());
+
+            tab->KeepRunning(false);
+            header.UpdateLayout();
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, badge.Visibility());
+        });
+    }
+
+    void TabTests::KeepRunningDirectPaneCloseTerminates()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const winrt::guid id{ L"{13f7aa41-8837-473e-92a3-f1e682ab1004}" };
+        const auto connection = winrt::make_self<TestConnection>(id, State::Connected);
+        const auto page = _commonSetup(*connection);
+        TestOnUIThread([&]() {
+            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.start"));
+            page->SetTabKeepRunning(winrt::guid{ page->_GetFocusedTabImpl()->StableId() }, true);
+            page->_HandleClosePaneRequested(page->_GetFocusedTabImpl()->GetRootPane());
+        });
+        VERIFY_IS_TRUE(connection->WaitForClose());
+        TestOnUIThread([&]() { VERIFY_IS_FALSE(page->_manager.HasKeptSessions()); });
+    }
+
+    void TabTests::KeepRunningCliExitRetainsDetachedShell()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const winrt::guid id{ L"{13f7aa41-8837-473e-92a3-f1e682ab1005}" };
+        const auto connection = winrt::make_self<TestConnection>(id, State::Connected);
+        const auto page = _commonSetup(*connection);
+        TestOnUIThread([&]() {
+            page->_settings.GlobalSettings().ConfirmOnClose(ConfirmOnClose::Never);
+            const auto tab = page->_GetFocusedTabImpl();
+            const winrt::guid groupId{ tab->StableId() };
+            page->_manager.OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.start"));
+            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.start"));
+            page->SetTabKeepRunning(groupId, true);
+            page->_HandleCloseTabRequested(*tab, true);
+            page->_manager.OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.end"));
+            VERIFY_IS_TRUE(page->_manager.HasKeptSessions());
+            VERIFY_ARE_EQUAL(0u, connection->CloseCount());
+            VERIFY_IS_TRUE(page->RestoreKeptGroup(groupId));
+            VERIFY_IS_TRUE(page->CanKeepTabRunning(groupId));
+            VERIFY_IS_TRUE(page->IsTabKeepRunning(groupId));
+            page->_GetFocusedTabImpl()->Close();
+        });
+        VERIFY_IS_TRUE(connection->WaitForClose());
+    }
+
+    void TabTests::KeepRunningDetachedPaneCloseDiscardsGroup()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const winrt::guid id{ L"{13f7aa41-8837-473e-92a3-f1e682ab1040}" };
+        const auto connection = winrt::make_self<TestConnection>(id, State::Connected);
+        const auto page = _commonSetup(*connection);
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const winrt::guid groupId{ tab->StableId() };
+            tab->KeepRunning(true);
+            page->_KeepTabRunning(tab);
+            VERIFY_ARE_EQUAL(0u, page->_tabs.Size());
+            VERIFY_IS_TRUE(page->_manager.KeptGroups().HasKey(groupId));
+            std::vector<ConnectionStateEventRecord> events;
+            const auto token = page->_manager.DetachedSessionEvent([&](auto&&, const auto& json) {
+                _recordConnectionStateEvent(json, events);
+            });
+            const auto revoke = wil::scope_exit([&]() noexcept { page->_manager.DetachedSessionEvent(token); });
+            page->_HandleClosePaneRequested(tab->GetRootPane());
+            VERIFY_IS_FALSE(page->_manager.HasKeptSessions());
+            VERIFY_IS_FALSE(page->_manager.KeptGroups().HasKey(groupId));
+            VERIFY_ARE_EQUAL(size_t{ 1 }, _statesForPane(events, _formatPaneId(id)).size());
+            VERIFY_THROWS(page->RestoreKeptGroup(groupId), winrt::hresult_error);
+        });
+        VERIFY_IS_TRUE(connection->WaitForClose());
+    }
+
+    void TabTests::KeepRunningPageProjectionDoesNotRewriteManagerBinding()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const winrt::guid id{ L"{13f7aa41-8837-473e-92a3-f1e682ab1041}" };
+        const auto connection = winrt::make_self<TestConnection>(id, State::Connected);
+        const auto page = _commonSetup(*connection);
+        TestOnUIThread([&]() {
+            const auto contentId = page->_GetFocusedTabImpl()->GetActiveTerminalControl().ContentId();
+            const auto started = _keepRunningHook(id, "agent.session.start");
+            page->_manager.OnPaneAgentSessionChanged(started);
+            page->_manager.OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.end"));
+            VERIFY_IS_TRUE(page->_manager.AgentSessionEvent(contentId).empty());
+
+            page->OnPaneAgentSessionChanged(started);
+            VERIFY_IS_TRUE(page->_paneAgentSessions.contains(id));
+            VERIFY_IS_TRUE(page->_manager.AgentSessionEvent(contentId).empty());
+
+            const auto replacement = _keepRunningHook(id, "agent.session.start", "replacement-session");
+            page->_manager.OnPaneAgentSessionChanged(replacement);
+            page->OnPaneAgentSessionChanged(started);
+            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.end"));
+            VERIFY_ARE_EQUAL(replacement, page->_manager.AgentSessionEvent(contentId));
+        });
+    }
+
+    void TabTests::KeepRunningReattachClaimAndRollback()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const winrt::guid id{ L"{13f7aa41-8837-473e-92a3-f1e682ab1006}" };
+        const auto connection = winrt::make_self<TestConnection>(id, State::Connected);
+        const auto page = _commonSetup(*connection);
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const winrt::guid groupId{ tab->StableId() };
+            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.start"));
+            page->SetTabKeepRunning(groupId, true);
+            page->_KeepTabRunning(tab);
+            const auto firstTab = page->_manager.BeginReattachKeptGroup(groupId);
+            VERIFY_IS_TRUE(firstTab == *tab);
+            const auto contentId = tab->GetRootPane()->GetTerminalControl().ContentId();
+            VERIFY_THROWS(page->_AttachControlToContent(contentId, NewTerminalArgs{}), winrt::hresult_error);
+            VERIFY_IS_TRUE(page->_manager.HasKeptSessions());
+            VERIFY_ARE_EQUAL(0u, page->_manager.KeptGroups().Size());
+            VERIFY_THROWS(page->_manager.BeginReattachKeptGroup(groupId), winrt::hresult_error);
+            VERIFY_THROWS(page->_manager.DiscardKeptGroup(groupId), winrt::hresult_error);
+            page->_manager.CompleteKeptGroupReattach(groupId, false);
+            const auto retry = page->_manager.BeginReattachKeptGroup(groupId);
+            VERIFY_IS_TRUE(retry == *tab);
+            page->_manager.CompleteKeptGroupReattach(groupId, false);
+            VERIFY_IS_TRUE(page->RestoreKeptGroup(groupId));
+            VERIFY_ARE_EQUAL(0u, connection->CloseCount());
+            page->_GetFocusedTabImpl()->Close();
+        });
+    }
+
+    void TabTests::KeepRunningFailedRestorePreservesGroup()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const winrt::guid firstId{ L"{13f7aa41-8837-473e-92a3-f1e682ab1010}" };
+        const winrt::guid secondId{ L"{13f7aa41-8837-473e-92a3-f1e682ab1011}" };
+        const auto first = winrt::make_self<TestConnection>(firstId, State::Connected);
+        const auto second = winrt::make_self<TestConnection>(secondId, State::Connected);
+        const auto page = _commonSetup(*first);
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const winrt::guid groupId{ tab->StableId() };
+            const auto firstPane = tab->GetRootPane();
+            const auto firstControl = firstPane->GetTerminalControl();
+            const auto other = page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *second);
+            const auto otherControl = other->GetTerminalControl();
+            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, other));
+            page->SetTabKeepRunning(groupId, true);
+            page->_KeepTabRunning(tab);
+            using Stage = winrt::TerminalApp::implementation::TerminalPage::ContentTransferStage;
+            page->_contentTransferTestHook = [](Stage stage, uint64_t, uint32_t) {
+                THROW_HR_IF(E_ABORT, stage == Stage::BeforeSplitInsertion);
+            };
+            VERIFY_THROWS(page->RestoreKeptGroup(groupId), winrt::hresult_error);
+            page->_contentTransferTestHook = {};
+            VERIFY_ARE_EQUAL(0u, page->_tabs.Size());
+            VERIFY_ARE_EQUAL(0u, first->CloseCount());
+            VERIFY_ARE_EQUAL(0u, second->CloseCount());
+            VERIFY_IS_TRUE(page->_manager.KeptGroups().HasKey(groupId));
+            VERIFY_IS_TRUE(page->_manager.BeginReattachKeptGroup(groupId) == *tab);
+            VERIFY_ARE_EQUAL(2, tab->GetLeafPaneCount());
+            VERIFY_IS_TRUE(firstControl.TransferState() == winrt::Microsoft::Terminal::Control::ContentTransferState::Owned);
+            VERIFY_IS_TRUE(otherControl.TransferState() == winrt::Microsoft::Terminal::Control::ContentTransferState::Owned);
+            page->_manager.CompleteKeptGroupReattach(groupId, false);
+            VERIFY_IS_TRUE(page->RestoreKeptGroup(groupId));
+            VERIFY_IS_FALSE(page->_manager.HasKeptSessions());
+            page->_GetFocusedTabImpl()->Close();
+        });
+        VERIFY_IS_TRUE(first->WaitForClose());
+        VERIFY_IS_TRUE(second->WaitForClose());
+    }
+
+    void TabTests::KeepRunningConnectionExitPreservesTabLayout()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const winrt::guid firstId{ L"{13f7aa41-8837-473e-92a3-f1e682ab1007}" };
+        const winrt::guid secondId{ L"{13f7aa41-8837-473e-92a3-f1e682ab1008}" };
+        const auto first = winrt::make_self<TestConnection>(firstId, State::Connected);
+        const auto second = winrt::make_self<TestConnection>(secondId, State::Connected);
+        const auto page = _commonSetup(*first);
+        std::vector<ConnectionStateEventRecord> events;
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const winrt::guid groupId{ tab->StableId() };
+            const auto other = page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *second);
+            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, other));
+            page->SetTabKeepRunning(groupId, true);
+            const auto eventToken = page->_manager.DetachedSessionEvent([&](auto&&, const auto& json) { _recordConnectionStateEvent(json, events); });
+            const auto revoke = wil::scope_exit([&]() noexcept { page->_manager.DetachedSessionEvent(eventToken); });
+            page->_KeepTabRunning(tab);
+            first->TransitionTo(State::Failed);
+            VERIFY_IS_TRUE(page->_manager.HasKeptSessions());
+            VERIFY_IS_TRUE(page->_manager.BeginReattachKeptGroup(groupId) == *tab);
+            VERIFY_ARE_EQUAL(2, tab->GetLeafPaneCount());
+            VERIFY_IS_NOT_NULL(tab->GetRootPane()->FindPaneBySessionId(firstId));
+            VERIFY_IS_NOT_NULL(tab->GetRootPane()->FindPaneBySessionId(secondId));
+            page->_manager.CompleteKeptGroupReattach(groupId, false);
+            VERIFY_ARE_EQUAL(0u, second->CloseCount());
+            page->_manager.DiscardKeptGroup(groupId);
+            VERIFY_IS_FALSE(page->_manager.HasKeptSessions());
+            VERIFY_ARE_EQUAL(size_t{ 1 }, _statesForPane(events, _formatPaneId(secondId)).size());
+        });
+        VERIFY_IS_TRUE(first->WaitForClose());
+        VERIFY_IS_TRUE(second->WaitForClose());
+    }
+
+    void TabTests::KeepRunningWindowCloseIsIdempotent()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const winrt::guid id{ L"{13f7aa41-8837-473e-92a3-f1e682ab1009}" };
+        const auto connection = winrt::make_self<TestConnection>(id, State::Connected);
+        const auto closed = winrt::make_self<TestConnection>(winrt::guid{ L"{13f7aa41-8837-473e-92a3-f1e682ab1012}" }, State::Connected);
+        const auto page = _commonSetup(*connection);
+        TestOnUIThread([&]() {
+            page->_settings.GlobalSettings().ConfirmOnClose(ConfirmOnClose::Never);
+            const auto other = page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *closed);
+            const winrt::guid groupId{ page->_GetFocusedTabImpl()->StableId() };
+            page->_CreateNewTabFromPane(other);
+            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.start"));
+            page->SetTabKeepRunning(groupId, true);
+            uint32_t closeRequests = 0;
+            const auto eventToken = page->CloseWindowRequested([&](auto&&, auto&&) { ++closeRequests; });
+            const auto revoke = wil::scope_exit([&]() noexcept { page->CloseWindowRequested(eventToken); });
+            page->CloseWindow();
+            page->CloseWindow();
+            VERIFY_ARE_EQUAL(1u, closeRequests);
+            VERIFY_ARE_EQUAL(1u, page->_manager.KeptGroups().Size());
+            VERIFY_ARE_EQUAL(0u, connection->CloseCount());
+            page->ShutdownPanes();
+            VERIFY_ARE_EQUAL(0u, connection->CloseCount());
+            VERIFY_IS_TRUE(closed->WaitForClose());
+            page->_manager.DiscardKeptGroup(groupId);
+            VERIFY_IS_FALSE(page->_manager.HasKeptSessions());
+        });
+    }
+
+    void TabTests::KeepRunningStartupWaitsForHostRegistration()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        using Startup = winrt::TerminalApp::implementation::StartupState;
+        const winrt::guid id{ L"{13f7aa41-8837-473e-92a3-f1e682ab1013}" };
+        const auto connection = winrt::make_self<TestConnection>(id, State::Connected);
+        const auto page = _commonSetup(*connection);
+        ::details::Event initialized;
+        winrt::event_token token{};
+        uint64_t contentId{};
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const winrt::guid groupId{ tab->StableId() };
+            contentId = tab->GetRootPane()->GetTerminalControl().ContentId();
+            tab->SuppressAgentPrewarm();
+            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.start"));
+            page->SetTabKeepRunning(groupId, true);
+            page->_KeepTabRunning(tab);
+            page->_startupState = Startup::NotInitialized;
+            page->_transferReceiverReady = false;
+            page->SetStartupKeptGroups({ groupId });
+            page->Width(0);
+            page->Height(0);
+            page->_tabContent.Width(0);
+            page->_tabContent.Height(0);
+            page->UpdateLayout();
+            page->_OnFirstLayout(nullptr, nullptr);
+            VERIFY_IS_TRUE(page->_startupState == Startup::NotInitialized);
+            VERIFY_ARE_EQUAL(0u, page->_tabs.Size());
+            VERIFY_IS_TRUE(page->_manager.HasKeptSessions());
+            page->Width(900);
+            page->Height(600);
+            page->_tabContent.Width(900);
+            page->_tabContent.Height(600);
+            page->UpdateLayout();
+            page->_OnFirstLayout(nullptr, nullptr);
+            VERIFY_IS_TRUE(page->_startupState == Startup::InStartup);
+            VERIFY_IS_FALSE(page->_restoringStartupKeptGroups);
+            token = page->Initialized([&](auto&&, auto&&) { initialized.Set(); });
+            page->ContentTransferReceiverReady();
+            page->ContentTransferReceiverReady();
+            VERIFY_ARE_EQUAL(0u, page->_tabs.Size());
+            VERIFY_IS_TRUE(page->_restoringStartupKeptGroups);
+        });
+        const auto revoke = wil::scope_exit([&]() {
+            TestOnUIThread([&]() { page->Initialized(token); });
+        });
+        VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(initialized.m_handle, 10000));
+        TestOnUIThread([&]() {
+            VERIFY_ARE_EQUAL(1u, page->_tabs.Size());
+            VERIFY_ARE_EQUAL(contentId, page->_GetFocusedTabImpl()->GetRootPane()->GetTerminalControl().ContentId());
+            VERIFY_IS_FALSE(page->_manager.HasKeptSessions());
+            VERIFY_IS_FALSE(page->_restoringStartupKeptGroups);
+            VERIFY_ARE_EQUAL(0u, connection->CloseCount());
+            page->_GetFocusedTabImpl()->Close();
+        });
+    }
+
+    void TabTests::KeepRunningStartupRestoresBatchAfterLayout()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        using Stage = winrt::TerminalApp::implementation::TerminalPage::ContentTransferStage;
+        for (const auto rejectFirst : { false, true })
+        {
+            auto fixture = _createContentTransferFixture(false, true, true, false, 100);
+            ::details::Event initialized;
+            winrt::event_token initializedToken{};
+            winrt::event_token closeToken{};
+            uint32_t closeRequests{};
+            const auto cleanup = wil::scope_exit([&]() {
+                TestOnUIThread([&]() {
+                    fixture->destination->Initialized(initializedToken);
+                    fixture->destination->CloseWindowRequested(closeToken);
+                    for (const auto& group : fixture->source->_manager.KeptGroups())
+                    {
+                        fixture->source->_manager.DiscardKeptGroup(group.Key());
+                    }
+                    _closeContentTransferFixture(*fixture, false);
+                    fixture.reset();
+                });
+            });
+            const auto second = winrt::make_self<TestConnection>(
+                winrt::guid{ L"{13f7aa41-8837-473e-92a3-f1e682ab1030}" }, State::Connected);
+            winrt::guid firstGroup{};
+            winrt::guid secondGroup{};
+            uint64_t secondContentId{};
+            TestOnUIThread([&]() {
+                const auto first = fixture->original.tab;
+                firstGroup = winrt::guid{ first->StableId() };
+                const auto secondPane = fixture->source->_MakePane(nullptr, nullptr, *second);
+                secondContentId = secondPane->GetTerminalControl().ContentId();
+                fixture->source->_CreateNewTabFromPane(secondPane);
+                const auto secondTab = fixture->source->_GetFocusedTabImpl();
+                secondGroup = winrt::guid{ secondTab->StableId() };
+                secondTab->SuppressAgentPrewarm();
+                first->KeepRunning(true);
+                secondTab->KeepRunning(true);
+                fixture->source->_KeepTabRunning(first);
+                fixture->source->_KeepTabRunning(secondTab);
+                const auto bounds = fixture->source->_manager.KeptGroupBounds(firstGroup);
+                VERIFY_IS_TRUE(bounds.Width > 0);
+                VERIFY_IS_TRUE(bounds.Height > 0);
+                const auto loaded = winrt::make<winrt::TerminalApp::implementation::SettingsLoadEventArgs>(
+                    false, S_OK, winrt::hstring{}, nullptr, fixture->source->_settings);
+                const auto window = winrt::make_self<winrt::TerminalApp::implementation::TerminalWindow>(loaded, fixture->source->_manager);
+                const auto position = window->GetInitialPosition(123, 234);
+                const auto groups = winrt::single_threaded_vector<winrt::guid>({ firstGroup, secondGroup });
+                window->SetStartupKeptGroups(groups.GetView(), bounds);
+                VERIFY_ARE_EQUAL(bounds.Width, window->GetLaunchDimensions(96).Width);
+                VERIFY_ARE_EQUAL(bounds.Height, window->GetLaunchDimensions(96).Height);
+                VERIFY_ARE_EQUAL(bounds.Width * 1.5f, window->GetLaunchDimensions(144).Width);
+                VERIFY_ARE_EQUAL(bounds.Height * 1.5f, window->GetLaunchDimensions(144).Height);
+                const auto restoredPosition = window->GetInitialPosition(123, 234);
+                VERIFY_ARE_EQUAL(position.X, restoredPosition.X);
+                VERIFY_ARE_EQUAL(position.Y, restoredPosition.Y);
+                fixture->source->ShutdownPanes();
+                const auto destination = fixture->destination;
+                destination->SetStartupKeptGroups({ firstGroup, secondGroup });
+                initializedToken = destination->Initialized([&](auto&&, auto&&) { initialized.Set(); });
+                closeToken = destination->CloseWindowRequested([&](auto&&, auto&&) { ++closeRequests; });
+                if (rejectFirst)
+                {
+                    destination->_contentTransferTestHook = [](Stage stage, uint64_t, uint32_t) {
+                        THROW_HR_IF(E_ABORT, stage == Stage::BeforeSplitInsertion);
+                    };
+                }
+                destination->_OnFirstLayout(nullptr, nullptr);
+                VERIFY_ARE_EQUAL(0u, destination->_tabs.Size());
+                destination->ContentTransferReceiverReady();
+                destination->ContentTransferReceiverReady();
+                VERIFY_ARE_EQUAL(0u, destination->_tabs.Size());
+                VERIFY_ARE_EQUAL(2u, fixture->source->_manager.KeptGroups().Size());
+            });
+            VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(initialized.m_handle, 10000));
+            TestOnUIThread([&]() {
+                const auto destination = fixture->destination;
+                VERIFY_ARE_EQUAL(rejectFirst ? 1u : 2u, destination->_tabs.Size());
+                VERIFY_ARE_EQUAL(0u, closeRequests);
+                VERIFY_IS_FALSE(destination->_restoringStartupKeptGroups);
+                VERIFY_IS_TRUE(destination->_startupKeptGroups.empty());
+                const auto secondTab = destination->_FindTabByStableId(winrt::to_hstring(secondGroup));
+                VERIFY_IS_NOT_NULL(secondTab);
+                VERIFY_ARE_EQUAL(secondContentId, secondTab->GetActiveTerminalControl().ContentId());
+                VERIFY_IS_TRUE(secondTab->GetActiveTerminalControl().Connection() == *second);
+                VERIFY_ARE_EQUAL(0u, second->CloseCount());
+                VERIFY_ARE_EQUAL(rejectFirst, fixture->source->_manager.KeptGroups().HasKey(firstGroup));
+                for (const auto& leaf : fixture->original.leaves)
+                {
+                    VERIFY_ARE_EQUAL(0u, leaf.closed->load());
+                }
+                if (!rejectFirst)
+                {
+                    const auto first = destination->_FindTabByStableId(fixture->original.stableId);
+                    VERIFY_IS_NOT_NULL(first);
+                    VERIFY_ARE_EQUAL(3, first->GetLeafPaneCount());
+                    VERIFY_IS_TRUE(first->HasStashedAgentPane());
+                }
+                destination->ContentTransferReceiverReady();
+                destination->_OnFirstLayout(nullptr, nullptr);
+                VERIFY_ARE_EQUAL(rejectFirst ? 1u : 2u, destination->_tabs.Size());
+            });
+        }
+    }
+
+    void TabTests::KeepRunningPreservesAssistantAndLayout()
+    {
+        for (const auto hidden : { false, true })
+        {
+            auto fixture = _createContentTransferFixture(false, hidden, false, false, 100);
+            const auto cleanup = wil::scope_exit([&]() {
+                TestOnUIThread([&]() {
+                    for (const auto& group : fixture->source->_manager.KeptGroups())
+                    {
+                        fixture->source->_manager.DiscardKeptGroup(group.Key());
+                    }
+                    fixture.reset();
+                });
+            });
+            TestOnUIThread([&]() {
+                const auto source = fixture->source;
+                const auto destination = fixture->destination;
+                const auto tab = fixture->original.tab;
+                const winrt::guid id{ tab->StableId() };
+                tab->ToggleSplitOrientation();
+                tab->SetTabText(L"Kept tab");
+                tab->SetRuntimeTabColor(winrt::Windows::UI::Colors::Orange());
+                if (!hidden)
+                {
+                    tab->ToggleZoom();
+                }
+                else
+                {
+                    tab->HidePane();
+                    VERIFY_IS_TRUE(tab->HasHiddenPane());
+                }
+                const auto activeSession = tab->GetActivePane()->GetTerminalControl().Connection().SessionId();
+                const auto layoutOf = [](const auto& target) {
+                    auto actions = target->BuildStartupActions(BuildStartupKind::Content);
+                    // Transfer IDs are wrapper-local, not part of the split layout.
+                    for (const auto& action : actions)
+                    {
+                        if (const auto newTab = action.Args().template try_as<NewTabArgs>())
+                        {
+                            action.Args(NewTabArgs{ NewTerminalArgs{} });
+                        }
+                        else if (const auto split = action.Args().template try_as<SplitPaneArgs>())
+                        {
+                            action.Args(SplitPaneArgs{ SplitType::Manual, split.SplitDirection(), split.SplitSize(), NewTerminalArgs{} });
+                        }
+                    }
+                    return ActionAndArgs::Serialize(winrt::single_threaded_vector(std::move(actions)));
+                };
+                const auto layout = layoutOf(tab);
+                source->SetTabKeepRunning(id, true);
+                source->_HandleCloseTabRequested(*tab, true);
+                VERIFY_ARE_EQUAL(0u, source->_tabs.Size());
+                VERIFY_IS_TRUE(source->_previouslyClosedPanesAndTabs.empty());
+                VERIFY_IS_TRUE(tab->FindAgentPaneContent() == fixture->agent);
+                VERIFY_IS_TRUE(winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(fixture->agent)->HasLifetime());
+
+                source->ShutdownPanes();
+                Json::Value status;
+                status["params"]["tab_id"] = winrt::to_string(tab->StableId());
+                status["params"]["name"] = "Background agent";
+                status["params"]["model"] = "background-model";
+                status["params"]["state"] = "connected";
+                source->OnAgentStatusChanged(winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, status)));
+                for (const auto& leaf : fixture->original.leaves)
+                {
+                    VERIFY_ARE_EQUAL(0u, leaf.closed->load());
+                }
+                VERIFY_IS_TRUE(destination->RestoreKeptGroup(id));
+                const auto restored = destination->_GetFocusedTabImpl();
+                VERIFY_ARE_EQUAL(tab->StableId(), restored->StableId());
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"Kept tab" }, restored->GetTabText());
+                VERIFY_IS_TRUE(restored->GetTabColor() == winrt::Windows::UI::Colors::Orange());
+                VERIFY_ARE_EQUAL(!hidden, restored->IsZoomed());
+                VERIFY_ARE_EQUAL(hidden, restored->HasStashedAgentPane());
+                VERIFY_ARE_EQUAL(hidden, restored->HasHiddenPane());
+                VERIFY_IS_TRUE(restored->KeepRunning());
+                VERIFY_ARE_EQUAL(activeSession, restored->GetActivePane()->GetTerminalControl().Connection().SessionId());
+                VERIFY_ARE_EQUAL(3, restored->GetLeafPaneCount());
+                const auto agent = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(restored->FindAgentPaneContent());
+                VERIFY_IS_TRUE(agent->HasLifetime());
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"Background agent" }, agent->GetAgentName());
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"background-model" }, agent->GetAgentModel());
+                VERIFY_ARE_EQUAL(restored->StableId(), agent->TransferSourceTabId());
+                destination->OnAgentStatusChanged(winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, status)));
+                VERIFY_IS_TRUE(agent->TransferSourceTabId().empty());
+                _verifyTransferredAgentRestoreState(*fixture, destination, restored);
+                VERIFY_ARE_EQUAL(layout, layoutOf(restored));
+                for (const auto& leaf : fixture->original.leaves)
+                {
+                    const auto pane = restored->GetRootPane()->FindPaneBySessionId(leaf.connection.SessionId());
+                    VERIFY_IS_NOT_NULL(pane);
+                    VERIFY_ARE_EQUAL(leaf.contentId, pane->GetTerminalControl().ContentId());
+                    VERIFY_IS_TRUE(pane->GetTerminalControl().Connection() == leaf.connection);
+                    VERIFY_IS_TRUE(destination->_manager.TryLookupCore(leaf.contentId) == leaf.core);
+                    VERIFY_ARE_EQUAL(0u, leaf.closed->load());
+                }
+                VERIFY_IS_FALSE(source->_manager.HasKeptSessions());
+                restored->Close();
+            });
+        }
+    }
+
+    void TabTests::KeepRunningHeadlessProtocolRetainsPaneRouting()
+    {
+        using namespace winrt::Windows::Foundation;
+        using namespace winrt::Microsoft::Terminal::Protocol;
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const winrt::guid paneId{ L"{13f7aa41-8837-473e-92a3-f1e682ab1014}" };
+        const auto connection = winrt::make_self<TestConnection>(paneId, State::Connected);
+        const auto page = _commonSetup(*connection);
+        winrt::guid tabId;
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            tabId = winrt::guid{ tab->StableId() };
+            page->SetTabKeepRunning(tabId, true);
+            page->_KeepTabRunning(tab);
+            page->ShutdownPanes();
+            VERIFY_ARE_EQUAL(0u, page->_tabs.Size());
+            VERIFY_ARE_EQUAL(1u, page->_manager.KeptPages().Size());
+            VERIFY_ARE_EQUAL(0u, connection->CloseCount());
+        });
+        const auto cleanup = wil::scope_exit([&]() {
+            TestOnUIThread([&]() { page->_manager.DiscardKeptGroup(tabId); });
+        });
+        IAsyncOperation<bool> input{ nullptr };
+        TestOnUIThread([&]() { input = page->SendProtocolInput(paneId, L"headless output"); });
+        VERIFY_IS_TRUE(input.get());
+
+        IAsyncOperation<PaneContext> context{ nullptr };
+        IAsyncOperation<ProcessStatus> process{ nullptr };
+        IAsyncOperation<Collections::IVector<PaneInfo>> panes{ nullptr };
+        TestOnUIThread([&]() {
+            context = page->GetProtocolPaneContext(paneId, true, 100, 1000);
+            process = page->GetProtocolProcessStatus(paneId);
+            panes = page->GetProtocolPanes(UINT32_MAX);
+        });
+        const auto captured = context.get();
+        VERIFY_ARE_EQUAL(paneId, captured.Pane.SessionId);
+        VERIFY_IS_TRUE(std::wstring_view{ captured.Content }.find(L"headless output") != std::wstring_view::npos);
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"running" }, process.get().State);
+        VERIFY_ARE_EQUAL(1u, panes.get().Size());
+        VERIFY_ARE_EQUAL(paneId, panes.get().GetAt(0).SessionId);
+    }
+
     void TabTests::AgentPaneRestoreDoesNotRequireAgentSession()
     {
         namespace Restore = ::Microsoft::Terminal::AgentPaneRestore;
@@ -885,6 +1687,131 @@ namespace TerminalAppLocalTests
         VERIFY_IS_TRUE(commandline.find(Restore::ViewFlag) != std::wstring::npos);
     }
 
+    void TabTests::KeepRunningFocusReattachesOriginalTab()
+    {
+        auto fixture = _createContentTransferFixture(false, true, false, false, 100);
+        const auto cleanup = wil::scope_exit([&]() {
+            TestOnUIThread([&]() {
+                for (const auto& group : fixture->source->_manager.KeptGroups())
+                {
+                    fixture->source->_manager.DiscardKeptGroup(group.Key());
+                }
+                _closeContentTransferFixture(*fixture, false);
+                fixture.reset();
+            });
+        });
+        winrt::guid paneId{};
+        winrt::guid groupId{};
+        winrt::Windows::Foundation::IAsyncOperation<bool> focus{ nullptr };
+        TestOnUIThread([&]() {
+            const auto tab = fixture->original.tab;
+            groupId = winrt::guid{ tab->StableId() };
+            paneId = fixture->original.leaves.front().connection.SessionId();
+            tab->KeepRunning(true);
+            tab->ToggleZoom();
+            fixture->source->_KeepTabRunning(tab);
+            fixture->source->ShutdownPanes();
+            VERIFY_ARE_EQUAL(groupId, fixture->source->_manager.KeptGroupForPane(paneId));
+            fixture->destination->_tabStrip.HistoryActive(true);
+            focus = fixture->destination->FocusProtocolPane(paneId);
+        });
+        VERIFY_IS_TRUE(focus.get());
+        TestOnUIThread([&]() {
+            const auto restored = fixture->destination->_GetFocusedTabImpl();
+            VERIFY_ARE_EQUAL(groupId, winrt::guid{ restored->StableId() });
+            VERIFY_ARE_EQUAL(paneId, restored->GetActivePane()->GetTerminalControl().Connection().SessionId());
+            VERIFY_ARE_EQUAL(fixture->destinationTabs.size() + 1, static_cast<size_t>(fixture->destination->_tabs.Size()));
+            VERIFY_IS_FALSE(fixture->destination->_tabStrip.HistoryActive());
+            VERIFY_IS_FALSE(fixture->source->_manager.HasKeptSessions());
+            VERIFY_IS_TRUE(restored->KeepRunning());
+            VERIFY_IS_TRUE(restored->HasStashedAgentPane());
+            VERIFY_IS_TRUE(winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(restored->FindAgentPaneContent())->HasLifetime());
+            for (const auto& leaf : fixture->original.leaves)
+            {
+                const auto pane = restored->GetRootPane()->FindPaneBySessionId(leaf.connection.SessionId());
+                VERIFY_IS_NOT_NULL(pane);
+                VERIFY_ARE_EQUAL(leaf.contentId, pane->GetTerminalControl().ContentId());
+                VERIFY_IS_TRUE(pane->GetTerminalControl().Connection() == leaf.connection);
+                VERIFY_ARE_EQUAL(0u, leaf.closed->load());
+            }
+            focus = fixture->destination->FocusProtocolPane(paneId);
+        });
+        VERIFY_IS_TRUE(focus.get());
+        TestOnUIThread([&]() {
+            VERIFY_ARE_EQUAL(fixture->destinationTabs.size() + 1, static_cast<size_t>(fixture->destination->_tabs.Size()));
+            for (const auto& connection : fixture->connections)
+            {
+                VERIFY_ARE_EQUAL(0u, connection->CloseCount());
+            }
+        });
+    }
+
+    void TabTests::KeepRunningFocusPreservesFailedRestore()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        using Stage = winrt::TerminalApp::implementation::TerminalPage::ContentTransferStage;
+        const winrt::guid firstId{ L"{13f7aa41-8837-473e-92a3-f1e682ab1020}" };
+        const winrt::guid secondId{ L"{13f7aa41-8837-473e-92a3-f1e682ab1021}" };
+        const auto first = winrt::make_self<TestConnection>(firstId, State::Connected);
+        const auto second = winrt::make_self<TestConnection>(secondId, State::Connected);
+        const auto page = _commonSetup(*first);
+        winrt::guid groupId{};
+        winrt::Windows::Foundation::IAsyncOperation<bool> focus{ nullptr };
+        const auto cleanup = wil::scope_exit([&]() {
+            TestOnUIThread([&]() {
+                page->_contentTransferTestHook = {};
+                for (const auto& group : page->_manager.KeptGroups())
+                {
+                    page->_manager.DiscardKeptGroup(group.Key());
+                }
+                while (page->_tabs.Size())
+                {
+                    page->_RemoveTab(page->_tabs.GetAt(0));
+                }
+            });
+        });
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            groupId = winrt::guid{ tab->StableId() };
+            const auto split = page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *second);
+            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.35f, split));
+            page->_CreateNewTabFromPane(page->_MakePane(nullptr, nullptr, nullptr));
+            page->SetTabKeepRunning(groupId, true);
+            page->_KeepTabRunning(tab);
+            VERIFY_ARE_EQUAL(winrt::guid{}, page->_manager.KeptGroupForPane(winrt::guid{}));
+            focus = page->FocusProtocolPane(winrt::guid{ L"{13f7aa41-8837-473e-92a3-f1e682ab1022}" });
+        });
+        VERIFY_IS_FALSE(focus.get());
+        TestOnUIThread([&]() {
+            VERIFY_IS_TRUE(page->_manager.KeptGroups().HasKey(groupId));
+            page->_manager.BeginReattachKeptGroup(groupId);
+            focus = page->FocusProtocolPane(firstId);
+        });
+        VERIFY_THROWS(focus.get(), winrt::hresult_error);
+        TestOnUIThread([&]() {
+            page->_manager.CompleteKeptGroupReattach(groupId, false);
+            page->_contentTransferTestHook = [](Stage stage, uint64_t, uint32_t) {
+                THROW_HR_IF(E_ABORT, stage == Stage::BeforeSplitInsertion);
+            };
+            focus = page->FocusProtocolPane(firstId);
+        });
+        VERIFY_THROWS(focus.get(), winrt::hresult_error);
+        TestOnUIThread([&]() {
+            page->_contentTransferTestHook = {};
+            VERIFY_ARE_EQUAL(1u, page->_tabs.Size());
+            VERIFY_IS_TRUE(page->_manager.KeptGroups().HasKey(groupId));
+            VERIFY_ARE_EQUAL(0u, first->CloseCount());
+            VERIFY_ARE_EQUAL(0u, second->CloseCount());
+            focus = page->FocusProtocolPane(firstId);
+        });
+        VERIFY_IS_TRUE(focus.get());
+        TestOnUIThread([&]() {
+            VERIFY_ARE_EQUAL(2u, page->_tabs.Size());
+            VERIFY_IS_FALSE(page->_manager.HasKeptSessions());
+            VERIFY_IS_TRUE(page->_GetFocusedTabImpl()->GetActivePane()->GetTerminalControl().Connection() == *first);
+        });
+    }
+
     void TabTests::PaneAgentSessionEndClearsAgentBinding()
     {
         auto page = _commonSetup();
@@ -898,11 +1825,11 @@ namespace TerminalAppLocalTests
             const auto paneSessionId = control.Connection().SessionId();
             const auto paneId = winrt::to_string(::Microsoft::Console::Utils::GuidToString(paneSessionId));
 
-            const auto event = [&](const std::string_view name) {
+            const auto event = [&](const std::string_view name, const std::string_view sessionId = "agent-session-resumed") {
                 Json::Value evt;
                 evt["params"]["pane_id"] = paneId;
                 evt["params"]["event"] = std::string{ name };
-                evt["params"]["agent_session_id"] = "agent-session-resumed";
+                evt["params"]["agent_session_id"] = std::string{ sessionId };
                 evt["params"]["agent"] = "copilot";
                 Json::StreamWriterBuilder writer;
                 writer["indentation"] = "";
@@ -911,9 +1838,10 @@ namespace TerminalAppLocalTests
 
             event("agent.session.start");
             VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(page->_paneAgentSessions.count(paneSessionId)));
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(page->_activeCliAgentPanes.count(paneSessionId)));
 
             // A late end naming a different agent session must not clear the
-            // binding a newer session just installed.
+            // binding or active marker a newer session just installed.
             {
                 Json::Value stale;
                 stale["params"]["pane_id"] = paneId;
@@ -924,11 +1852,25 @@ namespace TerminalAppLocalTests
                 page->OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(writer, stale)));
             }
             VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(page->_paneAgentSessions.count(paneSessionId)));
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(page->_activeCliAgentPanes.count(paneSessionId)));
 
             // The agent that ran in this pane exited, so there is nothing left
             // to resume and the pane restores as a plain shell.
             event("agent.session.end");
             VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_paneAgentSessions.count(paneSessionId)));
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_activeCliAgentPanes.count(paneSessionId)));
+
+            // A new lifecycle may begin before its session id is known. Retire
+            // the previous binding, ignore its delayed end, then accept the
+            // current lifecycle's id when it first appears on the end event.
+            event("agent.session.start", "agent-session-previous");
+            event("agent.session.start", "");
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_paneAgentSessions.count(paneSessionId)));
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(page->_activeCliAgentPanes.count(paneSessionId)));
+            event("agent.session.end", "agent-session-previous");
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(page->_activeCliAgentPanes.count(paneSessionId)));
+            event("agent.session.end", "agent-session-current");
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_activeCliAgentPanes.count(paneSessionId)));
         });
     }
 
@@ -1972,6 +2914,814 @@ namespace TerminalAppLocalTests
         VERIFY_SUCCEEDED(result);
     }
 
+    void TabTests::VerticalRailVisibilityRestoresWidth()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            VERIFY_IS_TRUE(page->_isVerticalLayout);
+
+            page->_verticalRailWidth = 333.0;
+            page->_SetVerticalRailVisibility(false);
+
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_tabView.Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_tabStrip.Visibility());
+            VERIFY_ARE_EQUAL(0.0, page->VerticalRailColumn().Width().Value);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_verticalRailSplitter.Visibility());
+            VERIFY_IS_FALSE(page->_verticalRailSplitter.IsHitTestVisible());
+
+            page->_SetVerticalRailVisibility(true);
+
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_tabView.Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabStrip.Visibility());
+            VERIFY_ARE_EQUAL(333.0, page->VerticalRailColumn().Width().Value);
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->_verticalRailSplitter.Visibility());
+            VERIFY_IS_TRUE(page->_verticalRailSplitter.IsHitTestVisible());
+
+        });
+    }
+
+    void TabTests::VerticalRailCollapseRestoresWidth()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            page->_verticalRailWidth = 333.0;
+            page->_SetVerticalRailVisibility(true);
+            const auto firstTabItem = page->_tabs.GetAt(0).TabViewItem();
+            VERIFY_IS_NOT_NULL(firstTabItem.ContextFlyout());
+
+            page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
+
+            VERIFY_IS_TRUE(page->_isVerticalRailCollapsed);
+            VERIFY_IS_TRUE(page->_tabStrip.IsRailCollapsed());
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabStrip.Visibility());
+            const auto tabStrip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            VERIFY_ARE_EQUAL(Visibility::Visible, tabStrip->CompactNewTabToolbar().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, tabStrip->SearchTabsButton().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, tabStrip->ItemsList().Visibility());
+            VERIFY_IS_TRUE(tabStrip->CompactNewTabButton().IsHitTestVisible());
+            VERIFY_IS_TRUE(tabStrip->CompactNewTabMenuButton().IsHitTestVisible());
+            VERIFY_IS_FALSE(tabStrip->SearchTabsButton().IsHitTestVisible());
+            VERIFY_IS_FALSE(tabStrip->FilterTabsButton().IsHitTestVisible());
+            VERIFY_IS_FALSE(tabStrip->FilterStatusBar().IsHitTestVisible());
+            VERIFY_IS_FALSE(tabStrip->ItemsList().AllowDrop());
+            VERIFY_IS_FALSE(tabStrip->ItemsList().CanDragItems());
+            VERIFY_IS_FALSE(tabStrip->ItemsList().CanReorderItems());
+            VERIFY_IS_NULL(firstTabItem.ContextFlyout());
+            VERIFY_ARE_EQUAL(40.0, page->VerticalRailColumn().Width().Value);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_verticalRailSplitter.Visibility());
+            VERIFY_IS_FALSE(page->_verticalRailSplitter.IsHitTestVisible());
+
+            page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
+
+            VERIFY_IS_FALSE(page->_isVerticalRailCollapsed);
+            VERIFY_IS_FALSE(page->_tabStrip.IsRailCollapsed());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, tabStrip->CompactNewTabToolbar().Visibility());
+            VERIFY_IS_TRUE(tabStrip->SearchTabsButton().IsHitTestVisible());
+            VERIFY_IS_TRUE(tabStrip->FilterTabsButton().IsHitTestVisible());
+            VERIFY_IS_TRUE(tabStrip->FilterStatusBar().IsHitTestVisible());
+            VERIFY_IS_TRUE(tabStrip->ItemsList().AllowDrop());
+            VERIFY_ARE_EQUAL(page->CanDragDrop(), tabStrip->ItemsList().CanDragItems());
+            VERIFY_ARE_EQUAL(page->CanDragDrop(), tabStrip->ItemsList().CanReorderItems());
+            VERIFY_IS_NOT_NULL(firstTabItem.ContextFlyout());
+            VERIFY_ARE_EQUAL(333.0, page->VerticalRailColumn().Width().Value);
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->_verticalRailSplitter.Visibility());
+            VERIFY_IS_TRUE(page->_verticalRailSplitter.IsHitTestVisible());
+
+            page->_tabFilterMode = winrt::TerminalApp::TabStripFilterMode::AgentsOnly;
+            page->_ApplyTabListProjection();
+            VERIFY_IS_FALSE(tabStrip->ItemsList().CanDragItems());
+            VERIFY_IS_FALSE(tabStrip->ItemsList().CanReorderItems());
+
+            page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
+            page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
+            VERIFY_IS_FALSE(page->_isVerticalRailCollapsed);
+            VERIFY_IS_FALSE(tabStrip->ItemsList().CanDragItems());
+            VERIFY_IS_FALSE(tabStrip->ItemsList().CanReorderItems());
+        });
+    }
+
+    void TabTests::LiveTabLayoutRoundTripPreservesState()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            const auto infoBar = page->FindName(L"TabLayoutRestartInfoBar").as<winrt::Microsoft::UI::Xaml::Controls::InfoBar>();
+            VERIFY_IS_FALSE(infoBar.IsOpen());
+
+            const auto selectedItem = page->_selectedTabItem();
+            VERIFY_IS_NOT_NULL(selectedItem);
+            const auto selectedTabItem = selectedItem.as<winrt::MUX::Controls::TabViewItem>();
+            const auto focusedTab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(focusedTab);
+            VERIFY_IS_TRUE(page->_SplitPane(
+                focusedTab,
+                SplitDirection::Right,
+                0.5f,
+                page->_MakePane(nullptr, page->_GetFocusedTab(), nullptr)));
+            page->_RefreshTabStripPaneItems(focusedTab);
+            VERIFY_ARE_EQUAL(2, focusedTab->GetLeafPaneCount());
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            const auto verticalHeader = stripImpl->HeaderForTab(selectedTabItem);
+            VERIFY_IS_NOT_NULL(verticalHeader);
+            VERIFY_IS_NOT_NULL(verticalHeader.as<FrameworkElement>().Parent());
+            page->_tabRow.ShowElevationShield(true);
+            const auto tabRowImpl = winrt::get_self<winrt::TerminalApp::implementation::TabRowControl>(page->_tabRow);
+            VERIFY_ARE_EQUAL(Visibility::Visible, tabRowImpl->ElevationShieldIcon().Visibility());
+            const auto horizontalNewTabButton = tabRowImpl->NewTabButton();
+            const auto verticalNewTabButton = tabRowImpl->VerticalNewTabButton();
+            VERIFY_IS_TRUE(winrt::get_abi(horizontalNewTabButton) != winrt::get_abi(verticalNewTabButton));
+            const auto horizontalNewTabParent = horizontalNewTabButton.Parent();
+            const auto verticalNewTabParent = verticalNewTabButton.Parent();
+            VERIFY_IS_NOT_NULL(horizontalNewTabParent);
+            VERIFY_IS_NOT_NULL(verticalNewTabParent);
+
+            page->_verticalRailWidth = 333.0;
+            page->_SetVerticalRailVisibility(true);
+            page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
+            VERIFY_IS_TRUE(page->_isVerticalRailCollapsed);
+
+            page->_settings.GlobalSettings().TabLayout(TabLayout::Horizontal);
+            page->SetSettings(page->_settings, false);
+            page->_CompleteTabLayoutChange(page->_tabLayoutGeneration);
+            VERIFY_IS_FALSE(infoBar.IsOpen());
+            VERIFY_IS_FALSE(page->_isVerticalLayout);
+            VERIFY_ARE_EQUAL(page->_tabs.Size(), page->_tabView.TabItems().Size());
+            VERIFY_ARE_EQUAL(0u, page->_tabStrip.TabItems().Size());
+            VERIFY_IS_TRUE(page->_tabView.SelectedItem() == selectedItem);
+            VERIFY_IS_TRUE(selectedTabItem.Header() == verticalHeader);
+            VERIFY_ARE_EQUAL(Visibility::Visible, tabRowImpl->ElevationShieldIcon().Visibility());
+            VERIFY_IS_TRUE(horizontalNewTabButton.Parent() == horizontalNewTabParent);
+            VERIFY_IS_TRUE(verticalNewTabButton.Parent() == verticalNewTabParent);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_tabStrip.Visibility());
+            VERIFY_ARE_EQUAL(0.0, page->VerticalRailColumn().Width().Value);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_verticalRailSplitter.Visibility());
+
+            const auto tabItem = page->_tabs.GetAt(0).TabViewItem();
+            VERIFY_IS_TRUE(std::isnan(tabItem.Width()));
+            VERIFY_ARE_EQUAL(Visibility::Visible, tabItem.Header().as<UIElement>().Visibility());
+
+            page->_settings.GlobalSettings().TabLayout(TabLayout::Vertical);
+            page->SetSettings(page->_settings, false);
+            page->_CompleteTabLayoutChange(page->_tabLayoutGeneration);
+            VERIFY_IS_FALSE(infoBar.IsOpen());
+            VERIFY_IS_TRUE(page->_isVerticalLayout);
+            VERIFY_ARE_EQUAL(0u, page->_tabView.TabItems().Size());
+            VERIFY_ARE_EQUAL(page->_tabs.Size(), page->_tabStrip.TabItems().Size());
+            VERIFY_IS_TRUE(page->_tabStrip.SelectedItem() == selectedItem);
+            VERIFY_IS_TRUE(stripImpl->HeaderForTab(selectedTabItem) == verticalHeader);
+            VERIFY_IS_NOT_NULL(verticalHeader.as<FrameworkElement>().Parent());
+            VERIFY_ARE_EQUAL(Visibility::Visible, tabRowImpl->ElevationShieldIcon().Visibility());
+            VERIFY_IS_TRUE(horizontalNewTabButton.Parent() == horizontalNewTabParent);
+            VERIFY_IS_TRUE(verticalNewTabButton.Parent() == verticalNewTabParent);
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabStrip.Visibility());
+            VERIFY_IS_TRUE(page->_isVerticalRailCollapsed);
+            VERIFY_ARE_EQUAL(40.0, page->VerticalRailColumn().Width().Value);
+            VERIFY_ARE_EQUAL(333.0, page->_verticalRailWidth);
+        });
+    }
+
+    void TabTests::VerticalTabStripPreservesClosePolicy()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+            winrt::MUX::Controls::TabViewItem tab;
+            tab.IsClosable(false);
+            strip.TabItems().Append(tab);
+            VERIFY_IS_FALSE(tab.IsClosable());
+        });
+    }
+
+    void TabTests::VerticalTabSearchMatchesCommittedTitle()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(tab);
+
+            tab->Title(L"PowerShell");
+            page->_tabSearchActive = true;
+            page->_tabSearchQuery = L"shell";
+            VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
+
+            page->_tabSearchQuery = L"POWER";
+            VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
+
+            page->_tabSearchQuery = L"copilot";
+            VERIFY_IS_FALSE(page->_MatchesTabSearch(*tab));
+
+            page->_tabSearchQuery = L"";
+            VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
+
+            page->_tabSearchActive = false;
+            VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
+        });
+    }
+
+    void TabTests::VerticalTabSearchUiState()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+
+            strip.SearchActive(true);
+            strip.SearchQuery(L"power");
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->SearchPanel().Visibility());
+            VERIFY_ARE_EQUAL(40.0, stripImpl->SearchPanel().Height());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"power" }, stripImpl->SearchTextBox().Text());
+            VERIFY_IS_TRUE(stripImpl->FilterTabsButton().IsTabStop());
+
+            strip.IsRailCollapsed(true);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->SearchPanel().Visibility());
+            VERIFY_IS_FALSE(stripImpl->SearchTabsButton().IsEnabled());
+            VERIFY_IS_FALSE(stripImpl->FilterTabsButton().IsEnabled());
+
+            strip.IsRailCollapsed(false);
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->SearchPanel().Visibility());
+            VERIFY_IS_TRUE(stripImpl->SearchTabsButton().IsEnabled());
+            VERIFY_IS_TRUE(stripImpl->FilterTabsButton().IsEnabled());
+            stripImpl->ProjectionControlsEnabled(false);
+            VERIFY_IS_FALSE(stripImpl->SearchTabsButton().IsEnabled());
+            VERIFY_IS_FALSE(stripImpl->FilterTabsButton().IsEnabled());
+            stripImpl->ProjectionControlsEnabled(true);
+            VERIFY_IS_TRUE(stripImpl->SearchTabsButton().IsEnabled());
+            VERIFY_IS_TRUE(stripImpl->FilterTabsButton().IsEnabled());
+            strip.SearchQuery(L"");
+            strip.SearchQuery(L"");
+            strip.SearchActive(false);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->SearchPanel().Visibility());
+            VERIFY_ARE_EQUAL(0.0, stripImpl->SearchPanel().Height());
+        });
+    }
+
+    void TabTests::AgentViewOpensHistory()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            bool historyRequested = false;
+            bool historyClosed = false;
+            strip.HistoryRequested([&](auto&&, auto&&) {
+                historyRequested = true;
+            });
+            strip.HistoryClosed([&](auto&&, auto&&) {
+                historyClosed = true;
+                strip.HistoryActive(false);
+            });
+
+            stripImpl->OnAgentsOnlyFilterClick(nullptr, {});
+
+            VERIFY_IS_TRUE(historyRequested);
+            VERIFY_IS_TRUE(strip.HistoryActive());
+            VERIFY_ARE_EQUAL(winrt::TerminalApp::TabStripFilterMode::AllTabs, strip.FilterMode());
+            VERIFY_IS_FALSE(stripImpl->AllTabsFilterItem().IsChecked());
+            VERIFY_IS_TRUE(stripImpl->AgentsOnlyFilterItem().IsChecked());
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->TabsToolbar().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->SearchTabsButton().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->FilterTabsButton().Visibility());
+            VERIFY_ARE_EQUAL(4, Grid::GetRow(stripImpl->HistoryPanel()));
+            VERIFY_ARE_EQUAL(1, Grid::GetRowSpan(stripImpl->HistoryPanel()));
+            VERIFY_ARE_EQUAL(0, Grid::GetRow(stripImpl->HistorySearchTextBox()));
+            VERIFY_ARE_EQUAL(1, Grid::GetRow(Media::VisualTreeHelper::GetParent(stripImpl->HistoryList()).as<FrameworkElement>()));
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->ItemsList().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->HistoryPanel().Visibility());
+
+            stripImpl->OnAllTabsFilterClick(nullptr, {});
+            VERIFY_IS_TRUE(historyClosed);
+            VERIFY_IS_FALSE(strip.HistoryActive());
+            VERIFY_IS_TRUE(stripImpl->AllTabsFilterItem().IsChecked());
+            VERIFY_IS_FALSE(stripImpl->AgentsOnlyFilterItem().IsChecked());
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->ItemsList().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->HistoryPanel().Visibility());
+        });
+    }
+
+    void TabTests::AgentViewAllTabsStopsHistoryRefresh()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            page->_tabStrip.HistoryActive(true);
+            page->_StartSidebarHistoryRefreshTimer();
+            VERIFY_IS_TRUE(page->_historyRefreshTimer.IsEnabled());
+
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            stripImpl->OnAllTabsFilterClick(nullptr, {});
+
+            VERIFY_IS_FALSE(page->_historyRefreshTimer.IsEnabled());
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryActive());
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->ItemsList().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->HistoryPanel().Visibility());
+        });
+    }
+
+    void TabTests::LiteralSearchHighlighting()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::HighlightedTextControl control;
+            control.Text(L"PowerShell");
+            control.SearchText(L"shell");
+            control.ApplyTemplate();
+
+            const auto textBlock = Media::VisualTreeHelper::GetChild(control, 0).as<TextBlock>();
+            VERIFY_ARE_EQUAL(2u, textBlock.Inlines().Size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Power" }, textBlock.Inlines().GetAt(0).as<Documents::Run>().Text());
+            const auto highlighted = textBlock.Inlines().GetAt(1).as<Documents::Run>();
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Shell" }, highlighted.Text());
+            VERIFY_ARE_EQUAL(FontWeights::Bold().Weight, highlighted.FontWeight().Weight);
+
+            control.SearchText(L"");
+            VERIFY_ARE_EQUAL(1u, textBlock.Inlines().Size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"PowerShell" }, textBlock.Inlines().GetAt(0).as<Documents::Run>().Text());
+        });
+    }
+
+    void TabTests::VerticalTabHistoryStatusText()
+    {
+        TestOnUIThread([&]() {
+            const std::pair<std::string_view, winrt::hstring> cases[]{
+                { "Idle", L"Idle" },
+                { "Working", L"Active" },
+                { "Attention", L"Waiting for input" },
+                { "Error", L"Error" },
+                { "Ended", L"Ended" },
+                { "Historical", L"Historical" },
+                { "", L"Unknown" },
+                { "FutureStatus", L"Unknown" },
+            };
+            for (const auto& [status, expected] : cases)
+            {
+                VERIFY_ARE_EQUAL(expected, winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryStatusText(status));
+            }
+        });
+    }
+
+    void TabTests::VerticalTabHistorySearchProjection()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            const auto visibleItems = strip.HistoryItems();
+
+            auto host = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            host.Title(L"Fix build");
+            host.AgentId(L"copilot");
+            host.ProviderDisplayName(L"Copilot");
+            host.AgentSource(L"host");
+            host.Status(L"Idle");
+            host.Subtitle(L"copilot - Host - Idle");
+            host.IsLive(true);
+
+            auto wsl = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            wsl.Title(L"Deploy service");
+            wsl.AgentId(L"claude");
+            wsl.ProviderDisplayName(L"Claude");
+            wsl.AgentSource(L"wsl");
+            wsl.WslDistro(L"Ubuntu");
+            wsl.Status(L"Historical");
+            wsl.Subtitle(L"claude - Ubuntu (WSL) - Historical");
+            wsl.IsLive(false);
+            wsl.IsHistorical(true);
+
+            auto unknown = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            unknown.Title(L"Unknown session");
+            unknown.AgentId(L"copilot");
+            unknown.ProviderDisplayName(L"Copilot");
+            unknown.AgentSource(L"host");
+            unknown.Status(L"FutureStatus");
+            unknown.Subtitle(L"copilot - Host - Unknown");
+
+            stripImpl->CommitHistorySnapshot({ host, wsl, unknown });
+            VERIFY_ARE_EQUAL(winrt::get_abi(visibleItems), winrt::get_abi(strip.HistoryItems()));
+            VERIFY_ARE_EQUAL(3u, strip.HistoryItems().Size());
+
+            stripImpl->HistorySearchTextBox().Text(L"ubuntu");
+            VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Deploy service" }, strip.HistoryItems().GetAt(0).Title());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"ubuntu" }, strip.HistoryItems().GetAt(0).SearchQuery());
+
+            stripImpl->HistorySearchTextBox().Text(L"idle");
+            VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Fix build" }, strip.HistoryItems().GetAt(0).Title());
+
+            stripImpl->HistorySearchTextBox().Text(L"historical");
+            VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Deploy service" }, strip.HistoryItems().GetAt(0).Title());
+
+            stripImpl->HistorySearchTextBox().Text(L"history");
+            VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Deploy service" }, strip.HistoryItems().GetAt(0).Title());
+
+            stripImpl->HistorySearchTextBox().Text(L"unknown");
+            VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Unknown session" }, strip.HistoryItems().GetAt(0).Title());
+
+            stripImpl->HistorySearchTextBox().Text(L"missing");
+            VERIFY_ARE_EQUAL(0u, strip.HistoryItems().Size());
+
+            stripImpl->HistorySearchTextBox().Text(L"");
+            VERIFY_ARE_EQUAL(3u, strip.HistoryItems().Size());
+        });
+    }
+
+    void TabTests::VerticalTabHistoryPreservesLiveSearch()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+
+            strip.SearchActive(true);
+            strip.SearchQuery(L"power");
+            strip.HistoryActive(true);
+
+            VERIFY_IS_TRUE(strip.SearchActive());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"power" }, strip.SearchQuery());
+
+            strip.HistoryActive(false);
+            VERIFY_IS_TRUE(strip.SearchActive());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"power" }, strip.SearchQuery());
+        });
+    }
+
+    void TabTests::VerticalTabHistoryClosePreservesForegroundSelection()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            page->_tabStrip.HistoryActive(true);
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            stripImpl->HistorySearchTextBox().Focus(FocusState::Programmatic);
+
+            NewTerminalArgs newTerminalArgs{ 1 };
+            VERIFY_SUCCEEDED(page->_OpenNewTab(newTerminalArgs, false));
+            VERIFY_ARE_EQUAL(2u, page->_tabs.Size());
+
+            const auto foregroundItem = page->_tabs.GetAt(1).TabViewItem();
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryActive());
+            VERIFY_IS_TRUE(page->_selectedTabItem() == foregroundItem);
+            VERIFY_ARE_EQUAL(1u, page->_GetFocusedTabIndex().value_or(0));
+        });
+
+        TestOnUIThread([&]() {
+            const auto foregroundItem = page->_tabs.GetAt(1).TabViewItem();
+            VERIFY_IS_TRUE(page->_selectedTabItem() == foregroundItem);
+            VERIFY_ARE_EQUAL(1u, page->_GetFocusedTabIndex().value_or(0));
+        });
+    }
+
+    void TabTests::VerticalTabStripCollapsedItemsPreserveSelection()
+    {
+        winrt::TerminalApp::TabStrip strip;
+        Grid host;
+        winrt::MUX::Controls::TabViewItem first;
+        winrt::MUX::Controls::TabViewItem second;
+        winrt::MUX::Controls::TabViewItem third;
+
+        TestOnUIThread([&]() {
+            host.Width(240);
+            host.Height(160);
+            strip.Width(240);
+            strip.Height(160);
+
+            first.Header(winrt::box_value(L"First"));
+            second.Header(winrt::box_value(L"Second"));
+            third.Header(winrt::box_value(L"Third"));
+
+            strip.TabItems().Append(first);
+            strip.TabItems().Append(second);
+            strip.TabItems().Append(third);
+            host.Children().Append(strip);
+            Window::Current().Content(host);
+            Window::Current().Activate();
+            host.UpdateLayout();
+
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            const auto firstContainer = strip.ContainerFromIndex(0).as<ListViewItem>();
+            const auto secondContainer = strip.ContainerFromIndex(1).as<ListViewItem>();
+            const auto thirdContainer = strip.ContainerFromIndex(2).as<ListViewItem>();
+            const auto tabForContainer = [&](const ListViewItem& container) {
+                return stripImpl->ItemsList().ItemFromContainer(container).as<winrt::TerminalApp::TabStripDisplayItem>().Tab();
+            };
+            VERIFY_IS_TRUE(strip.IsLoaded());
+            VERIFY_IS_TRUE(strip.ActualWidth() > 0);
+            VERIFY_IS_TRUE(strip.ActualHeight() > 0);
+            VERIFY_IS_TRUE(tabForContainer(firstContainer) == first);
+            VERIFY_IS_TRUE(tabForContainer(secondContainer) == second);
+            VERIFY_IS_TRUE(tabForContainer(thirdContainer) == third);
+
+            strip.SelectedItem(second);
+            VERIFY_IS_TRUE(strip.SelectedItem() == second);
+            VERIFY_IS_TRUE(stripImpl->ItemsList().SelectedItem().as<winrt::TerminalApp::TabStripDisplayItem>().Tab() == second);
+
+            const auto firstTop = firstContainer.TransformToVisual(strip).TransformPoint({ 0, 0 }).Y;
+            const auto secondTop = secondContainer.TransformToVisual(strip).TransformPoint({ 0, 0 }).Y;
+            const auto thirdTop = thirdContainer.TransformToVisual(strip).TransformPoint({ 0, 0 }).Y;
+            VERIFY_IS_TRUE(firstContainer.ActualHeight() > 0);
+            VERIFY_IS_TRUE(secondTop > firstTop);
+            VERIFY_IS_TRUE(thirdTop > secondTop);
+
+            secondContainer.Visibility(Visibility::Collapsed);
+            host.UpdateLayout();
+
+            VERIFY_IS_TRUE(strip.SelectedItem() == second);
+            VERIFY_IS_TRUE(stripImpl->ItemsList().SelectedItem().as<winrt::TerminalApp::TabStripDisplayItem>().Tab() == second);
+            const auto collapsedThirdTop = thirdContainer.TransformToVisual(strip).TransformPoint({ 0, 0 }).Y;
+            VERIFY_IS_TRUE(collapsedThirdTop < thirdTop);
+            VERIFY_IS_TRUE(collapsedThirdTop <= firstTop + firstContainer.ActualHeight() + 1.0);
+        });
+
+        // Run on a later dispatcher turn to prove layout processing does not
+        // clear a selected item solely because its row is collapsed.
+        TestOnUIThread([&]() {
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            host.UpdateLayout();
+            VERIFY_IS_TRUE(strip.SelectedItem() == second);
+            VERIFY_IS_TRUE(stripImpl->ItemsList().SelectedItem().as<winrt::TerminalApp::TabStripDisplayItem>().Tab() == second);
+
+            // The existing tab commands can select a filtered-out tab. This
+            // must remain a stable operation without an asynchronous repair.
+            strip.SelectedItem(first);
+            const auto firstContainer = strip.ContainerFromIndex(0).as<ListViewItem>();
+            const auto thirdContainer = strip.ContainerFromIndex(2).as<ListViewItem>();
+            firstContainer.Visibility(Visibility::Collapsed);
+            thirdContainer.Visibility(Visibility::Collapsed);
+            host.UpdateLayout();
+            strip.SelectedItem(third);
+            host.UpdateLayout();
+
+            VERIFY_IS_TRUE(strip.SelectedItem() == third);
+            VERIFY_IS_TRUE(stripImpl->ItemsList().SelectedItem().as<winrt::TerminalApp::TabStripDisplayItem>().Tab() == third);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, strip.ContainerFromIndex(0).as<ListViewItem>().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, strip.ContainerFromIndex(1).as<ListViewItem>().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, strip.ContainerFromIndex(2).as<ListViewItem>().Visibility());
+        });
+
+        TestOnUIThread([&]() {
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            host.UpdateLayout();
+            VERIFY_IS_TRUE(strip.SelectedItem() == third);
+            VERIFY_IS_TRUE(stripImpl->ItemsList().SelectedItem().as<winrt::TerminalApp::TabStripDisplayItem>().Tab() == third);
+        });
+    }
+
+    void TabTests::VerticalTabStripHostsPaneGroups()
+    {
+        winrt::TerminalApp::TabStrip strip;
+        Grid host;
+        winrt::MUX::Controls::TabViewItem tab;
+
+        TestOnUIThread([&]() {
+            host.Width(240);
+            host.Height(200);
+            strip.Width(240);
+            strip.Height(200);
+            winrt::TerminalApp::TabHeaderControl header;
+            header.Title(L"Split tab");
+            tab.Header(header);
+            winrt::MUX::Controls::SymbolIconSource icon;
+            icon.Symbol(winrt::Windows::UI::Xaml::Controls::Symbol::Document);
+            tab.IconSource(icon);
+            MenuFlyout contextFlyout;
+            tab.ContextFlyout(contextFlyout);
+            strip.TabItems().Append(tab);
+            strip.SetTabPresentation(tab, L"Split tab", L"\xE8A5");
+
+            std::vector<winrt::TerminalApp::TabStripPaneItem> panes;
+            panes.emplace_back(winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"First pane", true));
+            panes.emplace_back(winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 12, L"Second pane", false));
+            strip.SetPaneItems(tab, winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>(std::move(panes)), true);
+
+            host.Children().Append(strip);
+            Window::Current().Content(host);
+            Window::Current().Activate();
+            host.UpdateLayout();
+
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            const auto container = strip.ContainerFromIndex(0).as<ListViewItem>();
+            const auto display = stripImpl->ItemsList().ItemFromContainer(container).as<winrt::TerminalApp::TabStripDisplayItem>();
+            VERIFY_IS_TRUE(display.Tab() == tab);
+            VERIFY_IS_NULL(tab.Header());
+            VERIFY_IS_TRUE(display.Header() == header);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Split tab" }, display.Title());
+            VERIFY_IS_NOT_NULL(display.Icon());
+            VERIFY_IS_TRUE(display.ContextFlyout() == contextFlyout);
+            VERIFY_ARE_EQUAL(2u, display.PaneItems().Size());
+            VERIFY_ARE_EQUAL(Visibility::Visible, display.ChildrenVisibility());
+            VERIFY_IS_TRUE(container.ActualHeight() > 32.0);
+            VERIFY_IS_NOT_NULL(header.Parent());
+
+            header.BeginRename();
+            VERIFY_IS_TRUE(header.InRename());
+            header.CancelRename();
+            VERIFY_IS_FALSE(header.InRename());
+
+            strip.SelectedItem(tab);
+            VERIFY_IS_TRUE(strip.SelectedItem() == tab);
+            VERIFY_IS_TRUE(stripImpl->ItemsList().SelectedItem().as<winrt::TerminalApp::TabStripDisplayItem>().Tab() == tab);
+            VERIFY_ARE_EQUAL(Visibility::Visible, display.SelectionVisibility());
+
+            strip.IsRailCollapsed(true);
+            host.UpdateLayout();
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, display.ChildrenVisibility());
+            VERIFY_IS_TRUE(container.ActualHeight() <= 40.0);
+
+            winrt::MUX::Controls::TabViewItem secondTab;
+            winrt::TerminalApp::TabHeaderControl secondHeader;
+            secondHeader.Title(L"Second tab");
+            secondTab.Header(secondHeader);
+            strip.TabItems().Append(secondTab);
+            stripImpl->MoveTabItem(0, 1);
+            const auto movedDisplay = stripImpl->ItemsList().Items().GetAt(1).as<winrt::TerminalApp::TabStripDisplayItem>();
+            VERIFY_IS_TRUE(movedDisplay == display);
+            VERIFY_IS_TRUE(movedDisplay.Header() == header);
+            VERIFY_ARE_EQUAL(2u, movedDisplay.PaneItems().Size());
+            VERIFY_IS_NOT_NULL(header.Parent());
+
+            strip.TabItems().Clear();
+            VERIFY_IS_TRUE(tab.Header() == header);
+        });
+    }
+
+    void TabTests::WindowActivationToleratesTabWithoutStatus()
+    {
+        auto page = _commonSetup();
+
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(tab);
+
+            const auto status = tab->_tabStatus;
+            tab->_tabStatus = nullptr;
+            page->WindowActivated(true);
+            tab->_tabStatus = status;
+        });
+    }
+
+    void TabTests::AgentViewFiltersSplitPaneChildren()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(tab);
+
+            const auto agentPane = page->_MakePane(nullptr, nullptr, nullptr);
+            VERIFY_IS_NOT_NULL(agentPane);
+            VERIFY_IS_FALSE(agentPane->IsAgentPane());
+            VERIFY_IS_NULL(agentPane->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>());
+            const auto agentPaneSessionId = agentPane->GetSessionId();
+            VERIFY_IS_TRUE(agentPaneSessionId != winrt::guid{});
+            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, agentPane));
+            VERIFY_IS_TRUE(agentPane->ContentId().has_value());
+
+            page->_RefreshTabStripPaneItems(tab);
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            const auto display = stripImpl->ItemsList().Items().GetAt(0).as<winrt::TerminalApp::TabStripDisplayItem>();
+            VERIFY_ARE_EQUAL(2u, display.PaneItems().Size());
+
+            page->_tabFilterMode = winrt::TerminalApp::TabStripFilterMode::AgentsOnly;
+            page->_ApplyTabListProjection();
+            VERIFY_ARE_EQUAL(0u, display.PaneItems().Size());
+
+            Json::Value event;
+            event["params"]["pane_id"] =
+                winrt::to_string(::Microsoft::Console::Utils::GuidToString(agentPaneSessionId));
+            event["params"]["event"] = "agent.session.start";
+            event["params"]["agent"] = "copilot";
+            Json::StreamWriterBuilder writer;
+            writer["indentation"] = "";
+            page->OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(writer, event)));
+
+            VERIFY_IS_TRUE(page->_activeCliAgentPanes.contains(agentPaneSessionId));
+            VERIFY_IS_FALSE(page->_paneAgentSessions.contains(agentPaneSessionId));
+            VERIFY_ARE_EQUAL(1u, display.PaneItems().Size());
+            VERIFY_ARE_EQUAL(agentPane->ContentId().value(), display.PaneItems().GetAt(0).ContentId());
+            VERIFY_IS_TRUE(display.IsGroup());
+            VERIFY_ARE_EQUAL(Visibility::Visible, display.GroupVisibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, display.ChildrenVisibility());
+
+            page->_tabFilterMode = winrt::TerminalApp::TabStripFilterMode::AllTabs;
+            page->_ApplyTabListProjection();
+            VERIFY_ARE_EQUAL(2u, display.PaneItems().Size());
+        });
+    }
+
+    void TabTests::AgentTabClassificationTracksSession()
+    {
+        auto page = _commonSetup();
+
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(tab);
+
+            tab->SetAgentOverride(L"copilot", {}, {});
+            const auto agentPane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
+            VERIFY_IS_NOT_NULL(agentPane);
+            agentPane->IsAgentPane(true);
+            page->_SplitPane(tab, SplitDirection::Right, 0.5f, agentPane);
+
+            const auto content = agentPane->GetContent().as<winrt::TerminalApp::AgentPaneContent>();
+            const auto contentImpl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(content);
+            uint32_t stateChangeCount = 0;
+            content.StateChanged([&](auto&&, auto&&) {
+                ++stateChangeCount;
+            });
+
+            VERIFY_IS_TRUE(tab->IsAgentTab());
+
+            tab->StashAgentPane();
+            VERIFY_IS_FALSE(tab->IsAgentTab());
+
+            contentImpl->SetAgentSessionId(L"copilot-session");
+            VERIFY_ARE_EQUAL(1u, stateChangeCount);
+            VERIFY_IS_TRUE(tab->IsAgentTab());
+
+            contentImpl->SetAgentSessionId(L"copilot-session");
+            VERIFY_ARE_EQUAL(1u, stateChangeCount);
+
+            contentImpl->SetAgentSessionId({});
+            VERIFY_ARE_EQUAL(2u, stateChangeCount);
+            VERIFY_IS_FALSE(tab->IsAgentTab());
+        });
+    }
+
+    void TabTests::CliAgentClassifiesTab()
+    {
+        auto page = _commonSetup();
+
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(tab);
+            VERIFY_IS_TRUE(page->_IsKnownAgentCliTitle(L"GitHub Copilot"));
+            VERIFY_IS_TRUE(page->_IsKnownAgentCliTitle(L"github copilot"));
+            VERIFY_IS_FALSE(page->_IsKnownAgentCliTitle(L"PowerShell"));
+            VERIFY_IS_TRUE(page->_MatchesPaneAgentScope(
+                winrt::TerminalApp::implementation::Tab::VisiblePaneSnapshot{
+                    .Title = L"GitHub Copilot",
+                }));
+            VERIFY_IS_FALSE(page->_MatchesPaneAgentScope(
+                winrt::TerminalApp::implementation::Tab::VisiblePaneSnapshot{
+                    .Title = L"PowerShell",
+                }));
+            VERIFY_IS_FALSE(page->_TabHasCliAgent(tab));
+
+            const auto paneSessionId = tab->GetRootPane()->GetSessionId();
+            VERIFY_IS_TRUE(paneSessionId != winrt::guid{});
+            page->_paneAgentSessions.insert_or_assign(
+                paneSessionId,
+                winrt::TerminalApp::implementation::TerminalPage::_PaneAgentSession{
+                    L"copilot-session",
+                    L"copilot",
+                    L"copilot --resume copilot-session" });
+
+            VERIFY_IS_TRUE(page->_TabHasCliAgent(tab));
+            page->_paneAgentSessions.erase(paneSessionId);
+            VERIFY_IS_FALSE(page->_TabHasCliAgent(tab));
+        });
+    }
+
+    void TabTests::LiveTabLayoutLatestRequestWins()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            VERIFY_IS_TRUE(page->_isVerticalLayout);
+            VERIFY_IS_TRUE(page->_ApplyTabLayout(TabLayout::Horizontal));
+            VERIFY_IS_TRUE(page->_changingTabLayout);
+
+            VERIFY_IS_TRUE(page->_ApplyTabLayout(TabLayout::Vertical));
+            VERIFY_IS_TRUE(page->_pendingTabLayout.has_value());
+            VERIFY_ARE_EQUAL(TabLayout::Vertical, *page->_pendingTabLayout);
+
+            page->_CompleteTabLayoutChange(page->_tabLayoutGeneration);
+            VERIFY_IS_FALSE(page->_isVerticalLayout);
+
+            page->_ApplyPendingTabLayout();
+            VERIFY_IS_TRUE(page->_changingTabLayout);
+            page->_CompleteTabLayoutChange(page->_tabLayoutGeneration);
+            VERIFY_IS_TRUE(page->_isVerticalLayout);
+            VERIFY_IS_FALSE(page->_pendingTabLayout.has_value());
+        });
+    }
+
+    void TabTests::TabLayoutSwitchMenuTracksOrientation()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            const auto tab = winrt::get_self<winrt::TerminalApp::implementation::Tab>(page->_tabs.GetAt(0));
+
+            tab->SetVerticalTabLayout(true);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Switch to horizontal tabs" }, tab->_switchTabLayoutMenuItem.Text());
+            VERIFY_ARE_EQUAL(TabLayout::Horizontal, tab->_switchTabLayoutTarget);
+
+            tab->SetVerticalTabLayout(false);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Switch to vertical tabs" }, tab->_switchTabLayoutMenuItem.Text());
+            VERIFY_ARE_EQUAL(TabLayout::Vertical, tab->_switchTabLayoutTarget);
+        });
+    }
+
     void TabTests::TryDuplicateBadTab()
     {
         // * Create a tab with a profile with GUID 1
@@ -2189,7 +3939,8 @@ namespace TerminalAppLocalTests
     winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> TabTests::_commonSetup(
         winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection connection,
         Grid layoutHost,
-        std::optional<int32_t> historySize)
+        std::optional<int32_t> historySize,
+        const bool verticalLayout)
     {
         static constexpr std::wstring_view settingsJson0{ LR"(
         {
@@ -2298,6 +4049,11 @@ namespace TerminalAppLocalTests
 
         CascadiaSettings settings0{ settingsJson0, {} };
         VERIFY_IS_NOT_NULL(settings0);
+
+        if (verticalLayout)
+        {
+            settings0.GlobalSettings().TabLayout(TabLayout::Vertical);
+        }
 
         if (historySize)
         {

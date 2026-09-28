@@ -18,6 +18,7 @@
 
 #include <wrl/module.h>
 #include <wil/resource.h>
+#include <oleauto.h>
 
 using namespace Microsoft::WRL;
 
@@ -29,9 +30,20 @@ namespace Protocol = winrt::Microsoft::Terminal::Protocol;
 WindowEmperor* TerminalProtocolComServer::s_emperor = nullptr;
 
 static DWORD g_comRegistration = 0;
+static DWORD g_activeRegistration = 0;
 static std::shared_mutex g_mtx;
 static std::thread g_comMtaThread;
 static wil::unique_event g_comMtaStop;
+
+static HRESULT RevokeActiveRegistrationUnderLock() noexcept
+{
+    if (g_activeRegistration)
+    {
+        RETURN_IF_FAILED(RevokeActiveObject(g_activeRegistration, nullptr));
+        g_activeRegistration = 0;
+    }
+    return S_OK;
+}
 
 // Static instance tracking for event delivery to COM clients
 std::mutex TerminalProtocolComServer::s_instancesMutex;
@@ -79,6 +91,16 @@ try
                     CLSCTX_LOCAL_SERVER,
                     REGCLS_MULTIPLEUSE,
                     &g_comRegistration);
+                if (SUCCEEDED(regHr))
+                {
+                    // Publish the same factory under the fixed CLSID for non-activating
+                    // hook lookups. A ROT failure must not disable ordinary COM clients.
+                    LOG_IF_FAILED(RegisterActiveObject(
+                        unk.Get(),
+                        __uuidof(TerminalProtocolComServer),
+                        ACTIVEOBJECT_STRONG,
+                        &g_activeRegistration));
+                }
             }
         }
 
@@ -94,9 +116,19 @@ try
 }
 CATCH_RETURN()
 
+HRESULT TerminalProtocolComServer::s_StopHookListening() noexcept
+try
+{
+    std::unique_lock lock{ g_mtx };
+    return RevokeActiveRegistrationUnderLock();
+}
+CATCH_RETURN()
+
 HRESULT TerminalProtocolComServer::s_StopListening()
 {
     std::unique_lock lock{ g_mtx };
+
+    const auto activeResult = RevokeActiveRegistrationUnderLock();
 
     HRESULT result = S_OK;
     if (g_comRegistration)
@@ -115,7 +147,7 @@ HRESULT TerminalProtocolComServer::s_StopListening()
         g_comMtaThread.join();
     }
 
-    return result;
+    return FAILED(activeResult) ? activeResult : result;
 }
 
 TerminalProtocolComServer::~TerminalProtocolComServer()
@@ -634,18 +666,10 @@ try
 
     Json::Value arr(Json::arrayValue);
 
-    for (const auto& host : s_emperor->GetWindows())
+    for (const auto& page : s_emperor->GetProtocolPages())
     {
-        const auto logic = host->Logic();
-        if (!logic)
-            continue;
-
-        const auto& props = logic.WindowProperties();
+        const auto props = page.WindowProperties();
         if (windowIdFilter != 0 && props.WindowId() != windowIdFilter)
-            continue;
-
-        const auto page = _getPage(host.get());
-        if (!page)
             continue;
 
         const auto windowId = props.WindowId();
@@ -672,18 +696,10 @@ try
 
     Json::Value arr(Json::arrayValue);
 
-    for (const auto& host : s_emperor->GetWindows())
+    for (const auto& page : s_emperor->GetProtocolPages())
     {
-        const auto logic = host->Logic();
-        if (!logic)
-            continue;
-
-        const auto& props = logic.WindowProperties();
+        const auto props = page.WindowProperties();
         if (windowIdFilter != 0 && props.WindowId() != windowIdFilter)
-            continue;
-
-        const auto page = _getPage(host.get());
-        if (!page)
             continue;
 
         const auto windowId = props.WindowId();
@@ -711,9 +727,8 @@ try
     const auto src = _hstr(source);
     const auto effectiveSource = src.empty() ? winrt::hstring{ L"scrollback" } : src;
 
-    for (const auto& host : s_emperor->GetWindows())
+    for (const auto& page : s_emperor->GetProtocolPages())
     {
-        const auto page = _getPage(host.get());
         if (!page)
             continue;
 
@@ -786,18 +801,17 @@ try
     {
         RETURN_HR_IF(E_INVALIDARG, InlineIsEqualGUID(sourceSessionId, GUID{}));
 
-        for (const auto& host : windows)
+        for (const auto& page : s_emperor->GetProtocolPages())
         {
-            const auto page = _getPage(host.get());
             if (!page)
             {
                 continue;
             }
 
-            auto context = getContext(page, host.get());
+            auto context = getContext(page, nullptr);
             if (context.Pane.SessionId != winrt::guid{})
             {
-                context.Pane.WindowId = host->Logic().WindowProperties().WindowId();
+                context.Pane.WindowId = page.WindowProperties().WindowId();
                 *json = _bstrFromJson(_toJson(context));
                 return S_OK;
             }
@@ -830,9 +844,8 @@ try
     *json = nullptr;
     RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
 
-    for (const auto& host : s_emperor->GetWindows())
+    for (const auto& page : s_emperor->GetProtocolPages())
     {
-        const auto page = _getPage(host.get());
         if (!page)
             continue;
 
@@ -855,9 +868,8 @@ try
     *json = nullptr;
     RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
 
-    for (const auto& host : s_emperor->GetWindows())
+    for (const auto& page : s_emperor->GetProtocolPages())
     {
-        const auto page = _getPage(host.get());
         if (!page)
             continue;
 
@@ -1014,9 +1026,8 @@ try
     RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
     RETURN_HR_IF(E_INVALIDARG, winrt::guid{ sessionId } == winrt::guid{});
 
-    for (const auto& host : s_emperor->GetWindows())
+    for (const auto& page : s_emperor->GetProtocolPages())
     {
-        const auto page = _getPage(host.get());
         if (!page)
             continue;
 
@@ -1043,9 +1054,8 @@ try
         return S_OK;
     }
 
-    for (const auto& host : s_emperor->GetWindows())
+    for (const auto& page : s_emperor->GetProtocolPages())
     {
-        const auto page = _getPage(host.get());
         if (!page)
             continue;
 
@@ -1063,7 +1073,13 @@ try
     RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
     RETURN_HR_IF(E_INVALIDARG, winrt::guid{ sessionId } == winrt::guid{});
 
-    for (const auto& host : s_emperor->GetWindows())
+    auto windows = s_emperor->GetWindows();
+    if (const auto recent = _getMostRecentHost(windows))
+    {
+        const auto position = std::ranges::find(windows, recent);
+        std::rotate(windows.begin(), position, std::next(position));
+    }
+    for (const auto& host : windows)
     {
         const auto page = _getPage(host.get());
         if (!page)
@@ -1086,9 +1102,8 @@ try
     const auto nameH = _hstr(name);
     RETURN_HR_IF(E_INVALIDARG, nameH.empty());
 
-    for (const auto& host : s_emperor->GetWindows())
+    for (const auto& page : s_emperor->GetProtocolPages())
     {
-        const auto page = _getPage(host.get());
         if (!page)
             continue;
 
@@ -1246,6 +1261,9 @@ try
     case ProtocolParsing::SendEventRoute::AgentSessionsRetired:
         _dispatchAgentSessionsRetiredToPage(eventH);
         return S_OK;
+    case ProtocolParsing::SendEventRoute::SessionRegistryChanged:
+        _dispatchSessionRegistryChangedToPage(eventH);
+        return S_OK;
     case ProtocolParsing::SendEventRoute::Broadcast:
     {
         Json::StreamWriterBuilder wb;
@@ -1273,9 +1291,8 @@ void TerminalProtocolComServer::_dispatchAutofixStateToPage(const winrt::hstring
     // Find any window's TerminalPage and dispatch to its UI thread. The
     // bottom bar state is per-window; for v1 we fan out to every window so
     // whichever is focused shows the update.
-    for (const auto& host : s_emperor->GetWindows())
+    for (const auto& page : s_emperor->GetProtocolPages())
     {
-        auto page = _getPage(host.get());
         if (!page)
         {
             continue;
@@ -1311,9 +1328,8 @@ void TerminalProtocolComServer::_dispatchAgentStatusToPage(const winrt::hstring&
 
     // Same fan-out shape as autofix: every window gets the event so its
     // AgentPaneContent (if any) can update. Per-window owns its own agent leaf.
-    for (const auto& host : s_emperor->GetWindows())
+    for (const auto& page : s_emperor->GetProtocolPages())
     {
-        auto page = _getPage(host.get());
         if (!page)
         {
             continue;
@@ -1345,9 +1361,8 @@ void TerminalProtocolComServer::_dispatchAgentAvailabilityToPage(const winrt::hs
         return;
     }
 
-    for (const auto& host : s_emperor->GetWindows())
+    for (const auto& page : s_emperor->GetProtocolPages())
     {
-        auto page = _getPage(host.get());
         if (!page)
         {
             continue;
@@ -1377,9 +1392,8 @@ void TerminalProtocolComServer::_dispatchAgentSwitchToPage(const winrt::hstring&
     {
         return;
     }
-    for (const auto& host : s_emperor->GetWindows())
+    for (const auto& page : s_emperor->GetProtocolPages())
     {
-        auto page = _getPage(host.get());
         if (!page)
         {
             continue;
@@ -1413,9 +1427,8 @@ void TerminalProtocolComServer::_dispatchCloseAgentPaneToPage(const winrt::hstri
     // Fan out to every window; the wta-master process is shared across all
     // windows, and the page-side handler resolves the right tab via tab_id.
     // Pages without a matching tab no-op the call (see OnCloseAgentPaneRequested).
-    for (const auto& host : s_emperor->GetWindows())
+    for (const auto& page : s_emperor->GetProtocolPages())
     {
-        auto page = _getPage(host.get());
         if (!page)
         {
             continue;
@@ -1527,9 +1540,8 @@ void TerminalProtocolComServer::_dispatchAgentSessionsRetiredToPage(const winrt:
     {
         return;
     }
-    for (const auto& host : s_emperor->GetWindows())
+    for (const auto& page : s_emperor->GetProtocolPages())
     {
-        auto page = _getPage(host.get());
         if (!page)
         {
             continue;
@@ -1553,6 +1565,38 @@ void TerminalProtocolComServer::_dispatchAgentSessionsRetiredToPage(const winrt:
     }
 }
 
+void TerminalProtocolComServer::_dispatchSessionRegistryChangedToPage(const winrt::hstring& eventJson)
+{
+    if (!s_emperor)
+    {
+        return;
+    }
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        auto page = _getPage(host.get());
+        if (!page)
+        {
+            continue;
+        }
+        const auto dispatcher = page.Dispatcher();
+        if (!dispatcher)
+        {
+            continue;
+        }
+        dispatcher.RunAsync(
+            winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
+            [page, eventJson]() {
+                try
+                {
+                    page.OnSessionRegistryChanged(eventJson);
+                }
+                catch (...)
+                {
+                }
+            });
+    }
+}
+
 void TerminalProtocolComServer::_dispatchAgentStateChangedToPage(const winrt::hstring& eventJson)
 {
     if (!s_emperor)
@@ -1562,9 +1606,8 @@ void TerminalProtocolComServer::_dispatchAgentStateChangedToPage(const winrt::hs
     // Same fan-out shape as the other dispatchers: the agent pane lives in
     // exactly one window, but we don't know which from here, and pages with
     // no agent pane no-op the call (see OnAgentStateChanged).
-    for (const auto& host : s_emperor->GetWindows())
+    for (const auto& page : s_emperor->GetProtocolPages())
     {
-        auto page = _getPage(host.get());
         if (!page)
         {
             continue;
@@ -1595,20 +1638,48 @@ void TerminalProtocolComServer::_dispatchResumeInNewAgentTabToPage(const winrt::
     {
         return;
     }
-    // Same fan-out shape as the other dispatchers. The shared agent pane
-    // lives in exactly one window; pages with no agent pane no-op the call
-    // (see OnResumeInNewAgentTabRequested).
+
+    Json::Value event;
+    if (!ProtocolParsing::ParseJson(winrt::to_string(eventJson), event))
+    {
+        return;
+    }
+    const auto& params = event["params"];
+    if (!params.isObject() || !params["window_id"].isString())
+    {
+        return;
+    }
+
+    uint64_t windowId = 0;
+    try
+    {
+        windowId = std::stoull(params["window_id"].asString());
+    }
+    catch (...)
+    {
+        return;
+    }
+    if (windowId == 0)
+    {
+        return;
+    }
+
     for (const auto& host : s_emperor->GetWindows())
     {
+        const auto logic = host->Logic();
+        if (!logic || logic.WindowProperties().WindowId() != windowId)
+        {
+            continue;
+        }
         auto page = _getPage(host.get());
         if (!page)
         {
-            continue;
+            return;
         }
         const auto dispatcher = page.Dispatcher();
         if (!dispatcher)
         {
-            continue;
+            return;
         }
         dispatcher.RunAsync(
             winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
@@ -1622,6 +1693,7 @@ void TerminalProtocolComServer::_dispatchResumeInNewAgentTabToPage(const winrt::
                     // Swallow: page may have been torn down during dispatch.
                 }
             });
+        return;
     }
 }
 
@@ -1631,9 +1703,9 @@ void TerminalProtocolComServer::_dispatchPaneAgentSessionToPage(const winrt::hst
     {
         return;
     }
-    for (const auto& host : s_emperor->GetWindows())
+    s_emperor->TrackPaneAgentSession(eventJson);
+    for (const auto& page : s_emperor->GetProtocolPages())
     {
-        auto page = _getPage(host.get());
         if (!page)
         {
             continue;
@@ -1667,9 +1739,8 @@ void TerminalProtocolComServer::_dispatchAgentChipTargetToPage(const winrt::hstr
     // Tab StableIds are unique across windows; fan out to every window's
     // page and let _FindTabByStableId pick the right one (pages without
     // a matching tab no-op the call). Same shape as the other dispatchers.
-    for (const auto& host : s_emperor->GetWindows())
+    for (const auto& page : s_emperor->GetProtocolPages())
     {
-        auto page = _getPage(host.get());
         if (!page)
         {
             continue;

@@ -2701,4 +2701,8 @@ Alt+Shift+/ введіть запит; Alt+Shift+B запустіть без п�
     <value>Видалити</value>
     <comment>Tooltip for the X button that removes a custom agent from the agent list.</comment>
   </data>
+  <data name="Globals_TabLayout.HelpText" xml:space="preserve">
+    <value>Вертикальні вкладки відображаються у стовпці зі змінним розміром ліворуч у вікні. Зміни негайно застосовуються до всіх вікон Terminal.</value>
+    <comment>A description for what the &quot;tab layout&quot; setting does. Presented near &quot;Globals_TabLayout.Header&quot;.</comment>
+  </data>
 </root>

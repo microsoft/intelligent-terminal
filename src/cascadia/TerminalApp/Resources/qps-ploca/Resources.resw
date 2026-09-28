@@ -177,6 +177,121 @@
   <data name="TabCloseAfter" xml:space="preserve">
     <value>Ċĺοşέ ţаъş ťό ŧђé яΐğђт !!! !!! </value>
   </data>
+  <data name="TabCloseBelow" xml:space="preserve">
+    <value>Ċĺőѕé ťªвѕ вéĺőŵ !!! !!!</value>
+  </data>
+  <data name="VerticalTabsCollapsePane" xml:space="preserve">
+    <value>Ċőĺĺªρѕé ťªвѕ ρªñé !!! !!!</value>
+  </data>
+  <data name="VerticalTabsExpandPane" xml:space="preserve">
+    <value>É×ρªñđ ťªвѕ ρªñé !!! !!!</value>
+  </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>É×ρªñđ ťªв ğřőµρ !!! !!!</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Ċőĺĺªρѕé ťªв ğřőµρ !!! !!!</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Ťªв !!!</value>
+  </data>
+  <data name="VerticalTabsHeader.Text" xml:space="preserve">
+    <value>Ťªвѕ !!!</value>
+  </data>
+  <data name="VerticalTabsSearchButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Ѕéªяċħ ťªвѕ !!!</value>
+  </data>
+  <data name="VerticalTabsSearchButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Ѕéªяċħ ťªвѕ !!!</value>
+  </data>
+  <data name="VerticalTabsSearchBox.PlaceholderText" xml:space="preserve">
+    <value>Ѕéªяċħ ťªвѕ !!!</value>
+  </data>
+  <data name="VerticalTabsSearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Ѕéªяċħ ťªвѕ !!!</value>
+  </data>
+  <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>₣ĭĺťéя ťªвѕ !!!</value>
+  </data>
+  <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>₣ĭĺťéя ťªвѕ !!!</value>
+  </data>
+  <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
+    <value>Āĺĺ ťªвѕ !!!</value>
+  </data>
+  <data name="VerticalTabsFilterAgentsOnly.Text" xml:space="preserve">
+    <value>Āğéñťѕ őñĺý !!!</value>
+  </data>
+  <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
+    <value>Ѕħőŵĭñğ 1 ªğéñť ѕéѕѕĭőñ !!! !!!</value>
+  </data>
+  <data name="VerticalTabsFilterStatusPlural" xml:space="preserve">
+    <value>Ѕħőŵĭñğ {0} ªğéñť ѕéѕѕĭőñѕ !!! !!!</value>
+  </data>
+  <data name="VerticalTabsFilterCurrentHidden.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Ċūяяéñť ťªв ĭѕ ħĭđđéñ вý ťħĭѕ ƒĭĺťéя !!! !!! !!! !!!</value>
+  </data>
+  <data name="VerticalTabsFilterCurrentHidden.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Ċūяяéñť ťªв ĭѕ ħĭđđéñ вý ťħĭѕ ƒĭĺťéя !!! !!! !!! !!!</value>
+  </data>
+  <data name="VerticalTabsFilterShowAll.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Ѕħőŵ ªĺĺ ťªвѕ !!! !!!</value>
+  </data>
+  <data name="VerticalTabsFilterShowAll.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Ѕħőŵ ªĺĺ ťªвѕ !!! !!!</value>
+  </data>
+  <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Āğéñť ħĭѕťőяý !!!</value>
+  </data>
+  <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Āğéñť ħĭѕťőяý !!!</value>
+  </data>
+  <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
+    <value>Āğéñť ħĭѕťőяý !!!</value>
+  </data>
+  <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Ċĺőѕé ªğéñť ħĭѕťőяý !!! !!!</value>
+  </data>
+  <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Ċĺőѕé ªğéñť ħĭѕťőяý !!! !!!</value>
+  </data>
+  <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
+    <value>Ѕéªяċħ ªğéñť ħĭѕťőяý !!! !!!</value>
+  </data>
+  <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Ѕéªяċħ ªğéñť ħĭѕťőяý !!! !!!</value>
+  </data>
+  <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
+    <value>Ñő ªğéñť ѕéѕѕĭőñѕ ƒőūñđ. !!! !!!</value>
+  </data>
+  <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
+    <value>Ñő мªťċħĭñğ ªğéñť ѕéѕѕĭőñѕ. !!! !!!</value>
+  </data>
+  <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
+    <value>Ūñªвĺé ťő ĺőªđ ªğéñť ħĭѕťőяý. !!! !!! !!!</value>
+  </data>
+  <data name="VerticalTabsHistoryInvalidResponse" xml:space="preserve">
+    <value>Āğéñť ħĭѕťőяý яéťūяñéđ ªñ ĭñνªĺĭđ яéѕρőñѕé. !!! !!! !!!</value>
+  </data>
+  <data name="VerticalTabsHistoryActivationError" xml:space="preserve">
+    <value>Ūñªвĺé ťő ªċťĭνªťé ťħé ѕéĺéċťéđ ѕéѕѕĭőñ. !!! !!! !!!</value>
+  </data>
+  <data name="VerticalTabsHistoryLiveAgentTitleFormat" xml:space="preserve">
+    <value>{0} ªğéñť ѕéѕѕĭőñ !!! !!!</value>
+    <comment>History row title for a live agent-pane session whose provider did not supply a conversation title. {0} is the provider display name.</comment>
+  </data>
+  <data name="CompactNewTabButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Ñéŵ ťªв !!!</value>
+  </data>
+  <data name="CompactNewTabButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Ñéŵ ťªв !!!</value>
+  </data>
+  <data name="CompactNewTabMenuButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Ñéŵ ťªв мéñū !!! !!!</value>
+  </data>
+  <data name="CompactNewTabMenuButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Ñéŵ ťªв мéñū !!! !!!</value>
+  </data>
   <data name="TabCloseOther" xml:space="preserve">
     <value>Ćĺόѕ℮ őтђèř ŧâьś !!! !</value>
   </data>
@@ -828,6 +943,18 @@
   <data name="FindText" xml:space="preserve">
     <value>₣ìпđ !</value>
   </data>
+  <data name="SwitchToHorizontalTabsText" xml:space="preserve">
+    <value>Ѕŵĭťċħ ťő ħőяĭžőñťªĺ ťªвѕ !!! !!!</value>
+  </data>
+  <data name="SwitchToHorizontalTabsToolTip" xml:space="preserve">
+    <value>Ūѕé ħőяĭžőñťªĺ ťªвѕ ĭñ ªĺĺ Ťéямĭñªĺ ŵĭñđőŵѕ !!! !!! !!! !!!</value>
+  </data>
+  <data name="SwitchToVerticalTabsText" xml:space="preserve">
+    <value>Ѕŵĭťċħ ťő νéяťĭċªĺ ťªвѕ !!! !!!</value>
+  </data>
+  <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
+    <value>Ūѕé νéяťĭċªĺ ťªвѕ ĭñ ªĺĺ Ťéямĭñªĺ ŵĭñđőŵѕ !!! !!! !!! !!!</value>
+  </data>
   <data name="CloseOnExitInfoBar.Message" xml:space="preserve">
     <value>Ťéямїлâŧîόň ь℮ћäνįőř čªή вĕ ċοñƒĩġџřèδ įŋ ăδνåл¢êð ряòƒιļє şėŧтіиĝś. !!! !!! !!! !!! !!! !!! !!</value>
   </data>
@@ -890,6 +1017,9 @@
   </data>
   <data name="TabCloseAfterToolTip" xml:space="preserve">
     <value>Сłǿśе ǻĺľ τăвś ţô ŧн℮ яîĝħť őƒ τђїş тάв !!! !!! !!! !!!</value>
+  </data>
+  <data name="TabCloseBelowToolTip" xml:space="preserve">
+    <value>Ċĺőѕé ªĺĺ ťªвѕ вéĺőŵ ťħĭѕ ťªв !!! !!! !!!</value>
   </data>
   <data name="TabCloseOtherToolTip" xml:space="preserve">
     <value>€ļόѕĕ ªŀŀ ŧáвѕ έ×ćèρт ŧнìş ŧåв !!! !!! !!!</value>
@@ -1323,5 +1453,53 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="AgentPane_ConnectingTitle" xml:space="preserve">
     <value>Agent · Connecting</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+  </data>
+  <data name="NotificationIconRestoreKeptTab" xml:space="preserve">
+    <value>[!!_Ｒｅｓｔｏｒｅ_!!]</value>
+    <comment>Command in the notification-area menu that brings a background tab and its still-running terminal panes back into a window. It does not restart the processes or restore a file backup.</comment>
+  </data>
+  <data name="KeepTabRunningText" xml:space="preserve">
+    <value>[!!_Ķēēp ţåƀ ŕûññïñğ_!!]</value>
+    <comment>Command at the top of a vertical terminal tab's context menu that enables keeping all panes running after the tab or window is closed. Also labels the tab's keep-running status indicator. This does not pin the tab or save it for a restart.</comment>
+  </data>
+  <data name="KeepTabRunningToolTip" xml:space="preserve">
+    <value>[!!_Ķēēp ţĥïš ţåƀ ŕûññïñğ ïñ ţĥé ƀåçķğŕöûñď åƒţéŕ çļöšïñğ ţĥé ţåƀ öŕ ŵïñďöŵ._!!]</value>
+    <comment>Tooltip and accessibility help for Keep tab running. Includes shell panes and the AI assistant; their current processes and sessions stay alive, rather than restarting later.</comment>
+  </data>
+  <data name="TurnOffKeepTabRunningText" xml:space="preserve">
+    <value>[!!_Ţûŕñ öƒƒ ķēēp ŕûññïñğ_!!]</value>
+    <comment>Command shown instead of Keep tab running when that tab already has keep running enabled. It only turns off the background-running behavior; it does not close the tab or stop its current processes immediately.</comment>
+  </data>
+  <data name="TurnOffKeepTabRunningToolTip" xml:space="preserve">
+    <value>[!!_Ţĥïš ţåƀ ŵïļļ ñö ļöñğéŕ šţåý ŕûññïñğ åƒţéŕ ýöû çļöšé ţĥé ţåƀ öŕ ŵïñďöŵ._!!]</value>
+    <comment>Tooltip and accessibility help for Turn off keep running. After this action, closing the tab or its window closes its panes normally instead of retaining them in the background. The current tab and processes are not closed by this action.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusIdle" xml:space="preserve">
+    <value>[!!_Îďĺé_!!]</value>
+    <comment>Agent History session status: the session is live but has no active work.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusWorking" xml:space="preserve">
+    <value>[!!_Àçţïṽé_!!]</value>
+    <comment>Agent History session status: the agent is actively processing a request.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusAttention" xml:space="preserve">
+    <value>[!!_Ŵåïţïñğ ƒöŕ ïñṗûţ_!!]</value>
+    <comment>Agent History session status: the agent needs a response or approval from the user.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusError" xml:space="preserve">
+    <value>[!!_Éŕŕöŕ_!!]</value>
+    <comment>Agent History session status: the session encountered an error.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusEnded" xml:space="preserve">
+    <value>[!!_Éñďéď_!!]</value>
+    <comment>Agent History session status: the session&apos;s process or pane has ended. This does not imply that its task succeeded.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusHistorical" xml:space="preserve">
+    <value>[!!_Ĥïşţöŕïçåĺ_!!]</value>
+    <comment>Agent History session status: a saved session with no live pane, discovered from the agent&apos;s history.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusUnknown" xml:space="preserve">
+    <value>[!!_Ûñķñöŵñ_!!]</value>
+    <comment>Agent History session status: the registry did not provide a recognized status.</comment>
   </data>
 </root>

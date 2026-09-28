@@ -44,7 +44,8 @@
                  TabWidthMode="Equal">
 
         <mux:TabView.TabStripHeader>
-            <StackPanel Orientation="Horizontal">
+            <StackPanel x:Name="HorizontalChromeHeader"
+                        Orientation="Horizontal">
                 <!--  EA18 is the "Shield" glyph  -->
                 <FontIcon x:Name="ElevationShieldIcon"
                           x:Uid="ElevationShield"
@@ -87,7 +88,7 @@
         </mux:TabView.TabStripHeader>
 
         <mux:TabView.TabStripFooter>
-            <Grid>
+            <Grid x:Name="HorizontalChromeFooter">
                 <!--  Remove this border after WinUI 2.8  -->
                 <Border Height="1"
                         VerticalAlignment="Bottom"
@@ -138,6 +139,8 @@
                                                     ResourceKey="TabViewButtonBackgroundPointerOver" />
                                     <StaticResource x:Key="SplitButtonForegroundPointerOver"
                                                     ResourceKey="TabViewButtonForegroundPointerOver" />
+                                    <SolidColorBrush x:Key="SplitButtonBorderBrushDivider"
+                                                     Color="Transparent" />
                                 </ResourceDictionary>
                                 <ResourceDictionary x:Key="Dark">
                                     <StaticResource x:Key="SplitButtonBackground"
@@ -152,6 +155,8 @@
                                                     ResourceKey="TabViewButtonBackgroundPointerOver" />
                                     <StaticResource x:Key="SplitButtonForegroundPointerOver"
                                                     ResourceKey="TabViewButtonForegroundPointerOver" />
+                                    <SolidColorBrush x:Key="SplitButtonBorderBrushDivider"
+                                                     Color="Transparent" />
                                 </ResourceDictionary>
                                 <ResourceDictionary x:Key="HighContrast">
                                     <StaticResource x:Key="SplitButtonBackground"
@@ -166,6 +171,8 @@
                                                     ResourceKey="TabViewButtonBackgroundPointerOver" />
                                     <StaticResource x:Key="SplitButtonForegroundPointerOver"
                                                     ResourceKey="TabViewButtonForegroundPointerOver" />
+                                    <SolidColorBrush x:Key="SplitButtonBorderBrushDivider"
+                                                     Color="Transparent" />
                                 </ResourceDictionary>
                             </ResourceDictionary.ThemeDictionaries>
                             <x:Double x:Key="SplitButtonPrimaryButtonSize">31</x:Double>
@@ -180,10 +187,8 @@
 
     <!--
         PROTOTYPE — visibility flipped by TabRowControl.IsVerticalLayout. The
-        vertical strip has no chrome slots wired in the prototype; the
-        elevation shield, workspaces button, and new-tab split button live in
-        TabView above. Wiring them to TabStrip.LeadingContent/TrailingContent
-        is Spec A work.
+        complete vertical chrome uses the titlebar when available, with
+        TabStrip.TopChromeContent as its no-titlebar fallback.
     -->
     <local:TabStrip x:Name="TabStrip"
                     HorizontalAlignment="Stretch"

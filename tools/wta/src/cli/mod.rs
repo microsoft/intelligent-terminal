@@ -58,6 +58,27 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
             SessionsAction::List { master, origin } => {
                 sessions::run_list(master, origin.to_filter(), json_mode).await
             }
+            SessionsAction::Activate {
+                session_id,
+                provider,
+                location,
+                wsl_distro,
+                universe,
+                window_id,
+                activation_id,
+            } => {
+                sessions::run_activate(
+                    &session_id,
+                    &provider,
+                    &location,
+                    wsl_distro.as_deref(),
+                    universe,
+                    window_id,
+                    activation_id,
+                    json_mode,
+                )
+                .await
+            }
         },
         Command::Hooks { action } => match action {
             HooksAction::Install { cli, force } => hooks::run_install(cli, force, json_mode),

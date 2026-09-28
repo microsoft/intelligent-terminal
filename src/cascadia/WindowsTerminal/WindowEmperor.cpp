@@ -639,6 +639,7 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
     _deferPersistedLayoutRestore = isEmbedding;
 
     _createMessageWindow(windowClassName.c_str());
+    _setupKeptSessions();
     _setupGlobalHotkeys();
     _checkWindowsForNotificationIcon();
     _setupSessionPersistence(_app.Logic().Settings().GlobalSettings().ShouldUsePersistedLayout());
@@ -1144,10 +1145,63 @@ void WindowEmperor::_postQuitMessageIfNeeded() const
     if (
         _messageBoxCount <= 0 &&
         _windowCount <= 0 &&
+        (!_keptManager || !_keptManager.HasKeptSessions()) &&
         !_app.Logic().Settings().GlobalSettings().AllowHeadless())
     {
+        LOG_IF_FAILED(TerminalProtocolComServer::s_StopHookListening());
         PostQuitMessage(0);
     }
+}
+
+void WindowEmperor::_setupKeptSessions()
+{
+    _keptManager = _app.Logic().ContentManager();
+    _keptDispatcher = winrt::Windows::System::DispatcherQueue::GetForCurrentThread();
+    _keptChanged = _keptManager.KeptSessionsChanged(winrt::auto_revoke, [this](auto&&, auto&&) {
+        const auto pages = _keptManager.KeptPages();
+        {
+            std::lock_guard lock{ _keptPagesMutex };
+            _keptPages.assign(pages.begin(), pages.end());
+        }
+        LOG_IF_WIN32_BOOL_FALSE(PostMessageW(_window.get(), WM_KEPT_SESSIONS_CHANGED, 0, 0));
+    });
+    _keptEvents = _keptManager.DetachedSessionEvent(winrt::auto_revoke, [](auto&&, const winrt::hstring& eventJson) {
+        TerminalProtocolComServer::s_NotifyEventToComClients(winrt::to_string(eventJson));
+    });
+}
+
+std::vector<winrt::TerminalApp::TerminalPage> WindowEmperor::GetProtocolPages() const
+{
+    std::vector<winrt::TerminalApp::TerminalPage> pages;
+    for (const auto& host : GetWindows())
+    {
+        const auto logic = host->Logic();
+        const auto page = logic ? logic.GetRoot().try_as<winrt::TerminalApp::TerminalPage>() : nullptr;
+        if (page)
+        {
+            pages.emplace_back(page);
+        }
+    }
+    std::lock_guard lock{ _keptPagesMutex };
+    for (const auto& page : _keptPages)
+    {
+        if (std::ranges::find(pages, page) == pages.end())
+        {
+            pages.emplace_back(page);
+        }
+    }
+    return pages;
+}
+
+void WindowEmperor::TrackPaneAgentSession(const winrt::hstring& eventJson)
+{
+    LOG_HR_IF(E_ABORT, !_keptDispatcher.TryEnqueue([manager = _keptManager, eventJson]() {
+        try
+        {
+            manager.OnPaneAgentSessionChanged(eventJson);
+        }
+        CATCH_LOG()
+    }));
 }
 
 safe_void_coroutine WindowEmperor::_showMessageBox(winrt::hstring message, bool error)
@@ -1188,6 +1242,7 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
             const auto shouldKeepWindow =
                 _windows.size() == 1 &&
                 globalSettings.ShouldUsePersistedLayout() &&
+                !_keptManager.HasKeptSessions() &&
                 !globalSettings.AllowHeadless();
 
             if (!shouldKeepWindow)
@@ -1259,6 +1314,10 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
             _messageBoxCount -= 1;
             _postQuitMessageIfNeeded();
             return 0;
+        case WM_KEPT_SESSIONS_CHANGED:
+            _checkWindowsForNotificationIcon();
+            _postQuitMessageIfNeeded();
+            return 0;
         case WM_IDENTIFY_ALL_WINDOWS:
             for (const auto& host : _windows)
             {
@@ -1284,6 +1343,10 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
             case NIN_SELECT:
             case NIN_KEYSELECT:
             {
+                if (_windows.empty() && _restoreAllKeptGroups())
+                {
+                    break;
+                }
                 SummonWindowSelectionArgs args;
                 args.SummonBehavior.MoveToCurrentDesktop(false);
                 args.SummonBehavior.ToMonitor(winrt::TerminalApp::MonitorBehavior::InPlace);
@@ -1371,6 +1434,7 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
             RegisterApplicationRestart(nullptr, RESTART_NO_CRASH | RESTART_NO_HANG);
             return TRUE;
         case WM_ENDSESSION:
+            LOG_IF_FAILED(TerminalProtocolComServer::s_StopHookListening());
             _finalizeSessionPersistence();
             _skipPersistence = true;
             PostQuitMessage(0);
@@ -1627,6 +1691,29 @@ void WindowEmperor::_notificationAreaMenuRequested(const WPARAM wParam)
     AppendMenuW(menu, MF_STRING, 0, RS_(L"NotificationIconFocusTerminal").c_str());
     AppendMenuW(menu, MF_SEPARATOR, 0, L"");
 
+    _keptSessionMenus.clear();
+    for (const auto& group : _keptManager.KeptGroups())
+    {
+        const auto submenu = CreatePopupMenu();
+        THROW_LAST_ERROR_IF(!submenu);
+        MENUINFO groupMenuInfo{
+            .cbSize = sizeof(MENUINFO),
+            .fMask = MIM_STYLE,
+            .dwStyle = MNS_NOTIFYBYPOS,
+        };
+        SetMenuInfo(submenu, &groupMenuInfo);
+        AppendMenuW(submenu, MF_STRING, 0, RS_(L"NotificationIconRestoreKeptTab").c_str());
+        AppendMenuW(submenu, MF_STRING, 1, RS_(L"TabCloseSubMenu").c_str());
+        _keptSessionMenus.emplace(submenu, group.Key());
+        auto title = std::wstring{ group.Value() };
+        // Terminal titles are text, not menu accelerator markup.
+        for (size_t i = 0; (i = title.find(L'&', i)) != std::wstring::npos; i += 2)
+        {
+            title.insert(i, 1, L'&');
+        }
+        AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(submenu), title.c_str());
+    }
+
     // A submenu to focus a specific window. Lists all windows that we manage.
     if (const auto submenu = CreatePopupMenu())
     {
@@ -1680,11 +1767,28 @@ void WindowEmperor::_notificationAreaMenuRequested(const WPARAM wParam)
     _currentWindowMenu = menu;
 }
 
-void WindowEmperor::_notificationAreaMenuClicked(const WPARAM wParam, const LPARAM lParam) const
+void WindowEmperor::_notificationAreaMenuClicked(const WPARAM wParam, const LPARAM lParam)
 {
     const auto menu = reinterpret_cast<HMENU>(lParam);
     const auto menuItemIndex = LOWORD(wParam);
     const auto windowId = GetMenuItemID(menu, menuItemIndex);
+    if (const auto it = _keptSessionMenus.find(menu); it != _keptSessionMenus.end())
+    {
+        const auto groupId = it->second;
+        if (windowId == 0)
+        {
+            _restoreKeptGroup(groupId);
+        }
+        else if (windowId == 1 && _keptManager.KeptGroups().HasKey(groupId))
+        {
+            _keptManager.DiscardKeptGroup(groupId);
+        }
+        return;
+    }
+    if (windowId == 0 && _windows.empty() && _restoreAllKeptGroups())
+    {
+        return;
+    }
 
     // _notificationAreaMenuRequested constructs each menu item with an ID
     // that is either 0 for "Focus Terminal" or >0 for a specific window ID.
@@ -1695,6 +1799,83 @@ void WindowEmperor::_notificationAreaMenuClicked(const WPARAM wParam, const LPAR
     args.SummonBehavior.MoveToCurrentDesktop(false);
     args.SummonBehavior.ToMonitor(winrt::TerminalApp::MonitorBehavior::InPlace);
     std::ignore = _summonWindow(std::move(args));
+}
+
+bool WindowEmperor::_restoreKeptGroup(const winrt::guid& groupId)
+try
+{
+    _assertIsMainThread();
+    if (!_keptManager.KeptGroups().HasKey(groupId))
+    {
+        return false;
+    }
+    const auto createWindow = _windows.empty();
+    if (createWindow)
+    {
+        _createWindowForKeptGroups({ groupId });
+        return true;
+    }
+    const auto recent = _mostRecentWindow();
+    const auto selected = std::ranges::find_if(_windows, [recent](const auto& window) {
+        return window.get() == recent;
+    });
+    THROW_HR_IF(E_UNEXPECTED, selected == _windows.end());
+    const auto host = *selected;
+    const auto page = host->Logic().GetRoot().as<winrt::TerminalApp::TerminalPage>();
+    const auto restored = page.RestoreKeptGroup(groupId);
+    if (restored)
+    {
+        SummonWindowSelectionArgs args;
+        args.WindowID = host->Logic().WindowProperties().WindowId();
+        args.SummonBehavior.ToggleVisibility(false);
+        std::ignore = _summonWindow(args);
+    }
+    return restored;
+}
+catch (...)
+{
+    LOG_CAUGHT_EXCEPTION();
+    return false;
+}
+
+void WindowEmperor::_createWindowForKeptGroups(std::vector<winrt::guid> groups)
+{
+    winrt::Windows::Foundation::Rect bounds{};
+    for (const auto& group : groups)
+    {
+        const auto saved = _keptManager.KeptGroupBounds(group);
+        bounds.Width = std::max(bounds.Width, saved.Width);
+        bounds.Height = std::max(bounds.Height, saved.Height);
+    }
+    winrt::TerminalApp::WindowRequestedArgs args{ winrt::hstring{}, winrt::hstring{}, bounds };
+    args.KeptGroupIds(winrt::single_threaded_vector<winrt::guid>(std::move(groups)));
+    CreateNewWindow(args);
+}
+
+bool WindowEmperor::_restoreAllKeptGroups()
+{
+    std::vector<winrt::guid> groups;
+    for (const auto& group : _keptManager.KeptGroups())
+    {
+        groups.emplace_back(group.Key());
+    }
+    if (groups.empty())
+    {
+        return false;
+    }
+    if (_windows.empty())
+    {
+        // One receiver owns the complete batch. Later groups must not race the
+        // first window's startup by attaching to its still-unmeasured page.
+        _createWindowForKeptGroups(std::move(groups));
+        return true;
+    }
+    bool restored = false;
+    for (const auto& group : groups)
+    {
+        restored = _restoreKeptGroup(group) || restored;
+    }
+    return restored;
 }
 
 #pragma endregion
@@ -1827,7 +2008,8 @@ void WindowEmperor::_checkWindowsForNotificationIcon()
     // RequestsTrayIcon setting value, and combine that with the result of each
     // window (which won't change during a settings reload).
     const auto globals = _app.Logic().Settings().GlobalSettings();
-    auto needsIcon = globals.AlwaysShowNotificationIcon() || globals.MinimizeToNotificationArea();
+    auto needsIcon = globals.AlwaysShowNotificationIcon() || globals.MinimizeToNotificationArea() ||
+                     (_keptManager && _keptManager.HasKeptSessions());
     if (!needsIcon)
     {
         for (const auto& host : _windows)

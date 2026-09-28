@@ -72,6 +72,7 @@ namespace Microsoft::Terminal::Protocol::Parsing
         AgentChipTarget,      // Direct to TerminalPage, no broadcast — "draw the Agent chip on this pane (or hide override)"
         RestartAgentStack,    // Direct to TerminalPage, no broadcast — `/restart` from any agent pane TUI
         AgentSessionsRetired, // Direct to TerminalPage, no broadcast — destructive retirement transaction completed
+        SessionRegistryChanged, // Direct to TerminalPage, no broadcast — refresh open Sidebar History views
         Broadcast,            // Normalize envelope + broadcast to all subscribers
         Invalid               // Failed validation
     };
@@ -148,6 +149,10 @@ namespace Microsoft::Terminal::Protocol::Parsing
             if (method == "agent_sessions_retired")
             {
                 return SendEventRoute::AgentSessionsRetired;
+            }
+            if (method == "session_registry_changed")
+            {
+                return SendEventRoute::SessionRegistryChanged;
             }
         }
 

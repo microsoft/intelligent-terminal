@@ -84,6 +84,12 @@ surfaces:
 - `session_mgmt.rs` and dispatch callers: distinguish ACP-owned sessions from
   ordinary CLI history, and preserve the selected source when resuming.
 
+Agent history also activates sessions through master's `handle_session_activate`,
+not just the helper's picker. Both paths must use the same capability metadata,
+actual CLI executable, source/cwd validation and resume bindings. Keep origin
+indexing and row identity qualified by provider and execution source so equal raw
+session IDs cannot hide or activate a different provider's history.
+
 Add regression tests for ID parsing, wire round-trips, current-agent filtering,
 resume dispatch, and the exact CLI resume command. For CLI resume tabs, pass the
 stored session title to `wtcli new-tab`; do not force suppression of later
@@ -139,6 +145,9 @@ can observe normal interactive sessions. Inventory the complete lifecycle:
 - an ACP-mode guard so the shared agent-pane process does not emit duplicate
   hook-backed sessions;
 - UTF-8 payload handling through every process boundary.
+
+Native hooks must use the existing-only COM connection and never activate a
+stopped Terminal. Preserve this behavior when enriching provider payloads.
 
 Normalize a supported CLI identity before provider-specific handling, and make
 later source enrichment consume the same canonical identity rather than the raw

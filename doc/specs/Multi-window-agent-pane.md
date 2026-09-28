@@ -39,6 +39,22 @@ WT (one process, N windows)
 Per agent pane: 1 conpty + 1 helper process. Per Terminal: 1 master + 1
 agent CLI. **N panes ⇒ N helpers + 1 master + 1 agent CLI.**
 
+### Non-activating hook delivery
+
+Terminal publishes its existing COM class factory in the Running Object Table
+under the same fixed per-brand CLSID used by `WT_COM_CLSID`. Native `agent-hook`
+and cached `send-event` notifications with an `agent.` topic obtain that factory
+through `GetActiveObject`, then create the protocol object with the same
+non-aggregating `CreateInstance` call and compatibility handshake as ordinary
+activation. They never fall back to `CoCreateInstance`, even if shutdown races
+lookup or object creation.
+
+Shutdown revokes the active-object registration before posting quit. Failure to
+publish the hook endpoint is logged without disabling ordinary COM registration.
+No dynamic CLSID, new environment variable, hook-script rewrite, or headless
+timeout is required. Fixed-CLSID discovery prevents hooks from starting Terminal;
+it does not bind a delayed hook to a particular process across a later restart.
+
 ## Design history
 
 This document was first written as a "singleton wta" design (one wta process

@@ -150,9 +150,9 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 ### Built-in agent chat matrix
 
-- [ ] `C342` `[new]` `[UT✓]` `[E2E]` **Antigravity is registered as a standalone ACP provider:** The packaged availability probe recognizes the canonical provider and its separate native ACP executable without requiring Node.js. _(E2E: `Feature.AntigravityProvider`; no model requests.)_
-- [ ] `C343` `[new]` `[UT✓]` `[E2E]` **Antigravity WSL discovery requires the native Linux ACP executable:** The selected distro's native server is discovered without treating a Windows interop executable or the interactive CLI as the ACP runtime. _(E2E: `Feature.AntigravityProvider`; no model requests.)_
-- [ ] `C346` `[new]` `[UT✓]` `[E2E]` **Antigravity WSL sessions persist an in-distro resume command:** Native hook publication carries the owning distro, and a saved shell session resumes with the CLI inside that distro rather than launching the Windows executable. _(E2E: `Feature.SessionOwnershipRestore`; no model requests.)_
+- [ ] `C350` `[new]` `[UT✓]` `[E2E]` **Antigravity is registered as a standalone ACP provider:** The packaged availability probe recognizes the canonical provider and its separate native ACP executable without requiring Node.js. _(E2E: `Feature.AntigravityProvider`; no model requests.)_
+- [ ] `C351` `[new]` `[UT✓]` `[E2E]` **Antigravity WSL discovery requires the native Linux ACP executable:** The selected distro's native server is discovered without treating a Windows interop executable or the interactive CLI as the ACP runtime. _(E2E: `Feature.AntigravityProvider`; no model requests.)_
+- [ ] `C354` `[new]` `[UT✓]` `[E2E]` **Antigravity WSL sessions persist an in-distro resume command:** Native hook publication carries the owning distro, and a saved shell session resumes with the CLI inside that distro rather than launching the Windows executable. _(E2E: `Feature.SessionOwnershipRestore`; no model requests.)_
 
 - [ ] `C057` `[E2E]` `[MANUAL]` **Copilot chat works:** User can send a prompt and Copilot responds successfully.
 - [x] `C058` `[UT✓]` `[E2E]` **Copilot missing CLI path works:** Missing Copilot shows actionable setup/auth guidance, not a silent failure. _(UT: `is_cli_available_*` availability check + the auth/setup screen renders `render_auth_sign_in_card` / `render_auth_screen_shows_agent_name`; a missing binary degrades to a guidance screen, not a silent failure. Exercising a truly uninstalled Copilot stays MANUAL.)_
@@ -327,6 +327,9 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 **Feature definition:** Session management lists known live and historical agent sessions, shows their state, and lets users focus or resume supported sessions.
 
+- [ ] `C342` `[new]` `[E2E]` **Focusing a kept session reattaches its original tab:** The shared history/session focus path restores a detached whole tab, focuses the original pane, preserves shell/helper processes and state, and does not duplicate tabs or restore unrelated stale targets. _(E2E: `Feature.KeepRunningFocus`.)_
+- [ ] `C343` `[new]` `[E2E]` **Bare launch opens a new tab without attaching kept tabs:** With no windows and two detached tabs, Start menu Open and explicit profile launches create a new ordinary tab while retained processes stay alive and detached; only explicit session activation attaches them. _(E2E: `Feature.KeepRunningFocus`.)_
+
 ### Surfaces
 
 - [ ] `C109` `[E2E]` **Session button works:** The session-management button opens the session view.
@@ -458,6 +461,10 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 **Feature definition:** Packaged Intelligent Terminal includes WTA/wtcli integration and uses the packaged COM protocol server correctly.
 
+- [ ] `C342` `[new]` `[E2E]` **Hooks do not activate a stopped Terminal:** Native and cached lifecycle hooks with a valid fixed package CLSID cannot start a windowless COM server. _(E2E: `Feature.HookShutdown`.)_
+- [ ] `C343` `[new]` `[E2E]` **Live hooks reuse the fixed COM class:** Native, cached, and external agent notifications reach a running server using only the existing COM address; legitimate headless listeners remain connected. _(E2E: `Feature.HookShutdown`.)_
+- [ ] `C344` `[new]` `[E2E]` **Late hooks cannot restart Terminal:** Repeated hooks after the original server exits do not create a replacement or change saved state; non-agent notifications retain explicit COM activation. _(E2E: `Feature.HookShutdown`.)_
+
 - [ ] `C177` `[E2E]` **Packaged `wta.exe` is present:** WTA is deployed next to WindowsTerminal in the package layout.
 - [ ] `C178` `[E2E]` **Packaged identity works:** WTA/wtcli can activate the Terminal protocol COM server from packaged context.
 - [ ] `C179` `[E2E]` **Wrong unpackaged WTA is not used:** Agent pane/autofix does not accidentally use a stale dev-build WTA.
@@ -492,11 +499,11 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C188` `[E2E]` **WTA logs are written:** WTA process logs are created in the expected package-private log directory.
 - [ ] `C189` `[E2E]` **C++ agent pane log is written:** Terminal-side agent pane log is created.
 - [ ] `C190` `[E2E]` **Native hook bridge publishes events:** `wtcli agent-hook` reads stdin, redacts prompt content, and publishes a pane-scoped hook event. _(Also asserts the full redaction set — `prompt`, `tool_result`, `transcript_path`, `messages`, `model` — since `BuildAgentHookEventJson` has no unit-test project, only a fuzzer.)_
-- [ ] `C344` `[new]` `[E2E]` **Antigravity hooks preserve CLI identity without broadcasting provider metadata:** The native bridge maps the CLI conversation and workspace while excluding transcript, artifact, model and injected-content fields. _(E2E: `Feature.HookTrace`; no model requests.)_
-- [ ] `C345` `[new]` `[E2E]` **Antigravity stop hooks preserve working and error states:** Background work stays active, failures report Error, and non-CLI frontend hooks do not become terminal CLI sessions. _(E2E: `Feature.HookTrace`; no model requests.)_
-- [ ] `C347` `[new]` `[E2E]` **Antigravity rejects unsafe conversation IDs before hook publication:** Native hooks reject shell metacharacters and oversized identifiers before publishing resumable session state. _(E2E: `Feature.HookTrace`; no model requests.)_
-- [ ] `C348` `[new]` `[E2E]` **Antigravity hooks retain the CLI cwd when workspace roots are absent:** Missing provider workspace metadata falls back to the actual hook working directory so tracked sessions retain a resumable project location. _(E2E: `Feature.HookTrace`; no model requests.)_
-- [ ] `C349` `[new]` `[E2E]` **Antigravity rejects unsafe and unregistered WSL source metadata:** Hook source metadata must identify a safe registered distro before it can become persisted resume state. _(E2E: `Feature.HookTrace`; no model requests.)_
+- [ ] `C352` `[new]` `[E2E]` **Antigravity hooks preserve CLI identity without broadcasting provider metadata:** The native bridge maps the CLI conversation and workspace while excluding transcript, artifact, model and injected-content fields. _(E2E: `Feature.HookTrace`; no model requests.)_
+- [ ] `C353` `[new]` `[E2E]` **Antigravity stop hooks preserve working and error states:** Background work stays active, failures report Error, and non-CLI frontend hooks do not become terminal CLI sessions. _(E2E: `Feature.HookTrace`; no model requests.)_
+- [ ] `C355` `[new]` `[E2E]` **Antigravity rejects unsafe conversation IDs before hook publication:** Native hooks reject shell metacharacters and oversized identifiers before publishing resumable session state. _(E2E: `Feature.HookTrace`; no model requests.)_
+- [ ] `C356` `[new]` `[E2E]` **Antigravity hooks retain the CLI cwd when workspace roots are absent:** Missing provider workspace metadata falls back to the actual hook working directory so tracked sessions retain a resumable project location. _(E2E: `Feature.HookTrace`; no model requests.)_
+- [ ] `C357` `[new]` `[E2E]` **Antigravity rejects unsafe and unregistered WSL source metadata:** Hook source metadata must identify a safe registered distro before it can become persisted resume state. _(E2E: `Feature.HookTrace`; no model requests.)_
 - [ ] `C268` `[new]` `[E2E]` **Hook payload keeps interactive tool input:** `tool_input` is dropped for ordinary tool calls but retained for `ask_user`, so the proposal UI still gets its question without publishing every shell command an agent runs. _(#571.)_
 - [ ] `C269` `[new]` `[E2E]` **Hook bridge ignores shells outside Terminal:** A hook fired without `WT_SESSION` exits 0 and publishes nothing, so an unrelated process cannot inject pane-attributed agent events. _(#571.)_
 - [ ] `C272` `[new]` `[E2E]` **Hook events stay inside their broadcast budget:** An oversized routing field — not only an oversized payload — is dropped rather than broadcast, so every subscriber can budget its queue. _(#571; payload truncation cannot shrink `agent_session_id`, which is read from the hook JSON on stdin.)_

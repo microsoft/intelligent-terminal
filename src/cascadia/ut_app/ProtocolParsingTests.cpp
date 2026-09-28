@@ -17,6 +17,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(DefaultPasteRequestUsesDirectRoute);
         TEST_METHOD(AgentAvailabilityUsesDirectRoute);
         TEST_METHOD(AgentSessionsRetiredUsesDirectRoute);
+        TEST_METHOD(SessionRegistryChangedUsesDirectRoute);
         TEST_METHOD(RestartRequestIdentityIsStampedOnce);
         TEST_METHOD(BoundedCommandPreservesUtf8Characters);
         TEST_METHOD(BoundedBufferTailAppliesLineAndCharacterLimits);
@@ -77,6 +78,16 @@ namespace TerminalAppUnitTests
 
         VERIFY_ARE_EQUAL(SendEventRoute::AgentSessionsRetired, route);
         VERIFY_ARE_EQUAL("123-1", event["params"]["operation_id"].asString());
+    }
+
+    void ProtocolParsingTests::SessionRegistryChangedUsesDirectRoute()
+    {
+        Json::Value event;
+        const auto route = ClassifySendEvent(
+            R"({"type":"event","method":"session_registry_changed","params":{}})",
+            event);
+
+        VERIFY_ARE_EQUAL(SendEventRoute::SessionRegistryChanged, route);
     }
 
     void ProtocolParsingTests::RestartRequestIdentityIsStampedOnce()

@@ -494,6 +494,24 @@ pub(crate) enum SessionsAction {
         #[arg(long, value_enum, default_value_t = SessionsOriginArg::All)]
         origin: SessionsOriginArg,
     },
+    /// Activate one exact session row from the Sidebar History projection.
+    #[command(hide = true)]
+    Activate {
+        #[arg(long)]
+        session_id: String,
+        #[arg(long)]
+        provider: String,
+        #[arg(long, value_parser = ["host", "wsl"])]
+        location: String,
+        #[arg(long)]
+        wsl_distro: Option<String>,
+        #[arg(long)]
+        universe: Option<String>,
+        #[arg(long)]
+        window_id: u64,
+        #[arg(long)]
+        activation_id: String,
+    },
 }
 
 /// CLI value for `wta sessions list --origin`. Mirrors

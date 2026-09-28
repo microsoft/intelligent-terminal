@@ -17,6 +17,70 @@ namespace TerminalApp
         Vertical = 1,
     };
 
+    enum TabStripFilterMode
+    {
+        AllTabs = 0,
+        AgentsOnly = 1,
+    };
+
+    [default_interface] runtimeclass TabStripHistoryItem
+    {
+        String SessionId;
+        String Title;
+        String Subtitle;
+        String Cwd;
+        String PaneSessionId;
+        String AgentId;
+        String ProviderDisplayName;
+        String AgentSource;
+        String WslDistro;
+        String SessionUniverse;
+        String Status;
+        String SearchQuery;
+        Boolean IsLive;
+        Boolean IsAgentPane;
+        Boolean IsHistorical;
+    };
+
+    [default_interface] runtimeclass TabStripHistoryActivationEventArgs
+    {
+        TabStripHistoryItem Item { get; };
+    };
+
+    [default_interface] runtimeclass TabStripPaneItem : Windows.UI.Xaml.Data.INotifyPropertyChanged
+    {
+        Microsoft.UI.Xaml.Controls.TabViewItem Tab { get; };
+        UInt32 ContentId { get; };
+        String Title;
+        Boolean IsActive;
+        Windows.UI.Xaml.Visibility ActiveIndicatorVisibility;
+    };
+
+    [default_interface] runtimeclass TabStripDisplayItem : Windows.UI.Xaml.Data.INotifyPropertyChanged
+    {
+        Microsoft.UI.Xaml.Controls.TabViewItem Tab { get; };
+        Windows.Foundation.Collections.IObservableVector<TabStripPaneItem> PaneItems { get; };
+        Object Header;
+        String Title;
+        String SearchText;
+        Windows.UI.Xaml.Controls.IconElement Icon;
+        Windows.UI.Xaml.Controls.Primitives.FlyoutBase ContextFlyout;
+        Boolean IsExpanded;
+        Boolean IsGroup;
+        Windows.UI.Xaml.Visibility HeaderVisibility;
+        Windows.UI.Xaml.Visibility CloseVisibility;
+        Windows.UI.Xaml.Visibility SelectionVisibility;
+        Windows.UI.Xaml.Visibility GroupVisibility;
+        Windows.UI.Xaml.Visibility ChildrenVisibility;
+        String ChevronGlyph;
+    };
+
+    [default_interface] runtimeclass TabStripPaneEventArgs
+    {
+        Microsoft.UI.Xaml.Controls.TabViewItem Tab { get; };
+        UInt32 ContentId { get; };
+    };
+
     [default_interface] runtimeclass TabStripSelectionChangedEventArgs
     {
         Object AddedItem { get; };
@@ -57,15 +121,23 @@ namespace TerminalApp
 
         // Mirrors TabView.ContainerFromIndex — used by tearoff drop-position math.
         Windows.UI.Xaml.DependencyObject ContainerFromIndex(Int32 index);
+        void SetTabItemVisibility(Object item, Boolean visible);
+        void SetFilterStatus(UInt32 visibleTabCount, Boolean selectedTabVisible);
 
         Boolean CanReorderTabs;
         Boolean CanDragTabs;
+        Boolean TabsVisible;
+        Boolean IsRailCollapsed;
+        TabStripFilterMode FilterMode;
+        Boolean SearchActive;
+        String SearchQuery;
+        Windows.Foundation.Collections.IObservableVector<TabStripHistoryItem> HistoryItems { get; };
+        Boolean HistoryActive;
+        Boolean HistoryLoading;
+        String HistoryError;
 
-        // Top/bottom (or leading/trailing in horizontal) slots. Populated by
-        // TabRowControl.xaml with the elevation shield / workspaces button
-        // (leading) and the new-tab split button (trailing).
-        Windows.UI.Xaml.UIElement LeadingContent;
-        Windows.UI.Xaml.UIElement TrailingContent;
+        // Hosts the complete vertical chrome when no titlebar is available.
+        Windows.UI.Xaml.UIElement TopChromeContent;
 
         event Windows.Foundation.TypedEventHandler<TabStrip, TabStripSelectionChangedEventArgs> SelectionChanged;
         event Windows.Foundation.TypedEventHandler<TabStrip, TabStripCloseRequestedEventArgs> TabCloseRequested;
@@ -75,5 +147,21 @@ namespace TerminalApp
         event Windows.Foundation.TypedEventHandler<TabStrip, Windows.UI.Xaml.DragEventArgs> TabStripDragOver;
         event Windows.Foundation.TypedEventHandler<TabStrip, Windows.UI.Xaml.DragEventArgs> TabStripDrop;
         event Windows.Foundation.TypedEventHandler<TabStrip, TabStripDroppedOutsideEventArgs> TabDroppedOutside;
+        event Windows.Foundation.TypedEventHandler<TabStrip, Object> RailCollapseRequested;
+        event Windows.Foundation.TypedEventHandler<TabStrip, Object> CompactNewTabRequested;
+        event Windows.Foundation.TypedEventHandler<TabStrip, Object> CompactNewTabMenuRequested;
+        event Windows.Foundation.TypedEventHandler<TabStrip, Object> FilterChanged;
+        event Windows.Foundation.TypedEventHandler<TabStrip, Object> SearchActivationRequested;
+        event Windows.Foundation.TypedEventHandler<TabStrip, Object> SearchChanged;
+        event Windows.Foundation.TypedEventHandler<TabStrip, Object> HistoryRequested;
+        event Windows.Foundation.TypedEventHandler<TabStrip, Object> HistoryClosed;
+        event Windows.Foundation.TypedEventHandler<TabStrip, TabStripHistoryActivationEventArgs> HistoryActivationRequested;
+
+        void SetTabPresentation(Object item, String title, String iconPath);
+        void SetPaneItems(Object item, Windows.Foundation.Collections.IVector<TabStripPaneItem> panes, Boolean isGroup);
+        event Windows.Foundation.TypedEventHandler<TabStrip, TabStripPaneEventArgs> PaneActivationRequested;
+        event Windows.Foundation.TypedEventHandler<TabStrip, TabStripPaneEventArgs> PaneCloseRequested;
+        event Windows.Foundation.TypedEventHandler<TabStrip, TabStripCloseRequestedEventArgs> TabRenameRequested;
+        event Windows.Foundation.TypedEventHandler<TabStrip, TabStripCloseRequestedEventArgs> TabFocusRequested;
     };
 }

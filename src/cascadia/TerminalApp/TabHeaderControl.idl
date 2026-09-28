@@ -9,10 +9,12 @@ namespace TerminalApp
     [default_interface] runtimeclass TabHeaderControl : Windows.UI.Xaml.Controls.UserControl, Windows.UI.Xaml.Data.INotifyPropertyChanged
     {
         String Title { get; set; };
+        String SearchText { get; set; };
         Double RenamerMaxWidth { get; set; };
 
         TabHeaderControl();
         void BeginRename();
+        void CancelRename();
 
         Boolean InRename { get; };
 

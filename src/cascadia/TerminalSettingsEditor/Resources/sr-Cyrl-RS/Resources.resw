@@ -3044,4 +3044,8 @@ Alt+Shift+/ унесите упит; Alt+Shift+B покрените без по�
     <value>Уклони</value>
     <comment>Tooltip for the X button that removes a custom agent from the agent list.</comment>
   </data>
+  <data name="Globals_TabLayout.HelpText" xml:space="preserve">
+    <value>Вертикалне картице се приказују у колони променљиве величине на левој страни прозора. Промене се одмах примењују на све прозоре апликације Terminal.</value>
+    <comment>A description for what the &quot;tab layout&quot; setting does. Presented near &quot;Globals_TabLayout.Header&quot;.</comment>
+  </data>
 </root>

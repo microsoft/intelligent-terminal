@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 import "TaskbarState.idl";
 import "Remoting.idl";
+import "Tab.idl";
 // Microsoft.Terminal.Protocol types are available via project reference (.winmd)
 
 namespace TerminalApp
@@ -14,6 +15,24 @@ namespace TerminalApp
 
         Microsoft.Terminal.Control.ControlInteractivity TryLookupCore(UInt64 id);
         void Detach(Microsoft.Terminal.Control.TermControl control);
+
+        void OnPaneAgentSessionChanged(String eventJson);
+        String AgentSessionEvent(UInt64 contentId);
+
+        void KeepTab(TerminalPage owner, Tab tab);
+        Boolean HasKeptSessions();
+        Boolean IsKeptContent(UInt64 contentId);
+        Guid KeptGroupForPane(Guid sessionId);
+        Windows.Foundation.Collections.IMapView<Guid, String> KeptGroups();
+        Windows.Foundation.Collections.IVectorView<TerminalPage> KeptPages();
+        Windows.Foundation.Collections.IVectorView<Tab> KeptTabs(TerminalPage owner);
+        TerminalPage KeptGroupOwner(Guid groupId);
+        Windows.Foundation.Rect KeptGroupBounds(Guid groupId);
+        Tab BeginReattachKeptGroup(Guid groupId);
+        void CompleteKeptGroupReattach(Guid groupId, Boolean committed);
+        void DiscardKeptGroup(Guid groupId);
+        event Windows.Foundation.TypedEventHandler<ContentManager, Object> KeptSessionsChanged;
+        event Windows.Foundation.TypedEventHandler<ContentManager, String> DetachedSessionEvent;
     }
 
     [default_interface] runtimeclass RenameWindowRequestedArgs
@@ -190,11 +209,12 @@ namespace TerminalApp
         void OnAgentStateChanged(String eventJson);
 
         // Inbound event from WTA carrying
-        // {method:"resume_in_new_agent_tab",params:{session_id,cwd}}.
-        // Emitted by the session view's Shift+Enter handler. The page
-        // creates a new tab, reconciles the shared agent pane onto it, then
-        // publishes a `load_session` event back to wta carrying the new
-        // tab's StableId so wta calls ACP `session/load` for that tab.
+        // {method:"resume_in_new_agent_tab",
+        //  params:{window_id,session_id,cwd,agent_id,agent_model,
+        //          agent_source,wsl_distro}}.
+        // Emitted by the session view's Enter handler. The page reserves
+        // the exact provider before creating a tab, then starts its agent
+        // pane with a bundled ACP `session/load`.
         void OnResumeInNewAgentTabRequested(String eventJson);
 
         // Inbound event from a hookless WTA delegate carrying
@@ -222,5 +242,18 @@ namespace TerminalApp
         // Inbound completion for a destructive agent-session retirement:
         // {method:"agent_sessions_retired",params:{operation_id,success,reason,failed_tabs}}.
         void OnAgentSessionsRetired(String eventJson);
+
+        // Inbound notification that the master Session Registry changed.
+        // Refreshes an open Sidebar History view immediately; the periodic
+        // refresh remains as a missed-notification fallback.
+        void OnSessionRegistryChanged(String eventJson);
+
+        // Runtime-only whole-tab policy, keyed by Tab.StableId, not its mutable index.
+        // Direct pane close always terminates that pane.
+        Boolean CanKeepTabRunning(Guid tabId);
+        Boolean IsTabKeepRunning(Guid tabId);
+        void SetTabKeepRunning(Guid tabId, Boolean enabled);
+        Boolean RestoreKeptGroup(Guid groupId);
+        void ShutdownPanes();
     }
 }
