@@ -231,6 +231,20 @@ controlling:
 
 ##### Tab Row / "Titlebar"
 
+Intelligent Terminal's vertical sidebar uses the same resolved background as
+the horizontal tab row and custom titlebar, including the search/filter area
+and session history view. The current `useAcrylicInTabRow` setting enables a
+host-backdrop Acrylic brush with a 0.5 tint opacity; the active theme's
+`tabRow.background` / `tabRow.unfocusedBackground` supplies its tint.
+`compatibility.enableUnfocusedAcrylic` controls whether the app requests Acrylic
+while inactive. Windows can still substitute a solid fallback when transparency
+effects are unavailable or disabled. Profile `useAcrylic` / `opacity` settings
+apply to terminal content, not this window chrome.
+
+The new-tab and dropdown button shares this backdrop: with Acrylic enabled,
+its normal background is transparent and hover/pressed states use translucent
+overlays. Solid-background and high-contrast modes retain opaque button fills.
+
 * `tabRow.background`: Control the color of the background of the tab row. When
   tabs in the titlebar are enabled, this sets the color of the titlebar. See
   below for accepted colors.

@@ -977,8 +977,9 @@ namespace winrt::TerminalApp::implementation
             {
                 flyout.Hide();
             }
-            _updateHistoryVisualState();
         }
+
+        _updateHistoryVisualState();
 
         for (uint32_t index = 0; index < _tabItems.Size(); ++index)
         {
@@ -1233,6 +1234,8 @@ namespace winrt::TerminalApp::implementation
     void TabStrip::_updateHistoryVisualState()
     {
         const auto visible = _historyActive && !_isRailCollapsed;
+        // Both views share the strip's backdrop instead of covering live tabs with an opaque history panel.
+        TabsPanel().Visibility(visible ? Visibility::Collapsed : Visibility::Visible);
         HistoryPanel().Visibility(visible ? Visibility::Visible : Visibility::Collapsed);
         HistoryLoadingIndicator().IsActive(visible && _historyLoading);
         HistoryLoadingIndicator().Visibility(visible && _historyLoading ? Visibility::Visible : Visibility::Collapsed);

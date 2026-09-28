@@ -272,6 +272,9 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TryInitializePage);
         TEST_METHOD(VerticalRailVisibilityRestoresWidth);
         TEST_METHOD(VerticalRailCollapseRestoresWidth);
+        TEST_METHOD(VerticalTabChromeBackgroundTracksTheme);
+        TEST_METHOD(NewTabButtonSharesAcrylicBackdrop);
+        TEST_METHOD(VerticalTabHistorySharesBackdrop);
         TEST_METHOD(LiveTabLayoutRoundTripPreservesState);
         TEST_METHOD(LiveTabLayoutLatestRequestWins);
         TEST_METHOD(TabLayoutSwitchMenuTracksOrientation);
@@ -2978,6 +2981,10 @@ namespace TerminalAppLocalTests
         auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
 
         TestOnUIThread([&]() {
+            page->_settings.GlobalSettings().UseAcrylicInTabRow(true);
+            page->WindowActivated(true);
+            VERIFY_IS_NOT_NULL(page->_tabStrip.Background().try_as<Media::AcrylicBrush>());
+
             const auto infoBar = page->FindName(L"TabLayoutRestartInfoBar").as<winrt::Microsoft::UI::Xaml::Controls::InfoBar>();
             VERIFY_IS_FALSE(infoBar.IsOpen());
 
@@ -3026,6 +3033,8 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(horizontalNewTabButton.Parent() == horizontalNewTabParent);
             VERIFY_IS_TRUE(verticalNewTabButton.Parent() == verticalNewTabParent);
             VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_tabStrip.Visibility());
+            VERIFY_IS_TRUE(page->_tabRow.Background() == page->TitlebarBrush());
+            VERIFY_IS_NOT_NULL(page->_tabRow.Background().try_as<Media::AcrylicBrush>());
             VERIFY_ARE_EQUAL(0.0, page->VerticalRailColumn().Width().Value);
             VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_verticalRailSplitter.Visibility());
 
@@ -3047,9 +3056,202 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(horizontalNewTabButton.Parent() == horizontalNewTabParent);
             VERIFY_IS_TRUE(verticalNewTabButton.Parent() == verticalNewTabParent);
             VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabStrip.Visibility());
+            VERIFY_IS_TRUE(page->_tabStrip.Background() == page->TitlebarBrush());
+            VERIFY_IS_NOT_NULL(page->_tabStrip.Background().try_as<Media::AcrylicBrush>());
             VERIFY_IS_TRUE(page->_isVerticalRailCollapsed);
             VERIFY_ARE_EQUAL(40.0, page->VerticalRailColumn().Width().Value);
             VERIFY_ARE_EQUAL(333.0, page->_verticalRailWidth);
+        });
+    }
+
+    void TabTests::VerticalTabChromeBackgroundTracksTheme()
+    {
+        const CascadiaSettings settings{ LR"({
+            "defaultProfile": "{6239a42c-1111-49a3-80bd-e8fdd045185c}",
+            "showTabsInTitlebar": false,
+            "tabLayout": "vertical",
+            "theme": "chrome",
+            "themes": [{
+                "name": "chrome",
+                "window": { "applicationTheme": "dark" },
+                "tabRow": { "background": "#123456", "unfocusedBackground": "#654321" }
+            }],
+            "profiles": [{
+                "name": "profile0",
+                "guid": "{6239a42c-1111-49a3-80bd-e8fdd045185c}",
+                "closeOnExit": "never"
+            }]
+        })",
+                                         {} };
+        winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> page;
+        _initializeTerminalPage(page, settings);
+
+        TestOnUIThread([&]() {
+            const auto globals = page->_settings.GlobalSettings();
+            for (const auto hasTitlebarHost : { false, true })
+            {
+                page->_hasTitlebarHost = hasTitlebarHost;
+                for (const auto useAcrylic : { false, true })
+                {
+                    globals.UseAcrylicInTabRow(useAcrylic);
+                    for (const auto unfocusedAcrylic : { false, true })
+                    {
+                        globals.EnableUnfocusedAcrylic(unfocusedAcrylic);
+                        for (const auto activated : { false, true })
+                        {
+                            page->WindowActivated(activated);
+                            const auto brush = page->TitlebarBrush();
+                            VERIFY_IS_TRUE(page->_tabStrip.Background() == brush);
+                            const auto expectedColor = activated ?
+                                                           winrt::Windows::UI::ColorHelper::FromArgb(255, 0x12, 0x34, 0x56) :
+                                                           winrt::Windows::UI::ColorHelper::FromArgb(255, 0x65, 0x43, 0x21);
+                            if (useAcrylic && (activated || unfocusedAcrylic))
+                            {
+                                const auto acrylic = brush.try_as<Media::AcrylicBrush>();
+                                VERIFY_IS_NOT_NULL(acrylic);
+                                VERIFY_ARE_EQUAL(Media::AcrylicBackgroundSource::HostBackdrop, acrylic.BackgroundSource());
+                                VERIFY_ARE_EQUAL(0.5, acrylic.TintOpacity());
+                                VERIFY_ARE_EQUAL(expectedColor, acrylic.TintColor());
+                                VERIFY_ARE_EQUAL(expectedColor, acrylic.FallbackColor());
+                            }
+                            else
+                            {
+                                VERIFY_ARE_EQUAL(expectedColor, brush.as<Media::SolidColorBrush>().Color());
+                            }
+
+                            if (hasTitlebarHost)
+                            {
+                                VERIFY_ARE_EQUAL(uint8_t{ 0 }, page->_tabRow.Background().as<Media::SolidColorBrush>().Color().A);
+                            }
+                            else
+                            {
+                                VERIFY_IS_TRUE(page->_tabRow.Background() == brush);
+                            }
+                        }
+                    }
+                }
+            }
+            page->_hasTitlebarHost = false;
+        });
+    }
+
+    void TabTests::NewTabButtonSharesAcrylicBackdrop()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            const auto tabRow = winrt::get_self<winrt::TerminalApp::implementation::TabRowControl>(page->_tabRow);
+            const auto originalLayout = tabRow->IsVerticalLayout();
+            tabRow->IsVerticalLayout(true);
+            const auto originalButton = page->_newTabButton;
+            const auto originalBrush = page->TitlebarBrush();
+            const auto restore = wil::scope_exit([&]() {
+                page->_newTabButton = originalButton;
+                page->TitlebarBrush(originalBrush);
+                tabRow->IsVerticalLayout(originalLayout);
+            });
+            const auto highContrast = winrt::Windows::UI::ViewManagement::AccessibilitySettings{}.HighContrast();
+
+            for (const auto button : { tabRow->NewTabButton(), tabRow->VerticalNewTabButton() })
+            {
+                page->_newTabButton = button;
+                button.ApplyTemplate();
+                const auto root = Media::VisualTreeHelper::GetChild(button, 0).as<Grid>();
+                const auto primary = root.FindName(L"PrimaryBackgroundGrid").as<Grid>();
+                const auto secondary = root.FindName(L"SecondaryBackgroundGrid").as<Grid>();
+                for (const auto color : { winrt::Windows::UI::Colors::Black(), winrt::Windows::UI::Colors::White() })
+                {
+                    // Include a return to opaque rendering after Acrylic was enabled.
+                    for (const auto useAcrylic : { false, true, false })
+                    {
+                        if (useAcrylic)
+                        {
+                            Media::AcrylicBrush acrylic;
+                            acrylic.BackgroundSource(Media::AcrylicBackgroundSource::HostBackdrop);
+                            acrylic.TintColor(color);
+                            acrylic.FallbackColor(color);
+                            page->TitlebarBrush(acrylic);
+                        }
+                        else
+                        {
+                            page->TitlebarBrush(Media::SolidColorBrush{ color });
+                        }
+                        page->_SetNewTabButtonColor(color, color);
+                        const auto transparent = useAcrylic && !highContrast;
+                        const auto resources = button.Resources();
+                        const auto normal = resources.Lookup(winrt::box_value(L"SplitButtonBackground")).as<Media::SolidColorBrush>().Color();
+                        const auto hover = resources.Lookup(winrt::box_value(L"SplitButtonBackgroundPointerOver")).as<Media::SolidColorBrush>().Color();
+                        const auto pressed = resources.Lookup(winrt::box_value(L"SplitButtonBackgroundPressed")).as<Media::SolidColorBrush>().Color();
+                        VERIFY_ARE_EQUAL(transparent ? uint8_t{ 0 } : uint8_t{ 255 }, normal.A);
+                        VERIFY_ARE_EQUAL(transparent ? uint8_t{ 13 } : uint8_t{ 255 }, hover.A);
+                        VERIFY_ARE_EQUAL(transparent ? uint8_t{ 26 } : uint8_t{ 255 }, pressed.A);
+                        if (!transparent)
+                        {
+                            VERIFY_ARE_EQUAL(color, normal);
+                        }
+                        VERIFY_ARE_EQUAL(normal, button.Background().as<Media::SolidColorBrush>().Color());
+                        const auto verifyState = [&](const wchar_t* state, const auto& primaryColor, const auto& secondaryColor) {
+                            VERIFY_IS_TRUE(VisualStateManager::GoToState(button, state, false));
+                            VERIFY_ARE_EQUAL(primaryColor, primary.Background().as<Media::SolidColorBrush>().Color());
+                            VERIFY_ARE_EQUAL(secondaryColor, secondary.Background().as<Media::SolidColorBrush>().Color());
+                        };
+                        verifyState(L"PrimaryPointerOver", hover, normal);
+                        verifyState(L"PrimaryPressed", pressed, normal);
+                        verifyState(L"SecondaryPointerOver", normal, hover);
+                        verifyState(L"SecondaryPressed", normal, pressed);
+                        verifyState(L"FlyoutOpen", pressed, pressed);
+                        verifyState(L"Normal", normal, normal);
+                    }
+                }
+            }
+        });
+    }
+
+    void TabTests::VerticalTabHistorySharesBackdrop()
+    {
+        winrt::TerminalApp::TabStrip strip{ nullptr };
+        TestOnUIThread([&]() {
+            strip = winrt::TerminalApp::TabStrip{};
+            Window::Current().Content(strip);
+            Window::Current().Activate();
+            strip.UpdateLayout();
+        });
+
+        TestOnUIThread([&]() {
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            Media::AcrylicBrush acrylic;
+            acrylic.BackgroundSource(Media::AcrylicBackgroundSource::HostBackdrop);
+            strip.Background(acrylic);
+            VERIFY_IS_TRUE(strip.Content().as<Grid>().Background() == acrylic);
+            VERIFY_IS_NULL(stripImpl->FilterStatusBar().Background());
+            VERIFY_ARE_EQUAL(uint8_t{ 0 }, stripImpl->HistoryPanel().Background().as<Media::SolidColorBrush>().Color().A);
+
+            winrt::MUX::Controls::TabViewItem tab;
+            strip.TabItems().Append(tab);
+            strip.SelectedItem(tab);
+            strip.SearchActive(true);
+            strip.SearchQuery(L"power");
+            strip.FilterMode(winrt::TerminalApp::TabStripFilterMode::AgentsOnly);
+
+            strip.HistoryActive(true);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->TabsPanel().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->HistoryPanel().Visibility());
+            VERIFY_IS_TRUE(strip.Background() == acrylic);
+
+            strip.IsRailCollapsed(true);
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->TabsPanel().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->HistoryPanel().Visibility());
+            strip.IsRailCollapsed(false);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->TabsPanel().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->HistoryPanel().Visibility());
+
+            strip.HistoryActive(false);
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->TabsPanel().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->HistoryPanel().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->SearchPanel().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->FilterStatusBar().Visibility());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"power" }, strip.SearchQuery());
+            VERIFY_IS_TRUE(strip.SelectedItem() == tab);
         });
     }
 

@@ -13370,10 +13370,22 @@ namespace winrt::TerminalApp::implementation
         const auto pressedColorAdjustment = isLightAccentColor ? -0.1f : 0.1f;
 
         const auto foregroundColor = isBrightColor ? Colors::Black() : Colors::White();
-        const auto hoverColor = til::color{ ColorFix::AdjustLightness(accentColor, hoverColorAdjustment) };
-        const auto pressedColor = til::color{ ColorFix::AdjustLightness(accentColor, pressedColorAdjustment) };
+        auto backgroundColor = accentColor;
+        auto hoverColor = til::color{ ColorFix::AdjustLightness(accentColor, hoverColorAdjustment) };
+        auto pressedColor = til::color{ ColorFix::AdjustLightness(accentColor, pressedColorAdjustment) };
 
-        Media::SolidColorBrush backgroundBrush{ accentColor };
+        if (TitlebarBrush().try_as<Media::AcrylicBrush>() &&
+            !winrt::Windows::UI::ViewManagement::AccessibilitySettings{}.HighContrast())
+        {
+            // Reveal the shared backdrop instead of covering it with the opaque tint.
+            backgroundColor = Colors::Transparent();
+            hoverColor = isLightAccentColor ? Colors::Black() : Colors::White();
+            pressedColor = hoverColor;
+            hoverColor.a = 13;
+            pressedColor.a = 26;
+        }
+
+        Media::SolidColorBrush backgroundBrush{ backgroundColor };
         Media::SolidColorBrush backgroundHoverBrush{ hoverColor };
         Media::SolidColorBrush backgroundPressedBrush{ pressedColor };
         Media::SolidColorBrush foregroundBrush{ foregroundColor };
@@ -14231,7 +14243,9 @@ namespace winrt::TerminalApp::implementation
             TitlebarBrush(backgroundSolidBrush);
         }
 
-        if (!_hasTitlebarHost || _isVerticalLayout)
+        _tabStrip.Background(TitlebarBrush());
+
+        if (!_hasTitlebarHost)
         {
             _tabRow.Background(TitlebarBrush());
         }
