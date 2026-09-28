@@ -32,7 +32,6 @@
 #include <io.h>
 #include <iostream>
 #include <string>
-#include <filesystem>
 #include <string_view>
 #include <thread>
 #include <vector>
@@ -1254,31 +1253,8 @@ int wmain(int argc, wchar_t** argv)
                     }
                     event["params"]["wsl_distro"] = distro;
                 }
-                auto& payload = event["params"]["payload"];
-                const auto currentCwd = payload.get("cwd", Json::Value{});
-                if (!currentCwd.isString() || currentCwd.asString().empty())
-                {
-                    if (event["params"].isMember("wsl_distro"))
-                    {
-                        if (hookCwd.starts_with('/'))
-                        {
-                            payload["cwd"] = hookCwd;
-                        }
-                    }
-                    else
-                    {
-                        std::error_code error;
-                        const auto cwd = std::filesystem::current_path(error);
-                        if (error)
-                        {
-                            LOG_HR(HRESULT_FROM_WIN32(error.value()));
-                        }
-                        else
-                        {
-                            payload["cwd"] = winrt::to_string(cwd.native());
-                        }
-                    }
-                }
+                wtcli::ApplyAgentHookPaneCwd(
+                    event["params"]["payload"], context["pane"], event["params"].isMember("wsl_distro"));
             }
 
             Json::StreamWriterBuilder writer;

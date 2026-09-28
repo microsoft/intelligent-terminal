@@ -377,8 +377,9 @@ installation. The packaged bridge uses Windows PowerShell and `wtcli.exe` throug
 WSL interoperability, which must be enabled and resolvable from the Terminal shell.
 The WSL command forwards the distro through child-scoped `WSLENV`, so tracking
 does not depend on an interactive Bash prompt having emitted shell metadata.
-Provider workspace roots can be empty; the bridge then uses the actual hook cwd
-and preserves it for session tracking and resume.
+Provider workspace roots can be empty, and hooks may run in the plugin directory.
+The bridge instead uses the owning pane's reported or known launch directory,
+including a WSL `--cd` directory, for session tracking and resume.
 Only CLI transcript callbacks are forwarded; shared ACP processes and other
 Antigravity frontends do not create duplicate shell-session rows.
 

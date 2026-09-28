@@ -193,7 +193,11 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
     }
 
     It 'Antigravity hooks retain the CLI cwd when workspace roots are absent' {
-        $paneId = (Get-ActivePane -App $script:app).session_id
+        $cliDirectory = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures')).Path
+        $pluginDirectory = Join-Path $TestDrive 'plugin-runtime'
+        New-Item -ItemType Directory -Path $pluginDirectory | Out-Null
+        $paneId = (New-WtTab -App $script:app -Command 'pwsh -NoProfile' -Cwd $cliDirectory).session_id
+        $shellProcess = Get-Process -Id (Get-WtPaneStatus -App $script:app -SessionId $paneId).pid -ErrorAction Stop
         $sessionId = "empty-workspaces-$([guid]::NewGuid())"
         $file = script:Write-HookPayload -Name 'empty-workspace-roots' -Dir $TestDrive -Json (@{
             conversationId = $sessionId
@@ -202,16 +206,21 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
         } | ConvertTo-Json -Compress)
         $listener = Start-WtEventListener -App $script:app -WaitForReady
         try {
+            $childCommand = "Set-Location '$pluginDirectory'; `$env:WSL_DISTRO_NAME='Unrelated-WSL'; `$env:WTA_HOOK_CWD=''; Get-Content -Raw -LiteralPath '$file' | wtcli.exe agent-hook --cli-source antigravity --event agent.prompt.submit"
+            $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($childCommand))
             Invoke-RunCommand -App $script:app -SessionId $paneId -SettleSec 2 `
-                -Command "`$savedDistro=`$env:WSL_DISTRO_NAME; `$savedCwd=`$env:WTA_HOOK_CWD; Push-Location '$TestDrive'; try { `$env:WSL_DISTRO_NAME='Unrelated-WSL'; `$env:WTA_HOOK_CWD=''; Get-Content -Raw -LiteralPath '$file' | wtcli.exe agent-hook --cli-source antigravity --event agent.prompt.submit } finally { `$env:WSL_DISTRO_NAME=`$savedDistro; `$env:WTA_HOOK_CWD=`$savedCwd; Pop-Location }" | Out-Null
+                -Command "pwsh -NoProfile -EncodedCommand $encoded" | Out-Null
             $event = Wait-WtEvent -Listener $listener -TimeoutSec 20 -Predicate {
                 $_.method -eq 'agent_event' -and $_.params.agent_session_id -eq $sessionId
             }
-            $event.params.payload.cwd | Should -Be $TestDrive
+            $event.params.payload.cwd | Should -Be $cliDirectory -Because 'hook process cwd can be the plugin directory, not the owning CLI workspace'
             @($event.params.PSObject.Properties.Name) | Should -Not -Contain 'wsl_distro'
         }
         finally {
             Stop-WtEventListener -Listener $listener
+            Invoke-WtCli -App $script:app -Arguments @('kill-pane', '-t', $paneId) | Out-Null
+            $shellProcess.WaitForExit(5000) | Should -BeTrue -Because 'the owned shell must release its working directory before TestDrive cleanup'
+            $shellProcess.Dispose()
         }
     }
 

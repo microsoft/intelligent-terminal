@@ -158,8 +158,10 @@ shell-based CLI resume command must satisfy the same bounded safe-token contract
 at publication and at the unquoted execution boundary; ACP-only IDs remain opaque.
 
 Mounted workspace roots are not guaranteed to contain the CLI launch directory.
-When that metadata is absent, preserve an observed hook/process cwd rather than
-inventing a home directory, including across WSL interoperability.
+Hooks can execute in a plugin directory, so their process cwd is not necessarily
+the CLI workspace. When provider metadata is absent, use source-compatible cwd
+from the owning pane, including known WSL launch metadata before shell reporting;
+leave ambiguous directories unknown rather than inventing a home directory.
 Do not infer WSL execution from a distro environment variable alone; require the
 source-specific forwarded context or the owning pane's reported shell.
 Validate distro grammar before any shell-based resume and verify registration

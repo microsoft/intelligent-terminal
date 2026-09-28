@@ -18,6 +18,7 @@
 #include "AgentPaneLog.h"
 #include "../../types/inc/utils.hpp"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
+#include "../inc/AgentSourceUtils.h"
 
 #include <wil/resource.h>
 #include <json/json.h>
@@ -116,7 +117,12 @@ namespace winrt::TerminalApp::implementation
 
         if (const auto control = pane->GetTerminalControl())
         {
-            info.Cwd = control.WorkingDirectory();
+            const auto settings = control.Settings();
+            info.Cwd = winrt::hstring{ ::Microsoft::Terminal::AgentSource::ResolvePaneCwd(
+                std::wstring_view{ control.WorkingDirectory() },
+                control.WorkingDirectoryReportedByShell(),
+                std::wstring_view{ settings.Commandline() },
+                std::wstring_view{ settings.StartingDirectory() }) };
             info.Shell = control.ShellName();
             info.ShellVersion = control.ShellVersion();
         }

@@ -259,6 +259,30 @@ namespace wtcli
         return reduced;
     }
 
+    inline void ApplyAgentHookPaneCwd(Json::Value& payload, const Json::Value& pane, const bool wsl)
+    {
+        const auto current = payload.get("cwd", Json::Value{});
+        if ((current.isString() && !current.asString().empty()) || !pane.isObject())
+        {
+            return;
+        }
+        const auto cwd = pane.get("cwd", Json::Value{});
+        if (!cwd.isString())
+        {
+            return;
+        }
+        const auto path = cwd.asString();
+        const auto posix = path.starts_with('/') && !path.starts_with("//");
+        const auto drive = path.size() >= 3 &&
+                           ((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')) &&
+                           path[1] == ':' && (path[2] == '\\' || path[2] == '/');
+        const auto unc = path.size() > 2 && (path.starts_with("\\\\") || path.starts_with("//"));
+        if (wsl ? posix : drive || unc)
+        {
+            payload["cwd"] = cwd;
+        }
+    }
+
     // Build an agent hook event directly from the hook JSON delivered on stdin.
     // This is the native equivalent of the former PowerShell bridge.
     //
