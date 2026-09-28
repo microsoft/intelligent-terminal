@@ -34,7 +34,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 ## 0. First-run experience (FRE)
 
-**Feature definition:** FRE guides first-time users through agent selection, automatic approval, pane position, automatic error detection, automatic error suggestion, and session-management hook setup.
+**Feature definition:** FRE guides first-time users through tab mode, agent selection, automatic approval, pane position, automatic error detection, automatic error suggestion, and session-management hook setup.
 
 - [ ] `C007` `[E2E]` **FRE opens correctly:** A clean user profile launches the FRE instead of skipping directly to the terminal.
 - [ ] `C008` `[E2E]` **FRE can be completed:** The user can go through every page, save settings, and enter the main terminal window.
@@ -48,6 +48,11 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C307` `[new]` `[UT✓]` `[E2E]` **FRE configures automatic approval:** The first-run settings page reuses the Settings title, description, setting key, provider/policy availability, and Off default. Unsupported or policy-blocked states are hidden and persist Off. _(UT: shared SettingsModel availability and source reuse checks; E2E: `Feature.FreAgentSetup` / `Feature.AgentPolicy`.)_
 - [ ] `C308` `[new]` `[UT✓]` `[E2E]` **FRE hides unsupported automatic approval:** Selecting OpenCode in first-run setup hides the disabled control and persists `agentPane.yoloMode=false`. _(UT: shared provider availability; E2E: `Feature.FreAgentSetup`.)_
 - [ ] `C309` `[new]` `[UT✓]` `[E2E]` **FRE hides policy-blocked automatic approval:** `AllowAutomaticApproval=0` hides the disabled first-run control and startup normalization clears the stored preference. _(UT: policy availability/normalization; E2E: `Feature.AgentPolicy`.)_
+
+### FRE tab mode
+
+- [ ] `C345` `[new]` `[E2E]` **FRE offers Sidebar as the initial Tab Mode:** Tab Mode is the first settings choice and defaults to Sidebar only when no tab layout is explicitly configured. Changing the selection or closing FRE without Save does not persist it. _(E2E: `Feature.FreFlow`.)_
+- [ ] `C346` `[new]` `[E2E]` **FRE saves the selected Tab Mode:** An explicit existing preference is retained until the user changes and saves it. Save persists Sidebar or Horizontal, applies the matching layout, and does not reopen FRE after restart. _(E2E: `Feature.FreFlow`.)_
 
 ### FRE agent selection
 
