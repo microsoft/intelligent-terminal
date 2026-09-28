@@ -493,6 +493,10 @@ pub(crate) enum SessionsAction {
         /// WTA spawned for an Intelligent Terminal agent pane.
         #[arg(long, value_enum, default_value_t = SessionsOriginArg::All)]
         origin: SessionsOriginArg,
+        /// Refresh all installed, policy-allowed host agents in the background.
+        /// Connections remain in the master pool; this command returns the current snapshot.
+        #[arg(long)]
+        all_agents: bool,
     },
     /// Activate one exact session row from the Sidebar History projection.
     #[command(hide = true)]

@@ -170,7 +170,15 @@ namespace winrt::TerminalApp::implementation
             const auto tab = weakTab.get();
             if (page && tab)
             {
-                page->_RefreshTabStripPaneItems(tab);
+                page->_ApplyTabListProjection(*tab);
+            }
+        });
+        newTabImpl->TabColorChanged([weakTab, weakThis{ get_weak() }]() {
+            const auto page = weakThis.get();
+            const auto tab = weakTab.get();
+            if (page && tab && page->_isVerticalLayout)
+            {
+                winrt::get_self<implementation::TabStrip>(page->_tabStrip)->RefreshTabColor(tab->TabViewItem());
             }
         });
 
@@ -213,7 +221,6 @@ namespace winrt::TerminalApp::implementation
         }
 
         _tabItems().InsertAt(insertPosition, tabViewItem);
-        _RefreshTabStripPaneItems(newTabImpl);
 
         tabViewItem.PointerPressed({ this, &TerminalPage::_OnTabPointerPressed });
 
@@ -262,11 +269,10 @@ namespace winrt::TerminalApp::implementation
         // we'll attach the terminal's Xaml control to the Xaml root.
         if (!openInBackground)
         {
-            // A foreground tab must become the active live tab. Dismiss the
-            // History overlay before changing selection so its focused
-            // ListView cannot restore the previously selected row afterward.
+            // Explicit new-tab actions leave History, but protocol activation
+            // changes the focused content without changing the sidebar view.
             const auto historyWasActive = _tabStrip && _tabStrip.HistoryActive();
-            if (historyWasActive)
+            if (historyWasActive && !_preserveSidebarHistory)
             {
                 _CloseSidebarHistory(false);
             }
@@ -1748,7 +1754,16 @@ namespace winrt::TerminalApp::implementation
             p.Visibility(Visibility::Collapsed);
         }
         _UpdateTabView();
-        _ApplyTabListProjection();
+        if (!_rearranging &&
+            eventArgs.CollectionChange() == Windows::Foundation::Collections::CollectionChange::ItemInserted &&
+            eventArgs.Index() < _tabs.Size())
+        {
+            _ApplyTabListProjection(_tabs.GetAt(eventArgs.Index()));
+        }
+        else
+        {
+            _ApplyTabListProjection();
+        }
     }
 
     void TerminalPage::_OnTabPointerPressed(const IInspectable& sender, const Windows::UI::Xaml::Input::PointerRoutedEventArgs& e)
@@ -1943,10 +1958,10 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         _OnSelectionChangedCore();
-        _ApplyTabListProjection();
+        _UpdateTabFilterStatus();
     }
 
-    void TerminalPage::_ApplyTabListProjection()
+    void TerminalPage::_ApplyTabListProjection(const TerminalApp::Tab& changedTab)
     {
         if (!_tabStrip)
         {
@@ -1959,16 +1974,12 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
+        const auto refreshAll = _pendingTabProjectionRefresh || !changedTab;
         _pendingTabProjectionRefresh = false;
-        const bool agentScopeEffective = _IsAgentScopeEffective();
         const bool positionOperationsBlocked = _IsTabListPositionOperationBlocked();
-        uint32_t scopeVisibleTabCount = 0;
-        bool selectedTabMatchesScope = true;
-        const auto selectedItem = _selectedTabItem();
         const auto highlightQuery = _IsTabSearchEffective() ? _tabSearchQuery : winrt::hstring{};
 
-        for (const auto& tab : _tabs)
-        {
+        const auto apply = [&](const TerminalApp::Tab& tab) {
             const auto item = tab.TabViewItem();
             auto header = item.Header().try_as<TerminalApp::TabHeaderControl>();
             if (!header && _isVerticalLayout)
@@ -1984,7 +1995,6 @@ namespace winrt::TerminalApp::implementation
                 winrt::get_self<implementation::TabStrip>(_tabStrip)->SetTabSearchText(item, highlightQuery);
             }
             const auto tabImpl = _GetTabImpl(tab);
-            const auto matchesScope = !agentScopeEffective || _MatchesTabScope(tabImpl);
             const auto visible = _IsTabVisibleInProjection(tabImpl);
             if (tabImpl)
             {
@@ -1996,20 +2006,51 @@ namespace winrt::TerminalApp::implementation
                 }
             }
             _tabStrip.SetTabItemVisibility(item, visible);
-            scopeVisibleTabCount += matchesScope ? 1u : 0u;
-            if (selectedItem && winrt::get_abi(selectedItem) == winrt::get_abi(item))
+        };
+        if (!refreshAll)
+        {
+            apply(changedTab);
+        }
+        else
+        {
+            for (const auto& tab : _tabs)
             {
-                selectedTabMatchesScope = matchesScope;
+                apply(tab);
             }
         }
 
-        _tabStrip.SetFilterStatus(agentScopeEffective ? scopeVisibleTabCount : _tabs.Size(),
-                                 !agentScopeEffective || selectedTabMatchesScope);
+        _UpdateTabFilterStatus();
         const auto canDragDrop = CanDragDrop() &&
                                  !positionOperationsBlocked &&
                                  !_IsCollapsedVerticalRail();
         _tabStrip.CanReorderTabs(canDragDrop);
         _tabStrip.CanDragTabs(canDragDrop);
+    }
+
+    void TerminalPage::_UpdateTabFilterStatus()
+    {
+        if (!_tabStrip || !_isVerticalLayout)
+        {
+            return;
+        }
+
+        uint32_t visibleCount = _tabs.Size();
+        bool selectedMatches = true;
+        if (_IsAgentScopeEffective())
+        {
+            visibleCount = 0;
+            const auto selected = _selectedTabItem();
+            for (const auto& tab : _tabs)
+            {
+                const auto matches = _MatchesTabScope(_GetTabImpl(tab));
+                visibleCount += matches ? 1u : 0u;
+                if (tab.TabViewItem() == selected)
+                {
+                    selectedMatches = matches;
+                }
+            }
+        }
+        _tabStrip.SetFilterStatus(visibleCount, selectedMatches);
     }
 
     bool TerminalPage::_MatchesTabScope(const winrt::com_ptr<Tab>& tab) const
@@ -2112,7 +2153,7 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         _OnSelectionChangedCore();
-        _ApplyTabListProjection();
+        _UpdateTabFilterStatus();
     }
 
     void TerminalPage::_OnSelectionChangedCore()

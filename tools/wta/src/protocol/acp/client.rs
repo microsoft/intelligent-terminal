@@ -4110,7 +4110,7 @@ fn dispatch_master_ext_request_with_yolo_timeout(
     tokio::task::spawn_local(async move {
         match req {
             MasterExtRequest::SessionsList { request_id, rescan } => {
-                let wire = crate::session_registry::build_sessions_list_request(rescan);
+                let wire = crate::session_registry::build_sessions_list_request(rescan, false);
                 // Bound the wait so a single dropped RPC response can't
                 // permanently strand the tab's `refetch_in_flight=true`.
                 //

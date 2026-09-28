@@ -20,19 +20,43 @@
              mc:Ignorable="d">
 
     <UserControl.Resources>
-        <!--  Remove the native horizontal tab border within this vertical-only scope.  -->
-        <Thickness x:Key="TabViewItemBorderThickness">0</Thickness>
-        <Style x:Key="HistoryTitleTextStyle"
-               TargetType="TextBlock">
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-        </Style>
-        <Style x:Key="HistorySubtitleTextStyle"
-               TargetType="TextBlock">
-            <Setter Property="FontSize" Value="11" />
-            <Setter Property="Opacity" Value="0.72" />
-            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-        </Style>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="ms-resource:///Files/TerminalApp/AgentIconResources.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+            <!--  Remove the native horizontal tab border within this vertical-only scope.  -->
+            <Thickness x:Key="TabViewItemBorderThickness">0</Thickness>
+            <CornerRadius x:Key="SidebarTabCornerRadius">6</CornerRadius>
+            <Style x:Key="HistoryTitleTextStyle"
+                   TargetType="TextBlock">
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            </Style>
+            <Style x:Key="HistorySubtitleTextStyle"
+                   TargetType="TextBlock">
+                <Setter Property="FontSize" Value="11" />
+                <Setter Property="Opacity" Value="0.72" />
+                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            </Style>
+            <Style x:Key="HistoryAttentionTextStyle"
+                   BasedOn="{StaticResource HistorySubtitleTextStyle}"
+                   TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCautionBrush}" />
+                <Setter Property="Opacity" Value="1" />
+            </Style>
+            <Style x:Key="HistoryActiveTextStyle"
+                   BasedOn="{StaticResource HistorySubtitleTextStyle}"
+                   TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource SystemFillColorSuccessBrush}" />
+                <Setter Property="Opacity" Value="1" />
+            </Style>
+            <Style x:Key="HistoryErrorTextStyle"
+                   BasedOn="{StaticResource HistorySubtitleTextStyle}"
+                   TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCriticalBrush}" />
+                <Setter Property="Opacity" Value="1" />
+            </Style>
+        </ResourceDictionary>
     </UserControl.Resources>
 
     <Grid Background="{ThemeResource TabViewBackground}">
@@ -192,19 +216,13 @@
                   ReorderMode="Disabled"
                   SelectionChanged="OnListSelectionChanged"
                   SelectionMode="Single">
-            <ListView.Resources>
-                <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="Transparent" />
-                <SolidColorBrush x:Key="ListViewItemBackgroundPressed" Color="Transparent" />
-                <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="Transparent" />
-                <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="Transparent" />
-                <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPressed" Color="Transparent" />
-            </ListView.Resources>
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="local:TabStripDisplayItem">
                     <StackPanel HorizontalAlignment="Stretch">
                         <Grid x:Name="TabHeaderGrid"
                               Height="32"
                               ContextFlyout="{x:Bind ContextFlyout, Mode=OneWay}"
+                              CornerRadius="{StaticResource SidebarTabCornerRadius}"
                               DoubleTapped="OnTabHeaderDoubleTapped"
                               Loaded="OnTabHeaderLoaded"
                               PointerPressed="OnTabHeaderPointerPressed"
@@ -215,12 +233,6 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <Border x:Name="TabSelectionBackground"
-                                    Grid.ColumnSpan="4"
-                                    Background="{ThemeResource SubtleFillColorSecondaryBrush}"
-                                    CornerRadius="6"
-                                    IsHitTestVisible="False"
-                                    Visibility="{x:Bind SelectionVisibility, Mode=OneWay}" />
                             <Button x:Name="TabGroupToggleButton"
                                     Grid.Column="0"
                                     Width="24"
@@ -242,11 +254,8 @@
                                               Width="16"
                                               Height="16"
                                               Margin="4,0,8,0"
-                                              VerticalAlignment="Center">
-                                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                          FontSize="12"
-                                          Glyph="&#xE756;" />
-                            </ContentPresenter>
+                                              VerticalAlignment="Center"
+                                              Content="{x:Bind Icon, Mode=OneWay}" />
                             <ContentPresenter x:Name="TabHeaderPresenter"
                                               Grid.Column="2"
                                               HorizontalAlignment="Stretch"
@@ -340,7 +349,8 @@
                 </DataTemplate>
             </ListView.ItemTemplate>
             <ListView.ItemContainerStyle>
-                <Style TargetType="ListViewItem">
+                <Style BasedOn="{StaticResource DefaultListViewItemStyle}"
+                       TargetType="ListViewItem">
                     <Setter Property="Padding" Value="0" />
                     <Setter Property="Margin" Value="6,4" />
                     <Setter Property="MinHeight" Value="32" />
@@ -349,8 +359,47 @@
                     <Setter Property="VerticalContentAlignment" Value="Stretch" />
                     <Setter Property="Background" Value="Transparent" />
                     <Setter Property="BorderThickness" Value="0" />
-                    <Setter Property="CornerRadius" Value="6" />
+                    <Setter Property="CornerRadius" Value="{StaticResource SidebarTabCornerRadius}" />
                     <Setter Property="UseSystemFocusVisuals" Value="True" />
+                    <!--  Keep the native presenter and state brushes, but forward the row's corner radius.  -->
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ListViewItem">
+                                <ListViewItemPresenter CheckBoxBrush="{ThemeResource ListViewItemCheckBoxBrush}"
+                                                       CheckBrush="{ThemeResource ListViewItemCheckBrush}"
+                                                       CheckMode="{ThemeResource ListViewItemCheckMode}"
+                                                       Content="{TemplateBinding Content}"
+                                                       ContentMargin="{TemplateBinding Padding}"
+                                                       ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                       ContentTransitions="{TemplateBinding ContentTransitions}"
+                                                       Control.IsTemplateFocusTarget="True"
+                                                       CornerRadius="{TemplateBinding CornerRadius}"
+                                                       DisabledOpacity="{ThemeResource ListViewItemDisabledThemeOpacity}"
+                                                       DragBackground="{ThemeResource ListViewItemDragBackground}"
+                                                       DragForeground="{ThemeResource ListViewItemDragForeground}"
+                                                       DragOpacity="{ThemeResource ListViewItemDragThemeOpacity}"
+                                                       FocusBorderBrush="{ThemeResource ListViewItemFocusBorderBrush}"
+                                                       FocusSecondaryBorderBrush="{ThemeResource ListViewItemFocusSecondaryBorderBrush}"
+                                                       FocusVisualMargin="{TemplateBinding FocusVisualMargin}"
+                                                       FocusVisualPrimaryBrush="{TemplateBinding FocusVisualPrimaryBrush}"
+                                                       FocusVisualPrimaryThickness="{TemplateBinding FocusVisualPrimaryThickness}"
+                                                       FocusVisualSecondaryBrush="{TemplateBinding FocusVisualSecondaryBrush}"
+                                                       FocusVisualSecondaryThickness="{TemplateBinding FocusVisualSecondaryThickness}"
+                                                       HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                       PlaceholderBackground="{ThemeResource ListViewItemPlaceholderBackground}"
+                                                       PointerOverBackground="{ThemeResource ListViewItemBackgroundPointerOver}"
+                                                       PointerOverForeground="{ThemeResource ListViewItemForegroundPointerOver}"
+                                                       PressedBackground="{ThemeResource ListViewItemBackgroundPressed}"
+                                                       ReorderHintOffset="{ThemeResource ListViewItemReorderHintThemeOffset}"
+                                                       SelectedBackground="{ThemeResource ListViewItemBackgroundSelected}"
+                                                       SelectedForeground="{ThemeResource ListViewItemForegroundSelected}"
+                                                       SelectedPointerOverBackground="{ThemeResource ListViewItemBackgroundSelectedPointerOver}"
+                                                       SelectedPressedBackground="{ThemeResource ListViewItemBackgroundSelectedPressed}"
+                                                       SelectionCheckMarkVisualEnabled="{ThemeResource ListViewItemSelectionCheckMarkVisualEnabled}"
+                                                       VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
                 </Style>
             </ListView.ItemContainerStyle>
             <ListView.ItemsPanel>
@@ -408,15 +457,15 @@
               Grid.Row="4"
               Background="{ThemeResource TabViewBackground}"
               Visibility="Collapsed">
-              <Grid.RowDefinitions>
-                  <RowDefinition Height="40" />
-                  <RowDefinition Height="*" />
-              </Grid.RowDefinitions>
-              <TextBox x:Name="HistorySearchTextBox"
-                       x:Uid="VerticalTabsHistorySearchBox"
-                       Height="32"
-                       Margin="6,4"
-                       Padding="8,6,8,0"
+            <Grid.RowDefinitions>
+                <RowDefinition Height="40" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <TextBox x:Name="HistorySearchTextBox"
+                     x:Uid="VerticalTabsHistorySearchBox"
+                     Height="32"
+                     Margin="6,4"
+                     Padding="8,6,8,0"
                      VerticalAlignment="Center"
                      VerticalContentAlignment="Center"
                      KeyDown="OnHistorySearchBoxKeyDown"
@@ -427,21 +476,56 @@
                           IsItemClickEnabled="True"
                           ItemClick="OnHistoryItemClick"
                           SelectionMode="None">
+                    <ListView.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <ItemsStackPanel ItemsUpdatingScrollMode="KeepScrollOffset" />
+                        </ItemsPanelTemplate>
+                    </ListView.ItemsPanel>
                     <ListView.ItemTemplate>
                         <DataTemplate x:DataType="local:TabStripHistoryItem">
                             <Grid Padding="12,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
-                                <local:HighlightedTextControl Text="{x:Bind Title}"
+                                <ContentControl Grid.RowSpan="2"
+                                                Width="16"
+                                                Height="16"
+                                                Margin="0,0,12,0"
+                                                VerticalAlignment="Center"
+                                                HorizontalContentAlignment="Stretch"
+                                                VerticalContentAlignment="Stretch"
+                                                AutomationProperties.AccessibilityView="Raw"
+                                                Content="{Binding Foreground, ElementName=HistoryTitleText}"
+                                                ContentTemplate="{x:Bind IconTemplate}"
+                                                IsHitTestVisible="False"
+                                                IsTabStop="False" />
+                                <local:HighlightedTextControl x:Name="HistoryTitleText"
+                                                              Grid.Column="1"
+                                                              Text="{x:Bind Title}"
                                                               SearchText="{x:Bind SearchQuery}"
                                                               TextBlockStyle="{StaticResource HistoryTitleTextStyle}" />
-                                <local:HighlightedTextControl Grid.Row="1"
-                                                              Margin="0,2,0,0"
-                                                              Text="{x:Bind Subtitle}"
-                                                              SearchText="{x:Bind SearchQuery}"
-                                                              TextBlockStyle="{StaticResource HistorySubtitleTextStyle}" />
+                                <Grid Grid.Row="1"
+                                      Grid.Column="1"
+                                      Margin="0,2,0,0"
+                                      HorizontalAlignment="Left">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <local:HighlightedTextControl SearchText="{x:Bind SearchQuery}"
+                                                                  Text="{x:Bind Subtitle}"
+                                                                  TextBlockStyle="{StaticResource HistorySubtitleTextStyle}" />
+                                    <local:HighlightedTextControl Grid.Column="1"
+                                                                  Margin="4,0,0,0"
+                                                                  SearchText="{x:Bind SearchQuery}"
+                                                                  Text="{x:Bind StatusText}"
+                                                                  TextBlockStyle="{x:Bind StatusTextStyle}" />
+                                </Grid>
                             </Grid>
                         </DataTemplate>
                     </ListView.ItemTemplate>

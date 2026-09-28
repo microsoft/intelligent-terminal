@@ -227,6 +227,11 @@ Search these areas for explicit current-agent lists:
 - first-run experience and quick selector consumers of `AgentRegistry.h`;
 - CLI help text and settings schema/default descriptions.
 
+`TerminalApp/AgentIconResources.xaml` supplies shared foreground-bound vector
+templates for both agent-pane chrome and sidebar history. Add the canonical
+provider template there and reference it from the pane rather than duplicating
+the artwork.
+
 Keep custom commands classified as `custom`; never emit a path or arbitrary
 command as a telemetry provider ID.
 

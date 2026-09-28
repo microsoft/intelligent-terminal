@@ -3183,12 +3183,12 @@ namespace winrt::TerminalApp::implementation
             {
                 _ClearTabBackgroundColor();
             }
-            PaneProjectionChanged.raise();
         }
         else
         {
             _ClearTabBackgroundColor();
         }
+        TabColorChanged.raise();
     }
 
     // Method Description:
