@@ -478,11 +478,32 @@
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>Filtrovat karty</value>
   </data>
+  <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
+    <value>Filtr</value>
+  </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>Všechny karty</value>
   </data>
   <data name="VerticalTabsFilterAgentsOnly.Text" xml:space="preserve">
     <value>Jen agenti</value>
+  </data>
+  <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
+    <value>Metadata karty</value>
+  </data>
+  <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
+    <value>Status agenta</value>
+  </data>
+  <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
+    <value>Aktuální pracovní adresář</value>
+  </data>
+  <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
+    <value>úložiště Git</value>
+  </data>
+  <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
+    <value>Pobočka Git</value>
+  </data>
+  <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
+    <value>Git se mění</value>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>Zobrazuje se 1 relace agenta</value>
@@ -518,10 +539,10 @@
     <value>Zavřít historii agentů</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Prohledat historii agentů</value>
+    <value>Hledat relace agentů</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Prohledat historii agentů</value>
+    <value>Hledat relace agentů</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Nebyly nalezeny žádné relace agentů.</value>

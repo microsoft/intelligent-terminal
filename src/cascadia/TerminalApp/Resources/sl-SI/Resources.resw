@@ -458,11 +458,32 @@
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>Filtriraj zavihke</value>
   </data>
+  <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
+    <value>Filter</value>
+  </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>Vsi zavihki</value>
   </data>
   <data name="VerticalTabsFilterAgentsOnly.Text" xml:space="preserve">
     <value>Samo agenti</value>
+  </data>
+  <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
+    <value>Metapodatki zavihka</value>
+  </data>
+  <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
+    <value>Status agenta</value>
+  </data>
+  <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
+    <value>Trenutni delovni imenik</value>
+  </data>
+  <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
+    <value>Repozitorij Git</value>
+  </data>
+  <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
+    <value>Veja Git</value>
+  </data>
+  <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
+    <value>Spremembe Git</value>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>Prikazana je 1 seja agenta</value>
@@ -498,10 +519,10 @@
     <value>Zapri zgodovino agentov</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Preišči zgodovino agentov</value>
+    <value>Poišči seje agentov</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Preišči zgodovino agentov</value>
+    <value>Poišči seje agentov</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Najdena ni bila nobena seja agenta.</value>

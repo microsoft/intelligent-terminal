@@ -216,11 +216,32 @@
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>篩選索引標籤</value>
   </data>
+  <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
+    <value>篩選</value>
+  </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>所有索引標籤</value>
   </data>
   <data name="VerticalTabsFilterAgentsOnly.Text" xml:space="preserve">
     <value>僅限智能體</value>
+  </data>
+  <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
+    <value>索引標籤中繼資料</value>
+  </data>
+  <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
+    <value>智能體狀態</value>
+  </data>
+  <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
+    <value>目前的工作目錄</value>
+  </data>
+  <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
+    <value>Git 存放庫</value>
+  </data>
+  <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
+    <value>Git 分支</value>
+  </data>
+  <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
+    <value>Git 變更</value>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>正在顯示 1 個智能體工作階段</value>
@@ -256,10 +277,10 @@
     <value>關閉智能體歷程記錄</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>搜尋智能體歷程記錄</value>
+    <value>搜尋智能體工作階段</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>搜尋智能體歷程記錄</value>
+    <value>搜尋智能體工作階段</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>找不到智能體工作階段。</value>

@@ -410,11 +410,32 @@
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>Tapis tab</value>
   </data>
+  <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
+    <value>Penapis</value>
+  </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>Semua tab</value>
   </data>
   <data name="VerticalTabsFilterAgentsOnly.Text" xml:space="preserve">
     <value>Ejen sahaja</value>
+  </data>
+  <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
+    <value>Metadata tab</value>
+  </data>
+  <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
+    <value>Status ejen</value>
+  </data>
+  <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
+    <value>Direktori kerja semasa</value>
+  </data>
+  <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
+    <value>Repositori Git</value>
+  </data>
+  <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
+    <value>Cawangan Git</value>
+  </data>
+  <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
+    <value>Git berubah</value>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>Menunjukkan 1 sesi ejen</value>
@@ -450,10 +471,10 @@
     <value>Tutup sejarah ejen</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Cari sejarah ejen</value>
+    <value>Cari sesi ejen</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Cari sejarah ejen</value>
+    <value>Cari sesi ejen</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Tiada sesi ejen ditemui.</value>

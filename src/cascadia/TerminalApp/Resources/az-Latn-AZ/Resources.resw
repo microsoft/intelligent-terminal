@@ -477,11 +477,32 @@
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>Tabları filtrlə</value>
   </data>
+  <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
+    <value>Filtr</value>
+  </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>Bütün tablar</value>
   </data>
   <data name="VerticalTabsFilterAgentsOnly.Text" xml:space="preserve">
     <value>Yalnız agentlər</value>
+  </data>
+  <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
+    <value>Tab məlumatları</value>
+  </data>
+  <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
+    <value>Agent statusu</value>
+  </data>
+  <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
+    <value>Cari iş kataloqu</value>
+  </data>
+  <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
+    <value>Git anbarı</value>
+  </data>
+  <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
+    <value>Git filialı</value>
+  </data>
+  <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
+    <value>Git dəyişiklikləri</value>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>1 agent seansı göstərilir</value>
@@ -517,10 +538,10 @@
     <value>Agent tarixçəsini bağla</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Agent tarixçəsində axtar</value>
+    <value>Agent seanslarını axtar</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Agent tarixçəsində axtar</value>
+    <value>Agent seanslarını axtar</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Agent seansı tapılmadı.</value>

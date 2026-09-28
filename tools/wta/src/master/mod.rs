@@ -622,6 +622,7 @@ struct MasterStateInner {
     /// tab switch; that trade-off favors warm agents for a terminal app.
     pub(crate) agents: Mutex<HashMap<AgentCmdKey, AgentCell>>,
     history_refresh: Arc<Mutex<()>>,
+    history_status: watch::Sender<crate::session_registry::HistoryLoadStatus>,
     helper_roles: Mutex<HashMap<HelperId, HelperRole>>,
     /// Master-only BYOK configurations keyed by the credential-free selection
     /// ID. A changed endpoint/model/credential reference advances the
@@ -721,10 +722,6 @@ struct MasterStateInner {
     /// id appears here, its watcher-emitted events are dropped in
     /// [`apply_watcher_event`] so hooks and the watcher never double-track the
     /// same session.
-    /// double-track the same session. This is what lets a CLI that ships hooks
-    /// (and the WTA-launched born-bound sessions) keep their exact, hook-sourced
-    /// pane binding while the watcher still covers user-typed CLIs that have no
-    /// hook installed (notably Codex's Restart-Manager fallback).
     ///
     /// Grow-only for the master's lifetime: a dead session id costs a few bytes
     /// and re-adding is idempotent, so no eviction is needed. Independent lock —
@@ -4909,6 +4906,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         wt,
         agents: Mutex::new(HashMap::new()),
         history_refresh: Arc::new(Mutex::new(())),
+        history_status: watch::channel(crate::session_registry::HistoryLoadStatus::Loading).0,
         helper_roles: Mutex::new(HashMap::new()),
         custom_model_generations: Mutex::new(HashMap::new()),
         default_agent_cmd: config.agent.clone(),
@@ -5979,7 +5977,7 @@ async fn spawn_one_agent(
             tracing::info!(
                 target: "master_history",
                 cli = ?agent.cli_source,
-                count,
+                ?count,
                 "agent ACP history seed complete"
             );
         });
@@ -6595,6 +6593,21 @@ pub(crate) async fn broadcast_ext_to_helpers(
     }
 }
 
+async fn publish_session_status_delta(state: &MasterStateInner, session_id: &str) {
+    let sid = acp::schema::v1::SessionId::new(session_id.to_string());
+    let Some(row) = state.registry.lookup(&sid).await else {
+        return;
+    };
+    let Some(status) = row.status.as_ref() else {
+        return;
+    };
+    crate::wt_protocol_events::send(crate::wt_protocol_events::session_status_changed_event(
+        session_id,
+        row.pane_session_id.as_deref(),
+        status,
+    ));
+}
+
 /// Cached raw host `session/list`. `Some(sessions)` = the agent listed (possibly
 /// empty); `None` = unsupported (Gemini / non-ACP custom), not connected yet, or
 /// the call failed / timed out. Callers MUST treat `None` as "unknown", never as
@@ -6996,10 +7009,8 @@ fn is_stale_host_history_row(
 async fn seed_host_and_broadcast(
     state: &std::sync::Arc<MasterStateInner>,
     agent: &AgentCli,
-) -> usize {
-    let Some((changed, count)) = sync_host_history(state, agent).await else {
-        return 0;
-    };
+) -> Option<usize> {
+    let (changed, count) = sync_host_history(state, agent).await?;
     if changed {
         broadcast_ext_to_helpers(
             state,
@@ -7007,7 +7018,7 @@ async fn seed_host_and_broadcast(
         )
         .await;
     }
-    count
+    Some(count)
 }
 
 fn host_history_agent_ids(
@@ -7022,8 +7033,8 @@ fn host_history_agent_ids(
         .collect()
 }
 
-async fn refresh_host_history_agents(state: &Arc<MasterStateInner>, agent_ids: &[&str]) {
-    futures::future::join_all(agent_ids.iter().map(|&agent_id| async move {
+async fn refresh_host_history_agents(state: &Arc<MasterStateInner>, agent_ids: &[&str]) -> bool {
+    let results = futures::future::join_all(agent_ids.iter().map(|&agent_id| async move {
         let command = crate::agent_registry::build_acp_command(agent_id, None);
         let agent = match get_or_spawn_agent(
             state,
@@ -7043,16 +7054,21 @@ async fn refresh_host_history_agents(state: &Arc<MasterStateInner>, agent_ids: &
                     error = %format!("{error:#}"),
                     "could not initialize agent for sidebar history"
                 );
-                return;
+                return false;
             }
         };
         if agent.cached_init_resp.agent_capabilities.session_capabilities.list.is_none() {
             tracing::debug!(target: "master_history", agent_id, "agent does not support session/list");
-            return;
+            return true;
         }
-        seed_host_and_broadcast(state, &agent).await;
+        if seed_host_and_broadcast(state, &agent).await.is_none() {
+            tracing::warn!(target: "master_history", agent_id, "could not load agent history");
+            return false;
+        }
+        true
     }))
     .await;
+    results.into_iter().all(|succeeded| succeeded)
 }
 
 fn request_host_history_refresh(state: &Arc<MasterStateInner>) {
@@ -7064,22 +7080,36 @@ fn request_host_history_refresh(state: &Arc<MasterStateInner>) {
         // Survives the short-lived control client; overlapping windows share one refresh.
         let _guard = guard;
         let allowed_ids = state.allowed_agent_ids.clone();
-        let agent_ids = match tokio::task::spawn_blocking(move || {
+        let discovery = tokio::task::spawn_blocking(move || {
             let npx_available = crate::agent_check::host_npx_available();
             host_history_agent_ids(allowed_ids.as_ref(), |agent_id| {
                 crate::agent_check::check_host_agent_availability(agent_id, npx_available)
                     .launch_ready
             })
         })
-        .await
-        {
-            Ok(agent_ids) => agent_ids,
+        .await;
+        let succeeded = match discovery {
+            Ok(agent_ids) => refresh_host_history_agents(&state, &agent_ids).await,
             Err(error) => {
                 tracing::error!(target: "master_history", %error, "host agent availability check failed");
-                return;
+                false
             }
         };
-        refresh_host_history_agents(&state, &agent_ids).await;
+        use crate::session_registry::HistoryLoadStatus;
+        let status = if succeeded {
+            HistoryLoadStatus::Ready
+        } else {
+            HistoryLoadStatus::Error
+        };
+        // Keep the last completed outcome during subsequent refreshes. Resetting
+        // to Loading on every snapshot request would prevent an empty list settling.
+        if state.history_status.send_replace(status) != status {
+            broadcast_ext_to_helpers(
+                &state,
+                crate::session_registry::build_sessions_changed_notification(),
+            )
+            .await;
+        }
     });
 }
 
@@ -7110,7 +7140,7 @@ async fn handle_sessions_list(
             tracing::info!(
                 target: "master_history",
                 cli = ?agent.cli_source,
-                count,
+                ?count,
                 "sessions/list rescan: reloaded history via ACP"
             );
         } else {
@@ -7129,6 +7159,9 @@ async fn handle_sessions_list(
         }
     }
 
+    // Read readiness first so a refresh cannot pair an old empty snapshot with
+    // its newly published Ready status.
+    let history_status = *state.history_status.borrow();
     let mut sessions = state.registry.snapshot().await;
     if let Some(agent) = agent {
         if sessions
@@ -7143,7 +7176,7 @@ async fn handle_sessions_list(
     }
 
     sessions.sort_by(|l, r| l.session_id.0.cmp(&r.session_id.0));
-    let raw = crate::session_registry::build_sessions_list_response(sessions);
+    let raw = crate::session_registry::build_sessions_list_response(sessions, Some(history_status));
     Ok(acp::schema::v1::ExtResponse::new(raw.into()))
 }
 
@@ -7460,12 +7493,18 @@ async fn handle_session_hook(
         }
     }
 
+    let status_key = session_event_status_key(state, &event).await;
     let (applied, refresh_key) = apply_master_session_event(state, event, is_born_bound).await;
     let title_upgraded = if let Some(key) = refresh_key {
         try_refresh_title_via_acp(state, &acp::schema::v1::SessionId::new(key)).await
     } else {
         false
     };
+    if applied {
+        if let Some(key) = status_key {
+            publish_session_status_delta(state, &key).await;
+        }
+    }
     if applied || title_upgraded {
         broadcast_ext_to_helpers(
             state,
@@ -7586,7 +7625,7 @@ async fn apply_master_session_event(
                 // A real binding transition starts a hook-free generation: the
                 // watcher may supply activity but may not re-bind the pane.
                 state.hook_owned.lock().await.remove(&sid);
-                state.born_bound.lock().await.insert(sid);
+                state.born_bound.lock().await.insert(sid.clone());
             }
             return (applied, refresh_key);
         } else {
@@ -7612,6 +7651,35 @@ async fn apply_master_session_event(
 
     let applied = state.registry.apply_event(event).await;
     (applied, refresh_key)
+}
+
+async fn session_event_status_key(
+    state: &MasterStateInner,
+    event: &crate::agent_sessions::SessionEvent,
+) -> Option<String> {
+    if let Some(key) = session_event_key(event) {
+        return Some(key.to_string());
+    }
+
+    let pane_session_id = match event {
+        crate::agent_sessions::SessionEvent::PaneClosed { pane_session_id }
+        | crate::agent_sessions::SessionEvent::ConnectionFailed {
+            pane_session_id, ..
+        } => pane_session_id,
+        _ => return None,
+    };
+    state
+        .registry
+        .snapshot()
+        .await
+        .into_iter()
+        .find(|row| {
+            row.pane_session_id.as_deref().is_some_and(|pane| {
+                crate::agent_sessions::pane_key(pane)
+                    == crate::agent_sessions::pane_key(pane_session_id)
+            })
+        })
+        .map(|row| row.session_id.0.to_string())
 }
 
 /// Handle a #266 *born-bound* registration (delegate `?<prompt>` / resume).
@@ -7651,15 +7719,13 @@ async fn handle_session_born_bound(
 /// Apply one watcher-emitted session event to master's registry and, if it
 /// changed state, broadcast `sessions/changed` so helpers refetch.
 ///
-/// The file watcher is a **status-only fallback for #266 born-bound sessions**
-/// (delegate `?<prompt>` / `/sessions` resume). It no longer discovers or
-/// pane-binds user-typed shell-pane sessions — that path relied on reading a
-/// foreign process's PEB (`proc_bind`) to map a pid to its pane, which was
-/// removed. Events are routed as:
+/// File activity is a status fallback for sessions whose binding is already
+/// known. Bindings come from born-bound launches or real hooks.
+/// Events are routed as:
 ///   1. `hook_owned` (a real hook / ACP agent-pane event owns binding AND
 ///      activity) → drop; or
-///   2. `born_bound` (WTA-launched, already pane-bound) → apply STATUS only,
-///      without touching the pane binding; or
+///   2. `born_bound` (already pane-bound) → apply STATUS only, without
+///      touching the pane binding; or
 ///   3. anything else (a user-typed CLI, or a machine-wide copilot/claude in
 ///      VS Code / another terminal) → drop — we can't bind it to an IT pane.
 async fn apply_watcher_event(state: &MasterStateInner, emitted: crate::session_watcher::Emitted) {
@@ -7669,26 +7735,24 @@ async fn apply_watcher_event(state: &MasterStateInner, emitted: crate::session_w
     // producers:
     //   1. a real hook / ACP agent-pane event recorded the session in
     //      `hook_owned` → drop (the hook owns binding AND activity); or
-    //   2. it's a #266 born-bound row (`born_bound`) → the watcher owns no
-    //      binding here, but with no real hook it supplies STATUS only (handled
-    //      just below); or
+    //   2. it's an already-bound fallback row (`born_bound`)
+    //      → the watcher supplies STATUS only (handled just below); or
     //   3. anything else (a user-typed CLI, or a machine-wide copilot/claude in
     //      VS Code / another terminal) → drop below; we can't bind it to a pane.
     if state.hook_owned.lock().await.contains(&sid) {
         return;
     }
 
-    // Born-bound activity-only fallback: the row already exists and is bound to
-    // its pane by #266 born-bound. Born-bound emits no activity, so when no real
-    // hook is installed the watcher supplies STATUS. `emitted.event` is always a
-    // keyed status event (ToolStarting/ToolCompleted/Notification), so applying
-    // it updates the row's status without touching the pane binding / origin.
-    // Born-bound owns the (live, vetted) pane binding; we only move the status.
+    // The row already has a live, vetted pane binding. The watcher only moves
+    // status and never changes that binding.
     if state.born_bound.lock().await.contains(&sid) {
         let key = emitted.key.clone();
         let applied = state.registry.apply_event(emitted.event).await;
         let title_upgraded =
-            try_refresh_title_via_acp(state, &acp::schema::v1::SessionId::new(key)).await;
+            try_refresh_title_via_acp(state, &acp::schema::v1::SessionId::new(key.clone())).await;
+        if applied {
+            publish_session_status_delta(state, &key).await;
+        }
         if applied || title_upgraded {
             broadcast_ext_to_helpers(
                 state,
@@ -9207,11 +9271,11 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
             refresh_keys.insert(key);
         }
     }
-    let final_status = state
+    let final_row = state
         .registry
         .lookup(&acp::schema::v1::SessionId::new(session_key.clone()))
-        .await
-        .and_then(|row| row.status);
+        .await;
+    let final_status = final_row.as_ref().and_then(|row| row.status.clone());
     tracing::info!(
         target: "master_wt_event",
         hook_event = event,
@@ -9222,6 +9286,17 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
         "processed COM agent hook"
     );
     if changed {
+        if let Some(row) = final_row {
+            if let Some(status) = row.status.as_ref() {
+                crate::wt_protocol_events::send(
+                    crate::wt_protocol_events::session_status_changed_event(
+                        &session_key,
+                        row.pane_session_id.as_deref(),
+                        status,
+                    ),
+                );
+            }
+        }
         broadcast_ext_to_helpers(
             state,
             crate::session_registry::build_sessions_changed_notification(),
@@ -9525,6 +9600,7 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
                     session_key = %row.session_id.0,
                     "shell prompt ended bound session in COM event order"
                 );
+                publish_session_status_delta(state, &row.session_id.0).await;
                 broadcast_ext_to_helpers(
                     state,
                     crate::session_registry::build_sessions_changed_notification(),
@@ -9552,6 +9628,7 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
         }
         _ => return,
     };
+    let status_key = session_event_status_key(state, &event).await;
     tracing::info!(
         target: "master_wt_event",
         pane_id = %pane_id,
@@ -9561,6 +9638,9 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
     );
     let applied = state.registry.apply_event(event).await;
     if applied {
+        if let Some(key) = status_key {
+            publish_session_status_delta(state, &key).await;
+        }
         tracing::info!(
             target: "master_wt_event",
             pane_id = %pane_id,

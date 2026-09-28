@@ -365,11 +365,32 @@
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>Φιλτράρισμα καρτελών</value>
   </data>
+  <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
+    <value>Φίλτρο</value>
+  </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>Όλες οι καρτέλες</value>
   </data>
   <data name="VerticalTabsFilterAgentsOnly.Text" xml:space="preserve">
     <value>Μόνο πράκτορες</value>
+  </data>
+  <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
+    <value>Μεταδεδομένα καρτέλας</value>
+  </data>
+  <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
+    <value>Κατάσταση πράκτορα</value>
+  </data>
+  <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
+    <value>Τρέχων κατάλογος εργασίας</value>
+  </data>
+  <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
+    <value>Αποθετήριο Git</value>
+  </data>
+  <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
+    <value>Υποκατάστημα Git</value>
+  </data>
+  <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
+    <value>Το Git αλλάζει</value>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>Εμφανίζεται 1 συνεδρία πράκτορα</value>
@@ -405,10 +426,10 @@
     <value>Κλείσιμο ιστορικού πρακτόρων</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Αναζήτηση στο ιστορικό πρακτόρων</value>
+    <value>Αναζήτηση συνεδριών πρακτόρων</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Αναζήτηση στο ιστορικό πρακτόρων</value>
+    <value>Αναζήτηση συνεδριών πρακτόρων</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Δεν βρέθηκαν συνεδρίες πρακτόρων.</value>

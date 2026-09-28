@@ -460,11 +460,32 @@
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>ట్యాబ్‌లను ఫిల్టర్ చేయండి</value>
   </data>
+  <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
+    <value>ఫిల్టర్ చేయండి</value>
+  </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>అన్ని ట్యాబ్‌లు</value>
   </data>
   <data name="VerticalTabsFilterAgentsOnly.Text" xml:space="preserve">
     <value>ఏజెంట్‌లు మాత్రమే</value>
+  </data>
+  <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
+    <value>ట్యాబ్ మెటాడేటా</value>
+  </data>
+  <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
+    <value>ఏజెంట్ స్థితి</value>
+  </data>
+  <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
+    <value>ప్రస్తుత పని డైరెక్టరీ</value>
+  </data>
+  <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
+    <value>Git రిపోజిటరీ</value>
+  </data>
+  <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
+    <value>Git శాఖ</value>
+  </data>
+  <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
+    <value>Git మార్పులు</value>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>1 ఏజెంట్ సెషన్ చూపబడుతోంది</value>
@@ -500,10 +521,10 @@
     <value>ఏజెంట్ చరిత్రను మూసివేయండి</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>ఏజెంట్ చరిత్రను శోధించండి</value>
+    <value>ఏజెంట్ సెషన్‌లను శోధించండి</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>ఏజెంట్ చరిత్రను శోధించండి</value>
+    <value>ఏజెంట్ సెషన్‌లను శోధించండి</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>ఏ ఏజెంట్ సెషన్‌లు కనుగొనబడలేదు.</value>

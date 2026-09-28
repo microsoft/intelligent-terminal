@@ -481,11 +481,32 @@
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>ടാബുകൾ ഫിൽട്ടർ ചെയ്യുക</value>
   </data>
+  <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
+    <value>ഫിൽട്ടർ ചെയ്യുക</value>
+  </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>എല്ലാ ടാബുകളും</value>
   </data>
   <data name="VerticalTabsFilterAgentsOnly.Text" xml:space="preserve">
     <value>ഏജന്റുകൾ മാത്രം</value>
+  </data>
+  <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
+    <value>ടാബ് മെറ്റാഡാറ്റ</value>
+  </data>
+  <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
+    <value>ഏജൻ്റ് നില</value>
+  </data>
+  <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
+    <value>നിലവിലെ പ്രവർത്തന ഡയറക്ടറി</value>
+  </data>
+  <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
+    <value>Git ശേഖരം</value>
+  </data>
+  <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
+    <value>Git ശാഖ</value>
+  </data>
+  <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
+    <value>Git മാറ്റങ്ങൾ</value>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>1 ഏജന്റ് സെഷൻ കാണിക്കുന്നു</value>
@@ -521,10 +542,10 @@
     <value>ഏജന്റ് ചരിത്രം അടയ്ക്കുക</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>ഏജന്റ് ചരിത്രത്തിൽ തിരയുക</value>
+    <value>ഏജന്റ് സെഷനുകൾ തിരയുക</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>ഏജന്റ് ചരിത്രത്തിൽ തിരയുക</value>
+    <value>ഏജന്റ് സെഷനുകൾ തിരയുക</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>ഏജന്റ് സെഷനുകളൊന്നും കണ്ടെത്തിയില്ല.</value>

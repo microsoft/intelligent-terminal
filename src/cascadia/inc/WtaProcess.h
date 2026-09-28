@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <filesystem>
 #include <string>
 
@@ -72,13 +73,14 @@ namespace Microsoft::Terminal::WtaProcess
     }
 
     // Result of a captured wta run. `completed` is false when the process
-    // could not be launched or had to be killed on timeout — in that case
+    // could not be launched or had to be killed on timeout/cancellation — in that case
     // `output` and `exitCode` carry nothing meaningful.
     struct CaptureResult
     {
         bool completed{ false };
         DWORD exitCode{ 1 };
         std::string output;
+        bool cancelled{ false };
     };
 
     // Spawn `wta.exe <argsAfterExe>` and capture its output regardless of
@@ -100,13 +102,24 @@ namespace Microsoft::Terminal::WtaProcess
     // than a second pipe — it would otherwise need its own drain to avoid
     // deadlocking a chatty child, and every wta subcommand already mirrors
     // its diagnostics into the wta logs.
+    // The optional cancellation flag must outlive this call. Only the captured
+    // child is terminated, never its descendants or a shared WTA master.
     inline CaptureResult RunWtaCapture(const std::wstring& wtaPath,
                                        const std::wstring& argsAfterExe,
                                        DWORD timeoutMs,
                                        wchar_t* envBlock = nullptr,
-                                       bool mergeStderr = true)
+                                       bool mergeStderr = true,
+                                       const std::atomic<bool>* cancellation = nullptr)
     {
         CaptureResult result;
+        const auto cancelled = [&]() {
+            return cancellation && cancellation->load(std::memory_order_relaxed);
+        };
+        if (cancelled())
+        {
+            result.cancelled = true;
+            return result;
+        }
         if (wtaPath.empty())
         {
             return result;
@@ -196,8 +209,14 @@ namespace Microsoft::Terminal::WtaProcess
         captured.reserve(4096);
         char buf[4096];
 
+        const DWORD startTick = GetTickCount();
+        const auto timedOut = [&]() {
+            return GetTickCount() - startTick >= timeoutMs;
+        };
         const auto drainAvailable = [&]() {
-            for (;;)
+            // Bound each drain so a continuously writing child cannot prevent
+            // cancellation or timeout checks.
+            for (size_t reads = 0; reads < 64 && !cancelled() && !timedOut(); ++reads)
             {
                 DWORD available = 0;
                 if (!PeekNamedPipe(readHandle.get(), nullptr, 0, nullptr, &available, nullptr) || available == 0)
@@ -209,20 +228,41 @@ namespace Microsoft::Terminal::WtaProcess
             }
         };
 
-        const DWORD startTick = GetTickCount();
         for (;;)
         {
+            if (cancelled() || timedOut())
+            {
+                result.cancelled = cancelled();
+                if (!TerminateProcess(proc.get(), result.cancelled ? ERROR_CANCELLED : ERROR_TIMEOUT))
+                {
+                    const auto error = GetLastError();
+                    LOG_HR_IF(HRESULT_FROM_WIN32(error), WaitForSingleObject(proc.get(), 0) != WAIT_OBJECT_0);
+                }
+                const auto wait = WaitForSingleObject(proc.get(), 1000);
+                LOG_HR_IF(HRESULT_FROM_WIN32(ERROR_TIMEOUT), wait == WAIT_TIMEOUT);
+                LOG_LAST_ERROR_IF(wait == WAIT_FAILED);
+                return result;
+            }
             drainAvailable();
             if (WaitForSingleObject(proc.get(), 50) == WAIT_OBJECT_0)
             {
-                drainAvailable();
+                // The child has exited; drain all remaining buffered stdout,
+                // but still honor cancellation and timeout if a descendant writes.
+                for (;;)
+                {
+                    const auto size = captured.size();
+                    drainAvailable();
+                    if (captured.size() == size || cancelled() || timedOut())
+                    {
+                        break;
+                    }
+                }
+                if (cancelled() || timedOut())
+                {
+                    result.cancelled = cancelled();
+                    return result;
+                }
                 break;
-            }
-            if (GetTickCount() - startTick > timeoutMs)
-            {
-                TerminateProcess(proc.get(), 1);
-                WaitForSingleObject(proc.get(), 1000);
-                return result;
             }
         }
         GetExitCodeProcess(proc.get(), &result.exitCode);

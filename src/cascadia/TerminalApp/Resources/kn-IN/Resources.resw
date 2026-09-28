@@ -481,11 +481,32 @@
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>ಟ್ಯಾಬ್‌ಗಳನ್ನು ಫಿಲ್ಟರ್ ಮಾಡಿ</value>
   </data>
+  <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
+    <value>ಫಿಲ್ಟರ್</value>
+  </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>ಎಲ್ಲಾ ಟ್ಯಾಬ್‌ಗಳು</value>
   </data>
   <data name="VerticalTabsFilterAgentsOnly.Text" xml:space="preserve">
     <value>ಏಜೆಂಟ್‌ಗಳು ಮಾತ್ರ</value>
+  </data>
+  <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
+    <value>ಟ್ಯಾಬ್ ಮೆಟಾಡೇಟಾ</value>
+  </data>
+  <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
+    <value>ಏಜೆಂಟ್ ಸ್ಥಿತಿ</value>
+  </data>
+  <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
+    <value>ಪ್ರಸ್ತುತ ಕಾರ್ಯನಿರ್ವಹಿಸುತ್ತಿರುವ ಡೈರೆಕ್ಟರಿ</value>
+  </data>
+  <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
+    <value>Git ರೆಪೊಸಿಟರಿ</value>
+  </data>
+  <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
+    <value>Git ಶಾಖೆ</value>
+  </data>
+  <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
+    <value>Git ಬದಲಾವಣೆಗಳು</value>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>1 ಏಜೆಂಟ್ ಸೆಷನ್ ಅನ್ನು ತೋರಿಸಲಾಗುತ್ತಿದೆ</value>
@@ -521,10 +542,10 @@
     <value>ಏಜೆಂಟ್ ಇತಿಹಾಸವನ್ನು ಮುಚ್ಚಿ</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>ಏಜೆಂಟ್ ಇತಿಹಾಸವನ್ನು ಹುಡುಕಿ</value>
+    <value>ಏಜೆಂಟ್ ಸೆಷನ್‌ಗಳನ್ನು ಹುಡುಕಿ</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>ಏಜೆಂಟ್ ಇತಿಹಾಸವನ್ನು ಹುಡುಕಿ</value>
+    <value>ಏಜೆಂಟ್ ಸೆಷನ್‌ಗಳನ್ನು ಹುಡುಕಿ</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>ಯಾವುದೇ ಏಜೆಂಟ್ ಸೆಷನ್‌ಗಳು ಕಂಡುಬಂದಿಲ್ಲ.</value>

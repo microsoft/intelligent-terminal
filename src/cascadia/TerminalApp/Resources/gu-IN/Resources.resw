@@ -481,11 +481,32 @@
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>ટૅબ ફિલ્ટર કરો</value>
   </data>
+  <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
+    <value>ફિલ્ટર કરો</value>
+  </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>બધી ટૅબ</value>
   </data>
   <data name="VerticalTabsFilterAgentsOnly.Text" xml:space="preserve">
     <value>ફક્ત એજન્ટ</value>
+  </data>
+  <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
+    <value>ટૅબ મેટાડેટા</value>
+  </data>
+  <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
+    <value>એજન્ટ સ્થિતિ</value>
+  </data>
+  <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
+    <value>વર્તમાન કાર્યકારી નિર્દેશિકા</value>
+  </data>
+  <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
+    <value>Git ભંડાર</value>
+  </data>
+  <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
+    <value>Git શાખા</value>
+  </data>
+  <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
+    <value>Git ફેરફારો</value>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>1 એજન્ટ સત્ર બતાવવામાં આવી રહ્યું છે</value>
@@ -521,10 +542,10 @@
     <value>એજન્ટ ઇતિહાસ બંધ કરો</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>એજન્ટ ઇતિહાસ શોધો</value>
+    <value>એજન્ટ સત્રો શોધો</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>એજન્ટ ઇતિહાસ શોધો</value>
+    <value>એજન્ટ સત્રો શોધો</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>કોઈ એજન્ટ સત્રો મળ્યાં નથી.</value>

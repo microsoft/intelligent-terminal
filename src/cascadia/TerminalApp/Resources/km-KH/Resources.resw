@@ -297,11 +297,32 @@
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>ត្រងផ្ទាំង</value>
   </data>
+  <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
+    <value>តម្រង</value>
+  </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>ផ្ទាំងទាំងអស់</value>
   </data>
   <data name="VerticalTabsFilterAgentsOnly.Text" xml:space="preserve">
     <value>តែភ្នាក់ងារប៉ុណ្ណោះ</value>
+  </data>
+  <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
+    <value>ទិន្នន័យមេតាថេប</value>
+  </data>
+  <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
+    <value>ស្ថានភាពភ្នាក់ងារ</value>
+  </data>
+  <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
+    <value>បញ្ជីការងារបច្ចុប្បន្ន</value>
+  </data>
+  <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
+    <value>ឃ្លាំង Git</value>
+  </data>
+  <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
+    <value>សាខា Git</value>
+  </data>
+  <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
+    <value>ការផ្លាស់ប្តូរ Git</value>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>កំពុងបង្ហាញវគ្គភ្នាក់ងារ 1</value>
@@ -337,10 +358,10 @@
     <value>បិទប្រវត្តិភ្នាក់ងារ</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>ស្វែងរកប្រវត្តិភ្នាក់ងារ</value>
+    <value>ស្វែងរកវគ្គភ្នាក់ងារ</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>ស្វែងរកប្រវត្តិភ្នាក់ងារ</value>
+    <value>ស្វែងរកវគ្គភ្នាក់ងារ</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>រកមិនឃើញវគ្គភ្នាក់ងារទេ។</value>

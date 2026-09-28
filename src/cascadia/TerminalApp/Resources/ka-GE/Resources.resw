@@ -365,11 +365,32 @@
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>ჩანართების გაფილტვრა</value>
   </data>
+  <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
+    <value>ფილტრი</value>
+  </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>ყველა ჩანართი</value>
   </data>
   <data name="VerticalTabsFilterAgentsOnly.Text" xml:space="preserve">
     <value>მხოლოდ აგენტები</value>
+  </data>
+  <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
+    <value>ჩანართის მეტამონაცემები</value>
+  </data>
+  <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
+    <value>აგენტის სტატუსი</value>
+  </data>
+  <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
+    <value>მიმდინარე სამუშაო დირექტორია</value>
+  </data>
+  <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
+    <value>Git საცავი</value>
+  </data>
+  <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
+    <value>Git ფილიალი</value>
+  </data>
+  <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
+    <value>Git იცვლება</value>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>ნაჩვენებია აგენტის 1 სესია</value>
@@ -405,10 +426,10 @@
     <value>აგენტის ისტორიის დახურვა</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>აგენტის ისტორიაში ძიება</value>
+    <value>აგენტის სესიების ძიება</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>აგენტის ისტორიაში ძიება</value>
+    <value>აგენტის სესიების ძიება</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>აგენტის სესიები ვერ მოიძებნა.</value>
