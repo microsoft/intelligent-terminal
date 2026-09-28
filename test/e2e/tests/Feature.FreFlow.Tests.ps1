@@ -275,7 +275,7 @@ Describe 'Feature §0 FRE Tab Mode' -Tag 'Feature', 'FreTabMode' -Skip:(-not $sc
             }
             Invoke-UiElement -App $script:app -Selector 'SessionManagementToggle' | Out-Null
             Invoke-UiElement -App $script:app -Selector 'SaveButton' | Out-Null
-            Wait-UiElement -App $script:app -Selector 'ErrorPanel' -TimeoutSec 30 | Out-Null
+            Wait-UiElement -App $script:app -Selector 'ErrorText' -TimeoutSec 30 | Out-Null
             (Get-ItLogText -App $script:app -Name 'terminal-agent-pane.log' -SinceStart) |
                 Should -Match '\[FRE\] E2E: forcing hooks install failure'
             Get-FreCompleted -App $script:app | Should -BeFalse
