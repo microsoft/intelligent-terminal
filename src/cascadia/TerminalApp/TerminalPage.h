@@ -929,7 +929,8 @@ namespace winrt::TerminalApp::implementation
         void _UpdateTitle(const Tab& tab);
         void _UpdateTabIcon(Tab& tab);
         void _UpdateTabView();
-        void _ApplyTabListProjection();
+        void _ApplyTabListProjection(const TerminalApp::Tab& changedTab = nullptr);
+        void _UpdateTabFilterStatus();
         static bool _IsKnownAgentCliTitle(std::wstring_view title) noexcept;
         bool _MatchesPaneAgentScope(const Tab::VisiblePaneSnapshot& pane) const;
         bool _TabHasCliAgent(const winrt::com_ptr<Tab>& tab) const;

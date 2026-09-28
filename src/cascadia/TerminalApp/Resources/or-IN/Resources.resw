@@ -164,6 +164,22 @@
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
     <value>ଡାଟା କିପରି ବ୍ୟବହୃତ ହୁଏ ତାହା ଜାଣନ୍ତୁ</value>
   </data>
+  <data name="FreOverlay_TabModeLabel.Text" xml:space="preserve">
+    <value>ଟ୍ୟାବ୍ ମୋଡ୍</value>
+    <comment>Label for the first-run dropdown that chooses the layout of terminal tabs, not indentation or the keyboard Tab key.</comment>
+  </data>
+  <data name="FreOverlay_TabModeDescription.Text" xml:space="preserve">
+    <value>ନୂଆ ସାଇଡବାର୍ ଏବଂ ପାରମ୍ପରିକ ଭୂସମାନ୍ତର ଟ୍ୟାବ୍ ଦୃଶ୍ୟ ମଧ୍ୟରେ ସୁଇଚ୍ କରନ୍ତୁ</value>
+    <comment>Help text for the first-run tab layout dropdown. The sidebar shows tabs vertically in a side panel; the classic layout shows tabs horizontally across the top. This is a choice between layouts, not an on/off switch.</comment>
+  </data>
+  <data name="FreOverlay_TabModeSidebar" xml:space="preserve">
+    <value>ସାଇଡବାର୍</value>
+    <comment>Dropdown option for displaying terminal tabs vertically in a side panel. This is the same layout called Vertical in Settings.</comment>
+  </data>
+  <data name="FreOverlay_TabModeHorizontal" xml:space="preserve">
+    <value>ଭୂସମାନ୍ତର</value>
+    <comment>Dropdown option for displaying terminal tabs across the top of the window. Use the same terminology as the Horizontal tab layout option in Settings.</comment>
+  </data>
   <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
     <value>ଏଜେଣ୍ଟ</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
