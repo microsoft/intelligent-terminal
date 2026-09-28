@@ -257,10 +257,10 @@
     <value>エージェント履歴を閉じる</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>エージェント履歴を検索する</value>
+    <value>エージェント セッションを検索する</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>エージェント履歴を検索する</value>
+    <value>エージェント セッションを検索する</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>エージェント セッションが見つかりませんでした。</value>

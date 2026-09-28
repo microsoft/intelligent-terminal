@@ -389,10 +389,10 @@
     <value>Փակել գործակալի պատմությունը</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Որոնել գործակալի պատմության մեջ</value>
+    <value>Որոնել գործակալի նստաշրջաններ</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Որոնել գործակալի պատմության մեջ</value>
+    <value>Որոնել գործակալի նստաշրջաններ</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Գործակալի նստաշրջաններ չեն գտնվել։</value>

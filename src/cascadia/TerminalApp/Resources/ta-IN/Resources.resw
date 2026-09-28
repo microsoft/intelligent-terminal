@@ -484,10 +484,10 @@
     <value>எஜென்ட் வரலாற்றை மூடு</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>எஜென்ட் வரலாற்றைத் தேடு</value>
+    <value>எஜென்ட் அமர்வுகளைத் தேடு</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>எஜென்ட் வரலாற்றைத் தேடு</value>
+    <value>எஜென்ட் அமர்வுகளைத் தேடு</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>எஜென்ட் அமர்வுகள் எதுவும் கிடைக்கவில்லை.</value>

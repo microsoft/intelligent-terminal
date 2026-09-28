@@ -278,10 +278,10 @@
     <value>Закрити історію агента</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Пошук в історії агента</value>
+    <value>Пошук сеансів агентів</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Пошук в історії агента</value>
+    <value>Пошук сеансів агентів</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Сеанси агентів не знайдено.</value>

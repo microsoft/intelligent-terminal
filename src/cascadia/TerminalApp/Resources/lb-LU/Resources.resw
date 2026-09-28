@@ -389,10 +389,10 @@
     <value>Agent-Verlaf zoumaachen</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Am Agent-Verlaf sichen</value>
+    <value>Agent-Sessioune sichen</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Am Agent-Verlaf sichen</value>
+    <value>Agent-Sessioune sichen</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Keng Agent-Sessioune fonnt.</value>

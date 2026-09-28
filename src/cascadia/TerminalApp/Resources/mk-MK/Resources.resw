@@ -503,10 +503,10 @@
     <value>Затвори ја историјата на агенти</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Пребарај ја историјата на агенти</value>
+    <value>Пребарај сесии на агенти</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Пребарај ја историјата на агенти</value>
+    <value>Пребарај сесии на агенти</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Не се пронајдени сесии на агенти.</value>

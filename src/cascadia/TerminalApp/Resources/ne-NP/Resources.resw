@@ -506,10 +506,10 @@
     <value>एजेन्ट इतिहास बन्द गर्नुहोस्</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>एजेन्ट इतिहास खोज्नुहोस्</value>
+    <value>एजेन्ट सत्र खोज्नुहोस्</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>एजेन्ट इतिहास खोज्नुहोस्</value>
+    <value>एजेन्ट सत्र खोज्नुहोस्</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>कुनै एजेन्ट सत्र फेला परेन।</value>

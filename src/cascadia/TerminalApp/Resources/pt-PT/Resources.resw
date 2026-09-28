@@ -502,10 +502,10 @@
     <value>Fechar o histórico do agente</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Pesquisar no histórico do agente</value>
+    <value>Pesquisar sessões de agente</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Pesquisar no histórico do agente</value>
+    <value>Pesquisar sessões de agente</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Não foram encontradas sessões de agente.</value>

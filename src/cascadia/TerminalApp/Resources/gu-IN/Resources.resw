@@ -505,10 +505,10 @@
     <value>એજન્ટ ઇતિહાસ બંધ કરો</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>એજન્ટ ઇતિહાસ શોધો</value>
+    <value>એજન્ટ સત્રો શોધો</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>એજન્ટ ઇતિહાસ શોધો</value>
+    <value>એજન્ટ સત્રો શોધો</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>કોઈ એજન્ટ સત્રો મળ્યાં નથી.</value>

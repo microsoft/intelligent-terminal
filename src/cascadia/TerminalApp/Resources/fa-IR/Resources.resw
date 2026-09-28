@@ -502,10 +502,10 @@
     <value>بستن تاریخچهٔ عامل</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>جستجو در تاریخچهٔ عامل</value>
+    <value>جستجوی جلسه‌های عامل</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>جستجو در تاریخچهٔ عامل</value>
+    <value>جستجوی جلسه‌های عامل</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>هیچ جلسهٔ عاملی پیدا نشد.</value>

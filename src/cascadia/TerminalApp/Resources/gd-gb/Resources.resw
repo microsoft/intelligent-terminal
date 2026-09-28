@@ -389,10 +389,10 @@
     <value>Dùin eachdraidh an neach-gnìomha</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Lorg ann an eachdraidh an neach-gnìomha</value>
+    <value>Lorg seiseanan an neach-gnìomha</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Lorg ann an eachdraidh an neach-gnìomha</value>
+    <value>Lorg seiseanan an neach-gnìomha</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Cha deach seiseanan neach-gnìomha a lorg.</value>

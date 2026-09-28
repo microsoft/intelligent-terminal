@@ -482,10 +482,10 @@
     <value>Zavrieť históriu agentov</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Prehľadať históriu agentov</value>
+    <value>Vyhľadať relácie agentov</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Prehľadať históriu agentov</value>
+    <value>Vyhľadať relácie agentov</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Nenašli sa žiadne relácie agentov.</value>

@@ -413,10 +413,10 @@
     <value>ปิดประวัติเอเจนต์</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>ค้นหาประวัติเอเจนต์</value>
+    <value>ค้นหาเซสชันเอเจนต์</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>ค้นหาประวัติเอเจนต์</value>
+    <value>ค้นหาเซสชันเอเจนต์</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>ไม่พบเซสชันเอเจนต์</value>

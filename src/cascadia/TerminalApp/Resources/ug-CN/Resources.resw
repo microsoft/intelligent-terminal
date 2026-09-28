@@ -368,10 +368,10 @@
     <value>ئاگېنت تارىخىنى تاقاش</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>ئاگېنت تارىخىدىن ئىزدەش</value>
+    <value>ئاگېنت ئولتۇرۇشلىرىنى ئىزدەش</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>ئاگېنت تارىخىدىن ئىزدەش</value>
+    <value>ئاگېنت ئولتۇرۇشلىرىنى ئىزدەش</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>ئاگېنت ئولتۇرۇشى تېپىلمىدى.</value>

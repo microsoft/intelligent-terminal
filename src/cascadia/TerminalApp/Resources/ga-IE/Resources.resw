@@ -389,10 +389,10 @@
     <value>Dún stair an ghníomhaire</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Cuardaigh stair an ghníomhaire</value>
+    <value>Cuardaigh seisiúin ghníomhaire</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Cuardaigh stair an ghníomhaire</value>
+    <value>Cuardaigh seisiúin ghníomhaire</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Níor aimsíodh aon seisiún gníomhaire.</value>

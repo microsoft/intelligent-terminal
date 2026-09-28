@@ -256,10 +256,10 @@
     <value>Cerrar el historial de agente</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Buscar en el historial de agente</value>
+    <value>Buscar sesiones de agente</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Buscar en el historial de agente</value>
+    <value>Buscar sesiones de agente</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>No se encontraron sesiones de agente.</value>

@@ -505,10 +505,10 @@
     <value>ಏಜೆಂಟ್ ಇತಿಹಾಸವನ್ನು ಮುಚ್ಚಿ</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>ಏಜೆಂಟ್ ಇತಿಹಾಸವನ್ನು ಹುಡುಕಿ</value>
+    <value>ಏಜೆಂಟ್ ಸೆಷನ್‌ಗಳನ್ನು ಹುಡುಕಿ</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>ಏಜೆಂಟ್ ಇತಿಹಾಸವನ್ನು ಹುಡುಕಿ</value>
+    <value>ಏಜೆಂಟ್ ಸೆಷನ್‌ಗಳನ್ನು ಹುಡುಕಿ</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>ಯಾವುದೇ ಏಜೆಂಟ್ ಸೆಷನ್‌ಗಳು ಕಂಡುಬಂದಿಲ್ಲ.</value>

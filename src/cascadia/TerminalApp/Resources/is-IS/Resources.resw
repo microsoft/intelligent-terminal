@@ -502,10 +502,10 @@
     <value>Loka agentferli</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Leita í agentferli</value>
+    <value>Leita að agentlotum</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Leita í agentferli</value>
+    <value>Leita að agentlotum</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Engar agentlotur fundust.</value>

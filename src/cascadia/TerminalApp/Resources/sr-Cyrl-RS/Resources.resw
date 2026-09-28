@@ -256,10 +256,10 @@
     <value>Затвори историју агента</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Претражи историју агента</value>
+    <value>Претражи сесије агента</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Претражи историју агента</value>
+    <value>Претражи сесије агента</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Нису пронађене сесије агента.</value>

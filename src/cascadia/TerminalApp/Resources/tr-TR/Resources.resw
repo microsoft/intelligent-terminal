@@ -482,10 +482,10 @@
     <value>Aracı geçmişini kapat</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Aracı geçmişinde ara</value>
+    <value>Aracı oturumlarını ara</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Aracı geçmişinde ara</value>
+    <value>Aracı oturumlarını ara</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Aracı oturumu bulunamadı.</value>

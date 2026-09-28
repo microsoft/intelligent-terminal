@@ -389,10 +389,10 @@
     <value>Κλείσιμο ιστορικού πρακτόρων</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Αναζήτηση στο ιστορικό πρακτόρων</value>
+    <value>Αναζήτηση συνεδριών πρακτόρων</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Αναζήτηση στο ιστορικό πρακτόρων</value>
+    <value>Αναζήτηση συνεδριών πρακτόρων</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Δεν βρέθηκαν συνεδρίες πρακτόρων.</value>

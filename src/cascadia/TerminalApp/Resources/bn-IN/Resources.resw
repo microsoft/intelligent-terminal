@@ -504,10 +504,10 @@
     <value>এজেন্টের ইতিহাস বন্ধ করুন</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>এজেন্টের ইতিহাস খুঁজুন</value>
+    <value>এজেন্ট সেশন খুঁজুন</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>এজেন্টের ইতিহাস খুঁজুন</value>
+    <value>এজেন্ট সেশন খুঁজুন</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>কোনো এজেন্ট সেশন পাওয়া যায়নি।</value>

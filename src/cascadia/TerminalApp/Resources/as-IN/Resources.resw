@@ -505,10 +505,10 @@
     <value>এজেণ্ট ইতিহাস বন্ধ কৰক</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>এজেণ্ট ইতিহাস সন্ধান কৰক</value>
+    <value>এজেণ্ট অধিৱেশন সন্ধান কৰক</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>এজেণ্ট ইতিহাস সন্ধান কৰক</value>
+    <value>এজেণ্ট অধিৱেশন সন্ধান কৰক</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>কোনো এজেণ্ট অধিৱেশন পোৱা নগ&apos;ল।</value>

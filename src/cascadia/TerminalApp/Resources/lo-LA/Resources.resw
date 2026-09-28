@@ -321,10 +321,10 @@
     <value>ປິດປະຫວັດເອເຈນ</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>ຄົ້ນຫາປະຫວັດເອເຈນ</value>
+    <value>ຄົ້ນຫາເຊດຊັນເອເຈນ</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>ຄົ້ນຫາປະຫວັດເອເຈນ</value>
+    <value>ຄົ້ນຫາເຊດຊັນເອເຈນ</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>ບໍ່ພົບເຊດຊັນເອເຈນ.</value>
