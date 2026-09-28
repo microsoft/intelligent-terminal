@@ -481,6 +481,11 @@ namespace winrt::TerminalApp::implementation
         if (const auto toggle = _findNamedElement(root, L"TabGroupToggleButton"))
         {
             toggle.Visibility(display.GroupVisibility());
+            const auto label = display.IsExpanded() ?
+                                   RS_(L"VerticalTabsCollapseGroup") :
+                                   RS_(L"VerticalTabsExpandGroup");
+            WUX::Automation::AutomationProperties::SetName(toggle, label);
+            ToolTipService::SetToolTip(toggle, box_value(label));
         }
         if (const auto chevron = _findNamedElement(root, L"TabGroupChevronIcon").try_as<FontIcon>())
         {
@@ -1332,7 +1337,7 @@ namespace winrt::TerminalApp::implementation
         auto title = WUX::Automation::AutomationProperties::GetName(tab);
         if (title.empty())
         {
-            title = L"Tab";
+            title = RS_(L"VerticalTabsFallbackTabTitle");
         }
         display.Title(title);
         WUX::Controls::FontIcon fallback;
@@ -1670,6 +1675,7 @@ namespace winrt::TerminalApp::implementation
             winrt::get_abi(display.Tab()),
             GroupExpansionState{ winrt::make_weak(display.Tab()), display.IsExpanded() });
         winrt::get_self<TabStripDisplayItem>(display)->UpdatePresentation(_isRailCollapsed);
+        _refreshDisplayItemVisuals(display);
     }
 
     void TabStrip::OnPanePointerPressed(IInspectable const& sender,

@@ -269,6 +269,7 @@
                                               Content="{x:Bind Header, Mode=OneWay}"
                                               Visibility="{x:Bind HeaderVisibility, Mode=OneWay}" />
                             <Button x:Name="TabCloseButton"
+                                    x:Uid="VerticalTabsTabCloseButton"
                                     Grid.Column="3"
                                     Width="28"
                                     Height="28"
@@ -321,7 +322,8 @@
                                                    VerticalAlignment="Center"
                                                    Text="{x:Bind Title, Mode=OneWay}"
                                                    TextTrimming="CharacterEllipsis" />
-                                        <Button Grid.Column="3"
+                                        <Button x:Uid="VerticalTabsPaneCloseButton"
+                                                Grid.Column="3"
                                                 Width="26"
                                                 Height="26"
                                                 Padding="0"
