@@ -59,6 +59,30 @@ namespace winrt
 
 namespace winrt::TerminalApp::implementation
 {
+    bool TerminalPage::_ContainsTabSearchText(const winrt::hstring& value, const winrt::hstring& query)
+    {
+        if (query.empty())
+        {
+            return true;
+        }
+
+        const std::wstring_view candidate{ value.c_str(), value.size() };
+        const std::wstring_view needle{ query.c_str(), query.size() };
+        if (needle.size() > candidate.size())
+        {
+            return false;
+        }
+
+        for (size_t offset = 0; offset + needle.size() <= candidate.size(); ++offset)
+        {
+            if (til::compare_ordinal_insensitive(candidate.substr(offset, needle.size()), needle) == 0)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // Method Description:
     // - Open a new tab. This will create the TerminalControl hosting the
     //   terminal, and add a new Tab to our list of tabs. The method can
@@ -262,14 +286,6 @@ namespace winrt::TerminalApp::implementation
         // we'll attach the terminal's Xaml control to the Xaml root.
         if (!openInBackground)
         {
-            // A foreground tab must become the active live tab. Dismiss the
-            // History overlay before changing selection so its focused
-            // ListView cannot restore the previously selected row afterward.
-            const auto historyWasActive = _tabStrip && _tabStrip.HistoryActive();
-            if (historyWasActive)
-            {
-                _CloseSidebarHistory(false);
-            }
             _selectedTabItem(tabViewItem);
         }
         else
@@ -1961,7 +1977,7 @@ namespace winrt::TerminalApp::implementation
         _pendingTabProjectionRefresh = false;
         const bool agentScopeEffective = _IsAgentScopeEffective();
         const bool positionOperationsBlocked = _IsTabListPositionOperationBlocked();
-        uint32_t scopeVisibleTabCount = 0;
+        uint32_t projectedVisibleTabCount = 0;
         bool selectedTabMatchesScope = true;
         const auto selectedItem = _selectedTabItem();
         const auto highlightQuery = _IsTabSearchEffective() ? _tabSearchQuery : winrt::hstring{};
@@ -1995,15 +2011,20 @@ namespace winrt::TerminalApp::implementation
                 }
             }
             _tabStrip.SetTabItemVisibility(item, visible);
-            scopeVisibleTabCount += matchesScope ? 1u : 0u;
+            projectedVisibleTabCount += visible ? 1u : 0u;
             if (selectedItem && winrt::get_abi(selectedItem) == winrt::get_abi(item))
             {
                 selectedTabMatchesScope = matchesScope;
             }
         }
 
-        _tabStrip.SetFilterStatus(agentScopeEffective ? scopeVisibleTabCount : _tabs.Size(),
+        _tabStrip.SetFilterStatus(agentScopeEffective ? projectedVisibleTabCount : _tabs.Size(),
                                  !agentScopeEffective || selectedTabMatchesScope);
+        _SyncSidebarHistoryView();
+        if (_IsSidebarHistoryVisible())
+        {
+            _PublishSidebarHistoryProjection();
+        }
         const auto canDragDrop = CanDragDrop() &&
                                  !positionOperationsBlocked &&
                                  !_IsCollapsedVerticalRail();
@@ -2029,18 +2050,20 @@ namespace winrt::TerminalApp::implementation
             return true;
         }
 
-        const auto titleValue = tab.Title();
-        const std::wstring_view title{ titleValue.c_str(), titleValue.size() };
-        if (query.size() > title.size())
+        if (_ContainsTabSearchText(tab.Title(), _tabSearchQuery))
         {
-            return false;
+            return true;
         }
 
-        for (size_t offset = 0; offset + query.size() <= title.size(); ++offset)
+        if (_IsAgentScopeEffective())
         {
-            if (til::compare_ordinal_insensitive(title.substr(offset, query.size()), query) == 0)
+            for (const auto& pane : tab.GetVisiblePaneSnapshot())
             {
-                return true;
+                if (_MatchesPaneAgentScope(pane) &&
+                    _ContainsTabSearchText(pane.Title, _tabSearchQuery))
+                {
+                    return true;
+                }
             }
         }
         return false;

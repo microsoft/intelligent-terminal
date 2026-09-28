@@ -255,14 +255,6 @@ namespace winrt::TerminalApp::implementation
                                  winrt::Windows::UI::Xaml::Controls::TextChangedEventArgs const& e);
         void OnSearchBoxKeyDown(winrt::Windows::Foundation::IInspectable const& sender,
                                 winrt::Windows::UI::Xaml::Input::KeyRoutedEventArgs const& e);
-        void OnHistoryClick(winrt::Windows::Foundation::IInspectable const& sender,
-                            winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
-        void OnHistoryCloseClick(winrt::Windows::Foundation::IInspectable const& sender,
-                                 winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
-        void OnHistorySearchTextChanged(winrt::Windows::Foundation::IInspectable const& sender,
-                                        winrt::Windows::UI::Xaml::Controls::TextChangedEventArgs const& e);
-        void OnHistorySearchBoxKeyDown(winrt::Windows::Foundation::IInspectable const& sender,
-                                       winrt::Windows::UI::Xaml::Input::KeyRoutedEventArgs const& e);
         void OnHistoryItemClick(winrt::Windows::Foundation::IInspectable const& sender,
                                 winrt::Windows::UI::Xaml::Controls::ItemClickEventArgs const& e);
         void OnContainerContentChanging(winrt::Windows::UI::Xaml::Controls::ListViewBase const& sender,
@@ -333,9 +325,8 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _searchQuery;
         bool _historyActive{ false };
         bool _historyLoading{ false };
-        bool _syncingHistorySearchState{ false };
-        winrt::hstring _historySearchQuery;
         winrt::hstring _historyError;
+        uint32_t _activeVisibleCount{ 0 };
         TerminalApp::TabStripFilterMode _filterMode{ TerminalApp::TabStripFilterMode::AllTabs };
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Windows::Foundation::IInspectable> _tabItems{ nullptr };
         winrt::Windows::Foundation::Collections::IObservableVector<TerminalApp::TabStripDisplayItem> _displayItems{ nullptr };
@@ -404,6 +395,7 @@ namespace winrt::TerminalApp::implementation
         void _pruneTabItemVisibility();
         void _setSearchPanelExpanded(bool expanded, bool animate);
         void _updateSearchVisualState();
+        void _updateFilterStatusText();
         static std::vector<winrt::hstring> _buildHistorySearchTerms(TerminalApp::TabStripHistoryItem const& item);
         bool _matchesHistorySearch(size_t index) const;
         void _applyHistoryProjection();

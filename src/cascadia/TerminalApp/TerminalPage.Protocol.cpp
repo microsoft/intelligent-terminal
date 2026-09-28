@@ -975,7 +975,6 @@ namespace winrt::TerminalApp::implementation
             // reliably surface the window regardless of its prior focus state.
             SummonWindowRequested.raise(nullptr, nullptr);
 
-            _CloseSidebarHistory(false);
             _SetFocusedTab(tab);
             if (tabImpl->IsZoomed() && tabImpl->GetActivePane() != foundPane)
             {

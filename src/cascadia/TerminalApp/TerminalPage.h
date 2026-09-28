@@ -358,6 +358,7 @@ namespace winrt::TerminalApp::implementation
         Windows::UI::Xaml::DispatcherTimer _historyRefreshTimer{ nullptr };
         bool _historyRefreshInFlight{ false };
         bool _historyRefreshPending{ false };
+        std::vector<TerminalApp::TabStripHistoryItem> _sidebarHistorySnapshot;
         bool _tabDragReorderAuthorized{ false };
         Windows::Foundation::IInspectable _tabDragSelectedItem{ nullptr };
         // Spec A §5.2: hand-rolled splitter for resizing the vertical rail.
@@ -929,6 +930,7 @@ namespace winrt::TerminalApp::implementation
         void _UpdateTabIcon(Tab& tab);
         void _UpdateTabView();
         void _ApplyTabListProjection();
+        static bool _ContainsTabSearchText(const winrt::hstring& value, const winrt::hstring& query);
         static bool _IsKnownAgentCliTitle(std::wstring_view title) noexcept;
         bool _MatchesPaneAgentScope(const Tab::VisiblePaneSnapshot& pane) const;
         bool _TabHasCliAgent(const winrt::com_ptr<Tab>& tab) const;
@@ -956,9 +958,12 @@ namespace winrt::TerminalApp::implementation
         bool _MatchesTabSearch(const Tab& tab) const;
         bool _IsTabVisibleInProjection(const winrt::com_ptr<Tab>& tab) const;
         void _ClearTabSearch();
+        bool _IsSidebarHistoryVisible() const noexcept;
+        bool _IsSidebarHistoryItemActiveInCurrentWindow(const TerminalApp::TabStripHistoryItem& item) const;
+        void _PublishSidebarHistoryProjection();
+        void _SyncSidebarHistoryView();
         void _StartSidebarHistoryRefreshTimer();
         void _StopSidebarHistoryRefreshTimer();
-        void _CloseSidebarHistory(bool restoreFocus);
         void _RequestSidebarHistoryRefresh(bool initialLoad);
         safe_void_coroutine _LoadSidebarHistory(uint64_t generation, bool initialLoad);
         safe_void_coroutine _ActivateSidebarHistoryItem(TerminalApp::TabStripHistoryItem item);
