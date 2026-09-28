@@ -6145,6 +6145,8 @@ namespace winrt::TerminalApp::implementation
                                     status == "Working" ||
                                     status == "Attention" ||
                                     status == "Error";
+                const auto isHistorical = status == "Ended" ||
+                                          status == "Historical";
                 const auto origin = row["origin"].isString() ? row["origin"].asString() : std::string{};
                 const auto isAgentPane = origin == "AgentPane";
                 const auto providerDisplayName = [&]() -> std::string {
@@ -6201,6 +6203,7 @@ namespace winrt::TerminalApp::implementation
                 item.SessionUniverse(winrt::to_hstring(row.get("session_universe", "").asString()));
                 item.Status(winrt::to_hstring(status));
                 item.IsLive(isLive);
+                item.IsHistorical(isHistorical);
                 item.IsAgentPane(isAgentPane);
                 items.emplace_back(std::move(item));
             }

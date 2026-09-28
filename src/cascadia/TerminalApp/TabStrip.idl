@@ -38,6 +38,7 @@ namespace TerminalApp
         String Status;
         String SearchQuery;
         Boolean IsLive;
+        Boolean IsHistorical;
         Boolean IsAgentPane;
     };
 

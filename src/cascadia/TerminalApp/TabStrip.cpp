@@ -797,7 +797,14 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::OnAllTabsFilterClick(IInspectable const&, WUX::RoutedEventArgs const&)
     {
-        HistoryActive(false);
+        if (_historyActive)
+        {
+            HistoryClosed.raise(*this, nullptr);
+        }
+        else
+        {
+            FilterMode(TerminalApp::TabStripFilterMode::AllTabs);
+        }
     }
 
     void TabStrip::OnAgentsOnlyFilterClick(IInspectable const&, WUX::RoutedEventArgs const&)
@@ -813,7 +820,14 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::OnShowAllTabsClick(IInspectable const&, WUX::RoutedEventArgs const&)
     {
-        HistoryActive(false);
+        if (_historyActive)
+        {
+            HistoryClosed.raise(*this, nullptr);
+        }
+        else
+        {
+            FilterMode(TerminalApp::TabStripFilterMode::AllTabs);
+        }
     }
 
     void TabStrip::OnSearchToggleClick(IInspectable const&, WUX::RoutedEventArgs const&)
@@ -1175,7 +1189,14 @@ namespace winrt::TerminalApp::implementation
         append(item.AgentSource());
         append(item.WslDistro());
         append(item.Status());
-        terms.emplace_back(item.IsLive() ? L"live" : L"history");
+        if (item.IsLive())
+        {
+            terms.emplace_back(L"live");
+        }
+        else if (item.IsHistorical())
+        {
+            terms.emplace_back(L"history");
+        }
         return terms;
     }
 

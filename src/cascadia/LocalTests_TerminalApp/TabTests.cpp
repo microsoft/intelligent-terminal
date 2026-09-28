@@ -283,6 +283,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabSearchUiState);
         TEST_METHOD(LiteralSearchHighlighting);
         TEST_METHOD(AgentViewOpensHistory);
+        TEST_METHOD(AgentViewAllTabsStopsHistoryRefresh);
         TEST_METHOD(VerticalTabHistoryStatusText);
         TEST_METHOD(VerticalTabHistorySearchProjection);
         TEST_METHOD(VerticalTabHistoryPreservesLiveSearch);
@@ -3135,8 +3136,13 @@ namespace TerminalAppLocalTests
             winrt::TerminalApp::TabStrip strip;
             const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
             bool historyRequested = false;
+            bool historyClosed = false;
             strip.HistoryRequested([&](auto&&, auto&&) {
                 historyRequested = true;
+            });
+            strip.HistoryClosed([&](auto&&, auto&&) {
+                historyClosed = true;
+                strip.HistoryActive(false);
             });
 
             stripImpl->OnAgentsOnlyFilterClick(nullptr, {});
@@ -3157,9 +3163,29 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->HistoryPanel().Visibility());
 
             stripImpl->OnAllTabsFilterClick(nullptr, {});
+            VERIFY_IS_TRUE(historyClosed);
             VERIFY_IS_FALSE(strip.HistoryActive());
             VERIFY_IS_TRUE(stripImpl->AllTabsFilterItem().IsChecked());
             VERIFY_IS_FALSE(stripImpl->AgentsOnlyFilterItem().IsChecked());
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->ItemsList().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->HistoryPanel().Visibility());
+        });
+    }
+
+    void TabTests::AgentViewAllTabsStopsHistoryRefresh()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            page->_tabStrip.HistoryActive(true);
+            page->_StartSidebarHistoryRefreshTimer();
+            VERIFY_IS_TRUE(page->_historyRefreshTimer.IsEnabled());
+
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            stripImpl->OnAllTabsFilterClick(nullptr, {});
+
+            VERIFY_IS_FALSE(page->_historyRefreshTimer.IsEnabled());
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryActive());
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->ItemsList().Visibility());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->HistoryPanel().Visibility());
         });
@@ -3231,10 +3257,19 @@ namespace TerminalAppLocalTests
             wsl.Status(L"Historical");
             wsl.Subtitle(L"claude - Ubuntu (WSL) - Historical");
             wsl.IsLive(false);
+            wsl.IsHistorical(true);
 
-            stripImpl->CommitHistorySnapshot({ host, wsl });
+            auto unknown = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            unknown.Title(L"Unknown session");
+            unknown.AgentId(L"copilot");
+            unknown.ProviderDisplayName(L"Copilot");
+            unknown.AgentSource(L"host");
+            unknown.Status(L"FutureStatus");
+            unknown.Subtitle(L"copilot - Host - Unknown");
+
+            stripImpl->CommitHistorySnapshot({ host, wsl, unknown });
             VERIFY_ARE_EQUAL(winrt::get_abi(visibleItems), winrt::get_abi(strip.HistoryItems()));
-            VERIFY_ARE_EQUAL(2u, strip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(3u, strip.HistoryItems().Size());
 
             stripImpl->HistorySearchTextBox().Text(L"ubuntu");
             VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
@@ -3249,11 +3284,19 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Deploy service" }, strip.HistoryItems().GetAt(0).Title());
 
+            stripImpl->HistorySearchTextBox().Text(L"history");
+            VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Deploy service" }, strip.HistoryItems().GetAt(0).Title());
+
+            stripImpl->HistorySearchTextBox().Text(L"unknown");
+            VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Unknown session" }, strip.HistoryItems().GetAt(0).Title());
+
             stripImpl->HistorySearchTextBox().Text(L"missing");
             VERIFY_ARE_EQUAL(0u, strip.HistoryItems().Size());
 
             stripImpl->HistorySearchTextBox().Text(L"");
-            VERIFY_ARE_EQUAL(2u, strip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(3u, strip.HistoryItems().Size());
         });
     }
 
