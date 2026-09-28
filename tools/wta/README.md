@@ -62,10 +62,18 @@ branding or reproducing a protected package path.
 ### Sidebar Agent History
 
 Master discovers installed, policy-allowed Windows-host agents in the background
-as soon as its named pipe is ready, without waiting for History to open. It checks each CLI
-and required `npx` prerequisite before starting ACP, reuses matching connections in
-the agent pool, and merges each supported `session/list` response into the registry.
-No chat session or prompt is created by discovery.
+as soon as its named pipe is ready, without waiting for History to open. It checks
+the native agent CLI and required `npx` prerequisite before starting ACP, reuses
+matching connections in the agent pool, and merges each supported `session/list`
+response into the registry. No chat session or prompt is created by discovery.
+
+Discovery never automatically installs a native agent CLI. The pinned Claude and
+Codex ACP adapters are separate: their cache presence is not checked, and the
+existing `npx -y` launch behavior may download and bootstrap an uncached adapter
+during initial startup or a later refresh that starts a provider. This is allowed
+and may require network access; discovery is not an offline-only operation. See
+[Installing dependencies](../../doc/installing-dependencies.md) for the native CLI
+and ACP wrapper prerequisites.
 
 Sidebar Agent History runs `wta sessions list --origin shell --all-agents --json`.
 This returns the current registry snapshot immediately and requests a background
@@ -76,8 +84,8 @@ there is no History-specific idle timeout or eviction. Further refreshes reuse t
 and concurrent windows share one discovery pass. Registry changes notify the sidebar,
 with its existing five-second snapshot poll as a fallback. Unavailable or failed
 providers do not clear other providers' rows or overwrite live activity and pane
-bindings. Failures are logged under `master_history`; listing never installs an agent
-or starts an interactive login flow.
+bindings. Failures are logged under `master_history`; listing never installs a native
+agent CLI or starts an interactive login flow.
 
 This discovery covers built-in agents on the Windows host. It does not start WSL
 distributions or discover arbitrary custom commands; sessions already in the registry

@@ -445,13 +445,11 @@ namespace winrt::TerminalApp::implementation
         // toggles each time the user switches tabs.
         //
         // The bottom-bar click handlers (`_AgentToggleButtonOnClick`,
-        // `_SessionToggleButtonOnClick`, `_DiagnosticsButtonOnClick`)
+        // `_DiagnosticsButtonOnClick`)
         // target the *active* tab's AgentPaneContent (or open one if
         // it doesn't exist yet).
         void _AgentToggleButtonOnClick(const winrt::Windows::Foundation::IInspectable& sender,
                                        const winrt::Windows::UI::Xaml::RoutedEventArgs& eventArgs);
-        void _SessionToggleButtonOnClick(const winrt::Windows::Foundation::IInspectable& sender,
-                                         const winrt::Windows::UI::Xaml::RoutedEventArgs& eventArgs);
         void _DiagnosticsButtonOnClick(const winrt::Windows::Foundation::IInspectable& sender,
                                        const winrt::Windows::UI::Xaml::RoutedEventArgs& eventArgs);
         // Recomputes the bottom bar's visibility / toggle-lit / diagnostics

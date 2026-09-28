@@ -7319,6 +7319,7 @@ async fn handle_session_activate(
             let mut params = serde_json::json!({
                 "window_id": parsed.window_id,
                 "commandline": format!("cmd /c {commandline}"),
+                "background": true,
             });
             if matches!(row.location, crate::agent_sessions::SessionLocation::Host)
                 && !row.cwd.as_os_str().is_empty()
@@ -7330,6 +7331,25 @@ async fn handle_session_activate(
             }
             match wt.request("create_tab", params).await {
                 Ok(result) => {
+                    let Some(pane_session_id) = result
+                        .get("session_id")
+                        .or_else(|| result.get("SessionId"))
+                        .or_else(|| result.get("sessionId"))
+                        .and_then(serde_json::Value::as_str)
+                        .map(|value| {
+                            value
+                                .trim()
+                                .trim_matches(|ch| ch == '{' || ch == '}')
+                                .to_string()
+                        })
+                        .filter(|value| !value.is_empty())
+                    else {
+                        return respond!(
+                            "resume_cli",
+                            false,
+                            Some("The created tab did not return a pane ID.".to_string())
+                        );
+                    };
                     if state
                         .registry
                         .mark_resume_dispatched_identity(&parsed.identity)
@@ -7345,43 +7365,46 @@ async fn handle_session_activate(
                             )
                         );
                     }
-                    if let Some(pane_session_id) = result
-                        .get("session_id")
-                        .or_else(|| result.get("SessionId"))
-                        .or_else(|| result.get("sessionId"))
-                        .and_then(serde_json::Value::as_str)
-                        .map(|value| {
-                            value
-                                .trim()
-                                .trim_matches(|ch| ch == '{' || ch == '}')
-                                .to_string()
-                        })
-                        .filter(|value| !value.is_empty())
+                    if !state
+                        .registry
+                        .assign_resume_pane_identity(&parsed.identity, pane_session_id.clone())
+                        .await
                     {
-                        if !state
-                            .registry
-                            .assign_resume_pane_identity(&parsed.identity, pane_session_id.clone())
-                            .await
-                        {
-                            return respond!(
-                                "resume_cli",
-                                false,
-                                Some(
-                                    "The created pane could not be bound to the selected session."
-                                        .to_string()
-                                )
-                            );
-                        }
-                        if let Some(binding) = crate::wt_protocol_events::resumed_pane_binding_event(
-                            &provider_id,
-                            row.session_id.0.as_ref(),
-                            &pane_session_id,
-                            &row.location,
-                        ) {
-                            crate::wt_protocol_events::send(binding);
-                        }
+                        return respond!(
+                            "resume_cli",
+                            false,
+                            Some(
+                                "The created pane could not be bound to the selected session."
+                                    .to_string()
+                            )
+                        );
                     }
-                    respond!("resume_cli", true, None)
+                    if let Some(binding) = crate::wt_protocol_events::resumed_pane_binding_event(
+                        &provider_id,
+                        row.session_id.0.as_ref(),
+                        &pane_session_id,
+                        &row.location,
+                    ) {
+                        crate::wt_protocol_events::send(binding);
+                    }
+                    // Only this History activation preserves the sidebar: background
+                    // creation followed by focus of the exact newly returned pane.
+                    match wt
+                        .request(
+                            "focus_pane",
+                            serde_json::json!({ "session_id": pane_session_id }),
+                        )
+                        .await
+                    {
+                        Ok(_) => respond!("resume_cli", true, None),
+                        Err(error) => respond!(
+                            "resume_cli",
+                            false,
+                            Some(format!(
+                                "The session was created but could not be focused: {error}"
+                            ))
+                        ),
+                    }
                 }
                 Err(error) => respond!("resume_cli", false, Some(error.to_string())),
             }

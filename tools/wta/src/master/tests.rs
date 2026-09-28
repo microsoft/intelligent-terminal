@@ -10310,6 +10310,7 @@ async fn sidebar_cli_resume_binds_created_pane_for_agent_filtering() {
     row.status = Some(AgentStatus::Historical);
     row.cli_source = Some(CliSource::Copilot);
     row.origin = Some(SessionOrigin::Unknown);
+    row.pane_session_id = Some("old-pane-binding".to_string());
     state.registry.upsert(row).await;
 
     let params = SessionActivateParams {
@@ -10356,7 +10357,97 @@ async fn sidebar_cli_resume_binds_created_pane_for_agent_filtering() {
         "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"
     );
 
-    assert_eq!(mock.calls()[0].0, "create_tab");
+    let calls = mock.calls();
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[0].0, "create_tab");
+    assert_eq!(calls[0].1["background"], true);
+    assert_eq!(calls[0].1["window_id"], 42);
+    assert_eq!(
+        calls[1],
+        (
+            "focus_pane".to_string(),
+            serde_json::json!({ "session_id": "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE" })
+        )
+    );
+    let replay = handle_session_activate(&state, &params).await.unwrap();
+    assert_eq!(
+        response,
+        crate::session_registry::parse_session_activate_response(&replay.0).unwrap()
+    );
+    assert_eq!(mock.calls().len(), 2);
+}
+
+#[tokio::test]
+async fn sidebar_cli_resume_reports_creation_and_focus_failures() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
+    use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};
+    use std::path::PathBuf;
+
+    for (response, fail_method, detail, call_count) in [
+        (serde_json::json!({}), Some("create_tab"), "test failure", 1),
+        (serde_json::json!({}), None, "did not return a pane ID", 1),
+        (
+            serde_json::json!({"session_id": " {} "}),
+            None,
+            "did not return a pane ID",
+            1,
+        ),
+        (
+            serde_json::json!({"sessionId": "{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}"}),
+            Some("focus_pane"),
+            "created but could not be focused: test failure",
+            2,
+        ),
+    ] {
+        let mock = Arc::new(MockWtChannel {
+            fail_with: fail_method.map(|_| "test failure".to_string()),
+            fail_on_method: fail_method,
+            ..MockWtChannel::responding(response)
+        });
+        let state = make_state_with_wt(mock.clone());
+        let _capture = crate::wt_protocol_events::capture_test_published_events();
+        let mut row = SessionInfo::new(SessionId::new("history"), PathBuf::from("C:\\repo"));
+        row.provider_id = Some("copilot".to_string());
+        row.location = SessionLocation::Host;
+        row.status = Some(AgentStatus::Historical);
+        row.cli_source = Some(CliSource::Copilot);
+        row.origin = Some(SessionOrigin::Unknown);
+        row.pane_session_id = Some("old-pane-binding".to_string());
+        let identity = SessionIdentity::from_info(&row);
+        state.registry.upsert(row).await;
+        let params = SessionActivateParams {
+            identity: identity.clone(),
+            window_id: 42,
+            activation_id: "failure".to_string(),
+        };
+        let response = handle_session_activate(&state, &params).await.unwrap();
+        let response =
+            crate::session_registry::parse_session_activate_response(&response.0).unwrap();
+        assert!(!response.accepted);
+        assert_eq!(response.action, "resume_cli");
+        assert!(response.detail.as_deref().unwrap().contains(detail));
+        assert_eq!(mock.calls().len(), call_count);
+        let row = state.registry.lookup_identity(&identity).await.unwrap();
+        if call_count == 2 {
+            assert_eq!(
+                mock.calls()[1].1["session_id"],
+                "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"
+            );
+            assert_eq!(
+                row.pane_session_id.as_deref(),
+                Some("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+            );
+        } else {
+            assert_eq!(row.status, Some(AgentStatus::Historical));
+            assert_eq!(row.pane_session_id.as_deref(), Some("old-pane-binding"));
+        }
+        let replay = handle_session_activate(&state, &params).await.unwrap();
+        assert_eq!(
+            response,
+            crate::session_registry::parse_session_activate_response(&replay.0).unwrap()
+        );
+        assert_eq!(mock.calls().len(), call_count);
+    }
 }
 
 #[tokio::test]
@@ -10589,6 +10680,7 @@ fn session_focus_params_for(
 struct MockWtChannel {
     calls: std::sync::Mutex<Vec<(String, serde_json::Value)>>,
     fail_with: Option<String>,
+    fail_on_method: Option<&'static str>,
     response: serde_json::Value,
 }
 
@@ -10597,6 +10689,7 @@ impl MockWtChannel {
         Self {
             calls: std::sync::Mutex::new(Vec::new()),
             fail_with: None,
+            fail_on_method: None,
             response: serde_json::json!({ "ok": true }),
         }
     }
@@ -10604,6 +10697,7 @@ impl MockWtChannel {
         Self {
             calls: std::sync::Mutex::new(Vec::new()),
             fail_with: None,
+            fail_on_method: None,
             response,
         }
     }
@@ -10611,6 +10705,7 @@ impl MockWtChannel {
         Self {
             calls: std::sync::Mutex::new(Vec::new()),
             fail_with: Some(message.to_string()),
+            fail_on_method: None,
             response: serde_json::Value::Null,
         }
     }
@@ -10631,8 +10726,10 @@ impl crate::shell::wt_channel::WtChannel for MockWtChannel {
             .unwrap()
             .push((method.to_string(), params));
         match &self.fail_with {
-            Some(msg) => Err(anyhow::anyhow!("{msg}")),
-            None => Ok(self.response.clone()),
+            Some(msg) if self.fail_on_method.is_none_or(|target| target == method) => {
+                Err(anyhow::anyhow!("{msg}"))
+            }
+            _ => Ok(self.response.clone()),
         }
     }
     fn is_available(&self) -> bool {

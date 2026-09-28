@@ -341,10 +341,13 @@ This is presentation-only: the raw status, liveness, and focus/resume routing re
 unchanged. Each row has its provider's vector icon on the left, shared with the agent
 pane header and tinted using the row foreground; unknown/custom providers use a
 generic session icon rather than another provider's brand.
+The bottom bar no longer has a Show sessions button. The existing
+`Ctrl+Shift+/` binding and `openAgentSessions` action still open the agent pane's
+session manager; the sidebar Agents view remains a separate entry point.
 The second line is left-aligned as `Agent name · relative age · status`, using
 the provider's display name and `last_activity_at_ms`. The age is localized as
-just now, minutes, hours, or days ago; it refreshes with each snapshot. Missing
-or invalid timestamps display Unknown, and future timestamps display just now.
+just now, minutes, hours, or days ago; it refreshes with each snapshot. Missing,
+zero, or invalid timestamps display Unknown, and future timestamps display just now.
 Active uses a theme-aware green success accent, Waiting for input a yellow caution
 accent, and Error a red critical accent, matching the session management view.
 Only the status text is accented; the provider,
@@ -369,18 +372,28 @@ timestamps sort last within their group.
 
 Activating a History row focuses or resumes its session without leaving History
 or clearing its search query. Protocol pane focus (including kept-tab restore)
-and protocol-created tabs preserve the sidebar view while changing the selected
-tab and terminal keyboard focus. Successful activation restarts History refreshes;
-explicit user new-tab actions and closing History retain their existing behavior.
+preserves the sidebar view while changing the selected tab and terminal keyboard
+focus. Sidebar resume creates a background tab, then explicitly focuses its newly
+returned pane using the existing `focus_pane` operation. This preservation is
+activation-specific: generic foreground `CreateProtocolTab` creation exits History.
+Ordinary background tab creation and kept-tab focus retain their existing behavior.
+Successful activation restarts History refreshes; explicit user new-tab actions
+and closing History retain their existing behavior.
 Activation has a separate busy state from list loading: existing rows and the search
 query stay visible without the full-list loading spinner while focus/resume runs.
 Repeated activation clicks are ignored until completion, and background snapshots
 cannot clear the activation guard. Closing History resets that guard.
 
 At startup, once its named pipe is ready, master checks policy and local
-CLI/adapter prerequisites and initializes installed Windows-host providers through
-the existing native-provider agent pool. Each provider lists its own history; no
-helper or chat session is created. Connections stay warm for the lifetime of master,
+native agent CLI and required `npx` prerequisites, then initializes installed
+Windows-host providers through the existing native-provider agent pool. Discovery
+never automatically installs a native agent CLI or starts an interactive login.
+The pinned Claude and Codex ACP adapters are separate from those native CLIs;
+adapter cache presence is not checked. Existing `npx -y` behavior is allowed to
+download and bootstrap an uncached adapter during initial startup or a later
+refresh that starts a provider, so discovery may require network access.
+Each provider lists its own history; no helper or chat session is created.
+Connections stay warm for the lifetime of master,
 including while History is closed. Discovery is asynchronous and single-flight across
 windows, so slow or failed providers do not block existing rows. History synchronization
 preserves live status and pane bindings. WSL/custom sessions already known to the registry

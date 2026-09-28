@@ -480,10 +480,11 @@
                                                               TextBlockStyle="{StaticResource HistoryTitleTextStyle}" />
                                 <Grid Grid.Row="1"
                                       Grid.Column="1"
-                                      Margin="0,2,0,0">
+                                      Margin="0,2,0,0"
+                                      HorizontalAlignment="Left">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <local:HighlightedTextControl SearchText="{x:Bind SearchQuery}"
                                                                   Text="{x:Bind Subtitle}"

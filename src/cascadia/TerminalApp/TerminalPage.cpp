@@ -4039,71 +4039,6 @@ namespace winrt::TerminalApp::implementation
         _UpdateBottomBarState();
     }
 
-    // Window-level bottom-bar "sessions toggle" click. Mirrors the
-    // Ctrl+Shift+/ keybinding, scoped to the active tab:
-    //   - active tab has no agent pane → open one in sessions view
-    //   - already in sessions view → close the pane
-    //   - in chat view → switch into sessions view
-    void TerminalPage::_SessionToggleButtonOnClick(const winrt::Windows::Foundation::IInspectable& /*sender*/,
-                                                   const winrt::Windows::UI::Xaml::RoutedEventArgs& /*eventArgs*/)
-    {
-        const auto activeTab = _GetFocusedTabImpl();
-        if (!activeTab)
-        {
-            return;
-        }
-        if (const auto agentContent = activeTab->FindAgentPaneContent())
-        {
-            const auto agentPane = activeTab->FindAgentPane();
-            const bool isStashed = agentPane && agentPane->IsHidden();
-            if (isStashed)
-            {
-                // Stashed — unstash in sessions view.
-                _RequestAgentStateForTab(activeTab, "sessions", /*pane_open*/ true);
-            }
-            else if (agentContent.IsSessionsView())
-            {
-                // Visible in sessions view — hide (stash).
-                _RequestAgentStateForTab(activeTab, std::nullopt, /*pane_open*/ false);
-            }
-            else
-            {
-                // Visible in chat view — switch into sessions view, and move
-                // keyboard focus onto the agent pane so Esc / arrows / Enter
-                // reach the wta TUI immediately. Without this the bottom-bar
-                // button keeps focus and the first Esc is swallowed until the
-                // user clicks the pane once. Deferred to a low-priority tick:
-                // a synchronous Programmatic focus set during a button click
-                // is undone when the pointer-up restores focus to the button
-                // (same race RestoreStashedAgentPane works around). The
-                // stashed branch above doesn't need this — its echo runs
-                // through OnAgentStateChanged → RestoreStashedAgentPane, which
-                // already re-focuses after the pane is re-attached.
-                _RequestAgentStateForTab(activeTab, "sessions", /*pane_open*/ true);
-                if (const auto termControl = agentContent.GetTermControl())
-                {
-                    if (auto dispatcher = winrt::Windows::System::DispatcherQueue::GetForCurrentThread())
-                    {
-                        auto weakControl = winrt::make_weak(termControl);
-                        dispatcher.TryEnqueue(
-                            winrt::Windows::System::DispatcherQueuePriority::Low,
-                            [weakControl]() {
-                                if (const auto ctrl = weakControl.get())
-                                {
-                                    ctrl.Focus(winrt::Windows::UI::Xaml::FocusState::Programmatic);
-                                }
-                            });
-                    }
-                }
-            }
-            _UpdateBottomBarState();
-            return;
-        }
-        // No agent pane on this tab — spawn one in sessions view.
-        _OpenOrReuseAgentPane(/*intoSessionsView*/ true, L"BottomBarSessions");
-        _UpdateBottomBarState();
-    }
-
     // Window-level bottom-bar "diagnostics" click. Targets the active tab's
     // AgentPaneContent — fires the cached autofix for that tab, or asks
     // wta to execute / dismiss / re-trigger the diagnosis depending on
@@ -4249,11 +4184,7 @@ namespace winrt::TerminalApp::implementation
             activeAgent = focusedTabImpl->FindAgentPaneContent();
         }
 
-        // The pane-visible highlight follows whichever toggle button "owns"
-        // the current view:
-        //   * chat view     → AgentToggleButton lit, SessionToggleButton dark
-        //   * sessions view → SessionToggleButton lit, AgentToggleButton dark
-        //   * no agent pane → both dark
+        // The chat toggle is highlighted only while the chat view is visible.
         const auto kLitOverlay = winrt::Windows::UI::Xaml::Media::SolidColorBrush{
             winrt::Windows::UI::ColorHelper::FromArgb(30, 255, 255, 255)
         };
@@ -4276,15 +4207,10 @@ namespace winrt::TerminalApp::implementation
             }
         }
         const bool sessionsView = paneOpen && activeAgent.IsSessionsView();
-        const bool sessionsLit = paneOpen && sessionsView;
         const bool chatLit = paneOpen && !sessionsView;
         if (auto toggleBtn = AgentToggleButton())
         {
             toggleBtn.Background(chatLit ? kLitOverlay : kTransparent);
-        }
-        if (auto sessionsBtn = SessionToggleButton())
-        {
-            sessionsBtn.Background(sessionsLit ? kLitOverlay : kTransparent);
         }
 
         // Swap the toggle icon to match the current pane position.
@@ -6056,7 +5982,7 @@ namespace winrt::TerminalApp::implementation
 
     winrt::hstring TerminalPage::_SidebarHistoryAgeText(const std::optional<uint64_t> lastActivityAtMs, const uint64_t nowMs)
     {
-        if (!lastActivityAtMs)
+        if (!lastActivityAtMs || *lastActivityAtMs == 0)
         {
             return RS_(L"VerticalTabsHistoryAgeUnknown");
         }

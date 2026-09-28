@@ -738,10 +738,6 @@ namespace winrt::TerminalApp::implementation
         auto strong = get_strong();
         co_await wil::resume_foreground(Dispatcher());
 
-        const auto preserveHistory = std::exchange(_preserveSidebarHistory, true);
-        const auto restoreHistoryBehavior = wil::scope_exit([&]() {
-            _preserveSidebarHistory = preserveHistory;
-        });
         Protocol::TabCreationResult result{};
 
         // A protocol create_tab that carries a commandline but no profile would
