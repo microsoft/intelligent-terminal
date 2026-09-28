@@ -33,9 +33,25 @@ namespace winrt::TerminalApp::implementation
     {
         InitializeComponent();
 
+        ActualThemeChanged([weak = get_weak()](const auto&, const auto&) {
+            if (const auto self = weak.get())
+            {
+                self->_UpdateIllustrationTheme();
+            }
+        });
+        _UpdateIllustrationTheme();
+
         SavingStatusText().Text(RS_(L"FreOverlay_SettingUp"));
         ErrorDetectionProgressText().Text(RS_(L"FreOverlay_TurningOnErrorDetection"));
         SessionsProgressText().Text(RS_(L"FreOverlay_TurningOnSessions"));
+    }
+
+    void FreOverlay::_UpdateIllustrationTheme()
+    {
+        // Keep FRE chrome dark; only screenshots follow the surrounding app theme.
+        const auto theme = ActualTheme();
+        SidebarImage().RequestedTheme(theme);
+        AutofixImage().RequestedTheme(theme);
     }
 
     void FreOverlay::_BeginProgressAttempt(const winrt::hstring& agentId)

@@ -131,7 +131,8 @@
                             </Grid.RowDefinitions>
                             <Border Grid.Row="0" Background="#FF0C0C0C" CornerRadius="7,7,0,0"
                                     Margin="6,6,6,0">
-                                <Image Source="{ThemeResource FreSidebarImage}"
+                                <Image x:Name="SidebarImage"
+                                       Source="{ThemeResource FreSidebarImage}"
                                        Stretch="Uniform" />
                             </Border>
                             <StackPanel Grid.Row="1" Margin="16,14,16,16" Spacing="6">
@@ -157,7 +158,8 @@
                             </Grid.RowDefinitions>
                             <Border Grid.Row="0" Background="#FF0C0C0C" CornerRadius="7,7,0,0"
                                     Margin="6,6,6,0">
-                                <Image Source="{ThemeResource FreErrorDetectionImage}"
+                                <Image x:Name="AutofixImage"
+                                       Source="{ThemeResource FreErrorDetectionImage}"
                                        Stretch="Uniform" />
                             </Border>
                             <StackPanel Grid.Row="1" Margin="16,14,16,16" Spacing="6">

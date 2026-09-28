@@ -28,6 +28,7 @@
 #include <winrt/Windows.UI.Xaml.Automation.h>
 #include <winrt/Windows.UI.Xaml.Automation.Peers.h>
 #include <winrt/Windows.UI.Xaml.Automation.Provider.h>
+#include <winrt/Windows.UI.Xaml.Media.Imaging.h>
 
 using namespace Microsoft::Console;
 using namespace TerminalApp;
@@ -271,6 +272,7 @@ namespace TerminalAppLocalTests
 
         TEST_METHOD(TryInitializePage);
         TEST_METHOD(FreTabModeSelectionDoesNotMutateSettings);
+        TEST_METHOD(FreIllustrationsFollowThemeWithoutChangingChrome);
         TEST_METHOD(EmptyTabLayoutChangeCompletesBeforeStartup);
         TEST_METHOD(VerticalRailVisibilityRestoresWidth);
         TEST_METHOD(VerticalRailCollapseRestoresWidth);
@@ -2999,6 +3001,26 @@ namespace TerminalAppLocalTests
                 picker.SelectedIndex(1 - picker.SelectedIndex());
                 VERIFY_ARE_EQUAL(configured.has_value(), globals.HasTabLayout());
                 VERIFY_ARE_EQUAL(configured.value_or(TabLayout::Horizontal), globals.TabLayout());
+            }
+        });
+    }
+
+    void TabTests::FreIllustrationsFollowThemeWithoutChangingChrome()
+    {
+        TestOnUIThread([]() {
+            winrt::TerminalApp::FreOverlay fre;
+            for (const auto theme : { ElementTheme::Light, ElementTheme::Dark, ElementTheme::Light })
+            {
+                fre.RequestedTheme(theme);
+                VERIFY_ARE_EQUAL(theme, fre.ActualTheme());
+                VERIFY_ARE_EQUAL(ElementTheme::Dark, fre.FindName(L"RootGrid").as<Grid>().RequestedTheme());
+                for (const auto name : { L"SidebarImage", L"AutofixImage" })
+                {
+                    const auto image = fre.FindName(name).as<Image>();
+                    VERIFY_ARE_EQUAL(theme, image.RequestedTheme());
+                    const auto source = image.Source().as<Media::Imaging::BitmapImage>().UriSource().AbsoluteUri();
+                    VERIFY_IS_TRUE(std::wstring_view{ source }.ends_with(theme == ElementTheme::Light ? L"-light.png" : L"-dark.png"));
+                }
             }
         });
     }
