@@ -345,8 +345,10 @@ The bottom bar no longer has a Show sessions button. The existing
 `Ctrl+Shift+/` binding and `openAgentSessions` action still open the agent pane's
 session manager; the sidebar Agents view remains a separate entry point.
 The second line is left-aligned as `Agent name · relative age · status`, using
-the provider's display name and `last_activity_at_ms`. The age is localized as
-just now, minutes, hours, or days ago; it refreshes with each snapshot. Missing,
+the provider's display name and `last_activity_at_ms`. Like the session manager,
+timestamps less than seven days old use localized relative time; timestamps at
+least seven days old use the UTC calendar date formatted with Windows' localized
+long-date format. The display refreshes with each snapshot. Missing,
 zero, or invalid timestamps display Unknown, and future timestamps display just now.
 Active uses a theme-aware green success accent, Waiting for input a yellow caution
 accent, and Error a red critical accent, matching the session management view.
@@ -369,6 +371,10 @@ For imported history the timestamp comes from ACP `session/list.updated_at`;
 live registry events update it, including tool activity, notifications, and session
 or pane closure. It is not a creation time or the time History was opened. Missing
 timestamps sort last within their group.
+Background snapshots update individual list slots rather than resetting the
+collection, retaining unchanged row objects and the scroll offset. Changes to
+the search query still rebuild the filtered results; periodic refreshes do not
+pull the user's viewport back to the top.
 
 Activating a History row focuses or resumes its session without leaving History
 or clearing its search query. Protocol pane focus (including kept-tab restore)

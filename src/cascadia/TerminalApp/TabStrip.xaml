@@ -450,6 +450,11 @@
                           IsItemClickEnabled="True"
                           ItemClick="OnHistoryItemClick"
                           SelectionMode="None">
+                    <ListView.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <ItemsStackPanel ItemsUpdatingScrollMode="KeepScrollOffset" />
+                        </ItemsPanelTemplate>
+                    </ListView.ItemsPanel>
                     <ListView.ItemTemplate>
                         <DataTemplate x:DataType="local:TabStripHistoryItem">
                             <Grid Padding="12,8">

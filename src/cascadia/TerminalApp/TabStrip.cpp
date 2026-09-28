@@ -681,7 +681,7 @@ namespace winrt::TerminalApp::implementation
             item.IconTemplate(Resources().Lookup(iconKey).as<DataTemplate>());
             _historySearchTerms.emplace_back(_buildHistorySearchTerms(item));
         }
-        _applyHistoryProjection();
+        _applyHistoryProjection(true);
     }
 
     void TabStrip::ClearHistorySnapshot()
@@ -1258,7 +1258,31 @@ namespace winrt::TerminalApp::implementation
         return false;
     }
 
-    void TabStrip::_applyHistoryProjection()
+    static bool _sameHistoryItem(TerminalApp::TabStripHistoryItem const& left,
+                                 TerminalApp::TabStripHistoryItem const& right)
+    {
+        return left == right ||
+               (left.SessionId() == right.SessionId() &&
+                left.AgentId() == right.AgentId() &&
+                left.AgentSource() == right.AgentSource() &&
+                left.WslDistro() == right.WslDistro() &&
+                left.SessionUniverse() == right.SessionUniverse() &&
+                left.Title() == right.Title() &&
+                left.Subtitle() == right.Subtitle() &&
+                left.Status() == right.Status() &&
+                left.StatusText() == right.StatusText() &&
+                left.SearchQuery() == right.SearchQuery() &&
+                left.ProviderDisplayName() == right.ProviderDisplayName() &&
+                left.Cwd() == right.Cwd() &&
+                left.PaneSessionId() == right.PaneSessionId() &&
+                left.IsLive() == right.IsLive() &&
+                left.IsAgentPane() == right.IsAgentPane() &&
+                left.IsHistorical() == right.IsHistorical() &&
+                left.StatusTextStyle() == right.StatusTextStyle() &&
+                left.IconTemplate() == right.IconTemplate());
+    }
+
+    void TabStrip::_applyHistoryProjection(const bool preserveScroll)
     {
         std::vector<TerminalApp::TabStripHistoryItem> visibleItems;
         visibleItems.reserve(_historySnapshot.size());
@@ -1270,7 +1294,30 @@ namespace winrt::TerminalApp::implementation
                 visibleItems.emplace_back(_historySnapshot[index]);
             }
         }
-        _historyItems.ReplaceAll(visibleItems);
+        if (preserveScroll)
+        {
+            // A collection reset discards ListView's viewport. Update slots instead;
+            // KeepScrollOffset preserves the user's position without a deferred scroll.
+            for (uint32_t index = 0; index < visibleItems.size(); ++index)
+            {
+                if (index >= _historyItems.Size())
+                {
+                    _historyItems.Append(visibleItems[index]);
+                }
+                else if (!_sameHistoryItem(_historyItems.GetAt(index), visibleItems[index]))
+                {
+                    _historyItems.SetAt(index, visibleItems[index]);
+                }
+            }
+            while (_historyItems.Size() > visibleItems.size())
+            {
+                _historyItems.RemoveAtEnd();
+            }
+        }
+        else
+        {
+            _historyItems.ReplaceAll(visibleItems);
+        }
         _updateHistoryVisualState();
     }
 

@@ -409,7 +409,7 @@ namespace winrt::TerminalApp::implementation
         void _updateSearchVisualState();
         static std::vector<winrt::hstring> _buildHistorySearchTerms(TerminalApp::TabStripHistoryItem const& item);
         bool _matchesHistorySearch(size_t index) const;
-        void _applyHistoryProjection();
+        void _applyHistoryProjection(bool preserveScroll = false);
         void _updateHistoryVisualState();
         void _refreshDisplayItemVisuals(TerminalApp::TabStripDisplayItem const& display);
         static void _updateDisplayItemVisuals(winrt::Windows::UI::Xaml::FrameworkElement const& root,

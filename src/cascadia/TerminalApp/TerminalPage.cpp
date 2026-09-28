@@ -6006,9 +6006,43 @@ namespace winrt::TerminalApp::implementation
                                 winrt::hstring{ RS_fmt(L"VerticalTabsHistoryAgeHours", hours) };
         }
 
-        const auto days = seconds / 86400;
-        return days == 1 ? RS_(L"VerticalTabsHistoryAgeDay") :
-                           winrt::hstring{ RS_fmt(L"VerticalTabsHistoryAgeDays", days) };
+        if (seconds < 7 * 86400)
+        {
+            const auto days = seconds / 86400;
+            return days == 1 ? RS_(L"VerticalTabsHistoryAgeDay") :
+                               winrt::hstring{ RS_fmt(L"VerticalTabsHistoryAgeDays", days) };
+        }
+
+        // Match WTA's session manager: use the UTC calendar date and the UI locale.
+        const auto epochDays = *lastActivityAtMs / 86'400'000;
+        constexpr auto lastSupportedDay = std::chrono::sys_days{ std::chrono::year{ 9999 } / 12 / 31 };
+        if (epochDays > static_cast<uint64_t>(lastSupportedDay.time_since_epoch().count()))
+        {
+            LOG_HR(E_INVALIDARG);
+            return RS_(L"VerticalTabsHistoryAgeUnknown");
+        }
+        const auto date = std::chrono::year_month_day{ std::chrono::sys_days{
+            std::chrono::days{ static_cast<int64_t>(epochDays) } } };
+        SYSTEMTIME time{};
+        time.wYear = static_cast<WORD>(static_cast<int>(date.year()));
+        time.wMonth = static_cast<WORD>(static_cast<unsigned>(date.month()));
+        time.wDay = static_cast<WORD>(static_cast<unsigned>(date.day()));
+        const auto context = winrt::Windows::ApplicationModel::Resources::Core::ResourceContext::GetForViewIndependentUse();
+        const auto language = context.QualifierValues().TryLookup(L"language");
+        const auto locale = language ? *language : winrt::hstring{};
+        wchar_t buffer[256]{};
+        if (GetDateFormatEx(locale.empty() ? LOCALE_NAME_USER_DEFAULT : locale.c_str(),
+                            DATE_LONGDATE,
+                            &time,
+                            nullptr,
+                            buffer,
+                            ARRAYSIZE(buffer),
+                            nullptr) > 0)
+        {
+            return winrt::hstring{ buffer };
+        }
+        LOG_LAST_ERROR();
+        return winrt::hstring{ fmt::format(L"{:04}-{:02}-{:02}", time.wYear, time.wMonth, time.wDay) };
     }
 
     safe_void_coroutine TerminalPage::_LoadSidebarHistory(const uint64_t generation, const bool initialLoad)
