@@ -624,6 +624,21 @@ namespace winrt::TerminalApp::implementation
             {
                 page->_tabFilterMode = sender.FilterMode();
                 page->_ApplyTabListProjection();
+                if (page->_IsAgentScopeEffective())
+                {
+                    uint32_t rowCount = 0;
+                    for (const auto& tab : page->_tabs)
+                    {
+                        rowCount += page->_IsTabVisibleInProjection(page->_GetTabImpl(tab)) ? 1u : 0u;
+                    }
+                    TraceLoggingWrite(
+                        g_hTerminalAppProvider,
+                        "SidebarAgentFilterApplied",
+                        TraceLoggingDescription("User enabled the sidebar agent filter"),
+                        TraceLoggingUInt32(rowCount, "row_count"),
+                        TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                        TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+                }
             }
         });
         _tabStrip.SearchActivationRequested([weakThis{ get_weak() }](auto&&, auto&&) {
@@ -653,10 +668,20 @@ namespace winrt::TerminalApp::implementation
         _tabStrip.SearchChanged([weakThis{ get_weak() }](const auto& sender, auto&&) {
             if (const auto page = weakThis.get())
             {
+                const auto wasSearchActive = page->_tabSearchActive;
                 page->_tabSearchActive = sender.SearchActive();
                 page->_tabSearchQuery = sender.SearchQuery();
                 page->_ApplyTabListProjection();
                 page->_suppressTabFocusRequests = false;
+                if (!wasSearchActive && page->_IsTabSearchEffective())
+                {
+                    TraceLoggingWrite(
+                        g_hTerminalAppProvider,
+                        "SidebarSearchOpened",
+                        TraceLoggingDescription("User opened sidebar tab search"),
+                        TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                        TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+                }
             }
         });
         _tabStrip.HistoryRequested([weakThis{ get_weak() }](auto&&, auto&&) {

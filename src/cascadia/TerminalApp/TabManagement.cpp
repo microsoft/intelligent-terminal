@@ -258,6 +258,29 @@ namespace winrt::TerminalApp::implementation
             }
         });
 
+        newTabImpl->KeepRunningEnabledByUser([weakTab, weakThis{ get_weak() }]() {
+            const auto page = weakThis.get();
+            const auto tab = weakTab.get();
+            if (page && tab && page->_GetTabIndex(*tab))
+            {
+                uint32_t pinnedCount = 0;
+                for (const auto& candidate : page->_tabs)
+                {
+                    if (const auto impl = page->_GetTabImpl(candidate); impl && impl->KeepRunning())
+                    {
+                        ++pinnedCount;
+                    }
+                }
+                TraceLoggingWrite(
+                    g_hTerminalAppProvider,
+                    "SidebarTabPinned",
+                    TraceLoggingDescription("User enabled keep running for a sidebar tab"),
+                    TraceLoggingUInt32(pinnedCount, "pinned_count"),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+            }
+        });
+
         // This kicks off TabView::SelectionChanged, in response to which
         // we'll attach the terminal's Xaml control to the Xaml root.
         if (!openInBackground)

@@ -242,6 +242,7 @@ namespace winrt::TerminalApp::implementation
 
         til::event<winrt::delegate<void()>> RequestFocusActiveControl;
         til::typed_event<TerminalApp::Tab, winrt::Microsoft::Terminal::Settings::Model::TabLayout> TabLayoutChangeRequested;
+        til::event<winrt::delegate<>> KeepRunningEnabledByUser;
 
         til::event<winrt::Windows::Foundation::EventHandler<winrt::Windows::Foundation::IInspectable>> Closed;
         til::event<winrt::Windows::Foundation::EventHandler<winrt::Windows::Foundation::IInspectable>> CloseRequested;
