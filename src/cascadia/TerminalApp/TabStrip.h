@@ -36,8 +36,8 @@ namespace winrt::TerminalApp::implementation
         WINRT_PROPERTY(winrt::hstring, Status);
         WINRT_PROPERTY(winrt::hstring, SearchQuery);
         WINRT_PROPERTY(bool, IsLive, false);
-        WINRT_PROPERTY(bool, IsHistorical, false);
         WINRT_PROPERTY(bool, IsAgentPane, false);
+        WINRT_PROPERTY(bool, IsHistorical, false);
     };
 
     struct TabStripHistoryActivationEventArgs : TabStripHistoryActivationEventArgsT<TabStripHistoryActivationEventArgs>

@@ -298,11 +298,11 @@
   </data>
   <data name="VerticalTabsHistoryStatusEnded" xml:space="preserve">
     <value>Ended</value>
-    <comment>Agent History session status: the session's process or pane has ended.</comment>
+    <comment>Agent History session status: the session&apos;s process or pane has ended. This does not imply that its task succeeded.</comment>
   </data>
   <data name="VerticalTabsHistoryStatusHistorical" xml:space="preserve">
     <value>Historical</value>
-    <comment>Agent History session status: a saved session with no live pane.</comment>
+    <comment>Agent History session status: a saved session with no live pane, discovered from the agent&apos;s history.</comment>
   </data>
   <data name="VerticalTabsHistoryStatusUnknown" xml:space="preserve">
     <value>Unknown</value>
