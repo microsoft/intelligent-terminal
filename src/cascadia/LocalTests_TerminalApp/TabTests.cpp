@@ -281,6 +281,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabSearchUiState);
         TEST_METHOD(LiteralSearchHighlighting);
         TEST_METHOD(VerticalTabHistoryStatusText);
+        TEST_METHOD(VerticalTabHistoryRelativeAge);
+        TEST_METHOD(VerticalTabHistoryMetadataLayout);
         TEST_METHOD(VerticalTabHistoryAttentionStyle);
         TEST_METHOD(VerticalTabHistorySearchProjection);
         TEST_METHOD(VerticalTabHistoryPreservesLiveSearch);
@@ -3146,6 +3148,70 @@ namespace TerminalAppLocalTests
         });
     }
 
+    void TabTests::VerticalTabHistoryRelativeAge()
+    {
+        TestOnUIThread([&]() {
+            const auto resources = winrt::Windows::ApplicationModel::Resources::Core::ResourceManager::Current()
+                                       .MainResourceMap()
+                                       .GetSubtree(L"TerminalApp/Resources");
+            constexpr uint64_t nowMs = 100ULL * 86400 * 1000;
+            struct AgeCase
+            {
+                uint64_t elapsedMs;
+                winrt::hstring resource;
+                uint64_t count;
+            };
+            const AgeCase cases[]{
+                { 0, L"VerticalTabsHistoryAgeJustNow", 0 },
+                { 59'999, L"VerticalTabsHistoryAgeJustNow", 0 },
+                { 60'000, L"VerticalTabsHistoryAgeMinute", 0 },
+                { 119'999, L"VerticalTabsHistoryAgeMinute", 0 },
+                { 120'000, L"VerticalTabsHistoryAgeMinutes", 2 },
+                { 3'599'999, L"VerticalTabsHistoryAgeMinutes", 59 },
+                { 3'600'000, L"VerticalTabsHistoryAgeHour", 0 },
+                { 7'199'999, L"VerticalTabsHistoryAgeHour", 0 },
+                { 7'200'000, L"VerticalTabsHistoryAgeHours", 2 },
+                { 86'399'999, L"VerticalTabsHistoryAgeHours", 23 },
+                { 86'400'000, L"VerticalTabsHistoryAgeDay", 0 },
+                { 172'799'999, L"VerticalTabsHistoryAgeDay", 0 },
+                { 172'800'000, L"VerticalTabsHistoryAgeDays", 2 },
+                { 7ULL * 86'400'000, L"VerticalTabsHistoryAgeDays", 7 },
+                { nowMs, L"VerticalTabsHistoryAgeDays", 100 },
+            };
+            for (const auto& test : cases)
+            {
+                auto expected = resources.GetValue(test.resource).ValueAsString();
+                if (test.count)
+                {
+                    expected = fmt::format(fmt::runtime(std::wstring_view{ expected }), test.count);
+                }
+                VERIFY_ARE_EQUAL(expected, winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryAgeText(nowMs - test.elapsedMs, nowMs));
+            }
+            const auto justNow = resources.GetValue(L"VerticalTabsHistoryAgeJustNow").ValueAsString();
+            VERIFY_ARE_EQUAL(justNow, winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryAgeText(nowMs + 1, nowMs));
+            VERIFY_ARE_EQUAL(justNow, winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryAgeText(UINT64_MAX, nowMs));
+            VERIFY_ARE_EQUAL(resources.GetValue(L"VerticalTabsHistoryAgeUnknown").ValueAsString(),
+                             winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryAgeText(std::nullopt, nowMs));
+        });
+    }
+
+    void TabTests::VerticalTabHistoryMetadataLayout()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            const auto row = stripImpl->HistoryList().ItemTemplate().LoadContent().as<Grid>();
+            const auto metadata = row.Children().GetAt(1).as<Grid>();
+            VERIFY_ARE_EQUAL(1, Grid::GetRow(metadata));
+            VERIFY_ARE_EQUAL(GridUnitType::Auto, metadata.ColumnDefinitions().GetAt(0).Width().GridUnitType);
+            VERIFY_ARE_EQUAL(GridUnitType::Star, metadata.ColumnDefinitions().GetAt(1).Width().GridUnitType);
+            const auto status = metadata.Children().GetAt(1).as<winrt::TerminalApp::HighlightedTextControl>();
+            VERIFY_ARE_EQUAL(1, Grid::GetColumn(status));
+            VERIFY_ARE_EQUAL(0.0, status.Margin().Left);
+            VERIFY_ARE_EQUAL(0.0, status.Margin().Right);
+        });
+    }
+
     void TabTests::VerticalTabHistoryAttentionStyle()
     {
         TestOnUIThread([&]() {
@@ -3209,7 +3275,7 @@ namespace TerminalAppLocalTests
             auto attention = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
             attention.SessionId(L"attention-session");
             attention.Title(L"Review changes");
-            attention.Subtitle(L"copilot - Host");
+            attention.Subtitle(L"Copilot \u00b7 5 minutes ago \u00b7 ");
             attention.StatusText(attentionText);
             attention.Status(L"Attention");
             attention.IsLive(true);
@@ -3232,8 +3298,12 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(winrt::hstring{ L"attention-session" }, strip.HistoryItems().GetAt(0).SessionId());
             VERIFY_ARE_EQUAL(attentionText, strip.HistoryItems().GetAt(0).SearchQuery());
 
-            stripImpl->HistorySearchTextBox().Text(winrt::hstring{ L"Host - " } + attentionText);
+            stripImpl->HistorySearchTextBox().Text(winrt::hstring{ L"5 minutes ago \u00b7 " } + attentionText);
             VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
+            stripImpl->HistorySearchTextBox().Text(L"5 minutes ago");
+            VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Copilot \u00b7 5 minutes ago \u00b7 " },
+                             strip.HistoryItems().GetAt(0).Subtitle());
 
             stripImpl->HistorySearchTextBox().Text(L"attention");
             VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());

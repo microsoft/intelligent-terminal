@@ -350,14 +350,13 @@
                                 <Grid Grid.Row="1"
                                       Margin="0,2,0,0">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <local:HighlightedTextControl SearchText="{x:Bind SearchQuery}"
                                                                   Text="{x:Bind Subtitle}"
                                                                   TextBlockStyle="{StaticResource HistorySubtitleTextStyle}" />
                                     <local:HighlightedTextControl Grid.Column="1"
-                                                                  Margin="8,0,0,0"
                                                                   SearchText="{x:Bind SearchQuery}"
                                                                   Text="{x:Bind StatusText}"
                                                                   TextBlockStyle="{x:Bind StatusTextStyle}" />

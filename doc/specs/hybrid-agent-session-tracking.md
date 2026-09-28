@@ -335,9 +335,14 @@ of the live states.
 The vertical sidebar's Agent History displays each registry status separately:
 `Idle` (Idle), `Working` (Active), `Attention` (Waiting for input), `Error`
 (Error), `Ended` (Ended), and `Historical` (Historical), with localized labels.
+The second line is left-aligned as `Agent name · relative age · status`, using
+the provider's display name and `last_activity_at_ms`. The age is localized as
+just now, minutes, hours, or days ago; it refreshes with each snapshot. Missing
+or invalid timestamps display Unknown, and future timestamps display just now.
 Waiting for input uses a theme-aware yellow caution accent, matching the session
-management view's attention color. Only the status text is accented; provider
-and location text stay muted, and search matches remain highlighted.
+management view's attention color. Only the status text is accented; the provider,
+age, and separators stay muted, and search matches remain highlighted. Host/WSL
+location remains searchable and available for routing but is not in this line.
 Missing or unrecognized states display Unknown rather than implying a historical
 session. Search matches both the displayed status and the raw registry value;
 the existing `live` and `history` search terms remain available. This presentation

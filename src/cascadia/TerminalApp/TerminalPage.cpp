@@ -6003,6 +6003,37 @@ namespace winrt::TerminalApp::implementation
         return RS_(L"VerticalTabsHistoryStatusUnknown");
     }
 
+    winrt::hstring TerminalPage::_SidebarHistoryAgeText(const std::optional<uint64_t> lastActivityAtMs, const uint64_t nowMs)
+    {
+        if (!lastActivityAtMs)
+        {
+            return RS_(L"VerticalTabsHistoryAgeUnknown");
+        }
+
+        // A future timestamp can result from clock skew; never let it underflow.
+        const auto seconds = nowMs > *lastActivityAtMs ? (nowMs - *lastActivityAtMs) / 1000 : 0;
+        if (seconds < 60)
+        {
+            return RS_(L"VerticalTabsHistoryAgeJustNow");
+        }
+        if (seconds < 3600)
+        {
+            const auto minutes = seconds / 60;
+            return minutes == 1 ? RS_(L"VerticalTabsHistoryAgeMinute") :
+                                  winrt::hstring{ RS_fmt(L"VerticalTabsHistoryAgeMinutes", minutes) };
+        }
+        if (seconds < 86400)
+        {
+            const auto hours = seconds / 3600;
+            return hours == 1 ? RS_(L"VerticalTabsHistoryAgeHour") :
+                                winrt::hstring{ RS_fmt(L"VerticalTabsHistoryAgeHours", hours) };
+        }
+
+        const auto days = seconds / 86400;
+        return days == 1 ? RS_(L"VerticalTabsHistoryAgeDay") :
+                           winrt::hstring{ RS_fmt(L"VerticalTabsHistoryAgeDays", days) };
+    }
+
     safe_void_coroutine TerminalPage::_LoadSidebarHistory(const uint64_t generation, const bool initialLoad)
     {
         const auto weakThis = get_weak();
@@ -6026,6 +6057,9 @@ namespace winrt::TerminalApp::implementation
         std::string parseError;
         if (result.completed && result.exitCode == 0)
         {
+            const auto nowMs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                         std::chrono::system_clock::now().time_since_epoch())
+                                                         .count());
             std::istringstream lines{ result.output };
             for (std::string line; std::getline(lines, line);)
             {
@@ -6061,12 +6095,10 @@ namespace winrt::TerminalApp::implementation
 
                 std::string agentSource;
                 std::string wslDistro;
-                std::string locationLabel;
                 const auto& location = row["location"];
                 if (location.isString() && location.asString() == "Host")
                 {
                     agentSource = "host";
-                    locationLabel = "Host";
                 }
                 else if (location.isObject() &&
                          location["Wsl"].isObject() &&
@@ -6078,7 +6110,6 @@ namespace winrt::TerminalApp::implementation
                     {
                         continue;
                     }
-                    locationLabel = wslDistro + " (WSL)";
                 }
                 else
                 {
@@ -6135,7 +6166,10 @@ namespace winrt::TerminalApp::implementation
                 auto item = winrt::make<TerminalApp::implementation::TabStripHistoryItem>();
                 item.SessionId(winrt::to_hstring(sessionId));
                 item.Title(winrt::to_hstring(title));
-                item.Subtitle(winrt::to_hstring(providerId + " - " + locationLabel));
+                const auto& lastActivity = row["last_activity_at_ms"];
+                const auto lastActivityAtMs = lastActivity.isUInt64() ? std::optional<uint64_t>{ lastActivity.asUInt64() } : std::nullopt;
+                item.Subtitle(winrt::to_hstring(providerDisplayName) + L" \u00b7 " +
+                              _SidebarHistoryAgeText(lastActivityAtMs, nowMs) + L" \u00b7 ");
                 item.StatusText(_SidebarHistoryStatusText(status));
                 item.Cwd(winrt::to_hstring(cwd));
                 item.PaneSessionId(winrt::to_hstring(row.get("pane_session_id", "").asString()));
