@@ -5,7 +5,7 @@
     FRE (First Run Experience) two-step wizard.
     Full-screen content that replaces the terminal window during first run.
     Page 1: Welcome — feature highlights
-    Page 2: Settings — agent selection + configuration
+    Page 2: Settings — tab layout + agent configuration
 
     Both pages share the same 3-zone layout (Top / Content / Bottom) so
     title, content, and button areas stay aligned across pages.
@@ -219,6 +219,34 @@
                                 Spacing="4"
                                 MaxWidth="{StaticResource StandardControlMaxWidth}"
                                 HorizontalAlignment="Center">
+                        <!--  Tab mode  -->
+                        <Border Background="{ThemeResource ExpanderHeaderBackground}"
+                                BorderBrush="{ThemeResource ExpanderHeaderBorderBrush}"
+                                BorderThickness="{ThemeResource ExpanderHeaderBorderThickness}"
+                                CornerRadius="{ThemeResource ControlCornerRadius}"
+                                MinHeight="64"
+                                Padding="16,12">
+                            <Grid ColumnSpacing="24">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Spacing="2">
+                                    <TextBlock x:Uid="FreOverlay_TabModeLabel"
+                                               FontSize="14" FontWeight="SemiBold"
+                                               Foreground="White" />
+                                    <TextBlock x:Name="TabModeDescriptionText"
+                                               x:Uid="FreOverlay_TabModeDescription"
+                                               FontSize="12" Foreground="#99FFFFFF"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ComboBox x:Name="TabModeComboBox"
+                                          Grid.Column="1"
+                                          AutomationProperties.AccessibilityView="Content"
+                                          Style="{StaticResource ComboBoxSettingStyle}" />
+                            </Grid>
+                        </Border>
+
                         <!--  Agent  -->
                         <Border Background="{ThemeResource ExpanderHeaderBackground}"
                                 BorderBrush="{ThemeResource ExpanderHeaderBorderBrush}"

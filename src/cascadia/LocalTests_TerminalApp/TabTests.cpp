@@ -270,6 +270,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TryCreateXamlObjects);
 
         TEST_METHOD(TryInitializePage);
+        TEST_METHOD(FreTabModeSelectionDoesNotMutateSettings);
         TEST_METHOD(VerticalRailVisibilityRestoresWidth);
         TEST_METHOD(VerticalRailCollapseRestoresWidth);
         TEST_METHOD(LiveTabLayoutRoundTripPreservesState);
@@ -2970,6 +2971,34 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(page->_isVerticalRailCollapsed);
             VERIFY_IS_FALSE(tabStrip->ItemsList().CanDragItems());
             VERIFY_IS_FALSE(tabStrip->ItemsList().CanReorderItems());
+        });
+    }
+
+    void TabTests::FreTabModeSelectionDoesNotMutateSettings()
+    {
+        TestOnUIThread([]() {
+            winrt::TerminalApp::FreOverlay fre;
+            for (const auto configured : { std::optional<TabLayout>{}, std::optional{ TabLayout::Horizontal }, std::optional{ TabLayout::Vertical } })
+            {
+                CascadiaSettings settings{ LR"({"profiles":[{"name":"cmd","commandline":"cmd.exe"}]})", {} };
+                const auto globals = settings.GlobalSettings();
+                if (configured)
+                {
+                    globals.TabLayout(*configured);
+                }
+
+                fre.Initialize(settings);
+                const auto picker = fre.FindName(L"TabModeComboBox").try_as<ComboBox>();
+                VERIFY_IS_NOT_NULL(picker);
+                VERIFY_ARE_EQUAL(2u, picker.Items().Size());
+                VERIFY_ARE_EQUAL(configured == TabLayout::Horizontal ? 1 : 0, picker.SelectedIndex());
+                VERIFY_IS_FALSE(Automation::AutomationProperties::GetName(picker).empty());
+                VERIFY_IS_FALSE(Automation::AutomationProperties::GetHelpText(picker).empty());
+
+                picker.SelectedIndex(1 - picker.SelectedIndex());
+                VERIFY_ARE_EQUAL(configured.has_value(), globals.HasTabLayout());
+                VERIFY_ARE_EQUAL(configured.value_or(TabLayout::Horizontal), globals.TabLayout());
+            }
         });
     }
 

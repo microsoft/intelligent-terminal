@@ -24,6 +24,7 @@ using namespace winrt::Windows::Foundation;
 using namespace winrt::Windows::UI::Xaml;
 using namespace winrt::Windows::UI::Xaml::Controls;
 using namespace winrt::Windows::UI::Xaml::Documents;
+using winrt::Microsoft::Terminal::Settings::Model::TabLayout;
 namespace Automation = winrt::Windows::UI::Xaml::Automation;
 
 namespace winrt::TerminalApp::implementation
@@ -500,6 +501,14 @@ namespace winrt::TerminalApp::implementation
 
         AutomaticApprovalToggle().IsOn(globals.EffectiveAgentPaneYoloMode());
 
+        auto tabModeItems = TabModeComboBox().Items();
+        tabModeItems.Clear();
+        tabModeItems.Append(winrt::box_value(RS_(L"FreOverlay_TabModeSidebar")));
+        tabModeItems.Append(winrt::box_value(RS_(L"FreOverlay_TabModeHorizontal")));
+        // Sidebar is an FRE-only default; do not mutate the model before Save.
+        TabModeComboBox().SelectedIndex(
+            globals.HasTabLayout() && globals.TabLayout() == TabLayout::Horizontal ? 1 : 0);
+
         // Populate the agent ComboBox from the policy-filtered availability
         // snapshot. Native Claude/Codex installations remain visible when only
         // their shared npx prerequisite is missing.
@@ -575,6 +584,10 @@ namespace winrt::TerminalApp::implementation
             WelcomePage(), RS_(L"FreOverlay_WelcomeTitle/Text"));
         Automation::AutomationProperties::SetName(
             SettingsPage(), RS_(L"FreOverlay_SettingsTitle/Text"));
+        Automation::AutomationProperties::SetName(
+            TabModeComboBox(), RS_(L"FreOverlay_TabModeLabel/Text"));
+        Automation::AutomationProperties::SetHelpText(
+            TabModeComboBox(), TabModeDescriptionText().Text());
         Automation::AutomationProperties::SetName(
             ErrorDetectionComboBox(), RS_(L"FreOverlay_ErrorDetectionLabel/Text"));
         Automation::AutomationProperties::SetName(
@@ -660,13 +673,15 @@ namespace winrt::TerminalApp::implementation
                 longestDescriptionWidth,
                 static_cast<double>(description.DesiredSize().Width));
         };
+        measureDescription(TabModeDescriptionText());
         measureDescription(AgentDescriptionText());
         measureDescription(PanePositionDescriptionText());
         measureDescription(ErrorDetectionDescriptionText());
         measureDescription(SessionDescriptionText());
         measureDescription(TokenUsageDescriptionText());
 
-        double longestControlWidth = AgentComboBox().MinWidth();
+        double longestControlWidth = TabModeComboBox().MinWidth();
+        longestControlWidth = std::max(longestControlWidth, AgentComboBox().MinWidth());
         longestControlWidth = std::max(longestControlWidth, PanePositionComboBox().MinWidth());
         longestControlWidth = std::max(longestControlWidth, errorDetectionComboBox.Width());
 
@@ -1634,6 +1649,7 @@ namespace winrt::TerminalApp::implementation
         if (_settings)
         {
             const auto& globals = _settings.GlobalSettings();
+            globals.TabLayout(TabModeComboBox().SelectedIndex() == 0 ? TabLayout::Vertical : TabLayout::Horizontal);
             if (agentDecision.persistSelection)
             {
                 globals.AcpAgent(displayedAgentId);
