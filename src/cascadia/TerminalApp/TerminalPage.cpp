@@ -5925,7 +5925,7 @@ namespace winrt::TerminalApp::implementation
 
     bool TerminalPage::_IsSidebarHistoryItemActiveInCurrentWindow(const TerminalApp::TabStripHistoryItem& item) const
     {
-        if (!item || !item.IsLive())
+        if (!item)
         {
             return false;
         }
@@ -5940,7 +5940,7 @@ namespace winrt::TerminalApp::implementation
                 continue;
             }
 
-            if (paneSessionId && root->FindPaneBySessionId(*paneSessionId))
+            if (item.IsLive() && paneSessionId && root->FindPaneBySessionId(*paneSessionId))
             {
                 return true;
             }
@@ -5948,9 +5948,11 @@ namespace winrt::TerminalApp::implementation
             const auto sessionId = item.SessionId();
             const auto agentId = item.AgentId();
             if (root->WalkTree([&](const auto& pane) {
-                    const auto binding = _paneAgentSessions.find(pane->GetSessionId());
+                    const auto paneId = pane->GetSessionId();
+                    const auto binding = _paneAgentSessions.find(paneId);
                     return binding != _paneAgentSessions.end() &&
                            binding->second.sessionId == sessionId &&
+                           (item.IsLive() || _activeCliAgentPanes.contains(paneId)) &&
                            (agentId.empty() ||
                             ::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(
                                 binding->second.agent,
@@ -5963,12 +5965,102 @@ namespace winrt::TerminalApp::implementation
         return false;
     }
 
+    void TerminalPage::_ReconcileCliAgentBindingsFromHistorySnapshot()
+    {
+        namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+
+        for (const auto& projectedTab : _tabs)
+        {
+            const auto tab = _GetTabImpl(projectedTab);
+            const auto activePane = tab ? tab->GetActivePane() : nullptr;
+            if (!tab || !activePane)
+            {
+                continue;
+            }
+
+            const auto paneSessionId = activePane->GetSessionId();
+            if (paneSessionId == winrt::guid{})
+            {
+                continue;
+            }
+
+            const auto tabTitle = tab->Title();
+            TerminalApp::TabStripHistoryItem matchedItem{ nullptr };
+            bool ambiguous = false;
+            for (const auto& item : _sidebarHistorySnapshot)
+            {
+                if (!item || item.SessionId().empty() || item.AgentId().empty())
+                {
+                    continue;
+                }
+
+                const auto agent = std::ranges::find_if(Reg::BuiltinDelegateAgents, [&](const auto& candidate) {
+                    return Reg::AgentIdEquals(candidate.id, item.AgentId());
+                });
+                if (agent == Reg::BuiltinDelegateAgents.end())
+                {
+                    continue;
+                }
+
+                std::wstring expectedTitle{ item.Title() };
+                expectedTitle.append(L" - ");
+                expectedTitle.append(agent->displayName);
+                if (tabTitle != expectedTitle)
+                {
+                    continue;
+                }
+
+                if (matchedItem)
+                {
+                    ambiguous = true;
+                    break;
+                }
+                matchedItem = item;
+            }
+
+            if (!matchedItem || ambiguous)
+            {
+                continue;
+            }
+
+            const auto sessionId = matchedItem.SessionId();
+            const auto agentId = matchedItem.AgentId();
+            auto marker = _ActiveCliAgentPane{ sessionId };
+            if (const auto active = _activeCliAgentPanes.find(paneSessionId);
+                active != _activeCliAgentPanes.end())
+            {
+                marker.supersededSessionIds = std::move(active->second.supersededSessionIds);
+                if (!active->second.sessionId.empty() && active->second.sessionId != sessionId)
+                {
+                    marker.supersededSessionIds.emplace_back(active->second.sessionId);
+                }
+            }
+            std::erase(marker.supersededSessionIds, sessionId);
+            _activeCliAgentPanes.insert_or_assign(paneSessionId, std::move(marker));
+            _paneAgentSessions.insert_or_assign(
+                paneSessionId,
+                _PaneAgentSession{
+                    sessionId,
+                    agentId,
+                    _BuildAgentResumeCommandline(
+                        winrt::to_string(agentId),
+                        winrt::to_string(sessionId)) });
+        }
+    }
+
     void TerminalPage::_PublishSidebarHistoryProjection()
     {
         if (!_tabStrip)
         {
             return;
         }
+
+        // Copilot CLI 1.0.88 does not emit SessionStart when `/resume`
+        // switches sessions. Its terminal title still changes to
+        // "<history title> - GitHub Copilot", so reconcile a unique match
+        // before projecting Active vs. History. Ambiguous titles are left
+        // untouched until a lifecycle hook or prompt identifies the session.
+        _ReconcileCliAgentBindingsFromHistorySnapshot();
 
         std::vector<TerminalApp::TabStripHistoryItem> projected;
         projected.reserve(_sidebarHistorySnapshot.size());

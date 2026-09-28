@@ -3260,6 +3260,37 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(2u, page->_tabStrip.HistoryItems().Size());
             page->_PublishSidebarHistoryProjection();
             VERIFY_ARE_EQUAL(2u, page->_tabStrip.HistoryItems().Size());
+
+            auto restored = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            restored.SessionId(L"restored-session");
+            restored.Title(L"Restored session");
+            restored.AgentId(L"copilot");
+            restored.IsLive(false);
+
+            tab->Title(L"Restored session - GitHub Copilot");
+            page->_sidebarHistorySnapshot = { restored, history };
+            page->_PublishSidebarHistoryProjection();
+
+            VERIFY_ARE_EQUAL(1u, page->_tabStrip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"history-session" }, page->_tabStrip.HistoryItems().GetAt(0).SessionId());
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(page->_activeCliAgentPanes.count(pane->GetSessionId())));
+            VERIFY_ARE_EQUAL(
+                winrt::hstring{ L"restored-session" },
+                page->_paneAgentSessions.at(pane->GetSessionId()).sessionId);
+
+            page->_activeCliAgentPanes.erase(pane->GetSessionId());
+            page->_paneAgentSessions.erase(pane->GetSessionId());
+            auto duplicate = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            duplicate.SessionId(L"duplicate-session");
+            duplicate.Title(L"Restored session");
+            duplicate.AgentId(L"copilot");
+            duplicate.IsLive(false);
+
+            page->_sidebarHistorySnapshot = { restored, duplicate, history };
+            page->_PublishSidebarHistoryProjection();
+            VERIFY_ARE_EQUAL(3u, page->_tabStrip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_activeCliAgentPanes.count(pane->GetSessionId())));
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_paneAgentSessions.count(pane->GetSessionId())));
         });
     }
 

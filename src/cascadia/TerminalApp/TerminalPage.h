@@ -960,6 +960,7 @@ namespace winrt::TerminalApp::implementation
         void _ClearTabSearch();
         bool _IsSidebarHistoryVisible() const noexcept;
         bool _IsSidebarHistoryItemActiveInCurrentWindow(const TerminalApp::TabStripHistoryItem& item) const;
+        void _ReconcileCliAgentBindingsFromHistorySnapshot();
         void _PublishSidebarHistoryProjection();
         void _SyncSidebarHistoryView();
         void _StartSidebarHistoryRefreshTimer();
