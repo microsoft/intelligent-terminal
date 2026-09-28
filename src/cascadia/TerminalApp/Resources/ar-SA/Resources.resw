@@ -478,11 +478,32 @@
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>تصفية علامات التبويب</value>
   </data>
+  <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
+    <value>فلتر</value>
+  </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>كل علامات التبويب</value>
   </data>
   <data name="VerticalTabsFilterAgentsOnly.Text" xml:space="preserve">
     <value>عوامل الذكاء الاصطناعي فقط</value>
+  </data>
+  <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
+    <value>البيانات التعريفية لعلامة التبويب</value>
+  </data>
+  <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
+    <value>حالة الوكيل</value>
+  </data>
+  <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
+    <value>دليل العمل الحالي</value>
+  </data>
+  <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
+    <value>مستودع Git</value>
+  </data>
+  <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
+    <value>فرع Git</value>
+  </data>
+  <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
+    <value>تغييرات Git</value>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>عرض جلسة واحدة لعامل الذكاء الاصطناعي</value>
@@ -518,10 +539,10 @@
     <value>إغلاق سجل عامل الذكاء الاصطناعي</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>البحث في سجل عامل الذكاء الاصطناعي</value>
+    <value>البحث عن جلسات عامل الذكاء الاصطناعي</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>البحث في سجل عامل الذكاء الاصطناعي</value>
+    <value>البحث عن جلسات عامل الذكاء الاصطناعي</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>لم يتم العثور على جلسات عامل الذكاء الاصطناعي.</value>

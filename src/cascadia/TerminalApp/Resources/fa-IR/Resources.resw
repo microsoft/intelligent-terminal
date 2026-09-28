@@ -478,11 +478,32 @@
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>فیلتر کردن زبانه‌ها</value>
   </data>
+  <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
+    <value>فیلتر کنید</value>
+  </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>همهٔ زبانه‌ها</value>
   </data>
   <data name="VerticalTabsFilterAgentsOnly.Text" xml:space="preserve">
     <value>فقط عامل‌ها</value>
+  </data>
+  <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
+    <value>فراداده برگه</value>
+  </data>
+  <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
+    <value>وضعیت نماینده</value>
+  </data>
+  <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
+    <value>فهرست کاری فعلی</value>
+  </data>
+  <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
+    <value>مخزن Git</value>
+  </data>
+  <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
+    <value>شاخه Git</value>
+  </data>
+  <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
+    <value>Git تغییر می کند</value>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>در حال نمایش ۱ جلسهٔ عامل</value>
@@ -518,10 +539,10 @@
     <value>بستن تاریخچهٔ عامل</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>جستجو در تاریخچهٔ عامل</value>
+    <value>جستجوی جلسه‌های عامل</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>جستجو در تاریخچهٔ عامل</value>
+    <value>جستجوی جلسه‌های عامل</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>هیچ جلسهٔ عاملی پیدا نشد.</value>

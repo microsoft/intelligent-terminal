@@ -29,35 +29,49 @@ pub(crate) async fn run_list(
     origin_filter: crate::agent_sessions::OriginFilter,
     all_agents: bool,
     json_mode: bool,
+    include_status: bool,
 ) -> Result<()> {
     let local = tokio::task::LocalSet::new();
-    let sessions = local
+    let mut snapshot = local
         .run_until(fetch_from_master(master_override, all_agents))
         .await?;
+    filter_snapshot(&mut snapshot, origin_filter);
+    if include_status {
+        snapshot
+            .history_status
+            .context("master does not report history loading status")?;
+        println!("{}", serde_json::to_string(&snapshot)?);
+    } else if json_mode {
+        print!("{}", format_json_lines(&snapshot.sessions)?);
+    } else {
+        print!("{}", format_table(&snapshot.sessions));
+    }
+    Ok(())
+}
+
+fn filter_snapshot(
+    snapshot: &mut crate::session_registry::SessionsListResponse,
+    origin_filter: crate::agent_sessions::OriginFilter,
+) {
     // Origin filter is applied client-side: master always returns the
     // full registry so this command can act as the debug eye-of-god
     // view (default `--origin all`). `--origin shell` matches what
     // the MVP sessions picker shows; `--origin agent-pane` surfaces the
     // rows MVP sessions hides.
-    let mut filtered: Vec<crate::session_registry::SessionInfo> = sessions
-        .into_iter()
-        .filter(|s| origin_filter.matches_opt(s.origin.as_ref()))
-        .collect();
+    snapshot
+        .sessions
+        .retain(|s| origin_filter.matches_opt(s.origin.as_ref()));
     // Match the `/sessions` picker, which renders newest-activity-first.
     // `None` (no timestamp) sorts last.
-    filtered.sort_by(|a, b| b.last_activity_at_ms.cmp(&a.last_activity_at_ms));
-    if json_mode {
-        print!("{}", format_json_lines(&filtered)?);
-    } else {
-        print!("{}", format_table(&filtered));
-    }
-    Ok(())
+    snapshot
+        .sessions
+        .sort_by(|a, b| b.last_activity_at_ms.cmp(&a.last_activity_at_ms));
 }
 
 async fn fetch_from_master(
     master_override: Option<String>,
     all_agents: bool,
-) -> Result<Vec<crate::session_registry::SessionInfo>> {
+) -> Result<crate::session_registry::SessionsListResponse> {
     let pipe_name = resolve_master_pipe(master_override).await?;
     let pipe = open_master_pipe(&pipe_name).await?;
     let (read_half, write_half) = tokio::io::split(pipe);
@@ -104,8 +118,7 @@ async fn fetch_from_master(
     drop(conn);
     io_task.abort();
     let _ = io_task.await;
-    let parsed = result?;
-    Ok(parsed.sessions)
+    result
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -435,6 +448,55 @@ fn format_epoch_ms_utc(ms: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn status_snapshot_preserves_loading_state_and_shell_filter_order() {
+        use crate::agent_sessions::{OriginFilter, SessionOrigin};
+        use crate::session_registry::{HistoryLoadStatus, SessionInfo, SessionsListResponse};
+        let row = |id: &str, origin, activity| {
+            let mut row = SessionInfo::new(
+                acp::schema::v1::SessionId::new(id.to_string()),
+                std::path::PathBuf::from("C:\\repo"),
+            );
+            row.origin = Some(origin);
+            row.last_activity_at_ms = Some(activity);
+            row
+        };
+        for status in [
+            HistoryLoadStatus::Loading,
+            HistoryLoadStatus::Ready,
+            HistoryLoadStatus::Error,
+        ] {
+            let mut snapshot = SessionsListResponse {
+                sessions: vec![
+                    row("older", SessionOrigin::Unknown, 1),
+                    row("agent-pane", SessionOrigin::AgentPane, 3),
+                    row("newer", SessionOrigin::Unknown, 2),
+                ],
+                history_status: Some(status),
+            };
+            filter_snapshot(&mut snapshot, OriginFilter::ShellOnly);
+            assert_eq!(snapshot.history_status, Some(status));
+            assert_eq!(snapshot.sessions.len(), 2);
+            assert_eq!(snapshot.sessions[0].session_id.0.as_ref(), "newer");
+            assert_eq!(snapshot.sessions[1].session_id.0.as_ref(), "older");
+            let json = serde_json::to_value(&snapshot).unwrap();
+            assert!(json["sessions"].is_array());
+            assert_eq!(
+                json["history_status"],
+                serde_json::to_value(status).unwrap()
+            );
+
+            filter_snapshot(&mut snapshot, OriginFilter::AgentPaneOnly);
+            assert!(snapshot.sessions.is_empty());
+            assert_eq!(snapshot.history_status, Some(status));
+        }
+        assert_eq!(
+            format_json_lines(&[]).unwrap(),
+            "",
+            "legacy empty JSONL stays empty"
+        );
+    }
 
     #[test]
     fn json_lines_prints_one_session_info_per_line() {

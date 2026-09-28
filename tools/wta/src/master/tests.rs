@@ -1531,6 +1531,7 @@ fn make_state_with_retirement_pending_timeout(
         wt: None,
         agents: Mutex::new(HashMap::new()),
         history_refresh: Arc::new(Mutex::new(())),
+        history_status: watch::channel(crate::session_registry::HistoryLoadStatus::Loading).0,
         helper_roles: Mutex::new(HashMap::new()),
         custom_model_generations: Mutex::new(HashMap::new()),
         default_agent_cmd: "copilot --acp --stdio".to_string(),
@@ -10904,6 +10905,7 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
         wt: Some(wt),
         agents: Mutex::new(HashMap::new()),
         history_refresh: Arc::new(Mutex::new(())),
+        history_status: watch::channel(crate::session_registry::HistoryLoadStatus::Loading).0,
         helper_roles: Mutex::new(HashMap::new()),
         custom_model_generations: Mutex::new(HashMap::new()),
         default_agent_cmd: "copilot --acp --stdio".to_string(),
@@ -11220,10 +11222,17 @@ async fn session_hook_broadcasts_sessions_changed_after_valid_payload() {
     );
     assert_eq!(notification.params.get(), "{}");
     let terminal_events = crate::wt_protocol_events::take_test_published_events();
-    assert_eq!(terminal_events.len(), 1);
-    let terminal_event: serde_json::Value =
+    assert_eq!(terminal_events.len(), 2);
+    let status_delta: serde_json::Value =
         serde_json::from_str(&terminal_events[0]).expect("terminal event should be JSON");
-    assert_eq!(terminal_event["method"], "session_registry_changed");
+    assert_eq!(status_delta["method"], "session_registry_changed");
+    assert_eq!(status_delta["params"]["session_id"], "sid-for-hook");
+    assert_eq!(status_delta["params"]["pane_session_id"], "pane-for-hook");
+    assert_eq!(status_delta["params"]["status"], "Idle");
+    let fallback: serde_json::Value =
+        serde_json::from_str(&terminal_events[1]).expect("terminal event should be JSON");
+    assert_eq!(fallback["method"], "session_registry_changed");
+    assert_eq!(fallback["params"], serde_json::json!({}));
 }
 
 #[tokio::test]
@@ -11339,6 +11348,10 @@ async fn sidebar_history_discovery_is_background_and_single_flight() {
                     [row.clone()],
                     "a refresh must not block the snapshot"
                 );
+                assert_eq!(
+                    parsed.history_status,
+                    Some(crate::session_registry::HistoryLoadStatus::Loading)
+                );
             }
             assert!(state.agents.lock().await.is_empty());
             drop(guard);
@@ -11347,6 +11360,71 @@ async fn sidebar_history_discovery_is_background_and_single_flight() {
             request_host_history_refresh(&state);
             let _finished = state.history_refresh.lock().await;
             assert!(state.agents.lock().await.is_empty());
+            assert_eq!(
+                *state.history_status.borrow(),
+                crate::session_registry::HistoryLoadStatus::Ready
+            );
+            let response = handle_sessions_list(&state, None, &params).await.unwrap();
+            let parsed =
+                crate::session_registry::parse_sessions_list_response(&response.0).unwrap();
+            assert_eq!(
+                parsed.history_status,
+                Some(crate::session_registry::HistoryLoadStatus::Ready)
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn sidebar_history_empty_discovery_publishes_readiness_and_recovers_from_error() {
+    use crate::session_registry::{HistoryLoadStatus, SessionsListParams};
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut state = make_state();
+            Arc::get_mut(&mut state).unwrap().allowed_agent_ids = Some(HashSet::new());
+            let (tx, mut rx) = mpsc::unbounded_channel();
+            state
+                .helper_ext_subscribers
+                .lock()
+                .await
+                .insert(HelperId(1), tx);
+            let params = SessionsListParams {
+                all_agents: true,
+                ..Default::default()
+            };
+            for status in [
+                HistoryLoadStatus::Loading,
+                HistoryLoadStatus::Error,
+                HistoryLoadStatus::Ready,
+            ] {
+                state.history_status.send_replace(status);
+                let response = handle_sessions_list(&state, None, &params).await.unwrap();
+                let parsed =
+                    crate::session_registry::parse_sessions_list_response(&response.0).unwrap();
+                assert!(parsed.sessions.is_empty());
+                assert_eq!(
+                    parsed.history_status,
+                    Some(status),
+                    "listing does not hide an unfinished refresh"
+                );
+                {
+                    let _finished = state.history_refresh.lock().await;
+                    assert_eq!(*state.history_status.borrow(), HistoryLoadStatus::Ready);
+                }
+                if status != HistoryLoadStatus::Ready {
+                    assert_eq!(
+                        &*rx.try_recv()
+                            .expect("even an empty discovery notifies the UI")
+                            .method,
+                        crate::session_registry::INTELLTERM_METHOD_SESSIONS_CHANGED
+                    );
+                }
+                assert!(
+                    rx.try_recv().is_err(),
+                    "unchanged readiness must not trigger a refresh loop"
+                );
+                assert!(state.agents.lock().await.is_empty());
+            }
         })
         .await;
 }
@@ -11392,7 +11470,7 @@ async fn sidebar_history_discovery_reuses_resident_agents_and_preserves_live_row
             state.registry.upsert(live.clone()).await;
             let ids = ["copilot", "claude", "codex", "opencode"];
             for _ in 0..2 {
-                refresh_host_history_agents(&state, &ids).await;
+                assert!(refresh_host_history_agents(&state, &ids).await);
                 let rows = state.registry.snapshot().await;
                 assert_eq!(
                     rows.len(),
@@ -11435,7 +11513,7 @@ async fn sidebar_history_discovery_isolates_failed_and_unsupported_agents() {
             let state = make_state();
             let failed =
                 add_sidebar_listing_agent(&state, CliSource::Claude, &["kept-history"]).await;
-            refresh_host_history_agents(&state, &["claude"]).await;
+            assert!(refresh_host_history_agents(&state, &["claude"]).await);
             failed.conn.shutdown();
             *failed.host_list_cache.lock().await = None;
             add_sidebar_listing_agent(&state, CliSource::Copilot, &["healthy-history"]).await;
@@ -11454,7 +11532,11 @@ async fn sidebar_history_discovery_isolates_failed_and_unsupported_agents() {
                 .list = None;
             add_test_agent_to_pool(&state, &unsupported).await;
 
-            refresh_host_history_agents(&state, &["claude", "copilot", "gemini"]).await;
+            assert!(!refresh_host_history_agents(&state, &["claude", "copilot", "gemini"]).await);
+            assert!(
+                refresh_host_history_agents(&state, &["gemini"]).await,
+                "unsupported session listing is not a load failure"
+            );
             let rows = state.registry.snapshot().await;
             assert_eq!(rows.len(), 2);
             assert!(rows
@@ -12001,9 +12083,9 @@ async fn each_pooled_agent_seeds_and_stamps_its_own_history() {
             let copilot = listing_agent(CliSource::Copilot, &["copilot-row"]);
             let codex = listing_agent(CliSource::Codex, &["codex-row"]);
 
-            assert_eq!(seed_host_and_broadcast(&state, &copilot).await, 1);
+            assert_eq!(seed_host_and_broadcast(&state, &copilot).await, Some(1));
             // The second agent must seed too — not be skipped as "not first".
-            assert_eq!(seed_host_and_broadcast(&state, &codex).await, 1);
+            assert_eq!(seed_host_and_broadcast(&state, &codex).await, Some(1));
 
             let rows = state.registry.snapshot().await;
             let cli_of = |id: &str| {
@@ -12019,7 +12101,7 @@ async fn each_pooled_agent_seeds_and_stamps_its_own_history() {
 
             // Codex's reconcile must not have pruned the Copilot row it never
             // listed, and vice versa.
-            assert_eq!(seed_host_and_broadcast(&state, &copilot).await, 1);
+            assert_eq!(seed_host_and_broadcast(&state, &copilot).await, Some(1));
             let rows = state.registry.snapshot().await;
             assert!(rows.iter().any(|r| r.session_id.0.as_ref() == "codex-row"));
             assert!(rows
@@ -12044,8 +12126,8 @@ async fn seeded_history_carries_the_agents_execution_source() {
             let host = listing_agent(CliSource::Copilot, &["host-row"]);
             let debian = wsl_listing_agent(CliSource::Copilot, "Debian", &["debian-row"]);
 
-            assert_eq!(seed_host_and_broadcast(&state, &host).await, 1);
-            assert_eq!(seed_host_and_broadcast(&state, &debian).await, 1);
+            assert_eq!(seed_host_and_broadcast(&state, &host).await, Some(1));
+            assert_eq!(seed_host_and_broadcast(&state, &debian).await, Some(1));
 
             let rows = state.registry.snapshot().await;
             let location_of = |id: &str| {

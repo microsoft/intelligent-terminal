@@ -461,11 +461,32 @@
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>ٹیبز فلٹر کریں</value>
   </data>
+  <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
+    <value>فلٹر</value>
+  </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>تمام ٹیبز</value>
   </data>
   <data name="VerticalTabsFilterAgentsOnly.Text" xml:space="preserve">
     <value>صرف ایجنٹس</value>
+  </data>
+  <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
+    <value>ٹیب میٹا ڈیٹا</value>
+  </data>
+  <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
+    <value>ایجنٹ کی حیثیت</value>
+  </data>
+  <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
+    <value>موجودہ ورکنگ ڈائرکٹری</value>
+  </data>
+  <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
+    <value>Git ذخیرہ</value>
+  </data>
+  <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
+    <value>Git برانچ</value>
+  </data>
+  <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
+    <value>Git تبدیلیاں</value>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>1 ایجنٹ سیشن دکھایا جا رہا ہے</value>
@@ -501,10 +522,10 @@
     <value>ایجنٹ کی سرگزشت بند کریں</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>ایجنٹ کی سرگزشت تلاش کریں</value>
+    <value>ایجنٹ سیشن تلاش کریں</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>ایجنٹ کی سرگزشت تلاش کریں</value>
+    <value>ایجنٹ سیشن تلاش کریں</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>کوئی ایجنٹ سیشن نہیں ملا۔</value>

@@ -412,6 +412,16 @@ pub struct SessionsListParams {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct SessionsListResponse {
     pub sessions: Vec<SessionInfo>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub history_status: Option<HistoryLoadStatus>,
+}
+
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum HistoryLoadStatus {
+    Loading,
+    Ready,
+    Error,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -524,8 +534,12 @@ pub fn parse_session_activate_params(
 
 pub fn build_sessions_list_response(
     sessions: Vec<SessionInfo>,
+    history_status: Option<HistoryLoadStatus>,
 ) -> Box<serde_json::value::RawValue> {
-    let response = SessionsListResponse { sessions };
+    let response = SessionsListResponse {
+        sessions,
+        history_status,
+    };
     serde_json::value::to_raw_value(&response)
         .expect("SessionsListResponse serialization is infallible for owned data")
 }
@@ -3346,7 +3360,7 @@ mod tests {
             bound_pid: None,
             born_bound_pane: false,
         };
-        let raw = build_sessions_list_response(vec![row.clone()]);
+        let raw = build_sessions_list_response(vec![row.clone()], None);
         let parsed = parse_sessions_list_response(&raw).expect("response parses");
         assert_eq!(parsed.sessions, vec![row]);
     }
@@ -4184,10 +4198,36 @@ mod tests {
         info.last_activity_at_ms = Some(42);
         let resp = SessionsListResponse {
             sessions: vec![info.clone()],
+            history_status: Some(HistoryLoadStatus::Ready),
         };
         let raw = serde_json::value::to_raw_value(&resp).unwrap();
         let parsed = parse_sessions_list_response(&raw).unwrap();
         assert_eq!(parsed.sessions, vec![info]);
+        assert_eq!(parsed.history_status, Some(HistoryLoadStatus::Ready));
+    }
+
+    #[test]
+    fn sessions_list_response_distinguishes_loading_empty_and_failed_history() {
+        for (status, wire) in [
+            (HistoryLoadStatus::Loading, "loading"),
+            (HistoryLoadStatus::Ready, "ready"),
+            (HistoryLoadStatus::Error, "error"),
+        ] {
+            let raw = build_sessions_list_response(Vec::new(), Some(status));
+            let json: serde_json::Value = serde_json::from_str(raw.get()).unwrap();
+            assert_eq!(json["history_status"], wire);
+            let parsed = parse_sessions_list_response(&raw).unwrap();
+            assert!(parsed.sessions.is_empty());
+            assert_eq!(parsed.history_status, Some(status));
+        }
+
+        let legacy = serde_json::value::RawValue::from_string(r#"{"sessions":[]}"#.into()).unwrap();
+        assert_eq!(
+            parse_sessions_list_response(&legacy)
+                .unwrap()
+                .history_status,
+            None
+        );
     }
 
     #[test]

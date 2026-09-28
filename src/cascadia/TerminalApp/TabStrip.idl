@@ -57,6 +57,9 @@ namespace TerminalApp
         String Title;
         Boolean IsActive;
         Windows.UI.Xaml.Visibility ActiveIndicatorVisibility;
+        String MetadataText;
+        String AutomationName;
+        Windows.UI.Xaml.Visibility MetadataVisibility;
     };
 
     [default_interface] runtimeclass TabStripDisplayItem : Windows.UI.Xaml.Data.INotifyPropertyChanged
@@ -166,6 +169,13 @@ namespace TerminalApp
         event Windows.Foundation.TypedEventHandler<TabStrip, TabStripPaneEventArgs> PaneCloseRequested;
         event Windows.Foundation.TypedEventHandler<TabStrip, TabStripCloseRequestedEventArgs> TabRenameRequested;
         event Windows.Foundation.TypedEventHandler<TabStrip, TabStripCloseRequestedEventArgs> TabFocusRequested;
+
         Boolean HistoryActivating;
+        Boolean RichTabRepositoryVisible;
+        Boolean RichTabBranchVisible;
+        Boolean RichTabAgentStatusVisible;
+        Boolean RichTabChangesVisible;
+        Boolean RichTabWorkingDirectoryVisible;
+        event Windows.Foundation.TypedEventHandler<TabStrip, Object> VisibleFieldsChanged;
     };
 }

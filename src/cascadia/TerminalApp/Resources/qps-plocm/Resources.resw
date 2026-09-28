@@ -216,11 +216,32 @@
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>₣ĭĺťéя ťªвѕ !!!</value>
   </data>
+  <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
+    <value>₣ĭĺťéя !!!</value>
+  </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>Āĺĺ ťªвѕ !!!</value>
   </data>
   <data name="VerticalTabsFilterAgentsOnly.Text" xml:space="preserve">
     <value>Āğéñťѕ őñĺý !!!</value>
+  </data>
+  <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
+    <value>Ťªв méťªđªťª !!!</value>
+  </data>
+  <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
+    <value>Āğéñť ѕťªťūѕ !!!</value>
+  </data>
+  <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
+    <value>Ċūяяéñť ŵőяķĭñğ đĭяéçťőяý !!! !!!</value>
+  </data>
+  <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
+    <value>Ğĭť яéρőѕĭťőяý !!!</value>
+  </data>
+  <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
+    <value>Ğĭť вяªñçħ !!!</value>
+  </data>
+  <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
+    <value>Ğĭť çħªñğéѕ !!!</value>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>Ѕħőŵĭñğ 1 ªğéñť ѕéѕѕĭőñ !!! !!!</value>
@@ -256,10 +277,10 @@
     <value>Ċĺőѕé ªğéñť ħĭѕťőяý !!! !!!</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Ѕéªяċħ ªğéñť ħĭѕťőяý !!! !!!</value>
+    <value>Ѕéªяċħ ªğéñť ѕéѕѕĭőñ !!! !!!</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Ѕéªяċħ ªğéñť ħĭѕťőяý !!! !!!</value>
+    <value>Ѕéªяċħ ªğéñť ѕéѕѕĭőñ !!! !!!</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Ñő ªğéñť ѕéѕѕĭőñѕ ƒőūñđ. !!! !!!</value>

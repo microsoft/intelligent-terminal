@@ -497,6 +497,10 @@ pub(crate) enum SessionsAction {
         /// Connections remain in the master pool; this command returns the current snapshot.
         #[arg(long)]
         all_agents: bool,
+        /// With --json, return a snapshot object including history loading status
+        /// instead of one session per line.
+        #[arg(long, requires = "json")]
+        include_status: bool,
     },
     /// Activate one exact session row from the Sidebar History projection.
     #[command(hide = true)]

@@ -75,13 +75,24 @@ and may require network access; discovery is not an offline-only operation. See
 [Installing dependencies](../../doc/installing-dependencies.md) for the native CLI
 and ACP wrapper prerequisites.
 
-Sidebar Agent History runs `wta sessions list --origin shell --all-agents --json`.
+Sidebar Agent History runs
+`wta sessions list --origin shell --all-agents --json --include-status`.
 This returns the current registry snapshot immediately and requests a background
 refresh using the same resident pool; it is not the initial connection trigger.
+The opt-in JSON object contains `sessions` and `history_status` (`loading`, `ready`,
+or `error`); ordinary `--json` output remains one session per line. The initial
+discovery stays `loading` until all eligible host providers finish. Providers that
+do not support listing are skipped, while initialization or listing failures
+produce `error`. Later refreshes retain the last completed status until they finish.
+The sidebar shows available rows immediately, shows a loading indicator while an
+empty snapshot is still loading, and displays "No agent sessions found" only after
+a successful empty result. Errors remain visible alongside any available rows;
+failed refreshes do not clear previously displayed sessions. This does not depend
+on the agent pane's chat connection or hooks being ready.
 
 These native-provider ACP processes remain in the master pool after History closes;
 there is no History-specific idle timeout or eviction. Further refreshes reuse them,
-and concurrent windows share one discovery pass. Registry changes notify the sidebar,
+and concurrent windows share one discovery pass. Registry and discovery-status changes notify the sidebar,
 with its existing five-second snapshot poll as a fallback. Unavailable or failed
 providers do not clear other providers' rows or overwrite live activity and pane
 bindings. Failures are logged under `master_history`; listing never installs a native

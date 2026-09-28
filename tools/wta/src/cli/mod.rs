@@ -59,7 +59,17 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
                 master,
                 origin,
                 all_agents,
-            } => sessions::run_list(master, origin.to_filter(), all_agents, json_mode).await,
+                include_status,
+            } => {
+                sessions::run_list(
+                    master,
+                    origin.to_filter(),
+                    all_agents,
+                    json_mode,
+                    include_status,
+                )
+                .await
+            }
             SessionsAction::Activate {
                 session_id,
                 provider,

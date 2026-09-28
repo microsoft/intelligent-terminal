@@ -482,11 +482,32 @@
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>ट्याब फिल्टर गर्नुहोस्</value>
   </data>
+  <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
+    <value>फिल्टर गर्नुहोस्</value>
+  </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>सबै ट्याब</value>
   </data>
   <data name="VerticalTabsFilterAgentsOnly.Text" xml:space="preserve">
     <value>एजेन्टहरू मात्र</value>
+  </data>
+  <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
+    <value>ट्याब मेटाडेटा</value>
+  </data>
+  <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
+    <value>एजेन्ट स्थिति</value>
+  </data>
+  <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
+    <value>हालको कार्य निर्देशिका</value>
+  </data>
+  <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
+    <value>Git भण्डार</value>
+  </data>
+  <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
+    <value>Git शाखा</value>
+  </data>
+  <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
+    <value>Git परिवर्तनहरू</value>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>१ एजेन्ट सत्र देखाइँदै छ</value>
@@ -522,10 +543,10 @@
     <value>एजेन्ट इतिहास बन्द गर्नुहोस्</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>एजेन्ट इतिहास खोज्नुहोस्</value>
+    <value>एजेन्ट सत्र खोज्नुहोस्</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>एजेन्ट इतिहास खोज्नुहोस्</value>
+    <value>एजेन्ट सत्र खोज्नुहोस्</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>कुनै एजेन्ट सत्र फेला परेन।</value>

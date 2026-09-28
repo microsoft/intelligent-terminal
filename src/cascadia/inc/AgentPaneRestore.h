@@ -226,6 +226,11 @@ namespace Microsoft::Terminal::AgentPaneRestore
 
     inline constexpr std::wstring_view ResumeShellPrefix{ L"cmd.exe /d /s /c \"" };
 
+    inline bool IsValidSessionId(const std::wstring_view sessionId)
+    {
+        return ::Microsoft::Terminal::AgentSessionId::IsSafeForCliResume(sessionId);
+    }
+
     // The command line that resumes `agentSessionId` under `cliSource`, or
     // empty when that is not something we can safely spell.
     //
@@ -235,7 +240,7 @@ namespace Microsoft::Terminal::AgentPaneRestore
                                                const std::wstring_view agentSessionId,
                                                const std::wstring_view cwd = {})
     {
-        if (!::Microsoft::Terminal::AgentSessionId::IsSafeForCliResume(agentSessionId))
+        if (!IsValidSessionId(agentSessionId))
         {
             return {};
         }
@@ -302,32 +307,74 @@ namespace Microsoft::Terminal::AgentPaneRestore
         std::wstring cwd;
     };
 
-    inline ResumeTarget ParseCliResumeInvocation(const std::wstring_view inner)
+    inline ResumeTarget ParseCliResumeInvocation(std::wstring_view inner)
     {
+        while (!inner.empty() && std::iswspace(inner.front()))
+        {
+            inner.remove_prefix(1);
+        }
+        while (!inner.empty() && std::iswspace(inner.back()))
+        {
+            inner.remove_suffix(1);
+        }
+
+        const auto firstSpace = inner.find_first_of(L" \t");
+        if (firstSpace == std::wstring_view::npos)
+        {
+            return {};
+        }
+
+        const auto requestedExecutable = inner.substr(0, firstSpace);
+        auto arguments = inner.substr(firstSpace);
+        while (!arguments.empty() && std::iswspace(arguments.front()))
+        {
+            arguments.remove_prefix(1);
+        }
+
         for (const auto& [agentId, resumeArg] : ResumeInvocations)
         {
-            std::wstring prefix{
-                ::Microsoft::Terminal::Settings::Model::AgentRegistry::CliExecutable(agentId)
-            };
-            prefix.push_back(L' ');
-            prefix.append(resumeArg);
-            prefix.push_back(L' ');
-            if (inner.starts_with(prefix))
+            if (requestedExecutable != ::Microsoft::Terminal::Settings::Model::AgentRegistry::CliExecutable(agentId))
             {
-                const auto sessionId = inner.substr(prefix.size());
-                if (::Microsoft::Terminal::AgentSessionId::IsSafeForCliResume(sessionId))
-                {
-                    return { std::wstring{ agentId }, std::wstring{ sessionId } };
-                }
-                return {};
+                continue;
+            }
+
+            if (!arguments.starts_with(resumeArg))
+            {
+                continue;
+            }
+            auto sessionId = arguments.substr(resumeArg.size());
+            if (sessionId.empty() ||
+                (!std::iswspace(sessionId.front()) && sessionId.front() != L'='))
+            {
+                continue;
+            }
+            if (sessionId.front() == L'=')
+            {
+                sessionId.remove_prefix(1);
+            }
+            while (!sessionId.empty() && std::iswspace(sessionId.front()))
+            {
+                sessionId.remove_prefix(1);
+            }
+            if (IsValidSessionId(sessionId))
+            {
+                return { std::wstring{ agentId }, std::wstring{ sessionId } };
             }
         }
         return {};
     }
 
-    // Recognize only the command shapes emitted by the resume builder.
-    inline ResumeTarget ParseResumeCommandline(const std::wstring_view commandline)
+    // Recognize native CLI invocations and the source-aware restore wrappers.
+    inline ResumeTarget ParseResumeCommandline(std::wstring_view commandline)
     {
+        while (!commandline.empty() && std::iswspace(commandline.front()))
+        {
+            commandline.remove_prefix(1);
+        }
+        while (!commandline.empty() && std::iswspace(commandline.back()))
+        {
+            commandline.remove_suffix(1);
+        }
         if (commandline.starts_with(ResumeShellPrefix) && commandline.ends_with(L'"'))
         {
             return ParseCliResumeInvocation(commandline.substr(
@@ -335,7 +382,7 @@ namespace Microsoft::Terminal::AgentPaneRestore
         }
         if (!commandline.starts_with(L"wsl.exe -d "))
         {
-            return {};
+            return ParseCliResumeInvocation(commandline);
         }
         int argc{};
         const wil::unique_hlocal_ptr<PWSTR[]> argv{
