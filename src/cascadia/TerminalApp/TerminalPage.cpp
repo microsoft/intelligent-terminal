@@ -624,21 +624,6 @@ namespace winrt::TerminalApp::implementation
             {
                 page->_tabFilterMode = sender.FilterMode();
                 page->_ApplyTabListProjection();
-                if (page->_IsAgentScopeEffective())
-                {
-                    uint32_t rowCount = 0;
-                    for (const auto& tab : page->_tabs)
-                    {
-                        rowCount += page->_IsTabVisibleInProjection(page->_GetTabImpl(tab)) ? 1u : 0u;
-                    }
-                    TraceLoggingWrite(
-                        g_hTerminalAppProvider,
-                        "SidebarAgentFilterApplied",
-                        TraceLoggingDescription("User enabled the sidebar agent filter"),
-                        TraceLoggingUInt32(rowCount, "row_count"),
-                        TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
-                        TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
-                }
             }
         });
         _tabStrip.SearchActivationRequested([weakThis{ get_weak() }](auto&&, auto&&) {

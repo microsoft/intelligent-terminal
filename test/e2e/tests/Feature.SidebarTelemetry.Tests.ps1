@@ -10,6 +10,7 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
         $script:target = $null
         $script:originalHashes = $null
         $script:ownedPids = [Collections.Generic.HashSet[int]]::new()
+        $script:fixturePanes = @()
         $script:phases = [ordered]@{}
         $script:phaseErrors = @{}
         $script:appProvider = '24a1622f-7da7-5c77-3303-d850bd1ab2ed'
@@ -40,15 +41,68 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
 
         function Sync-SidebarWindow {
             $window = Wait-Until -TimeoutSec 15 -Because 'one visible window belongs to the owned Dev process' -Condition {
-                $windows = @(Get-WtWindowHwnds -App $script:app | Where-Object pid -eq $script:app.Pid)
+                $windows = @(Get-WtWindowHwnds -App $script:app | Where-Object {
+                    $_.pid -eq $script:app.Pid -and $_.title -notin @('PopupHost', 'Popup')
+                })
                 if ($windows.Count -eq 1) { $windows[0] }
             }
             $script:app.Hwnd = $window.hwnd
+            Set-WtWindowForeground -App $script:app -Attempts 5 -DelayMs 200 | Should -BeTrue
         }
         function Invoke-SidebarFilter {
             param([string]$Name)
-            Invoke-UiClick -App $script:app -Selector FilterTabsButton | Out-Null
-            Invoke-UiElement -App $script:app -Selector $Name | Out-Null
+            Invoke-UiElement -App $script:app -Selector FilterTabsButton | Out-Null
+            $selector = if ($Name -eq 'All tabs') { 'AllTabsFilterItem' } else { 'AgentsOnlyFilterItem' }
+            try { Invoke-UiElement -App $script:app -Selector $selector | Out-Null }
+            catch {
+                Get-UiTree -App $script:app -Depth 12 | Set-Content -LiteralPath (Join-Path $script:root 'filter-error-ui.txt')
+                throw
+            }
+        }
+        function Get-AgentViewRowCount {
+            $path = Join-Path $script:root ('agent-view-' + [guid]::NewGuid().ToString('N') + '.jsonl')
+            # The external test runner does not inherit package identity.
+            $pipe = (Get-Content -LiteralPath (Join-Path $script:app.LocalStateDir 'IntelligentTerminal\master-pipe.txt') -Raw).Trim()
+            $result = Invoke-Wta -App $script:app -Arguments @('sessions', 'list', '--master', $pipe, '--origin', 'shell', '--json') -Raw
+            $result.StdOut | Set-Content -LiteralPath $path
+            $result.ExitCode | Should -Be 0 -Because $result.StdErr
+            $rows = @($result.StdOut -split '\r?\n' | Where-Object { $_.Trim() } | ForEach-Object { $_ | ConvertFrom-Json })
+            foreach ($row in $rows) {
+                $row.session_id | Should -Not -BeNullOrEmpty
+                $row.provider_id | Should -Not -BeNullOrEmpty
+                ($row.location -eq 'Host' -or $row.location.Wsl.distro) | Should -BeTrue
+            }
+            $script:agentViewSessionIds = @($rows.session_id)
+            $rows.Count
+        }
+        function Add-AgentViewFixtures {
+            $expected = @(
+                foreach ($pane in @($script:tabA.session_id, $script:tabB.session_id)) {
+                    $id = 'sidebar-telemetry-' + [guid]::NewGuid().ToString('N')
+                    $path = Join-Path $script:root "$id.json"
+                    @{ session_id = $id; cwd = $script:root; tool_name = 'edit' } |
+                        ConvertTo-Json -Compress | Set-Content -LiteralPath $path
+                    $command = "Get-Content -Raw -LiteralPath '$($path.Replace("'", "''"))' | & '$($script:app.WtcliPath.Replace("'", "''"))' agent-hook --cli-source copilot --event agent.tool.starting"
+                    Invoke-RunCommand -App $script:app -SessionId $pane -Command $command -SettleSec 3 | Out-Null
+                    $script:fixturePanes += $pane
+                    $id
+                }
+            )
+            Wait-Until -TimeoutSec 20 -Because 'both shell-origin hook fixtures appear in the real master registry' -Condition {
+                Get-AgentViewRowCount | Out-Null
+                @($expected | Where-Object { $_ -notin $script:agentViewSessionIds }).Count -eq 0
+            } | Out-Null
+        }
+        function Wait-AgentViewLoaded {
+            param([int]$Count)
+            Wait-UiElement -App $script:app -Selector HistorySearchTextBox | Out-Null
+            Wait-UiElement -App $script:app -Selector HistoryLoadingIndicator -Gone | Out-Null
+            if ($Count) {
+                Wait-UiElement -App $script:app -Selector HistoryList | Out-Null
+            }
+            else {
+                Wait-UiElement -App $script:app -Selector 'No agent sessions found.' | Out-Null
+            }
         }
         function Set-SidebarQuery {
             param([string]$Text)
@@ -112,6 +166,7 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
                 acpModel = ''; autoErrorDetectionEnabled = $false; autoFixEnabled = $false
             }
             $script:app.Launched | Should -BeTrue
+            Sync-SidebarWindow
             Save-TelemetryOwnedProcesses -App $script:app
             @{
                 package = $script:target.Package; installLocation = $script:target.InstallLocation
@@ -166,31 +221,43 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
                 Wait-UiElement -App $script:app -Selector SearchTextBox | Out-Null
             }
             Invoke-TelemetryPhase -Name filter-all -Action {
+                $count = Get-AgentViewRowCount
                 Invoke-SidebarFilter -Name 'Agents only'
-                Wait-UiElement -App $script:app -Selector 'Showing 3 agent sessions' | Out-Null
+                Wait-AgentViewLoaded -Count $count
+                @{ Count = $count }
             }
             Invoke-TelemetryPhase -Name filter-repeat -Action {
                 Invoke-SidebarFilter -Name 'Agents only'
-                Wait-UiElement -App $script:app -Selector 'Showing 3 agent sessions' | Out-Null
+                Wait-AgentViewLoaded -Count $script:phases['filter-all'].Data.Count
+                Start-Sleep -Seconds 7
             }
             Invoke-TelemetryPhase -Name filter-search-edit -Action {
+                Set-UiValue -App $script:app -Selector HistorySearchTextBox -Value ('no-session-' + [guid]::NewGuid().ToString('N')) | Out-Null
+                Wait-UiElement -App $script:app -Selector HistoryMessage | Out-Null
+                (Get-UiElement -App $script:app -Selector HistoryMessage).name |
+                    Should -BeIn @('No matching agent sessions.', 'No agent sessions found.')
+            }
+            Invoke-TelemetryPhase -Name filter-live-search -Action {
+                Invoke-SidebarFilter -Name 'All tabs'
+                Add-AgentViewFixtures
                 Set-SidebarQuery -Text $script:titleA
                 Wait-SidebarHeader -Title $script:titleA
-                Wait-SidebarHeader -Title $script:titleB -Hidden
-            }
-            Invoke-TelemetryPhase -Name filter-one -Action {
-                Invoke-SidebarFilter -Name 'All tabs'
+                $count = Get-AgentViewRowCount
+                $count | Should -BeGreaterOrEqual 2
                 Invoke-SidebarFilter -Name 'Agents only'
-                Wait-SidebarHeader -Title $script:titleA
-                Wait-SidebarHeader -Title $script:titleB -Hidden
-                Get-UiTree -App $script:app -Depth 12 | Set-Content -LiteralPath (Join-Path $script:root 'filtered-split-tab.txt')
+                Wait-AgentViewLoaded -Count $count
+                Get-UiTree -App $script:app -Depth 12 | Set-Content -LiteralPath (Join-Path $script:root 'agent-view.txt')
+                @{ Count = $count }
             }
-            Invoke-TelemetryPhase -Name filter-zero -Action {
+            Invoke-TelemetryPhase -Name filter-live-no-match -Action {
+                Invoke-SidebarFilter -Name 'All tabs'
                 Set-SidebarQuery -Text 'IT-sidebar-no-match'
-                Invoke-SidebarFilter -Name 'All tabs'
-                Invoke-SidebarFilter -Name 'Agents only'
                 Wait-SidebarHeader -Title $script:titleA -Hidden
                 Wait-SidebarHeader -Title $script:titleB -Hidden
+                $count = Get-AgentViewRowCount
+                Invoke-SidebarFilter -Name 'Agents only'
+                Wait-AgentViewLoaded -Count $count
+                @{ Count = $count }
             }
             Invoke-SidebarFilter -Name 'All tabs'
             Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
@@ -282,6 +349,11 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             Wait-Until -TimeoutSec 20 -Because 'owned fixture helpers exit before their host' -Condition {
                 @($helpers | Where-Object { Get-Process -Id $_.HelperProcessId -ErrorAction SilentlyContinue }).Count -eq 0
             } | Out-Null
+            # Retire shell-hook bindings before the final window closes, too.
+            foreach ($pane in $script:fixturePanes) {
+                $pane | Should -Not -Be $script:shell.session_id
+                Close-WtPane -App $script:app -SessionId $pane
+            }
             Start-Sleep -Seconds 2
             Stop-Terminal -App $script:app -RestoreSettings $false
         }
@@ -329,12 +401,12 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
         @($script:records | Where-Object Name -eq SidebarSearchOpened) | Should -HaveCount 3
     }
 
-    It 'Sidebar filter telemetry counts matching top-level tabs' {
-        foreach ($case in @(@{ Phase = 'filter-all'; Count = 3 }, @{ Phase = 'filter-one'; Count = 1 }, @{ Phase = 'filter-zero'; Count = 0 })) {
-            $events = @(Get-TelemetryPhaseEvents -Phase $case.Phase -Name SidebarAgentFilterApplied -Provider $script:appProvider)
+    It 'Sidebar filter telemetry counts loaded agent session rows' {
+        foreach ($phase in @('filter-all', 'filter-live-search', 'filter-live-no-match')) {
+            $events = @(Get-TelemetryPhaseEvents -Phase $phase -Name SidebarAgentFilterApplied -Provider $script:appProvider)
             $events | Should -HaveCount 1
             Assert-SidebarSchema -Event $events[0] -Field row_count
-            [uint32]$events[0].Fields.row_count | Should -Be $case.Count
+            [uint32]$events[0].Fields.row_count | Should -Be $script:phases[$phase].Data.Count
         }
         foreach ($phase in @('filter-repeat', 'filter-search-edit', 'layout-refresh')) {
             @(Get-TelemetryPhaseEvents -Phase $phase -Name SidebarAgentFilterApplied) | Should -HaveCount 0

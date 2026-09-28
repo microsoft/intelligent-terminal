@@ -329,6 +329,7 @@ namespace winrt::TerminalApp::implementation
         bool _projectionControlsEnabled{ true };
         winrt::hstring _searchQuery;
         bool _historyActive{ false };
+        bool _agentFilterTelemetryPending{ false };
         bool _historyLoading{ false };
         bool _syncingHistorySearchState{ false };
         winrt::hstring _historySearchQuery;

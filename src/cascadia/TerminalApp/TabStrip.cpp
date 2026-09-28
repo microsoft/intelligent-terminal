@@ -665,6 +665,17 @@ namespace winrt::TerminalApp::implementation
             _historySearchTerms.emplace_back(_buildHistorySearchTerms(item));
         }
         _applyHistoryProjection();
+        if (_historyActive && _agentFilterTelemetryPending)
+        {
+            _agentFilterTelemetryPending = false;
+            TraceLoggingWrite(
+                g_hTerminalAppProvider,
+                "SidebarAgentFilterApplied",
+                TraceLoggingDescription("User entered the sidebar agent view and its session rows loaded"),
+                TraceLoggingUInt32(_historyItems.Size(), "row_count"),
+                TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+        }
     }
 
     void TabStrip::ClearHistorySnapshot()
@@ -691,6 +702,10 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::HistoryActive(bool value)
     {
+        if (!value)
+        {
+            _agentFilterTelemetryPending = false;
+        }
         FilterMode(TerminalApp::TabStripFilterMode::AllTabs);
         AllTabsFilterItem().IsChecked(!value);
         AgentsOnlyFilterItem().IsChecked(value);
@@ -812,6 +827,10 @@ namespace winrt::TerminalApp::implementation
         if (_isRailCollapsed || !_projectionControlsEnabled)
         {
             return;
+        }
+        if (!_historyActive)
+        {
+            _agentFilterTelemetryPending = true;
         }
         HistoryActive(true);
         HistoryRequested.raise(*this, nullptr);

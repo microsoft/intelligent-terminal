@@ -224,7 +224,7 @@ the reserved background entry point is not a completed background workflow.
 |---|---|
 | 5.1 `SidebarStateOnLaunch(enabled)` | Consolidated into `AppCreated.SidebarEnabled`; no standalone event |
 | 5.2 `SidebarSearchOpened` | Opening the current-window tab search box |
-| 5.3 `SidebarAgentFilterApplied(row_count)` | Switching to Agents-only; count matching top-level tabs after the current search is applied |
+| 5.3 `SidebarAgentFilterApplied(row_count)` | Entering the Agent view; count visible session rows on its first successful snapshot |
 | 5.4 `SidebarTabPinned(pinned_count)` | Enabling **Keep tab running** from a sidebar tab's context menu |
 | 5.5 `SidebarRowFieldsChanged(fields)` | Deferred: selecting two row fields is not implemented; no event is emitted |
 
@@ -247,19 +247,24 @@ and explicitly reopening tab search emits again.
 
 ### App.SidebarAgentFilterApplied
 
-**Trigger:** the sidebar filter changes from All tabs to Agents only and the
-page applies the list projection.
+**Trigger:** the user switches from All tabs to the Agent view and its first
+successful session snapshot is committed. The pending measurement is canceled
+if the user leaves the view before a snapshot succeeds.
 
 | Field | Type | Meaning / values |
 |---|---|---|
-| `row_count` | UInt32 | Matching top-level tabs in the owning window after combining agent scope with the active title search; may be zero |
+| `row_count` | UInt32 | Visible Agent-view session rows after applying its current session-search query to the first successful snapshot; may be zero |
 
-Split-tab parents count once; child pane rows are never added to this count.
-Agent scope includes agent-pane tabs and recognized agent CLI tabs. This is
-not a provider selector. Selecting Agents only again while it is already
-active, switching to All tabs, editing search, and automatic refreshes after
-title/session/layout changes do not emit. Returning to All tabs and then
-Agents only emits a new event.
+The unified Agent view reads the global shell-origin session registry,
+including historical sessions. It does not count current-window tabs,
+split-pane children, or Agent-pane sessions excluded by that view's scope.
+Its search is independent of the live-tab search; entering the view clears
+the session query, but a query entered while loading is honored.
+Selecting Agents only again while it is already active, switching to All
+tabs, editing search, and automatic refreshes do not emit again. Returning
+to All tabs and then Agents only arms another measurement. Load failure
+does not fabricate a zero-count event; a later successful refresh while
+the same entry remains active can complete the pending measurement.
 
 ### App.SidebarTabPinned
 
