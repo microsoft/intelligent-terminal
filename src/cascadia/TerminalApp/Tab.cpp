@@ -746,6 +746,7 @@ namespace winrt::TerminalApp::implementation
         // possible that the focus events won't propagate immediately. Updating
         // the focus here will give the same effect though.
         _UpdateActivePane(newPane);
+        PaneProjectionChanged.raise();
 
         return { original, newPane };
     }
@@ -822,6 +823,7 @@ namespace winrt::TerminalApp::implementation
 
         // After split, Close Pane Menu Item should be visible
         _closePaneMenuItem.Visibility(WUX::Visibility::Visible);
+        PaneProjectionChanged.raise();
 
         return { originalTree, pane };
     }
@@ -859,6 +861,7 @@ namespace winrt::TerminalApp::implementation
                 _UpdateActivePane(activePane);
             }
 
+            PaneProjectionChanged.raise();
             return pane;
         }
 
@@ -946,6 +949,7 @@ namespace winrt::TerminalApp::implementation
         {
             _UpdateActivePane(focus);
         }
+        PaneProjectionChanged.raise();
     }
 
     // Method Description:
@@ -987,7 +991,7 @@ namespace winrt::TerminalApp::implementation
             }
         });
 
-        _tabColorPickup.ShowAt(TabViewItem());
+        _tabColorPickup.ShowAt(_headerControl);
     }
 
     // Method Description:
@@ -1244,6 +1248,7 @@ namespace winrt::TerminalApp::implementation
                 if (const auto tab = weakThis.get())
                 {
                     tab->UpdateTitle();
+                    tab->PaneProjectionChanged.raise();
                 }
             });
 
@@ -1474,11 +1479,30 @@ namespace winrt::TerminalApp::implementation
 
         if (_rootPane)
         {
-            const bool isClosed = _rootPane->WalkTree([&](const auto& p) {
-                return p->IsConnectionClosed();
-            });
+            const auto hasVisibleClosedConnection = [&](const auto& self,
+                                                        const std::shared_ptr<Pane>& pane,
+                                                        bool ancestorHidden) -> bool {
+                if (!pane)
+                {
+                    return false;
+                }
 
-            _tabStatus.IsConnectionClosed(isClosed);
+                const auto hidden = ancestorHidden || pane->IsHidden();
+                if (hidden)
+                {
+                    return false;
+                }
+
+                if (pane->_IsLeaf())
+                {
+                    return pane->IsConnectionClosed();
+                }
+
+                return self(self, pane->_firstChild, hidden) ||
+                       self(self, pane->_secondChild, hidden);
+            };
+
+            _tabStatus.IsConnectionClosed(hasVisibleClosedConnection(hasVisibleClosedConnection, _rootPane, false));
         }
     }
 
@@ -1777,9 +1801,17 @@ namespace winrt::TerminalApp::implementation
                         if (const auto tab = weakThis.get())
                         {
                             tab->_UpdateAgentPaneIndicators();
+                            tab->PaneProjectionChanged.raise();
                         }
                     });
                 }
+            }
+        });
+        const auto structureChangedToken = pane->StructureChanged([weakThis]() {
+            if (const auto tab = weakThis.get())
+            {
+                tab->_UpdateAgentPaneIndicators();
+                tab->PaneProjectionChanged.raise();
             }
         });
 
@@ -1788,7 +1820,7 @@ namespace winrt::TerminalApp::implementation
         auto detachedToken = std::make_shared<winrt::event_token>();
         // Add a Detached event handler to the Pane to clean up tab state
         // and other event handlers when a pane is removed from this tab.
-        *detachedToken = pane->Detached([weakThis, weakPane, gotFocusToken, lostFocusToken, closedToken, detachedToken](std::shared_ptr<Pane> /*sender*/) {
+        *detachedToken = pane->Detached([weakThis, weakPane, gotFocusToken, lostFocusToken, closedToken, structureChangedToken, detachedToken](std::shared_ptr<Pane> /*sender*/) {
             // Make sure we do this at most once
             if (auto pane{ weakPane.lock() })
             {
@@ -1796,6 +1828,7 @@ namespace winrt::TerminalApp::implementation
                 pane->GotFocus(gotFocusToken);
                 pane->LostFocus(lostFocusToken);
                 pane->Closed(closedToken);
+                pane->StructureChanged(structureChangedToken);
 
                 if (auto tab{ weakThis.get() })
                 {
@@ -2525,6 +2558,8 @@ namespace winrt::TerminalApp::implementation
             _UpdateActivePane(focusTarget);
             focusTarget->SetActive();
         }
+        _UpdateConnectionClosedState();
+        PaneProjectionChanged.raise();
     }
 
     // Method Description:
@@ -2551,6 +2586,8 @@ namespace winrt::TerminalApp::implementation
         parent->RestorePane(_hiddenPane);
         _hiddenPane = nullptr;
         _UpdateAgentPaneIndicators();
+        _UpdateConnectionClosedState();
+        PaneProjectionChanged.raise();
     }
 
     bool Tab::HasHiddenPane()
@@ -2786,6 +2823,8 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         parent->HidePane(agentPane);
+        _UpdateConnectionClosedState();
+        PaneProjectionChanged.raise();
         // After HidePane, XAML focus is in limbo (the previously-focused
         // element — typically the agent pane's TermControl — was just
         // removed from the visual tree). Hotkeys go through
@@ -2861,6 +2900,8 @@ namespace winrt::TerminalApp::implementation
             return false;
         }
         parent->RestorePane(agentPane);
+        _UpdateConnectionClosedState();
+        PaneProjectionChanged.raise();
         // Order matters: Pane::_Focus has a `WasLastFocused()` early-return
         // guard, so do FocusPane (which calls _Focus) FIRST (agent's flag
         // is still false from the stash). _UpdateActivePane sets the flag.
@@ -2908,6 +2949,78 @@ namespace winrt::TerminalApp::implementation
             }
         }
         return true;
+    }
+
+    std::vector<Tab::VisiblePaneSnapshot> Tab::GetVisiblePaneSnapshot() const
+    {
+        std::vector<VisiblePaneSnapshot> result;
+        if (!_rootPane)
+        {
+            return result;
+        }
+
+        const auto activeLeaf = _activePane ?
+                                    (_activePane->_IsLeaf() ? _activePane : _activePane->GetActivePane()) :
+                                    nullptr;
+        const auto visit = [&](const auto& self, const std::shared_ptr<Pane>& pane, bool ancestorHidden) -> void {
+            if (!pane)
+            {
+                return;
+            }
+
+            const auto hidden = ancestorHidden || pane->_hidden;
+            if (pane->_IsLeaf())
+            {
+                if (!hidden && pane->_content && pane->_contentId)
+                {
+                    auto title = pane->_content.Title();
+                    if (title.empty())
+                    {
+                        title = Title();
+                    }
+                    result.emplace_back(VisiblePaneSnapshot{
+                        .ContentId = pane->_contentId.value(),
+                        .SessionId = pane->GetSessionId(),
+                        .Title = std::move(title),
+                        .IsActive = pane == activeLeaf,
+                        .IsAgentPane = pane->_content.try_as<winrt::TerminalApp::AgentPaneContent>() != nullptr ||
+                                       pane->IsAgentPane(),
+                    });
+                }
+                return;
+            }
+
+            self(self, pane->_firstChild, hidden);
+            self(self, pane->_secondChild, hidden);
+        };
+        visit(visit, _rootPane, false);
+        return result;
+    }
+
+    std::vector<std::shared_ptr<Pane>> Tab::GetPaneCloseScope(uint32_t contentId) const
+    {
+        std::vector<std::shared_ptr<Pane>> result;
+        if (!_rootPane)
+        {
+            return result;
+        }
+
+        const auto target = _rootPane->FindPaneByContentId(contentId);
+        if (!target)
+        {
+            return result;
+        }
+        result.emplace_back(target);
+
+        if (const auto parent = _rootPane->_FindParentOfPane(target))
+        {
+            const auto& sibling = parent->_firstChild == target ? parent->_secondChild : parent->_firstChild;
+            if (sibling && sibling->_IsLeaf() && sibling->_isAgentPane)
+            {
+                result.emplace_back(sibling);
+            }
+        }
+        return result;
     }
 
     bool Tab::HasStashedAgentPane() const
@@ -3070,6 +3183,7 @@ namespace winrt::TerminalApp::implementation
             {
                 _ClearTabBackgroundColor();
             }
+            PaneProjectionChanged.raise();
         }
         else
         {

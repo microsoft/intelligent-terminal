@@ -319,6 +319,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Pestañakuna panelta hatunyachiy</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Pestañakuna qututa hatunyachiy</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Pestañakuna qututa huch'uyachiy</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Pestaña</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Pestañakuna</value>
   </data>

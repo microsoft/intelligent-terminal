@@ -319,6 +319,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>ჩანართების პანელის გაშლა</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>ჩანართების ჯგუფის გაშლა</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>ჩანართების ჯგუფის აკეცვა</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>ჩანართი</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>ჩანართები</value>
   </data>

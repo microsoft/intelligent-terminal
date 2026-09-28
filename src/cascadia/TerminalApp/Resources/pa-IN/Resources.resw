@@ -435,6 +435,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>ਟੈਬਾਂ ਵਾਲਾ ਪੈਨ ਫੈਲਾਓ</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>ਟੈਬ ਗਰੁੱਪ ਫੈਲਾਓ</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>ਟੈਬ ਗਰੁੱਪ ਸਮੇਟੋ</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>ਟੈਬ</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>ਟੈਬਾਂ</value>
   </data>

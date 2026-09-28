@@ -411,6 +411,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Expandera flikfönstret</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Expandera flikgruppen</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Fäll ihop flikgruppen</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Flik</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Flikar</value>
   </data>

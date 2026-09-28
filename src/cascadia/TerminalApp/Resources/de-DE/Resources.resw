@@ -189,6 +189,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Registerkartenbereich erweitern</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Registerkartengruppe erweitern</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Registerkartengruppe einklappen</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Registerkarte</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Registerkarten</value>
   </data>

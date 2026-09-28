@@ -931,6 +931,7 @@ namespace winrt::TerminalApp::implementation
         void _UpdateTabView();
         void _ApplyTabListProjection();
         static bool _IsKnownAgentCliTitle(std::wstring_view title) noexcept;
+        bool _MatchesPaneAgentScope(const Tab::VisiblePaneSnapshot& pane) const;
         bool _TabHasCliAgent(const winrt::com_ptr<Tab>& tab) const;
         bool _IsAgentScopeEffective() const noexcept
         {
@@ -997,6 +998,17 @@ namespace winrt::TerminalApp::implementation
         // relaunch it; removed only when the pane itself closes or a new
         // binding replaces it.
         std::unordered_map<winrt::guid, _PaneAgentSession> _paneAgentSessions;
+        // Shell panes with a currently active agent CLI. Unlike the resumable
+        // binding above, this does not require an ACP session id: Copilot may
+        // publish its startup lifecycle event before that id is available.
+        // Keep the lifecycle session id when available so a delayed end from
+        // an older CLI cannot remove a newer session from Agent view.
+        struct _ActiveCliAgentPane
+        {
+            winrt::hstring sessionId;
+            std::vector<winrt::hstring> supersededSessionIds;
+        };
+        std::unordered_map<winrt::guid, _ActiveCliAgentPane> _activeCliAgentPanes;
         struct _PendingRestoredSessionBinding
         {
             winrt::hstring sessionId;
@@ -1022,6 +1034,9 @@ namespace winrt::TerminalApp::implementation
         std::string _FindTabIdForControl(const Microsoft::Terminal::Control::TermControl& control);
         std::string _FindTabIdForSessionId(std::string_view sessionId);
         void _RegisterTabEvents(Tab& hostingTab);
+        void _RefreshTabStripPaneItems(const winrt::com_ptr<Tab>& tab);
+        void _ActivatePaneFromTabStrip(const TerminalApp::TabStripPaneEventArgs& args);
+        safe_void_coroutine _ClosePaneFromTabStrip(TerminalApp::TabStripPaneEventArgs args);
 
         void _DismissTabContextMenus();
         void _FocusCurrentTab(const bool focusAlways);
@@ -1035,6 +1050,7 @@ namespace winrt::TerminalApp::implementation
         bool _MoveTab(winrt::com_ptr<Tab> tab, const Microsoft::Terminal::Settings::Model::MoveTabArgs args);
 
         std::shared_ptr<ThrottledFunc<>> _adjustProcessPriorityThrottled;
+        std::unordered_set<std::wstring> _pendingTabStripPaneCloses;
         void _adjustProcessPriority() const;
 
         template<typename F>

@@ -343,6 +343,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>ขยายแผงแท็บ</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>ขยายกลุ่มแท็บ</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>ยุบกลุ่มแท็บ</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>แท็บ</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>แท็บ</value>
   </data>

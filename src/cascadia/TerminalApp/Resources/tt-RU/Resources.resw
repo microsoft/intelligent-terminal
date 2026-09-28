@@ -411,6 +411,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Кыстыргычлар панелен җәю</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Кыстыргычлар төркемен җәю</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Кыстыргычлар төркемен җыю</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Кыстыргыч</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Кыстыргычлар</value>
   </data>

@@ -189,6 +189,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>展开标签页窗格</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>展开标签页组</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>折叠标签页组</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>标签页</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>标签页</value>
   </data>

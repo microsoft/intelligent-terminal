@@ -433,6 +433,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Išplėsti skirtukų sritį</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Išplėsti skirtukų grupę</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Sutraukti skirtukų grupę</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Skirtukas</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Skirtukai</value>
   </data>

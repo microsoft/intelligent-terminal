@@ -251,6 +251,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Expandir o panel de pestanas</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Expandir o grupo de pestanas</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Contraer o grupo de pestanas</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Pestana</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Pestanas</value>
   </data>

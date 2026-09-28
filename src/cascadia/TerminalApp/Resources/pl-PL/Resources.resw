@@ -433,6 +433,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Rozwiń panel kart</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Rozwiń grupę kart</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Zwiń grupę kart</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Karta</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Karty</value>
   </data>

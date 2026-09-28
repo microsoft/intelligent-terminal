@@ -28,8 +28,6 @@ namespace TerminalApp
         String SessionId;
         String Title;
         String Subtitle;
-        String StatusText;
-        Windows.UI.Xaml.Style StatusTextStyle;
         String Cwd;
         String PaneSessionId;
         String AgentId;
@@ -41,12 +39,49 @@ namespace TerminalApp
         String SearchQuery;
         Boolean IsLive;
         Boolean IsAgentPane;
+        Boolean IsHistorical;
+        String StatusText;
+        Windows.UI.Xaml.Style StatusTextStyle;
         Windows.UI.Xaml.DataTemplate IconTemplate;
     };
 
     [default_interface] runtimeclass TabStripHistoryActivationEventArgs
     {
         TabStripHistoryItem Item { get; };
+    };
+
+    [default_interface] runtimeclass TabStripPaneItem : Windows.UI.Xaml.Data.INotifyPropertyChanged
+    {
+        Microsoft.UI.Xaml.Controls.TabViewItem Tab { get; };
+        UInt32 ContentId { get; };
+        String Title;
+        Boolean IsActive;
+        Windows.UI.Xaml.Visibility ActiveIndicatorVisibility;
+    };
+
+    [default_interface] runtimeclass TabStripDisplayItem : Windows.UI.Xaml.Data.INotifyPropertyChanged
+    {
+        Microsoft.UI.Xaml.Controls.TabViewItem Tab { get; };
+        Windows.Foundation.Collections.IObservableVector<TabStripPaneItem> PaneItems { get; };
+        Object Header;
+        String Title;
+        String SearchText;
+        Windows.UI.Xaml.Controls.IconElement Icon;
+        Windows.UI.Xaml.Controls.Primitives.FlyoutBase ContextFlyout;
+        Boolean IsExpanded;
+        Boolean IsGroup;
+        Windows.UI.Xaml.Visibility HeaderVisibility;
+        Windows.UI.Xaml.Visibility CloseVisibility;
+        Windows.UI.Xaml.Visibility SelectionVisibility;
+        Windows.UI.Xaml.Visibility GroupVisibility;
+        Windows.UI.Xaml.Visibility ChildrenVisibility;
+        String ChevronGlyph;
+    };
+
+    [default_interface] runtimeclass TabStripPaneEventArgs
+    {
+        Microsoft.UI.Xaml.Controls.TabViewItem Tab { get; };
+        UInt32 ContentId { get; };
     };
 
     [default_interface] runtimeclass TabStripSelectionChangedEventArgs
@@ -124,6 +159,13 @@ namespace TerminalApp
         event Windows.Foundation.TypedEventHandler<TabStrip, Object> HistoryRequested;
         event Windows.Foundation.TypedEventHandler<TabStrip, Object> HistoryClosed;
         event Windows.Foundation.TypedEventHandler<TabStrip, TabStripHistoryActivationEventArgs> HistoryActivationRequested;
+
+        void SetTabPresentation(Object item, String title, String iconPath);
+        void SetPaneItems(Object item, Windows.Foundation.Collections.IVector<TabStripPaneItem> panes, Boolean isGroup);
+        event Windows.Foundation.TypedEventHandler<TabStrip, TabStripPaneEventArgs> PaneActivationRequested;
+        event Windows.Foundation.TypedEventHandler<TabStrip, TabStripPaneEventArgs> PaneCloseRequested;
+        event Windows.Foundation.TypedEventHandler<TabStrip, TabStripCloseRequestedEventArgs> TabRenameRequested;
+        event Windows.Foundation.TypedEventHandler<TabStrip, TabStripCloseRequestedEventArgs> TabFocusRequested;
         Boolean HistoryActivating;
     };
 }

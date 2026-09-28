@@ -431,6 +431,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Laajenna välilehtiruutu</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Laajenna välilehtiryhmä</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Kutista välilehtiryhmä</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Välilehti</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Välilehdet</value>
   </data>

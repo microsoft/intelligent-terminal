@@ -431,6 +431,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Tablar panelini genişləndir</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Tab qrupunu genişləndir</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Tab qrupunu yığcamlaşdır</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Tab</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Tablar</value>
   </data>

@@ -105,6 +105,16 @@ namespace winrt::TerminalApp::implementation
 
         std::shared_ptr<Pane> GetRootPane() const { return _rootPane; }
         std::vector<uint32_t> GetMruPanes() const { return _mruPanes; }
+        struct VisiblePaneSnapshot
+        {
+            uint32_t ContentId{};
+            winrt::guid SessionId{};
+            winrt::hstring Title;
+            bool IsActive{};
+            bool IsAgentPane{};
+        };
+        std::vector<VisiblePaneSnapshot> GetVisiblePaneSnapshot() const;
+        std::vector<std::shared_ptr<Pane>> GetPaneCloseScope(uint32_t contentId) const;
 
         // Returns the AgentPaneContent (if any) hosted in this tab's pane
         // tree. The presence of an AgentPaneContent IS the truth — a tab has
@@ -240,6 +250,7 @@ namespace winrt::TerminalApp::implementation
         til::typed_event<TerminalApp::TerminalPaneContent> RestartTerminalRequested;
 
         til::typed_event<TerminalApp::Tab, IInspectable> ActivePaneChanged;
+        til::event<winrt::delegate<>> PaneProjectionChanged;
         til::event<winrt::delegate<>> TabRaiseVisualBell;
         til::event<winrt::delegate<winrt::hstring /*title*/, winrt::hstring /*body*/, winrt::TerminalApp::IPaneContent /*content*/>> TabToastNotificationRequested;
         til::typed_event<IInspectable, IInspectable> TaskbarProgressChanged;

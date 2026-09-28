@@ -319,6 +319,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Leathnaigh pána na gcluaisíní</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Leathnaigh grúpa na gcluaisíní</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Laghdaigh grúpa na gcluaisíní</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Cluaisín</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Cluaisíní</value>
   </data>

@@ -186,6 +186,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Expandir painel de guias</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Expandir grupo de guias</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Recolher grupo de guias</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Guia</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Guias</value>
   </data>

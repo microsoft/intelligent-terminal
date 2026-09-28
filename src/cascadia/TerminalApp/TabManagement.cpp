@@ -165,6 +165,14 @@ namespace winrt::TerminalApp::implementation
         // for it. The Title change will be propagated upwards through the tab's
         // PropertyChanged event handler.
         newTabImpl->ActivePaneChanged({ get_weak(), &TerminalPage::_activePaneChanged });
+        newTabImpl->PaneProjectionChanged([weakTab, weakThis{ get_weak() }]() {
+            const auto page = weakThis.get();
+            const auto tab = weakTab.get();
+            if (page && tab)
+            {
+                page->_RefreshTabStripPaneItems(tab);
+            }
+        });
 
         // The RaiseVisualBell event has been bubbled up to here from the pane,
         // the next part of the chain is bubbling up to app logic, which will
@@ -205,6 +213,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         _tabItems().InsertAt(insertPosition, tabViewItem);
+        _RefreshTabStripPaneItems(newTabImpl);
 
         tabViewItem.PointerPressed({ this, &TerminalPage::_OnTabPointerPressed });
 
@@ -1459,6 +1468,7 @@ namespace winrt::TerminalApp::implementation
                     {
                         co_return;
                     }
+
                 }
 
                 if (co_await _PaneConfirmCloseReadOnly(pane))
@@ -1468,6 +1478,115 @@ namespace winrt::TerminalApp::implementation
                         _HandleClosePaneRequested(pane);
                     }
                 }
+            }
+        }
+    }
+
+    safe_void_coroutine TerminalPage::_ClosePaneFromTabStrip(TerminalApp::TabStripPaneEventArgs args)
+    {
+        const auto weakThis = get_weak();
+        if (!args || _changingTabLayout)
+        {
+            co_return;
+        }
+
+        const auto projectedTab = _GetTabByTabViewItem(args.Tab());
+        const auto originalTab = projectedTab ? _GetTabImpl(projectedTab) : nullptr;
+        if (!originalTab)
+        {
+            co_return;
+        }
+
+        const auto stableId = originalTab->StableId();
+        const auto contentId = args.ContentId();
+        const auto pendingKey = std::wstring{ stableId } + L":" + std::to_wstring(contentId);
+        if (!_pendingTabStripPaneCloses.emplace(pendingKey).second)
+        {
+            co_return;
+        }
+        auto clearPending = wil::scope_exit([weakThis, pendingKey]() {
+            if (const auto page = weakThis.get())
+            {
+                page->_pendingTabStripPaneCloses.erase(pendingKey);
+            }
+        });
+
+        const auto resolveTab = [stableId](const auto& page) -> winrt::com_ptr<Tab> {
+            for (const auto& candidate : page->_tabs)
+            {
+                if (const auto tab = page->_GetTabImpl(candidate); tab && tab->StableId() == stableId)
+                {
+                    return tab;
+                }
+            }
+            return nullptr;
+        };
+
+        auto tab = resolveTab(this);
+        auto closeScope = tab ? tab->GetPaneCloseScope(contentId) : std::vector<std::shared_ptr<Pane>>{};
+        if (closeScope.empty())
+        {
+            co_return;
+        }
+
+        if (_settings.GlobalSettings().ConfirmOnClose() == ConfirmOnClose::Always)
+        {
+            const auto closesWholeTab = closeScope.size() >= gsl::narrow_cast<size_t>(tab->GetLeafPaneCount());
+            const auto warningResult = co_await _ShowConfirmCloseDialog(closesWholeTab ? ConfirmCloseDialogKind::Tab : ConfirmCloseDialogKind::Pane);
+            const auto strong = weakThis.get();
+            if (!strong || warningResult != ContentDialogResult::Primary)
+            {
+                co_return;
+            }
+            tab = resolveTab(strong);
+            closeScope = tab ? tab->GetPaneCloseScope(contentId) : std::vector<std::shared_ptr<Pane>>{};
+            if (closeScope.empty())
+            {
+                co_return;
+            }
+        }
+
+        const auto containsReadOnly = std::ranges::any_of(closeScope, [](const auto& pane) {
+            return pane->ContainsReadOnly();
+        });
+        if (containsReadOnly)
+        {
+            auto strongBeforeDialog = weakThis.get();
+            if (!strongBeforeDialog)
+            {
+                co_return;
+            }
+            const auto warningOperation = strongBeforeDialog->_ShowCloseReadOnlyDialog();
+            strongBeforeDialog = nullptr;
+            const auto warningResult = co_await warningOperation;
+            const auto strong = weakThis.get();
+            if (!strong || warningResult != ContentDialogResult::Primary)
+            {
+                co_return;
+            }
+            tab = resolveTab(strong);
+            closeScope = tab ? tab->GetPaneCloseScope(contentId) : std::vector<std::shared_ptr<Pane>>{};
+            if (closeScope.empty())
+            {
+                co_return;
+            }
+            for (const auto& scopePane : closeScope)
+            {
+                scopePane->WalkTree([](const auto& pane) {
+                    if (const auto control = pane->GetTerminalControl(); control && control.ReadOnly())
+                    {
+                        control.ToggleReadOnly();
+                    }
+                });
+            }
+        }
+
+        const auto strong = weakThis.get();
+        if (strong && tab && tab->GetRootPane())
+        {
+            if (const auto target = tab->GetRootPane()->FindPaneByContentId(contentId))
+            {
+                strong->_HandleClosePaneRequested(target);
             }
         }
     }
@@ -1849,9 +1968,18 @@ namespace winrt::TerminalApp::implementation
         for (const auto& tab : _tabs)
         {
             const auto item = tab.TabViewItem();
-            if (const auto header = item.Header().try_as<TerminalApp::TabHeaderControl>())
+            auto header = item.Header().try_as<TerminalApp::TabHeaderControl>();
+            if (!header && _isVerticalLayout)
+            {
+                header = winrt::get_self<implementation::TabStrip>(_tabStrip)->HeaderForTab(item).try_as<TerminalApp::TabHeaderControl>();
+            }
+            if (header)
             {
                 header.SearchText(highlightQuery);
+            }
+            if (_isVerticalLayout)
+            {
+                winrt::get_self<implementation::TabStrip>(_tabStrip)->SetTabSearchText(item, highlightQuery);
             }
             const auto tabImpl = _GetTabImpl(tab);
             const auto matchesScope = !agentScopeEffective || _MatchesTabScope(tabImpl);
@@ -1860,6 +1988,10 @@ namespace winrt::TerminalApp::implementation
             {
                 tabImpl->SetTabListPositionOperationsRestricted(positionOperationsBlocked);
                 tabImpl->SetTabPointerInteractionRestricted(_IsCollapsedVerticalRail());
+                if (_isVerticalLayout)
+                {
+                    _RefreshTabStripPaneItems(tabImpl);
+                }
             }
             _tabStrip.SetTabItemVisibility(item, visible);
             scopeVisibleTabCount += matchesScope ? 1u : 0u;
@@ -1953,8 +2085,19 @@ namespace winrt::TerminalApp::implementation
         const auto rootPane = tab->GetRootPane();
         return rootPane && rootPane->WalkTree([&](const auto& pane) {
             const auto sessionId = pane->GetSessionId();
-            return sessionId != winrt::guid{} && _paneAgentSessions.contains(sessionId);
+            return sessionId != winrt::guid{} &&
+                   (_activeCliAgentPanes.contains(sessionId) ||
+                    _paneAgentSessions.contains(sessionId));
         });
+    }
+
+    bool TerminalPage::_MatchesPaneAgentScope(const Tab::VisiblePaneSnapshot& pane) const
+    {
+        return pane.IsAgentPane ||
+               _IsKnownAgentCliTitle(std::wstring_view{ pane.Title }) ||
+               (pane.SessionId != winrt::guid{} &&
+                (_activeCliAgentPanes.contains(pane.SessionId) ||
+                 _paneAgentSessions.contains(pane.SessionId)));
     }
 
     // Spec A §4.2: TabStrip's SelectionChanged uses custom args (TabStripSelectionChangedEventArgs),
@@ -2052,8 +2195,15 @@ namespace winrt::TerminalApp::implementation
             _tabs.InsertAt(newTabIndex, tab);
             _UpdateTabIndices();
 
-            _tabItems().RemoveAt(currentTabIndex);
-            _tabItems().InsertAt(newTabIndex, tabViewItem);
+            if (_isVerticalLayout)
+            {
+                winrt::get_self<implementation::TabStrip>(_tabStrip)->MoveTabItem(currentTabIndex, newTabIndex);
+            }
+            else
+            {
+                _tabItems().RemoveAt(currentTabIndex);
+                _tabItems().InsertAt(newTabIndex, tabViewItem);
+            }
             _selectedTabItem(tabViewItem);
 
             _mutatingTabCollections = false;

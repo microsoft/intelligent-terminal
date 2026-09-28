@@ -186,6 +186,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>展開索引標籤窗格</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>展開索引標籤群組</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>摺疊索引標籤群組</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>索引標籤</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>索引標籤</value>
   </data>

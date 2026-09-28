@@ -431,6 +431,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Udvid faneruden</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Udvid fanegruppen</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Skjul fanegruppen</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Fane</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Faner</value>
   </data>

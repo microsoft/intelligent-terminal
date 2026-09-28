@@ -319,6 +319,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Ընդարձակել ներդիրների վահանակը</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Ընդարձակել ներդիրների խումբը</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Ծալել ներդիրների խումբը</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Ներդիր</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Ներդիրներ</value>
   </data>

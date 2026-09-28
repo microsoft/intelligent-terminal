@@ -250,6 +250,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Expandix el tauler de pestanyes</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Expandix el grup de pestanyes</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Reduïx el grup de pestanyes</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Pestanya</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Pestanyes</value>
   </data>

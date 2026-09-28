@@ -414,6 +414,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>தாவல்கள் பலகத்தை விரிவாக்கு</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>தாவல் குழுவை விரிவாக்கு</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>தாவல் குழுவைச் சுருக்கு</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>தாவல்</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>தாவல்கள்</value>
   </data>

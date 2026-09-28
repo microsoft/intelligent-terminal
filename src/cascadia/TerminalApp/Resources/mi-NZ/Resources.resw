@@ -319,6 +319,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Whakaroha i te pihanga ripa</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Whakaroha i te rōpū ripa</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Tiango te rōpū ripa</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Ripa</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Ngā ripa</value>
   </data>

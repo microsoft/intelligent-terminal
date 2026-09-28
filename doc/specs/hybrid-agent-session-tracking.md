@@ -332,7 +332,9 @@ starts `Idle`; terminal states are `Historical` (startup history scan) and
 `Ended` (pane/process gone); the 5 s reaper or a hook taking over moves a row out
 of the live states.
 
-The vertical sidebar's Agent History displays the registry activity:
+The vertical sidebar's Agents view hosts Agent History; selecting All tabs returns
+to the live tab/pane groups and stops History refreshes. Agent History displays the
+registry activity:
 `Idle` (Idle), `Working` (Active), `Attention` (Waiting for input), `Error`
 (Error), and both `Ended` and `Historical` as Historical, with localized labels.
 This is presentation-only: the raw status, liveness, and focus/resume routing remain

@@ -319,6 +319,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Espandi l-pannell tat-tabs</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Espandi l-grupp tat-tabs</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Ikkollassa l-grupp tat-tabs</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Tab</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Tabs</value>
   </data>

@@ -432,6 +432,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Laienda vahekaartide paani</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Laienda vahekaartide rühma</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Ahenda vahekaartide rühma</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Vahekaart</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Vahekaardid</value>
   </data>
