@@ -286,6 +286,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabHistoryMetadataLayout);
         TEST_METHOD(VerticalTabHistoryAgentIcons);
         TEST_METHOD(VerticalTabHistoryEndedPresentation);
+        TEST_METHOD(VerticalTabHistoryUnfinishedFirst);
         TEST_METHOD(VerticalTabHistoryAttentionStyle);
         TEST_METHOD(VerticalTabHistorySearchProjection);
         TEST_METHOD(VerticalTabHistoryPreservesLiveSearch);
@@ -3292,6 +3293,61 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Ended" }, strip.HistoryItems().GetAt(0).Status());
             VERIFY_IS_FALSE(strip.HistoryItems().GetAt(0).IsLive());
+        });
+    }
+
+    void TabTests::VerticalTabHistoryUnfinishedFirst()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            const auto visibleItems = strip.HistoryItems();
+            const auto makeItem = [](const wchar_t* id, const wchar_t* status) {
+                auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+                item.SessionId(id);
+                item.Title(winrt::hstring{ L"session " } + id);
+                item.Status(status);
+                item.IsLive(std::wstring_view{ status } == L"Idle" ||
+                            std::wstring_view{ status } == L"Working" ||
+                            std::wstring_view{ status } == L"Attention" ||
+                            std::wstring_view{ status } == L"Error");
+                return item;
+            };
+            const auto ended = makeItem(L"ended-newest", L"Ended");
+            const auto idle = makeItem(L"idle", L"Idle");
+            const auto historical = makeItem(L"historical-newer", L"Historical");
+            const auto working = makeItem(L"working", L"Working");
+            const auto attention = makeItem(L"attention", L"Attention");
+            const auto error = makeItem(L"error", L"Error");
+            const auto unknown = makeItem(L"unknown", L"");
+            const auto oldest = makeItem(L"historical-oldest", L"Historical");
+            const auto verifyOrder = [&](const std::initializer_list<const wchar_t*> expected) {
+                VERIFY_ARE_EQUAL(expected.size(), static_cast<size_t>(visibleItems.Size()));
+                uint32_t index = 0;
+                for (const auto id : expected)
+                {
+                    VERIFY_ARE_EQUAL(winrt::hstring{ id }, visibleItems.GetAt(index++).SessionId());
+                }
+            };
+
+            stripImpl->CommitHistorySnapshot({ ended, idle, historical, working, attention, error, unknown, oldest });
+            verifyOrder({ L"idle", L"working", L"attention", L"error", L"unknown", L"ended-newest", L"historical-newer", L"historical-oldest" });
+            stripImpl->HistorySearchTextBox().Text(L"session");
+            verifyOrder({ L"idle", L"working", L"attention", L"error", L"unknown", L"ended-newest", L"historical-newer", L"historical-oldest" });
+            stripImpl->HistorySearchTextBox().Text(L"historical");
+            verifyOrder({ L"historical-newer", L"historical-oldest" });
+            stripImpl->HistorySearchTextBox().Text(L"");
+
+            working.Status(L"Ended");
+            working.IsLive(false);
+            stripImpl->CommitHistorySnapshot({ working, ended, idle, historical, attention, error, unknown, oldest });
+            verifyOrder({ L"idle", L"attention", L"error", L"unknown", L"working", L"ended-newest", L"historical-newer", L"historical-oldest" });
+
+            oldest.Status(L"Idle");
+            oldest.IsLive(true);
+            stripImpl->CommitHistorySnapshot({ oldest, working, ended, idle, historical, attention, error, unknown });
+            verifyOrder({ L"historical-oldest", L"idle", L"attention", L"error", L"unknown", L"working", L"ended-newest", L"historical-newer" });
+            VERIFY_ARE_EQUAL(winrt::get_abi(visibleItems), winrt::get_abi(strip.HistoryItems()));
         });
     }
 

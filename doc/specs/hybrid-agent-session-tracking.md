@@ -353,11 +353,16 @@ the existing `live` and `history` search terms remain available. This presentati
 does not change shell-session visibility, liveness classification, or focus/resume
 routing. Registry-change notifications and the existing five-second snapshot
 refresh update the displayed status.
-Rows are sorted newest-first by `last_activity_at_ms`, the same timestamp used for
-relative age. For imported history it comes from ACP `session/list.updated_at`;
+Rows whose raw status is neither `Ended` nor `Historical` appear first, followed by
+closed/history rows. Within each group, rows retain newest-first ordering by
+`last_activity_at_ms`, the same timestamp used for relative age. This stable grouping
+is applied by the sidebar when accepting each snapshot, including after session
+closure or resume, and is preserved by search. The WTA CLI's time-based ordering
+and other session-management views are unchanged.
+For imported history the timestamp comes from ACP `session/list.updated_at`;
 live registry events update it, including tool activity, notifications, and session
 or pane closure. It is not a creation time or the time History was opened. Missing
-timestamps sort last.
+timestamps sort last within their group.
 
 At startup, once its named pipe is ready, master checks policy and local
 CLI/adapter prerequisites and initializes installed Windows-host providers through

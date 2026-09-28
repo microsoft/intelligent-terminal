@@ -343,6 +343,11 @@ namespace winrt::TerminalApp::implementation
     void TabStrip::CommitHistorySnapshot(std::vector<TerminalApp::TabStripHistoryItem> items)
     {
         _historySnapshot = std::move(items);
+        // WTA supplies newest-activity-first rows; preserve that order within each group.
+        std::stable_partition(_historySnapshot.begin(), _historySnapshot.end(), [](const auto& item) {
+            const auto status = item.Status();
+            return status != L"Ended" && status != L"Historical";
+        });
         _historySearchTerms.clear();
         _historySearchTerms.reserve(_historySnapshot.size());
         for (const auto& item : _historySnapshot)
