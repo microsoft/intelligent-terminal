@@ -597,6 +597,24 @@ impl Drop for CliChannel {
     }
 }
 
+fn listener_command(wtcli: &str, parent_pid: &str, ready_token: &str) -> tokio::process::Command {
+    let mut command = tokio::process::Command::new(wtcli);
+    command
+        .args([
+            "--json",
+            "listen",
+            "--existing-only",
+            "--parent-pid",
+            parent_pid,
+            "--ready-token",
+            ready_token,
+        ])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+    command
+}
+
 impl CliChannel {
     #[cfg(test)]
     pub(crate) fn with_test_executable(wtcli_path: String) -> Self {
@@ -635,7 +653,7 @@ impl CliChannel {
         rx
     }
 
-    /// Start background event listener (wraps `wtcli listen --json`).
+    /// Start background event listener (wraps `wtcli listen --json --existing-only`).
     /// wtcli inherits WT_COM_CLSID from this process's env.
     ///
     /// The protocol server can be temporarily unavailable while Terminal is
@@ -664,19 +682,7 @@ impl CliChannel {
                     return;
                 }
 
-                let mut command = tokio::process::Command::new(&wtcli);
-                command
-                    .args([
-                        "--json",
-                        "listen",
-                        "--parent-pid",
-                        &parent_pid_arg,
-                        "--ready-token",
-                        &ready_token,
-                    ])
-                    .stdout(std::process::Stdio::piped())
-                    .stderr(std::process::Stdio::piped())
-                    .kill_on_drop(true);
+                let mut command = listener_command(&wtcli, &parent_pid_arg, &ready_token);
                 let mut child = match command.spawn() {
                     Ok(child) => child,
                     Err(error) => {
@@ -1213,6 +1219,29 @@ impl WtChannel for CliChannel {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn passive_transport_listener_uses_existing_only() {
+        let command = listener_command("wtcli.exe", "42", "wta-42");
+        let arguments: Vec<_> = command
+            .as_std()
+            .get_args()
+            .map(|argument| argument.to_string_lossy().into_owned())
+            .collect();
+
+        assert_eq!(
+            arguments,
+            [
+                "--json",
+                "listen",
+                "--existing-only",
+                "--parent-pid",
+                "42",
+                "--ready-token",
+                "wta-42",
+            ]
+        );
+    }
 
     #[tokio::test]
     async fn get_pane_context_rejects_invalid_session_ids_before_invocation() {

@@ -265,6 +265,8 @@ Describe 'Feature §0 FRE Tab Mode' -Tag 'Feature', 'FreTabMode' -Skip:(-not $sc
         try {
             New-Item -ItemType File -Path $marker | Out-Null
             $script:freSettings.tabLayout = 'horizontal'
+            # The hook-failure boundary applies to a supported built-in, not a custom ACP fixture.
+            $script:freSettings.acpAgent = 'copilot'
             $script:app = Start-Terminal -Package $script:package -ShowFre -Backup $false -CleanSettings $false -Settings $script:freSettings
             Invoke-UiElement -App $script:app -Selector 'NextButton' | Out-Null
             Invoke-UiElement -App $script:app -Selector 'TabModeComboBox' | Out-Null
@@ -314,10 +316,20 @@ Describe 'Feature §0 FRE Tab Mode' -Tag 'Feature', 'FreTabMode' -Skip:(-not $sc
         Get-WtSetting -App $script:app -Key 'tabLayout' | Should -Be $Initial
         Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'selected-mode.png') | Out-Null
         Invoke-UiElement -App $script:app -Selector 'SaveButton' | Out-Null
-        Wait-Until -TimeoutSec 30 -Because 'FRE Save to persist the chosen tab mode and complete' -Condition {
-            (Get-FreCompleted -App $script:app) -and
-            (Get-WtSetting -App $script:app -Key 'tabLayout') -eq $Saved
-        } | Out-Null
+        try {
+            Wait-Until -TimeoutSec 30 -Because 'FRE Save to persist the chosen tab mode and complete' -Condition {
+                (Get-FreCompleted -App $script:app) -and
+                (Get-WtSetting -App $script:app -Key 'tabLayout') -eq $Saved
+            } | Out-Null
+        }
+        catch {
+            @{
+                Completed = Get-FreCompleted -App $script:app
+                TabLayout = Get-WtSetting -App $script:app -Key 'tabLayout'
+                Expected = $Saved
+            } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:evidenceDir 'save-observation.json')
+            throw
+        }
 
         foreach ($phase in @('saved', 'restarted')) {
             if ($phase -eq 'restarted') {

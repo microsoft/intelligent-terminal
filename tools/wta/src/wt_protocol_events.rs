@@ -159,7 +159,7 @@ fn publisher_sender() -> &'static std::sync::mpsc::Sender<String> {
 
 fn publish_command(exe: &std::path::Path) -> std::process::Command {
     let mut command = std::process::Command::new(exe);
-    command.arg("publish").arg("--stdin");
+    command.arg("publish").arg("--stdin").arg("--existing-only");
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -397,14 +397,14 @@ mod tests {
     }
 
     #[test]
-    fn publish_command_selects_stdin_transport() {
+    fn passive_transport_publish_uses_existing_only_stdin() {
         let command = super::publish_command(std::path::Path::new("wtcli.exe"));
         let arguments: Vec<_> = command
             .get_args()
             .map(|argument| argument.to_string_lossy().into_owned())
             .collect();
 
-        assert_eq!(arguments, ["publish", "--stdin"]);
+        assert_eq!(arguments, ["publish", "--stdin", "--existing-only"]);
     }
 
     #[cfg(windows)]

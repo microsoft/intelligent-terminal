@@ -9581,7 +9581,13 @@ if exist "%~dp0attempted" goto ready
 echo attempted>"%~dp0attempted"
 exit /b 1
 :ready
-echo {"_wtcli":"listener_ready","token":"%~6"}
+if "%~1"=="" exit /b 2
+if "%~1"=="--ready-token" goto token
+shift
+goto ready
+:token
+shift
+echo {"_wtcli":"listener_ready","token":"%~1"}
 echo {"method":"vt_sequence","params":{"pane_id":"shell-after-recovery","tab_id":"test-tab","sequence":"osc:133;D;1"}}
 exit /b 0
 "#.replace('\n', "\r\n")).unwrap();

@@ -471,6 +471,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C342` `[new]` `[E2E]` **Hooks do not activate a stopped Terminal:** Native and cached lifecycle hooks with a valid fixed package CLSID cannot start a windowless COM server. _(E2E: `Feature.HookShutdown`.)_
 - [ ] `C343` `[new]` `[E2E]` **Live hooks reuse the fixed COM class:** Native, cached, and external agent notifications reach a running server using only the existing COM address; legitimate headless listeners remain connected. _(E2E: `Feature.HookShutdown`.)_
 - [ ] `C344` `[new]` `[E2E]` **Late hooks cannot restart Terminal:** Repeated hooks after the original server exits do not create a replacement or change saved state; non-agent notifications retain explicit COM activation. _(E2E: `Feature.HookShutdown`.)_
+- [ ] `C358` `[new]` `[E2E]` **Passive WTA transports do not activate Terminal:** Existing-only publication and listener retries deliver to a running server but cannot recreate one after shutdown; ordinary explicit publication retains activation. _(E2E: `Feature.HookShutdown`; no model requests.)_
 
 - [ ] `C177` `[E2E]` **Packaged `wta.exe` is present:** WTA is deployed next to WindowsTerminal in the package layout.
 - [ ] `C178` `[E2E]` **Packaged identity works:** WTA/wtcli can activate the Terminal protocol COM server from packaged context.
