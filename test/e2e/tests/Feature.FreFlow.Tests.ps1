@@ -14,6 +14,20 @@ Describe 'Feature §0 FRE overlay flow' -Tag 'Feature' -Skip:(-not $script:Ready
             try {
                 Test-UiElementExists -App $app -Selector 'WelcomePage' -TimeoutSec 10 | Should -BeTrue
                 Test-UiElementExists -App $app -Selector 'NextButton' -TimeoutSec 5 | Should -BeTrue
+                $sidebar = Get-UiElement -App $app -Selector 'SidebarCardTitle'
+                $autofix = Get-UiElement -App $app -Selector 'AutofixCardTitle'
+                $sidebar | Should -Not -BeNullOrEmpty
+                $autofix | Should -Not -BeNullOrEmpty
+                $sidebar.name | Should -BeIn @(Get-WtReswTextValues -Key 'FreOverlay_Card2Title.Text')
+                $autofix.name | Should -BeIn @(Get-WtReswTextValues -Key 'FreOverlay_Card1Title.Text')
+                $language = Get-WtSetting -App $app -Key 'language'
+                if (-not $language) { $language = (Get-UICulture).Name }
+                if ($language -match '^(ar|fa|he|ur|ug)(-|$)|^qps-plocm$') {
+                    $sidebar.x | Should -BeGreaterThan $autofix.x -Because 'RTL should mirror the sidebar-first card order'
+                }
+                else {
+                    $sidebar.x | Should -BeLessThan $autofix.x -Because 'Sidebar and its copy must precede Autofix'
+                }
             }
             finally { Stop-Terminal -App $app }
         }

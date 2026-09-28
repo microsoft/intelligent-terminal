@@ -108,33 +108,8 @@
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
 
-                    <!--  Card 1: Error Detection  -->
+                    <!--  Sidebar / session management  -->
                     <Border Grid.Column="0" Background="#FF2D2D2D" CornerRadius="7">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <Border Grid.Row="0" Background="#FF0C0C0C" CornerRadius="7,7,0,0"
-                                    Margin="6,6,6,0">
-                                <Image Source="ms-appx:///FREAssets/FRE_Asset1.png"
-                                       Stretch="Uniform" />
-                            </Border>
-                            <StackPanel Grid.Row="1" Margin="16,14,16,16" Spacing="6">
-                                <TextBlock x:Uid="FreOverlay_Card1Title"
-                                           FontFamily="Segoe UI Variable Text, Segoe UI"
-                                           FontSize="13" FontWeight="SemiBold"
-                                           Foreground="White" LineHeight="18" />
-                                <TextBlock x:Uid="FreOverlay_Card1Description"
-                                           FontFamily="Segoe UI Variable Small, Segoe UI"
-                                           FontSize="12" Foreground="#8AFFFFFF"
-                                           TextWrapping="Wrap" LineHeight="16" />
-                            </StackPanel>
-                        </Grid>
-                    </Border>
-
-                    <!--  Card 2: Session Management  -->
-                    <Border Grid.Column="2" Background="#FF2D2D2D" CornerRadius="7">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
@@ -146,11 +121,38 @@
                                        Stretch="Uniform" />
                             </Border>
                             <StackPanel Grid.Row="1" Margin="16,14,16,16" Spacing="6">
-                                <TextBlock x:Uid="FreOverlay_Card2Title"
+                                <TextBlock x:Name="SidebarCardTitle"
+                                           x:Uid="FreOverlay_Card2Title"
                                            FontFamily="Segoe UI Variable Text, Segoe UI"
                                            FontSize="13" FontWeight="SemiBold"
                                            Foreground="White" LineHeight="18" />
                                 <TextBlock x:Uid="FreOverlay_Card2Description"
+                                           FontFamily="Segoe UI Variable Small, Segoe UI"
+                                           FontSize="12" Foreground="#8AFFFFFF"
+                                           TextWrapping="Wrap" LineHeight="16" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!--  Autofix / error detection  -->
+                    <Border Grid.Column="2" Background="#FF2D2D2D" CornerRadius="7">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Border Grid.Row="0" Background="#FF0C0C0C" CornerRadius="7,7,0,0"
+                                    Margin="6,6,6,0">
+                                <Image Source="ms-appx:///FREAssets/FRE_Asset1.png"
+                                       Stretch="Uniform" />
+                            </Border>
+                            <StackPanel Grid.Row="1" Margin="16,14,16,16" Spacing="6">
+                                <TextBlock x:Name="AutofixCardTitle"
+                                           x:Uid="FreOverlay_Card1Title"
+                                           FontFamily="Segoe UI Variable Text, Segoe UI"
+                                           FontSize="13" FontWeight="SemiBold"
+                                           Foreground="White" LineHeight="18" />
+                                <TextBlock x:Uid="FreOverlay_Card1Description"
                                            FontFamily="Segoe UI Variable Small, Segoe UI"
                                            FontSize="12" Foreground="#8AFFFFFF"
                                            TextWrapping="Wrap" LineHeight="16" />
