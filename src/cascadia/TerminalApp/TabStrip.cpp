@@ -347,6 +347,8 @@ namespace winrt::TerminalApp::implementation
         _historySearchTerms.reserve(_historySnapshot.size());
         for (const auto& item : _historySnapshot)
         {
+            const auto styleKey = item.Status() == L"Attention" ? L"HistoryAttentionTextStyle" : L"HistorySubtitleTextStyle";
+            item.StatusTextStyle(Resources().Lookup(box_value(styleKey)).as<WUX::Style>());
             _historySearchTerms.emplace_back(_buildHistorySearchTerms(item));
         }
         _applyHistoryProjection();
@@ -814,7 +816,7 @@ namespace winrt::TerminalApp::implementation
         };
 
         append(item.Title());
-        append(item.Subtitle());
+        append(item.Subtitle() + L" - " + item.StatusText());
         append(item.AgentId());
         append(item.ProviderDisplayName());
         append(item.AgentSource());

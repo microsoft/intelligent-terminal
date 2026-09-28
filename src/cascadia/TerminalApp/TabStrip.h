@@ -23,6 +23,8 @@ namespace winrt::TerminalApp::implementation
         WINRT_PROPERTY(winrt::hstring, SessionId);
         WINRT_PROPERTY(winrt::hstring, Title);
         WINRT_PROPERTY(winrt::hstring, Subtitle);
+        WINRT_PROPERTY(winrt::hstring, StatusText);
+        WINRT_PROPERTY(winrt::Windows::UI::Xaml::Style, StatusTextStyle, nullptr);
         WINRT_PROPERTY(winrt::hstring, Cwd);
         WINRT_PROPERTY(winrt::hstring, PaneSessionId);
         WINRT_PROPERTY(winrt::hstring, AgentId);

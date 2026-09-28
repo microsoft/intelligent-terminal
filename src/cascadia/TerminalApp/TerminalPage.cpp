@@ -6135,8 +6135,8 @@ namespace winrt::TerminalApp::implementation
                 auto item = winrt::make<TerminalApp::implementation::TabStripHistoryItem>();
                 item.SessionId(winrt::to_hstring(sessionId));
                 item.Title(winrt::to_hstring(title));
-                item.Subtitle(winrt::to_hstring(providerId + " - " + locationLabel + " - ") +
-                              _SidebarHistoryStatusText(status));
+                item.Subtitle(winrt::to_hstring(providerId + " - " + locationLabel));
+                item.StatusText(_SidebarHistoryStatusText(status));
                 item.Cwd(winrt::to_hstring(cwd));
                 item.PaneSessionId(winrt::to_hstring(row.get("pane_session_id", "").asString()));
                 item.AgentId(winrt::to_hstring(providerId));

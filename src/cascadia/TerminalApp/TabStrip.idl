@@ -28,6 +28,8 @@ namespace TerminalApp
         String SessionId;
         String Title;
         String Subtitle;
+        String StatusText;
+        Windows.UI.Xaml.Style StatusTextStyle;
         String Cwd;
         String PaneSessionId;
         String AgentId;

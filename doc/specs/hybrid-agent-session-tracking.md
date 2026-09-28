@@ -335,6 +335,9 @@ of the live states.
 The vertical sidebar's Agent History displays each registry status separately:
 `Idle` (Idle), `Working` (Active), `Attention` (Waiting for input), `Error`
 (Error), `Ended` (Ended), and `Historical` (Historical), with localized labels.
+Waiting for input uses a theme-aware yellow caution accent, matching the session
+management view's attention color. Only the status text is accented; provider
+and location text stay muted, and search matches remain highlighted.
 Missing or unrecognized states display Unknown rather than implying a historical
 session. Search matches both the displayed status and the raw registry value;
 the existing `live` and `history` search terms remain available. This presentation
