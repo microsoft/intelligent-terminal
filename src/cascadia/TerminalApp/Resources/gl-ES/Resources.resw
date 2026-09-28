@@ -392,4 +392,32 @@
     <value>Esta pestana xa non seguirá en execución despois de pechar a pestana ou a fiestra.</value>
     <comment>Tooltip and accessibility help for Turn off keep running. After this action, closing the tab or its window closes its panes normally instead of retaining them in the background. The current tab and processes are not closed by this action.</comment>
   </data>
+  <data name="VerticalTabsHistoryStatusIdle" xml:space="preserve">
+    <value>Inactivo</value>
+    <comment>Agent History session status: the session is live but has no active work.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusWorking" xml:space="preserve">
+    <value>Activo</value>
+    <comment>Agent History session status: the agent is actively processing a request.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusAttention" xml:space="preserve">
+    <value>Agardando entrada</value>
+    <comment>Agent History session status: the agent needs a response or approval from the user.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusError" xml:space="preserve">
+    <value>Erro</value>
+    <comment>Agent History session status: the session encountered an error.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusEnded" xml:space="preserve">
+    <value>Finalizada</value>
+    <comment>Agent History session status: the session&apos;s process or pane has ended. This does not imply that its task succeeded.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusHistorical" xml:space="preserve">
+    <value>Do historial</value>
+    <comment>Agent History session status: a saved session with no live pane, discovered from the agent&apos;s history.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusUnknown" xml:space="preserve">
+    <value>Descoñecido</value>
+    <comment>Agent History session status: the registry did not provide a recognized status.</comment>
+  </data>
 </root>
