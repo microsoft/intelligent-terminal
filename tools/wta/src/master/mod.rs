@@ -593,8 +593,9 @@ struct MasterStateInner {
     pub(crate) wt: Option<Arc<dyn crate::shell::wt_channel::WtChannel>>,
     /// The pool of agent CLI subprocesses master is multiplexing,
     /// keyed by agent identity, execution source, and command line
-    /// (`AgentCmdKey`). Lazily
-    /// populated: a helper declares its agent *id* in the `initialize`
+    /// (`AgentCmdKey`). Installed, policy-allowed native host agents are
+    /// initialized in the background at master startup. Other selections are
+    /// populated on demand: a helper declares its agent *id* in the `initialize`
     /// handshake (`_meta.wta.agent_id`), the master reconstructs the
     /// command from that id (`agent_registry::build_acp_command`), and
     /// `get_or_spawn_agent` spawns the CLI on first use and reuses it for
@@ -620,6 +621,7 @@ struct MasterStateInner {
     /// a background process at the cost of cold-start latency for the next
     /// tab switch; that trade-off favors warm agents for a terminal app.
     pub(crate) agents: Mutex<HashMap<AgentCmdKey, AgentCell>>,
+    history_refresh: Arc<Mutex<()>>,
     helper_roles: Mutex<HashMap<HelperId, HelperRole>>,
     /// Master-only BYOK configurations keyed by the credential-free selection
     /// ID. A changed endpoint/model/credential reference advances the
@@ -4864,10 +4866,10 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         .clone()
         .map(|channel| channel as Arc<dyn crate::shell::wt_channel::WtChannel>);
 
-    // Agent CLIs are spawned LAZILY by `get_or_spawn_agent` the first time
-    // a helper declares an agent in its `initialize` handshake — the master
-    // no longer owns a single eager agent CLI. `config.agent` / `config.agent_id`
-    // become the fallback default for helpers that don't declare one.
+    // Installed native host agents are warmed after the pipe is ready.
+    // Other selections are spawned by `get_or_spawn_agent` on helper demand.
+    // `config.agent` / `config.agent_id` remain the fallback for helpers
+    // that don't declare an agent.
     // Host-supplied allowlist (GPO-filtered) of agent ids a helper may
     // select. An *absent* flag means "no allowlist; accept any known id"
     // (`None`); a *present* flag is honored fail-closed even when it filters
@@ -4902,6 +4904,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt,
         agents: Mutex::new(HashMap::new()),
+        history_refresh: Arc::new(Mutex::new(())),
         helper_roles: Mutex::new(HashMap::new()),
         custom_model_generations: Mutex::new(HashMap::new()),
         default_agent_cmd: config.agent.clone(),
@@ -5018,9 +5021,8 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         });
     }
 
-    // Open the named pipe and accept helper connections. Agent CLIs are
-    // spawned lazily per-helper (see `get_or_spawn_agent`), and an
-    // individual agent CLI dying is handled per-CLI by its reaper
+    // Open the named pipe before warming host agents, so startup discovery
+    // cannot delay helper connections. An individual agent CLI dying is handled by its reaper
     // (`spawn_one_agent`) — it removes that agent from the pool but the
     // master stays alive so sibling tabs on OTHER agents keep working.
     // Only a fatal pipe error returns from this loop. SharedWta on the
@@ -5046,6 +5048,8 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         "named pipe listening; awaiting helper connections"
     );
     let _pipe_discovery_guard = MasterPipeDiscoveryGuard::write(&pipe_name);
+    tracing::info!(target: "master_history", "starting host agent discovery at master startup");
+    request_host_history_refresh(&inner);
 
     let mut next_helper_id: u64 = 1;
     // Cheap monotonic counter for tracking concurrent helper count.
@@ -7017,6 +7021,79 @@ async fn seed_host_and_broadcast(
     count
 }
 
+fn host_history_agent_ids(
+    allowed_ids: Option<&HashSet<String>>,
+    mut is_available: impl FnMut(&str) -> bool,
+) -> Vec<&'static str> {
+    crate::agent_registry::KNOWN_AGENTS
+        .iter()
+        .filter(|profile| allowed_ids.is_none_or(|ids| ids.contains(profile.id)))
+        .filter(|profile| is_available(profile.id))
+        .map(|profile| profile.id)
+        .collect()
+}
+
+async fn refresh_host_history_agents(state: &Arc<MasterStateInner>, agent_ids: &[&str]) {
+    futures::future::join_all(agent_ids.iter().map(|&agent_id| async move {
+        let command = crate::agent_registry::build_acp_command(agent_id, None);
+        let agent = match get_or_spawn_agent(
+            state,
+            &command,
+            Some(agent_id),
+            &crate::agent_source::AgentSource::Host,
+            ProviderBinding::Native,
+            Vec::new(),
+        )
+        .await
+        {
+            Ok(agent) => agent,
+            Err(error) => {
+                tracing::warn!(
+                    target: "master_history",
+                    agent_id,
+                    error = %format!("{error:#}"),
+                    "could not initialize agent for sidebar history"
+                );
+                return;
+            }
+        };
+        if agent.cached_init_resp.agent_capabilities.session_capabilities.list.is_none() {
+            tracing::debug!(target: "master_history", agent_id, "agent does not support session/list");
+            return;
+        }
+        seed_host_and_broadcast(state, &agent).await;
+    }))
+    .await;
+}
+
+fn request_host_history_refresh(state: &Arc<MasterStateInner>) {
+    let Ok(guard) = Arc::clone(&state.history_refresh).try_lock_owned() else {
+        return;
+    };
+    let state = Arc::clone(state);
+    tokio::task::spawn_local(async move {
+        // Survives the short-lived control client; overlapping windows share one refresh.
+        let _guard = guard;
+        let allowed_ids = state.allowed_agent_ids.clone();
+        let agent_ids = match tokio::task::spawn_blocking(move || {
+            let npx_available = crate::agent_check::host_npx_available();
+            host_history_agent_ids(allowed_ids.as_ref(), |agent_id| {
+                crate::agent_check::check_host_agent_availability(agent_id, npx_available)
+                    .launch_ready
+            })
+        })
+        .await
+        {
+            Ok(agent_ids) => agent_ids,
+            Err(error) => {
+                tracing::error!(target: "master_history", %error, "host agent availability check failed");
+                return;
+            }
+        };
+        refresh_host_history_agents(&state, &agent_ids).await;
+    });
+}
+
 /// Before returning the snapshot, opportunistically upgrade any row whose title
 /// is still synthetic (empty / cwd-basename) from the agent's raw ACP
 /// `session/list` titles.
@@ -7024,15 +7101,17 @@ async fn seed_host_and_broadcast(
 /// delegate sessions, which register with an empty title before the CLI has
 /// generated its real one.
 ///
-/// `agent` is the caller's bound CLI. It is `None` only for a client that never
-/// bound one (`wta sessions list`), in which case the ACP re-pull is skipped
-/// and the current registry snapshot is returned as-is — master must not guess
-/// an agent, since asking the wrong one would stamp and reconcile foreign rows.
+/// `agent` is the caller's bound CLI. Unbound control clients get the current
+/// snapshot without spawning an agent unless they explicitly request
+/// `all_agents`, which schedules independent host-agent discovery.
 async fn handle_sessions_list(
     state: &std::sync::Arc<MasterStateInner>,
     agent: Option<&AgentCli>,
     parsed: &crate::session_registry::SessionsListParams,
 ) -> acp::Result<acp::schema::v1::ExtResponse> {
+    if parsed.all_agents {
+        request_host_history_refresh(state);
+    }
     if let Some(agent) = agent {
         if parsed.rescan {
             // Re-pull this agent's own `session/list` and broadcast. Each pooled
@@ -7251,6 +7330,7 @@ async fn handle_session_activate(
             let mut params = serde_json::json!({
                 "window_id": parsed.window_id,
                 "commandline": format!("cmd /c {commandline}"),
+                "background": true,
             });
             if matches!(row.location, crate::agent_sessions::SessionLocation::Host)
                 && !row.cwd.as_os_str().is_empty()
@@ -7262,6 +7342,25 @@ async fn handle_session_activate(
             }
             match wt.request("create_tab", params).await {
                 Ok(result) => {
+                    let Some(pane_session_id) = result
+                        .get("session_id")
+                        .or_else(|| result.get("SessionId"))
+                        .or_else(|| result.get("sessionId"))
+                        .and_then(serde_json::Value::as_str)
+                        .map(|value| {
+                            value
+                                .trim()
+                                .trim_matches(|ch| ch == '{' || ch == '}')
+                                .to_string()
+                        })
+                        .filter(|value| !value.is_empty())
+                    else {
+                        return respond!(
+                            "resume_cli",
+                            false,
+                            Some("The created tab did not return a pane ID.".to_string())
+                        );
+                    };
                     if state
                         .registry
                         .mark_resume_dispatched_identity(&parsed.identity)
@@ -7277,43 +7376,46 @@ async fn handle_session_activate(
                             )
                         );
                     }
-                    if let Some(pane_session_id) = result
-                        .get("session_id")
-                        .or_else(|| result.get("SessionId"))
-                        .or_else(|| result.get("sessionId"))
-                        .and_then(serde_json::Value::as_str)
-                        .map(|value| {
-                            value
-                                .trim()
-                                .trim_matches(|ch| ch == '{' || ch == '}')
-                                .to_string()
-                        })
-                        .filter(|value| !value.is_empty())
+                    if !state
+                        .registry
+                        .assign_resume_pane_identity(&parsed.identity, pane_session_id.clone())
+                        .await
                     {
-                        if !state
-                            .registry
-                            .assign_resume_pane_identity(&parsed.identity, pane_session_id.clone())
-                            .await
-                        {
-                            return respond!(
-                                "resume_cli",
-                                false,
-                                Some(
-                                    "The created pane could not be bound to the selected session."
-                                        .to_string()
-                                )
-                            );
-                        }
-                        if let Some(binding) = crate::wt_protocol_events::resumed_pane_binding_event(
-                            &provider_id,
-                            row.session_id.0.as_ref(),
-                            &pane_session_id,
-                            &row.location,
-                        ) {
-                            crate::wt_protocol_events::send(binding);
-                        }
+                        return respond!(
+                            "resume_cli",
+                            false,
+                            Some(
+                                "The created pane could not be bound to the selected session."
+                                    .to_string()
+                            )
+                        );
                     }
-                    respond!("resume_cli", true, None)
+                    if let Some(binding) = crate::wt_protocol_events::resumed_pane_binding_event(
+                        &provider_id,
+                        row.session_id.0.as_ref(),
+                        &pane_session_id,
+                        &row.location,
+                    ) {
+                        crate::wt_protocol_events::send(binding);
+                    }
+                    // Only this History activation preserves the sidebar: background
+                    // creation followed by focus of the exact newly returned pane.
+                    match wt
+                        .request(
+                            "focus_pane",
+                            serde_json::json!({ "session_id": pane_session_id }),
+                        )
+                        .await
+                    {
+                        Ok(_) => respond!("resume_cli", true, None),
+                        Err(error) => respond!(
+                            "resume_cli",
+                            false,
+                            Some(format!(
+                                "The session was created but could not be focused: {error}"
+                            ))
+                        ),
+                    }
                 }
                 Err(error) => respond!("resume_cli", false, Some(error.to_string())),
             }

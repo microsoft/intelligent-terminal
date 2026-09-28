@@ -355,6 +355,7 @@ namespace winrt::TerminalApp::implementation
         bool _suppressTabFocusRequests{ false };
         uint64_t _historyRequestGeneration{ 0 };
         uint64_t _historyActivationSerial{ 0 };
+        bool _preserveSidebarHistory{ false };
         Windows::UI::Xaml::DispatcherTimer _historyRefreshTimer{ nullptr };
         bool _historyRefreshInFlight{ false };
         bool _historyRefreshPending{ false };
@@ -444,13 +445,11 @@ namespace winrt::TerminalApp::implementation
         // toggles each time the user switches tabs.
         //
         // The bottom-bar click handlers (`_AgentToggleButtonOnClick`,
-        // `_SessionToggleButtonOnClick`, `_DiagnosticsButtonOnClick`)
+        // `_DiagnosticsButtonOnClick`)
         // target the *active* tab's AgentPaneContent (or open one if
         // it doesn't exist yet).
         void _AgentToggleButtonOnClick(const winrt::Windows::Foundation::IInspectable& sender,
                                        const winrt::Windows::UI::Xaml::RoutedEventArgs& eventArgs);
-        void _SessionToggleButtonOnClick(const winrt::Windows::Foundation::IInspectable& sender,
-                                         const winrt::Windows::UI::Xaml::RoutedEventArgs& eventArgs);
         void _DiagnosticsButtonOnClick(const winrt::Windows::Foundation::IInspectable& sender,
                                        const winrt::Windows::UI::Xaml::RoutedEventArgs& eventArgs);
         // Recomputes the bottom bar's visibility / toggle-lit / diagnostics
@@ -977,8 +976,10 @@ namespace winrt::TerminalApp::implementation
         bool _ApplyAgentSessionStatusDelta(std::string_view sessionId,
                                            std::string_view paneSessionId,
                                            std::string_view status);
+        static winrt::hstring _SidebarHistoryAgeText(std::optional<uint64_t> lastActivityAtMs, uint64_t nowMs);
         safe_void_coroutine _LoadSidebarHistory(uint64_t generation, bool initialLoad);
         safe_void_coroutine _ActivateSidebarHistoryItem(TerminalApp::TabStripHistoryItem item);
+        bool _CompleteSidebarHistoryActivation(uint64_t activationSerial, bool accepted, const winrt::hstring& detail);
         bool _IsCollapsedVerticalRail() const noexcept
         {
             return _isVerticalLayout &&

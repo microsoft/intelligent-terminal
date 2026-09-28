@@ -86,6 +86,9 @@
     <Page Include="AgentPaneContent.xaml">
       <SubType>Designer</SubType>
     </Page>
+    <Page Include="AgentIconResources.xaml">
+      <SubType>Designer</SubType>
+    </Page>
     <Page Include="FreOverlay.xaml">
       <SubType>Designer</SubType>
     </Page>

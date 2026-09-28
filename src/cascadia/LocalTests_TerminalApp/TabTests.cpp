@@ -28,6 +28,7 @@
 #include <winrt/Windows.UI.Xaml.Automation.h>
 #include <winrt/Windows.UI.Xaml.Automation.Peers.h>
 #include <winrt/Windows.UI.Xaml.Automation.Provider.h>
+#include <winrt/Windows.UI.Xaml.Shapes.h>
 
 using namespace Microsoft::Console;
 using namespace TerminalApp;
@@ -286,6 +287,19 @@ namespace TerminalAppLocalTests
         TEST_METHOD(AgentViewAllTabsStopsHistoryRefresh);
         TEST_METHOD(VerticalTabHistoryStatusText);
         TEST_METHOD(SessionRegistryStatusDeltaUpdatesCaches);
+        TEST_METHOD(BottomBarOmitsSessionsButton);
+        TEST_METHOD(VerticalTabHistoryRelativeAge);
+        TEST_METHOD(VerticalTabHistoryMetadataLayout);
+        TEST_METHOD(VerticalTabHistoryAgentIcons);
+        TEST_METHOD(VerticalTabHistoryEndedPresentation);
+        TEST_METHOD(VerticalTabHistoryUnfinishedFirst);
+        TEST_METHOD(VerticalTabHistoryStatusStyles);
+        TEST_METHOD(VerticalTabHistoryProtocolActivationPreservesView);
+        TEST_METHOD(VerticalTabHistoryForegroundProtocolCreationExitsView);
+        TEST_METHOD(VerticalTabHistoryActivationCompletionPreservesView);
+        TEST_METHOD(VerticalTabHistoryActivationKeepsRows);
+        TEST_METHOD(VerticalTabHistoryRefreshPreservesCollection);
+        TEST_METHOD(VerticalTabHistoryRefreshPreservesScroll);
         TEST_METHOD(VerticalTabHistorySearchProjection);
         TEST_METHOD(VerticalTabHistoryPreservesLiveSearch);
         TEST_METHOD(VerticalTabHistoryClosePreservesForegroundSelection);
@@ -1757,6 +1771,7 @@ namespace TerminalAppLocalTests
             fixture->source->ShutdownPanes();
             VERIFY_ARE_EQUAL(groupId, fixture->source->_manager.KeptGroupForPane(paneId));
             fixture->destination->_tabStrip.HistoryActive(true);
+            winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(fixture->destination->_tabStrip)->HistorySearchTextBox().Text(L"kept");
             focus = fixture->destination->FocusProtocolPane(paneId);
         });
         VERIFY_IS_TRUE(focus.get());
@@ -1765,7 +1780,10 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(groupId, winrt::guid{ restored->StableId() });
             VERIFY_ARE_EQUAL(paneId, restored->GetActivePane()->GetTerminalControl().Connection().SessionId());
             VERIFY_ARE_EQUAL(fixture->destinationTabs.size() + 1, static_cast<size_t>(fixture->destination->_tabs.Size()));
-            VERIFY_IS_FALSE(fixture->destination->_tabStrip.HistoryActive());
+            VERIFY_IS_TRUE(fixture->destination->_tabStrip.HistoryActive());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"kept" },
+                             winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(fixture->destination->_tabStrip)->HistorySearchTextBox().Text());
+            VERIFY_IS_FALSE(fixture->destination->_preserveSidebarHistory);
             VERIFY_IS_FALSE(fixture->source->_manager.HasKeptSessions());
             VERIFY_IS_TRUE(restored->KeepRunning());
             VERIFY_IS_TRUE(restored->HasStashedAgentPane());
@@ -3282,22 +3300,36 @@ namespace TerminalAppLocalTests
         });
     }
 
+    void TabTests::BottomBarOmitsSessionsButton()
+    {
+        auto page = _commonSetup();
+        TestOnUIThread([&]() {
+            VERIFY_IS_NULL(page->FindName(L"SessionToggleButton"));
+            VERIFY_IS_NOT_NULL(page->FindName(L"AgentToggleButton"));
+        });
+    }
+
     void TabTests::VerticalTabHistoryStatusText()
     {
         TestOnUIThread([&]() {
+            const auto resources = winrt::Windows::ApplicationModel::Resources::Core::ResourceManager::Current()
+                                       .MainResourceMap()
+                                       .GetSubtree(L"TerminalApp/Resources");
             const std::pair<std::string_view, winrt::hstring> cases[]{
-                { "Idle", L"Idle" },
-                { "Working", L"Active" },
-                { "Attention", L"Waiting for input" },
-                { "Error", L"Error" },
-                { "Ended", L"Ended" },
-                { "Historical", L"Historical" },
-                { "", L"Unknown" },
-                { "FutureStatus", L"Unknown" },
+                { "Idle", L"VerticalTabsHistoryStatusIdle" },
+                { "Working", L"VerticalTabsHistoryStatusWorking" },
+                { "Attention", L"VerticalTabsHistoryStatusAttention" },
+                { "Error", L"VerticalTabsHistoryStatusError" },
+                { "Ended", L"VerticalTabsHistoryStatusHistorical" },
+                { "Historical", L"VerticalTabsHistoryStatusHistorical" },
+                { "", L"VerticalTabsHistoryStatusUnknown" },
+                { "FutureStatus", L"VerticalTabsHistoryStatusUnknown" },
             };
-            for (const auto& [status, expected] : cases)
+            for (const auto& [status, resource] : cases)
             {
-                VERIFY_ARE_EQUAL(expected, winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryStatusText(status));
+                const auto text = winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryStatusText(status);
+                VERIFY_IS_FALSE(text.empty());
+                VERIFY_ARE_EQUAL(resources.GetValue(resource).ValueAsString(), text);
             }
         });
     }
@@ -3345,6 +3377,643 @@ namespace TerminalAppLocalTests
         });
     }
 
+    void TabTests::VerticalTabHistoryRelativeAge()
+    {
+        TestOnUIThread([&]() {
+            const auto resources = winrt::Windows::ApplicationModel::Resources::Core::ResourceManager::Current()
+                                       .MainResourceMap()
+                                       .GetSubtree(L"TerminalApp/Resources");
+            constexpr uint64_t nowMs = 100ULL * 86400 * 1000;
+            struct AgeCase
+            {
+                uint64_t elapsedMs;
+                winrt::hstring resource;
+                uint64_t count;
+            };
+            const AgeCase cases[]{
+                { 0, L"VerticalTabsHistoryAgeJustNow", 0 },
+                { 59'999, L"VerticalTabsHistoryAgeJustNow", 0 },
+                { 60'000, L"VerticalTabsHistoryAgeMinute", 0 },
+                { 119'999, L"VerticalTabsHistoryAgeMinute", 0 },
+                { 120'000, L"VerticalTabsHistoryAgeMinutes", 2 },
+                { 3'599'999, L"VerticalTabsHistoryAgeMinutes", 59 },
+                { 3'600'000, L"VerticalTabsHistoryAgeHour", 0 },
+                { 7'199'999, L"VerticalTabsHistoryAgeHour", 0 },
+                { 7'200'000, L"VerticalTabsHistoryAgeHours", 2 },
+                { 86'399'999, L"VerticalTabsHistoryAgeHours", 23 },
+                { 86'400'000, L"VerticalTabsHistoryAgeDay", 0 },
+                { 172'799'999, L"VerticalTabsHistoryAgeDay", 0 },
+                { 172'800'000, L"VerticalTabsHistoryAgeDays", 2 },
+                { 7ULL * 86'400'000 - 1, L"VerticalTabsHistoryAgeDays", 6 },
+                { nowMs, L"VerticalTabsHistoryAgeUnknown", 0 },
+            };
+            for (const auto& test : cases)
+            {
+                auto expected = resources.GetValue(test.resource).ValueAsString();
+                if (test.count)
+                {
+                    expected = fmt::format(fmt::runtime(std::wstring_view{ expected }), test.count);
+                }
+                VERIFY_ARE_EQUAL(expected, winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryAgeText(nowMs - test.elapsedMs, nowMs));
+            }
+            const auto justNow = resources.GetValue(L"VerticalTabsHistoryAgeJustNow").ValueAsString();
+            VERIFY_ARE_EQUAL(justNow, winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryAgeText(nowMs + 1, nowMs));
+            VERIFY_ARE_EQUAL(justNow, winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryAgeText(UINT64_MAX, nowMs));
+            VERIFY_ARE_EQUAL(resources.GetValue(L"VerticalTabsHistoryAgeUnknown").ValueAsString(),
+                             winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryAgeText(std::nullopt, nowMs));
+
+            const auto context = winrt::Windows::ApplicationModel::Resources::Core::ResourceContext::GetForViewIndependentUse();
+            const auto language = context.QualifierValues().TryLookup(L"language");
+            const auto locale = language ? *language : winrt::hstring{};
+            const auto expectedDate = [&](WORD year, WORD month, WORD day) {
+                SYSTEMTIME time{};
+                time.wYear = year;
+                time.wMonth = month;
+                time.wDay = day;
+                wchar_t buffer[256]{};
+                VERIFY_IS_TRUE(GetDateFormatEx(locale.empty() ? LOCALE_NAME_USER_DEFAULT : locale.c_str(),
+                                               DATE_LONGDATE,
+                                               &time,
+                                               nullptr,
+                                               buffer,
+                                               ARRAYSIZE(buffer),
+                                               nullptr) > 0);
+                return winrt::hstring{ buffer };
+            };
+            constexpr uint64_t calendarNowMs = 1'790'596'800'000; // 2026-09-28 12:00 UTC
+            constexpr uint64_t weekMs = 7ULL * 86'400'000;
+            const auto oldDate = expectedDate(2026, 9, 21);
+            VERIFY_ARE_EQUAL(oldDate, winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryAgeText(calendarNowMs - weekMs, calendarNowMs));
+            VERIFY_ARE_EQUAL(oldDate, winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryAgeText(calendarNowMs - weekMs - 1, calendarNowMs));
+            VERIFY_ARE_EQUAL(expectedDate(1970, 1, 1),
+                             winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryAgeText(1, calendarNowMs));
+            const auto midnightMs = calendarNowMs - 12ULL * 3'600'000 - weekMs;
+            VERIFY_ARE_EQUAL(oldDate, winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryAgeText(midnightMs, calendarNowMs));
+            VERIFY_ARE_EQUAL(expectedDate(2026, 9, 20),
+                             winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryAgeText(midnightMs - 1, calendarNowMs));
+            VERIFY_ARE_EQUAL(resources.GetValue(L"VerticalTabsHistoryAgeUnknown").ValueAsString(),
+                             winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryAgeText(UINT64_MAX - weekMs, UINT64_MAX));
+        });
+    }
+
+    void TabTests::VerticalTabHistoryMetadataLayout()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            const auto row = stripImpl->HistoryList().ItemTemplate().LoadContent().as<Grid>();
+            const auto icon = row.Children().GetAt(0).as<ContentControl>();
+            VERIFY_ARE_EQUAL(0, Grid::GetColumn(icon));
+            VERIFY_ARE_EQUAL(2, Grid::GetRowSpan(icon));
+            VERIFY_ARE_EQUAL(16.0, icon.Width());
+            VERIFY_ARE_EQUAL(16.0, icon.Height());
+            VERIFY_ARE_EQUAL(12.0, icon.Margin().Right);
+            VERIFY_ARE_EQUAL(VerticalAlignment::Center, icon.VerticalAlignment());
+            VERIFY_IS_FALSE(icon.IsTabStop());
+            VERIFY_IS_FALSE(icon.IsHitTestVisible());
+            VERIFY_ARE_EQUAL(1, Grid::GetColumn(row.Children().GetAt(1).as<FrameworkElement>()));
+            const auto metadata = row.Children().GetAt(2).as<Grid>();
+            VERIFY_ARE_EQUAL(1, Grid::GetRow(metadata));
+            VERIFY_ARE_EQUAL(1, Grid::GetColumn(metadata));
+            VERIFY_ARE_EQUAL(HorizontalAlignment::Left, metadata.HorizontalAlignment());
+            VERIFY_ARE_EQUAL(GridUnitType::Star, metadata.ColumnDefinitions().GetAt(0).Width().GridUnitType);
+            VERIFY_ARE_EQUAL(GridUnitType::Auto, metadata.ColumnDefinitions().GetAt(1).Width().GridUnitType);
+            const auto subtitle = metadata.Children().GetAt(0).as<winrt::TerminalApp::HighlightedTextControl>();
+            const auto status = metadata.Children().GetAt(1).as<winrt::TerminalApp::HighlightedTextControl>();
+            VERIFY_ARE_EQUAL(1, Grid::GetColumn(status));
+            VERIFY_ARE_EQUAL(4.0, status.Margin().Left);
+            VERIFY_ARE_EQUAL(0.0, status.Margin().Right);
+
+            status.TextBlockStyle(strip.Resources().Lookup(winrt::box_value(L"HistoryActiveTextStyle")).as<Style>());
+            subtitle.ApplyTemplate();
+            status.ApplyTemplate();
+            const auto subtitleText = Media::VisualTreeHelper::GetChild(subtitle, 0).as<TextBlock>();
+            const auto statusText = Media::VisualTreeHelper::GetChild(status, 0).as<TextBlock>();
+            const auto rowOverhead = row.Padding().Left + icon.Width() + icon.Margin().Right + row.Padding().Right;
+            constexpr double tolerance = 1.0;
+            for (const auto subtitleValue : { L"Copilot · 2m ago", L"Localized provider with a very long display name · several minutes ago" })
+            {
+                for (const auto statusValue : { L"· Idle", L"· Waiting for confirmation" })
+                {
+                    subtitle.Text(subtitleValue);
+                    status.Text(statusValue);
+                    subtitleText.Measure({ 10000, 80 });
+                    statusText.Measure({ 10000, 80 });
+                    const auto subtitleWidth = subtitleText.DesiredSize().Width;
+                    const auto statusWidth = statusText.DesiredSize().Width;
+                    VERIFY_IS_TRUE(subtitleWidth > 0);
+                    VERIFY_IS_TRUE(statusWidth > 0);
+                    const auto fixedWidth = rowOverhead + status.Margin().Left + statusWidth;
+                    const auto wideWidth = static_cast<float>(fixedWidth + subtitleWidth + 120);
+                    const auto narrowWidth = static_cast<float>(fixedWidth + subtitleWidth / 2);
+
+                    // Re-expanding also catches stale trimming or column widths after a resize.
+                    for (const auto width : { wideWidth, narrowWidth, wideWidth })
+                    {
+                        row.Width(width);
+                        row.Measure({ width, 80 });
+                        row.Arrange({ 0, 0, width, 80 });
+                        row.UpdateLayout();
+                        const auto subtitlePosition = subtitleText.TransformToVisual(row).TransformPoint({ 0, 0 });
+                        const auto statusPosition = statusText.TransformToVisual(row).TransformPoint({ 0, 0 });
+                        VERIFY_IS_TRUE(std::abs(subtitlePosition.X - (rowOverhead - row.Padding().Right)) <= tolerance);
+                        VERIFY_ARE_EQUAL(Visibility::Visible, status.Visibility());
+                        VERIFY_IS_TRUE(statusText.ActualWidth() >= statusWidth - tolerance);
+                        VERIFY_IS_FALSE(statusText.IsTextTrimmed());
+                        VERIFY_IS_TRUE(statusPosition.X >= subtitlePosition.X);
+                        VERIFY_IS_TRUE(statusPosition.X + statusText.ActualWidth() <= width - row.Padding().Right + tolerance);
+                        const auto gap = statusPosition.X - (subtitlePosition.X + subtitleText.ActualWidth());
+                        VERIFY_IS_TRUE(gap >= status.Margin().Left - tolerance);
+                        VERIFY_IS_TRUE(gap <= status.Margin().Left + tolerance);
+                        VERIFY_IS_TRUE(std::abs(statusPosition.Y - subtitlePosition.Y) <= tolerance);
+                        if (width == narrowWidth)
+                        {
+                            VERIFY_IS_TRUE(subtitleText.IsTextTrimmed());
+                            VERIFY_IS_TRUE(subtitleText.ActualWidth() < subtitleWidth - tolerance);
+                        }
+                        else
+                        {
+                            VERIFY_IS_FALSE(subtitleText.IsTextTrimmed());
+                            VERIFY_IS_TRUE(std::abs(subtitleText.ActualWidth() - subtitleWidth) <= tolerance);
+                            VERIFY_IS_TRUE(width - row.Padding().Right - (statusPosition.X + statusText.ActualWidth()) >= 100);
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    void TabTests::VerticalTabHistoryAgentIcons()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            for (const auto provider : { L"copilot", L"claude", L"codex", L"gemini", L"opencode", L"custom:agent", L"" })
+            {
+                auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+                item.AgentId(provider);
+                stripImpl->CommitHistorySnapshot({ item });
+                const auto iconId = std::wstring_view{ provider }.empty() || std::wstring_view{ provider }.starts_with(L"custom:") ?
+                                        winrt::hstring{ L"generic" } :
+                                        winrt::hstring{ provider };
+                const auto expected = strip.Resources().Lookup(winrt::box_value(L"AgentIcon." + iconId)).as<DataTemplate>();
+                VERIFY_IS_TRUE(item.IconTemplate() == expected);
+                const auto art = item.IconTemplate().LoadContent().as<Viewbox>();
+                VERIFY_IS_TRUE(static_cast<bool>(art.Child()));
+                for (const auto color : { winrt::Windows::UI::Colors::Black(), winrt::Windows::UI::Colors::White() })
+                {
+                    Media::SolidColorBrush foreground{ color };
+                    art.DataContext(foreground);
+                    if (const auto path = art.Child().try_as<Shapes::Path>())
+                    {
+                        VERIFY_IS_TRUE(path.Fill() == foreground);
+                    }
+                    else if (const auto layers = art.Child().try_as<Grid>())
+                    {
+                        VERIFY_ARE_EQUAL(2u, layers.Children().Size());
+                        for (const auto& layer : layers.Children())
+                        {
+                            VERIFY_IS_TRUE(layer.as<Shapes::Path>().Fill() == foreground);
+                        }
+                    }
+                    else
+                    {
+                        VERIFY_IS_TRUE(art.Child().as<SymbolIcon>().Foreground() == foreground);
+                    }
+                }
+            }
+        });
+    }
+
+    void TabTests::VerticalTabHistoryEndedPresentation()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            std::vector<winrt::TerminalApp::TabStripHistoryItem> items;
+            for (const auto status : { "Ended", "Historical" })
+            {
+                auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+                item.SessionId(winrt::to_hstring(status));
+                item.AgentId(L"copilot");
+                item.Status(winrt::to_hstring(status));
+                item.StatusText(winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryStatusText(status));
+                item.IsLive(false);
+                items.emplace_back(item);
+            }
+            stripImpl->CommitHistorySnapshot(items);
+            VERIFY_ARE_EQUAL(items[0].StatusText(), items[1].StatusText());
+            stripImpl->HistorySearchTextBox().Text(items[0].StatusText());
+            VERIFY_ARE_EQUAL(2u, strip.HistoryItems().Size());
+            stripImpl->HistorySearchTextBox().Text(L"ended");
+            VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Ended" }, strip.HistoryItems().GetAt(0).Status());
+            VERIFY_IS_FALSE(strip.HistoryItems().GetAt(0).IsLive());
+            for (const auto& item : items)
+            {
+                item.IsHistorical(true);
+            }
+            stripImpl->CommitHistorySnapshot(items);
+            stripImpl->HistorySearchTextBox().Text(L"history");
+            VERIFY_ARE_EQUAL(2u, strip.HistoryItems().Size());
+        });
+    }
+
+    void TabTests::VerticalTabHistoryUnfinishedFirst()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            const auto visibleItems = strip.HistoryItems();
+            const auto makeItem = [](const wchar_t* id, const wchar_t* status) {
+                auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+                item.SessionId(id);
+                item.Title(winrt::hstring{ L"session " } + id);
+                item.Status(status);
+                item.IsLive(std::wstring_view{ status } == L"Idle" ||
+                            std::wstring_view{ status } == L"Working" ||
+                            std::wstring_view{ status } == L"Attention" ||
+                            std::wstring_view{ status } == L"Error");
+                return item;
+            };
+            const auto ended = makeItem(L"ended-newest", L"Ended");
+            const auto idle = makeItem(L"idle", L"Idle");
+            const auto historical = makeItem(L"historical-newer", L"Historical");
+            const auto working = makeItem(L"working", L"Working");
+            const auto attention = makeItem(L"attention", L"Attention");
+            const auto error = makeItem(L"error", L"Error");
+            const auto unknown = makeItem(L"unknown", L"");
+            const auto oldest = makeItem(L"historical-oldest", L"Historical");
+            const auto verifyOrder = [&](const std::initializer_list<const wchar_t*> expected) {
+                VERIFY_ARE_EQUAL(expected.size(), static_cast<size_t>(visibleItems.Size()));
+                uint32_t index = 0;
+                for (const auto id : expected)
+                {
+                    VERIFY_ARE_EQUAL(winrt::hstring{ id }, visibleItems.GetAt(index++).SessionId());
+                }
+            };
+
+            stripImpl->CommitHistorySnapshot({ ended, idle, historical, working, attention, error, unknown, oldest });
+            verifyOrder({ L"idle", L"working", L"attention", L"error", L"unknown", L"ended-newest", L"historical-newer", L"historical-oldest" });
+            stripImpl->HistorySearchTextBox().Text(L"session");
+            verifyOrder({ L"idle", L"working", L"attention", L"error", L"unknown", L"ended-newest", L"historical-newer", L"historical-oldest" });
+            stripImpl->HistorySearchTextBox().Text(L"historical");
+            verifyOrder({ L"historical-newer", L"historical-oldest" });
+            stripImpl->HistorySearchTextBox().Text(L"");
+
+            working.Status(L"Ended");
+            working.IsLive(false);
+            stripImpl->CommitHistorySnapshot({ working, ended, idle, historical, attention, error, unknown, oldest });
+            verifyOrder({ L"idle", L"attention", L"error", L"unknown", L"working", L"ended-newest", L"historical-newer", L"historical-oldest" });
+
+            oldest.Status(L"Idle");
+            oldest.IsLive(true);
+            stripImpl->CommitHistorySnapshot({ oldest, working, ended, idle, historical, attention, error, unknown });
+            verifyOrder({ L"historical-oldest", L"idle", L"attention", L"error", L"unknown", L"working", L"ended-newest", L"historical-newer" });
+            VERIFY_ARE_EQUAL(winrt::get_abi(visibleItems), winrt::get_abi(strip.HistoryItems()));
+        });
+    }
+
+    void TabTests::VerticalTabHistoryStatusStyles()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            const auto attentionStyle = strip.Resources().Lookup(winrt::box_value(L"HistoryAttentionTextStyle")).as<Style>();
+            const auto activeStyle = strip.Resources().Lookup(winrt::box_value(L"HistoryActiveTextStyle")).as<Style>();
+            const auto errorStyle = strip.Resources().Lookup(winrt::box_value(L"HistoryErrorTextStyle")).as<Style>();
+            const auto subtitleStyle = strip.Resources().Lookup(winrt::box_value(L"HistorySubtitleTextStyle")).as<Style>();
+            for (const auto status : { L"Attention", L"Working", L"Idle", L"Error", L"Ended", L"Historical", L"" })
+            {
+                auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+                item.Status(status);
+                stripImpl->CommitHistorySnapshot({ item });
+                const auto state = std::wstring_view{ status };
+                const auto expected = state == L"Working"   ? activeStyle :
+                                      state == L"Attention" ? attentionStyle :
+                                      state == L"Error"     ? errorStyle :
+                                                              subtitleStyle;
+                VERIFY_IS_TRUE(item.StatusTextStyle() == expected);
+            }
+
+            for (const auto& style : { activeStyle, attentionStyle, errorStyle })
+            {
+                winrt::TerminalApp::HighlightedTextControl statusText;
+                statusText.Text(L"Status text");
+                statusText.SearchText(L"text");
+                statusText.TextBlockStyle(style);
+                statusText.ApplyTemplate();
+                const auto textBlock = Media::VisualTreeHelper::GetChild(statusText, 0).as<TextBlock>();
+                const auto foreground = textBlock.Foreground().as<Media::SolidColorBrush>().Color();
+                VERIFY_ARE_EQUAL(1.0, textBlock.Opacity());
+                VERIFY_ARE_EQUAL(2u, textBlock.Inlines().Size());
+                for (const auto& inlineText : textBlock.Inlines())
+                {
+                    const auto run = inlineText.as<Documents::Run>();
+                    VERIFY_ARE_EQUAL(foreground, run.Foreground().as<Media::SolidColorBrush>().Color());
+                }
+                VERIFY_ARE_EQUAL(FontWeights::Bold().Weight,
+                                 textBlock.Inlines().GetAt(1).as<Documents::Run>().FontWeight().Weight);
+            }
+            VERIFY_IS_TRUE(activeStyle != attentionStyle && activeStyle != errorStyle && attentionStyle != errorStyle);
+        });
+    }
+
+    void TabTests::VerticalTabHistoryProtocolActivationPreservesView()
+    {
+        const winrt::guid firstSession{ L"{db061472-5898-4eb6-a218-6d5d042838a5}" };
+        auto connection = winrt::make_self<TestConnection>(
+            firstSession, winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        auto page = _commonSetup(*connection, nullptr, std::nullopt, true);
+        winrt::Windows::Foundation::IAsyncOperation<winrt::Microsoft::Terminal::Protocol::TabCreationResult> create{ nullptr };
+        uint32_t summonRequests = 0;
+        const auto summonToken = page->SummonWindowRequested([&](auto&&, auto&&) { ++summonRequests; });
+        const auto revokeSummon = wil::scope_exit([&]() { page->SummonWindowRequested(summonToken); });
+        TestOnUIThread([&]() {
+            page->_tabStrip.HistoryActive(true);
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            stripImpl->HistorySearchTextBox().Text(L"history query");
+            create = page->CreateProtocolTab(NewTerminalArgs{ 1 }, true);
+        });
+        const auto created = create.get();
+        winrt::Windows::Foundation::IAsyncOperation<bool> focus{ nullptr };
+        TestOnUIThread([&]() {
+            VERIFY_ARE_EQUAL(1u, created.TabId);
+            VERIFY_ARE_EQUAL(2u, page->_tabs.Size());
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryActive());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"history query" },
+                             winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->HistorySearchTextBox().Text());
+            VERIFY_ARE_EQUAL(0u, page->_GetFocusedTabIndex().value_or(1));
+            VERIFY_IS_TRUE(page->_selectedTabItem() == page->_tabs.GetAt(0).TabViewItem());
+            VERIFY_ARE_EQUAL(0u, summonRequests);
+            VERIFY_ARE_EQUAL(0.0, page->_tabs.GetAt(created.TabId).Content().Opacity());
+            VERIFY_IS_FALSE(page->_tabs.GetAt(created.TabId).Content().IsHitTestVisible());
+            VERIFY_IS_FALSE(page->_preserveSidebarHistory);
+            VERIFY_IS_TRUE(created.SessionId != firstSession);
+            focus = page->FocusProtocolPane(created.SessionId);
+        });
+        VERIFY_IS_TRUE(focus.get());
+        TestOnUIThread([&]() {
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryActive());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"history query" },
+                             winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->HistorySearchTextBox().Text());
+            VERIFY_ARE_EQUAL(1u, page->_GetFocusedTabIndex().value_or(0));
+            VERIFY_IS_TRUE(page->_selectedTabItem() == page->_tabs.GetAt(1).TabViewItem());
+            VERIFY_ARE_EQUAL(created.SessionId, page->_GetActiveControl().Connection().SessionId());
+            VERIFY_ARE_EQUAL(1u, summonRequests);
+            VERIFY_ARE_EQUAL(1.0, page->_tabs.GetAt(created.TabId).Content().Opacity());
+            VERIFY_IS_TRUE(page->_tabs.GetAt(created.TabId).Content().IsHitTestVisible());
+            VERIFY_IS_FALSE(page->_preserveSidebarHistory);
+        });
+    }
+
+    void TabTests::VerticalTabHistoryForegroundProtocolCreationExitsView()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        for (const auto activating : { false, true })
+        {
+            winrt::Windows::Foundation::IAsyncOperation<winrt::Microsoft::Terminal::Protocol::TabCreationResult> create{ nullptr };
+            TestOnUIThread([&]() {
+                page->_tabStrip.HistoryActive(true);
+                page->_tabStrip.HistoryActivating(activating);
+                winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->HistorySearchTextBox().Text(L"history query");
+                create = page->CreateProtocolTab(NewTerminalArgs{ 1 }, false);
+            });
+            const auto created = create.get();
+            TestOnUIThread([&]() {
+                VERIFY_IS_FALSE(page->_tabStrip.HistoryActive());
+                VERIFY_ARE_EQUAL(created.TabId, page->_GetFocusedTabIndex().value());
+                VERIFY_ARE_EQUAL(created.SessionId, page->_GetActiveControl().Connection().SessionId());
+                VERIFY_IS_FALSE(page->_preserveSidebarHistory);
+            });
+        }
+    }
+
+    void TabTests::VerticalTabHistoryActivationCompletionPreservesView()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            page->_tabStrip.HistoryActive(true);
+            page->_tabStrip.HistoryActivating(true);
+            page->_historyActivationSerial = 9;
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            stripImpl->HistorySearchTextBox().Text(L"history query");
+            VERIFY_IS_FALSE(page->_CompleteSidebarHistoryActivation(8, true, L""));
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryActivating());
+            auto duplicate = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            page->_ActivateSidebarHistoryItem(duplicate);
+            VERIFY_ARE_EQUAL(9ULL, page->_historyActivationSerial);
+            VERIFY_IS_TRUE(page->_CompleteSidebarHistoryActivation(9, true, L""));
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryActive());
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryActivating());
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryLoading());
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"history query" }, stripImpl->HistorySearchTextBox().Text());
+
+            page->_historyActivationSerial = 10;
+            page->_tabStrip.HistoryActivating(true);
+            VERIFY_IS_TRUE(page->_CompleteSidebarHistoryActivation(10, false, L"Cannot focus session"));
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryActive());
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryActivating());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Cannot focus session" }, page->_tabStrip.HistoryError());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"history query" }, stripImpl->HistorySearchTextBox().Text());
+            page->_CloseSidebarHistory(false);
+            VERIFY_IS_FALSE(page->_CompleteSidebarHistoryActivation(10, true, L""));
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryActive());
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryActivating());
+        });
+    }
+
+    void TabTests::VerticalTabHistoryActivationKeepsRows()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            strip.HistoryActive(true);
+            strip.HistoryLoading(true);
+            VERIFY_IS_TRUE(stripImpl->HistoryLoadingIndicator().IsActive());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->HistoryList().Visibility());
+
+            auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            item.SessionId(L"claude-session");
+            item.AgentId(L"claude");
+            item.Title(L"Claude session");
+            item.Status(L"Historical");
+            stripImpl->CommitHistorySnapshot({ item });
+            strip.HistoryLoading(false);
+            stripImpl->HistorySearchTextBox().Text(L"Claude");
+            const auto items = strip.HistoryItems();
+
+            strip.HistoryActivating(true);
+            VERIFY_IS_FALSE(strip.HistoryLoading());
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->HistoryList().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->HistoryLoadingIndicator().Visibility());
+            VERIFY_IS_FALSE(stripImpl->HistoryLoadingIndicator().IsActive());
+            VERIFY_IS_FALSE(stripImpl->HistoryList().IsItemClickEnabled());
+            VERIFY_ARE_EQUAL(1u, items.Size());
+            VERIFY_IS_TRUE(items.GetAt(0) == item);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Claude" }, stripImpl->HistorySearchTextBox().Text());
+
+            stripImpl->CommitHistorySnapshot({ item });
+            strip.HistoryLoading(false);
+            VERIFY_IS_TRUE(strip.HistoryActivating());
+            VERIFY_IS_FALSE(stripImpl->HistoryList().IsItemClickEnabled());
+            VERIFY_ARE_EQUAL(winrt::get_abi(items), winrt::get_abi(strip.HistoryItems()));
+
+            strip.HistoryActivating(false);
+            VERIFY_IS_TRUE(stripImpl->HistoryList().IsItemClickEnabled());
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->HistoryList().Visibility());
+            strip.HistoryActivating(true);
+            strip.HistoryActive(false);
+            strip.HistoryActive(true);
+            VERIFY_IS_FALSE(strip.HistoryActivating());
+            VERIFY_IS_TRUE(stripImpl->HistoryList().IsItemClickEnabled());
+        });
+    }
+
+    void TabTests::VerticalTabHistoryRefreshPreservesCollection()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            const auto makeItem = [](const wchar_t* provider, const wchar_t* id, const wchar_t* status) {
+                auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+                item.AgentId(provider);
+                item.SessionId(id);
+                item.AgentSource(L"host");
+                item.Title(id);
+                item.Subtitle(L"1 minute ago");
+                item.Status(status);
+                item.IsHistorical(true);
+                return item;
+            };
+            auto first = makeItem(L"copilot", L"same-id", L"Historical");
+            auto second = makeItem(L"claude", L"same-id", L"Historical");
+            stripImpl->CommitHistorySnapshot({ first, second });
+            const auto items = strip.HistoryItems();
+            std::vector<CollectionChange> changes;
+            const auto token = items.VectorChanged([&](auto&&, const IVectorChangedEventArgs& args) {
+                changes.emplace_back(args.CollectionChange());
+            });
+            const auto revoke = wil::scope_exit([&]() { items.VectorChanged(token); });
+            stripImpl->CommitHistorySnapshot({ makeItem(L"copilot", L"same-id", L"Historical"),
+                                               makeItem(L"claude", L"same-id", L"Historical") });
+            VERIFY_IS_TRUE(changes.empty());
+            VERIFY_IS_TRUE(items.GetAt(0) == first);
+            VERIFY_IS_TRUE(items.GetAt(1) == second);
+
+            auto changed = makeItem(L"claude", L"same-id", L"Historical");
+            changed.Subtitle(L"2 minutes ago");
+            changed.PaneSessionId(L"new-pane");
+            stripImpl->CommitHistorySnapshot({ makeItem(L"copilot", L"same-id", L"Historical"), changed });
+            VERIFY_ARE_EQUAL(1u, changes.size());
+            VERIFY_ARE_EQUAL(CollectionChange::ItemChanged, changes[0]);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"2 minutes ago" }, items.GetAt(1).Subtitle());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"new-pane" }, items.GetAt(1).PaneSessionId());
+
+            auto added = makeItem(L"codex", L"new-id", L"Idle");
+            stripImpl->CommitHistorySnapshot({ first, changed, added });
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"new-id" }, items.GetAt(0).SessionId());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot" }, items.GetAt(1).AgentId());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, items.GetAt(2).AgentId());
+            stripImpl->CommitHistorySnapshot({ changed, first });
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, items.GetAt(0).AgentId());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot" }, items.GetAt(1).AgentId());
+            VERIFY_IS_TRUE(std::ranges::find(changes, CollectionChange::Reset) == changes.end());
+            VERIFY_ARE_EQUAL(winrt::get_abi(items), winrt::get_abi(strip.HistoryItems()));
+
+            changes.clear();
+            stripImpl->HistorySearchTextBox().Text(L"claude");
+            VERIFY_ARE_EQUAL(1u, items.Size());
+            VERIFY_ARE_EQUAL(CollectionChange::Reset, changes.back());
+            changes.clear();
+            stripImpl->CommitHistorySnapshot({ makeItem(L"copilot", L"same-id", L"Historical"), changed });
+            VERIFY_IS_TRUE(changes.empty());
+            stripImpl->HistorySearchTextBox().Text(L"");
+            VERIFY_ARE_EQUAL(2u, items.Size());
+        });
+    }
+
+    void TabTests::VerticalTabHistoryRefreshPreservesScroll()
+    {
+        winrt::TerminalApp::TabStrip strip;
+        Grid host;
+        ScrollViewer scroll{ nullptr };
+        double offset = 0;
+        const auto snapshot = [](const wchar_t* age, size_t count) {
+            std::vector<winrt::TerminalApp::TabStripHistoryItem> items;
+            for (size_t index = 0; index < count; ++index)
+            {
+                auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+                item.SessionId(winrt::to_hstring(index));
+                item.AgentId(L"copilot");
+                item.Title(winrt::hstring{ L"Session " } + winrt::to_hstring(index));
+                item.Subtitle(age);
+                item.Status(L"Historical");
+                item.StatusText(L"Historical");
+                item.IsHistorical(true);
+                items.emplace_back(item);
+            }
+            return items;
+        };
+        const auto cleanup = wil::scope_exit([&]() {
+            TestOnUIThread([&]() { Window::Current().Content(nullptr); });
+        });
+        TestOnUIThread([&]() {
+            host.Width(320);
+            host.Height(400);
+            strip.Width(320);
+            strip.Height(400);
+            strip.HistoryActive(true);
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            impl->CommitHistorySnapshot(snapshot(L"1 minute ago", 80));
+            host.Children().Append(strip);
+            Window::Current().Content(host);
+            Window::Current().Activate();
+            host.UpdateLayout();
+            const auto list = impl->HistoryList();
+            VERIFY_ARE_EQUAL(ItemsUpdatingScrollMode::KeepScrollOffset,
+                             list.ItemsPanelRoot().as<ItemsStackPanel>().ItemsUpdatingScrollMode());
+            std::function<ScrollViewer(const DependencyObject&)> findScroll;
+            findScroll = [&](const DependencyObject& parent) -> ScrollViewer {
+                if (const auto viewer = parent.try_as<ScrollViewer>())
+                {
+                    return viewer;
+                }
+                for (int32_t index = 0; index < Media::VisualTreeHelper::GetChildrenCount(parent); ++index)
+                {
+                    if (const auto viewer = findScroll(Media::VisualTreeHelper::GetChild(parent, index)))
+                    {
+                        return viewer;
+                    }
+                }
+                return nullptr;
+            };
+            scroll = findScroll(list);
+            VERIFY_IS_NOT_NULL(scroll);
+            VERIFY_IS_TRUE(scroll.ScrollableHeight() > 800);
+            scroll.ChangeView(nullptr, 800.0, nullptr, true);
+            host.UpdateLayout();
+        });
+        TestOnUIThread([&]() {
+            host.UpdateLayout();
+            offset = scroll.VerticalOffset();
+            VERIFY_IS_TRUE(offset > 0);
+            winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip)->CommitHistorySnapshot(snapshot(L"2 minutes ago", 81));
+            host.UpdateLayout();
+        });
+        TestOnUIThread([&]() {
+            host.UpdateLayout();
+            VERIFY_IS_TRUE(std::abs(scroll.VerticalOffset() - offset) <= 1.0);
+            winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip)->CommitHistorySnapshot(snapshot(L"3 minutes ago", 79));
+            host.UpdateLayout();
+        });
+        TestOnUIThread([&]() {
+            host.UpdateLayout();
+            VERIFY_IS_TRUE(std::abs(scroll.VerticalOffset() - offset) <= 1.0);
+        });
+    }
+
     void TabTests::VerticalTabHistorySearchProjection()
     {
         TestOnUIThread([&]() {
@@ -3358,7 +4027,8 @@ namespace TerminalAppLocalTests
             host.ProviderDisplayName(L"Copilot");
             host.AgentSource(L"host");
             host.Status(L"Idle");
-            host.Subtitle(L"copilot - Host - Idle");
+            host.Subtitle(L"Copilot \u00b7 just now \u00b7 ");
+            host.StatusText(L"Idle");
             host.IsLive(true);
 
             auto wsl = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
@@ -3368,9 +4038,19 @@ namespace TerminalAppLocalTests
             wsl.AgentSource(L"wsl");
             wsl.WslDistro(L"Ubuntu");
             wsl.Status(L"Historical");
-            wsl.Subtitle(L"claude - Ubuntu (WSL) - Historical");
+            wsl.Subtitle(L"Claude \u00b7 1 hour ago \u00b7 ");
+            wsl.StatusText(L"Historical");
             wsl.IsLive(false);
             wsl.IsHistorical(true);
+
+            const auto attentionText = winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryStatusText("Attention");
+            auto attention = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            attention.SessionId(L"attention-session");
+            attention.Title(L"Review changes");
+            attention.Subtitle(L"Copilot \u00b7 5 minutes ago \u00b7 ");
+            attention.StatusText(attentionText);
+            attention.Status(L"Attention");
+            attention.IsLive(true);
 
             auto unknown = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
             unknown.Title(L"Unknown session");
@@ -3378,11 +4058,12 @@ namespace TerminalAppLocalTests
             unknown.ProviderDisplayName(L"Copilot");
             unknown.AgentSource(L"host");
             unknown.Status(L"FutureStatus");
-            unknown.Subtitle(L"copilot - Host - Unknown");
+            unknown.Subtitle(L"Copilot \u00b7 just now \u00b7 ");
+            unknown.StatusText(L"Unknown");
 
-            stripImpl->CommitHistorySnapshot({ host, wsl, unknown });
+            stripImpl->CommitHistorySnapshot({ host, wsl, attention, unknown });
             VERIFY_ARE_EQUAL(winrt::get_abi(visibleItems), winrt::get_abi(strip.HistoryItems()));
-            VERIFY_ARE_EQUAL(3u, strip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(4u, strip.HistoryItems().Size());
 
             stripImpl->HistorySearchTextBox().Text(L"ubuntu");
             VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
@@ -3393,23 +4074,55 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Fix build" }, strip.HistoryItems().GetAt(0).Title());
 
-            stripImpl->HistorySearchTextBox().Text(L"historical");
+            stripImpl->HistorySearchTextBox().Text(attentionText);
             VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"Deploy service" }, strip.HistoryItems().GetAt(0).Title());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"attention-session" }, strip.HistoryItems().GetAt(0).SessionId());
+            VERIFY_ARE_EQUAL(attentionText, strip.HistoryItems().GetAt(0).SearchQuery());
 
+            stripImpl->HistorySearchTextBox().Text(winrt::hstring{ L"5 minutes ago \u00b7 " } + attentionText);
+            VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
+            stripImpl->HistorySearchTextBox().Text(L"5 minutes ago");
+            VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Copilot \u00b7 5 minutes ago \u00b7 " },
+                             strip.HistoryItems().GetAt(0).Subtitle());
+
+            stripImpl->HistorySearchTextBox().Text(L"attention");
+            VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
+            stripImpl->HistorySearchTextBox().Text(L"live");
+            VERIFY_ARE_EQUAL(2u, strip.HistoryItems().Size());
             stripImpl->HistorySearchTextBox().Text(L"history");
             VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Deploy service" }, strip.HistoryItems().GetAt(0).Title());
-
+            stripImpl->HistorySearchTextBox().Text(L"historical");
+            VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
             stripImpl->HistorySearchTextBox().Text(L"unknown");
             VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Unknown session" }, strip.HistoryItems().GetAt(0).Title());
+
+            stripImpl->HistorySearchTextBox().Text(attentionText);
+            auto updated = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            updated.SessionId(attention.SessionId());
+            updated.Title(attention.Title());
+            updated.Status(L"Working");
+            updated.IsLive(true);
+            const auto workingText = winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryStatusText("Working");
+            updated.Subtitle(attention.Subtitle());
+            updated.StatusText(workingText);
+            stripImpl->CommitHistorySnapshot({ host, wsl, updated, unknown });
+            VERIFY_ARE_EQUAL(0u, strip.HistoryItems().Size());
+            stripImpl->HistorySearchTextBox().Text(workingText);
+            VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(updated.Subtitle(), strip.HistoryItems().GetAt(0).Subtitle());
+            VERIFY_ARE_EQUAL(workingText, strip.HistoryItems().GetAt(0).StatusText());
+            VERIFY_IS_FALSE(updated.StatusTextStyle() == attention.StatusTextStyle());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Working" }, strip.HistoryItems().GetAt(0).Status());
+            VERIFY_IS_TRUE(strip.HistoryItems().GetAt(0).IsLive());
 
             stripImpl->HistorySearchTextBox().Text(L"missing");
             VERIFY_ARE_EQUAL(0u, strip.HistoryItems().Size());
 
             stripImpl->HistorySearchTextBox().Text(L"");
-            VERIFY_ARE_EQUAL(3u, strip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(4u, strip.HistoryItems().Size());
         });
     }
 
