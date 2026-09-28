@@ -814,6 +814,7 @@ namespace winrt::TerminalApp::implementation
         };
 
         append(item.Title());
+        append(item.Subtitle());
         append(item.AgentId());
         append(item.ProviderDisplayName());
         append(item.AgentSource());

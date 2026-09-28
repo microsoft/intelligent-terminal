@@ -451,4 +451,32 @@
     <value>Ova kartica više neće nastaviti raditi nakon što zatvorite karticu ili prozor.</value>
     <comment>Tooltip and accessibility help for Turn off keep running. After this action, closing the tab or its window closes its panes normally instead of retaining them in the background. The current tab and processes are not closed by this action.</comment>
   </data>
+  <data name="VerticalTabsHistoryStatusIdle" xml:space="preserve">
+    <value>Neaktivan</value>
+    <comment>Agent History session status: the session is live but has no active work.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusWorking" xml:space="preserve">
+    <value>Aktivan</value>
+    <comment>Agent History session status: the agent is actively processing a request.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusAttention" xml:space="preserve">
+    <value>Čeka na unos</value>
+    <comment>Agent History session status: the agent needs a response or approval from the user.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusError" xml:space="preserve">
+    <value>Greška</value>
+    <comment>Agent History session status: the session encountered an error.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusEnded" xml:space="preserve">
+    <value>Završena</value>
+    <comment>Agent History session status: the session&apos;s process or pane has ended. This does not imply that its task succeeded.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusHistorical" xml:space="preserve">
+    <value>Iz historije</value>
+    <comment>Agent History session status: a saved session with no live pane, discovered from the agent&apos;s history.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusUnknown" xml:space="preserve">
+    <value>Nepoznato</value>
+    <comment>Agent History session status: the registry did not provide a recognized status.</comment>
+  </data>
 </root>

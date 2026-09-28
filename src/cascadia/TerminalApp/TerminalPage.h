@@ -959,6 +959,7 @@ namespace winrt::TerminalApp::implementation
         void _StopSidebarHistoryRefreshTimer();
         void _CloseSidebarHistory(bool restoreFocus);
         void _RequestSidebarHistoryRefresh(bool initialLoad);
+        static winrt::hstring _SidebarHistoryStatusText(std::string_view status);
         safe_void_coroutine _LoadSidebarHistory(uint64_t generation, bool initialLoad);
         safe_void_coroutine _ActivateSidebarHistoryItem(TerminalApp::TabStripHistoryItem item);
         bool _IsCollapsedVerticalRail() const noexcept

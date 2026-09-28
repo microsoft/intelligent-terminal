@@ -280,6 +280,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabSearchMatchesCommittedTitle);
         TEST_METHOD(VerticalTabSearchUiState);
         TEST_METHOD(LiteralSearchHighlighting);
+        TEST_METHOD(VerticalTabHistoryStatusText);
         TEST_METHOD(VerticalTabHistorySearchProjection);
         TEST_METHOD(VerticalTabHistoryPreservesLiveSearch);
         TEST_METHOD(VerticalTabHistoryClosePreservesForegroundSelection);
@@ -3119,6 +3120,31 @@ namespace TerminalAppLocalTests
         });
     }
 
+    void TabTests::VerticalTabHistoryStatusText()
+    {
+        TestOnUIThread([&]() {
+            const auto resources = winrt::Windows::ApplicationModel::Resources::Core::ResourceManager::Current()
+                                       .MainResourceMap()
+                                       .GetSubtree(L"TerminalApp/Resources");
+            const std::pair<std::string_view, winrt::hstring> cases[]{
+                { "Idle", L"VerticalTabsHistoryStatusIdle" },
+                { "Working", L"VerticalTabsHistoryStatusWorking" },
+                { "Attention", L"VerticalTabsHistoryStatusAttention" },
+                { "Error", L"VerticalTabsHistoryStatusError" },
+                { "Ended", L"VerticalTabsHistoryStatusEnded" },
+                { "Historical", L"VerticalTabsHistoryStatusHistorical" },
+                { "", L"VerticalTabsHistoryStatusUnknown" },
+                { "FutureStatus", L"VerticalTabsHistoryStatusUnknown" },
+            };
+            for (const auto& [status, resource] : cases)
+            {
+                const auto text = winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryStatusText(status);
+                VERIFY_IS_FALSE(text.empty());
+                VERIFY_ARE_EQUAL(resources.GetValue(resource).ValueAsString(), text);
+            }
+        });
+    }
+
     void TabTests::VerticalTabHistorySearchProjection()
     {
         TestOnUIThread([&]() {
@@ -3143,9 +3169,17 @@ namespace TerminalAppLocalTests
             wsl.Status(L"Historical");
             wsl.IsLive(false);
 
-            stripImpl->CommitHistorySnapshot({ host, wsl });
+            const auto attentionText = winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryStatusText("Attention");
+            auto attention = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            attention.SessionId(L"attention-session");
+            attention.Title(L"Review changes");
+            attention.Subtitle(winrt::hstring{ L"copilot - Host - " } + attentionText);
+            attention.Status(L"Attention");
+            attention.IsLive(true);
+
+            stripImpl->CommitHistorySnapshot({ host, wsl, attention });
             VERIFY_ARE_EQUAL(winrt::get_abi(visibleItems), winrt::get_abi(strip.HistoryItems()));
-            VERIFY_ARE_EQUAL(2u, strip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(3u, strip.HistoryItems().Size());
 
             stripImpl->HistorySearchTextBox().Text(L"ubuntu");
             VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
@@ -3156,11 +3190,39 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Fix build" }, strip.HistoryItems().GetAt(0).Title());
 
+            stripImpl->HistorySearchTextBox().Text(attentionText);
+            VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"attention-session" }, strip.HistoryItems().GetAt(0).SessionId());
+            VERIFY_ARE_EQUAL(attentionText, strip.HistoryItems().GetAt(0).SearchQuery());
+
+            stripImpl->HistorySearchTextBox().Text(L"attention");
+            VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
+            stripImpl->HistorySearchTextBox().Text(L"live");
+            VERIFY_ARE_EQUAL(2u, strip.HistoryItems().Size());
+            stripImpl->HistorySearchTextBox().Text(L"history");
+            VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
+
+            stripImpl->HistorySearchTextBox().Text(attentionText);
+            auto updated = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            updated.SessionId(attention.SessionId());
+            updated.Title(attention.Title());
+            updated.Status(L"Working");
+            updated.IsLive(true);
+            const auto workingText = winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryStatusText("Working");
+            updated.Subtitle(winrt::hstring{ L"copilot - Host - " } + workingText);
+            stripImpl->CommitHistorySnapshot({ host, wsl, updated });
+            VERIFY_ARE_EQUAL(0u, strip.HistoryItems().Size());
+            stripImpl->HistorySearchTextBox().Text(workingText);
+            VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(updated.Subtitle(), strip.HistoryItems().GetAt(0).Subtitle());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Working" }, strip.HistoryItems().GetAt(0).Status());
+            VERIFY_IS_TRUE(strip.HistoryItems().GetAt(0).IsLive());
+
             stripImpl->HistorySearchTextBox().Text(L"missing");
             VERIFY_ARE_EQUAL(0u, strip.HistoryItems().Size());
 
             stripImpl->HistorySearchTextBox().Text(L"");
-            VERIFY_ARE_EQUAL(2u, strip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(3u, strip.HistoryItems().Size());
         });
     }
 
