@@ -169,6 +169,8 @@ before publishing forwarded distro metadata; reject a known pane/source mismatch
 Master must also validate raw COM hook source metadata before reducing session
 state. Corroborate known source/pane ownership without conflating equal session
 IDs from different providers; missing hook context is not a new authentication gate.
+When a reducer still addresses raw IDs, reject a hook whose ID also belongs to a
+different provider rather than modifying an arbitrarily selected qualified row.
 
 Shared provider configuration belongs to the provider. Prefer its native mutation
 API; a WTA-only mutex or read-then-rename check does not serialize another client's

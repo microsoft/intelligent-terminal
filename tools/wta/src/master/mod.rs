@@ -9237,13 +9237,15 @@ async fn validate_master_hook_source(
 ) -> Result<Option<crate::agent_sessions::SessionLocation>, &'static str> {
     use crate::agent_sessions::{pane_key, AgentStatus, SessionLocation};
 
-    let Some(value) = params.get("wsl_distro") else {
-        return Ok(None);
-    };
-    let distro = value
-        .as_str()
-        .filter(|distro| crate::agent_source::is_safe_wsl_distro_name(distro))
-        .ok_or("invalid WSL distro metadata")?;
+    let distro = params
+        .get("wsl_distro")
+        .map(|value| {
+            value
+                .as_str()
+                .filter(|distro| crate::agent_source::is_safe_wsl_distro_name(distro))
+                .ok_or("invalid WSL distro metadata")
+        })
+        .transpose()?;
     let pane = pane_key(pane_id);
     let provider_id = cli_source.canonical_provider_id();
     let mut known_location = None;
@@ -9259,7 +9261,15 @@ async fn validate_master_hook_source(
                 .is_some_and(|incoming| id.eq_ignore_ascii_case(incoming)),
             None => row.cli_source.as_ref() == Some(cli_source),
         };
-        let same_session = row.session_id.0.as_ref() == key && same_provider;
+        let same_session = row.session_id.0.as_ref() == key;
+        // Reducer events and hook ownership still use raw IDs. Matching pane
+        // provenance cannot make a cross-provider collision safe to reduce.
+        if same_session && !same_provider {
+            return Err("agent hook raw session ID conflicts with another provider");
+        }
+        let Some(distro) = distro else {
+            continue;
+        };
         let owner = row.pane_session_id.as_deref().map(pane_key);
         let live = matches!(
             row.status,
@@ -9294,6 +9304,9 @@ async fn validate_master_hook_source(
     if let Some(location) = known_location {
         return Ok(Some(location));
     }
+    let Some(distro) = distro else {
+        return Ok(None);
+    };
 
     // Reuse registry provenance on subsequent hooks. For a new source, request
     // metadata only, never terminal output or a WSL process. Missing interactive

@@ -13320,44 +13320,138 @@ async fn master_com_hook_source_preserves_host_and_unavailable_context_hooks() {
 }
 
 #[tokio::test]
-async fn master_com_hook_source_provider_collision_preserves_pane_corroboration() {
+async fn master_com_hook_source_rejects_foreign_raw_id_before_reduction() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation};
     use crate::session_registry::SessionInfo;
 
-    for foreign_location in [
-        SessionLocation::Host,
-        SessionLocation::Wsl {
-            distro: "Debian".into(),
-        },
-    ] {
-        for same_pane in [false, true] {
-            let state = make_state();
-            let sid = SessionId::new("colliding-hook-id");
-            let mut own = SessionInfo::new(sid.clone(), PathBuf::from("/home/u"));
-            own.provider_id = Some("antigravity".into());
-            own.cli_source = Some(CliSource::Antigravity);
-            own.location = SessionLocation::Wsl {
+    for own_row_exists in [false, true] {
+        for wsl_metadata in [true, false] {
+            for event in ["agent.prompt.submit", "agent.session.start"] {
+                let state = make_state();
+                let sid = SessionId::new("colliding-hook-id");
+                let mut foreign = SessionInfo::new(sid.clone(), PathBuf::from("/foreign/cwd"));
+                foreign.provider_id = Some("copilot".into());
+                foreign.cli_source = Some(CliSource::Copilot);
+                foreign.location = SessionLocation::Wsl {
+                    distro: "Ubuntu".into(),
+                };
+                foreign.status = Some(AgentStatus::Idle);
+                foreign.pane_session_id = Some("owner".into());
+                state.registry.upsert(foreign.clone()).await;
+                if own_row_exists {
+                    let mut own = foreign;
+                    own.provider_id = Some("antigravity".into());
+                    own.cli_source = Some(CliSource::Antigravity);
+                    state.registry.upsert(own).await;
+                }
+                state.born_bound.lock().await.insert(sid.clone());
+                let before = state.registry.snapshot().await;
+                assert_eq!(before.len(), if own_row_exists { 2 } else { 1 });
+                let (tx, mut notifications) = mpsc::unbounded_channel();
+                state
+                    .helper_ext_subscribers
+                    .lock()
+                    .await
+                    .insert(HelperId(1), tx);
+                let mut params = serde_json::json!({
+                    "event": event,
+                    "cli_source": "antigravity",
+                    "agent_session_id": "colliding-hook-id",
+                    "pane_id": "owner",
+                    "payload": {"cwd": "/incoming/cwd", "title": "incoming title"}
+                });
+                if wsl_metadata {
+                    params["wsl_distro"] = serde_json::json!("Ubuntu");
+                }
+                // Source corroboration cannot disambiguate the downstream raw-ID
+                // reducer, even when an Antigravity-qualified row also exists.
+                handle_master_wt_event(
+                    &state,
+                    serde_json::json!({
+                        "method": "agent_event", "params": params
+                    }),
+                )
+                .await;
+                assert_eq!(
+                    state.registry.snapshot().await,
+                    before,
+                    "{event}, own={own_row_exists}, wsl={wsl_metadata}"
+                );
+                assert!(state.hook_owned.lock().await.is_empty());
+                assert!(state.born_bound.lock().await.contains(&sid));
+                assert!(notifications.try_recv().is_err());
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn master_com_hook_source_unique_id_preserves_live_pane_corroboration() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation};
+    use crate::session_registry::SessionInfo;
+
+    for (location, pane, accepted) in [
+        (SessionLocation::Host, "other-pane", true),
+        (SessionLocation::Host, "owner", false),
+        (
+            SessionLocation::Wsl {
+                distro: "Debian".into(),
+            },
+            "owner",
+            false,
+        ),
+        (
+            SessionLocation::Wsl {
                 distro: "Ubuntu".into(),
-            };
-            own.status = Some(AgentStatus::Idle);
-            own.pane_session_id = Some("owner".into());
-            state.registry.upsert(own).await;
-            let mut foreign = SessionInfo::new(sid, PathBuf::from("C:\\repo"));
-            foreign.provider_id = Some("copilot".into());
-            foreign.location = foreign_location.clone();
-            foreign.status = Some(AgentStatus::Idle);
-            foreign.pane_session_id = Some(if same_pane { "owner" } else { "other" }.into());
-            state.registry.upsert(foreign).await;
-            assert_eq!(state.registry.snapshot().await.len(), 2);
-            let result = validate_master_hook_source(
-                &state,
-                &serde_json::json!({"cli_source": "antigravity", "wsl_distro": "Ubuntu"}),
-                "colliding-hook-id",
-                "owner",
-                &CliSource::Antigravity,
-            )
+            },
+            "owner",
+            true,
+        ),
+    ] {
+        let state = make_state();
+        let mut foreign = SessionInfo::new(
+            SessionId::new("copilot-distinct-id"),
+            PathBuf::from("/foreign/cwd"),
+        );
+        foreign.provider_id = Some("copilot".into());
+        foreign.cli_source = Some(CliSource::Copilot);
+        foreign.location = location;
+        foreign.status = Some(AgentStatus::Idle);
+        foreign.pane_session_id = Some(pane.into());
+        state.registry.upsert(foreign).await;
+        let before = state.registry.snapshot().await;
+        handle_master_wt_event(
+            &state,
+            serde_json::json!({
+                "method": "agent_event",
+                "params": {
+                    "event": "agent.prompt.submit",
+                    "cli_source": "antigravity",
+                    "agent_session_id": "antigravity-unique-id",
+                    "pane_id": "owner",
+                    "wsl_distro": "Ubuntu",
+                    "payload": {"cwd": "/incoming/cwd"}
+                }
+            }),
+        )
+        .await;
+        let row = state
+            .registry
+            .lookup(&SessionId::new("antigravity-unique-id"))
             .await;
-            assert_eq!(result.is_ok(), !same_pane, "{result:?}");
+        assert_eq!(row.is_some(), accepted);
+        if let Some(row) = row {
+            assert_eq!(row.cli_source, Some(CliSource::Antigravity));
+            assert_eq!(row.status, Some(AgentStatus::Working));
+            assert_eq!(
+                row.location,
+                SessionLocation::Wsl {
+                    distro: "Ubuntu".into()
+                }
+            );
+        } else {
+            assert_eq!(state.registry.snapshot().await, before);
+            assert!(state.hook_owned.lock().await.is_empty());
         }
     }
 }
