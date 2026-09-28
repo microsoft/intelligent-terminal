@@ -13055,6 +13055,314 @@ async fn antigravity_wsl_hook_keeps_its_execution_source() {
 }
 
 #[tokio::test]
+async fn master_com_hook_source_rejects_invalid_metadata_without_mutation() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation};
+    use crate::session_registry::SessionInfo;
+
+    for distro in [
+        serde_json::Value::Null,
+        serde_json::json!(42),
+        serde_json::json!(true),
+        serde_json::json!([]),
+        serde_json::json!({}),
+        serde_json::json!(""),
+        serde_json::json!(" "),
+        serde_json::json!("Ubuntu:other"),
+        serde_json::json!("Ubuntu&echo marker"),
+        serde_json::json!("x".repeat(257)),
+    ] {
+        for existing in [false, true] {
+            let state = make_state();
+            let sid = SessionId::new("source-validation");
+            if existing {
+                let mut row = SessionInfo::new(sid.clone(), PathBuf::from("/home/u/project"));
+                row.cli_source = Some(CliSource::Antigravity);
+                row.location = SessionLocation::Wsl {
+                    distro: "Ubuntu".into(),
+                };
+                row.status = Some(AgentStatus::Idle);
+                row.pane_session_id = Some("owner".into());
+                state.registry.upsert(row).await;
+                state.born_bound.lock().await.insert(sid.clone());
+            }
+            let before = state.registry.snapshot().await;
+            let (tx, mut notifications) = mpsc::unbounded_channel();
+            state
+                .helper_ext_subscribers
+                .lock()
+                .await
+                .insert(HelperId(1), tx);
+            handle_master_wt_event(
+                &state,
+                serde_json::json!({
+                    "method": "agent_event",
+                    "params": {
+                        "event": "agent.prompt.submit",
+                        "cli_source": "antigravity",
+                        "agent_session_id": "source-validation",
+                        "pane_id": "owner",
+                        "wsl_distro": distro,
+                        "payload": { "cwd": "/different", "prompt": "changed" }
+                    }
+                }),
+            )
+            .await;
+            assert_eq!(
+                state.registry.snapshot().await,
+                before,
+                "distro={distro}, existing={existing}"
+            );
+            assert!(state.hook_owned.lock().await.is_empty());
+            assert_eq!(state.born_bound.lock().await.contains(&sid), existing);
+            assert!(notifications.try_recv().is_err());
+        }
+    }
+}
+
+#[tokio::test]
+async fn master_com_hook_source_rejects_known_source_or_owner_mismatch() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation};
+    use crate::session_registry::SessionInfo;
+
+    for (location, owner, incoming_id) in [
+        (SessionLocation::Host, "owner", "existing"),
+        (
+            SessionLocation::Wsl {
+                distro: "Debian".into(),
+            },
+            "owner",
+            "existing",
+        ),
+        (
+            SessionLocation::Wsl {
+                distro: "Ubuntu".into(),
+            },
+            "other-pane",
+            "existing",
+        ),
+        (SessionLocation::Host, "owner", "new-session"),
+        (
+            SessionLocation::Wsl {
+                distro: "Debian".into(),
+            },
+            "owner",
+            "new-session",
+        ),
+    ] {
+        let state = make_state();
+        let mut row = SessionInfo::new(SessionId::new("existing"), PathBuf::from("/home/u"));
+        row.cli_source = Some(CliSource::Antigravity);
+        row.location = location;
+        row.status = Some(AgentStatus::Idle);
+        row.pane_session_id = Some(owner.into());
+        state.registry.upsert(row).await;
+        let before = state.registry.snapshot().await;
+        handle_master_wt_event(
+            &state,
+            serde_json::json!({
+                "method": "agent_event",
+                "params": {
+                    "event": "agent.prompt.submit",
+                    "cli_source": "antigravity",
+                    "agent_session_id": incoming_id,
+                    "pane_id": "owner",
+                    "wsl_distro": "Ubuntu",
+                    "payload": { "cwd": "/different" }
+                }
+            }),
+        )
+        .await;
+        assert_eq!(state.registry.snapshot().await, before);
+        assert!(state.hook_owned.lock().await.is_empty());
+    }
+}
+
+#[tokio::test]
+async fn master_com_hook_source_checks_pane_context_without_requiring_shell_metadata() {
+    for (shell, accepted) in [
+        ("wsl:Ubuntu", true),
+        ("wsl:ubuntu", true),
+        ("wsl:Debian", false),
+        ("pwsh.exe", false),
+        ("", true),
+    ] {
+        let wt = Arc::new(MockWtChannel::responding(serde_json::json!({
+            "pane": { "session_id": "owner", "shell": shell }
+        })));
+        let state = make_state_with_wt(wt.clone());
+        handle_master_wt_event(
+            &state,
+            serde_json::json!({
+                "method": "agent_event",
+                "params": {
+                    "event": "agent.prompt.submit",
+                    "cli_source": "antigravity",
+                    "agent_session_id": "source-validation",
+                    "pane_id": "owner",
+                    "wsl_distro": "Ubuntu",
+                    "payload": { "cwd": "/home/u/project" }
+                }
+            }),
+        )
+        .await;
+        let row = state
+            .registry
+            .lookup(&SessionId::new("source-validation"))
+            .await;
+        assert_eq!(row.is_some(), accepted, "shell={shell}");
+        if let Some(row) = row {
+            assert_eq!(
+                row.location,
+                crate::agent_sessions::SessionLocation::Wsl {
+                    distro: "Ubuntu".into()
+                }
+            );
+        } else {
+            assert!(state.hook_owned.lock().await.is_empty());
+        }
+        assert_eq!(
+            wt.calls(),
+            vec![(
+                "get_pane_context".into(),
+                serde_json::json!({
+                    "session_id": "owner", "max_lines": 0, "max_chars": 0
+                })
+            )]
+        );
+    }
+}
+
+#[tokio::test]
+async fn master_com_hook_source_preserves_known_wsl_without_external_lookup() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation};
+    use crate::session_registry::SessionInfo;
+
+    let wt = Arc::new(MockWtChannel::failing("context unavailable"));
+    let state = make_state_with_wt(wt.clone());
+    let sid = SessionId::new("source-validation");
+    let mut row = SessionInfo::new(sid.clone(), PathBuf::from("/home/u/project"));
+    row.cli_source = Some(CliSource::Antigravity);
+    row.location = SessionLocation::Wsl {
+        distro: "Ubuntu".into(),
+    };
+    row.status = Some(AgentStatus::Idle);
+    row.pane_session_id = Some("{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}".into());
+    state.registry.upsert(row).await;
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_event",
+            "params": {
+                "event": "agent.prompt.submit",
+                "cli_source": "antigravity",
+                "agent_session_id": "source-validation",
+                "pane_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                "wsl_distro": "ubuntu",
+                "payload": { "cwd": "/home/u/project" }
+            }
+        }),
+    )
+    .await;
+    let row = state.registry.lookup(&sid).await.unwrap();
+    assert_eq!(row.status, Some(AgentStatus::Working));
+    assert_eq!(
+        row.location,
+        SessionLocation::Wsl {
+            distro: "Ubuntu".into()
+        }
+    );
+    assert!(state.hook_owned.lock().await.contains(&sid));
+    assert!(wt.calls().is_empty());
+}
+
+#[tokio::test]
+async fn master_com_hook_source_preserves_host_and_unavailable_context_hooks() {
+    for distro in [None, Some("Ubuntu")] {
+        let wt = Arc::new(MockWtChannel::failing("context unavailable"));
+        let state = make_state_with_wt(wt.clone());
+        let mut params = serde_json::json!({
+            "event": "agent.prompt.submit",
+            "agent_session_id": "source-validation",
+            "pane_id": "owner",
+            "payload": { "cwd": "/home/u/project" }
+        });
+        if let Some(distro) = distro {
+            params["wsl_distro"] = serde_json::json!(distro);
+            params["cli_source"] = serde_json::json!("antigravity");
+        }
+        handle_master_wt_event(
+            &state,
+            serde_json::json!({
+                "method": "agent_event", "params": params
+            }),
+        )
+        .await;
+        let row = state
+            .registry
+            .lookup(&SessionId::new("source-validation"))
+            .await
+            .unwrap();
+        assert_eq!(
+            row.status,
+            Some(crate::agent_sessions::AgentStatus::Working)
+        );
+        assert_eq!(
+            row.location,
+            match distro {
+                Some(distro) => crate::agent_sessions::SessionLocation::Wsl {
+                    distro: distro.into()
+                },
+                None => crate::agent_sessions::SessionLocation::Host,
+            }
+        );
+        assert_eq!(wt.calls().len(), usize::from(distro.is_some()));
+    }
+}
+
+#[tokio::test]
+async fn master_com_hook_source_provider_collision_preserves_pane_corroboration() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation};
+    use crate::session_registry::SessionInfo;
+
+    for foreign_location in [
+        SessionLocation::Host,
+        SessionLocation::Wsl {
+            distro: "Debian".into(),
+        },
+    ] {
+        for same_pane in [false, true] {
+            let state = make_state();
+            let sid = SessionId::new("colliding-hook-id");
+            let mut own = SessionInfo::new(sid.clone(), PathBuf::from("/home/u"));
+            own.provider_id = Some("antigravity".into());
+            own.cli_source = Some(CliSource::Antigravity);
+            own.location = SessionLocation::Wsl {
+                distro: "Ubuntu".into(),
+            };
+            own.status = Some(AgentStatus::Idle);
+            own.pane_session_id = Some("owner".into());
+            state.registry.upsert(own).await;
+            let mut foreign = SessionInfo::new(sid, PathBuf::from("C:\\repo"));
+            foreign.provider_id = Some("copilot".into());
+            foreign.location = foreign_location.clone();
+            foreign.status = Some(AgentStatus::Idle);
+            foreign.pane_session_id = Some(if same_pane { "owner" } else { "other" }.into());
+            state.registry.upsert(foreign).await;
+            assert_eq!(state.registry.snapshot().await.len(), 2);
+            let result = validate_master_hook_source(
+                &state,
+                &serde_json::json!({"cli_source": "antigravity", "wsl_distro": "Ubuntu"}),
+                "colliding-hook-id",
+                "owner",
+                &CliSource::Antigravity,
+            )
+            .await;
+            assert_eq!(result.is_ok(), !same_pane, "{result:?}");
+        }
+    }
+}
+
+#[tokio::test]
 async fn master_com_agent_event_routes_directly_into_the_registry() {
     let state = make_state();
     let sid = acp::schema::v1::SessionId::new("direct-hook".to_string());

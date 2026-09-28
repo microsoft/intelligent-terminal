@@ -9228,6 +9228,128 @@ async fn handle_retire_agent_sessions_event(
     });
 }
 
+async fn validate_master_hook_source(
+    state: &MasterStateInner,
+    params: &serde_json::Value,
+    key: &str,
+    pane_id: &str,
+    cli_source: &crate::agent_sessions::CliSource,
+) -> Result<Option<crate::agent_sessions::SessionLocation>, &'static str> {
+    use crate::agent_sessions::{pane_key, AgentStatus, SessionLocation};
+
+    let Some(value) = params.get("wsl_distro") else {
+        return Ok(None);
+    };
+    let distro = value
+        .as_str()
+        .filter(|distro| crate::agent_source::is_safe_wsl_distro_name(distro))
+        .ok_or("invalid WSL distro metadata")?;
+    let pane = pane_key(pane_id);
+    let provider_id = cli_source.canonical_provider_id();
+    let mut known_location = None;
+    for row in state.registry.snapshot().await {
+        let same_provider = match row
+            .provider_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|id| !id.is_empty())
+        {
+            Some(id) => provider_id
+                .as_deref()
+                .is_some_and(|incoming| id.eq_ignore_ascii_case(incoming)),
+            None => row.cli_source.as_ref() == Some(cli_source),
+        };
+        let same_session = row.session_id.0.as_ref() == key && same_provider;
+        let owner = row.pane_session_id.as_deref().map(pane_key);
+        let live = matches!(
+            row.status,
+            Some(
+                AgentStatus::Idle
+                    | AgentStatus::Working
+                    | AgentStatus::Attention
+                    | AgentStatus::Error
+            )
+        );
+        if same_session
+            && live
+            && !pane.is_empty()
+            && owner.as_ref().is_some_and(|owner| owner != &pane)
+        {
+            return Err("WSL hook does not match the session's owning pane");
+        }
+        if !same_session && !(live && !pane.is_empty() && owner.as_deref() == Some(pane.as_str())) {
+            continue;
+        }
+        match &row.location {
+            SessionLocation::Host => return Err("WSL hook contradicts known host source"),
+            SessionLocation::Wsl { distro: known } => {
+                if !known.eq_ignore_ascii_case(distro) {
+                    return Err("WSL hook contradicts known distro");
+                }
+                known_location = Some(row.location.clone());
+            }
+            SessionLocation::Unknown => {}
+        }
+    }
+    if let Some(location) = known_location {
+        return Ok(Some(location));
+    }
+
+    // Reuse registry provenance on subsequent hooks. For a new source, request
+    // metadata only, never terminal output or a WSL process. Missing interactive
+    // shell metadata is normal for forwarded hooks and is not evidence of Host.
+    if let Some(wt) = state.wt.as_ref().filter(|wt| wt.is_available()) {
+        if !pane.is_empty() {
+            match tokio::time::timeout(
+                std::time::Duration::from_millis(250),
+                wt.request(
+                    "get_pane_context",
+                    serde_json::json!({
+                        "session_id": pane_id,
+                        "max_lines": 0,
+                        "max_chars": 0,
+                    }),
+                ),
+            )
+            .await
+            {
+                Ok(Ok(context)) => {
+                    let context_pane = context.get("pane");
+                    if let Some(owner) = context_pane
+                        .and_then(|pane| pane.get("session_id"))
+                        .and_then(serde_json::Value::as_str)
+                    {
+                        if pane_key(owner) != pane {
+                            return Err("WSL hook context belongs to another pane");
+                        }
+                    }
+                    if let Some(shell) = context_pane
+                        .and_then(|pane| pane.get("shell"))
+                        .and_then(serde_json::Value::as_str)
+                        .filter(|shell| !shell.is_empty())
+                    {
+                        if !shell
+                            .strip_prefix("wsl:")
+                            .is_some_and(|known| known.eq_ignore_ascii_case(distro))
+                        {
+                            return Err("WSL hook contradicts owning pane source");
+                        }
+                    }
+                }
+                Ok(Err(_)) | Err(_) => {
+                    tracing::debug!(
+                        target: "master_wt_event",
+                        "hook pane source unavailable; retaining validated WSL metadata"
+                    );
+                }
+            }
+        }
+    }
+    Ok(Some(SessionLocation::Wsl {
+        distro: distro.to_string(),
+    }))
+}
+
 /// Route one COM `agent_event` hook into master's authoritative registry.
 ///
 /// Master subscribes to the COM broadcast directly, so this runs once per hook
@@ -9278,6 +9400,15 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
         return;
     };
 
+    let location =
+        match validate_master_hook_source(state, params, &key, pane_id, &cli_source).await {
+            Ok(location) => location,
+            Err(reason) => {
+                tracing::warn!(target: "master_wt_event", reason, "rejected agent hook source");
+                return;
+            }
+        };
+
     let payload = params
         .get("payload")
         .cloned()
@@ -9304,18 +9435,12 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
             refresh_keys.insert(key);
         }
     }
-    if let Some(distro) = params
-        .get("wsl_distro")
-        .and_then(serde_json::Value::as_str)
-        .filter(|value| !value.is_empty())
-    {
+    if let Some(location) = location {
         changed |= state
             .registry
             .set_location(
                 &acp::schema::v1::SessionId::new(session_key.clone()),
-                crate::agent_sessions::SessionLocation::Wsl {
-                    distro: distro.to_string(),
-                },
+                location,
             )
             .await;
     }
