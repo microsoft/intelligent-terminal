@@ -384,13 +384,13 @@
     <value>Kunan llamk&apos;anapaq qillqana mayt&apos;u</value>
   </data>
   <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
-    <value>GitTM waqaychasqa</value>
+    <value>Git waqaychasqa</value>
   </data>
   <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
-    <value>GitTM nisqa rama</value>
+    <value>Git nisqa rama</value>
   </data>
   <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
-    <value>GitTM nisqa tikrakun</value>
+    <value>Git nisqa tikrakun</value>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>1 agente sesionta rikuchichkan</value>

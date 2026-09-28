@@ -500,13 +500,13 @@
     <value>বৰ্তমান কাৰ্য্যকৰী ডাইৰেকটৰি</value>
   </data>
   <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
-    <value>GitTM ভঁৰাল</value>
+    <value>Git ভঁৰাল</value>
   </data>
   <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
-    <value>GitTM শাখা</value>
+    <value>Git শাখা</value>
   </data>
   <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
-    <value>GitTM সলনি হয়</value>
+    <value>Git সলনি হয়</value>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>১টা এজেণ্ট অধিৱেশন দেখুওৱা হৈছে</value>
