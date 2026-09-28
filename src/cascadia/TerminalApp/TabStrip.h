@@ -445,6 +445,7 @@ namespace winrt::TerminalApp::implementation
         void _setSearchPanelExpanded(bool expanded, bool animate);
         void _updateSearchVisualState();
         static std::vector<winrt::hstring> _buildHistorySearchTerms(TerminalApp::TabStripHistoryItem const& item);
+        winrt::Windows::UI::Xaml::Style _historyStatusTextStyle(winrt::hstring const& status);
         bool _matchesHistorySearch(size_t index) const;
         void _applyHistoryProjection(bool preserveScroll = false);
         void _updateHistoryVisualState();

@@ -665,6 +665,15 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    WUX::Style TabStrip::_historyStatusTextStyle(winrt::hstring const& status)
+    {
+        const auto styleKey = status == L"Working"   ? L"HistoryActiveTextStyle" :
+                              status == L"Attention" ? L"HistoryAttentionTextStyle" :
+                              status == L"Error"     ? L"HistoryErrorTextStyle" :
+                                                       L"HistorySubtitleTextStyle";
+        return Resources().Lookup(box_value(styleKey)).as<WUX::Style>();
+    }
+
     void TabStrip::CommitHistorySnapshot(std::vector<TerminalApp::TabStripHistoryItem> items)
     {
         _historySnapshot = std::move(items);
@@ -677,12 +686,7 @@ namespace winrt::TerminalApp::implementation
         _historySearchTerms.reserve(_historySnapshot.size());
         for (const auto& item : _historySnapshot)
         {
-            const auto status = item.Status();
-            const auto styleKey = status == L"Working"   ? L"HistoryActiveTextStyle" :
-                                  status == L"Attention" ? L"HistoryAttentionTextStyle" :
-                                  status == L"Error"     ? L"HistoryErrorTextStyle" :
-                                                           L"HistorySubtitleTextStyle";
-            item.StatusTextStyle(Resources().Lookup(box_value(styleKey)).as<WUX::Style>());
+            item.StatusTextStyle(_historyStatusTextStyle(item.Status()));
             auto iconKey = box_value(L"AgentIcon." + item.AgentId());
             if (!Resources().HasKey(iconKey))
             {
@@ -710,6 +714,8 @@ namespace winrt::TerminalApp::implementation
 
             item.PaneSessionId(paneSessionId);
             item.Status(status);
+            item.StatusText(statusText);
+            item.StatusTextStyle(_historyStatusTextStyle(status));
             const auto isLive = status == L"Idle" ||
                                 status == L"Working" ||
                                 status == L"Attention" ||

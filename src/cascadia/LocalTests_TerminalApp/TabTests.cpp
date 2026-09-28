@@ -3439,6 +3439,7 @@ namespace TerminalAppLocalTests
             item.Subtitle(L"copilot - Host - Idle");
             item.IsLive(true);
             stripImpl->CommitHistorySnapshot({ item });
+            const auto idleStyle = item.StatusTextStyle();
 
             page->_richTabAgentStatusRequestGeneration = 41;
             page->_richTabAgentStatusSnapshotLoaded = false;
@@ -3462,6 +3463,11 @@ namespace TerminalAppLocalTests
             const auto updated = page->_tabStrip.HistoryItems().GetAt(0);
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Attention" }, updated.Status());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot - Host - Waiting for input" }, updated.Subtitle());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Waiting for input" }, updated.StatusText());
+            VERIFY_IS_TRUE(updated.StatusTextStyle() != idleStyle);
+            VERIFY_IS_TRUE(
+                updated.StatusTextStyle() ==
+                page->_tabStrip.Resources().Lookup(winrt::box_value(L"HistoryAttentionTextStyle")).as<Style>());
             VERIFY_IS_TRUE(updated.IsLive());
             VERIFY_IS_FALSE(updated.IsHistorical());
 

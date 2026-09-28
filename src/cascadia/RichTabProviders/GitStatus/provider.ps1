@@ -37,6 +37,60 @@ function Test-LocalPathWithoutReparsePoint([string]$Path) {
     }
 }
 
+function Test-ImmediateChildrenWithoutReparsePoint([string]$Path, [int]$MaximumEntries) {
+    try {
+        if (-not (Test-Path -LiteralPath $Path)) {
+            return $true
+        }
+
+        $count = 0
+        foreach ($item in Get-ChildItem -LiteralPath $Path -Force -ErrorAction Stop) {
+            $count++
+            if ($count -gt $MaximumEntries -or
+                ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                return $false
+            }
+        }
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+function Test-BoundedTreeWithoutReparsePoint([string]$Path, [int]$MaximumEntries) {
+    try {
+        if (-not (Test-Path -LiteralPath $Path)) {
+            return $true
+        }
+
+        $pending = New-Object System.Collections.Stack
+        $pending.Push($Path)
+        $count = 0
+        while ($pending.Count -gt 0) {
+            $current = [string]$pending.Pop()
+            $currentItem = Get-Item -LiteralPath $current -Force -ErrorAction Stop
+            if (($currentItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                return $false
+            }
+            foreach ($item in Get-ChildItem -LiteralPath $current -Force -ErrorAction Stop) {
+                $count++
+                if ($count -gt $MaximumEntries -or
+                    ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                    return $false
+                }
+                if ($item.PSIsContainer) {
+                    $pending.Push($item.FullName)
+                }
+            }
+        }
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
 function Find-LocalGitRepository([string]$WorkingDirectory) {
     $current = Get-Item -LiteralPath $WorkingDirectory -Force -ErrorAction SilentlyContinue
     while ($current -and $current.PSIsContainer) {
@@ -106,6 +160,8 @@ try {
             $commonDirectoryPath = Join-Path $gitDirectory 'commondir'
             $alternatesPath = Join-Path $gitDirectory 'objects\info\alternates'
             $objectsPath = Join-Path $gitDirectory 'objects'
+            $objectPackPath = Join-Path $objectsPath 'pack'
+            $objectInfoPath = Join-Path $objectsPath 'info'
             $infoPath = Join-Path $gitDirectory 'info'
             $headPath = Join-Path $gitDirectory 'HEAD'
             $indexPath = Join-Path $gitDirectory 'index'
@@ -130,8 +186,15 @@ try {
                     -not (Test-LocalPathWithoutReparsePoint $_)
                 } |
                 Select-Object -First 1
+            $unsafeGitTraversal =
+                -not (Test-ImmediateChildrenWithoutReparsePoint $objectsPath 512) -or
+                -not (Test-BoundedTreeWithoutReparsePoint $objectPackPath 8192) -or
+                -not (Test-BoundedTreeWithoutReparsePoint $objectInfoPath 1024) -or
+                -not (Test-BoundedTreeWithoutReparsePoint $refsPath 32768) -or
+                -not (Test-BoundedTreeWithoutReparsePoint $logsPath 32768)
             if (($config -and $config.Length -gt 1MB) -or
                 $unsafeGitAccessPath -or
+                $unsafeGitTraversal -or
                 (Test-Path -LiteralPath $commonDirectoryPath) -or
                 (Test-Path -LiteralPath $worktreeConfigPath) -or
                 (Test-Path -LiteralPath $alternatesPath)) {
