@@ -997,9 +997,9 @@ namespace winrt::TerminalApp::implementation
         // Shell panes with a currently active agent CLI. Unlike the resumable
         // binding above, this does not require an ACP session id: Copilot may
         // publish its startup lifecycle event before that id is available.
-        // Sidebar projection uses this pane identity so title changes cannot
-        // make a live CLI disappear from Agent view.
-        std::unordered_set<winrt::guid> _activeCliAgentPanes;
+        // Keep the lifecycle session id when available so a delayed end from
+        // an older CLI cannot remove a newer session from Agent view.
+        std::unordered_map<winrt::guid, winrt::hstring> _activeCliAgentPanes;
         struct _PendingRestoredSessionBinding
         {
             winrt::hstring sessionId;

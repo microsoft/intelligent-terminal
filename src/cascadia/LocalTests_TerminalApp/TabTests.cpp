@@ -1809,9 +1809,10 @@ namespace TerminalAppLocalTests
 
             event("agent.session.start");
             VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(page->_paneAgentSessions.count(paneSessionId)));
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(page->_activeCliAgentPanes.count(paneSessionId)));
 
             // A late end naming a different agent session must not clear the
-            // binding a newer session just installed.
+            // binding or active marker a newer session just installed.
             {
                 Json::Value stale;
                 stale["params"]["pane_id"] = paneId;
@@ -1822,11 +1823,13 @@ namespace TerminalAppLocalTests
                 page->OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(writer, stale)));
             }
             VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(page->_paneAgentSessions.count(paneSessionId)));
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(page->_activeCliAgentPanes.count(paneSessionId)));
 
             // The agent that ran in this pane exited, so there is nothing left
             // to resume and the pane restores as a plain shell.
             event("agent.session.end");
             VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_paneAgentSessions.count(paneSessionId)));
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_activeCliAgentPanes.count(paneSessionId)));
         });
     }
 

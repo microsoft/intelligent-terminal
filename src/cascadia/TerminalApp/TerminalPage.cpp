@@ -9412,11 +9412,29 @@ namespace winrt::TerminalApp::implementation
                 {
                     if (sessionEnded)
                     {
-                        _activeCliAgentPanes.erase(*paneSessionId);
+                        if (const auto active = _activeCliAgentPanes.find(*paneSessionId);
+                            active != _activeCliAgentPanes.end() &&
+                            (agentSessionId.empty() ||
+                             active->second == winrt::to_hstring(agentSessionId) ||
+                             (active->second.empty() &&
+                              _paneAgentSessions.contains(*paneSessionId) &&
+                              _paneAgentSessions.at(*paneSessionId).sessionId == winrt::to_hstring(agentSessionId))))
+                        {
+                            _activeCliAgentPanes.erase(active);
+                        }
                     }
                     else if ((sessionStarted || promptSubmitted) && !agent.empty())
                     {
-                        _activeCliAgentPanes.insert(*paneSessionId);
+                        const auto sessionId = winrt::to_hstring(agentSessionId);
+                        if (sessionStarted)
+                        {
+                            _activeCliAgentPanes.insert_or_assign(*paneSessionId, sessionId);
+                        }
+                        else if (const auto active = _activeCliAgentPanes.find(*paneSessionId);
+                                 active == _activeCliAgentPanes.end() || active->second.empty())
+                        {
+                            _activeCliAgentPanes.insert_or_assign(*paneSessionId, sessionId);
+                        }
                     }
 
                     if (!sessionEnded &&
