@@ -4523,7 +4523,9 @@ namespace TerminalAppLocalTests
             std::vector<winrt::TerminalApp::TabStripPaneItem> panes;
             auto firstPane = winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"First pane", true);
             const auto firstPaneImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStripPaneItem>(firstPane);
-            firstPaneImpl->MetadataText(L"first metadata\nfirst branch");
+            const winrt::hstring firstPaneMetadata{ L"first metadata\n"
+                                                    L"first branch" };
+            firstPaneImpl->MetadataText(firstPaneMetadata);
             firstPaneImpl->MetadataVisibility(Visibility::Visible);
             firstPaneImpl->AutomationName(L"First pane, first metadata, first branch");
             panes.emplace_back(std::move(firstPane));
@@ -4547,7 +4549,7 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(2u, display.PaneItems().Size());
             VERIFY_ARE_EQUAL(Visibility::Visible, display.ChildrenVisibility());
             VERIFY_IS_FALSE(header.IsMetadataVisible());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"first metadata\nfirst branch" }, display.PaneItems().GetAt(0).MetadataText());
+            VERIFY_ARE_EQUAL(firstPaneMetadata, display.PaneItems().GetAt(0).MetadataText());
             VERIFY_ARE_EQUAL(Visibility::Visible, display.PaneItems().GetAt(0).MetadataVisibility());
             VERIFY_IS_TRUE(container.ActualHeight() > 32.0);
             VERIFY_IS_NOT_NULL(header.Parent());

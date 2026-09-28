@@ -483,7 +483,7 @@
     <value>ଟ୍ୟାବ୍‌ଗୁଡ଼ିକୁ ଫିଲ୍ଟର୍ କରନ୍ତୁ</value>
   </data>
   <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
-    <value>ଫିଲ୍ଟର୍ |</value>
+    <value>ଫିଲ୍ଟର୍</value>
   </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>ସମସ୍ତ ଟ୍ୟାବ୍</value>
@@ -492,22 +492,22 @@
     <value>କେବଳ ଏଜେଣ୍ଟ</value>
   </data>
   <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
-    <value>ଟ୍ୟାବ୍ ମେଟାଡାଟା |</value>
+    <value>ଟ୍ୟାବ୍ ମେଟାଡାଟା</value>
   </data>
   <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
     <value>ଏଜେଣ୍ଟ ସ୍ଥିତି</value>
   </data>
   <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
-    <value>ସାମ୍ପ୍ରତିକ କାର୍ଯ୍ୟ ଡିରେକ୍ଟୋରୀ |</value>
+    <value>ସାମ୍ପ୍ରତିକ କାର୍ଯ୍ୟ ଡିରେକ୍ଟୋରୀ</value>
   </data>
   <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
     <value>Git  ସଂଗ୍ରହାଳୟ</value>
   </data>
   <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
-    <value>Git  ଶାଖା |</value>
+    <value>Git  ଶାଖା</value>
   </data>
   <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
-    <value>Git  ପରିବର୍ତ୍ତନ ହୁଏ |</value>
+    <value>Git  ପରିବର୍ତ୍ତନ ହୁଏ</value>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>1ଟି ଏଜେଣ୍ଟ ସେସନ୍ ଦେଖାଯାଉଛି</value>
