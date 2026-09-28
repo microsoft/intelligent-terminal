@@ -482,6 +482,9 @@
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>ଟ୍ୟାବ୍‌ଗୁଡ଼ିକୁ ଫିଲ୍ଟର୍ କରନ୍ତୁ</value>
   </data>
+  <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
+    <value>ଫିଲ୍ଟର୍ |</value>
+  </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>ସମସ୍ତ ଟ୍ୟାବ୍</value>
   </data>

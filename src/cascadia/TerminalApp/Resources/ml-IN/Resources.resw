@@ -481,6 +481,9 @@
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>ടാബുകൾ ഫിൽട്ടർ ചെയ്യുക</value>
   </data>
+  <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
+    <value>ഫിൽട്ടർ ചെയ്യുക</value>
+  </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>എല്ലാ ടാബുകളും</value>
   </data>

@@ -6,5 +6,6 @@ current working directory, Git repository, Git branch, and Git changes.
 Agent status comes from the authoritative master session registry. Git changes use the format
 `~<changed files> +<added lines> -<deleted lines>`.
 
-The provider intentionally returns an empty snapshot until shell integration
-has reported an authoritative working directory.
+The provider can return first-party fields such as agent status before shell
+integration reports a directory. Git metadata is omitted until the working
+directory is authoritative.

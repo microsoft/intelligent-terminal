@@ -328,7 +328,8 @@ namespace Microsoft::Terminal::RichTab::Provider
                 ++session.contextRevision;
                 for (auto& [_, provider] : session.providers)
                 {
-                    provider.snapshot.reset();
+                    provider.generation = _nextGeneration++;
+                    provider.pending.reset();
                 }
                 ++session.updateSequence;
             }

@@ -395,6 +395,9 @@ namespace winrt::TerminalApp::implementation
                         existing.Title(pane.Title());
                         existing.IsActive(pane.IsActive());
                         existing.ActiveIndicatorVisibility(pane.ActiveIndicatorVisibility());
+                        existing.MetadataText(pane.MetadataText());
+                        existing.MetadataVisibility(pane.MetadataVisibility());
+                        existing.AutomationName(pane.AutomationName());
                         if (match != index)
                         {
                             current.RemoveAt(match);

@@ -4432,7 +4432,12 @@ namespace TerminalAppLocalTests
             const auto updatePanes = [&](std::vector<winrt::TerminalApp::TabStripPaneItem> values) {
                 strip.SetPaneItems(tab, winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>(std::move(values)), true);
             };
-            updatePanes({ winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"Renamed pane", false),
+            auto updatedFirstPane = winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"Renamed pane", false);
+            const auto updatedFirstPaneImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStripPaneItem>(updatedFirstPane);
+            updatedFirstPaneImpl->MetadataText(L"updated metadata");
+            updatedFirstPaneImpl->MetadataVisibility(Visibility::Visible);
+            updatedFirstPaneImpl->AutomationName(L"Renamed pane, updated metadata");
+            updatePanes({ updatedFirstPane,
                           winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 12, L"Second pane", true) });
             strip.SetTabPresentation(tab, L"Renamed tab", L"\xE8A5");
             host.UpdateLayout();
@@ -4445,9 +4450,20 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(secondPaneItem.IsActive());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, firstPaneItem.ActiveIndicatorVisibility());
             VERIFY_ARE_EQUAL(Visibility::Visible, secondPaneItem.ActiveIndicatorVisibility());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"updated metadata" }, firstPaneItem.MetadataText());
+            VERIFY_ARE_EQUAL(Visibility::Visible, firstPaneItem.MetadataVisibility());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane, updated metadata" }, firstPaneItem.AutomationName());
             VERIFY_IS_TRUE(paneList.ContainerFromIndex(0) == firstPaneContainer);
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane" }, firstPaneRoot.FindName(L"PaneTitleText").as<TextBlock>().Text());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, firstPaneRoot.FindName(L"PaneActiveIndicator").as<FrameworkElement>().Visibility());
+
+            updatePanes({ winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"Renamed pane", false),
+                          winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 12, L"Second pane", true) });
+            VERIFY_ARE_EQUAL(winrt::hstring{}, firstPaneItem.MetadataText());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, firstPaneItem.MetadataVisibility());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane" }, firstPaneItem.AutomationName());
+            VERIFY_ARE_EQUAL(0u, collectionChanges);
+            VERIFY_IS_TRUE(paneList.ContainerFromIndex(0) == firstPaneContainer);
 
             updatePanes({ secondPaneItem, firstPaneItem });
             VERIFY_IS_TRUE(display.PaneItems().GetAt(0) == secondPaneItem);
