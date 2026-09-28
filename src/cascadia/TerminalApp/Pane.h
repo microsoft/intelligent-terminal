@@ -253,6 +253,7 @@ public:
     til::event<gotFocusArgs> GotFocus;
     til::event<winrt::delegate<std::shared_ptr<Pane>>> LostFocus;
     til::event<winrt::delegate<std::shared_ptr<Pane>>> Detached;
+    til::event<winrt::delegate<>> StructureChanged;
 
 private:
     struct PanePoint;

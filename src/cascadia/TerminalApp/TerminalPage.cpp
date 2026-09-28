@@ -588,6 +588,36 @@ namespace winrt::TerminalApp::implementation
         _tabStrip.TabStripDragOver({ this, &TerminalPage::_onTabStripDragOver });
         _tabStrip.TabStripDrop({ this, &TerminalPage::_onTabStripDrop });
         _tabStrip.TabDroppedOutside({ this, &TerminalPage::_OnTabStripDroppedOutside });
+        _tabStrip.TabRenameRequested([weakThis{ get_weak() }](auto&&, const auto& args) {
+            if (const auto page = weakThis.get())
+            {
+                if (const auto tab = page->_GetTabByTabViewItem(args.Tab()))
+                {
+                    if (const auto tabImpl = page->_GetTabImpl(tab))
+                    {
+                        tabImpl->ActivateTabRenamer();
+                    }
+                }
+            }
+        });
+        _tabStrip.TabFocusRequested([weakThis{ get_weak() }](auto&&, const auto&) {
+            if (const auto page = weakThis.get())
+            {
+                page->_FocusCurrentTab(false);
+            }
+        });
+        _tabStrip.PaneActivationRequested([weakThis{ get_weak() }](auto&&, const auto& args) {
+            if (const auto page = weakThis.get())
+            {
+                page->_ActivatePaneFromTabStrip(args);
+            }
+        });
+        _tabStrip.PaneCloseRequested([weakThis{ get_weak() }](auto&&, const auto& args) {
+            if (const auto page = weakThis.get())
+            {
+                page->_ClosePaneFromTabStrip(args);
+            }
+        });
         _tabStrip.FilterChanged([weakThis{ get_weak() }](const auto& sender, auto&&) {
             if (const auto page = weakThis.get())
             {
@@ -1189,6 +1219,7 @@ namespace winrt::TerminalApp::implementation
                 if (const auto rootPane = tabImpl->GetRootPane())
                 {
                     rootPane->RepositionAgentPane(splitDirection);
+                    _RefreshTabStripPaneItems(tabImpl);
                 }
                 if (const auto agentContent = tabImpl->FindAgentPaneContent())
                 {
@@ -2678,6 +2709,7 @@ namespace winrt::TerminalApp::implementation
             if (state == "closed")
             {
                 _paneAgentSessions.erase(*paneSessionId);
+                _activeCliAgentPanes.erase(*paneSessionId);
             }
         }
 
@@ -3178,6 +3210,7 @@ namespace winrt::TerminalApp::implementation
             if (const auto paneSessionId = _TryParsePaneSessionId(paneIdStr))
             {
                 _paneAgentSessions.erase(*paneSessionId);
+                _activeCliAgentPanes.erase(*paneSessionId);
             }
         });
     }
@@ -5467,6 +5500,7 @@ namespace winrt::TerminalApp::implementation
             if (_tabLayoutTransitionPreviousVertical)
             {
                 _tabStrip.IsRailCollapsed(false);
+                winrt::get_self<implementation::TabStrip>(_tabStrip)->BeginHeaderTransfer();
             }
             _tabStrip.TopChromeContent(nullptr);
 
@@ -5476,7 +5510,7 @@ namespace winrt::TerminalApp::implementation
             source.Clear();
 
             const auto generation = _tabLayoutGeneration;
-            Dispatcher().RunAsync(CoreDispatcherPriority::High, [weakThis{ get_weak() }, generation]() {
+            Dispatcher().RunAsync(CoreDispatcherPriority::Low, [weakThis{ get_weak() }, generation]() {
                 if (const auto page = weakThis.get())
                 {
                     page->_CompleteTabLayoutChange(generation);
@@ -5528,6 +5562,9 @@ namespace winrt::TerminalApp::implementation
         _isVerticalLayout = vertical;
         _newTabButton = vertical ? _verticalNewTabButton : _horizontalNewTabButton;
 
+        stage = "complete header transfer";
+        winrt::get_self<implementation::TabStrip>(_tabStrip)->CompleteHeaderTransfer();
+
         stage = "append tab items";
         auto destination = vertical ?
                                verticalItems.as<Windows::Foundation::Collections::IVector<IInspectable>>() :
@@ -5535,6 +5572,13 @@ namespace winrt::TerminalApp::implementation
         for (const auto& item : canonicalItems)
         {
             destination.Append(item);
+        }
+        if (vertical)
+        {
+            for (const auto& tab : _tabs)
+            {
+                _RefreshTabStripPaneItems(_GetTabImpl(tab));
+            }
         }
 
         stage = "reshape page";
@@ -5552,13 +5596,24 @@ namespace winrt::TerminalApp::implementation
         _UpdateTabLayoutHost();
         if (selectedItem)
         {
-            const auto selectedStillExists = std::ranges::any_of(canonicalItems, [&](const auto& item) {
+            const auto selectedIndex = std::ranges::find_if(canonicalItems, [&](const auto& item) {
                 return winrt::get_abi(item) == winrt::get_abi(selectedItem);
             });
-            if (selectedStillExists)
+            if (selectedIndex != canonicalItems.end())
             {
                 stage = "restore selected item";
-                _selectedTabItem(selectedItem);
+                const auto index = gsl::narrow_cast<int32_t>(std::distance(canonicalItems.begin(), selectedIndex));
+                if (vertical)
+                {
+                    if (winrt::get_abi(_tabStrip.SelectedItem()) != winrt::get_abi(selectedItem))
+                    {
+                        _tabStrip.SelectedIndex(index);
+                    }
+                }
+                else if (winrt::get_abi(_tabView.SelectedItem()) != winrt::get_abi(selectedItem))
+                {
+                    _tabView.SelectedIndex(index);
+                }
             }
         }
 
@@ -5923,7 +5978,7 @@ namespace winrt::TerminalApp::implementation
             L"sessions list --origin shell --json",
             15'000,
             nullptr,
-            false);
+            true);
 
         std::vector<TerminalApp::TabStripHistoryItem> items;
         std::string parseError;
@@ -6070,12 +6125,23 @@ namespace winrt::TerminalApp::implementation
             co_return;
         }
 
-        if (!result.completed || result.exitCode != 0)
+        if (!result.completed)
         {
             if (initialLoad)
             {
                 winrt::get_self<implementation::TabStrip>(page->_tabStrip)->ClearHistorySnapshot();
                 page->_tabStrip.HistoryError(RS_(L"VerticalTabsHistoryLoadError"));
+            }
+        }
+        else if (result.exitCode != 0)
+        {
+            _agentPaneLog(
+                "sidebar history unavailable exit=" + std::to_string(result.exitCode) +
+                " output=" + result.output);
+            if (initialLoad)
+            {
+                winrt::get_self<implementation::TabStrip>(page->_tabStrip)->ClearHistorySnapshot();
+                page->_tabStrip.HistoryError(L"");
             }
         }
         else if (!parseError.empty())
@@ -8403,6 +8469,10 @@ namespace winrt::TerminalApp::implementation
             if (const auto rootPane = targetTab->GetRootPane())
             {
                 repositioned = rootPane->RepositionAgentPane(_AgentPanePositionToSplitDirection(panePosition));
+                if (repositioned)
+                {
+                    _RefreshTabStripPaneItems(targetTab);
+                }
             }
             if (const auto agentContent = targetTab->FindAgentPaneContent())
             {
@@ -9253,14 +9323,6 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
-        if (!sessionEnded &&
-            (agentSessionId.empty() ||
-             agentSessionId.starts_with("sidekick-") ||
-             (agent.empty() && resumeCommandline.empty())))
-        {
-            return;
-        }
-
         for (const auto& tab : _tabs)
         {
             if (const auto tabImpl = _GetTabImpl(tab))
@@ -9268,6 +9330,24 @@ namespace winrt::TerminalApp::implementation
                 if (const auto rootPane = tabImpl->GetRootPane();
                     rootPane && rootPane->FindPaneBySessionId(*paneSessionId))
                 {
+                    if (sessionEnded)
+                    {
+                        _activeCliAgentPanes.erase(*paneSessionId);
+                    }
+                    else if ((sessionStarted || promptSubmitted) && !agent.empty())
+                    {
+                        _activeCliAgentPanes.insert(*paneSessionId);
+                    }
+
+                    if (!sessionEnded &&
+                        (agentSessionId.empty() ||
+                         agentSessionId.starts_with("sidekick-") ||
+                         (agent.empty() && resumeCommandline.empty())))
+                    {
+                        _ApplyTabListProjection();
+                        return;
+                    }
+
                     if (sessionEnded)
                     {
                         if (const auto pending = _pendingRestoredSessionBindings.find(*paneSessionId);
@@ -9784,38 +9864,6 @@ namespace winrt::TerminalApp::implementation
                                     agentParams.isMember("event") &&
                                     agentParams["event"].isString())
                                 {
-                                    const auto eventName = agentParams["event"].asString();
-                                    const auto agentSessionId = agentParams.get("agent_session_id", "").asString();
-                                    if (const auto paneSessionId = _TryParsePaneSessionId(paneIdStr))
-                                    {
-                                        // This event arrived in-band on this
-                                        // pane's own VT stream, so the pane is
-                                        // the origin by construction — there is
-                                        // no reported `pane_id` to distrust.
-                                        if ((eventName == "agent.session.started" || eventName == "agent.session.start") &&
-                                            !agentSessionId.empty() &&
-                                            !agentSessionId.starts_with("sidekick-"))
-                                        {
-                                            const auto resumeCommandline = _BuildAgentResumeCommandline(
-                                                agentParams.get("cli_source", "").asString(),
-                                                agentSessionId);
-                                            if (!resumeCommandline.empty())
-                                            {
-                                                page->_paneAgentSessions.insert_or_assign(
-                                                    *paneSessionId,
-                                                    _PaneAgentSession{
-                                                        winrt::to_hstring(agentSessionId),
-                                                        winrt::to_hstring(agentParams.get("cli_source", "").asString()),
-                                                        resumeCommandline });
-                                            }
-                                        }
-                                    }
-
-                                    if (autoFixPolicyLocked)
-                                    {
-                                        return;
-                                    }
-
                                     agentParams["pane_id"] = paneIdStr;
                                     if (!tabIdStr.empty())
                                     {
@@ -9829,9 +9877,24 @@ namespace winrt::TerminalApp::implementation
 
                                     Json::StreamWriterBuilder wb;
                                     wb["indentation"] = "";
+                                    const auto eventJson = Json::writeString(wb, evt);
+
+                                    // The in-band event is authoritative for
+                                    // this pane. Apply it locally before
+                                    // forwarding so an already-open Agent view
+                                    // immediately projects the new child even
+                                    // when no external protocol subscriber is
+                                    // present to echo the binding back.
+                                    page->OnPaneAgentSessionChanged(winrt::to_hstring(eventJson));
+
+                                    if (autoFixPolicyLocked)
+                                    {
+                                        return;
+                                    }
+
                                     page->ProtocolVtSequenceReceived.raise(
                                         *page,
-                                        winrt::to_hstring(Json::writeString(wb, evt)));
+                                        winrt::to_hstring(eventJson));
                                 }
                                 return; // AgentEvent never falls through to vt_sequence
                             }
@@ -10786,19 +10849,83 @@ namespace winrt::TerminalApp::implementation
         {
             // Possibly update the icon of the tab.
             _UpdateTabIcon(*tab);
+            _RefreshTabStripPaneItems(tab);
 
-            _updateThemeColors();
+            if (const auto selected = _GetFocusedTabImpl(); selected && selected.get() == tab.get())
+            {
+                _updateThemeColors();
 
-            // Update the taskbar progress as well. We'll raise our own
-            // SetTaskbarProgress event here, to get tell the hosting
-            // application to re-query this value from us.
-            SetTaskbarProgress.raise(*this, nullptr);
+                // Update the taskbar progress as well. We'll raise our own
+                // SetTaskbarProgress event here, to get tell the hosting
+                // application to re-query this value from us.
+                SetTaskbarProgress.raise(*this, nullptr);
 
-            auto profile = tab->GetFocusedProfile();
-            _UpdateBackground(profile);
+                auto profile = tab->GetFocusedProfile();
+                _UpdateBackground(profile);
+            }
         }
 
         _adjustProcessPriorityThrottled->Run();
+    }
+
+    void TerminalPage::_RefreshTabStripPaneItems(const winrt::com_ptr<Tab>& tab)
+    {
+        if (!_tabStrip || !tab)
+        {
+            return;
+        }
+
+        const auto visiblePanes = tab->GetVisiblePaneSnapshot();
+        std::vector<TerminalApp::TabStripPaneItem> items;
+        for (const auto& pane : visiblePanes)
+        {
+            if (_IsAgentScopeEffective() && !_MatchesPaneAgentScope(pane))
+            {
+                continue;
+            }
+            items.emplace_back(winrt::make<TabStripPaneItem>(
+                tab->TabViewItem(),
+                pane.ContentId,
+                pane.Title,
+                pane.IsActive));
+        }
+        _tabStrip.SetTabPresentation(tab->TabViewItem(), tab->Title(), tab->Icon());
+        _tabStrip.SetPaneItems(
+            tab->TabViewItem(),
+            single_threaded_vector<TerminalApp::TabStripPaneItem>(std::move(items)),
+            visiblePanes.size() > 1);
+    }
+
+    void TerminalPage::_ActivatePaneFromTabStrip(const TerminalApp::TabStripPaneEventArgs& args)
+    {
+        if (!args || _changingTabLayout)
+        {
+            return;
+        }
+
+        const auto projectedTab = _GetTabByTabViewItem(args.Tab());
+        const auto tab = projectedTab ? _GetTabImpl(projectedTab) : nullptr;
+        const auto pane = tab && tab->GetRootPane() ? tab->GetRootPane()->FindPaneByContentId(args.ContentId()) : nullptr;
+        if (!tab || !pane || !pane->Id())
+        {
+            return;
+        }
+
+        if (winrt::get_abi(_selectedTabItem()) != winrt::get_abi(args.Tab()))
+        {
+            _selectedTabItem(args.Tab());
+        }
+
+        const auto active = tab->GetActivePane();
+        if (tab->IsZoomed() && (!active || active->ContentId() != pane->ContentId()))
+        {
+            tab->ExitZoom();
+        }
+        tab->FocusPane(pane->Id().value());
+        if (const auto content = pane->GetContent())
+        {
+            content.Focus(WUX::FocusState::Programmatic);
+        }
     }
 
     uint32_t TerminalPage::NumberOfTabs() const
@@ -14799,6 +14926,10 @@ namespace winrt::TerminalApp::implementation
     {
         // Get the tab impl from this event.
         const auto tabBase = _GetTabByTabViewItem(eventTab);
+        if (!tabBase)
+        {
+            return;
+        }
         winrt::com_ptr<Tab> tabImpl;
         tabImpl.copy_from(winrt::get_self<Tab>(tabBase));
         if (tabImpl)
@@ -14810,7 +14941,9 @@ namespace winrt::TerminalApp::implementation
             // Stash the offset from where we started the drag to the
             // tab's origin. We'll use that offset in the future to help
             // position the dropped window.
-            const auto inverseScale = 1.0f / static_cast<float>(eventTab.XamlRoot().RasterizationScale());
+            const auto xamlRoot = _isVerticalLayout ? _tabStrip.XamlRoot() : eventTab.XamlRoot();
+            const auto rasterizationScale = xamlRoot ? xamlRoot.RasterizationScale() : 1.0;
+            const auto inverseScale = 1.0f / static_cast<float>(rasterizationScale);
             POINT cursorPos;
             GetCursorPos(&cursorPos);
             ScreenToClient(*_hostingHwnd, &cursorPos);
@@ -14937,6 +15070,16 @@ namespace winrt::TerminalApp::implementation
                     break;
                 }
             }
+        }
+
+        // ListView handles same-window vertical reordering internally. The
+        // TabStrip synchronizes the resulting descriptor index back to the
+        // canonical tab collections when the drag completes.
+        if (_isVerticalLayout && src == _WindowProperties.WindowId())
+        {
+            e.AcceptedOperation(DataPackageOperation::Move);
+            e.Handled(true);
+            return;
         }
 
         // `this` is safe to use

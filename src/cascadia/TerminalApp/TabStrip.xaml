@@ -190,38 +190,160 @@
             </Grid>
         </Grid>
 
-        <!--
-            The strip proper. ListView holds TabViewItem instances directly via
-            a passthrough item template. Code-behind adds vertical selection
-            chrome to the hosted TabViewItem without replacing its template.
-        -->
+        <!-- One display descriptor per canonical tab. The hosted TabViewItem
+             remains the real tab; pane rows are a vertical-only projection. -->
         <ListView x:Name="ItemsList"
                   Grid.Row="4"
                   Padding="0"
-                  AllowDrop="True"
-                  CanDragItems="True"
-                  CanReorderItems="True"
+                  AllowDrop="False"
+                  CanDragItems="False"
+                  CanReorderItems="False"
                   ContainerContentChanging="OnContainerContentChanging"
                   DragOver="OnListDragOver"
                   Drop="OnListDrop"
                   DragItemsStarting="OnDragItemsStarting"
                   DragItemsCompleted="OnDragItemsCompleted"
                   IsItemClickEnabled="False"
-                  ReorderMode="Enabled"
+                  ReorderMode="Disabled"
                   SelectionChanged="OnListSelectionChanged"
                   SelectionMode="Single">
+            <ListView.Resources>
+                <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="Transparent" />
+                <SolidColorBrush x:Key="ListViewItemBackgroundPressed" Color="Transparent" />
+                <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="Transparent" />
+                <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="Transparent" />
+                <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPressed" Color="Transparent" />
+            </ListView.Resources>
             <ListView.ItemTemplate>
-                <DataTemplate>
-                    <ContentPresenter HorizontalAlignment="Stretch"
-                                      HorizontalContentAlignment="Stretch"
-                                      Content="{Binding}" />
+                <DataTemplate x:DataType="local:TabStripDisplayItem">
+                    <StackPanel HorizontalAlignment="Stretch">
+                        <Grid x:Name="TabHeaderGrid"
+                              Height="32"
+                              ContextFlyout="{x:Bind ContextFlyout, Mode=OneWay}"
+                              DoubleTapped="OnTabHeaderDoubleTapped"
+                              Loaded="OnTabHeaderLoaded"
+                              PointerPressed="OnTabHeaderPointerPressed"
+                              Tapped="OnTabHeaderTapped">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Border x:Name="TabSelectionBackground"
+                                    Grid.ColumnSpan="4"
+                                    Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                    CornerRadius="6"
+                                    IsHitTestVisible="False"
+                                    Visibility="{x:Bind SelectionVisibility, Mode=OneWay}" />
+                            <Button x:Name="TabGroupToggleButton"
+                                    Grid.Column="0"
+                                    Width="24"
+                                    Height="28"
+                                    Padding="0"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Click="OnGroupToggleClick"
+                                    Visibility="{x:Bind GroupVisibility, Mode=OneWay}">
+                                <FontIcon x:Name="TabGroupChevronIcon"
+                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                          FontSize="10"
+                                          Glyph="{x:Bind ChevronGlyph, Mode=OneWay}" />
+                            </Button>
+                            <ContentPresenter x:Name="TabIconPresenter"
+                                              Grid.Column="1"
+                                              Width="16"
+                                              Height="16"
+                                              Margin="4,0,8,0"
+                                              VerticalAlignment="Center">
+                                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                          FontSize="12"
+                                          Glyph="&#xE756;" />
+                            </ContentPresenter>
+                            <ContentPresenter x:Name="TabHeaderPresenter"
+                                              Grid.Column="2"
+                                              HorizontalAlignment="Stretch"
+                                              VerticalAlignment="Center"
+                                              Content="{x:Bind Header, Mode=OneWay}"
+                                              Visibility="{x:Bind HeaderVisibility, Mode=OneWay}" />
+                            <Button x:Name="TabCloseButton"
+                                    Grid.Column="3"
+                                    Width="28"
+                                    Height="28"
+                                    Padding="0"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Click="OnTabCloseClick"
+                                    Visibility="{x:Bind CloseVisibility, Mode=OneWay}">
+                                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                          FontSize="10"
+                                          Glyph="&#xE711;" />
+                            </Button>
+                        </Grid>
+                        <ItemsControl x:Name="TabPaneItems"
+                                      Margin="22,0,0,0"
+                                      ItemsSource="{x:Bind PaneItems, Mode=OneWay}"
+                                      Visibility="{x:Bind ChildrenVisibility, Mode=OneWay}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="local:TabStripPaneItem">
+                                    <Grid Height="30"
+                                          Margin="0,1,0,1"
+                                          Background="Transparent"
+                                          DoubleTapped="OnPaneDoubleTapped"
+                                          Loaded="OnPaneRowLoaded"
+                                          PointerPressed="OnPanePointerPressed"
+                                          RightTapped="OnPaneRightTapped">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="3" />
+                                            <ColumnDefinition Width="28" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="28" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border x:Name="PaneActiveIndicator"
+                                                Grid.Column="0"
+                                                Width="3"
+                                                Margin="0,5"
+                                                HorizontalAlignment="Left"
+                                                Background="{ThemeResource SystemAccentColor}"
+                                                CornerRadius="2"
+                                                Visibility="{x:Bind ActiveIndicatorVisibility, Mode=OneWay}" />
+                                        <FontIcon Grid.Column="1"
+                                                  HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"
+                                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                  FontSize="12"
+                                                  Glyph="&#xE756;" />
+                                        <TextBlock x:Name="PaneTitleText"
+                                                   Grid.Column="2"
+                                                   Margin="2,0"
+                                                   VerticalAlignment="Center"
+                                                   Text="{x:Bind Title, Mode=OneWay}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <Button Grid.Column="3"
+                                                Width="26"
+                                                Height="26"
+                                                Padding="0"
+                                                Background="Transparent"
+                                                BorderThickness="0"
+                                                Click="OnPaneCloseClick">
+                                            <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                      FontSize="10"
+                                                      Glyph="&#xE711;" />
+                                        </Button>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
                 </DataTemplate>
             </ListView.ItemTemplate>
             <ListView.ItemContainerStyle>
                 <Style TargetType="ListViewItem">
                     <Setter Property="Padding" Value="0" />
                     <Setter Property="Margin" Value="6,4" />
-                    <Setter Property="Height" Value="32" />
+                    <Setter Property="MinHeight" Value="32" />
                     <Setter Property="HorizontalAlignment" Value="Stretch" />
                     <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                     <Setter Property="VerticalContentAlignment" Value="Stretch" />
