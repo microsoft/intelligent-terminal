@@ -463,7 +463,22 @@
                      KeyDown="OnHistorySearchBoxKeyDown"
                      TextChanged="OnHistorySearchTextChanged" />
             <Grid Grid.Row="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Border x:Name="HistoryWarning"
+                        Margin="6,4"
+                        Padding="8"
+                        Background="{ThemeResource SystemControlBackgroundListLowBrush}"
+                        CornerRadius="4"
+                        Visibility="Collapsed">
+                    <TextBlock x:Name="HistoryWarningText"
+                               AutomationProperties.LiveSetting="Polite"
+                               TextWrapping="Wrap" />
+                </Border>
                 <ListView x:Name="HistoryList"
+                          Grid.Row="1"
                           ItemsSource="{x:Bind HistoryItems}"
                           IsItemClickEnabled="True"
                           ItemClick="OnHistoryItemClick"
@@ -488,6 +503,7 @@
                     </ListView.ItemTemplate>
                 </ListView>
                 <ProgressRing x:Name="HistoryLoadingIndicator"
+                              Grid.Row="1"
                               Width="24"
                               Height="24"
                               HorizontalAlignment="Center"
@@ -495,6 +511,7 @@
                               IsActive="False"
                               Visibility="Collapsed" />
                 <TextBlock x:Name="HistoryMessage"
+                           Grid.Row="1"
                            Margin="16"
                            HorizontalAlignment="Center"
                            VerticalAlignment="Center"

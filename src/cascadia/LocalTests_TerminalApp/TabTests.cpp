@@ -285,6 +285,10 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabHistorySearchProjection);
         TEST_METHOD(VerticalTabHistoryPreservesLiveSearch);
         TEST_METHOD(VerticalTabHistoryClosePreservesForegroundSelection);
+        TEST_METHOD(VerticalTabHistoryRefreshErrors);
+        TEST_METHOD(VerticalTabHistoryRefreshBackoff);
+        TEST_METHOD(VerticalTabHistoryActivationDefersRefresh);
+        TEST_METHOD(VerticalTabHistoryCloseInvalidatesRequests);
         TEST_METHOD(WindowActivationToleratesTabWithoutStatus);
         TEST_METHOD(AgentTabClassificationTracksSession);
         TEST_METHOD(CliAgentClassifiesTab);
@@ -3155,10 +3159,23 @@ namespace TerminalAppLocalTests
 
     void TabTests::VerticalTabHistorySearchProjection()
     {
+        winrt::TerminalApp::TabStrip strip{ nullptr };
+        UIElement previousContent{ nullptr };
+        const auto restore = wil::scope_exit([&]() {
+            RunOnUIThread([&]() {
+                Window::Current().Content(previousContent);
+                strip = nullptr;
+            });
+        });
         TestOnUIThread([&]() {
-            winrt::TerminalApp::TabStrip strip;
+            strip = winrt::TerminalApp::TabStrip{};
             const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
             const auto visibleItems = strip.HistoryItems();
+            previousContent = Window::Current().Content();
+            Window::Current().Content(strip);
+            Window::Current().Activate();
+            strip.HistoryActive(true);
+            strip.UpdateLayout();
 
             auto host = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
             host.Title(L"Fix build");
@@ -3180,20 +3197,53 @@ namespace TerminalAppLocalTests
             stripImpl->CommitHistorySnapshot({ host, wsl });
             VERIFY_ARE_EQUAL(winrt::get_abi(visibleItems), winrt::get_abi(strip.HistoryItems()));
             VERIFY_ARE_EQUAL(2u, strip.HistoryItems().Size());
+        });
 
-            stripImpl->HistorySearchTextBox().Text(L"ubuntu");
+        const auto search = [&](const winrt::hstring& query) {
+            ::details::Event changed;
+            TextBox box{ nullptr };
+            winrt::event_token token{};
+            const auto revoke = wil::scope_exit([&]() {
+                RunOnUIThread([&]() {
+                    if (box)
+                    {
+                        box.TextChanged(token);
+                    }
+                });
+            });
+            TestOnUIThread([&]() {
+                box = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip)->HistorySearchTextBox();
+                token = box.TextChanged([&](auto&&, auto&&) {
+                    if (box.Text() == query)
+                    {
+                        changed.Set();
+                    }
+                });
+                box.Text(query);
+            });
+            VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(changed.m_handle, 10000));
+        };
+
+        search(L"ubuntu");
+        TestOnUIThread([&]() {
             VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Deploy service" }, strip.HistoryItems().GetAt(0).Title());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"ubuntu" }, strip.HistoryItems().GetAt(0).SearchQuery());
+        });
 
-            stripImpl->HistorySearchTextBox().Text(L"idle");
+        search(L"idle");
+        TestOnUIThread([&]() {
             VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Fix build" }, strip.HistoryItems().GetAt(0).Title());
+        });
 
-            stripImpl->HistorySearchTextBox().Text(L"missing");
+        search(L"missing");
+        TestOnUIThread([&]() {
             VERIFY_ARE_EQUAL(0u, strip.HistoryItems().Size());
+        });
 
-            stripImpl->HistorySearchTextBox().Text(L"");
+        search(L"");
+        TestOnUIThread([&]() {
             VERIFY_ARE_EQUAL(2u, strip.HistoryItems().Size());
         });
     }
@@ -3239,6 +3289,165 @@ namespace TerminalAppLocalTests
             const auto foregroundItem = page->_tabs.GetAt(1).TabViewItem();
             VERIFY_IS_TRUE(page->_selectedTabItem() == foregroundItem);
             VERIFY_ARE_EQUAL(1u, page->_GetFocusedTabIndex().value_or(0));
+        });
+    }
+
+    void TabTests::VerticalTabHistoryRefreshErrors()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto strip = page->_tabStrip;
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            strip.HistoryActive(true);
+            strip.HistoryLoading(true);
+            VERIFY_ARE_EQUAL(Visibility::Visible, impl->HistoryLoadingIndicator().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, impl->HistoryList().Visibility());
+
+            auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            item.Title(L"Existing session");
+            impl->CommitHistorySnapshot({ item });
+            page->_CompleteSidebarHistoryRefresh(page->_historyRequestGeneration, true, {}, L"Load failed");
+            VERIFY_IS_FALSE(strip.HistoryLoading());
+            VERIFY_ARE_EQUAL(0u, strip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(Visibility::Visible, impl->HistoryWarning().Visibility());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Load failed" }, impl->HistoryWarningText().Text());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, impl->HistoryMessage().Visibility());
+
+            page->_CompleteSidebarHistoryRefresh(page->_historyRequestGeneration, false, { item }, L"");
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, impl->HistoryWarning().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, impl->HistoryList().Visibility());
+
+            impl->HistorySearchTextBox().Text(L"existing");
+            page->_CompleteSidebarHistoryRefresh(page->_historyRequestGeneration, false, {}, L"Refresh failed");
+            VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
+            VERIFY_IS_TRUE(strip.HistoryItems().GetAt(0) == item);
+            VERIFY_ARE_EQUAL(Visibility::Visible, impl->HistoryList().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, impl->HistoryWarning().Visibility());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Refresh failed" }, impl->HistoryWarningText().Text());
+
+            page->_CompleteSidebarHistoryRefresh(page->_historyRequestGeneration, false, { item }, L"");
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, impl->HistoryWarning().Visibility());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"existing" }, impl->HistorySearchTextBox().Text());
+            page->_CompleteSidebarHistoryRefresh(page->_historyRequestGeneration, false, {}, L"");
+            VERIFY_ARE_EQUAL(Visibility::Visible, impl->HistoryMessage().Visibility());
+            page->_CloseSidebarHistory(false);
+        });
+    }
+
+    void TabTests::VerticalTabHistoryRefreshBackoff()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            page->_tabStrip.HistoryActive(true);
+            const auto generation = page->_historyRequestGeneration;
+            for (const auto seconds : { 5, 10, 20, 40, 60, 60 })
+            {
+                page->_historyRefreshInFlight = true;
+                page->_RequestSidebarHistoryRefresh(false);
+                page->_RequestSidebarHistoryRefresh(false);
+                VERIFY_IS_TRUE(page->_historyRefreshPending);
+                VERIFY_ARE_EQUAL(generation, page->_historyRequestGeneration);
+
+                const auto before = std::chrono::steady_clock::now();
+                page->_CompleteSidebarHistoryRefresh(generation, false, {}, L"Unavailable");
+                const auto after = std::chrono::steady_clock::now();
+                VERIFY_ARE_EQUAL(static_cast<int64_t>(seconds), page->_historyRetryDelay.count());
+                VERIFY_IS_TRUE(page->_historyNextRefresh >= before + std::chrono::seconds{ seconds });
+                VERIFY_IS_TRUE(page->_historyNextRefresh <= after + std::chrono::seconds{ seconds });
+                VERIFY_IS_FALSE(page->_historyRefreshPending);
+                VERIFY_IS_FALSE(page->_historyRefreshInFlight);
+
+                page->OnSessionRegistryChanged(L"");
+                page->_RequestSidebarHistoryRefresh(false);
+                VERIFY_IS_FALSE(page->_historyRefreshInFlight);
+                VERIFY_ARE_EQUAL(generation, page->_historyRequestGeneration);
+            }
+            page->_CompleteSidebarHistoryRefresh(generation, false, {}, L"");
+            VERIFY_ARE_EQUAL(int64_t{ 0 }, page->_historyRetryDelay.count());
+            VERIFY_IS_TRUE(page->_historyNextRefresh == std::chrono::steady_clock::time_point{});
+
+            page->_CompleteSidebarHistoryRefresh(generation, false, {}, L"Unavailable");
+            VERIFY_ARE_EQUAL(int64_t{ 5 }, page->_historyRetryDelay.count());
+            page->_CloseSidebarHistory(false);
+            VERIFY_ARE_EQUAL(int64_t{ 0 }, page->_historyRetryDelay.count());
+        });
+    }
+
+    void TabTests::VerticalTabHistoryActivationDefersRefresh()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto strip = page->_tabStrip;
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            strip.HistoryActive(true);
+            auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            item.Title(L"Session");
+            impl->CommitHistorySnapshot({ item });
+            page->_StartSidebarHistoryRefreshTimer();
+            page->_historyRefreshInFlight = true;
+            const auto oldGeneration = page->_historyRequestGeneration;
+
+            VERIFY_IS_TRUE(page->_BeginSidebarHistoryActivation());
+            const auto serial = page->_historyActivationSerial;
+            VERIFY_IS_FALSE(page->_historyRefreshTimer.IsEnabled());
+            VERIFY_IS_FALSE(page->_BeginSidebarHistoryActivation());
+            VERIFY_ARE_EQUAL(serial, page->_historyActivationSerial);
+            page->OnSessionRegistryChanged(L"");
+            page->_RequestSidebarHistoryRefresh(false);
+            VERIFY_IS_TRUE(page->_historyRefreshPending);
+            page->_CompleteSidebarHistoryRefresh(oldGeneration, false, {}, L"");
+            VERIFY_IS_TRUE(strip.HistoryLoading());
+            VERIFY_IS_TRUE(page->_historyActivationInFlight);
+            VERIFY_IS_FALSE(page->_historyRefreshInFlight);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, impl->HistoryList().Visibility());
+            VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
+
+            // Hold the queued refresh in flight without launching a WTA process.
+            page->_historyRefreshInFlight = true;
+            page->_CompleteSidebarHistoryActivation(serial, false, L"Activation failed");
+            VERIFY_IS_FALSE(page->_historyActivationInFlight);
+            VERIFY_IS_FALSE(strip.HistoryLoading());
+            VERIFY_IS_TRUE(page->_historyRefreshTimer.IsEnabled());
+            VERIFY_IS_TRUE(page->_historyRefreshPending);
+            page->_historyRefreshPending = false;
+            page->_CompleteSidebarHistoryRefresh(page->_historyRequestGeneration, false, { item }, L"");
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Activation failed" }, impl->HistoryWarningText().Text());
+            VERIFY_ARE_EQUAL(Visibility::Visible, impl->HistoryList().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, impl->HistoryWarning().Visibility());
+
+            VERIFY_IS_TRUE(page->_BeginSidebarHistoryActivation());
+            VERIFY_IS_TRUE(strip.HistoryError().empty());
+            page->_CompleteSidebarHistoryActivation(page->_historyActivationSerial, true, L"");
+            VERIFY_IS_FALSE(strip.HistoryActive());
+            VERIFY_IS_FALSE(page->_historyActivationInFlight);
+        });
+    }
+
+    void TabTests::VerticalTabHistoryCloseInvalidatesRequests()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto strip = page->_tabStrip;
+            strip.HistoryActive(true);
+            page->_historyRefreshInFlight = true;
+            const auto generation = page->_historyRequestGeneration;
+            VERIFY_IS_TRUE(page->_BeginSidebarHistoryActivation());
+            const auto serial = page->_historyActivationSerial;
+            page->_CloseSidebarHistory(false);
+            VERIFY_IS_FALSE(page->_historyActivationInFlight);
+            page->_CompleteSidebarHistoryRefresh(generation, false, {}, L"Late refresh failure");
+            page->_CompleteSidebarHistoryActivation(serial, false, L"Late activation failure");
+            VERIFY_IS_FALSE(strip.HistoryActive());
+            VERIFY_IS_FALSE(strip.HistoryLoading());
+            VERIFY_IS_TRUE(strip.HistoryError().empty());
+
+            strip.HistoryActive(true);
+            VERIFY_IS_TRUE(page->_BeginSidebarHistoryActivation());
+            page->_CompleteSidebarHistoryActivation(serial, true, L"");
+            VERIFY_IS_TRUE(strip.HistoryActive());
+            VERIFY_IS_TRUE(strip.HistoryLoading());
+            VERIFY_IS_TRUE(page->_historyActivationInFlight);
+            page->_CloseSidebarHistory(false);
         });
     }
 

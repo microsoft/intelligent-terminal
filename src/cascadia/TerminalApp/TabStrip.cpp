@@ -717,6 +717,15 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void TabStrip::HistoryRefreshError(winrt::hstring const& value)
+    {
+        if (_historyRefreshError != value)
+        {
+            _historyRefreshError = value;
+            _updateHistoryVisualState();
+        }
+    }
+
     void TabStrip::ProjectionControlsEnabled(bool value)
     {
         _projectionControlsEnabled = value;
@@ -915,6 +924,10 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::OnHistoryItemClick(IInspectable const&, ItemClickEventArgs const& e)
     {
+        if (!_historyActive || _historyLoading)
+        {
+            return;
+        }
         if (const auto item = e.ClickedItem().try_as<TerminalApp::TabStripHistoryItem>())
         {
             HistoryActivationRequested.raise(
@@ -1236,17 +1249,15 @@ namespace winrt::TerminalApp::implementation
         HistoryPanel().Visibility(visible ? Visibility::Visible : Visibility::Collapsed);
         HistoryLoadingIndicator().IsActive(visible && _historyLoading);
         HistoryLoadingIndicator().Visibility(visible && _historyLoading ? Visibility::Visible : Visibility::Collapsed);
-        HistoryList().Visibility(visible && !_historyLoading && _historyError.empty() && _historyItems.Size() > 0 ?
+        HistoryList().Visibility(visible && !_historyLoading && _historyItems.Size() > 0 ?
                                      Visibility::Visible :
                                      Visibility::Collapsed);
-        if (!visible || _historyLoading)
+        const auto error = _historyError.empty() ? _historyRefreshError : _historyError;
+        HistoryWarningText().Text(error);
+        HistoryWarning().Visibility(visible && !_historyLoading && !error.empty() ? Visibility::Visible : Visibility::Collapsed);
+        if (!visible || _historyLoading || !error.empty())
         {
             HistoryMessage().Visibility(Visibility::Collapsed);
-        }
-        else if (!_historyError.empty())
-        {
-            HistoryMessage().Text(_historyError);
-            HistoryMessage().Visibility(Visibility::Visible);
         }
         else if (_historyItems.Size() == 0)
         {

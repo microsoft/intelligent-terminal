@@ -5983,10 +5983,14 @@ namespace winrt::TerminalApp::implementation
         }
 
         ++_historyActivationSerial;
+        _historyActivationInFlight = false;
         _StopSidebarHistoryRefreshTimer();
+        _historyRetryDelay = std::chrono::seconds{ 0 };
+        _historyNextRefresh = {};
         _tabStrip.HistoryActive(false);
         _tabStrip.HistoryLoading(false);
         _tabStrip.HistoryError(L"");
+        winrt::get_self<implementation::TabStrip>(_tabStrip)->HistoryRefreshError(L"");
 
         // Collapsing the focused History overlay can make XAML select the
         // previously realized ListView row. Preserve the tab that was active
@@ -6012,14 +6016,26 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
+        if (_historyActivationInFlight)
+        {
+            _historyRefreshPending = true;
+            return;
+        }
         if (initialLoad)
         {
+            _historyRetryDelay = std::chrono::seconds{ 0 };
+            _historyNextRefresh = {};
             _tabStrip.HistoryError(L"");
+            winrt::get_self<implementation::TabStrip>(_tabStrip)->HistoryRefreshError(L"");
             _tabStrip.HistoryLoading(true);
         }
         if (_historyRefreshInFlight)
         {
             _historyRefreshPending = true;
+            return;
+        }
+        if (std::chrono::steady_clock::now() < _historyNextRefresh)
+        {
             return;
         }
 
@@ -6067,6 +6083,20 @@ namespace winrt::TerminalApp::implementation
                 if (!Json::parseFromStream(builder, json, &row, &errors) || !row.isObject())
                 {
                     parseError = errors.empty() ? "Invalid session history response." : errors;
+                    items.clear();
+                    break;
+                }
+
+                for (const auto key : { "session_id", "provider_id", "title", "cwd", "pane_session_id", "session_universe" })
+                {
+                    if (!row[key].isNull() && !row[key].isString())
+                    {
+                        parseError = "Invalid session history field: " + std::string{ key };
+                        break;
+                    }
+                }
+                if (!parseError.empty())
+                {
                     items.clear();
                     break;
                 }
@@ -6179,63 +6209,84 @@ namespace winrt::TerminalApp::implementation
 
         co_await wil::resume_foreground(dispatcher);
         const auto page = weakThis.get();
-        if (page)
+        if (!page)
         {
-            page->_historyRefreshInFlight = false;
-        }
-        if (!page || page->_historyRequestGeneration != generation || !page->_tabStrip.HistoryActive())
-        {
-            if (page && page->_historyRefreshPending && page->_tabStrip.HistoryActive())
-            {
-                page->_historyRefreshPending = false;
-                page->_RequestSidebarHistoryRefresh(page->_tabStrip.HistoryLoading());
-            }
             co_return;
         }
-
-        if (!result.completed)
+        winrt::hstring error;
+        if (!result.completed || result.exitCode != 0)
         {
-            if (initialLoad)
-            {
-                winrt::get_self<implementation::TabStrip>(page->_tabStrip)->ClearHistorySnapshot();
-                page->_tabStrip.HistoryError(RS_(L"VerticalTabsHistoryLoadError"));
-            }
-        }
-        else if (result.exitCode != 0)
-        {
-            _agentPaneLog(
-                "sidebar history unavailable exit=" + std::to_string(result.exitCode) +
-                " output=" + result.output);
-            if (initialLoad)
-            {
-                winrt::get_self<implementation::TabStrip>(page->_tabStrip)->ClearHistorySnapshot();
-                page->_tabStrip.HistoryError(L"");
-            }
+            _agentPaneLog("sidebar history load failed completed=" + std::to_string(result.completed) +
+                          " exit=" + std::to_string(result.exitCode));
+            error = RS_(L"VerticalTabsHistoryLoadError");
         }
         else if (!parseError.empty())
         {
+            _agentPaneLog("sidebar history invalid response: " + parseError);
+            error = RS_(L"VerticalTabsHistoryInvalidResponse");
+        }
+        page->_CompleteSidebarHistoryRefresh(generation, initialLoad, std::move(items), error);
+    }
+
+    void TerminalPage::_CompleteSidebarHistoryRefresh(const uint64_t generation,
+                                                      const bool initialLoad,
+                                                      std::vector<TerminalApp::TabStripHistoryItem> items,
+                                                      winrt::hstring const& error)
+    {
+        _historyRefreshInFlight = false;
+        if (_historyRequestGeneration != generation || !_tabStrip.HistoryActive() || _historyActivationInFlight)
+        {
+            if (_historyRefreshPending && _tabStrip.HistoryActive() && !_historyActivationInFlight)
+            {
+                _historyRefreshPending = false;
+                _RequestSidebarHistoryRefresh(_tabStrip.HistoryLoading());
+            }
+            return;
+        }
+
+        const auto strip = winrt::get_self<implementation::TabStrip>(_tabStrip);
+        if (!error.empty())
+        {
             if (initialLoad)
             {
-                winrt::get_self<implementation::TabStrip>(page->_tabStrip)->ClearHistorySnapshot();
-                page->_tabStrip.HistoryError(RS_(L"VerticalTabsHistoryInvalidResponse"));
+                strip->ClearHistorySnapshot();
             }
+            _historyRetryDelay = (std::min)((std::max)(_historyRetryDelay * 2, std::chrono::seconds{ 5 }), std::chrono::seconds{ 60 });
+            _historyNextRefresh = std::chrono::steady_clock::now() + _historyRetryDelay;
+            _historyRefreshPending = false;
         }
         else
         {
-            winrt::get_self<implementation::TabStrip>(page->_tabStrip)->CommitHistorySnapshot(std::move(items));
-            page->_tabStrip.HistoryError(L"");
+            strip->CommitHistorySnapshot(std::move(items));
+            _historyRetryDelay = std::chrono::seconds{ 0 };
+            _historyNextRefresh = {};
         }
-        page->_tabStrip.HistoryLoading(false);
-        if (page->_historyRefreshPending)
+        strip->HistoryRefreshError(error);
+        _tabStrip.HistoryLoading(false);
+        if (_historyRefreshPending)
         {
-            page->_historyRefreshPending = false;
-            page->_RequestSidebarHistoryRefresh(false);
+            _historyRefreshPending = false;
+            _RequestSidebarHistoryRefresh(false);
         }
+    }
+
+    bool TerminalPage::_BeginSidebarHistoryActivation()
+    {
+        if (!_tabStrip.HistoryActive() || _historyActivationInFlight)
+        {
+            return false;
+        }
+        _historyActivationInFlight = true;
+        ++_historyActivationSerial;
+        _StopSidebarHistoryRefreshTimer();
+        _tabStrip.HistoryLoading(true);
+        _tabStrip.HistoryError(L"");
+        return true;
     }
 
     safe_void_coroutine TerminalPage::_ActivateSidebarHistoryItem(TerminalApp::TabStripHistoryItem item)
     {
-        if (!item)
+        if (!item || !_BeginSidebarHistoryActivation())
         {
             co_return;
         }
@@ -6243,10 +6294,7 @@ namespace winrt::TerminalApp::implementation
         const auto weakThis = get_weak();
         const auto dispatcher = Dispatcher();
         const auto windowId = _WindowProperties.WindowId();
-        const auto activationSerial = ++_historyActivationSerial;
-        _StopSidebarHistoryRefreshTimer();
-        _tabStrip.HistoryLoading(true);
-        _tabStrip.HistoryError(L"");
+        const auto activationSerial = _historyActivationSerial;
 
         const auto quote = [](std::wstring_view value) {
             std::wstring quoted{ L"\"" };
@@ -6310,9 +6358,12 @@ namespace winrt::TerminalApp::implementation
             Json::CharReaderBuilder builder;
             std::istringstream json{ result.output };
             std::string errors;
-            if (Json::parseFromStream(builder, json, &response, &errors) && response.isObject())
+            if (Json::parseFromStream(builder, json, &response, &errors) &&
+                response.isObject() &&
+                response["accepted"].isBool() &&
+                (response["detail"].isNull() || response["detail"].isString()))
             {
-                accepted = response.get("accepted", false).asBool();
+                accepted = response["accepted"].asBool();
                 detail = response.get("detail", "").asString();
             }
             else
@@ -6327,21 +6378,27 @@ namespace winrt::TerminalApp::implementation
         {
             co_return;
         }
-        if (page->_historyActivationSerial != activationSerial || !page->_tabStrip.HistoryActive())
+        page->_CompleteSidebarHistoryActivation(
+            activationSerial, accepted, detail.empty() ? RS_(L"VerticalTabsHistoryActivationError") : winrt::to_hstring(detail));
+    }
+
+    void TerminalPage::_CompleteSidebarHistoryActivation(const uint64_t serial, const bool accepted, winrt::hstring const& error)
+    {
+        if (_historyActivationSerial != serial || !_tabStrip.HistoryActive())
         {
-            co_return;
+            return;
         }
-        page->_tabStrip.HistoryLoading(false);
+        _historyActivationInFlight = false;
+        _tabStrip.HistoryLoading(false);
         if (accepted)
         {
-            page->_CloseSidebarHistory(false);
+            _CloseSidebarHistory(false);
         }
         else
         {
-            page->_tabStrip.HistoryError(
-                detail.empty() ? RS_(L"VerticalTabsHistoryActivationError") : winrt::to_hstring(detail));
-            page->_StartSidebarHistoryRefreshTimer();
-            page->_RequestSidebarHistoryRefresh(false);
+            _tabStrip.HistoryError(error);
+            _StartSidebarHistoryRefreshTimer();
+            _RequestSidebarHistoryRefresh(false);
         }
     }
 

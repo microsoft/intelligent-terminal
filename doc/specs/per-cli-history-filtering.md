@@ -345,3 +345,43 @@ failing to replace a synthetic one. They live in
   other's rows.
 
 Both fail if the per-agent stamping or the reconcile guard is removed.
+
+## Sidebar History refresh lifecycle
+
+The vertical tab sidebar reads `wta sessions list --origin shell --json`.
+Opening History shows a loading indicator; later refreshes leave the previous
+snapshot visible until a complete replacement is available. Registry-change
+notifications request an immediate refresh, with a five-second timer as a
+missed-notification fallback. These reads do not force an ACP rescan.
+
+Only one list request runs per page. Overlapping notifications and timer ticks
+coalesce into one pending refresh. On failure, pending work is discarded and
+automatic retries wait at least 5, 10, 20, 40, then 60 seconds after consecutive
+failures. Both notifications and polling respect this cooldown; the timer
+retries on its first eligible tick. A successful refresh or reopening History
+resets the backoff.
+
+Timeouts, launch failures, non-zero exits, and invalid responses produce a
+visible warning rather than an empty-history success state. Background failures
+keep the last snapshot visible alongside the warning. A successful list refresh
+clears the refresh warning and preserves the current search query.
+
+Session activation has a separate in-flight guard. While it runs, the list is
+hidden, repeated activations are rejected, and registry notifications are
+deferred. Older list responses cannot dismiss its loading indicator. Activation
+failure restores the list and polling; its error remains visible across
+successful list refreshes until another activation attempt or History is closed.
+Accepted activation closes History.
+
+Closing History invalidates outstanding list and activation responses, so late
+completions cannot change a subsequently reopened view. It does not cancel the
+underlying command or reverse a dispatched activation.
+
+Separate follow-ups remain:
+
+- Cancel an in-flight list command on close and decouple a reopened view from
+  that command's remaining runtime.
+- Reconcile activation outcomes after a timeout and reuse operation identity
+  for safe retries across the Terminal/WTA boundary.
+- Replace full-snapshot list resets with identity-based updates and explicit
+  scroll-anchor preservation.
