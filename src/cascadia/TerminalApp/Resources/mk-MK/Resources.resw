@@ -469,6 +469,24 @@
   <data name="VerticalTabsFilterAgentsOnly.Text" xml:space="preserve">
     <value>Само агенти</value>
   </data>
+  <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
+    <value>Tab metadata</value>
+  </data>
+  <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
+    <value>Agent status</value>
+  </data>
+  <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
+    <value>Current working directory</value>
+  </data>
+  <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
+    <value>Git repo</value>
+  </data>
+  <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
+    <value>Git branch</value>
+  </data>
+  <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
+    <value>Git changes</value>
+  </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>Се прикажува 1 сесија на агент</value>
   </data>

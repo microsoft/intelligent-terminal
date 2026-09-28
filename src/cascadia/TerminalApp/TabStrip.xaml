@@ -178,8 +178,9 @@
                         <ToggleMenuFlyoutItem x:Name="AgentsOnlyFilterItem"
                                               x:Uid="VerticalTabsFilterAgentsOnly"
                                               Click="OnAgentsOnlyFilterClick" />
-                        <MenuFlyoutSeparator />
-                        <MenuFlyoutItem x:Uid="VerticalTabsMetadataSection"
+                        <MenuFlyoutSeparator x:Name="RichTabMetadataSeparator" />
+                        <MenuFlyoutItem x:Name="RichTabMetadataSectionItem"
+                                        x:Uid="VerticalTabsMetadataSection"
                                         IsEnabled="False" />
                         <ToggleMenuFlyoutItem x:Name="RichTabAgentStatusVisibleItem"
                                               x:Uid="VerticalTabsMetadataAgentStatus"

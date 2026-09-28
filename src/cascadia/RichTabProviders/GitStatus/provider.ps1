@@ -37,32 +37,6 @@ function Test-LocalPathWithoutReparsePoint([string]$Path) {
     }
 }
 
-function Test-LocalTreeWithoutReparsePoint([string]$Root) {
-    if (-not (Test-LocalPathWithoutReparsePoint $Root)) {
-        return $false
-    }
-
-    try {
-        $pending = [Collections.Generic.Stack[string]]::new()
-        $pending.Push([IO.Path]::GetFullPath($Root))
-        while ($pending.Count -gt 0) {
-            foreach ($entry in [IO.Directory]::EnumerateFileSystemEntries($pending.Pop())) {
-                $attributes = [IO.File]::GetAttributes($entry)
-                if (($attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-                    return $false
-                }
-                if (($attributes -band [IO.FileAttributes]::Directory) -ne 0) {
-                    $pending.Push($entry)
-                }
-            }
-        }
-        return $true
-    }
-    catch {
-        return $false
-    }
-}
-
 function Find-LocalGitRepository([string]$WorkingDirectory) {
     $current = Get-Item -LiteralPath $WorkingDirectory -Force -ErrorAction SilentlyContinue
     while ($current -and $current.PSIsContainer) {
@@ -133,16 +107,34 @@ try {
             $alternatesPath = Join-Path $gitDirectory 'objects\info\alternates'
             $objectsPath = Join-Path $gitDirectory 'objects'
             $infoPath = Join-Path $gitDirectory 'info'
+            $headPath = Join-Path $gitDirectory 'HEAD'
+            $indexPath = Join-Path $gitDirectory 'index'
+            $packedRefsPath = Join-Path $gitDirectory 'packed-refs'
+            $refsPath = Join-Path $gitDirectory 'refs'
+            $logsPath = Join-Path $gitDirectory 'logs'
             $config = Get-Item -LiteralPath $configPath -Force -ErrorAction SilentlyContinue
+            $gitAccessPaths = @(
+                $gitDirectory
+                $configPath
+                $headPath
+                $indexPath
+                $packedRefsPath
+                $refsPath
+                $logsPath
+                $objectsPath
+                $infoPath
+            )
+            $unsafeGitAccessPath = $gitAccessPaths |
+                Where-Object {
+                    (Test-Path -LiteralPath $_) -and
+                    -not (Test-LocalPathWithoutReparsePoint $_)
+                } |
+                Select-Object -First 1
             if (($config -and $config.Length -gt 1MB) -or
-                -not (Test-LocalTreeWithoutReparsePoint $gitDirectory) -or
-                ($config -and -not (Test-LocalPathWithoutReparsePoint $configPath)) -or
+                $unsafeGitAccessPath -or
                 (Test-Path -LiteralPath $commonDirectoryPath) -or
                 (Test-Path -LiteralPath $worktreeConfigPath) -or
-                (Test-Path -LiteralPath $alternatesPath) -or
-                -not (Test-LocalPathWithoutReparsePoint $objectsPath) -or
-                ((Test-Path -LiteralPath $infoPath) -and
-                    -not (Test-LocalPathWithoutReparsePoint $infoPath))) {
+                (Test-Path -LiteralPath $alternatesPath)) {
                 $response = New-EmptyResponse $requestId $baseFields
             }
             else {

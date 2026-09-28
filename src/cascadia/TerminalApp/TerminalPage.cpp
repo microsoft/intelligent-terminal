@@ -697,53 +697,60 @@ namespace winrt::TerminalApp::implementation
                 page->_ActivateSidebarHistoryItem(args.Item());
             }
         });
-        constexpr std::string_view gitStatusProviderId{ "com.microsoft.intelligent-terminal.git-status" };
-        auto& richTabBroker = ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance();
-        if (const auto fields = richTabBroker.VisibleFields(gitStatusProviderId))
+        if constexpr (Feature_RichTabProviders::IsEnabled())
         {
-            const auto contains = [&](const std::string_view field) {
-                return std::find(fields->begin(), fields->end(), field) != fields->end();
-            };
-            _tabStrip.RichTabAgentStatusVisible(contains("agentStatus"));
-            _tabStrip.RichTabWorkingDirectoryVisible(contains("workingDirectory"));
-            _tabStrip.RichTabRepositoryVisible(contains("repository"));
-            _tabStrip.RichTabBranchVisible(contains("branch"));
-            _tabStrip.RichTabChangesVisible(contains("changes"));
-        }
-        _tabStrip.VisibleFieldsChanged([weakThis{ get_weak() }](const auto& sender, auto&&) {
-            std::vector<std::string> fields;
-            fields.reserve(2);
-            if (sender.RichTabAgentStatusVisible())
+            constexpr std::string_view gitStatusProviderId{ "com.microsoft.intelligent-terminal.git-status" };
+            auto& richTabBroker = ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance();
+            if (const auto fields = richTabBroker.VisibleFields(gitStatusProviderId))
             {
-                fields.emplace_back("agentStatus");
+                const auto contains = [&](const std::string_view field) {
+                    return std::find(fields->begin(), fields->end(), field) != fields->end();
+                };
+                _tabStrip.RichTabAgentStatusVisible(contains("agentStatus"));
+                _tabStrip.RichTabWorkingDirectoryVisible(contains("workingDirectory"));
+                _tabStrip.RichTabRepositoryVisible(contains("repository"));
+                _tabStrip.RichTabBranchVisible(contains("branch"));
+                _tabStrip.RichTabChangesVisible(contains("changes"));
             }
-            if (sender.RichTabWorkingDirectoryVisible())
-            {
-                fields.emplace_back("workingDirectory");
-            }
-            if (sender.RichTabRepositoryVisible())
-            {
-                fields.emplace_back("repository");
-            }
-            if (sender.RichTabBranchVisible())
-            {
-                fields.emplace_back("branch");
-            }
-            if (sender.RichTabChangesVisible())
-            {
-                fields.emplace_back("changes");
-            }
-            ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance().SetVisibleFields(
-                "com.microsoft.intelligent-terminal.git-status",
-                std::move(fields));
-            if (sender.RichTabAgentStatusVisible())
-            {
-                if (const auto page = weakThis.get())
+            _tabStrip.VisibleFieldsChanged([weakThis{ get_weak() }](const auto& sender, auto&&) {
+                std::vector<std::string> fields;
+                fields.reserve(2);
+                if (sender.RichTabAgentStatusVisible())
                 {
-                    page->_RequestRichTabAgentStatusRefresh();
+                    fields.emplace_back("agentStatus");
                 }
-            }
-        });
+                if (sender.RichTabWorkingDirectoryVisible())
+                {
+                    fields.emplace_back("workingDirectory");
+                }
+                if (sender.RichTabRepositoryVisible())
+                {
+                    fields.emplace_back("repository");
+                }
+                if (sender.RichTabBranchVisible())
+                {
+                    fields.emplace_back("branch");
+                }
+                if (sender.RichTabChangesVisible())
+                {
+                    fields.emplace_back("changes");
+                }
+                ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance().SetVisibleFields(
+                    "com.microsoft.intelligent-terminal.git-status",
+                    std::move(fields));
+                if (sender.RichTabAgentStatusVisible())
+                {
+                    if (const auto page = weakThis.get())
+                    {
+                        page->_RequestRichTabAgentStatusRefresh();
+                    }
+                }
+            });
+        }
+        else
+        {
+            winrt::get_self<implementation::TabStrip>(_tabStrip)->RichTabMetadataControlsVisible(false);
+        }
         _tabRow.RailCollapseRequested({ this, &TerminalPage::_OnVerticalRailCollapseRequested });
         _tabStrip.CompactNewTabRequested([weakThis{ get_weak() }](auto&&, auto&&) {
             if (const auto page = weakThis.get(); page && page->_isVerticalLayout && !page->_changingTabLayout)
@@ -3257,13 +3264,15 @@ namespace winrt::TerminalApp::implementation
         const auto sessionIdString = std::string{ sessionId };
         const auto statusString = std::string{ status };
         ++_richTabAgentStatusRequestGeneration;
+        if (_richTabAgentStatusRefreshInFlight)
+        {
+            _richTabAgentStatusRefreshPending = true;
+        }
         _richTabAgentStatusBySessionId.insert_or_assign(sessionIdString, statusString);
         if (const auto paneId = _TryParsePaneSessionId(paneSessionId))
         {
             _richTabAgentStatusByPaneId.insert_or_assign(*paneId, statusString);
         }
-        _richTabAgentStatusSnapshotLoaded = true;
-
         if (_tabStrip.RichTabAgentStatusVisible())
         {
             for (const auto& runtimeTab : _RuntimeTabs())
@@ -10362,7 +10371,7 @@ namespace winrt::TerminalApp::implementation
         namespace Wta = ::Microsoft::Terminal::WtaProcess;
         const auto result = Wta::RunWtaCapture(
             Wta::ResolveWtaExePath(),
-            L"sessions list --origin shell --json",
+            L"sessions list --json",
             15'000,
             nullptr,
             false);

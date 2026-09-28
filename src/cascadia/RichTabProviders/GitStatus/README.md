@@ -8,10 +8,3 @@ Agent status comes from the authoritative master session registry. Git changes u
 
 The provider intentionally returns an empty snapshot until shell integration
 has reported an authoritative working directory.
-
-For offline development:
-
-```powershell
-wtcli provider validate .\provider.json
-wtcli provider test .\provider.json --cwd C:\path\to\repo
-```

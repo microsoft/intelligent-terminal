@@ -3354,11 +3354,16 @@ namespace TerminalAppLocalTests
             stripImpl->CommitHistorySnapshot({ item });
 
             page->_richTabAgentStatusRequestGeneration = 41;
+            page->_richTabAgentStatusSnapshotLoaded = false;
+            page->_richTabAgentStatusRefreshInFlight = true;
+            page->_richTabAgentStatusRefreshPending = false;
             VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(
                 "session-a",
                 "00000000-0000-0000-0000-000000000001",
                 "Attention"));
             VERIFY_ARE_EQUAL(uint64_t{ 42 }, page->_richTabAgentStatusRequestGeneration);
+            VERIFY_IS_FALSE(page->_richTabAgentStatusSnapshotLoaded);
+            VERIFY_IS_TRUE(page->_richTabAgentStatusRefreshPending);
             VERIFY_ARE_EQUAL(
                 std::string{ "Attention" },
                 page->_richTabAgentStatusBySessionId.at("session-a"));

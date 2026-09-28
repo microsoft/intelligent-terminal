@@ -898,6 +898,27 @@ namespace winrt::TerminalApp::implementation
         _updateRichTabMetadataSelectionState();
     }
 
+    void TabStrip::RichTabMetadataControlsVisible(const bool value)
+    {
+        const auto visibility = value ? Visibility::Visible : Visibility::Collapsed;
+        RichTabMetadataSeparator().Visibility(visibility);
+        RichTabMetadataSectionItem().Visibility(visibility);
+        RichTabAgentStatusVisibleItem().Visibility(visibility);
+        RichTabWorkingDirectoryVisibleItem().Visibility(visibility);
+        RichTabRepositoryVisibleItem().Visibility(visibility);
+        RichTabBranchVisibleItem().Visibility(visibility);
+        RichTabChangesVisibleItem().Visibility(visibility);
+
+        if (!value)
+        {
+            RichTabAgentStatusVisible(false);
+            RichTabWorkingDirectoryVisible(false);
+            RichTabRepositoryVisible(false);
+            RichTabBranchVisible(false);
+            RichTabChangesVisible(false);
+        }
+    }
+
     uint32_t TabStrip::_richTabMetadataSelectionCount() const noexcept
     {
         return static_cast<uint32_t>(_richTabAgentStatusVisible) +

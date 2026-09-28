@@ -40,44 +40,4 @@ namespace Microsoft::Terminal::RichTab::Provider
         }
     };
 
-    class ProviderRegistry
-    {
-    public:
-        static constexpr size_t MaximumPayloadFileCount{ 256 };
-        static constexpr uint64_t MaximumPayloadSize{ 32ull * 1024ull * 1024ull };
-
-        explicit ProviderRegistry(std::filesystem::path root = {});
-
-        const std::filesystem::path& Root() const noexcept;
-        static std::filesystem::path DefaultRoot();
-
-        RegistryResult<Registration> Install(const std::filesystem::path& manifestPath);
-        RegistryResult<Registration> RegisterDevelopment(const std::filesystem::path& manifestPath);
-        RegistryResult<std::vector<Registration>> List();
-        RegistryResult<Registration> SetEnabled(std::string_view id, bool enabled);
-        RegistryResult<bool> Remove(std::string_view id);
-
-    private:
-        struct StoredRegistration
-        {
-            std::string id;
-            RegistrationKind kind{ RegistrationKind::Managed };
-            std::filesystem::path root;
-            std::string payloadHash;
-            bool enabled{ false };
-        };
-
-        std::filesystem::path _root;
-
-        RegistryResult<Registration> _Register(
-            const std::filesystem::path& manifestPath,
-            RegistrationKind kind);
-        RegistryResult<StoredRegistration> _LoadStored(std::string_view id);
-        RegistryResult<Registration> _Materialize(const StoredRegistration& stored);
-        RegistryResult<std::vector<StoredRegistration>> _LoadAllStored();
-        bool _WriteStored(const StoredRegistration& stored, std::string& error);
-        bool _DeleteStored(std::string_view id, std::string& error);
-        bool _RecoverManaged(const StoredRegistration& stored, std::string& error);
-        bool _RecoverRemovals(std::string& error);
-    };
 }

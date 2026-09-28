@@ -170,12 +170,12 @@ namespace TerminalApp
         event Windows.Foundation.TypedEventHandler<TabStrip, TabStripCloseRequestedEventArgs> TabRenameRequested;
         event Windows.Foundation.TypedEventHandler<TabStrip, TabStripCloseRequestedEventArgs> TabFocusRequested;
 
+        Boolean HistoryActivating;
         Boolean RichTabRepositoryVisible;
         Boolean RichTabBranchVisible;
         Boolean RichTabAgentStatusVisible;
         Boolean RichTabChangesVisible;
         Boolean RichTabWorkingDirectoryVisible;
         event Windows.Foundation.TypedEventHandler<TabStrip, Object> VisibleFieldsChanged;
-        Boolean HistoryActivating;
     };
 }

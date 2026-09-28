@@ -241,6 +241,7 @@ namespace winrt::TerminalApp::implementation
         void RichTabWorkingDirectoryVisible(bool value);
         bool RichTabChangesVisible() const noexcept { return _richTabChangesVisible; }
         void RichTabChangesVisible(bool value);
+        void RichTabMetadataControlsVisible(bool value);
 
         winrt::Windows::UI::Xaml::UIElement TopChromeContent();
         void TopChromeContent(winrt::Windows::UI::Xaml::UIElement const& value);
