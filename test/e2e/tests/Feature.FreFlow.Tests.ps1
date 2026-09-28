@@ -20,6 +20,13 @@ Describe 'Feature §0 FRE overlay flow' -Tag 'Feature' -Skip:(-not $script:Ready
                 $autofix | Should -Not -BeNullOrEmpty
                 $sidebar.name | Should -BeIn @(Get-WtReswTextValues -Key 'FreOverlay_Card2Title.Text')
                 $autofix.name | Should -BeIn @(Get-WtReswTextValues -Key 'FreOverlay_Card1Title.Text')
+                foreach ($name in @('SidebarImage', 'AutofixImage')) {
+                    $image = Get-UiElement -App $app -Selector $name
+                    $image | Should -Not -BeNullOrEmpty
+                    $image.height | Should -BeGreaterThan 0
+                    [math]::Abs($image.width / $image.height - 16.0 / 9.0) |
+                        Should -BeLessThan 0.01 -Because 'the supplied screenshots must retain their 16:9 aspect ratio'
+                }
                 $language = Get-WtSetting -App $app -Key 'language'
                 if (-not $language) { $language = (Get-UICulture).Name }
                 if ($language -match '^(ar|fa|he|ur|ug)(-|$)|^qps-plocm$') {

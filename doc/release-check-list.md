@@ -36,7 +36,8 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 **Feature definition:** FRE guides first-time users through tab mode, agent selection, automatic approval, pane position, automatic error detection, automatic error suggestion, and session-management hook setup.
 
-- [ ] `C007` `[E2E]` **FRE opens correctly:** A clean user profile launches the FRE instead of skipping directly to the terminal. The Sidebar/session illustration and its caption precede the Autofix/error-detection illustration; RTL mirrors their positions and images retain their aspect ratios. Screenshots follow the application theme without changing the existing FRE colors.
+- [ ] `C007` `[E2E]` **FRE opens correctly:** A clean user profile launches the FRE instead of skipping directly to the terminal. The Sidebar/session illustration and its caption precede the Autofix/error-detection illustration; RTL mirrors their positions and images retain their aspect ratios.
+- [ ] `C347` `[new]` `[UT~]` `[MANUAL]` **FRE screenshot theme follows the application:** Light, Dark and Use Windows theme select the corresponding illustrations, including while FRE is open. The wizard's existing background, text and control colors stay unchanged. _(UT: `FreIllustrationsFollowThemeWithoutChangingChrome`; inspect original rendered images.)_
 - [ ] `C008` `[E2E]` **FRE can be completed:** The user can go through every page, save settings, and enter the main terminal window.
 - [ ] `C009` `[E2E]` **FRE can be skipped or closed safely:** Skipping/closing does not crash and leaves settings in a valid state.
 - [ ] `C010` `[E2E]` **FRE privacy / help links work:** Links open the browser and do not block completion.
