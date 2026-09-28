@@ -28,10 +28,13 @@
 #include "../TerminalSettingsModel/CascadiaSettings.h"
 #include "../TerminalSettingsModel/AcpRuntimeState.h"
 #include "../TerminalSettingsModel/SettingsTelemetry.h"
+#include "../TerminalSettingsModel/ActionArgs.h"
 #include "../TerminalApp/AgentProviderTelemetry.h"
 #include "../inc/AgentPolicy.h"
 #include "../inc/AgentRegistry.h"
 #include "../inc/CustomModelProviderUtils.h"
+#include "../inc/AgentProfileUtils.h"
+#include "../inc/ProfileSplitPolicy.h"
 #include "JsonTestClass.h"
 
 using namespace Microsoft::Console;
@@ -49,6 +52,9 @@ namespace SettingsModelUnitTests
 
         // Round-trip tests
         TEST_METHOD(CustomAcpAgentRoundtrips);
+        TEST_METHOD(AgentProfileSettingsRoundtrip);
+        TEST_METHOD(AgentProfileCommandQuoting);
+        TEST_METHOD(AgentProfileSplitTargets);
         TEST_METHOD(CustomDelegateAgentRoundtrips);
         TEST_METHOD(CustomAgentCollectionsRoundtrip);
         TEST_METHOD(QuotedPathCustomCommandRoundtrips);
@@ -357,6 +363,95 @@ namespace SettingsModelUnitTests
     }
 
     // ── Round-trip ──────────────────────────────────────────────────────
+
+    void CustomAgentAndPolicyTests::AgentProfileSettingsRoundtrip()
+    {
+        Json::Value json{ Json::objectValue };
+        json["agentProfile.id"] = "claude";
+        json["agentProfile.model"] = "example-model";
+        json["agentProfile.permissionMode"] = "plan";
+        json["agentProfile.arguments"] = "--add-dir \"C:\\source tree\"";
+        json["agentProfile.customCommand"] = false;
+        json["defaultSplitProfile"] = "default";
+        auto parent = implementation::Profile::FromJson(json);
+        auto child = winrt::make_self<implementation::Profile>();
+        child->AddLeastImportantParent(parent);
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, child->AgentProfileId());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"example-model" }, child->AgentProfileModel());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"default" }, child->DefaultSplitProfile());
+        child->AgentProfileModel(L"override");
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"override" }, child->AgentProfileModel());
+        child->ClearAgentProfileModel();
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"example-model" }, child->AgentProfileModel());
+        const auto copy = parent->CopySettings();
+        const auto restored = implementation::Profile::FromJson(copy->ToJson());
+        VERIFY_ARE_EQUAL(parent->AgentProfileId(), restored->AgentProfileId());
+        VERIFY_ARE_EQUAL(parent->AgentProfilePermissionMode(), restored->AgentProfilePermissionMode());
+        VERIFY_ARE_EQUAL(parent->AgentProfileArguments(), restored->AgentProfileArguments());
+        VERIFY_IS_TRUE(::Microsoft::Terminal::AgentProfiles::IsManaged(*restored));
+        restored->AgentProfileCustomCommand(true);
+        VERIFY_IS_FALSE(::Microsoft::Terminal::AgentProfiles::IsManaged(*restored));
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, parent->AgentProfileId());
+    }
+
+    void CustomAgentAndPolicyTests::AgentProfileCommandQuoting()
+    {
+        const auto command = ::Microsoft::Terminal::AgentProfiles::BuildCommand(
+            LR"(C:\Program Files\Terminal\wta.exe)", L"claude", LR"(model "name"\)", L"plan",
+            LR"(--add-dir "C:\source tree")");
+        int argc = 0;
+        wil::unique_hlocal_ptr<PWSTR[]> argv{ ::CommandLineToArgvW(command.c_str(), &argc) };
+        VERIFY_IS_NOT_NULL(argv.get());
+        VERIFY_ARE_EQUAL(11, argc);
+        VERIFY_ARE_EQUAL(std::wstring{ LR"(C:\Program Files\Terminal\wta.exe)" }, std::wstring{ argv[0] });
+        VERIFY_ARE_EQUAL(std::wstring{ L"launch-agent" }, std::wstring{ argv[1] });
+        VERIFY_ARE_EQUAL(std::wstring{ LR"(model "name"\)" }, std::wstring{ argv[5] });
+        VERIFY_ARE_EQUAL(std::wstring{ L"--" }, std::wstring{ argv[8] });
+        VERIFY_ARE_EQUAL(std::wstring{ LR"(C:\source tree)" }, std::wstring{ argv[10] });
+    }
+
+    void CustomAgentAndPolicyTests::AgentProfileSplitTargets()
+    {
+        Json::Value action{ Json::objectValue };
+        action["splitMode"] = "profile";
+        const auto [parsed, warnings] = implementation::SplitPaneArgs::FromJson(action);
+        VERIFY_IS_TRUE(warnings.empty());
+        VERIFY_ARE_EQUAL(SplitType::Profile, parsed.as<SplitPaneArgs>().SplitMode());
+        VERIFY_ARE_EQUAL(std::string{ "profile" }, implementation::SplitPaneArgs::ToJson(parsed)["splitMode"].asString());
+
+        const auto settings = winrt::make<implementation::CascadiaSettings>(std::string_view{
+            R"({"defaultProfile":"{00000000-0000-0000-0000-000000000001}","profiles":[
+              {"guid":"{00000000-0000-0000-0000-000000000001}","name":"Shell","commandline":"cmd.exe"},
+              {"guid":"{00000000-0000-0000-0000-000000000002}","name":"Agent","commandline":"cmd.exe"}]})" });
+        auto source = settings.ActiveProfiles().GetAt(1);
+        const auto shell = settings.ActiveProfiles().GetAt(0);
+        namespace Splits = ::Microsoft::Terminal::ProfileSplits;
+        VERIFY_IS_TRUE(Splits::Resolve(settings, source, nullptr).duplicate);
+        source.DefaultSplitProfile(L"default");
+        VERIFY_ARE_EQUAL(shell.Guid(), Splits::Resolve(settings, source, nullptr).target.Guid());
+        source.DefaultSplitProfile(L"{00000000-0000-0000-0000-000000000001}");
+        VERIFY_ARE_EQUAL(shell.Guid(), Splits::Resolve(settings, source, nullptr).target.Guid());
+        source.DefaultSplitProfile(L"invalid-guid");
+        const auto missing = Splits::Resolve(settings, source, nullptr);
+        VERIFY_IS_TRUE(missing.unavailable);
+        VERIFY_ARE_EQUAL(shell.Guid(), missing.target.Guid());
+        NewTerminalArgs explicitArgs{};
+        explicitArgs.Profile(L"Agent");
+        const auto explicitDecision = Splits::Resolve(settings, source, explicitArgs);
+        VERIFY_IS_FALSE(explicitDecision.duplicate);
+        VERIFY_IS_FALSE(explicitDecision.unavailable);
+        VERIFY_IS_NULL(explicitDecision.target);
+        explicitArgs.Profile(L"");
+        explicitArgs.Commandline(L"cmd.exe");
+        VERIFY_IS_NULL(Splits::Resolve(settings, source, explicitArgs).target);
+        explicitArgs.Commandline(L"");
+        explicitArgs = NewTerminalArgs{ 0 };
+        VERIFY_IS_NULL(Splits::Resolve(settings, source, explicitArgs).target);
+        VERIFY_IS_NULL(Splits::Resolve(settings, source, BaseContentArgs{ L"scratchpad" }).target);
+        source.DefaultSplitProfile(L"{00000000-0000-0000-0000-000000000002}");
+        source.Hidden(true);
+        VERIFY_IS_TRUE(Splits::Resolve(settings, source, nullptr).unavailable);
+    }
 
     void CustomAgentAndPolicyTests::CustomAcpAgentRoundtrips()
     {

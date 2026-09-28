@@ -2992,4 +2992,64 @@ Alt+Shift+/ enter a prompt; Alt+Shift+B launch without an initial prompt.</value
     <value>Remove</value>
     <comment>Tooltip for the X button that removes a custom agent from the agent list.</comment>
   </data>
+  <data name="Profile_AgentCustomCommand.Header" xml:space="preserve">
+    <value>‮Üšë å çüšŧöḿ çöḿḿåñđ ŀïñë‬ !!! !!!</value>
+    <comment>Toggle in an AI agent profile. When enabled, the user controls the full startup command instead of the managed agent launcher.</comment>
+  </data>
+  <data name="Profile_AgentCustomCommand.HelpText" xml:space="preserve">
+    <value>‮Ŕüñ ŧħë çöḿḿåñđ ŀïñë åƀöṽë ïñšŧëåđ öƒ ģëñëŕåŧïñģ ïŧ ƒŕöḿ ŧħë åģëñŧ šëŧŧïñģš. Ḿöđëŀ, ƥëŕḿïššïöñ ḿöđë, åñđ åđđïŧïöñåŀ åŕģüḿëñŧ šëŧŧïñģš ƀëŀöŵ đö ñöŧ åƥƥŀÿ ŧö å çüšŧöḿ çöḿḿåñđ.‬ !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!!</value>
+    <comment>Explains precedence between a custom startup command and structured AI agent profile options.</comment>
+  </data>
+  <data name="Profile_AgentModel.Header" xml:space="preserve">
+    <value>‮Åģëñŧ ḿöđëŀ‬ !!!</value>
+    <comment>Model identifier passed to the native interactive AI agent command-line application.</comment>
+  </data>
+  <data name="Profile_AgentModel.HelpText" xml:space="preserve">
+    <value>‮Ëñŧëŕ å ḿöđëŀ ïđëñŧïƒïëŕ šüƥƥöŕŧëđ ƀÿ ŧħïš åģëñŧ. Ŀëåṽë ëḿƥŧÿ ŧö üšë ŧħë åģëñŧ'š öŵñ çöñƒïģüŕåŧïöñ. Åƥƥŀïëš ŧö ñëŵ šëššïöñš.‬ !!! !!! !!! !!! !!! !!! !!! !!!</value>
+    <comment>The model is a free-text CLI identifier, not a model discovered through ACP.</comment>
+  </data>
+  <data name="Profile_AgentPermission.Header" xml:space="preserve">
+    <value>‮Åģëñŧ ƥëŕḿïššïöñ ḿöđë‬ !!! !!!</value>
+    <comment>Selects a native AI agent permission or approval mode, not Windows file permissions.</comment>
+  </data>
+  <data name="Profile_AgentPermission.HelpText" xml:space="preserve">
+    <value>‮Çħööšë å ḿöđë šüƥƥöŕŧëđ ƀÿ ŧħë åģëñŧ. Ḿöđëš çöñŧŕöŀ åģëñŧ åƥƥŕöṽåŀš öŕ šåñđƀöẋ šëŧŧïñģš åñđ đö ñöŧ ģŕåñŧ öŕ ŕëṽöķë ‬Windows‮ ƒïŀë ƥëŕḿïššïöñš. Đëƒåüŀŧ ŀëåṽëš ŧħë åģëñŧ'š öŵñ çöñƒïģüŕåŧïöñ üñçħåñģëđ.‬ !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!!</value>
+    <comment>{Locked="Windows"} Explains that AI agent approval policies and operating system permissions differ.</comment>
+  </data>
+  <data name="Profile_AgentArguments.Header" xml:space="preserve">
+    <value>‮Åđđïŧïöñåŀ åģëñŧ åŕģüḿëñŧš‬ !!! !!!</value>
+    <comment>Additional startup arguments for the native AI agent command-line application.</comment>
+  </data>
+  <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
+    <value>‮Üšë ‬Windows‮ çöḿḿåñđ-ŀïñë ɋüöŧïñģ ƒöŕ ṽåŀüëš çöñŧåïñïñģ šƥåçëš. Åŕģüḿëñŧš ŧħåŧ çöñƒŀïçŧ ŵïŧħ ḿåñåģëđ šëŧŧïñģš öŕ ƥöŀïçÿ åŕë ŕëĵëçŧëđ. Šħëŀŀ çöḿḿåñđš åŕë ñöŧ šüƥƥöŕŧëđ.‬ !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!!</value>
+    <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
+  </data>
+  <data name="Profile_DefaultSplitProfile.Header" xml:space="preserve">
+    <value>‮Đëƒåüŀŧ šƥŀïŧ ƥŕöƒïŀë‬ !!! !!!</value>
+    <comment>The profile to launch when using the default pane-splitting action from this profile.</comment>
+  </data>
+  <data name="Profile_DefaultSplitProfile.HelpText" xml:space="preserve">
+    <value>‮Çħööšë ŧħë ƥŕöƒïŀë öƥëñëđ ƀÿ đëƒåüŀŧ šƥŀïŧ åçŧïöñš. Ëẋƥŀïçïŧ đüƥŀïçåŧë åçŧïöñš šŧïŀŀ üšë ŧħë çüŕŕëñŧ ƥŕöƒïŀë. Å ṽåŀïđ ŕëƥöŕŧëđ ŵöŕķïñģ đïŕëçŧöŕÿ ïš ƥŕëšëŕṽëđ; öŧħëŕŵïšë ŧħë ŧåŕģëŧ ƥŕöƒïŀë'š šŧåŕŧïñģ đïŕëçŧöŕÿ ïš üšëđ.‬ !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!!</value>
+    <comment>Explains profile-aware pane splitting. Duplicate means starting another process, not copying chat history.</comment>
+  </data>
+  <data name="Profile_AgentDefault" xml:space="preserve">
+    <value>‮Åģëñŧ đëƒåüŀŧ‬ !!!</value>
+    <comment>Permission option that leaves the AI agent's existing configuration unchanged.</comment>
+  </data>
+  <data name="Profile_SplitSame" xml:space="preserve">
+    <value>‮Šåḿë ƥŕöƒïŀë‬ !!!</value>
+    <comment>Default split choice: launch another process using the current pane's profile.</comment>
+  </data>
+  <data name="Profile_SplitDefault" xml:space="preserve">
+    <value>‮Ģŀöƀåŀ đëƒåüŀŧ ƥŕöƒïŀë‬ !!! !!!</value>
+    <comment>Default split choice: launch the profile configured as the application's global default.</comment>
+  </data>
+  <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
+    <value>‮Üšë ƥŕöƒïŀë šƥŀïŧ ƥŕëƒëŕëñçë‬ !!! !!!</value>
+    <comment>Split action mode that uses the current profile's configured split target, or duplicates the profile when no target is configured.</comment>
+  </data>
+  <data name="Profile_AgentPolicyBlocked.Text" xml:space="preserve">
+    <value>‮Ÿöüŕ öŕģåñïžåŧïöñ ƀŀöçķš ḿåñåģëđ ñåŧïṽë åģëñŧ ŀåüñçħëš. Ŧħë åģëñŧ ḿüšŧ ƀë åŀŀöŵëđ, åñđ ƥöŀïçÿ ḿüšŧ ƥëŕḿïŧ åüŧöḿåŧïç åƥƥŕöṽåŀ ƀëçåüšë ñåŧïṽë åģëñŧš çöñŧŕöŀ ŧħëïŕ öŵñ åƥƥŕöṽåŀ šëŧŧïñģš.‬ !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!!</value>
+    <comment>Warning when an agent profile is blocked by the agent allowlist or the policy prohibiting automatic approval. The native CLI cannot guarantee enforcement of the latter policy throughout its session.</comment>
+  </data>
 </root>

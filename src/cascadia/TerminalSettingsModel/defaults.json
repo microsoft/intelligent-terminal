@@ -613,6 +613,9 @@
         { "command": { "action": "splitPane", "splitMode": "duplicate", "split": "down" }, "id": "Terminal.DuplicatePaneDown" },
         { "command": { "action": "splitPane", "splitMode": "duplicate", "split": "right" }, "id": "Terminal.DuplicatePaneRight" },
         { "command": { "action": "splitPane", "splitMode": "duplicate", "split": "auto" }, "id": "Terminal.DuplicatePaneAuto" },
+        { "command": { "action": "splitPane", "splitMode": "profile", "split": "down" }, "id": "Terminal.SplitProfileDown" },
+        { "command": { "action": "splitPane", "splitMode": "profile", "split": "right" }, "id": "Terminal.SplitProfileRight" },
+        { "command": { "action": "splitPane", "splitMode": "profile", "split": "auto" }, "id": "Terminal.SplitProfileAuto" },
         { "command": { "action": "resizePane", "direction": "down" }, "id": "Terminal.ResizePaneDown" },
         { "command": { "action": "resizePane", "direction": "left" }, "id": "Terminal.ResizePaneLeft" },
         { "command": { "action": "resizePane", "direction": "right" }, "id": "Terminal.ResizePaneRight" },
@@ -796,8 +799,8 @@
 
         // Pane Management
         { "keys": "ctrl+shift+w", "id": "Terminal.ClosePane" },
-        { "keys": "alt+shift+-", "id": "Terminal.DuplicatePaneDown" },
-        { "keys": "alt+shift+plus", "id": "Terminal.DuplicatePaneRight" },
+        { "keys": "alt+shift+-", "id": "Terminal.SplitProfileDown" },
+        { "keys": "alt+shift+plus", "id": "Terminal.SplitProfileRight" },
         { "keys": "alt+shift+down", "id": "Terminal.ResizePaneDown" },
         { "keys": "alt+shift+left", "id": "Terminal.ResizePaneLeft" },
         { "keys": "alt+shift+right", "id": "Terminal.ResizePaneRight" },

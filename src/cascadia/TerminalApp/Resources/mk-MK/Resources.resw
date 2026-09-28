@@ -424,4 +424,12 @@
     <value>Агент · Поврзување</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="SplitProfileUnavailableTitle" xml:space="preserve">
+    <value>Профилот за поделба не е достапен</value>
+    <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
+  </data>
+  <data name="SplitProfileUnavailableMessage" xml:space="preserve">
+    <value>Конфигурираниот профил за поделба не е достапен. Наместо него ќе се користи глобалниот стандарден профил. Може да го промените целниот профил за поделба во поставките на овој профил.</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid.</comment>
+  </data>
 </root>

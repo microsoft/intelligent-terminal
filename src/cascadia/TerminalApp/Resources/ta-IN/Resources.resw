@@ -405,4 +405,12 @@
     <value>முகவர் · இணைக்கப்படுகிறது</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="SplitProfileUnavailableTitle" xml:space="preserve">
+    <value>பிரிப்பதற்கான சுயவிவரம் கிடைக்கவில்லை</value>
+    <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
+  </data>
+  <data name="SplitProfileUnavailableMessage" xml:space="preserve">
+    <value>பிரிப்பதற்காக உள்ளமைக்கப்பட்ட சுயவிவரம் கிடைக்கவில்லை. அதற்குப் பதிலாக உலகளாவிய இயல்புநிலைச் சுயவிவரம் பயன்படுத்தப்படும். இந்தச் சுயவிவரத்தின் அமைப்புகளில் பிரிப்பதற்கான இலக்குச் சுயவிவரத்தை மாற்றலாம்.</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid.</comment>
+  </data>
 </root>

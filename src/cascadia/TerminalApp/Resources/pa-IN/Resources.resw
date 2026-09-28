@@ -426,4 +426,12 @@
     <value>ਏਜੰਟ · ਕਨੈਕਟ ਹੋ ਰਿਹਾ ਹੈ</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="SplitProfileUnavailableTitle" xml:space="preserve">
+    <value>ਵੰਡ ਲਈ ਪ੍ਰੋਫਾਈਲ ਉਪਲਬਧ ਨਹੀਂ ਹੈ</value>
+    <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
+  </data>
+  <data name="SplitProfileUnavailableMessage" xml:space="preserve">
+    <value>ਵੰਡ ਲਈ ਕੌਂਫਿਗਰ ਕੀਤਾ ਪ੍ਰੋਫਾਈਲ ਉਪਲਬਧ ਨਹੀਂ ਹੈ। ਇਸ ਦੀ ਥਾਂ ਗਲੋਬਲ ਡਿਫੌਲਟ ਪ੍ਰੋਫਾਈਲ ਵਰਤਿਆ ਜਾਵੇਗਾ। ਤੁਸੀਂ ਇਸ ਪ੍ਰੋਫਾਈਲ ਦੀਆਂ ਸੈਟਿੰਗਾਂ ਵਿੱਚ ਵੰਡ ਦਾ ਟੀਚਾ ਪ੍ਰੋਫਾਈਲ ਬਦਲ ਸਕਦੇ ਹੋ।</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid.</comment>
+  </data>
 </root>

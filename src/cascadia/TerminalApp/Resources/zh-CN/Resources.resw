@@ -1351,4 +1351,12 @@
     <value>智能体 · 连接中</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="SplitProfileUnavailableTitle" xml:space="preserve">
+    <value>拆分配置文件不可用</value>
+    <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
+  </data>
+  <data name="SplitProfileUnavailableMessage" xml:space="preserve">
+    <value>配置的拆分配置文件不可用。将改用全局默认配置文件。你可以在此配置文件的设置中更改拆分目标。</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid.</comment>
+  </data>
 </root>

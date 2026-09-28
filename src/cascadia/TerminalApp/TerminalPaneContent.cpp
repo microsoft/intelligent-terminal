@@ -8,6 +8,7 @@
 
 #include "TerminalSettingsCache.h"
 #include "../../types/inc/utils.hpp"
+#include "../inc/AgentProfileUtils.h"
 
 #include "BellEventArgs.g.cpp"
 #include "TerminalPaneContent.g.cpp"
@@ -27,6 +28,8 @@ namespace winrt::TerminalApp::implementation
         _cache{ cache },
         _profile{ profile }
     {
+        _usesManagedAgentCommand = ::Microsoft::Terminal::AgentProfiles::IsManaged(_profile) &&
+                                   _control.Settings().Commandline() == ::Microsoft::Terminal::AgentProfiles::Command(_profile);
         _setupControlEvents();
     }
 
@@ -104,7 +107,10 @@ namespace winrt::TerminalApp::implementation
             args.StartingDirectory(controlSettings.StartingDirectory());
         }
         args.TabTitle(controlSettings.StartingTitle());
-        args.Commandline(controlSettings.Commandline());
+        if (!_usesManagedAgentCommand || !::Microsoft::Terminal::AgentProfiles::IsManaged(_profile))
+        {
+            args.Commandline(controlSettings.Commandline());
+        }
         args.SuppressApplicationTitle(controlSettings.SuppressApplicationTitle());
         if (controlSettings.TabColor() || controlSettings.StartingTabColor())
         {

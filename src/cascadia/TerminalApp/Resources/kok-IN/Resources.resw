@@ -427,4 +427,12 @@
     <value>एजेंट · जोडटा</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="SplitProfileUnavailableTitle" xml:space="preserve">
+    <value>विभाजनाखातीरचें प्रोफायल उपलब्ध ना</value>
+    <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
+  </data>
+  <data name="SplitProfileUnavailableMessage" xml:space="preserve">
+    <value>विभाजनाखातीर संरचीत केल्लें प्रोफायल उपलब्ध ना. ताचे सुवातेर जागतीक मुलभूत प्रोफायल वापरतले. ह्या प्रोफायलाच्या मांडावळींत तुमी विभाजनाचें लक्ष्य प्रोफायल बदलूंक शकतात.</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid.</comment>
+  </data>
 </root>

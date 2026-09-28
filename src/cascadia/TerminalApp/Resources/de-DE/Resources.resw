@@ -1337,4 +1337,12 @@ Für alle verfügbaren Optionen führen Sie 'wt new-tab --help' aus.</value>
     <value>Agent · Verbindung wird hergestellt</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="SplitProfileUnavailableTitle" xml:space="preserve">
+    <value>Profil zum Teilen nicht verfügbar</value>
+    <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
+  </data>
+  <data name="SplitProfileUnavailableMessage" xml:space="preserve">
+    <value>Das konfigurierte Profil zum Teilen ist nicht verfügbar. Stattdessen wird das globale Standardprofil verwendet. Sie können das Ziel für die Teilung in den Einstellungen dieses Profils ändern.</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid.</comment>
+  </data>
 </root>

@@ -423,4 +423,12 @@
     <value>عامل · در حال اتصال</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="SplitProfileUnavailableTitle" xml:space="preserve">
+    <value>نمایهٔ تقسیم در دسترس نیست</value>
+    <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
+  </data>
+  <data name="SplitProfileUnavailableMessage" xml:space="preserve">
+    <value>نمایهٔ پیکربندی‌شده برای تقسیم در دسترس نیست. به‌جای آن از نمایهٔ پیش‌فرض سراسری استفاده خواهد شد. می‌توانید نمایهٔ مقصد تقسیم را در تنظیمات این نمایه تغییر دهید.</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid.</comment>
+  </data>
 </root>

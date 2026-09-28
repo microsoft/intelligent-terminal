@@ -424,4 +424,12 @@
     <value>סוכן · מתחבר</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="SplitProfileUnavailableTitle" xml:space="preserve">
+    <value>פרופיל הפיצול אינו זמין</value>
+    <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
+  </data>
+  <data name="SplitProfileUnavailableMessage" xml:space="preserve">
+    <value>פרופיל הפיצול שהוגדר אינו זמין. במקומו ייעשה שימוש בפרופיל ברירת המחדל הכללי. ניתן לשנות את פרופיל היעד לפיצול בהגדרות של פרופיל זה.</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid.</comment>
+  </data>
 </root>

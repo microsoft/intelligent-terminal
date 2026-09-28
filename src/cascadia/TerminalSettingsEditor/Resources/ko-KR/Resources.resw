@@ -3042,4 +3042,64 @@ Alt+Shift+/ 프롬프트 입력; Alt+Shift+B 초기 프롬프트 없이 실행</
     <value>제거</value>
     <comment>Tooltip for the X button that removes a custom agent from the agent list.</comment>
   </data>
+  <data name="Profile_AgentCustomCommand.Header" xml:space="preserve">
+    <value>사용자 지정 명령줄 사용</value>
+    <comment>Toggle in an AI agent profile. When enabled, the user controls the full startup command instead of the managed agent launcher.</comment>
+  </data>
+  <data name="Profile_AgentCustomCommand.HelpText" xml:space="preserve">
+    <value>에이전트 설정에서 명령줄을 생성하는 대신 위의 명령줄을 실행합니다. 아래의 모델, 권한 모드 및 추가 인수 설정은 사용자 지정 명령에 적용되지 않습니다.</value>
+    <comment>Explains precedence between a custom startup command and structured AI agent profile options.</comment>
+  </data>
+  <data name="Profile_AgentModel.Header" xml:space="preserve">
+    <value>에이전트 모델</value>
+    <comment>Model identifier passed to the native interactive AI agent command-line application.</comment>
+  </data>
+  <data name="Profile_AgentModel.HelpText" xml:space="preserve">
+    <value>이 에이전트에서 지원하는 모델 식별자를 입력하세요. 비워 두면 에이전트 자체 구성이 사용됩니다. 새 세션에 적용됩니다.</value>
+    <comment>The model is a free-text CLI identifier, not a model discovered through ACP.</comment>
+  </data>
+  <data name="Profile_AgentPermission.Header" xml:space="preserve">
+    <value>에이전트 권한 모드</value>
+    <comment>Selects a native AI agent permission or approval mode, not Windows file permissions.</comment>
+  </data>
+  <data name="Profile_AgentPermission.HelpText" xml:space="preserve">
+    <value>에이전트에서 지원하는 모드를 선택하세요. 모드는 에이전트 승인 또는 샌드박스 설정을 제어하며 Windows 파일 권한을 부여하거나 취소하지 않습니다. 기본값을 선택하면 에이전트 자체 구성이 변경되지 않습니다.</value>
+    <comment>{Locked="Windows"} Explains that AI agent approval policies and operating system permissions differ.</comment>
+  </data>
+  <data name="Profile_AgentArguments.Header" xml:space="preserve">
+    <value>추가 에이전트 인수</value>
+    <comment>Additional startup arguments for the native AI agent command-line application.</comment>
+  </data>
+  <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
+    <value>공백이 포함된 값에는 Windows 명령줄의 따옴표 규칙을 사용하세요. 관리되는 설정이나 정책과 충돌하는 인수는 거부됩니다. 셸 명령은 지원되지 않습니다.</value>
+    <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
+  </data>
+  <data name="Profile_DefaultSplitProfile.Header" xml:space="preserve">
+    <value>분할 시 기본 프로필</value>
+    <comment>The profile to launch when using the default pane-splitting action from this profile.</comment>
+  </data>
+  <data name="Profile_DefaultSplitProfile.HelpText" xml:space="preserve">
+    <value>기본 분할 작업으로 열 프로필을 선택하세요. 명시적인 복제 작업은 계속 현재 프로필을 사용합니다. 보고된 작업 디렉터리가 유효하면 유지되고, 그렇지 않으면 대상 프로필의 시작 디렉터리가 사용됩니다.</value>
+    <comment>Explains profile-aware pane splitting. Duplicate means starting another process, not copying chat history.</comment>
+  </data>
+  <data name="Profile_AgentDefault" xml:space="preserve">
+    <value>에이전트 기본값</value>
+    <comment>Permission option that leaves the AI agent's existing configuration unchanged.</comment>
+  </data>
+  <data name="Profile_SplitSame" xml:space="preserve">
+    <value>동일한 프로필</value>
+    <comment>Default split choice: launch another process using the current pane's profile.</comment>
+  </data>
+  <data name="Profile_SplitDefault" xml:space="preserve">
+    <value>전역 기본 프로필</value>
+    <comment>Default split choice: launch the profile configured as the application's global default.</comment>
+  </data>
+  <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
+    <value>프로필의 분할 기본 설정 사용</value>
+    <comment>Split action mode that uses the current profile's configured split target, or duplicates the profile when no target is configured.</comment>
+  </data>
+  <data name="Profile_AgentPolicyBlocked.Text" xml:space="preserve">
+    <value>조직에서 관리되는 방식의 네이티브 에이전트 실행을 차단합니다. 네이티브 에이전트는 자체 승인 설정을 제어하므로 에이전트가 허용되어야 하며 정책에서도 자동 승인을 허용해야 합니다.</value>
+    <comment>Warning when an agent profile is blocked by the agent allowlist or the policy prohibiting automatic approval. The native CLI cannot guarantee enforcement of the latter policy throughout its session.</comment>
+  </data>
 </root>

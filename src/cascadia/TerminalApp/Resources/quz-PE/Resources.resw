@@ -310,4 +310,12 @@
     <value>Agente · T'inkichkan</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="SplitProfileUnavailableTitle" xml:space="preserve">
+    <value>Rakinapaq perfilqa manam kanchu</value>
+    <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
+  </data>
+  <data name="SplitProfileUnavailableMessage" xml:space="preserve">
+    <value>Rakinapaq wakichisqa perfilqa manam kanchu. Chaypa rantinpi llapapaq ñawpaqmantaraq akllasqa perfilmi llamk’achisqa kanqa. Kay perfilpa tupachiyninkunapi rakinapaq chayana perfilta tikrayta atinki.</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid.</comment>
+  </data>
 </root>

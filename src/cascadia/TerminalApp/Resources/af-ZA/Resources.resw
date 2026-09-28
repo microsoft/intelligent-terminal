@@ -309,4 +309,12 @@
     <value>Agent · Koppel tans</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="SplitProfileUnavailableTitle" xml:space="preserve">
+    <value>Profiel vir verdeling is nie beskikbaar nie</value>
+    <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
+  </data>
+  <data name="SplitProfileUnavailableMessage" xml:space="preserve">
+    <value>Die ingestelde profiel vir verdeling is nie beskikbaar nie. Die globale verstekprofiel sal eerder gebruik word. Jy kan die teiken vir verdeling in hierdie profiel se instellings verander.</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid.</comment>
+  </data>
 </root>

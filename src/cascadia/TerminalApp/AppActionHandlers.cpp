@@ -3,6 +3,7 @@
 
 #include "pch.h"
 #include "../inc/AgentPaneRestore.h"
+#include "../inc/ProfileSplitPolicy.h"
 #include "App.h"
 
 #include "TerminalPage.h"
@@ -286,9 +287,48 @@ namespace winrt::TerminalApp::implementation
                 return;
             }
 
-            const auto& duplicateFromTab{ realArgs.SplitMode() == SplitType::Duplicate ? _GetFocusedTab() : nullptr };
-
             const auto& activeTab{ _senderOrFocusedTab(sender) };
+            auto contentArgs = realArgs.ContentArgs();
+            winrt::TerminalApp::Tab duplicateFromTab{ realArgs.SplitMode() == SplitType::Duplicate ? _GetFocusedTab() : nullptr };
+            if (realArgs.SplitMode() == SplitType::Profile && activeTab)
+            {
+                const auto decision = ::Microsoft::Terminal::ProfileSplits::Resolve(
+                    _settings, activeTab->GetFocusedProfile(), contentArgs);
+                if (decision.duplicate)
+                {
+                    duplicateFromTab = *activeTab;
+                }
+                else if (decision.target)
+                {
+                    if (decision.unavailable)
+                    {
+                        LOG_HR_MSG(E_INVALIDARG, "Configured default split profile is unavailable; using the global default");
+                        if (auto presenter{ _dialogPresenter.get() })
+                        {
+                            Controls::ContentDialog dialog;
+                            dialog.Title(winrt::box_value(RS_(L"SplitProfileUnavailableTitle")));
+                            dialog.Content(winrt::box_value(RS_(L"SplitProfileUnavailableMessage")));
+                            dialog.CloseButtonText(RS_(L"Ok"));
+                            presenter.ShowDialog(dialog);
+                        }
+                    }
+                    const auto terminalArgs = contentArgs.try_as<NewTerminalArgs>();
+                    NewTerminalArgs splitArgs{ terminalArgs ? terminalArgs.Copy().as<NewTerminalArgs>() : NewTerminalArgs{} };
+                    splitArgs.Profile(::Microsoft::Console::Utils::GuidToString(decision.target.Guid()));
+                    if (splitArgs.StartingDirectory().empty())
+                    {
+                        if (const auto control = activeTab->GetActiveTerminalControl())
+                        {
+                            const auto directory = control.WorkingDirectory();
+                            if (::Microsoft::Console::Utils::IsValidDirectory(directory.c_str()))
+                            {
+                                splitArgs.StartingDirectory(directory);
+                            }
+                        }
+                    }
+                    contentArgs = splitArgs;
+                }
+            }
 
             // A persisted agent pane replays as an ordinary splitPane action,
             // but it cannot be built by `_MakePane`: the helper needs this
@@ -307,7 +347,7 @@ namespace winrt::TerminalApp::implementation
                                    realArgs.SplitDirection(),
                                    // This is safe, we're already filtering so the value is (0, 1)
                                    realArgs.SplitSize(),
-                                   _MakePane(realArgs.ContentArgs(), duplicateFromTab)));
+                                   _MakePane(contentArgs, duplicateFromTab)));
         }
     }
 

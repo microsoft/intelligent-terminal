@@ -456,6 +456,10 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         else
         {
             str.append(RS_switchable_(L"SplitPaneCommandKey"));
+            if (SplitMode() == SplitType::Profile)
+            {
+                str.append(L", splitMode: profile");
+            }
         }
         str.append(L", ");
 

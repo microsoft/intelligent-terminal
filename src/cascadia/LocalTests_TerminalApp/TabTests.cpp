@@ -297,6 +297,7 @@ namespace TerminalAppLocalTests
 
         TEST_METHOD(TryDuplicateBadTab);
         TEST_METHOD(TryDuplicateBadPane);
+        TEST_METHOD(ProfileAwareSplitPreservesExplicitTargets);
 
         TEST_METHOD(TryZoomPane);
         TEST_METHOD(MoveFocusFromZoomedPane);
@@ -2298,6 +2299,39 @@ namespace TerminalAppLocalTests
         VERIFY_SUCCEEDED(result);
 
         return page;
+    }
+
+    void TabTests::ProfileAwareSplitPreservesExplicitTargets()
+    {
+        BEGIN_TEST_METHOD_PROPERTIES()
+            TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
+        END_TEST_METHOD_PROPERTIES()
+
+        auto page = _commonSetup();
+        VERIFY_SUCCEEDED(RunOnUIThread([&page]() {
+            const auto source = page->_settings.ActiveProfiles().GetAt(0);
+            const auto target = page->_settings.ActiveProfiles().GetAt(1);
+            const auto explicitTarget = page->_settings.ActiveProfiles().GetAt(2);
+            source.DefaultSplitProfile(Microsoft::Console::Utils::GuidToString(target.Guid()));
+            target.DefaultSplitProfile(Microsoft::Console::Utils::GuidToString(source.Guid()));
+
+            ActionEventArgs configuredSplit{ SplitPaneArgs{ SplitType::Profile } };
+            page->_HandleSplitPane(nullptr, configuredSplit);
+            VERIFY_IS_TRUE(configuredSplit.Handled());
+            VERIFY_ARE_EQUAL(target.Guid(), page->_GetFocusedTabImpl()->GetFocusedProfile().Guid());
+
+            ActionEventArgs duplicate{ SplitPaneArgs{ SplitType::Duplicate } };
+            page->_HandleSplitPane(nullptr, duplicate);
+            VERIFY_IS_TRUE(duplicate.Handled());
+            VERIFY_ARE_EQUAL(target.Guid(), page->_GetFocusedTabImpl()->GetFocusedProfile().Guid());
+
+            NewTerminalArgs args{};
+            args.Profile(Microsoft::Console::Utils::GuidToString(explicitTarget.Guid()));
+            ActionEventArgs explicitSplit{ SplitPaneArgs{ SplitType::Profile, SplitDirection::Automatic, .5f, args } };
+            page->_HandleSplitPane(nullptr, explicitSplit);
+            VERIFY_IS_TRUE(explicitSplit.Handled());
+            VERIFY_ARE_EQUAL(explicitTarget.Guid(), page->_GetFocusedTabImpl()->GetFocusedProfile().Guid());
+        }));
     }
 
     void TabTests::TryZoomPane()

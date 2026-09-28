@@ -1014,4 +1014,8 @@
   <data name="OpenBackgroundAgentCommandKey" xml:space="preserve">
     <value>새 탭에서 백그라운드 에이전트 열기</value>
   <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+  <data name="AgentProfileGeneratorDisplayName" xml:space="preserve">
+    <value>AI 에이전트</value>
+    <comment>Name of the dynamic profile source and new-tab menu folder containing installed native AI agent command-line applications.</comment>
+  </data>
 </root>

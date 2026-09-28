@@ -2701,4 +2701,64 @@ Alt+Shift+/ введіть запит; Alt+Shift+B запустіть без п�
     <value>Видалити</value>
     <comment>Tooltip for the X button that removes a custom agent from the agent list.</comment>
   </data>
+  <data name="Profile_AgentCustomCommand.Header" xml:space="preserve">
+    <value>Використовувати власний командний рядок</value>
+    <comment>Toggle in an AI agent profile. When enabled, the user controls the full startup command instead of the managed agent launcher.</comment>
+  </data>
+  <data name="Profile_AgentCustomCommand.HelpText" xml:space="preserve">
+    <value>Виконує наведений вище командний рядок замість його створення з налаштувань агента. Наведені нижче налаштування моделі, режиму дозволів і додаткових аргументів не застосовуються до власної команди.</value>
+    <comment>Explains precedence between a custom startup command and structured AI agent profile options.</comment>
+  </data>
+  <data name="Profile_AgentModel.Header" xml:space="preserve">
+    <value>Модель агента</value>
+    <comment>Model identifier passed to the native interactive AI agent command-line application.</comment>
+  </data>
+  <data name="Profile_AgentModel.HelpText" xml:space="preserve">
+    <value>Введіть ідентифікатор моделі, яку підтримує цей агент. Залиште поле порожнім, щоб використовувати власну конфігурацію агента. Застосовується до нових сеансів.</value>
+    <comment>The model is a free-text CLI identifier, not a model discovered through ACP.</comment>
+  </data>
+  <data name="Profile_AgentPermission.Header" xml:space="preserve">
+    <value>Режим дозволів агента</value>
+    <comment>Selects a native AI agent permission or approval mode, not Windows file permissions.</comment>
+  </data>
+  <data name="Profile_AgentPermission.HelpText" xml:space="preserve">
+    <value>Виберіть режим, який підтримує агент. Режими керують схваленнями дій агента або налаштуваннями ізольованого середовища й не надають і не відкликають дозволи на доступ до файлів Windows. Стандартний режим залишає власну конфігурацію агента без змін.</value>
+    <comment>{Locked="Windows"} Explains that AI agent approval policies and operating system permissions differ.</comment>
+  </data>
+  <data name="Profile_AgentArguments.Header" xml:space="preserve">
+    <value>Додаткові аргументи агента</value>
+    <comment>Additional startup arguments for the native AI agent command-line application.</comment>
+  </data>
+  <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
+    <value>Для значень із пробілами використовуйте правила взяття в лапки командного рядка Windows. Аргументи, що суперечать керованим налаштуванням або політикам, відхиляються. Команди оболонки не підтримуються.</value>
+    <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
+  </data>
+  <data name="Profile_DefaultSplitProfile.Header" xml:space="preserve">
+    <value>Основний профіль для розділення</value>
+    <comment>The profile to launch when using the default pane-splitting action from this profile.</comment>
+  </data>
+  <data name="Profile_DefaultSplitProfile.HelpText" xml:space="preserve">
+    <value>Виберіть профіль, який відкриватимуть стандартні дії розділення. Явні дії дублювання й надалі використовують поточний профіль. Якщо повідомлений робочий каталог дійсний, він зберігається; інакше використовується початковий каталог цільового профілю.</value>
+    <comment>Explains profile-aware pane splitting. Duplicate means starting another process, not copying chat history.</comment>
+  </data>
+  <data name="Profile_AgentDefault" xml:space="preserve">
+    <value>За замовчуванням для агента</value>
+    <comment>Permission option that leaves the AI agent's existing configuration unchanged.</comment>
+  </data>
+  <data name="Profile_SplitSame" xml:space="preserve">
+    <value>Той самий профіль</value>
+    <comment>Default split choice: launch another process using the current pane's profile.</comment>
+  </data>
+  <data name="Profile_SplitDefault" xml:space="preserve">
+    <value>Глобальний основний профіль</value>
+    <comment>Default split choice: launch the profile configured as the application's global default.</comment>
+  </data>
+  <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
+    <value>Використовувати налаштування розділення профілю</value>
+    <comment>Split action mode that uses the current profile's configured split target, or duplicates the profile when no target is configured.</comment>
+  </data>
+  <data name="Profile_AgentPolicyBlocked.Text" xml:space="preserve">
+    <value>Ваша організація блокує керований запуск нативних агентів. Агент має бути дозволений, а політика має дозволяти автоматичне схвалення, оскільки нативні агенти самі керують власними налаштуваннями схвалення.</value>
+    <comment>Warning when an agent profile is blocked by the agent allowlist or the policy prohibiting automatic approval. The native CLI cannot guarantee enforcement of the latter policy throughout its session.</comment>
+  </data>
 </root>

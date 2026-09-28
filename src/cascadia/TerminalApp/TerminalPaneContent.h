@@ -75,6 +75,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Microsoft::Terminal::Settings::Model::Profile _profile{ nullptr };
         std::shared_ptr<TerminalSettingsCache> _cache{};
         bool _isDefTermSession{ false };
+        bool _usesManagedAgentCommand{ false };
 
         struct ControlEventTokens
         {

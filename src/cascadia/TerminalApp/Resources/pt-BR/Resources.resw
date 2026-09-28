@@ -1362,4 +1362,12 @@ Para todas as opções disponíveis, execute 'wt new-tab --help'.</value>
     <value>Agente · Conectando</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="SplitProfileUnavailableTitle" xml:space="preserve">
+    <value>Perfil de divisão indisponível</value>
+    <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
+  </data>
+  <data name="SplitProfileUnavailableMessage" xml:space="preserve">
+    <value>O perfil de divisão configurado está indisponível. O perfil padrão global será usado em seu lugar. Você pode alterar o destino da divisão nas configurações deste perfil.</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid.</comment>
+  </data>
 </root>

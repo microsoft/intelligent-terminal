@@ -309,4 +309,12 @@
     <value>Asiant · Yn cysylltu</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="SplitProfileUnavailableTitle" xml:space="preserve">
+    <value>Nid yw’r proffil hollti ar gael</value>
+    <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
+  </data>
+  <data name="SplitProfileUnavailableMessage" xml:space="preserve">
+    <value>Nid yw’r proffil hollti sydd wedi’i ffurfweddu ar gael. Defnyddir y proffil diofyn cyffredinol yn ei le. Gallwch newid y proffil targed ar gyfer hollti yng ngosodiadau’r proffil hwn.</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid.</comment>
+  </data>
 </root>

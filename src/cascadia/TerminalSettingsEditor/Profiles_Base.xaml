@@ -57,21 +57,85 @@
             <local:SettingContainer x:Name="Commandline"
                                     x:Uid="Profile_Commandline"
                                     ClearSettingValue="{x:Bind Profile.ClearCommandline}"
-                                    CurrentValue="{x:Bind Profile.Commandline, Mode=OneWay}"
+                                    CurrentValue="{x:Bind Profile.LaunchCommandline, Mode=OneWay}"
                                     HasSettingValue="{x:Bind Profile.HasCommandline, Mode=OneWay}"
                                     SettingOverrideSource="{x:Bind Profile.CommandlineOverrideSource, Mode=OneWay}"
                                     Style="{StaticResource ExpanderSettingContainerStyle}"
                                     Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(Profile.IsBaseLayer), Mode=OneWay}">
                 <StackPanel>
                     <TextBox x:Uid="Profile_CommandlineBox"
+                             IsEnabled="{x:Bind mtu:Converters.InvertBoolean(Profile.IsManagedAgentProfile), Mode=OneWay}"
                              IsSpellCheckEnabled="False"
                              Style="{StaticResource TextBoxSettingStyle}"
-                             Text="{x:Bind Profile.Commandline, Mode=TwoWay}" />
+                             Text="{x:Bind Profile.LaunchCommandline, Mode=TwoWay}" />
                     <Button x:Uid="Profile_CommandlineBrowse"
+                            IsEnabled="{x:Bind mtu:Converters.InvertBoolean(Profile.IsManagedAgentProfile), Mode=OneWay}"
                             Margin="0,8,0,0"
                             Click="Commandline_Click"
                             Style="{StaticResource BrowseButtonStyle}" />
                 </StackPanel>
+            </local:SettingContainer>
+
+            <local:SettingContainer x:Uid="Profile_AgentCustomCommand"
+                                    ClearSettingValue="{x:Bind Profile.ClearAgentProfileCustomCommand}"
+                                    HasSettingValue="{x:Bind Profile.HasAgentProfileCustomCommand, Mode=OneWay}"
+                                    SettingOverrideSource="{x:Bind Profile.AgentProfileCustomCommandOverrideSource, Mode=OneWay}"
+                                    Visibility="{x:Bind Profile.IsAgentProfile, Mode=OneWay}">
+                <ToggleSwitch IsOn="{x:Bind Profile.AgentProfileCustomCommand, Mode=TwoWay}"
+                              Style="{StaticResource ToggleSwitchInExpanderStyle}" />
+            </local:SettingContainer>
+
+            <TextBlock x:Uid="Profile_AgentPolicyBlocked"
+                       Style="{StaticResource DisclaimerStyle}"
+                       Visibility="{x:Bind Profile.IsAgentProfilePolicyBlocked, Mode=OneWay}" />
+
+            <local:SettingContainer x:Uid="Profile_AgentModel"
+                                    ClearSettingValue="{x:Bind Profile.ClearAgentProfileModel}"
+                                    CurrentValue="{x:Bind Profile.AgentProfileModel, Mode=OneWay}"
+                                    HasSettingValue="{x:Bind Profile.HasAgentProfileModel, Mode=OneWay}"
+                                    SettingOverrideSource="{x:Bind Profile.AgentProfileModelOverrideSource, Mode=OneWay}"
+                                    Style="{StaticResource ExpanderSettingContainerStyle}"
+                                    Visibility="{x:Bind Profile.IsManagedAgentProfile, Mode=OneWay}">
+                <TextBox IsSpellCheckEnabled="False"
+                         Style="{StaticResource TextBoxSettingStyle}"
+                         Text="{x:Bind Profile.AgentProfileModel, Mode=TwoWay}" />
+            </local:SettingContainer>
+
+            <local:SettingContainer x:Uid="Profile_AgentPermission"
+                                    ClearSettingValue="{x:Bind Profile.ClearAgentProfilePermissionMode}"
+                                    CurrentValue="{x:Bind Profile.CurrentAgentProfilePermission.DisplayLabel, Mode=OneWay}"
+                                    HasSettingValue="{x:Bind Profile.HasAgentProfilePermissionMode, Mode=OneWay}"
+                                    SettingOverrideSource="{x:Bind Profile.AgentProfilePermissionModeOverrideSource, Mode=OneWay}"
+                                    Style="{StaticResource ExpanderSettingContainerStyle}"
+                                    Visibility="{x:Bind Profile.IsManagedAgentProfile, Mode=OneWay}">
+                <ComboBox ItemTemplate="{StaticResource ProfileAgentEntryTemplate}"
+                          ItemsSource="{x:Bind Profile.AgentProfilePermissionList, Mode=OneWay}"
+                          SelectedItem="{x:Bind Profile.CurrentAgentProfilePermission, Mode=TwoWay}"
+                          Style="{StaticResource ComboBoxSettingStyle}" />
+            </local:SettingContainer>
+
+            <local:SettingContainer x:Uid="Profile_AgentArguments"
+                                    ClearSettingValue="{x:Bind Profile.ClearAgentProfileArguments}"
+                                    CurrentValue="{x:Bind Profile.AgentProfileArguments, Mode=OneWay}"
+                                    HasSettingValue="{x:Bind Profile.HasAgentProfileArguments, Mode=OneWay}"
+                                    SettingOverrideSource="{x:Bind Profile.AgentProfileArgumentsOverrideSource, Mode=OneWay}"
+                                    Style="{StaticResource ExpanderSettingContainerStyle}"
+                                    Visibility="{x:Bind Profile.IsManagedAgentProfile, Mode=OneWay}">
+                <TextBox IsSpellCheckEnabled="False"
+                         Style="{StaticResource TextBoxSettingStyle}"
+                         Text="{x:Bind Profile.AgentProfileArguments, Mode=TwoWay}" />
+            </local:SettingContainer>
+
+            <local:SettingContainer x:Uid="Profile_DefaultSplitProfile"
+                                    ClearSettingValue="{x:Bind Profile.ClearDefaultSplitProfile}"
+                                    CurrentValue="{x:Bind Profile.CurrentSplitProfile.DisplayLabel, Mode=OneWay}"
+                                    HasSettingValue="{x:Bind Profile.HasDefaultSplitProfile, Mode=OneWay}"
+                                    SettingOverrideSource="{x:Bind Profile.DefaultSplitProfileOverrideSource, Mode=OneWay}"
+                                    Style="{StaticResource ExpanderSettingContainerStyle}">
+                <ComboBox ItemTemplate="{StaticResource ProfileAgentEntryTemplate}"
+                          ItemsSource="{x:Bind Profile.SplitProfileList, Mode=OneWay}"
+                          SelectedItem="{x:Bind Profile.CurrentSplitProfile, Mode=TwoWay}"
+                          Style="{StaticResource ComboBoxSettingStyle}" />
             </local:SettingContainer>
 
             <!--  Starting Directory  -->

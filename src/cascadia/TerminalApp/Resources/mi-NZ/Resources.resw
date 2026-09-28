@@ -310,4 +310,12 @@
     <value>Kaitiaki · E hono ana</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="SplitProfileUnavailableTitle" xml:space="preserve">
+    <value>Kāore te kōtaha wāwāhi i te wātea</value>
+    <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
+  </data>
+  <data name="SplitProfileUnavailableMessage" xml:space="preserve">
+    <value>Kāore te kōtaha kua whirihoratia mō te wāwāhi i te wātea. Ka whakamahia kētia te kōtaha taunoa whānui. Ka taea e koe te huri i te kōtaha ūnga mō te wāwāhi i ngā tautuhinga o tēnei kōtaha.</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid.</comment>
+  </data>
 </root>

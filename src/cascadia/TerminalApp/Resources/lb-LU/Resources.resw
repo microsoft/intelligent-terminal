@@ -310,4 +310,12 @@
     <value>Agent · Verbënnt</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="SplitProfileUnavailableTitle" xml:space="preserve">
+    <value>Profil fir d’Opdeelung net disponibel</value>
+    <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
+  </data>
+  <data name="SplitProfileUnavailableMessage" xml:space="preserve">
+    <value>De konfiguréierte Profil fir d’Opdeelung ass net disponibel. Amplaz gëtt de globale Standardprofil benotzt. Dir kënnt den Zilprofil fir d’Opdeelung an den Astellunge vun dësem Profil änneren.</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid.</comment>
+  </data>
 </root>

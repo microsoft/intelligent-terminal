@@ -402,4 +402,12 @@
     <value>Agent · Ulanilmoqda</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="SplitProfileUnavailableTitle" xml:space="preserve">
+    <value>Bo‘lish profili mavjud emas</value>
+    <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
+  </data>
+  <data name="SplitProfileUnavailableMessage" xml:space="preserve">
+    <value>Bo‘lish uchun sozlangan profil mavjud emas. Uning o‘rniga umumiy standart profil ishlatiladi. Bo‘lishning maqsad profilini ushbu profil sozlamalarida o‘zgartirishingiz mumkin.</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid.</comment>
+  </data>
 </root>

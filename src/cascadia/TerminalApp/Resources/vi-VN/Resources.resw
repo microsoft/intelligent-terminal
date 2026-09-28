@@ -334,4 +334,12 @@
     <value>Để có trải nghiệm quản lý phiên tốt nhất, hãy bật Sessions trong Settings &gt; Agents.</value>
     <comment>Subtle hint below the agent sessions title, shown only in session management when Sessions is off and policy permits changes. Navigation is Settings &gt; Agents, then turn on Sessions. Match the displayed labels: Settings uses SettingsMenuItem/SettingsTab, Agents uses Nav_AIAgents.Content, and Sessions uses AIAgents_SessionManagement.Header, including fallback labels where a locale has no translation. Turning Sessions off only prevents hook updates; existing hooks and session functionality can keep working. Do not imply that tracking, data refresh, or functionality stops.</comment>
   </data>
+  <data name="SplitProfileUnavailableTitle" xml:space="preserve">
+    <value>Hồ sơ chia ngăn không khả dụng</value>
+    <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
+  </data>
+  <data name="SplitProfileUnavailableMessage" xml:space="preserve">
+    <value>Hồ sơ chia ngăn đã định cấu hình không khả dụng. Hồ sơ mặc định chung sẽ được dùng thay thế. Bạn có thể thay đổi hồ sơ đích để chia ngăn trong phần cài đặt của hồ sơ này.</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid.</comment>
+  </data>
 </root>

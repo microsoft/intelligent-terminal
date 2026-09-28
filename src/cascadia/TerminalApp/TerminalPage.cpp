@@ -13328,6 +13328,8 @@ namespace winrt::TerminalApp::implementation
         const auto splitPaneUpText = RS_(L"SplitPaneUpText");
         const auto splitPaneLeftText = RS_(L"SplitPaneLeftText");
         const auto splitPaneToolTipText = RS_(L"SplitPaneToolTipText");
+        makeItem(RS_(L"SplitPaneText"), L"\xF246",
+                 ActionAndArgs{ ShortcutAction::SplitPane, SplitPaneArgs{ SplitType::Profile } }, splitPaneMenu);
 
         // GetFocusedProfile can return null if no child of the focused tab
         // was the last control to be focused (e.g. transient focus states).

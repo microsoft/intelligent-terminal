@@ -2997,4 +2997,64 @@ Alt+Shift+/ inserisci un prompt; Alt+Shift+B avvia senza un prompt iniziale.</va
     <value>Rimuovi</value>
     <comment>Tooltip for the X button that removes a custom agent from the agent list.</comment>
   </data>
+  <data name="Profile_AgentCustomCommand.Header" xml:space="preserve">
+    <value>Usa una riga di comando personalizzata</value>
+    <comment>Toggle in an AI agent profile. When enabled, the user controls the full startup command instead of the managed agent launcher.</comment>
+  </data>
+  <data name="Profile_AgentCustomCommand.HelpText" xml:space="preserve">
+    <value>Esegue la riga di comando indicata sopra anziché generarla dalle impostazioni dell’agente. Le impostazioni di modello, modalità di autorizzazione e argomenti aggiuntivi indicate sotto non si applicano a un comando personalizzato.</value>
+    <comment>Explains precedence between a custom startup command and structured AI agent profile options.</comment>
+  </data>
+  <data name="Profile_AgentModel.Header" xml:space="preserve">
+    <value>Modello dell’agente</value>
+    <comment>Model identifier passed to the native interactive AI agent command-line application.</comment>
+  </data>
+  <data name="Profile_AgentModel.HelpText" xml:space="preserve">
+    <value>Immetti un identificatore di modello supportato da questo agente. Lascia il campo vuoto per usare la configurazione dell’agente. Si applica alle nuove sessioni.</value>
+    <comment>The model is a free-text CLI identifier, not a model discovered through ACP.</comment>
+  </data>
+  <data name="Profile_AgentPermission.Header" xml:space="preserve">
+    <value>Modalità di autorizzazione dell’agente</value>
+    <comment>Selects a native AI agent permission or approval mode, not Windows file permissions.</comment>
+  </data>
+  <data name="Profile_AgentPermission.HelpText" xml:space="preserve">
+    <value>Scegli una modalità supportata dall’agente. Le modalità controllano le approvazioni dell’agente o le impostazioni della sandbox e non concedono né revocano autorizzazioni per i file di Windows. L’opzione predefinita lascia invariata la configurazione dell’agente.</value>
+    <comment>{Locked="Windows"} Explains that AI agent approval policies and operating system permissions differ.</comment>
+  </data>
+  <data name="Profile_AgentArguments.Header" xml:space="preserve">
+    <value>Argomenti aggiuntivi dell’agente</value>
+    <comment>Additional startup arguments for the native AI agent command-line application.</comment>
+  </data>
+  <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
+    <value>Per i valori contenenti spazi, usa le regole per le virgolette della riga di comando di Windows. Gli argomenti in conflitto con le impostazioni gestite o i criteri vengono rifiutati. I comandi della shell non sono supportati.</value>
+    <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
+  </data>
+  <data name="Profile_DefaultSplitProfile.Header" xml:space="preserve">
+    <value>Profilo predefinito per la divisione</value>
+    <comment>The profile to launch when using the default pane-splitting action from this profile.</comment>
+  </data>
+  <data name="Profile_DefaultSplitProfile.HelpText" xml:space="preserve">
+    <value>Scegli il profilo aperto dalle azioni di divisione predefinite. Le azioni esplicite di duplicazione continuano a usare il profilo corrente. Viene mantenuta la directory di lavoro segnalata, se valida; altrimenti viene usata la directory iniziale del profilo di destinazione.</value>
+    <comment>Explains profile-aware pane splitting. Duplicate means starting another process, not copying chat history.</comment>
+  </data>
+  <data name="Profile_AgentDefault" xml:space="preserve">
+    <value>Valore predefinito dell’agente</value>
+    <comment>Permission option that leaves the AI agent's existing configuration unchanged.</comment>
+  </data>
+  <data name="Profile_SplitSame" xml:space="preserve">
+    <value>Stesso profilo</value>
+    <comment>Default split choice: launch another process using the current pane's profile.</comment>
+  </data>
+  <data name="Profile_SplitDefault" xml:space="preserve">
+    <value>Profilo predefinito globale</value>
+    <comment>Default split choice: launch the profile configured as the application's global default.</comment>
+  </data>
+  <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
+    <value>Usa la preferenza di divisione del profilo</value>
+    <comment>Split action mode that uses the current profile's configured split target, or duplicates the profile when no target is configured.</comment>
+  </data>
+  <data name="Profile_AgentPolicyBlocked.Text" xml:space="preserve">
+    <value>La tua organizzazione blocca gli avvii gestiti degli agenti nativi. L’agente deve essere consentito e i criteri devono permettere l’approvazione automatica, perché gli agenti nativi controllano le proprie impostazioni di approvazione.</value>
+    <comment>Warning when an agent profile is blocked by the agent allowlist or the policy prohibiting automatic approval. The native CLI cannot guarantee enforcement of the latter policy throughout its session.</comment>
+  </data>
 </root>
