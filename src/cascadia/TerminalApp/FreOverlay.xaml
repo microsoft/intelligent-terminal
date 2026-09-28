@@ -25,6 +25,20 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="ms-appx:///Microsoft.Terminal.Settings.Editor/CommonResources.xaml" />
             </ResourceDictionary.MergedDictionaries>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Default">
+                    <BitmapImage x:Key="FreSidebarImage"
+                                 UriSource="ms-appx:///FREAssets/sidebar-dark.png" />
+                    <BitmapImage x:Key="FreErrorDetectionImage"
+                                 UriSource="ms-appx:///FREAssets/Error-detection-dark.png" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Light">
+                    <BitmapImage x:Key="FreSidebarImage"
+                                 UriSource="ms-appx:///FREAssets/sidebar-light.png" />
+                    <BitmapImage x:Key="FreErrorDetectionImage"
+                                 UriSource="ms-appx:///FREAssets/Error-detection-light.png" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
 
             <!--  Matches TerminalSettingsEditor's StandardControlMaxWidth  -->
             <x:Double x:Key="StandardControlMaxWidth">1000</x:Double>
@@ -117,7 +131,7 @@
                             </Grid.RowDefinitions>
                             <Border Grid.Row="0" Background="#FF0C0C0C" CornerRadius="7,7,0,0"
                                     Margin="6,6,6,0">
-                                <Image Source="ms-appx:///FREAssets/FRE_Asset2.png"
+                                <Image Source="{ThemeResource FreSidebarImage}"
                                        Stretch="Uniform" />
                             </Border>
                             <StackPanel Grid.Row="1" Margin="16,14,16,16" Spacing="6">
@@ -143,7 +157,7 @@
                             </Grid.RowDefinitions>
                             <Border Grid.Row="0" Background="#FF0C0C0C" CornerRadius="7,7,0,0"
                                     Margin="6,6,6,0">
-                                <Image Source="ms-appx:///FREAssets/FRE_Asset1.png"
+                                <Image Source="{ThemeResource FreErrorDetectionImage}"
                                        Stretch="Uniform" />
                             </Border>
                             <StackPanel Grid.Row="1" Margin="16,14,16,16" Spacing="6">
