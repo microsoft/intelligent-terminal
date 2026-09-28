@@ -372,22 +372,22 @@
     <value>მხოლოდ აგენტები</value>
   </data>
   <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
-    <value>Tab metadata</value>
+    <value>ჩანართის მეტამონაცემები</value>
   </data>
   <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
-    <value>Agent status</value>
+    <value>აგენტის სტატუსი</value>
   </data>
   <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
-    <value>Current working directory</value>
+    <value>მიმდინარე სამუშაო დირექტორია</value>
   </data>
   <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
-    <value>Git repo</value>
+    <value>Git საცავი</value>
   </data>
   <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
-    <value>Git branch</value>
+    <value>Git ფილიალი</value>
   </data>
   <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
-    <value>Git changes</value>
+    <value>Git იცვლება</value>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>ნაჩვენებია აგენტის 1 სესია</value>

@@ -303,22 +303,22 @@
     <value>Agenteak soilik</value>
   </data>
   <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
-    <value>Tab metadata</value>
+    <value>Fitxa metadatuak</value>
   </data>
   <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
-    <value>Agent status</value>
+    <value>Agentearen egoera</value>
   </data>
   <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
-    <value>Current working directory</value>
+    <value>Uneko lan-direktorioa</value>
   </data>
   <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
-    <value>Git repo</value>
+    <value>Git biltegia</value>
   </data>
   <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
-    <value>Git branch</value>
+    <value>Git adarra</value>
   </data>
   <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
-    <value>Git changes</value>
+    <value>Git aldaketak</value>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>Agente-saio bat erakusten</value>

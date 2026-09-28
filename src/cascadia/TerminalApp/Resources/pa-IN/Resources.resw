@@ -488,22 +488,22 @@
     <value>ਸਿਰਫ਼ ਏਜੰਟ</value>
   </data>
   <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
-    <value>Tab metadata</value>
+    <value>ਟੈਬ ਮੈਟਾਡੇਟਾ</value>
   </data>
   <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
-    <value>Agent status</value>
+    <value>ਏਜੰਟ ਸਥਿਤੀ</value>
   </data>
   <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
-    <value>Current working directory</value>
+    <value>ਮੌਜੂਦਾ ਕਾਰਜਕਾਰੀ ਡਾਇਰੈਕਟਰੀ</value>
   </data>
   <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
-    <value>Git repo</value>
+    <value>Git ਰਿਪੋਜ਼ਟਰੀ</value>
   </data>
   <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
-    <value>Git branch</value>
+    <value>Git ਸ਼ਾਖਾ</value>
   </data>
   <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
-    <value>Git changes</value>
+    <value>Git ਬਦਲਾਅ</value>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>1 ਏਜੰਟ ਸੈਸ਼ਨ ਦਿਖਾਇਆ ਜਾ ਰਿਹਾ ਹੈ</value>

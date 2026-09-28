@@ -865,7 +865,7 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
     // degrading to the wrapped prompt without marks instead of throwing on
     // every prompt.
     //
-    // v9: emit the dedicated Resume OSC from the PSConsoleHostReadLine
+    // v10: emit the dedicated Resume OSC from the PSConsoleHostReadLine
     // boundary immediately after a supported resume command is accepted.
     // ───────────────────────────────────────────────────────────────────
     inline constexpr int kVersion = 10;

@@ -489,22 +489,22 @@
     <value>କେବଳ ଏଜେଣ୍ଟ</value>
   </data>
   <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
-    <value>Tab metadata</value>
+    <value>ଟ୍ୟାବ୍ ମେଟାଡାଟା |</value>
   </data>
   <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
-    <value>Agent status</value>
+    <value>ଏଜେଣ୍ଟ ସ୍ଥିତି</value>
   </data>
   <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
-    <value>Current working directory</value>
+    <value>ସାମ୍ପ୍ରତିକ କାର୍ଯ୍ୟ ଡିରେକ୍ଟୋରୀ |</value>
   </data>
   <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
-    <value>Git repo</value>
+    <value>Git  ସଂଗ୍ରହାଳୟ</value>
   </data>
   <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
-    <value>Git branch</value>
+    <value>Git  ଶାଖା |</value>
   </data>
   <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
-    <value>Git changes</value>
+    <value>Git  ପରିବର୍ତ୍ତନ ହୁଏ |</value>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>1ଟି ଏଜେଣ୍ଟ ସେସନ୍ ଦେଖାଯାଉଛି</value>

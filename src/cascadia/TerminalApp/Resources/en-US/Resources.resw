@@ -235,7 +235,7 @@
     <value>Current working directory</value>
   </data>
   <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
-    <value>Git repo</value>
+    <value>Git repository</value>
   </data>
   <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
     <value>Git branch</value>

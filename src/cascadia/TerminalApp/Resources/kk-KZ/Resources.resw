@@ -485,22 +485,22 @@
     <value>Тек агенттер</value>
   </data>
   <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
-    <value>Tab metadata</value>
+    <value>Қойынды метадеректері</value>
   </data>
   <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
-    <value>Agent status</value>
+    <value>Агент мәртебесі</value>
   </data>
   <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
-    <value>Current working directory</value>
+    <value>Ағымдағы жұмыс каталогы</value>
   </data>
   <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
-    <value>Git repo</value>
+    <value>Git репозиторийі</value>
   </data>
   <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
-    <value>Git branch</value>
+    <value>Git филиалы</value>
   </data>
   <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
-    <value>Git changes</value>
+    <value>Git өзгерістері</value>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>1 агент сеансы көрсетілуде</value>

@@ -260,7 +260,7 @@ try {
                         }
                         $repositoryName = Split-Path -Leaf $root
 
-                        & $git.Source @gitOptions rev-parse --verify HEAD 2>$null | Out-Null
+                        & $git.Source @gitOptions rev-parse --verify --quiet HEAD 2>$null | Out-Null
                         $headExitCode = $LASTEXITCODE
                         if ($headExitCode -eq 0) {
                             $numstatLines = @(
@@ -268,7 +268,7 @@ try {
                                     --numstat --no-renames --no-ext-diff --no-textconv HEAD -- 2>$null
                             )
                         }
-                        elseif ($headExitCode -eq 1) {
+                        elseif ($headExitCode -eq 1 -or $headExitCode -eq 128) {
                             $cachedNumstatLines = @(
                                 & $git.Source @gitOptions diff `
                                     --cached --numstat --no-renames --no-ext-diff --no-textconv -- 2>$null

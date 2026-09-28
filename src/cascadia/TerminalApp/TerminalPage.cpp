@@ -10116,7 +10116,17 @@ namespace winrt::TerminalApp::implementation
                 else
                 {
                     staleAttachment = found->second.id;
+                    const auto staleSessionId = found->second.sessionId;
                     _richTabAttachments.erase(found);
+                    const auto sessionStillAttached = std::ranges::any_of(
+                        _richTabAttachments,
+                        [&](const auto& pair) {
+                            return pair.second.sessionId == staleSessionId;
+                        });
+                    if (!sessionStillAttached)
+                    {
+                        _richTabPresentations.erase(staleSessionId);
+                    }
                 }
             }
             reservation = _nextRichTabAttachmentReservation++;
@@ -10180,6 +10190,15 @@ namespace winrt::TerminalApp::implementation
             {
                 attachment = std::move(found->second);
                 _richTabAttachments.erase(found);
+                const auto sessionStillAttached = std::ranges::any_of(
+                    _richTabAttachments,
+                    [&](const auto& pair) {
+                        return pair.second.sessionId == attachment->sessionId;
+                    });
+                if (!sessionStillAttached)
+                {
+                    _richTabPresentations.erase(attachment->sessionId);
+                }
             }
         }
         if (attachment)

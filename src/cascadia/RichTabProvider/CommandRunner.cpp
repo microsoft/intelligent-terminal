@@ -112,6 +112,22 @@ namespace Microsoft::Terminal::RichTab::Provider
             return false;
         }
 
+        std::optional<std::filesystem::path> _ResolveExecutable(const std::filesystem::path& path)
+        {
+            uint32_t pathError = ERROR_SUCCESS;
+            if (_PathHasReparsePoint(path.root_path(), path.relative_path(), pathError))
+            {
+                return std::nullopt;
+            }
+            const auto attributes = GetFileAttributesW(path.c_str());
+            if (attributes == INVALID_FILE_ATTRIBUTES ||
+                (attributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0)
+            {
+                return std::nullopt;
+            }
+            return path;
+        }
+
         struct Pipe
         {
             wil::unique_handle read;
@@ -158,24 +174,29 @@ namespace Microsoft::Terminal::RichTab::Provider
 
     std::optional<std::filesystem::path> CommandRunner::ResolvePowerShell()
     {
-        const auto programFiles = _ReadEnvironment(L"PROGRAMFILES");
-        if (!programFiles)
+        if (const auto programFiles = _ReadEnvironment(L"PROGRAMFILES"))
+        {
+            const auto pwsh = std::filesystem::path{ *programFiles } / L"PowerShell" / L"7" / L"pwsh.exe";
+            if (const auto resolved = _ResolveExecutable(pwsh))
+            {
+                return resolved;
+            }
+        }
+
+        std::wstring systemDirectory(32768, L'\0');
+        const auto written = GetSystemDirectoryW(
+            systemDirectory.data(),
+            static_cast<UINT>(systemDirectory.size()));
+        if (written == 0 || written >= systemDirectory.size())
         {
             return std::nullopt;
         }
-        const auto path = std::filesystem::path{ *programFiles } / L"PowerShell" / L"7" / L"pwsh.exe";
-        uint32_t pathError = ERROR_SUCCESS;
-        if (_PathHasReparsePoint(path.root_path(), path.relative_path(), pathError))
-        {
-            return std::nullopt;
-        }
-        const auto attributes = GetFileAttributesW(path.c_str());
-        if (attributes == INVALID_FILE_ATTRIBUTES ||
-            (attributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0)
-        {
-            return std::nullopt;
-        }
-        return path;
+        systemDirectory.resize(written);
+        return _ResolveExecutable(
+            std::filesystem::path{ systemDirectory } /
+            L"WindowsPowerShell" /
+            L"v1.0" /
+            L"powershell.exe");
     }
 
     bool CommandRunner::ResolveEntrypoint(
