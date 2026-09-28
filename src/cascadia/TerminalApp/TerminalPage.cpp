@@ -6048,7 +6048,7 @@ namespace winrt::TerminalApp::implementation
             // Match the Agent Management MVP visibility contract: Agent-pane
             // sessions remain in the registry for routing, but are not shown
             // until both surfaces opt into managing them.
-            L"sessions list --origin shell --json",
+            L"sessions list --origin shell --all-agents --json",
             15'000,
             nullptr,
             false);

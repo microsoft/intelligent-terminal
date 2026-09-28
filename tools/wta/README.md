@@ -23,10 +23,12 @@ fallback.
 ### How WTA runs
 
 WTA is normally launched **by Windows Terminal**, not by hand. WT spawns one
-`wta-master` singleton (owns a lazily populated agent CLI pool) and one
+`wta-master` singleton (owns the shared agent CLI pool) and one
 `wta-helper` per agent pane (renders this TUI and speaks ACP to master over a
 named pipe). Helpers selecting the same agent identity, source, and command
-share one agent process. Bare `wta` with no subcommand and neither `--master`
+share one agent process. Master warms installed, policy-allowed native host agents
+in the background at startup; other selections remain on-demand. Bare `wta` with
+no subcommand and neither `--master`
 nor `--connect-master` exits with an error — there is no standalone agent / TUI
 mode.
 
@@ -56,6 +58,31 @@ the host agent, WTA puts the current package family's alias directory first on
 `PATH`; unpackaged builds use the running binary's directory. Agent prompts can
 therefore use short `wta.exe` commands without selecting another installed
 branding or reproducing a protected package path.
+
+### Sidebar Agent History
+
+Master discovers installed, policy-allowed Windows-host agents in the background
+as soon as its named pipe is ready, without waiting for History to open. It checks each CLI
+and required `npx` prerequisite before starting ACP, reuses matching connections in
+the agent pool, and merges each supported `session/list` response into the registry.
+No chat session or prompt is created by discovery.
+
+Sidebar Agent History runs `wta sessions list --origin shell --all-agents --json`.
+This returns the current registry snapshot immediately and requests a background
+refresh using the same resident pool; it is not the initial connection trigger.
+
+These native-provider ACP processes remain in the master pool after History closes;
+there is no History-specific idle timeout or eviction. Further refreshes reuse them,
+and concurrent windows share one discovery pass. Registry changes notify the sidebar,
+with its existing five-second snapshot poll as a fallback. Unavailable or failed
+providers do not clear other providers' rows or overwrite live activity and pane
+bindings. Failures are logged under `master_history`; listing never installs an agent
+or starts an interactive login flow.
+
+This discovery covers built-in agents on the Windows host. It does not start WSL
+distributions or discover arbitrary custom commands; sessions already in the registry
+remain visible according to the requested origin filter. Plain `wta sessions list`
+without `--all-agents` remains a snapshot-only operation.
 
 ### tmux-like CLI
 

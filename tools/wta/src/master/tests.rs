@@ -1501,6 +1501,7 @@ fn make_state_with_retirement_pending_timeout(
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt: None,
         agents: Mutex::new(HashMap::new()),
+        history_refresh: Arc::new(Mutex::new(())),
         helper_roles: Mutex::new(HashMap::new()),
         custom_model_generations: Mutex::new(HashMap::new()),
         default_agent_cmd: "copilot --acp --stdio".to_string(),
@@ -10220,7 +10221,7 @@ async fn sessions_list_handler_returns_registry_snapshot_payload() {
     let resp = handle_sessions_list(
         &state,
         None,
-        &session_registry::SessionsListParams { rescan: false },
+        &session_registry::SessionsListParams::default(),
     )
     .await
     .expect("sessions/list succeeds");
@@ -10652,6 +10653,7 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt: Some(wt),
         agents: Mutex::new(HashMap::new()),
+        history_refresh: Arc::new(Mutex::new(())),
         helper_roles: Mutex::new(HashMap::new()),
         custom_model_generations: Mutex::new(HashMap::new()),
         default_agent_cmd: "copilot --acp --stdio".to_string(),
@@ -11013,7 +11015,9 @@ async fn sidebar_history_control_initialize_skips_agent_and_restricts_surface() 
     );
 
     handler
-        .ext_method(crate::session_registry::build_sessions_list_request(false))
+        .ext_method(crate::session_registry::build_sessions_list_request(
+            false, false,
+        ))
         .await
         .expect("control client may list sessions");
 
@@ -11035,6 +11039,187 @@ async fn sidebar_history_control_initialize_skips_agent_and_restricts_surface() 
         .expect_err("control client role must not be upgraded");
     assert_eq!(error.code, acp::ErrorCode::InvalidRequest);
     assert!(state.agents.lock().await.is_empty());
+}
+
+#[test]
+fn sidebar_history_discovery_checks_policy_before_installation() {
+    let allowed = HashSet::from(["copilot".to_string(), "codex".to_string()]);
+    let mut checked = Vec::new();
+    let ids = host_history_agent_ids(Some(&allowed), |id| {
+        checked.push(id.to_string());
+        id == "copilot"
+    });
+    assert_eq!(ids, ["copilot"]);
+    assert_eq!(checked, ["copilot", "codex"]);
+    assert!(host_history_agent_ids(Some(&HashSet::new()), |_| {
+        panic!("blocked agents must not be probed");
+    })
+    .is_empty());
+    let installed = ["copilot", "claude", "codex", "opencode"];
+    assert_eq!(
+        host_history_agent_ids(None, |id| installed.contains(&id)),
+        installed
+    );
+    assert!(host_history_agent_ids(None, |_| false).is_empty());
+}
+
+#[tokio::test]
+async fn sidebar_history_discovery_is_background_and_single_flight() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut state = make_state();
+            Arc::get_mut(&mut state).unwrap().allowed_agent_ids = Some(HashSet::new());
+            let guard = Arc::clone(&state.history_refresh).lock_owned().await;
+            let mut row = crate::session_registry::SessionInfo::new(
+                SessionId::new("existing-history"),
+                PathBuf::from("C:\\repo"),
+            );
+            row.status = Some(crate::agent_sessions::AgentStatus::Historical);
+            state.registry.upsert(row.clone()).await;
+            let params = crate::session_registry::SessionsListParams {
+                all_agents: true,
+                ..Default::default()
+            };
+            for _ in 0..2 {
+                let response = handle_sessions_list(&state, None, &params).await.unwrap();
+                let parsed =
+                    crate::session_registry::parse_sessions_list_response(&response.0).unwrap();
+                assert_eq!(
+                    parsed.sessions,
+                    [row.clone()],
+                    "a refresh must not block the snapshot"
+                );
+            }
+            assert!(state.agents.lock().await.is_empty());
+            drop(guard);
+            request_host_history_refresh(&state);
+            assert!(state.history_refresh.try_lock().is_err());
+            request_host_history_refresh(&state);
+            let _finished = state.history_refresh.lock().await;
+            assert!(state.agents.lock().await.is_empty());
+        })
+        .await;
+}
+
+async fn add_sidebar_listing_agent(
+    state: &MasterStateInner,
+    cli: crate::agent_sessions::CliSource,
+    ids: &[&str],
+) -> Arc<AgentCli> {
+    let mut agent = listing_agent(cli, ids);
+    let command = crate::agent_registry::build_acp_command(&agent.resolved_agent_id, None);
+    Arc::get_mut(&mut agent).unwrap().cmd_key =
+        agent_cmd_key(&command, Some(&agent.resolved_agent_id), &agent.source);
+    add_test_agent_to_pool(state, &agent).await;
+    agent
+}
+
+#[tokio::test]
+async fn sidebar_history_discovery_reuses_resident_agents_and_preserves_live_rows() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionOrigin};
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let mut agents = Vec::new();
+            for cli in [
+                CliSource::Copilot,
+                CliSource::Claude,
+                CliSource::Codex,
+                CliSource::OpenCode,
+            ] {
+                agents.push(add_sidebar_listing_agent(&state, cli, &["shared-raw-id"]).await);
+            }
+            let mut live = crate::session_registry::SessionInfo::new(
+                SessionId::new("shared-raw-id"),
+                PathBuf::from("C:\\repo"),
+            );
+            live.provider_id = Some("copilot".to_string());
+            live.cli_source = Some(CliSource::Copilot);
+            live.location = crate::agent_sessions::SessionLocation::Host;
+            live.origin = Some(SessionOrigin::Unknown);
+            live.status = Some(AgentStatus::Attention);
+            live.pane_session_id = Some("live-pane".to_string());
+            state.registry.upsert(live.clone()).await;
+            let ids = ["copilot", "claude", "codex", "opencode"];
+            for _ in 0..2 {
+                refresh_host_history_agents(&state, &ids).await;
+                let rows = state.registry.snapshot().await;
+                assert_eq!(
+                    rows.len(),
+                    4,
+                    "equal raw IDs remain distinct across providers"
+                );
+                assert_eq!(
+                    state
+                        .registry
+                        .lookup_identity(&crate::session_registry::SessionIdentity::from_info(
+                            &live
+                        ))
+                        .await,
+                    Some(live.clone()),
+                    "history scans must preserve live activity and pane binding",
+                );
+                let pool = state.agents.lock().await;
+                assert_eq!(pool.len(), 4);
+                for agent in &agents {
+                    assert!(Arc::ptr_eq(
+                        pool.get(&agent.cmd_key).unwrap().get().unwrap(),
+                        agent
+                    ));
+                    assert!(
+                        agent.bound_helpers.lock().await.is_empty(),
+                        "listing creates no helper or chat"
+                    );
+                }
+                assert!(state.session_to_helper.lock().await.is_empty());
+            }
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn sidebar_history_discovery_isolates_failed_and_unsupported_agents() {
+    use crate::agent_sessions::CliSource;
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let failed =
+                add_sidebar_listing_agent(&state, CliSource::Claude, &["kept-history"]).await;
+            refresh_host_history_agents(&state, &["claude"]).await;
+            failed.conn.shutdown();
+            *failed.host_list_cache.lock().await = None;
+            add_sidebar_listing_agent(&state, CliSource::Copilot, &["healthy-history"]).await;
+            let mut unsupported = listing_agent(CliSource::Gemini, &["must-not-be-listed"]);
+            let key = agent_cmd_key(
+                &crate::agent_registry::build_acp_command("gemini", None),
+                Some("gemini"),
+                &crate::agent_source::AgentSource::Host,
+            );
+            let inner = Arc::get_mut(&mut unsupported).unwrap();
+            inner.cmd_key = key;
+            inner
+                .cached_init_resp
+                .agent_capabilities
+                .session_capabilities
+                .list = None;
+            add_test_agent_to_pool(&state, &unsupported).await;
+
+            refresh_host_history_agents(&state, &["claude", "copilot", "gemini"]).await;
+            let rows = state.registry.snapshot().await;
+            assert_eq!(rows.len(), 2);
+            assert!(rows
+                .iter()
+                .any(|row| row.session_id.0.as_ref() == "kept-history"));
+            assert!(rows
+                .iter()
+                .any(|row| row.session_id.0.as_ref() == "healthy-history"));
+            assert_eq!(
+                state.agents.lock().await.len(),
+                3,
+                "history does not evict resident agents"
+            );
+        })
+        .await;
 }
 
 // ── refresh_synthetic_titles_from ───────────────────────────────

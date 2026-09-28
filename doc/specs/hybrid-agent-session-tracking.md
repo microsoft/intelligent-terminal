@@ -350,6 +350,17 @@ does not change shell-session visibility, liveness classification, or focus/resu
 routing. Registry-change notifications and the existing five-second snapshot
 refresh update the displayed status.
 
+At startup, once its named pipe is ready, master checks policy and local
+CLI/adapter prerequisites and initializes installed Windows-host providers through
+the existing native-provider agent pool. Each provider lists its own history; no
+helper or chat session is created. Connections stay warm for the lifetime of master,
+including while History is closed. Discovery is asynchronous and single-flight across
+windows, so slow or failed providers do not block existing rows. History synchronization
+preserves live status and pane bindings. WSL/custom sessions already known to the registry
+are still displayed, but this pass does not start WSL distros or unknown custom commands.
+Sidebar snapshots use `--all-agents` to refresh the same resident pool; opening History
+is not required to establish these connections or load the initial histories.
+
 - **Claude** (`classify_claude.rs`) — **turn-based, keyed on `stop_reason`**.
   Claude re-writes the same assistant message id several times as it streams
   (text first, then `+tool_use`), so classifying by content presence flickers;

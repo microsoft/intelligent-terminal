@@ -27,10 +27,13 @@ fn control_initialize_request(
 pub(crate) async fn run_list(
     master_override: Option<String>,
     origin_filter: crate::agent_sessions::OriginFilter,
+    all_agents: bool,
     json_mode: bool,
 ) -> Result<()> {
     let local = tokio::task::LocalSet::new();
-    let sessions = local.run_until(fetch_from_master(master_override)).await?;
+    let sessions = local
+        .run_until(fetch_from_master(master_override, all_agents))
+        .await?;
     // Origin filter is applied client-side: master always returns the
     // full registry so this command can act as the debug eye-of-god
     // view (default `--origin all`). `--origin shell` matches what
@@ -53,6 +56,7 @@ pub(crate) async fn run_list(
 
 async fn fetch_from_master(
     master_override: Option<String>,
+    all_agents: bool,
 ) -> Result<Vec<crate::session_registry::SessionInfo>> {
     let pipe_name = resolve_master_pipe(master_override).await?;
     let pipe = open_master_pipe(&pipe_name).await?;
@@ -88,7 +92,7 @@ async fn fetch_from_master(
         );
         init_result.map_err(|_| anyhow::anyhow!(MASTER_NOT_RUNNING))?;
 
-        let req = crate::session_registry::build_sessions_list_request(false);
+        let req = crate::session_registry::build_sessions_list_request(false, all_agents);
         let resp = conn
             .ext_method(req)
             .await
