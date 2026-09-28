@@ -272,6 +272,8 @@ Describe 'Feature §0 FRE Tab Mode' -Tag 'Feature', 'FreTabMode' -Skip:(-not $sc
             if ($Saved -eq 'horizontal') {
                 Test-UiElementExists -App $script:app -Selector 'SearchTabsButton' -TimeoutSec 1 | Should -BeFalse
             }
+            $activePane = Get-ActivePane -App $script:app
+            $activePane.session_id | Should -Not -BeNullOrEmpty -Because 'the chosen layout must retain an active terminal after FRE'
             Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir "$phase-$Saved.png") | Out-Null
         }
     }

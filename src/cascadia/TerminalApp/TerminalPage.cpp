@@ -1169,6 +1169,13 @@ namespace winrt::TerminalApp::implementation
         // Restore the tab bar
         TabRow().Visibility(Visibility::Visible);
 
+        // Apply the FRE choice before deferred startup creates the first tab.
+        const auto layoutApplied = _ApplyTabLayout(_settings.GlobalSettings().TabLayout());
+        if (const auto infoBar = FindName(L"TabLayoutRestartInfoBar").try_as<MUX::Controls::InfoBar>())
+        {
+            infoBar.IsOpen(!layoutApplied);
+        }
+
         // Persist: never show FRE again
         ApplicationState::SharedInstance().AgentFreCompleted(true);
 
@@ -5576,6 +5583,14 @@ namespace winrt::TerminalApp::implementation
                                     _tabStrip.TabItems().as<Windows::Foundation::Collections::IVector<IInspectable>>() :
                                     _tabView.TabItems();
             source.Clear();
+
+            // With no headers to detach, complete before startup can insert a
+            // tab into the old layout and lose its selection during the switch.
+            if (_tabs.Size() == 0)
+            {
+                _CompleteTabLayoutChange(_tabLayoutGeneration);
+                return _isVerticalLayout == targetVertical;
+            }
 
             const auto generation = _tabLayoutGeneration;
             Dispatcher().RunAsync(CoreDispatcherPriority::Low, [weakThis{ get_weak() }, generation]() {

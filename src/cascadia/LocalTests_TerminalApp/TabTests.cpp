@@ -271,6 +271,7 @@ namespace TerminalAppLocalTests
 
         TEST_METHOD(TryInitializePage);
         TEST_METHOD(FreTabModeSelectionDoesNotMutateSettings);
+        TEST_METHOD(EmptyTabLayoutChangeCompletesBeforeStartup);
         TEST_METHOD(VerticalRailVisibilityRestoresWidth);
         TEST_METHOD(VerticalRailCollapseRestoresWidth);
         TEST_METHOD(LiveTabLayoutRoundTripPreservesState);
@@ -2999,6 +3000,27 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(configured.has_value(), globals.HasTabLayout());
                 VERIFY_ARE_EQUAL(configured.value_or(TabLayout::Horizontal), globals.TabLayout());
             }
+        });
+    }
+
+    void TabTests::EmptyTabLayoutChangeCompletesBeforeStartup()
+    {
+        _createContentManager();
+        TestOnUIThread([&]() {
+            const auto props = winrt::make_self<winrt::TerminalApp::implementation::WindowProperties>();
+            winrt::TerminalApp::TerminalPage projectedPage{ *props, *_contentManager };
+            const auto page = winrt::get_self<winrt::TerminalApp::implementation::TerminalPage>(projectedPage);
+            page->_settings = CascadiaSettings{ LR"({"profiles":[{"name":"cmd","commandline":"cmd.exe"}]})", {} };
+            page->_terminalSettingsCache = std::make_shared<winrt::TerminalApp::implementation::TerminalSettingsCache>(page->_settings);
+            page->Create();
+
+            VERIFY_ARE_EQUAL(0u, page->_tabs.Size());
+            VERIFY_IS_TRUE(page->_ApplyTabLayout(TabLayout::Vertical));
+            VERIFY_IS_TRUE(page->_isVerticalLayout);
+            VERIFY_IS_FALSE(page->_changingTabLayout);
+            VERIFY_IS_TRUE(page->_ApplyTabLayout(TabLayout::Horizontal));
+            VERIFY_IS_FALSE(page->_isVerticalLayout);
+            VERIFY_IS_FALSE(page->_changingTabLayout);
         });
     }
 
