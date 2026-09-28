@@ -275,6 +275,8 @@ namespace winrt::TerminalApp::implementation
                                 winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnPanePointerPressed(winrt::Windows::Foundation::IInspectable const& sender,
                                   winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e);
+        void OnPaneActivateClick(winrt::Windows::Foundation::IInspectable const& sender,
+                                 winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnPaneDoubleTapped(winrt::Windows::Foundation::IInspectable const& sender,
                                 winrt::Windows::UI::Xaml::Input::DoubleTappedRoutedEventArgs const& e);
         void OnPaneRightTapped(winrt::Windows::Foundation::IInspectable const& sender,

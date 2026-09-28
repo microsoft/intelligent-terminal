@@ -122,8 +122,6 @@ namespace TerminalApp
         Windows.UI.Xaml.DependencyObject ContainerFromIndex(Int32 index);
         void SetTabItemVisibility(Object item, Boolean visible);
         void SetFilterStatus(UInt32 visibleTabCount, Boolean selectedTabVisible);
-        void SetTabPresentation(Object item, String title, String iconPath);
-        void SetPaneItems(Object item, Windows.Foundation.Collections.IVector<TabStripPaneItem> panes, Boolean isGroup);
 
         Boolean CanReorderTabs;
         Boolean CanDragTabs;
@@ -157,6 +155,9 @@ namespace TerminalApp
         event Windows.Foundation.TypedEventHandler<TabStrip, Object> HistoryRequested;
         event Windows.Foundation.TypedEventHandler<TabStrip, Object> HistoryClosed;
         event Windows.Foundation.TypedEventHandler<TabStrip, TabStripHistoryActivationEventArgs> HistoryActivationRequested;
+
+        void SetTabPresentation(Object item, String title, String iconPath);
+        void SetPaneItems(Object item, Windows.Foundation.Collections.IVector<TabStripPaneItem> panes, Boolean isGroup);
         event Windows.Foundation.TypedEventHandler<TabStrip, TabStripPaneEventArgs> PaneActivationRequested;
         event Windows.Foundation.TypedEventHandler<TabStrip, TabStripPaneEventArgs> PaneCloseRequested;
         event Windows.Foundation.TypedEventHandler<TabStrip, TabStripCloseRequestedEventArgs> TabRenameRequested;

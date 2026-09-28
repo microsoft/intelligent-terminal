@@ -5978,7 +5978,7 @@ namespace winrt::TerminalApp::implementation
             L"sessions list --origin shell --json",
             15'000,
             nullptr,
-            true);
+            false);
 
         std::vector<TerminalApp::TabStripHistoryItem> items;
         std::string parseError;

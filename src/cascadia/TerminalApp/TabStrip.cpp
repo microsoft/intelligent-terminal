@@ -1681,7 +1681,6 @@ namespace winrt::TerminalApp::implementation
     void TabStrip::OnPanePointerPressed(IInspectable const& sender,
                                          WUX::Input::PointerRoutedEventArgs const& e)
     {
-        e.Handled(true);
         const auto element = sender.try_as<FrameworkElement>();
         const auto pane = element ? element.DataContext().try_as<TerminalApp::TabStripPaneItem>() : nullptr;
         if (!pane)
@@ -1692,11 +1691,19 @@ namespace winrt::TerminalApp::implementation
         const auto properties = e.GetCurrentPoint(element).Properties();
         if (properties.IsMiddleButtonPressed())
         {
+            e.Handled(true);
             PaneCloseRequested.raise(*this, winrt::make<TabStripPaneEventArgs>(pane.Tab(), pane.ContentId()));
         }
-        else if (properties.IsLeftButtonPressed())
+    }
+
+    void TabStrip::OnPaneActivateClick(IInspectable const& sender, RoutedEventArgs const&)
+    {
+        if (const auto element = sender.try_as<FrameworkElement>())
         {
-            PaneActivationRequested.raise(*this, winrt::make<TabStripPaneEventArgs>(pane.Tab(), pane.ContentId()));
+            if (const auto pane = element.DataContext().try_as<TerminalApp::TabStripPaneItem>())
+            {
+                PaneActivationRequested.raise(*this, winrt::make<TabStripPaneEventArgs>(pane.Tab(), pane.ContentId()));
+            }
         }
     }
 
