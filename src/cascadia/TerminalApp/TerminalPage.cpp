@@ -5941,7 +5941,7 @@ namespace winrt::TerminalApp::implementation
         if (initialLoad)
         {
             _tabStrip.HistoryError(L"");
-            _tabStrip.HistoryLoading(true);
+            _tabStrip.HistoryLoading(!winrt::get_self<implementation::TabStrip>(_tabStrip)->HasHistoryItems());
         }
         if (_historyRefreshInFlight)
         {
@@ -5952,7 +5952,7 @@ namespace winrt::TerminalApp::implementation
         _historyRefreshInFlight = true;
         _historyRefreshPending = false;
         const auto generation = ++_historyRequestGeneration;
-        _LoadSidebarHistory(generation, initialLoad);
+        _LoadSidebarHistory(generation);
     }
 
     winrt::hstring TerminalPage::_SidebarHistoryStatusText(const std::string_view status)
@@ -6045,7 +6045,169 @@ namespace winrt::TerminalApp::implementation
         return winrt::hstring{ fmt::format(L"{:04}-{:02}-{:02}", time.wYear, time.wMonth, time.wDay) };
     }
 
-    safe_void_coroutine TerminalPage::_LoadSidebarHistory(const uint64_t generation, const bool initialLoad)
+    TerminalPage::_SidebarHistorySnapshot TerminalPage::_ParseSidebarHistorySnapshot(const std::string& output)
+    {
+        _SidebarHistorySnapshot snapshot;
+        snapshot.state = _SidebarHistorySnapshot::State::InvalidResponse;
+        Json::Value response;
+        Json::CharReaderBuilder builder;
+        builder["failIfExtra"] = true;
+        std::istringstream json{ output };
+        std::string errors;
+        if (!Json::parseFromStream(builder, json, &response, &errors) ||
+            !response.isObject() || !response["sessions"].isArray() ||
+            !response["history_status"].isString())
+        {
+            _agentPaneLog("invalid sidebar history snapshot: " + errors);
+            return snapshot;
+        }
+        const auto historyStatus = response["history_status"].asString();
+        if (historyStatus == "loading")
+        {
+            snapshot.state = _SidebarHistorySnapshot::State::Loading;
+        }
+        else if (historyStatus == "ready")
+        {
+            snapshot.state = _SidebarHistorySnapshot::State::Ready;
+        }
+        else if (historyStatus == "error")
+        {
+            snapshot.state = _SidebarHistorySnapshot::State::Error;
+        }
+        else
+        {
+            _agentPaneLog("invalid sidebar history loading status");
+            return snapshot;
+        }
+
+        const auto nowMs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                     std::chrono::system_clock::now().time_since_epoch())
+                                                     .count());
+        for (const auto& row : response["sessions"])
+        {
+            const auto stringFields = { "session_id", "provider_id", "title", "cwd", "pane_session_id", "session_universe" };
+            if (!row.isObject() ||
+                std::ranges::any_of(stringFields, [&](const auto key) {
+                    return !row[key].isNull() && !row[key].isString();
+                }))
+            {
+                _agentPaneLog("invalid sidebar history session row");
+                snapshot.state = _SidebarHistorySnapshot::State::InvalidResponse;
+                snapshot.items.clear();
+                return snapshot;
+            }
+
+            const auto sessionId = row.get("session_id", "").asString();
+            auto providerId = row.get("provider_id", "").asString();
+            if (providerId.empty() && row["cli_source"].isString())
+            {
+                providerId = row["cli_source"].asString();
+                std::ranges::transform(providerId, providerId.begin(), [](const unsigned char ch) {
+                    return static_cast<char>(std::tolower(ch));
+                });
+            }
+            if (sessionId.empty() || providerId.empty())
+            {
+                continue;
+            }
+
+            std::string agentSource;
+            std::string wslDistro;
+            const auto& location = row["location"];
+            if (location.isString() && location.asString() == "Host")
+            {
+                agentSource = "host";
+            }
+            else if (location.isObject() &&
+                     location["Wsl"].isObject() &&
+                     location["Wsl"]["distro"].isString())
+            {
+                agentSource = "wsl";
+                wslDistro = location["Wsl"]["distro"].asString();
+                if (wslDistro.empty())
+                {
+                    continue;
+                }
+            }
+            else
+            {
+                continue;
+            }
+
+            const auto status = row["status"].isString() ? row["status"].asString() : std::string{};
+            const auto isLive = status == "Idle" ||
+                                status == "Working" ||
+                                status == "Attention" ||
+                                status == "Error";
+            const auto isHistorical = status == "Ended" ||
+                                      status == "Historical";
+            const auto origin = row["origin"].isString() ? row["origin"].asString() : std::string{};
+            const auto isAgentPane = origin == "AgentPane";
+            const auto providerDisplayName = [&]() -> std::string {
+                if (providerId == "copilot")
+                {
+                    return "Copilot";
+                }
+                if (providerId == "claude")
+                {
+                    return "Claude";
+                }
+                if (providerId == "codex")
+                {
+                    return "Codex";
+                }
+                if (providerId == "gemini")
+                {
+                    return "Gemini";
+                }
+                if (providerId == "opencode")
+                {
+                    return "OpenCode";
+                }
+                return providerId;
+            }();
+
+            auto title = row.get("title", "").asString();
+            const auto cwd = row.get("cwd", "").asString();
+            if (title.empty() && isLive && isAgentPane)
+            {
+                title = winrt::to_string(winrt::hstring{
+                    RS_fmt(L"VerticalTabsHistoryLiveAgentTitleFormat", winrt::to_hstring(providerDisplayName)) });
+            }
+            else if (title.empty() && !cwd.empty())
+            {
+                title = std::filesystem::path{ winrt::to_hstring(cwd).c_str() }.filename().string();
+            }
+            if (title.empty())
+            {
+                title = providerId + " session " + sessionId.substr(0, (std::min)(sessionId.size(), size_t{ 8 }));
+            }
+
+            auto item = winrt::make<TerminalApp::implementation::TabStripHistoryItem>();
+            item.SessionId(winrt::to_hstring(sessionId));
+            item.Title(winrt::to_hstring(title));
+            const auto& lastActivity = row["last_activity_at_ms"];
+            const auto lastActivityAtMs = lastActivity.isUInt64() ? std::optional<uint64_t>{ lastActivity.asUInt64() } : std::nullopt;
+            item.Subtitle(winrt::to_hstring(providerDisplayName) + L" \u00b7 " +
+                          _SidebarHistoryAgeText(lastActivityAtMs, nowMs) + L" \u00b7 ");
+            item.StatusText(_SidebarHistoryStatusText(status));
+            item.Cwd(winrt::to_hstring(cwd));
+            item.PaneSessionId(winrt::to_hstring(row.get("pane_session_id", "").asString()));
+            item.AgentId(winrt::to_hstring(providerId));
+            item.ProviderDisplayName(winrt::to_hstring(providerDisplayName));
+            item.AgentSource(winrt::to_hstring(agentSource));
+            item.WslDistro(winrt::to_hstring(wslDistro));
+            item.SessionUniverse(winrt::to_hstring(row.get("session_universe", "").asString()));
+            item.Status(winrt::to_hstring(status));
+            item.IsLive(isLive);
+            item.IsHistorical(isHistorical);
+            item.IsAgentPane(isAgentPane);
+            snapshot.items.emplace_back(std::move(item));
+        }
+        return snapshot;
+    }
+
+    safe_void_coroutine TerminalPage::_LoadSidebarHistory(const uint64_t generation)
     {
         const auto weakThis = get_weak();
         const auto dispatcher = Dispatcher();
@@ -6053,205 +6215,69 @@ namespace winrt::TerminalApp::implementation
         co_await winrt::resume_background();
 
         namespace Wta = ::Microsoft::Terminal::WtaProcess;
-        const auto wtaPath = Wta::ResolveWtaExePath();
         const auto result = Wta::RunWtaCapture(
-            wtaPath,
-            // Match the Agent Management MVP visibility contract: Agent-pane
-            // sessions remain in the registry for routing, but are not shown
-            // until both surfaces opt into managing them.
-            L"sessions list --origin shell --all-agents --json",
+            Wta::ResolveWtaExePath(),
+            // Keep the Agent Management MVP's shell-origin visibility contract.
+            L"sessions list --origin shell --all-agents --json --include-status",
             15'000,
             nullptr,
             false);
-
-        std::vector<TerminalApp::TabStripHistoryItem> items;
-        std::string parseError;
+        _SidebarHistorySnapshot snapshot;
         if (result.completed && result.exitCode == 0)
         {
-            const auto nowMs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
-                                                         std::chrono::system_clock::now().time_since_epoch())
-                                                         .count());
-            std::istringstream lines{ result.output };
-            for (std::string line; std::getline(lines, line);)
-            {
-                if (line.empty())
-                {
-                    continue;
-                }
-
-                Json::Value row;
-                Json::CharReaderBuilder builder;
-                std::istringstream json{ line };
-                std::string errors;
-                if (!Json::parseFromStream(builder, json, &row, &errors) || !row.isObject())
-                {
-                    parseError = errors.empty() ? "Invalid session history response." : errors;
-                    items.clear();
-                    break;
-                }
-
-                const auto sessionId = row.get("session_id", "").asString();
-                auto providerId = row.get("provider_id", "").asString();
-                if (providerId.empty() && row["cli_source"].isString())
-                {
-                    providerId = row["cli_source"].asString();
-                    std::ranges::transform(providerId, providerId.begin(), [](const unsigned char ch) {
-                        return static_cast<char>(std::tolower(ch));
-                    });
-                }
-                if (sessionId.empty() || providerId.empty())
-                {
-                    continue;
-                }
-
-                std::string agentSource;
-                std::string wslDistro;
-                const auto& location = row["location"];
-                if (location.isString() && location.asString() == "Host")
-                {
-                    agentSource = "host";
-                }
-                else if (location.isObject() &&
-                         location["Wsl"].isObject() &&
-                         location["Wsl"]["distro"].isString())
-                {
-                    agentSource = "wsl";
-                    wslDistro = location["Wsl"]["distro"].asString();
-                    if (wslDistro.empty())
-                    {
-                        continue;
-                    }
-                }
-                else
-                {
-                    continue;
-                }
-
-                const auto status = row["status"].isString() ? row["status"].asString() : std::string{};
-                const auto isLive = status == "Idle" ||
-                                    status == "Working" ||
-                                    status == "Attention" ||
-                                    status == "Error";
-                const auto isHistorical = status == "Ended" ||
-                                          status == "Historical";
-                const auto origin = row["origin"].isString() ? row["origin"].asString() : std::string{};
-                const auto isAgentPane = origin == "AgentPane";
-                const auto providerDisplayName = [&]() -> std::string {
-                    if (providerId == "copilot")
-                    {
-                        return "Copilot";
-                    }
-                    if (providerId == "claude")
-                    {
-                        return "Claude";
-                    }
-                    if (providerId == "codex")
-                    {
-                        return "Codex";
-                    }
-                    if (providerId == "gemini")
-                    {
-                        return "Gemini";
-                    }
-                    if (providerId == "opencode")
-                    {
-                        return "OpenCode";
-                    }
-                    return providerId;
-                }();
-
-                auto title = row.get("title", "").asString();
-                const auto cwd = row.get("cwd", "").asString();
-                if (title.empty() && isLive && isAgentPane)
-                {
-                    title = winrt::to_string(winrt::hstring{
-                        RS_fmt(L"VerticalTabsHistoryLiveAgentTitleFormat", winrt::to_hstring(providerDisplayName)) });
-                }
-                else if (title.empty() && !cwd.empty())
-                {
-                    title = std::filesystem::path{ winrt::to_hstring(cwd).c_str() }.filename().string();
-                }
-                if (title.empty())
-                {
-                    title = providerId + " session " + sessionId.substr(0, (std::min)(sessionId.size(), size_t{ 8 }));
-                }
-
-                auto item = winrt::make<TerminalApp::implementation::TabStripHistoryItem>();
-                item.SessionId(winrt::to_hstring(sessionId));
-                item.Title(winrt::to_hstring(title));
-                const auto& lastActivity = row["last_activity_at_ms"];
-                const auto lastActivityAtMs = lastActivity.isUInt64() ? std::optional<uint64_t>{ lastActivity.asUInt64() } : std::nullopt;
-                item.Subtitle(winrt::to_hstring(providerDisplayName) + L" \u00b7 " +
-                              _SidebarHistoryAgeText(lastActivityAtMs, nowMs) + L" \u00b7 ");
-                item.StatusText(_SidebarHistoryStatusText(status));
-                item.Cwd(winrt::to_hstring(cwd));
-                item.PaneSessionId(winrt::to_hstring(row.get("pane_session_id", "").asString()));
-                item.AgentId(winrt::to_hstring(providerId));
-                item.ProviderDisplayName(winrt::to_hstring(providerDisplayName));
-                item.AgentSource(winrt::to_hstring(agentSource));
-                item.WslDistro(winrt::to_hstring(wslDistro));
-                item.SessionUniverse(winrt::to_hstring(row.get("session_universe", "").asString()));
-                item.Status(winrt::to_hstring(status));
-                item.IsLive(isLive);
-                item.IsHistorical(isHistorical);
-                item.IsAgentPane(isAgentPane);
-                items.emplace_back(std::move(item));
-            }
-        }
-
-        co_await wil::resume_foreground(dispatcher);
-        const auto page = weakThis.get();
-        if (page)
-        {
-            page->_historyRefreshInFlight = false;
-        }
-        if (!page || page->_historyRequestGeneration != generation || !page->_tabStrip.HistoryActive())
-        {
-            if (page && page->_historyRefreshPending && page->_tabStrip.HistoryActive())
-            {
-                page->_historyRefreshPending = false;
-                page->_RequestSidebarHistoryRefresh(page->_tabStrip.HistoryLoading());
-            }
-            co_return;
-        }
-
-        if (!result.completed)
-        {
-            if (initialLoad)
-            {
-                winrt::get_self<implementation::TabStrip>(page->_tabStrip)->ClearHistorySnapshot();
-                page->_tabStrip.HistoryError(RS_(L"VerticalTabsHistoryLoadError"));
-            }
-        }
-        else if (result.exitCode != 0)
-        {
-            _agentPaneLog(
-                "sidebar history unavailable exit=" + std::to_string(result.exitCode) +
-                " output=" + result.output);
-            if (initialLoad)
-            {
-                winrt::get_self<implementation::TabStrip>(page->_tabStrip)->ClearHistorySnapshot();
-                page->_tabStrip.HistoryError(L"");
-            }
-        }
-        else if (!parseError.empty())
-        {
-            if (initialLoad)
-            {
-                winrt::get_self<implementation::TabStrip>(page->_tabStrip)->ClearHistorySnapshot();
-                page->_tabStrip.HistoryError(RS_(L"VerticalTabsHistoryInvalidResponse"));
-            }
+            snapshot = _ParseSidebarHistorySnapshot(result.output);
         }
         else
         {
-            winrt::get_self<implementation::TabStrip>(page->_tabStrip)->CommitHistorySnapshot(std::move(items));
-            page->_tabStrip.HistoryError(L"");
+            _agentPaneLog(
+                "sidebar history unavailable completed=" + std::to_string(result.completed) +
+                " exit=" + std::to_string(result.exitCode) + " output=" + result.output);
         }
-        page->_tabStrip.HistoryLoading(false);
-        if (page->_historyRefreshPending)
+
+        co_await wil::resume_foreground(dispatcher);
+        if (const auto page = weakThis.get())
         {
-            page->_historyRefreshPending = false;
-            page->_RequestSidebarHistoryRefresh(false);
+            page->_CompleteSidebarHistoryRefresh(generation, std::move(snapshot));
+        }
+    }
+
+    void TerminalPage::_CompleteSidebarHistoryRefresh(const uint64_t generation, _SidebarHistorySnapshot snapshot)
+    {
+        _historyRefreshInFlight = false;
+        if (_historyRequestGeneration != generation || !_tabStrip.HistoryActive())
+        {
+            if (_historyRefreshPending && _tabStrip.HistoryActive())
+            {
+                _historyRefreshPending = false;
+                _RequestSidebarHistoryRefresh(_tabStrip.HistoryLoading());
+            }
+            return;
+        }
+
+        using State = _SidebarHistorySnapshot::State;
+        const auto strip = winrt::get_self<implementation::TabStrip>(_tabStrip);
+        if (snapshot.state == State::Ready ||
+            (snapshot.state != State::InvalidResponse && !snapshot.items.empty()))
+        {
+            strip->CommitHistorySnapshot(std::move(snapshot.items));
+        }
+        if (snapshot.state == State::Error)
+        {
+            _tabStrip.HistoryError(RS_(L"VerticalTabsHistoryLoadError"));
+        }
+        else if (snapshot.state == State::InvalidResponse)
+        {
+            _tabStrip.HistoryError(RS_(L"VerticalTabsHistoryInvalidResponse"));
+        }
+        else
+        {
+            _tabStrip.HistoryError(L"");
+        }
+        _tabStrip.HistoryLoading(snapshot.state == State::Loading && !strip->HasHistoryItems());
+        if (_historyRefreshPending)
+        {
+            _historyRefreshPending = false;
+            _RequestSidebarHistoryRefresh(false);
         }
     }
 

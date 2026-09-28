@@ -210,6 +210,7 @@ namespace winrt::TerminalApp::implementation
         void SearchQuery(winrt::hstring const& value);
         winrt::Windows::Foundation::Collections::IObservableVector<TerminalApp::TabStripHistoryItem> HistoryItems() const { return _historyItems; }
         void CommitHistorySnapshot(std::vector<TerminalApp::TabStripHistoryItem> items);
+        bool HasHistoryItems() const noexcept { return !_historySnapshot.empty(); }
         void ClearHistorySnapshot();
         void ClearHistorySearch();
         bool HistoryActive() const noexcept { return _historyActive; }

@@ -961,7 +961,21 @@ namespace winrt::TerminalApp::implementation
         void _RequestSidebarHistoryRefresh(bool initialLoad);
         static winrt::hstring _SidebarHistoryStatusText(std::string_view status);
         static winrt::hstring _SidebarHistoryAgeText(std::optional<uint64_t> lastActivityAtMs, uint64_t nowMs);
-        safe_void_coroutine _LoadSidebarHistory(uint64_t generation, bool initialLoad);
+        struct _SidebarHistorySnapshot
+        {
+            enum class State
+            {
+                Loading,
+                Ready,
+                Error,
+                InvalidResponse,
+            };
+            State state{ State::Error };
+            std::vector<TerminalApp::TabStripHistoryItem> items;
+        };
+        static _SidebarHistorySnapshot _ParseSidebarHistorySnapshot(const std::string& output);
+        safe_void_coroutine _LoadSidebarHistory(uint64_t generation);
+        void _CompleteSidebarHistoryRefresh(uint64_t generation, _SidebarHistorySnapshot snapshot);
         safe_void_coroutine _ActivateSidebarHistoryItem(TerminalApp::TabStripHistoryItem item);
         bool _CompleteSidebarHistoryActivation(uint64_t activationSerial, bool accepted, const winrt::hstring& detail);
         bool _IsCollapsedVerticalRail() const noexcept

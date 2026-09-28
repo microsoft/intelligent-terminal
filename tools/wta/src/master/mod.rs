@@ -622,6 +622,7 @@ struct MasterStateInner {
     /// tab switch; that trade-off favors warm agents for a terminal app.
     pub(crate) agents: Mutex<HashMap<AgentCmdKey, AgentCell>>,
     history_refresh: Arc<Mutex<()>>,
+    history_status: watch::Sender<crate::session_registry::HistoryLoadStatus>,
     helper_roles: Mutex<HashMap<HelperId, HelperRole>>,
     /// Master-only BYOK configurations keyed by the credential-free selection
     /// ID. A changed endpoint/model/credential reference advances the
@@ -4909,6 +4910,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         wt,
         agents: Mutex::new(HashMap::new()),
         history_refresh: Arc::new(Mutex::new(())),
+        history_status: watch::channel(crate::session_registry::HistoryLoadStatus::Loading).0,
         helper_roles: Mutex::new(HashMap::new()),
         custom_model_generations: Mutex::new(HashMap::new()),
         default_agent_cmd: config.agent.clone(),
@@ -5979,7 +5981,7 @@ async fn spawn_one_agent(
             tracing::info!(
                 target: "master_history",
                 cli = ?agent.cli_source,
-                count,
+                ?count,
                 "agent ACP history seed complete"
             );
         });
@@ -6996,10 +6998,8 @@ fn is_stale_host_history_row(
 async fn seed_host_and_broadcast(
     state: &std::sync::Arc<MasterStateInner>,
     agent: &AgentCli,
-) -> usize {
-    let Some((changed, count)) = sync_host_history(state, agent).await else {
-        return 0;
-    };
+) -> Option<usize> {
+    let (changed, count) = sync_host_history(state, agent).await?;
     if changed {
         broadcast_ext_to_helpers(
             state,
@@ -7007,7 +7007,7 @@ async fn seed_host_and_broadcast(
         )
         .await;
     }
-    count
+    Some(count)
 }
 
 fn host_history_agent_ids(
@@ -7022,8 +7022,8 @@ fn host_history_agent_ids(
         .collect()
 }
 
-async fn refresh_host_history_agents(state: &Arc<MasterStateInner>, agent_ids: &[&str]) {
-    futures::future::join_all(agent_ids.iter().map(|&agent_id| async move {
+async fn refresh_host_history_agents(state: &Arc<MasterStateInner>, agent_ids: &[&str]) -> bool {
+    let results = futures::future::join_all(agent_ids.iter().map(|&agent_id| async move {
         let command = crate::agent_registry::build_acp_command(agent_id, None);
         let agent = match get_or_spawn_agent(
             state,
@@ -7043,16 +7043,21 @@ async fn refresh_host_history_agents(state: &Arc<MasterStateInner>, agent_ids: &
                     error = %format!("{error:#}"),
                     "could not initialize agent for sidebar history"
                 );
-                return;
+                return false;
             }
         };
         if agent.cached_init_resp.agent_capabilities.session_capabilities.list.is_none() {
             tracing::debug!(target: "master_history", agent_id, "agent does not support session/list");
-            return;
+            return true;
         }
-        seed_host_and_broadcast(state, &agent).await;
+        if seed_host_and_broadcast(state, &agent).await.is_none() {
+            tracing::warn!(target: "master_history", agent_id, "could not load agent history");
+            return false;
+        }
+        true
     }))
     .await;
+    results.into_iter().all(|succeeded| succeeded)
 }
 
 fn request_host_history_refresh(state: &Arc<MasterStateInner>) {
@@ -7064,22 +7069,36 @@ fn request_host_history_refresh(state: &Arc<MasterStateInner>) {
         // Survives the short-lived control client; overlapping windows share one refresh.
         let _guard = guard;
         let allowed_ids = state.allowed_agent_ids.clone();
-        let agent_ids = match tokio::task::spawn_blocking(move || {
+        let discovery = tokio::task::spawn_blocking(move || {
             let npx_available = crate::agent_check::host_npx_available();
             host_history_agent_ids(allowed_ids.as_ref(), |agent_id| {
                 crate::agent_check::check_host_agent_availability(agent_id, npx_available)
                     .launch_ready
             })
         })
-        .await
-        {
-            Ok(agent_ids) => agent_ids,
+        .await;
+        let succeeded = match discovery {
+            Ok(agent_ids) => refresh_host_history_agents(&state, &agent_ids).await,
             Err(error) => {
                 tracing::error!(target: "master_history", %error, "host agent availability check failed");
-                return;
+                false
             }
         };
-        refresh_host_history_agents(&state, &agent_ids).await;
+        use crate::session_registry::HistoryLoadStatus;
+        let status = if succeeded {
+            HistoryLoadStatus::Ready
+        } else {
+            HistoryLoadStatus::Error
+        };
+        // Keep the last completed outcome during subsequent refreshes. Resetting
+        // to Loading on every snapshot request would prevent an empty list settling.
+        if state.history_status.send_replace(status) != status {
+            broadcast_ext_to_helpers(
+                &state,
+                crate::session_registry::build_sessions_changed_notification(),
+            )
+            .await;
+        }
     });
 }
 
@@ -7110,7 +7129,7 @@ async fn handle_sessions_list(
             tracing::info!(
                 target: "master_history",
                 cli = ?agent.cli_source,
-                count,
+                ?count,
                 "sessions/list rescan: reloaded history via ACP"
             );
         } else {
@@ -7129,6 +7148,9 @@ async fn handle_sessions_list(
         }
     }
 
+    // Read readiness first so a refresh cannot pair an old empty snapshot with
+    // its newly published Ready status.
+    let history_status = *state.history_status.borrow();
     let mut sessions = state.registry.snapshot().await;
     if let Some(agent) = agent {
         if sessions
@@ -7143,7 +7165,7 @@ async fn handle_sessions_list(
     }
 
     sessions.sort_by(|l, r| l.session_id.0.cmp(&r.session_id.0));
-    let raw = crate::session_registry::build_sessions_list_response(sessions);
+    let raw = crate::session_registry::build_sessions_list_response(sessions, Some(history_status));
     Ok(acp::schema::v1::ExtResponse::new(raw.into()))
 }
 
