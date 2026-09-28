@@ -146,6 +146,8 @@
                 </Button.Content>
                 <Button.Flyout>
                     <MenuFlyout>
+                        <MenuFlyoutItem x:Uid="VerticalTabsFilterSection"
+                                        IsEnabled="False" />
                         <ToggleMenuFlyoutItem x:Name="AllTabsFilterItem"
                                               x:Uid="VerticalTabsFilterAllTabs"
                                               IsChecked="True"
@@ -153,6 +155,26 @@
                         <ToggleMenuFlyoutItem x:Name="AgentsOnlyFilterItem"
                                               x:Uid="VerticalTabsFilterAgentsOnly"
                                               Click="OnAgentsOnlyFilterClick" />
+                        <MenuFlyoutSeparator />
+                        <MenuFlyoutItem x:Uid="VerticalTabsMetadataSection"
+                                        IsEnabled="False" />
+                        <ToggleMenuFlyoutItem x:Name="RichTabAgentStatusVisibleItem"
+                                              x:Uid="VerticalTabsMetadataAgentStatus"
+                                              IsChecked="True"
+                                              Click="OnRichTabAgentStatusVisibleClick" />
+                        <ToggleMenuFlyoutItem x:Name="RichTabWorkingDirectoryVisibleItem"
+                                              x:Uid="VerticalTabsMetadataWorkingDirectory"
+                                              IsChecked="True"
+                                              Click="OnRichTabWorkingDirectoryVisibleClick" />
+                        <ToggleMenuFlyoutItem x:Name="RichTabRepositoryVisibleItem"
+                                              x:Uid="VerticalTabsMetadataRepository"
+                                              Click="OnRichTabRepositoryVisibleClick" />
+                        <ToggleMenuFlyoutItem x:Name="RichTabBranchVisibleItem"
+                                              x:Uid="VerticalTabsMetadataBranch"
+                                              Click="OnRichTabBranchVisibleClick" />
+                        <ToggleMenuFlyoutItem x:Name="RichTabChangesVisibleItem"
+                                              x:Uid="VerticalTabsMetadataChanges"
+                                              Click="OnRichTabChangesVisibleClick" />
                     </MenuFlyout>
                 </Button.Flyout>
             </Button>
@@ -203,7 +225,7 @@
                 <DataTemplate x:DataType="local:TabStripDisplayItem">
                     <StackPanel HorizontalAlignment="Stretch">
                         <Grid x:Name="TabHeaderGrid"
-                              Height="32"
+                              MinHeight="32"
                               ContextFlyout="{x:Bind ContextFlyout, Mode=OneWay}"
                               DoubleTapped="OnTabHeaderDoubleTapped"
                               Loaded="OnTabHeaderLoaded"
@@ -249,6 +271,7 @@
                             </ContentPresenter>
                             <ContentPresenter x:Name="TabHeaderPresenter"
                                               Grid.Column="2"
+                                              Margin="0,3"
                                               HorizontalAlignment="Stretch"
                                               VerticalAlignment="Center"
                                               Content="{x:Bind Header, Mode=OneWay}"
@@ -273,7 +296,7 @@
                                       Visibility="{x:Bind ChildrenVisibility, Mode=OneWay}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="local:TabStripPaneItem">
-                                    <Grid Height="30"
+                                    <Grid MinHeight="30"
                                           Margin="0,1,0,1"
                                           Background="Transparent"
                                           DoubleTapped="OnPaneDoubleTapped"
@@ -288,11 +311,15 @@
                                                 Padding="0"
                                                 HorizontalContentAlignment="Stretch"
                                                 VerticalContentAlignment="Stretch"
-                                                AutomationProperties.Name="{x:Bind Title, Mode=OneWay}"
+                                                AutomationProperties.Name="{x:Bind AutomationName, Mode=OneWay}"
                                                 Background="Transparent"
                                                 BorderThickness="0"
                                                 Click="OnPaneActivateClick">
                                             <Grid>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                </Grid.RowDefinitions>
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="3" />
                                                     <ColumnDefinition Width="28" />
@@ -300,6 +327,7 @@
                                                 </Grid.ColumnDefinitions>
                                                 <Border x:Name="PaneActiveIndicator"
                                                         Grid.Column="0"
+                                                        Grid.RowSpan="2"
                                                         Width="3"
                                                         Margin="0,5"
                                                         HorizontalAlignment="Left"
@@ -307,6 +335,7 @@
                                                         CornerRadius="2"
                                                         Visibility="{x:Bind ActiveIndicatorVisibility, Mode=OneWay}" />
                                                 <FontIcon Grid.Column="1"
+                                                          Grid.RowSpan="2"
                                                           HorizontalAlignment="Center"
                                                           VerticalAlignment="Center"
                                                           FontFamily="{ThemeResource SymbolThemeFontFamily}"
@@ -314,10 +343,20 @@
                                                           Glyph="&#xE756;" />
                                                 <TextBlock x:Name="PaneTitleText"
                                                            Grid.Column="2"
-                                                           Margin="2,0"
+                                                           Margin="2,3,0,0"
                                                            VerticalAlignment="Center"
                                                            Text="{x:Bind Title, Mode=OneWay}"
                                                            TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Grid.Row="1"
+                                                           Grid.Column="2"
+                                                           Margin="2,1,0,3"
+                                                           MaxLines="2"
+                                                           FontSize="10"
+                                                           Opacity="0.72"
+                                                           Text="{x:Bind MetadataText, Mode=OneWay}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Visibility="{x:Bind MetadataVisibility, Mode=OneWay}"
+                                                           AutomationProperties.AccessibilityView="Raw" />
                                             </Grid>
                                         </Button>
                                         <Button x:Name="PaneCloseButton"

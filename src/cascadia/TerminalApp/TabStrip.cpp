@@ -41,6 +41,7 @@ namespace winrt::TerminalApp::implementation
         _contentId{ contentId }
     {
         Title(std::move(title));
+        AutomationName(Title());
         IsActive(isActive);
         ActiveIndicatorVisibility(isActive ? Visibility::Visible : Visibility::Collapsed);
     }
@@ -58,6 +59,7 @@ namespace winrt::TerminalApp::implementation
         if (const auto header = Header().try_as<TerminalApp::TabHeaderControl>())
         {
             Title(header.Title());
+            header.IsMetadataVisible(!railCollapsed && !IsGroup() && !header.MetadataText().empty());
         }
         else if (const auto headerText = Header().try_as<hstring>())
         {
@@ -257,6 +259,7 @@ namespace winrt::TerminalApp::implementation
         });
         _applyRailState();
         _updateHistoryVisualState();
+        _updateRichTabMetadataSelectionState();
     }
 
     IInspectable TabStrip::SelectedItem()
@@ -317,7 +320,7 @@ namespace winrt::TerminalApp::implementation
                                     RS_(L"VerticalTabsFilterStatusSingle") :
                                     winrt::hstring{ RS_fmt(L"VerticalTabsFilterStatusPlural", visibleTabCount) });
         HiddenCurrentTabIndicator().Visibility(selectedTabVisible ? Visibility::Collapsed : Visibility::Visible);
-        FilterStatusBar().Visibility(_filterMode == TerminalApp::TabStripFilterMode::AgentsOnly ?
+        FilterStatusBar().Visibility(_filterMode != TerminalApp::TabStripFilterMode::AllTabs ?
                                          Visibility::Visible :
                                          Visibility::Collapsed);
     }
@@ -625,7 +628,7 @@ namespace winrt::TerminalApp::implementation
         _filterMode = value;
         AllTabsFilterItem().IsChecked(value == TerminalApp::TabStripFilterMode::AllTabs);
         AgentsOnlyFilterItem().IsChecked(value == TerminalApp::TabStripFilterMode::AgentsOnly);
-        FilterStatusBar().Visibility(value == TerminalApp::TabStripFilterMode::AgentsOnly ?
+        FilterStatusBar().Visibility(value != TerminalApp::TabStripFilterMode::AllTabs ?
                                          Visibility::Visible :
                                          Visibility::Collapsed);
         if (changed)
@@ -665,6 +668,44 @@ namespace winrt::TerminalApp::implementation
             _historySearchTerms.emplace_back(_buildHistorySearchTerms(item));
         }
         _applyHistoryProjection();
+    }
+
+    bool TabStrip::ApplyHistoryStatusDelta(winrt::hstring const& sessionId,
+                                           winrt::hstring const& paneSessionId,
+                                           winrt::hstring const& status,
+                                           winrt::hstring const& statusText)
+    {
+        bool updated = false;
+        for (size_t index = 0; index < _historySnapshot.size(); ++index)
+        {
+            auto& item = _historySnapshot[index];
+            if (item.SessionId() != sessionId)
+            {
+                continue;
+            }
+
+            item.PaneSessionId(paneSessionId);
+            item.Status(status);
+            const auto isLive = status == L"Idle" ||
+                                status == L"Working" ||
+                                status == L"Attention" ||
+                                status == L"Error";
+            item.IsLive(isLive);
+            item.IsHistorical(status == L"Ended" || status == L"Historical");
+
+            const auto locationLabel = item.AgentSource() == L"wsl" ?
+                                           item.WslDistro() + L" (WSL)" :
+                                           winrt::hstring{ L"Host" };
+            item.Subtitle(item.AgentId() + L" - " + locationLabel + L" - " + statusText);
+            _historySearchTerms[index] = _buildHistorySearchTerms(item);
+            updated = true;
+        }
+
+        if (updated)
+        {
+            _applyHistoryProjection();
+        }
+        return updated;
     }
 
     void TabStrip::ClearHistorySnapshot()
@@ -770,6 +811,86 @@ namespace winrt::TerminalApp::implementation
         _pendingHeaderTransfers.clear();
     }
 
+    void TabStrip::RichTabRepositoryVisible(bool value)
+    {
+        if (value && !_richTabRepositoryVisible && _richTabMetadataSelectionCount() >= 2)
+        {
+            RichTabRepositoryVisibleItem().IsChecked(false);
+            return;
+        }
+        _richTabRepositoryVisible = value;
+        RichTabRepositoryVisibleItem().IsChecked(value);
+        _updateRichTabMetadataSelectionState();
+    }
+
+    void TabStrip::RichTabBranchVisible(bool value)
+    {
+        if (value && !_richTabBranchVisible && _richTabMetadataSelectionCount() >= 2)
+        {
+            RichTabBranchVisibleItem().IsChecked(false);
+            return;
+        }
+        _richTabBranchVisible = value;
+        RichTabBranchVisibleItem().IsChecked(value);
+        _updateRichTabMetadataSelectionState();
+    }
+
+    void TabStrip::RichTabAgentStatusVisible(bool value)
+    {
+        if (value && !_richTabAgentStatusVisible && _richTabMetadataSelectionCount() >= 2)
+        {
+            RichTabAgentStatusVisibleItem().IsChecked(false);
+            return;
+        }
+        _richTabAgentStatusVisible = value;
+        RichTabAgentStatusVisibleItem().IsChecked(value);
+        _updateRichTabMetadataSelectionState();
+    }
+
+    void TabStrip::RichTabWorkingDirectoryVisible(bool value)
+    {
+        if (value && !_richTabWorkingDirectoryVisible && _richTabMetadataSelectionCount() >= 2)
+        {
+            RichTabWorkingDirectoryVisibleItem().IsChecked(false);
+            return;
+        }
+        _richTabWorkingDirectoryVisible = value;
+        RichTabWorkingDirectoryVisibleItem().IsChecked(value);
+        _updateRichTabMetadataSelectionState();
+    }
+
+    void TabStrip::RichTabChangesVisible(bool value)
+    {
+        if (value && !_richTabChangesVisible && _richTabMetadataSelectionCount() >= 2)
+        {
+            RichTabChangesVisibleItem().IsChecked(false);
+            return;
+        }
+        _richTabChangesVisible = value;
+        RichTabChangesVisibleItem().IsChecked(value);
+        _updateRichTabMetadataSelectionState();
+    }
+
+    uint32_t TabStrip::_richTabMetadataSelectionCount() const noexcept
+    {
+        return static_cast<uint32_t>(_richTabAgentStatusVisible) +
+               static_cast<uint32_t>(_richTabWorkingDirectoryVisible) +
+               static_cast<uint32_t>(_richTabRepositoryVisible) +
+               static_cast<uint32_t>(_richTabBranchVisible) +
+               static_cast<uint32_t>(_richTabChangesVisible);
+    }
+
+    void TabStrip::_updateRichTabMetadataSelectionState()
+    {
+        const auto canSelectAnother = _richTabMetadataSelectionCount() < 2;
+
+        RichTabAgentStatusVisibleItem().IsEnabled(_richTabAgentStatusVisible || canSelectAnother);
+        RichTabWorkingDirectoryVisibleItem().IsEnabled(_richTabWorkingDirectoryVisible || canSelectAnother);
+        RichTabRepositoryVisibleItem().IsEnabled(_richTabRepositoryVisible || canSelectAnother);
+        RichTabBranchVisibleItem().IsEnabled(_richTabBranchVisible || canSelectAnother);
+        RichTabChangesVisibleItem().IsEnabled(_richTabChangesVisible || canSelectAnother);
+    }
+
     UIElement TabStrip::TopChromeContent()
     {
         return TopChromeContentPresenter().Content().try_as<UIElement>();
@@ -816,6 +937,36 @@ namespace winrt::TerminalApp::implementation
         HistoryActive(true);
         HistoryRequested.raise(*this, nullptr);
         HistorySearchTextBox().Focus(WUX::FocusState::Programmatic);
+    }
+
+    void TabStrip::OnRichTabRepositoryVisibleClick(IInspectable const&, WUX::RoutedEventArgs const&)
+    {
+        RichTabRepositoryVisible(RichTabRepositoryVisibleItem().IsChecked());
+        VisibleFieldsChanged.raise(*this, nullptr);
+    }
+
+    void TabStrip::OnRichTabBranchVisibleClick(IInspectable const&, WUX::RoutedEventArgs const&)
+    {
+        RichTabBranchVisible(RichTabBranchVisibleItem().IsChecked());
+        VisibleFieldsChanged.raise(*this, nullptr);
+    }
+
+    void TabStrip::OnRichTabAgentStatusVisibleClick(IInspectable const&, WUX::RoutedEventArgs const&)
+    {
+        RichTabAgentStatusVisible(RichTabAgentStatusVisibleItem().IsChecked());
+        VisibleFieldsChanged.raise(*this, nullptr);
+    }
+
+    void TabStrip::OnRichTabWorkingDirectoryVisibleClick(IInspectable const&, WUX::RoutedEventArgs const&)
+    {
+        RichTabWorkingDirectoryVisible(RichTabWorkingDirectoryVisibleItem().IsChecked());
+        VisibleFieldsChanged.raise(*this, nullptr);
+    }
+
+    void TabStrip::OnRichTabChangesVisibleClick(IInspectable const&, WUX::RoutedEventArgs const&)
+    {
+        RichTabChangesVisible(RichTabChangesVisibleItem().IsChecked());
+        VisibleFieldsChanged.raise(*this, nullptr);
     }
 
     void TabStrip::OnShowAllTabsClick(IInspectable const&, WUX::RoutedEventArgs const&)
@@ -1403,6 +1554,10 @@ namespace winrt::TerminalApp::implementation
                     current = parent;
                 }
                 display.Header(nullptr);
+                if (const auto headerControl = header.try_as<TerminalApp::TabHeaderControl>())
+                {
+                    headerControl.IsMetadataVisible(!headerControl.MetadataText().empty());
+                }
                 if (_deferringHeaderRestore)
                 {
                     _pendingHeaderTransfers.insert_or_assign(

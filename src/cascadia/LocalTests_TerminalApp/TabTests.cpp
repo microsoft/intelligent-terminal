@@ -285,12 +285,19 @@ namespace TerminalAppLocalTests
         TEST_METHOD(AgentViewOpensHistory);
         TEST_METHOD(AgentViewAllTabsStopsHistoryRefresh);
         TEST_METHOD(VerticalTabHistoryStatusText);
+        TEST_METHOD(SessionRegistryStatusDeltaUpdatesCaches);
         TEST_METHOD(VerticalTabHistorySearchProjection);
         TEST_METHOD(VerticalTabHistoryPreservesLiveSearch);
         TEST_METHOD(VerticalTabHistoryClosePreservesForegroundSelection);
         TEST_METHOD(WindowActivationToleratesTabWithoutStatus);
         TEST_METHOD(AgentTabClassificationTracksSession);
         TEST_METHOD(CliAgentClassifiesTab);
+        TEST_METHOD(VisibleFieldsControlRichTabComposition);
+        TEST_METHOD(RichTabMetadataSelectionIsLimitedToTwo);
+        TEST_METHOD(RichTabMetadataExpandsVerticalRow);
+        TEST_METHOD(RichTabManifestAcceptsCamelCaseFieldIds);
+        TEST_METHOD(RichTabRequestIncludesFirstPartyFields);
+        TEST_METHOD(VisibleFieldsDoNotFilterTabs);
 
         TEST_METHOD(CreateSimpleTerminalXamlType);
         TEST_METHOD(CreateTerminalMuxXamlType);
@@ -298,6 +305,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(CreateTerminalPage);
         TEST_METHOD(PaneContextPropagatesCaptureFailure);
         TEST_METHOD(AgentSessionRestoreRequiresPersistedBufferPath);
+        TEST_METHOD(InteractiveResumeCommandPublishesSessionLifecycle);
         TEST_METHOD(AgentPaneRestoreRecordRoundTrips);
         TEST_METHOD(AgentPaneRestorePreservesSettingsBinding);
         TEST_METHOD(RestoredAgentSelectionBecomesExplicitOnlyAfterUserChoice);
@@ -572,6 +580,12 @@ namespace TerminalAppLocalTests
         const auto target = Restore::ParseResumeCommandline(resume);
         VERIFY_ARE_EQUAL(std::wstring{ L"claude" }, target.agent);
         VERIFY_ARE_EQUAL(std::wstring{ L"agent-session-1" }, target.sessionId);
+        VERIFY_ARE_EQUAL(std::wstring{ L"copilot" }, Restore::ParseResumeCommandline(L"  copilot --resume agent-session-2  ").agent);
+        VERIFY_ARE_EQUAL(std::wstring{ L"agent-session-2" }, Restore::ParseResumeCommandline(L"copilot --resume agent-session-2").sessionId);
+        VERIFY_ARE_EQUAL(std::wstring{ L"copilot" }, Restore::ParseResumeCommandline(L"copilot --resume=agent-session-2").agent);
+        VERIFY_ARE_EQUAL(std::wstring{ L"agent-session-2" }, Restore::ParseResumeCommandline(L"copilot --resume=agent-session-2").sessionId);
+        VERIFY_IS_TRUE(Restore::ParseResumeCommandline(L"copilot --resume agent-session-2; calc.exe").agent.empty());
+        VERIFY_IS_TRUE(Restore::ParseResumeCommandline(L"copilot --resume bad id").agent.empty());
 
         // An ordinary shell must not be mistaken for one.
         VERIFY_IS_FALSE(Restore::IsResumeCommandline(L"pwsh.exe"));
@@ -596,6 +610,62 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(built.empty());
             VERIFY_ARE_EQUAL(std::wstring{ agent }, Restore::ParseResumeCommandline(built).agent);
         }
+    }
+
+    void TabTests::InteractiveResumeCommandPublishesSessionLifecycle()
+    {
+        const winrt::guid paneId{ L"{5d9cc4ac-1a11-4bb0-99ca-82a71e94fa77}" };
+        const auto connection = winrt::make_self<TestConnection>(
+            paneId,
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        const auto page = _commonSetup(*connection);
+
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(tab);
+            const auto control = tab->GetActiveTerminalControl();
+            const auto paneIdText = _formatPaneId(paneId);
+            const auto tabId = winrt::to_string(tab->StableId());
+            std::vector<Json::Value> events;
+            const auto token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& payload) {
+                Json::Value event;
+                Json::CharReaderBuilder reader;
+                std::istringstream stream{ winrt::to_string(payload) };
+                std::string errors;
+                if (Json::parseFromStream(reader, stream, &event, &errors))
+                {
+                    events.emplace_back(std::move(event));
+                }
+            });
+            const auto revoke = wil::scope_exit([&]() {
+                page->ProtocolVtSequenceReceived(token);
+            });
+
+            page->_TryPublishInteractiveResumeBinding(
+                control,
+                paneIdText,
+                tabId,
+                L"copilot",
+                L"resumed-session");
+
+            VERIFY_ARE_EQUAL(size_t{ 1 }, events.size());
+            VERIFY_ARE_EQUAL(std::string{ "session_born_bound" }, events[0]["method"].asString());
+            VERIFY_ARE_EQUAL(std::string{ "resumed-session" }, events[0]["params"]["agent_session_id"].asString());
+            VERIFY_ARE_EQUAL(std::string{ "copilot" }, events[0]["params"]["agent"].asString());
+            VERIFY_ARE_EQUAL(paneIdText, events[0]["params"]["pane_id"].asString());
+            VERIFY_ARE_EQUAL(tabId, events[0]["params"]["tab_id"].asString());
+            VERIFY_IS_TRUE(page->_paneAgentSessions.contains(paneId));
+            VERIFY_IS_TRUE(page->_interactiveResumeSessions.contains(paneId));
+
+            page->_CompleteInteractiveResumeBinding(paneIdText, tabId);
+
+            VERIFY_ARE_EQUAL(size_t{ 2 }, events.size());
+            VERIFY_ARE_EQUAL(std::string{ "agent_event" }, events[1]["method"].asString());
+            VERIFY_ARE_EQUAL(std::string{ "agent.session.end" }, events[1]["params"]["event"].asString());
+            VERIFY_ARE_EQUAL(std::string{ "resumed-session" }, events[1]["params"]["agent_session_id"].asString());
+            VERIFY_IS_FALSE(page->_paneAgentSessions.contains(paneId));
+            VERIFY_IS_FALSE(page->_interactiveResumeSessions.contains(paneId));
+        });
     }
 
     void TabTests::AgentPaneRestoreRecordRoundTrips()
@@ -3232,6 +3302,49 @@ namespace TerminalAppLocalTests
         });
     }
 
+    void TabTests::SessionRegistryStatusDeltaUpdatesCaches()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            page->_tabStrip.RichTabAgentStatusVisible(false);
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            item.SessionId(L"session-a");
+            item.PaneSessionId(L"00000000-0000-0000-0000-000000000001");
+            item.Title(L"Waiting session");
+            item.AgentId(L"copilot");
+            item.ProviderDisplayName(L"Copilot");
+            item.AgentSource(L"host");
+            item.Status(L"Idle");
+            item.Subtitle(L"copilot - Host - Idle");
+            item.IsLive(true);
+            stripImpl->CommitHistorySnapshot({ item });
+
+            page->_richTabAgentStatusRequestGeneration = 41;
+            VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(
+                "session-a",
+                "00000000-0000-0000-0000-000000000001",
+                "Attention"));
+            VERIFY_ARE_EQUAL(uint64_t{ 42 }, page->_richTabAgentStatusRequestGeneration);
+            VERIFY_ARE_EQUAL(
+                std::string{ "Attention" },
+                page->_richTabAgentStatusBySessionId.at("session-a"));
+            VERIFY_ARE_EQUAL(
+                std::string{ "Attention" },
+                page->_richTabAgentStatusByPaneId.at(
+                    winrt::guid{ L"00000000-0000-0000-0000-000000000001" }));
+            VERIFY_ARE_EQUAL(1u, page->_tabStrip.HistoryItems().Size());
+            const auto updated = page->_tabStrip.HistoryItems().GetAt(0);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Attention" }, updated.Status());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot - Host - Waiting for input" }, updated.Subtitle());
+            VERIFY_IS_TRUE(updated.IsLive());
+            VERIFY_IS_FALSE(updated.IsHistorical());
+
+            VERIFY_IS_FALSE(page->_ApplyAgentSessionStatusDelta("session-a", "", "FutureStatus"));
+        });
+    }
+
     void TabTests::VerticalTabHistorySearchProjection()
     {
         TestOnUIThread([&]() {
@@ -3452,6 +3565,8 @@ namespace TerminalAppLocalTests
             strip.Height(200);
             winrt::TerminalApp::TabHeaderControl header;
             header.Title(L"Split tab");
+            header.MetadataText(L"parent metadata");
+            header.IsMetadataVisible(true);
             tab.Header(header);
             winrt::MUX::Controls::SymbolIconSource icon;
             icon.Symbol(winrt::Windows::UI::Xaml::Controls::Symbol::Document);
@@ -3462,7 +3577,12 @@ namespace TerminalAppLocalTests
             strip.SetTabPresentation(tab, L"Split tab", L"\xE8A5");
 
             std::vector<winrt::TerminalApp::TabStripPaneItem> panes;
-            panes.emplace_back(winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"First pane", true));
+            auto firstPane = winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"First pane", true);
+            const auto firstPaneImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStripPaneItem>(firstPane);
+            firstPaneImpl->MetadataText(L"first metadata\nfirst branch");
+            firstPaneImpl->MetadataVisibility(Visibility::Visible);
+            firstPaneImpl->AutomationName(L"First pane, first metadata, first branch");
+            panes.emplace_back(std::move(firstPane));
             panes.emplace_back(winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 12, L"Second pane", false));
             strip.SetPaneItems(tab, winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>(std::move(panes)), true);
 
@@ -3482,8 +3602,16 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(display.ContextFlyout() == contextFlyout);
             VERIFY_ARE_EQUAL(2u, display.PaneItems().Size());
             VERIFY_ARE_EQUAL(Visibility::Visible, display.ChildrenVisibility());
+            VERIFY_IS_FALSE(header.IsMetadataVisible());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"first metadata\nfirst branch" }, display.PaneItems().GetAt(0).MetadataText());
+            VERIFY_ARE_EQUAL(Visibility::Visible, display.PaneItems().GetAt(0).MetadataVisibility());
             VERIFY_IS_TRUE(container.ActualHeight() > 32.0);
             VERIFY_IS_NOT_NULL(header.Parent());
+
+            strip.SetPaneItems(tab, display.PaneItems(), false);
+            VERIFY_IS_TRUE(header.IsMetadataVisible());
+            strip.SetPaneItems(tab, display.PaneItems(), true);
+            VERIFY_IS_FALSE(header.IsMetadataVisible());
 
             header.BeginRename();
             VERIFY_IS_TRUE(header.InRename());
@@ -3652,6 +3780,180 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(page->_TabHasCliAgent(tab));
             page->_paneAgentSessions.erase(paneSessionId);
             VERIFY_IS_FALSE(page->_TabHasCliAgent(tab));
+        });
+    }
+
+    void TabTests::VisibleFieldsControlRichTabComposition()
+    {
+        using namespace ::Microsoft::Terminal::RichTab::Provider;
+
+        Registration provider;
+        provider.manifest.id = "git";
+        provider.manifest.fields = {
+            { "agentStatus", "Agent status", FieldType::String, true },
+            { "workingDirectory", "Current working directory", FieldType::String, true },
+            { "repository", "Git repo", FieldType::String, false },
+            { "branch", "Git branch", FieldType::String, false },
+            { "changes", "Git changes", FieldType::String, false },
+        };
+
+        Snapshot snapshot;
+        snapshot.fields.emplace("agentStatus", std::string{ "Active" });
+        snapshot.fields.emplace("workingDirectory", std::string{ R"(C:\src\terminal)" });
+        snapshot.fields.emplace("repository", std::string{ "terminal" });
+        snapshot.fields.emplace("branch", std::string{ "main" });
+        snapshot.fields.emplace("changes", std::string{ "~12 +200 -35" });
+        const std::unordered_map<std::string, Snapshot> snapshots{ { "git", snapshot } };
+
+        const auto defaults = ProviderBroker::ComposePresentation({ provider }, snapshots);
+        VERIFY_IS_TRUE(defaults.has_value());
+        VERIFY_ARE_EQUAL(
+            std::wstring{ L"Active\nC:\\src\\terminal" },
+            defaults->text);
+        VERIFY_ARE_EQUAL(
+            std::wstring{ LR"(Agent status: Active, Current working directory: C:\src\terminal)" },
+            defaults->accessibilityText);
+
+        ProviderBroker::VisibleFieldMap visibleFields;
+        visibleFields["git"].emplace("branch");
+        visibleFields["git"].emplace("changes");
+        const auto branchOnly = ProviderBroker::ComposePresentation({ provider }, snapshots, visibleFields);
+        VERIFY_IS_TRUE(branchOnly.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"main\n~12 +200 -35" }, branchOnly->text);
+        VERIFY_ARE_EQUAL(
+            std::wstring{ L"Git branch: main, Git changes: ~12 +200 -35" },
+            branchOnly->accessibilityText);
+
+        visibleFields["git"].clear();
+        VERIFY_IS_FALSE(ProviderBroker::ComposePresentation({ provider }, snapshots, visibleFields).has_value());
+    }
+
+    void TabTests::RichTabRequestIncludesFirstPartyFields()
+    {
+        using namespace ::Microsoft::Terminal::RichTab::Provider;
+
+        Manifest manifest;
+        manifest.id = "git";
+        manifest.activationEvents.emplace_back(ActivationEvent::ManualRefresh);
+
+        Request request;
+        request.requestId = "request";
+        request.providerId = manifest.id;
+        request.processEpoch = 1;
+        request.sessionId = "session";
+        request.reason = ActivationEvent::ManualRefresh;
+        request.firstPartyFields.emplace("agentStatus", "waiting");
+
+        const auto serialized = SerializeRequest(request, manifest);
+        VERIFY_IS_TRUE(static_cast<bool>(serialized));
+        VERIFY_IS_TRUE(serialized.value->find(R"("agentStatus":"waiting")") != std::string::npos);
+    }
+
+    void TabTests::RichTabMetadataSelectionIsLimitedToTwo()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            auto& tabStrip = page->_tabStrip;
+            VERIFY_IS_TRUE(tabStrip.RichTabAgentStatusVisible());
+            VERIFY_IS_TRUE(tabStrip.RichTabWorkingDirectoryVisible());
+            VERIFY_IS_FALSE(tabStrip.RichTabRepositoryVisible());
+            VERIFY_IS_FALSE(tabStrip.RichTabBranchVisible());
+            VERIFY_IS_FALSE(tabStrip.RichTabChangesVisible());
+
+            tabStrip.RichTabRepositoryVisible(true);
+            VERIFY_IS_FALSE(tabStrip.RichTabRepositoryVisible());
+
+            tabStrip.RichTabWorkingDirectoryVisible(false);
+            tabStrip.RichTabBranchVisible(true);
+            VERIFY_IS_TRUE(tabStrip.RichTabAgentStatusVisible());
+            VERIFY_IS_TRUE(tabStrip.RichTabBranchVisible());
+            VERIFY_IS_FALSE(tabStrip.RichTabWorkingDirectoryVisible());
+            VERIFY_IS_FALSE(tabStrip.RichTabRepositoryVisible());
+
+            tabStrip.RichTabChangesVisible(true);
+            VERIFY_IS_FALSE(tabStrip.RichTabChangesVisible());
+        });
+    }
+
+    void TabTests::RichTabMetadataExpandsVerticalRow()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            page->_SetVerticalRailVisibility(true);
+            const auto tab = page->_GetTabImpl(page->_tabs.GetAt(0));
+            VERIFY_IS_NOT_NULL(tab);
+
+            ::Microsoft::Terminal::RichTab::Provider::Presentation presentation;
+            presentation.text = L"first line\nsecond line";
+            presentation.tooltip = presentation.text;
+            presentation.accessibilityText = L"First: first line, Second: second line";
+            tab->SetRichTabPresentation(presentation);
+
+            page->UpdateLayout();
+            const auto tabStrip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            const auto container = tabStrip->ItemsList().ContainerFromIndex(0).try_as<ListViewItem>();
+            VERIFY_IS_NOT_NULL(container);
+            VERIFY_IS_TRUE(container.ActualHeight() > 48.0);
+        });
+    }
+
+    void TabTests::RichTabManifestAcceptsCamelCaseFieldIds()
+    {
+        using namespace ::Microsoft::Terminal::RichTab::Provider;
+
+        constexpr std::string_view manifestJson = R"({
+            "schemaVersion": 1,
+            "id": "com.microsoft.test",
+            "displayName": "Test",
+            "publisher": "Microsoft",
+            "version": "1.0.0",
+            "protocol": { "minVersion": 1, "maxVersion": 1 },
+            "runtime": {
+                "type": "powerShellV1",
+                "entrypoint": "provider.ps1",
+                "arguments": []
+            },
+            "activationEvents": [ "onManualRefresh" ],
+            "fields": [
+                {
+                    "id": "agentStatus",
+                    "displayName": "Agent status",
+                    "type": "string",
+                    "defaultVisible": true
+                },
+                {
+                    "id": "changes",
+                    "displayName": "Git changes",
+                    "type": "string",
+                    "defaultVisible": true
+                }
+            ]
+        })";
+
+        const auto parsed = ParseManifest(manifestJson, LR"(C:\providers\test)");
+        VERIFY_IS_TRUE(static_cast<bool>(parsed));
+        VERIFY_ARE_EQUAL(static_cast<size_t>(2), parsed.value->fields.size());
+        VERIFY_IS_FALSE(IsCanonicalFieldId("WorkingDirectory"));
+    }
+
+    void TabTests::VisibleFieldsDoNotFilterTabs()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            page->_tabStrip.RichTabRepositoryVisible(false);
+            page->_tabStrip.RichTabBranchVisible(false);
+            page->_tabStrip.RichTabAgentStatusVisible(false);
+            page->_tabStrip.RichTabWorkingDirectoryVisible(false);
+            page->_tabStrip.RichTabChangesVisible(false);
+            page->_ApplyTabListProjection();
+            page->UpdateLayout();
+
+            const auto container = page->_tabStrip.ContainerFromIndex(0).as<ListViewItem>();
+            VERIFY_ARE_EQUAL(Visibility::Visible, container.Visibility());
+            VERIFY_ARE_EQUAL(winrt::TerminalApp::TabStripFilterMode::AllTabs, page->_tabStrip.FilterMode());
         });
     }
 

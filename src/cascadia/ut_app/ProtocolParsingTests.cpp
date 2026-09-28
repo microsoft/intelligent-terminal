@@ -84,10 +84,13 @@ namespace TerminalAppUnitTests
     {
         Json::Value event;
         const auto route = ClassifySendEvent(
-            R"({"type":"event","method":"session_registry_changed","params":{}})",
+            R"({"type":"event","method":"session_registry_changed","params":{"session_id":"session-a","pane_session_id":"pane-a","status":"Attention"}})",
             event);
 
         VERIFY_ARE_EQUAL(SendEventRoute::SessionRegistryChanged, route);
+        VERIFY_ARE_EQUAL("session-a", event["params"]["session_id"].asString());
+        VERIFY_ARE_EQUAL("pane-a", event["params"]["pane_session_id"].asString());
+        VERIFY_ARE_EQUAL("Attention", event["params"]["status"].asString());
     }
 
     void ProtocolParsingTests::RestartRequestIdentityIsStampedOnce()

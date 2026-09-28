@@ -19,17 +19,11 @@ This spec adds a **file/process watcher as a pure fallback** that fills exactly
 that hole, for all four CLIs, **without changing anything about the hook path**.
 The design principle is one sentence:
 
-> **A real hook owns a session outright; #266 born-bound owns only its binding;
-> the watcher fills the rest — surfacing user-typed sessions and supplying
-> *status* for born-bound (delegate/resume) sessions that have no hook — and the
-> three never double-track.**
+> **A real hook owns a session outright; born-bound owns only its binding; the
+> watcher supplies status when hooks are absent; and the paths never
+> double-track.**
 
-The C++ side is unchanged — this is entirely a `wta` (Rust) addition: the
-watcher itself, the two-set dedup (`hook_owned` / `born_bound`), an in-window
-liveness gate, a liveness reaper, the born-bound *status* fallback, per-CLI
-status detection (all four turn-based; Gemini is Working-only — it shows live
-Working/Attention but defers the turn-end → Idle), and a codex
-title-extraction fix.
+The C++ side is unchanged — this is entirely a `wta` (Rust) addition.
 
 ## Background: Class A / Class B
 
@@ -44,14 +38,8 @@ IT classifies every session by `SessionOrigin` (`agent_sessions.rs`):
     opens, `/sessions` resume) — see the companion spec; or
   - **hooks** when the user typed it *and* the CLI has `wt-agent-hooks`.
 
-The watcher targets the **remaining** Class-B sessions: **user-typed CLIs with
-no hooks installed**. It is the last slice of the "de-hook" effort, shipped as
-an opt-out-free fallback rather than a hook replacement.
-
 ## Goals
 
-- When hooks are absent, still discover user-typed Class-B sessions, bind them
-  to their pane, show live activity, and reap them when the process exits.
 - Never produce a duplicate, a ghost, or a wrong-pane row when hooks **are**
   present — the watcher must be a no-op for any session a hook owns.
 - Never surface a session that is not actually running in **this** IT window
@@ -72,9 +60,6 @@ an opt-out-free fallback rather than a hook replacement.
    real hook / ACP event   ──►  `hook_owned`  ──► watcher fully suppressed
    #266 born-bound              `born_bound`   ──► watcher supplies STATUS only
    (delegate / resume)     ──►                     (never re-binds)
-   user-typed CLI, no hook ───────────────────► watcher creates + binds the row
-                                  │
-                                  ▼
                     wta-master registry (one row per session)
 ```
 
@@ -114,32 +99,6 @@ Codex subagent rollouts (`multi_agent_v1` / `spawn_agent` forks, identified by
 the parent's history and would otherwise appear as a duplicate row with the same
 title.
 
-### Binding & liveness (process-driven)
-
-`proc_bind.rs` resolves the `(pane GUID, owner pid, cwd)` for a watched session,
-best-effort, via Win32:
-
-- `wt_session_for_pid` — reads the `WT_SESSION` environment variable straight
-  out of a process's PEB; this **is** the pane GUID.
-- `copilot_pid_from_lock` — copilot writes `inuse.<pid>.lock` in its session
-  dir, giving an exact session→pid link.
-- `file_owner_pid` — Restart-Manager (`RmStartSession` / `RmGetList`) reports
-  which process holds a rollout file open (used for codex).
-- `pid_alive`, `env_var_for_pid`, `cwd_for_pid` — supporting probes.
-
-Binding confidence differs per CLI, and **this is the core reason hooks remain
-preferred**:
-
-- **Copilot**: lock-file → pid → `WT_SESSION` is exact.
-- **Codex**: RM file-owner → pid → `WT_SESSION` is exact *while codex holds the
-  rollout open*.
-- **Claude / Gemini**: no lock file and no reliable open-file owner, so binding
-  falls back to cwd correlation, which is ambiguous when two panes share a cwd.
-
-A failed bind never blocks the row — it yields `pane = None` / `pid = None`. The
-resolved `pid` is stored on the row as `bound_pid` (`session_registry.rs`) and
-feeds the reaper.
-
 ### Dedup: how the watcher coordinates with hooks and born-bound
 
 The master keeps **two disjoint** ownership sets (`master/mod.rs`):
@@ -167,12 +126,11 @@ every watcher status event for the resumed row was dropped and the row sat at
 `Idle` for its whole life. A real hook re-claims ownership on its very next
 event, so nothing is lost when hooks are working.
 
-`apply_watcher_event` then, in order:
+Watcher processing then, in order:
 
 1. `hook_owned.contains(sid)` → **drop** (the hook owns binding and activity);
-2. `born_bound.contains(sid)` → **apply status only** (see below), never re-bind;
-3. existing row `origin == AgentPane` → drop (Class A, ACP-driven);
-4. otherwise → the normal create/bind/gate path (user-typed sessions).
+2. `born_bound` → **apply status only**, never re-bind;
+3. anything else → drop rather than guess.
 
 There is no ordering requirement and the row identity is the same session id
 throughout, so no duplicate is ever produced.
@@ -247,24 +205,6 @@ The gate runs **only** when a row is being created (`None`) or revived from a
 terminal state (`Historical` / `Ended`); already-live rows skip it so a chatty
 session doesn't re-walk COM on every keystroke.
 
-### The 5-second reaper
-
-Hooks emit an explicit close event; the watcher has no such signal, so a
-dedicated `tokio::time::interval(5s)` task (`reap_dead_class_b_sessions`) ends
-fallback rows whose process has gone. It transitions a row to `SessionStopped`
-when **all** hold:
-
-- `origin != AgentPane` (Class B only),
-- `status ∈ {Working, Idle, Attention}` (not already terminal),
-- `bound_pid.is_some()` — and `bound_pid` is set **only** by the watcher bind
-  path, so the reaper effectively only ever reaps watcher-tracked rows, and
-- `!pid_alive(bound_pid)`.
-
-`pid_alive` is ~13 µs for a live pid; the per-tick cost is well under 0.1 ms for
-realistic row counts, so the 5 s cadence is negligible. This is a net-new task
-(master has no other interval; the `/sessions` view's 5 s re-poll is
-helper-side and unrelated).
-
 ### Title resolution (and the codex AGENTS.md fix)
 
 > **Superseded.** The on-disk title scan described below was removed with the
@@ -315,11 +255,8 @@ title).
 |---------|---------|
 | Watcher loop, roots, seed | `tools/wta/src/session_watcher/mod.rs` |
 | Per-CLI discovery / classify | `session_watcher/{discover,classify_copilot,classify_codex,classify_claude,classify_gemini}.rs` |
-| Pane binding helper | `session_watcher/bind.rs` |
-| Win32 probes (PEB, lock, RM) | `tools/wta/src/proc_bind.rs` |
-| Apply / dedup / gate / reaper | `tools/wta/src/master/mod.rs` (`apply_watcher_event`, `handle_session_hook`, `ensure_watched_session_row`, `watcher_row_allowed`, `live_it_pane_guids`, `reap_dead_class_b_sessions`, `hook_owned` + `born_bound` sets) |
+| Apply / ownership | `tools/wta/src/master/mod.rs` (`apply_watcher_event`, `hook_owned`, `born_bound`) |
 | Born-bound registration | `session_registry.rs` (`build_born_bound_request`, `INTELLTERM_METHOD_SESSION_BORN_BOUND`), `main.rs` (`register_launched_session_with_master`) |
-| Row `bound_pid` field | `tools/wta/src/session_registry.rs` |
 | Codex subagent fork detection | `session_watcher/classify_codex.rs` (`record_is_subagent_meta`) |
 | User-input tool heuristic | `agent_sessions.rs` (`is_user_input_tool`) |
 
@@ -329,8 +266,8 @@ The watcher maps each CLI's on-disk transcript to the same `AgentStatus` the
 hook reducer uses, via three events: `ToolStarting` → **Working**,
 `ToolCompleted` → **Idle**, `Notification` → **Attention**. A fresh/bound session
 starts `Idle`; terminal states are `Historical` (startup history scan) and
-`Ended` (pane/process gone); the 5 s reaper or a hook taking over moves a row out
-of the live states.
+`Ended` (pane/process gone); lock removal, pane close, or a hook lifecycle event
+moves a row out of the live states.
 
 The vertical sidebar's Agent History displays each registry status separately:
 `Idle` (Idle), `Working` (Active), `Attention` (Waiting for input), `Error`
@@ -415,30 +352,17 @@ routing.
 - **Hooks installed mid-session**: the first hook event marks the session
   `hook_owned`; the watcher row (if any) is adopted by the hook from then on,
   same session id, no duplicate.
-- **Bind fails (Claude/Gemini shared cwd)**: row is created with `pane = None`;
-  the liveness gate then withholds it (no live pane to match) rather than risk a
-  wrong-window row. This is the conservative, accepted limitation that keeps
-  hooks preferred for those two CLIs.
-- **Codex holds, then releases, the rollout file**: binding is exact only while
-  the file is held; if codex closes it the reaper still ends the row on process
-  exit via `bound_pid`.
-- **Other IT window**: that window's panes aren't in this master's
-  `live_it_pane_guids`, so the gate withholds the row — each window shows only
-  its own.
 - **`notify` miss**: a dropped FS event means a late or missing appearance; the
   fallback nature makes this acceptable, and the startup seed bounds the blast
   radius after a restart.
 
 ## Capabilities
 
-- **Security / Privacy**: reads only the user's own CLI session-state files and
-  process metadata for the current user; no new network or cross-user access.
-- **Reliability**: best-effort throughout; every probe failure degrades to "no
-  row" rather than a wrong row. Dedup and the liveness gate are the two
-  invariants that prevent duplicates/ghosts.
-- **Performance**: event-driven (no sweep); the only timer is the 5 s reaper
-  (sub-0.1 ms/tick). COM pane walks are cached 2 s and only run on
-  create/revive.
+- **Security / Privacy**: reads only the user's own CLI session-state files; no
+  new network or cross-user access.
+- **Reliability**: every mapping failure degrades to "no row" rather than a
+  wrong row.
+- **Performance**: event-driven with no polling sweep.
 - **Compatibility**: additive; with hooks installed, behaviour is identical to
   `main` (watcher events are all deduped).
 
@@ -456,9 +380,6 @@ routing.
 - Manual matrix:
   - hooks installed → row tracked by hook; master log shows watcher events
     deduped.
-  - hooks uninstalled → user-typed codex tracked by the watcher with the correct
-    real-prompt title (verified in an `AGENTS.md` repo); external/non-IT copilot
-    sessions stay hidden; no PowerShell shell-hook events in the master log.
   - hooks uninstalled → a **delegate** (`?<prompt>`) and a **resumed** Claude
     session show live status (Working/Idle/Attention) from the watcher, not a
     frozen `Idle`.
@@ -479,11 +400,8 @@ routing.
   Claude/Gemini binding is too ambiguous and codex's RM binding is fragile, so
   hooks must stay authoritative. This spec is the salvaged *fallback* half of
   that work.
-- **Polling sweep for perfect liveness** — rejected: disproportionate for a
-  fallback; event-driven + the 5 s reaper is enough.
-- **Pane-is-some filter instead of the in-window gate** — rejected: machine-wide
-  CLI sessions also carry `WT_SESSION`, so only membership in *this* window's
-  live pane set is sufficient.
+- **Polling sweep for perfect liveness** — rejected: the watcher is a fallback,
+  and an idle process scan is disproportionate.
 - **Gemini turn-end → Idle** — **deferred** (see *Status detection*): Gemini's
   transcript has no turn-completion signal and a 2-phase / `$set`-interleaved
   shape, so the *end* of a turn can't be told from the log. Gemini already shows
@@ -499,5 +417,3 @@ routing.
   watcher cover those two as confidently as Copilot/Codex.
 - A reliable Gemini turn signal (a `finishReason`, or a stable per-message
   completion marker) would let Gemini join the turn-based status model.
-- If a CLI gains a first-class "session ended" file marker, the reaper could
-  react to it instead of polling pid liveness.

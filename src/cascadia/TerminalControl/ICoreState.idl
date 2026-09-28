@@ -67,5 +67,6 @@ namespace Microsoft.Terminal.Control
         IVector<ScrollMark> ScrollMarks { get; };
 
         Int32 ViewWidth { get; };
+        Boolean WorkingDirectoryReportedByShell { get; };
     };
 }

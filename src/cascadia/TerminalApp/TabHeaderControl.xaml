@@ -14,7 +14,11 @@
              MinHeight="16"
              mc:Ignorable="d">
 
-    <Grid>
+    <Grid x:Name="HeaderLayout">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="*" />
@@ -96,5 +100,16 @@
                   FontSize="12"
                   Glyph="&#xE8EE;"
                   Visibility="{x:Bind TabStatus.IsKeepRunning, Mode=OneWay}" />
+        <TextBlock x:Name="HeaderMetadataTextBlock"
+                   Grid.Row="1"
+                   Grid.ColumnSpan="3"
+                   Margin="0,1,0,0"
+                   MaxLines="2"
+                   FontSize="10"
+                   Opacity="0.72"
+                   Text="{x:Bind MetadataText, Mode=OneWay}"
+                   TextTrimming="CharacterEllipsis"
+                   Visibility="Collapsed"
+                   AutomationProperties.Name="{x:Bind MetadataAutomationName, Mode=OneWay}" />
     </Grid>
 </UserControl>

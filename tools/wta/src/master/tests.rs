@@ -10968,10 +10968,17 @@ async fn session_hook_broadcasts_sessions_changed_after_valid_payload() {
     );
     assert_eq!(notification.params.get(), "{}");
     let terminal_events = crate::wt_protocol_events::take_test_published_events();
-    assert_eq!(terminal_events.len(), 1);
-    let terminal_event: serde_json::Value =
+    assert_eq!(terminal_events.len(), 2);
+    let status_delta: serde_json::Value =
         serde_json::from_str(&terminal_events[0]).expect("terminal event should be JSON");
-    assert_eq!(terminal_event["method"], "session_registry_changed");
+    assert_eq!(status_delta["method"], "session_registry_changed");
+    assert_eq!(status_delta["params"]["session_id"], "sid-for-hook");
+    assert_eq!(status_delta["params"]["pane_session_id"], "pane-for-hook");
+    assert_eq!(status_delta["params"]["status"], "Idle");
+    let fallback: serde_json::Value =
+        serde_json::from_str(&terminal_events[1]).expect("terminal event should be JSON");
+    assert_eq!(fallback["method"], "session_registry_changed");
+    assert_eq!(fallback["params"], serde_json::json!({}));
 }
 
 #[tokio::test]
