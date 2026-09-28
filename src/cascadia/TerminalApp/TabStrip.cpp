@@ -445,7 +445,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         // The rest of the row is driven by observable properties and x:Bind.
-        // Resolve the template root once; FindName uses its template namescope.
+        // Resolve the template root once; FindName searches within that template.
         const auto grid = root.Name() == L"TabHeaderGrid" ?
                               root.try_as<Grid>() :
                               _findNamedElement(root, L"TabHeaderGrid").try_as<Grid>();

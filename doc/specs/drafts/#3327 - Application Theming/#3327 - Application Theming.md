@@ -246,6 +246,8 @@ the affected tab; search, filter, and layout changes still refresh the full list
 Theme colors notify the selected row separately from pane-structure changes.
 Row content, icons, and pane visibility use observable bindings rather than
 reassigning presenters and item sources during selection.
+Icon property changes refresh the affected row independently of title changes,
+including when settings reload updates an inactive tab's profile icon.
 
 * `tabRow.background`: Control the color of the background of the tab row. When
   tabs in the titlebar are enabled, this sets the color of the titlebar. See

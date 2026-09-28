@@ -10218,6 +10218,10 @@ namespace winrt::TerminalApp::implementation
                     page->_UpdateTitle(*tab);
                     page->_ApplyTabListProjection(*tab);
                 }
+                else if (propertyName == L"Icon" && page->_isVerticalLayout)
+                {
+                    page->_tabStrip.SetTabPresentation(tab->TabViewItem(), tab->Title(), tab->Icon());
+                }
                 else if (propertyName == L"Content")
                 {
                     if (*tab == page->_GetFocusedTab())

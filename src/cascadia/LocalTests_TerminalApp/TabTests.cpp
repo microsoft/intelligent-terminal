@@ -279,6 +279,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabStripCollapsedItemsPreserveSelection);
         TEST_METHOD(VerticalTabStripHostsPaneGroups);
         TEST_METHOD(VerticalTabSelectionPreservesPresentation);
+        TEST_METHOD(VerticalTabIconChangesUpdatePresentation);
         TEST_METHOD(VerticalTabThemeChangesDoNotReprojectPanes);
         TEST_METHOD(VerticalTabStripUsesNativeInteractionStates);
         TEST_METHOD(AgentViewFiltersSplitPaneChildren);
@@ -3519,6 +3520,45 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(display.Icon() == icon);
             VERIFY_IS_TRUE(display.PaneItems().GetAt(0) == firstPane);
             VERIFY_IS_TRUE(display.PaneItems().GetAt(1) == secondPane);
+        });
+    }
+
+    void TabTests::VerticalTabIconChangesUpdatePresentation()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto title = tab->Title();
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            const auto display = strip->ItemsList().Items().GetAt(0).as<winrt::TerminalApp::TabStripDisplayItem>();
+            const auto pane = display.PaneItems().GetAt(0);
+            uint32_t collectionChanges = 0;
+            const auto changed = display.PaneItems().VectorChanged(winrt::auto_revoke, [&](auto&&, auto&&) {
+                ++collectionChanges;
+            });
+            NewTerminalArgs args;
+            VERIFY_SUCCEEDED(page->_OpenNewTab(args));
+            VERIFY_IS_FALSE(page->_GetFocusedTabImpl() == tab);
+
+            // Settings reload calls UpdateIcon even when the tab title is unchanged.
+            for (const auto glyph : { L"\xE8A5", L"\xE756" })
+            {
+                const auto previousIcon = display.Icon();
+                tab->UpdateIcon(glyph, IconStyle::Default);
+                page->UpdateLayout();
+                VERIFY_ARE_EQUAL(title, tab->Title());
+                VERIFY_IS_FALSE(previousIcon == display.Icon());
+                VERIFY_ARE_EQUAL(winrt::hstring{ glyph }, display.Icon().as<FontIcon>().Glyph());
+                const auto root = page->_tabStrip.ContainerFromIndex(0).as<ListViewItem>().ContentTemplateRoot().as<FrameworkElement>();
+                VERIFY_IS_TRUE(root.FindName(L"TabIconPresenter").as<ContentPresenter>().Content() == display.Icon());
+                const auto updatedIcon = display.Icon();
+                tab->UpdateIcon(glyph, IconStyle::Default);
+                VERIFY_IS_TRUE(display.Icon() == updatedIcon);
+                VERIFY_IS_TRUE(root.FindName(L"TabIconPresenter").as<ContentPresenter>().Content() == display.Icon());
+                VERIFY_IS_TRUE(display.PaneItems().GetAt(0) == pane);
+            }
+            VERIFY_ARE_EQUAL(0u, collectionChanges);
         });
     }
 
