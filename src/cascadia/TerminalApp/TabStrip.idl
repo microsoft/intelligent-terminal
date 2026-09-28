@@ -39,6 +39,7 @@ namespace TerminalApp
         String SearchQuery;
         Boolean IsLive;
         Boolean IsAgentPane;
+        Boolean IsHistorical;
     };
 
     [default_interface] runtimeclass TabStripHistoryActivationEventArgs

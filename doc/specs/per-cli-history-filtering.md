@@ -348,7 +348,12 @@ Both fail if the per-agent stamping or the reconcile guard is removed.
 
 ## Sidebar History refresh lifecycle
 
-The vertical tab sidebar reads `wta sessions list --origin shell --json`.
+Selecting **Filter > Agents only** in the vertical tab sidebar opens History,
+which reads `wta sessions list --origin shell --json`. It replaces only the tab
+list; the Tabs, Search, and Filter toolbar remains visible. There is no separate
+History toolbar button, header, or close button. Selecting **All tabs** returns
+to the normal tab list.
+
 Opening History shows a loading indicator; later refreshes leave the previous
 snapshot visible until a complete replacement is available. Registry-change
 notifications request an immediate refresh, with a five-second timer as a
@@ -373,7 +378,7 @@ failure restores the list and polling; its error remains visible across
 successful list refreshes until another activation attempt or History is closed.
 Accepted activation closes History.
 
-Closing History invalidates outstanding list and activation responses, so late
+Leaving History (including selecting **All tabs**) invalidates outstanding list and activation responses, so late
 completions cannot change a subsequently reopened view. It does not cancel the
 underlying command or reverse a dispatched activation.
 
