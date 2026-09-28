@@ -9413,14 +9413,18 @@ namespace winrt::TerminalApp::implementation
                     if (sessionEnded)
                     {
                         if (const auto active = _activeCliAgentPanes.find(*paneSessionId);
-                            active != _activeCliAgentPanes.end() &&
-                            (agentSessionId.empty() ||
-                             active->second == winrt::to_hstring(agentSessionId) ||
-                             (active->second.empty() &&
-                              _paneAgentSessions.contains(*paneSessionId) &&
-                              _paneAgentSessions.at(*paneSessionId).sessionId == winrt::to_hstring(agentSessionId))))
+                            active != _activeCliAgentPanes.end())
                         {
-                            _activeCliAgentPanes.erase(active);
+                            const auto endedSessionId = winrt::to_hstring(agentSessionId);
+                            const auto superseded = std::find(active->second.supersededSessionIds.begin(),
+                                                              active->second.supersededSessionIds.end(),
+                                                              endedSessionId) != active->second.supersededSessionIds.end();
+                            if (agentSessionId.empty() ||
+                                active->second.sessionId == endedSessionId ||
+                                (active->second.sessionId.empty() && !superseded))
+                            {
+                                _activeCliAgentPanes.erase(active);
+                            }
                         }
                     }
                     else if ((sessionStarted || promptSubmitted) && !agent.empty())
@@ -9428,12 +9432,44 @@ namespace winrt::TerminalApp::implementation
                         const auto sessionId = winrt::to_hstring(agentSessionId);
                         if (sessionStarted)
                         {
-                            _activeCliAgentPanes.insert_or_assign(*paneSessionId, sessionId);
+                            auto marker = _ActiveCliAgentPane{ sessionId };
+                            if (const auto active = _activeCliAgentPanes.find(*paneSessionId);
+                                active != _activeCliAgentPanes.end())
+                            {
+                                marker.supersededSessionIds = std::move(active->second.supersededSessionIds);
+                                if (!active->second.sessionId.empty() && active->second.sessionId != sessionId)
+                                {
+                                    marker.supersededSessionIds.emplace_back(active->second.sessionId);
+                                }
+                            }
+                            if (const auto binding = _paneAgentSessions.find(*paneSessionId);
+                                binding != _paneAgentSessions.end() &&
+                                !binding->second.sessionId.empty() &&
+                                binding->second.sessionId != sessionId &&
+                                std::find(marker.supersededSessionIds.begin(),
+                                          marker.supersededSessionIds.end(),
+                                          binding->second.sessionId) == marker.supersededSessionIds.end())
+                            {
+                                marker.supersededSessionIds.emplace_back(binding->second.sessionId);
+                            }
+                            _activeCliAgentPanes.insert_or_assign(*paneSessionId, std::move(marker));
+                            if (agentSessionId.empty())
+                            {
+                                _pendingRestoredSessionBindings.erase(*paneSessionId);
+                                _paneAgentSessions.erase(*paneSessionId);
+                            }
                         }
                         else if (const auto active = _activeCliAgentPanes.find(*paneSessionId);
-                                 active == _activeCliAgentPanes.end() || active->second.empty())
+                                 active == _activeCliAgentPanes.end())
                         {
-                            _activeCliAgentPanes.insert_or_assign(*paneSessionId, sessionId);
+                            _activeCliAgentPanes.insert_or_assign(*paneSessionId, _ActiveCliAgentPane{ sessionId });
+                        }
+                        else if (active->second.sessionId.empty() &&
+                                 std::find(active->second.supersededSessionIds.begin(),
+                                           active->second.supersededSessionIds.end(),
+                                           sessionId) == active->second.supersededSessionIds.end())
+                        {
+                            active->second.sessionId = sessionId;
                         }
                     }
 

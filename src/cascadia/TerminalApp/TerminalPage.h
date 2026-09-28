@@ -999,7 +999,12 @@ namespace winrt::TerminalApp::implementation
         // publish its startup lifecycle event before that id is available.
         // Keep the lifecycle session id when available so a delayed end from
         // an older CLI cannot remove a newer session from Agent view.
-        std::unordered_map<winrt::guid, winrt::hstring> _activeCliAgentPanes;
+        struct _ActiveCliAgentPane
+        {
+            winrt::hstring sessionId;
+            std::vector<winrt::hstring> supersededSessionIds;
+        };
+        std::unordered_map<winrt::guid, _ActiveCliAgentPane> _activeCliAgentPanes;
         struct _PendingRestoredSessionBinding
         {
             winrt::hstring sessionId;

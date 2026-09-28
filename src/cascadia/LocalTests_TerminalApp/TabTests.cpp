@@ -1796,11 +1796,11 @@ namespace TerminalAppLocalTests
             const auto paneSessionId = control.Connection().SessionId();
             const auto paneId = winrt::to_string(::Microsoft::Console::Utils::GuidToString(paneSessionId));
 
-            const auto event = [&](const std::string_view name) {
+            const auto event = [&](const std::string_view name, const std::string_view sessionId = "agent-session-resumed") {
                 Json::Value evt;
                 evt["params"]["pane_id"] = paneId;
                 evt["params"]["event"] = std::string{ name };
-                evt["params"]["agent_session_id"] = "agent-session-resumed";
+                evt["params"]["agent_session_id"] = std::string{ sessionId };
                 evt["params"]["agent"] = "copilot";
                 Json::StreamWriterBuilder writer;
                 writer["indentation"] = "";
@@ -1829,6 +1829,18 @@ namespace TerminalAppLocalTests
             // to resume and the pane restores as a plain shell.
             event("agent.session.end");
             VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_paneAgentSessions.count(paneSessionId)));
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_activeCliAgentPanes.count(paneSessionId)));
+
+            // A new lifecycle may begin before its session id is known. Retire
+            // the previous binding, ignore its delayed end, then accept the
+            // current lifecycle's id when it first appears on the end event.
+            event("agent.session.start", "agent-session-previous");
+            event("agent.session.start", "");
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_paneAgentSessions.count(paneSessionId)));
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(page->_activeCliAgentPanes.count(paneSessionId)));
+            event("agent.session.end", "agent-session-previous");
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(page->_activeCliAgentPanes.count(paneSessionId)));
+            event("agent.session.end", "agent-session-current");
             VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_activeCliAgentPanes.count(paneSessionId)));
         });
     }
