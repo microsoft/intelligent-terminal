@@ -4039,71 +4039,6 @@ namespace winrt::TerminalApp::implementation
         _UpdateBottomBarState();
     }
 
-    // Window-level bottom-bar "sessions toggle" click. Mirrors the
-    // Ctrl+Shift+/ keybinding, scoped to the active tab:
-    //   - active tab has no agent pane → open one in sessions view
-    //   - already in sessions view → close the pane
-    //   - in chat view → switch into sessions view
-    void TerminalPage::_SessionToggleButtonOnClick(const winrt::Windows::Foundation::IInspectable& /*sender*/,
-                                                   const winrt::Windows::UI::Xaml::RoutedEventArgs& /*eventArgs*/)
-    {
-        const auto activeTab = _GetFocusedTabImpl();
-        if (!activeTab)
-        {
-            return;
-        }
-        if (const auto agentContent = activeTab->FindAgentPaneContent())
-        {
-            const auto agentPane = activeTab->FindAgentPane();
-            const bool isStashed = agentPane && agentPane->IsHidden();
-            if (isStashed)
-            {
-                // Stashed — unstash in sessions view.
-                _RequestAgentStateForTab(activeTab, "sessions", /*pane_open*/ true);
-            }
-            else if (agentContent.IsSessionsView())
-            {
-                // Visible in sessions view — hide (stash).
-                _RequestAgentStateForTab(activeTab, std::nullopt, /*pane_open*/ false);
-            }
-            else
-            {
-                // Visible in chat view — switch into sessions view, and move
-                // keyboard focus onto the agent pane so Esc / arrows / Enter
-                // reach the wta TUI immediately. Without this the bottom-bar
-                // button keeps focus and the first Esc is swallowed until the
-                // user clicks the pane once. Deferred to a low-priority tick:
-                // a synchronous Programmatic focus set during a button click
-                // is undone when the pointer-up restores focus to the button
-                // (same race RestoreStashedAgentPane works around). The
-                // stashed branch above doesn't need this — its echo runs
-                // through OnAgentStateChanged → RestoreStashedAgentPane, which
-                // already re-focuses after the pane is re-attached.
-                _RequestAgentStateForTab(activeTab, "sessions", /*pane_open*/ true);
-                if (const auto termControl = agentContent.GetTermControl())
-                {
-                    if (auto dispatcher = winrt::Windows::System::DispatcherQueue::GetForCurrentThread())
-                    {
-                        auto weakControl = winrt::make_weak(termControl);
-                        dispatcher.TryEnqueue(
-                            winrt::Windows::System::DispatcherQueuePriority::Low,
-                            [weakControl]() {
-                                if (const auto ctrl = weakControl.get())
-                                {
-                                    ctrl.Focus(winrt::Windows::UI::Xaml::FocusState::Programmatic);
-                                }
-                            });
-                    }
-                }
-            }
-            _UpdateBottomBarState();
-            return;
-        }
-        // No agent pane on this tab — spawn one in sessions view.
-        _OpenOrReuseAgentPane(/*intoSessionsView*/ true, L"BottomBarSessions");
-        _UpdateBottomBarState();
-    }
-
     // Window-level bottom-bar "diagnostics" click. Targets the active tab's
     // AgentPaneContent — fires the cached autofix for that tab, or asks
     // wta to execute / dismiss / re-trigger the diagnosis depending on
@@ -4249,11 +4184,7 @@ namespace winrt::TerminalApp::implementation
             activeAgent = focusedTabImpl->FindAgentPaneContent();
         }
 
-        // The pane-visible highlight follows whichever toggle button "owns"
-        // the current view:
-        //   * chat view     → AgentToggleButton lit, SessionToggleButton dark
-        //   * sessions view → SessionToggleButton lit, AgentToggleButton dark
-        //   * no agent pane → both dark
+        // The chat toggle is highlighted only while the chat view is visible.
         const auto kLitOverlay = winrt::Windows::UI::Xaml::Media::SolidColorBrush{
             winrt::Windows::UI::ColorHelper::FromArgb(30, 255, 255, 255)
         };
@@ -4276,15 +4207,10 @@ namespace winrt::TerminalApp::implementation
             }
         }
         const bool sessionsView = paneOpen && activeAgent.IsSessionsView();
-        const bool sessionsLit = paneOpen && sessionsView;
         const bool chatLit = paneOpen && !sessionsView;
         if (auto toggleBtn = AgentToggleButton())
         {
             toggleBtn.Background(chatLit ? kLitOverlay : kTransparent);
-        }
-        if (auto sessionsBtn = SessionToggleButton())
-        {
-            sessionsBtn.Background(sessionsLit ? kLitOverlay : kTransparent);
         }
 
         // Swap the toggle icon to match the current pane position.
@@ -5983,7 +5909,6 @@ namespace winrt::TerminalApp::implementation
         }
 
         ++_historyActivationSerial;
-        _historyActivationInFlight = false;
         _StopSidebarHistoryRefreshTimer();
         _historyRetryDelay = std::chrono::seconds{ 0 };
         _historyNextRefresh = {};
@@ -6016,7 +5941,7 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
-        if (_historyActivationInFlight)
+        if (_tabStrip.HistoryActivating())
         {
             _historyRefreshPending = true;
             return;
@@ -6063,15 +5988,76 @@ namespace winrt::TerminalApp::implementation
         {
             return RS_(L"VerticalTabsHistoryStatusError");
         }
-        if (status == "Ended")
-        {
-            return RS_(L"VerticalTabsHistoryStatusEnded");
-        }
-        if (status == "Historical")
+        if (status == "Ended" || status == "Historical")
         {
             return RS_(L"VerticalTabsHistoryStatusHistorical");
         }
         return RS_(L"VerticalTabsHistoryStatusUnknown");
+    }
+
+    winrt::hstring TerminalPage::_SidebarHistoryAgeText(const std::optional<uint64_t> lastActivityAtMs, const uint64_t nowMs)
+    {
+        if (!lastActivityAtMs || *lastActivityAtMs == 0)
+        {
+            return RS_(L"VerticalTabsHistoryAgeUnknown");
+        }
+
+        // A future timestamp can result from clock skew; never let it underflow.
+        const auto seconds = nowMs > *lastActivityAtMs ? (nowMs - *lastActivityAtMs) / 1000 : 0;
+        if (seconds < 60)
+        {
+            return RS_(L"VerticalTabsHistoryAgeJustNow");
+        }
+        if (seconds < 3600)
+        {
+            const auto minutes = seconds / 60;
+            return minutes == 1 ? RS_(L"VerticalTabsHistoryAgeMinute") :
+                                  winrt::hstring{ RS_fmt(L"VerticalTabsHistoryAgeMinutes", minutes) };
+        }
+        if (seconds < 86400)
+        {
+            const auto hours = seconds / 3600;
+            return hours == 1 ? RS_(L"VerticalTabsHistoryAgeHour") :
+                                winrt::hstring{ RS_fmt(L"VerticalTabsHistoryAgeHours", hours) };
+        }
+
+        if (seconds < 7 * 86400)
+        {
+            const auto days = seconds / 86400;
+            return days == 1 ? RS_(L"VerticalTabsHistoryAgeDay") :
+                               winrt::hstring{ RS_fmt(L"VerticalTabsHistoryAgeDays", days) };
+        }
+
+        // Match WTA's session manager: use the UTC calendar date and the UI locale.
+        const auto epochDays = *lastActivityAtMs / 86'400'000;
+        constexpr auto lastSupportedDay = std::chrono::sys_days{ std::chrono::year{ 9999 } / 12 / 31 };
+        if (epochDays > static_cast<uint64_t>(lastSupportedDay.time_since_epoch().count()))
+        {
+            LOG_HR(E_INVALIDARG);
+            return RS_(L"VerticalTabsHistoryAgeUnknown");
+        }
+        const auto date = std::chrono::year_month_day{ std::chrono::sys_days{
+            std::chrono::days{ static_cast<int64_t>(epochDays) } } };
+        SYSTEMTIME time{};
+        time.wYear = static_cast<WORD>(static_cast<int>(date.year()));
+        time.wMonth = static_cast<WORD>(static_cast<unsigned>(date.month()));
+        time.wDay = static_cast<WORD>(static_cast<unsigned>(date.day()));
+        const auto context = winrt::Windows::ApplicationModel::Resources::Core::ResourceContext::GetForViewIndependentUse();
+        const auto language = context.QualifierValues().TryLookup(L"language");
+        const auto locale = language ? *language : winrt::hstring{};
+        wchar_t buffer[256]{};
+        if (GetDateFormatEx(locale.empty() ? LOCALE_NAME_USER_DEFAULT : locale.c_str(),
+                            DATE_LONGDATE,
+                            &time,
+                            nullptr,
+                            buffer,
+                            ARRAYSIZE(buffer),
+                            nullptr) > 0)
+        {
+            return winrt::hstring{ buffer };
+        }
+        LOG_LAST_ERROR();
+        return winrt::hstring{ fmt::format(L"{:04}-{:02}-{:02}", time.wYear, time.wMonth, time.wDay) };
     }
 
     safe_void_coroutine TerminalPage::_LoadSidebarHistory(const uint64_t generation, const bool initialLoad)
@@ -6088,7 +6074,7 @@ namespace winrt::TerminalApp::implementation
             // Match the Agent Management MVP visibility contract: Agent-pane
             // sessions remain in the registry for routing, but are not shown
             // until both surfaces opt into managing them.
-            L"sessions list --origin shell --json",
+            L"sessions list --origin shell --all-agents --json",
             15'000,
             nullptr,
             false);
@@ -6097,6 +6083,9 @@ namespace winrt::TerminalApp::implementation
         std::string parseError;
         if (result.completed && result.exitCode == 0)
         {
+            const auto nowMs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                         std::chrono::system_clock::now().time_since_epoch())
+                                                         .count());
             std::istringstream lines{ result.output };
             for (std::string line; std::getline(lines, line);)
             {
@@ -6146,12 +6135,10 @@ namespace winrt::TerminalApp::implementation
 
                 std::string agentSource;
                 std::string wslDistro;
-                std::string locationLabel;
                 const auto& location = row["location"];
                 if (location.isString() && location.asString() == "Host")
                 {
                     agentSource = "host";
-                    locationLabel = "Host";
                 }
                 else if (location.isObject() &&
                          location["Wsl"].isObject() &&
@@ -6163,7 +6150,6 @@ namespace winrt::TerminalApp::implementation
                     {
                         continue;
                     }
-                    locationLabel = wslDistro + " (WSL)";
                 }
                 else
                 {
@@ -6222,8 +6208,11 @@ namespace winrt::TerminalApp::implementation
                 auto item = winrt::make<TerminalApp::implementation::TabStripHistoryItem>();
                 item.SessionId(winrt::to_hstring(sessionId));
                 item.Title(winrt::to_hstring(title));
-                item.Subtitle(winrt::to_hstring(providerId + " - " + locationLabel + " - ") +
-                              _SidebarHistoryStatusText(status));
+                const auto& lastActivity = row["last_activity_at_ms"];
+                const auto lastActivityAtMs = lastActivity.isUInt64() ? std::optional<uint64_t>{ lastActivity.asUInt64() } : std::nullopt;
+                item.Subtitle(winrt::to_hstring(providerDisplayName) + L" \u00b7 " +
+                              _SidebarHistoryAgeText(lastActivityAtMs, nowMs) + L" \u00b7 ");
+                item.StatusText(_SidebarHistoryStatusText(status));
                 item.Cwd(winrt::to_hstring(cwd));
                 item.PaneSessionId(winrt::to_hstring(row.get("pane_session_id", "").asString()));
                 item.AgentId(winrt::to_hstring(providerId));
@@ -6254,7 +6243,7 @@ namespace winrt::TerminalApp::implementation
         }
         else if (!parseError.empty())
         {
-            _agentPaneLog("sidebar history invalid response: " + parseError);
+            _agentPaneLog("sidebar history invalid response");
             error = RS_(L"VerticalTabsHistoryInvalidResponse");
         }
         page->_CompleteSidebarHistoryRefresh(generation, initialLoad, std::move(items), error);
@@ -6263,12 +6252,12 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_CompleteSidebarHistoryRefresh(const uint64_t generation,
                                                       const bool initialLoad,
                                                       std::vector<TerminalApp::TabStripHistoryItem> items,
-                                                      winrt::hstring const& error)
+                                                      const winrt::hstring& error)
     {
         _historyRefreshInFlight = false;
-        if (_historyRequestGeneration != generation || !_tabStrip.HistoryActive() || _historyActivationInFlight)
+        if (_historyRequestGeneration != generation || !_tabStrip.HistoryActive() || _tabStrip.HistoryActivating())
         {
-            if (_historyRefreshPending && _tabStrip.HistoryActive() && !_historyActivationInFlight)
+            if (_historyRefreshPending && _tabStrip.HistoryActive() && !_tabStrip.HistoryActivating())
             {
                 _historyRefreshPending = false;
                 _RequestSidebarHistoryRefresh(_tabStrip.HistoryLoading());
@@ -6302,23 +6291,9 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    bool TerminalPage::_BeginSidebarHistoryActivation()
-    {
-        if (!_tabStrip.HistoryActive() || _historyActivationInFlight)
-        {
-            return false;
-        }
-        _historyActivationInFlight = true;
-        ++_historyActivationSerial;
-        _StopSidebarHistoryRefreshTimer();
-        _tabStrip.HistoryLoading(true);
-        _tabStrip.HistoryError(L"");
-        return true;
-    }
-
     safe_void_coroutine TerminalPage::_ActivateSidebarHistoryItem(TerminalApp::TabStripHistoryItem item)
     {
-        if (!item || !_BeginSidebarHistoryActivation())
+        if (!item || !_tabStrip.HistoryActive() || _tabStrip.HistoryActivating())
         {
             co_return;
         }
@@ -6326,8 +6301,6 @@ namespace winrt::TerminalApp::implementation
         const auto weakThis = get_weak();
         const auto dispatcher = Dispatcher();
         const auto windowId = _WindowProperties.WindowId();
-        const auto activationSerial = _historyActivationSerial;
-
         const auto quote = [](std::wstring_view value) {
             std::wstring quoted{ L"\"" };
             size_t slashes = 0;
@@ -6373,6 +6346,11 @@ namespace winrt::TerminalApp::implementation
             args.append(L" --universe ").append(quote(item.SessionUniverse()));
         }
 
+        const auto activationSerial = ++_historyActivationSerial;
+        _StopSidebarHistoryRefreshTimer();
+        _tabStrip.HistoryActivating(true);
+        _tabStrip.HistoryError(L"");
+
         co_await winrt::resume_background();
         namespace Wta = ::Microsoft::Terminal::WtaProcess;
         const auto result = Wta::RunWtaCapture(
@@ -6390,12 +6368,9 @@ namespace winrt::TerminalApp::implementation
             Json::CharReaderBuilder builder;
             std::istringstream json{ result.output };
             std::string errors;
-            if (Json::parseFromStream(builder, json, &response, &errors) &&
-                response.isObject() &&
-                response["accepted"].isBool() &&
-                (response["detail"].isNull() || response["detail"].isString()))
+            if (Json::parseFromStream(builder, json, &response, &errors) && response.isObject())
             {
-                accepted = response["accepted"].asBool();
+                accepted = response.get("accepted", false).asBool();
                 detail = response.get("detail", "").asString();
             }
             else
@@ -6406,32 +6381,29 @@ namespace winrt::TerminalApp::implementation
 
         co_await wil::resume_foreground(dispatcher);
         const auto page = weakThis.get();
-        if (!page)
+        if (page && page->_CompleteSidebarHistoryActivation(activationSerial, accepted, winrt::to_hstring(detail)))
         {
-            co_return;
+            page->_StartSidebarHistoryRefreshTimer();
+            page->_RequestSidebarHistoryRefresh(false);
         }
-        page->_CompleteSidebarHistoryActivation(
-            activationSerial, accepted, detail.empty() ? RS_(L"VerticalTabsHistoryActivationError") : winrt::to_hstring(detail));
     }
 
-    void TerminalPage::_CompleteSidebarHistoryActivation(const uint64_t serial, const bool accepted, winrt::hstring const& error)
+    bool TerminalPage::_CompleteSidebarHistoryActivation(const uint64_t activationSerial, const bool accepted, const winrt::hstring& detail)
     {
-        if (_historyActivationSerial != serial || !_tabStrip.HistoryActive())
+        if (_historyActivationSerial != activationSerial || !_tabStrip.HistoryActive())
         {
-            return;
+            return false;
         }
-        _historyActivationInFlight = false;
-        _tabStrip.HistoryLoading(false);
+        _tabStrip.HistoryActivating(false);
         if (accepted)
         {
-            _CloseSidebarHistory(false);
+            _tabStrip.HistoryError(L"");
         }
         else
         {
-            _tabStrip.HistoryError(error);
-            _StartSidebarHistoryRefreshTimer();
-            _RequestSidebarHistoryRefresh(false);
+            _tabStrip.HistoryError(detail.empty() ? RS_(L"VerticalTabsHistoryActivationError") : detail);
         }
+        return true;
     }
 
     void TerminalPage::_ClearTabSearch()

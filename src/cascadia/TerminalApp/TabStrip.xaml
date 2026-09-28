@@ -20,19 +20,42 @@
              mc:Ignorable="d">
 
     <UserControl.Resources>
-        <!--  Remove the native horizontal tab border within this vertical-only scope.  -->
-        <Thickness x:Key="TabViewItemBorderThickness">0</Thickness>
-        <Style x:Key="HistoryTitleTextStyle"
-               TargetType="TextBlock">
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-        </Style>
-        <Style x:Key="HistorySubtitleTextStyle"
-               TargetType="TextBlock">
-            <Setter Property="FontSize" Value="11" />
-            <Setter Property="Opacity" Value="0.72" />
-            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-        </Style>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="ms-resource:///Files/TerminalApp/AgentIconResources.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+            <!--  Remove the native horizontal tab border within this vertical-only scope.  -->
+            <Thickness x:Key="TabViewItemBorderThickness">0</Thickness>
+            <Style x:Key="HistoryTitleTextStyle"
+                   TargetType="TextBlock">
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            </Style>
+            <Style x:Key="HistorySubtitleTextStyle"
+                   TargetType="TextBlock">
+                <Setter Property="FontSize" Value="11" />
+                <Setter Property="Opacity" Value="0.72" />
+                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            </Style>
+            <Style x:Key="HistoryAttentionTextStyle"
+                   BasedOn="{StaticResource HistorySubtitleTextStyle}"
+                   TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCautionBrush}" />
+                <Setter Property="Opacity" Value="1" />
+            </Style>
+            <Style x:Key="HistoryActiveTextStyle"
+                   BasedOn="{StaticResource HistorySubtitleTextStyle}"
+                   TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource SystemFillColorSuccessBrush}" />
+                <Setter Property="Opacity" Value="1" />
+            </Style>
+            <Style x:Key="HistoryErrorTextStyle"
+                   BasedOn="{StaticResource HistorySubtitleTextStyle}"
+                   TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCriticalBrush}" />
+                <Setter Property="Opacity" Value="1" />
+            </Style>
+        </ResourceDictionary>
     </UserControl.Resources>
 
     <Grid Background="{ThemeResource TabViewBackground}">
@@ -442,21 +465,56 @@
                           IsItemClickEnabled="True"
                           ItemClick="OnHistoryItemClick"
                           SelectionMode="None">
+                    <ListView.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <ItemsStackPanel ItemsUpdatingScrollMode="KeepScrollOffset" />
+                        </ItemsPanelTemplate>
+                    </ListView.ItemsPanel>
                     <ListView.ItemTemplate>
                         <DataTemplate x:DataType="local:TabStripHistoryItem">
                             <Grid Padding="12,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
-                                <local:HighlightedTextControl Text="{x:Bind Title}"
+                                <ContentControl Grid.RowSpan="2"
+                                                Width="16"
+                                                Height="16"
+                                                Margin="0,0,12,0"
+                                                VerticalAlignment="Center"
+                                                HorizontalContentAlignment="Stretch"
+                                                VerticalContentAlignment="Stretch"
+                                                AutomationProperties.AccessibilityView="Raw"
+                                                Content="{Binding Foreground, ElementName=HistoryTitleText}"
+                                                ContentTemplate="{x:Bind IconTemplate}"
+                                                IsHitTestVisible="False"
+                                                IsTabStop="False" />
+                                <local:HighlightedTextControl x:Name="HistoryTitleText"
+                                                              Grid.Column="1"
+                                                              Text="{x:Bind Title}"
                                                               SearchText="{x:Bind SearchQuery}"
                                                               TextBlockStyle="{StaticResource HistoryTitleTextStyle}" />
-                                <local:HighlightedTextControl Grid.Row="1"
-                                                              Margin="0,2,0,0"
-                                                              Text="{x:Bind Subtitle}"
-                                                              SearchText="{x:Bind SearchQuery}"
-                                                              TextBlockStyle="{StaticResource HistorySubtitleTextStyle}" />
+                                <Grid Grid.Row="1"
+                                      Grid.Column="1"
+                                      Margin="0,2,0,0"
+                                      HorizontalAlignment="Left">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <local:HighlightedTextControl SearchText="{x:Bind SearchQuery}"
+                                                                  Text="{x:Bind Subtitle}"
+                                                                  TextBlockStyle="{StaticResource HistorySubtitleTextStyle}" />
+                                    <local:HighlightedTextControl Grid.Column="1"
+                                                                  Margin="4,0,0,0"
+                                                                  SearchText="{x:Bind SearchQuery}"
+                                                                  Text="{x:Bind StatusText}"
+                                                                  TextBlockStyle="{x:Bind StatusTextStyle}" />
+                                </Grid>
                             </Grid>
                         </DataTemplate>
                     </ListView.ItemTemplate>

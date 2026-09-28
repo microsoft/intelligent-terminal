@@ -8,10 +8,12 @@ Do not duplicate those facts here.
 
 WTA is a Rust binary with three launch modes:
 
-- **Master** (`--master <pipe>`): lazily owns a pool of agent CLI subprocesses
+- **Master** (`--master <pipe>`): owns a pool of agent CLI subprocesses
   and their ACP stdio connections, accepts helper named-pipe connections, and
   routes each ACP SessionId to its owning helper. Helpers with the same
-  master-derived agent key share a process. Implementation: `src/master/mod.rs`.
+  master-derived agent key share a process. Installed, policy-allowed native
+  host agents initialize in the background at startup and remain resident;
+  other selections initialize on demand. Implementation: `src/master/mod.rs`.
 - **Helper** (`--connect-master <pipe>`): one ratatui UI per agent pane. It is
   an ACP client of master and owns pane-local UI state and `ShellManager`.
   Implementation: `src/helper/mod.rs` and `src/app.rs`.
