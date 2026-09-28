@@ -11,6 +11,57 @@ Describe 'Feature: focus kept sessions' -Tag 'Feature', 'KeepRunning' -Skip:(-no
     BeforeEach {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         $script:app = $null
+        function script:Open-KeptTabContext {
+            param([string]$Title)
+            $matchesText = Find-UiElement -App $script:app -Selector $Title
+            # The tab title also labels pane rows and TermControl; target its header.
+            $header = [regex]::Match($matchesText, '(?m)^\s*(lbl-textview-\S+)\s+Text\s')
+            if (-not $header.Success) { throw 'No exact tab-group header found.' }
+            Invoke-UiClick -App $script:app -Selector $header.Groups[1].Value -Right | Out-Null
+        }
+        function script:Close-KeptTabFromMenu {
+            param([string]$Title)
+            $visible = Find-UiElement -App $script:app -Selector KeepTabRunningMenuItem
+            if ($visible -notmatch 'KeepTabRunningMenuItem\s+MenuItem') {
+                script:Open-KeptTabContext -Title $Title
+            }
+            Wait-UiElement -App $script:app -Selector KeepTabRunningMenuItem | Out-Null
+            $menu = [regex]::Match((Get-UiTree -App $script:app -Depth 8), '(?m)^\s*(\S+)\s+MenuItem "Close tab"')
+            if (-not $menu.Success) { throw 'No exact Close tab menu item found.' }
+            Invoke-UiElement -App $script:app -Selector $menu.Groups[1].Value | Out-Null
+        }
+        if (-not ('ItE2E.KeptTabActivation' -as [type])) {
+            Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+namespace ItE2E
+{
+    public static class KeptTabActivation
+    {
+        [ComImport, Guid("2E941141-7F97-4756-BA1D-9DECDE894A3D"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IApplicationActivationManager
+        {
+            [PreserveSig]
+            int ActivateApplication([MarshalAs(UnmanagedType.LPWStr)] string appId,
+                [MarshalAs(UnmanagedType.LPWStr)] string arguments, uint options, out uint processId);
+        }
+        public static uint Launch(string appId, string arguments)
+        {
+            object instance = Activator.CreateInstance(Type.GetTypeFromCLSID(
+                new Guid("45BA127D-10A8-46EA-8AB7-56EA9078943C")));
+            try
+            {
+                uint processId;
+                Marshal.ThrowExceptionForHR(((IApplicationActivationManager)instance)
+                    .ActivateApplication(appId, arguments, 0, out processId));
+                return processId;
+            }
+            finally { Marshal.ReleaseComObject(instance); }
+        }
+    }
+}
+'@
+        }
         $fixture = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-AcpInteractionAgent.ps1')).Path
         $requestLog = Join-Path $TestDrive ("keep-running-acp-{0}.log" -f [guid]::NewGuid().ToString('N'))
         $invocation = "& '$($fixture.Replace("'", "''"))' -LogPath '$($requestLog.Replace("'", "''"))'"
@@ -18,7 +69,7 @@ Describe 'Feature: focus kept sessions' -Tag 'Feature', 'KeepRunning' -Skip:(-no
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
             language = 'en-US'
             tabLayout = 'vertical'
-            confirmOnClose = 'never'
+            'warning.confirmOnClose' = 'never'
             firstWindowPreference = 'defaultProfile'
             startupActions = ''
             windowingBehavior = 'useNew'
@@ -60,12 +111,12 @@ Describe 'Feature: focus kept sessions' -Tag 'Feature', 'KeepRunning' -Skip:(-no
         $tabCount = & $getTabCount
 
         foreach ($cycle in 1..2) {
-            Invoke-UiClick -App $script:app -Selector $title -Right | Out-Null
+            script:Open-KeptTabContext -Title $title
             if ($cycle -eq 1) {
                 Invoke-UiElement -App $script:app -Selector 'KeepTabRunningMenuItem' | Out-Null
-                Invoke-UiClick -App $script:app -Selector $title -Right | Out-Null
+                script:Open-KeptTabContext -Title $title
             }
-            Invoke-UiElement -App $script:app -Selector 'Close tab' | Out-Null
+            script:Close-KeptTabFromMenu -Title $title
             Wait-Until -TimeoutSec 10 -Because 'the kept tab to leave the visible tab strip' -Condition {
                 (& $getTabCount) -eq ($tabCount - 1)
             } | Out-Null
@@ -114,10 +165,10 @@ Describe 'Feature: focus kept sessions' -Tag 'Feature', 'KeepRunning' -Skip:(-no
                 $pids[$id] = (Get-WtPaneStatus -App $script:app -SessionId $id).pid
             }
             Set-WtPaneFocus -App $script:app -SessionId $tab.session_id
-            Invoke-UiClick -App $script:app -Selector $title -Right | Out-Null
+            script:Open-KeptTabContext -Title $title
             Invoke-UiElement -App $script:app -Selector 'KeepTabRunningMenuItem' | Out-Null
-            Invoke-UiClick -App $script:app -Selector $title -Right | Out-Null
-            Invoke-UiElement -App $script:app -Selector 'Close tab' | Out-Null
+            script:Open-KeptTabContext -Title $title
+            script:Close-KeptTabFromMenu -Title $title
             $retained += [pscustomobject]@{ Title = $title; Shell = $tab.session_id; Helper = $helper; Pids = $pids }
         }
 
@@ -131,8 +182,9 @@ Describe 'Feature: focus kept sessions' -Tag 'Feature', 'KeepRunning' -Skip:(-no
         # kept groups. The following bare AUMID activation matches Start menu Open.
         $profile = Get-WtSetting -App $script:app -Key 'defaultProfile'
         $profile | Should -Not -BeNullOrEmpty
-        $launch = Invoke-Native -FilePath (Join-Path $script:app.InstallLocation 'WindowsTerminal.exe') -Arguments @('-p', [string]$profile) -TimeoutSec 20
-        $launch.ExitCode | Should -Be 0
+        $script:app.AppUserModelId | Should -Not -BeNullOrEmpty
+        $launchedPid = [ItE2E.KeptTabActivation]::Launch($script:app.AppUserModelId, "-p $profile")
+        $launchedPid | Should -BeGreaterThan 0
         $profileWindow = Wait-Until -TimeoutSec 20 -Because 'the explicit profile launch to open one ordinary tab' -Condition {
             $windows = @(Get-WtWindows -App $script:app)
             if ($windows.Count -eq 1 -and $windows[0].tab_count -eq 1) { $windows[0] }
@@ -170,8 +222,14 @@ Describe 'Feature: focus kept sessions' -Tag 'Feature', 'KeepRunning' -Skip:(-no
         $expectedTabs = 1
         foreach ($tab in $retained) {
             Set-WtPaneFocus -App $script:app -SessionId $tab.Shell
-            Wait-UiElement -App $script:app -Selector $tab.Title -TimeoutSec 10 | Out-Null
             $expectedTabs++
+            Wait-Until -TimeoutSec 10 -Because 'the retained pane to become active in the reattached tab' -Condition {
+                (Get-ActivePane -App $script:app).session_id -eq $tab.Shell -and
+                    (Get-WtWindows -App $script:app).tab_count -eq $expectedTabs
+            } | Out-Null
+            foreach ($id in $tab.Pids.Keys) {
+                (Get-WtPaneStatus -App $script:app -SessionId $id).pid | Should -Be $tab.Pids[$id]
+            }
             (Get-WtWindows -App $script:app).tab_count | Should -Be $expectedTabs -Because 'only explicit session activation should attach each kept tab'
         }
         @(Get-WtWindows -App $script:app).Count | Should -Be 1

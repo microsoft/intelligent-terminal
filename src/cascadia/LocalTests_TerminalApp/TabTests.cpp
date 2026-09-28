@@ -461,6 +461,12 @@ namespace TerminalAppLocalTests
             Grid layoutHost = nullptr,
             std::optional<int32_t> historySize = std::nullopt,
             bool verticalLayout = false);
+        winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> _keepRunningSetup(
+            winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection connection);
+        void _splitKeepRunningPane(
+            const winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& page,
+            winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection connection,
+            float splitSize = 0.5f);
         winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> _restoreBindingsSetup();
         winrt::com_ptr<winrt::TerminalApp::implementation::WindowProperties> _windowProperties;
         winrt::com_ptr<winrt::TerminalApp::implementation::ContentManager> _contentManager;
@@ -920,6 +926,40 @@ namespace TerminalAppLocalTests
         return winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, event));
     }
 
+    winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> TabTests::_keepRunningSetup(
+        winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection connection)
+    {
+        Grid host{ nullptr };
+        TestOnUIThread([&]() {
+            host = Grid{};
+            host.Width(1200);
+            host.Height(600);
+        });
+        const auto page = _commonSetup(connection, host);
+        TestOnUIThread([&]() {
+            VERIFY_IS_TRUE(page->ActualWidth() > 0);
+            VERIFY_IS_TRUE(page->ActualHeight() > 0);
+        });
+        return page;
+    }
+
+    void TabTests::_splitKeepRunningPane(
+        const winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& page,
+        winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection connection,
+        const float splitSize)
+    {
+        const auto initialized = std::make_shared<::details::Event>();
+        VERIFY_IS_TRUE(initialized->IsValid());
+        TestOnUIThread([&]() {
+            const auto pane = page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, connection);
+            VERIFY_IS_NOT_NULL(pane);
+            pane->GetTerminalControl().Initialized([initialized](auto&&, auto&&) { initialized->Set(); });
+            VERIFY_IS_TRUE(page->_SplitPane(page->_GetFocusedTabImpl(), SplitDirection::Right, splitSize, pane));
+            page->UpdateLayout();
+        });
+        VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(initialized->m_handle, 10000));
+    }
+
     void TabTests::KeepRunningAcceptsPlainTerminalTabs()
     {
         using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
@@ -942,7 +982,10 @@ namespace TerminalAppLocalTests
             page->SetTabKeepRunning(tabId, false);
             VERIFY_IS_FALSE(page->IsTabKeepRunning(tabId));
             VERIFY_IS_FALSE(page->CanKeepTabRunning(id));
-            VERIFY_THROWS(page->SetTabKeepRunning(id, true), winrt::hresult_error);
+            VERIFY_THROWS_SPECIFIC(
+                page->SetTabKeepRunning(id, true),
+                wil::ResultException,
+                [](const wil::ResultException& error) { return error.GetErrorCode() == E_INVALIDARG; });
             VERIFY_IS_FALSE(page->CanKeepTabRunning(winrt::guid{}));
         });
     }
@@ -954,20 +997,19 @@ namespace TerminalAppLocalTests
         const winrt::guid closedId{ L"{13f7aa41-8837-473e-92a3-f1e682ab1003}" };
         const auto kept = winrt::make_self<TestConnection>(keptId, State::Connected);
         const auto closed = winrt::make_self<TestConnection>(closedId, State::Connected);
-        const auto page = _commonSetup(*kept);
+        const auto page = _keepRunningSetup(*kept);
+        _splitKeepRunningPane(page, *closed);
         std::vector<ConnectionStateEventRecord> events;
         TestOnUIThread([&]() {
             page->_settings.GlobalSettings().ConfirmOnClose(ConfirmOnClose::Never);
             const auto eventToken = page->ProtocolVtSequenceReceived([&](auto&&, const auto& json) { _recordConnectionStateEvent(json, events); });
             const auto revoke = wil::scope_exit([&]() noexcept { page->ProtocolVtSequenceReceived(eventToken); });
             const auto tab = page->_GetFocusedTabImpl();
-            const auto control = tab->GetRootPane()->GetTerminalControl();
+            const auto control = tab->GetRootPane()->FindPaneBySessionId(keptId)->GetTerminalControl();
             const auto contentId = control.ContentId();
             const auto content = page->_manager.TryLookupCore(contentId);
             const auto stableId = tab->StableId();
             const winrt::guid groupId{ stableId };
-            const auto otherPane = page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *closed);
-            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, otherPane));
             page->OnPaneAgentSessionChanged(_keepRunningHook(keptId, "agent.session.start"));
             page->OnPaneAgentSessionChanged(_keepRunningHook(closedId, "agent.session.start"));
             page->_manager.OnPaneAgentSessionChanged(_keepRunningHook(keptId, "agent.session.start"));
@@ -1004,7 +1046,10 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE711" }, restored->_keepRunningMenuItem.Icon().as<FontIcon>().Glyph());
             VERIFY_IS_FALSE(page->_manager.HasKeptSessions());
             VERIFY_ARE_EQUAL(0u, kept->CloseCount());
-            VERIFY_THROWS(page->RestoreKeptGroup(groupId), winrt::hresult_error);
+            VERIFY_THROWS_SPECIFIC(
+                page->RestoreKeptGroup(groupId),
+                wil::ResultException,
+                [](const wil::ResultException& error) { return error.GetErrorCode() == E_INVALIDARG; });
             restored->Close();
         });
     }
@@ -1194,7 +1239,10 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(page->_manager.HasKeptSessions());
             VERIFY_IS_FALSE(page->_manager.KeptGroups().HasKey(groupId));
             VERIFY_ARE_EQUAL(size_t{ 1 }, _statesForPane(events, _formatPaneId(id)).size());
-            VERIFY_THROWS(page->RestoreKeptGroup(groupId), winrt::hresult_error);
+            VERIFY_THROWS_SPECIFIC(
+                page->RestoreKeptGroup(groupId),
+                wil::ResultException,
+                [](const wil::ResultException& error) { return error.GetErrorCode() == E_INVALIDARG; });
         });
         VERIFY_IS_TRUE(connection->WaitForClose());
     }
@@ -1239,7 +1287,10 @@ namespace TerminalAppLocalTests
             const auto firstTab = page->_manager.BeginReattachKeptGroup(groupId);
             VERIFY_IS_TRUE(firstTab == *tab);
             const auto contentId = tab->GetRootPane()->GetTerminalControl().ContentId();
-            VERIFY_THROWS(page->_AttachControlToContent(contentId, NewTerminalArgs{}), winrt::hresult_error);
+            VERIFY_THROWS_SPECIFIC(
+                page->_AttachControlToContent(contentId, NewTerminalArgs{}),
+                wil::ResultException,
+                [](const wil::ResultException& error) { return error.GetErrorCode() == E_ILLEGAL_METHOD_CALL; });
             VERIFY_IS_TRUE(page->_manager.HasKeptSessions());
             VERIFY_ARE_EQUAL(0u, page->_manager.KeptGroups().Size());
             VERIFY_THROWS(page->_manager.BeginReattachKeptGroup(groupId), winrt::hresult_error);
@@ -1261,22 +1312,24 @@ namespace TerminalAppLocalTests
         const winrt::guid secondId{ L"{13f7aa41-8837-473e-92a3-f1e682ab1011}" };
         const auto first = winrt::make_self<TestConnection>(firstId, State::Connected);
         const auto second = winrt::make_self<TestConnection>(secondId, State::Connected);
-        const auto page = _commonSetup(*first);
+        const auto page = _keepRunningSetup(*first);
+        _splitKeepRunningPane(page, *second);
         TestOnUIThread([&]() {
             const auto tab = page->_GetFocusedTabImpl();
             const winrt::guid groupId{ tab->StableId() };
-            const auto firstPane = tab->GetRootPane();
+            const auto firstPane = tab->GetRootPane()->FindPaneBySessionId(firstId);
             const auto firstControl = firstPane->GetTerminalControl();
-            const auto other = page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *second);
-            const auto otherControl = other->GetTerminalControl();
-            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, other));
+            const auto otherControl = tab->GetRootPane()->FindPaneBySessionId(secondId)->GetTerminalControl();
             page->SetTabKeepRunning(groupId, true);
             page->_KeepTabRunning(tab);
             using Stage = winrt::TerminalApp::implementation::TerminalPage::ContentTransferStage;
             page->_contentTransferTestHook = [](Stage stage, uint64_t, uint32_t) {
                 THROW_HR_IF(E_ABORT, stage == Stage::BeforeSplitInsertion);
             };
-            VERIFY_THROWS(page->RestoreKeptGroup(groupId), winrt::hresult_error);
+            VERIFY_THROWS_SPECIFIC(
+                page->RestoreKeptGroup(groupId),
+                wil::ResultException,
+                [](const wil::ResultException& error) { return error.GetErrorCode() == E_ABORT; });
             page->_contentTransferTestHook = {};
             VERIFY_ARE_EQUAL(0u, page->_tabs.Size());
             VERIFY_ARE_EQUAL(0u, first->CloseCount());
@@ -1302,13 +1355,12 @@ namespace TerminalAppLocalTests
         const winrt::guid secondId{ L"{13f7aa41-8837-473e-92a3-f1e682ab1008}" };
         const auto first = winrt::make_self<TestConnection>(firstId, State::Connected);
         const auto second = winrt::make_self<TestConnection>(secondId, State::Connected);
-        const auto page = _commonSetup(*first);
+        const auto page = _keepRunningSetup(*first);
+        _splitKeepRunningPane(page, *second);
         std::vector<ConnectionStateEventRecord> events;
         TestOnUIThread([&]() {
             const auto tab = page->_GetFocusedTabImpl();
             const winrt::guid groupId{ tab->StableId() };
-            const auto other = page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *second);
-            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, other));
             page->SetTabKeepRunning(groupId, true);
             const auto eventToken = page->_manager.DetachedSessionEvent([&](auto&&, const auto& json) { _recordConnectionStateEvent(json, events); });
             const auto revoke = wil::scope_exit([&]() noexcept { page->_manager.DetachedSessionEvent(eventToken); });
@@ -1365,7 +1417,7 @@ namespace TerminalAppLocalTests
         using Startup = winrt::TerminalApp::implementation::StartupState;
         const winrt::guid id{ L"{13f7aa41-8837-473e-92a3-f1e682ab1013}" };
         const auto connection = winrt::make_self<TestConnection>(id, State::Connected);
-        const auto page = _commonSetup(*connection);
+        const auto page = _keepRunningSetup(*connection);
         ::details::Event initialized;
         winrt::event_token token{};
         uint64_t contentId{};
@@ -1445,15 +1497,30 @@ namespace TerminalAppLocalTests
             winrt::guid firstGroup{};
             winrt::guid secondGroup{};
             uint64_t secondContentId{};
+            const auto secondInitialized = std::make_shared<::details::Event>();
+            VERIFY_IS_TRUE(secondInitialized->IsValid());
             TestOnUIThread([&]() {
-                const auto first = fixture->original.tab;
-                firstGroup = winrt::guid{ first->StableId() };
                 const auto secondPane = fixture->source->_MakePane(nullptr, nullptr, *second);
-                secondContentId = secondPane->GetTerminalControl().ContentId();
+                VERIFY_IS_NOT_NULL(secondPane);
+                const auto secondControl = secondPane->GetTerminalControl();
+                secondContentId = secondControl.ContentId();
+                secondControl.Initialized([secondInitialized](auto&&, auto&&) { secondInitialized->Set(); });
                 fixture->source->_CreateNewTabFromPane(secondPane);
                 const auto secondTab = fixture->source->_GetFocusedTabImpl();
                 secondGroup = winrt::guid{ secondTab->StableId() };
                 secondTab->SuppressAgentPrewarm();
+                fixture->host.UpdateLayout();
+            });
+            VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(secondInitialized->m_handle, 10000));
+            TestOnUIThread([&]() {
+                const auto first = fixture->original.tab;
+                firstGroup = winrt::guid{ first->StableId() };
+                const auto secondTab = fixture->source->_FindTabByStableId(winrt::to_hstring(secondGroup));
+                VERIFY_IS_NOT_NULL(secondTab);
+                const auto secondControl = secondTab->GetActiveTerminalControl();
+                VERIFY_ARE_EQUAL(secondContentId, secondControl.ContentId());
+                VERIFY_IS_TRUE(secondControl.ViewWidth() > 0);
+                VERIFY_IS_TRUE(secondControl.ViewHeight() > 0);
                 first->KeepRunning(true);
                 secondTab->KeepRunning(true);
                 fixture->source->_KeepTabRunning(first);
@@ -1632,7 +1699,7 @@ namespace TerminalAppLocalTests
         using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
         const winrt::guid paneId{ L"{13f7aa41-8837-473e-92a3-f1e682ab1014}" };
         const auto connection = winrt::make_self<TestConnection>(paneId, State::Connected);
-        const auto page = _commonSetup(*connection);
+        const auto page = _keepRunningSetup(*connection);
         winrt::guid tabId;
         TestOnUIThread([&]() {
             const auto tab = page->_GetFocusedTabImpl();
@@ -1663,8 +1730,9 @@ namespace TerminalAppLocalTests
         VERIFY_ARE_EQUAL(paneId, captured.Pane.SessionId);
         VERIFY_IS_TRUE(std::wstring_view{ captured.Content }.find(L"headless output") != std::wstring_view::npos);
         VERIFY_ARE_EQUAL(winrt::hstring{ L"running" }, process.get().State);
-        VERIFY_ARE_EQUAL(1u, panes.get().Size());
-        VERIFY_ARE_EQUAL(paneId, panes.get().GetAt(0).SessionId);
+        const auto paneList = panes.get();
+        VERIFY_ARE_EQUAL(1u, paneList.Size());
+        VERIFY_ARE_EQUAL(paneId, paneList.GetAt(0).SessionId);
     }
 
     void TabTests::AgentPaneRestoreDoesNotRequireAgentSession()
@@ -1754,7 +1822,8 @@ namespace TerminalAppLocalTests
         const winrt::guid secondId{ L"{13f7aa41-8837-473e-92a3-f1e682ab1021}" };
         const auto first = winrt::make_self<TestConnection>(firstId, State::Connected);
         const auto second = winrt::make_self<TestConnection>(secondId, State::Connected);
-        const auto page = _commonSetup(*first);
+        const auto page = _keepRunningSetup(*first);
+        _splitKeepRunningPane(page, *second, 0.35f);
         winrt::guid groupId{};
         winrt::Windows::Foundation::IAsyncOperation<bool> focus{ nullptr };
         const auto cleanup = wil::scope_exit([&]() {
@@ -1773,8 +1842,6 @@ namespace TerminalAppLocalTests
         TestOnUIThread([&]() {
             const auto tab = page->_GetFocusedTabImpl();
             groupId = winrt::guid{ tab->StableId() };
-            const auto split = page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *second);
-            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.35f, split));
             page->_CreateNewTabFromPane(page->_MakePane(nullptr, nullptr, nullptr));
             page->SetTabKeepRunning(groupId, true);
             page->_KeepTabRunning(tab);
@@ -2784,20 +2851,26 @@ namespace TerminalAppLocalTests
         VERIFY_IS_NOT_NULL(page->_settings);
 
         ::details::Event waitForInitEvent;
+        winrt::TerminalApp::TerminalPage::Initialized_revoker initializedRevoker{};
         if (!waitForInitEvent.IsValid())
         {
             VERIFY_SUCCEEDED(HRESULT_FROM_WIN32(::GetLastError()));
         }
         if (!connection)
         {
-            page->Initialized([&waitForInitEvent](auto&&, auto&&) {
+            initializedRevoker = projectedPage.Initialized(winrt::auto_revoke, [&waitForInitEvent](auto&&, auto&&) {
                 waitForInitEvent.Set();
             });
+        }
+        const auto waitForControlInitEvent = connection && layoutHost ? std::make_shared<::details::Event>() : nullptr;
+        if (waitForControlInitEvent)
+        {
+            VERIFY_IS_TRUE(waitForControlInitEvent->IsValid());
         }
 
         Log::Comment(L"Create() the TerminalPage");
 
-        result = RunOnUIThread([&page, connection, layoutHost, this]() {
+        result = RunOnUIThread([&page, connection, layoutHost, waitForControlInitEvent, this]() {
             VERIFY_IS_NOT_NULL(page);
             VERIFY_IS_NOT_NULL(page->_settings);
             page->Create();
@@ -2806,7 +2879,17 @@ namespace TerminalAppLocalTests
             // Build a NewTab action, to make sure we start with one. The real
             // Terminal will always get one from AppCommandlineArgs.
             NewTerminalArgs newTerminalArgs{};
-            if (connection)
+            if (waitForControlInitEvent)
+            {
+                // Fresh mock content must take the creation path, not reattach an uninitialized core.
+                const auto pane = page->_MakeTerminalPane(newTerminalArgs, nullptr, connection);
+                VERIFY_IS_NOT_NULL(pane);
+                pane->GetTerminalControl().Initialized([waitForControlInitEvent](auto&&, auto&&) { waitForControlInitEvent->Set(); });
+                const auto tab = page->_CreateNewTabFromPane(pane);
+                VERIFY_IS_NOT_NULL(tab);
+                page->_GetTabImpl(tab)->SuppressAgentPrewarm();
+            }
+            else if (connection)
             {
                 const auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
                 const auto content = _contentManager->CreateCore(*settings, *settings, connection);
@@ -2822,7 +2905,7 @@ namespace TerminalAppLocalTests
             }
             Log::Comment(L"Added a single newTab action");
 
-            if (connection)
+            if (connection && !layoutHost)
             {
                 // Protocol queries need a real tab/control, but not rendered-window startup.
                 return;
@@ -2849,6 +2932,10 @@ namespace TerminalAppLocalTests
             Log::Comment(L"Wait for the page to finish initializing...");
             VERIFY_SUCCEEDED(waitForInitEvent.Wait());
             Log::Comment(L"...Done");
+        }
+        if (waitForControlInitEvent)
+        {
+            VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(waitForControlInitEvent->m_handle, 10000));
         }
 
         result = RunOnUIThread([&page]() {

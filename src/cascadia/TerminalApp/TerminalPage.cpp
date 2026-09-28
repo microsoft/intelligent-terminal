@@ -709,7 +709,7 @@ namespace winrt::TerminalApp::implementation
         // window will be, so they can subdivide that space.
         //
         // _OnFirstLayout will remove this handler so it doesn't get called more than once.
-        _layoutUpdatedRevoker = _tabContent.LayoutUpdated(winrt::auto_revoke, { this, &TerminalPage::_OnFirstLayout });
+        _layoutUpdatedRevoker = _tabContent.LayoutUpdated(winrt::auto_revoke, { get_weak(), &TerminalPage::_OnFirstLayout });
 
         _isAlwaysOnTop = _settings.GlobalSettings().AlwaysOnTop();
         _showTabsFullscreen = _settings.GlobalSettings().ShowTabsFullscreen();
@@ -5318,7 +5318,7 @@ namespace winrt::TerminalApp::implementation
                         (self->_tabContent.ActualHeight() <= 0 && self->ActualHeight() <= 0))
                     {
                         self->_restoringStartupKeptGroups = false;
-                        self->_layoutUpdatedRevoker = self->_tabContent.LayoutUpdated(winrt::auto_revoke, { self.get(), &TerminalPage::_OnFirstLayout });
+                        self->_layoutUpdatedRevoker = self->_tabContent.LayoutUpdated(winrt::auto_revoke, { self->get_weak(), &TerminalPage::_OnFirstLayout });
                         return;
                     }
                     self->_layoutUpdatedRevoker.revoke();

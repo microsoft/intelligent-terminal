@@ -95,6 +95,15 @@ Token-consuming simulated-real-user tests are deliberately excluded from this pu
 and from CI. They live only in the feature's dev-only local validation harness and run manually
 against an exact deployed publish package with explicitly available provider quota.
 
+### Kept-tab regression checks
+
+`Feature.KeepRunningFocus` targets the actual vertical-tab header and context-menu
+item, not title text shared by pane rows and terminal documents. It uses
+`warning.confirmOnClose` for the intended fixture setting and activates the
+selected package by AUMID for profile launches. Retained-session readiness is
+verified through pane identity, tab counts and unchanged process IDs rather than
+mutable tab-title text.
+
 ### Deterministic mouse and paste regression checks
 
 The `CompletedTurnMouse` group contains four fixture-backed cases; it can run without a real
