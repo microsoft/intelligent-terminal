@@ -1661,11 +1661,11 @@ namespace winrt::TerminalApp::implementation
         const auto errorDetectionMode = _CurrentErrorDetectionMode();
         const bool errorDetectionEnabled = errorDetectionMode != ErrorDetectionMode::Off;
         const bool autoFixEnabled = errorDetectionMode == ErrorDetectionMode::DetectAndFix;
+        const auto tabLayout = TabModeComboBox().SelectedIndex() == 0 ? TabLayout::Vertical : TabLayout::Horizontal;
 
         if (_settings)
         {
             const auto& globals = _settings.GlobalSettings();
-            globals.TabLayout(TabModeComboBox().SelectedIndex() == 0 ? TabLayout::Vertical : TabLayout::Horizontal);
             if (agentDecision.persistSelection)
             {
                 globals.AcpAgent(displayedAgentId);
@@ -2050,6 +2050,8 @@ namespace winrt::TerminalApp::implementation
             auto self = weak.get();
             if (!self) co_return;
 
+            const auto& globals = _settings.GlobalSettings();
+            globals.TabLayout(tabLayout);
             _agentPaneLog("[FRE] Completed — raising Completed event");
             _autoInstallCopilotAfterCompletion = agentId == L"copilot";
             // Restore the editable state before raising Completed so that

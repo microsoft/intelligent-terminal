@@ -54,6 +54,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 - [ ] `C345` `[new]` `[E2E]` **FRE offers Sidebar as the initial Tab Mode:** Tab Mode is the first settings choice and defaults to Sidebar only when no tab layout is explicitly configured. Changing the selection or closing FRE without Save does not persist it. _(E2E: `Feature.FreFlow`.)_
 - [ ] `C346` `[new]` `[E2E]` **FRE saves the selected Tab Mode:** An explicit existing preference is retained until the user changes and saves it. Save persists Sidebar or Horizontal, applies the matching layout, and does not reopen FRE after restart. _(E2E: `Feature.FreFlow`.)_
+- [ ] `C348` `[new]` `[E2E]` **FRE retries Tab Mode after setup failure:** Failed setup does not persist the new layout or complete FRE. The selection is retained for a successful retry, which applies it and leaves an active terminal. _(E2E: `Feature.FreFlow`, Dev-only fault marker.)_
 
 ### FRE agent selection
 

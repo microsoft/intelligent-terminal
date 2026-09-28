@@ -3012,17 +3012,22 @@ namespace TerminalAppLocalTests
     {
         TestOnUIThread([]() {
             winrt::TerminalApp::FreOverlay fre;
-            for (const auto theme : { ElementTheme::Light, ElementTheme::Dark, ElementTheme::Light })
+            for (const auto theme : { ElementTheme::Light, ElementTheme::Dark, ElementTheme::Default, ElementTheme::Light })
             {
                 fre.RequestedTheme(theme);
-                VERIFY_ARE_EQUAL(theme, fre.ActualTheme());
+                const auto actualTheme = fre.ActualTheme();
+                VERIFY_ARE_NOT_EQUAL(ElementTheme::Default, actualTheme);
+                if (theme != ElementTheme::Default)
+                {
+                    VERIFY_ARE_EQUAL(theme, actualTheme);
+                }
                 VERIFY_ARE_EQUAL(ElementTheme::Dark, fre.FindName(L"RootGrid").as<Grid>().RequestedTheme());
                 for (const auto name : { L"SidebarImage", L"AutofixImage" })
                 {
                     const auto image = fre.FindName(name).as<Image>();
-                    VERIFY_ARE_EQUAL(theme, image.RequestedTheme());
+                    VERIFY_ARE_EQUAL(actualTheme, image.RequestedTheme());
                     const auto source = image.Source().as<Media::Imaging::BitmapImage>().UriSource().AbsoluteUri();
-                    VERIFY_IS_TRUE(std::wstring_view{ source }.ends_with(theme == ElementTheme::Light ? L"-light.png" : L"-dark.png"));
+                    VERIFY_IS_TRUE(std::wstring_view{ source }.ends_with(actualTheme == ElementTheme::Light ? L"-light.png" : L"-dark.png"));
                 }
             }
         });

@@ -255,6 +255,49 @@ Describe 'Feature §0 FRE Tab Mode' -Tag 'Feature', 'FreTabMode' -Skip:(-not $sc
         Get-FreCompleted -App $script:targetApp | Should -BeFalse
     }
 
+    It 'FRE retries Tab Mode after setup failure' {
+        if ($script:targetApp.Package -ne 'IntelligentTerminal_rd9vj3e6a2mbr') {
+            Set-ItResult -Skipped -Because 'the deterministic FRE setup-failure marker is supported only by Dev packages'
+            return
+        }
+        $marker = Join-Path $script:targetApp.LocalStateDir 'fre-e2e-hooks-failure'
+        if (Test-Path -LiteralPath $marker) { throw 'An existing FRE fault marker requires recovery before this test.' }
+        try {
+            New-Item -ItemType File -Path $marker | Out-Null
+            $script:freSettings.tabLayout = 'horizontal'
+            $script:app = Start-Terminal -Package $script:package -ShowFre -Backup $false -CleanSettings $false -Settings $script:freSettings
+            Invoke-UiElement -App $script:app -Selector 'NextButton' | Out-Null
+            Invoke-UiElement -App $script:app -Selector 'TabModeComboBox' | Out-Null
+            Invoke-UiElement -App $script:app -Selector 'Sidebar' | Out-Null
+            if (-not (Test-UiElementEnabled -App $script:app -Selector 'SessionManagementToggle')) {
+                Set-ItResult -Skipped -Because 'session-management policy prevents the setup-failure preservation control'
+                return
+            }
+            Invoke-UiElement -App $script:app -Selector 'SessionManagementToggle' | Out-Null
+            Invoke-UiElement -App $script:app -Selector 'SaveButton' | Out-Null
+            Wait-UiElement -App $script:app -Selector 'ErrorPanel' -TimeoutSec 30 | Out-Null
+            (Get-ItLogText -App $script:app -Name 'terminal-agent-pane.log' -SinceStart) |
+                Should -Match '\[FRE\] E2E: forcing hooks install failure'
+            Get-FreCompleted -App $script:app | Should -BeFalse
+            Get-WtSetting -App $script:app -Key 'tabLayout' | Should -Be 'horizontal'
+            @((Get-UiElement -App $script:app -Selector 'TabModeComboBox').children | Where-Object type -eq 'ListItem').name |
+                Should -BeExactly 'Sidebar'
+            (Get-UiElement -App $script:app -Selector 'SessionManagementToggle').toggleState | Should -Be 'off'
+            Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'setup-failed.png') | Out-Null
+
+            Remove-Item -LiteralPath $marker
+            Invoke-UiElement -App $script:app -Selector 'SaveButton' | Out-Null
+            Wait-Until -TimeoutSec 30 -Because 'retry to commit the retained Tab Mode choice' -Condition {
+                (Get-FreCompleted -App $script:app) -and
+                (Get-WtSetting -App $script:app -Key 'tabLayout') -eq 'vertical'
+            } | Out-Null
+            (Get-ActivePane -App $script:app).session_id | Should -Not -BeNullOrEmpty
+        }
+        finally {
+            if (Test-Path -LiteralPath $marker) { Remove-Item -LiteralPath $marker }
+        }
+    }
+
     It 'FRE saves the selected Tab Mode (<Saved>)' -TestCases @(
         @{ Initial = 'horizontal'; InitialLabel = 'Horizontal'; Saved = 'vertical'; Label = 'Sidebar' }
         @{ Initial = 'vertical'; InitialLabel = 'Sidebar'; Saved = 'horizontal'; Label = 'Horizontal' }
