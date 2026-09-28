@@ -503,6 +503,8 @@ namespace winrt::TerminalApp::implementation
         if (const auto close = _findNamedElement(root, L"TabCloseButton"))
         {
             close.Visibility(display.CloseVisibility());
+            WUX::Automation::AutomationProperties::SetName(close, RS_(L"TabClose"));
+            ToolTipService::SetToolTip(close, box_value(RS_(L"TabCloseToolTip")));
         }
         if (const auto panes = _findNamedElement(root, L"TabPaneItems").try_as<ItemsControl>())
         {
@@ -552,6 +554,12 @@ namespace winrt::TerminalApp::implementation
                 if (const auto indicator = _findNamedElement(root, L"PaneActiveIndicator"))
                 {
                     indicator.Visibility(pane.ActiveIndicatorVisibility());
+                }
+                if (const auto close = _findNamedElement(root, L"PaneCloseButton"))
+                {
+                    const auto label = RS_(L"PaneClose");
+                    WUX::Automation::AutomationProperties::SetName(close, label);
+                    ToolTipService::SetToolTip(close, box_value(label));
                 }
             }
         }
