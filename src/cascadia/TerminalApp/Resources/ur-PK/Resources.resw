@@ -522,10 +522,10 @@
     <value>ایجنٹ کی سرگزشت بند کریں</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>ایجنٹ کی سرگزشت تلاش کریں</value>
+    <value>ایجنٹ سیشن تلاش کریں</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>ایجنٹ کی سرگزشت تلاش کریں</value>
+    <value>ایجنٹ سیشن تلاش کریں</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>کوئی ایجنٹ سیشن نہیں ملا۔</value>

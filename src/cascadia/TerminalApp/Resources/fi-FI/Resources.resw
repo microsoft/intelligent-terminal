@@ -538,10 +538,10 @@
     <value>Sulje agenttihistoria</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Hae agenttihistoriasta</value>
+    <value>Hae agentti-istuntoja</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Hae agenttihistoriasta</value>
+    <value>Hae agentti-istuntoja</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Agentti-istuntoja ei löytynyt.</value>

@@ -306,6 +306,10 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabHistoryForegroundProtocolCreationExitsView);
         TEST_METHOD(VerticalTabHistoryActivationCompletionPreservesView);
         TEST_METHOD(VerticalTabHistoryActivationKeepsRows);
+        TEST_METHOD(VerticalTabHistoryStartupLoading);
+        TEST_METHOD(VerticalTabHistoryLoadingAndErrorsKeepRows);
+        TEST_METHOD(VerticalTabHistorySnapshotRejectsMalformedResponse);
+        TEST_METHOD(VerticalTabHistoryIgnoresStaleLoadingResult);
         TEST_METHOD(VerticalTabHistoryRefreshPreservesCollection);
         TEST_METHOD(VerticalTabHistoryRefreshPreservesScroll);
         TEST_METHOD(VerticalTabHistorySearchProjection);
@@ -3966,6 +3970,135 @@ namespace TerminalAppLocalTests
             strip.HistoryActive(true);
             VERIFY_IS_FALSE(strip.HistoryActivating());
             VERIFY_IS_TRUE(stripImpl->HistoryList().IsItemClickEnabled());
+        });
+    }
+
+    void TabTests::VerticalTabHistoryStartupLoading()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            page->_tabStrip.HistoryActive(true);
+            const auto generation = page->_historyRequestGeneration;
+            for (auto i = 0; i < 2; ++i)
+            {
+                page->_historyRefreshInFlight = true;
+                page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(R"({"sessions":[],"history_status":"loading"})"));
+                VERIFY_IS_FALSE(page->_historyRefreshInFlight);
+                VERIFY_IS_TRUE(page->_tabStrip.HistoryLoading());
+                VERIFY_IS_TRUE(strip->HistoryLoadingIndicator().IsActive());
+                VERIFY_ARE_EQUAL(Visibility::Collapsed, strip->HistoryMessage().Visibility());
+                VERIFY_ARE_EQUAL(0u, page->_tabStrip.HistoryItems().Size());
+            }
+
+            page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(R"({"sessions":[],"history_status":"ready"})"));
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryLoading());
+            VERIFY_ARE_EQUAL(Visibility::Visible, strip->HistoryMessage().Visibility());
+            const auto resources = winrt::Windows::ApplicationModel::Resources::Core::ResourceManager::Current()
+                                       .MainResourceMap()
+                                       .GetSubtree(L"TerminalApp/Resources");
+            VERIFY_ARE_EQUAL(resources.GetValue(L"VerticalTabsHistoryEmpty").ValueAsString(), strip->HistoryMessage().Text());
+
+            // Transport failures use the default Error outcome, never a successful empty snapshot.
+            page->_CompleteSidebarHistoryRefresh(generation, {});
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryLoading());
+            VERIFY_ARE_EQUAL(resources.GetValue(L"VerticalTabsHistoryLoadError").ValueAsString(), strip->HistoryMessage().Text());
+            page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(R"({"sessions":[],"history_status":"loading"})"));
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryLoading());
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, strip->HistoryMessage().Visibility());
+        });
+    }
+
+    void TabTests::VerticalTabHistoryLoadingAndErrorsKeepRows()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            page->_tabStrip.HistoryActive(true);
+            const auto generation = page->_historyRequestGeneration;
+            const auto partial = R"({"history_status":"loading","sessions":[
+                {"session_id":"available","provider_id":"copilot","title":"Available session",
+                 "location":"Host","status":"Historical"}]})";
+            page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(partial));
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryLoading());
+            VERIFY_ARE_EQUAL(1u, page->_tabStrip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(Visibility::Visible, strip->HistoryList().Visibility());
+            VERIFY_IS_TRUE(strip->HistoryList().IsItemClickEnabled());
+            const auto item = page->_tabStrip.HistoryItems().GetAt(0);
+
+            strip->HistorySearchTextBox().Text(L"no match");
+            page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(R"({"sessions":[],"history_status":"loading"})"));
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryLoading());
+            VERIFY_IS_TRUE(strip->HasHistoryItems());
+            strip->HistorySearchTextBox().Text(L"");
+
+            for (const auto response : {
+                     R"({"sessions":[],"history_status":"error"})",
+                     R"({"sessions":[]})" })
+            {
+                page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(response));
+                VERIFY_IS_FALSE(page->_tabStrip.HistoryLoading());
+                VERIFY_IS_FALSE(page->_tabStrip.HistoryError().empty());
+                VERIFY_IS_TRUE(page->_tabStrip.HistoryItems().GetAt(0) == item);
+                VERIFY_ARE_EQUAL(Visibility::Visible, strip->HistoryList().Visibility());
+                VERIFY_ARE_EQUAL(Visibility::Visible, strip->HistoryMessage().Visibility());
+                VERIFY_ARE_EQUAL(1, Grid::GetRow(strip->HistoryMessage()));
+                VERIFY_IS_TRUE(strip->HistoryList().IsItemClickEnabled());
+            }
+
+            page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(partial));
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, strip->HistoryMessage().Visibility());
+            page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(R"({"sessions":[],"history_status":"ready"})"));
+            VERIFY_IS_FALSE(strip->HasHistoryItems());
+            VERIFY_ARE_EQUAL(0u, page->_tabStrip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(0, Grid::GetRow(strip->HistoryMessage()));
+        });
+    }
+
+    void TabTests::VerticalTabHistorySnapshotRejectsMalformedResponse()
+    {
+        TestOnUIThread([&]() {
+            using Page = winrt::TerminalApp::implementation::TerminalPage;
+            for (const auto response : {
+                     "",
+                     "{}",
+                     R"({"sessions":[]})",
+                     R"({"sessions":{},"history_status":"ready"})",
+                     R"({"sessions":[],"history_status":true})",
+                     R"({"sessions":[],"history_status":"unknown"})",
+                     R"({"sessions":[],"history_status":"ready"} {})",
+                     R"({"sessions":[null],"history_status":"ready"})",
+                     R"({"sessions":[{"title":[]}],"history_status":"ready"})" })
+            {
+                const auto parsed = Page::_ParseSidebarHistorySnapshot(response);
+                VERIFY_IS_TRUE(parsed.state == Page::_SidebarHistorySnapshot::State::InvalidResponse);
+                VERIFY_IS_TRUE(parsed.items.empty());
+            }
+            const auto custom = Page::_ParseSidebarHistorySnapshot(
+                R"({"sessions":[{"session_id":"custom-session","provider_id":"custom:test",
+                    "cli_source":{"Unknown":"custom:test"},"location":"Host"}],"history_status":"ready"})");
+            VERIFY_IS_TRUE(custom.state == Page::_SidebarHistorySnapshot::State::Ready);
+            VERIFY_ARE_EQUAL(size_t{ 1 }, custom.items.size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:test" }, custom.items.front().AgentId());
+        });
+    }
+
+    void TabTests::VerticalTabHistoryIgnoresStaleLoadingResult()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            page->_tabStrip.HistoryActive(true);
+            page->_historyRequestGeneration = 10;
+            page->_CompleteSidebarHistoryRefresh(9, page->_ParseSidebarHistorySnapshot(R"({"sessions":[],"history_status":"loading"})"));
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryLoading());
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
+            page->_CloseSidebarHistory(false);
+            page->_CompleteSidebarHistoryRefresh(10, {});
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryActive());
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryLoading());
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
         });
     }
 

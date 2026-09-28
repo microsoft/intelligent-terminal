@@ -539,10 +539,10 @@
     <value>Затваряне на хронологията на агента</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Търсене в хронологията на агента</value>
+    <value>Търсене на сесии на агенти</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Търсене в хронологията на агента</value>
+    <value>Търсене на сесии на агенти</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Не са намерени сесии на агенти.</value>

@@ -542,10 +542,10 @@
     <value>ഏജന്റ് ചരിത്രം അടയ്ക്കുക</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>ഏജന്റ് ചരിത്രത്തിൽ തിരയുക</value>
+    <value>ഏജന്റ് സെഷനുകൾ തിരയുക</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>ഏജന്റ് ചരിത്രത്തിൽ തിരയുക</value>
+    <value>ഏജന്റ് സെഷനുകൾ തിരയുക</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>ഏജന്റ് സെഷനുകളൊന്നും കണ്ടെത്തിയില്ല.</value>

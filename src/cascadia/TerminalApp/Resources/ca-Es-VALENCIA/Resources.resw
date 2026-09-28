@@ -357,10 +357,10 @@
     <value>Tanca l&apos;historial de l&apos;agent</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Busca en l&apos;historial de l&apos;agent</value>
+    <value>Busca sessions d&apos;agent</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Busca en l&apos;historial de l&apos;agent</value>
+    <value>Busca sessions d&apos;agent</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>No s&apos;ha trobat cap sessió d&apos;agent.</value>

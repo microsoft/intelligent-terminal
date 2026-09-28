@@ -540,10 +540,10 @@
     <value>Aizvērt aģentu vēsturi</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Meklēt aģentu vēsturē</value>
+    <value>Meklēt aģentu sesijas</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Meklēt aģentu vēsturē</value>
+    <value>Meklēt aģentu sesijas</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Aģentu sesijas netika atrastas.</value>

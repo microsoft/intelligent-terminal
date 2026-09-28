@@ -471,10 +471,10 @@
     <value>Tutup riwayat agen</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Cari riwayat agen</value>
+    <value>Cari sesi agen</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Cari riwayat agen</value>
+    <value>Cari sesi agen</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Tidak ada sesi agen yang ditemukan.</value>

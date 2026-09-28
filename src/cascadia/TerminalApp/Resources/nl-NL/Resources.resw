@@ -539,10 +539,10 @@
     <value>Agentgeschiedenis sluiten</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Agentgeschiedenis doorzoeken</value>
+    <value>Agentsessies zoeken</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Agentgeschiedenis doorzoeken</value>
+    <value>Agentsessies zoeken</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Geen agentsessies gevonden.</value>

@@ -539,10 +539,10 @@
     <value>Агент тарихын жабу</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Агент тарихынан іздеу</value>
+    <value>Агент сеанстарын іздеу</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Агент тарихынан іздеу</value>
+    <value>Агент сеанстарын іздеу</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Агент сеанстары табылмады.</value>

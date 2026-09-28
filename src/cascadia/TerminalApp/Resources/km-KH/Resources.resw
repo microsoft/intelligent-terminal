@@ -358,10 +358,10 @@
     <value>បិទប្រវត្តិភ្នាក់ងារ</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>ស្វែងរកប្រវត្តិភ្នាក់ងារ</value>
+    <value>ស្វែងរកវគ្គភ្នាក់ងារ</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>ស្វែងរកប្រវត្តិភ្នាក់ងារ</value>
+    <value>ស្វែងរកវគ្គភ្នាក់ងារ</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>រកមិនឃើញវគ្គភ្នាក់ងារទេ។</value>

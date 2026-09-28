@@ -280,10 +280,10 @@
     <value>关闭智能体历史记录</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>搜索智能体历史记录</value>
+    <value>搜索智能体会话</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>搜索智能体历史记录</value>
+    <value>搜索智能体会话</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>未找到智能体会话。</value>

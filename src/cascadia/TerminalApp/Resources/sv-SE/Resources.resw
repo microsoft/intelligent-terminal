@@ -518,10 +518,10 @@
     <value>Stäng agenthistorik</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Sök i agenthistoriken</value>
+    <value>Sök efter agentsessioner</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Sök i agenthistoriken</value>
+    <value>Sök efter agentsessioner</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Inga agentsessioner hittades.</value>

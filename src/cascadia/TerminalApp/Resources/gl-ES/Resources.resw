@@ -358,10 +358,10 @@
     <value>Pechar o historial do axente</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Buscar no historial do axente</value>
+    <value>Buscar sesións de axente</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Buscar no historial do axente</value>
+    <value>Buscar sesións de axente</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Non se atoparon sesións de axente.</value>

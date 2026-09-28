@@ -538,10 +538,10 @@
     <value>Agent tarixçəsini bağla</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Agent tarixçəsində axtar</value>
+    <value>Agent seanslarını axtar</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Agent tarixçəsində axtar</value>
+    <value>Agent seanslarını axtar</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Agent seansı tapılmadı.</value>

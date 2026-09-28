@@ -426,10 +426,10 @@
     <value>Agentepa historialninta wichq&apos;ay</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Agentepa historialninpi maskay</value>
+    <value>Agente sesionkunata maskay</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Agentepa historialninpi maskay</value>
+    <value>Agente sesionkunata maskay</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Mana agente sesionkuna tarisqachu.</value>

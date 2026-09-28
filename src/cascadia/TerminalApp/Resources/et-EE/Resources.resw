@@ -539,10 +539,10 @@
     <value>Sulge agendi ajalugu</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Otsi agendi ajaloost</value>
+    <value>Otsi agendiseansse</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Otsi agendi ajaloost</value>
+    <value>Otsi agendiseansse</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Agendiseansse ei leitud.</value>

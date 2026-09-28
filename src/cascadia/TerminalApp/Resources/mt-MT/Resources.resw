@@ -426,10 +426,10 @@
     <value>Agħlaq il-kronoloġija tal-aġent</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Fittex fil-kronoloġija tal-aġent</value>
+    <value>Fittex sessjonijiet tal-aġent</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Fittex fil-kronoloġija tal-aġent</value>
+    <value>Fittex sessjonijiet tal-aġent</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Ma nstabet l-ebda sessjoni tal-aġent.</value>

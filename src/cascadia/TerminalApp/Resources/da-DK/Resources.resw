@@ -538,10 +538,10 @@
     <value>Luk agenthistorik</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Søg i agenthistorik</value>
+    <value>Søg efter agentsessioner</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Søg i agenthistorik</value>
+    <value>Søg efter agentsessioner</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Der blev ikke fundet nogen agentsessioner.</value>

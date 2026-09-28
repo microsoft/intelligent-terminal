@@ -543,10 +543,10 @@
     <value>एजंट इतिहास बंद करात</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>एजंट इतिहास सोदात</value>
+    <value>एजंट सत्र सोदात</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>एजंट इतिहास सोदात</value>
+    <value>एजंट सत्र सोदात</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>खंयचेंच एजंट सत्र मेळ्ळें ना.</value>

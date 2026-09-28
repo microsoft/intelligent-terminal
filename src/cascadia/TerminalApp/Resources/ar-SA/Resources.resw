@@ -539,10 +539,10 @@
     <value>إغلاق سجل عامل الذكاء الاصطناعي</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>البحث في سجل عامل الذكاء الاصطناعي</value>
+    <value>البحث عن جلسات عامل الذكاء الاصطناعي</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>البحث في سجل عامل الذكاء الاصطناعي</value>
+    <value>البحث عن جلسات عامل الذكاء الاصطناعي</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>لم يتم العثور على جلسات عامل الذكاء الاصطناعي.</value>

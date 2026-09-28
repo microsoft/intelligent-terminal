@@ -406,10 +406,10 @@
     <value>Zatvori istoriju agenata</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Pretraži istoriju agenata</value>
+    <value>Pretraži sesije agenata</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Pretraži istoriju agenata</value>
+    <value>Pretraži sesije agenata</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Nisu pronađene sesije agenata.</value>

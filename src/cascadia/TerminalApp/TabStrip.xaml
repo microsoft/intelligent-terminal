@@ -511,6 +511,10 @@
                      KeyDown="OnHistorySearchBoxKeyDown"
                      TextChanged="OnHistorySearchTextChanged" />
             <Grid Grid.Row="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
                 <ListView x:Name="HistoryList"
                           ItemsSource="{x:Bind HistoryItems}"
                           IsItemClickEnabled="True"

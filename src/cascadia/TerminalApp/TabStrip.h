@@ -220,6 +220,7 @@ namespace winrt::TerminalApp::implementation
                                      winrt::hstring const& paneSessionId,
                                      winrt::hstring const& status,
                                      winrt::hstring const& statusText);
+        bool HasHistoryItems() const noexcept { return !_historySnapshot.empty(); }
         void ClearHistorySnapshot();
         void ClearHistorySearch();
         bool HistoryActive() const noexcept { return _historyActive; }

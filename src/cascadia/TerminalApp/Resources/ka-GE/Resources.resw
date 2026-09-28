@@ -426,10 +426,10 @@
     <value>აგენტის ისტორიის დახურვა</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>აგენტის ისტორიაში ძიება</value>
+    <value>აგენტის სესიების ძიება</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>აგენტის ისტორიაში ძიება</value>
+    <value>აგენტის სესიების ძიება</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>აგენტის სესიები ვერ მოიძებნა.</value>

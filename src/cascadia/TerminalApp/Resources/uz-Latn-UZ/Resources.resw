@@ -518,10 +518,10 @@
     <value>Agent tarixini yopish</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Agent tarixidan qidirish</value>
+    <value>Agent seanslarini qidirish</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Agent tarixidan qidirish</value>
+    <value>Agent seanslarini qidirish</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Agent seanslari topilmadi.</value>

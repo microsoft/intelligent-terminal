@@ -519,10 +519,10 @@
     <value>Mbyll historikun e agjentit</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Kërko në historikun e agjentit</value>
+    <value>Kërko seanca agjentësh</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Kërko në historikun e agjentit</value>
+    <value>Kërko seanca agjentësh</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Nuk u gjetën seanca agjentësh.</value>

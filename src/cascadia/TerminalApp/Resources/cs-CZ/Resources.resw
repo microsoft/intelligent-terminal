@@ -539,10 +539,10 @@
     <value>Zavřít historii agentů</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Prohledat historii agentů</value>
+    <value>Hledat relace agentů</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Prohledat historii agentů</value>
+    <value>Hledat relace agentů</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Nebyly nalezeny žádné relace agentů.</value>

@@ -1517,9 +1517,11 @@ namespace winrt::TerminalApp::implementation
         HistoryLoadingIndicator().IsActive(visible && _historyLoading);
         HistoryLoadingIndicator().Visibility(visible && _historyLoading ? Visibility::Visible : Visibility::Collapsed);
         HistoryList().IsItemClickEnabled(!_historyActivating && !_historyLoading);
-        HistoryList().Visibility(visible && !_historyLoading && _historyError.empty() && _historyItems.Size() > 0 ?
+        const auto showList = visible && !_historyLoading && _historyItems.Size() > 0;
+        HistoryList().Visibility(showList ?
                                      Visibility::Visible :
                                      Visibility::Collapsed);
+        Grid::SetRow(HistoryMessage(), showList ? 1 : 0);
         if (!visible || _historyLoading)
         {
             HistoryMessage().Visibility(Visibility::Collapsed);

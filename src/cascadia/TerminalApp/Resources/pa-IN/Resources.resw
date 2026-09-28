@@ -542,10 +542,10 @@
     <value>ਏਜੰਟ ਇਤਿਹਾਸ ਬੰਦ ਕਰੋ</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>ਏਜੰਟ ਇਤਿਹਾਸ ਖੋਜੋ</value>
+    <value>ਏਜੰਟ ਸੈਸ਼ਨ ਖੋਜੋ</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>ਏਜੰਟ ਇਤਿਹਾਸ ਖੋਜੋ</value>
+    <value>ਏਜੰਟ ਸੈਸ਼ਨ ਖੋਜੋ</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>ਕੋਈ ਏਜੰਟ ਸੈਸ਼ਨ ਨਹੀਂ ਮਿਲਿਆ।</value>

@@ -277,10 +277,10 @@
     <value>關閉智能體歷程記錄</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>搜尋智能體歷程記錄</value>
+    <value>搜尋智能體工作階段</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>搜尋智能體歷程記錄</value>
+    <value>搜尋智能體工作階段</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>找不到智能體工作階段。</value>
