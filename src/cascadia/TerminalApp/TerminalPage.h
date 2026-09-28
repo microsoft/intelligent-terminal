@@ -355,6 +355,7 @@ namespace winrt::TerminalApp::implementation
         bool _suppressTabFocusRequests{ false };
         uint64_t _historyRequestGeneration{ 0 };
         uint64_t _historyActivationSerial{ 0 };
+        bool _preserveSidebarHistory{ false };
         Windows::UI::Xaml::DispatcherTimer _historyRefreshTimer{ nullptr };
         bool _historyRefreshInFlight{ false };
         bool _historyRefreshPending{ false };
@@ -963,6 +964,7 @@ namespace winrt::TerminalApp::implementation
         static winrt::hstring _SidebarHistoryAgeText(std::optional<uint64_t> lastActivityAtMs, uint64_t nowMs);
         safe_void_coroutine _LoadSidebarHistory(uint64_t generation, bool initialLoad);
         safe_void_coroutine _ActivateSidebarHistoryItem(TerminalApp::TabStripHistoryItem item);
+        bool _CompleteSidebarHistoryActivation(uint64_t activationSerial, bool accepted, const winrt::hstring& detail);
         bool _IsCollapsedVerticalRail() const noexcept
         {
             return _isVerticalLayout &&

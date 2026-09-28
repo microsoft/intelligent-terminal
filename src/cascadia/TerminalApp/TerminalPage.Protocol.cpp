@@ -738,6 +738,10 @@ namespace winrt::TerminalApp::implementation
         auto strong = get_strong();
         co_await wil::resume_foreground(Dispatcher());
 
+        const auto preserveHistory = std::exchange(_preserveSidebarHistory, true);
+        const auto restoreHistoryBehavior = wil::scope_exit([&]() {
+            _preserveSidebarHistory = preserveHistory;
+        });
         Protocol::TabCreationResult result{};
 
         // A protocol create_tab that carries a commandline but no profile would
@@ -784,8 +788,8 @@ namespace winrt::TerminalApp::implementation
 
         _tabContent.UpdateLayout(); // Force synchronous terminal initialization
 
-        // UpdateLayout can realize the vertical ListView after the History
-        // overlay closes and restore its previous row selection. Reassert the
+        // UpdateLayout can realize the vertical ListView and restore its
+        // previous row selection. Reassert the
         // protocol-created foreground tab after layout has settled.
         if (!background)
         {
@@ -934,6 +938,10 @@ namespace winrt::TerminalApp::implementation
         {
             co_return false;
         }
+        const auto preserveHistory = std::exchange(_preserveSidebarHistory, true);
+        const auto restoreHistoryBehavior = wil::scope_exit([&]() {
+            _preserveSidebarHistory = preserveHistory;
+        });
         if (const auto groupId = _manager.KeptGroupForPane(sessionId); groupId != winrt::guid{})
         {
             _agentPaneLog(fmt::format("focus_pane: reattaching kept tab={} pane={}",
@@ -975,7 +983,6 @@ namespace winrt::TerminalApp::implementation
             // reliably surface the window regardless of its prior focus state.
             SummonWindowRequested.raise(nullptr, nullptr);
 
-            _CloseSidebarHistory(false);
             _SetFocusedTab(tab);
             if (tabImpl->IsZoomed() && tabImpl->GetActivePane() != foundPane)
             {

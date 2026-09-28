@@ -43,6 +43,18 @@
                 <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCautionBrush}" />
                 <Setter Property="Opacity" Value="1" />
             </Style>
+            <Style x:Key="HistoryActiveTextStyle"
+                   BasedOn="{StaticResource HistorySubtitleTextStyle}"
+                   TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource SystemFillColorSuccessBrush}" />
+                <Setter Property="Opacity" Value="1" />
+            </Style>
+            <Style x:Key="HistoryErrorTextStyle"
+                   BasedOn="{StaticResource HistorySubtitleTextStyle}"
+                   TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCriticalBrush}" />
+                <Setter Property="Opacity" Value="1" />
+            </Style>
         </ResourceDictionary>
     </UserControl.Resources>
 

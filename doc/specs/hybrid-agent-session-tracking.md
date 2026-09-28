@@ -343,8 +343,9 @@ The second line is left-aligned as `Agent name · relative age · status`, using
 the provider's display name and `last_activity_at_ms`. The age is localized as
 just now, minutes, hours, or days ago; it refreshes with each snapshot. Missing
 or invalid timestamps display Unknown, and future timestamps display just now.
-Waiting for input uses a theme-aware yellow caution accent, matching the session
-management view's attention color. Only the status text is accented; the provider,
+Active uses a theme-aware green success accent, Waiting for input a yellow caution
+accent, and Error a red critical accent, matching the session management view.
+Only the status text is accented; the provider,
 age, and separators stay muted, and search matches remain highlighted. Host/WSL
 location remains searchable and available for routing but is not in this line.
 Missing or unrecognized states display Unknown rather than implying a historical
@@ -363,6 +364,12 @@ For imported history the timestamp comes from ACP `session/list.updated_at`;
 live registry events update it, including tool activity, notifications, and session
 or pane closure. It is not a creation time or the time History was opened. Missing
 timestamps sort last within their group.
+
+Activating a History row focuses or resumes its session without leaving History
+or clearing its search query. Protocol pane focus (including kept-tab restore)
+and protocol-created tabs preserve the sidebar view while changing the selected
+tab and terminal keyboard focus. Successful activation restarts History refreshes;
+explicit user new-tab actions and closing History retain their existing behavior.
 
 At startup, once its named pipe is ready, master checks policy and local
 CLI/adapter prerequisites and initializes installed Windows-host providers through

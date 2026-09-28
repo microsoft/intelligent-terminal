@@ -253,11 +253,10 @@ namespace winrt::TerminalApp::implementation
         // we'll attach the terminal's Xaml control to the Xaml root.
         if (!openInBackground)
         {
-            // A foreground tab must become the active live tab. Dismiss the
-            // History overlay before changing selection so its focused
-            // ListView cannot restore the previously selected row afterward.
+            // Explicit new-tab actions leave History, but protocol activation
+            // changes the focused content without changing the sidebar view.
             const auto historyWasActive = _tabStrip && _tabStrip.HistoryActive();
-            if (historyWasActive)
+            if (historyWasActive && !_preserveSidebarHistory)
             {
                 _CloseSidebarHistory(false);
             }

@@ -352,7 +352,11 @@ namespace winrt::TerminalApp::implementation
         _historySearchTerms.reserve(_historySnapshot.size());
         for (const auto& item : _historySnapshot)
         {
-            const auto styleKey = item.Status() == L"Attention" ? L"HistoryAttentionTextStyle" : L"HistorySubtitleTextStyle";
+            const auto status = item.Status();
+            const auto styleKey = status == L"Working"   ? L"HistoryActiveTextStyle" :
+                                  status == L"Attention" ? L"HistoryAttentionTextStyle" :
+                                  status == L"Error"     ? L"HistoryErrorTextStyle" :
+                                                           L"HistorySubtitleTextStyle";
             item.StatusTextStyle(Resources().Lookup(box_value(styleKey)).as<WUX::Style>());
             auto iconKey = box_value(L"AgentIcon." + item.AgentId());
             if (!Resources().HasKey(iconKey))

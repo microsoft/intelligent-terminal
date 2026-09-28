@@ -6316,26 +6316,29 @@ namespace winrt::TerminalApp::implementation
 
         co_await wil::resume_foreground(dispatcher);
         const auto page = weakThis.get();
-        if (!page)
+        if (page && page->_CompleteSidebarHistoryActivation(activationSerial, accepted, winrt::to_hstring(detail)))
         {
-            co_return;
-        }
-        if (page->_historyActivationSerial != activationSerial || !page->_tabStrip.HistoryActive())
-        {
-            co_return;
-        }
-        page->_tabStrip.HistoryLoading(false);
-        if (accepted)
-        {
-            page->_CloseSidebarHistory(false);
-        }
-        else
-        {
-            page->_tabStrip.HistoryError(
-                detail.empty() ? RS_(L"VerticalTabsHistoryActivationError") : winrt::to_hstring(detail));
             page->_StartSidebarHistoryRefreshTimer();
             page->_RequestSidebarHistoryRefresh(false);
         }
+    }
+
+    bool TerminalPage::_CompleteSidebarHistoryActivation(const uint64_t activationSerial, const bool accepted, const winrt::hstring& detail)
+    {
+        if (_historyActivationSerial != activationSerial || !_tabStrip.HistoryActive())
+        {
+            return false;
+        }
+        _tabStrip.HistoryLoading(false);
+        if (accepted)
+        {
+            _tabStrip.HistoryError(L"");
+        }
+        else
+        {
+            _tabStrip.HistoryError(detail.empty() ? RS_(L"VerticalTabsHistoryActivationError") : detail);
+        }
+        return true;
     }
 
     void TerminalPage::_ClearTabSearch()
