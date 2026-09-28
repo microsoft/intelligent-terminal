@@ -1799,7 +1799,8 @@ namespace winrt::TerminalApp::implementation
                                             WUX::Input::DoubleTappedRoutedEventArgs const& e)
     {
         const auto element = sender.try_as<FrameworkElement>();
-        if (const auto display = element ? element.DataContext().try_as<TerminalApp::TabStripDisplayItem>() : nullptr)
+        if (const auto display = element ? element.DataContext().try_as<TerminalApp::TabStripDisplayItem>() : nullptr;
+            display && !_originatesFromHeaderControl(e.OriginalSource(), element))
         {
             e.Handled(true);
             TabRenameRequested.raise(*this, winrt::make<TabStripCloseRequestedEventArgs>(display.Tab()));
