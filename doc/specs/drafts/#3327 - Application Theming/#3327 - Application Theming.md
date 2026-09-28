@@ -231,6 +231,22 @@ controlling:
 
 ##### Tab Row / "Titlebar"
 
+Tab switches reuse the existing Acrylic brush when its resolved tint and
+backdrop settings are unchanged, avoiding repeated backdrop initialization.
+Sidebar icon and pane-row instances likewise remain stable during focus updates.
+Sidebar rows use the native ListView hover, pressed, and selected states rather
+than transparent state overrides or an additional selection-background overlay.
+Unselected rows have a transparent normal background, including when the
+horizontal tab theme supplies a background color. Tab colors only fill the
+selected row; unselected text inherits the ListView foreground.
+
+Selecting a sidebar tab updates selection and filter status without rebuilding
+every tab's pane projection. Insertion and title/agent-state changes project only
+the affected tab; search, filter, and layout changes still refresh the full list.
+Theme colors notify the selected row separately from pane-structure changes.
+Row content, icons, and pane visibility use observable bindings rather than
+reassigning presenters and item sources during selection.
+
 * `tabRow.background`: Control the color of the background of the tab row. When
   tabs in the titlebar are enabled, this sets the color of the titlebar. See
   below for accepted colors.

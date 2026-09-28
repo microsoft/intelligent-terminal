@@ -207,13 +207,6 @@
                   ReorderMode="Disabled"
                   SelectionChanged="OnListSelectionChanged"
                   SelectionMode="Single">
-            <ListView.Resources>
-                <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="Transparent" />
-                <SolidColorBrush x:Key="ListViewItemBackgroundPressed" Color="Transparent" />
-                <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="Transparent" />
-                <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="Transparent" />
-                <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPressed" Color="Transparent" />
-            </ListView.Resources>
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="local:TabStripDisplayItem">
                     <StackPanel HorizontalAlignment="Stretch">
@@ -230,12 +223,6 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <Border x:Name="TabSelectionBackground"
-                                    Grid.ColumnSpan="4"
-                                    Background="{ThemeResource SubtleFillColorSecondaryBrush}"
-                                    CornerRadius="6"
-                                    IsHitTestVisible="False"
-                                    Visibility="{x:Bind SelectionVisibility, Mode=OneWay}" />
                             <Button x:Name="TabGroupToggleButton"
                                     Grid.Column="0"
                                     Width="24"
@@ -257,11 +244,8 @@
                                               Width="16"
                                               Height="16"
                                               Margin="4,0,8,0"
-                                              VerticalAlignment="Center">
-                                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                          FontSize="12"
-                                          Glyph="&#xE756;" />
-                            </ContentPresenter>
+                                              VerticalAlignment="Center"
+                                              Content="{x:Bind Icon, Mode=OneWay}" />
                             <ContentPresenter x:Name="TabHeaderPresenter"
                                               Grid.Column="2"
                                               HorizontalAlignment="Stretch"
