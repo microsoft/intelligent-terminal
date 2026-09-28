@@ -363,4 +363,24 @@
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>ປິດແທັບທັງໝົດຢູ່ລຸ່ມແທັບນີ້</value>
   </data>
+  <data name="NotificationIconRestoreKeptTab" xml:space="preserve">
+    <value>ກູ້ຄືນ</value>
+    <comment>Command in the notification-area menu that brings a background tab and its still-running terminal panes back into a window. It does not restart the processes or restore a file backup.</comment>
+  </data>
+  <data name="KeepTabRunningText" xml:space="preserve">
+    <value>ໃຫ້ແທັບເຮັດວຽກຕໍ່ໄປ</value>
+    <comment>Command at the top of a vertical terminal tab's context menu that enables keeping all panes running after the tab or window is closed. Also labels the tab's keep-running status indicator. This does not pin the tab or save it for a restart.</comment>
+  </data>
+  <data name="KeepTabRunningToolTip" xml:space="preserve">
+    <value>ໃຫ້ແທັບນີ້ເຮັດວຽກຕໍ່ໄປໃນພື້ນຫຼັງ ຫຼັງຈາກປິດແທັບ ຫຼື ໜ້າຕ່າງ.</value>
+    <comment>Tooltip and accessibility help for Keep tab running. Includes shell panes and the AI assistant; their current processes and sessions stay alive, rather than restarting later.</comment>
+  </data>
+  <data name="TurnOffKeepTabRunningText" xml:space="preserve">
+    <value>ປິດການໃຫ້ເຮັດວຽກຕໍ່ໄປ</value>
+    <comment>Command shown instead of Keep tab running when that tab already has keep running enabled. It only turns off the background-running behavior; it does not close the tab or stop its current processes immediately.</comment>
+  </data>
+  <data name="TurnOffKeepTabRunningToolTip" xml:space="preserve">
+    <value>ແທັບນີ້ຈະບໍ່ເຮັດວຽກຕໍ່ໄປອີກ ຫຼັງຈາກທ່ານປິດແທັບ ຫຼື ໜ້າຕ່າງ.</value>
+    <comment>Tooltip and accessibility help for Turn off keep running. After this action, closing the tab or its window closes its panes normally instead of retaining them in the background. The current tab and processes are not closed by this action.</comment>
+  </data>
 </root>

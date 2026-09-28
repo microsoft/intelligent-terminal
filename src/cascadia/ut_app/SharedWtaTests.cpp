@@ -128,6 +128,8 @@ namespace TerminalAppUnitTests
 
         TEST_METHOD(EmptyLeaseOperationsAreNoOps);
         TEST_METHOD(FailedAcquireDoesNotOwnReferences);
+        TEST_METHOD(KeepRunningLeaseDoesNotSpawnMaster);
+        TEST_METHOD(KeepRunningLeaseOutlivesLastPane);
         TEST_METHOD(LeaseMovePreservesActiveOwnership);
         TEST_METHOD(RepeatedResetCannotReleaseSiblingLease);
         TEST_METHOD(LeaseDestructionReleasesOwnReference);
@@ -209,6 +211,29 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(size_t{ 0 }, owner._refCount);
         VERIFY_ARE_EQUAL(size_t{ 0 }, owner._activeRefCount);
         VERIFY_IS_FALSE(owner.IsRunning());
+    }
+
+    void SharedWtaTests::KeepRunningLeaseDoesNotSpawnMaster()
+    {
+        SharedWta owner;
+        VERIFY_IS_FALSE(static_cast<bool>(owner.AcquireKeepRunningLease()));
+        VERIFY_ARE_EQUAL(size_t{ 0 }, owner._refCount);
+        VERIFY_IS_FALSE(owner.IsRunning());
+    }
+
+    void SharedWtaTests::KeepRunningLeaseOutlivesLastPane()
+    {
+        SharedWta owner;
+        auto pane = _AcquireLease(owner);
+        auto kept = owner.AcquireKeepRunningLease();
+        VERIFY_IS_TRUE(static_cast<bool>(kept));
+        VERIFY_ARE_EQUAL(size_t{ 2 }, owner._refCount);
+        pane.Reset();
+        VERIFY_ARE_EQUAL(size_t{ 1 }, owner._refCount);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, owner._activeRefCount);
+        kept.Reset();
+        VERIFY_ARE_EQUAL(size_t{ 0 }, owner._refCount);
+        VERIFY_ARE_EQUAL(size_t{ 0 }, owner._activeRefCount);
     }
 
     void SharedWtaTests::LeaseMovePreservesActiveOwnership()

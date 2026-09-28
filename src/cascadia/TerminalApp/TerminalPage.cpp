@@ -31,6 +31,7 @@
 #include "AgentPaneContent.h"
 #include "AgentPaneDragStash.h"
 #include "ContentTransfer.h"
+#include "ContentManager.h"
 #include "AgentPaneLog.h"
 #include "AgentSessionTelemetry.h"
 #include "AgentPolicyTelemetry.h"
@@ -1046,7 +1047,7 @@ namespace winrt::TerminalApp::implementation
         return winrt::hstring{};
     }
 
-    // Look up a tab by its StableId. Linear scan over `_tabs`. Returns
+    // Look up a foreground or kept tab by its StableId. Returns
     // nullptr if no tab has that id.
     winrt::com_ptr<Tab> TerminalPage::_FindTabByStableId(const winrt::hstring& stableId) const
     {
@@ -1054,7 +1055,7 @@ namespace winrt::TerminalApp::implementation
         {
             return {};
         }
-        for (const auto& tab : _tabs)
+        for (const auto& tab : _RuntimeTabs())
         {
             if (auto tabImpl = _GetTabImpl(tab))
             {
@@ -2660,6 +2661,15 @@ namespace winrt::TerminalApp::implementation
 
         Json::StreamWriterBuilder wb;
         wb["indentation"] = "";
+        const auto eventTab = params["tab_id"].isString() ?
+                                  _FindTabByStableId(winrt::to_hstring(params["tab_id"].asString())) :
+                                  nullptr;
+        if ((eventTab && !_GetTabIndex(*eventTab)) || _windowPanesShutdown)
+        {
+            winrt::get_self<implementation::ContentManager>(_manager)->DetachedSessionEvent.raise(
+                _manager, winrt::to_hstring(Json::writeString(wb, evt)));
+            return;
+        }
         ProtocolVtSequenceReceived.raise(
             *this,
             winrt::to_hstring(Json::writeString(wb, evt)));
@@ -3203,7 +3213,7 @@ namespace winrt::TerminalApp::implementation
                 return;
             }
             const auto stateStr = control.ConnectionState() == ConnectionState::Failed ? "failed" : "closed";
-            _TryRaiseTerminalEndStateEvent(paneIdStr, stateStr);
+            _TryRaiseTerminalEndStateEvent(paneIdStr, stateStr, _FindTabIdForSessionId(paneIdStr));
             // This pane is going away for good, so its agent binding goes with
             // it — including the failed case that the call above deliberately
             // keeps for panes that merely outlived their CLI.
@@ -5227,6 +5237,19 @@ namespace winrt::TerminalApp::implementation
     // - <none>
     void TerminalPage::_OnFirstLayout(const IInspectable& /*sender*/, const IInspectable& /*eventArgs*/)
     {
+        if (!_startupKeptGroups.empty())
+        {
+            if ((_tabContent.ActualWidth() <= 0 && ActualWidth() <= 0) ||
+                (_tabContent.ActualHeight() <= 0 && ActualHeight() <= 0))
+            {
+                return;
+            }
+            _layoutUpdatedRevoker.revoke();
+            _startupState = StartupState::InStartup;
+            _TryCompleteStartupTransfer();
+            return;
+        }
+
         // Only let this succeed once.
         _layoutUpdatedRevoker.revoke();
 
@@ -5281,6 +5304,51 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_TryCompleteStartupTransfer()
     {
+        if (!_startupKeptGroups.empty() && _transferReceiverReady && _startupState == StartupState::InStartup)
+        {
+            if (_restoringStartupKeptGroups)
+            {
+                return;
+            }
+            _restoringStartupKeptGroups = true;
+            auto rollback = wil::scope_exit([&]() noexcept { _restoringStartupKeptGroups = false; });
+            // LayoutUpdated can run before the new island's layout has settled.
+            // Match ordinary startup replay by executing on a later UI turn.
+            Dispatcher().RunAsync(CoreDispatcherPriority::Low, [weak = get_weak()]() {
+                if (const auto self = weak.get(); self && !self->_windowPanesShutdown)
+                {
+                    if ((self->_tabContent.ActualWidth() <= 0 && self->ActualWidth() <= 0) ||
+                        (self->_tabContent.ActualHeight() <= 0 && self->ActualHeight() <= 0))
+                    {
+                        self->_restoringStartupKeptGroups = false;
+                        self->_layoutUpdatedRevoker = self->_tabContent.LayoutUpdated(winrt::auto_revoke, { self.get(), &TerminalPage::_OnFirstLayout });
+                        return;
+                    }
+                    self->_layoutUpdatedRevoker.revoke();
+                    const auto groups = std::exchange(self->_startupKeptGroups, {});
+                    _agentPaneLog(fmt::format("restoring kept startup tabs count={} content_width={} content_height={}",
+                                              groups.size(),
+                                              self->_tabContent.ActualWidth(),
+                                              self->_tabContent.ActualHeight()));
+                    for (const auto& groupId : groups)
+                    {
+                        try
+                        {
+                            self->RestoreKeptGroup(groupId);
+                        }
+                        catch (...)
+                        {
+                            LOG_CAUGHT_EXCEPTION();
+                            _agentPaneLog(fmt::format("kept startup tab restore failed tab={}", winrt::to_string(winrt::to_hstring(groupId))));
+                        }
+                    }
+                    self->_restoringStartupKeptGroups = false;
+                    self->_CompleteInitialization();
+                }
+            });
+            rollback.release();
+            return;
+        }
         if (_startupTransferId && _transferReceiverReady && _startupState == StartupState::InStartup)
         {
             // Both layout and host registration must precede the acknowledgement:
@@ -7865,7 +7933,17 @@ namespace winrt::TerminalApp::implementation
         if (!statusTabId.empty())
         {
             statusTab = _FindTabByStableId(statusTabId);
-            if (!statusTab)
+            if (statusTab)
+            {
+                if (const auto content = statusTab->FindAgentPaneContent())
+                {
+                    const auto impl = winrt::get_self<implementation::AgentPaneContent>(content);
+                    // Kept tabs retain their StableId, but a helper that missed
+                    // the restore event still needs its new window identity.
+                    recoveredTransferredTab = impl->TransferSourceTabId() == statusTabId;
+                }
+            }
+            else
             {
                 for (const auto& candidate : _tabs)
                 {
@@ -9271,6 +9349,8 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::OnPaneAgentSessionChanged(hstring eventJson)
     {
+        // COM ingress updates the manager once through TrackPaneAgentSession.
+        // Page fan-out and restore replay must not write older bindings back.
         Json::Value evt;
         Json::CharReaderBuilder reader;
         std::string errors;
@@ -9323,7 +9403,7 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
-        for (const auto& tab : _tabs)
+        for (const auto& tab : _RuntimeTabs())
         {
             if (const auto tabImpl = _GetTabImpl(tab))
             {
@@ -9692,7 +9772,7 @@ namespace winrt::TerminalApp::implementation
         {
             return {};
         }
-        for (const auto& tab : _tabs)
+        for (const auto& tab : _RuntimeTabs())
         {
             const auto tabImpl = _GetTabImpl(tab);
             if (!tabImpl)
@@ -9718,7 +9798,7 @@ namespace winrt::TerminalApp::implementation
 
     std::string TerminalPage::_FindTabIdForSessionId(const std::string_view sessionId)
     {
-        for (const auto& tab : _tabs)
+        for (const auto& tab : _RuntimeTabs())
         {
             const auto tabImpl = _GetTabImpl(tab);
             if (!tabImpl)
@@ -9865,6 +9945,9 @@ namespace winrt::TerminalApp::implementation
                                     agentParams["event"].isString())
                                 {
                                     agentParams["pane_id"] = paneIdStr;
+                                    Json::Value bindingEvent;
+                                    bindingEvent["params"] = agentParams;
+                                    page->_manager.OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, bindingEvent)));
                                     if (!tabIdStr.empty())
                                     {
                                         agentParams["tab_id"] = tabIdStr;
@@ -9892,9 +9975,7 @@ namespace winrt::TerminalApp::implementation
                                         return;
                                     }
 
-                                    page->ProtocolVtSequenceReceived.raise(
-                                        *page,
-                                        winrt::to_hstring(eventJson));
+                                    page->_RaiseProtocolEvent("agent_event", agentParams);
                                 }
                                 return; // AgentEvent never falls through to vt_sequence
                             }
@@ -9919,9 +10000,6 @@ namespace winrt::TerminalApp::implementation
                             if (!page->_settings.GlobalSettings().EffectiveAutoErrorDetectionEnabled())
                                 return;
 
-                            Json::Value evt;
-                            evt["type"] = "event";
-                            evt["method"] = "vt_sequence";
                             Json::Value params;
                             params["pane_id"] = paneIdStr;
                             if (!tabIdStr.empty())
@@ -9929,12 +10007,7 @@ namespace winrt::TerminalApp::implementation
                                 params["tab_id"] = tabIdStr;
                             }
                             params["sequence"] = seqStr;
-                            evt["params"] = params;
-                            Json::StreamWriterBuilder wb;
-                            wb["indentation"] = "";
-                            page->ProtocolVtSequenceReceived.raise(
-                                *page,
-                                winrt::to_hstring(Json::writeString(wb, evt)));
+                            page->_RaiseProtocolEvent("vt_sequence", params);
                         });
                 });
 
@@ -10466,10 +10539,15 @@ namespace winrt::TerminalApp::implementation
     //   warn for the current window state, show a warning dialog.
     safe_void_coroutine TerminalPage::CloseWindow()
     {
+        if (_windowCloseAccepted || _displayingCloseDialog)
+        {
+            co_return;
+        }
         // During FRE, tabs are deferred (zero tabs). No warning needed;
         // just close the window immediately.
         if (_tabs.Size() == 0)
         {
+            _windowCloseAccepted = true;
             CloseWindowRequested.raise(*this, nullptr);
             co_return;
         }
@@ -10502,7 +10580,46 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
+        try
+        {
+            _SaveWorkspaceIfNeeded();
+        }
+        CATCH_LOG()
+        const auto keepAlive = get_strong();
+        _windowCloseAccepted = true;
+        auto rollback = wil::scope_exit([&]() noexcept { _windowCloseAccepted = false; });
+        const std::vector<winrt::TerminalApp::Tab> closingTabs{ _tabs.begin(), _tabs.end() };
+        for (const auto& tab : closingTabs)
+        {
+            _KeepTabRunning(_GetTabImpl(tab));
+        }
+        rollback.release();
         CloseWindowRequested.raise(*this, nullptr);
+    }
+
+    void TerminalPage::ShutdownPanes()
+    {
+        if (std::exchange(_windowPanesShutdown, true))
+        {
+            return;
+        }
+        for (const auto& tab : _tabs)
+        {
+            try
+            {
+                if (const auto impl = _GetTabImpl(tab))
+                {
+                    _NotifyPanesClosing(impl->GetRootPane());
+                    _NotifyAgentTabClosed(impl->StableId());
+                }
+            }
+            CATCH_LOG()
+            try
+            {
+                tab.Shutdown();
+            }
+            CATCH_LOG()
+        }
     }
 
     std::vector<IPaneContent> TerminalPage::Panes() const
@@ -11063,6 +11180,11 @@ namespace winrt::TerminalApp::implementation
                                                actions.GetAt(0).Args().as<NewTabArgs>().ContentArgs().as<NewTerminalArgs>();
         ReceivingContentTransfer transfer;
         transfer.sourceTab = sourceTab;
+        transfer.restoringKeptTab = _manager.KeptGroupOwner(winrt::guid{ sourceTab->StableId() }) == source;
+        const auto sourceStillOwned = [&]() {
+            return source._GetTabIndex(*sourceTab).has_value() ||
+                   (transfer.restoringKeptTab && _manager.KeptGroupOwner(winrt::guid{ sourceTab->StableId() }) == source);
+        };
         transfer.firstContentId = firstArgs ? firstArgs.ContentId() : 0;
         std::vector<TermControl> sourceControls;
         sourcePane->WalkTree([&](const auto& pane) {
@@ -11130,14 +11252,18 @@ namespace winrt::TerminalApp::implementation
                     destinationTab = transfer.tabs.front();
                     THROW_HR_IF(E_ABORT, _GetFocusedTab() != *destinationTab);
                 }
+                if (_restoringStartupKeptGroups)
+                {
+                    // Give each newly attached control real layout before the
+                    // next split, without suspending the ownership transaction.
+                    _tabContent.UpdateLayout();
+                }
             };
             for (uint32_t i = 0; i < layoutActionCount; ++i)
             {
                 dispatchAction(i);
             }
-            THROW_HR_IF(E_ABORT, transfer.controls.size() != sourceControls.size() ||
-                                    transfer.agents.size() != transfer.sourceAgents.size() ||
-                                    !source._GetTabIndex(*sourceTab));
+            THROW_HR_IF(E_ABORT, transfer.controls.size() != sourceControls.size() || transfer.agents.size() != transfer.sourceAgents.size() || !sourceStillOwned());
             // Hiding reparents the shell sibling, so it must precede zooming.
             // Nested splits must still finish before the agent leaf is hidden.
             for (const auto& [oldAgent, newAgent] : transfer.agents)
@@ -11149,6 +11275,10 @@ namespace winrt::TerminalApp::implementation
                     destinationTab->StashAgentPane();
                     THROW_HR_IF(E_ABORT, !destinationTab->FindAgentPane()->IsHidden());
                 }
+            }
+            if (transfer.restoringKeptTab)
+            {
+                destinationTab->RestoreKeptTabState(*sourceTab);
             }
             for (uint32_t i = layoutActionCount; i < actions.Size(); ++i)
             {
@@ -11174,7 +11304,7 @@ namespace winrt::TerminalApp::implementation
             {
                 THROW_HR_IF(E_ABORT, control.TransferState() != Microsoft::Terminal::Control::ContentTransferState::Prepared);
             }
-            THROW_HR_IF(E_ABORT, !source._GetTabIndex(*sourceTab) || !_GetTabIndex(*destinationTab));
+            THROW_HR_IF(E_ABORT, !sourceStillOwned() || !_GetTabIndex(*destinationTab));
             auto currentSource = firstSplit ? _buildPaneTransferActions(sourcePane) :
                                               sourceTab->BuildStartupActions(BuildStartupKind::Content);
             THROW_HR_IF(E_ABORT, ActionAndArgs::Serialize(winrt::single_threaded_vector<ActionAndArgs>(std::move(currentSource))) != sourceSnapshot);
@@ -11231,7 +11361,7 @@ namespace winrt::TerminalApp::implementation
                 {
                     if (sourceControls[i].ResumeContentTransfer())
                     {
-                        sourceControls[i].WindowVisibilityChanged(source._visible);
+                        sourceControls[i].WindowVisibilityChanged(!transfer.restoringKeptTab && source._visible);
                     }
                 }
                 CATCH_LOG()
@@ -11262,6 +11392,7 @@ namespace winrt::TerminalApp::implementation
         }
         if (!firstSplit)
         {
+            destinationTab->KeepRunning(sourceTab->KeepRunning());
             if (sourceTab->AgentPrewarmSuppressed())
             {
                 destinationTab->SuppressAgentPrewarm();
@@ -11433,6 +11564,11 @@ namespace winrt::TerminalApp::implementation
         const auto realSplitType = activeTab->PreCalculateCanSplit(splitDirection, splitSize, availableSpace);
         if (!realSplitType)
         {
+            _agentPaneLog(fmt::format("pane split rejected: available_width={} available_height={} split_size={} restoring_kept_tab={}",
+                                      availableSpace.Width,
+                                      availableSpace.Height,
+                                      splitSize,
+                                      _receivingContentTransfer && _receivingContentTransfer->restoringKeptTab));
             return false;
         }
 
@@ -12308,6 +12444,8 @@ namespace winrt::TerminalApp::implementation
 
     TermControl TerminalPage::_AttachControlToContent(const uint64_t& contentId, const NewTerminalArgs& /*newTerminalArgs*/)
     {
+        // Kept content can only be borrowed by the group restore transaction.
+        THROW_HR_IF(E_ILLEGAL_METHOD_CALL, _manager.IsKeptContent(contentId) && (!_receivingContentTransfer || !_receivingContentTransfer->restoringKeptTab));
         if (const auto& content{ _manager.TryLookupCore(contentId) })
         {
             const auto rawControl = _receivingContentTransfer ?
@@ -12477,6 +12615,10 @@ namespace winrt::TerminalApp::implementation
                 if (_receivingContentTransfer)
                 {
                     impl->CopyRestoreStateFrom(*winrt::get_self<implementation::AgentPaneContent>(sourceAgent));
+                    if (_receivingContentTransfer->restoringKeptTab)
+                    {
+                        impl->CopyLiveStateFrom(*winrt::get_self<implementation::AgentPaneContent>(sourceAgent));
+                    }
                     _receivingContentTransfer->agents.emplace_back(sourceAgent, agentContent);
                 }
                 else

@@ -323,6 +323,9 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 **Feature definition:** Session management lists known live and historical agent sessions, shows their state, and lets users focus or resume supported sessions.
 
+- [ ] `C342` `[new]` `[E2E]` **Focusing a kept session reattaches its original tab:** The shared history/session focus path restores a detached whole tab, focuses the original pane, preserves shell/helper processes and state, and does not duplicate tabs or restore unrelated stale targets. _(E2E: `Feature.KeepRunningFocus`.)_
+- [ ] `C343` `[new]` `[E2E]` **Bare launch opens a new tab without attaching kept tabs:** With no windows and two detached tabs, Start menu Open and explicit profile launches create a new ordinary tab while retained processes stay alive and detached; only explicit session activation attaches them. _(E2E: `Feature.KeepRunningFocus`.)_
+
 ### Surfaces
 
 - [ ] `C109` `[E2E]` **Session button works:** The session-management button opens the session view.
