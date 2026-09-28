@@ -280,6 +280,34 @@
     <value>{0} agent session</value>
     <comment>History row title for a live agent-pane session whose provider did not supply a conversation title. {0} is the provider display name.</comment>
   </data>
+  <data name="VerticalTabsHistoryStatusIdle" xml:space="preserve">
+    <value>Idle</value>
+    <comment>Agent History session status: the session is live but has no active work.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusWorking" xml:space="preserve">
+    <value>Active</value>
+    <comment>Agent History session status: the agent is actively processing a request.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusAttention" xml:space="preserve">
+    <value>Waiting for input</value>
+    <comment>Agent History session status: the agent needs a response or approval from the user.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusError" xml:space="preserve">
+    <value>Error</value>
+    <comment>Agent History session status: the session encountered an error.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusEnded" xml:space="preserve">
+    <value>Ended</value>
+    <comment>Agent History session status: the session's process or pane has ended.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusHistorical" xml:space="preserve">
+    <value>Historical</value>
+    <comment>Agent History session status: a saved session with no live pane.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusUnknown" xml:space="preserve">
+    <value>Unknown</value>
+    <comment>Agent History session status: the registry did not provide a recognized status.</comment>
+  </data>
   <data name="CompactNewTabButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>New tab</value>
   </data>

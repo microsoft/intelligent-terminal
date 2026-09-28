@@ -6029,6 +6029,35 @@ namespace winrt::TerminalApp::implementation
         _LoadSidebarHistory(generation, initialLoad);
     }
 
+    winrt::hstring TerminalPage::_SidebarHistoryStatusText(const std::string_view status)
+    {
+        if (status == "Idle")
+        {
+            return RS_(L"VerticalTabsHistoryStatusIdle");
+        }
+        if (status == "Working")
+        {
+            return RS_(L"VerticalTabsHistoryStatusWorking");
+        }
+        if (status == "Attention")
+        {
+            return RS_(L"VerticalTabsHistoryStatusAttention");
+        }
+        if (status == "Error")
+        {
+            return RS_(L"VerticalTabsHistoryStatusError");
+        }
+        if (status == "Ended")
+        {
+            return RS_(L"VerticalTabsHistoryStatusEnded");
+        }
+        if (status == "Historical")
+        {
+            return RS_(L"VerticalTabsHistoryStatusHistorical");
+        }
+        return RS_(L"VerticalTabsHistoryStatusUnknown");
+    }
+
     safe_void_coroutine TerminalPage::_LoadSidebarHistory(const uint64_t generation, const bool initialLoad)
     {
         const auto weakThis = get_weak();
@@ -6161,8 +6190,8 @@ namespace winrt::TerminalApp::implementation
                 auto item = winrt::make<TerminalApp::implementation::TabStripHistoryItem>();
                 item.SessionId(winrt::to_hstring(sessionId));
                 item.Title(winrt::to_hstring(title));
-                item.Subtitle(winrt::to_hstring(
-                    providerId + " - " + locationLabel + " - " + (isLive ? "Live" : "History")));
+                item.Subtitle(winrt::to_hstring(providerId + " - " + locationLabel + " - ") +
+                              _SidebarHistoryStatusText(status));
                 item.Cwd(winrt::to_hstring(cwd));
                 item.PaneSessionId(winrt::to_hstring(row.get("pane_session_id", "").asString()));
                 item.AgentId(winrt::to_hstring(providerId));
