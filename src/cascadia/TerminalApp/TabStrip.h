@@ -37,6 +37,10 @@ namespace winrt::TerminalApp::implementation
         WINRT_PROPERTY(winrt::hstring, SearchQuery);
         WINRT_PROPERTY(bool, IsLive, false);
         WINRT_PROPERTY(bool, IsAgentPane, false);
+        WINRT_PROPERTY(bool, IsHistorical, false);
+        WINRT_PROPERTY(winrt::hstring, StatusText);
+        WINRT_PROPERTY(winrt::Windows::UI::Xaml::Style, StatusTextStyle, nullptr);
+        WINRT_PROPERTY(winrt::Windows::UI::Xaml::DataTemplate, IconTemplate, nullptr);
     };
 
     struct TabStripHistoryActivationEventArgs : TabStripHistoryActivationEventArgsT<TabStripHistoryActivationEventArgs>
@@ -215,6 +219,8 @@ namespace winrt::TerminalApp::implementation
         void HistoryActive(bool value);
         bool HistoryLoading() const noexcept { return _historyLoading; }
         void HistoryLoading(bool value);
+        bool HistoryActivating() const noexcept { return _historyActivating; }
+        void HistoryActivating(bool value);
         winrt::hstring HistoryError() const { return _historyError; }
         void HistoryError(winrt::hstring const& value);
         void ProjectionControlsEnabled(bool value);
@@ -258,10 +264,6 @@ namespace winrt::TerminalApp::implementation
                                  winrt::Windows::UI::Xaml::Controls::TextChangedEventArgs const& e);
         void OnSearchBoxKeyDown(winrt::Windows::Foundation::IInspectable const& sender,
                                 winrt::Windows::UI::Xaml::Input::KeyRoutedEventArgs const& e);
-        void OnHistoryClick(winrt::Windows::Foundation::IInspectable const& sender,
-                            winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
-        void OnHistoryCloseClick(winrt::Windows::Foundation::IInspectable const& sender,
-                                 winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnHistorySearchTextChanged(winrt::Windows::Foundation::IInspectable const& sender,
                                         winrt::Windows::UI::Xaml::Controls::TextChangedEventArgs const& e);
         void OnHistorySearchBoxKeyDown(winrt::Windows::Foundation::IInspectable const& sender,
@@ -336,6 +338,7 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _searchQuery;
         bool _historyActive{ false };
         bool _historyLoading{ false };
+        bool _historyActivating{ false };
         bool _syncingHistorySearchState{ false };
         winrt::hstring _historySearchQuery;
         winrt::hstring _historyError;
@@ -409,7 +412,7 @@ namespace winrt::TerminalApp::implementation
         void _updateSearchVisualState();
         static std::vector<winrt::hstring> _buildHistorySearchTerms(TerminalApp::TabStripHistoryItem const& item);
         bool _matchesHistorySearch(size_t index) const;
-        void _applyHistoryProjection();
+        void _applyHistoryProjection(bool preserveScroll = false);
         void _updateHistoryVisualState();
         void _refreshDisplayItemVisuals(TerminalApp::TabStripDisplayItem const& display);
         static void _updateDisplayItemVisuals(winrt::Windows::UI::Xaml::FrameworkElement const& root,

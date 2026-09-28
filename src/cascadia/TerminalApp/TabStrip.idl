@@ -39,6 +39,10 @@ namespace TerminalApp
         String SearchQuery;
         Boolean IsLive;
         Boolean IsAgentPane;
+        Boolean IsHistorical;
+        String StatusText;
+        Windows.UI.Xaml.Style StatusTextStyle;
+        Windows.UI.Xaml.DataTemplate IconTemplate;
     };
 
     [default_interface] runtimeclass TabStripHistoryActivationEventArgs
@@ -162,5 +166,6 @@ namespace TerminalApp
         event Windows.Foundation.TypedEventHandler<TabStrip, TabStripPaneEventArgs> PaneCloseRequested;
         event Windows.Foundation.TypedEventHandler<TabStrip, TabStripCloseRequestedEventArgs> TabRenameRequested;
         event Windows.Foundation.TypedEventHandler<TabStrip, TabStripCloseRequestedEventArgs> TabFocusRequested;
+        Boolean HistoryActivating;
     };
 }

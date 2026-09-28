@@ -332,6 +332,81 @@ starts `Idle`; terminal states are `Historical` (startup history scan) and
 `Ended` (pane/process gone); the 5 s reaper or a hook taking over moves a row out
 of the live states.
 
+The vertical sidebar's Agents view hosts Agent History; selecting All tabs returns
+to the live tab/pane groups and stops History refreshes. Agent History displays the
+registry activity:
+`Idle` (Idle), `Working` (Active), `Attention` (Waiting for input), `Error`
+(Error), and both `Ended` and `Historical` as Historical, with localized labels.
+This is presentation-only: the raw status, liveness, and focus/resume routing remain
+unchanged. Each row has its provider's vector icon on the left, shared with the agent
+pane header and tinted using the row foreground; unknown/custom providers use a
+generic session icon rather than another provider's brand.
+The bottom bar no longer has a Show sessions button. The existing
+`Ctrl+Shift+/` binding and `openAgentSessions` action still open the agent pane's
+session manager; the sidebar Agents view remains a separate entry point.
+The second line is left-aligned as `Agent name · relative age · status`, using
+the provider's display name and `last_activity_at_ms`. Like the session manager,
+timestamps less than seven days old use localized relative time; timestamps at
+least seven days old use the UTC calendar date formatted with Windows' localized
+long-date format. The display refreshes with each snapshot. Missing,
+zero, or invalid timestamps display Unknown, and future timestamps display just now.
+Active uses a theme-aware green success accent, Waiting for input a yellow caution
+accent, and Error a red critical accent, matching the session management view.
+Only the status text is accented; the provider,
+age, and separators stay muted, and search matches remain highlighted. Host/WSL
+location remains searchable and available for routing but is not in this line.
+Missing or unrecognized states display Unknown rather than implying a historical
+session. Search matches both the displayed status and the raw registry value;
+the existing `live` and `history` search terms remain available. This presentation
+does not change shell-session visibility, liveness classification, or focus/resume
+routing. Registry-change notifications and the existing five-second snapshot
+refresh update the displayed status.
+Rows whose raw status is neither `Ended` nor `Historical` appear first, followed by
+closed/history rows. Within each group, rows retain newest-first ordering by
+`last_activity_at_ms`, the same timestamp used for relative age. This stable grouping
+is applied by the sidebar when accepting each snapshot, including after session
+closure or resume, and is preserved by search. The WTA CLI's time-based ordering
+and other session-management views are unchanged.
+For imported history the timestamp comes from ACP `session/list.updated_at`;
+live registry events update it, including tool activity, notifications, and session
+or pane closure. It is not a creation time or the time History was opened. Missing
+timestamps sort last within their group.
+Background snapshots update individual list slots rather than resetting the
+collection, retaining unchanged row objects and the scroll offset. Changes to
+the search query still rebuild the filtered results; periodic refreshes do not
+pull the user's viewport back to the top.
+
+Activating a History row focuses or resumes its session without leaving History
+or clearing its search query. Protocol pane focus (including kept-tab restore)
+preserves the sidebar view while changing the selected tab and terminal keyboard
+focus. Sidebar resume creates a background tab, then explicitly focuses its newly
+returned pane using the existing `focus_pane` operation. This preservation is
+activation-specific: generic foreground `CreateProtocolTab` creation exits History.
+Ordinary background tab creation and kept-tab focus retain their existing behavior.
+Successful activation restarts History refreshes; explicit user new-tab actions
+and closing History retain their existing behavior.
+Activation has a separate busy state from list loading: existing rows and the search
+query stay visible without the full-list loading spinner while focus/resume runs.
+Repeated activation clicks are ignored until completion, and background snapshots
+cannot clear the activation guard. Closing History resets that guard.
+
+At startup, once its named pipe is ready, master checks policy and local
+native agent CLI and required `npx` prerequisites, then initializes installed
+Windows-host providers through the existing native-provider agent pool. Discovery
+never automatically installs a native agent CLI or starts an interactive login.
+The pinned Claude and Codex ACP adapters are separate from those native CLIs;
+adapter cache presence is not checked. Existing `npx -y` behavior is allowed to
+download and bootstrap an uncached adapter during initial startup or a later
+refresh that starts a provider, so discovery may require network access.
+Each provider lists its own history; no helper or chat session is created.
+Connections stay warm for the lifetime of master,
+including while History is closed. Discovery is asynchronous and single-flight across
+windows, so slow or failed providers do not block existing rows. History synchronization
+preserves live status and pane bindings. WSL/custom sessions already known to the registry
+are still displayed, but this pass does not start WSL distros or unknown custom commands.
+Sidebar snapshots use `--all-agents` to refresh the same resident pool; opening History
+is not required to establish these connections or load the initial histories.
+
 - **Claude** (`classify_claude.rs`) — **turn-based, keyed on `stop_reason`**.
   Claude re-writes the same assistant message id several times as it streams
   (text first, then `+tool_use`), so classifying by content presence flickers;
