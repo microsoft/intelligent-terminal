@@ -3633,6 +3633,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_NULL(root.FindName(L"TabSelectionBackground"));
             VERIFY_ARE_EQUAL(uint8_t{ 0 }, container.Background().as<Media::SolidColorBrush>().Color().A);
             const auto headerGrid = root.Children().GetAt(0).as<Grid>();
+            VERIFY_ARE_EQUAL(CornerRadiusHelper::FromUniformRadius(6), headerGrid.CornerRadius());
             strip.SelectedItem(nullptr);
             VERIFY_ARE_EQUAL(uint8_t{ 0 }, headerGrid.Background().as<Media::SolidColorBrush>().Color().A);
             VERIFY_IS_TRUE(header.ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
@@ -3665,6 +3666,7 @@ namespace TerminalAppLocalTests
             };
             const auto presenter = findPresenter(findPresenter, container);
             VERIFY_IS_NOT_NULL(presenter);
+            VERIFY_ARE_EQUAL(container.CornerRadius(), presenter.CornerRadius());
             for (const auto brush : {
                      presenter.PointerOverBackground(),
                      presenter.PressedBackground(),
@@ -3677,6 +3679,7 @@ namespace TerminalAppLocalTests
             for (const auto state : { L"Normal", L"PointerOver", L"Pressed", L"Selected", L"PointerOverSelected", L"PressedSelected", L"Normal" })
             {
                 VERIFY_IS_TRUE(VisualStateManager::GoToState(container, state, false));
+                VERIFY_ARE_EQUAL(CornerRadiusHelper::FromUniformRadius(6), presenter.CornerRadius());
             }
         });
     }

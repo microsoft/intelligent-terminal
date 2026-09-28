@@ -236,6 +236,8 @@ backdrop settings are unchanged, avoiding repeated backdrop initialization.
 Sidebar icon and pane-row instances likewise remain stable during focus updates.
 Sidebar rows use the native ListView hover, pressed, and selected states rather
 than transparent state overrides or an additional selection-background overlay.
+The native item presenter and the tab-color header share a 6px corner radius,
+including hover, pressed, and selected backgrounds.
 Unselected rows have a transparent normal background, including when the
 horizontal tab theme supplies a background color. Tab colors only fill the
 selected row; unselected text inherits the ListView foreground.
