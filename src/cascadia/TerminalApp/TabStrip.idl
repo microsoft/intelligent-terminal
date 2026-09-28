@@ -124,5 +124,6 @@ namespace TerminalApp
         event Windows.Foundation.TypedEventHandler<TabStrip, Object> HistoryRequested;
         event Windows.Foundation.TypedEventHandler<TabStrip, Object> HistoryClosed;
         event Windows.Foundation.TypedEventHandler<TabStrip, TabStripHistoryActivationEventArgs> HistoryActivationRequested;
+        Boolean HistoryActivating;
     };
 }

@@ -6228,7 +6228,7 @@ namespace winrt::TerminalApp::implementation
 
     safe_void_coroutine TerminalPage::_ActivateSidebarHistoryItem(TerminalApp::TabStripHistoryItem item)
     {
-        if (!item)
+        if (!item || !_tabStrip.HistoryActive() || _tabStrip.HistoryActivating())
         {
             co_return;
         }
@@ -6236,11 +6236,6 @@ namespace winrt::TerminalApp::implementation
         const auto weakThis = get_weak();
         const auto dispatcher = Dispatcher();
         const auto windowId = _WindowProperties.WindowId();
-        const auto activationSerial = ++_historyActivationSerial;
-        _StopSidebarHistoryRefreshTimer();
-        _tabStrip.HistoryLoading(true);
-        _tabStrip.HistoryError(L"");
-
         const auto quote = [](std::wstring_view value) {
             std::wstring quoted{ L"\"" };
             size_t slashes = 0;
@@ -6286,6 +6281,11 @@ namespace winrt::TerminalApp::implementation
             args.append(L" --universe ").append(quote(item.SessionUniverse()));
         }
 
+        const auto activationSerial = ++_historyActivationSerial;
+        _StopSidebarHistoryRefreshTimer();
+        _tabStrip.HistoryActivating(true);
+        _tabStrip.HistoryError(L"");
+
         co_await winrt::resume_background();
         namespace Wta = ::Microsoft::Terminal::WtaProcess;
         const auto result = Wta::RunWtaCapture(
@@ -6329,7 +6329,7 @@ namespace winrt::TerminalApp::implementation
         {
             return false;
         }
-        _tabStrip.HistoryLoading(false);
+        _tabStrip.HistoryActivating(false);
         if (accepted)
         {
             _tabStrip.HistoryError(L"");

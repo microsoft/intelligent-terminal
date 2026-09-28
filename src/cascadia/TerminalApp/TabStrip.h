@@ -139,6 +139,8 @@ namespace winrt::TerminalApp::implementation
         void HistoryActive(bool value);
         bool HistoryLoading() const noexcept { return _historyLoading; }
         void HistoryLoading(bool value);
+        bool HistoryActivating() const noexcept { return _historyActivating; }
+        void HistoryActivating(bool value);
         winrt::hstring HistoryError() const { return _historyError; }
         void HistoryError(winrt::hstring const& value);
         void ProjectionControlsEnabled(bool value);
@@ -229,6 +231,7 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _searchQuery;
         bool _historyActive{ false };
         bool _historyLoading{ false };
+        bool _historyActivating{ false };
         bool _syncingHistorySearchState{ false };
         winrt::hstring _historySearchQuery;
         winrt::hstring _historyError;

@@ -290,6 +290,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabHistoryStatusStyles);
         TEST_METHOD(VerticalTabHistoryProtocolActivationPreservesView);
         TEST_METHOD(VerticalTabHistoryActivationCompletionPreservesView);
+        TEST_METHOD(VerticalTabHistoryActivationKeepsRows);
         TEST_METHOD(VerticalTabHistorySearchProjection);
         TEST_METHOD(VerticalTabHistoryPreservesLiveSearch);
         TEST_METHOD(VerticalTabHistoryClosePreservesForegroundSelection);
@@ -3444,28 +3445,80 @@ namespace TerminalAppLocalTests
         auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
         TestOnUIThread([&]() {
             page->_tabStrip.HistoryActive(true);
-            page->_tabStrip.HistoryLoading(true);
+            page->_tabStrip.HistoryActivating(true);
             page->_historyActivationSerial = 9;
             const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
             stripImpl->HistorySearchTextBox().Text(L"history query");
             VERIFY_IS_FALSE(page->_CompleteSidebarHistoryActivation(8, true, L""));
-            VERIFY_IS_TRUE(page->_tabStrip.HistoryLoading());
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryActivating());
+            auto duplicate = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            page->_ActivateSidebarHistoryItem(duplicate);
+            VERIFY_ARE_EQUAL(9ULL, page->_historyActivationSerial);
             VERIFY_IS_TRUE(page->_CompleteSidebarHistoryActivation(9, true, L""));
             VERIFY_IS_TRUE(page->_tabStrip.HistoryActive());
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryActivating());
             VERIFY_IS_FALSE(page->_tabStrip.HistoryLoading());
             VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"history query" }, stripImpl->HistorySearchTextBox().Text());
 
             page->_historyActivationSerial = 10;
-            page->_tabStrip.HistoryLoading(true);
+            page->_tabStrip.HistoryActivating(true);
             VERIFY_IS_TRUE(page->_CompleteSidebarHistoryActivation(10, false, L"Cannot focus session"));
             VERIFY_IS_TRUE(page->_tabStrip.HistoryActive());
-            VERIFY_IS_FALSE(page->_tabStrip.HistoryLoading());
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryActivating());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Cannot focus session" }, page->_tabStrip.HistoryError());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"history query" }, stripImpl->HistorySearchTextBox().Text());
             page->_CloseSidebarHistory(false);
             VERIFY_IS_FALSE(page->_CompleteSidebarHistoryActivation(10, true, L""));
             VERIFY_IS_FALSE(page->_tabStrip.HistoryActive());
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryActivating());
+        });
+    }
+
+    void TabTests::VerticalTabHistoryActivationKeepsRows()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            strip.HistoryActive(true);
+            strip.HistoryLoading(true);
+            VERIFY_IS_TRUE(stripImpl->HistoryLoadingIndicator().IsActive());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->HistoryList().Visibility());
+
+            auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            item.SessionId(L"claude-session");
+            item.AgentId(L"claude");
+            item.Title(L"Claude session");
+            item.Status(L"Historical");
+            stripImpl->CommitHistorySnapshot({ item });
+            strip.HistoryLoading(false);
+            stripImpl->HistorySearchTextBox().Text(L"Claude");
+            const auto items = strip.HistoryItems();
+
+            strip.HistoryActivating(true);
+            VERIFY_IS_FALSE(strip.HistoryLoading());
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->HistoryList().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->HistoryLoadingIndicator().Visibility());
+            VERIFY_IS_FALSE(stripImpl->HistoryLoadingIndicator().IsActive());
+            VERIFY_IS_FALSE(stripImpl->HistoryList().IsItemClickEnabled());
+            VERIFY_ARE_EQUAL(1u, items.Size());
+            VERIFY_IS_TRUE(items.GetAt(0) == item);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Claude" }, stripImpl->HistorySearchTextBox().Text());
+
+            stripImpl->CommitHistorySnapshot({ item });
+            strip.HistoryLoading(false);
+            VERIFY_IS_TRUE(strip.HistoryActivating());
+            VERIFY_IS_FALSE(stripImpl->HistoryList().IsItemClickEnabled());
+            VERIFY_ARE_EQUAL(winrt::get_abi(items), winrt::get_abi(strip.HistoryItems()));
+
+            strip.HistoryActivating(false);
+            VERIFY_IS_TRUE(stripImpl->HistoryList().IsItemClickEnabled());
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->HistoryList().Visibility());
+            strip.HistoryActivating(true);
+            strip.HistoryActive(false);
+            strip.HistoryActive(true);
+            VERIFY_IS_FALSE(strip.HistoryActivating());
+            VERIFY_IS_TRUE(stripImpl->HistoryList().IsItemClickEnabled());
         });
     }
 

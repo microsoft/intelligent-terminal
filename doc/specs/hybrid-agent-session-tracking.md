@@ -370,6 +370,10 @@ or clearing its search query. Protocol pane focus (including kept-tab restore)
 and protocol-created tabs preserve the sidebar view while changing the selected
 tab and terminal keyboard focus. Successful activation restarts History refreshes;
 explicit user new-tab actions and closing History retain their existing behavior.
+Activation has a separate busy state from list loading: existing rows and the search
+query stay visible without the full-list loading spinner while focus/resume runs.
+Repeated activation clicks are ignored until completion, and background snapshots
+cannot clear the activation guard. Closing History resets that guard.
 
 At startup, once its named pipe is ready, master checks policy and local
 CLI/adapter prerequisites and initializes installed Windows-host providers through

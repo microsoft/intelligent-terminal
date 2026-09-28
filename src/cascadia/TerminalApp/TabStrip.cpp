@@ -396,6 +396,7 @@ namespace winrt::TerminalApp::implementation
         if (_historyActive != value)
         {
             _historyActive = value;
+            _historyActivating = false;
             ClearHistorySearch();
             _updateHistoryVisualState();
         }
@@ -406,6 +407,15 @@ namespace winrt::TerminalApp::implementation
         if (_historyLoading != value)
         {
             _historyLoading = value;
+            _updateHistoryVisualState();
+        }
+    }
+
+    void TabStrip::HistoryActivating(bool value)
+    {
+        if (_historyActivating != value)
+        {
+            _historyActivating = value;
             _updateHistoryVisualState();
         }
     }
@@ -575,6 +585,10 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::OnHistoryItemClick(IInspectable const&, ItemClickEventArgs const& e)
     {
+        if (_historyActivating || _historyLoading)
+        {
+            return;
+        }
         if (const auto item = e.ClickedItem().try_as<TerminalApp::TabStripHistoryItem>())
         {
             HistoryActivationRequested.raise(
@@ -890,6 +904,7 @@ namespace winrt::TerminalApp::implementation
         HistoryPanel().Visibility(visible ? Visibility::Visible : Visibility::Collapsed);
         HistoryLoadingIndicator().IsActive(visible && _historyLoading);
         HistoryLoadingIndicator().Visibility(visible && _historyLoading ? Visibility::Visible : Visibility::Collapsed);
+        HistoryList().IsItemClickEnabled(!_historyActivating && !_historyLoading);
         HistoryList().Visibility(visible && !_historyLoading && _historyError.empty() && _historyItems.Size() > 0 ?
                                      Visibility::Visible :
                                      Visibility::Collapsed);
