@@ -927,7 +927,8 @@ namespace winrt::TerminalApp::implementation
         void _UpdateTitle(const Tab& tab);
         void _UpdateTabIcon(Tab& tab);
         void _UpdateTabView();
-        void _ApplyTabListProjection();
+        void _ApplyTabListProjection(const TerminalApp::Tab& changedTab = nullptr);
+        void _UpdateTabFilterStatus();
         void _AttachOrUpdateRichTabControl(const Microsoft::Terminal::Control::TermControl& control);
         void _DetachRichTabControl(const Microsoft::Terminal::Control::TermControl& control);
         void _NotifyRichTabControl(
@@ -936,7 +937,7 @@ namespace winrt::TerminalApp::implementation
         void _ReleaseRichTabAttachments(const std::shared_ptr<Pane>& rootPane);
         std::optional<std::string> _RichTabAgentStatusForControl(const Microsoft::Terminal::Control::TermControl& control);
         void _UpdateRichTabFirstPartyFields(const Microsoft::Terminal::Control::TermControl& control);
-        void _RefreshRichTabForTab(Tab& tab, bool activate);
+        void _RefreshRichTabForTab(Tab& tab, bool activate, bool refreshPaneItems = true);
         void _ApplyRichTabUpdate(
             uintptr_t controlKey,
             uint64_t reservation,

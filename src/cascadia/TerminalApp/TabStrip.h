@@ -101,12 +101,14 @@ namespace winrt::TerminalApp::implementation
 
     public:
         void SyncTabPresentation(bool railCollapsed);
+        void SyncIcon(winrt::hstring const& iconPath);
         void UpdatePresentation(bool railCollapsed);
         til::property_changed_event PropertyChanged;
 
     private:
         winrt::Microsoft::UI::Xaml::Controls::TabViewItem _tab{ nullptr };
         winrt::Windows::Foundation::Collections::IObservableVector<TerminalApp::TabStripPaneItem> _paneItems{ nullptr };
+        std::optional<winrt::hstring> _iconPath;
     };
 
     struct TabStripPaneEventArgs : TabStripPaneEventArgsT<TabStripPaneEventArgs>
@@ -205,6 +207,7 @@ namespace winrt::TerminalApp::implementation
         bool IsRailCollapsed() const noexcept { return _isRailCollapsed; }
         void IsRailCollapsed(bool value);
         void PrepareTabItem(winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& item);
+        void RefreshTabColor(winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& item);
         TerminalApp::TabStripFilterMode FilterMode() const noexcept { return _filterMode; }
         void FilterMode(TerminalApp::TabStripFilterMode value);
         bool SearchActive() const noexcept { return _searchActive; }
