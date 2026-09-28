@@ -332,9 +332,13 @@ starts `Idle`; terminal states are `Historical` (startup history scan) and
 `Ended` (pane/process gone); the 5 s reaper or a hook taking over moves a row out
 of the live states.
 
-The vertical sidebar's Agent History displays each registry status separately:
+The vertical sidebar's Agent History displays the registry activity:
 `Idle` (Idle), `Working` (Active), `Attention` (Waiting for input), `Error`
-(Error), `Ended` (Ended), and `Historical` (Historical), with localized labels.
+(Error), and both `Ended` and `Historical` as Historical, with localized labels.
+This is presentation-only: the raw status, liveness, and focus/resume routing remain
+unchanged. Each row has its provider's vector icon on the left, shared with the agent
+pane header and tinted using the row foreground; unknown/custom providers use a
+generic session icon rather than another provider's brand.
 The second line is left-aligned as `Agent name · relative age · status`, using
 the provider's display name and `last_activity_at_ms`. The age is localized as
 just now, minutes, hours, or days ago; it refreshes with each snapshot. Missing
@@ -349,6 +353,11 @@ the existing `live` and `history` search terms remain available. This presentati
 does not change shell-session visibility, liveness classification, or focus/resume
 routing. Registry-change notifications and the existing five-second snapshot
 refresh update the displayed status.
+Rows are sorted newest-first by `last_activity_at_ms`, the same timestamp used for
+relative age. For imported history it comes from ACP `session/list.updated_at`;
+live registry events update it, including tool activity, notifications, and session
+or pane closure. It is not a creation time or the time History was opened. Missing
+timestamps sort last.
 
 At startup, once its named pipe is ready, master checks policy and local
 CLI/adapter prerequisites and initializes installed Windows-host providers through

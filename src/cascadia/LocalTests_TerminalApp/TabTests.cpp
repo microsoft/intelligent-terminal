@@ -28,6 +28,7 @@
 #include <winrt/Windows.UI.Xaml.Automation.h>
 #include <winrt/Windows.UI.Xaml.Automation.Peers.h>
 #include <winrt/Windows.UI.Xaml.Automation.Provider.h>
+#include <winrt/Windows.UI.Xaml.Shapes.h>
 
 using namespace Microsoft::Console;
 using namespace TerminalApp;
@@ -283,6 +284,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabHistoryStatusText);
         TEST_METHOD(VerticalTabHistoryRelativeAge);
         TEST_METHOD(VerticalTabHistoryMetadataLayout);
+        TEST_METHOD(VerticalTabHistoryAgentIcons);
+        TEST_METHOD(VerticalTabHistoryEndedPresentation);
         TEST_METHOD(VerticalTabHistoryAttentionStyle);
         TEST_METHOD(VerticalTabHistorySearchProjection);
         TEST_METHOD(VerticalTabHistoryPreservesLiveSearch);
@@ -3134,7 +3137,7 @@ namespace TerminalAppLocalTests
                 { "Working", L"VerticalTabsHistoryStatusWorking" },
                 { "Attention", L"VerticalTabsHistoryStatusAttention" },
                 { "Error", L"VerticalTabsHistoryStatusError" },
-                { "Ended", L"VerticalTabsHistoryStatusEnded" },
+                { "Ended", L"VerticalTabsHistoryStatusHistorical" },
                 { "Historical", L"VerticalTabsHistoryStatusHistorical" },
                 { "", L"VerticalTabsHistoryStatusUnknown" },
                 { "FutureStatus", L"VerticalTabsHistoryStatusUnknown" },
@@ -3201,14 +3204,94 @@ namespace TerminalAppLocalTests
             winrt::TerminalApp::TabStrip strip;
             const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
             const auto row = stripImpl->HistoryList().ItemTemplate().LoadContent().as<Grid>();
-            const auto metadata = row.Children().GetAt(1).as<Grid>();
+            const auto icon = row.Children().GetAt(0).as<ContentControl>();
+            VERIFY_ARE_EQUAL(0, Grid::GetColumn(icon));
+            VERIFY_ARE_EQUAL(2, Grid::GetRowSpan(icon));
+            VERIFY_ARE_EQUAL(16.0, icon.Width());
+            VERIFY_ARE_EQUAL(16.0, icon.Height());
+            VERIFY_ARE_EQUAL(12.0, icon.Margin().Right);
+            VERIFY_ARE_EQUAL(VerticalAlignment::Center, icon.VerticalAlignment());
+            VERIFY_IS_FALSE(icon.IsTabStop());
+            VERIFY_IS_FALSE(icon.IsHitTestVisible());
+            VERIFY_ARE_EQUAL(1, Grid::GetColumn(row.Children().GetAt(1).as<FrameworkElement>()));
+            const auto metadata = row.Children().GetAt(2).as<Grid>();
             VERIFY_ARE_EQUAL(1, Grid::GetRow(metadata));
+            VERIFY_ARE_EQUAL(1, Grid::GetColumn(metadata));
             VERIFY_ARE_EQUAL(GridUnitType::Auto, metadata.ColumnDefinitions().GetAt(0).Width().GridUnitType);
             VERIFY_ARE_EQUAL(GridUnitType::Star, metadata.ColumnDefinitions().GetAt(1).Width().GridUnitType);
             const auto status = metadata.Children().GetAt(1).as<winrt::TerminalApp::HighlightedTextControl>();
             VERIFY_ARE_EQUAL(1, Grid::GetColumn(status));
-            VERIFY_ARE_EQUAL(0.0, status.Margin().Left);
+            VERIFY_ARE_EQUAL(4.0, status.Margin().Left);
             VERIFY_ARE_EQUAL(0.0, status.Margin().Right);
+        });
+    }
+
+    void TabTests::VerticalTabHistoryAgentIcons()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            for (const auto provider : { L"copilot", L"claude", L"codex", L"gemini", L"opencode", L"custom:agent", L"" })
+            {
+                auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+                item.AgentId(provider);
+                stripImpl->CommitHistorySnapshot({ item });
+                const auto iconId = std::wstring_view{ provider }.empty() || std::wstring_view{ provider }.starts_with(L"custom:") ?
+                                        winrt::hstring{ L"generic" } :
+                                        winrt::hstring{ provider };
+                const auto expected = strip.Resources().Lookup(winrt::box_value(L"AgentIcon." + iconId)).as<DataTemplate>();
+                VERIFY_IS_TRUE(item.IconTemplate() == expected);
+                const auto art = item.IconTemplate().LoadContent().as<Viewbox>();
+                VERIFY_IS_TRUE(static_cast<bool>(art.Child()));
+                for (const auto color : { winrt::Windows::UI::Colors::Black(), winrt::Windows::UI::Colors::White() })
+                {
+                    Media::SolidColorBrush foreground{ color };
+                    art.DataContext(foreground);
+                    if (const auto path = art.Child().try_as<Shapes::Path>())
+                    {
+                        VERIFY_IS_TRUE(path.Fill() == foreground);
+                    }
+                    else if (const auto layers = art.Child().try_as<Grid>())
+                    {
+                        VERIFY_ARE_EQUAL(2u, layers.Children().Size());
+                        for (const auto& layer : layers.Children())
+                        {
+                            VERIFY_IS_TRUE(layer.as<Shapes::Path>().Fill() == foreground);
+                        }
+                    }
+                    else
+                    {
+                        VERIFY_IS_TRUE(art.Child().as<SymbolIcon>().Foreground() == foreground);
+                    }
+                }
+            }
+        });
+    }
+
+    void TabTests::VerticalTabHistoryEndedPresentation()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            std::vector<winrt::TerminalApp::TabStripHistoryItem> items;
+            for (const auto status : { "Ended", "Historical" })
+            {
+                auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+                item.SessionId(winrt::to_hstring(status));
+                item.AgentId(L"copilot");
+                item.Status(winrt::to_hstring(status));
+                item.StatusText(winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryStatusText(status));
+                item.IsLive(false);
+                items.emplace_back(item);
+            }
+            stripImpl->CommitHistorySnapshot(items);
+            VERIFY_ARE_EQUAL(items[0].StatusText(), items[1].StatusText());
+            stripImpl->HistorySearchTextBox().Text(items[0].StatusText());
+            VERIFY_ARE_EQUAL(2u, strip.HistoryItems().Size());
+            stripImpl->HistorySearchTextBox().Text(L"ended");
+            VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Ended" }, strip.HistoryItems().GetAt(0).Status());
+            VERIFY_IS_FALSE(strip.HistoryItems().GetAt(0).IsLive());
         });
     }
 

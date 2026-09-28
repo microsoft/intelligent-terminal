@@ -349,6 +349,12 @@ namespace winrt::TerminalApp::implementation
         {
             const auto styleKey = item.Status() == L"Attention" ? L"HistoryAttentionTextStyle" : L"HistorySubtitleTextStyle";
             item.StatusTextStyle(Resources().Lookup(box_value(styleKey)).as<WUX::Style>());
+            auto iconKey = box_value(L"AgentIcon." + item.AgentId());
+            if (!Resources().HasKey(iconKey))
+            {
+                iconKey = box_value(L"AgentIcon.generic");
+            }
+            item.IconTemplate(Resources().Lookup(iconKey).as<DataTemplate>());
             _historySearchTerms.emplace_back(_buildHistorySearchTerms(item));
         }
         _applyHistoryProjection();

@@ -1519,13 +1519,9 @@ Para todas as opções disponíveis, execute 'wt new-tab --help'.</value>
     <value>Erro</value>
     <comment>Agent History session status: the session encountered an error.</comment>
   </data>
-  <data name="VerticalTabsHistoryStatusEnded" xml:space="preserve">
-    <value>Encerrada</value>
-    <comment>Agent History session status: the session&apos;s process or pane has ended. This does not imply that its task succeeded.</comment>
-  </data>
   <data name="VerticalTabsHistoryStatusHistorical" xml:space="preserve">
     <value>Do histórico</value>
-    <comment>Agent History session status: a saved session with no live pane, discovered from the agent&apos;s history.</comment>
+    <comment>Agent History session status: a closed or saved session with no live pane. Both ended and historical registry states use this label.</comment>
   </data>
   <data name="VerticalTabsHistoryStatusUnknown" xml:space="preserve">
     <value>Desconhecido</value>

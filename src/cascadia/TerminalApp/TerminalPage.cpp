@@ -5992,11 +5992,7 @@ namespace winrt::TerminalApp::implementation
         {
             return RS_(L"VerticalTabsHistoryStatusError");
         }
-        if (status == "Ended")
-        {
-            return RS_(L"VerticalTabsHistoryStatusEnded");
-        }
-        if (status == "Historical")
+        if (status == "Ended" || status == "Historical")
         {
             return RS_(L"VerticalTabsHistoryStatusHistorical");
         }

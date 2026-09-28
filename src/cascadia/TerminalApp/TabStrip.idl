@@ -41,6 +41,7 @@ namespace TerminalApp
         String SearchQuery;
         Boolean IsLive;
         Boolean IsAgentPane;
+        Windows.UI.Xaml.DataTemplate IconTemplate;
     };
 
     [default_interface] runtimeclass TabStripHistoryActivationEventArgs
