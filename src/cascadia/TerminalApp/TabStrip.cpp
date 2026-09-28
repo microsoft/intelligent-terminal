@@ -658,13 +658,30 @@ namespace winrt::TerminalApp::implementation
     void TabStrip::CommitHistorySnapshot(std::vector<TerminalApp::TabStripHistoryItem> items)
     {
         _historySnapshot = std::move(items);
+        // WTA supplies newest-activity-first rows; preserve that order within each group.
+        std::stable_partition(_historySnapshot.begin(), _historySnapshot.end(), [](const auto& item) {
+            const auto status = item.Status();
+            return status != L"Ended" && status != L"Historical";
+        });
         _historySearchTerms.clear();
         _historySearchTerms.reserve(_historySnapshot.size());
         for (const auto& item : _historySnapshot)
         {
+            const auto status = item.Status();
+            const auto styleKey = status == L"Working"   ? L"HistoryActiveTextStyle" :
+                                  status == L"Attention" ? L"HistoryAttentionTextStyle" :
+                                  status == L"Error"     ? L"HistoryErrorTextStyle" :
+                                                           L"HistorySubtitleTextStyle";
+            item.StatusTextStyle(Resources().Lookup(box_value(styleKey)).as<WUX::Style>());
+            auto iconKey = box_value(L"AgentIcon." + item.AgentId());
+            if (!Resources().HasKey(iconKey))
+            {
+                iconKey = box_value(L"AgentIcon.generic");
+            }
+            item.IconTemplate(Resources().Lookup(iconKey).as<DataTemplate>());
             _historySearchTerms.emplace_back(_buildHistorySearchTerms(item));
         }
-        _applyHistoryProjection();
+        _applyHistoryProjection(true);
         if (_historyActive && _agentFilterTelemetryPending)
         {
             _agentFilterTelemetryPending = false;
@@ -713,6 +730,7 @@ namespace winrt::TerminalApp::implementation
         if (_historyActive != value)
         {
             _historyActive = value;
+            _historyActivating = false;
             ClearHistorySearch();
             _updateHistoryVisualState();
         }
@@ -723,6 +741,15 @@ namespace winrt::TerminalApp::implementation
         if (_historyLoading != value)
         {
             _historyLoading = value;
+            _updateHistoryVisualState();
+        }
+    }
+
+    void TabStrip::HistoryActivating(bool value)
+    {
+        if (_historyActivating != value)
+        {
+            _historyActivating = value;
             _updateHistoryVisualState();
         }
     }
@@ -941,6 +968,10 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::OnHistoryItemClick(IInspectable const&, ItemClickEventArgs const& e)
     {
+        if (_historyActivating || _historyLoading)
+        {
+            return;
+        }
         if (const auto item = e.ClickedItem().try_as<TerminalApp::TabStripHistoryItem>())
         {
             HistoryActivationRequested.raise(
@@ -1202,7 +1233,7 @@ namespace winrt::TerminalApp::implementation
         };
 
         append(item.Title());
-        append(item.Subtitle());
+        append(item.Subtitle() + item.StatusText());
         append(item.AgentId());
         append(item.ProviderDisplayName());
         append(item.AgentSource());
@@ -1246,7 +1277,31 @@ namespace winrt::TerminalApp::implementation
         return false;
     }
 
-    void TabStrip::_applyHistoryProjection()
+    static bool _sameHistoryItem(TerminalApp::TabStripHistoryItem const& left,
+                                 TerminalApp::TabStripHistoryItem const& right)
+    {
+        return left == right ||
+               (left.SessionId() == right.SessionId() &&
+                left.AgentId() == right.AgentId() &&
+                left.AgentSource() == right.AgentSource() &&
+                left.WslDistro() == right.WslDistro() &&
+                left.SessionUniverse() == right.SessionUniverse() &&
+                left.Title() == right.Title() &&
+                left.Subtitle() == right.Subtitle() &&
+                left.Status() == right.Status() &&
+                left.StatusText() == right.StatusText() &&
+                left.SearchQuery() == right.SearchQuery() &&
+                left.ProviderDisplayName() == right.ProviderDisplayName() &&
+                left.Cwd() == right.Cwd() &&
+                left.PaneSessionId() == right.PaneSessionId() &&
+                left.IsLive() == right.IsLive() &&
+                left.IsAgentPane() == right.IsAgentPane() &&
+                left.IsHistorical() == right.IsHistorical() &&
+                left.StatusTextStyle() == right.StatusTextStyle() &&
+                left.IconTemplate() == right.IconTemplate());
+    }
+
+    void TabStrip::_applyHistoryProjection(const bool preserveScroll)
     {
         std::vector<TerminalApp::TabStripHistoryItem> visibleItems;
         visibleItems.reserve(_historySnapshot.size());
@@ -1258,7 +1313,30 @@ namespace winrt::TerminalApp::implementation
                 visibleItems.emplace_back(_historySnapshot[index]);
             }
         }
-        _historyItems.ReplaceAll(visibleItems);
+        if (preserveScroll)
+        {
+            // A collection reset discards ListView's viewport. Update slots instead;
+            // KeepScrollOffset preserves the user's position without a deferred scroll.
+            for (uint32_t index = 0; index < visibleItems.size(); ++index)
+            {
+                if (index >= _historyItems.Size())
+                {
+                    _historyItems.Append(visibleItems[index]);
+                }
+                else if (!_sameHistoryItem(_historyItems.GetAt(index), visibleItems[index]))
+                {
+                    _historyItems.SetAt(index, visibleItems[index]);
+                }
+            }
+            while (_historyItems.Size() > visibleItems.size())
+            {
+                _historyItems.RemoveAtEnd();
+            }
+        }
+        else
+        {
+            _historyItems.ReplaceAll(visibleItems);
+        }
         _updateHistoryVisualState();
     }
 
@@ -1269,6 +1347,7 @@ namespace winrt::TerminalApp::implementation
         ItemsList().Visibility(_tabsVisible && !visible ? Visibility::Visible : Visibility::Collapsed);
         HistoryLoadingIndicator().IsActive(visible && _historyLoading);
         HistoryLoadingIndicator().Visibility(visible && _historyLoading ? Visibility::Visible : Visibility::Collapsed);
+        HistoryList().IsItemClickEnabled(!_historyActivating && !_historyLoading);
         HistoryList().Visibility(visible && !_historyLoading && _historyError.empty() && _historyItems.Size() > 0 ?
                                      Visibility::Visible :
                                      Visibility::Collapsed);

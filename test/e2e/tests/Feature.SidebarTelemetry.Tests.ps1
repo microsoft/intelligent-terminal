@@ -63,7 +63,7 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             $path = Join-Path $script:root ('agent-view-' + [guid]::NewGuid().ToString('N') + '.jsonl')
             # The external test runner does not inherit package identity.
             $pipe = (Get-Content -LiteralPath (Join-Path $script:app.LocalStateDir 'IntelligentTerminal\master-pipe.txt') -Raw).Trim()
-            $result = Invoke-Wta -App $script:app -Arguments @('sessions', 'list', '--master', $pipe, '--origin', 'shell', '--json') -Raw
+            $result = Invoke-Wta -App $script:app -Arguments @('sessions', 'list', '--master', $pipe, '--origin', 'shell', '--all-agents', '--json') -Raw
             $result.StdOut | Set-Content -LiteralPath $path
             $result.ExitCode | Should -Be 0 -Because $result.StdErr
             $rows = @($result.StdOut -split '\r?\n' | Where-Object { $_.Trim() } | ForEach-Object { $_ | ConvertFrom-Json })
