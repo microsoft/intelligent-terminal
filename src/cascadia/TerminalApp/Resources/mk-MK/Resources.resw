@@ -433,6 +433,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Прошири го панелот со јазичиња</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Прошири ја групата јазичиња</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Собери ја групата јазичиња</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Јазиче</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Јазичиња</value>
   </data>

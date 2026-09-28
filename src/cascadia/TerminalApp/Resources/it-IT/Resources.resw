@@ -186,6 +186,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Espandi riquadro schede</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Espandi gruppo di schede</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Comprimi gruppo di schede</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Scheda</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Schede</value>
   </data>

@@ -298,6 +298,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>بەتكۈچ تاختىسىنى كېڭەيتىش</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>بەتكۈچ گۇرۇپپىسىنى كېڭەيتىش</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>بەتكۈچ گۇرۇپپىسىنى يىغىش</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>بەتكۈچ</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>بەتكۈچلەر</value>
   </data>

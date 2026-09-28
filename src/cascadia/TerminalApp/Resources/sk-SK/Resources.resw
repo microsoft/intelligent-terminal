@@ -412,6 +412,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Rozbaliť panel kariet</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Rozbaliť skupinu kariet</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Zbaliť skupinu kariet</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Karta</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Karty</value>
   </data>

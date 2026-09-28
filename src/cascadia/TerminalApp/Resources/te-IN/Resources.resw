@@ -414,6 +414,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>ట్యాబ్‌ల పేన్‌ను విస్తరించండి</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>ట్యాబ్‌ల సమూహాన్ని విస్తరించండి</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>ట్యాబ్‌ల సమూహాన్ని కుదించండి</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>ట్యాబ్</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>ట్యాబ్‌లు</value>
   </data>

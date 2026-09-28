@@ -186,6 +186,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>É×ρªñđ ťªвѕ ρªñé !!! !!!</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>É×ρªñđ ťªв ğřőµρ !!! !!!</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Ċőĺĺªρѕé ťªв ğřőµρ !!! !!!</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Ťªв !!!</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Ťªвѕ !!!</value>
   </data>

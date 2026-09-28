@@ -187,6 +187,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>タブ ペインを展開する</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>タブ グループを展開する</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>タブ グループを折りたたむ</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>タブ</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>タブ</value>
   </data>

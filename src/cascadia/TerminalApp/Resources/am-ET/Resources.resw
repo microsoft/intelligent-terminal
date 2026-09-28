@@ -318,6 +318,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>የትሮች ክፍልን ዘርጋ</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>የትሮች ቡድንን ዘርጋ</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>የትሮች ቡድንን ሰብስብ</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>ትር</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>ትሮች</value>
   </data>

@@ -433,6 +433,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Izvērst ciļņu rūti</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Izvērst ciļņu grupu</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Sakļaut ciļņu grupu</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Cilne</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Cilnes</value>
   </data>

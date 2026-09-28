@@ -432,6 +432,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>توسيع جزء علامات التبويب</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>توسيع مجموعة علامات التبويب</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>طي مجموعة علامات التبويب</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>علامة تبويب</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>علامات التبويب</value>
   </data>

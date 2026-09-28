@@ -412,6 +412,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Zgjero panelin e skedave</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Zgjero grupin e skedave</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Palos grupin e skedave</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Skedë</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Skedat</value>
   </data>

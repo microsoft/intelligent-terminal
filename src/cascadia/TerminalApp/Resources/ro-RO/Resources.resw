@@ -411,6 +411,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Extindeți panoul de file</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Extindeți grupul de file</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Restrângeți grupul de file</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Filă</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>File</value>
   </data>

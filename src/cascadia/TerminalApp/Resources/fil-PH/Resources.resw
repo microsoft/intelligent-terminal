@@ -364,6 +364,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>I-expand ang pane ng mga tab</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>I-expand ang grupo ng mga tab</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>I-collapse ang grupo ng mga tab</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Tab</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Mga tab</value>
   </data>

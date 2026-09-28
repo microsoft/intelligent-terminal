@@ -319,6 +319,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Leudaich panail nan tabaichean</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Leudaich buidheann nan tabaichean</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Co-theannaich buidheann nan tabaichean</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Taba</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Tabaichean</value>
   </data>

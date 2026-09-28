@@ -435,6 +435,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>टॅब उपखंड विस्तृत करा</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>टॅब गट विस्तृत करा</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>टॅब गट संकुचित करा</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>टॅब</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>टॅब</value>
   </data>

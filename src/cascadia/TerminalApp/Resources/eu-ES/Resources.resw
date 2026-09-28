@@ -250,6 +250,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Zabaldu fitxen panela</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Zabaldu fitxa-taldea</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Tolestu fitxa-taldea</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Fitxa</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Fitxak</value>
   </data>

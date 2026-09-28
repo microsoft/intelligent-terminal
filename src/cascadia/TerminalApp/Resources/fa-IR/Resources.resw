@@ -432,6 +432,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>باز کردن پنل زبانه‌ها</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>باز کردن گروه زبانه‌ها</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>جمع کردن گروه زبانه‌ها</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>زبانه</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>زبانه‌ها</value>
   </data>

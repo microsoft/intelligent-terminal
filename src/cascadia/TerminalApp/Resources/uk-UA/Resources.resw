@@ -208,6 +208,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Розгорнути область вкладок</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Розгорнути групу вкладок</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Згорнути групу вкладок</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Вкладка</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Вкладки</value>
   </data>

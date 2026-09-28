@@ -343,6 +343,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Mở rộng ngăn tab</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Mở rộng nhóm tab</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Thu gọn nhóm tab</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Tab</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Tab</value>
   </data>

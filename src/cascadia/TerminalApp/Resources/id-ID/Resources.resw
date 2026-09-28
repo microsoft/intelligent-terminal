@@ -364,6 +364,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Perluas panel tab</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Perluas grup tab</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Ciutkan grup tab</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Tab</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Tab</value>
   </data>

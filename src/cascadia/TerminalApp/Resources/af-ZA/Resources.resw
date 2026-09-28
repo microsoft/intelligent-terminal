@@ -318,6 +318,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Vou oortjiepaneel uit</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Vou oortjiegroep uit</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Vou oortjiegroep in</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Oortjie</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Oortjies</value>
   </data>

@@ -186,6 +186,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Развернуть панель вкладок</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Развернуть группу вкладок</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Свернуть группу вкладок</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Вкладка</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Вкладки</value>
   </data>

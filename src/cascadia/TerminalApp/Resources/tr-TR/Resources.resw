@@ -412,6 +412,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Sekmeler bölmesini genişlet</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Sekme grubunu genişlet</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Sekme grubunu daralt</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Sekme</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Sekmeler</value>
   </data>

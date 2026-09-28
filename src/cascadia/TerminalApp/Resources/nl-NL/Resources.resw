@@ -432,6 +432,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Tabbladvenster uitvouwen</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Tabbladgroep uitvouwen</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Tabbladgroep samenvouwen</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Tabblad</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Tabbladen</value>
   </data>

@@ -435,6 +435,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>ടാബുകളുടെ പാളി വികസിപ്പിക്കുക</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>ടാബ് ഗ്രൂപ്പ് വികസിപ്പിക്കുക</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>ടാബ് ഗ്രൂപ്പ് ചുരുക്കുക</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>ടാബ്</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>ടാബുകൾ</value>
   </data>

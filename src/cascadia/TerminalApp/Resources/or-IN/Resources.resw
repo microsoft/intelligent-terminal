@@ -436,6 +436,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>ଟ୍ୟାବ୍ ଫଳକ ବିସ୍ତାର କରନ୍ତୁ</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>ଟ୍ୟାବ୍ ଗୋଷ୍ଠୀ ବିସ୍ତାର କରନ୍ତୁ</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>ଟ୍ୟାବ୍ ଗୋଷ୍ଠୀ ସଙ୍କୁଚିତ କରନ୍ତୁ</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>ଟ୍ୟାବ୍</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>ଟ୍ୟାବ୍</value>
   </data>

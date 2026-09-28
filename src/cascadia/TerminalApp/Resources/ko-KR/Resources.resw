@@ -186,6 +186,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>탭 창 확장</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>탭 그룹 확장</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>탭 그룹 축소</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>탭</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>탭</value>
   </data>

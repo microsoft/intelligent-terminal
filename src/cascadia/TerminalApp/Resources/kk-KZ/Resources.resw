@@ -432,6 +432,15 @@
   <data name="VerticalTabsExpandPane" xml:space="preserve">
     <value>Қойындылар тақтасын жаю</value>
   </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>Қойындылар тобын жаю</value>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>Қойындылар тобын жию</value>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>Қойынды</value>
+  </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Қойындылар</value>
   </data>
