@@ -88,6 +88,15 @@
                                         ContentTemplate="{StaticResource AgentIcon.opencode}"
                                         IsTabStop="False"
                                         Visibility="Collapsed" />
+                        <ContentControl x:Name="AntigravityLogo"
+                                        Width="14"
+                                        Height="14"
+                                        HorizontalContentAlignment="Stretch"
+                                        VerticalContentAlignment="Stretch"
+                                        Content="{Binding Foreground, ElementName=AgentLabelText}"
+                                        ContentTemplate="{StaticResource AgentIcon.antigravity}"
+                                        IsTabStop="False"
+                                        Visibility="Collapsed" />
                     </Grid>
                     <TextBlock x:Name="AgentLabelText"
                                Grid.Column="1"

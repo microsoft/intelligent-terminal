@@ -16,6 +16,9 @@ namespace TerminalAppUnitTests
         TEST_METHOD(ReadEnvironmentVariableSupportsLongValues);
         TEST_METHOD(PrefersPaneCwdOverWindowLaunchCwd);
         TEST_METHOD(SeparatesAgentCwdFromHelperLaunchCwd);
+        TEST_METHOD(PaneCwdUsesReportedDirectoryOrHostStartup);
+        TEST_METHOD(PaneCwdUsesWslLaunchDirectoryBeforeShellIntegration);
+        TEST_METHOD(PaneCwdDoesNotInferUnknownWslDirectories);
     };
 
     void AgentSourceUtilsTests::ReadEnvironmentVariableSupportsLongValues()
@@ -95,5 +98,63 @@ namespace TerminalAppUnitTests
             false, L"/home/user/project", {}, {}, {}, noWindowsDirectory);
         VERIFY_ARE_EQUAL(std::wstring{}, hostWithoutWindowsCwd.agent);
         VERIFY_ARE_EQUAL(std::wstring{}, hostWithoutWindowsCwd.helper);
+    }
+
+    void AgentSourceUtilsTests::PaneCwdUsesReportedDirectoryOrHostStartup()
+    {
+        using Microsoft::Terminal::AgentSource::ResolvePaneCwd;
+        VERIFY_ARE_EQUAL(std::wstring{ L"C:\\live" },
+                         ResolvePaneCwd(L"C:\\live", true, L"pwsh.exe -NoProfile", L"C:\\start"));
+        VERIFY_ARE_EQUAL(std::wstring{ L"C:\\start" },
+                         ResolvePaneCwd(L"C:\\start", false, L"pwsh.exe -NoProfile", L"C:\\start"));
+        VERIFY_ARE_EQUAL(std::wstring{ L"C:\\start" },
+                         ResolvePaneCwd({}, false, L"pwsh.exe -NoProfile", L"C:\\start"));
+        VERIFY_ARE_EQUAL(std::wstring{ L"/live" },
+                         ResolvePaneCwd(L"/live", true, L"wsl.exe -d Ubuntu --cd /start --exec bash", L"C:\\launcher"));
+        VERIFY_ARE_EQUAL(std::wstring{ L"C:\\start" },
+                         ResolvePaneCwd(L"C:\\start", false, L"cmd.exe /c echo wsl --cd /not-a-launch", L"C:\\start"));
+    }
+
+    void AgentSourceUtilsTests::PaneCwdUsesWslLaunchDirectoryBeforeShellIntegration()
+    {
+        using Microsoft::Terminal::AgentSource::ResolvePaneCwd;
+        const std::wstring cwd{ L"/work with spaces/\u6d4b\u8bd5" };
+        const auto command = L"\"C:\\Windows\\System32\\wsl.exe\" -d Ubuntu --cd \"" + cwd + L"\" -- bash -lc \"exec agy\"";
+        VERIFY_ARE_EQUAL(cwd, ResolvePaneCwd(L"C:\\launcher", false, command, L"C:\\launcher"));
+        VERIFY_ARE_EQUAL(std::wstring{ L"/work" },
+                         ResolvePaneCwd({}, false, L"wsl --distribution-id {1234} --user user --cd /work --exec bash", L"C:\\launcher"));
+        VERIFY_ARE_EQUAL(std::wstring{ L"/start" },
+                         ResolvePaneCwd(L"/start", false, L"wsl.exe -d Ubuntu --exec bash", L"/start"));
+        VERIFY_ARE_EQUAL(std::wstring{ L"/start" },
+                         ResolvePaneCwd(L"C:\\launcher", false, L"wsl.exe --cd /start --exec echo --cd /not-a-launch-option", L"C:\\launcher"));
+    }
+
+    void AgentSourceUtilsTests::PaneCwdDoesNotInferUnknownWslDirectories()
+    {
+        using Microsoft::Terminal::AgentSource::ResolvePaneCwd;
+        for (const auto command : {
+                 L"wsl.exe",
+                 L"wsl.exe ~",
+                 L"wsl.exe --cd",
+                 L"wsl.exe --cd relative",
+                 L"wsl.exe --cd ~",
+                 L"wsl.exe --cd C:\\work",
+                 L"wsl.exe --cd /first --cd /second",
+                 L"wsl.exe -d --cd /work",
+                 L"wsl.exe --user",
+                 L"wsl.exe --unknown-option --cd /work",
+                 L"wsl.exe --exec echo --cd /not-a-launch-option",
+                 L"wsl.exe bash -lc \"echo --cd /not-a-launch-option\"" })
+        {
+            VERIFY_ARE_EQUAL(std::wstring{}, ResolvePaneCwd(L"C:\\launcher", false, command, L"C:\\launcher"));
+        }
+        VERIFY_ARE_EQUAL(std::wstring{},
+                         ResolvePaneCwd(L"/start", false, L"wsl.exe --cd relative --exec bash", L"/start"));
+        VERIFY_ARE_EQUAL(std::wstring{},
+                         ResolvePaneCwd(L"/start", false, L"wsl.exe ~", L"/start"));
+        VERIFY_ARE_EQUAL(std::wstring{},
+                         ResolvePaneCwd(L"/start", false, L"wsl.exe --exec echo --cd /not-a-launch-option", L"/start"));
+        VERIFY_ARE_EQUAL(std::wstring{},
+                         ResolvePaneCwd(L"/start", false, L"C:\\not-system32\\wsl.exe", L"/start"));
     }
 }

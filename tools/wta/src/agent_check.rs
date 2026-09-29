@@ -69,7 +69,12 @@ pub fn find_exe(agent_id: &str) -> Option<String> {
         }
     }
 
-    let resolved = agent_registry::resolve_bare_agent_name(agent_id);
+    let executable = if profile.cli_executable.is_empty() {
+        agent_id
+    } else {
+        profile.cli_executable
+    };
+    let resolved = agent_registry::resolve_bare_agent_name(executable);
 
     // Try resolved name first (e.g. "copilot.exe")
     for dir in std::env::split_paths(&path_var) {
@@ -96,6 +101,37 @@ pub fn find_exe(agent_id: &str) -> Option<String> {
     }
 
     None
+}
+
+/// Find the native executable required by the ACP entry point, independently
+/// of an optional interactive CLI distributed by the same provider.
+pub fn find_acp_exe(agent_id: &str) -> Option<String> {
+    let profile = agent_registry::lookup_profile_by_id(agent_id);
+    let executable = profile.acp_executable(&crate::agent_source::AgentSource::Host);
+    if executable.is_empty() || executable == profile.cli_executable {
+        return find_exe(agent_id);
+    }
+    let path = spawn_path()
+        .map(std::ffi::OsString::from)
+        .or_else(|| std::env::var_os("PATH"))?;
+    find_standalone_acp_executable_in_path(profile, &path, Path::is_file)
+        .map(|candidate| candidate.to_string_lossy().into_owned())
+}
+
+fn find_standalone_acp_executable_in_path(
+    profile: &agent_registry::AgentProfile,
+    path: &OsStr,
+    is_file: impl Fn(&Path) -> bool,
+) -> Option<PathBuf> {
+    let executable = profile.acp_executable(&crate::agent_source::AgentSource::Host);
+    std::env::split_paths(path)
+        .map(|directory| directory.join(executable))
+        .find(|candidate| is_file(candidate))
+        .filter(|candidate| {
+            profile
+                .acp_companion_executable
+                .is_none_or(|companion| is_file(&candidate.with_file_name(companion)))
+        })
 }
 
 fn find_claude_executable_in_path(
@@ -183,7 +219,7 @@ pub async fn find_wsl_exe(distro: &str, executable: &str) -> Option<String> {
         let mut cmd = tokio::process::Command::new("wsl.exe");
         cmd.arg("-d")
             .arg(distro)
-            .arg("--")
+            .arg("--exec")
             .arg("bash")
             .arg("-lc")
             .arg(wsl_agent_probe_script(executable))
@@ -262,18 +298,52 @@ pub async fn find_wsl_exe(distro: &str, executable: &str) -> Option<String> {
 
 /// Whether a known ACP agent can start inside `distro`.
 pub async fn wsl_agent_available(distro: &str, agent_id: &str) -> bool {
-    if find_wsl_exe(distro, agent_id).await.is_none() {
+    let profile = agent_registry::lookup_profile_by_id(agent_id);
+    let source = crate::agent_source::AgentSource::Wsl {
+        distro: distro.to_string(),
+    };
+    let executable = profile.acp_executable(&source);
+    let executable = if executable.is_empty() {
+        agent_id
+    } else {
+        executable
+    };
+    if find_wsl_exe(distro, executable).await.is_none() {
         return false;
     }
 
-    let profile = agent_registry::lookup_profile_by_id(agent_id);
-    if profile.acp_launch_command.starts_with("npx ") {
+    if profile.acp_command_override(&source).starts_with("npx ") {
         return find_wsl_exe(distro, "npx").await.is_some();
     }
     true
 }
 
 pub(crate) fn wsl_agent_probe_script(executable: &str) -> String {
+    let profile = agent_registry::lookup_profile(executable);
+    let basename = executable.rsplit(['/', '\\']).next().unwrap_or(executable);
+    if profile
+        .wsl_acp_launch_command
+        .split_ascii_whitespace()
+        .next()
+        == Some(basename)
+    {
+        if let Some(companion) = profile.wsl_acp_companion_executable {
+            return format!(
+                "printf '__WTA_PROBE_BEGIN__\\n'; \
+                 resolved=$(command -v {} 2>/dev/null); \
+                 native=$(readlink -f -- \"$resolved\" 2>/dev/null); \
+                 companion=$(readlink -f -- \"${{native%/*}}/\"{} 2>/dev/null); \
+                 case \"$native\" in /mnt/*|'') ;; *) \
+                 case \"$companion\" in /mnt/*|'') ;; *) \
+                 if [ -f \"$native\" ] && [ -x \"$native\" ] && \
+                 [ -f \"$companion\" ] && [ -x \"$companion\" ]; then \
+                 printf '%s\\n' \"$resolved\"; fi ;; esac ;; esac; \
+                 printf '__WTA_PROBE_END__\\n'",
+                crate::coordinator::sh_quote(executable),
+                crate::coordinator::sh_quote(companion)
+            );
+        }
+    }
     format!(
         "printf '__WTA_PROBE_BEGIN__\\n'; command -v {} 2>/dev/null; \
          printf '__WTA_PROBE_END__\\n'",
@@ -510,7 +580,7 @@ pub fn host_npx_available() -> bool {
 
 pub fn check_host_agent_availability(agent_id: &str, npx_found: bool) -> HostAgentAvailability {
     let profile = agent_registry::lookup_profile_by_id(agent_id);
-    let cli_path = find_exe(agent_id);
+    let cli_path = find_acp_exe(agent_id);
     let native_cli_found = cli_path.is_some();
     let requires_npx = profile.acp_launch_command.starts_with("npx ");
     let launch_ready = host_requirements_available(profile, native_cli_found, || npx_found);
@@ -539,12 +609,18 @@ pub async fn check_agent_in_source(
         crate::agent_source::AgentSource::Host => check_agent(agent_id),
         crate::agent_source::AgentSource::Wsl { distro } => {
             let profile = agent_registry::lookup_profile_by_id(agent_id);
-            let cli_path = find_wsl_exe(distro, agent_id).await;
+            let executable = profile.acp_executable(source);
+            let executable = if executable.is_empty() {
+                agent_id
+            } else {
+                executable
+            };
+            let cli_path = find_wsl_exe(distro, executable).await;
             AgentStatus {
                 id: agent_id.to_string(),
                 display_name: format!("{} — {} (WSL)", profile.display_name, distro),
                 cli_found: cli_path.is_some()
-                    && (!profile.acp_launch_command.starts_with("npx ")
+                    && (!profile.acp_command_override(source).starts_with("npx ")
                         || find_wsl_exe(distro, "npx").await.is_some()),
                 cli_path,
                 install_hint: profile.install_hint.to_string(),
@@ -865,6 +941,51 @@ fn expand_env_vars(s: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn antigravity_host_discovery_requires_the_server_and_its_sibling() {
+        let profile = agent_registry::lookup_profile_by_id("antigravity");
+        let root = Path::new(r"C:\Agent Tools");
+        let server = root.join("agy_acp_server.exe");
+        let companion = root.join("localharness_external.exe");
+        assert_eq!(
+            find_standalone_acp_executable_in_path(profile, root.as_os_str(), |path| path
+                == server),
+            None
+        );
+        assert_eq!(
+            find_standalone_acp_executable_in_path(profile, root.as_os_str(), |path| {
+                path == server || path == companion
+            }),
+            Some(server)
+        );
+    }
+
+    #[test]
+    fn antigravity_host_discovery_rejects_a_shadowing_partial_install() {
+        let profile = agent_registry::lookup_profile_by_id("antigravity");
+        let first = Path::new(r"C:\Partial\agy_acp_server.exe");
+        let later = Path::new(r"C:\Complete\agy_acp_server.exe");
+        let companion = Path::new(r"C:\Complete\localharness_external.exe");
+        assert_eq!(
+            find_standalone_acp_executable_in_path(
+                profile,
+                OsStr::new(r"C:\Partial;C:\Complete"),
+                |path| path == first || path == later || path == companion,
+            ),
+            None,
+            "launch resolves the first PATH match, not a later complete installation"
+        );
+    }
+
+    #[test]
+    fn antigravity_wsl_discovery_requires_a_native_companion() {
+        let script = wsl_agent_probe_script("agy_acp_server.par");
+        assert!(script.contains("localharness_external"));
+        assert!(script.contains("readlink -f"));
+        assert!(!wsl_agent_probe_script("agy").contains("localharness_external"));
+        println!("__ANTIGRAVITY_PROBE_SCRIPT_BEGIN__\n{script}\n__ANTIGRAVITY_PROBE_SCRIPT_END__");
+    }
 
     #[test]
     fn claude_resolution_prefers_configured_native_executable() {

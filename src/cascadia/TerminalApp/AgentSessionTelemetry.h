@@ -30,7 +30,7 @@ namespace TerminalApp::AgentSessionTelemetry
     inline const char* AgentId(std::string_view value) noexcept
     {
         return value.empty() ? "none" :
-                               Bucket<char>(value, { "copilot", "claude", "codex", "gemini", "opencode" }, "custom");
+                               Bucket<char>(value, { "copilot", "claude", "codex", "gemini", "opencode", "antigravity" }, "custom");
     }
 
     struct Start

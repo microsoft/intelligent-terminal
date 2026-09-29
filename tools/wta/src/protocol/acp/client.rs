@@ -359,6 +359,7 @@ pub enum MasterExtRequest {
     },
     SessionBornBound {
         event: crate::agent_sessions::SessionEvent,
+        wsl_distro: Option<String>,
     },
     SessionResumeDispatched {
         request_id: u64,
@@ -4182,9 +4183,14 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                     }
                 }
             }
-            MasterExtRequest::SessionBornBound { event } => {
+            MasterExtRequest::SessionBornBound { event, wsl_distro } => {
                 const BORN_BOUND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(8);
-                let wire = crate::session_registry::build_born_bound_request(&event);
+                let wire = match wsl_distro.as_deref() {
+                    Some(distro) => {
+                        crate::session_registry::build_born_bound_request_wsl(&event, distro)
+                    }
+                    None => crate::session_registry::build_born_bound_request(&event),
+                };
                 match tokio::time::timeout(BORN_BOUND_TIMEOUT, conn.ext_method(wire)).await {
                     Ok(Ok(response)) => tracing::debug!(
                         target: "session_hook",
@@ -6755,6 +6761,7 @@ mod tests {
                 format!("intellterm_0123456789abcdef/{}", tool.name()),
                 format!("Use MCP tool: intellterm_0123456789abcdef/{}", tool.name()),
                 format!("intellterm_0123456789abcdef-{}", tool.name()),
+                format!("intellterm_0123456789abcdef_{}", tool.name()),
                 format!("mcp__intellterm_0123456789abcdef__{}", tool.name()),
             ] {
                 let manager = Arc::new(
@@ -6844,6 +6851,7 @@ mod tests {
                 format!("{server_name}/{name}"),
                 format!("Use MCP tool: {server_name}/{name}"),
                 format!("{server_name}-{name}"),
+                format!("{server_name}_{name}"),
                 format!("mcp__{server_name}__{name}"),
             ] {
                 for source in ["permission", "tool-call", "tool-call-update"] {
@@ -7489,6 +7497,7 @@ mod tests {
             for title in [
                 format!("{dynamic}/{name}"),
                 format!("{dynamic}-{name}"),
+                format!("{dynamic}_{name}"),
                 format!("Use MCP tool: {dynamic}/{name}"),
                 format!("mcp__{dynamic}__{name}"),
             ] {
@@ -7518,6 +7527,11 @@ mod tests {
             "intellterm_01234567890123456789/run_command_in_current_shell",
             "intellterm_0123456789abcde/run_command_in_current_shell",
             "intellterm_0123456789abcdeA/run_command_in_current_shell",
+            "intellterm_0123456789abcde_run_command_in_current_shell",
+            "intellterm_0123456789abcdefextra_run_command_in_current_shell",
+            "intellterm_0123456789abcdeA_run_command_in_current_shell",
+            "intellterm_0123456789abcdef__run_command_in_current_shell",
+            "intellterm_0123456789abcdef_request_terminal_actions",
             "Use MCP tool: other/run_command_in_current_shell",
             "Use MCP tool: intelligent_terminal/terminal_send",
             "Use MCP tool: intelligent_terminal/terminal_open",

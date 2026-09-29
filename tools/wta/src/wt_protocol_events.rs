@@ -63,21 +63,24 @@ pub(crate) fn resumed_pane_binding_event(
     session_id: &str,
     pane_id: &str,
     location: &crate::agent_sessions::SessionLocation,
+    cwd: Option<&str>,
 ) -> Option<String> {
-    // The native binding map currently rebuilds host resume invocations.
-    // Do not turn an existing WSL launch into a host command on persistence.
-    if location.is_wsl() {
-        return None;
+    let mut params = serde_json::json!({
+        "agent": agent_id,
+        "agent_session_id": session_id,
+        "pane_id": pane_id,
+    });
+    if let crate::agent_sessions::SessionLocation::Wsl { distro } = location {
+        params["agent_backend"] = serde_json::json!(format!("wsl:{distro}:{agent_id}"));
+        if let Some(cwd) = cwd.filter(|cwd| !cwd.is_empty()) {
+            params["cwd"] = serde_json::json!(cwd);
+        }
     }
     Some(
         serde_json::json!({
             "type": "event",
             "method": "pane_agent_session_changed",
-            "params": {
-                "agent": agent_id,
-                "agent_session_id": session_id,
-                "pane_id": pane_id,
-            },
+            "params": params,
         })
         .to_string(),
     )
@@ -156,7 +159,7 @@ fn publisher_sender() -> &'static std::sync::mpsc::Sender<String> {
 
 fn publish_command(exe: &std::path::Path) -> std::process::Command {
     let mut command = std::process::Command::new(exe);
-    command.arg("publish").arg("--stdin");
+    command.arg("publish").arg("--stdin").arg("--existing-only");
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -303,6 +306,7 @@ mod tests {
                     "known-session",
                     "new-pane",
                     &crate::agent_sessions::SessionLocation::Host,
+                    None,
                 )
                 .unwrap(),
             )
@@ -324,15 +328,22 @@ mod tests {
 
     #[test]
     fn resumed_pane_binding_does_not_rewrite_wsl_resumes_as_host_commands() {
-        assert!(super::resumed_pane_binding_event(
-            "copilot",
-            "known-session",
-            "new-pane",
-            &crate::agent_sessions::SessionLocation::Wsl {
-                distro: "Ubuntu".into(),
-            },
+        let event: serde_json::Value = serde_json::from_str(
+            &super::resumed_pane_binding_event(
+                "antigravity",
+                "known-session",
+                "new-pane",
+                &crate::agent_sessions::SessionLocation::Wsl {
+                    distro: "Ubuntu".into(),
+                },
+                Some("/home/u/project with spaces"),
+            )
+            .expect("a WSL CLI resume must retain its source binding"),
         )
-        .is_none());
+        .unwrap();
+        assert_eq!(event["params"]["agent"], "antigravity");
+        assert_eq!(event["params"]["agent_backend"], "wsl:Ubuntu:antigravity");
+        assert_eq!(event["params"]["cwd"], "/home/u/project with spaces");
     }
 
     #[test]
@@ -386,14 +397,14 @@ mod tests {
     }
 
     #[test]
-    fn publish_command_selects_stdin_transport() {
+    fn passive_transport_publish_uses_existing_only_stdin() {
         let command = super::publish_command(std::path::Path::new("wtcli.exe"));
         let arguments: Vec<_> = command
             .get_args()
             .map(|argument| argument.to_string_lossy().into_owned())
             .collect();
 
-        assert_eq!(arguments, ["publish", "--stdin"]);
+        assert_eq!(arguments, ["publish", "--stdin", "--existing-only"]);
     }
 
     #[cfg(windows)]

@@ -4,6 +4,7 @@
 #include "precomp.h"
 
 #include "../TerminalProtocol/ProtocolParsing.h"
+#include "../../tools/wtcli/wtcli_functions.h"
 
 using namespace WEX::TestExecution;
 using namespace Microsoft::Terminal::Protocol::Parsing;
@@ -23,6 +24,8 @@ namespace TerminalAppUnitTests
         TEST_METHOD(BoundedBufferTailAppliesLineAndCharacterLimits);
         TEST_METHOD(BoundedBufferTailPreservesBlankLines);
         TEST_METHOD(CapabilitySupportDistinguishesUnsupportedFromMalformed);
+        TEST_METHOD(HookCwdUsesOnlyOwningPaneMetadata);
+        TEST_METHOD(HookCwdPreservesProviderWorkspaceAndExecutionSource);
     };
 
     void ProtocolParsingTests::CapabilitySupportDistinguishesUnsupportedFromMalformed()
@@ -225,5 +228,58 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL("error", terminated.content);
         VERIFY_ARE_EQUAL(1, terminated.lineCount);
         VERIFY_IS_FALSE(terminated.truncated);
+    }
+
+    void ProtocolParsingTests::HookCwdUsesOnlyOwningPaneMetadata()
+    {
+        Json::Value event;
+        VERIFY_IS_TRUE(wtcli::BuildAgentHookEventJson(
+            "agent.prompt.submit", "antigravity", R"({"conversationId":"cwd-regression","workspacePaths":[],"transcriptPath":"/fixture/antigravity-cli/transcript.jsonl","artifactDirectoryPath":"private-provider-metadata"})", "owning-pane", "", event));
+        Json::Value pane;
+        pane["cwd"] = "C:\\cli-workspace";
+        pane["title"] = "private-pane-metadata";
+        wtcli::ApplyAgentHookPaneCwd(event["params"]["payload"], pane, false);
+        VERIFY_ARE_EQUAL("C:\\cli-workspace", event["params"]["payload"]["cwd"].asString());
+        VERIFY_ARE_EQUAL("cwd-regression", event["params"]["agent_session_id"].asString());
+        VERIFY_ARE_EQUAL("owning-pane", event["params"]["pane_id"].asString());
+        Json::StreamWriterBuilder writer;
+        const auto serialized = Json::writeString(writer, event);
+        VERIFY_ARE_EQUAL(std::string::npos, serialized.find("private-provider-metadata"));
+        VERIFY_ARE_EQUAL(std::string::npos, serialized.find("private-pane-metadata"));
+    }
+
+    void ProtocolParsingTests::HookCwdPreservesProviderWorkspaceAndExecutionSource()
+    {
+        Json::Value payload{ Json::objectValue };
+        Json::Value pane;
+        pane["cwd"] = "/cli-workspace";
+        wtcli::ApplyAgentHookPaneCwd(payload, pane, true);
+        VERIFY_ARE_EQUAL("/cli-workspace", payload["cwd"].asString());
+
+        payload["cwd"] = "/provider-workspace";
+        wtcli::ApplyAgentHookPaneCwd(payload, pane, true);
+        VERIFY_ARE_EQUAL("/provider-workspace", payload["cwd"].asString());
+
+        payload = Json::Value{ Json::objectValue };
+        pane["cwd"] = "C:\\windows-launcher";
+        wtcli::ApplyAgentHookPaneCwd(payload, pane, true);
+        VERIFY_IS_FALSE(payload.isMember("cwd"));
+        pane["cwd"] = "/linux-workspace";
+        wtcli::ApplyAgentHookPaneCwd(payload, pane, false);
+        VERIFY_IS_FALSE(payload.isMember("cwd"));
+        for (const auto cwd : { Json::Value{}, Json::Value{ 42 }, Json::Value{ "" }, Json::Value{ "relative" } })
+        {
+            pane["cwd"] = cwd;
+            wtcli::ApplyAgentHookPaneCwd(payload, pane, false);
+            wtcli::ApplyAgentHookPaneCwd(payload, pane, true);
+            VERIFY_IS_FALSE(payload.isMember("cwd"));
+        }
+        for (const auto cwd : { "C:/cli-workspace", "\\\\server\\share\\cli-workspace" })
+        {
+            payload = Json::Value{ Json::objectValue };
+            pane["cwd"] = cwd;
+            wtcli::ApplyAgentHookPaneCwd(payload, pane, false);
+            VERIFY_ARE_EQUAL(std::string{ cwd }, payload["cwd"].asString());
+        }
     }
 }

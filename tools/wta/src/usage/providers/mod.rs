@@ -1,3 +1,4 @@
+mod antigravity;
 mod claude;
 mod codex;
 mod copilot;
@@ -108,12 +109,13 @@ pub trait ProviderUsageAdapter: Sync {
     ) -> Result<ProviderUsageContribution, ProviderUsageError>;
 }
 
-static PROVIDERS: [&dyn ProviderUsageAdapter; 5] = [
+static PROVIDERS: [&dyn ProviderUsageAdapter; 6] = [
     &copilot::ADAPTER,
     &claude::ADAPTER,
     &codex::ADAPTER,
     &gemini::ADAPTER,
     &opencode::ADAPTER,
+    &antigravity::ADAPTER,
 ];
 
 pub fn all() -> &'static [&'static dyn ProviderUsageAdapter] {

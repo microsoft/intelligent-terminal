@@ -1470,6 +1470,7 @@ pub(crate) fn known_cli_id(src: &crate::agent_sessions::CliSource) -> Option<&'s
         CliSource::Copilot => Some("copilot"),
         CliSource::Gemini => Some("gemini"),
         CliSource::OpenCode => Some("opencode"),
+        CliSource::Antigravity => Some("antigravity"),
         CliSource::Unknown(_) => None,
     }
 }
@@ -2346,7 +2347,7 @@ impl App {
             .filter(|profile| {
                 (!self.host_agent_allowlist_present
                     || self.allowed_agent_ids.iter().any(|id| id == profile.id))
-                    && crate::agent_check::find_exe(profile.id).is_some()
+                    && crate::agent_check::find_acp_exe(profile.id).is_some()
             })
             .map(|profile| {
                 let source = crate::agent_source::AgentSource::Host;
@@ -2988,12 +2989,9 @@ impl App {
         // spelling differs per agent (`--resume`, the `resume`
         // subcommand, `--session`), which is why it comes from the
         // profile rather than a hard-coded flag.
-        let cli_supports_resume_flag = match known_cli_id(&s.cli_source) {
-            Some(id) => !crate::agent_registry::lookup_profile_by_id(id)
-                .resume_flag
-                .is_empty(),
-            None => false,
-        };
+        let profile = known_cli_id(&s.cli_source).map(crate::agent_registry::lookup_profile_by_id);
+        let cli_supports_resume_flag =
+            profile.is_some_and(|profile| !profile.resume_flag.is_empty());
         let selected_agent_id = known_cli_id(&s.cli_source);
         let targets_current_agent = selected_agent_id
             .is_some_and(|id| id.eq_ignore_ascii_case(&self.current_agent_id))
@@ -3014,6 +3012,8 @@ impl App {
             cli_source: s.cli_source.clone(),
             load_session_capability,
             cli_supports_resume_flag,
+            cli_can_resume_acp_sessions: profile
+                .is_some_and(|profile| profile.cli_can_resume_acp_sessions),
             is_wsl: s.location.is_wsl(),
         };
         let action = decide_enter_action(&row);
@@ -3176,7 +3176,22 @@ impl App {
         }
 
         let key = s.key.clone();
-        let resume_invocation = format!("{} {} {}", cli_id, profile.resume_flag, key);
+        if !crate::agent_sessions::is_safe_cli_resume_id(&key) {
+            tracing::warn!(
+                target: "agents_view",
+                cli = cli_id,
+                "refusing CLI resume with an unsafe session identifier"
+            );
+            return;
+        }
+        if let crate::agent_sessions::SessionLocation::Wsl { distro } = &s.location {
+            if !crate::agent_source::is_safe_wsl_distro_name(distro) {
+                tracing::warn!(target: "agents_view", "refusing CLI resume with an unsafe WSL source");
+                return;
+            }
+        }
+        let resume_invocation =
+            format!("{} {} {}", profile.cli_executable, profile.resume_flag, key);
         // WSL rows run the distro's own CLI *inside* the distro. Two
         // WSL/cmd quirks shape this command line:
         //   * The distro name is **not** quoted. `wsl -d "Ubuntu"` fails with
@@ -3319,6 +3334,7 @@ impl App {
         // so the existing helper handles both.
         let cb_key = key.clone();
         let cb_location = s.location.clone();
+        let cb_cwd = s.cwd.to_string_lossy().into_owned();
         let event_tx = self.agent_event_tx.clone();
         let on_pane_id: Option<Box<dyn FnOnce(String) + Send + 'static>> =
             Some(Box::new(move |pane_session_id| {
@@ -3327,6 +3343,7 @@ impl App {
                     &cb_key,
                     &pane_session_id,
                     &cb_location,
+                    Some(&cb_cwd),
                 ) {
                     send_wt_protocol_event(binding);
                 }
@@ -3433,11 +3450,11 @@ impl App {
             crate::agent_sessions::SessionLocation::Host => ("host", None),
             crate::agent_sessions::SessionLocation::Wsl { distro } => {
                 let distro = distro.trim();
-                if distro.is_empty() {
+                if !crate::agent_source::is_safe_wsl_distro_name(distro) {
                     tracing::warn!(
                         target: "agents_view",
                         key = %s.key,
-                        "dispatch_resume_in_agent_pane: WSL session has an empty distro",
+                        "dispatch_resume_in_agent_pane: WSL session has an invalid distro",
                     );
                     return;
                 }
@@ -3455,7 +3472,11 @@ impl App {
 
         let key = s.key.clone();
         let raw_cwd_string = s.cwd.to_string_lossy().to_string();
-        let valid_cwd = crate::cwd_util::validate_starting_directory(&s.cwd);
+        let valid_cwd = if s.location.is_wsl() {
+            linux_cwd_arg(&s.cwd)
+        } else {
+            crate::cwd_util::validate_starting_directory(&s.cwd)
+        };
         if valid_cwd.is_none() && !raw_cwd_string.is_empty() {
             tracing::warn!(
                 target: "agents_view",
@@ -3494,6 +3515,16 @@ impl App {
             params.insert(
                 "wsl_distro".to_string(),
                 serde_json::Value::String(distro.to_string()),
+            );
+        }
+        if let Some(tab_id) = self
+            .owner_tab_id
+            .as_deref()
+            .filter(|value| !value.is_empty())
+        {
+            params.insert(
+                "tab_id".to_string(),
+                serde_json::Value::String(tab_id.to_string()),
             );
         }
         if !cwd_string.is_empty() {
@@ -3827,21 +3858,12 @@ impl App {
     }
 
     /// Build the resolved ACP command string for an agent (e.g. "C:\...\claude.exe --acp").
-    fn build_agent_cmd(&self, agent_id: &str) -> String {
-        let profile = crate::agent_registry::lookup_profile_by_id(agent_id);
-        let cmd = if !profile.acp_launch_command.is_empty() {
-            profile.acp_launch_command.to_string()
-        } else {
-            let exe =
-                crate::agent_check::find_exe(agent_id).unwrap_or_else(|| agent_id.to_string());
-            let mut cmd = exe;
-            for flag in profile.acp_flags {
-                cmd.push(' ');
-                cmd.push_str(flag);
-            }
-            cmd
-        };
-        resolve_agent_cmd(&cmd)
+    fn build_agent_cmd(&self, agent_id: &str, source: &crate::agent_source::AgentSource) -> String {
+        let cmd = crate::agent_registry::build_acp_command_for_source(agent_id, None, source);
+        match source {
+            crate::agent_source::AgentSource::Host => resolve_agent_cmd(&cmd),
+            crate::agent_source::AgentSource::Wsl { .. } => cmd,
+        }
     }
 
     /// Update the deferred ACP params to use the selected agent's command.
@@ -3849,21 +3871,12 @@ impl App {
         if agent_id.is_empty() {
             return;
         }
-        let profile = crate::agent_registry::lookup_profile_by_id(agent_id);
-        let new_cmd = if !profile.acp_launch_command.is_empty() {
-            profile.acp_launch_command.to_string()
-        } else {
-            let exe =
-                crate::agent_check::find_exe(agent_id).unwrap_or_else(|| agent_id.to_string());
-            let mut cmd = exe;
-            for flag in profile.acp_flags {
-                cmd.push(' ');
-                cmd.push_str(flag);
-            }
-            cmd
-        };
-        // Resolve to full path
-        let resolved = resolve_agent_cmd(&new_cmd);
+        let source = self
+            .deferred_acp
+            .as_ref()
+            .map(|params| &params.agent_source)
+            .unwrap_or(&self.current_agent_source);
+        let resolved = self.build_agent_cmd(agent_id, source);
         if let Some(ref mut params) = self.deferred_acp {
             tracing::info!(
                 "Updating ACP agent command: {} -> {}",
@@ -3930,7 +3943,7 @@ impl App {
         self.agent_binding_generation = self.agent_binding_generation.wrapping_add(1);
         self.auth_recovery_generation = self.auth_recovery_generation.wrapping_add(1);
         self.auth_recovery_state = AuthRecoveryState::Idle;
-        let new_cmd = self.build_agent_cmd(&request.agent_id);
+        let new_cmd = self.build_agent_cmd(&request.agent_id, &request.agent_source);
         if let Some(ref mut params) = self.deferred_acp {
             params.agent_cmd.clone_from(&new_cmd);
             params.agent_id = Some(request.agent_id.clone());
@@ -7087,7 +7100,7 @@ impl App {
 /// Linux path (starts with `/`). A Windows path, empty cwd, or a path
 /// containing a double-quote (which would break the quoted `--cd "…"`
 /// argument) yields `None`, so WSL falls back to the distro's `$HOME`.
-fn linux_cwd_arg(cwd: &std::path::Path) -> Option<String> {
+pub(crate) fn linux_cwd_arg(cwd: &std::path::Path) -> Option<String> {
     let s = cwd.to_string_lossy();
     let s = s.trim();
     (s.starts_with('/') && !s.contains('"')).then(|| s.to_string())
@@ -7211,7 +7224,8 @@ fn resolve_agent_cmd(cmd: &str) -> String {
 
     // Use agent_check::find_exe which reads fresh PATH from registry
     let profile = crate::agent_registry::lookup_profile(exe);
-    if let Some(full_path) = crate::agent_check::find_exe(profile.id) {
+    if let Some(full_path) = crate::agent_check::find_acp_exe(profile.id) {
+        let full_path = crate::coordinator::join_windows_commandline(&[full_path.as_str()]);
         return if rest.is_empty() {
             full_path
         } else {

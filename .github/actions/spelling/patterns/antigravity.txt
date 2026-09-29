@@ -1,0 +1,1 @@
+\bintellterm_0123456789abcdefextra(?=_)

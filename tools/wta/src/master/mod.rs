@@ -5240,9 +5240,10 @@ fn resolve_agent_selection(
             let model = requested_model.map(str::trim).filter(|s| !s.is_empty());
             let launch_model =
                 model.filter(|_| !crate::agent_registry::supports_live_model_switch(id));
-            let cmd = crate::agent_registry::build_acp_command(id, launch_model);
             let source =
                 crate::agent_source::AgentSource::from_wire(requested_source, requested_wsl_distro);
+            let cmd =
+                crate::agent_registry::build_acp_command_for_source(id, launch_model, &source);
             return ResolvedAgentSelection {
                 command: cmd,
                 agent_id: Some(id.to_string()),
@@ -7262,6 +7263,8 @@ async fn handle_session_activate(
         cli_source: cli_source.clone(),
         load_session_capability: crate::session_mgmt::LoadSessionCapability::Unknown,
         cli_supports_resume_flag: profile.is_some_and(|profile| !profile.resume_flag.is_empty()),
+        cli_can_resume_acp_sessions: profile
+            .is_some_and(|profile| profile.cli_can_resume_acp_sessions),
         is_wsl: row.location.is_wsl(),
     });
 
@@ -7290,6 +7293,13 @@ async fn handle_session_activate(
             let (agent_source, wsl_distro) = match &row.location {
                 crate::agent_sessions::SessionLocation::Host => ("host", None),
                 crate::agent_sessions::SessionLocation::Wsl { distro } => {
+                    if !crate::agent_source::is_safe_wsl_distro_name(distro) {
+                        return respond!(
+                            "resume_agent_pane",
+                            false,
+                            Some("The selected session has an invalid WSL source.".to_string())
+                        );
+                    }
                     ("wsl", Some(distro.as_str()))
                 }
                 crate::agent_sessions::SessionLocation::Unknown => {
@@ -7321,7 +7331,7 @@ async fn handle_session_activate(
                     "cwd": row.cwd.to_string_lossy(),
                     "agent_id": provider_id,
                     "agent_source": agent_source,
-                    "wsl_distro": wsl_distro,
+                    "wsl_distro": wsl_distro.unwrap_or_default(),
                 }
             });
             crate::wt_protocol_events::send(event.to_string());
@@ -7337,11 +7347,33 @@ async fn handle_session_activate(
             };
             let provider_id = provider_id.expect("known provider was checked above");
             let profile = crate::agent_registry::lookup_profile_by_id(&provider_id);
-            let invocation = format!("{} {} {}", provider_id, profile.resume_flag, row.session_id);
+            if !crate::agent_sessions::is_safe_cli_resume_id(row.session_id.0.as_ref()) {
+                return respond!(
+                    "resume_cli",
+                    false,
+                    Some("The selected session has an invalid CLI resume identifier.".to_string())
+                );
+            }
+            let invocation = format!(
+                "{} {} {}",
+                profile.cli_executable, profile.resume_flag, row.session_id
+            );
             let commandline = match &row.location {
                 crate::agent_sessions::SessionLocation::Host => invocation,
                 crate::agent_sessions::SessionLocation::Wsl { distro } => {
-                    format!("wsl -d {distro} -- bash -lc \"{invocation}\"")
+                    if !crate::agent_source::is_safe_wsl_distro_name(distro) {
+                        return respond!(
+                            "resume_cli",
+                            false,
+                            Some("The selected session has an invalid WSL source.".to_string())
+                        );
+                    }
+                    match crate::app::linux_cwd_arg(&row.cwd) {
+                        Some(cwd) => {
+                            format!("wsl -d {distro} --cd \"{cwd}\" -- bash -lc \"{invocation}\"")
+                        }
+                        None => format!("wsl -d {distro} -- bash -lc \"{invocation}\""),
+                    }
                 }
                 crate::agent_sessions::SessionLocation::Unknown => {
                     return respond!(
@@ -7419,6 +7451,7 @@ async fn handle_session_activate(
                         row.session_id.0.as_ref(),
                         &pane_session_id,
                         &row.location,
+                        Some(row.cwd.to_string_lossy().as_ref()),
                     ) {
                         crate::wt_protocol_events::send(binding);
                     }
@@ -9197,6 +9230,141 @@ async fn handle_retire_agent_sessions_event(
     });
 }
 
+async fn validate_master_hook_source(
+    state: &MasterStateInner,
+    params: &serde_json::Value,
+    key: &str,
+    pane_id: &str,
+    cli_source: &crate::agent_sessions::CliSource,
+) -> Result<Option<crate::agent_sessions::SessionLocation>, &'static str> {
+    use crate::agent_sessions::{pane_key, AgentStatus, SessionLocation};
+
+    let distro = params
+        .get("wsl_distro")
+        .map(|value| {
+            value
+                .as_str()
+                .filter(|distro| crate::agent_source::is_safe_wsl_distro_name(distro))
+                .ok_or("invalid WSL distro metadata")
+        })
+        .transpose()?;
+    let pane = pane_key(pane_id);
+    let provider_id = cli_source.canonical_provider_id();
+    let mut known_location = None;
+    for row in state.registry.snapshot().await {
+        let same_provider = match row
+            .provider_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|id| !id.is_empty())
+        {
+            Some(id) => provider_id
+                .as_deref()
+                .is_some_and(|incoming| id.eq_ignore_ascii_case(incoming)),
+            None => row.cli_source.as_ref() == Some(cli_source),
+        };
+        let same_session = row.session_id.0.as_ref() == key;
+        // Reducer events and hook ownership still use raw IDs. Matching pane
+        // provenance cannot make a cross-provider collision safe to reduce.
+        if same_session && !same_provider {
+            return Err("agent hook raw session ID conflicts with another provider");
+        }
+        let Some(distro) = distro else {
+            continue;
+        };
+        let owner = row.pane_session_id.as_deref().map(pane_key);
+        let live = matches!(
+            row.status,
+            Some(
+                AgentStatus::Idle
+                    | AgentStatus::Working
+                    | AgentStatus::Attention
+                    | AgentStatus::Error
+            )
+        );
+        if same_session
+            && live
+            && !pane.is_empty()
+            && owner.as_ref().is_some_and(|owner| owner != &pane)
+        {
+            return Err("WSL hook does not match the session's owning pane");
+        }
+        if !same_session && !(live && !pane.is_empty() && owner.as_deref() == Some(pane.as_str())) {
+            continue;
+        }
+        match &row.location {
+            SessionLocation::Host => return Err("WSL hook contradicts known host source"),
+            SessionLocation::Wsl { distro: known } => {
+                if !known.eq_ignore_ascii_case(distro) {
+                    return Err("WSL hook contradicts known distro");
+                }
+                known_location = Some(row.location.clone());
+            }
+            SessionLocation::Unknown => {}
+        }
+    }
+    if let Some(location) = known_location {
+        return Ok(Some(location));
+    }
+    let Some(distro) = distro else {
+        return Ok(None);
+    };
+
+    // Reuse registry provenance on subsequent hooks. For a new source, request
+    // metadata only, never terminal output or a WSL process. Missing interactive
+    // shell metadata is normal for forwarded hooks and is not evidence of Host.
+    if let Some(wt) = state.wt.as_ref().filter(|wt| wt.is_available()) {
+        if !pane.is_empty() {
+            match tokio::time::timeout(
+                std::time::Duration::from_millis(250),
+                wt.request(
+                    "get_pane_context",
+                    serde_json::json!({
+                        "session_id": pane_id,
+                        "max_lines": 0,
+                        "max_chars": 0,
+                    }),
+                ),
+            )
+            .await
+            {
+                Ok(Ok(context)) => {
+                    let context_pane = context.get("pane");
+                    if let Some(owner) = context_pane
+                        .and_then(|pane| pane.get("session_id"))
+                        .and_then(serde_json::Value::as_str)
+                    {
+                        if pane_key(owner) != pane {
+                            return Err("WSL hook context belongs to another pane");
+                        }
+                    }
+                    if let Some(shell) = context_pane
+                        .and_then(|pane| pane.get("shell"))
+                        .and_then(serde_json::Value::as_str)
+                        .filter(|shell| !shell.is_empty())
+                    {
+                        if !shell
+                            .strip_prefix("wsl:")
+                            .is_some_and(|known| known.eq_ignore_ascii_case(distro))
+                        {
+                            return Err("WSL hook contradicts owning pane source");
+                        }
+                    }
+                }
+                Ok(Err(_)) | Err(_) => {
+                    tracing::debug!(
+                        target: "master_wt_event",
+                        "hook pane source unavailable; retaining validated WSL metadata"
+                    );
+                }
+            }
+        }
+    }
+    Ok(Some(SessionLocation::Wsl {
+        distro: distro.to_string(),
+    }))
+}
+
 /// Route one COM `agent_event` hook into master's authoritative registry.
 ///
 /// Master subscribes to the COM broadcast directly, so this runs once per hook
@@ -9247,6 +9415,15 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
         return;
     };
 
+    let location =
+        match validate_master_hook_source(state, params, &key, pane_id, &cli_source).await {
+            Ok(location) => location,
+            Err(reason) => {
+                tracing::warn!(target: "master_wt_event", reason, "rejected agent hook source");
+                return;
+            }
+        };
+
     let payload = params
         .get("payload")
         .cloned()
@@ -9272,6 +9449,15 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
         if let Some(key) = refresh_key {
             refresh_keys.insert(key);
         }
+    }
+    if let Some(location) = location {
+        changed |= state
+            .registry
+            .set_location(
+                &acp::schema::v1::SessionId::new(session_key.clone()),
+                location,
+            )
+            .await;
     }
     let final_row = state
         .registry
