@@ -61,7 +61,8 @@
         </ResourceDictionary>
     </UserControl.Resources>
 
-    <Grid Background="{ThemeResource TabViewBackground}">
+    <!--  Keep an explicit painted surface for the background in XAML Islands.  -->
+    <Grid Background="{x:Bind Background, Mode=OneWay}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -496,7 +497,6 @@
                 Grid.Row="5"
                 Height="32"
                 Padding="12,0,4,0"
-                Background="{ThemeResource TabViewBackground}"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 BorderThickness="0,1,0,0"
                 Visibility="Collapsed">
@@ -539,7 +539,7 @@
         <Grid x:Name="HistoryPanel"
               Grid.Row="2"
               Grid.RowSpan="4"
-              Background="{ThemeResource TabViewBackground}"
+              Background="Transparent"
               Visibility="Collapsed">
             <Grid.RowDefinitions>
                 <RowDefinition Height="44" />

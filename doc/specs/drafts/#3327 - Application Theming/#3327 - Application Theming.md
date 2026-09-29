@@ -233,14 +233,37 @@ controlling:
 
 Tab switches reuse the existing Acrylic brush when its resolved tint and
 backdrop settings are unchanged, avoiding repeated backdrop initialization.
+
+The vertical sidebar shares the resolved tab-row/titlebar background, including
+the filter status bar and session history view. `useAcrylicInTabRow` enables
+chrome Acrylic; `compatibility.enableUnfocusedAcrylic` controls whether it is
+requested while inactive. These settings are separate from terminal-profile
+`useAcrylic` / `opacity` settings.
+
+The sidebar's content Grid binds to `TabStrip.Background` to provide an
+explicit painted surface. Keep this binding: setting only the UserControl's
+background is not sufficient to render the sidebar background in XAML Islands.
+
+The new-tab and dropdown buttons share this backdrop: their normal backgrounds
+are transparent and hover/pressed states use translucent overlays, whether
+Acrylic is enabled or not, including while the window is unfocused.
+The native theme-aware divider is 16 DIPs high and vertically centered between
+the two buttons rather than spanning their full height.
+High-contrast mode retains opaque button fills.
+
 Sidebar icon and pane-row instances likewise remain stable during focus updates.
-Sidebar rows use the native ListView hover, pressed, and selected states rather
-than transparent state overrides or an additional selection-background overlay.
-The native item presenter and the tab-color header share a 6px corner radius,
-including hover, pressed, and selected backgrounds.
+Sidebar rows retain native ListView hover and pressed feedback. Selection uses
+the ListView theme brush within each tab header rather than tinting the entire
+expanded tab-and-pane group. The native item presenter and the header selection
+layers share a 6px corner radius.
 Unselected rows have a transparent normal background, including when the
-horizontal tab theme supplies a background color. Tab colors only fill the
-selected row; unselected text inherits the ListView foreground.
+horizontal tab theme supplies a background color. By default, selected sidebar
+rows leave their tab-color layer transparent so the selection background follows
+the application's light, dark, or high-contrast theme.
+Only explicit profile or runtime tab colors fill the selected sidebar row;
+unselected text inherits the ListView foreground. Theme `tab.background` and
+`tab.unfocusedBackground` still apply to horizontal tabs, but do not override
+the sidebar's native selection colors.
 
 Selecting a sidebar tab updates selection and filter status without rebuilding
 every tab's pane projection. Insertion and title/agent-state changes project only

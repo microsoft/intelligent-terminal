@@ -33,6 +33,7 @@ namespace TerminalApp
         void DiscardKeptGroup(Guid groupId);
         event Windows.Foundation.TypedEventHandler<ContentManager, Object> KeptSessionsChanged;
         event Windows.Foundation.TypedEventHandler<ContentManager, String> DetachedSessionEvent;
+        void DiscardAllKeptGroups();
     }
 
     [default_interface] runtimeclass RenameWindowRequestedArgs

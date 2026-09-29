@@ -139,8 +139,6 @@
                                                     ResourceKey="TabViewButtonBackgroundPointerOver" />
                                     <StaticResource x:Key="SplitButtonForegroundPointerOver"
                                                     ResourceKey="TabViewButtonForegroundPointerOver" />
-                                    <SolidColorBrush x:Key="SplitButtonBorderBrushDivider"
-                                                     Color="Transparent" />
                                 </ResourceDictionary>
                                 <ResourceDictionary x:Key="Dark">
                                     <StaticResource x:Key="SplitButtonBackground"
@@ -155,8 +153,6 @@
                                                     ResourceKey="TabViewButtonBackgroundPointerOver" />
                                     <StaticResource x:Key="SplitButtonForegroundPointerOver"
                                                     ResourceKey="TabViewButtonForegroundPointerOver" />
-                                    <SolidColorBrush x:Key="SplitButtonBorderBrushDivider"
-                                                     Color="Transparent" />
                                 </ResourceDictionary>
                                 <ResourceDictionary x:Key="HighContrast">
                                     <StaticResource x:Key="SplitButtonBackground"
@@ -171,8 +167,6 @@
                                                     ResourceKey="TabViewButtonBackgroundPointerOver" />
                                     <StaticResource x:Key="SplitButtonForegroundPointerOver"
                                                     ResourceKey="TabViewButtonForegroundPointerOver" />
-                                    <SolidColorBrush x:Key="SplitButtonBorderBrushDivider"
-                                                     Color="Transparent" />
                                 </ResourceDictionary>
                             </ResourceDictionary.ThemeDictionaries>
                             <x:Double x:Key="SplitButtonPrimaryButtonSize">31</x:Double>

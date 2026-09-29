@@ -1714,6 +1714,12 @@ void WindowEmperor::_notificationAreaMenuRequested(const WPARAM wParam)
         AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(submenu), title.c_str());
     }
 
+    if (!_keptSessionMenus.empty())
+    {
+        AppendMenuW(menu, MF_STRING, _closeAllKeptTabsMenuId, RS_(L"NotificationIconCloseAllKeptTabs").c_str());
+        AppendMenuW(menu, MF_SEPARATOR, 0, L"");
+    }
+
     // A submenu to focus a specific window. Lists all windows that we manage.
     if (const auto submenu = CreatePopupMenu())
     {
@@ -1757,7 +1763,6 @@ void WindowEmperor::_notificationAreaMenuRequested(const WPARAM wParam)
     // User can select menu items with the left and right buttons.
     const auto rightAlign = GetSystemMetrics(SM_MENUDROPALIGNMENT) != 0;
     const UINT uFlags = TPM_RIGHTBUTTON | (rightAlign ? TPM_RIGHTALIGN : TPM_LEFTALIGN);
-    TrackPopupMenuEx(menu, uFlags, GET_X_LPARAM(wParam), GET_Y_LPARAM(wParam), _window.get(), nullptr);
 
     if (_currentWindowMenu)
     {
@@ -1765,6 +1770,7 @@ void WindowEmperor::_notificationAreaMenuRequested(const WPARAM wParam)
         DestroyMenu(_currentWindowMenu);
     }
     _currentWindowMenu = menu;
+    TrackPopupMenuEx(menu, uFlags, GET_X_LPARAM(wParam), GET_Y_LPARAM(wParam), _window.get(), nullptr);
 }
 
 void WindowEmperor::_notificationAreaMenuClicked(const WPARAM wParam, const LPARAM lParam)
@@ -1772,6 +1778,11 @@ void WindowEmperor::_notificationAreaMenuClicked(const WPARAM wParam, const LPAR
     const auto menu = reinterpret_cast<HMENU>(lParam);
     const auto menuItemIndex = LOWORD(wParam);
     const auto windowId = GetMenuItemID(menu, menuItemIndex);
+    if (menu == _currentWindowMenu && windowId == _closeAllKeptTabsMenuId)
+    {
+        _keptManager.DiscardAllKeptGroups();
+        return;
+    }
     if (const auto it = _keptSessionMenus.find(menu); it != _keptSessionMenus.end())
     {
         const auto groupId = it->second;
@@ -1790,7 +1801,7 @@ void WindowEmperor::_notificationAreaMenuClicked(const WPARAM wParam, const LPAR
         return;
     }
 
-    // _notificationAreaMenuRequested constructs each menu item with an ID
+    // The remaining menu items have an ID
     // that is either 0 for "Focus Terminal" or >0 for a specific window ID.
     // This works well for us because valid window IDs are always >0.
     SummonWindowSelectionArgs args;
