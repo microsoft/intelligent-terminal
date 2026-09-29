@@ -2979,18 +2979,12 @@ impl HelperHandler {
         let started = std::time::Instant::now();
         let agent = self.resolved_agent("new_session")?;
         let result = tokio::time::timeout(timeout, agent.conn.new_session(args)).await;
-        let session_id = result
-            .as_ref()
-            .ok()
-            .and_then(|inner| inner.as_ref().ok())
-            .map(|resp| resp.session_id.to_string());
         let (failure_kind, acp_error_code) = match &result {
             Ok(Ok(_)) => ("", 0),
             Ok(Err(e)) => ("AcpError", e.code.into()),
             Err(_) => ("Timeout", 0),
         };
         crate::telemetry::log_acp_new_session_complete(
-            session_id.as_deref(),
             started.elapsed().as_secs_f64() * 1000.0,
             matches!(result, Ok(Ok(_))),
             "MasterForward",

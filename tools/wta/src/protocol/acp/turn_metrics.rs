@@ -278,7 +278,6 @@ impl PromptTimingState {
                 if let Some(sent_mono) = prompt_sent_at_mono {
                     let first_token_latency_ms = sent_mono.elapsed().as_secs_f64() * 1000.0;
                     crate::telemetry::log_agent_response_first_token(
-                        session_id,
                         first_token_latency_ms,
                         u32::try_from(text_len).unwrap_or(u32::MAX),
                         &agent_id,
@@ -504,7 +503,6 @@ impl PromptTimingState {
         if let Some(sent_mono) = active_prompt.prompt_sent_at_mono {
             let total_duration_ms = sent_mono.elapsed().as_secs_f64() * 1000.0;
             crate::telemetry::log_agent_response_complete(
-                session_id,
                 total_duration_ms,
                 success,
                 active_prompt.is_byok,

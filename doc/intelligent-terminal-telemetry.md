@@ -122,8 +122,7 @@ keyword are event metadata, not extra business fields. No implicit
 
 Field names and category values are case-sensitive. All fields listed in an
 event's table are emitted; an empty string or `unknown` is a value, not an
-omitted field. In particular, failed `AcpNewSessionComplete` events carry an
-empty `SessionId`.
+omitted field. Agent/provider session identifiers are not emitted.
 
 The agent category set is `copilot`, `claude`, `codex`, `gemini`,
 `opencode`, and `custom`. WTA and the App snapshot bucket unrecognized agent
@@ -153,14 +152,14 @@ Business-field counts exclude the common `PartA_PrivTags` field.
 | App | [SidebarRowFieldsChanged](#appsidebarrowfieldschanged) | 1 | Usage |
 | App | [DelegateInvoked](#appdelegateinvoked) | 1 | Usage |
 | App | [ErrorDetected](#apperrordetected) | 1 | Usage |
-| App | [AgentSessionStarted](#appagentsessionstarted) | 24 | Usage |
+| App | [AgentSessionStarted](#appagentsessionstarted) | 23 | Usage |
 | WTA | [AcpInitializeComplete](#wtaacpinitializecomplete) | 5 | Performance |
-| WTA | [AcpNewSessionComplete](#wtaacpnewsessioncomplete) | 6 | Performance |
+| WTA | [AcpNewSessionComplete](#wtaacpnewsessioncomplete) | 5 | Performance |
 | WTA | [AcpLoadSessionComplete](#wtaacploadsessioncomplete) | 2 | Performance |
 | WTA | [AgentColdStartComplete](#wtaagentcoldstartcomplete) | 5 | Performance |
-| WTA | [AgentPromptSent](#wtaagentpromptsent) | 7 | Usage |
-| WTA | [AgentResponseFirstToken](#wtaagentresponsefirsttoken) | 4 | Performance |
-| WTA | [AgentResponseComplete](#wtaagentresponsecomplete) | 5 | Performance |
+| WTA | [AgentPromptSent](#wtaagentpromptsent) | 6 | Usage |
+| WTA | [AgentResponseFirstToken](#wtaagentresponsefirsttoken) | 3 | Performance |
+| WTA | [AgentResponseComplete](#wtaagentresponsecomplete) | 4 | Performance |
 | WTA | [ErrorDetected](#wtaerrordetected) | 5 | Usage |
 | WTA | [ErrorFixOffered](#wtaerrorfixoffered) | 1 | Usage |
 | WTA | [ErrorFixAccepted](#wtaerrorfixaccepted) | 1 | Usage |
@@ -250,7 +249,9 @@ and explicitly reopening tab search emits again.
 ### App.SidebarAgentFilterApplied
 
 **Trigger:** the user switches from All tabs to the Agent view and its first
-successful session snapshot is committed. The pending measurement is canceled
+explicitly `Ready` session snapshot is committed. `Loading` or `Error` snapshots
+may display cached rows but do not emit or consume the pending measurement.
+The pending measurement is canceled
 if the user leaves the view before a snapshot succeeds.
 
 | Field | Type | Meaning / values |
@@ -398,7 +399,6 @@ adds its effective settings when processing that notification.
 | Field | Type | Meaning / values |
 |---|---|---|
 | `StartId` | String | New random UUID for this start/load notification; event deduplication key |
-| `SessionId` | String | ACP session ID, not `WT_SESSION`; a saved session can be loaded repeatedly |
 | `StartKind` | String | `New` or `Load` |
 | `AgentId` | String | Connected agent category |
 | `AgentSource` | String | `host`, `wsl`, or `unknown`; no distribution name |
@@ -440,8 +440,8 @@ adds its effective settings when processing that notification.
   based on a model name. A reconnect resets this telemetry binding.
 - Loaded sessions retain their restored model. A BYOK-bound process is
   categorized as `byok` even if the restored agent reports a native model ID.
-- Re-loading the same saved session produces a new `StartId`, with the
-  existing `SessionId` and `StartKind=Load`. `Load` alone does not identify
+- Re-loading the same saved session produces a new `StartId` and
+  `StartKind=Load`. `Load` alone does not identify
   session-view resume versus saved-layout restoration.
 - Stashing/showing the same pane, moving/renaming its tab, or changing a
   setting does not by itself produce another successful-session snapshot.
@@ -478,7 +478,6 @@ failure or an enforced timeout.
 
 | Field | Type | Meaning / values |
 |---|---|---|
-| `SessionId` | String | Returned ACP session ID on success; empty on failure |
 | `DurationMs` | Double | Monotonic RPC-attempt duration in milliseconds |
 | `Success` | Bool | Whether the RPC returned successfully |
 | `Route` | String | `MasterForward`, `HelperPipeStartup`, `HelperPipeNewSessionForTab`, `HelperPipeFallback`, `LazyCreateOnFirstPrompt`, or `Probe` |
@@ -526,7 +525,6 @@ the App snapshot's `AgentSource`.
 
 | Field | Type | Meaning / values |
 |---|---|---|
-| `SessionId` | String | ACP session receiving the prompt |
 | `PromptLengthBytes` | UInt32 | Byte length of the constructed dispatch prompt, including context/templates |
 | `IsAutofix` | Bool | Whether this dispatch is an autofix prompt |
 | `IsByok` | Bool | BYOK state captured for this prompt |
@@ -544,7 +542,6 @@ turn with a known monotonic dispatch time.
 
 | Field | Type | Meaning / values |
 |---|---|---|
-| `SessionId` | String | ACP session |
 | `FirstTokenLatencyMs` | Double | Dispatch-to-first-counted-text duration in milliseconds |
 | `ChunkLengthBytes` | UInt32 | Byte length of that first counted chunk |
 | `AgentId` | String | Agent category associated with the turn |
@@ -561,7 +558,6 @@ known monotonic dispatch time.
 
 | Field | Type | Meaning / values |
 |---|---|---|
-| `SessionId` | String | ACP session |
 | `TotalDurationMs` | Double | Monotonic prompt-dispatch-to-completion duration in milliseconds |
 | `Success` | Bool | Whether the ACP prompt request completed successfully |
 | `IsByok` | Bool | BYOK state associated with the prompt |
@@ -801,15 +797,12 @@ does not assume a particular backend table or query language.
 
 **Correlation rules:**
 
-- `StartId` is the snapshot event deduplication key. `SessionId` is not:
-  loading the same session again is a separate start/load observation.
-- App snapshots and WTA events that explicitly carry `SessionId` can be
-  related at session scope. Use agent identity and capture/process/time
-  context where available; do not assume opaque IDs are globally unique
-  across all providers or deployments.
-- A session can have many prompts and repeated loads. There is no exported
-  `TurnId` or `StartId` on turn events, so joining only on `SessionId`
-  does not create an exact prompt-to-response or load-to-turn mapping.
+- `StartId` is a random per-notification deduplication key, independent of the
+  agent's session ID. Loading the same session again is a separate observation.
+- Agent session IDs are not emitted, hashed, or replaced with stable aliases.
+  App snapshots and WTA turn events cannot be joined at session or turn scope.
+  Aggregate by event, agent category, route, and capture/process/time scope
+  where available; these populations do not establish per-session funnels.
 - `AcpNewSessionComplete` can report both master and helper layers for one
   creation. Choose the intended route rather than summing them as sessions.
 - `AcpLoadSessionComplete` has no payload correlation ID or origin route.
@@ -867,8 +860,9 @@ settings telemetry and the independent `AgentProviderChanged` event.
 ## Privacy and collection boundaries
 
 The dedicated payloads contain categories, booleans, counts, durations,
-opaque correlation IDs, and numeric ACP error codes. They do not contain
-prompt/response text, terminal contents, command text, custom agent names,
+independent telemetry correlation IDs (`StartId` and `OfferId`), terminal pane
+identity where documented, and numeric ACP error codes. They do not contain
+agent/provider session identifiers, prompt/response text, terminal contents, command text, custom agent names,
 custom commands, model IDs, API keys, credential identifiers, or custom
 endpoint URLs.
 

@@ -6476,7 +6476,7 @@ namespace winrt::TerminalApp::implementation
         if (snapshot.state == State::Ready ||
             (snapshot.state != State::InvalidResponse && !snapshot.items.empty()))
         {
-            strip->CommitHistorySnapshot(std::move(snapshot.items));
+            strip->CommitHistorySnapshot(std::move(snapshot.items), snapshot.state == State::Ready);
         }
         if (snapshot.state == State::Error)
         {
@@ -8680,7 +8680,6 @@ namespace winrt::TerminalApp::implementation
                     "AgentSessionStarted",
                     TraceLoggingDescription("Effective settings snapshot after successful ACP session creation or load"),
                     TraceLoggingString(start->startId.c_str(), "StartId"),
-                    TraceLoggingString(start->sessionId.c_str(), "SessionId"),
                     TraceLoggingString(start->kind, "StartKind"),
                     TraceLoggingString(start->agentId, "AgentId"),
                     TraceLoggingString(start->source, "AgentSource"),

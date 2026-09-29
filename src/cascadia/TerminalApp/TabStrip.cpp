@@ -677,7 +677,7 @@ namespace winrt::TerminalApp::implementation
         return Resources().Lookup(box_value(styleKey)).as<WUX::Style>();
     }
 
-    void TabStrip::CommitHistorySnapshot(std::vector<TerminalApp::TabStripHistoryItem> items)
+    void TabStrip::CommitHistorySnapshot(std::vector<TerminalApp::TabStripHistoryItem> items, const bool ready)
     {
         _historySnapshot = std::move(items);
         // WTA supplies newest-activity-first rows; preserve that order within each group.
@@ -699,7 +699,7 @@ namespace winrt::TerminalApp::implementation
             _historySearchTerms.emplace_back(_buildHistorySearchTerms(item));
         }
         _applyHistoryProjection(true);
-        if (_historyActive && _agentFilterTelemetryPending)
+        if (ready && _historyActive && _agentFilterTelemetryPending)
         {
             _agentFilterTelemetryPending = false;
             TraceLoggingWrite(

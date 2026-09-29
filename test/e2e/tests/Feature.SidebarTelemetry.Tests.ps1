@@ -204,6 +204,17 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             $script:shell = Get-ActivePane -App $script:app
             $firstHelper = Wait-TelemetryOnlyOwnedAgent -App $script:app
             Wait-AgentReady -App $script:app -PaneSessionId $firstHelper.PaneSessionId -TimeoutSec 40 | Should -BeTrue
+            $script:privateAgentSessionId = (Get-AgentPaneSession -App $script:app -PaneSessionId $firstHelper.PaneSessionId).AcpSessionId
+            $script:privateAgentSessionId | Should -Not -BeNullOrEmpty
+            Invoke-TelemetryPhase -Name session-id-privacy -Action {
+                $marker = 'TELEMETRY_CHAT_' + [guid]::NewGuid().ToString('N')
+                Send-AgentPrompt -App $script:app -PaneSessionId $firstHelper.PaneSessionId -Text $marker | Out-Null
+                Assert-AgentPaneText -App $script:app -PaneSessionId $firstHelper.PaneSessionId -Pattern "ACK:$marker" -TimeoutSec 20
+                Wait-Until -TimeoutSec 20 -Because 'the real ACP prompt completes' -Condition {
+                    (Get-Content -LiteralPath $log -Raw).Contains("telemetry-chat-complete|$($script:privateAgentSessionId)|$marker")
+                } | Out-Null
+                Start-Sleep -Seconds 1
+            }
             Set-WtSetting -App $script:app -Key tabLayout -Value vertical | Out-Null
             Sync-SidebarWindow
             Wait-UiElement -App $script:app -Selector SearchTabsButton | Out-Null
@@ -388,7 +399,7 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             finally { Stop-TestTelemetryTrace -Trace $trace }
         }
         $script:records = @(Read-TestTelemetryTrace -Directory $trace.Directory -ProcessIds @($script:ownedPids) `
-            -IncludeEventName @('AppCreated', 'AgentSessionStarted', 'SidebarStateOnLaunch', 'SidebarSearchOpened', 'SidebarAgentFilterApplied', 'SidebarTabPinned', 'SidebarRowFieldsChanged'))
+            -IncludeEventName @('AppCreated', 'AgentSessionStarted', 'AcpNewSessionComplete', 'AgentPromptSent', 'AgentResponseFirstToken', 'AgentResponseComplete', 'SidebarStateOnLaunch', 'SidebarSearchOpened', 'SidebarAgentFilterApplied', 'SidebarTabPinned', 'SidebarRowFieldsChanged'))
         Initialize-TelemetryPhaseClock -CaptureDirectory $trace.Directory
         ConvertTo-Json -InputObject $script:records -Depth 12 | Set-Content -LiteralPath (Join-Path $script:root 'scoped-events.json')
         [xml]$raw = Get-Content -LiteralPath (Join-Path $trace.Directory 'events.xml') -Raw
@@ -441,6 +452,22 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
                 $actual = if (Test-Path -LiteralPath $path) { (Get-FileHash -LiteralPath $path).Hash } else { $null }
                 $actual | Should -Be $script:originalHashes[$path]
             }
+        }
+    }
+
+    It 'Agent telemetry excludes provider session identifiers' {
+        foreach ($name in @('AgentSessionStarted', 'AcpNewSessionComplete', 'AgentPromptSent', 'AgentResponseFirstToken', 'AgentResponseComplete')) {
+            $events = @($script:records | Where-Object Name -eq $name)
+            $events.Count | Should -BeGreaterThan 0 -Because "$name must be captured from the real App/WTA path"
+            foreach ($event in $events) {
+                $event.Fields.Keys | Should -Not -Contain 'SessionId'
+                $event.Fields.Keys | Should -Not -Contain 'session_id'
+                $event.Types.Keys | Should -Not -Contain 'SessionId'
+                ($event.Fields | ConvertTo-Json -Compress) | Should -Not -Match ([regex]::Escape($script:privateAgentSessionId))
+            }
+        }
+        foreach ($name in @('AgentPromptSent', 'AgentResponseFirstToken', 'AgentResponseComplete')) {
+            @(Get-TelemetryPhaseEvents -Phase session-id-privacy -Name $name) | Should -HaveCount 1
         }
     }
 

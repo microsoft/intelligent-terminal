@@ -308,6 +308,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabHistoryActivationKeepsRows);
         TEST_METHOD(VerticalTabHistoryStartupLoading);
         TEST_METHOD(VerticalTabHistoryLoadingAndErrorsKeepRows);
+        TEST_METHOD(VerticalTabHistoryTelemetryWaitsForReady);
         TEST_METHOD(VerticalTabHistorySnapshotRejectsMalformedResponse);
         TEST_METHOD(VerticalTabHistoryIgnoresStaleLoadingResult);
         TEST_METHOD(VerticalTabHistoryRefreshPreservesCollection);
@@ -4054,6 +4055,40 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(strip->HasHistoryItems());
             VERIFY_ARE_EQUAL(0u, page->_tabStrip.HistoryItems().Size());
             VERIFY_ARE_EQUAL(0, Grid::GetRow(strip->HistoryMessage()));
+        });
+    }
+
+    void TabTests::VerticalTabHistoryTelemetryWaitsForReady()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            page->_tabStrip.HistoryActive(true);
+            const auto generation = page->_historyRequestGeneration;
+            for (const auto state : { "loading", "error" })
+            {
+                const auto response = std::string{ R"({"history_status":")" } + state + R"(","sessions":[
+                    {"session_id":"stale","provider_id":"copilot","title":"Old row","location":"Host","status":"Historical"}]})";
+                page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(response));
+                VERIFY_ARE_EQUAL(1u, page->_tabStrip.HistoryItems().Size());
+                VERIFY_IS_TRUE(strip->_agentFilterTelemetryPending);
+            }
+
+            strip->HistorySearchTextBox().Text(L"no match");
+            page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(
+                                                                 R"({"history_status":"ready","sessions":[
+                    {"session_id":"fresh","provider_id":"copilot","title":"New row","location":"Host","status":"Historical"}]})"));
+            VERIFY_IS_TRUE(strip->HasHistoryItems());
+            VERIFY_ARE_EQUAL(0u, page->_tabStrip.HistoryItems().Size());
+            VERIFY_IS_FALSE(strip->_agentFilterTelemetryPending);
+            page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(R"({"sessions":[],"history_status":"ready"})"));
+            VERIFY_IS_FALSE(strip->_agentFilterTelemetryPending);
+
+            page->_tabStrip.HistoryActive(false);
+            page->_tabStrip.HistoryActive(true);
+            VERIFY_IS_TRUE(strip->_agentFilterTelemetryPending);
+            page->_tabStrip.HistoryActive(false);
+            VERIFY_IS_FALSE(strip->_agentFilterTelemetryPending);
         });
     }
 

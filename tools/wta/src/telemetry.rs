@@ -10,9 +10,7 @@
 // the `terminal-internals` package in official builds; OSS stub => inert). See
 // `build.rs` for header resolution.
 //
-// Note: the `SessionId` field on WTA events identifies the ACP session
-// (agent-pane backend connection); join to C++-side events only via fields
-// explicitly shared (e.g. `PaneId`).
+// Agent session identifiers must remain local to runtime routing, never telemetry.
 //
 // Events emitted from this module:
 //   - AcpInitializeComplete  (ACP initialize RPC completes)
@@ -159,15 +157,11 @@ pub fn log_acp_initialize_complete(
 /// Emitted when an ACP `session/new` RPC completes. `duration_ms` is a
 /// monotonic duration measured around the RPC attempt, not wall-clock.
 ///
-/// `session_id` is present only on success. Failed attempts still emit the
-/// event with an empty `SessionId` so the ETW schema remains stable.
-///
 /// `failure_kind` is empty on success, `Timeout` when no response arrived
 /// before the local timeout, or `AcpError` when the agent returned a
 /// JSON-RPC/ACP error. `acp_error_code` is the agent-provided code for
 /// `AcpError`; otherwise it is 0.
 pub fn log_acp_new_session_complete(
-    session_id: Option<&str>,
     duration_ms: f64,
     success: bool,
     route: &str,
@@ -175,13 +169,11 @@ pub fn log_acp_new_session_complete(
     acp_error_code: i32,
 ) {
     let success_i32: i32 = if success { 1 } else { 0 };
-    let session_id = session_id.unwrap_or("");
     tlg::write_event!(
         AGENT_PROVIDER,
         "AcpNewSessionComplete",
         level(Verbose),
         keyword(MICROSOFT_KEYWORD_MEASURES),
-        str8("SessionId", session_id),
         f64("DurationMs", &duration_ms),
         bool32("Success", &success_i32),
         str8("Route", route),
@@ -218,7 +210,6 @@ pub fn log_acp_load_session_complete(duration_ms: f64, success: bool) {
 /// (`CommandPaletteDispatchedAgentPrompt` in
 /// `src/cascadia/TerminalApp/CommandPalette.cpp`, under the same provider).
 pub fn log_agent_prompt_sent(
-    session_id: &str,
     prompt_byte_len: u32,
     is_autofix: bool,
     template_kind: &str,
@@ -232,7 +223,6 @@ pub fn log_agent_prompt_sent(
         "AgentPromptSent",
         level(Verbose),
         keyword(MICROSOFT_KEYWORD_MEASURES),
-        str8("SessionId", session_id),
         u32("PromptLengthBytes", &prompt_byte_len),
         bool32("IsAutofix", &is_autofix_i32),
         bool32("IsByok", &is_byok_i32),
@@ -254,7 +244,6 @@ pub fn log_agent_prompt_sent(
 /// would yield two metadata definitions for the same event name in ETW
 /// (the schemas differ), which complicates query/decode.
 pub fn log_agent_response_first_token(
-    session_id: &str,
     first_token_latency_ms: f64,
     chunk_byte_len: u32,
     agent_id: &str,
@@ -264,7 +253,6 @@ pub fn log_agent_response_first_token(
         "AgentResponseFirstToken",
         level(Verbose),
         keyword(MICROSOFT_KEYWORD_MEASURES),
-        str8("SessionId", session_id),
         f64("FirstTokenLatencyMs", &first_token_latency_ms),
         u32("ChunkLengthBytes", &chunk_byte_len),
         str8("AgentId", sanitize_agent_id(agent_id)),
@@ -281,7 +269,6 @@ pub fn log_agent_response_first_token(
 /// Uses a distinct event name (`AgentResponseComplete`) — see the note on
 /// `log_agent_response_first_token` for why this is split into two events.
 pub fn log_agent_response_complete(
-    session_id: &str,
     total_duration_ms: f64,
     success: bool,
     is_byok: bool,
@@ -294,7 +281,6 @@ pub fn log_agent_response_complete(
         "AgentResponseComplete",
         level(Verbose),
         keyword(MICROSOFT_KEYWORD_MEASURES),
-        str8("SessionId", session_id),
         f64("TotalDurationMs", &total_duration_ms),
         bool32("Success", &success_i32),
         bool32("IsByok", &is_byok_i32),

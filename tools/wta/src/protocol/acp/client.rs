@@ -2745,10 +2745,8 @@ fn log_acp_new_session_result(
     started: std::time::Instant,
     result: &acp::Result<acp::schema::v1::NewSessionResponse>,
 ) {
-    let session_id = result.as_ref().ok().map(|resp| resp.session_id.to_string());
     let (failure_kind, acp_error_code) = acp_result_failure_fields(result);
     crate::telemetry::log_acp_new_session_complete(
-        session_id.as_deref(),
         elapsed_ms_since(started),
         result.is_ok(),
         route,
@@ -6002,7 +6000,6 @@ async fn dispatch_prompt_body(
                     }
                     telemetry_timing.mark_prompt_sent(&telemetry_session_id);
                     crate::telemetry::log_agent_prompt_sent(
-                        &telemetry_session_id,
                         telemetry_prompt_len,
                         telemetry_is_autofix,
                         telemetry_source,
