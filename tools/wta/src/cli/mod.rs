@@ -55,8 +55,20 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
             .await
         }
         Command::Sessions { action } => match action {
-            SessionsAction::List { master, origin } => {
-                sessions::run_list(master, origin.to_filter(), json_mode).await
+            SessionsAction::List {
+                master,
+                origin,
+                all_agents,
+                include_status,
+            } => {
+                sessions::run_list(
+                    master,
+                    origin.to_filter(),
+                    all_agents,
+                    json_mode,
+                    include_status,
+                )
+                .await
             }
             SessionsAction::Activate {
                 session_id,

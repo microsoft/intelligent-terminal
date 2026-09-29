@@ -134,6 +134,7 @@ namespace winrt::TerminalApp::implementation
 
         ErrorDetectionMode _CurrentErrorDetectionMode();
         void _SetErrorDetectionMode(ErrorDetectionMode mode);
+        void _UpdateIllustrationTheme();
         void _UpdateSettingsFormWidth();
 
         // Rebuild the dropdown from the cached probe result. This never runs a

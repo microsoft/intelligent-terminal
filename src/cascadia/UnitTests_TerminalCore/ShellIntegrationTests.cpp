@@ -534,6 +534,9 @@ void ShellIntegrationTests::PowerShell_ScriptContent_TracksUnhistoriedErrors()
     const auto script = ShellIntegrationScriptContent();
     const auto readLineWrapper = script.find("function Global:PSConsoleHostReadLine");
     const auto lineStored = script.find("$Global:__ShellInteg_LastSubmittedLine =", readLineWrapper);
+    const auto resumeCommandMatch = script.find("copilot|claude|gemini", lineStored);
+    const auto resumeEqualsMatch = script.find("(?:\\s+|=)", resumeCommandMatch);
+    const auto resumeCommandMark = script.find("]9001;Resume;", resumeCommandMatch);
     const auto promptStart = script.find("function prompt");
     const auto lineCaptured = script.find("$submittedLine = $Global:__ShellInteg_LastSubmittedLine", promptStart);
     const auto capture = script.find("$errorRecord", lineCaptured);
@@ -553,7 +556,10 @@ void ShellIntegrationTests::PowerShell_ScriptContent_TracksUnhistoriedErrors()
 
     VERIFY_ARE_NOT_EQUAL(std::string::npos, consumeLine);
     VERIFY_IS_TRUE(readLineWrapper < lineStored &&
-                       lineStored < promptStart &&
+                       lineStored < resumeCommandMatch &&
+                       resumeCommandMatch < resumeEqualsMatch &&
+                       resumeEqualsMatch < resumeCommandMark &&
+                       resumeCommandMark < promptStart &&
                        promptStart < lineCaptured &&
                        lineCaptured < capture &&
                        capture < historyCheck &&

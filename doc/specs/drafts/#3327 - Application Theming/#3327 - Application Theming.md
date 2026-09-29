@@ -248,6 +248,24 @@ The new-tab and dropdown button shares this backdrop: with Acrylic enabled,
 its normal background is transparent and hover/pressed states use translucent
 overlays. Solid-background and high-contrast modes retain opaque button fills.
 
+Sidebar icon and pane-row instances likewise remain stable during focus updates.
+Sidebar rows use the native ListView hover, pressed, and selected states rather
+than transparent state overrides or an additional selection-background overlay.
+The native item presenter and the tab-color header share a 6px corner radius,
+including hover, pressed, and selected backgrounds.
+Unselected rows have a transparent normal background, including when the
+horizontal tab theme supplies a background color. Tab colors only fill the
+selected row; unselected text inherits the ListView foreground.
+
+Selecting a sidebar tab updates selection and filter status without rebuilding
+every tab's pane projection. Insertion and title/agent-state changes project only
+the affected tab; search, filter, and layout changes still refresh the full list.
+Theme colors notify the selected row separately from pane-structure changes.
+Row content, icons, and pane visibility use observable bindings rather than
+reassigning presenters and item sources during selection.
+Icon property changes refresh the affected row independently of title changes,
+including when settings reload updates an inactive tab's profile icon.
+
 * `tabRow.background`: Control the color of the background of the tab row. When
   tabs in the titlebar are enabled, this sets the color of the titlebar. See
   below for accepted colors.

@@ -593,8 +593,9 @@ struct MasterStateInner {
     pub(crate) wt: Option<Arc<dyn crate::shell::wt_channel::WtChannel>>,
     /// The pool of agent CLI subprocesses master is multiplexing,
     /// keyed by agent identity, execution source, and command line
-    /// (`AgentCmdKey`). Lazily
-    /// populated: a helper declares its agent *id* in the `initialize`
+    /// (`AgentCmdKey`). Installed, policy-allowed native host agents are
+    /// initialized in the background at master startup. Other selections are
+    /// populated on demand: a helper declares its agent *id* in the `initialize`
     /// handshake (`_meta.wta.agent_id`), the master reconstructs the
     /// command from that id (`agent_registry::build_acp_command`), and
     /// `get_or_spawn_agent` spawns the CLI on first use and reuses it for
@@ -620,6 +621,8 @@ struct MasterStateInner {
     /// a background process at the cost of cold-start latency for the next
     /// tab switch; that trade-off favors warm agents for a terminal app.
     pub(crate) agents: Mutex<HashMap<AgentCmdKey, AgentCell>>,
+    history_refresh: Arc<Mutex<()>>,
+    history_status: watch::Sender<crate::session_registry::HistoryLoadStatus>,
     helper_roles: Mutex<HashMap<HelperId, HelperRole>>,
     /// Master-only BYOK configurations keyed by the credential-free selection
     /// ID. A changed endpoint/model/credential reference advances the
@@ -719,10 +722,6 @@ struct MasterStateInner {
     /// id appears here, its watcher-emitted events are dropped in
     /// [`apply_watcher_event`] so hooks and the watcher never double-track the
     /// same session.
-    /// double-track the same session. This is what lets a CLI that ships hooks
-    /// (and the WTA-launched born-bound sessions) keep their exact, hook-sourced
-    /// pane binding while the watcher still covers user-typed CLIs that have no
-    /// hook installed (notably Codex's Restart-Manager fallback).
     ///
     /// Grow-only for the master's lifetime: a dead session id costs a few bytes
     /// and re-adding is idempotent, so no eviction is needed. Independent lock —
@@ -4868,10 +4867,10 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         .clone()
         .map(|channel| channel as Arc<dyn crate::shell::wt_channel::WtChannel>);
 
-    // Agent CLIs are spawned LAZILY by `get_or_spawn_agent` the first time
-    // a helper declares an agent in its `initialize` handshake — the master
-    // no longer owns a single eager agent CLI. `config.agent` / `config.agent_id`
-    // become the fallback default for helpers that don't declare one.
+    // Installed native host agents are warmed after the pipe is ready.
+    // Other selections are spawned by `get_or_spawn_agent` on helper demand.
+    // `config.agent` / `config.agent_id` remain the fallback for helpers
+    // that don't declare an agent.
     // Host-supplied allowlist (GPO-filtered) of agent ids a helper may
     // select. An *absent* flag means "no allowlist; accept any known id"
     // (`None`); a *present* flag is honored fail-closed even when it filters
@@ -4906,6 +4905,8 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt,
         agents: Mutex::new(HashMap::new()),
+        history_refresh: Arc::new(Mutex::new(())),
+        history_status: watch::channel(crate::session_registry::HistoryLoadStatus::Loading).0,
         helper_roles: Mutex::new(HashMap::new()),
         custom_model_generations: Mutex::new(HashMap::new()),
         default_agent_cmd: config.agent.clone(),
@@ -5022,9 +5023,8 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         });
     }
 
-    // Open the named pipe and accept helper connections. Agent CLIs are
-    // spawned lazily per-helper (see `get_or_spawn_agent`), and an
-    // individual agent CLI dying is handled per-CLI by its reaper
+    // Open the named pipe before warming host agents, so startup discovery
+    // cannot delay helper connections. An individual agent CLI dying is handled by its reaper
     // (`spawn_one_agent`) — it removes that agent from the pool but the
     // master stays alive so sibling tabs on OTHER agents keep working.
     // Only a fatal pipe error returns from this loop. SharedWta on the
@@ -5050,6 +5050,8 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         "named pipe listening; awaiting helper connections"
     );
     let _pipe_discovery_guard = MasterPipeDiscoveryGuard::write(&pipe_name);
+    tracing::info!(target: "master_history", "starting host agent discovery at master startup");
+    request_host_history_refresh(&inner);
 
     let mut next_helper_id: u64 = 1;
     // Cheap monotonic counter for tracking concurrent helper count.
@@ -5975,7 +5977,7 @@ async fn spawn_one_agent(
             tracing::info!(
                 target: "master_history",
                 cli = ?agent.cli_source,
-                count,
+                ?count,
                 "agent ACP history seed complete"
             );
         });
@@ -6591,6 +6593,21 @@ pub(crate) async fn broadcast_ext_to_helpers(
     }
 }
 
+async fn publish_session_status_delta(state: &MasterStateInner, session_id: &str) {
+    let sid = acp::schema::v1::SessionId::new(session_id.to_string());
+    let Some(row) = state.registry.lookup(&sid).await else {
+        return;
+    };
+    let Some(status) = row.status.as_ref() else {
+        return;
+    };
+    crate::wt_protocol_events::send(crate::wt_protocol_events::session_status_changed_event(
+        session_id,
+        row.pane_session_id.as_deref(),
+        status,
+    ));
+}
+
 /// Cached raw host `session/list`. `Some(sessions)` = the agent listed (possibly
 /// empty); `None` = unsupported (Gemini / non-ACP custom), not connected yet, or
 /// the call failed / timed out. Callers MUST treat `None` as "unknown", never as
@@ -6992,10 +7009,8 @@ fn is_stale_host_history_row(
 async fn seed_host_and_broadcast(
     state: &std::sync::Arc<MasterStateInner>,
     agent: &AgentCli,
-) -> usize {
-    let Some((changed, count)) = sync_host_history(state, agent).await else {
-        return 0;
-    };
+) -> Option<usize> {
+    let (changed, count) = sync_host_history(state, agent).await?;
     if changed {
         broadcast_ext_to_helpers(
             state,
@@ -7003,7 +7018,99 @@ async fn seed_host_and_broadcast(
         )
         .await;
     }
-    count
+    Some(count)
+}
+
+fn host_history_agent_ids(
+    allowed_ids: Option<&HashSet<String>>,
+    mut is_available: impl FnMut(&str) -> bool,
+) -> Vec<&'static str> {
+    crate::agent_registry::KNOWN_AGENTS
+        .iter()
+        .filter(|profile| allowed_ids.is_none_or(|ids| ids.contains(profile.id)))
+        .filter(|profile| is_available(profile.id))
+        .map(|profile| profile.id)
+        .collect()
+}
+
+async fn refresh_host_history_agents(state: &Arc<MasterStateInner>, agent_ids: &[&str]) -> bool {
+    let results = futures::future::join_all(agent_ids.iter().map(|&agent_id| async move {
+        let command = crate::agent_registry::build_acp_command(agent_id, None);
+        let agent = match get_or_spawn_agent(
+            state,
+            &command,
+            Some(agent_id),
+            &crate::agent_source::AgentSource::Host,
+            ProviderBinding::Native,
+            Vec::new(),
+        )
+        .await
+        {
+            Ok(agent) => agent,
+            Err(error) => {
+                tracing::warn!(
+                    target: "master_history",
+                    agent_id,
+                    error = %format!("{error:#}"),
+                    "could not initialize agent for sidebar history"
+                );
+                return false;
+            }
+        };
+        if agent.cached_init_resp.agent_capabilities.session_capabilities.list.is_none() {
+            tracing::debug!(target: "master_history", agent_id, "agent does not support session/list");
+            return true;
+        }
+        if seed_host_and_broadcast(state, &agent).await.is_none() {
+            tracing::warn!(target: "master_history", agent_id, "could not load agent history");
+            return false;
+        }
+        true
+    }))
+    .await;
+    results.into_iter().all(|succeeded| succeeded)
+}
+
+fn request_host_history_refresh(state: &Arc<MasterStateInner>) {
+    let Ok(guard) = Arc::clone(&state.history_refresh).try_lock_owned() else {
+        return;
+    };
+    let state = Arc::clone(state);
+    tokio::task::spawn_local(async move {
+        // Survives the short-lived control client; overlapping windows share one refresh.
+        let _guard = guard;
+        let allowed_ids = state.allowed_agent_ids.clone();
+        let discovery = tokio::task::spawn_blocking(move || {
+            let npx_available = crate::agent_check::host_npx_available();
+            host_history_agent_ids(allowed_ids.as_ref(), |agent_id| {
+                crate::agent_check::check_host_agent_availability(agent_id, npx_available)
+                    .launch_ready
+            })
+        })
+        .await;
+        let succeeded = match discovery {
+            Ok(agent_ids) => refresh_host_history_agents(&state, &agent_ids).await,
+            Err(error) => {
+                tracing::error!(target: "master_history", %error, "host agent availability check failed");
+                false
+            }
+        };
+        use crate::session_registry::HistoryLoadStatus;
+        let status = if succeeded {
+            HistoryLoadStatus::Ready
+        } else {
+            HistoryLoadStatus::Error
+        };
+        // Keep the last completed outcome during subsequent refreshes. Resetting
+        // to Loading on every snapshot request would prevent an empty list settling.
+        if state.history_status.send_replace(status) != status {
+            broadcast_ext_to_helpers(
+                &state,
+                crate::session_registry::build_sessions_changed_notification(),
+            )
+            .await;
+        }
+    });
 }
 
 /// Before returning the snapshot, opportunistically upgrade any row whose title
@@ -7013,15 +7120,17 @@ async fn seed_host_and_broadcast(
 /// delegate sessions, which register with an empty title before the CLI has
 /// generated its real one.
 ///
-/// `agent` is the caller's bound CLI. It is `None` only for a client that never
-/// bound one (`wta sessions list`), in which case the ACP re-pull is skipped
-/// and the current registry snapshot is returned as-is — master must not guess
-/// an agent, since asking the wrong one would stamp and reconcile foreign rows.
+/// `agent` is the caller's bound CLI. Unbound control clients get the current
+/// snapshot without spawning an agent unless they explicitly request
+/// `all_agents`, which schedules independent host-agent discovery.
 async fn handle_sessions_list(
     state: &std::sync::Arc<MasterStateInner>,
     agent: Option<&AgentCli>,
     parsed: &crate::session_registry::SessionsListParams,
 ) -> acp::Result<acp::schema::v1::ExtResponse> {
+    if parsed.all_agents {
+        request_host_history_refresh(state);
+    }
     if let Some(agent) = agent {
         if parsed.rescan {
             // Re-pull this agent's own `session/list` and broadcast. Each pooled
@@ -7031,7 +7140,7 @@ async fn handle_sessions_list(
             tracing::info!(
                 target: "master_history",
                 cli = ?agent.cli_source,
-                count,
+                ?count,
                 "sessions/list rescan: reloaded history via ACP"
             );
         } else {
@@ -7050,6 +7159,9 @@ async fn handle_sessions_list(
         }
     }
 
+    // Read readiness first so a refresh cannot pair an old empty snapshot with
+    // its newly published Ready status.
+    let history_status = *state.history_status.borrow();
     let mut sessions = state.registry.snapshot().await;
     if let Some(agent) = agent {
         if sessions
@@ -7064,7 +7176,7 @@ async fn handle_sessions_list(
     }
 
     sessions.sort_by(|l, r| l.session_id.0.cmp(&r.session_id.0));
-    let raw = crate::session_registry::build_sessions_list_response(sessions);
+    let raw = crate::session_registry::build_sessions_list_response(sessions, Some(history_status));
     Ok(acp::schema::v1::ExtResponse::new(raw.into()))
 }
 
@@ -7240,6 +7352,7 @@ async fn handle_session_activate(
             let mut params = serde_json::json!({
                 "window_id": parsed.window_id,
                 "commandline": format!("cmd /c {commandline}"),
+                "background": true,
             });
             if matches!(row.location, crate::agent_sessions::SessionLocation::Host)
                 && !row.cwd.as_os_str().is_empty()
@@ -7251,6 +7364,25 @@ async fn handle_session_activate(
             }
             match wt.request("create_tab", params).await {
                 Ok(result) => {
+                    let Some(pane_session_id) = result
+                        .get("session_id")
+                        .or_else(|| result.get("SessionId"))
+                        .or_else(|| result.get("sessionId"))
+                        .and_then(serde_json::Value::as_str)
+                        .map(|value| {
+                            value
+                                .trim()
+                                .trim_matches(|ch| ch == '{' || ch == '}')
+                                .to_string()
+                        })
+                        .filter(|value| !value.is_empty())
+                    else {
+                        return respond!(
+                            "resume_cli",
+                            false,
+                            Some("The created tab did not return a pane ID.".to_string())
+                        );
+                    };
                     if state
                         .registry
                         .mark_resume_dispatched_identity(&parsed.identity)
@@ -7266,43 +7398,46 @@ async fn handle_session_activate(
                             )
                         );
                     }
-                    if let Some(pane_session_id) = result
-                        .get("session_id")
-                        .or_else(|| result.get("SessionId"))
-                        .or_else(|| result.get("sessionId"))
-                        .and_then(serde_json::Value::as_str)
-                        .map(|value| {
-                            value
-                                .trim()
-                                .trim_matches(|ch| ch == '{' || ch == '}')
-                                .to_string()
-                        })
-                        .filter(|value| !value.is_empty())
+                    if !state
+                        .registry
+                        .assign_resume_pane_identity(&parsed.identity, pane_session_id.clone())
+                        .await
                     {
-                        if !state
-                            .registry
-                            .assign_resume_pane_identity(&parsed.identity, pane_session_id.clone())
-                            .await
-                        {
-                            return respond!(
-                                "resume_cli",
-                                false,
-                                Some(
-                                    "The created pane could not be bound to the selected session."
-                                        .to_string()
-                                )
-                            );
-                        }
-                        if let Some(binding) = crate::wt_protocol_events::resumed_pane_binding_event(
-                            &provider_id,
-                            row.session_id.0.as_ref(),
-                            &pane_session_id,
-                            &row.location,
-                        ) {
-                            crate::wt_protocol_events::send(binding);
-                        }
+                        return respond!(
+                            "resume_cli",
+                            false,
+                            Some(
+                                "The created pane could not be bound to the selected session."
+                                    .to_string()
+                            )
+                        );
                     }
-                    respond!("resume_cli", true, None)
+                    if let Some(binding) = crate::wt_protocol_events::resumed_pane_binding_event(
+                        &provider_id,
+                        row.session_id.0.as_ref(),
+                        &pane_session_id,
+                        &row.location,
+                    ) {
+                        crate::wt_protocol_events::send(binding);
+                    }
+                    // Only this History activation preserves the sidebar: background
+                    // creation followed by focus of the exact newly returned pane.
+                    match wt
+                        .request(
+                            "focus_pane",
+                            serde_json::json!({ "session_id": pane_session_id }),
+                        )
+                        .await
+                    {
+                        Ok(_) => respond!("resume_cli", true, None),
+                        Err(error) => respond!(
+                            "resume_cli",
+                            false,
+                            Some(format!(
+                                "The session was created but could not be focused: {error}"
+                            ))
+                        ),
+                    }
                 }
                 Err(error) => respond!("resume_cli", false, Some(error.to_string())),
             }
@@ -7358,12 +7493,18 @@ async fn handle_session_hook(
         }
     }
 
+    let status_key = session_event_status_key(state, &event).await;
     let (applied, refresh_key) = apply_master_session_event(state, event, is_born_bound).await;
     let title_upgraded = if let Some(key) = refresh_key {
         try_refresh_title_via_acp(state, &acp::schema::v1::SessionId::new(key)).await
     } else {
         false
     };
+    if applied {
+        if let Some(key) = status_key {
+            publish_session_status_delta(state, &key).await;
+        }
+    }
     if applied || title_upgraded {
         broadcast_ext_to_helpers(
             state,
@@ -7484,7 +7625,7 @@ async fn apply_master_session_event(
                 // A real binding transition starts a hook-free generation: the
                 // watcher may supply activity but may not re-bind the pane.
                 state.hook_owned.lock().await.remove(&sid);
-                state.born_bound.lock().await.insert(sid);
+                state.born_bound.lock().await.insert(sid.clone());
             }
             return (applied, refresh_key);
         } else {
@@ -7510,6 +7651,35 @@ async fn apply_master_session_event(
 
     let applied = state.registry.apply_event(event).await;
     (applied, refresh_key)
+}
+
+async fn session_event_status_key(
+    state: &MasterStateInner,
+    event: &crate::agent_sessions::SessionEvent,
+) -> Option<String> {
+    if let Some(key) = session_event_key(event) {
+        return Some(key.to_string());
+    }
+
+    let pane_session_id = match event {
+        crate::agent_sessions::SessionEvent::PaneClosed { pane_session_id }
+        | crate::agent_sessions::SessionEvent::ConnectionFailed {
+            pane_session_id, ..
+        } => pane_session_id,
+        _ => return None,
+    };
+    state
+        .registry
+        .snapshot()
+        .await
+        .into_iter()
+        .find(|row| {
+            row.pane_session_id.as_deref().is_some_and(|pane| {
+                crate::agent_sessions::pane_key(pane)
+                    == crate::agent_sessions::pane_key(pane_session_id)
+            })
+        })
+        .map(|row| row.session_id.0.to_string())
 }
 
 /// Handle a #266 *born-bound* registration (delegate `?<prompt>` / resume).
@@ -7549,15 +7719,13 @@ async fn handle_session_born_bound(
 /// Apply one watcher-emitted session event to master's registry and, if it
 /// changed state, broadcast `sessions/changed` so helpers refetch.
 ///
-/// The file watcher is a **status-only fallback for #266 born-bound sessions**
-/// (delegate `?<prompt>` / `/sessions` resume). It no longer discovers or
-/// pane-binds user-typed shell-pane sessions — that path relied on reading a
-/// foreign process's PEB (`proc_bind`) to map a pid to its pane, which was
-/// removed. Events are routed as:
+/// File activity is a status fallback for sessions whose binding is already
+/// known. Bindings come from born-bound launches or real hooks.
+/// Events are routed as:
 ///   1. `hook_owned` (a real hook / ACP agent-pane event owns binding AND
 ///      activity) → drop; or
-///   2. `born_bound` (WTA-launched, already pane-bound) → apply STATUS only,
-///      without touching the pane binding; or
+///   2. `born_bound` (already pane-bound) → apply STATUS only, without
+///      touching the pane binding; or
 ///   3. anything else (a user-typed CLI, or a machine-wide copilot/claude in
 ///      VS Code / another terminal) → drop — we can't bind it to an IT pane.
 async fn apply_watcher_event(state: &MasterStateInner, emitted: crate::session_watcher::Emitted) {
@@ -7567,26 +7735,24 @@ async fn apply_watcher_event(state: &MasterStateInner, emitted: crate::session_w
     // producers:
     //   1. a real hook / ACP agent-pane event recorded the session in
     //      `hook_owned` → drop (the hook owns binding AND activity); or
-    //   2. it's a #266 born-bound row (`born_bound`) → the watcher owns no
-    //      binding here, but with no real hook it supplies STATUS only (handled
-    //      just below); or
+    //   2. it's an already-bound fallback row (`born_bound`)
+    //      → the watcher supplies STATUS only (handled just below); or
     //   3. anything else (a user-typed CLI, or a machine-wide copilot/claude in
     //      VS Code / another terminal) → drop below; we can't bind it to a pane.
     if state.hook_owned.lock().await.contains(&sid) {
         return;
     }
 
-    // Born-bound activity-only fallback: the row already exists and is bound to
-    // its pane by #266 born-bound. Born-bound emits no activity, so when no real
-    // hook is installed the watcher supplies STATUS. `emitted.event` is always a
-    // keyed status event (ToolStarting/ToolCompleted/Notification), so applying
-    // it updates the row's status without touching the pane binding / origin.
-    // Born-bound owns the (live, vetted) pane binding; we only move the status.
+    // The row already has a live, vetted pane binding. The watcher only moves
+    // status and never changes that binding.
     if state.born_bound.lock().await.contains(&sid) {
         let key = emitted.key.clone();
         let applied = state.registry.apply_event(emitted.event).await;
         let title_upgraded =
-            try_refresh_title_via_acp(state, &acp::schema::v1::SessionId::new(key)).await;
+            try_refresh_title_via_acp(state, &acp::schema::v1::SessionId::new(key.clone())).await;
+        if applied {
+            publish_session_status_delta(state, &key).await;
+        }
         if applied || title_upgraded {
             broadcast_ext_to_helpers(
                 state,
@@ -9105,11 +9271,11 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
             refresh_keys.insert(key);
         }
     }
-    let final_status = state
+    let final_row = state
         .registry
         .lookup(&acp::schema::v1::SessionId::new(session_key.clone()))
-        .await
-        .and_then(|row| row.status);
+        .await;
+    let final_status = final_row.as_ref().and_then(|row| row.status.clone());
     tracing::info!(
         target: "master_wt_event",
         hook_event = event,
@@ -9120,6 +9286,17 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
         "processed COM agent hook"
     );
     if changed {
+        if let Some(row) = final_row {
+            if let Some(status) = row.status.as_ref() {
+                crate::wt_protocol_events::send(
+                    crate::wt_protocol_events::session_status_changed_event(
+                        &session_key,
+                        row.pane_session_id.as_deref(),
+                        status,
+                    ),
+                );
+            }
+        }
         broadcast_ext_to_helpers(
             state,
             crate::session_registry::build_sessions_changed_notification(),
@@ -9423,6 +9600,7 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
                     session_key = %row.session_id.0,
                     "shell prompt ended bound session in COM event order"
                 );
+                publish_session_status_delta(state, &row.session_id.0).await;
                 broadcast_ext_to_helpers(
                     state,
                     crate::session_registry::build_sessions_changed_notification(),
@@ -9450,6 +9628,7 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
         }
         _ => return,
     };
+    let status_key = session_event_status_key(state, &event).await;
     tracing::info!(
         target: "master_wt_event",
         pane_id = %pane_id,
@@ -9459,6 +9638,9 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
     );
     let applied = state.registry.apply_event(event).await;
     if applied {
+        if let Some(key) = status_key {
+            publish_session_status_delta(state, &key).await;
+        }
         tracing::info!(
             target: "master_wt_event",
             pane_id = %pane_id,

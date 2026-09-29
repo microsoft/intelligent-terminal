@@ -400,18 +400,28 @@ pub struct SessionsChangedParams {}
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct SessionsListParams {
-    /// When true, master re-scans the on-disk historical session logs
-    /// (`load_for_cli`) and upserts them into the registry before answering —
-    /// the F5 refresh path. `#[serde(default)]` keeps old empty `{}` params
-    /// deserializing as false, so the periodic 5s poll and view-open stay on
-    /// the cheap snapshot-only path.
+    /// Refresh the calling helper's bound agent through ACP before answering.
     #[serde(default)]
     pub rescan: bool,
+    /// Refresh installed, policy-allowed host agents in the background. Their
+    /// ACP connections stay in the master pool; the response is still a snapshot.
+    #[serde(default)]
+    pub all_agents: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct SessionsListResponse {
     pub sessions: Vec<SessionInfo>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub history_status: Option<HistoryLoadStatus>,
+}
+
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum HistoryLoadStatus {
+    Loading,
+    Ready,
+    Error,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -468,10 +478,10 @@ pub fn build_sessions_changed_notification() -> acp::schema::v1::ExtNotification
     acp::schema::v1::ExtNotification::new(INTELLTERM_METHOD_SESSIONS_CHANGED, Arc::from(raw))
 }
 
-/// Build an `ExtRequest` for `intellterm.wta/sessions/list`. `rescan` asks
-/// master to re-load the on-disk historical session logs before answering.
-pub fn build_sessions_list_request(rescan: bool) -> acp::schema::v1::ExtRequest {
-    let json = serde_json::to_string(&SessionsListParams { rescan })
+/// Build an `ExtRequest` for `intellterm.wta/sessions/list`. `rescan` refreshes
+/// the bound agent; `all_agents` schedules background host-agent discovery.
+pub fn build_sessions_list_request(rescan: bool, all_agents: bool) -> acp::schema::v1::ExtRequest {
+    let json = serde_json::to_string(&SessionsListParams { rescan, all_agents })
         .expect("SessionsListParams is trivially serializable");
     let raw = serde_json::value::RawValue::from_string(json)
         .expect("serde_json::to_string always produces valid JSON");
@@ -524,8 +534,12 @@ pub fn parse_session_activate_params(
 
 pub fn build_sessions_list_response(
     sessions: Vec<SessionInfo>,
+    history_status: Option<HistoryLoadStatus>,
 ) -> Box<serde_json::value::RawValue> {
-    let response = SessionsListResponse { sessions };
+    let response = SessionsListResponse {
+        sessions,
+        history_status,
+    };
     serde_json::value::to_raw_value(&response)
         .expect("SessionsListResponse serialization is infallible for owned data")
 }
@@ -3258,7 +3272,7 @@ mod tests {
 
     #[test]
     fn build_sessions_list_request_round_trips_rescan() {
-        let req = build_sessions_list_request(false);
+        let req = build_sessions_list_request(false, false);
         assert_eq!(&*req.method, INTELLTERM_METHOD_SESSIONS_LIST);
         assert!(
             !parse_sessions_list_params(&req.params)
@@ -3266,7 +3280,7 @@ mod tests {
                 .rescan
         );
 
-        let req_rescan = build_sessions_list_request(true);
+        let req_rescan = build_sessions_list_request(true, false);
         assert!(
             parse_sessions_list_params(&req_rescan.params)
                 .expect("params are valid")
@@ -3281,6 +3295,13 @@ mod tests {
                 .expect("empty is valid")
                 .rescan
         );
+        assert!(!parse_sessions_list_params(&empty).unwrap().all_agents);
+        assert!(!parse_sessions_list_params(&req.params).unwrap().all_agents);
+
+        let all = build_sessions_list_request(false, true);
+        let params = parse_sessions_list_params(&all.params).unwrap();
+        assert!(params.all_agents);
+        assert!(!params.rescan);
     }
 
     #[test]
@@ -3337,7 +3358,7 @@ mod tests {
             bound_pid: None,
             born_bound_pane: false,
         };
-        let raw = build_sessions_list_response(vec![row.clone()]);
+        let raw = build_sessions_list_response(vec![row.clone()], None);
         let parsed = parse_sessions_list_response(&raw).expect("response parses");
         assert_eq!(parsed.sessions, vec![row]);
     }
@@ -4175,10 +4196,36 @@ mod tests {
         info.last_activity_at_ms = Some(42);
         let resp = SessionsListResponse {
             sessions: vec![info.clone()],
+            history_status: Some(HistoryLoadStatus::Ready),
         };
         let raw = serde_json::value::to_raw_value(&resp).unwrap();
         let parsed = parse_sessions_list_response(&raw).unwrap();
         assert_eq!(parsed.sessions, vec![info]);
+        assert_eq!(parsed.history_status, Some(HistoryLoadStatus::Ready));
+    }
+
+    #[test]
+    fn sessions_list_response_distinguishes_loading_empty_and_failed_history() {
+        for (status, wire) in [
+            (HistoryLoadStatus::Loading, "loading"),
+            (HistoryLoadStatus::Ready, "ready"),
+            (HistoryLoadStatus::Error, "error"),
+        ] {
+            let raw = build_sessions_list_response(Vec::new(), Some(status));
+            let json: serde_json::Value = serde_json::from_str(raw.get()).unwrap();
+            assert_eq!(json["history_status"], wire);
+            let parsed = parse_sessions_list_response(&raw).unwrap();
+            assert!(parsed.sessions.is_empty());
+            assert_eq!(parsed.history_status, Some(status));
+        }
+
+        let legacy = serde_json::value::RawValue::from_string(r#"{"sessions":[]}"#.into()).unwrap();
+        assert_eq!(
+            parse_sessions_list_response(&legacy)
+                .unwrap()
+                .history_status,
+            None
+        );
     }
 
     #[test]
@@ -4268,7 +4315,7 @@ mod tests {
             WtaExtRequest::FocusSession(_)
         ));
         assert!(
-            matches!(parse_ext_request(build_sessions_list_request(true)), WtaExtRequest::SessionsList(p) if p.rescan)
+            matches!(parse_ext_request(build_sessions_list_request(true, false)), WtaExtRequest::SessionsList(p) if p.rescan)
         );
         assert!(matches!(
             parse_ext_request(build_session_hook_request(&ev)),
@@ -4302,7 +4349,9 @@ mod tests {
             WtaExtRequest::FocusSession(_)
         ));
         assert!(matches!(
-            parse_ext_request(strip_leading_underscore(build_sessions_list_request(false))),
+            parse_ext_request(strip_leading_underscore(build_sessions_list_request(
+                false, false
+            ))),
             WtaExtRequest::SessionsList(_)
         ));
         assert!(matches!(
