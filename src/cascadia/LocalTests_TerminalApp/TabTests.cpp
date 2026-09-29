@@ -295,6 +295,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabGroupingIgnoresAgentPane);
         TEST_METHOD(AgentViewFiltersSplitPaneChildren);
         TEST_METHOD(VerticalTabSearchMatchesCommittedTitle);
+        TEST_METHOD(VerticalTabTooltipsExposeStableShortcuts);
         TEST_METHOD(VerticalTabSearchUiState);
         TEST_METHOD(LiteralSearchHighlighting);
         TEST_METHOD(VerticalTabHistoryButtonOpensView);
@@ -3760,6 +3761,72 @@ namespace TerminalAppLocalTests
         });
     }
 
+    void TabTests::VerticalTabTooltipsExposeStableShortcuts()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            NewTerminalArgs args;
+            VERIFY_SUCCEEDED(page->_OpenNewTab(args));
+            VERIFY_SUCCEEDED(page->_OpenNewTab(args));
+            VERIFY_ARE_EQUAL(3u, page->_tabs.Size());
+
+            const auto first = page->_GetTabImpl(page->_tabs.GetAt(0));
+            const auto second = page->_GetTabImpl(page->_tabs.GetAt(1));
+            const auto third = page->_GetTabImpl(page->_tabs.GetAt(2));
+            first->SetTabText(L"First tab");
+            second->SetTabText(L"Hidden tab");
+            third->SetTabText(L"Third tab");
+
+            page->_tabSearchActive = true;
+            page->_tabSearchQuery = L"Third";
+            page->_ApplyTabListProjection();
+            page->UpdateLayout();
+
+            VERIFY_ARE_EQUAL(0u, first->TabViewIndex());
+            VERIFY_ARE_EQUAL(1u, second->TabViewIndex());
+            VERIFY_ARE_EQUAL(2u, third->TabViewIndex());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_tabStrip.ContainerFromIndex(0).as<ListViewItem>().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_tabStrip.ContainerFromIndex(1).as<ListViewItem>().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabStrip.ContainerFromIndex(2).as<ListViewItem>().Visibility());
+
+            const auto tooltipText = [](const DependencyObject& owner) {
+                const auto toolTip = ToolTipService::GetToolTip(owner).as<ToolTip>();
+                const auto textBlock = toolTip.Content().as<TextBlock>();
+                std::wstring text;
+                for (const auto& inlineElement : textBlock.Inlines())
+                {
+                    if (const auto run = inlineElement.try_as<Documents::Run>())
+                    {
+                        text.append(run.Text());
+                    }
+                    else if (inlineElement.try_as<Documents::LineBreak>())
+                    {
+                        text.push_back(L'\n');
+                    }
+                }
+                return text;
+            };
+
+            const auto horizontalTooltip = tooltipText(third->TabViewItem());
+            const auto verticalTooltip = tooltipText(third->_headerControl);
+            VERIFY_ARE_EQUAL(horizontalTooltip, verticalTooltip);
+            VERIFY_ARE_NOT_EQUAL(std::wstring::npos, verticalTooltip.find(L"Third tab"));
+            VERIFY_ARE_NOT_EQUAL(std::wstring::npos, verticalTooltip.find(L"ctrl+alt+3"));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"ctrl+alt+3" }, Automation::AutomationProperties::GetAcceleratorKey(third->TabViewItem()));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"ctrl+alt+3" }, Automation::AutomationProperties::GetAcceleratorKey(third->_headerControl));
+
+            page->_SelectTab(2);
+            VERIFY_IS_TRUE(page->_selectedTabItem() == third->TabViewItem());
+
+            third->SetVerticalTabLayout(false);
+            VERIFY_IS_NULL(ToolTipService::GetToolTip(third->_headerControl));
+            VERIFY_IS_NOT_NULL(ToolTipService::GetToolTip(third->TabViewItem()));
+            third->SetVerticalTabLayout(true);
+            VERIFY_IS_NOT_NULL(ToolTipService::GetToolTip(third->_headerControl));
+        });
+    }
+
     void TabTests::VerticalTabSearchUiState()
     {
         TestOnUIThread([&]() {
@@ -6040,7 +6107,9 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(16.0, firstPaneItem.Icon().Width());
             VERIFY_ARE_EQUAL(16.0, firstPaneItem.Icon().Height());
             VERIFY_IS_TRUE(paneList.ContainerFromIndex(0) == firstPaneContainer);
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane" }, firstPaneRoot.FindName(L"PaneTitleText").as<TextBlock>().Text());
+            const auto paneTitleText = firstPaneRoot.FindName(L"PaneTitleText").as<TextBlock>();
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane" }, paneTitleText.Text());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane" }, winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(firstPaneActivateButton)));
             VERIFY_ARE_EQUAL(Visibility::Collapsed, firstPaneRoot.FindName(L"PaneActiveIndicator").as<FrameworkElement>().Visibility());
 
             updatePanes({ winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"", L"Renamed pane", false),

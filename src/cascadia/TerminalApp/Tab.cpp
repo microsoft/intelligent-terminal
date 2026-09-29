@@ -288,6 +288,8 @@ namespace winrt::TerminalApp::implementation
         }
 
         _keyChord = keyChordText;
+        Automation::AutomationProperties::SetAcceleratorKey(TabViewItem(), _keyChord);
+        Automation::AutomationProperties::SetAcceleratorKey(_headerControl, _keyChord);
         _UpdateToolTip();
     }
 
@@ -299,34 +301,46 @@ namespace winrt::TerminalApp::implementation
     // - <none>
     void Tab::_UpdateToolTip()
     {
-        auto titleRun = WUX::Documents::Run();
-        titleRun.Text(_CreateToolTipTitle());
+        const auto makeToolTip = [&]() {
+            auto titleRun = WUX::Documents::Run();
+            titleRun.Text(_CreateToolTipTitle());
 
-        auto textBlock = WUX::Controls::TextBlock{};
-        textBlock.TextWrapping(WUX::TextWrapping::Wrap);
-        textBlock.TextAlignment(WUX::TextAlignment::Center);
-        textBlock.Inlines().Append(titleRun);
+            auto textBlock = WUX::Controls::TextBlock{};
+            textBlock.TextWrapping(WUX::TextWrapping::Wrap);
+            textBlock.TextAlignment(WUX::TextAlignment::Center);
+            textBlock.Inlines().Append(titleRun);
 
-        if (_isVerticalTabLayout && !_richTabTooltipText.empty())
+            if (_isVerticalTabLayout && !_richTabTooltipText.empty())
+            {
+                auto metadataRun = WUX::Documents::Run();
+                metadataRun.Text(_richTabTooltipText);
+                textBlock.Inlines().Append(WUX::Documents::LineBreak{});
+                textBlock.Inlines().Append(metadataRun);
+            }
+
+            if (!_keyChord.empty())
+            {
+                auto keyChordRun = WUX::Documents::Run();
+                keyChordRun.Text(_keyChord);
+                keyChordRun.FontStyle(winrt::Windows::UI::Text::FontStyle::Italic);
+                textBlock.Inlines().Append(WUX::Documents::LineBreak{});
+                textBlock.Inlines().Append(keyChordRun);
+            }
+
+            WUX::Controls::ToolTip toolTip{};
+            toolTip.Content(textBlock);
+            return toolTip;
+        };
+
+        WUX::Controls::ToolTipService::SetToolTip(TabViewItem(), makeToolTip());
+        if (_isVerticalTabLayout)
         {
-            auto metadataRun = WUX::Documents::Run();
-            metadataRun.Text(_richTabTooltipText);
-            textBlock.Inlines().Append(WUX::Documents::LineBreak{});
-            textBlock.Inlines().Append(metadataRun);
+            WUX::Controls::ToolTipService::SetToolTip(_headerControl, makeToolTip());
         }
-
-        if (!_keyChord.empty())
+        else
         {
-            auto keyChordRun = WUX::Documents::Run();
-            keyChordRun.Text(_keyChord);
-            keyChordRun.FontStyle(winrt::Windows::UI::Text::FontStyle::Italic);
-            textBlock.Inlines().Append(WUX::Documents::LineBreak{});
-            textBlock.Inlines().Append(keyChordRun);
+            WUX::Controls::ToolTipService::SetToolTip(_headerControl, nullptr);
         }
-
-        WUX::Controls::ToolTip toolTip{};
-        toolTip.Content(textBlock);
-        WUX::Controls::ToolTipService::SetToolTip(TabViewItem(), toolTip);
     }
 
     // Method Description:
