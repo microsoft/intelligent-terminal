@@ -6384,6 +6384,10 @@ namespace winrt::TerminalApp::implementation
             }();
 
             auto title = row.get("title", "").asString();
+            if (const auto lineBreak = title.find_first_of("\r\n"); lineBreak != std::string::npos)
+            {
+                title.resize(lineBreak);
+            }
             const auto cwd = row.get("cwd", "").asString();
             if (title.empty() && isLive && isAgentPane)
             {

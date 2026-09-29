@@ -313,6 +313,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabHistoryStartupLoading);
         TEST_METHOD(VerticalTabHistoryLoadingAndErrorsKeepRows);
         TEST_METHOD(VerticalTabHistorySnapshotRejectsMalformedResponse);
+        TEST_METHOD(VerticalTabHistoryTitlesUseFirstLine);
         TEST_METHOD(VerticalTabHistoryIgnoresStaleLoadingResult);
         TEST_METHOD(VerticalTabHistoryRefreshPreservesCollection);
         TEST_METHOD(VerticalTabHistoryRefreshPreservesScroll);
@@ -4150,6 +4151,64 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(custom.state == Page::_SidebarHistorySnapshot::State::Ready);
             VERIFY_ARE_EQUAL(size_t{ 1 }, custom.items.size());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:test" }, custom.items.front().AgentId());
+        });
+    }
+
+    void TabTests::VerticalTabHistoryTitlesUseFirstLine()
+    {
+        TestOnUIThread([&]() {
+            using Page = winrt::TerminalApp::implementation::TerminalPage;
+            winrt::TerminalApp::TabStrip strip;
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            const std::pair<std::wstring_view, std::wstring_view> cases[]{
+                { L"Single-line title", L"Single-line title" },
+                { L"# Working in Windows Terminal\r\n\r\nHidden instructions", L"# Working in Windows Terminal" },
+                { L"First line\nHidden instructions", L"First line" },
+                { L"First line\rHidden instructions", L"First line" },
+                { L"First line\r\nSecond line\nThird line", L"First line" },
+                { L"First line\n\rSecond line", L"First line" },
+                { L"First line\r\n", L"First line" },
+                { L"  First line  \nHidden instructions", L"  First line  " },
+                { L"\u4f1a\u8bdd\u6807\u9898\nHidden instructions", L"\u4f1a\u8bdd\u6807\u9898" },
+                { L"\r\nHidden instructions", L"repo" },
+                { L"", L"repo" },
+            };
+            for (const auto& [input, expected] : cases)
+            {
+                Json::Value response;
+                response["history_status"] = "ready";
+                auto& row = response["sessions"][0];
+                row["session_id"] = "multiline-title";
+                row["provider_id"] = "copilot";
+                row["location"] = "Host";
+                row["status"] = "Historical";
+                row["cwd"] = "C:\\repo";
+                row["title"] = winrt::to_string(winrt::hstring{ input });
+                auto snapshot = Page::_ParseSidebarHistorySnapshot(Json::writeString(Json::StreamWriterBuilder{}, response));
+                VERIFY_IS_TRUE(snapshot.state == Page::_SidebarHistorySnapshot::State::Ready);
+                VERIFY_ARE_EQUAL(size_t{ 1 }, snapshot.items.size());
+                VERIFY_ARE_EQUAL(winrt::hstring{ expected }, snapshot.items.front().Title());
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"multiline-title" }, snapshot.items.front().SessionId());
+
+                impl->HistorySearchTextBox().Text(L"");
+                impl->CommitHistorySnapshot(std::move(snapshot.items));
+                impl->HistorySearchTextBox().Text(L"Hidden instructions");
+                VERIFY_ARE_EQUAL(0u, strip.HistoryItems().Size());
+                impl->HistorySearchTextBox().Text(winrt::hstring{ expected });
+                VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
+            }
+
+            TextBlock title;
+            title.Style(strip.Resources().Lookup(winrt::box_value(L"HistoryTitleTextStyle")).as<Style>());
+            VERIFY_ARE_EQUAL(1, title.MaxLines());
+            VERIFY_ARE_EQUAL(TextWrapping::NoWrap, title.TextWrapping());
+            title.Text(L"First line");
+            title.Measure({ 240, 400 });
+            const auto singleLineHeight = title.DesiredSize().Height;
+            VERIFY_IS_TRUE(singleLineHeight > 0);
+            title.Text(L"First line\r\nSecond line\rThird line\nFourth line");
+            title.Measure({ 240, 400 });
+            VERIFY_ARE_EQUAL(singleLineHeight, title.DesiredSize().Height);
         });
     }
 

@@ -30,7 +30,9 @@
             <Style x:Key="HistoryTitleTextStyle"
                    TargetType="TextBlock">
                 <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="MaxLines" Value="1" />
                 <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                <Setter Property="TextWrapping" Value="NoWrap" />
             </Style>
             <Style x:Key="HistorySubtitleTextStyle"
                    TargetType="TextBlock">

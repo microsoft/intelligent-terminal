@@ -287,6 +287,9 @@ generic session icon rather than another provider's brand.
 The bottom bar no longer has a Show sessions button. The existing
 `Ctrl+Shift+/` binding and `openAgentSessions` action still open the agent pane's
 session manager; the sidebar Agent sessions view remains a separate entry point.
+Session titles use only the text before the first CR or LF. An empty first line
+uses the existing missing-title fallback. The title occupies one non-wrapping
+line with ellipsis; the metadata line below it is unchanged.
 The second line is left-aligned as `Agent name · relative age · status` for Host
 sessions and `Agent name · distro name · relative age · status` for WSL sessions,
 using the provider's display name, the exact WSL distro name, and
