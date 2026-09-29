@@ -11266,7 +11266,7 @@ namespace winrt::TerminalApp::implementation
                 if (propertyName == L"Title")
                 {
                     page->_UpdateTitle(*tab);
-                    page->_ApplyTabListProjection(*tab);
+                    page->_ApplyTabListProjection(*tab, false);
                 }
                 else if (propertyName == L"Icon" && page->_isVerticalLayout)
                 {
@@ -12073,9 +12073,13 @@ namespace winrt::TerminalApp::implementation
     {
         if (const auto tab{ _GetTabImpl(sender) })
         {
+            const auto tabStrip = _isVerticalLayout && _tabStrip ?
+                                      winrt::get_self<implementation::TabStrip>(_tabStrip) :
+                                      nullptr;
+            const auto display = tabStrip ? tabStrip->DisplayItemForTab(tab->TabViewItem()) : nullptr;
             // Possibly update the icon of the tab.
             _UpdateTabIcon(*tab);
-            _RefreshTabStripPaneItems(tab);
+            _RefreshTabStripPaneItems(tab, display);
 
             if (const auto selected = _GetFocusedTabImpl(); selected && selected.get() == tab.get())
             {
@@ -12089,7 +12093,12 @@ namespace winrt::TerminalApp::implementation
                 auto profile = tab->GetFocusedProfile();
                 _UpdateBackground(profile);
             }
-            _RefreshRichTabForTab(*tab, true);
+            _RefreshRichTabForTab(*tab, true, false);
+            if (tabStrip)
+            {
+                tabStrip->SyncTabPresentation(display);
+            }
+            _ApplyTabListProjection(*tab, false, false);
         }
 
         _UpdateSidebarHistoryCurrentSession();

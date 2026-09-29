@@ -932,7 +932,10 @@ namespace winrt::TerminalApp::implementation
         void _UpdateTitle(const Tab& tab);
         void _UpdateTabIcon(Tab& tab);
         void _UpdateTabView();
-        void _ApplyTabListProjection(const TerminalApp::Tab& changedTab = nullptr, bool refreshPaneItems = true);
+        void _ApplyTabListProjection(
+            const TerminalApp::Tab& changedTab = nullptr,
+            bool refreshPaneItems = true,
+            bool updateBookkeeping = true);
         void _UpdateTabFilterStatus();
         void _AttachOrUpdateRichTabControl(const Microsoft::Terminal::Control::TermControl& control);
         void _DetachRichTabControl(const Microsoft::Terminal::Control::TermControl& control);

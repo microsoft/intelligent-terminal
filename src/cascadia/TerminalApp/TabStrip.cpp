@@ -317,14 +317,15 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::SetTabItemVisibility(IInspectable const& item, bool visible)
     {
-        const auto tab = item.try_as<MUX::Controls::TabViewItem>();
-        if (!tab)
+        if (const auto display = DisplayItemForTab(item))
         {
-            return;
+            SetTabItemVisibility(display, visible);
         }
+    }
 
-        uint32_t index{};
-        if (_tabItems.IndexOf(tab, index))
+    void TabStrip::SetTabItemVisibility(TerminalApp::TabStripDisplayItem const& display, bool visible)
+    {
+        if (const auto tab = display ? display.Tab() : nullptr)
         {
             if (const auto previous = _tabItemVisibility.find(winrt::get_abi(tab));
                 previous != _tabItemVisibility.end() && previous->second.Item.get() == tab && previous->second.Visible == visible)
@@ -332,7 +333,10 @@ namespace winrt::TerminalApp::implementation
                 return;
             }
             _tabItemVisibility.insert_or_assign(winrt::get_abi(tab), TabItemVisibilityState{ winrt::make_weak(tab), visible });
-            _applyTabItemVisibility(tab);
+            if (const auto container = ItemsList().ContainerFromItem(display).try_as<ListViewItem>())
+            {
+                _applyTabItemVisibility(tab, container);
+            }
         }
     }
 
@@ -447,6 +451,20 @@ namespace winrt::TerminalApp::implementation
             return _displayItemForTab(tab);
         }
         return nullptr;
+    }
+
+    TerminalApp::TabStripDisplayItem TabStrip::DisplayItemAt(uint32_t index) const
+    {
+        return _displayItemAt(index);
+    }
+
+    void TabStrip::SyncTabPresentation(TerminalApp::TabStripDisplayItem const& display)
+    {
+        if (display)
+        {
+            winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed);
+            _refreshDisplayItemVisuals(display);
+        }
     }
 
     void TabStrip::SetTabSearchText(IInspectable const& item, hstring const& searchText)

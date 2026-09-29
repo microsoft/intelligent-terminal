@@ -197,6 +197,7 @@ namespace winrt::TerminalApp::implementation
         void SelectedIndex(int32_t value);
         winrt::Windows::UI::Xaml::DependencyObject ContainerFromIndex(int32_t index);
         void SetTabItemVisibility(winrt::Windows::Foundation::IInspectable const& item, bool visible);
+        void SetTabItemVisibility(TerminalApp::TabStripDisplayItem const& display, bool visible);
         void SetFilterStatus(uint32_t visibleTabCount, bool selectedTabVisible);
         void SetTabPresentation(winrt::Windows::Foundation::IInspectable const& item,
                                 winrt::hstring const& title,
@@ -212,6 +213,8 @@ namespace winrt::TerminalApp::implementation
                           bool isGroup);
         winrt::Windows::Foundation::IInspectable HeaderForTab(winrt::Windows::Foundation::IInspectable const& item) const;
         TerminalApp::TabStripDisplayItem DisplayItemForTab(winrt::Windows::Foundation::IInspectable const& item) const;
+        TerminalApp::TabStripDisplayItem DisplayItemAt(uint32_t index) const;
+        void SyncTabPresentation(TerminalApp::TabStripDisplayItem const& display);
         void SetTabSearchText(winrt::Windows::Foundation::IInspectable const& item, winrt::hstring const& searchText);
 
         // Prototype: setter accepts Vertical only. Horizontal setter is a no-op —

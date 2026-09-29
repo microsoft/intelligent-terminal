@@ -1987,7 +1987,10 @@ namespace winrt::TerminalApp::implementation
         _UpdateTabFilterStatus();
     }
 
-    void TerminalPage::_ApplyTabListProjection(const TerminalApp::Tab& changedTab, const bool refreshPaneItems)
+    void TerminalPage::_ApplyTabListProjection(
+        const TerminalApp::Tab& changedTab,
+        const bool refreshPaneItems,
+        const bool updateBookkeeping)
     {
         if (!_tabStrip)
         {
@@ -2008,9 +2011,10 @@ namespace winrt::TerminalApp::implementation
                                   winrt::get_self<implementation::TabStrip>(_tabStrip) :
                                   nullptr;
 
-        const auto apply = [&](const TerminalApp::Tab& tab) {
+        const auto apply = [&](const TerminalApp::Tab& tab, const TerminalApp::TabStripDisplayItem& projectedDisplay) {
             const auto item = tab.TabViewItem();
-            const auto display = tabStrip ? tabStrip->DisplayItemForTab(item) : nullptr;
+            const auto display = projectedDisplay ? projectedDisplay :
+                                                    (tabStrip ? tabStrip->DisplayItemForTab(item) : nullptr);
             auto header = display ?
                               display.Header().try_as<TerminalApp::TabHeaderControl>() :
                               item.Header().try_as<TerminalApp::TabHeaderControl>();
@@ -2037,27 +2041,40 @@ namespace winrt::TerminalApp::implementation
                 tabImpl->SetTabListPositionOperationsRestricted(positionOperationsBlocked);
                 tabImpl->SetTabPointerInteractionRestricted(_IsCollapsedVerticalRail());
             }
-            _tabStrip.SetTabItemVisibility(item, visible);
+            if (display)
+            {
+                tabStrip->SetTabItemVisibility(display, visible);
+            }
+            else
+            {
+                _tabStrip.SetTabItemVisibility(item, visible);
+            }
         };
         if (!refreshAll)
         {
-            apply(changedTab);
+            apply(changedTab, nullptr);
         }
         else
         {
-            for (const auto& tab : _tabs)
+            for (uint32_t index = 0; index < _tabs.Size(); ++index)
             {
-                apply(tab);
+                apply(_tabs.GetAt(index), tabStrip ? tabStrip->DisplayItemAt(index) : nullptr);
             }
         }
 
-        _UpdateTabFilterStatus();
+        if (updateBookkeeping)
+        {
+            _UpdateTabFilterStatus();
+        }
         const auto canDragDrop = CanDragDrop() &&
                                  !positionOperationsBlocked &&
                                  !_IsCollapsedVerticalRail();
         _tabStrip.CanReorderTabs(canDragDrop);
         _tabStrip.CanDragTabs(canDragDrop);
-        _UpdateSidebarHistoryCurrentSession();
+        if (updateBookkeeping)
+        {
+            _UpdateSidebarHistoryCurrentSession();
+        }
     }
 
     void TerminalPage::_UpdateTabFilterStatus()
