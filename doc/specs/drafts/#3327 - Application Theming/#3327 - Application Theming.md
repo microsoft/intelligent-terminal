@@ -247,6 +247,7 @@ background is not sufficient to render the sidebar background in XAML Islands.
 The new-tab and dropdown buttons share this backdrop: their normal backgrounds
 are transparent and hover/pressed states use translucent overlays, whether
 Acrylic is enabled or not, including while the window is unfocused.
+The native theme-aware divider remains visible between the two buttons.
 High-contrast mode retains opaque button fills.
 
 Sidebar icon and pane-row instances likewise remain stable during focus updates.

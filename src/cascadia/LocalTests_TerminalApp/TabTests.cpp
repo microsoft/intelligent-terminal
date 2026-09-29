@@ -3339,6 +3339,8 @@ namespace TerminalAppLocalTests
                 const auto root = Media::VisualTreeHelper::GetChild(button, 0).as<Grid>();
                 const auto primary = root.FindName(L"PrimaryBackgroundGrid").as<Grid>();
                 const auto secondary = root.FindName(L"SecondaryBackgroundGrid").as<Grid>();
+                const auto divider = root.FindName(L"DividerBackgroundGrid").as<Grid>();
+                VERIFY_ARE_EQUAL(1.0, divider.Width());
                 for (const auto color : { winrt::Windows::UI::Colors::Black(), winrt::Windows::UI::Colors::White(), winrt::Windows::UI::Colors::Gray() })
                 {
                     // Disabling Acrylic or losing focus must not restore an opaque button fill.
@@ -3374,6 +3376,8 @@ namespace TerminalAppLocalTests
                             VERIFY_IS_TRUE(VisualStateManager::GoToState(button, state, false));
                             VERIFY_ARE_EQUAL(primaryColor, primary.Background().as<Media::SolidColorBrush>().Color());
                             VERIFY_ARE_EQUAL(secondaryColor, secondary.Background().as<Media::SolidColorBrush>().Color());
+                            VERIFY_ARE_EQUAL(Visibility::Visible, divider.Visibility());
+                            VERIFY_IS_TRUE(divider.Background().as<Media::SolidColorBrush>().Color().A > 0);
                         };
                         verifyState(L"PrimaryPointerOver", hover, normal);
                         verifyState(L"PrimaryPressed", pressed, normal);
