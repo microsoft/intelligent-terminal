@@ -3810,10 +3810,12 @@ namespace TerminalAppLocalTests
 
             const auto horizontalTooltip = tooltipText(third->TabViewItem());
             const auto thirdContainer = page->_tabStrip.ContainerFromIndex(2).as<ListViewItem>();
-            const auto verticalTooltip = tooltipText(thirdContainer);
+            const std::wstring verticalTooltip{ winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(thirdContainer)) };
             VERIFY_ARE_EQUAL(horizontalTooltip, verticalTooltip);
             VERIFY_ARE_NOT_EQUAL(std::wstring::npos, verticalTooltip.find(L"Third tab"));
             VERIFY_ARE_NOT_EQUAL(std::wstring::npos, verticalTooltip.find(L"ctrl+alt+3"));
+            VERIFY_ARE_EQUAL(winrt::hstring{ verticalTooltip }, Automation::AutomationProperties::GetHelpText(thirdContainer));
+            VERIFY_IS_NULL(ToolTipService::GetToolTip(thirdContainer).try_as<ToolTip>());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"ctrl+alt+3" }, Automation::AutomationProperties::GetAcceleratorKey(third->TabViewItem()));
             VERIFY_ARE_EQUAL(winrt::hstring{ L"ctrl+alt+3" }, Automation::AutomationProperties::GetAcceleratorKey(third->_headerControl));
             VERIFY_ARE_EQUAL(
@@ -3826,7 +3828,7 @@ namespace TerminalAppLocalTests
             page->_tabStrip.IsRailCollapsed(true);
             page->UpdateLayout();
             VERIFY_ARE_EQUAL(Visibility::Collapsed, thirdContainer.ContentTemplateRoot().as<StackPanel>().Children().GetAt(0).as<Grid>().FindName(L"TabHeaderPresenter").as<ContentPresenter>().Visibility());
-            VERIFY_ARE_EQUAL(horizontalTooltip, tooltipText(thirdContainer));
+            VERIFY_ARE_EQUAL(horizontalTooltip, std::wstring{ winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(thirdContainer)) });
             page->_tabStrip.IsRailCollapsed(false);
         });
     }
