@@ -351,73 +351,81 @@ namespace winrt::TerminalApp::implementation
                                       hstring const& title,
                                       hstring const& iconPath)
     {
-        if (const auto tab = item.try_as<MUX::Controls::TabViewItem>())
+        if (const auto display = DisplayItemForTab(item))
         {
-            if (const auto display = _displayItemForTab(tab))
-            {
-                display.Title(title);
-                if (const auto header = display.Header().try_as<TerminalApp::TabHeaderControl>())
-                {
-                    header.Title(title);
-                }
-                winrt::get_self<TabStripDisplayItem>(display)->SyncIcon(iconPath);
-                winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed);
-                _refreshDisplayItemVisuals(display);
-            }
+            SetTabPresentation(display, title, iconPath);
         }
+    }
+
+    void TabStrip::SetTabPresentation(TerminalApp::TabStripDisplayItem const& display,
+                                      hstring const& title,
+                                      hstring const& iconPath)
+    {
+        display.Title(title);
+        if (const auto header = display.Header().try_as<TerminalApp::TabHeaderControl>())
+        {
+            header.Title(title);
+        }
+        winrt::get_self<TabStripDisplayItem>(display)->SyncIcon(iconPath);
+        winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed);
+        _refreshDisplayItemVisuals(display);
     }
 
     void TabStrip::SetPaneItems(IInspectable const& item,
                                 IVector<TerminalApp::TabStripPaneItem> const& panes,
                                 bool isGroup)
     {
-        if (const auto tab = item.try_as<MUX::Controls::TabViewItem>())
+        if (const auto display = DisplayItemForTab(item))
         {
-            if (const auto display = _displayItemForTab(tab))
+            SetPaneItems(display, panes, isGroup);
+        }
+    }
+
+    void TabStrip::SetPaneItems(TerminalApp::TabStripDisplayItem const& display,
+                                IVector<TerminalApp::TabStripPaneItem> const& panes,
+                                bool isGroup)
+    {
+        const auto current = display.PaneItems();
+        const auto count = panes ? panes.Size() : 0;
+        for (uint32_t index = 0; index < count; ++index)
+        {
+            const auto pane = panes.GetAt(index);
+            auto match = index;
+            while (match < current.Size() && current.GetAt(match).ContentId() != pane.ContentId())
             {
-                const auto current = display.PaneItems();
-                const auto count = panes ? panes.Size() : 0;
-                for (uint32_t index = 0; index < count; ++index)
+                ++match;
+            }
+            if (match == current.Size())
+            {
+                current.InsertAt(index, pane);
+            }
+            else
+            {
+                // Keep the row and its bindings alive during focus/title updates.
+                const auto existing = current.GetAt(match);
+                existing.Title(pane.Title());
+                existing.IsActive(pane.IsActive());
+                existing.ActiveIndicatorVisibility(pane.ActiveIndicatorVisibility());
+                existing.MetadataText(pane.MetadataText());
+                existing.MetadataVisibility(pane.MetadataVisibility());
+                existing.AutomationName(pane.AutomationName());
+                if (match != index)
                 {
-                    const auto pane = panes.GetAt(index);
-                    auto match = index;
-                    while (match < current.Size() && current.GetAt(match).ContentId() != pane.ContentId())
-                    {
-                        ++match;
-                    }
-                    if (match == current.Size())
-                    {
-                        current.InsertAt(index, pane);
-                    }
-                    else
-                    {
-                        // Keep the row and its bindings alive during focus/title updates.
-                        const auto existing = current.GetAt(match);
-                        existing.Title(pane.Title());
-                        existing.IsActive(pane.IsActive());
-                        existing.ActiveIndicatorVisibility(pane.ActiveIndicatorVisibility());
-                        existing.MetadataText(pane.MetadataText());
-                        existing.MetadataVisibility(pane.MetadataVisibility());
-                        existing.AutomationName(pane.AutomationName());
-                        if (match != index)
-                        {
-                            current.RemoveAt(match);
-                            current.InsertAt(index, existing);
-                        }
-                    }
+                    current.RemoveAt(match);
+                    current.InsertAt(index, existing);
                 }
-                while (current.Size() > count)
-                {
-                    current.RemoveAtEnd();
-                }
-                for (const auto& pane : current)
-                {
-                    pane.HighlightQuery(display.SearchText());
-                }
-                display.IsGroup(isGroup);
-                winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed);
             }
         }
+        while (current.Size() > count)
+        {
+            current.RemoveAtEnd();
+        }
+        for (const auto& pane : current)
+        {
+            pane.HighlightQuery(display.SearchText());
+        }
+        display.IsGroup(isGroup);
+        winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed);
     }
 
     IInspectable TabStrip::HeaderForTab(IInspectable const& item) const
@@ -428,6 +436,15 @@ namespace winrt::TerminalApp::implementation
             {
                 return display.Header();
             }
+        }
+        return nullptr;
+    }
+
+    TerminalApp::TabStripDisplayItem TabStrip::DisplayItemForTab(IInspectable const& item) const
+    {
+        if (const auto tab = item.try_as<MUX::Controls::TabViewItem>())
+        {
+            return _displayItemForTab(tab);
         }
         return nullptr;
     }
@@ -2099,6 +2116,7 @@ namespace winrt::TerminalApp::implementation
             GroupExpansionState{ winrt::make_weak(display.Tab()), display.IsExpanded() });
         winrt::get_self<TabStripDisplayItem>(display)->UpdatePresentation(_isRailCollapsed);
         _refreshDisplayItemVisuals(display);
+        GroupExpansionChanged.raise(*this, display.Tab());
     }
 
     void TabStrip::OnPanePointerPressed(IInspectable const& sender,

@@ -201,10 +201,17 @@ namespace winrt::TerminalApp::implementation
         void SetTabPresentation(winrt::Windows::Foundation::IInspectable const& item,
                                 winrt::hstring const& title,
                                 winrt::hstring const& iconPath);
+        void SetTabPresentation(TerminalApp::TabStripDisplayItem const& display,
+                                winrt::hstring const& title,
+                                winrt::hstring const& iconPath);
         void SetPaneItems(winrt::Windows::Foundation::IInspectable const& item,
                           winrt::Windows::Foundation::Collections::IVector<TerminalApp::TabStripPaneItem> const& panes,
                           bool isGroup);
+        void SetPaneItems(TerminalApp::TabStripDisplayItem const& display,
+                          winrt::Windows::Foundation::Collections::IVector<TerminalApp::TabStripPaneItem> const& panes,
+                          bool isGroup);
         winrt::Windows::Foundation::IInspectable HeaderForTab(winrt::Windows::Foundation::IInspectable const& item) const;
+        TerminalApp::TabStripDisplayItem DisplayItemForTab(winrt::Windows::Foundation::IInspectable const& item) const;
         void SetTabSearchText(winrt::Windows::Foundation::IInspectable const& item, winrt::hstring const& searchText);
 
         // Prototype: setter accepts Vertical only. Horizontal setter is a no-op —
@@ -370,6 +377,7 @@ namespace winrt::TerminalApp::implementation
         til::typed_event<TerminalApp::TabStrip, winrt::Windows::Foundation::IInspectable> FilterChanged;
         til::typed_event<TerminalApp::TabStrip, winrt::Windows::Foundation::IInspectable> SearchActivationRequested;
         til::typed_event<TerminalApp::TabStrip, winrt::Windows::Foundation::IInspectable> SearchChanged;
+        til::typed_event<TerminalApp::TabStrip, winrt::Microsoft::UI::Xaml::Controls::TabViewItem> GroupExpansionChanged;
         til::typed_event<TerminalApp::TabStrip, winrt::Windows::Foundation::IInspectable> HistoryRequested;
         til::typed_event<TerminalApp::TabStrip, winrt::Windows::Foundation::IInspectable> HistoryClosed;
         til::typed_event<TerminalApp::TabStrip, TerminalApp::TabStripHistoryActivationEventArgs> HistoryActivationRequested;

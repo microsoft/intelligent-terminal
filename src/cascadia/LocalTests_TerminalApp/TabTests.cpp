@@ -3733,7 +3733,10 @@ namespace TerminalAppLocalTests
 
     void TabTests::VerticalTabSearchMatchesCommittedTitle()
     {
-        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        const auto rootConnection = winrt::make_self<TestConnection>(
+            winrt::guid{ L"{cbb39c84-08be-4d32-bb38-4e2394e7ab62}" },
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        auto page = _commonSetup(*rootConnection, nullptr, std::nullopt, true);
 
         TestOnUIThread([&]() {
             const auto tab = page->_GetFocusedTabImpl();
@@ -3746,11 +3749,50 @@ namespace TerminalAppLocalTests
             page->_tabSearchQuery = L"ångSTRÖM";
             VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
 
-            const auto panes = tab->GetVisiblePaneSnapshot();
-            VERIFY_IS_FALSE(panes.empty());
-            VERIFY_IS_FALSE(panes.front().Title.empty());
-            page->_tabSearchQuery = panes.front().Title;
-            VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            const auto display = stripImpl->DisplayItemForTab(tab->TabViewItem());
+            VERIFY_IS_NOT_NULL(display);
+            VERIFY_IS_FALSE(display.IsGroup());
+            page->UpdateLayout();
+            const auto container = page->_tabStrip.ContainerFromIndex(0).as<ListViewItem>();
+
+            page->_tabStrip.SearchActive(true);
+            const auto search = [&](const winrt::hstring& query) {
+                stripImpl->SearchTextBox().Text(query);
+                page->UpdateLayout();
+                VERIFY_IS_TRUE(page->_tabSearchActive);
+                VERIFY_ARE_EQUAL(query, page->_tabSearchQuery);
+            };
+            const auto applyRichTabUpdate = [&](const std::shared_ptr<Pane>& pane,
+                                                const std::wstring_view text,
+                                                const uint64_t updateSequence) {
+                const auto control = pane->GetTerminalControl();
+                VERIFY_IS_NOT_NULL(control);
+                page->_AttachOrUpdateRichTabControl(control);
+                const auto key = reinterpret_cast<uintptr_t>(winrt::get_abi(control));
+                const auto attachment = page->_richTabAttachments.find(key);
+                VERIFY_IS_TRUE(attachment != page->_richTabAttachments.end());
+                if (attachment == page->_richTabAttachments.end())
+                {
+                    return;
+                }
+
+                ::Microsoft::Terminal::RichTab::Provider::Presentation presentation;
+                presentation.text = text;
+                ::Microsoft::Terminal::RichTab::Provider::BrokerUpdate update;
+                update.sessionId = attachment->second.sessionId;
+                update.sessionIncarnation = std::numeric_limits<uint64_t>::max();
+                update.updateSequence = updateSequence;
+                update.presentation = std::move(presentation);
+                page->_ApplyRichTabUpdate(key, attachment->second.reservation, update);
+                page->UpdateLayout();
+            };
+
+            search(L"änderUNGEN");
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, container.Visibility());
+            applyRichTabUpdate(tab->GetRootPane(), L"main\n2 Änderungen", 1);
+            VERIFY_ARE_EQUAL(Visibility::Visible, container.Visibility());
+            VERIFY_IS_TRUE(display.Header().as<winrt::TerminalApp::TabHeaderControl>().IsMetadataVisible());
 
             const auto unicodePaneConnection = winrt::make_self<TestConnection>(
                 winrt::guid{ L"{ed7ea490-998e-4aac-aecd-a74051a9faee}" },
@@ -3758,15 +3800,63 @@ namespace TerminalAppLocalTests
             const auto unicodePane = page->_MakePane(nullptr, page->_GetFocusedTab(), *unicodePaneConnection);
             VERIFY_IS_NOT_NULL(unicodePane);
             VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, unicodePane, false));
+            page->UpdateLayout();
+            VERIFY_IS_TRUE(display.IsGroup());
+            VERIFY_IS_TRUE(display.IsExpanded());
+            VERIFY_IS_FALSE(display.Header().as<winrt::TerminalApp::TabHeaderControl>().IsMetadataVisible());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, container.Visibility());
 
+            search(L"münchen");
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, container.Visibility());
             const std::u16string unicodePaneTitle{ u"\x1b]0;MÜNCHEN \U0001F680\x07" };
             unicodePaneConnection->TerminalOutput.raise(
                 winrt::array_view<const char16_t>{ unicodePaneTitle.data(), unicodePaneTitle.data() + unicodePaneTitle.size() });
             VERIFY_ARE_EQUAL(winrt::hstring{ L"PowerShell Ångström" }, tab->Title());
+            page->UpdateLayout();
+            VERIFY_ARE_EQUAL(Visibility::Visible, container.Visibility());
+            const auto projectedUnicodePane = display.PaneItems().GetAt(1);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"MÜNCHEN \U0001F680" }, projectedUnicodePane.Title());
+            const auto toggle = container.ContentTemplateRoot().as<FrameworkElement>().FindName(L"TabGroupToggleButton").as<Button>();
+
+            search(L"\U0001F680");
+            VERIFY_ARE_EQUAL(Visibility::Visible, container.Visibility());
+
+            search(L"visible pane metadata");
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, container.Visibility());
+            applyRichTabUpdate(unicodePane, L"feature\nvisible pane metadata", 1);
+            VERIFY_ARE_EQUAL(Visibility::Visible, container.Visibility());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"feature\nvisible pane metadata" }, projectedUnicodePane.MetadataText());
+
+            uint32_t selectionChanges = 0;
+            const auto selectionToken = page->_tabStrip.SelectionChanged([&](auto&&, auto&&) {
+                ++selectionChanges;
+            });
+            const auto revokeSelection = wil::scope_exit([&]() {
+                page->_tabStrip.SelectionChanged(selectionToken);
+            });
+
+            stripImpl->OnGroupToggleClick(toggle, RoutedEventArgs{});
+            VERIFY_IS_FALSE(display.IsExpanded());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, display.ChildrenVisibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, container.Visibility());
+            VERIFY_IS_FALSE(page->_MatchesTabSearch(*tab));
+            page->_tabSearchQuery = L"münchen";
+            VERIFY_IS_FALSE(page->_MatchesTabSearch(*tab));
+            VERIFY_IS_TRUE(page->_tabStrip.SelectedItem() == tab->TabViewItem());
+            VERIFY_ARE_EQUAL(0, page->_tabStrip.SelectedIndex());
+            VERIFY_ARE_EQUAL(0u, selectionChanges);
+
+            page->_tabSearchQuery = L"visible pane metadata";
+            stripImpl->OnGroupToggleClick(toggle, RoutedEventArgs{});
+            VERIFY_IS_TRUE(display.IsExpanded());
+            VERIFY_ARE_EQUAL(Visibility::Visible, display.ChildrenVisibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, container.Visibility());
+            VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
             page->_tabSearchQuery = L"münchen";
             VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
-            page->_tabSearchQuery = L"\U0001F680";
-            VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
+            VERIFY_IS_TRUE(page->_tabStrip.SelectedItem() == tab->TabViewItem());
+            VERIFY_ARE_EQUAL(0, page->_tabStrip.SelectedIndex());
+            VERIFY_ARE_EQUAL(0u, selectionChanges);
 
             const auto agentConnection = winrt::make_self<TestConnection>(
                 winrt::guid{ L"{6a480c9d-7cef-4e90-a18a-68c66c7e0888}" },
@@ -3777,37 +3867,18 @@ namespace TerminalAppLocalTests
             agentPane->IsAgentPane(true);
             VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, agentPane, false));
 
+            search(L"Hidden Agent Search Title");
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, container.Visibility());
             const std::u16string agentTitle{ u"\x1b]0;Hidden Agent Search Title\x07" };
             agentConnection->TerminalOutput.raise(
                 winrt::array_view<const char16_t>{ agentTitle.data(), agentTitle.data() + agentTitle.size() });
             VERIFY_ARE_EQUAL(winrt::hstring{ L"PowerShell Ångström" }, tab->Title());
-
-            const auto panesWithAgent = tab->GetVisiblePaneSnapshot();
-            const auto hiddenAgent = std::find_if(panesWithAgent.begin(), panesWithAgent.end(), [](const auto& pane) {
-                return pane.IsAgentPane;
-            });
-            VERIFY_IS_TRUE(hiddenAgent != panesWithAgent.end());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"Hidden Agent Search Title" }, hiddenAgent->Title);
-            page->_tabSearchQuery = hiddenAgent->Title;
+            page->UpdateLayout();
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, container.Visibility());
             VERIFY_IS_FALSE(page->_MatchesTabSearch(*tab));
 
-            ::Microsoft::Terminal::RichTab::Provider::Presentation presentation;
-            presentation.text = L"main\n2 Änderungen";
-            tab->SetRichTabPresentation(presentation);
-            page->_tabSearchQuery = L"änderUNGEN";
-            VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
-
-            page->_tabSearchQuery = L"POWER";
-            VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
-
-            page->_tabSearchQuery = L"copilot";
-            VERIFY_IS_FALSE(page->_MatchesTabSearch(*tab));
-
-            page->_tabSearchQuery = L"";
-            VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
-
-            page->_tabSearchActive = false;
-            VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
+            search(L"POWER");
+            VERIFY_ARE_EQUAL(Visibility::Visible, container.Visibility());
         });
     }
 
@@ -4007,9 +4078,17 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Shell" }, highlighted.Text());
             VERIFY_ARE_EQUAL(FontWeights::Bold().Weight, highlighted.FontWeight().Weight);
 
+            control.Text(L"Launch \U0001F680 now");
+            control.SearchText(L"\U0001F680");
+            VERIFY_ARE_EQUAL(3u, textBlock.Inlines().Size());
+            const auto rocket = textBlock.Inlines().GetAt(1).as<Documents::Run>();
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"\U0001F680" }, rocket.Text());
+            VERIFY_ARE_EQUAL(2u, rocket.Text().size());
+            VERIFY_ARE_EQUAL(FontWeights::Bold().Weight, rocket.FontWeight().Weight);
+
             control.SearchText(L"");
             VERIFY_ARE_EQUAL(1u, textBlock.Inlines().Size());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"PowerShell" }, textBlock.Inlines().GetAt(0).as<Documents::Run>().Text());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Launch \U0001F680 now" }, textBlock.Inlines().GetAt(0).as<Documents::Run>().Text());
         });
     }
 

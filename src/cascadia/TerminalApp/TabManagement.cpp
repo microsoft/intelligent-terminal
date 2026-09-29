@@ -1987,7 +1987,7 @@ namespace winrt::TerminalApp::implementation
         _UpdateTabFilterStatus();
     }
 
-    void TerminalPage::_ApplyTabListProjection(const TerminalApp::Tab& changedTab)
+    void TerminalPage::_ApplyTabListProjection(const TerminalApp::Tab& changedTab, const bool refreshPaneItems)
     {
         if (!_tabStrip)
         {
@@ -2004,32 +2004,38 @@ namespace winrt::TerminalApp::implementation
         _pendingTabProjectionRefresh = false;
         const bool positionOperationsBlocked = _IsTabListPositionOperationBlocked();
         const auto highlightQuery = _IsTabSearchEffective() ? _tabSearchQuery : winrt::hstring{};
+        const auto tabStrip = _isVerticalLayout ?
+                                  winrt::get_self<implementation::TabStrip>(_tabStrip) :
+                                  nullptr;
 
         const auto apply = [&](const TerminalApp::Tab& tab) {
             const auto item = tab.TabViewItem();
-            auto header = item.Header().try_as<TerminalApp::TabHeaderControl>();
-            if (!header && _isVerticalLayout)
+            const auto display = tabStrip ? tabStrip->DisplayItemForTab(item) : nullptr;
+            auto header = display ?
+                              display.Header().try_as<TerminalApp::TabHeaderControl>() :
+                              item.Header().try_as<TerminalApp::TabHeaderControl>();
+            if (display)
             {
-                header = winrt::get_self<implementation::TabStrip>(_tabStrip)->HeaderForTab(item).try_as<TerminalApp::TabHeaderControl>();
+                display.SearchText(highlightQuery);
+                for (const auto& pane : display.PaneItems())
+                {
+                    pane.HighlightQuery(highlightQuery);
+                }
             }
             if (header)
             {
                 header.SearchText(highlightQuery);
             }
-            if (_isVerticalLayout)
-            {
-                winrt::get_self<implementation::TabStrip>(_tabStrip)->SetTabSearchText(item, highlightQuery);
-            }
             const auto tabImpl = _GetTabImpl(tab);
-            const auto visible = _IsTabVisibleInProjection(tabImpl);
+            if (tabImpl && _isVerticalLayout && refreshPaneItems)
+            {
+                _RefreshTabStripPaneItems(tabImpl, display);
+            }
+            const auto visible = _IsTabVisibleInProjection(tabImpl, display);
             if (tabImpl)
             {
                 tabImpl->SetTabListPositionOperationsRestricted(positionOperationsBlocked);
                 tabImpl->SetTabPointerInteractionRestricted(_IsCollapsedVerticalRail());
-                if (_isVerticalLayout)
-                {
-                    _RefreshTabStripPaneItems(tabImpl);
-                }
             }
             _tabStrip.SetTabItemVisibility(item, visible);
         };
@@ -2085,7 +2091,7 @@ namespace winrt::TerminalApp::implementation
         return tab && (tab->IsAgentTab() || _TabHasCliAgent(tab));
     }
 
-    bool TerminalPage::_MatchesTabSearch(const Tab& tab) const
+    bool TerminalPage::_MatchesTabSearch(const Tab& tab, const TerminalApp::TabStripDisplayItem& projectedDisplay) const
     {
         if (!_IsTabSearchEffective())
         {
@@ -2120,12 +2126,15 @@ namespace winrt::TerminalApp::implementation
             return true;
         }
 
-        auto header = tab.TabViewItem().Header().try_as<TerminalApp::TabHeaderControl>();
-        if (!header && _isVerticalLayout && _tabStrip)
-        {
-            header = winrt::get_self<implementation::TabStrip>(_tabStrip)->HeaderForTab(tab.TabViewItem()).try_as<TerminalApp::TabHeaderControl>();
-        }
-        if (header)
+        const auto tabStrip = _isVerticalLayout && _tabStrip ?
+                                  winrt::get_self<implementation::TabStrip>(_tabStrip) :
+                                  nullptr;
+        const auto display = projectedDisplay ? projectedDisplay :
+                                                (tabStrip ? tabStrip->DisplayItemForTab(tab.TabViewItem()) : nullptr);
+        const auto header = display ?
+                                display.Header().try_as<TerminalApp::TabHeaderControl>() :
+                                tab.TabViewItem().Header().try_as<TerminalApp::TabHeaderControl>();
+        if (header && header.IsMetadataVisible())
         {
             const auto metadata = header.MetadataText();
             if (matches(std::wstring_view{ metadata.c_str(), metadata.size() }))
@@ -2134,32 +2143,23 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        for (const auto& pane : tab.GetVisiblePaneSnapshot())
+        if (!display || display.ChildrenVisibility() != Visibility::Visible)
         {
-            if (!_IsPaneRowProjectionEligible(pane))
-            {
-                continue;
-            }
+            return false;
+        }
 
-            if (matches(std::wstring_view{ pane.Title.c_str(), pane.Title.size() }))
+        for (const auto& pane : display.PaneItems())
+        {
+            const auto title = pane.Title();
+            if (matches(std::wstring_view{ title.c_str(), title.size() }))
             {
                 return true;
             }
 
-            if (pane.SessionId != winrt::guid{})
+            if (pane.MetadataVisibility() == Visibility::Visible)
             {
-                wchar_t buffer[40]{};
-                StringFromGUID2(pane.SessionId, buffer, ARRAYSIZE(buffer));
-                std::wstring_view sessionIdView{ buffer };
-                if (sessionIdView.size() > 2 && sessionIdView.front() == L'{' && sessionIdView.back() == L'}')
-                {
-                    sessionIdView = sessionIdView.substr(1, sessionIdView.size() - 2);
-                }
-                const auto sessionId = winrt::to_string(winrt::hstring{ sessionIdView });
-                if (const auto presentation = _richTabPresentations.find(sessionId);
-                    presentation != _richTabPresentations.end() &&
-                    presentation->second.presentation &&
-                    matches(presentation->second.presentation->text))
+                const auto metadata = pane.MetadataText();
+                if (matches(std::wstring_view{ metadata.c_str(), metadata.size() }))
                 {
                     return true;
                 }
@@ -2168,14 +2168,14 @@ namespace winrt::TerminalApp::implementation
         return false;
     }
 
-    bool TerminalPage::_IsTabVisibleInProjection(const winrt::com_ptr<Tab>& tab) const
+    bool TerminalPage::_IsTabVisibleInProjection(const winrt::com_ptr<Tab>& tab, const TerminalApp::TabStripDisplayItem& display) const
     {
         if (!tab)
         {
             return !_IsTabSearchEffective() && !_IsAgentScopeEffective();
         }
         return (!_IsAgentScopeEffective() || _MatchesTabScope(tab)) &&
-               _MatchesTabSearch(*tab);
+               _MatchesTabSearch(*tab, display);
     }
 
     bool TerminalPage::_IsKnownAgentCliTitle(const std::wstring_view title) noexcept
