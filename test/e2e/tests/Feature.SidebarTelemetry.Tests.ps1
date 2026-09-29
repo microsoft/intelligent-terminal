@@ -252,6 +252,28 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
                         Set-Content -LiteralPath (Join-Path $script:root "$($case.Phase).txt")
                     Send-WtWindowKey -App $script:app -Vk 0x1B -RequireForeground | Out-Null
                 }
+                if ($case.Phase -eq 'fields-repository-branch') {
+                    Invoke-TelemetryPhase -Name fields-session-start -Action {
+                        $existing = @(Get-AgentPaneSessions -App $script:app).PaneSessionId
+                        $tab = New-WtTab -App $script:app -Command 'pwsh -NoProfile' -Title 'IT-sidebar-start-snapshot'
+                        $helper = $null
+                        try {
+                            $helper = Wait-NewAgentPaneSession -App $script:app -ExcludePaneSessionId $existing -TimeoutSec 40
+                            Wait-AgentReady -App $script:app -PaneSessionId $helper.PaneSessionId -TimeoutSec 40 | Should -BeTrue
+                            Save-TelemetryOwnedProcesses -App $script:app
+                        }
+                        finally {
+                            if ($helper) {
+                                Close-WtPane -App $script:app -SessionId $helper.PaneSessionId
+                                Wait-Until -TimeoutSec 20 -Because 'the temporary session helper retires' -Condition {
+                                    -not (Get-Process -Id $helper.HelperProcessId -ErrorAction SilentlyContinue)
+                                } | Out-Null
+                            }
+                            Close-WtPane -App $script:app -SessionId $tab.session_id
+                            Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
+                        }
+                    }
+                }
             }
             Invoke-TelemetryPhase -Name search-open -Action {
                 Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
@@ -366,7 +388,7 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             finally { Stop-TestTelemetryTrace -Trace $trace }
         }
         $script:records = @(Read-TestTelemetryTrace -Directory $trace.Directory -ProcessIds @($script:ownedPids) `
-            -IncludeEventName @('AppCreated', 'SidebarStateOnLaunch', 'SidebarSearchOpened', 'SidebarAgentFilterApplied', 'SidebarTabPinned', 'SidebarRowFieldsChanged'))
+            -IncludeEventName @('AppCreated', 'AgentSessionStarted', 'SidebarStateOnLaunch', 'SidebarSearchOpened', 'SidebarAgentFilterApplied', 'SidebarTabPinned', 'SidebarRowFieldsChanged'))
         Initialize-TelemetryPhaseClock -CaptureDirectory $trace.Directory
         ConvertTo-Json -InputObject $script:records -Depth 12 | Set-Content -LiteralPath (Join-Path $script:root 'scoped-events.json')
         [xml]$raw = Get-Content -LiteralPath (Join-Path $trace.Directory 'events.xml') -Raw
@@ -433,7 +455,8 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             $event.Types.PartA_PrivTags | Should -Match 'UInt64$'
             @($event.Fields.Keys) | Should -HaveCount 14
         }
-        $script:metadata | Should -HaveCount (11 + $script:rowFieldCases.Count)
+        $starts = @($script:records | Where-Object Name -eq AgentSessionStarted)
+        $script:metadata | Should -HaveCount (11 + $script:rowFieldCases.Count + $starts.Count)
         $startupMetadata = @($script:metadata | Where-Object Name -eq AppCreated)[0]
         foreach ($metadata in $script:metadata) {
             [int]$metadata.Level | Should -Be 5
@@ -487,9 +510,33 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             Assert-SidebarSchema -Event $events[0] -Field fields -Type AnsiString
             $events[0].Fields.fields | Should -BeExactly $case.Fields
         }
-        foreach ($phase in @('second-window', 'fields-menu-only', 'fields-third-disabled', 'filter-repeat', 'filter-live-search', 'layout-refresh', 'retain-restore')) {
+        foreach ($phase in @('fields-menu-only', 'fields-third-disabled', 'filter-repeat', 'filter-live-search', 'layout-refresh', 'retain-restore')) {
             @(Get-TelemetryPhaseEvents -Phase $phase -Name SidebarRowFieldsChanged) | Should -HaveCount 0
         }
-        @($script:records | Where-Object Name -eq SidebarRowFieldsChanged) | Should -HaveCount $script:rowFieldCases.Count
+        $starts = @($script:records | Where-Object Name -eq AgentSessionStarted)
+        @($script:records | Where-Object Name -eq SidebarRowFieldsChanged) | Should -HaveCount ($script:rowFieldCases.Count + $starts.Count)
+    }
+
+    It 'Sidebar row-field telemetry snapshots each successful agent session start' {
+        $sequence = @($script:records | Where-Object Name -in @('AgentSessionStarted', 'SidebarRowFieldsChanged'))
+        $starts = @($sequence | Where-Object Name -eq AgentSessionStarted)
+        $starts.Count | Should -BeGreaterOrEqual 4
+        $snapshots = @(
+            for ($i = 0; $i -lt $sequence.Count; $i++) {
+                if ($sequence[$i].Name -ne 'AgentSessionStarted') { continue }
+                ($i + 1) | Should -BeLessThan $sequence.Count
+                $snapshot = $sequence[$i + 1]
+                $snapshot.Name | Should -Be 'SidebarRowFieldsChanged'
+                Assert-SidebarSchema -Event $snapshot -Field fields -Type AnsiString
+                $snapshot
+            }
+        )
+        $snapshots | Should -HaveCount $starts.Count
+        @($snapshots | Where-Object { $_.Fields.fields -eq 'agentStatus,workingDirectory' }).Count | Should -BeGreaterThan 0
+        @(Get-TelemetryPhaseEvents -Phase fields-session-start -Name AgentSessionStarted) | Should -HaveCount 1
+        $changed = @(Get-TelemetryPhaseEvents -Phase fields-session-start -Name SidebarRowFieldsChanged)
+        $changed | Should -HaveCount 1
+        $changed[0].Fields.fields | Should -BeExactly 'repository,branch'
+        @($snapshots | Where-Object { $_.Fields.fields -eq 'repository,branch' }) | Should -HaveCount 1
     }
 }

@@ -39,7 +39,7 @@ established separately. See [privacy information](../PRIVACY.md).
 | How often is foreground agent prompt mode entered or submitted? | App `CommandPaletteAgentPromptEntered` and `CommandPaletteDispatchedAgentPrompt` | Entry and submission are separate boundaries; neither proves task completion |
 | Is the sidebar enabled at window creation? | App `AppCreated.SidebarEnabled` | Vertical tab layout at window creation, not a session-weighted snapshot |
 | Are sidebar search, agent filtering, and keep-running used? | App `SidebarSearchOpened`, `SidebarAgentFilterApplied`, `SidebarTabPinned` | Explicit UI transitions, not automatic projection refresh, retention, or restore |
-| Which rich-tab fields do people select? | App `SidebarRowFieldsChanged.fields` | The complete selection after each user toggle, not displayed metadata values or a startup snapshot |
+| Which rich-tab fields do people select? | App `SidebarRowFieldsChanged.fields` | Current selection at successful agent-session start and after each user toggle; not displayed metadata values |
 | Which providers are configured at startup or changed later? | App `AppCreated` snapshot and Model `AgentProviderChanged` | Configuration, not CLI installation, authentication, or successful session use |
 | How many custom agents are configured under policy? | App `AppCreated` custom-agent inventory fields | Both roles in the same window-created snapshot, including unused entries and zero counts; no commands or custom names |
 | How often are prompts dispatched? | WTA `AgentPromptSent`, grouped by `AgentId`, `IsAutofix`, `IsByok`, `TemplateKind` | ACP prompt dispatches; Command Palette delegation is a separate path |
@@ -228,10 +228,10 @@ the reserved background entry point is not a completed background workflow.
 | 5.2 `SidebarSearchOpened` | Opening the current-window tab search box |
 | 5.3 `SidebarAgentFilterApplied(row_count)` | Entering the Agent view; count visible session rows on its first successful snapshot |
 | 5.4 `SidebarTabPinned(pinned_count)` | Enabling **Keep tab running** from a sidebar tab's context menu |
-| 5.5 `SidebarRowFieldsChanged(fields)` | Changing the Tab metadata selection through the sidebar filter menu; records the resulting zero-to-two field IDs |
+| 5.5 `SidebarRowFieldsChanged(fields)` | Successful agent-session start and Tab metadata toggles both emit the current zero-to-two field IDs |
 
 Search and filtering are independent, adjacent entry points, not a mandatory
-ordered funnel. All four interaction events use the existing App provider,
+ordered funnel. All four sidebar events use the existing App provider,
 Verbose level, measures keyword, and Usage privacy tag. No search text, tab
 titles, paths, session content, or configurable row values are collected.
 These definitions do not by themselves establish deployment or backend ingestion.
@@ -287,24 +287,33 @@ retention across an application restart.
 
 ### App.SidebarRowFieldsChanged
 
-**Trigger:** the user toggles a **Tab metadata** option in the sidebar filter
-menu, raising `VisibleFieldsChanged` and applying the selected fields to the
-Rich Tab provider broker. This follows the existing `Feature_RichTabProviders`
-gate; no event is emitted when that feature is disabled.
+**Triggers:** emitted immediately after each valid `App.AgentSessionStarted`
+settings snapshot, and when the user toggles a **Tab metadata** option in
+the sidebar filter menu. Both paths read the current selection from the
+shared Rich Tab provider broker and use the same emitter. This follows the
+existing `Feature_RichTabProviders` gate; no event is emitted when that feature
+is disabled or the provider selection is unavailable (the latter is logged).
 
 | Field | Type | Meaning / values |
 |---|---|---|
 | `fields` | String | Comma-separated field IDs in canonical order: `agentStatus`, `workingDirectory`, `repository`, `branch`, `changes`. Contains zero, one, or two IDs; the empty string means no fields selected. |
 
-The payload is the complete selection after each toggle, not just the field
+The payload is the complete current selection, not just the field
 that changed. For example, choosing Branch then Repository produces
 `repository,branch`, independent of click order. Each deselection also emits,
 including the intermediate one-field or empty selection while replacing a
-pair. This is not a committed two-field-only preference or retention metric.
+pair. Successful session creation/load, including pre-warm, also emits even
+when the user has never changed the defaults, or the sidebar is not visible.
+It uses the broker's current selection, not potentially stale controls in a
+different window. Failed session starts and ordinary status updates without
+a valid `session_started` payload do not emit a startup selection snapshot.
 
-Defaults, restoring the broker's selection in another window, opening or
-dismissing the menu, disabled third-field clicks, layout refresh, and live
-metadata/status updates do not emit. Only the five fixed IDs are collected:
+Restoring controls in another window, opening or dismissing the menu, disabled
+third-field clicks, layout refresh, and live metadata/status updates do not
+themselves emit. A new agent session created by those operations still emits
+its startup snapshot. The event has no trigger discriminator: its total count
+mixes session-start snapshots and user changes, so it must not be interpreted
+as a pure edit count or a retention metric. Only the five fixed IDs are collected:
 never an agent's status value, directory, repository name, branch name, or
 Git-change contents.
 
