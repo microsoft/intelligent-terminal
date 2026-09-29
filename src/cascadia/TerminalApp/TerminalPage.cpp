@@ -6514,15 +6514,8 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    safe_void_coroutine TerminalPage::_ActivateSidebarHistoryItem(TerminalApp::TabStripHistoryItem item)
+    TerminalPage::_SidebarHistoryActivationRequest TerminalPage::_PrepareSidebarHistoryActivation(TerminalApp::TabStripHistoryItem const& item)
     {
-        if (!item || !_tabStrip.HistoryActive() || _tabStrip.HistoryActivating())
-        {
-            co_return;
-        }
-
-        const auto weakThis = get_weak();
-        const auto dispatcher = Dispatcher();
         const auto windowId = _WindowProperties.WindowId();
         const auto quote = [](std::wstring_view value) {
             std::wstring quoted{ L"\"" };
@@ -6550,15 +6543,11 @@ namespace winrt::TerminalApp::implementation
             return quoted;
         };
 
-        winrt::guid activationGuid{};
-        THROW_IF_FAILED(CoCreateGuid(reinterpret_cast<GUID*>(&activationGuid)));
-        const auto activationId = winrt::to_hstring(activationGuid);
         std::wstring args{
             L"sessions activate --json --session-id " + quote(item.SessionId()) +
             L" --provider " + quote(item.AgentId()) +
             L" --location " + quote(item.AgentSource()) +
-            L" --window-id " + std::to_wstring(windowId) +
-            L" --activation-id " + quote(activationId)
+            L" --window-id " + std::to_wstring(windowId)
         };
         if (!item.WslDistro().empty())
         {
@@ -6569,6 +6558,79 @@ namespace winrt::TerminalApp::implementation
             args.append(L" --universe ").append(quote(item.SessionUniverse()));
         }
 
+        if (const auto pending = _historyUnresolvedActivations.find(args); pending != _historyUnresolvedActivations.end())
+        {
+            return { std::move(args), pending->second, true };
+        }
+        winrt::guid activationGuid{};
+        THROW_IF_FAILED(CoCreateGuid(reinterpret_cast<GUID*>(&activationGuid)));
+        const auto activationId = winrt::to_hstring(activationGuid);
+        _historyUnresolvedActivations.emplace(args, activationId);
+        return { std::move(args), activationId, false };
+    }
+
+    TerminalPage::_SidebarHistoryActivationResult TerminalPage::_ParseSidebarHistoryActivation(const std::string& output, const winrt::hstring& activationId)
+    {
+        Json::Value response;
+        Json::CharReaderBuilder builder;
+        std::istringstream json{ output };
+        std::string errors;
+        if (!Json::parseFromStream(builder, json, &response, &errors) || !response.isObject() ||
+            !response["activation_id"].isString() || response["activation_id"].asString() != winrt::to_string(activationId) ||
+            !response["accepted"].isBool() || !response["action"].isString() ||
+            (response.isMember("state") && !response["state"].isString()) ||
+            (!response["detail"].isNull() && !response["detail"].isString()))
+        {
+            _agentPaneLog("invalid sidebar activation receipt: " + errors);
+            return {};
+        }
+
+        using State = _SidebarHistoryActivationResult::State;
+        const auto state = response.get("state", "complete").asString();
+        if (state == "complete")
+        {
+            return { State::Complete, response["accepted"].asBool(), winrt::to_hstring(response.get("detail", "").asString()) };
+        }
+        if (state == "pending" && !response["accepted"].asBool())
+        {
+            return { State::Pending, false, {} };
+        }
+        _agentPaneLog("sidebar activation outcome unavailable: " + state);
+        if (state == "unknown" && !response["accepted"].asBool())
+        {
+            return { State::Unknown, false, winrt::to_hstring(response.get("detail", "").asString()) };
+        }
+        return {};
+    }
+
+    void TerminalPage::_ReconcileSidebarHistoryActivation(const _SidebarHistoryActivationRequest& request, const _SidebarHistoryActivationResult& result)
+    {
+        if (result.state == _SidebarHistoryActivationResult::State::Complete)
+        {
+            const auto pending = _historyUnresolvedActivations.find(request.arguments);
+            if (pending != _historyUnresolvedActivations.end() && pending->second == request.id)
+            {
+                _historyUnresolvedActivations.erase(pending);
+            }
+        }
+    }
+
+    safe_void_coroutine TerminalPage::_ActivateSidebarHistoryItem(TerminalApp::TabStripHistoryItem item)
+    {
+        if (!item || !_tabStrip.HistoryActive() || _tabStrip.HistoryActivating())
+        {
+            co_return;
+        }
+
+        const auto weakThis = get_weak();
+        const auto dispatcher = Dispatcher();
+        const auto request = _PrepareSidebarHistoryActivation(item);
+        auto args = request.arguments;
+        args.append(L" --activation-id \"").append(request.id.c_str()).append(L"\"");
+        if (request.statusOnly)
+        {
+            args.append(L" --status-only");
+        }
         const auto activationSerial = ++_historyActivationSerial;
         _StopSidebarHistoryRefreshTimer();
         _tabStrip.HistoryActivating(true);
@@ -6576,38 +6638,35 @@ namespace winrt::TerminalApp::implementation
 
         co_await winrt::resume_background();
         namespace Wta = ::Microsoft::Terminal::WtaProcess;
-        const auto result = Wta::RunWtaCapture(
-            Wta::ResolveWtaExePath(),
-            args,
-            15'000,
-            nullptr,
-            false);
-
-        bool accepted = false;
-        std::string detail;
-        if (result.completed && result.exitCode == 0)
+        const auto wtaPath = Wta::ResolveWtaExePath();
+        const auto capture = [&](const DWORD timeout) {
+            const auto result = Wta::RunWtaCapture(wtaPath, args, timeout, nullptr, false);
+            if (result.completed && result.exitCode == 0)
+            {
+                return _ParseSidebarHistoryActivation(result.output, request.id);
+            }
+            _agentPaneLog("sidebar activation response unavailable completed=" + std::to_string(result.completed) +
+                          " exit=" + std::to_string(result.exitCode));
+            return _SidebarHistoryActivationResult{};
+        };
+        auto result = capture(request.statusOnly ? 5'000 : 15'000);
+        if (!request.statusOnly && result.state != _SidebarHistoryActivationResult::State::Complete)
         {
-            Json::Value response;
-            Json::CharReaderBuilder builder;
-            std::istringstream json{ result.output };
-            std::string errors;
-            if (Json::parseFromStream(builder, json, &response, &errors) && response.isObject())
-            {
-                accepted = response.get("accepted", false).asBool();
-                detail = response.get("detail", "").asString();
-            }
-            else
-            {
-                detail = errors;
-            }
+            // A timeout may follow a successful mutation. Never redispatch it.
+            args.append(L" --status-only");
+            result = capture(5'000);
         }
 
         co_await wil::resume_foreground(dispatcher);
-        const auto page = weakThis.get();
-        if (page && page->_CompleteSidebarHistoryActivation(activationSerial, accepted, winrt::to_hstring(detail)))
+        if (const auto page = weakThis.get())
         {
-            page->_StartSidebarHistoryRefreshTimer();
-            page->_RequestSidebarHistoryRefresh(false);
+            // Closing/reopening invalidates the UI callback, not the operation ID.
+            page->_ReconcileSidebarHistoryActivation(request, result);
+            if (page->_CompleteSidebarHistoryActivation(activationSerial, result.accepted, result.detail))
+            {
+                page->_StartSidebarHistoryRefreshTimer();
+                page->_RequestSidebarHistoryRefresh(false);
+            }
         }
     }
 

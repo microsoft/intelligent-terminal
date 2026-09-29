@@ -352,8 +352,32 @@ Late/canceled responses cannot replace the snapshot, display an error, or add
 retry backoff. Reopening coalesces a fresh request until the old worker completes,
 using a new cancellation flag for the new request.
 
-Activation timeout outcome reconciliation remains separate; a client timeout
-does not prove that the backend took no action.
+Activation operations are reserved by activation ID before dispatch and owned by
+master, not by the short-lived CLI connection. Concurrent requests with the same
+ID return its pending or completed receipt rather than focusing or restoring
+again. Reusing an ID for another qualified session identity or window is rejected.
+The bounded receipt cache never evicts pending operations.
+Timeouts or unreadable responses from the master's own `wtcli` mutation also
+remain unknown, rather than being converted into a definitive rejection that
+would permit a duplicate restore. A created tab without a usable pane binding
+is likewise not safe to restore again.
+
+A client timeout does not prove that the backend took no action. After an
+unconfirmed activation response, Terminal makes one bounded, read-only
+`sessions activate --status-only` request with the original activation ID and
+qualified identity. This uses the separate `session/activation_status` extension
+method, so an older master cannot mistake a status lookup for another activation.
+An unavailable, pending, malformed, or mismatched receipt leaves the operation
+unresolved and displays the existing activation error. Clicking that row again
+checks the same operation instead of generating a new ID or restoring again.
+Other rows remain independently activatable.
+
+Unresolved IDs survive History close/reopen and list refreshes for the lifetime
+of the page. A matching completed receipt releases the ID, even if the view closed
+while the request was running, without applying a stale UI callback. A late
+receipt cannot release a newer operation. If master restarts or evicts a completed
+receipt before it is observed, status is `unknown`; Terminal conservatively keeps
+the ID and does not automatically redispatch a potentially completed mutation.
 
 At startup, once its named pipe is ready, master checks policy and local
 native agent CLI and required `npx` prerequisites, then initializes installed

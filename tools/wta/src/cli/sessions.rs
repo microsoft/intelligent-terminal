@@ -130,6 +130,7 @@ pub(crate) async fn run_activate(
     universe: Option<String>,
     window_id: u64,
     activation_id: String,
+    status_only: bool,
     json_mode: bool,
 ) -> Result<()> {
     let location = match location {
@@ -176,6 +177,7 @@ pub(crate) async fn run_activate(
                     identity,
                     window_id,
                     activation_id,
+                    status_only,
                 );
                 let raw = conn
                     .ext_method(request)

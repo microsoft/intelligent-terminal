@@ -363,6 +363,8 @@ pub const INTELLTERM_METHOD_SESSIONS_CHANGED: &str = "_intellterm.wta/sessions/c
 /// ExtRequest method for fetching the master's full session registry snapshot.
 pub const INTELLTERM_METHOD_SESSIONS_LIST: &str = "_intellterm.wta/sessions/list";
 pub const INTELLTERM_METHOD_SESSION_ACTIVATE: &str = "_intellterm.wta/session/activate";
+pub const INTELLTERM_METHOD_SESSION_ACTIVATION_STATUS: &str =
+    "_intellterm.wta/session/activation_status";
 
 /// ExtRequest method for physically closing the ACP session owned by a
 /// destroyed WT tab. Any surviving helper may send this because master owns
@@ -434,10 +436,21 @@ pub struct SessionActivateParams {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct SessionActivateResponse {
     pub activation_id: String,
+    #[serde(default)]
+    pub state: SessionActivationState,
     pub action: String,
     pub accepted: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionActivationState {
+    Pending,
+    #[default]
+    Complete,
+    Unknown,
 }
 
 /// Build a `session_added` ExtNotification from a registry row.
@@ -492,6 +505,7 @@ pub fn build_session_activate_request(
     identity: SessionIdentity,
     window_id: u64,
     activation_id: String,
+    status_only: bool,
 ) -> acp::schema::v1::ExtRequest {
     let json = serde_json::to_string(&SessionActivateParams {
         identity,
@@ -501,7 +515,14 @@ pub fn build_session_activate_request(
     .expect("SessionActivateParams is trivially serializable");
     let raw = serde_json::value::RawValue::from_string(json)
         .expect("serde_json::to_string always produces valid JSON");
-    acp::schema::v1::ExtRequest::new(INTELLTERM_METHOD_SESSION_ACTIVATE, Arc::from(raw))
+    acp::schema::v1::ExtRequest::new(
+        if status_only {
+            INTELLTERM_METHOD_SESSION_ACTIVATION_STATUS
+        } else {
+            INTELLTERM_METHOD_SESSION_ACTIVATE
+        },
+        Arc::from(raw),
+    )
 }
 
 pub fn build_close_tab_session_request(tab_id: &str) -> acp::schema::v1::ExtRequest {
@@ -656,6 +677,8 @@ pub enum WtaExtRequest {
     SessionsList(SessionsListParams),
     /// `_intellterm.wta/session/activate` — qualified Sidebar History activation.
     SessionActivate(SessionActivateParams),
+    /// Read an activation receipt without dispatching any terminal operation.
+    SessionActivationStatus(SessionActivateParams),
     /// `_intellterm.wta/session_hook` — a helper-originated session event
     /// (resume bookkeeping, pane lifecycle). Agent CLI hooks reach master over
     /// the COM broadcast instead.
@@ -710,6 +733,8 @@ pub fn parse_ext_request(req: acp::schema::v1::ExtRequest) -> WtaExtRequest {
         decode!(SessionsList, parse_sessions_list_params)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_ACTIVATE) {
         decode!(SessionActivate, parse_session_activate_params)
+    } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_ACTIVATION_STATUS) {
+        decode!(SessionActivationStatus, parse_session_activate_params)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_HOOK) {
         decode!(SessionHook, parse_session_hook_params)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_BORN_BOUND) {
@@ -3318,12 +3343,54 @@ mod tests {
             ),
         };
         let request =
-            build_session_activate_request(identity.clone(), 42, "activation-1".to_string());
+            build_session_activate_request(identity.clone(), 42, "activation-1".to_string(), false);
         assert_eq!(&*request.method, INTELLTERM_METHOD_SESSION_ACTIVATE);
         let parsed = parse_session_activate_params(&request.params).expect("params parse");
         assert_eq!(parsed.identity, identity);
         assert_eq!(parsed.window_id, 42);
         assert_eq!(parsed.activation_id, "activation-1");
+
+        let request =
+            build_session_activate_request(identity, 42, "activation-1".to_string(), true);
+        assert_eq!(
+            &*request.method,
+            INTELLTERM_METHOD_SESSION_ACTIVATION_STATUS
+        );
+        assert_eq!(
+            parse_session_activate_params(&request.params).unwrap(),
+            parsed
+        );
+        assert!(matches!(
+            parse_ext_request(request),
+            WtaExtRequest::SessionActivationStatus(_)
+        ));
+    }
+
+    #[test]
+    fn session_activation_response_distinguishes_pending_complete_and_unknown() {
+        for state in [
+            SessionActivationState::Pending,
+            SessionActivationState::Complete,
+            SessionActivationState::Unknown,
+        ] {
+            let response = SessionActivateResponse {
+                activation_id: "activation-1".to_string(),
+                state,
+                action: String::new(),
+                accepted: false,
+                detail: None,
+            };
+            let raw = serde_json::value::to_raw_value(&response).unwrap();
+            assert_eq!(parse_session_activate_response(&raw).unwrap(), response);
+        }
+        let legacy = serde_json::value::RawValue::from_string(
+            r#"{"activation_id":"legacy","action":"focus","accepted":true}"#.to_string(),
+        )
+        .unwrap();
+        assert_eq!(
+            parse_session_activate_response(&legacy).unwrap().state,
+            SessionActivationState::Complete
+        );
     }
 
     #[test]

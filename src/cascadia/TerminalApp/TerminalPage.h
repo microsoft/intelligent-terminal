@@ -355,6 +355,7 @@ namespace winrt::TerminalApp::implementation
         bool _suppressTabFocusRequests{ false };
         uint64_t _historyRequestGeneration{ 0 };
         uint64_t _historyActivationSerial{ 0 };
+        std::unordered_map<std::wstring, winrt::hstring> _historyUnresolvedActivations;
         bool _preserveSidebarHistory{ false };
         Windows::UI::Xaml::DispatcherTimer _historyRefreshTimer{ nullptr };
         bool _historyRefreshInFlight{ false };
@@ -997,6 +998,27 @@ namespace winrt::TerminalApp::implementation
         static _SidebarHistorySnapshot _ParseSidebarHistorySnapshot(const std::string& output);
         safe_void_coroutine _LoadSidebarHistory(uint64_t generation);
         void _CompleteSidebarHistoryRefresh(uint64_t generation, _SidebarHistorySnapshot snapshot);
+        struct _SidebarHistoryActivationRequest
+        {
+            std::wstring arguments;
+            winrt::hstring id;
+            bool statusOnly{ false };
+        };
+        struct _SidebarHistoryActivationResult
+        {
+            enum class State
+            {
+                Unknown,
+                Pending,
+                Complete,
+            };
+            State state{ State::Unknown };
+            bool accepted{ false };
+            winrt::hstring detail;
+        };
+        _SidebarHistoryActivationRequest _PrepareSidebarHistoryActivation(TerminalApp::TabStripHistoryItem const& item);
+        static _SidebarHistoryActivationResult _ParseSidebarHistoryActivation(const std::string& output, const winrt::hstring& activationId);
+        void _ReconcileSidebarHistoryActivation(const _SidebarHistoryActivationRequest& request, const _SidebarHistoryActivationResult& result);
         safe_void_coroutine _ActivateSidebarHistoryItem(TerminalApp::TabStripHistoryItem item);
         bool _CompleteSidebarHistoryActivation(uint64_t activationSerial, bool accepted, const winrt::hstring& detail);
         bool _IsCollapsedVerticalRail() const noexcept

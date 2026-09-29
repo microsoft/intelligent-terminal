@@ -564,8 +564,7 @@ struct MasterStateInner {
     /// `session_to_helper`, then subordinate state such as `registry`.
     /// Route reads do not need the lifecycle gate.
     pub(crate) registry: Arc<dyn crate::session_registry::SessionRegistry>,
-    session_activation_receipts:
-        Mutex<HashMap<String, crate::session_registry::SessionActivateResponse>>,
+    session_activation_receipts: Mutex<HashMap<String, SessionActivationReceipt>>,
     /// Per-helper subscribers for `intellterm.wta/*` ExtNotifications
     /// fanned out from master. Populated by `serve_helper` on connect
     /// and removed on disconnect (or whenever a send fails). Keyed by
@@ -4454,7 +4453,10 @@ impl HelperHandler {
         if is_control
             && !matches!(
                 &request,
-                Req::SessionsList(_) | Req::SessionActivate(_) | Req::Malformed { .. }
+                Req::SessionsList(_)
+                    | Req::SessionActivate(_)
+                    | Req::SessionActivationStatus(_)
+                    | Req::Malformed { .. }
             )
         {
             tracing::warn!(
@@ -4463,7 +4465,7 @@ impl HelperHandler {
                 "rejected non-control extension request from unbound client"
             );
             return Err(acp::Error::invalid_request().data(serde_json::json!({
-                "message": "control client may only list or activate sessions"
+                "message": "control client may only list, activate, or query session activations"
             })));
         }
         match request {
@@ -4476,6 +4478,9 @@ impl HelperHandler {
                 handle_sessions_list(&self.state, agent.as_deref(), &p).await
             }
             Req::SessionActivate(p) => handle_session_activate(&self.state, &p).await,
+            Req::SessionActivationStatus(p) => {
+                handle_session_activation_status(&self.state, &p).await
+            }
             Req::SessionHook(ev) => handle_session_hook(&self.state, ev, false).await,
             Req::SessionBornBound(ev, wsl_distro) => {
                 handle_session_born_bound(&self.state, ev, wsl_distro).await
@@ -7180,53 +7185,144 @@ async fn handle_sessions_list(
     Ok(acp::schema::v1::ExtResponse::new(raw.into()))
 }
 
-async fn handle_session_activate(
+struct SessionActivationReceipt {
+    params: crate::session_registry::SessionActivateParams,
+    response: crate::session_registry::SessionActivateResponse,
+}
+
+fn encode_session_activation(
+    response: &crate::session_registry::SessionActivateResponse,
+) -> acp::schema::v1::ExtResponse {
+    let raw = serde_json::value::to_raw_value(response)
+        .expect("SessionActivateResponse serialization is infallible");
+    acp::schema::v1::ExtResponse::new(raw.into())
+}
+
+fn read_session_activation_receipt(
+    receipt: &SessionActivationReceipt,
+    params: &crate::session_registry::SessionActivateParams,
+) -> acp::Result<acp::schema::v1::ExtResponse> {
+    if receipt.params != *params {
+        return Err(acp::Error::invalid_params()
+            .data("activation ID belongs to a different session or window"));
+    }
+    Ok(encode_session_activation(&receipt.response))
+}
+
+async fn handle_session_activation_status(
     state: &MasterStateInner,
     parsed: &crate::session_registry::SessionActivateParams,
 ) -> acp::Result<acp::schema::v1::ExtResponse> {
+    let receipts = state.session_activation_receipts.lock().await;
+    if let Some(receipt) = receipts.get(&parsed.activation_id) {
+        return read_session_activation_receipt(receipt, parsed);
+    }
+    Ok(encode_session_activation(
+        &crate::session_registry::SessionActivateResponse {
+            activation_id: parsed.activation_id.clone(),
+            state: crate::session_registry::SessionActivationState::Unknown,
+            action: String::new(),
+            accepted: false,
+            detail: None,
+        },
+    ))
+}
+
+async fn handle_session_activate(
+    state: &Arc<MasterStateInner>,
+    parsed: &crate::session_registry::SessionActivateParams,
+) -> acp::Result<acp::schema::v1::ExtResponse> {
+    use crate::session_registry::{SessionActivateResponse, SessionActivationState};
+
+    let mut receipts = state.session_activation_receipts.lock().await;
+    if let Some(receipt) = receipts.get(&parsed.activation_id) {
+        return read_session_activation_receipt(receipt, parsed);
+    }
+    if parsed.window_id == 0 || parsed.activation_id.trim().is_empty() {
+        return Err(acp::Error::invalid_params().data("activation target is incomplete"));
+    }
+    if receipts.len() >= 256 {
+        // Never evict in-flight operations. A missing status receipt is unknown,
+        // not permission for the client to dispatch the operation again.
+        let completed = receipts
+            .iter()
+            .find(|(_, receipt)| receipt.response.state != SessionActivationState::Pending)
+            .map(|(id, _)| id.clone());
+        if let Some(id) = completed {
+            receipts.remove(&id);
+        } else {
+            return Err(acp::Error::internal_error().data("too many pending session activations"));
+        }
+    }
+    receipts.insert(
+        parsed.activation_id.clone(),
+        SessionActivationReceipt {
+            params: parsed.clone(),
+            response: SessionActivateResponse {
+                activation_id: parsed.activation_id.clone(),
+                state: SessionActivationState::Pending,
+                action: String::new(),
+                accepted: false,
+                detail: None,
+            },
+        },
+    );
+    drop(receipts);
+
+    // The master owns completion even if the short-lived CLI disconnects.
+    let state = state.clone();
+    let parsed = parsed.clone();
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    tokio::task::spawn_local(async move {
+        let response = execute_session_activation(&state, &parsed).await;
+        state.session_activation_receipts.lock().await.insert(
+            parsed.activation_id.clone(),
+            SessionActivationReceipt {
+                params: parsed,
+                response: response.clone(),
+            },
+        );
+        // A disconnected caller retrieves the receipt through the status method.
+        let _ = sender.send(response);
+    });
+    let response = receiver.await.map_err(|error| {
+        tracing::error!(%error, "session activation worker did not complete");
+        acp::Error::internal_error().data("session activation outcome is unknown")
+    })?;
+    Ok(encode_session_activation(&response))
+}
+
+async fn execute_session_activation(
+    state: &MasterStateInner,
+    parsed: &crate::session_registry::SessionActivateParams,
+) -> crate::session_registry::SessionActivateResponse {
     use crate::agent_sessions::{AgentStatus, SessionOrigin};
     use crate::session_mgmt::{
         decide_enter_action, liveness_from_status, EnterAction, RowSnapshot,
     };
 
-    let encode = |value: &crate::session_registry::SessionActivateResponse| {
-        let raw = serde_json::value::to_raw_value(value)
-            .expect("SessionActivateResponse serialization is infallible");
-        acp::schema::v1::ExtResponse::new(raw.into())
-    };
-    if let Some(receipt) = state
-        .session_activation_receipts
-        .lock()
-        .await
-        .get(&parsed.activation_id)
-        .cloned()
-    {
-        return Ok(encode(&receipt));
-    }
     macro_rules! respond {
-        ($action:expr, $accepted:expr, $detail:expr) => {{
-            let receipt = crate::session_registry::SessionActivateResponse {
+        ($action:expr, $accepted:expr, $detail:expr) => {
+            respond!($action, $accepted, $detail, Complete)
+        };
+        ($action:expr, $accepted:expr, $detail:expr, $state:ident) => {{
+            crate::session_registry::SessionActivateResponse {
                 activation_id: parsed.activation_id.clone(),
+                state: crate::session_registry::SessionActivationState::$state,
                 action: $action.to_string(),
                 accepted: $accepted,
                 detail: $detail,
-            };
-            let mut receipts = state.session_activation_receipts.lock().await;
-            if receipts.len() >= 256 {
-                receipts.clear();
             }
-            receipts.insert(parsed.activation_id.clone(), receipt.clone());
-            Ok(encode(&receipt))
         }};
     }
+    let failed = |action: &str, error: anyhow::Error| {
+        let mut response = respond!(action, false, Some(error.to_string()));
+        if crate::shell::wt_channel::request_outcome_unknown(&error) {
+            response.state = crate::session_registry::SessionActivationState::Unknown;
+        }
+        response
+    };
 
-    if parsed.window_id == 0 || parsed.activation_id.trim().is_empty() {
-        return respond!(
-            "rejected",
-            false,
-            Some("activation target is incomplete".to_string())
-        );
-    }
     let Some(row) = state.registry.lookup_identity(&parsed.identity).await else {
         return respond!(
             "not_found",
@@ -7280,7 +7376,7 @@ async fn handle_session_activate(
                 .await
             {
                 Ok(_) => respond!("focus", true, None),
-                Err(error) => respond!("focus", false, Some(error.to_string())),
+                Err(error) => failed("focus", error),
             }
         }
         EnterAction::ResumeInAgentPane { .. } => {
@@ -7380,7 +7476,8 @@ async fn handle_session_activate(
                         return respond!(
                             "resume_cli",
                             false,
-                            Some("The created tab did not return a pane ID.".to_string())
+                            Some("The created tab did not return a pane ID.".to_string()),
+                            Unknown
                         );
                     };
                     if state
@@ -7395,7 +7492,8 @@ async fn handle_session_activate(
                             Some(
                                 "The selected session changed before it could be resumed."
                                     .to_string()
-                            )
+                            ),
+                            Unknown
                         );
                     }
                     if !state
@@ -7409,7 +7507,8 @@ async fn handle_session_activate(
                             Some(
                                 "The created pane could not be bound to the selected session."
                                     .to_string()
-                            )
+                            ),
+                            Unknown
                         );
                     }
                     if let Some(binding) = crate::wt_protocol_events::resumed_pane_binding_event(
@@ -7439,7 +7538,7 @@ async fn handle_session_activate(
                         ),
                     }
                 }
-                Err(error) => respond!("resume_cli", false, Some(error.to_string())),
+                Err(error) => failed("resume_cli", error),
             }
         }
         EnterAction::NotResumable { reason } => respond!(

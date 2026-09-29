@@ -260,6 +260,7 @@ fn sessions_activate_cli_parses_qualified_identity_and_target_window() {
                     universe,
                     window_id,
                     activation_id,
+                    status_only,
                 },
         }) => {
             assert_eq!(session_id, "same-raw-id");
@@ -269,9 +270,38 @@ fn sessions_activate_cli_parses_qualified_identity_and_target_window() {
             assert_eq!(universe.as_deref(), Some("tenant-a"));
             assert_eq!(window_id, 42);
             assert_eq!(activation_id, "activation-1");
+            assert!(!status_only);
         }
         other => panic!("expected sessions activate command, got {other:?}"),
     }
+}
+
+#[test]
+fn sessions_activate_status_only_never_selects_a_new_operation() {
+    let cli = Cli::try_parse_from([
+        "wta",
+        "sessions",
+        "activate",
+        "--session-id",
+        "session",
+        "--provider",
+        "copilot",
+        "--location",
+        "host",
+        "--window-id",
+        "42",
+        "--activation-id",
+        "original-activation",
+        "--status-only",
+        "--json",
+    ])
+    .unwrap();
+    assert!(matches!(
+        cli.command,
+        Some(Command::Sessions {
+            action: SessionsAction::Activate { status_only: true, activation_id, .. }
+        }) if activation_id == "original-activation"
+    ));
 }
 
 // ── normalize_locale: OS-locale → bundled-locale affinity matching ──────────

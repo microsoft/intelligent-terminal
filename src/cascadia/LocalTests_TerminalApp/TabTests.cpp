@@ -320,6 +320,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabHistoryRefreshBackoff);
         TEST_METHOD(VerticalTabHistoryRefreshDuringActivation);
         TEST_METHOD(VerticalTabHistoryRefreshAfterReopen);
+        TEST_METHOD(VerticalTabHistoryActivationRetryIdentity);
+        TEST_METHOD(VerticalTabHistoryActivationReceiptValidation);
         TEST_METHOD(WindowActivationToleratesTabWithoutStatus);
         TEST_METHOD(AgentTabClassificationTracksSession);
         TEST_METHOD(CliAgentClassifiesTab);
@@ -4805,6 +4807,111 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(strip.HistoryError().empty());
             page->_CloseSidebarHistory(false);
         });
+    }
+
+    void TabTests::VerticalTabHistoryActivationRetryIdentity()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            using Result = winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryActivationResult;
+            using State = Result::State;
+            auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            item.SessionId(L"same-id");
+            item.AgentId(L"copilot");
+            item.AgentSource(L"host");
+            page->_tabStrip.HistoryActive(true);
+            const auto first = page->_PrepareSidebarHistoryActivation(item);
+            VERIFY_IS_FALSE(first.statusOnly);
+            VERIFY_IS_FALSE(first.id.empty());
+            page->_ReconcileSidebarHistoryActivation(first, {});
+            page->_CloseSidebarHistory(false);
+            page->_tabStrip.HistoryActive(true);
+            item.Title(L"Updated title");
+            const auto retry = page->_PrepareSidebarHistoryActivation(item);
+            VERIFY_IS_TRUE(retry.statusOnly);
+            VERIFY_ARE_EQUAL(first.id, retry.id);
+            VERIFY_ARE_EQUAL(first.arguments, retry.arguments);
+            page->_ReconcileSidebarHistoryActivation(retry, { State::Pending, false, {} });
+            VERIFY_ARE_EQUAL(first.id, page->_PrepareSidebarHistoryActivation(item).id);
+
+            item.AgentId(L"claude");
+            const auto otherProvider = page->_PrepareSidebarHistoryActivation(item);
+            VERIFY_IS_FALSE(otherProvider.statusOnly);
+            VERIFY_ARE_NOT_EQUAL(first.id, otherProvider.id);
+            item.AgentId(L"copilot");
+            item.AgentSource(L"wsl");
+            item.WslDistro(L"Ubuntu");
+            const auto wsl = page->_PrepareSidebarHistoryActivation(item);
+            VERIFY_ARE_NOT_EQUAL(first.id, wsl.id);
+            item.WslDistro(L"Debian");
+            const auto otherDistro = page->_PrepareSidebarHistoryActivation(item);
+            VERIFY_ARE_NOT_EQUAL(wsl.id, otherDistro.id);
+            item.SessionUniverse(L"other-universe");
+            VERIFY_ARE_NOT_EQUAL(otherDistro.id, page->_PrepareSidebarHistoryActivation(item).id);
+
+            item.AgentSource(L"host");
+            item.WslDistro(L"");
+            item.SessionUniverse(L"");
+            // A receipt that arrives after closing may resolve the operation,
+            // but may not clear a later operation for the same row.
+            page->_CloseSidebarHistory(false);
+            page->_ReconcileSidebarHistoryActivation(first, { State::Complete, true, {} });
+            const auto next = page->_PrepareSidebarHistoryActivation(item);
+            VERIFY_IS_FALSE(next.statusOnly);
+            VERIFY_ARE_NOT_EQUAL(first.id, next.id);
+            page->_ReconcileSidebarHistoryActivation(first, { State::Complete, true, {} });
+            VERIFY_ARE_EQUAL(next.id, page->_PrepareSidebarHistoryActivation(item).id);
+            page->_ReconcileSidebarHistoryActivation(next, { State::Complete, false, L"Rejected" });
+            VERIFY_IS_FALSE(page->_PrepareSidebarHistoryActivation(item).statusOnly);
+            item.AgentId(L"claude");
+            VERIFY_ARE_EQUAL(otherProvider.id, page->_PrepareSidebarHistoryActivation(item).id);
+        });
+    }
+
+    void TabTests::VerticalTabHistoryActivationReceiptValidation()
+    {
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+        using State = Page::_SidebarHistoryActivationResult::State;
+        const winrt::hstring activationId{ L"activation-1" };
+        for (const auto json : {
+                 R"({"activation_id":"activation-1","state":"complete","action":"focus","accepted":true})",
+                 R"({"activation_id":"activation-1","action":"focus","accepted":true,"detail":null})" })
+        {
+            const auto result = Page::_ParseSidebarHistoryActivation(json, activationId);
+            VERIFY_IS_TRUE(result.state == State::Complete);
+            VERIFY_IS_TRUE(result.accepted);
+            VERIFY_IS_TRUE(result.detail.empty());
+        }
+        const auto failed = Page::_ParseSidebarHistoryActivation(
+            R"({"activation_id":"activation-1","state":"complete","action":"focus","accepted":false,"detail":"Cannot focus"})", activationId);
+        VERIFY_IS_TRUE(failed.state == State::Complete);
+        VERIFY_IS_FALSE(failed.accepted);
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"Cannot focus" }, failed.detail);
+        const auto unknown = Page::_ParseSidebarHistoryActivation(
+            R"({"activation_id":"activation-1","state":"unknown","action":"resume_cli","accepted":false,"detail":"Response timed out"})", activationId);
+        VERIFY_IS_TRUE(unknown.state == State::Unknown);
+        VERIFY_IS_FALSE(unknown.accepted);
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"Response timed out" }, unknown.detail);
+        const auto pending = Page::_ParseSidebarHistoryActivation(
+            R"({"activation_id":"activation-1","state":"pending","action":"","accepted":false})", activationId);
+        VERIFY_IS_TRUE(pending.state == State::Pending);
+        VERIFY_IS_FALSE(pending.accepted);
+        for (const auto json : {
+                 "",
+                 "{}",
+                 "[]",
+                 R"({"activation_id":"other","state":"complete","action":"focus","accepted":true})",
+                 R"({"activation_id":"activation-1","state":"unknown","action":"","accepted":false})",
+                 R"({"activation_id":"activation-1","state":"unexpected","action":"","accepted":true})",
+                 R"({"activation_id":"activation-1","state":"pending","action":"","accepted":true})",
+                 R"({"activation_id":"activation-1","state":42,"action":"focus","accepted":true})",
+                 R"({"activation_id":"activation-1","state":"complete","action":"focus","accepted":"true"})",
+                 R"({"activation_id":"activation-1","state":"complete","action":"focus","accepted":true,"detail":{}})" })
+        {
+            const auto result = Page::_ParseSidebarHistoryActivation(json, activationId);
+            VERIFY_IS_TRUE(result.state == State::Unknown);
+            VERIFY_IS_FALSE(result.accepted);
+        }
     }
 
     void TabTests::VerticalTabStripCollapsedItemsPreserveSelection()

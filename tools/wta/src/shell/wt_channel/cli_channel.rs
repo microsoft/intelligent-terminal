@@ -72,6 +72,13 @@ impl std::error::Error for WtcliOneShotError {
     }
 }
 
+pub(crate) fn request_outcome_unknown(error: &anyhow::Error) -> bool {
+    error
+        .downcast_ref::<WtcliOneShotError>()
+        .is_some_and(|error| !matches!(error, WtcliOneShotError::Spawn(_)))
+        || error.downcast_ref::<serde_json::Error>().is_some()
+}
+
 async fn read_pipe<R>(pipe: Option<R>) -> std::io::Result<Vec<u8>>
 where
     R: tokio::io::AsyncRead + Unpin,
@@ -1213,6 +1220,30 @@ impl WtChannel for CliChannel {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sidebar_activation_distinguishes_transport_uncertainty_from_rejection() {
+        for error in [
+            WtcliOneShotError::Wait(std::io::Error::other("wait failed")),
+            WtcliOneShotError::ReadStdout(std::io::Error::other("read failed")),
+            WtcliOneShotError::ReadStderr(std::io::Error::other("read failed")),
+            WtcliOneShotError::TimedOut {
+                timeout: Duration::from_secs(30),
+                kill_error: None,
+                reap_error: None,
+                reap_timeout: None,
+            },
+        ] {
+            assert!(request_outcome_unknown(
+                &anyhow::Error::new(error).context("wtcli")
+            ));
+        }
+        let malformed = serde_json::from_str::<serde_json::Value>("{").unwrap_err();
+        assert!(request_outcome_unknown(&anyhow::Error::new(malformed)));
+        let not_started = WtcliOneShotError::Spawn(std::io::Error::other("not installed"));
+        assert!(!request_outcome_unknown(&anyhow::Error::new(not_started)));
+        assert!(!request_outcome_unknown(&anyhow::anyhow!("pane not found")));
+    }
 
     #[tokio::test]
     async fn get_pane_context_rejects_invalid_session_ids_before_invocation() {
