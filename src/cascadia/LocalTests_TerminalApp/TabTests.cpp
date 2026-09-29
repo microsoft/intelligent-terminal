@@ -349,6 +349,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(KeepRunningMenuIsFirstAndVerticalOnly);
         TEST_METHOD(KeepRunningMenuTogglesOwningTab);
         TEST_METHOD(KeepRunningBadgeFitsLongTitle);
+        TEST_METHOD(KeepRunningBadgeCentersAcrossRichTabRows);
         TEST_METHOD(KeepRunningMixedTabCloseRestoresSameContent);
         TEST_METHOD(KeepRunningDirectPaneCloseTerminates);
         TEST_METHOD(KeepRunningDetachedPaneCloseDiscardsGroup);
@@ -1269,6 +1270,60 @@ namespace TerminalAppLocalTests
             tab->KeepRunning(false);
             header.UpdateLayout();
             VERIFY_ARE_EQUAL(Visibility::Collapsed, badge.Visibility());
+        });
+    }
+
+    void TabTests::KeepRunningBadgeCentersAcrossRichTabRows()
+    {
+        const auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto header = tab->_headerControl;
+            const auto layout = header.FindName(L"HeaderLayout").as<Grid>();
+            const auto badge = header.FindName(L"HeaderKeepRunningIcon").as<FontIcon>();
+            const auto metadata = header.FindName(L"HeaderMetadataTextBlock").as<TextBlock>();
+            tab->SetTabText(winrt::hstring{ std::wstring(240, L'W') });
+            tab->KeepRunning(true);
+            VERIFY_ARE_EQUAL(2, Grid::GetRowSpan(badge));
+            VERIFY_ARE_EQUAL(2, Grid::GetColumn(badge));
+            VERIFY_ARE_EQUAL(8.0, badge.Margin().Left);
+            VERIFY_ARE_EQUAL(VerticalAlignment::Center, badge.VerticalAlignment());
+
+            constexpr double tolerance = 1.0;
+            for (const auto width : { 120.0f, 240.0f })
+            {
+                double singleLineX = 0;
+                double singleLineHeight = 0;
+                for (const auto text : { L"", L"main - a long metadata line that must truncate", L"main\n2 changes" })
+                {
+                    ::Microsoft::Terminal::RichTab::Provider::Presentation presentation;
+                    presentation.text = text;
+                    tab->SetRichTabPresentation(presentation);
+                    header.Width(width);
+                    header.Measure({ width, 100 });
+                    header.Arrange({ 0, 0, width, header.DesiredSize().Height });
+                    header.UpdateLayout();
+
+                    const auto position = badge.TransformToVisual(layout).TransformPoint({ 0, 0 });
+                    VERIFY_IS_TRUE(badge.ActualHeight() > 0);
+                    VERIFY_IS_TRUE(std::abs(position.Y + badge.ActualHeight() / 2 - layout.ActualHeight() / 2) <= tolerance);
+                    VERIFY_IS_TRUE(position.X + badge.ActualWidth() <= layout.ActualWidth() + tolerance);
+                    if (presentation.text.empty())
+                    {
+                        singleLineX = position.X;
+                        singleLineHeight = layout.ActualHeight();
+                        VERIFY_ARE_EQUAL(Visibility::Collapsed, metadata.Visibility());
+                    }
+                    else
+                    {
+                        VERIFY_ARE_EQUAL(Visibility::Visible, metadata.Visibility());
+                        VERIFY_IS_TRUE(layout.ActualHeight() > singleLineHeight);
+                        VERIFY_IS_TRUE(std::abs(position.X - singleLineX) <= tolerance);
+                        const auto metadataPosition = metadata.TransformToVisual(layout).TransformPoint({ 0, 0 });
+                        VERIFY_IS_TRUE(metadataPosition.X + metadata.ActualWidth() <= position.X - badge.Margin().Left + tolerance);
+                    }
+                }
+            }
         });
     }
 

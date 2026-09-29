@@ -22,6 +22,9 @@ The RepeatAll icon appears after the title of a tab with keep running enabled,
 including after restore, whole-tab moves, and switching to horizontal layout.
 Disabling keep running removes the title icon. Long titles truncate before the
 indicator so it stays visible.
+When Rich Tab metadata is visible, the indicator is vertically centered across
+the title and metadata rows without changing its horizontal position. Metadata
+also truncates before the indicator column.
 The menu icons and title indicator use Segoe Fluent Icons with Segoe MDL2 Assets as a fallback,
 not a bitmap asset.
 
