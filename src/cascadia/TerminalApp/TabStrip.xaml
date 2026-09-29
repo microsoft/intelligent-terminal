@@ -278,7 +278,7 @@
                                     Visibility="{x:Bind SelectionVisibility, Mode=OneWay}" />
                             <Button x:Name="TabGroupToggleButton"
                                     Grid.Column="0"
-                                    Width="24"
+                                    Width="28"
                                     Height="28"
                                     Padding="0"
                                     HorizontalAlignment="Left"

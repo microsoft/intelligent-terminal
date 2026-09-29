@@ -5355,8 +5355,10 @@ namespace TerminalAppLocalTests
             const auto templateRoot = container.ContentTemplateRoot().as<StackPanel>();
             const auto headerRoot = templateRoot.Children().GetAt(0).as<Grid>();
             const auto iconPresenter = headerRoot.FindName(L"TabIconPresenter").as<ContentPresenter>();
+            const auto headerPresenter = headerRoot.FindName(L"TabHeaderPresenter").as<ContentPresenter>();
             VERIFY_ARE_EQUAL(Visibility::Collapsed, iconPresenter.Visibility());
             VERIFY_ARE_EQUAL(40.0, headerRoot.ActualHeight());
+            const auto groupTitleOffset = headerPresenter.TransformToVisual(headerRoot).TransformPoint({ 0, 0 }).X;
             const auto paneList = templateRoot.Children().GetAt(1).as<ItemsControl>();
             const auto firstPaneContainer = paneList.ContainerFromIndex(0).as<ContentPresenter>();
             const auto firstPaneRoot = Media::VisualTreeHelper::GetChild(firstPaneContainer, 0).as<Grid>();
@@ -5428,6 +5430,7 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Visible, display.IconVisibility());
             host.UpdateLayout();
             VERIFY_IS_TRUE(headerRoot.ActualHeight() > display.HeaderMinHeight());
+            VERIFY_ARE_EQUAL(groupTitleOffset, headerPresenter.TransformToVisual(headerRoot).TransformPoint({ 0, 0 }).X);
             strip.SetPaneItems(tab, display.PaneItems(), true);
             VERIFY_IS_FALSE(header.IsMetadataVisible());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, display.IconVisibility());
