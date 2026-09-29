@@ -3377,6 +3377,8 @@ namespace TerminalAppLocalTests
                             VERIFY_ARE_EQUAL(primaryColor, primary.Background().as<Media::SolidColorBrush>().Color());
                             VERIFY_ARE_EQUAL(secondaryColor, secondary.Background().as<Media::SolidColorBrush>().Color());
                             VERIFY_ARE_EQUAL(Visibility::Visible, divider.Visibility());
+                            VERIFY_ARE_EQUAL(16.0, divider.Height());
+                            VERIFY_ARE_EQUAL(VerticalAlignment::Center, divider.VerticalAlignment());
                             VERIFY_IS_TRUE(divider.Background().as<Media::SolidColorBrush>().Color().A > 0);
                         };
                         verifyState(L"PrimaryPointerOver", hover, normal);

@@ -14292,6 +14292,16 @@ namespace winrt::TerminalApp::implementation
         _newTabButton.Background(backgroundBrush);
         _newTabButton.Foreground(foregroundBrush);
 
+        // WinUI 2 has no lightweight resource for the divider's height.
+        _newTabButton.ApplyTemplate();
+        const auto divider = _newTabButton.as<WUX::Controls::IControlProtected>().GetTemplateChild(L"DividerBackgroundGrid").try_as<FrameworkElement>();
+        LOG_HR_IF_MSG(E_UNEXPECTED, !divider, "The new-tab SplitButton template is missing its divider.");
+        if (divider)
+        {
+            divider.Height(16);
+            divider.VerticalAlignment(VerticalAlignment::Center);
+        }
+
         // This is just like what we do in Tab::_RefreshVisualState. We need
         // to manually toggle the visual state, so the setters in the visual
         // state group will re-apply, and set our currently selected colors in
