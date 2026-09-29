@@ -3270,20 +3270,36 @@ namespace TerminalAppLocalTests
 
             const auto row = winrt::get_self<winrt::TerminalApp::implementation::TabRowControl>(page->_tabRow);
             const auto button = row->VerticalTitleBarContent().as<Grid>().Children().GetAt(0).as<Button>();
+            const auto reference = ToolTipService::GetToolTip(page->AgentToggleButton()).as<ToolTip>().Content().as<StackPanel>();
             const auto verifyHint = [&](const winrt::hstring& chord) {
                 const auto label = Automation::AutomationProperties::GetName(button);
                 VERIFY_IS_FALSE(label.empty());
-                const auto expected = chord.empty() ? label : label + L"\n" + chord;
-                const auto actual = winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(button));
-                VERIFY_ARE_EQUAL(CSTR_EQUAL, CompareStringOrdinal(expected.c_str(), -1, actual.c_str(), -1, TRUE));
+                const auto content = ToolTipService::GetToolTip(button).as<ToolTip>().Content().as<StackPanel>();
+                VERIFY_ARE_EQUAL(2u, content.Children().Size());
+                VERIFY_ARE_EQUAL(Orientation::Vertical, content.Orientation());
+                for (uint32_t index = 0; index < 2; ++index)
+                {
+                    const auto actual = content.Children().GetAt(index).as<TextBlock>();
+                    const auto expected = reference.Children().GetAt(index).as<TextBlock>();
+                    VERIFY_ARE_EQUAL(expected.FontFamily().Source(), actual.FontFamily().Source());
+                    VERIFY_ARE_EQUAL(expected.FontSize(), actual.FontSize());
+                    VERIFY_ARE_EQUAL(expected.FontWeight().Weight, actual.FontWeight().Weight);
+                    VERIFY_ARE_EQUAL(expected.LineHeight(), actual.LineHeight());
+                    VERIFY_ARE_EQUAL(expected.Opacity(), actual.Opacity());
+                }
+                const auto title = content.Children().GetAt(0).as<TextBlock>();
+                const auto shortcut = content.Children().GetAt(1).as<TextBlock>();
+                VERIFY_ARE_EQUAL(label, title.Text());
+                VERIFY_ARE_EQUAL(CSTR_EQUAL, CompareStringOrdinal(chord.c_str(), -1, shortcut.Text().c_str(), -1, FALSE));
+                VERIFY_ARE_EQUAL(chord.empty() ? Visibility::Collapsed : Visibility::Visible, shortcut.Visibility());
             };
-            verifyHint(L"ctrl+shift+s");
+            verifyHint(L"Ctrl+Shift+S");
 
             actionMap.RebindKeys(initial, rebound);
             page->_RefreshUIForSettingsReload();
-            verifyHint(L"ctrl+shift+y");
+            verifyHint(L"Ctrl+Shift+Y");
             page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
-            verifyHint(L"ctrl+shift+y");
+            verifyHint(L"Ctrl+Shift+Y");
 
             actionMap.DeleteKeyBinding(rebound);
             page->_RefreshUIForSettingsReload();
@@ -3927,17 +3943,37 @@ namespace TerminalAppLocalTests
         auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
 
         TestOnUIThread([&]() {
-            page->_tabStrip.HistoryActive(true);
-            page->_StartSidebarHistoryRefreshTimer();
-            VERIFY_IS_TRUE(page->_historyRefreshTimer.IsEnabled());
-
+            const auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            item.SessionId(L"preserved-session");
+            item.Title(L"Preserved conversation");
+            item.Status(L"Working");
+            page->_tabStrip.HistoryItems().Append(item);
             const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
-            stripImpl->OnHistoryCloseClick(nullptr, {});
-
-            VERIFY_IS_FALSE(page->_historyRefreshTimer.IsEnabled());
-            VERIFY_IS_FALSE(page->_tabStrip.HistoryActive());
-            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->ItemsList().Visibility());
-            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->HistoryPanel().Visibility());
+            for (const auto useAction : { false, true })
+            {
+                page->_tabStrip.HistoryActive(true);
+                page->_StartSidebarHistoryRefreshTimer();
+                VERIFY_IS_TRUE(page->_historyRefreshTimer.IsEnabled());
+                if (useAction)
+                {
+                    ActionEventArgs args;
+                    page->_HandleOpenAgentSessions(nullptr, args);
+                    VERIFY_IS_TRUE(args.Handled());
+                }
+                else
+                {
+                    stripImpl->OnHistoryCloseClick(nullptr, {});
+                }
+                VERIFY_IS_FALSE(page->_historyRefreshTimer.IsEnabled());
+                VERIFY_IS_FALSE(page->_tabStrip.HistoryActive());
+                VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->ItemsList().Visibility());
+                VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->HistoryPanel().Visibility());
+                VERIFY_ARE_EQUAL(1u, page->_tabStrip.HistoryItems().Size());
+                VERIFY_IS_TRUE(page->_tabStrip.HistoryItems().GetAt(0) == item);
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"preserved-session" }, item.SessionId());
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"Preserved conversation" }, item.Title());
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"Working" }, item.Status());
+            }
         });
     }
 

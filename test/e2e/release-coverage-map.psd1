@@ -102,7 +102,7 @@
     'Slash command works'               = 'Idle state is correct.*Idle badge'
     # AgentActionsParse pins openAgentSessions; the physical accelerator case exercises
     # that same action's layout-specific dispatch, not WTA's independent /sessions command.
-    'Command action works'              = 'Feature: layout-aware agent history and sidebar hotkeys\.Agent history hotkey opens the layout-appropriate history surface'
+    'Command action works'              = 'Feature: layout-aware agent history and sidebar hotkeys\.Agent history hotkey toggles the layout-appropriate history surface'
 
     # §0 FRE flow
     'FRE can be skipped or closed safely' = 'FRE can be closed safely'
