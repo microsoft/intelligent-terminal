@@ -446,6 +446,7 @@
                     <Setter Property="BorderThickness" Value="0" />
                     <Setter Property="CornerRadius" Value="{StaticResource SidebarTabCornerRadius}" />
                     <Setter Property="UseSystemFocusVisuals" Value="True" />
+                    <Setter Property="AutomationProperties.AcceleratorKey" Value="{Binding Tab.(AutomationProperties.AcceleratorKey)}" />
                     <!--  Keep the native presenter and state brushes, but forward the row's corner radius.  -->
                     <Setter Property="Template">
                         <Setter.Value>

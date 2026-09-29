@@ -3815,6 +3815,9 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_NOT_EQUAL(std::wstring::npos, verticalTooltip.find(L"ctrl+alt+3"));
             VERIFY_ARE_EQUAL(winrt::hstring{ L"ctrl+alt+3" }, Automation::AutomationProperties::GetAcceleratorKey(third->TabViewItem()));
             VERIFY_ARE_EQUAL(winrt::hstring{ L"ctrl+alt+3" }, Automation::AutomationProperties::GetAcceleratorKey(third->_headerControl));
+            VERIFY_ARE_EQUAL(
+                winrt::hstring{ L"ctrl+alt+3" },
+                Automation::AutomationProperties::GetAcceleratorKey(page->_tabStrip.ContainerFromIndex(2).as<ListViewItem>()));
 
             page->_SelectTab(2);
             VERIFY_IS_TRUE(page->_selectedTabItem() == third->TabViewItem());
