@@ -10772,7 +10772,7 @@ namespace winrt::TerminalApp::implementation
                 {
                     tab->SetRichTabPresentation(update.presentation);
                 }
-                _RefreshTabStripPaneItems(tab);
+                _ApplyTabListProjection(*tab);
             }
         }
     }

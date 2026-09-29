@@ -63,6 +63,7 @@ namespace TerminalApp
         String MetadataText;
         String AutomationName;
         Windows.UI.Xaml.Visibility MetadataVisibility;
+        String SearchText;
     };
 
     [default_interface] runtimeclass TabStripDisplayItem : Windows.UI.Xaml.Data.INotifyPropertyChanged

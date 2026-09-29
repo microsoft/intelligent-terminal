@@ -2098,18 +2098,66 @@ namespace winrt::TerminalApp::implementation
             return true;
         }
 
-        const auto titleValue = tab.Title();
-        const std::wstring_view title{ titleValue.c_str(), titleValue.size() };
-        if (query.size() > title.size())
-        {
+        const auto matches = [&](const std::wstring_view value) {
+            if (query.size() > value.size())
+            {
+                return false;
+            }
+
+            for (size_t offset = 0; offset + query.size() <= value.size(); ++offset)
+            {
+                if (til::compare_ordinal_insensitive(value.substr(offset, query.size()), query) == 0)
+                {
+                    return true;
+                }
+            }
             return false;
+        };
+
+        const auto title = tab.Title();
+        if (matches(std::wstring_view{ title.c_str(), title.size() }))
+        {
+            return true;
         }
 
-        for (size_t offset = 0; offset + query.size() <= title.size(); ++offset)
+        auto header = tab.TabViewItem().Header().try_as<TerminalApp::TabHeaderControl>();
+        if (!header && _isVerticalLayout && _tabStrip)
         {
-            if (til::compare_ordinal_insensitive(title.substr(offset, query.size()), query) == 0)
+            header = winrt::get_self<implementation::TabStrip>(_tabStrip)->HeaderForTab(tab.TabViewItem()).try_as<TerminalApp::TabHeaderControl>();
+        }
+        if (header)
+        {
+            const auto metadata = header.MetadataText();
+            if (matches(std::wstring_view{ metadata.c_str(), metadata.size() }))
             {
                 return true;
+            }
+        }
+
+        for (const auto& pane : tab.GetVisiblePaneSnapshot())
+        {
+            if (matches(std::wstring_view{ pane.Title.c_str(), pane.Title.size() }))
+            {
+                return true;
+            }
+
+            if (pane.SessionId != winrt::guid{})
+            {
+                wchar_t buffer[40]{};
+                StringFromGUID2(pane.SessionId, buffer, ARRAYSIZE(buffer));
+                std::wstring_view sessionIdView{ buffer };
+                if (sessionIdView.size() > 2 && sessionIdView.front() == L'{' && sessionIdView.back() == L'}')
+                {
+                    sessionIdView = sessionIdView.substr(1, sessionIdView.size() - 2);
+                }
+                const auto sessionId = winrt::to_string(winrt::hstring{ sessionIdView });
+                if (const auto presentation = _richTabPresentations.find(sessionId);
+                    presentation != _richTabPresentations.end() &&
+                    presentation->second.presentation &&
+                    matches(presentation->second.presentation->text))
+                {
+                    return true;
+                }
             }
         }
         return false;

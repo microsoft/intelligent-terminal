@@ -410,6 +410,10 @@ namespace winrt::TerminalApp::implementation
                 {
                     current.RemoveAtEnd();
                 }
+                for (const auto& pane : current)
+                {
+                    pane.SearchText(display.SearchText());
+                }
                 display.IsGroup(isGroup);
                 winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed);
             }
@@ -438,6 +442,10 @@ namespace winrt::TerminalApp::implementation
                 if (const auto header = display.Header().try_as<TerminalApp::TabHeaderControl>())
                 {
                     header.SearchText(searchText);
+                }
+                for (const auto& pane : display.PaneItems())
+                {
+                    pane.SearchText(searchText);
                 }
             }
         }

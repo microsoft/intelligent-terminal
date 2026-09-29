@@ -395,22 +395,34 @@
                                                           FontFamily="{ThemeResource SymbolThemeFontFamily}"
                                                           FontSize="12"
                                                           Glyph="&#xE756;" />
-                                                <TextBlock x:Name="PaneTitleText"
-                                                           Grid.Column="2"
-                                                           Margin="2,3,0,0"
-                                                           VerticalAlignment="Center"
-                                                           Text="{x:Bind Title, Mode=OneWay}"
-                                                           TextTrimming="CharacterEllipsis" />
-                                                <TextBlock Grid.Row="1"
-                                                           Grid.Column="2"
-                                                           Margin="2,1,0,3"
-                                                           MaxLines="2"
-                                                           FontSize="10"
-                                                           Opacity="0.72"
-                                                           Text="{x:Bind MetadataText, Mode=OneWay}"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           Visibility="{x:Bind MetadataVisibility, Mode=OneWay}"
-                                                           AutomationProperties.AccessibilityView="Raw" />
+                                                <local:HighlightedTextControl x:Name="PaneTitleText"
+                                                                              Grid.Column="2"
+                                                                              Margin="2,3,0,0"
+                                                                              VerticalAlignment="Center"
+                                                                              SearchText="{x:Bind SearchText, Mode=OneWay}"
+                                                                              Text="{x:Bind Title, Mode=OneWay}">
+                                                    <local:HighlightedTextControl.TextBlockStyle>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                                        </Style>
+                                                    </local:HighlightedTextControl.TextBlockStyle>
+                                                </local:HighlightedTextControl>
+                                                <local:HighlightedTextControl Grid.Row="1"
+                                                                              Grid.Column="2"
+                                                                              Margin="2,1,0,3"
+                                                                              Opacity="0.72"
+                                                                              SearchText="{x:Bind SearchText, Mode=OneWay}"
+                                                                              Text="{x:Bind MetadataText, Mode=OneWay}"
+                                                                              Visibility="{x:Bind MetadataVisibility, Mode=OneWay}"
+                                                                              AutomationProperties.AccessibilityView="Raw">
+                                                    <local:HighlightedTextControl.TextBlockStyle>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="MaxLines" Value="2" />
+                                                            <Setter Property="FontSize" Value="10" />
+                                                            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                                        </Style>
+                                                    </local:HighlightedTextControl.TextBlockStyle>
+                                                </local:HighlightedTextControl>
                                             </Grid>
                                         </Button>
                                         <Button x:Name="PaneCloseButton"

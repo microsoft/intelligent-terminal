@@ -1294,7 +1294,7 @@ namespace TerminalAppLocalTests
             const auto header = tab->_headerControl;
             const auto layout = header.FindName(L"HeaderLayout").as<Grid>();
             const auto badge = header.FindName(L"HeaderKeepRunningIcon").as<FontIcon>();
-            const auto metadata = header.FindName(L"HeaderMetadataTextBlock").as<TextBlock>();
+            const auto metadata = header.FindName(L"HeaderMetadataTextBlock").as<winrt::TerminalApp::HighlightedTextControl>();
             tab->SetTabText(winrt::hstring{ std::wstring(240, L'W') });
             tab->KeepRunning(true);
             VERIFY_ARE_EQUAL(2, Grid::GetRowSpan(badge));
@@ -3744,6 +3744,18 @@ namespace TerminalAppLocalTests
             page->_tabSearchQuery = L"shell";
             VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
 
+            const auto panes = tab->GetVisiblePaneSnapshot();
+            VERIFY_IS_FALSE(panes.empty());
+            VERIFY_IS_FALSE(panes.front().Title.empty());
+            page->_tabSearchQuery = panes.front().Title;
+            VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
+
+            ::Microsoft::Terminal::RichTab::Provider::Presentation presentation;
+            presentation.text = L"main\n2 changes";
+            tab->SetRichTabPresentation(presentation);
+            page->_tabSearchQuery = L"changes";
+            VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
+
             page->_tabSearchQuery = L"POWER";
             VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
 
@@ -5924,11 +5936,20 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Visible, firstPaneItem.MetadataVisibility());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane, updated metadata" }, firstPaneItem.AutomationName());
             VERIFY_IS_TRUE(paneList.ContainerFromIndex(0) == firstPaneContainer);
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane" }, firstPaneRoot.FindName(L"PaneTitleText").as<TextBlock>().Text());
+            const auto firstPaneTitle = firstPaneRoot.FindName(L"PaneTitleText").as<winrt::TerminalApp::HighlightedTextControl>();
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane" }, firstPaneTitle.Text());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, firstPaneRoot.FindName(L"PaneActiveIndicator").as<FrameworkElement>().Visibility());
+
+            stripImpl->SetTabSearchText(tab, L"pane");
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"pane" }, display.SearchText());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"pane" }, firstPaneItem.SearchText());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"pane" }, secondPaneItem.SearchText());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"pane" }, firstPaneTitle.SearchText());
 
             updatePanes({ winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"Renamed pane", false),
                           winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 12, L"Second pane", true) });
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"pane" }, display.PaneItems().GetAt(0).SearchText());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"pane" }, display.PaneItems().GetAt(1).SearchText());
             VERIFY_ARE_EQUAL(winrt::hstring{}, firstPaneItem.MetadataText());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, firstPaneItem.MetadataVisibility());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane" }, firstPaneItem.AutomationName());
