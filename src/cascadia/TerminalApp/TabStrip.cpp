@@ -114,6 +114,7 @@ namespace winrt::TerminalApp::implementation
         ChildrenVisibility(isGroup && !railCollapsed && IsExpanded() ? Visibility::Visible : Visibility::Collapsed);
         IconVisibility(isGroup && !railCollapsed ? Visibility::Collapsed : Visibility::Visible);
         HeaderMinHeight(railCollapsed ? 32.0 : 40.0);
+        LeadingContentMargin(railCollapsed ? WUX::Thickness{} : WUX::Thickness{ 6, 0, 10, 0 });
         ChevronGlyph(IsExpanded() ? L"\xE70D" : L"\xE76C");
     }
 

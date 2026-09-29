@@ -6078,6 +6078,20 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Collapsed, iconPresenter.Visibility());
             VERIFY_ARE_EQUAL(40.0, headerRoot.ActualHeight());
             const auto groupTitleOffset = headerPresenter.TransformToVisual(headerRoot).TransformPoint({ 0, 0 }).X;
+            VERIFY_ARE_EQUAL(44.0f, groupTitleOffset);
+            const auto groupButton = headerRoot.FindName(L"TabGroupToggleButton").as<Button>();
+            const auto centerX = [&](const FrameworkElement& element) {
+                return element.TransformToVisual(headerRoot).TransformPoint({ static_cast<float>(element.ActualWidth() / 2), 0 }).X;
+            };
+            const auto groupIconCenter = centerX(groupButton);
+            VERIFY_ARE_EQUAL(20.0f, groupIconCenter);
+            stripImpl->OnGroupToggleClick(groupButton, RoutedEventArgs{});
+            host.UpdateLayout();
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, display.ChildrenVisibility());
+            VERIFY_ARE_EQUAL(groupIconCenter, centerX(groupButton));
+            VERIFY_ARE_EQUAL(groupTitleOffset, headerPresenter.TransformToVisual(headerRoot).TransformPoint({ 0, 0 }).X);
+            stripImpl->OnGroupToggleClick(groupButton, RoutedEventArgs{});
+            host.UpdateLayout();
             const auto paneList = templateRoot.Children().GetAt(1).as<ItemsControl>();
             const auto firstPaneContainer = paneList.ContainerFromIndex(0).as<ContentPresenter>();
             const auto firstPaneRoot = Media::VisualTreeHelper::GetChild(firstPaneContainer, 0).as<Grid>();
@@ -6154,6 +6168,8 @@ namespace TerminalAppLocalTests
             host.UpdateLayout();
             VERIFY_IS_TRUE(headerRoot.ActualHeight() > display.HeaderMinHeight());
             VERIFY_ARE_EQUAL(groupTitleOffset, headerPresenter.TransformToVisual(headerRoot).TransformPoint({ 0, 0 }).X);
+            VERIFY_ARE_EQUAL(12.0f, iconPresenter.TransformToVisual(headerRoot).TransformPoint({ 0, 0 }).X);
+            VERIFY_ARE_EQUAL(groupIconCenter, centerX(iconPresenter));
             strip.SetPaneItems(tab, display.PaneItems(), true);
             VERIFY_IS_FALSE(header.IsMetadataVisible());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, display.IconVisibility());
@@ -6181,6 +6197,14 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Visible, display.IconVisibility());
             VERIFY_ARE_EQUAL(32.0, display.HeaderMinHeight());
             VERIFY_IS_TRUE(container.ActualHeight() <= 40.0);
+            VERIFY_ARE_EQUAL(14.0f, centerX(iconPresenter));
+
+            strip.IsRailCollapsed(false);
+            host.UpdateLayout();
+            VERIFY_ARE_EQUAL(groupIconCenter, centerX(groupButton));
+            VERIFY_ARE_EQUAL(groupTitleOffset, headerPresenter.TransformToVisual(headerRoot).TransformPoint({ 0, 0 }).X);
+            strip.IsRailCollapsed(true);
+            host.UpdateLayout();
 
             winrt::MUX::Controls::TabViewItem secondTab;
             winrt::TerminalApp::TabHeaderControl secondHeader;
