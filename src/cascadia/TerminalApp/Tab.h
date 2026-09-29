@@ -112,6 +112,7 @@ namespace winrt::TerminalApp::implementation
             uint32_t ContentId{};
             winrt::guid SessionId{};
             winrt::hstring Title;
+            winrt::hstring Icon;
             bool IsActive{};
             bool IsAgentPane{};
         };

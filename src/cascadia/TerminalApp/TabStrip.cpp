@@ -35,11 +35,23 @@ namespace winrt::TerminalApp::implementation
 {
     TabStripPaneItem::TabStripPaneItem(MUX::Controls::TabViewItem tab,
                                        uint32_t contentId,
+                                       hstring iconPath,
                                        hstring title,
                                        bool isActive) :
         _tab{ std::move(tab) },
         _contentId{ contentId }
     {
+        if (iconPath.empty())
+        {
+            WUX::Controls::FontIcon fallback;
+            fallback.FontFamily(WUX::Media::FontFamily{ L"Segoe Fluent Icons" });
+            fallback.Glyph(L"\xE756");
+            _icon = fallback;
+        }
+        else
+        {
+            _icon = Microsoft::Terminal::UI::IconPathConverter::IconWUX(iconPath);
+        }
         Title(std::move(title));
         AutomationName(Title());
         IsActive(isActive);

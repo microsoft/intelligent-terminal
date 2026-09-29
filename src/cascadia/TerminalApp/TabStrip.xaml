@@ -388,13 +388,13 @@
                                                         Background="{ThemeResource SystemAccentColor}"
                                                         CornerRadius="2"
                                                         Visibility="{x:Bind ActiveIndicatorVisibility, Mode=OneWay}" />
-                                                <FontIcon Grid.Column="1"
-                                                          Grid.RowSpan="2"
-                                                          HorizontalAlignment="Center"
-                                                          VerticalAlignment="Center"
-                                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                                          FontSize="12"
-                                                          Glyph="&#xE756;" />
+                                                <ContentPresenter Grid.Column="1"
+                                                                  Grid.RowSpan="2"
+                                                                  Width="16"
+                                                                  Height="16"
+                                                                  HorizontalAlignment="Center"
+                                                                  VerticalAlignment="Center"
+                                                                  Content="{x:Bind Icon, Mode=OneWay}" />
                                                 <TextBlock x:Name="PaneTitleText"
                                                            Grid.Column="2"
                                                            Margin="2,3,0,0"

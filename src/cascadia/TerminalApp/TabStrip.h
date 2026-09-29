@@ -68,11 +68,13 @@ namespace winrt::TerminalApp::implementation
         TabStripPaneItem() = default;
         TabStripPaneItem(winrt::Microsoft::UI::Xaml::Controls::TabViewItem tab,
                          uint32_t contentId,
+                         winrt::hstring iconPath,
                          winrt::hstring title,
                          bool isActive);
 
         winrt::Microsoft::UI::Xaml::Controls::TabViewItem Tab() const noexcept { return _tab; }
         uint32_t ContentId() const noexcept { return _contentId; }
+        winrt::Windows::UI::Xaml::Controls::IconElement Icon() const noexcept { return _icon; }
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, Title, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(bool, IsActive, PropertyChanged.raise, false);
         WINRT_OBSERVABLE_PROPERTY(winrt::Windows::UI::Xaml::Visibility, ActiveIndicatorVisibility, PropertyChanged.raise, winrt::Windows::UI::Xaml::Visibility::Collapsed);
@@ -86,6 +88,7 @@ namespace winrt::TerminalApp::implementation
     private:
         winrt::Microsoft::UI::Xaml::Controls::TabViewItem _tab{ nullptr };
         uint32_t _contentId{};
+        winrt::Windows::UI::Xaml::Controls::IconElement _icon{ nullptr };
     };
 
     struct TabStripDisplayItem : TabStripDisplayItemT<TabStripDisplayItem>

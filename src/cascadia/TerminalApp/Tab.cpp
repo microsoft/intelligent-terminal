@@ -3042,10 +3042,12 @@ namespace winrt::TerminalApp::implementation
                     {
                         title = Title();
                     }
+                    const auto profile = pane->GetProfile();
                     result.emplace_back(VisiblePaneSnapshot{
                         .ContentId = pane->_contentId.value(),
                         .SessionId = pane->GetSessionId(),
                         .Title = std::move(title),
+                        .Icon = profile ? profile.Icon().Resolved() : winrt::hstring{},
                         .IsActive = pane == activeLeaf,
                         .IsAgentPane = pane->_content.try_as<winrt::TerminalApp::AgentPaneContent>() != nullptr ||
                                        pane->IsAgentPane(),

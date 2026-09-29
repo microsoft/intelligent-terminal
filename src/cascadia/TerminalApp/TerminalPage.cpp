@@ -12115,6 +12115,7 @@ namespace winrt::TerminalApp::implementation
             auto item = winrt::make<TabStripPaneItem>(
                 tab->TabViewItem(),
                 pane.ContentId,
+                pane.Icon,
                 pane.Title,
                 pane.IsActive || activeSourceContentId == pane.ContentId);
             if (pane.SessionId != winrt::guid{})

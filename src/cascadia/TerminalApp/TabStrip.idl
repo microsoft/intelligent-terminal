@@ -57,6 +57,7 @@ namespace TerminalApp
     {
         Microsoft.UI.Xaml.Controls.TabViewItem Tab { get; };
         UInt32 ContentId { get; };
+        Windows.UI.Xaml.Controls.IconElement Icon { get; };
         String Title;
         Boolean IsActive;
         Windows.UI.Xaml.Visibility ActiveIndicatorVisibility;
