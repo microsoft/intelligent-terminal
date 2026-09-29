@@ -4148,6 +4148,28 @@ namespace TerminalAppLocalTests
                 VERIFY_IS_TRUE(strip->HistoryList().IsItemClickEnabled());
             }
 
+            for (const auto metadata : {
+                     R"("cli_source":42)",
+                     R"("cli_source":{"Unknown":42})",
+                     R"("location":42)",
+                     R"("location":{"Wsl":{"distro":42}})",
+                     R"("status":42)",
+                     R"("origin":42)" })
+            {
+                const auto response = std::string{ R"({"history_status":"ready","sessions":[{"session_id":"replacement","provider_id":"copilot",)" } +
+                                      metadata + "}]}";
+                const auto parsed = page->_ParseSidebarHistorySnapshot(response);
+                VERIFY_IS_TRUE(parsed.state == winrt::TerminalApp::implementation::TerminalPage::_SidebarHistorySnapshot::State::InvalidResponse);
+                VERIFY_IS_TRUE(parsed.items.empty());
+                page->_CompleteSidebarHistoryRefresh(generation, parsed);
+                VERIFY_IS_FALSE(page->_tabStrip.HistoryLoading());
+                VERIFY_IS_FALSE(page->_tabStrip.HistoryError().empty());
+                VERIFY_ARE_EQUAL(1u, page->_tabStrip.HistoryItems().Size());
+                VERIFY_IS_TRUE(page->_tabStrip.HistoryItems().GetAt(0) == item);
+                VERIFY_ARE_EQUAL(Visibility::Visible, strip->HistoryList().Visibility());
+                VERIFY_IS_TRUE(strip->HistoryList().IsItemClickEnabled());
+            }
+
             page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(partial));
             VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, strip->HistoryMessage().Visibility());
@@ -4177,12 +4199,58 @@ namespace TerminalAppLocalTests
                 VERIFY_IS_TRUE(parsed.state == Page::_SidebarHistorySnapshot::State::InvalidResponse);
                 VERIFY_IS_TRUE(parsed.items.empty());
             }
+            for (const auto metadata : {
+                     R"("cli_source":42)",
+                     R"("cli_source":[])",
+                     R"("cli_source":{})",
+                     R"("cli_source":{"Unknown":42})",
+                     R"("location":42)",
+                     R"("location":[])",
+                     R"("location":{})",
+                     R"("location":"Wsl")",
+                     R"("location":{"Wsl":42})",
+                     R"("location":{"Wsl":{}})",
+                     R"("location":{"Wsl":{"distro":null}})",
+                     R"("location":{"Wsl":{"distro":42}})",
+                     R"("status":42)",
+                     R"("status":{})",
+                     R"("origin":42)",
+                     R"("origin":[])" })
+            {
+                const auto response = std::string{ R"({"history_status":"ready","sessions":[
+                    {"session_id":"valid","provider_id":"copilot","location":"Host"},
+                    {"session_id":"invalid","provider_id":"copilot",)" } +
+                                      metadata + "}]}";
+                const auto parsed = Page::_ParseSidebarHistorySnapshot(response);
+                VERIFY_IS_TRUE(parsed.state == Page::_SidebarHistorySnapshot::State::InvalidResponse);
+                VERIFY_IS_TRUE(parsed.items.empty());
+            }
             const auto custom = Page::_ParseSidebarHistorySnapshot(
                 R"({"sessions":[{"session_id":"custom-session","provider_id":"custom:test",
                     "cli_source":{"Unknown":"custom:test"},"location":"Host"}],"history_status":"ready"})");
             VERIFY_IS_TRUE(custom.state == Page::_SidebarHistorySnapshot::State::Ready);
             VERIFY_ARE_EQUAL(size_t{ 1 }, custom.items.size());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:test" }, custom.items.front().AgentId());
+            const auto optional = Page::_ParseSidebarHistorySnapshot(
+                R"({"sessions":[{"session_id":"optional","provider_id":"copilot","location":"Host",
+                    "cli_source":null,"status":null,"origin":null}],"history_status":"ready"})");
+            VERIFY_IS_TRUE(optional.state == Page::_SidebarHistorySnapshot::State::Ready);
+            VERIFY_ARE_EQUAL(size_t{ 1 }, optional.items.size());
+            const auto wsl = Page::_ParseSidebarHistorySnapshot(
+                R"({"sessions":[{"session_id":"wsl","cli_source":"Copilot",
+                    "location":{"Wsl":{"distro":"Ubuntu"}}}],"history_status":"ready"})");
+            VERIFY_IS_TRUE(wsl.state == Page::_SidebarHistorySnapshot::State::Ready);
+            VERIFY_ARE_EQUAL(size_t{ 1 }, wsl.items.size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Ubuntu" }, wsl.items.front().WslDistro());
+            for (const auto location : { R"("Unknown")", "null" })
+            {
+                const auto response = std::string{ R"({"history_status":"ready","sessions":[
+                    {"session_id":"unavailable","provider_id":"copilot","location":)" } +
+                                      location + "}]}";
+                const auto parsed = Page::_ParseSidebarHistorySnapshot(response);
+                VERIFY_IS_TRUE(parsed.state == Page::_SidebarHistorySnapshot::State::Ready);
+                VERIFY_IS_TRUE(parsed.items.empty());
+            }
         });
     }
 
@@ -4631,10 +4699,10 @@ namespace TerminalAppLocalTests
                 VERIFY_IS_FALSE(page->_historyRefreshInFlight);
                 VERIFY_ARE_EQUAL(generation, page->_historyRequestGeneration);
             }
-            const auto cooldown = page->_historyNextRefresh;
+            const auto nextRefresh = page->_historyNextRefresh;
             page->_CompleteSidebarHistoryRefresh(generation, { State::Loading, {} });
             VERIFY_ARE_EQUAL(int64_t{ 60 }, page->_historyRetryDelay.count());
-            VERIFY_IS_TRUE(page->_historyNextRefresh == cooldown);
+            VERIFY_IS_TRUE(page->_historyNextRefresh == nextRefresh);
             page->_CompleteSidebarHistoryRefresh(generation, { State::Ready, {} });
             VERIFY_ARE_EQUAL(int64_t{ 0 }, page->_historyRetryDelay.count());
             VERIFY_IS_TRUE(page->_historyNextRefresh == std::chrono::steady_clock::time_point{});

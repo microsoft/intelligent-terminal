@@ -6280,13 +6280,29 @@ namespace winrt::TerminalApp::implementation
                                                      .count());
         for (const auto& row : response["sessions"])
         {
-            const auto stringFields = { "session_id", "provider_id", "title", "cwd", "pane_session_id", "session_universe" };
+            const auto stringFields = { "session_id", "provider_id", "title", "cwd", "pane_session_id", "session_universe", "status", "origin" };
             if (!row.isObject() ||
                 std::ranges::any_of(stringFields, [&](const auto key) {
                     return !row[key].isNull() && !row[key].isString();
                 }))
             {
                 _agentPaneLog("invalid sidebar history session row");
+                snapshot.state = _SidebarHistorySnapshot::State::InvalidResponse;
+                snapshot.items.clear();
+                return snapshot;
+            }
+
+            const auto& cliSource = row["cli_source"];
+            const auto& location = row["location"];
+            const auto validCliSource = cliSource.isNull() || cliSource.isString() ||
+                                        (cliSource.isObject() && cliSource.size() == 1 && cliSource["Unknown"].isString());
+            const auto validLocation = location.isNull() ||
+                                       (location.isString() && (location.asString() == "Host" || location.asString() == "Unknown")) ||
+                                       (location.isObject() && location.size() == 1 &&
+                                        location["Wsl"].isObject() && location["Wsl"]["distro"].isString());
+            if (!validCliSource || !validLocation)
+            {
+                _agentPaneLog("invalid sidebar history session metadata");
                 snapshot.state = _SidebarHistorySnapshot::State::InvalidResponse;
                 snapshot.items.clear();
                 return snapshot;
@@ -6308,7 +6324,6 @@ namespace winrt::TerminalApp::implementation
 
             std::string agentSource;
             std::string wslDistro;
-            const auto& location = row["location"];
             if (location.isString() && location.asString() == "Host")
             {
                 agentSource = "host";

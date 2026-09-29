@@ -336,12 +336,12 @@ and activation errors are independent: a successful refresh clears only the
 refresh warning, not a failed focus/resume result. Existing localized error
 messages are reused.
 
-Consecutive list failures impose a 5, 10, 20, 40, then 60-second retry cooldown,
+Consecutive list failures impose a 5, 10, 20, 40, then 60-second retry delay,
 measured from completion. Both registry notifications and the five-second timer
 respect it; the timer retries on its first eligible tick. Failed requests discard
 the coalesced pending refresh instead of immediately retrying. A `ready` snapshot
-or leaving/reopening the Agents view resets the cooldown. A `loading` discovery
-snapshot is not a failure and does not increase the cooldown.
+or leaving/reopening the Agents view resets the retry delay. A `loading` discovery
+snapshot is not a failure and does not increase the retry delay.
 
 Closing the view, destroying its page, or starting activation signals cancellation
 of the in-flight list command. The background capture loop checks cancellation
