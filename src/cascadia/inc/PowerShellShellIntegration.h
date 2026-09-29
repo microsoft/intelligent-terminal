@@ -1196,6 +1196,7 @@ __ShellInteg_Rearm
         std::string           ScriptContent() const override        { return Powershell::ScriptContent(); }
         std::wstring          ProfileFriendlyName() const override  { return L"PowerShell profile"; }
         LineEndingPolicy      LineEndings() const override          { return LineEndingPolicy::Auto; }
+        bool                  PlaceBlockAtEnd() const noexcept override { return true; }
 
         std::string ScriptBlock(std::string_view eol) const override
         {
