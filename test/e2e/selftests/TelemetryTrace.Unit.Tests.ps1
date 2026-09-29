@@ -22,6 +22,23 @@ Describe 'Telemetry typed decoding' -Tag Unit {
     It 'Excludes events from unrelated processes' {
         @(Read-TestTelemetryTrace -Directory $script:directory -ProcessIds @(99)) | Should -HaveCount 0
     }
+    It 'Explicit name filtering retains selected event schemas and rejects missing names' {
+        $path = Join-Path $script:directory 'events.xml'
+        $original = Get-Content -LiteralPath $path -Raw
+        try {
+            { Read-TestTelemetryTrace -Directory $script:directory -ProcessIds @(42) -IncludeEventName AgentSlashCommandUsed } |
+                Should -Throw '*requires an event task name*'
+            $named = $original.Replace('</Event>', '<RenderingInfo><Task>AgentSlashCommandUsed</Task></RenderingInfo></Event>')
+            Set-Content -LiteralPath $path -Value $named
+            $records = @(Read-TestTelemetryTrace -Directory $script:directory -ProcessIds @(42) -IncludeEventName AgentSlashCommandUsed)
+            $records | Should -HaveCount 1
+            $records[0].Types.command | Should -Be 'win:AnsiString'
+            $records[0].Fields.command | Should -Be 'config'
+            @(Read-TestTelemetryTrace -Directory $script:directory -ProcessIds @(42) -IncludeEventName SidebarRowFieldsChanged) | Should -HaveCount 0
+            @(Read-TestTelemetryTrace -Directory $script:directory -ProcessIds @(42) -IncludeEventName agentslashcommandused) | Should -HaveCount 0
+        }
+        finally { Set-Content -LiteralPath $path -Value $original -NoNewline }
+    }
     It 'Includes the Win32Host interaction source used by retention' {
         $eventsPath = Join-Path $script:directory 'events.xml'
         $schemaPath = Join-Path $script:directory 'schema.xml'
@@ -50,6 +67,14 @@ Describe 'Telemetry typed decoding' -Tag Unit {
         $schema.instrumentationManifest.provider.templates.template.data.SetAttribute('name', 'other')
         $schema.Save((Join-Path $script:directory 'schema.xml'))
         { Read-TestTelemetryTrace -Directory $script:directory -ProcessIds @(42) } | Should -Throw '*unambiguous typed event schema*'
+        $path = Join-Path $script:directory 'events.xml'
+        $original = Get-Content -LiteralPath $path -Raw
+        try {
+            Set-Content -LiteralPath $path -Value $original.Replace('</Event>', '<RenderingInfo><Task>AgentSlashCommandUsed</Task></RenderingInfo></Event>')
+            { Read-TestTelemetryTrace -Directory $script:directory -ProcessIds @(42) -IncludeEventName AgentSlashCommandUsed } |
+                Should -Throw '*unambiguous typed event schema*'
+        }
+        finally { Set-Content -LiteralPath $path -Value $original -NoNewline }
     }
     It 'Does not borrow another process schema for the same provider and event' {
         $schemas = @(

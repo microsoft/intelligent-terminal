@@ -62,7 +62,8 @@ function Select-TestTelemetrySchema {
 function Read-TestTelemetryTrace {
     param(
         [Parameter(Mandatory)][string]$Directory,
-        [Parameter(Mandatory)][int[]]$ProcessIds
+        [Parameter(Mandatory)][int[]]$ProcessIds,
+        [ValidateNotNullOrEmpty()][string[]]$IncludeEventName
     )
     [xml]$events = Get-Content -LiteralPath (Join-Path $Directory 'events.xml') -Raw
     foreach ($lost in $events.SelectNodes("//*[local-name()='EventData']/*[local-name()='Data'][@Name='EventsLost' or @Name='BuffersLost']")) {
@@ -74,7 +75,7 @@ function Read-TestTelemetryTrace {
         if (-not ('ItE2E.TraceLoggingSchema' -as [type])) {
             Add-Type -Path (Join-Path $PSScriptRoot 'TraceLoggingSchema.cs')
         }
-        $tlgSchemas = @([ItE2E.TraceLoggingSchema]::Read((Join-Path $Directory 'telemetry.etl')))
+        $tlgSchemas = @([ItE2E.TraceLoggingSchema]::Read((Join-Path $Directory 'telemetry.etl'), $IncludeEventName))
         ConvertTo-Json -InputObject $tlgSchemas -Depth 8 | Set-Content -LiteralPath (Join-Path $Directory 'tdh-schema.json')
     }
     foreach ($event in $events.SelectNodes("//*[local-name()='Event']")) {
@@ -87,6 +88,10 @@ function Read-TestTelemetryTrace {
         if ($guid -notin @('56c06166-2e2e-5f4d-7ff3-74f4b78c87d6', '24a1622f-7da7-5c77-3303-d850bd1ab2ed', '4cfcff80-4e6b-5bfd-8ea1-d38e1226f70b', 'be579944-4d33-5202-e5d6-a7a57f1935cb')) { continue }
         $data = @($event.SelectNodes("*[local-name()='EventData']/*[local-name()='Data']"))
         $task = $event.SelectSingleNode("*[local-name()='RenderingInfo']/*[local-name()='Task']")
+        if ($IncludeEventName) {
+            if (-not $task) { throw "Named telemetry filtering requires an event task name: $guid" }
+            if ($task.InnerText -cnotin $IncludeEventName) { continue }
+        }
         if ($guid -eq '56c06166-2e2e-5f4d-7ff3-74f4b78c87d6' -and $task -and $task.InnerText -cne 'SessionBecameInteractive') { continue }
         $tlg = Select-TestTelemetrySchema -Schemas $tlgSchemas -Provider $guid `
             -ProcessId ([int]$execution.GetAttribute('ProcessID')) -Name $task.InnerText `

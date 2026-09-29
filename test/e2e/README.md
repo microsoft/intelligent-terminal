@@ -16,7 +16,7 @@ authenticated ACP agents. Available suites (results depend on the selected packa
 | `Feature.Packaging.Tests.ps1` | §9 packaging/protocol (incl. WT_COM_CLSID injected into pane shells) + §10 logging + log retention/cleanup | 18 |
 | `Feature.HookShutdown.Tests.ps1` | Fixed-CLSID native/cached hook delivery without COM activation, late-hook suppression, and ordinary headless COM compatibility; no windows, agents, or configuration edits | 3 |
 | `Feature.TelemetryFunnels.Tests.ps1` | PR #990: opt-in, provider-only ETW adoption/engagement, per-window startup inventory/sidebar, slash rename, concrete Autofix offer/Run, palette entry, provider changes, and native-ready/startup-policy state; hot-policy checks remain separately visible | 18 (requires `ITE2E_TELEMETRY=1` and explicit policy approval) |
-| `Feature.SidebarTelemetry.Tests.ps1` | Opt-in typed ETW for startup sidebar state, real search/filter/context-menu actions, loaded Agent-view session counts, keep-running counts, and suppression during editing/refresh/restore | 4 (requires `ITE2E_TELEMETRY=1`; no policy changes) |
+| `Feature.SidebarTelemetry.Tests.ps1` | Opt-in typed ETW for startup sidebar state, real search/filter/context-menu actions, loaded Agent-view session counts, keep-running counts, rich-tab field selections, and suppression during editing/refresh/restore | 5 (requires `ITE2E_TELEMETRY=1`; no policy changes) |
 | `Feature.WtcliPublishStdin.Tests.ps1` | PR #652: WTA/wtcli stdin transport delivers command-line-limit-sized events intact and preserves positional compatibility | 3 |
 | `Feature.Settings.Tests.ps1` | §1 Settings>AI Agents + §0 FRE settings/positions/auto-error/session-mgmt | 18 |
 | `Feature.FreFlow.Tests.ps1` | §0 FRE overlay click-through (Next→Save, privacy link, close-safety) plus topmost Tab Mode, Sidebar default, explicit preferences, Save-only persistence, setup failure/retry and restart | 9 (failure injection requires Dev) |
@@ -170,7 +170,12 @@ settings/state byte-for-byte, and retains real UI phase evidence and raw ETW
 artifacts. Its `row_count` oracle counts the unified Agent view's session rows
 on first successful load, independently of live-tab search and split-pane
 children. `SidebarTabPinned` means enabling Keep tab running,
-not tab-order pinning. Row-field selection (plan 5.5) remains unimplemented.
+not tab-order pinning. Row-field selection verifies canonical field IDs for
+empty, single, and paired selections, a disabled third choice, and suppression
+during menu-only actions and metadata/layout refresh.
+The decoder explicitly selects startup/sidebar event names; unrelated structured
+diagnostic events remain in the raw ETL rather than blocking these typed
+assertions. Missing or unsupported schemas for selected events still fail.
 
 `Feature.TelemetryFunnels` requires an unused **Dev** package built from the target revision,
 the build receipt's `ITE2E_EXPECTED_WTA_SHA256` and `ITE2E_EXPECTED_APP_SHA256`

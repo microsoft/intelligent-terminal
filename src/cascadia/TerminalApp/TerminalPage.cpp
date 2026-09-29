@@ -745,9 +745,25 @@ namespace winrt::TerminalApp::implementation
                 {
                     fields.emplace_back("changes");
                 }
+                std::string fieldNames;
+                for (const auto& field : fields)
+                {
+                    if (!fieldNames.empty())
+                    {
+                        fieldNames += ',';
+                    }
+                    fieldNames += field;
+                }
                 ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance().SetVisibleFields(
                     "com.microsoft.intelligent-terminal.git-status",
                     std::move(fields));
+                TraceLoggingWrite(
+                    g_hTerminalAppProvider,
+                    "SidebarRowFieldsChanged",
+                    TraceLoggingDescription("User changed the sidebar tab metadata fields"),
+                    TraceLoggingString(fieldNames.c_str(), "fields"),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
                 if (sender.RichTabAgentStatusVisible())
                 {
                     if (const auto page = weakThis.get())

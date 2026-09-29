@@ -4,7 +4,7 @@ This document defines the telemetry emitted by Intelligent Terminal's AI
 integration: what each event measures, when it is emitted, its complete
 business payload, and the limits on interpreting that payload.
 
-The scope is **30 event definitions**: 10 App, 16 WTA, 1 Settings Model,
+The scope is **31 event definitions**: 11 App, 16 WTA, 1 Settings Model,
 and 3 Settings Editor. This includes the existing `AppCreated` event,
 extended with the startup configuration snapshot.
 An event is identified by **provider name plus event name**, not by event
@@ -39,6 +39,7 @@ established separately. See [privacy information](../PRIVACY.md).
 | How often is foreground agent prompt mode entered or submitted? | App `CommandPaletteAgentPromptEntered` and `CommandPaletteDispatchedAgentPrompt` | Entry and submission are separate boundaries; neither proves task completion |
 | Is the sidebar enabled at window creation? | App `AppCreated.SidebarEnabled` | Vertical tab layout at window creation, not a session-weighted snapshot |
 | Are sidebar search, agent filtering, and keep-running used? | App `SidebarSearchOpened`, `SidebarAgentFilterApplied`, `SidebarTabPinned` | Explicit UI transitions, not automatic projection refresh, retention, or restore |
+| Which rich-tab fields do people select? | App `SidebarRowFieldsChanged.fields` | The complete selection after each user toggle, not displayed metadata values or a startup snapshot |
 | Which providers are configured at startup or changed later? | App `AppCreated` snapshot and Model `AgentProviderChanged` | Configuration, not CLI installation, authentication, or successful session use |
 | How many custom agents are configured under policy? | App `AppCreated` custom-agent inventory fields | Both roles in the same window-created snapshot, including unused entries and zero counts; no commands or custom names |
 | How often are prompts dispatched? | WTA `AgentPromptSent`, grouped by `AgentId`, `IsAutofix`, `IsByok`, `TemplateKind` | ACP prompt dispatches; Command Palette delegation is a separate path |
@@ -83,7 +84,7 @@ or resolve that hot-refresh limitation.
 
 | Alias | Provider name | GUID | Dedicated events |
 |---|---|---|---|
-| App | `Microsoft.Windows.Terminal.App` | `{24a1622f-7da7-5c77-3303-d850bd1ab2ed}` | 10 |
+| App | `Microsoft.Windows.Terminal.App` | `{24a1622f-7da7-5c77-3303-d850bd1ab2ed}` | 11 |
 | WTA | `Microsoft.Windows.Terminal.WTA` | `{4cfcff80-4e6b-5bfd-8ea1-d38e1226f70b}` | 16 |
 | Model | `Microsoft.Windows.Terminal.Setting.Model` | `{be579944-4d33-5202-e5d6-a7a57f1935cb}` | 1 |
 | Editor | `Microsoft.Windows.Terminal.Settings.Editor` | `{1b16317d-b594-51f8-c552-5d50572b5efc}` | 3 |
@@ -149,6 +150,7 @@ Business-field counts exclude the common `PartA_PrivTags` field.
 | App | [SidebarSearchOpened](#appsidebarsearchopened) | 0 | Usage |
 | App | [SidebarAgentFilterApplied](#appsidebaragentfilterapplied) | 1 | Usage |
 | App | [SidebarTabPinned](#appsidebartabpinned) | 1 | Usage |
+| App | [SidebarRowFieldsChanged](#appsidebarrowfieldschanged) | 1 | Usage |
 | App | [DelegateInvoked](#appdelegateinvoked) | 1 | Usage |
 | App | [ErrorDetected](#apperrordetected) | 1 | Usage |
 | App | [AgentSessionStarted](#appagentsessionstarted) | 24 | Usage |
@@ -226,10 +228,10 @@ the reserved background entry point is not a completed background workflow.
 | 5.2 `SidebarSearchOpened` | Opening the current-window tab search box |
 | 5.3 `SidebarAgentFilterApplied(row_count)` | Entering the Agent view; count visible session rows on its first successful snapshot |
 | 5.4 `SidebarTabPinned(pinned_count)` | Enabling **Keep tab running** from a sidebar tab's context menu |
-| 5.5 `SidebarRowFieldsChanged(fields)` | Deferred: selecting two row fields is not implemented; no event is emitted |
+| 5.5 `SidebarRowFieldsChanged(fields)` | Changing the Tab metadata selection through the sidebar filter menu; records the resulting zero-to-two field IDs |
 
 Search and filtering are independent, adjacent entry points, not a mandatory
-ordered funnel. All three interaction events use the existing App provider,
+ordered funnel. All four interaction events use the existing App provider,
 Verbose level, measures keyword, and Usage privacy tag. No search text, tab
 titles, paths, session content, or configurable row values are collected.
 These definitions do not by themselves establish deployment or backend ingestion.
@@ -282,6 +284,29 @@ emit. Re-enabling emits again. State copying, programmatic setters, layout
 changes, closing into background retention, and restoring a retained tab do
 not emit. This measures opt-in actions, not successful background work or
 retention across an application restart.
+
+### App.SidebarRowFieldsChanged
+
+**Trigger:** the user toggles a **Tab metadata** option in the sidebar filter
+menu, raising `VisibleFieldsChanged` and applying the selected fields to the
+Rich Tab provider broker. This follows the existing `Feature_RichTabProviders`
+gate; no event is emitted when that feature is disabled.
+
+| Field | Type | Meaning / values |
+|---|---|---|
+| `fields` | String | Comma-separated field IDs in canonical order: `agentStatus`, `workingDirectory`, `repository`, `branch`, `changes`. Contains zero, one, or two IDs; the empty string means no fields selected. |
+
+The payload is the complete selection after each toggle, not just the field
+that changed. For example, choosing Branch then Repository produces
+`repository,branch`, independent of click order. Each deselection also emits,
+including the intermediate one-field or empty selection while replacing a
+pair. This is not a committed two-field-only preference or retention metric.
+
+Defaults, restoring the broker's selection in another window, opening or
+dismissing the menu, disabled third-field clicks, layout refresh, and live
+metadata/status updates do not emit. Only the five fixed IDs are collected:
+never an agent's status value, directory, repository name, branch name, or
+Git-change contents.
 
 ### App.AppCreated
 

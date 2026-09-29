@@ -13,6 +13,25 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
         $script:fixturePanes = @()
         $script:phases = [ordered]@{}
         $script:phaseErrors = @{}
+        $script:rowFieldCases = @(
+            @{ Phase = 'fields-directory'; Selector = 'RichTabAgentStatusVisibleItem'; Fields = 'workingDirectory' }
+            @{ Phase = 'fields-empty'; Selector = 'RichTabWorkingDirectoryVisibleItem'; Fields = '' }
+            @{ Phase = 'fields-branch'; Selector = 'RichTabBranchVisibleItem'; Fields = 'branch' }
+            @{ Phase = 'fields-repository-branch'; Selector = 'RichTabRepositoryVisibleItem'; Fields = 'repository,branch' }
+            @{ Phase = 'fields-remove-repository'; Selector = 'RichTabRepositoryVisibleItem'; Fields = 'branch' }
+            @{ Phase = 'fields-branch-changes'; Selector = 'RichTabChangesVisibleItem'; Fields = 'branch,changes' }
+            @{ Phase = 'fields-changes'; Selector = 'RichTabBranchVisibleItem'; Fields = 'changes' }
+            @{ Phase = 'fields-agent-changes'; Selector = 'RichTabAgentStatusVisibleItem'; Fields = 'agentStatus,changes' }
+            @{ Phase = 'fields-agent'; Selector = 'RichTabChangesVisibleItem'; Fields = 'agentStatus' }
+            @{ Phase = 'fields-defaults'; Selector = 'RichTabWorkingDirectoryVisibleItem'; Fields = 'agentStatus,workingDirectory' }
+        )
+        $script:rowFieldSelectors = [ordered]@{
+            agentStatus = 'RichTabAgentStatusVisibleItem'
+            workingDirectory = 'RichTabWorkingDirectoryVisibleItem'
+            repository = 'RichTabRepositoryVisibleItem'
+            branch = 'RichTabBranchVisibleItem'
+            changes = 'RichTabChangesVisibleItem'
+        }
         $script:appProvider = '24a1622f-7da7-5c77-3303-d850bd1ab2ed'
         if ((Get-ItTestPackage) -ne 'Dev') { throw 'Sidebar telemetry validation requires explicitly selected Dev.' }
         if (-not $env:ITE2E_EXPECTED_APP_SHA256 -or -not $env:ITE2E_EXPECTED_WTA_SHA256) {
@@ -47,7 +66,9 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
                 if ($windows.Count -eq 1) { $windows[0] }
             }
             $script:app.Hwnd = $window.hwnd
-            Set-WtWindowForeground -App $script:app -Attempts 5 -DelayMs 200 | Should -BeTrue
+            Wait-Until -TimeoutSec 45 -Because 'the Dev window owns foreground after the elevated collector opens' -Condition {
+                Set-WtWindowForeground -App $script:app -Attempts 2 -DelayMs 200
+            } | Out-Null
         }
         function Invoke-SidebarFilter {
             param([string]$Name)
@@ -142,8 +163,15 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
                 Should -Be $(if ($Enable) { 'Turn off keep running' } else { 'Keep tab running' })
             Send-WtWindowKey -App $script:app -Vk 0x1B -RequireForeground | Out-Null
         }
+        function Assert-SidebarRowFields {
+            param([AllowEmptyString()][string]$Fields)
+            foreach ($field in $script:rowFieldSelectors.Keys) {
+                (Get-UiElement -App $script:app -Selector $script:rowFieldSelectors[$field]).toggleState |
+                    Should -Be $(if ($field -in ($Fields -split ',')) { 'on' } else { 'off' })
+            }
+        }
         function Assert-SidebarSchema {
-            param($Event, [string]$Field)
+            param($Event, [string]$Field, [string]$Type = 'UInt32')
             $Event.Provider | Should -Be $script:appProvider
             $Event.ProcessId | Should -Be $script:app.Pid
             $Event.Types.PartA_PrivTags | Should -Match 'UInt64$'
@@ -152,7 +180,7 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             $expected = @('PartA_PrivTags')
             if ($Field) {
                 $expected += $Field
-                $Event.Types[$Field] | Should -Match 'UInt32$'
+                $Event.Types[$Field] | Should -Match ($Type + '$')
             }
             @($Event.Fields.Keys | Sort-Object) | Should -Be @($expected | Sort-Object)
         }
@@ -166,8 +194,8 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
                 acpModel = ''; autoErrorDetectionEnabled = $false; autoFixEnabled = $false
             }
             $script:app.Launched | Should -BeTrue
-            Sync-SidebarWindow
             Save-TelemetryOwnedProcesses -App $script:app
+            Sync-SidebarWindow
             @{
                 package = $script:target.Package; installLocation = $script:target.InstallLocation
                 appPid = $script:app.Pid; appSha256 = $env:ITE2E_EXPECTED_APP_SHA256
@@ -201,6 +229,30 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             $script:tabCount = @(Get-WtTabs -App $script:app -WindowId ([string]$script:app.WindowId)).Count
             $script:tabCount | Should -Be 3
 
+            Invoke-TelemetryPhase -Name fields-menu-only -Action {
+                Invoke-UiElement -App $script:app -Selector FilterTabsButton | Out-Null
+                Assert-SidebarRowFields -Fields 'agentStatus,workingDirectory'
+                Send-WtWindowKey -App $script:app -Vk 0x1B -RequireForeground | Out-Null
+            }
+            Invoke-TelemetryPhase -Name fields-third-disabled -Action {
+                Invoke-UiElement -App $script:app -Selector FilterTabsButton | Out-Null
+                Test-UiElementEnabled -App $script:app -Selector RichTabRepositoryVisibleItem | Should -BeFalse
+                Invoke-UiClick -App $script:app -Selector RichTabRepositoryVisibleItem | Out-Null
+                Assert-SidebarRowFields -Fields 'agentStatus,workingDirectory'
+                Send-WtWindowKey -App $script:app -Vk 0x1B -RequireForeground | Out-Null
+            }
+            foreach ($case in $script:rowFieldCases) {
+                Invoke-TelemetryPhase -Name $case.Phase -Action {
+                    Invoke-UiElement -App $script:app -Selector FilterTabsButton | Out-Null
+                    Test-UiElementEnabled -App $script:app -Selector $case.Selector | Should -BeTrue
+                    Invoke-UiElement -App $script:app -Selector $case.Selector | Out-Null
+                    Invoke-UiElement -App $script:app -Selector FilterTabsButton | Out-Null
+                    Assert-SidebarRowFields -Fields $case.Fields
+                    Get-UiTree -App $script:app -Depth 8 |
+                        Set-Content -LiteralPath (Join-Path $script:root "$($case.Phase).txt")
+                    Send-WtWindowKey -App $script:app -Vk 0x1B -RequireForeground | Out-Null
+                }
+            }
             Invoke-TelemetryPhase -Name search-open -Action {
                 Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
                 Wait-UiElement -App $script:app -Selector SearchTextBox | Out-Null
@@ -313,7 +365,8 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             }
             finally { Stop-TestTelemetryTrace -Trace $trace }
         }
-        $script:records = @(Read-TestTelemetryTrace -Directory $trace.Directory -ProcessIds @($script:ownedPids))
+        $script:records = @(Read-TestTelemetryTrace -Directory $trace.Directory -ProcessIds @($script:ownedPids) `
+            -IncludeEventName @('AppCreated', 'SidebarStateOnLaunch', 'SidebarSearchOpened', 'SidebarAgentFilterApplied', 'SidebarTabPinned', 'SidebarRowFieldsChanged'))
         Initialize-TelemetryPhaseClock -CaptureDirectory $trace.Directory
         ConvertTo-Json -InputObject $script:records -Depth 12 | Set-Content -LiteralPath (Join-Path $script:root 'scoped-events.json')
         [xml]$raw = Get-Content -LiteralPath (Join-Path $trace.Directory 'events.xml') -Raw
@@ -326,7 +379,7 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
                 if ($provider.GetAttribute('Guid').Trim('{}') -ne $script:appProvider -or
                     [int]$execution.GetAttribute('ProcessID') -ne $script:app.Pid) { continue }
                 $name = $event.SelectSingleNode("*[local-name()='RenderingInfo']/*[local-name()='Task']").InnerText
-                if ($name -notin @('AppCreated', 'SidebarSearchOpened', 'SidebarAgentFilterApplied', 'SidebarTabPinned')) { continue }
+                if ($name -notin @('AppCreated', 'SidebarSearchOpened', 'SidebarAgentFilterApplied', 'SidebarTabPinned', 'SidebarRowFieldsChanged')) { continue }
                 [pscustomobject]@{
                     Name = $name
                     Level = $system.SelectSingleNode("*[local-name()='Level']").InnerText
@@ -380,13 +433,13 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             $event.Types.PartA_PrivTags | Should -Match 'UInt64$'
             @($event.Fields.Keys) | Should -HaveCount 14
         }
-        $script:metadata | Should -HaveCount 11
+        $script:metadata | Should -HaveCount (11 + $script:rowFieldCases.Count)
         $startupMetadata = @($script:metadata | Where-Object Name -eq AppCreated)[0]
         foreach ($metadata in $script:metadata) {
             [int]$metadata.Level | Should -Be 5
             $metadata.Keywords | Should -Be $startupMetadata.Keywords
         }
-        @($script:records | Where-Object Name -in @('SidebarStateOnLaunch', 'SidebarRowFieldsChanged')) | Should -HaveCount 0
+        @($script:records | Where-Object Name -eq SidebarStateOnLaunch) | Should -HaveCount 0
     }
 
     It 'Sidebar search telemetry counts opening rather than editing' {
@@ -425,5 +478,18 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             @(Get-TelemetryPhaseEvents -Phase $phase -Name SidebarTabPinned) | Should -HaveCount 0
         }
         @($script:records | Where-Object Name -eq SidebarTabPinned) | Should -HaveCount 3
+    }
+
+    It 'Sidebar row-field telemetry reports only selected field identifiers' {
+        foreach ($case in $script:rowFieldCases) {
+            $events = @(Get-TelemetryPhaseEvents -Phase $case.Phase -Name SidebarRowFieldsChanged -Provider $script:appProvider)
+            $events | Should -HaveCount 1
+            Assert-SidebarSchema -Event $events[0] -Field fields -Type AnsiString
+            $events[0].Fields.fields | Should -BeExactly $case.Fields
+        }
+        foreach ($phase in @('second-window', 'fields-menu-only', 'fields-third-disabled', 'filter-repeat', 'filter-live-search', 'layout-refresh', 'retain-restore')) {
+            @(Get-TelemetryPhaseEvents -Phase $phase -Name SidebarRowFieldsChanged) | Should -HaveCount 0
+        }
+        @($script:records | Where-Object Name -eq SidebarRowFieldsChanged) | Should -HaveCount $script:rowFieldCases.Count
     }
 }

@@ -49,7 +49,13 @@ namespace ItE2E
 
         public static Schema[] Read(string path)
         {
+            return Read(path, null);
+        }
+
+        public static Schema[] Read(string path, string[] eventNames)
+        {
             if (IntPtr.Size != 8) throw new PlatformNotSupportedException("ETW decoding requires x64 PowerShell.");
+            var selectedNames = eventNames == null ? null : new HashSet<string>(eventNames, StringComparer.Ordinal);
             var result = new List<Schema>();
             var seen = new HashSet<string>();
             Exception failure = null;
@@ -67,6 +73,7 @@ namespace ItE2E
                     if (status != 0) throw new Win32Exception((int)status);
                     if (Marshal.ReadInt32(buffer, 48) != 3) return; // DecodingSourceTlg.
                     string name = Text(buffer, 92);
+                    if (selectedNames != null && !selectedNames.Contains(name)) return;
                     byte[] guid = new byte[16];
                     Marshal.Copy(IntPtr.Add(buffer, 0), guid, 0, 16);
                     string provider = new Guid(guid).ToString();
