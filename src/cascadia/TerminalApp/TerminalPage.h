@@ -950,6 +950,7 @@ namespace winrt::TerminalApp::implementation
             const ::Microsoft::Terminal::RichTab::Provider::BrokerUpdate& update);
         static bool _IsKnownAgentCliTitle(std::wstring_view title) noexcept;
         bool _MatchesPaneAgentScope(const Tab::VisiblePaneSnapshot& pane) const;
+        bool _IsPaneRowProjectionEligible(const Tab::VisiblePaneSnapshot& pane) const;
         bool _TabHasCliAgent(const winrt::com_ptr<Tab>& tab) const;
         bool _IsAgentScopeEffective() const noexcept
         {

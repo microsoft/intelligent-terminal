@@ -2136,6 +2136,11 @@ namespace winrt::TerminalApp::implementation
 
         for (const auto& pane : tab.GetVisiblePaneSnapshot())
         {
+            if (!_IsPaneRowProjectionEligible(pane))
+            {
+                continue;
+            }
+
             if (matches(std::wstring_view{ pane.Title.c_str(), pane.Title.size() }))
             {
                 return true;
@@ -2216,6 +2221,12 @@ namespace winrt::TerminalApp::implementation
                (pane.SessionId != winrt::guid{} &&
                 (_activeCliAgentPanes.contains(pane.SessionId) ||
                  _paneAgentSessions.contains(pane.SessionId)));
+    }
+
+    bool TerminalPage::_IsPaneRowProjectionEligible(const Tab::VisiblePaneSnapshot& pane) const
+    {
+        return !pane.IsAgentPane &&
+               (!_IsAgentScopeEffective() || _MatchesPaneAgentScope(pane));
     }
 
     // Spec A §4.2: TabStrip's SelectionChanged uses custom args (TabStripSelectionChangedEventArgs),

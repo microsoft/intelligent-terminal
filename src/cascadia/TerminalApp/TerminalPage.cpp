@@ -12103,12 +12103,11 @@ namespace winrt::TerminalApp::implementation
         std::vector<TerminalApp::TabStripPaneItem> items;
         for (const auto& pane : visiblePanes)
         {
-            if (pane.IsAgentPane)
+            if (!pane.IsAgentPane)
             {
-                continue;
+                ++groupPaneCount;
             }
-            ++groupPaneCount;
-            if (_IsAgentScopeEffective() && !_MatchesPaneAgentScope(pane))
+            if (!_IsPaneRowProjectionEligible(pane))
             {
                 continue;
             }

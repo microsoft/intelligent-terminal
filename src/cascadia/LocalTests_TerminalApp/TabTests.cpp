@@ -3750,6 +3750,27 @@ namespace TerminalAppLocalTests
             page->_tabSearchQuery = panes.front().Title;
             VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
 
+            const auto agentConnection = winrt::make_self<TestConnection>(
+                winrt::guid{ L"{ed7ea490-998e-4aac-aecd-a74051a9faee}" },
+                winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+            const auto agentPane = page->_WrapInAgentPaneContent(
+                page->_MakePane(nullptr, page->_GetFocusedTab(), *agentConnection));
+            VERIFY_IS_NOT_NULL(agentPane);
+            agentPane->IsAgentPane(true);
+            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, agentPane));
+
+            const std::u16string agentTitle{ u"\x1b]0;Hidden Agent Search Title\x07" };
+            agentConnection->TerminalOutput.raise(
+                winrt::array_view<const char16_t>{ agentTitle.data(), agentTitle.data() + agentTitle.size() });
+            const auto panesWithAgent = tab->GetVisiblePaneSnapshot();
+            const auto hiddenAgent = std::find_if(panesWithAgent.begin(), panesWithAgent.end(), [](const auto& pane) {
+                return pane.IsAgentPane;
+            });
+            VERIFY_IS_TRUE(hiddenAgent != panesWithAgent.end());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Hidden Agent Search Title" }, hiddenAgent->Title);
+            page->_tabSearchQuery = hiddenAgent->Title;
+            VERIFY_IS_FALSE(page->_MatchesTabSearch(*tab));
+
             ::Microsoft::Terminal::RichTab::Provider::Presentation presentation;
             presentation.text = L"main\n2 changes";
             tab->SetRichTabPresentation(presentation);
@@ -5776,6 +5797,15 @@ namespace TerminalAppLocalTests
             strip.SelectedItem(second);
             VERIFY_IS_TRUE(strip.SelectedItem() == second);
             VERIFY_IS_TRUE(stripImpl->ItemsList().SelectedItem().as<winrt::TerminalApp::TabStripDisplayItem>().Tab() == second);
+            VERIFY_ARE_EQUAL(1, strip.SelectedIndex());
+
+            uint32_t selectionChanges = 0;
+            const auto selectionToken = strip.SelectionChanged([&](auto&&, auto&&) {
+                ++selectionChanges;
+            });
+            const auto revokeSelection = wil::scope_exit([&]() {
+                strip.SelectionChanged(selectionToken);
+            });
 
             const auto firstTop = firstContainer.TransformToVisual(strip).TransformPoint({ 0, 0 }).Y;
             const auto secondTop = secondContainer.TransformToVisual(strip).TransformPoint({ 0, 0 }).Y;
@@ -5789,6 +5819,9 @@ namespace TerminalAppLocalTests
 
             VERIFY_IS_TRUE(strip.SelectedItem() == second);
             VERIFY_IS_TRUE(stripImpl->ItemsList().SelectedItem().as<winrt::TerminalApp::TabStripDisplayItem>().Tab() == second);
+            VERIFY_ARE_EQUAL(1, strip.SelectedIndex());
+            VERIFY_IS_TRUE(stripImpl->ItemsList().Items().GetAt(strip.SelectedIndex()).as<winrt::TerminalApp::TabStripDisplayItem>().Tab() == second);
+            VERIFY_ARE_EQUAL(0u, selectionChanges);
             const auto collapsedThirdTop = thirdContainer.TransformToVisual(strip).TransformPoint({ 0, 0 }).Y;
             VERIFY_IS_TRUE(collapsedThirdTop < thirdTop);
             VERIFY_IS_TRUE(collapsedThirdTop <= firstTop + firstContainer.ActualHeight() + 1.0);
