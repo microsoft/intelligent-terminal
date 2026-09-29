@@ -14261,10 +14261,9 @@ namespace winrt::TerminalApp::implementation
         auto hoverColor = til::color{ ColorFix::AdjustLightness(accentColor, hoverColorAdjustment) };
         auto pressedColor = til::color{ ColorFix::AdjustLightness(accentColor, pressedColorAdjustment) };
 
-        if (TitlebarBrush().try_as<Media::AcrylicBrush>() &&
-            !winrt::Windows::UI::ViewManagement::AccessibilitySettings{}.HighContrast())
+        if (!winrt::Windows::UI::ViewManagement::AccessibilitySettings{}.HighContrast())
         {
-            // Reveal the shared backdrop instead of covering it with the opaque tint.
+            // Share the chrome background even when Acrylic is disabled or unfocused.
             backgroundColor = Colors::Transparent();
             hoverColor = isLightAccentColor ? Colors::Black() : Colors::White();
             pressedColor = hoverColor;
@@ -15107,22 +15106,15 @@ namespace winrt::TerminalApp::implementation
                 bgColor = ThemeColor::ColorFromBrush(tabRowBg.Evaluate(res, terminalBrush, true));
             }
 
-            // microsoft/terminal#14384: avoid mixing HostBackdrop chrome with
-            // the terminal's in-app Backdrop acrylic.
-            const auto terminalAcrylic = terminalBrush.try_as<Media::AcrylicBrush>();
-            const auto source = terminalAcrylic ? terminalAcrylic.BackgroundSource() : Media::AcrylicBackgroundSource::HostBackdrop;
-
-            // Keep unchanged effects alive across background notifications.
-            // Do not reuse a terminal-owned brush supplied by a theme.
             auto acrylicBrush = TitlebarBrush().try_as<Media::AcrylicBrush>();
-            if (!acrylicBrush || acrylicBrush == terminalBrush ||
-                acrylicBrush.BackgroundSource() != source ||
-                til::color{ acrylicBrush.TintColor() } != bgColor ||
-                til::color{ acrylicBrush.FallbackColor() } != bgColor ||
+            if (!acrylicBrush ||
+                acrylicBrush.BackgroundSource() != Media::AcrylicBackgroundSource::HostBackdrop ||
+                acrylicBrush.FallbackColor() != bgColor ||
+                acrylicBrush.TintColor() != bgColor ||
                 acrylicBrush.TintOpacity() != 0.5)
             {
                 acrylicBrush = Media::AcrylicBrush();
-                acrylicBrush.BackgroundSource(source);
+                acrylicBrush.BackgroundSource(Media::AcrylicBackgroundSource::HostBackdrop);
                 acrylicBrush.FallbackColor(bgColor);
                 acrylicBrush.TintColor(bgColor);
                 acrylicBrush.TintOpacity(0.5);

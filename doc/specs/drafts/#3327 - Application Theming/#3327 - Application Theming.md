@@ -231,22 +231,23 @@ controlling:
 
 ##### Tab Row / "Titlebar"
 
-Intelligent Terminal's vertical sidebar uses the same resolved background as
-the horizontal tab row and custom titlebar, including the search/filter area
-and session history view. The current `useAcrylicInTabRow` setting enables an
-Acrylic brush with a 0.5 tint opacity; the active theme's `tabRow.background` /
-`tabRow.unfocusedBackground` supplies its tint. Its backdrop source follows the
-active terminal's Acrylic brush, or uses host backdrop when that terminal is
-not using Acrylic. This avoids mixing host-backdrop chrome with in-app Acrylic.
-Unchanged chrome brushes are reused across background notifications.
-`compatibility.enableUnfocusedAcrylic` controls whether the app requests Acrylic
-while inactive. Windows can still substitute a solid fallback when transparency
-effects are unavailable or disabled. Profile `useAcrylic` / `opacity` settings
-apply to terminal content, not this window chrome.
+Tab switches reuse the existing Acrylic brush when its resolved tint and
+backdrop settings are unchanged, avoiding repeated backdrop initialization.
 
-The new-tab and dropdown buttons share this backdrop: with Acrylic enabled,
-their normal backgrounds are transparent and hover/pressed states use translucent
-overlays. Solid-background and high-contrast modes retain opaque button fills.
+The vertical sidebar shares the resolved tab-row/titlebar background, including
+the filter status bar and session history view. `useAcrylicInTabRow` enables
+chrome Acrylic; `compatibility.enableUnfocusedAcrylic` controls whether it is
+requested while inactive. These settings are separate from terminal-profile
+`useAcrylic` / `opacity` settings.
+
+The sidebar's content Grid binds to `TabStrip.Background` to provide an
+explicit painted surface. Keep this binding: setting only the UserControl's
+background is not sufficient to render the sidebar background in XAML Islands.
+
+The new-tab and dropdown buttons share this backdrop: their normal backgrounds
+are transparent and hover/pressed states use translucent overlays, whether
+Acrylic is enabled or not, including while the window is unfocused.
+High-contrast mode retains opaque button fills.
 
 Sidebar icon and pane-row instances likewise remain stable during focus updates.
 Sidebar rows use the native ListView hover, pressed, and selected states rather

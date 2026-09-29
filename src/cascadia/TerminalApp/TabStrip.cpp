@@ -1201,9 +1201,8 @@ namespace winrt::TerminalApp::implementation
             {
                 flyout.Hide();
             }
+            _updateHistoryVisualState();
         }
-
-        _updateHistoryVisualState();
 
         for (uint32_t index = 0; index < _tabItems.Size(); ++index)
         {

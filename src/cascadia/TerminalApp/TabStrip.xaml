@@ -59,6 +59,7 @@
         </ResourceDictionary>
     </UserControl.Resources>
 
+    <!--  Keep an explicit painted surface for the background in XAML Islands.  -->
     <Grid Background="{x:Bind Background, Mode=OneWay}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
