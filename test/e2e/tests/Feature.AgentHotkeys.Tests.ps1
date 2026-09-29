@@ -259,13 +259,19 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
 
         $vertical = $null
         try {
-            $vertical = & $script:StartLayoutApp 'vertical'
+            $vertical = & $script:StartLayoutApp 'horizontal'
             if (-not (Test-WtWindowKeyFocusable -App $vertical)) {
                 Set-ItResult -Skipped -Because 'WT window cannot take foreground for window-level keys'
                 return
             }
-            Wait-UiElement -App $vertical -Selector 'Collapse tabs pane' | Out-Null
+            Set-WtSetting -App $vertical -Key tabLayout -Value 'vertical' | Out-Null
+            Wait-UiElement -App $vertical -Selector 'SearchTabsButton' | Out-Null
+            $sidebarReady = Test-Until -TimeoutSec 6 -IntervalSec 0.5 -Condition {
+                $button = Get-UiElement -App $vertical -Selector 'Collapse tabs pane'
+                $button -and -not $button.isOffscreen -and $button.width -gt 0 -and $button.height -gt 0
+            }
             Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'sidebar-expanded-before.png') | Out-Null
+            $sidebarReady | Should -BeTrue -Because 'switching to vertical layout must initialize the sidebar toggle action label before the first hotkey'
 
             & $script:ToggleSidebarHotkey $vertical
             $sidebarCollapsed = Test-Until -TimeoutSec 6 -IntervalSec 0.5 -Condition {

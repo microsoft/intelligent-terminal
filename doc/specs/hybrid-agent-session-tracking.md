@@ -298,7 +298,9 @@ In horizontal layout this action is consumed without changing the layout or send
 input to the terminal. User keybindings can override or unbind the defaults.
 The sidebar toggle's hover hint uses the effective binding and refreshes when
 settings reload. If no key remains bound to the sidebar action, only the existing
-localized expand/collapse label is shown.
+localized expand/collapse label is shown. The label and hint initialize when the
+button is created, including a live switch from horizontal tabs, without requiring
+a prior click or an attached icon parent.
 Session titles use only the text before the first CR or LF. An empty first line
 uses the existing missing-title fallback. The title occupies one non-wrapping
 line with ellipsis; the metadata line below it is unchanged.

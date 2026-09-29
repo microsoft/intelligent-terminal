@@ -3254,19 +3254,25 @@ namespace TerminalAppLocalTests
         const auto connection = winrt::make_self<TestConnection>(
             winrt::guid{ L"{6239a42c-aaaa-49a3-80bd-e8fdd045185c}" },
             winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
-        const auto page = _commonSetup(*connection, nullptr, std::nullopt, true);
+        const auto page = _commonSetup(*connection);
 
         TestOnUIThread([&]() {
+            VERIFY_IS_FALSE(page->_isVerticalLayout);
             const auto actionMap = page->_settings.ActionMap();
             const auto initial = KeyChordSerialization::FromString(L"ctrl+shift+s");
             const auto rebound = KeyChordSerialization::FromString(L"ctrl+shift+y");
             actionMap.RegisterKeyBinding(initial, ActionAndArgs{ ShortcutAction::ToggleSidebar, nullptr });
+            page->_settings.GlobalSettings().TabLayout(TabLayout::Vertical);
+            page->SetSettings(page->_settings, false);
+            page->_CompleteTabLayoutChange(page->_tabLayoutGeneration);
+            VERIFY_IS_TRUE(page->_isVerticalLayout);
             page->_SetVerticalRailVisibility(true);
 
             const auto row = winrt::get_self<winrt::TerminalApp::implementation::TabRowControl>(page->_tabRow);
             const auto button = row->VerticalTitleBarContent().as<Grid>().Children().GetAt(0).as<Button>();
             const auto verifyHint = [&](const winrt::hstring& chord) {
                 const auto label = Automation::AutomationProperties::GetName(button);
+                VERIFY_IS_FALSE(label.empty());
                 const auto expected = chord.empty() ? label : label + L"\n" + chord;
                 const auto actual = winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(button));
                 VERIFY_ARE_EQUAL(CSTR_EQUAL, CompareStringOrdinal(expected.c_str(), -1, actual.c_str(), -1, TRUE));

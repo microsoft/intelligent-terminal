@@ -48,7 +48,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::UI::Xaml::UIElement _verticalExpandedChrome{ nullptr };
         winrt::Windows::UI::Xaml::Controls::StackPanel _verticalLeadingChrome{ nullptr };
         winrt::Windows::UI::Xaml::Controls::Grid _verticalNewTabHost{ nullptr };
-        winrt::Windows::UI::Xaml::Controls::PathIcon _verticalRailToggleIcon{ nullptr };
+        winrt::Windows::UI::Xaml::Controls::Button _verticalRailToggleButton{ nullptr };
         winrt::Microsoft::UI::Xaml::Controls::SplitButton _verticalNewTabButton{ nullptr };
         void _applyLayoutVisibility();
         void _ensureVerticalChrome();
