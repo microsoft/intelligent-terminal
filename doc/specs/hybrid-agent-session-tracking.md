@@ -288,19 +288,19 @@ The bottom-right session-management button is hidden only in the Vertical tab
 layout; other layouts retain it. Its visibility updates on startup and live
 layout changes, independently of whether the vertical sidebar is expanded,
 collapsed, or hidden. The button shares the existing `openAgentSessions` action.
-That action and the `Ctrl+Shift+/` binding use the current layout:
-horizontal tabs retain the agent pane's session-manager toggle, while vertical tabs
-open the sidebar Agent sessions view through the same lifecycle as its dedicated
-button and focus its search box. A collapsed, visible sidebar expands first.
-`Ctrl+Shift+S` invokes the configurable `toggleSidebar` action to collapse or expand
-the vertical sidebar, reusing the existing toggle button's cleanup and focus behavior.
-In horizontal layout this action is consumed without changing the layout or sending
-input to the terminal. User keybindings can override or unbind the defaults.
-The sidebar toggle's hover hint uses the effective binding and refreshes when
-settings reload. If no key remains bound to the sidebar action, only the existing
-localized expand/collapse label is shown. The label and hint initialize when the
-button is created, including a live switch from horizontal tabs, without requiring
-a prior click or an attached icon parent.
+The final agreed keyboard and focus behavior is specified in
+[Agent History and Sidebar Keyboard Navigation](./agent-history-sidebar-keyboard.md).
+That contract is pending implementation and acceptance; it does not change
+horizontal agent-session behavior. In vertical layout, `Ctrl+Shift+/` opens History
+and focuses its search box. Closing it with the same shortcut or close button
+restores the sidebar's pre-History expanded/collapsed state and attempts to restore
+the source chat input or terminal split, with a visible-terminal fallback.
+In contrast, `Ctrl+Shift+S` only expands/collapses the sidebar: expansion does not
+move focus or activate search, and collapse uses the no-source focus policy even
+when History was visible. Neither action deletes session data or stops agent tasks.
+The sidebar hint uses the effective binding, with display casing such as
+`Ctrl+Shift+S`, and matches the Agent Pane tooltip's separate dimmed shortcut line.
+
 Session titles use only the text before the first CR or LF. An empty first line
 uses the existing missing-title fallback. The title occupies one non-wrapping
 line with ellipsis; the metadata line below it is unchanged.
