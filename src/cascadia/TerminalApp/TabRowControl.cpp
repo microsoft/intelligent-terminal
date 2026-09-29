@@ -137,6 +137,9 @@ namespace winrt::TerminalApp::implementation
         WUX::Controls::Grid expandedChrome;
         WUX::Controls::Grid::SetColumn(expandedChrome, 1);
         WUX::Controls::Grid::SetColumnSpan(expandedChrome, 2);
+        WUX::Controls::ColumnDefinition leadingColumn;
+        leadingColumn.Width(WUX::GridLengthHelper::Auto());
+        expandedChrome.ColumnDefinitions().Append(leadingColumn);
         expandedChrome.ColumnDefinitions().Append(WUX::Controls::ColumnDefinition{});
         WUX::Controls::ColumnDefinition expandedNewTabColumn;
         expandedNewTabColumn.Width(WUX::GridLengthHelper::Auto());
@@ -147,10 +150,16 @@ namespace winrt::TerminalApp::implementation
         leadingChrome.VerticalAlignment(WUX::VerticalAlignment::Center);
         expandedChrome.Children().Append(leadingChrome);
 
+        // Only the empty column opts into native titlebar dragging.
+        WUX::Controls::Border dragArea;
+        WUX::Controls::Grid::SetColumn(dragArea, 1);
+        expandedChrome.Children().Append(dragArea);
+        TerminalApp::TitlebarControl::SetContentDragArea(titlebarGrid, dragArea);
+
         WUX::Controls::Grid topChromeContainer;
         topChromeContainer.HorizontalAlignment(WUX::HorizontalAlignment::Right);
         topChromeContainer.Margin(WUX::Thickness{ 0, 0, 4, 0 });
-        WUX::Controls::Grid::SetColumn(topChromeContainer, 1);
+        WUX::Controls::Grid::SetColumn(topChromeContainer, 2);
         expandedChrome.Children().Append(topChromeContainer);
 
         // Keep a distinct SplitButton permanently parented here. Reparenting
