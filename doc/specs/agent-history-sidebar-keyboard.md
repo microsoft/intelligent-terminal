@@ -2,9 +2,9 @@
 
 ## Status and scope
 
-This is the final agreed behavior contract. Implementation and acceptance of this
-revision remain pending; documenting it does not resume implementation or claim
-that the existing build already satisfies it.
+This specification defines the agreed behavior implemented by the sidebar keyboard
+actions. It is not an acceptance report: build-specific results and remaining
+validation belong in the release checklist and validation evidence.
 
 The scenarios below cover the left sidebar in the **vertical** tab layout. The
 sidebar and the independent **Agent Pane** are different surfaces. This contract

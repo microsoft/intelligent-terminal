@@ -6090,11 +6090,30 @@ namespace winrt::TerminalApp::implementation
         const auto width = visible ? (_isVerticalRailCollapsed ? railCollapsedWidth : _verticalRailWidth) : 0.0;
         const auto actionMap = _settings.ActionMap();
         Command sidebarCommand{ nullptr };
+        KeyChord sidebarChord{ nullptr };
         for (const auto& command : actionMap.AllCommands())
         {
             if (!command || !command.ActionAndArgs() ||
-                command.ActionAndArgs().Action() != ShortcutAction::ToggleSidebar ||
-                !actionMap.GetKeyBindingForAction(command.ID()))
+                command.ActionAndArgs().Action() != ShortcutAction::ToggleSidebar)
+            {
+                continue;
+            }
+            auto chord = actionMap.GetKeyBindingForAction(command.ID());
+            const auto resolved = chord ? actionMap.GetActionByKeyChord(chord) : nullptr;
+            if (!resolved || resolved.ID() != command.ID())
+            {
+                chord = nullptr;
+                for (const auto& candidate : actionMap.AllKeyBindingsForAction(command.ID()))
+                {
+                    const auto effective = actionMap.GetActionByKeyChord(candidate);
+                    if (effective && effective.ID() == command.ID() &&
+                        (!chord || KeyChordSerialization::ToString(candidate) < KeyChordSerialization::ToString(chord)))
+                    {
+                        chord = candidate;
+                    }
+                }
+            }
+            if (!chord)
             {
                 continue;
             }
@@ -6104,10 +6123,11 @@ namespace winrt::TerminalApp::implementation
                 (isUserCommand == selectedIsUserCommand && command.ID() < sidebarCommand.ID()))
             {
                 sidebarCommand = command;
+                sidebarChord = chord;
             }
         }
-        const auto sidebarKeyChordText = sidebarCommand ?
-                                             KeyChordSerialization::ToString(actionMap.GetKeyBindingForAction(sidebarCommand.ID())) :
+        const auto sidebarKeyChordText = sidebarChord ?
+                                             KeyChordSerialization::ToString(sidebarChord) :
                                              winrt::hstring{};
         const auto tabRow = winrt::get_self<implementation::TabRowControl>(_tabRow);
         tabRow->SidebarToggleKeyChordText(sidebarKeyChordText);

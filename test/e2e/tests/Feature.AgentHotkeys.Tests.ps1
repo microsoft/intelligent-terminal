@@ -431,6 +431,9 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
                 @{ Name = 'unbound'; Label = 'Collapse tabs pane'; Chord = ''; Reload = @{
                     actions = @(@{ command = 'unbound'; keys = 'ctrl+shift+s' })
                 } }
+                @{ Name = 'reassigned'; Label = 'Collapse tabs pane'; Chord = ''; Reload = @{
+                    actions = @(@{ command = 'copy'; keys = 'ctrl+shift+s' })
+                } }
                 @{ Name = 'overridden'; Label = 'Collapse tabs pane'; Chord = ''; Reload = @{
                     actions = @(@{ command = 'copy'; id = 'Terminal.ToggleSidebar' })
                 } }

@@ -290,8 +290,8 @@ layout changes, independently of whether the vertical sidebar is expanded,
 collapsed, or hidden. The button shares the existing `openAgentSessions` action.
 The final agreed keyboard and focus behavior is specified in
 [Agent History and Sidebar Keyboard Navigation](./agent-history-sidebar-keyboard.md).
-That contract is pending implementation and acceptance; it does not change
-horizontal agent-session behavior. In vertical layout, `Ctrl+Shift+/` opens History
+That contract does not change horizontal agent-session behavior.
+In vertical layout, `Ctrl+Shift+/` opens History
 and focuses its search box. Closing it with the same shortcut or close button
 restores the sidebar's pre-History expanded/collapsed state and attempts to restore
 the source chat input or terminal split, with a visible-terminal fallback.
