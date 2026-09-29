@@ -3809,7 +3809,8 @@ namespace TerminalAppLocalTests
             };
 
             const auto horizontalTooltip = tooltipText(third->TabViewItem());
-            const auto verticalTooltip = tooltipText(third->_headerControl);
+            const auto thirdContainer = page->_tabStrip.ContainerFromIndex(2).as<ListViewItem>();
+            const auto verticalTooltip = tooltipText(thirdContainer);
             VERIFY_ARE_EQUAL(horizontalTooltip, verticalTooltip);
             VERIFY_ARE_NOT_EQUAL(std::wstring::npos, verticalTooltip.find(L"Third tab"));
             VERIFY_ARE_NOT_EQUAL(std::wstring::npos, verticalTooltip.find(L"ctrl+alt+3"));
@@ -3817,16 +3818,16 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(winrt::hstring{ L"ctrl+alt+3" }, Automation::AutomationProperties::GetAcceleratorKey(third->_headerControl));
             VERIFY_ARE_EQUAL(
                 winrt::hstring{ L"ctrl+alt+3" },
-                Automation::AutomationProperties::GetAcceleratorKey(page->_tabStrip.ContainerFromIndex(2).as<ListViewItem>()));
+                Automation::AutomationProperties::GetAcceleratorKey(thirdContainer));
 
             page->_SelectTab(2);
             VERIFY_IS_TRUE(page->_selectedTabItem() == third->TabViewItem());
 
-            third->SetVerticalTabLayout(false);
-            VERIFY_IS_NULL(ToolTipService::GetToolTip(third->_headerControl));
-            VERIFY_IS_NOT_NULL(ToolTipService::GetToolTip(third->TabViewItem()));
-            third->SetVerticalTabLayout(true);
-            VERIFY_IS_NOT_NULL(ToolTipService::GetToolTip(third->_headerControl));
+            page->_tabStrip.IsRailCollapsed(true);
+            page->UpdateLayout();
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, thirdContainer.ContentTemplateRoot().as<StackPanel>().Children().GetAt(0).as<Grid>().FindName(L"TabHeaderPresenter").as<ContentPresenter>().Visibility());
+            VERIFY_ARE_EQUAL(horizontalTooltip, tooltipText(thirdContainer));
+            page->_tabStrip.IsRailCollapsed(false);
         });
     }
 
