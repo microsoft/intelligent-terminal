@@ -164,6 +164,22 @@
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
     <value>ডেটা কেনেকৈ ব্যৱহাৰ কৰা হয় জানক</value>
   </data>
+  <data name="FreOverlay_TabModeLabel.Text" xml:space="preserve">
+    <value>টেবৰ ধৰণ</value>
+    <comment>Label for the first-run dropdown that chooses the layout of terminal tabs, not indentation or the keyboard Tab key.</comment>
+  </data>
+  <data name="FreOverlay_TabModeDescription.Text" xml:space="preserve">
+    <value>নতুন চাইডবাৰ আৰু পৰম্পৰাগত অনুভূমিক টেব দৃশ্যৰ মাজত সলনি কৰক</value>
+    <comment>Help text for the first-run tab layout dropdown. The sidebar shows tabs vertically in a side panel; the classic layout shows tabs horizontally across the top. This is a choice between layouts, not an on/off switch.</comment>
+  </data>
+  <data name="FreOverlay_TabModeSidebar" xml:space="preserve">
+    <value>চাইডবাৰ</value>
+    <comment>Dropdown option for displaying terminal tabs vertically in a side panel. This is the same layout called Vertical in Settings.</comment>
+  </data>
+  <data name="FreOverlay_TabModeHorizontal" xml:space="preserve">
+    <value>অনুভূমিক</value>
+    <comment>Dropdown option for displaying terminal tabs across the top of the window. Use the same terminology as the Horizontal tab layout option in Settings.</comment>
+  </data>
   <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
     <value>এজেণ্ট</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
@@ -465,11 +481,32 @@
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>টেবসমূহ ফিল্টাৰ কৰক</value>
   </data>
+  <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
+    <value>ফিল্টাৰ কৰক</value>
+  </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>সকলো টেব</value>
   </data>
   <data name="VerticalTabsFilterAgentsOnly.Text" xml:space="preserve">
     <value>কেৱল এজেণ্ট</value>
+  </data>
+  <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
+    <value>টেব মেটাডাটা</value>
+  </data>
+  <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
+    <value>এজেন্টৰ অৱস্থা</value>
+  </data>
+  <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
+    <value>বৰ্তমান কাৰ্য্যকৰী ডাইৰেকটৰি</value>
+  </data>
+  <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
+    <value>GitTM ভঁৰাল</value>
+  </data>
+  <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
+    <value>GitTM শাখা</value>
+  </data>
+  <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
+    <value>GitTM সলনি হয়</value>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>১টা এজেণ্ট অধিৱেশন দেখুওৱা হৈছে</value>
@@ -505,10 +542,10 @@
     <value>এজেণ্ট ইতিহাস বন্ধ কৰক</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>এজেণ্ট ইতিহাস সন্ধান কৰক</value>
+    <value>এজেণ্ট অধিৱেশন সন্ধান কৰক</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>এজেণ্ট ইতিহাস সন্ধান কৰক</value>
+    <value>এজেণ্ট অধিৱেশন সন্ধান কৰক</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>কোনো এজেণ্ট অধিৱেশন পোৱা নগ&apos;ল।</value>

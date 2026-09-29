@@ -447,6 +447,14 @@
     </Project>
   </Folder>
   <Folder Name="/Terminal/">
+    <Project Path="src/cascadia/RichTabProvider/RichTabProvider.vcxproj" Id="d4b1c85b-c88b-4f37-aadb-8083c13e66a2">
+      <BuildType Solution="AuditMode|Any CPU" Project="Release" />
+      <Platform Solution="*|Any CPU" Project="Win32" />
+      <Build Solution="*|Any CPU" Project="false" />
+      <Build Solution="AuditMode|ARM64" Project="false" />
+      <Build Solution="AuditMode|x86" Project="false" />
+      <Build Solution="Fuzzing|*" Project="false" />
+    </Project>
     <Project Path="src/cascadia/CascadiaPackage/CascadiaPackage.wapproj" Type="c7167f0d-bc9f-4e6e-afe1-012c56b48db5">
       <BuildDependency Project="src/cascadia/ShellExtension/WindowsTerminalShellExt.vcxproj" />
       <BuildDependency Project="src/tools/wtcli/wtcli.vcxproj" />

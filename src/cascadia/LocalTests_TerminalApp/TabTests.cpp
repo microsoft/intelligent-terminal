@@ -28,6 +28,7 @@
 #include <winrt/Windows.UI.Xaml.Automation.h>
 #include <winrt/Windows.UI.Xaml.Automation.Peers.h>
 #include <winrt/Windows.UI.Xaml.Automation.Provider.h>
+#include <winrt/Windows.UI.Xaml.Media.Imaging.h>
 #include <winrt/Windows.UI.Xaml.Shapes.h>
 
 using namespace Microsoft::Console;
@@ -271,6 +272,9 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TryCreateXamlObjects);
 
         TEST_METHOD(TryInitializePage);
+        TEST_METHOD(FreTabModeSelectionDoesNotMutateSettings);
+        TEST_METHOD(FreIllustrationsFollowThemeWithoutChangingChrome);
+        TEST_METHOD(EmptyTabLayoutChangeCompletesBeforeStartup);
         TEST_METHOD(VerticalRailVisibilityRestoresWidth);
         TEST_METHOD(VerticalRailCollapseRestoresWidth);
         TEST_METHOD(LiveTabLayoutRoundTripPreservesState);
@@ -279,6 +283,10 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabStripPreservesClosePolicy);
         TEST_METHOD(VerticalTabStripCollapsedItemsPreserveSelection);
         TEST_METHOD(VerticalTabStripHostsPaneGroups);
+        TEST_METHOD(VerticalTabSelectionPreservesPresentation);
+        TEST_METHOD(VerticalTabIconChangesUpdatePresentation);
+        TEST_METHOD(VerticalTabThemeChangesDoNotReprojectPanes);
+        TEST_METHOD(VerticalTabStripUsesNativeInteractionStates);
         TEST_METHOD(AgentViewFiltersSplitPaneChildren);
         TEST_METHOD(VerticalTabSearchMatchesCommittedTitle);
         TEST_METHOD(VerticalTabSearchUiState);
@@ -286,6 +294,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(AgentViewOpensHistory);
         TEST_METHOD(AgentViewAllTabsStopsHistoryRefresh);
         TEST_METHOD(VerticalTabHistoryStatusText);
+        TEST_METHOD(SessionRegistryStatusDeltaUpdatesCaches);
         TEST_METHOD(BottomBarOmitsSessionsButton);
         TEST_METHOD(VerticalTabHistoryRelativeAge);
         TEST_METHOD(VerticalTabHistoryMetadataLayout);
@@ -297,6 +306,10 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabHistoryForegroundProtocolCreationExitsView);
         TEST_METHOD(VerticalTabHistoryActivationCompletionPreservesView);
         TEST_METHOD(VerticalTabHistoryActivationKeepsRows);
+        TEST_METHOD(VerticalTabHistoryStartupLoading);
+        TEST_METHOD(VerticalTabHistoryLoadingAndErrorsKeepRows);
+        TEST_METHOD(VerticalTabHistorySnapshotRejectsMalformedResponse);
+        TEST_METHOD(VerticalTabHistoryIgnoresStaleLoadingResult);
         TEST_METHOD(VerticalTabHistoryRefreshPreservesCollection);
         TEST_METHOD(VerticalTabHistoryRefreshPreservesScroll);
         TEST_METHOD(VerticalTabHistorySearchProjection);
@@ -305,6 +318,12 @@ namespace TerminalAppLocalTests
         TEST_METHOD(WindowActivationToleratesTabWithoutStatus);
         TEST_METHOD(AgentTabClassificationTracksSession);
         TEST_METHOD(CliAgentClassifiesTab);
+        TEST_METHOD(VisibleFieldsControlRichTabComposition);
+        TEST_METHOD(RichTabMetadataSelectionIsLimitedToTwo);
+        TEST_METHOD(RichTabMetadataExpandsVerticalRow);
+        TEST_METHOD(RichTabManifestAcceptsCamelCaseFieldIds);
+        TEST_METHOD(RichTabRequestIncludesFirstPartyFields);
+        TEST_METHOD(VisibleFieldsDoNotFilterTabs);
 
         TEST_METHOD(CreateSimpleTerminalXamlType);
         TEST_METHOD(CreateTerminalMuxXamlType);
@@ -312,6 +331,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(CreateTerminalPage);
         TEST_METHOD(PaneContextPropagatesCaptureFailure);
         TEST_METHOD(AgentSessionRestoreRequiresPersistedBufferPath);
+        TEST_METHOD(InteractiveResumeCommandPublishesSessionLifecycle);
         TEST_METHOD(AgentPaneRestoreRecordRoundTrips);
         TEST_METHOD(AgentPaneRestorePreservesSettingsBinding);
         TEST_METHOD(RestoredAgentSelectionBecomesExplicitOnlyAfterUserChoice);
@@ -586,6 +606,12 @@ namespace TerminalAppLocalTests
         const auto target = Restore::ParseResumeCommandline(resume);
         VERIFY_ARE_EQUAL(std::wstring{ L"claude" }, target.agent);
         VERIFY_ARE_EQUAL(std::wstring{ L"agent-session-1" }, target.sessionId);
+        VERIFY_ARE_EQUAL(std::wstring{ L"copilot" }, Restore::ParseResumeCommandline(L"  copilot --resume agent-session-2  ").agent);
+        VERIFY_ARE_EQUAL(std::wstring{ L"agent-session-2" }, Restore::ParseResumeCommandline(L"copilot --resume agent-session-2").sessionId);
+        VERIFY_ARE_EQUAL(std::wstring{ L"copilot" }, Restore::ParseResumeCommandline(L"copilot --resume=agent-session-2").agent);
+        VERIFY_ARE_EQUAL(std::wstring{ L"agent-session-2" }, Restore::ParseResumeCommandline(L"copilot --resume=agent-session-2").sessionId);
+        VERIFY_IS_TRUE(Restore::ParseResumeCommandline(L"copilot --resume agent-session-2; calc.exe").agent.empty());
+        VERIFY_IS_TRUE(Restore::ParseResumeCommandline(L"copilot --resume bad id").agent.empty());
 
         // An ordinary shell must not be mistaken for one.
         VERIFY_IS_FALSE(Restore::IsResumeCommandline(L"pwsh.exe"));
@@ -610,6 +636,62 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(built.empty());
             VERIFY_ARE_EQUAL(std::wstring{ agent }, Restore::ParseResumeCommandline(built).agent);
         }
+    }
+
+    void TabTests::InteractiveResumeCommandPublishesSessionLifecycle()
+    {
+        const winrt::guid paneId{ L"{5d9cc4ac-1a11-4bb0-99ca-82a71e94fa77}" };
+        const auto connection = winrt::make_self<TestConnection>(
+            paneId,
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        const auto page = _commonSetup(*connection);
+
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(tab);
+            const auto control = tab->GetActiveTerminalControl();
+            const auto paneIdText = _formatPaneId(paneId);
+            const auto tabId = winrt::to_string(tab->StableId());
+            std::vector<Json::Value> events;
+            const auto token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& payload) {
+                Json::Value event;
+                Json::CharReaderBuilder reader;
+                std::istringstream stream{ winrt::to_string(payload) };
+                std::string errors;
+                if (Json::parseFromStream(reader, stream, &event, &errors))
+                {
+                    events.emplace_back(std::move(event));
+                }
+            });
+            const auto revoke = wil::scope_exit([&]() {
+                page->ProtocolVtSequenceReceived(token);
+            });
+
+            page->_TryPublishInteractiveResumeBinding(
+                control,
+                paneIdText,
+                tabId,
+                L"copilot",
+                L"resumed-session");
+
+            VERIFY_ARE_EQUAL(size_t{ 1 }, events.size());
+            VERIFY_ARE_EQUAL(std::string{ "session_born_bound" }, events[0]["method"].asString());
+            VERIFY_ARE_EQUAL(std::string{ "resumed-session" }, events[0]["params"]["agent_session_id"].asString());
+            VERIFY_ARE_EQUAL(std::string{ "copilot" }, events[0]["params"]["agent"].asString());
+            VERIFY_ARE_EQUAL(paneIdText, events[0]["params"]["pane_id"].asString());
+            VERIFY_ARE_EQUAL(tabId, events[0]["params"]["tab_id"].asString());
+            VERIFY_IS_TRUE(page->_paneAgentSessions.contains(paneId));
+            VERIFY_IS_TRUE(page->_interactiveResumeSessions.contains(paneId));
+
+            page->_CompleteInteractiveResumeBinding(paneIdText, tabId);
+
+            VERIFY_ARE_EQUAL(size_t{ 2 }, events.size());
+            VERIFY_ARE_EQUAL(std::string{ "agent_event" }, events[1]["method"].asString());
+            VERIFY_ARE_EQUAL(std::string{ "agent.session.end" }, events[1]["params"]["event"].asString());
+            VERIFY_ARE_EQUAL(std::string{ "resumed-session" }, events[1]["params"]["agent_session_id"].asString());
+            VERIFY_IS_FALSE(page->_paneAgentSessions.contains(paneId));
+            VERIFY_IS_FALSE(page->_interactiveResumeSessions.contains(paneId));
+        });
     }
 
     void TabTests::AgentPaneRestoreRecordRoundTrips()
@@ -2994,6 +3076,80 @@ namespace TerminalAppLocalTests
         });
     }
 
+    void TabTests::FreTabModeSelectionDoesNotMutateSettings()
+    {
+        TestOnUIThread([]() {
+            winrt::TerminalApp::FreOverlay fre;
+            for (const auto configured : { std::optional<TabLayout>{}, std::optional{ TabLayout::Horizontal }, std::optional{ TabLayout::Vertical } })
+            {
+                CascadiaSettings settings{ LR"({"profiles":[{"name":"cmd","commandline":"cmd.exe"}]})", {} };
+                const auto globals = settings.GlobalSettings();
+                if (configured)
+                {
+                    globals.TabLayout(*configured);
+                }
+
+                fre.Initialize(settings);
+                const auto picker = fre.FindName(L"TabModeComboBox").try_as<ComboBox>();
+                VERIFY_IS_NOT_NULL(picker);
+                VERIFY_ARE_EQUAL(2u, picker.Items().Size());
+                VERIFY_ARE_EQUAL(configured == TabLayout::Horizontal ? 1 : 0, picker.SelectedIndex());
+                VERIFY_IS_FALSE(Automation::AutomationProperties::GetName(picker).empty());
+                VERIFY_IS_FALSE(Automation::AutomationProperties::GetHelpText(picker).empty());
+
+                picker.SelectedIndex(1 - picker.SelectedIndex());
+                VERIFY_ARE_EQUAL(configured.has_value(), globals.HasTabLayout());
+                VERIFY_ARE_EQUAL(configured.value_or(TabLayout::Horizontal), globals.TabLayout());
+            }
+        });
+    }
+
+    void TabTests::FreIllustrationsFollowThemeWithoutChangingChrome()
+    {
+        TestOnUIThread([]() {
+            winrt::TerminalApp::FreOverlay fre;
+            for (const auto theme : { ElementTheme::Light, ElementTheme::Dark, ElementTheme::Default, ElementTheme::Light })
+            {
+                fre.RequestedTheme(theme);
+                const auto actualTheme = fre.ActualTheme();
+                VERIFY_ARE_NOT_EQUAL(ElementTheme::Default, actualTheme);
+                if (theme != ElementTheme::Default)
+                {
+                    VERIFY_ARE_EQUAL(theme, actualTheme);
+                }
+                VERIFY_ARE_EQUAL(ElementTheme::Dark, fre.FindName(L"RootGrid").as<Grid>().RequestedTheme());
+                for (const auto name : { L"SidebarImage", L"AutofixImage" })
+                {
+                    const auto image = fre.FindName(name).as<Image>();
+                    VERIFY_ARE_EQUAL(actualTheme, image.RequestedTheme());
+                    const auto source = image.Source().as<Media::Imaging::BitmapImage>().UriSource().AbsoluteUri();
+                    VERIFY_IS_TRUE(std::wstring_view{ source }.ends_with(actualTheme == ElementTheme::Light ? L"-light.png" : L"-dark.png"));
+                }
+            }
+        });
+    }
+
+    void TabTests::EmptyTabLayoutChangeCompletesBeforeStartup()
+    {
+        _createContentManager();
+        TestOnUIThread([&]() {
+            const auto props = winrt::make_self<winrt::TerminalApp::implementation::WindowProperties>();
+            winrt::TerminalApp::TerminalPage projectedPage{ *props, *_contentManager };
+            const auto page = winrt::get_self<winrt::TerminalApp::implementation::TerminalPage>(projectedPage);
+            page->_settings = CascadiaSettings{ LR"({"profiles":[{"name":"cmd","commandline":"cmd.exe"}]})", {} };
+            page->_terminalSettingsCache = std::make_shared<winrt::TerminalApp::implementation::TerminalSettingsCache>(page->_settings);
+            page->Create();
+
+            VERIFY_ARE_EQUAL(0u, page->_tabs.Size());
+            VERIFY_IS_TRUE(page->_ApplyTabLayout(TabLayout::Vertical));
+            VERIFY_IS_TRUE(page->_isVerticalLayout);
+            VERIFY_IS_FALSE(page->_changingTabLayout);
+            VERIFY_IS_TRUE(page->_ApplyTabLayout(TabLayout::Horizontal));
+            VERIFY_IS_FALSE(page->_isVerticalLayout);
+            VERIFY_IS_FALSE(page->_changingTabLayout);
+        });
+    }
+
     void TabTests::LiveTabLayoutRoundTripPreservesState()
     {
         auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
@@ -3180,6 +3336,11 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->ItemsList().Visibility());
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->HistoryPanel().Visibility());
 
+            strip.TabsVisible(false);
+            strip.TabsVisible(true);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->ItemsList().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->HistoryPanel().Visibility());
+
             stripImpl->OnAllTabsFilterClick(nullptr, {});
             VERIFY_IS_TRUE(historyClosed);
             VERIFY_IS_FALSE(strip.HistoryActive());
@@ -3261,6 +3422,60 @@ namespace TerminalAppLocalTests
                 VERIFY_IS_FALSE(text.empty());
                 VERIFY_ARE_EQUAL(resources.GetValue(resource).ValueAsString(), text);
             }
+        });
+    }
+
+    void TabTests::SessionRegistryStatusDeltaUpdatesCaches()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            page->_tabStrip.RichTabAgentStatusVisible(false);
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            item.SessionId(L"session-a");
+            item.PaneSessionId(L"00000000-0000-0000-0000-000000000001");
+            item.Title(L"Waiting session");
+            item.AgentId(L"copilot");
+            item.ProviderDisplayName(L"Copilot");
+            item.AgentSource(L"host");
+            item.Status(L"Idle");
+            item.Subtitle(L"copilot - Host - Idle");
+            item.IsLive(true);
+            stripImpl->CommitHistorySnapshot({ item });
+            const auto idleStyle = item.StatusTextStyle();
+
+            page->_richTabAgentStatusRequestGeneration = 41;
+            page->_richTabAgentStatusSnapshotLoaded = false;
+            page->_richTabAgentStatusRefreshInFlight = true;
+            page->_richTabAgentStatusRefreshPending = false;
+            VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(
+                "session-a",
+                "00000000-0000-0000-0000-000000000001",
+                "Attention"));
+            VERIFY_ARE_EQUAL(uint64_t{ 42 }, page->_richTabAgentStatusRequestGeneration);
+            VERIFY_IS_FALSE(page->_richTabAgentStatusSnapshotLoaded);
+            VERIFY_IS_TRUE(page->_richTabAgentStatusRefreshPending);
+            VERIFY_ARE_EQUAL(
+                std::string{ "Attention" },
+                page->_richTabAgentStatusBySessionId.at("session-a"));
+            VERIFY_ARE_EQUAL(
+                std::string{ "Attention" },
+                page->_richTabAgentStatusByPaneId.at(
+                    winrt::guid{ L"00000000-0000-0000-0000-000000000001" }));
+            VERIFY_ARE_EQUAL(1u, page->_tabStrip.HistoryItems().Size());
+            const auto updated = page->_tabStrip.HistoryItems().GetAt(0);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Attention" }, updated.Status());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot - Host - Waiting for input" }, updated.Subtitle());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Waiting for input" }, updated.StatusText());
+            VERIFY_IS_TRUE(updated.StatusTextStyle() != idleStyle);
+            VERIFY_IS_TRUE(
+                updated.StatusTextStyle() ==
+                page->_tabStrip.Resources().Lookup(winrt::box_value(L"HistoryAttentionTextStyle")).as<Style>());
+            VERIFY_IS_TRUE(updated.IsLive());
+            VERIFY_IS_FALSE(updated.IsHistorical());
+
+            VERIFY_IS_FALSE(page->_ApplyAgentSessionStatusDelta("session-a", "", "FutureStatus"));
         });
     }
 
@@ -3758,6 +3973,135 @@ namespace TerminalAppLocalTests
         });
     }
 
+    void TabTests::VerticalTabHistoryStartupLoading()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            page->_tabStrip.HistoryActive(true);
+            const auto generation = page->_historyRequestGeneration;
+            for (auto i = 0; i < 2; ++i)
+            {
+                page->_historyRefreshInFlight = true;
+                page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(R"({"sessions":[],"history_status":"loading"})"));
+                VERIFY_IS_FALSE(page->_historyRefreshInFlight);
+                VERIFY_IS_TRUE(page->_tabStrip.HistoryLoading());
+                VERIFY_IS_TRUE(strip->HistoryLoadingIndicator().IsActive());
+                VERIFY_ARE_EQUAL(Visibility::Collapsed, strip->HistoryMessage().Visibility());
+                VERIFY_ARE_EQUAL(0u, page->_tabStrip.HistoryItems().Size());
+            }
+
+            page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(R"({"sessions":[],"history_status":"ready"})"));
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryLoading());
+            VERIFY_ARE_EQUAL(Visibility::Visible, strip->HistoryMessage().Visibility());
+            const auto resources = winrt::Windows::ApplicationModel::Resources::Core::ResourceManager::Current()
+                                       .MainResourceMap()
+                                       .GetSubtree(L"TerminalApp/Resources");
+            VERIFY_ARE_EQUAL(resources.GetValue(L"VerticalTabsHistoryEmpty").ValueAsString(), strip->HistoryMessage().Text());
+
+            // Transport failures use the default Error outcome, never a successful empty snapshot.
+            page->_CompleteSidebarHistoryRefresh(generation, {});
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryLoading());
+            VERIFY_ARE_EQUAL(resources.GetValue(L"VerticalTabsHistoryLoadError").ValueAsString(), strip->HistoryMessage().Text());
+            page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(R"({"sessions":[],"history_status":"loading"})"));
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryLoading());
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, strip->HistoryMessage().Visibility());
+        });
+    }
+
+    void TabTests::VerticalTabHistoryLoadingAndErrorsKeepRows()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            page->_tabStrip.HistoryActive(true);
+            const auto generation = page->_historyRequestGeneration;
+            const auto partial = R"({"history_status":"loading","sessions":[
+                {"session_id":"available","provider_id":"copilot","title":"Available session",
+                 "location":"Host","status":"Historical"}]})";
+            page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(partial));
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryLoading());
+            VERIFY_ARE_EQUAL(1u, page->_tabStrip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(Visibility::Visible, strip->HistoryList().Visibility());
+            VERIFY_IS_TRUE(strip->HistoryList().IsItemClickEnabled());
+            const auto item = page->_tabStrip.HistoryItems().GetAt(0);
+
+            strip->HistorySearchTextBox().Text(L"no match");
+            page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(R"({"sessions":[],"history_status":"loading"})"));
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryLoading());
+            VERIFY_IS_TRUE(strip->HasHistoryItems());
+            strip->HistorySearchTextBox().Text(L"");
+
+            for (const auto response : {
+                     R"({"sessions":[],"history_status":"error"})",
+                     R"({"sessions":[]})" })
+            {
+                page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(response));
+                VERIFY_IS_FALSE(page->_tabStrip.HistoryLoading());
+                VERIFY_IS_FALSE(page->_tabStrip.HistoryError().empty());
+                VERIFY_IS_TRUE(page->_tabStrip.HistoryItems().GetAt(0) == item);
+                VERIFY_ARE_EQUAL(Visibility::Visible, strip->HistoryList().Visibility());
+                VERIFY_ARE_EQUAL(Visibility::Visible, strip->HistoryMessage().Visibility());
+                VERIFY_ARE_EQUAL(1, Grid::GetRow(strip->HistoryMessage()));
+                VERIFY_IS_TRUE(strip->HistoryList().IsItemClickEnabled());
+            }
+
+            page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(partial));
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, strip->HistoryMessage().Visibility());
+            page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(R"({"sessions":[],"history_status":"ready"})"));
+            VERIFY_IS_FALSE(strip->HasHistoryItems());
+            VERIFY_ARE_EQUAL(0u, page->_tabStrip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(0, Grid::GetRow(strip->HistoryMessage()));
+        });
+    }
+
+    void TabTests::VerticalTabHistorySnapshotRejectsMalformedResponse()
+    {
+        TestOnUIThread([&]() {
+            using Page = winrt::TerminalApp::implementation::TerminalPage;
+            for (const auto response : {
+                     "",
+                     "{}",
+                     R"({"sessions":[]})",
+                     R"({"sessions":{},"history_status":"ready"})",
+                     R"({"sessions":[],"history_status":true})",
+                     R"({"sessions":[],"history_status":"unknown"})",
+                     R"({"sessions":[],"history_status":"ready"} {})",
+                     R"({"sessions":[null],"history_status":"ready"})",
+                     R"({"sessions":[{"title":[]}],"history_status":"ready"})" })
+            {
+                const auto parsed = Page::_ParseSidebarHistorySnapshot(response);
+                VERIFY_IS_TRUE(parsed.state == Page::_SidebarHistorySnapshot::State::InvalidResponse);
+                VERIFY_IS_TRUE(parsed.items.empty());
+            }
+            const auto custom = Page::_ParseSidebarHistorySnapshot(
+                R"({"sessions":[{"session_id":"custom-session","provider_id":"custom:test",
+                    "cli_source":{"Unknown":"custom:test"},"location":"Host"}],"history_status":"ready"})");
+            VERIFY_IS_TRUE(custom.state == Page::_SidebarHistorySnapshot::State::Ready);
+            VERIFY_ARE_EQUAL(size_t{ 1 }, custom.items.size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:test" }, custom.items.front().AgentId());
+        });
+    }
+
+    void TabTests::VerticalTabHistoryIgnoresStaleLoadingResult()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            page->_tabStrip.HistoryActive(true);
+            page->_historyRequestGeneration = 10;
+            page->_CompleteSidebarHistoryRefresh(9, page->_ParseSidebarHistorySnapshot(R"({"sessions":[],"history_status":"loading"})"));
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryLoading());
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
+            page->_CloseSidebarHistory(false);
+            page->_CompleteSidebarHistoryRefresh(10, {});
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryActive());
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryLoading());
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
+        });
+    }
+
     void TabTests::VerticalTabHistoryRefreshPreservesCollection()
     {
         TestOnUIThread([&]() {
@@ -4165,6 +4509,8 @@ namespace TerminalAppLocalTests
             strip.Height(200);
             winrt::TerminalApp::TabHeaderControl header;
             header.Title(L"Split tab");
+            header.MetadataText(L"parent metadata");
+            header.IsMetadataVisible(true);
             tab.Header(header);
             winrt::MUX::Controls::SymbolIconSource icon;
             icon.Symbol(winrt::Windows::UI::Xaml::Controls::Symbol::Document);
@@ -4175,7 +4521,14 @@ namespace TerminalAppLocalTests
             strip.SetTabPresentation(tab, L"Split tab", L"\xE8A5");
 
             std::vector<winrt::TerminalApp::TabStripPaneItem> panes;
-            panes.emplace_back(winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"First pane", true));
+            auto firstPane = winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"First pane", true);
+            const auto firstPaneImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStripPaneItem>(firstPane);
+            const winrt::hstring firstPaneMetadata{ L"first metadata\n"
+                                                    L"first branch" };
+            firstPaneImpl->MetadataText(firstPaneMetadata);
+            firstPaneImpl->MetadataVisibility(Visibility::Visible);
+            firstPaneImpl->AutomationName(L"First pane, first metadata, first branch");
+            panes.emplace_back(std::move(firstPane));
             panes.emplace_back(winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 12, L"Second pane", false));
             strip.SetPaneItems(tab, winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>(std::move(panes)), true);
 
@@ -4195,8 +4548,79 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(display.ContextFlyout() == contextFlyout);
             VERIFY_ARE_EQUAL(2u, display.PaneItems().Size());
             VERIFY_ARE_EQUAL(Visibility::Visible, display.ChildrenVisibility());
+            VERIFY_IS_FALSE(header.IsMetadataVisible());
+            VERIFY_ARE_EQUAL(firstPaneMetadata, display.PaneItems().GetAt(0).MetadataText());
+            VERIFY_ARE_EQUAL(Visibility::Visible, display.PaneItems().GetAt(0).MetadataVisibility());
             VERIFY_IS_TRUE(container.ActualHeight() > 32.0);
             VERIFY_IS_NOT_NULL(header.Parent());
+
+            const auto originalIcon = display.Icon();
+            const auto firstPaneItem = display.PaneItems().GetAt(0);
+            const auto secondPaneItem = display.PaneItems().GetAt(1);
+            const auto paneList = container.ContentTemplateRoot().as<StackPanel>().Children().GetAt(1).as<ItemsControl>();
+            const auto firstPaneContainer = paneList.ContainerFromIndex(0).as<ContentPresenter>();
+            const auto firstPaneRoot = Media::VisualTreeHelper::GetChild(firstPaneContainer, 0).as<Grid>();
+            uint32_t collectionChanges = 0;
+            const auto changed = display.PaneItems().VectorChanged(winrt::auto_revoke, [&](auto&&, auto&&) {
+                ++collectionChanges;
+            });
+            const auto updatePanes = [&](std::vector<winrt::TerminalApp::TabStripPaneItem> values) {
+                strip.SetPaneItems(tab, winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>(std::move(values)), true);
+            };
+            auto updatedFirstPane = winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"Renamed pane", false);
+            const auto updatedFirstPaneImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStripPaneItem>(updatedFirstPane);
+            updatedFirstPaneImpl->MetadataText(L"updated metadata");
+            updatedFirstPaneImpl->MetadataVisibility(Visibility::Visible);
+            updatedFirstPaneImpl->AutomationName(L"Renamed pane, updated metadata");
+            updatePanes({ updatedFirstPane,
+                          winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 12, L"Second pane", true) });
+            strip.SetTabPresentation(tab, L"Renamed tab", L"\xE8A5");
+            host.UpdateLayout();
+            VERIFY_ARE_EQUAL(0u, collectionChanges);
+            VERIFY_IS_TRUE(display.Icon() == originalIcon);
+            VERIFY_IS_TRUE(display.PaneItems().GetAt(0) == firstPaneItem);
+            VERIFY_IS_TRUE(display.PaneItems().GetAt(1) == secondPaneItem);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane" }, firstPaneItem.Title());
+            VERIFY_IS_FALSE(firstPaneItem.IsActive());
+            VERIFY_IS_TRUE(secondPaneItem.IsActive());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, firstPaneItem.ActiveIndicatorVisibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, secondPaneItem.ActiveIndicatorVisibility());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"updated metadata" }, firstPaneItem.MetadataText());
+            VERIFY_ARE_EQUAL(Visibility::Visible, firstPaneItem.MetadataVisibility());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane, updated metadata" }, firstPaneItem.AutomationName());
+            VERIFY_IS_TRUE(paneList.ContainerFromIndex(0) == firstPaneContainer);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane" }, firstPaneRoot.FindName(L"PaneTitleText").as<TextBlock>().Text());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, firstPaneRoot.FindName(L"PaneActiveIndicator").as<FrameworkElement>().Visibility());
+
+            updatePanes({ winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"Renamed pane", false),
+                          winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 12, L"Second pane", true) });
+            VERIFY_ARE_EQUAL(winrt::hstring{}, firstPaneItem.MetadataText());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, firstPaneItem.MetadataVisibility());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane" }, firstPaneItem.AutomationName());
+            VERIFY_ARE_EQUAL(0u, collectionChanges);
+            VERIFY_IS_TRUE(paneList.ContainerFromIndex(0) == firstPaneContainer);
+
+            updatePanes({ secondPaneItem, firstPaneItem });
+            VERIFY_IS_TRUE(display.PaneItems().GetAt(0) == secondPaneItem);
+            VERIFY_IS_TRUE(display.PaneItems().GetAt(1) == firstPaneItem);
+            updatePanes({ firstPaneItem });
+            VERIFY_ARE_EQUAL(1u, display.PaneItems().Size());
+            VERIFY_IS_TRUE(display.PaneItems().GetAt(0) == firstPaneItem);
+            updatePanes({ firstPaneItem, secondPaneItem });
+            strip.SetTabPresentation(tab, L"Renamed tab", L"");
+            const auto fallbackIcon = display.Icon();
+            VERIFY_IS_FALSE(fallbackIcon == originalIcon);
+            strip.SetTabPresentation(tab, L"Renamed tab", L"");
+            VERIFY_IS_TRUE(display.Icon() == fallbackIcon);
+            strip.SetTabPresentation(tab, L"Renamed tab", L"\xE8A5");
+            VERIFY_IS_FALSE(display.Icon() == fallbackIcon);
+            host.UpdateLayout();
+            VERIFY_IS_TRUE(container.ContentTemplateRoot().as<FrameworkElement>().FindName(L"TabIconPresenter").as<ContentPresenter>().Content() == display.Icon());
+
+            strip.SetPaneItems(tab, display.PaneItems(), false);
+            VERIFY_IS_TRUE(header.IsMetadataVisible());
+            strip.SetPaneItems(tab, display.PaneItems(), true);
+            VERIFY_IS_FALSE(header.IsMetadataVisible());
 
             header.BeginRename();
             VERIFY_IS_TRUE(header.InRename());
@@ -4225,8 +4649,230 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(2u, movedDisplay.PaneItems().Size());
             VERIFY_IS_NOT_NULL(header.Parent());
 
+            strip.SetTabItemVisibility(tab, false);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, strip.ContainerFromIndex(1).as<ListViewItem>().Visibility());
+            strip.TabItems().RemoveAt(1);
+            strip.TabItems().Append(tab);
+            host.UpdateLayout();
+            VERIFY_ARE_EQUAL(Visibility::Visible, strip.ContainerFromIndex(1).as<ListViewItem>().Visibility());
+
             strip.TabItems().Clear();
             VERIFY_IS_TRUE(tab.Header() == header);
+        });
+    }
+
+    void TabTests::VerticalTabSelectionPreservesPresentation()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            const auto firstTab = page->_GetFocusedTabImpl();
+            const auto pane = page->_MakePane(nullptr, nullptr, nullptr);
+            VERIFY_IS_TRUE(page->_SplitPane(firstTab, SplitDirection::Right, 0.5f, pane));
+            NewTerminalArgs args;
+            VERIFY_SUCCEEDED(page->_OpenNewTab(args));
+            const auto secondTab = page->_GetFocusedTabImpl();
+            page->_settings.GlobalSettings().UseAcrylicInTabRow(true);
+            page->WindowActivated(true);
+            page->_ApplyTabListProjection();
+            page->UpdateLayout();
+
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            const auto display = strip->ItemsList().Items().GetAt(0).as<winrt::TerminalApp::TabStripDisplayItem>();
+            const auto icon = display.Icon();
+            const auto firstPane = display.PaneItems().GetAt(0);
+            const auto secondPane = display.PaneItems().GetAt(1);
+            const auto backdrop = page->TitlebarBrush();
+            VERIFY_IS_NOT_NULL(backdrop.try_as<Media::AcrylicBrush>());
+            uint32_t collectionChanges = 0;
+            const auto changed = display.PaneItems().VectorChanged(winrt::auto_revoke, [&](auto&&, auto&&) {
+                ++collectionChanges;
+            });
+
+            for (auto iteration = 0; iteration < 3; ++iteration)
+            {
+                page->_tabStrip.SelectedItem(firstTab->TabViewItem());
+                page->_tabStrip.SelectedItem(secondTab->TabViewItem());
+                page->UpdateLayout();
+                VERIFY_IS_TRUE(display.Icon() == icon);
+                VERIFY_IS_TRUE(display.PaneItems().GetAt(0) == firstPane);
+                VERIFY_IS_TRUE(display.PaneItems().GetAt(1) == secondPane);
+                VERIFY_IS_TRUE(page->TitlebarBrush() == backdrop);
+            }
+            VERIFY_ARE_EQUAL(0u, collectionChanges);
+            const auto headerRoot = page->_tabStrip.ContainerFromIndex(0).as<ListViewItem>().ContentTemplateRoot().as<StackPanel>().Children().GetAt(0).as<Grid>();
+            const auto normalBackground = headerRoot.Background();
+            VERIFY_SUCCEEDED(page->_OpenNewTab(args));
+            VERIFY_ARE_EQUAL(0u, collectionChanges);
+            VERIFY_IS_TRUE(headerRoot.Background() == normalBackground);
+            VERIFY_IS_TRUE(display.Icon() == icon);
+            VERIFY_IS_TRUE(display.PaneItems().GetAt(0) == firstPane);
+            VERIFY_IS_TRUE(display.PaneItems().GetAt(1) == secondPane);
+        });
+    }
+
+    void TabTests::VerticalTabIconChangesUpdatePresentation()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto title = tab->Title();
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            const auto display = strip->ItemsList().Items().GetAt(0).as<winrt::TerminalApp::TabStripDisplayItem>();
+            const auto pane = display.PaneItems().GetAt(0);
+            uint32_t collectionChanges = 0;
+            const auto changed = display.PaneItems().VectorChanged(winrt::auto_revoke, [&](auto&&, auto&&) {
+                ++collectionChanges;
+            });
+            NewTerminalArgs args;
+            VERIFY_SUCCEEDED(page->_OpenNewTab(args));
+            VERIFY_IS_FALSE(page->_GetFocusedTabImpl() == tab);
+
+            // Settings reload calls UpdateIcon even when the tab title is unchanged.
+            for (const auto glyph : { L"\xE8A5", L"\xE756" })
+            {
+                const auto previousIcon = display.Icon();
+                tab->UpdateIcon(glyph, IconStyle::Default);
+                page->UpdateLayout();
+                VERIFY_ARE_EQUAL(title, tab->Title());
+                VERIFY_IS_FALSE(previousIcon == display.Icon());
+                VERIFY_ARE_EQUAL(winrt::hstring{ glyph }, display.Icon().as<FontIcon>().Glyph());
+                const auto root = page->_tabStrip.ContainerFromIndex(0).as<ListViewItem>().ContentTemplateRoot().as<FrameworkElement>();
+                VERIFY_IS_TRUE(root.FindName(L"TabIconPresenter").as<ContentPresenter>().Content() == display.Icon());
+                const auto updatedIcon = display.Icon();
+                tab->UpdateIcon(glyph, IconStyle::Default);
+                VERIFY_IS_TRUE(display.Icon() == updatedIcon);
+                VERIFY_IS_TRUE(root.FindName(L"TabIconPresenter").as<ContentPresenter>().Content() == display.Icon());
+                VERIFY_IS_TRUE(display.PaneItems().GetAt(0) == pane);
+            }
+            VERIFY_ARE_EQUAL(0u, collectionChanges);
+        });
+    }
+
+    void TabTests::VerticalTabThemeChangesDoNotReprojectPanes()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            uint32_t paneChanges = 0;
+            uint32_t colorChanges = 0;
+            const auto paneToken = tab->PaneProjectionChanged([&]() { ++paneChanges; });
+            const auto colorToken = tab->TabColorChanged([&]() { ++colorChanges; });
+            const auto revoke = wil::scope_exit([&]() {
+                tab->PaneProjectionChanged(paneToken);
+                tab->TabColorChanged(colorToken);
+            });
+
+            const auto background = ThemeColor::FromTerminalBackground();
+            for (auto iteration = 0; iteration < 3; ++iteration)
+            {
+                tab->ThemeColor(background, nullptr, til::color{});
+            }
+            VERIFY_ARE_EQUAL(0u, paneChanges);
+            VERIFY_ARE_EQUAL(3u, colorChanges);
+
+            tab->SetRuntimeTabColor(winrt::Windows::UI::Colors::Red());
+            tab->ResetRuntimeTabColor();
+            VERIFY_ARE_EQUAL(0u, paneChanges);
+            VERIFY_ARE_EQUAL(5u, colorChanges);
+
+            const auto pane = page->_MakePane(nullptr, nullptr, nullptr);
+            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, pane));
+            VERIFY_IS_TRUE(paneChanges > 0);
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            const auto display = strip->ItemsList().Items().GetAt(0).as<winrt::TerminalApp::TabStripDisplayItem>();
+            VERIFY_ARE_EQUAL(2u, display.PaneItems().Size());
+        });
+    }
+
+    void TabTests::VerticalTabStripUsesNativeInteractionStates()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+            strip.Width(240);
+            strip.Height(200);
+            winrt::MUX::Controls::TabViewItem tab;
+            winrt::TerminalApp::TabHeaderControl header;
+            header.Title(L"Native interaction states");
+            tab.Header(header);
+            Media::SolidColorBrush tabBrush{ winrt::Windows::UI::Colors::Black() };
+            tabBrush.Opacity(0.3);
+            tab.Background(tabBrush);
+            strip.TabItems().Append(tab);
+            Window::Current().Content(strip);
+            Window::Current().Activate();
+            strip.UpdateLayout();
+
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            for (const auto key : {
+                     L"ListViewItemBackgroundPointerOver",
+                     L"ListViewItemBackgroundPressed",
+                     L"ListViewItemBackgroundSelected",
+                     L"ListViewItemBackgroundSelectedPointerOver",
+                     L"ListViewItemBackgroundSelectedPressed" })
+            {
+                VERIFY_IS_FALSE(impl->ItemsList().Resources().HasKey(winrt::box_value(key)));
+            }
+
+            const auto container = strip.ContainerFromIndex(0).as<ListViewItem>();
+            const auto root = container.ContentTemplateRoot().as<StackPanel>();
+            VERIFY_IS_NULL(root.FindName(L"TabSelectionBackground"));
+            VERIFY_ARE_EQUAL(uint8_t{ 0 }, container.Background().as<Media::SolidColorBrush>().Color().A);
+            const auto headerGrid = root.Children().GetAt(0).as<Grid>();
+            VERIFY_ARE_EQUAL(CornerRadiusHelper::FromUniformRadius(6), headerGrid.CornerRadius());
+            strip.SelectedItem(nullptr);
+            VERIFY_ARE_EQUAL(uint8_t{ 0 }, headerGrid.Background().as<Media::SolidColorBrush>().Color().A);
+            VERIFY_IS_TRUE(header.ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
+
+            for (const auto color : { winrt::Windows::UI::Colors::Black(), winrt::Windows::UI::Colors::White() })
+            {
+                tabBrush.Color(color);
+                strip.SetTabPresentation(tab, header.Title(), L"");
+                VERIFY_ARE_EQUAL(uint8_t{ 0 }, headerGrid.Background().as<Media::SolidColorBrush>().Color().A);
+                strip.SelectedItem(tab);
+                VERIFY_ARE_EQUAL(color, headerGrid.Background().as<Media::SolidColorBrush>().Color());
+                strip.SelectedItem(nullptr);
+                VERIFY_ARE_EQUAL(uint8_t{ 0 }, headerGrid.Background().as<Media::SolidColorBrush>().Color().A);
+                VERIFY_IS_TRUE(header.ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
+            }
+
+            const auto findPresenter = [](const auto& self, const DependencyObject& element) -> Primitives::ListViewItemPresenter {
+                if (const auto presenter = element.try_as<Primitives::ListViewItemPresenter>())
+                {
+                    return presenter;
+                }
+                for (auto index = 0; index < Media::VisualTreeHelper::GetChildrenCount(element); ++index)
+                {
+                    if (const auto presenter = self(self, Media::VisualTreeHelper::GetChild(element, index)))
+                    {
+                        return presenter;
+                    }
+                }
+                return nullptr;
+            };
+            const auto presenter = findPresenter(findPresenter, container);
+            VERIFY_IS_NOT_NULL(presenter);
+            VERIFY_IS_NOT_NULL(presenter.Content());
+            VERIFY_IS_TRUE(presenter.Content() == container.Content());
+            VERIFY_IS_NOT_NULL(presenter.ContentTemplate());
+            VERIFY_IS_TRUE(presenter.ContentTemplate() == impl->ItemsList().ItemTemplate());
+            VERIFY_ARE_EQUAL(container.CornerRadius(), presenter.CornerRadius());
+            for (const auto brush : {
+                     presenter.PointerOverBackground(),
+                     presenter.PressedBackground(),
+                     presenter.SelectedBackground(),
+                     presenter.SelectedPointerOverBackground(),
+                     presenter.SelectedPressedBackground() })
+            {
+                VERIFY_IS_TRUE(brush.as<Media::SolidColorBrush>().Color().A > 0);
+            }
+            for (const auto state : { L"Normal", L"PointerOver", L"Pressed", L"Selected", L"PointerOverSelected", L"PressedSelected", L"Normal" })
+            {
+                VERIFY_IS_TRUE(VisualStateManager::GoToState(container, state, false));
+                VERIFY_ARE_EQUAL(CornerRadiusHelper::FromUniformRadius(6), presenter.CornerRadius());
+            }
         });
     }
 
@@ -4365,6 +5011,180 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(page->_TabHasCliAgent(tab));
             page->_paneAgentSessions.erase(paneSessionId);
             VERIFY_IS_FALSE(page->_TabHasCliAgent(tab));
+        });
+    }
+
+    void TabTests::VisibleFieldsControlRichTabComposition()
+    {
+        using namespace ::Microsoft::Terminal::RichTab::Provider;
+
+        Registration provider;
+        provider.manifest.id = "git";
+        provider.manifest.fields = {
+            { "agentStatus", "Agent status", FieldType::String, true },
+            { "workingDirectory", "Current working directory", FieldType::String, true },
+            { "repository", "Git repo", FieldType::String, false },
+            { "branch", "Git branch", FieldType::String, false },
+            { "changes", "Git changes", FieldType::String, false },
+        };
+
+        Snapshot snapshot;
+        snapshot.fields.emplace("agentStatus", std::string{ "Active" });
+        snapshot.fields.emplace("workingDirectory", std::string{ R"(C:\src\terminal)" });
+        snapshot.fields.emplace("repository", std::string{ "terminal" });
+        snapshot.fields.emplace("branch", std::string{ "main" });
+        snapshot.fields.emplace("changes", std::string{ "~12 +200 -35" });
+        const std::unordered_map<std::string, Snapshot> snapshots{ { "git", snapshot } };
+
+        const auto defaults = ProviderBroker::ComposePresentation({ provider }, snapshots);
+        VERIFY_IS_TRUE(defaults.has_value());
+        VERIFY_ARE_EQUAL(
+            std::wstring{ L"Active\nC:\\src\\terminal" },
+            defaults->text);
+        VERIFY_ARE_EQUAL(
+            std::wstring{ LR"(Agent status: Active, Current working directory: C:\src\terminal)" },
+            defaults->accessibilityText);
+
+        ProviderBroker::VisibleFieldMap visibleFields;
+        visibleFields["git"].emplace("branch");
+        visibleFields["git"].emplace("changes");
+        const auto branchOnly = ProviderBroker::ComposePresentation({ provider }, snapshots, visibleFields);
+        VERIFY_IS_TRUE(branchOnly.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"main\n~12 +200 -35" }, branchOnly->text);
+        VERIFY_ARE_EQUAL(
+            std::wstring{ L"Git branch: main, Git changes: ~12 +200 -35" },
+            branchOnly->accessibilityText);
+
+        visibleFields["git"].clear();
+        VERIFY_IS_FALSE(ProviderBroker::ComposePresentation({ provider }, snapshots, visibleFields).has_value());
+    }
+
+    void TabTests::RichTabRequestIncludesFirstPartyFields()
+    {
+        using namespace ::Microsoft::Terminal::RichTab::Provider;
+
+        Manifest manifest;
+        manifest.id = "git";
+        manifest.activationEvents.emplace_back(ActivationEvent::ManualRefresh);
+
+        Request request;
+        request.requestId = "request";
+        request.providerId = manifest.id;
+        request.processEpoch = 1;
+        request.sessionId = "session";
+        request.reason = ActivationEvent::ManualRefresh;
+        request.firstPartyFields.emplace("agentStatus", "waiting");
+
+        const auto serialized = SerializeRequest(request, manifest);
+        VERIFY_IS_TRUE(static_cast<bool>(serialized));
+        VERIFY_IS_TRUE(serialized.value->find(R"("agentStatus":"waiting")") != std::string::npos);
+    }
+
+    void TabTests::RichTabMetadataSelectionIsLimitedToTwo()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            auto& tabStrip = page->_tabStrip;
+            VERIFY_IS_TRUE(tabStrip.RichTabAgentStatusVisible());
+            VERIFY_IS_TRUE(tabStrip.RichTabWorkingDirectoryVisible());
+            VERIFY_IS_FALSE(tabStrip.RichTabRepositoryVisible());
+            VERIFY_IS_FALSE(tabStrip.RichTabBranchVisible());
+            VERIFY_IS_FALSE(tabStrip.RichTabChangesVisible());
+
+            tabStrip.RichTabRepositoryVisible(true);
+            VERIFY_IS_FALSE(tabStrip.RichTabRepositoryVisible());
+
+            tabStrip.RichTabWorkingDirectoryVisible(false);
+            tabStrip.RichTabBranchVisible(true);
+            VERIFY_IS_TRUE(tabStrip.RichTabAgentStatusVisible());
+            VERIFY_IS_TRUE(tabStrip.RichTabBranchVisible());
+            VERIFY_IS_FALSE(tabStrip.RichTabWorkingDirectoryVisible());
+            VERIFY_IS_FALSE(tabStrip.RichTabRepositoryVisible());
+
+            tabStrip.RichTabChangesVisible(true);
+            VERIFY_IS_FALSE(tabStrip.RichTabChangesVisible());
+        });
+    }
+
+    void TabTests::RichTabMetadataExpandsVerticalRow()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            page->_SetVerticalRailVisibility(true);
+            const auto tab = page->_GetTabImpl(page->_tabs.GetAt(0));
+            VERIFY_IS_NOT_NULL(tab);
+
+            ::Microsoft::Terminal::RichTab::Provider::Presentation presentation;
+            presentation.text = L"first line\nsecond line";
+            presentation.tooltip = presentation.text;
+            presentation.accessibilityText = L"First: first line, Second: second line";
+            tab->SetRichTabPresentation(presentation);
+
+            page->UpdateLayout();
+            const auto tabStrip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            const auto container = tabStrip->ItemsList().ContainerFromIndex(0).try_as<ListViewItem>();
+            VERIFY_IS_NOT_NULL(container);
+            VERIFY_IS_TRUE(container.ActualHeight() > 48.0);
+        });
+    }
+
+    void TabTests::RichTabManifestAcceptsCamelCaseFieldIds()
+    {
+        using namespace ::Microsoft::Terminal::RichTab::Provider;
+
+        constexpr std::string_view manifestJson = R"({
+            "schemaVersion": 1,
+            "id": "com.microsoft.test",
+            "displayName": "Test",
+            "publisher": "Microsoft",
+            "version": "1.0.0",
+            "protocol": { "minVersion": 1, "maxVersion": 1 },
+            "runtime": {
+                "type": "powerShellV1",
+                "entrypoint": "provider.ps1",
+                "arguments": []
+            },
+            "activationEvents": [ "onManualRefresh" ],
+            "fields": [
+                {
+                    "id": "agentStatus",
+                    "displayName": "Agent status",
+                    "type": "string",
+                    "defaultVisible": true
+                },
+                {
+                    "id": "changes",
+                    "displayName": "Git changes",
+                    "type": "string",
+                    "defaultVisible": true
+                }
+            ]
+        })";
+
+        const auto parsed = ParseManifest(manifestJson, LR"(C:\providers\test)");
+        VERIFY_IS_TRUE(static_cast<bool>(parsed));
+        VERIFY_ARE_EQUAL(static_cast<size_t>(2), parsed.value->fields.size());
+        VERIFY_IS_FALSE(IsCanonicalFieldId("WorkingDirectory"));
+    }
+
+    void TabTests::VisibleFieldsDoNotFilterTabs()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            page->_tabStrip.RichTabRepositoryVisible(false);
+            page->_tabStrip.RichTabBranchVisible(false);
+            page->_tabStrip.RichTabAgentStatusVisible(false);
+            page->_tabStrip.RichTabWorkingDirectoryVisible(false);
+            page->_tabStrip.RichTabChangesVisible(false);
+            page->_ApplyTabListProjection();
+            page->UpdateLayout();
+
+            const auto container = page->_tabStrip.ContainerFromIndex(0).as<ListViewItem>();
+            VERIFY_ARE_EQUAL(Visibility::Visible, container.Visibility());
+            VERIFY_ARE_EQUAL(winrt::TerminalApp::TabStripFilterMode::AllTabs, page->_tabStrip.FilterMode());
         });
     }
 

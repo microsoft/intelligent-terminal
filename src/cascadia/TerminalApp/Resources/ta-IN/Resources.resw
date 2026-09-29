@@ -159,6 +159,22 @@
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
     <value>தரவு எவ்வாறு பயன்படுத்தப்படுகிறது என்பதைப் பற்றி அறிக</value>
   </data>
+  <data name="FreOverlay_TabModeLabel.Text" xml:space="preserve">
+    <value>தாவல் பயன்முறை</value>
+    <comment>Label for the first-run dropdown that chooses the layout of terminal tabs, not indentation or the keyboard Tab key.</comment>
+  </data>
+  <data name="FreOverlay_TabModeDescription.Text" xml:space="preserve">
+    <value>புதிய பக்கப்பட்டிக்கும் வழக்கமான கிடைமட்டத் தாவல் காட்சிக்கும் இடையே மாறவும்</value>
+    <comment>Help text for the first-run tab layout dropdown. The sidebar shows tabs vertically in a side panel; the classic layout shows tabs horizontally across the top. This is a choice between layouts, not an on/off switch.</comment>
+  </data>
+  <data name="FreOverlay_TabModeSidebar" xml:space="preserve">
+    <value>பக்கப்பட்டி</value>
+    <comment>Dropdown option for displaying terminal tabs vertically in a side panel. This is the same layout called Vertical in Settings.</comment>
+  </data>
+  <data name="FreOverlay_TabModeHorizontal" xml:space="preserve">
+    <value>கிடைமட்டம்</value>
+    <comment>Dropdown option for displaying terminal tabs across the top of the window. Use the same terminology as the Horizontal tab layout option in Settings.</comment>
+  </data>
   <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
     <value>முகவர்</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
@@ -444,11 +460,32 @@
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>தாவல்களை வடிகட்டு</value>
   </data>
+  <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
+    <value>வடிகட்டி</value>
+  </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>அனைத்துத் தாவல்களும்</value>
   </data>
   <data name="VerticalTabsFilterAgentsOnly.Text" xml:space="preserve">
     <value>எஜென்ட்கள் மட்டும்</value>
+  </data>
+  <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
+    <value>தாவல் மெட்டாடேட்டா</value>
+  </data>
+  <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
+    <value>முகவர் நிலை</value>
+  </data>
+  <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
+    <value>தற்போதைய வேலை அடைவு</value>
+  </data>
+  <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
+    <value>Git களஞ்சியம்</value>
+  </data>
+  <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
+    <value>Git கிளை</value>
+  </data>
+  <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
+    <value>Git மாற்றங்கள்</value>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>1 எஜென்ட் அமர்வு காட்டப்படுகிறது</value>
@@ -484,10 +521,10 @@
     <value>எஜென்ட் வரலாற்றை மூடு</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>எஜென்ட் வரலாற்றைத் தேடு</value>
+    <value>எஜென்ட் அமர்வுகளைத் தேடு</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>எஜென்ட் வரலாற்றைத் தேடு</value>
+    <value>எஜென்ட் அமர்வுகளைத் தேடு</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>எஜென்ட் அமர்வுகள் எதுவும் கிடைக்கவில்லை.</value>

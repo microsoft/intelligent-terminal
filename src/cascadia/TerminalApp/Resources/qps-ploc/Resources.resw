@@ -216,11 +216,32 @@
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>₣ĭĺťéя ťªвѕ !!!</value>
   </data>
+  <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
+    <value>₣ĭĺťéя !!!</value>
+  </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>Āĺĺ ťªвѕ !!!</value>
   </data>
   <data name="VerticalTabsFilterAgentsOnly.Text" xml:space="preserve">
     <value>Āğéñťѕ őñĺý !!!</value>
+  </data>
+  <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
+    <value>Ťªв méťªđªťª !!!</value>
+  </data>
+  <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
+    <value>Āğéñť ѕťªťūѕ !!!</value>
+  </data>
+  <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
+    <value>Ċūяяéñť ŵőяķĭñğ đĭяéçťőяý !!! !!!</value>
+  </data>
+  <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
+    <value>Ğĭť яéρőѕĭťőяý !!!</value>
+  </data>
+  <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
+    <value>Ğĭť вяªñçħ !!!</value>
+  </data>
+  <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
+    <value>Ğĭť çħªñğéѕ !!!</value>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>Ѕħőŵĭñğ 1 ªğéñť ѕéѕѕĭőñ !!! !!!</value>
@@ -256,10 +277,10 @@
     <value>Ċĺőѕé ªğéñť ħĭѕťőяý !!! !!!</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
-    <value>Ѕéªяċħ ªğéñť ħĭѕťőяý !!! !!!</value>
+    <value>Ѕéªяċħ ªğéñť ѕéѕѕĭőñ !!! !!!</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Ѕéªяċħ ªğéñť ħĭѕťőяý !!! !!!</value>
+    <value>Ѕéªяċħ ªğéñť ѕéѕѕĭőñ !!! !!!</value>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Ñő ªğéñť ѕéѕѕĭőñѕ ƒőūñđ. !!! !!!</value>
@@ -1173,6 +1194,22 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
     <value>Learn about how data is used</value>
+  </data>
+  <data name="FreOverlay_TabModeLabel.Text" xml:space="preserve">
+    <value>[Ťåƀ Môđê !!!]</value>
+    <comment>Label for the first-run dropdown that chooses the layout of terminal tabs, not indentation or the keyboard Tab key.</comment>
+  </data>
+  <data name="FreOverlay_TabModeDescription.Text" xml:space="preserve">
+    <value>[Ťôğğļê ƀêţŵêêñ ţĥê ñêŵ šîđêƀåŕ ôŕ çļåššîç ĥôŕîžôñţåļ ţåƀš vîêŵ !!! !!! !!!]</value>
+    <comment>Help text for the first-run tab layout dropdown. The sidebar shows tabs vertically in a side panel; the classic layout shows tabs horizontally across the top. This is a choice between layouts, not an on/off switch.</comment>
+  </data>
+  <data name="FreOverlay_TabModeSidebar" xml:space="preserve">
+    <value>[Šîđêƀåŕ !!!]</value>
+    <comment>Dropdown option for displaying terminal tabs vertically in a side panel. This is the same layout called Vertical in Settings.</comment>
+  </data>
+  <data name="FreOverlay_TabModeHorizontal" xml:space="preserve">
+    <value>[Ĥôŕîžôñţåļ !!!]</value>
+    <comment>Dropdown option for displaying terminal tabs across the top of the window. Use the same terminology as the Horizontal tab layout option in Settings.</comment>
   </data>
   <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
     <value>Agent</value>

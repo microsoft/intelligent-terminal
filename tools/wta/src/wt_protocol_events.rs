@@ -96,6 +96,23 @@ pub(crate) fn session_registry_changed_event() -> String {
     .to_string()
 }
 
+pub(crate) fn session_status_changed_event(
+    session_id: &str,
+    pane_session_id: Option<&str>,
+    status: &crate::agent_sessions::AgentStatus,
+) -> String {
+    serde_json::json!({
+        "type": "event",
+        "method": "session_registry_changed",
+        "params": {
+            "session_id": session_id,
+            "pane_session_id": pane_session_id,
+            "status": status,
+        },
+    })
+    .to_string()
+}
+
 pub(crate) fn restart_agent_stack_event_with_id(request_id: &str) -> String {
     serde_json::json!({
         "type": "event",
@@ -339,6 +356,21 @@ mod tests {
                 .unwrap();
 
         assert_eq!(event["params"]["request_id"], "auth-recovery-1");
+    }
+
+    #[test]
+    fn session_status_delta_carries_canonical_status() {
+        let event: serde_json::Value = serde_json::from_str(&super::session_status_changed_event(
+            "session-a",
+            Some("pane-a"),
+            &crate::agent_sessions::AgentStatus::Attention,
+        ))
+        .unwrap();
+
+        assert_eq!(event["method"], "session_registry_changed");
+        assert_eq!(event["params"]["session_id"], "session-a");
+        assert_eq!(event["params"]["pane_session_id"], "pane-a");
+        assert_eq!(event["params"]["status"], "Attention");
     }
 
     #[test]

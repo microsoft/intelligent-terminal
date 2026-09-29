@@ -4,6 +4,7 @@
 #pragma once
 #include "Pane.h"
 #include "ColorPickupFlyout.h"
+#include "../RichTabProvider/ProviderBroker.h"
 #include "Tab.h"
 #include "Tab.g.h"
 
@@ -66,6 +67,7 @@ namespace winrt::TerminalApp::implementation
 
         void UpdateSettings(const winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings& settings);
         void UpdateTitle();
+        void SetRichTabPresentation(const std::optional<::Microsoft::Terminal::RichTab::Provider::Presentation>& presentation);
 
         void Close();
         void Shutdown();
@@ -252,6 +254,7 @@ namespace winrt::TerminalApp::implementation
 
         til::typed_event<TerminalApp::Tab, IInspectable> ActivePaneChanged;
         til::event<winrt::delegate<>> PaneProjectionChanged;
+        til::event<winrt::delegate<>> TabColorChanged;
         til::event<winrt::delegate<>> TabRaiseVisualBell;
         til::event<winrt::delegate<winrt::hstring /*title*/, winrt::hstring /*body*/, winrt::TerminalApp::IPaneContent /*content*/>> TabToastNotificationRequested;
         til::typed_event<IInspectable, IInspectable> TaskbarProgressChanged;
@@ -370,6 +373,9 @@ namespace winrt::TerminalApp::implementation
         bool _keepRunning{ false };
 
         winrt::hstring _runtimeTabText{};
+        std::optional<::Microsoft::Terminal::RichTab::Provider::Presentation> _richTabPresentation;
+        winrt::hstring _richTabTooltipText{};
+        winrt::hstring _richTabAccessibilityText{};
         bool _inRename{ false };
         winrt::Windows::UI::Xaml::Controls::TextBox::LayoutUpdated_revoker _tabRenameBoxLayoutUpdatedRevoker;
 
@@ -410,6 +416,8 @@ namespace winrt::TerminalApp::implementation
         void _EnableMenuItems();
         void _UpdateSwitchToTabKeyChord();
         void _UpdateToolTip();
+        void _UpdateRichTabPresentation();
+        void _UpdateAutomationName();
 
         void _RecalculateAndApplyTabColor();
         void _ApplyTabColorOnUIThread(const winrt::Windows::UI::Color& color);

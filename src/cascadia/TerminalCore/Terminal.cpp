@@ -281,6 +281,26 @@ std::wstring_view Terminal::GetWorkingDirectory() noexcept
     return _workingDirectory;
 }
 
+bool Terminal::IsWorkingDirectoryReportedByShell() const noexcept
+{
+    return _workingDirectoryReportedByShell;
+}
+
+void Terminal::SetInitialWorkingDirectory(const std::wstring_view path)
+{
+    _assertLocked();
+    _workingDirectory = path;
+    _workingDirectoryReportedByShell = false;
+}
+
+void Terminal::ResetShellIntegrationState() noexcept
+{
+    _assertLocked();
+    _workingDirectoryReportedByShell = false;
+    _shellName.clear();
+    _shellVersion.clear();
+}
+
 std::wstring_view Terminal::GetShellName() const noexcept
 {
     return _shellName;
