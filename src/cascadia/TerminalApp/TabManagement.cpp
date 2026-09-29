@@ -2256,6 +2256,11 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_TryMoveTab(const uint32_t currentTabIndex,
                                    const int32_t suggestedNewTabIndex)
     {
+        if (_tabs.Size() == 0 || currentTabIndex >= _tabs.Size())
+        {
+            return;
+        }
+
         auto newTabIndex = gsl::narrow_cast<uint32_t>(std::clamp<int32_t>(suggestedNewTabIndex, 0, _tabs.Size() - 1));
         if (currentTabIndex != newTabIndex)
         {
@@ -2284,7 +2289,7 @@ namespace winrt::TerminalApp::implementation
             _mutatingTabCollections = false;
             endMutation.release();
             _UpdateTabView();
-            _ApplyTabListProjection();
+            _ApplyTabListProjection(tab);
 
             if (auto autoPeer = Automation::Peers::FrameworkElementAutomationPeer::FromElement(*this))
             {

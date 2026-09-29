@@ -924,8 +924,16 @@ namespace winrt::TerminalApp::implementation
     {
         if (from == to ||
             from >= _tabItems.Size() ||
-            to >= _tabItems.Size() ||
-            from >= _displayItems.Size())
+            to >= _tabItems.Size())
+        {
+            return;
+        }
+
+        if (_displayItems.Size() != _tabItems.Size())
+        {
+            _syncDisplayItems();
+        }
+        if (from >= _displayItems.Size() || to >= _displayItems.Size())
         {
             return;
         }
