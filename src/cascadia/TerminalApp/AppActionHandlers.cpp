@@ -1751,11 +1751,23 @@ namespace winrt::TerminalApp::implementation
         {
             if (_tabStrip && _isVerticalRailVisible)
             {
-                if (_isVerticalRailCollapsed)
+                if (_tabStrip.HistoryActive())
                 {
-                    _OnVerticalRailCollapseRequested(nullptr, nullptr);
+                    _CloseSidebarHistory(true);
                 }
-                winrt::get_self<implementation::TabStrip>(_tabStrip)->OpenHistory();
+                else
+                {
+                    _CaptureSidebarHistoryEntry();
+                    if (_isVerticalRailCollapsed)
+                    {
+                        _OnVerticalRailCollapseRequested(nullptr, nullptr);
+                    }
+                    winrt::get_self<implementation::TabStrip>(_tabStrip)->OpenHistory();
+                    if (!_tabStrip.HistoryActive())
+                    {
+                        _historyEntryState.reset();
+                    }
+                }
             }
             args.Handled(true);
             return;

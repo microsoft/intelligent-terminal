@@ -356,6 +356,12 @@ namespace winrt::TerminalApp::implementation
         uint64_t _historyRequestGeneration{ 0 };
         uint64_t _historyActivationSerial{ 0 };
         bool _preserveSidebarHistory{ false };
+        struct _SidebarHistoryEntryState
+        {
+            bool railWasCollapsed{ false };
+            winrt::weak_ref<Microsoft::Terminal::Control::TermControl> sourceControl;
+        };
+        std::optional<_SidebarHistoryEntryState> _historyEntryState;
         Windows::UI::Xaml::DispatcherTimer _historyRefreshTimer{ nullptr };
         bool _historyRefreshInFlight{ false };
         bool _historyRefreshPending{ false };
@@ -976,6 +982,10 @@ namespace winrt::TerminalApp::implementation
         void _ClearTabSearch();
         void _StartSidebarHistoryRefreshTimer();
         void _StopSidebarHistoryRefreshTimer();
+        void _CaptureSidebarHistoryEntry();
+        Windows::UI::Xaml::Controls::Control _SidebarFocusedControl() const;
+        bool _TryFocusSidebarInput(const Microsoft::Terminal::Control::TermControl& control);
+        void _FocusSidebarTerminalFallback();
         void _CloseSidebarHistory(bool restoreFocus);
         void _RequestSidebarHistoryRefresh(bool initialLoad);
         void _UpdateSidebarHistoryCurrentSession();
