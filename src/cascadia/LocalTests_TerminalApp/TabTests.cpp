@@ -278,6 +278,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalRailVisibilityRestoresWidth);
         TEST_METHOD(VerticalRailCollapseRestoresWidth);
         TEST_METHOD(VerticalTitlebarDragAreaExcludesControls);
+        TEST_METHOD(SidebarRailHintsTrackBindings);
         TEST_METHOD(VerticalTabChromeBackgroundTracksTheme);
         TEST_METHOD(NewTabButtonSharesChromeBackdrop);
         TEST_METHOD(VerticalTabStripBindsBackground);
@@ -3252,6 +3253,67 @@ namespace TerminalAppLocalTests
         });
     }
 
+    void TabTests::SidebarRailHintsTrackBindings()
+    {
+        const auto connection = winrt::make_self<TestConnection>(
+            winrt::guid{ L"{6239a42c-aaaa-49a3-80bd-e8fdd045185c}" },
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        const auto page = _commonSetup(*connection);
+
+        TestOnUIThread([&]() {
+            VERIFY_IS_FALSE(page->_isVerticalLayout);
+            const auto actionMap = page->_settings.ActionMap();
+            const auto initial = KeyChordSerialization::FromString(L"ctrl+shift+s");
+            const auto rebound = KeyChordSerialization::FromString(L"ctrl+shift+y");
+            actionMap.RegisterKeyBinding(initial, ActionAndArgs{ ShortcutAction::ToggleSidebar, nullptr });
+            page->_settings.GlobalSettings().TabLayout(TabLayout::Vertical);
+            page->SetSettings(page->_settings, false);
+            page->_CompleteTabLayoutChange(page->_tabLayoutGeneration);
+            VERIFY_IS_TRUE(page->_isVerticalLayout);
+            page->_SetVerticalRailVisibility(true);
+
+            const auto row = winrt::get_self<winrt::TerminalApp::implementation::TabRowControl>(page->_tabRow);
+            const auto button = row->VerticalTitleBarContent().as<Grid>().Children().GetAt(0).as<Button>();
+            const auto reference = ToolTipService::GetToolTip(page->AgentToggleButton()).as<ToolTip>().Content().as<StackPanel>();
+            const auto verifyHint = [&](const winrt::hstring& chord) {
+                const auto label = Automation::AutomationProperties::GetName(button);
+                VERIFY_IS_FALSE(label.empty());
+                const auto content = ToolTipService::GetToolTip(button).as<ToolTip>().Content().as<StackPanel>();
+                VERIFY_ARE_EQUAL(2u, content.Children().Size());
+                VERIFY_ARE_EQUAL(Orientation::Vertical, content.Orientation());
+                for (uint32_t index = 0; index < 2; ++index)
+                {
+                    const auto actual = content.Children().GetAt(index).as<TextBlock>();
+                    const auto expected = reference.Children().GetAt(index).as<TextBlock>();
+                    VERIFY_ARE_EQUAL(expected.FontFamily().Source(), actual.FontFamily().Source());
+                    VERIFY_ARE_EQUAL(expected.FontSize(), actual.FontSize());
+                    VERIFY_ARE_EQUAL(expected.FontWeight().Weight, actual.FontWeight().Weight);
+                    VERIFY_ARE_EQUAL(expected.LineHeight(), actual.LineHeight());
+                    VERIFY_ARE_EQUAL(expected.Opacity(), actual.Opacity());
+                }
+                const auto title = content.Children().GetAt(0).as<TextBlock>();
+                const auto shortcut = content.Children().GetAt(1).as<TextBlock>();
+                VERIFY_ARE_EQUAL(label, title.Text());
+                VERIFY_ARE_EQUAL(CSTR_EQUAL, CompareStringOrdinal(chord.c_str(), -1, shortcut.Text().c_str(), -1, FALSE));
+                VERIFY_ARE_EQUAL(chord.empty() ? Visibility::Collapsed : Visibility::Visible, shortcut.Visibility());
+            };
+            verifyHint(L"Ctrl+Shift+S");
+
+            actionMap.RebindKeys(initial, rebound);
+            page->_RefreshUIForSettingsReload();
+            verifyHint(L"Ctrl+Shift+Y");
+            page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
+            verifyHint(L"Ctrl+Shift+Y");
+
+            actionMap.DeleteKeyBinding(rebound);
+            page->_RefreshUIForSettingsReload();
+            verifyHint({});
+            actionMap.RegisterKeyBinding(initial, ActionAndArgs{ ShortcutAction::CopyText, nullptr });
+            page->_RefreshUIForSettingsReload();
+            verifyHint({});
+        });
+    }
+
     void TabTests::VerticalRailCollapseRestoresWidth()
     {
         auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
@@ -3964,17 +4026,37 @@ namespace TerminalAppLocalTests
         auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
 
         TestOnUIThread([&]() {
-            page->_tabStrip.HistoryActive(true);
-            page->_StartSidebarHistoryRefreshTimer();
-            VERIFY_IS_TRUE(page->_historyRefreshTimer.IsEnabled());
-
+            const auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            item.SessionId(L"preserved-session");
+            item.Title(L"Preserved conversation");
+            item.Status(L"Working");
+            page->_tabStrip.HistoryItems().Append(item);
             const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
-            stripImpl->OnHistoryCloseClick(nullptr, {});
-
-            VERIFY_IS_FALSE(page->_historyRefreshTimer.IsEnabled());
-            VERIFY_IS_FALSE(page->_tabStrip.HistoryActive());
-            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->ItemsList().Visibility());
-            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->HistoryPanel().Visibility());
+            for (const auto useAction : { false, true })
+            {
+                page->_tabStrip.HistoryActive(true);
+                page->_StartSidebarHistoryRefreshTimer();
+                VERIFY_IS_TRUE(page->_historyRefreshTimer.IsEnabled());
+                if (useAction)
+                {
+                    ActionEventArgs args;
+                    page->_HandleOpenAgentSessions(nullptr, args);
+                    VERIFY_IS_TRUE(args.Handled());
+                }
+                else
+                {
+                    stripImpl->OnHistoryCloseClick(nullptr, {});
+                }
+                VERIFY_IS_FALSE(page->_historyRefreshTimer.IsEnabled());
+                VERIFY_IS_FALSE(page->_tabStrip.HistoryActive());
+                VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->ItemsList().Visibility());
+                VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->HistoryPanel().Visibility());
+                VERIFY_ARE_EQUAL(1u, page->_tabStrip.HistoryItems().Size());
+                VERIFY_IS_TRUE(page->_tabStrip.HistoryItems().GetAt(0) == item);
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"preserved-session" }, item.SessionId());
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"Preserved conversation" }, item.Title());
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"Working" }, item.Status());
+            }
         });
     }
 
@@ -6995,10 +7077,14 @@ namespace TerminalAppLocalTests
             tab->SetVerticalTabLayout(true);
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Switch to horizontal tabs" }, tab->_switchTabLayoutMenuItem.Text());
             VERIFY_ARE_EQUAL(TabLayout::Horizontal, tab->_switchTabLayoutTarget);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Move down" }, tab->_moveRightMenuItem.Text());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Move up" }, tab->_moveLeftMenuItem.Text());
 
             tab->SetVerticalTabLayout(false);
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Switch to vertical tabs" }, tab->_switchTabLayoutMenuItem.Text());
             VERIFY_ARE_EQUAL(TabLayout::Vertical, tab->_switchTabLayoutTarget);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Move right" }, tab->_moveRightMenuItem.Text());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Move left" }, tab->_moveLeftMenuItem.Text());
         });
     }
 

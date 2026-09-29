@@ -1136,6 +1136,14 @@
   <data name="TabMoveRight" xml:space="preserve">
     <value>Помери удесно</value>
   </data>
+  <data name="TabMoveUp" xml:space="preserve">
+    <value>Премести навише</value>
+    <comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment>
+  </data>
+  <data name="TabMoveDown" xml:space="preserve">
+    <value>Премести наниже</value>
+    <comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment>
+  </data>
   <data name="InvalidRegex" xml:space="preserve">
     <value>Пронађен је неисправан регуларни израз.</value>
   </data><data name="InitShellIntegrationSuccessTitle" xml:space="preserve">

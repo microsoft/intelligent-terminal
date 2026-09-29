@@ -106,7 +106,8 @@ namespace winrt::TerminalApp::implementation
         newTabColumn.Width(WUX::GridLengthHelper::Auto());
         titlebarGrid.ColumnDefinitions().Append(newTabColumn);
 
-        WUX::Controls::Button railToggle;
+        _verticalRailToggleButton = WUX::Controls::Button{};
+        const auto& railToggle = _verticalRailToggleButton;
         railToggle.Width(40);
         railToggle.Height(40);
         railToggle.Padding(WUX::Thickness{});
@@ -121,11 +122,11 @@ namespace winrt::TerminalApp::implementation
         railToggleOffset.Y(-11.8268);
         railToggleGeometry.Transform(railToggleOffset);
 
-        _verticalRailToggleIcon = WUX::Controls::PathIcon{};
-        _verticalRailToggleIcon.Width(14);
-        _verticalRailToggleIcon.Height(14);
-        _verticalRailToggleIcon.Data(railToggleGeometry);
-        railToggle.Content(_verticalRailToggleIcon);
+        WUX::Controls::PathIcon railToggleIcon;
+        railToggleIcon.Width(14);
+        railToggleIcon.Height(14);
+        railToggleIcon.Data(railToggleGeometry);
+        railToggle.Content(railToggleIcon);
         railToggle.Click([weakThis = get_weak()](auto&&, auto&&) {
             if (const auto self = weakThis.get())
             {
@@ -133,6 +134,23 @@ namespace winrt::TerminalApp::implementation
             }
         });
         titlebarGrid.Children().Append(railToggle);
+
+        _verticalRailToggleLabel = WUX::Controls::TextBlock{};
+        _verticalRailToggleShortcut = WUX::Controls::TextBlock{};
+        for (const auto& text : { _verticalRailToggleLabel, _verticalRailToggleShortcut })
+        {
+            text.FontFamily(WUX::Media::FontFamily{ L"Segoe UI Variable" });
+            text.FontSize(12);
+            text.FontWeight(FontWeights::Normal());
+            text.LineHeight(16);
+        }
+        _verticalRailToggleShortcut.Opacity(0.7);
+        WUX::Controls::StackPanel tooltipContent;
+        tooltipContent.Children().Append(_verticalRailToggleLabel);
+        tooltipContent.Children().Append(_verticalRailToggleShortcut);
+        WUX::Controls::ToolTip tooltip;
+        tooltip.Content(tooltipContent);
+        WUX::Controls::ToolTipService::SetToolTip(railToggle, tooltip);
 
         WUX::Controls::Grid expandedChrome;
         WUX::Controls::Grid::SetColumn(expandedChrome, 1);
@@ -227,6 +245,21 @@ namespace winrt::TerminalApp::implementation
         shield.Visibility(ShowElevationShield() ? WUX::Visibility::Visible : WUX::Visibility::Collapsed);
     }
 
+    void TabRowControl::SidebarToggleKeyChordText(const winrt::hstring& value)
+    {
+        std::wstring display{ value };
+        bool keyStart = true;
+        for (auto& character : display)
+        {
+            if (keyStart)
+            {
+                character = til::toupper_ascii(character);
+            }
+            keyStart = character == L'+';
+        }
+        _sidebarToggleKeyChordText = display;
+    }
+
     void TabRowControl::SetVerticalRailState(const bool visible, const bool collapsed, const double width)
     {
         const auto titlebarGrid = _verticalTitleBarContent.try_as<WUX::FrameworkElement>();
@@ -242,14 +275,15 @@ namespace winrt::TerminalApp::implementation
             _verticalExpandedChrome.Visibility(!collapsed && visible ? WUX::Visibility::Visible : WUX::Visibility::Collapsed);
         }
 
-        if (_verticalRailToggleIcon)
+        if (_verticalRailToggleButton)
         {
             const auto label = collapsed ? RS_(L"VerticalTabsExpandPane") : RS_(L"VerticalTabsCollapsePane");
-            if (const auto button = _verticalRailToggleIcon.Parent().try_as<WUX::Controls::Button>())
-            {
-                WUX::Automation::AutomationProperties::SetName(button, label);
-                WUX::Controls::ToolTipService::SetToolTip(button, box_value(label));
-            }
+            WUX::Automation::AutomationProperties::SetName(_verticalRailToggleButton, label);
+            _verticalRailToggleLabel.Text(label);
+            _verticalRailToggleShortcut.Text(_sidebarToggleKeyChordText);
+            _verticalRailToggleShortcut.Visibility(_sidebarToggleKeyChordText.empty() ?
+                                                      WUX::Visibility::Collapsed :
+                                                      WUX::Visibility::Visible);
         }
     }
 

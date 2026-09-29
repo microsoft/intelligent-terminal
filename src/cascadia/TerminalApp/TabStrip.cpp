@@ -1093,6 +1093,11 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::OnHistoryClick(IInspectable const&, WUX::RoutedEventArgs const&)
     {
+        OpenHistory();
+    }
+
+    void TabStrip::OpenHistory()
+    {
         if (_isRailCollapsed || !_projectionControlsEnabled)
         {
             return;
