@@ -94,13 +94,15 @@
     # 'Session view opens from chat' (C083): the checklist lists three triggers (`/sessions`, session
     # button, or Ctrl+Shift+/); the `/sessions` slash trigger is deterministically asserted by
     # Feature.SessionState's Idle test ("the /sessions slash command must open the session view",
-    # a hard Should -BeTrue before any skip path). The Ctrl+Shift+/ WT-accelerator variant (C110) is
-    # binding-covered by the Rust UT DefaultAgentKeybindings; its live open-behavior isn't stably
-    # observable in E2E (harness pane-resolution vs. the per-tab pre-warm's extra stashed pane).
+    # a hard Should -BeTrue before any skip path). The layout-aware Ctrl+Shift+/ path (C110)
+    # is separately covered by Feature.AgentHotkeys and the C++ DefaultAgentKeybindings test.
     'Session view opens from chat'      = 'Idle state is correct.*Idle badge'
     # C111 'Slash command works' (`/sessions` opens the session view) is the same hard assertion in
     # Feature.SessionState's Idle test as the C083 `/sessions` trigger above.
     'Slash command works'               = 'Idle state is correct.*Idle badge'
+    # AgentActionsParse pins openAgentSessions; the physical accelerator case exercises
+    # that same action's layout-specific dispatch, not WTA's independent /sessions command.
+    'Command action works'              = 'Feature: layout-aware agent history and sidebar hotkeys\.Agent history hotkey opens the layout-appropriate history surface'
 
     # §0 FRE flow
     'FRE can be skipped or closed safely' = 'FRE can be closed safely'

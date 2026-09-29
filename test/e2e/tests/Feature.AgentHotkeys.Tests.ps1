@@ -98,3 +98,290 @@ Describe 'Feature §2/§5 agent hotkeys + delegation palette (window-level accel
         (& $script:NewTabCountSince $before) | Should -Be 0 -Because 'cancelling the palette must NOT launch a delegate'
     }
 }
+
+BeforeDiscovery {
+    $script:LayoutHotkeyReady = [bool](
+        (Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }) -and
+        (Get-Command pwsh -ErrorAction SilentlyContinue) -and
+        (Get-Command winapp -ErrorAction SilentlyContinue))
+}
+
+Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Feature', 'LayoutHotkeys') -Skip:(-not $script:LayoutHotkeyReady) {
+    BeforeAll {
+        Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        Add-Type -AssemblyName UIAutomationClient
+        Add-Type -AssemblyName UIAutomationTypes
+        $fixture = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-AcpChatAgent.ps1')).Path
+        $root = if ($env:ITE2E_ARTIFACT_ROOT) {
+            $env:ITE2E_ARTIFACT_ROOT
+        }
+        else {
+            Join-Path $PSScriptRoot '..\artifacts'
+        }
+        $script:evidenceDir = Join-Path ([IO.Path]::GetFullPath($root)) "agent-hotkeys\$([guid]::NewGuid().ToString('N'))"
+        New-Item -ItemType Directory -Force -Path $script:evidenceDir | Out-Null
+        $fixtureLog = Join-Path $script:evidenceDir 'fixture.log'
+        $invocation = "& '$($fixture.Replace("'", "''"))' -LogPath '$($fixtureLog.Replace("'", "''"))'"
+        $script:fixtureCommand = "pwsh -NoProfile -EncodedCommand $([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($invocation)))"
+        $script:OpenAgentHistoryHotkey = {
+            param($App)
+            Send-WtWindowKey -App $App -Vk 0xBF -Ctrl -Shift -RequireForeground | Out-Null
+        }
+        $script:ToggleSidebarHotkey = {
+            param($App)
+            Send-WtWindowKey -App $App -Vk 0x53 -Ctrl -Shift -RequireForeground | Out-Null
+        }
+        $script:HistorySearchFocused = {
+            param($App)
+            $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]([long]$App.Hwnd))
+            $condition = [Windows.Automation.PropertyCondition]::new(
+                [Windows.Automation.AutomationElement]::AutomationIdProperty, 'HistorySearchTextBox')
+            $search = $root.FindFirst([Windows.Automation.TreeScope]::Descendants, $condition)
+            $search -and -not $search.Current.IsOffscreen -and $search.Current.HasKeyboardFocus
+        }
+        $script:StartLayoutApp = {
+            param([ValidateSet('horizontal', 'vertical')][string]$Layout)
+            Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
+                language = 'en-US'
+                tabLayout = $Layout
+                actions = @()
+                keybindings = @()
+                'warning.confirmOnClose' = 'never'
+                acpAgent = 'custom:layout-hotkey-fixture'
+                acpCustomCommand = $script:fixtureCommand
+                acpModel = ''
+            }
+        }
+    }
+
+    It 'Agent history hotkey opens the layout-appropriate history surface' {
+        $horizontal = $null
+        try {
+            $horizontal = & $script:StartLayoutApp 'horizontal'
+            if (-not (Test-WtWindowKeyFocusable -App $horizontal)) {
+                Set-ItResult -Skipped -Because 'WT window cannot take foreground for window-level keys'
+                return
+            }
+            Open-AgentPane -App $horizontal | Out-Null
+            Wait-AgentReady -App $horizontal -TimeoutSec 30 | Out-Null
+            Save-UiScreenshot -App $horizontal -Path (Join-Path $script:evidenceDir 'history-horizontal-before.png') | Out-Null
+            & $script:OpenAgentHistoryHotkey $horizontal
+            (Test-Until -TimeoutSec 8 -IntervalSec 0.5 -Condition {
+                Test-SessionListShown -App $horizontal -TimeoutSec 1
+            }) | Should -BeTrue -Because 'Ctrl+Shift+/ must open the existing agent-pane session view in classic horizontal layout'
+            Save-UiScreenshot -App $horizontal -Path (Join-Path $script:evidenceDir 'history-horizontal-after.png') | Out-Null
+        }
+        finally {
+            if ($horizontal) { Stop-Terminal -App $horizontal }
+        }
+
+        $vertical = $null
+        try {
+            $vertical = & $script:StartLayoutApp 'vertical'
+            if (-not (Test-WtWindowKeyFocusable -App $vertical)) {
+                Set-ItResult -Skipped -Because 'WT window cannot take foreground for window-level keys'
+                return
+            }
+            Wait-UiElement -App $vertical -Selector 'SearchTabsButton' | Out-Null
+            Test-UiElementExists -App $vertical -Selector 'HistorySearchTextBox' -TimeoutSec 1 |
+                Should -BeFalse -Because 'Sidebar History must start closed'
+            Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'history-vertical-before.png') | Out-Null
+            & $script:OpenAgentHistoryHotkey $vertical
+            $historyOpened = Test-Until -TimeoutSec 8 -IntervalSec 0.5 -Condition {
+                $history = Get-UiElement -App $vertical -Selector 'HistorySearchTextBox'
+                $history -and -not $history.isOffscreen -and $history.width -gt 0 -and $history.height -gt 0
+            }
+            Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'history-vertical-after.png') | Out-Null
+            $historyOpened | Should -BeTrue -Because 'Ctrl+Shift+/ must open Sidebar History, not the agent-pane sessions view, in vertical layout'
+            Test-AgentPaneOpen -App $vertical | Should -BeFalse -Because 'opening Sidebar History must not also open the WTA agent pane'
+            (Test-Until -TimeoutSec 5 -Condition { & $script:HistorySearchFocused $vertical }) |
+                Should -BeTrue -Because 'the history accelerator must focus the sidebar search box'
+
+            & $script:ToggleSidebarHotkey $vertical
+            Wait-UiElement -App $vertical -Selector 'Expand tabs pane' | Out-Null
+            $hiddenHistory = Get-UiElement -App $vertical -Selector 'HistorySearchTextBox'
+            ($hiddenHistory -and -not $hiddenHistory.isOffscreen -and $hiddenHistory.width -gt 0) |
+                Should -BeFalse -Because 'collapsing the sidebar must close its history view'
+
+            & $script:OpenAgentHistoryHotkey $vertical
+            $reopened = Test-Until -TimeoutSec 8 -Condition { & $script:HistorySearchFocused $vertical }
+            Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'history-from-collapsed-sidebar.png') | Out-Null
+            $reopened | Should -BeTrue -Because 'the history accelerator must expand a collapsed sidebar and restore history search focus'
+        }
+        finally {
+            if ($vertical) { Stop-Terminal -App $vertical }
+        }
+    }
+
+    It 'Sidebar show/collapse hotkey works' {
+        $horizontal = $null
+        try {
+            $horizontal = & $script:StartLayoutApp 'horizontal'
+            if (-not (Test-WtWindowKeyFocusable -App $horizontal)) {
+                Set-ItResult -Skipped -Because 'WT window cannot take foreground for window-level keys'
+                return
+            }
+            Wait-UiElement -App $horizontal -Selector 'NewTabButton' | Out-Null
+            & $script:ToggleSidebarHotkey $horizontal
+            Start-Sleep -Milliseconds 500
+            $newTab = Get-UiElement -App $horizontal -Selector 'NewTabButton'
+            ($newTab -and -not $newTab.isOffscreen -and $newTab.width -gt 0 -and $newTab.height -gt 0) |
+                Should -BeTrue -Because 'Ctrl+Shift+S must not change classic horizontal tabs into a sidebar or hide their chrome'
+            Test-UiElementExists -App $horizontal -Selector 'SearchTabsButton' -TimeoutSec 1 |
+                Should -BeFalse -Because 'the sidebar-only action must be a safe no-op in horizontal layout'
+        }
+        finally {
+            if ($horizontal) { Stop-Terminal -App $horizontal }
+        }
+
+        $vertical = $null
+        try {
+            $vertical = & $script:StartLayoutApp 'vertical'
+            if (-not (Test-WtWindowKeyFocusable -App $vertical)) {
+                Set-ItResult -Skipped -Because 'WT window cannot take foreground for window-level keys'
+                return
+            }
+            Wait-UiElement -App $vertical -Selector 'Collapse tabs pane' | Out-Null
+            Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'sidebar-expanded-before.png') | Out-Null
+
+            & $script:ToggleSidebarHotkey $vertical
+            $sidebarCollapsed = Test-Until -TimeoutSec 6 -IntervalSec 0.5 -Condition {
+                $button = Get-UiElement -App $vertical -Selector 'Expand tabs pane'
+                $button -and -not $button.isOffscreen -and $button.width -gt 0 -and $button.height -gt 0
+            }
+            Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'sidebar-after-first-hotkey.png') | Out-Null
+            $sidebarCollapsed | Should -BeTrue -Because 'Ctrl+Shift+S must collapse the expanded vertical sidebar'
+
+            & $script:ToggleSidebarHotkey $vertical
+            $sidebarExpanded = Test-Until -TimeoutSec 6 -IntervalSec 0.5 -Condition {
+                $button = Get-UiElement -App $vertical -Selector 'Collapse tabs pane'
+                $button -and -not $button.isOffscreen -and $button.width -gt 0 -and $button.height -gt 0
+            }
+            Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'sidebar-expanded-after.png') | Out-Null
+            $sidebarExpanded | Should -BeTrue -Because 'a second Ctrl+Shift+S must show the collapsed vertical sidebar'
+        }
+        finally {
+            if ($vertical) { Stop-Terminal -App $vertical }
+        }
+    }
+
+    It 'Sidebar show/collapse hotkey works: consumed without typing into a horizontal pane' {
+        $horizontal = $null
+        try {
+            $horizontal = & $script:StartLayoutApp 'horizontal'
+            if (-not (Test-WtWindowKeyFocusable -App $horizontal)) {
+                Set-ItResult -Skipped -Because 'WT window cannot take foreground for window-level keys'
+                return
+            }
+            $pane = Get-ActivePane -App $horizontal
+            Set-WtPaneFocus -App $horizontal -SessionId ([string]$pane.session_id)
+            $draftMarker = "HOTKEY_NOOP_$([guid]::NewGuid().ToString('N'))"
+            Send-WtInput -App $horizontal -SessionId ([string]$pane.session_id) -Text $draftMarker | Out-Null
+            Wait-Until -TimeoutSec 8 -Because 'the focused shell to echo the unsent draft before testing the accelerator' -Condition {
+                (Get-WtCapture -App $horizontal -SessionId ([string]$pane.session_id) -MaxLines 30).TrimEnd().EndsWith($draftMarker)
+            } | Out-Null
+            $before = Get-WtCapture -App $horizontal -SessionId ([string]$pane.session_id) -MaxLines 30
+            $before | Set-Content -LiteralPath (Join-Path $script:evidenceDir 'sidebar-horizontal-before.txt') -Encoding utf8
+            Save-UiScreenshot -App $horizontal -Path (Join-Path $script:evidenceDir 'sidebar-horizontal-before.png') | Out-Null
+
+            & $script:ToggleSidebarHotkey $horizontal
+            Start-Sleep -Milliseconds 500
+
+            $after = Get-WtCapture -App $horizontal -SessionId ([string]$pane.session_id) -MaxLines 30
+            $after | Set-Content -LiteralPath (Join-Path $script:evidenceDir 'sidebar-horizontal-after.txt') -Encoding utf8
+            Save-UiScreenshot -App $horizontal -Path (Join-Path $script:evidenceDir 'sidebar-horizontal-after.png') | Out-Null
+            $after | Should -BeExactly $before -Because 'the sidebar-only accelerator must be consumed without typing into the active horizontal pane'
+        }
+        finally {
+            if ($horizontal) { Stop-Terminal -App $horizontal }
+        }
+    }
+
+    It 'Sidebar rail hover hints show the shortcut' -Tag 'SidebarHint' {
+        $vertical = $null
+        $originalCursor = $null
+        try {
+            $vertical = & $script:StartLayoutApp 'vertical'
+            if (-not (Test-WtWindowKeyFocusable -App $vertical)) {
+                Set-ItResult -Skipped -Because 'WT window cannot take foreground for physical hover'
+                return
+            }
+            $originalCursor = [ItE2E.ItWtWin32Input]::GetCursorPosition()
+            $processCondition = [Windows.Automation.PropertyCondition]::new(
+                [Windows.Automation.AutomationElement]::ProcessIdProperty, [int]$vertical.Pid)
+            $tooltipCondition = [Windows.Automation.PropertyCondition]::new(
+                [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::ToolTip)
+            $states = @(
+                @{ Label = 'Collapse tabs pane'; Screenshot = 'sidebar-hint-collapse.png' }
+                @{ Label = 'Expand tabs pane'; Screenshot = 'sidebar-hint-expand.png' }
+            )
+            $observed = @{}
+
+            foreach ($state in $states) {
+                if ($state.Label -eq 'Expand tabs pane') {
+                    Stop-Terminal -App $vertical
+                    $vertical = $null
+                    $vertical = & $script:StartLayoutApp 'vertical'
+                    $processCondition = [Windows.Automation.PropertyCondition]::new(
+                        [Windows.Automation.AutomationElement]::ProcessIdProperty, [int]$vertical.Pid)
+                    & $script:ToggleSidebarHotkey $vertical
+                }
+                Wait-UiElement -App $vertical -Selector $state.Label | Out-Null
+                $button = Get-UiElement -App $vertical -Selector $state.Label
+                ($button -and -not $button.isOffscreen -and $button.width -gt 0 -and $button.height -gt 0) |
+                    Should -BeTrue -Because 'the hovered rail toggle must be visible'
+                Test-WtWindowKeyFocusable -App $vertical | Should -BeTrue -Because 'physical hover needs the owned window in the foreground'
+                $hover = & (Get-Module ItE2E) {
+                    param($App, $Label)
+                    Invoke-WinAppUi -App $App -UiArgs @('hover', $Label, '--dwell-time', '1200', '--json')
+                } $vertical $state.Label
+                if ($hover.ExitCode -ne 0) {
+                    throw "Native hover failed: $($hover.StdErr)"
+                }
+                $screenshot = Join-Path $script:evidenceDir $state.Screenshot
+                Save-UiScreenshot -App $vertical -CaptureScreen -Path $screenshot | Out-Null
+                $hover.StdOut | Set-Content -LiteralPath "$screenshot.hover.json" -Encoding utf8
+                $tooltip = Wait-Until -TimeoutSec 8 -Because "the $($state.Label) tooltip to appear in the test-owned process" -Condition {
+                    $windows = [Windows.Automation.AutomationElement]::RootElement.FindAll(
+                        [Windows.Automation.TreeScope]::Children, $processCondition)
+                    foreach ($window in $windows) {
+                        $tips = $window.FindAll([Windows.Automation.TreeScope]::Subtree, $tooltipCondition)
+                        foreach ($tip in $tips) {
+                            if ($tip.Current.IsOffscreen -or $tip.Current.BoundingRectangle.Width -le 0) { continue }
+                            $names = @($tip.Current.Name)
+                            $children = $tip.FindAll(
+                                [Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition)
+                            $names += @($children | ForEach-Object { $_.Current.Name })
+                            $text = ($names | Where-Object { $_ } | Select-Object -Unique) -join "`n"
+                            if ($text.Contains($state.Label)) { return $text }
+                        }
+                    }
+                    $null
+                }
+                Test-Path -LiteralPath $screenshot | Should -BeTrue -Because 'each visible tooltip needs an actual screenshot'
+                $observed[$state.Label] = $tooltip
+                $windowRoot = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]([long]$vertical.Hwnd))
+                $windowBounds = $windowRoot.Current.BoundingRectangle
+                if (-not [ItE2E.ItWtWin32Input]::SetCursorPos(
+                    [int]($windowBounds.Left + $windowBounds.Width / 2), [int]($windowBounds.Top + $windowBounds.Height / 2))) {
+                    throw 'Could not move the pointer off the toggle before changing its state'
+                }
+                Start-Sleep -Milliseconds 250
+            }
+            $observed | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:evidenceDir 'sidebar-hints.json') -Encoding utf8
+            foreach ($state in $states) {
+                $observed[$state.Label] | Should -Match 'Ctrl\+Shift\+S' -Because "$($state.Label) must show the sidebar shortcut"
+            }
+        }
+        finally {
+            try {
+                if ($originalCursor -and -not [ItE2E.ItWtWin32Input]::SetCursorPos($originalCursor[0], $originalCursor[1])) {
+                    throw 'Could not restore the original physical pointer position'
+                }
+            }
+            finally {
+                if ($vertical) { Stop-Terminal -App $vertical }
+            }
+        }
+    }
+}

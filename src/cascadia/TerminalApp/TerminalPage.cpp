@@ -688,6 +688,7 @@ namespace winrt::TerminalApp::implementation
                 page->_suppressTabFocusRequests = false;
             }
         });
+        _tabStrip.KeyDown({ get_weak(), &TerminalPage::_KeyDownHandler });
         _tabStrip.HistoryRequested([weakThis{ get_weak() }](auto&&, auto&&) {
             if (const auto page = weakThis.get())
             {

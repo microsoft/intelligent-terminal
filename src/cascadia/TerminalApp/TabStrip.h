@@ -233,6 +233,7 @@ namespace winrt::TerminalApp::implementation
         bool HasHistoryItems() const noexcept { return !_historySnapshot.empty(); }
         void ClearHistorySnapshot();
         void ClearHistorySearch();
+        void OpenHistory();
         bool HistoryActive() const noexcept { return _historyActive; }
         void HistoryActive(bool value);
         bool HistoryLoading() const noexcept { return _historyLoading; }

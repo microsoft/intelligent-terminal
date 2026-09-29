@@ -254,7 +254,8 @@ namespace winrt::TerminalApp::implementation
             if (const auto button = _verticalRailToggleIcon.Parent().try_as<WUX::Controls::Button>())
             {
                 WUX::Automation::AutomationProperties::SetName(button, label);
-                WUX::Controls::ToolTipService::SetToolTip(button, box_value(label));
+                const winrt::hstring tooltip{ fmt::format(L"{}\nCtrl+Shift+S", label) };
+                WUX::Controls::ToolTipService::SetToolTip(button, box_value(tooltip));
             }
         }
     }

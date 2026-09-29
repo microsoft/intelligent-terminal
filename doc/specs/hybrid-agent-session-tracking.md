@@ -287,11 +287,15 @@ generic session icon rather than another provider's brand.
 The bottom-right session-management button is hidden only in the Vertical tab
 layout; other layouts retain it. Its visibility updates on startup and live
 layout changes, independently of whether the vertical sidebar is expanded,
-collapsed, or hidden. The button shares the existing `Ctrl+Shift+/` /
-`openAgentSessions` action: open or restore the active tab's session manager,
-switch from chat to sessions, or stash an already-visible session manager.
-The shortcut remains available in every layout; the sidebar Agent sessions view is a
-separate entry point.
+collapsed, or hidden. The button shares the existing `openAgentSessions` action.
+That action and the `Ctrl+Shift+/` binding use the current layout:
+horizontal tabs retain the agent pane's session-manager toggle, while vertical tabs
+open the sidebar Agent sessions view through the same lifecycle as its dedicated
+button and focus its search box. A collapsed, visible sidebar expands first.
+`Ctrl+Shift+S` invokes the configurable `toggleSidebar` action to collapse or expand
+the vertical sidebar, reusing the existing toggle button's cleanup and focus behavior.
+In horizontal layout this action is consumed without changing the layout or sending
+input to the terminal. User keybindings can override or unbind the defaults.
 Session titles use only the text before the first CR or LF. An empty first line
 uses the existing missing-title fallback. The title occupies one non-wrapping
 line with ellipsis; the metadata line below it is unchanged.

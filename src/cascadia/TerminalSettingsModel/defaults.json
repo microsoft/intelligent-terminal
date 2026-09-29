@@ -536,6 +536,7 @@
         { "command": "closeWindow", "id": "Terminal.CloseWindow" },
         { "command": "toggleFullscreen", "id": "Terminal.ToggleFullscreen" },
         { "command": "toggleFocusMode", "id": "Terminal.ToggleFocusMode" },
+        { "command": "toggleSidebar", "id": "Terminal.ToggleSidebar" },
         { "command": "toggleAlwaysOnTop", "id": "Terminal.ToggleAlwaysOnTop" },
         { "command": "openNewTabDropdown", "id": "Terminal.OpenNewTabDropdown" },
         { "command": { "action": "openSettings", "target": "settingsUI" }, "id": "Terminal.OpenSettingsUI" },
@@ -765,6 +766,7 @@
         { "keys": "ctrl+shift+period", "id": "Terminal.OpenAgentPane" },
         { "keys": "ctrl+shift+i", "id": "Terminal.FocusAgentPane" },
         { "keys": "ctrl+shift+/", "id": "Terminal.OpenAgentSessions" },
+        { "keys": "ctrl+shift+s", "id": "Terminal.ToggleSidebar" },
         { "keys": "ctrl+alt+period", "id": "Terminal.TriggerAutofix" },
 
         // Tab Management
