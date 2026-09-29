@@ -5029,20 +5029,20 @@ namespace TerminalAppLocalTests
         };
 
         Snapshot snapshot;
-        snapshot.fields.emplace("agentStatus", std::string{ "Active" });
+        snapshot.fields.emplace("agentStatus", std::string{ "\xE6\xAD\xA3\xE5\x9C\xA8\xE5\xB7\xA5\xE4\xBD\x9C" });
         snapshot.fields.emplace("workingDirectory", std::string{ R"(C:\src\terminal)" });
-        snapshot.fields.emplace("repository", std::string{ "terminal" });
-        snapshot.fields.emplace("branch", std::string{ "main" });
+        snapshot.fields.emplace("repository", std::string{ "\xE7\xBB\x88\xE7\xAB\xAF" });
+        snapshot.fields.emplace("branch", std::string{ "\xE4\xB8\xBB\xE5\x88\x86\xE6\x94\xAF" });
         snapshot.fields.emplace("changes", std::string{ "~12 +200 -35" });
         const std::unordered_map<std::string, Snapshot> snapshots{ { "git", snapshot } };
 
         const auto defaults = ProviderBroker::ComposePresentation({ provider }, snapshots);
         VERIFY_IS_TRUE(defaults.has_value());
         VERIFY_ARE_EQUAL(
-            std::wstring{ L"Active\nC:\\src\\terminal" },
+            std::wstring{ L"\u6B63\u5728\u5DE5\u4F5C\nC:\\src\\terminal" },
             defaults->text);
         VERIFY_ARE_EQUAL(
-            std::wstring{ LR"(Agent status: Active, Current working directory: C:\src\terminal)" },
+            std::wstring{ L"Agent status: \u6B63\u5728\u5DE5\u4F5C, Current working directory: C:\\src\\terminal" },
             defaults->accessibilityText);
 
         ProviderBroker::VisibleFieldMap visibleFields;
@@ -5050,9 +5050,9 @@ namespace TerminalAppLocalTests
         visibleFields["git"].emplace("changes");
         const auto branchOnly = ProviderBroker::ComposePresentation({ provider }, snapshots, visibleFields);
         VERIFY_IS_TRUE(branchOnly.has_value());
-        VERIFY_ARE_EQUAL(std::wstring{ L"main\n~12 +200 -35" }, branchOnly->text);
+        VERIFY_ARE_EQUAL(std::wstring{ L"\u4E3B\u5206\u652F\n~12 +200 -35" }, branchOnly->text);
         VERIFY_ARE_EQUAL(
-            std::wstring{ L"Git branch: main, Git changes: ~12 +200 -35" },
+            std::wstring{ L"Git branch: \u4E3B\u5206\u652F, Git changes: ~12 +200 -35" },
             branchOnly->accessibilityText);
 
         visibleFields["git"].clear();
@@ -5073,11 +5073,12 @@ namespace TerminalAppLocalTests
         request.processEpoch = 1;
         request.sessionId = "session";
         request.reason = ActivationEvent::ManualRefresh;
-        request.firstPartyFields.emplace("agentStatus", "waiting");
+        request.firstPartyFields.emplace("agentStatus", "\xE6\xAD\xA3\xE5\x9C\xA8\xE5\xB7\xA5\xE4\xBD\x9C");
 
         const auto serialized = SerializeRequest(request, manifest);
         VERIFY_IS_TRUE(static_cast<bool>(serialized));
-        VERIFY_IS_TRUE(serialized.value->find(R"("agentStatus":"waiting")") != std::string::npos);
+        VERIFY_IS_TRUE(serialized.value->find(R"("agentStatus":"\u6b63\u5728\u5de5\u4f5c")") != std::string::npos ||
+                       serialized.value->find("\"agentStatus\":\"\xE6\xAD\xA3\xE5\x9C\xA8\xE5\xB7\xA5\xE4\xBD\x9C\"") != std::string::npos);
     }
 
     void TabTests::RichTabMetadataSelectionIsLimitedToTwo()
