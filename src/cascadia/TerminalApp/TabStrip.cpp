@@ -44,7 +44,7 @@ namespace winrt::TerminalApp::implementation
         if (iconPath.empty())
         {
             WUX::Controls::FontIcon fallback;
-            fallback.FontFamily(WUX::Media::FontFamily{ L"Segoe Fluent Icons" });
+            fallback.FontFamily(WUX::Media::FontFamily{ L"Segoe Fluent Icons, Segoe MDL2 Assets" });
             fallback.FontSize(12);
             fallback.Glyph(L"\xE756");
             Icon(fallback);

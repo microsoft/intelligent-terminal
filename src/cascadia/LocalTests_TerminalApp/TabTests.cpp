@@ -5874,6 +5874,7 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(firstPaneMetadata, display.PaneItems().GetAt(0).MetadataText());
             VERIFY_ARE_EQUAL(Visibility::Visible, display.PaneItems().GetAt(0).MetadataVisibility());
             const auto fallbackPaneIcon = display.PaneItems().GetAt(0).Icon().as<FontIcon>();
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Segoe Fluent Icons, Segoe MDL2 Assets" }, fallbackPaneIcon.FontFamily().Source());
             VERIFY_ARE_EQUAL(12.0, fallbackPaneIcon.FontSize());
             VERIFY_ARE_EQUAL(16.0, fallbackPaneIcon.Width());
             VERIFY_ARE_EQUAL(16.0, fallbackPaneIcon.Height());
