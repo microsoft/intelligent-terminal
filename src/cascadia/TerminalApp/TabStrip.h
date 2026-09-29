@@ -310,6 +310,10 @@ namespace winrt::TerminalApp::implementation
                              winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnGroupToggleClick(winrt::Windows::Foundation::IInspectable const& sender,
                                 winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void OnPanePointerEntered(winrt::Windows::Foundation::IInspectable const& sender,
+                                  winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e);
+        void OnPanePointerExited(winrt::Windows::Foundation::IInspectable const& sender,
+                                 winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e);
         void OnPanePointerPressed(winrt::Windows::Foundation::IInspectable const& sender,
                                   winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e);
         void OnPaneActivateClick(winrt::Windows::Foundation::IInspectable const& sender,

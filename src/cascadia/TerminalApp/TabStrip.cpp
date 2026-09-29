@@ -485,7 +485,7 @@ namespace winrt::TerminalApp::implementation
                     selectionBackground.Background(WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
                 }
             }
-            grid.ClearValue(WUX::Controls::Panel::BackgroundProperty());
+            grid.Background(WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
             const auto header = display.Header().try_as<WUX::Controls::Control>();
             const auto close = grid.FindName(L"TabCloseButton").try_as<WUX::Controls::Control>();
             if (hasTabColor && selected)
@@ -2006,6 +2006,30 @@ namespace winrt::TerminalApp::implementation
         {
             e.Handled(true);
             PaneCloseRequested.raise(*this, winrt::make<TabStripPaneEventArgs>(pane.Tab(), pane.ContentId()));
+        }
+    }
+
+    void TabStrip::OnPanePointerEntered(IInspectable const& sender,
+                                        WUX::Input::PointerRoutedEventArgs const&)
+    {
+        if (const auto root = sender.try_as<FrameworkElement>())
+        {
+            if (const auto background = root.FindName(L"PaneHoverBackground").try_as<UIElement>())
+            {
+                background.Opacity(1.0);
+            }
+        }
+    }
+
+    void TabStrip::OnPanePointerExited(IInspectable const& sender,
+                                       WUX::Input::PointerRoutedEventArgs const&)
+    {
+        if (const auto root = sender.try_as<FrameworkElement>())
+        {
+            if (const auto background = root.FindName(L"PaneHoverBackground").try_as<UIElement>())
+            {
+                background.Opacity(0.0);
+            }
         }
     }
 

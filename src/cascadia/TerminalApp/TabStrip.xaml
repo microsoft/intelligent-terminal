@@ -244,6 +244,7 @@
                     <StackPanel HorizontalAlignment="Stretch">
                         <Grid x:Name="TabHeaderGrid"
                               MinHeight="{x:Bind HeaderMinHeight, Mode=OneWay}"
+                              Background="Transparent"
                               ContextFlyout="{x:Bind ContextFlyout, Mode=OneWay}"
                               CornerRadius="{StaticResource SidebarTabCornerRadius}"
                               DoubleTapped="OnTabHeaderDoubleTapped"
@@ -324,6 +325,8 @@
                                           Background="Transparent"
                                           DoubleTapped="OnPaneDoubleTapped"
                                           Loaded="OnPaneRowLoaded"
+                                          PointerEntered="OnPanePointerEntered"
+                                          PointerExited="OnPanePointerExited"
                                           PointerPressed="OnPanePointerPressed"
                                           RightTapped="OnPaneRightTapped">
                                         <Grid.ColumnDefinitions>
@@ -336,6 +339,12 @@
                                                 CornerRadius="{StaticResource SidebarTabCornerRadius}"
                                                 IsHitTestVisible="False"
                                                 Visibility="{x:Bind ActiveIndicatorVisibility, Mode=OneWay}" />
+                                        <Border x:Name="PaneHoverBackground"
+                                                Grid.ColumnSpan="2"
+                                                Background="{ThemeResource ListViewItemBackgroundPointerOver}"
+                                                CornerRadius="{StaticResource SidebarTabCornerRadius}"
+                                                IsHitTestVisible="False"
+                                                Opacity="0" />
                                         <Button x:Name="PaneActivateButton"
                                                 Grid.Column="0"
                                                 Grid.ColumnSpan="2"
@@ -346,6 +355,12 @@
                                                 Background="Transparent"
                                                 BorderThickness="0"
                                                 Click="OnPaneActivateClick">
+                                            <Button.Resources>
+                                                <SolidColorBrush x:Key="ButtonBackgroundPointerOver"
+                                                                 Color="Transparent" />
+                                                <SolidColorBrush x:Key="ButtonBackgroundPressed"
+                                                                 Color="Transparent" />
+                                            </Button.Resources>
                                             <Grid Margin="0,0,28,0">
                                                 <Grid.RowDefinitions>
                                                     <RowDefinition Height="Auto" />

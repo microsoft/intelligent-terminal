@@ -5251,23 +5251,29 @@ namespace TerminalAppLocalTests
 
             const auto container = strip.ContainerFromIndex(0).as<ListViewItem>();
             const auto root = container.ContentTemplateRoot().as<StackPanel>();
-            VERIFY_IS_NULL(root.FindName(L"TabSelectionBackground"));
             VERIFY_ARE_EQUAL(uint8_t{ 0 }, container.Background().as<Media::SolidColorBrush>().Color().A);
             const auto headerGrid = root.Children().GetAt(0).as<Grid>();
+            const auto selectionBackground = headerGrid.FindName(L"TabSelectionBackground").as<Border>();
+            const auto colorSelectionBackground = headerGrid.FindName(L"TabColorSelectionBackground").as<Border>();
+            VERIFY_IS_NOT_NULL(selectionBackground);
+            VERIFY_IS_NOT_NULL(colorSelectionBackground);
             VERIFY_ARE_EQUAL(CornerRadiusHelper::FromUniformRadius(6), headerGrid.CornerRadius());
             strip.SelectedItem(nullptr);
             VERIFY_ARE_EQUAL(uint8_t{ 0 }, headerGrid.Background().as<Media::SolidColorBrush>().Color().A);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, selectionBackground.Visibility());
             VERIFY_IS_TRUE(header.ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
 
             for (const auto color : { winrt::Windows::UI::Colors::Black(), winrt::Windows::UI::Colors::White() })
             {
                 tabBrush.Color(color);
                 strip.SetTabPresentation(tab, header.Title(), L"");
-                VERIFY_ARE_EQUAL(uint8_t{ 0 }, headerGrid.Background().as<Media::SolidColorBrush>().Color().A);
+                VERIFY_ARE_EQUAL(uint8_t{ 0 }, colorSelectionBackground.Background().as<Media::SolidColorBrush>().Color().A);
                 strip.SelectedItem(tab);
-                VERIFY_ARE_EQUAL(color, headerGrid.Background().as<Media::SolidColorBrush>().Color());
+                VERIFY_ARE_EQUAL(Visibility::Visible, selectionBackground.Visibility());
+                VERIFY_ARE_EQUAL(color, colorSelectionBackground.Background().as<Media::SolidColorBrush>().Color());
                 strip.SelectedItem(nullptr);
-                VERIFY_ARE_EQUAL(uint8_t{ 0 }, headerGrid.Background().as<Media::SolidColorBrush>().Color().A);
+                VERIFY_ARE_EQUAL(Visibility::Collapsed, selectionBackground.Visibility());
+                VERIFY_ARE_EQUAL(uint8_t{ 0 }, colorSelectionBackground.Background().as<Media::SolidColorBrush>().Color().A);
                 VERIFY_IS_TRUE(header.ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
             }
 
@@ -5292,14 +5298,16 @@ namespace TerminalAppLocalTests
             VERIFY_IS_NOT_NULL(presenter.ContentTemplate());
             VERIFY_IS_TRUE(presenter.ContentTemplate() == impl->ItemsList().ItemTemplate());
             VERIFY_ARE_EQUAL(container.CornerRadius(), presenter.CornerRadius());
+            for (const auto brush : { presenter.PointerOverBackground(), presenter.PressedBackground() })
+            {
+                VERIFY_IS_TRUE(brush.as<Media::SolidColorBrush>().Color().A > 0);
+            }
             for (const auto brush : {
-                     presenter.PointerOverBackground(),
-                     presenter.PressedBackground(),
                      presenter.SelectedBackground(),
                      presenter.SelectedPointerOverBackground(),
                      presenter.SelectedPressedBackground() })
             {
-                VERIFY_IS_TRUE(brush.as<Media::SolidColorBrush>().Color().A > 0);
+                VERIFY_ARE_EQUAL(uint8_t{ 0 }, brush.as<Media::SolidColorBrush>().Color().A);
             }
             for (const auto state : { L"Normal", L"PointerOver", L"Pressed", L"Selected", L"PointerOverSelected", L"PressedSelected", L"Normal" })
             {
