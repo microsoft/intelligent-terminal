@@ -222,8 +222,22 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
                 return
             }
             Wait-UiElement -App $horizontal -Selector 'NewTabButton' | Out-Null
+            $pane = Get-ActivePane -App $horizontal
+            Set-WtPaneFocus -App $horizontal -SessionId ([string]$pane.session_id)
+            $draftMarker = "HOTKEY_NOOP_$([guid]::NewGuid().ToString('N'))"
+            Send-WtInput -App $horizontal -SessionId ([string]$pane.session_id) -Text $draftMarker | Out-Null
+            Wait-Until -TimeoutSec 8 -Because 'the focused shell to echo the unsent draft before testing the accelerator' -Condition {
+                (Get-WtCapture -App $horizontal -SessionId ([string]$pane.session_id) -MaxLines 30).TrimEnd().EndsWith($draftMarker)
+            } | Out-Null
+            $before = Get-WtCapture -App $horizontal -SessionId ([string]$pane.session_id) -MaxLines 30
+            $before | Set-Content -LiteralPath (Join-Path $script:evidenceDir 'sidebar-horizontal-before.txt') -Encoding utf8
+            Save-UiScreenshot -App $horizontal -Path (Join-Path $script:evidenceDir 'sidebar-horizontal-before.png') | Out-Null
             & $script:ToggleSidebarHotkey $horizontal
             Start-Sleep -Milliseconds 500
+            $after = Get-WtCapture -App $horizontal -SessionId ([string]$pane.session_id) -MaxLines 30
+            $after | Set-Content -LiteralPath (Join-Path $script:evidenceDir 'sidebar-horizontal-after.txt') -Encoding utf8
+            Save-UiScreenshot -App $horizontal -Path (Join-Path $script:evidenceDir 'sidebar-horizontal-after.png') | Out-Null
+            $after | Should -BeExactly $before -Because 'the sidebar-only accelerator must be consumed without typing into the active horizontal pane'
             $newTab = Get-UiElement -App $horizontal -Selector 'NewTabButton'
             ($newTab -and -not $newTab.isOffscreen -and $newTab.width -gt 0 -and $newTab.height -gt 0) |
                 Should -BeTrue -Because 'Ctrl+Shift+S must not change classic horizontal tabs into a sidebar or hide their chrome'
@@ -265,67 +279,45 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
         }
     }
 
-    It 'Sidebar show/collapse hotkey works: consumed without typing into a horizontal pane' {
-        $horizontal = $null
-        try {
-            $horizontal = & $script:StartLayoutApp 'horizontal'
-            if (-not (Test-WtWindowKeyFocusable -App $horizontal)) {
-                Set-ItResult -Skipped -Because 'WT window cannot take foreground for window-level keys'
-                return
-            }
-            $pane = Get-ActivePane -App $horizontal
-            Set-WtPaneFocus -App $horizontal -SessionId ([string]$pane.session_id)
-            $draftMarker = "HOTKEY_NOOP_$([guid]::NewGuid().ToString('N'))"
-            Send-WtInput -App $horizontal -SessionId ([string]$pane.session_id) -Text $draftMarker | Out-Null
-            Wait-Until -TimeoutSec 8 -Because 'the focused shell to echo the unsent draft before testing the accelerator' -Condition {
-                (Get-WtCapture -App $horizontal -SessionId ([string]$pane.session_id) -MaxLines 30).TrimEnd().EndsWith($draftMarker)
-            } | Out-Null
-            $before = Get-WtCapture -App $horizontal -SessionId ([string]$pane.session_id) -MaxLines 30
-            $before | Set-Content -LiteralPath (Join-Path $script:evidenceDir 'sidebar-horizontal-before.txt') -Encoding utf8
-            Save-UiScreenshot -App $horizontal -Path (Join-Path $script:evidenceDir 'sidebar-horizontal-before.png') | Out-Null
-
-            & $script:ToggleSidebarHotkey $horizontal
-            Start-Sleep -Milliseconds 500
-
-            $after = Get-WtCapture -App $horizontal -SessionId ([string]$pane.session_id) -MaxLines 30
-            $after | Set-Content -LiteralPath (Join-Path $script:evidenceDir 'sidebar-horizontal-after.txt') -Encoding utf8
-            Save-UiScreenshot -App $horizontal -Path (Join-Path $script:evidenceDir 'sidebar-horizontal-after.png') | Out-Null
-            $after | Should -BeExactly $before -Because 'the sidebar-only accelerator must be consumed without typing into the active horizontal pane'
-        }
-        finally {
-            if ($horizontal) { Stop-Terminal -App $horizontal }
-        }
-    }
-
     It 'Sidebar rail hover hints show the shortcut' -Tag 'SidebarHint' {
         $vertical = $null
         $originalCursor = $null
         try {
-            $vertical = & $script:StartLayoutApp 'vertical'
-            if (-not (Test-WtWindowKeyFocusable -App $vertical)) {
-                Set-ItResult -Skipped -Because 'WT window cannot take foreground for physical hover'
-                return
-            }
-            $originalCursor = [ItE2E.ItWtWin32Input]::GetCursorPosition()
-            $processCondition = [Windows.Automation.PropertyCondition]::new(
-                [Windows.Automation.AutomationElement]::ProcessIdProperty, [int]$vertical.Pid)
             $tooltipCondition = [Windows.Automation.PropertyCondition]::new(
                 [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::ToolTip)
             $states = @(
-                @{ Label = 'Collapse tabs pane'; Screenshot = 'sidebar-hint-collapse.png' }
-                @{ Label = 'Expand tabs pane'; Screenshot = 'sidebar-hint-expand.png' }
+                @{ Name = 'collapse'; Label = 'Collapse tabs pane'; Chord = 'Ctrl+Shift+S' }
+                @{ Name = 'expand'; Label = 'Expand tabs pane'; Chord = 'Ctrl+Shift+S'; Collapsed = $true }
+                @{ Name = 'rebound'; Label = 'Collapse tabs pane'; Chord = 'Ctrl+Shift+Y'; Reload = @{
+                    actions = @(
+                        @{ command = 'unbound'; keys = 'ctrl+shift+s' }
+                        @{ command = 'toggleSidebar'; keys = 'ctrl+shift+y' }
+                    )
+                } }
+                @{ Name = 'unbound'; Label = 'Collapse tabs pane'; Chord = ''; Reload = @{
+                    actions = @(@{ command = 'unbound'; keys = 'ctrl+shift+s' })
+                } }
+                @{ Name = 'overridden'; Label = 'Collapse tabs pane'; Chord = ''; Reload = @{
+                    actions = @(@{ command = 'copy'; id = 'Terminal.ToggleSidebar' })
+                } }
             )
             $observed = @{}
 
             foreach ($state in $states) {
-                if ($state.Label -eq 'Expand tabs pane') {
-                    Stop-Terminal -App $vertical
-                    $vertical = $null
-                    $vertical = & $script:StartLayoutApp 'vertical'
-                    $processCondition = [Windows.Automation.PropertyCondition]::new(
-                        [Windows.Automation.AutomationElement]::ProcessIdProperty, [int]$vertical.Pid)
+                $vertical = & $script:StartLayoutApp 'vertical'
+                if (-not (Test-WtWindowKeyFocusable -App $vertical)) {
+                    Set-ItResult -Skipped -Because 'WT window cannot take foreground for physical hover'
+                    return
+                }
+                if (-not $originalCursor) {
+                    $originalCursor = [ItE2E.ItWtWin32Input]::GetCursorPosition()
+                }
+                $processCondition = [Windows.Automation.PropertyCondition]::new(
+                    [Windows.Automation.AutomationElement]::ProcessIdProperty, [int]$vertical.Pid)
+                if ($state.Collapsed) {
                     & $script:ToggleSidebarHotkey $vertical
                 }
+                if ($state.Reload) { Set-WtSettings -App $vertical -Settings $state.Reload | Out-Null }
                 Wait-UiElement -App $vertical -Selector $state.Label | Out-Null
                 $button = Get-UiElement -App $vertical -Selector $state.Label
                 ($button -and -not $button.isOffscreen -and $button.width -gt 0 -and $button.height -gt 0) |
@@ -338,10 +330,10 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
                 if ($hover.ExitCode -ne 0) {
                     throw "Native hover failed: $($hover.StdErr)"
                 }
-                $screenshot = Join-Path $script:evidenceDir $state.Screenshot
+                $screenshot = Join-Path $script:evidenceDir "sidebar-hint-$($state.Name).png"
                 Save-UiScreenshot -App $vertical -CaptureScreen -Path $screenshot | Out-Null
                 $hover.StdOut | Set-Content -LiteralPath "$screenshot.hover.json" -Encoding utf8
-                $tooltip = Wait-Until -TimeoutSec 8 -Because "the $($state.Label) tooltip to appear in the test-owned process" -Condition {
+                $tooltip = Wait-Until -TimeoutSec 8 -Because "the $($state.Name) tooltip to reflect the effective sidebar binding" -Condition {
                     $windows = [Windows.Automation.AutomationElement]::RootElement.FindAll(
                         [Windows.Automation.TreeScope]::Children, $processCondition)
                     foreach ($window in $windows) {
@@ -353,13 +345,19 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
                                 [Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition)
                             $names += @($children | ForEach-Object { $_.Current.Name })
                             $text = ($names | Where-Object { $_ } | Select-Object -Unique) -join "`n"
-                            if ($text.Contains($state.Label)) { return $text }
+                            if ($text.Contains($state.Label)) {
+                                $observed[$state.Name] = $text
+                                if ($state.Chord) {
+                                    if ($text -match [regex]::Escape($state.Chord)) { return $text }
+                                }
+                                elseif ($text.Trim() -eq $state.Label) { return $text }
+                            }
                         }
                     }
                     $null
                 }
                 Test-Path -LiteralPath $screenshot | Should -BeTrue -Because 'each visible tooltip needs an actual screenshot'
-                $observed[$state.Label] = $tooltip
+                $observed[$state.Name] = $tooltip
                 $windowRoot = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]([long]$vertical.Hwnd))
                 $windowBounds = $windowRoot.Current.BoundingRectangle
                 if (-not [ItE2E.ItWtWin32Input]::SetCursorPos(
@@ -367,10 +365,17 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
                     throw 'Could not move the pointer off the toggle before changing its state'
                 }
                 Start-Sleep -Milliseconds 250
+                Stop-Terminal -App $vertical
+                $vertical = $null
             }
             $observed | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:evidenceDir 'sidebar-hints.json') -Encoding utf8
             foreach ($state in $states) {
-                $observed[$state.Label] | Should -Match 'Ctrl\+Shift\+S' -Because "$($state.Label) must show the sidebar shortcut"
+                if ($state.Chord) {
+                    $observed[$state.Name] | Should -Match ([regex]::Escape($state.Chord))
+                }
+                else {
+                    $observed[$state.Name].Trim() | Should -BeExactly $state.Label
+                }
             }
         }
         finally {

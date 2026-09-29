@@ -36,12 +36,14 @@ namespace winrt::TerminalApp::implementation
         // titlebar when available and falls back to the top of the rail.
         winrt::Windows::UI::Xaml::UIElement VerticalTitleBarContent() const noexcept { return _verticalTitleBarContent; }
         winrt::Microsoft::UI::Xaml::Controls::SplitButton VerticalNewTabButton() const noexcept { return _verticalNewTabButton; }
+        void SidebarToggleKeyChordText(const winrt::hstring& value) { _sidebarToggleKeyChordText = value; }
         void SetVerticalRailState(bool visible, bool collapsed, double width);
         til::typed_event<TerminalApp::TabRowControl, winrt::Windows::Foundation::IInspectable> RailCollapseRequested;
 
     private:
         bool _showElevationShield{ false };
         bool _isVerticalLayout{ false };
+        winrt::hstring _sidebarToggleKeyChordText;
         winrt::Windows::UI::Xaml::UIElement _verticalTitleBarContent{ nullptr };
         winrt::Windows::UI::Xaml::UIElement _verticalExpandedChrome{ nullptr };
         winrt::Windows::UI::Xaml::Controls::StackPanel _verticalLeadingChrome{ nullptr };

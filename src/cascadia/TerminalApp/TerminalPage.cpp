@@ -6006,7 +6006,19 @@ namespace winrt::TerminalApp::implementation
 
         const bool expanded = visible && !_isVerticalRailCollapsed;
         const auto width = visible ? (_isVerticalRailCollapsed ? railCollapsedWidth : _verticalRailWidth) : 0.0;
-        winrt::get_self<implementation::TabRowControl>(_tabRow)->SetVerticalRailState(visible, _isVerticalRailCollapsed, width);
+        winrt::hstring sidebarKeyChordText;
+        for (const auto& binding : _settings.ActionMap().KeyBindings())
+        {
+            const auto command = binding.Value();
+            if (command && command.ActionAndArgs() && command.ActionAndArgs().Action() == ShortcutAction::ToggleSidebar)
+            {
+                sidebarKeyChordText = KeyChordSerialization::ToString(binding.Key());
+                break;
+            }
+        }
+        const auto tabRow = winrt::get_self<implementation::TabRowControl>(_tabRow);
+        tabRow->SidebarToggleKeyChordText(sidebarKeyChordText);
+        tabRow->SetVerticalRailState(visible, _isVerticalRailCollapsed, width);
         if (!expanded)
         {
             bool focusWasInRail = false;

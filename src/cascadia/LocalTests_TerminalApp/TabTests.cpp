@@ -277,6 +277,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(EmptyTabLayoutChangeCompletesBeforeStartup);
         TEST_METHOD(VerticalRailVisibilityRestoresWidth);
         TEST_METHOD(VerticalRailCollapseRestoresWidth);
+        TEST_METHOD(SidebarRailHintsTrackBindings);
         TEST_METHOD(LiveTabLayoutRoundTripPreservesState);
         TEST_METHOD(LiveTabLayoutLatestRequestWins);
         TEST_METHOD(TabLayoutSwitchMenuTracksOrientation);
@@ -3087,6 +3088,45 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Visible, page->_verticalRailSplitter.Visibility());
             VERIFY_IS_TRUE(page->_verticalRailSplitter.IsHitTestVisible());
 
+        });
+    }
+
+    void TabTests::SidebarRailHintsTrackBindings()
+    {
+        const auto connection = winrt::make_self<TestConnection>(
+            winrt::guid{ L"{6239a42c-aaaa-49a3-80bd-e8fdd045185c}" },
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        const auto page = _commonSetup(*connection, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            const auto actionMap = page->_settings.ActionMap();
+            const auto initial = KeyChordSerialization::FromString(L"ctrl+shift+s");
+            const auto rebound = KeyChordSerialization::FromString(L"ctrl+shift+y");
+            actionMap.RegisterKeyBinding(initial, ActionAndArgs{ ShortcutAction::ToggleSidebar, nullptr });
+            page->_SetVerticalRailVisibility(true);
+
+            const auto row = winrt::get_self<winrt::TerminalApp::implementation::TabRowControl>(page->_tabRow);
+            const auto button = row->VerticalTitleBarContent().as<Grid>().Children().GetAt(0).as<Button>();
+            const auto verifyHint = [&](const winrt::hstring& chord) {
+                const auto label = Automation::AutomationProperties::GetName(button);
+                const auto expected = chord.empty() ? label : label + L"\n" + chord;
+                const auto actual = winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(button));
+                VERIFY_ARE_EQUAL(CSTR_EQUAL, CompareStringOrdinal(expected.c_str(), -1, actual.c_str(), -1, TRUE));
+            };
+            verifyHint(L"ctrl+shift+s");
+
+            actionMap.RebindKeys(initial, rebound);
+            page->_RefreshUIForSettingsReload();
+            verifyHint(L"ctrl+shift+y");
+            page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
+            verifyHint(L"ctrl+shift+y");
+
+            actionMap.DeleteKeyBinding(rebound);
+            page->_RefreshUIForSettingsReload();
+            verifyHint({});
+            actionMap.RegisterKeyBinding(initial, ActionAndArgs{ ShortcutAction::CopyText, nullptr });
+            page->_RefreshUIForSettingsReload();
+            verifyHint({});
         });
     }
 
