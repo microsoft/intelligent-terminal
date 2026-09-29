@@ -3104,7 +3104,9 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Visible, tabStrip->ItemsList().Visibility());
             VERIFY_IS_TRUE(tabStrip->CompactNewTabButton().IsHitTestVisible());
             VERIFY_IS_TRUE(tabStrip->CompactNewTabMenuButton().IsHitTestVisible());
-            VERIFY_IS_FALSE(tabStrip->SearchTabsButton().IsHitTestVisible());
+            VERIFY_IS_TRUE(tabStrip->SearchTabsButton().IsHitTestVisible());
+            VERIFY_IS_TRUE(tabStrip->SearchTabsButton().IsEnabled());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, tabStrip->FilterTabsButton().Visibility());
             VERIFY_IS_FALSE(tabStrip->FilterTabsButton().IsHitTestVisible());
             VERIFY_IS_FALSE(tabStrip->FilterStatusBar().IsHitTestVisible());
             VERIFY_IS_FALSE(tabStrip->ItemsList().AllowDrop());
@@ -3115,12 +3117,16 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_verticalRailSplitter.Visibility());
             VERIFY_IS_FALSE(page->_verticalRailSplitter.IsHitTestVisible());
 
-            page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
+            tabStrip->SearchTabsButton().IsChecked(true);
+            tabStrip->OnSearchToggleClick(nullptr, nullptr);
 
             VERIFY_IS_FALSE(page->_isVerticalRailCollapsed);
             VERIFY_IS_FALSE(page->_tabStrip.IsRailCollapsed());
+            VERIFY_IS_TRUE(page->_tabSearchActive);
+            VERIFY_IS_TRUE(page->_tabStrip.SearchActive());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, tabStrip->CompactNewTabToolbar().Visibility());
             VERIFY_IS_TRUE(tabStrip->SearchTabsButton().IsHitTestVisible());
+            VERIFY_ARE_EQUAL(Visibility::Visible, tabStrip->FilterTabsButton().Visibility());
             VERIFY_IS_TRUE(tabStrip->FilterTabsButton().IsHitTestVisible());
             VERIFY_IS_TRUE(tabStrip->FilterStatusBar().IsHitTestVisible());
             VERIFY_IS_TRUE(tabStrip->ItemsList().AllowDrop());
@@ -3352,12 +3358,15 @@ namespace TerminalAppLocalTests
 
             strip.IsRailCollapsed(true);
             VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->SearchPanel().Visibility());
-            VERIFY_IS_FALSE(stripImpl->SearchTabsButton().IsEnabled());
+            VERIFY_IS_TRUE(stripImpl->SearchTabsButton().IsEnabled());
+            VERIFY_IS_TRUE(stripImpl->SearchTabsButton().IsHitTestVisible());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->FilterTabsButton().Visibility());
             VERIFY_IS_FALSE(stripImpl->FilterTabsButton().IsEnabled());
 
             strip.IsRailCollapsed(false);
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->SearchPanel().Visibility());
             VERIFY_IS_TRUE(stripImpl->SearchTabsButton().IsEnabled());
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->FilterTabsButton().Visibility());
             VERIFY_IS_TRUE(stripImpl->FilterTabsButton().IsEnabled());
             stripImpl->ProjectionControlsEnabled(false);
             VERIFY_IS_FALSE(stripImpl->SearchTabsButton().IsEnabled());

@@ -756,6 +756,7 @@ namespace winrt::TerminalApp::implementation
             winrt::get_self<implementation::TabStrip>(_tabStrip)->RichTabMetadataControlsVisible(false);
         }
         _tabRow.RailCollapseRequested({ this, &TerminalPage::_OnVerticalRailCollapseRequested });
+        _tabStrip.RailCollapseRequested({ this, &TerminalPage::_OnVerticalRailCollapseRequested });
         _tabStrip.CompactNewTabRequested([weakThis{ get_weak() }](auto&&, auto&&) {
             if (const auto page = weakThis.get(); page && page->_isVerticalLayout && !page->_changingTabLayout)
             {

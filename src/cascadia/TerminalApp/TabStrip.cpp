@@ -817,7 +817,7 @@ namespace winrt::TerminalApp::implementation
     void TabStrip::ProjectionControlsEnabled(bool value)
     {
         _projectionControlsEnabled = value;
-        SearchTabsButton().IsEnabled(value && !_isRailCollapsed);
+        SearchTabsButton().IsEnabled(value);
         FilterTabsButton().IsEnabled(value && !_isRailCollapsed);
     }
 
@@ -1058,8 +1058,13 @@ namespace winrt::TerminalApp::implementation
     {
         if (_isRailCollapsed)
         {
-            SearchTabsButton().IsChecked(false);
-            return;
+            RailCollapseRequested.raise(*this, nullptr);
+            if (_isRailCollapsed)
+            {
+                SearchTabsButton().IsChecked(false);
+                return;
+            }
+            SearchTabsButton().IsChecked(true);
         }
 
         _searchActive = SearchTabsButton().IsChecked().GetBoolean();
@@ -1081,7 +1086,7 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::OnSearchPointerPressed(IInspectable const&, WUX::Input::PointerRoutedEventArgs const&)
     {
-        if (!_searchActive && !_isRailCollapsed)
+        if (!_searchActive)
         {
             SearchActivationRequested.raise(*this, nullptr);
         }
@@ -1191,8 +1196,9 @@ namespace winrt::TerminalApp::implementation
         MinWidth(_isRailCollapsed ? 40.0 : 180.0);
         CompactNewTabToolbar().Visibility(collapsedVisibility);
         VerticalTabsHeader().Visibility(expandedVisibility);
-        SearchTabsButton().IsHitTestVisible(!_isRailCollapsed);
-        SearchTabsButton().IsEnabled(_projectionControlsEnabled && !_isRailCollapsed);
+        SearchTabsButton().IsHitTestVisible(true);
+        SearchTabsButton().IsEnabled(_projectionControlsEnabled);
+        FilterTabsButton().Visibility(expandedVisibility);
         FilterTabsButton().IsHitTestVisible(!_isRailCollapsed);
         FilterTabsButton().IsEnabled(_projectionControlsEnabled && !_isRailCollapsed);
         FilterStatusBar().IsHitTestVisible(!_isRailCollapsed);
