@@ -282,8 +282,11 @@ The bottom bar no longer has a Show sessions button. The existing
 `Ctrl+Shift+/` binding and `openAgentSessions` action still open the agent pane's
 session manager; the sidebar Agents view remains a separate entry point.
 The second line is left-aligned as `Agent name · relative age · status`, using
-the provider's display name and `last_activity_at_ms`. Like the session manager,
-timestamps less than seven days old use localized relative time; timestamps at
+the provider's display name and `last_activity_at_ms`. Each missing field displays
+its own localized Unknown label without hiding the row or the other metadata.
+Rows without a provider identity remain visible with a generic icon, but attempting
+to activate them reports an error rather than guessing an agent.
+Like the session manager, timestamps less than seven days old use localized relative time; timestamps at
 least seven days old use the UTC calendar date formatted with Windows' localized
 long-date format. The display refreshes with each snapshot. Missing,
 zero, or invalid timestamps display Unknown, and future timestamps display just now.
@@ -297,7 +300,8 @@ session. Search matches both the displayed status and the raw registry value;
 the existing `live` and `history` search terms remain available. This presentation
 does not change shell-session visibility, liveness classification, or focus/resume
 routing. Registry-change notifications and the existing five-second snapshot
-refresh update the displayed status.
+refresh update the displayed status. Status-only updates preserve the displayed
+provider and age, including their Unknown fallbacks.
 Rows whose raw status is neither `Ended` nor `Historical` appear first, followed by
 closed/history rows. Within each group, rows retain newest-first ordering by
 `last_activity_at_ms`, the same timestamp used for relative age. This stable grouping

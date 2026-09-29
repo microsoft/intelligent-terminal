@@ -309,6 +309,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabHistoryStartupLoading);
         TEST_METHOD(VerticalTabHistoryLoadingAndErrorsKeepRows);
         TEST_METHOD(VerticalTabHistorySnapshotRejectsMalformedResponse);
+        TEST_METHOD(VerticalTabHistoryMissingMetadata);
+        TEST_METHOD(VerticalTabHistoryMissingProviderActivation);
         TEST_METHOD(VerticalTabHistoryIgnoresStaleLoadingResult);
         TEST_METHOD(VerticalTabHistoryRefreshPreservesCollection);
         TEST_METHOD(VerticalTabHistoryRefreshPreservesScroll);
@@ -3440,7 +3442,7 @@ namespace TerminalAppLocalTests
             item.ProviderDisplayName(L"Copilot");
             item.AgentSource(L"host");
             item.Status(L"Idle");
-            item.Subtitle(L"copilot - Host - Idle");
+            item.Subtitle(L"Copilot \u00b7 just now \u00b7 ");
             item.IsLive(true);
             stripImpl->CommitHistorySnapshot({ item });
             const auto idleStyle = item.StatusTextStyle();
@@ -3466,7 +3468,7 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(1u, page->_tabStrip.HistoryItems().Size());
             const auto updated = page->_tabStrip.HistoryItems().GetAt(0);
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Attention" }, updated.Status());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot - Host - Waiting for input" }, updated.Subtitle());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Copilot \u00b7 just now \u00b7 " }, updated.Subtitle());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Waiting for input" }, updated.StatusText());
             VERIFY_IS_TRUE(updated.StatusTextStyle() != idleStyle);
             VERIFY_IS_TRUE(
@@ -4082,6 +4084,121 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(custom.state == Page::_SidebarHistorySnapshot::State::Ready);
             VERIFY_ARE_EQUAL(size_t{ 1 }, custom.items.size());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:test" }, custom.items.front().AgentId());
+        });
+    }
+
+    void TabTests::VerticalTabHistoryMissingMetadata()
+    {
+        TestOnUIThread([&]() {
+            using Page = winrt::TerminalApp::implementation::TerminalPage;
+            const auto resources = winrt::Windows::ApplicationModel::Resources::Core::ResourceManager::Current()
+                                       .MainResourceMap()
+                                       .GetSubtree(L"TerminalApp/Resources");
+            const auto unknownAgent = resources.GetValue(L"VerticalTabsHistoryAgentUnknown").ValueAsString();
+            const auto unknownAge = resources.GetValue(L"VerticalTabsHistoryAgeUnknown").ValueAsString();
+            const auto unknownStatus = resources.GetValue(L"VerticalTabsHistoryStatusUnknown").ValueAsString();
+            const auto knownAge = Page::_SidebarHistoryAgeText(1, 100ULL * 86400 * 1000);
+            const auto idle = Page::_SidebarHistoryStatusText("Idle");
+            Json::Value baseline;
+            baseline["history_status"] = "ready";
+            auto& row = baseline["sessions"][0];
+            row["session_id"] = "session-a";
+            row["provider_id"] = "copilot";
+            row["title"] = "Saved session";
+            row["location"] = "Host";
+            row["status"] = "Idle";
+            row["last_activity_at_ms"] = Json::UInt64{ 1 };
+            const std::optional<Json::Value> missingValues[]{
+                std::nullopt, Json::Value{}, Json::Value{ "" }, Json::Value{ " \t\r\n" }
+            };
+            const Json::StreamWriterBuilder writer;
+            for (const std::string field : { "provider_id", "last_activity_at_ms", "status" })
+            {
+                for (const auto& missing : missingValues)
+                {
+                    auto response = baseline;
+                    if (missing)
+                    {
+                        response["sessions"][0][field] = *missing;
+                    }
+                    else
+                    {
+                        response["sessions"][0].removeMember(field);
+                    }
+                    const auto parsed = Page::_ParseSidebarHistorySnapshot(Json::writeString(writer, response));
+                    VERIFY_IS_TRUE(parsed.state == Page::_SidebarHistorySnapshot::State::Ready);
+                    VERIFY_ARE_EQUAL(size_t{ 1 }, parsed.items.size());
+                    const auto item = parsed.items.front();
+                    const auto provider = field == "provider_id" ? unknownAgent : winrt::hstring{ L"Copilot" };
+                    const auto age = field == "last_activity_at_ms" ? unknownAge : knownAge;
+                    VERIFY_ARE_EQUAL(provider, item.ProviderDisplayName());
+                    VERIFY_ARE_EQUAL(provider + L" \u00b7 " + age + L" \u00b7 ", item.Subtitle());
+                    VERIFY_ARE_EQUAL(field == "status" ? unknownStatus : idle, item.StatusText());
+                    VERIFY_ARE_EQUAL(winrt::hstring{ L"Saved session" }, item.Title());
+                    VERIFY_ARE_EQUAL(field == "provider_id" ? winrt::hstring{} : winrt::hstring{ L"copilot" }, item.AgentId());
+                }
+            }
+
+            for (const auto& missing : missingValues)
+            {
+                auto response = baseline;
+                if (missing)
+                {
+                    response["sessions"][0]["provider_id"] = *missing;
+                }
+                else
+                {
+                    response["sessions"][0].removeMember("provider_id");
+                }
+                response["sessions"][0]["cli_source"] = "Claude";
+                const auto parsed = Page::_ParseSidebarHistorySnapshot(Json::writeString(writer, response));
+                VERIFY_ARE_EQUAL(size_t{ 1 }, parsed.items.size());
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, parsed.items.front().AgentId());
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"Claude" }, parsed.items.front().ProviderDisplayName());
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"Claude \u00b7 " } + knownAge + L" \u00b7 ", parsed.items.front().Subtitle());
+            }
+        });
+    }
+
+    void TabTests::VerticalTabHistoryMissingProviderActivation()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            using Page = winrt::TerminalApp::implementation::TerminalPage;
+            const auto resources = winrt::Windows::ApplicationModel::Resources::Core::ResourceManager::Current()
+                                       .MainResourceMap()
+                                       .GetSubtree(L"TerminalApp/Resources");
+            const auto unknownAgent = resources.GetValue(L"VerticalTabsHistoryAgentUnknown").ValueAsString();
+            const auto unknownAge = resources.GetValue(L"VerticalTabsHistoryAgeUnknown").ValueAsString();
+            const auto unknownStatus = resources.GetValue(L"VerticalTabsHistoryStatusUnknown").ValueAsString();
+            auto parsed = Page::_ParseSidebarHistorySnapshot(
+                R"({"history_status":"ready","sessions":[{"session_id":"session-a","location":{"Wsl":{"distro":"Ubuntu"}}}]})");
+            VERIFY_ARE_EQUAL(size_t{ 1 }, parsed.items.size());
+            const auto item = parsed.items.front();
+            const auto subtitle = unknownAgent + L" \u00b7 " + unknownAge + L" \u00b7 ";
+            VERIFY_ARE_EQUAL(subtitle, item.Subtitle());
+            VERIFY_ARE_EQUAL(unknownStatus, item.StatusText());
+            VERIFY_IS_FALSE(item.Title().empty());
+            VERIFY_IS_TRUE(item.AgentId().empty());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"wsl" }, item.AgentSource());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Ubuntu" }, item.WslDistro());
+
+            page->_tabStrip.HistoryActive(true);
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            strip->CommitHistorySnapshot(std::move(parsed.items));
+            VERIFY_ARE_EQUAL(1u, page->_tabStrip.HistoryItems().Size());
+            VERIFY_IS_TRUE(item.IconTemplate() == page->_tabStrip.Resources().Lookup(winrt::box_value(L"AgentIcon.generic")).as<DataTemplate>());
+            VERIFY_IS_TRUE(strip->ApplyHistoryStatusDelta(L"session-a", L"", L"Working", Page::_SidebarHistoryStatusText("Working")));
+            VERIFY_ARE_EQUAL(subtitle, page->_tabStrip.HistoryItems().GetAt(0).Subtitle());
+            VERIFY_ARE_EQUAL(Page::_SidebarHistoryStatusText("Working"), page->_tabStrip.HistoryItems().GetAt(0).StatusText());
+
+            const auto serial = page->_historyActivationSerial;
+            page->_ActivateSidebarHistoryItem(item);
+            VERIFY_ARE_EQUAL(serial, page->_historyActivationSerial);
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryActivating());
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryActive());
+            VERIFY_ARE_EQUAL(1u, page->_tabStrip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(resources.GetValue(L"VerticalTabsHistoryActivationError").ValueAsString(), page->_tabStrip.HistoryError());
         });
     }
 

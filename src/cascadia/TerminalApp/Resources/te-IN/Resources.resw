@@ -592,6 +592,10 @@
     <value>మీరు ట్యాబ్ లేదా విండోను మూసివేసిన తర్వాత ఈ ట్యాబ్ ఇకపై అమలులో ఉండదు.</value>
     <comment>Tooltip and accessibility help for Turn off keep running. After this action, closing the tab or its window closes its panes normally instead of retaining them in the background. The current tab and processes are not closed by this action.</comment>
   </data>
+  <data name="VerticalTabsHistoryAgentUnknown" xml:space="preserve">
+    <value>తెలియదు</value>
+    <comment>Agent History provider label when the session has no agent identity. Shown independently from the time and status, which remain visible.</comment>
+  </data>
   <data name="VerticalTabsHistoryStatusIdle" xml:space="preserve">
     <value>నిష్క్రియం</value>
     <comment>Agent History session status: the session is live but has no active work.</comment>

@@ -1554,6 +1554,10 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>탭이나 창을 닫으면 이 탭이 더 이상 계속 실행되지 않습니다.</value>
     <comment>Tooltip and accessibility help for Turn off keep running. After this action, closing the tab or its window closes its panes normally instead of retaining them in the background. The current tab and processes are not closed by this action.</comment>
   </data>
+  <data name="VerticalTabsHistoryAgentUnknown" xml:space="preserve">
+    <value>알 수 없음</value>
+    <comment>Agent History provider label when the session has no agent identity. Shown independently from the time and status, which remain visible.</comment>
+  </data>
   <data name="VerticalTabsHistoryStatusIdle" xml:space="preserve">
     <value>유휴</value>
     <comment>Agent History session status: the session is live but has no active work.</comment>

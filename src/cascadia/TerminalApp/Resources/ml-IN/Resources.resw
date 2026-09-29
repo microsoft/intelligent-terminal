@@ -613,6 +613,10 @@
     <value>നിങ്ങൾ ടാബോ വിൻഡോയോ അടച്ച ശേഷം ഈ ടാബ് ഇനി പ്രവർത്തിച്ചുകൊണ്ടിരിക്കില്ല.</value>
     <comment>Tooltip and accessibility help for Turn off keep running. After this action, closing the tab or its window closes its panes normally instead of retaining them in the background. The current tab and processes are not closed by this action.</comment>
   </data>
+  <data name="VerticalTabsHistoryAgentUnknown" xml:space="preserve">
+    <value>അജ്ഞാതം</value>
+    <comment>Agent History provider label when the session has no agent identity. Shown independently from the time and status, which remain visible.</comment>
+  </data>
   <data name="VerticalTabsHistoryStatusIdle" xml:space="preserve">
     <value>നിഷ്ക്രിയം</value>
     <comment>Agent History session status: the session is live but has no active work.</comment>

@@ -609,6 +609,10 @@
     <value>Denne fane vil ikke længere fortsætte med at køre, når du har lukket fanen eller vinduet.</value>
     <comment>Tooltip and accessibility help for Turn off keep running. After this action, closing the tab or its window closes its panes normally instead of retaining them in the background. The current tab and processes are not closed by this action.</comment>
   </data>
+  <data name="VerticalTabsHistoryAgentUnknown" xml:space="preserve">
+    <value>Ukendt</value>
+    <comment>Agent History provider label when the session has no agent identity. Shown independently from the time and status, which remain visible.</comment>
+  </data>
   <data name="VerticalTabsHistoryStatusIdle" xml:space="preserve">
     <value>Inaktiv</value>
     <comment>Agent History session status: the session is live but has no active work.</comment>

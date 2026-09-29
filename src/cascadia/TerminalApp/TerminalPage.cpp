@@ -6271,14 +6271,18 @@ namespace winrt::TerminalApp::implementation
 
             const auto sessionId = row.get("session_id", "").asString();
             auto providerId = row.get("provider_id", "").asString();
-            if (providerId.empty() && row["cli_source"].isString())
+            if (providerId.find_first_not_of(" \t\r\n") == std::string::npos && row["cli_source"].isString())
             {
                 providerId = row["cli_source"].asString();
                 std::ranges::transform(providerId, providerId.begin(), [](const unsigned char ch) {
                     return static_cast<char>(std::tolower(ch));
                 });
             }
-            if (sessionId.empty() || providerId.empty())
+            if (providerId.find_first_not_of(" \t\r\n") == std::string::npos)
+            {
+                providerId.clear();
+            }
+            if (sessionId.empty())
             {
                 continue;
             }
@@ -6316,6 +6320,10 @@ namespace winrt::TerminalApp::implementation
             const auto origin = row["origin"].isString() ? row["origin"].asString() : std::string{};
             const auto isAgentPane = origin == "AgentPane";
             const auto providerDisplayName = [&]() -> std::string {
+                if (providerId.empty())
+                {
+                    return winrt::to_string(RS_(L"VerticalTabsHistoryAgentUnknown"));
+                }
                 if (providerId == "copilot")
                 {
                     return "Copilot";
@@ -6352,7 +6360,8 @@ namespace winrt::TerminalApp::implementation
             }
             if (title.empty())
             {
-                title = providerId + " session " + sessionId.substr(0, (std::min)(sessionId.size(), size_t{ 8 }));
+                title = (providerId.empty() ? providerDisplayName : providerId) +
+                        " session " + sessionId.substr(0, (std::min)(sessionId.size(), size_t{ 8 }));
             }
 
             auto item = winrt::make<TerminalApp::implementation::TabStripHistoryItem>();
@@ -6457,6 +6466,13 @@ namespace winrt::TerminalApp::implementation
     {
         if (!item || !_tabStrip.HistoryActive() || _tabStrip.HistoryActivating())
         {
+            co_return;
+        }
+
+        if (item.AgentId().empty())
+        {
+            _agentPaneLog("sidebar history activation rejected: missing provider identity");
+            _tabStrip.HistoryError(RS_(L"VerticalTabsHistoryActivationError"));
             co_return;
         }
 

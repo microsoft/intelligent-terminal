@@ -1523,6 +1523,10 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>タブまたはウィンドウを閉じた後、このタブの実行は継続されなくなります。</value>
     <comment>Tooltip and accessibility help for Turn off keep running. After this action, closing the tab or its window closes its panes normally instead of retaining them in the background. The current tab and processes are not closed by this action.</comment>
   </data>
+  <data name="VerticalTabsHistoryAgentUnknown" xml:space="preserve">
+    <value>不明</value>
+    <comment>Agent History provider label when the session has no agent identity. Shown independently from the time and status, which remain visible.</comment>
+  </data>
   <data name="VerticalTabsHistoryStatusIdle" xml:space="preserve">
     <value>アイドル</value>
     <comment>Agent History session status: the session is live but has no active work.</comment>

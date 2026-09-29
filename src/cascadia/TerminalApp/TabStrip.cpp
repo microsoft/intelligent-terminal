@@ -726,10 +726,6 @@ namespace winrt::TerminalApp::implementation
             item.IsLive(isLive);
             item.IsHistorical(status == L"Ended" || status == L"Historical");
 
-            const auto locationLabel = item.AgentSource() == L"wsl" ?
-                                           item.WslDistro() + L" (WSL)" :
-                                           winrt::hstring{ L"Host" };
-            item.Subtitle(item.AgentId() + L" - " + locationLabel + L" - " + statusText);
             _historySearchTerms[index] = _buildHistorySearchTerms(item);
             updated = true;
         }

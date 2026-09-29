@@ -613,6 +613,10 @@
     <value>તમે ટૅબ અથવા વિન્ડો બંધ કરશો તે પછી આ ટૅબ હવે ચાલુ રહેશે નહીં.</value>
     <comment>Tooltip and accessibility help for Turn off keep running. After this action, closing the tab or its window closes its panes normally instead of retaining them in the background. The current tab and processes are not closed by this action.</comment>
   </data>
+  <data name="VerticalTabsHistoryAgentUnknown" xml:space="preserve">
+    <value>અજ્ઞાત</value>
+    <comment>Agent History provider label when the session has no agent identity. Shown independently from the time and status, which remain visible.</comment>
+  </data>
   <data name="VerticalTabsHistoryStatusIdle" xml:space="preserve">
     <value>નિષ્ક્રિય</value>
     <comment>Agent History session status: the session is live but has no active work.</comment>
