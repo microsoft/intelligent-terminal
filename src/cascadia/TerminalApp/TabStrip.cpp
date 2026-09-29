@@ -262,6 +262,7 @@ namespace winrt::TerminalApp::implementation
 
         InitializeComponent();
 
+        _historyUnselectedBackground = WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() };
         ItemsList().ItemsSource(_displayItems);
         _vectorChangedRevoker = _tabItems.VectorChanged(auto_revoke, { get_weak(), &TabStrip::_onItemsVectorChanged });
         Loaded([weakThis{ get_weak() }](auto&&, auto&&) {
@@ -441,6 +442,22 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    static std::optional<Windows::UI::Color> _tabSelectionColor(MUX::Controls::TabViewItem const& tab)
+    {
+        if (const auto brush = tab ? tab.Background().try_as<WUX::Media::SolidColorBrush>() : nullptr;
+            brush && brush.Color().A != 0 && brush.Opacity() > 0)
+        {
+            return brush.Color();
+        }
+        return std::nullopt;
+    }
+
+    static Windows::UI::Color _tabSelectionForeground(const Windows::UI::Color color) noexcept
+    {
+        const auto luminance = (0.2126 * color.R + 0.7152 * color.G + 0.0722 * color.B) / 255.0;
+        return luminance >= 0.6 ? Windows::UI::Colors::Black() : Windows::UI::Colors::White();
+    }
+
     void TabStrip::_updateDisplayItemVisuals(FrameworkElement const& root,
                                              TerminalApp::TabStripDisplayItem const& display)
     {
@@ -466,12 +483,9 @@ namespace winrt::TerminalApp::implementation
                     ToolTipService::SetToolTip(toggle, box_value(label));
                 }
             }
-            const auto tabBrush = display.Tab() ? display.Tab().Background().try_as<WUX::Media::SolidColorBrush>() : nullptr;
-            const auto hasTabColor = tabBrush &&
-                                     tabBrush.Color().A != 0 &&
-                                     tabBrush.Opacity() > 0;
+            const auto tabColor = _tabSelectionColor(display.Tab());
             const auto selected = display.SelectionVisibility() == Visibility::Visible;
-            const auto color = hasTabColor && selected ? tabBrush.Color() : Windows::UI::Colors::Transparent();
+            const auto color = tabColor && selected ? *tabColor : Windows::UI::Colors::Transparent();
             const auto previous = grid.Background().try_as<WUX::Media::SolidColorBrush>();
             if (previous && previous.Color() == color)
             {
@@ -480,12 +494,9 @@ namespace winrt::TerminalApp::implementation
             grid.Background(WUX::Media::SolidColorBrush{ color });
             const auto header = display.Header().try_as<WUX::Controls::Control>();
             const auto close = grid.FindName(L"TabCloseButton").try_as<WUX::Controls::Control>();
-            if (hasTabColor && selected)
+            if (tabColor && selected)
             {
-                const auto luminance = (0.2126 * color.R + 0.7152 * color.G + 0.0722 * color.B) / 255.0;
-                const auto foreground = WUX::Media::SolidColorBrush{
-                    luminance >= 0.6 ? Windows::UI::Colors::Black() : Windows::UI::Colors::White()
-                };
+                const auto foreground = WUX::Media::SolidColorBrush{ _tabSelectionForeground(color) };
                 for (const auto& control : { header, toggle, close })
                 {
                     if (control)
@@ -686,6 +697,9 @@ namespace winrt::TerminalApp::implementation
         _historySearchTerms.reserve(_historySnapshot.size());
         for (const auto& item : _historySnapshot)
         {
+            item.IsCurrent(false);
+            item.CurrentBackground(_historyUnselectedBackground);
+            item.CurrentForeground(nullptr);
             item.StatusTextStyle(_historyStatusTextStyle(item.Status()));
             auto iconKey = box_value(L"AgentIcon." + item.AgentId());
             if (!Resources().HasKey(iconKey))
@@ -696,6 +710,25 @@ namespace winrt::TerminalApp::implementation
             _historySearchTerms.emplace_back(_buildHistorySearchTerms(item));
         }
         _applyHistoryProjection(true);
+    }
+
+    void TabStrip::SetCurrentHistoryItem(TerminalApp::TabStripHistoryItem const& current,
+                                         MUX::Controls::TabViewItem const& tab)
+    {
+        WUX::Media::Brush background{ nullptr };
+        WUX::Media::Brush foreground{ nullptr };
+        if (const auto color = _tabSelectionColor(tab))
+        {
+            background = WUX::Media::SolidColorBrush{ *color };
+            foreground = WUX::Media::SolidColorBrush{ _tabSelectionForeground(*color) };
+        }
+        for (const auto& item : _historyItems)
+        {
+            const auto isCurrent = item == current;
+            item.IsCurrent(isCurrent);
+            item.CurrentBackground(isCurrent ? background : _historyUnselectedBackground);
+            item.CurrentForeground(isCurrent ? foreground : nullptr);
+        }
     }
 
     bool TabStrip::ApplyHistoryStatusDelta(winrt::hstring const& sessionId,
@@ -723,10 +756,6 @@ namespace winrt::TerminalApp::implementation
             item.IsLive(isLive);
             item.IsHistorical(status == L"Ended" || status == L"Historical");
 
-            const auto locationLabel = item.AgentSource() == L"wsl" ?
-                                           item.WslDistro() + L" (WSL)" :
-                                           winrt::hstring{ L"Host" };
-            item.Subtitle(item.AgentId() + L" - " + locationLabel + L" - " + statusText);
             _historySearchTerms[index] = _buildHistorySearchTerms(item);
             updated = true;
         }
@@ -1499,6 +1528,7 @@ namespace winrt::TerminalApp::implementation
             _historyItems.ReplaceAll(visibleItems);
         }
         _updateHistoryVisualState();
+        HistoryProjectionChanged.raise();
     }
 
     void TabStrip::_updateHistoryVisualState()

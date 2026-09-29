@@ -41,6 +41,12 @@ namespace winrt::TerminalApp::implementation
         WINRT_PROPERTY(winrt::hstring, StatusText);
         WINRT_PROPERTY(winrt::Windows::UI::Xaml::Style, StatusTextStyle, nullptr);
         WINRT_PROPERTY(winrt::Windows::UI::Xaml::DataTemplate, IconTemplate, nullptr);
+        WINRT_OBSERVABLE_PROPERTY(bool, IsCurrent, PropertyChanged.raise, false);
+        WINRT_OBSERVABLE_PROPERTY(winrt::Windows::UI::Xaml::Media::Brush, CurrentBackground, PropertyChanged.raise, nullptr);
+        WINRT_OBSERVABLE_PROPERTY(winrt::Windows::UI::Xaml::Media::Brush, CurrentForeground, PropertyChanged.raise, nullptr);
+
+    public:
+        til::property_changed_event PropertyChanged;
     };
 
     struct TabStripHistoryActivationEventArgs : TabStripHistoryActivationEventArgsT<TabStripHistoryActivationEventArgs>
@@ -216,6 +222,8 @@ namespace winrt::TerminalApp::implementation
         void SearchQuery(winrt::hstring const& value);
         winrt::Windows::Foundation::Collections::IObservableVector<TerminalApp::TabStripHistoryItem> HistoryItems() const { return _historyItems; }
         void CommitHistorySnapshot(std::vector<TerminalApp::TabStripHistoryItem> items);
+        void SetCurrentHistoryItem(TerminalApp::TabStripHistoryItem const& item,
+                                   winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& tab);
         bool ApplyHistoryStatusDelta(winrt::hstring const& sessionId,
                                      winrt::hstring const& paneSessionId,
                                      winrt::hstring const& status,
@@ -353,6 +361,7 @@ namespace winrt::TerminalApp::implementation
         til::typed_event<TerminalApp::TabStrip, TerminalApp::TabStripCloseRequestedEventArgs> TabRenameRequested;
         til::typed_event<TerminalApp::TabStrip, TerminalApp::TabStripCloseRequestedEventArgs> TabFocusRequested;
         til::typed_event<TerminalApp::TabStrip, winrt::Windows::Foundation::IInspectable> VisibleFieldsChanged;
+        til::event<winrt::delegate<>> HistoryProjectionChanged;
 
     private:
         TerminalApp::TabStripOrientation _orientation{ TerminalApp::TabStripOrientation::Vertical };
@@ -383,6 +392,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::Foundation::Collections::IObservableVector<TerminalApp::TabStripHistoryItem> _historyItems{ nullptr };
         std::vector<TerminalApp::TabStripHistoryItem> _historySnapshot;
         std::vector<std::vector<winrt::hstring>> _historySearchTerms;
+        winrt::Windows::UI::Xaml::Media::Brush _historyUnselectedBackground{ nullptr };
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Windows::Foundation::IInspectable>::VectorChanged_revoker _vectorChangedRevoker;
 
         struct CloseRequestedSubscription

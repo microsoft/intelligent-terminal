@@ -27,7 +27,8 @@ WTA is normally launched **by Windows Terminal**, not by hand. WT spawns one
 `wta-helper` per agent pane (renders this TUI and speaks ACP to master over a
 named pipe). Helpers selecting the same agent identity, source, and command
 share one agent process. Master warms installed, policy-allowed native host agents
-in the background at startup; other selections remain on-demand. Bare `wta` with
+other than Gemini in the background at startup; Gemini and other selections
+remain on-demand. Bare `wta` with
 no subcommand and neither `--master`
 nor `--connect-master` exits with an error — there is no standalone agent / TUI
 mode.
@@ -59,13 +60,16 @@ the host agent, WTA puts the current package family's alias directory first on
 therefore use short `wta.exe` commands without selecting another installed
 branding or reproducing a protected package path.
 
-### Sidebar Agent History
+### Sidebar Agent sessions
 
 Master discovers installed, policy-allowed Windows-host agents in the background
-as soon as its named pipe is ready, without waiting for History to open. It checks
+as soon as its named pipe is ready, without waiting for the sidebar to open. It checks
 the native agent CLI and required `npx` prerequisite before starting ACP, reuses
 matching connections in the agent pool, and merges each supported `session/list`
 response into the registry. No chat session or prompt is created by discovery.
+Gemini is excluded before availability checks and ACP startup, even when installed
+and policy-allowed. Explicit Gemini chat selections remain supported, and Gemini
+sessions already registered by other paths are not filtered out of the sidebar.
 
 Discovery never automatically installs a native agent CLI. The pinned Claude and
 Codex ACP adapters are separate: their cache presence is not checked, and the
@@ -75,7 +79,7 @@ and may require network access; discovery is not an offline-only operation. See
 [Installing dependencies](../../doc/installing-dependencies.md) for the native CLI
 and ACP wrapper prerequisites.
 
-Sidebar Agent History runs
+Sidebar Agent sessions runs
 `wta sessions list --origin shell --all-agents --json --include-status`.
 This returns the current registry snapshot immediately and requests a background
 refresh using the same resident pool; it is not the initial connection trigger.

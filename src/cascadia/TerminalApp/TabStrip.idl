@@ -23,7 +23,7 @@ namespace TerminalApp
         AgentsOnly = 1,
     };
 
-    [default_interface] runtimeclass TabStripHistoryItem
+    [default_interface] runtimeclass TabStripHistoryItem : Windows.UI.Xaml.Data.INotifyPropertyChanged
     {
         String SessionId;
         String Title;
@@ -43,6 +43,9 @@ namespace TerminalApp
         String StatusText;
         Windows.UI.Xaml.Style StatusTextStyle;
         Windows.UI.Xaml.DataTemplate IconTemplate;
+        Boolean IsCurrent;
+        Windows.UI.Xaml.Media.Brush CurrentBackground;
+        Windows.UI.Xaml.Media.Brush CurrentForeground;
     };
 
     [default_interface] runtimeclass TabStripHistoryActivationEventArgs

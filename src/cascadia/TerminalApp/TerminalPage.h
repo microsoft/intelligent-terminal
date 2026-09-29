@@ -973,6 +973,7 @@ namespace winrt::TerminalApp::implementation
         void _StopSidebarHistoryRefreshTimer();
         void _CloseSidebarHistory(bool restoreFocus);
         void _RequestSidebarHistoryRefresh(bool initialLoad);
+        void _UpdateSidebarHistoryCurrentSession();
         static winrt::hstring _SidebarHistoryStatusText(std::string_view status);
         bool _ApplyAgentSessionStatusDelta(std::string_view sessionId,
                                            std::string_view paneSessionId,
