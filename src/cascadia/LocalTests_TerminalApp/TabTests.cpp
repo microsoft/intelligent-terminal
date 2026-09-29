@@ -4981,6 +4981,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(tab->FocusPane(sourcePane->Id().value()));
             const auto secondTerminalPane = page->_MakePane(nullptr, page->_GetFocusedTab(), nullptr);
             VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, secondTerminalPane));
+            VERIFY_IS_TRUE(secondTerminalPane->ContentId().has_value());
             VERIFY_IS_TRUE(agentPane->Id().has_value());
             VERIFY_IS_TRUE(tab->FocusPane(agentPane->Id().value()));
 
@@ -4990,6 +4991,9 @@ namespace TerminalAppLocalTests
             for (const auto& item : display.PaneItems())
             {
                 VERIFY_ARE_NOT_EQUAL(agentPane->ContentId().value(), item.ContentId());
+                VERIFY_IS_TRUE(item.ContentId() == sourcePane->ContentId().value() ||
+                               item.ContentId() == secondTerminalPane->ContentId().value());
+                VERIFY_ARE_EQUAL(item.ContentId() == secondTerminalPane->ContentId().value(), item.IsActive());
             }
         });
     }
