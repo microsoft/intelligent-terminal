@@ -179,6 +179,7 @@ namespace winrt::TerminalApp::implementation
             if (page && tab && page->_isVerticalLayout)
             {
                 winrt::get_self<implementation::TabStrip>(page->_tabStrip)->RefreshTabColor(tab->TabViewItem());
+                page->_UpdateSidebarHistoryCurrentSession();
             }
         });
 
@@ -1943,6 +1944,7 @@ namespace winrt::TerminalApp::implementation
             // `OnAgentStateChanged` callback own that refresh keeps
             // the bar's agent UI authoritative.
             _UpdateBottomBarVisibility();
+            _UpdateSidebarHistoryCurrentSession();
 
             // Bottom-bar refresh is now driven by wta — fire `tab_changed`
             // so wta re-projects this tab's authoritative agent-pane state
@@ -2049,6 +2051,7 @@ namespace winrt::TerminalApp::implementation
                                  !_IsCollapsedVerticalRail();
         _tabStrip.CanReorderTabs(canDragDrop);
         _tabStrip.CanDragTabs(canDragDrop);
+        _UpdateSidebarHistoryCurrentSession();
     }
 
     void TerminalPage::_UpdateTabFilterStatus()

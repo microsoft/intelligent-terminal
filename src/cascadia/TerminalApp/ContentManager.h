@@ -56,6 +56,7 @@ namespace winrt::TerminalApp::implementation
         winrt::TerminalApp::Tab BeginReattachKeptGroup(const winrt::guid& groupId);
         void CompleteKeptGroupReattach(const winrt::guid& groupId, bool committed);
         void DiscardKeptGroup(const winrt::guid& groupId);
+        void DiscardAllKeptGroups();
 
         til::typed_event<winrt::TerminalApp::ContentManager, winrt::Windows::Foundation::IInspectable> KeptSessionsChanged;
         til::typed_event<winrt::TerminalApp::ContentManager, winrt::hstring> DetachedSessionEvent;

@@ -22,6 +22,9 @@ The RepeatAll icon appears after the title of a tab with keep running enabled,
 including after restore, whole-tab moves, and switching to horizontal layout.
 Disabling keep running removes the title icon. Long titles truncate before the
 indicator so it stays visible.
+When Rich Tab metadata is visible, the indicator is vertically centered across
+the title and metadata rows without changing its horizontal position. Metadata
+also truncates before the indicator column.
 The menu icons and title indicator use Segoe Fluent Icons with Segoe MDL2 Assets as a fallback,
 not a bitmap asset.
 
@@ -70,6 +73,11 @@ with zero windows. Its menu preserves the original Focus Terminal action and
 Windows submenu for selecting an existing window. Kept tabs add their own
 Restore and Close submenus without removing inherited tray actions. Restore reattaches
 the same live content; Close terminates the entire kept tab, including its helper.
+The kept-tab entries and **Close all keep-running tabs** form one section between
+native menu separators. The bulk-close command appears immediately below the
+last kept tab and closes all currently detached, unclaimed tabs, including their
+panes and helpers. Tabs still in a window or already being restored are not
+closed. The section is absent when no kept tabs are available.
 Tray Restore targets the most recently active terminal window, or creates a
 receiver window when none exists.
 An ordinary Start-menu or command-line launch follows the original startup

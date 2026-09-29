@@ -94,15 +94,17 @@
             </TextBox.ContextFlyout>
         </TextBox>
         <FontIcon x:Name="HeaderKeepRunningIcon"
+                  Grid.RowSpan="2"
                   Grid.Column="2"
                   Margin="8,0,0,0"
+                  VerticalAlignment="Center"
                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                   FontSize="12"
                   Glyph="&#xE8EE;"
                   Visibility="{x:Bind TabStatus.IsKeepRunning, Mode=OneWay}" />
         <TextBlock x:Name="HeaderMetadataTextBlock"
                    Grid.Row="1"
-                   Grid.ColumnSpan="3"
+                   Grid.ColumnSpan="2"
                    Margin="0,1,0,0"
                    MaxLines="2"
                    FontSize="10"

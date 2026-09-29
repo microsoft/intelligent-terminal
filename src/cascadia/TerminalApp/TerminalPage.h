@@ -359,6 +359,9 @@ namespace winrt::TerminalApp::implementation
         Windows::UI::Xaml::DispatcherTimer _historyRefreshTimer{ nullptr };
         bool _historyRefreshInFlight{ false };
         bool _historyRefreshPending{ false };
+        std::shared_ptr<std::atomic<bool>> _historyRefreshCancellation;
+        std::chrono::seconds _historyRetryDelay{ 0 };
+        std::chrono::steady_clock::time_point _historyNextRefresh{};
         bool _tabDragReorderAuthorized{ false };
         Windows::Foundation::IInspectable _tabDragSelectedItem{ nullptr };
         // Spec A §5.2: hand-rolled splitter for resizing the vertical rail.
@@ -445,11 +448,13 @@ namespace winrt::TerminalApp::implementation
         // toggles each time the user switches tabs.
         //
         // The bottom-bar click handlers (`_AgentToggleButtonOnClick`,
-        // `_DiagnosticsButtonOnClick`)
+        // `_SessionToggleButtonOnClick`, `_DiagnosticsButtonOnClick`)
         // target the *active* tab's AgentPaneContent (or open one if
         // it doesn't exist yet).
         void _AgentToggleButtonOnClick(const winrt::Windows::Foundation::IInspectable& sender,
                                        const winrt::Windows::UI::Xaml::RoutedEventArgs& eventArgs);
+        void _SessionToggleButtonOnClick(const winrt::Windows::Foundation::IInspectable& sender,
+                                         const winrt::Windows::UI::Xaml::RoutedEventArgs& eventArgs);
         void _DiagnosticsButtonOnClick(const winrt::Windows::Foundation::IInspectable& sender,
                                        const winrt::Windows::UI::Xaml::RoutedEventArgs& eventArgs);
         // Recomputes the bottom bar's visibility / toggle-lit / diagnostics
@@ -974,6 +979,7 @@ namespace winrt::TerminalApp::implementation
         void _StopSidebarHistoryRefreshTimer();
         void _CloseSidebarHistory(bool restoreFocus);
         void _RequestSidebarHistoryRefresh(bool initialLoad);
+        void _UpdateSidebarHistoryCurrentSession();
         static winrt::hstring _SidebarHistoryStatusText(std::string_view status);
         bool _ApplyAgentSessionStatusDelta(std::string_view sessionId,
                                            std::string_view paneSessionId,
@@ -987,6 +993,7 @@ namespace winrt::TerminalApp::implementation
                 Ready,
                 Error,
                 InvalidResponse,
+                Cancelled,
             };
             State state{ State::Error };
             std::vector<TerminalApp::TabStripHistoryItem> items;

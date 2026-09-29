@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <ctime>
@@ -121,6 +122,12 @@ namespace Microsoft::Terminal::ShellIntegration
         // How the orchestrator should pick the EOL it writes (see
         // LineEndingPolicy). Bash returns Lf; PowerShell returns Auto.
         virtual LineEndingPolicy LineEndings() const = 0;
+
+        // Whether the managed block must follow all user-authored profile
+        // content. PowerShell prompt renderers replace the prompt function as
+        // they initialize, so its integration must load last to mark the first
+        // prompt. Bash integrations do not require this placement.
+        virtual bool PlaceBlockAtEnd() const noexcept { return false; }
 
         // Build the sentinel-bracketed block to inject. Receives the
         // EOL the orchestrator selected per LineEndings() and the
@@ -285,11 +292,13 @@ namespace Microsoft::Terminal::ShellIntegration
         //      any CRLF in file, else LF).
         //   4. Compute desired block via flavor.ScriptBlock(eol).
         //   5. Find existing block via flavor.FindExistingScriptBlock.
-        //   6. If block matches desired AND script is on disk → no-op;
+        //   6. If block matches desired, satisfies its placement policy, AND
+        //      script is on disk → no-op;
         //      else if profile matches but script is missing → repair
         //      script only (don't rewrite the profile).
         //   7. Backup profile (non-fatal), write versioned script.
-        //   8. Replace existing region OR append a new block.
+        //   8. Replace existing region, relocate it when required, OR append
+        //      a new block.
         //   9. Write profile back; surface write/close errors.
         //
         // Synchronous — call from a background thread.
@@ -410,8 +419,18 @@ namespace Microsoft::Terminal::ShellIntegration
             const auto desiredBlock = flavor.ScriptBlock(eol);
             const auto existing = flavor.FindExistingScriptBlock(contents);
             const bool found = existing.has_value();
+            const bool placementSatisfied =
+                !found ||
+                !flavor.PlaceBlockAtEnd() ||
+                std::all_of(
+                    contents.begin() + existing->second,
+                    contents.end(),
+                    [](const char ch) {
+                        return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n';
+                    });
 
             if (found &&
+                placementSatisfied &&
                 std::string_view(contents.data() + existing->first, existing->second - existing->first) == desiredBlock)
             {
                 // Non-throwing exists() check for the script file — same
@@ -467,7 +486,29 @@ namespace Microsoft::Terminal::ShellIntegration
 
             if (found)
             {
-                contents.replace(existing->first, existing->second - existing->first, desiredBlock);
+                if (flavor.PlaceBlockAtEnd())
+                {
+                    size_t removeEnd = existing->second;
+                    if (removeEnd < contents.size() && contents[removeEnd] == '\r')
+                    {
+                        ++removeEnd;
+                    }
+                    if (removeEnd < contents.size() && contents[removeEnd] == '\n')
+                    {
+                        ++removeEnd;
+                    }
+                    contents.erase(existing->first, removeEnd - existing->first);
+                    if (!contents.empty() && contents.back() != '\n')
+                    {
+                        contents += eol;
+                    }
+                    contents += desiredBlock;
+                    contents += eol;
+                }
+                else
+                {
+                    contents.replace(existing->first, existing->second - existing->first, desiredBlock);
+                }
             }
             else
             {

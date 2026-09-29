@@ -70,10 +70,9 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
                 Set-WtWindowForeground -App $script:app -Attempts 2 -DelayMs 200
             } | Out-Null
         }
-        function Invoke-SidebarFilter {
-            param([string]$Name)
-            Invoke-UiElement -App $script:app -Selector FilterTabsButton | Out-Null
-            $selector = if ($Name -eq 'All tabs') { 'AllTabsFilterItem' } else { 'AgentsOnlyFilterItem' }
+        function Set-SidebarHistory {
+            param([bool]$Open)
+            $selector = if ($Open) { 'TabHistoryButton' } else { 'HistoryCloseButton' }
             try { Invoke-UiElement -App $script:app -Selector $selector | Out-Null }
             catch {
                 Get-UiTree -App $script:app -Depth 12 | Set-Content -LiteralPath (Join-Path $script:root 'filter-error-ui.txt')
@@ -307,12 +306,11 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             }
             Invoke-TelemetryPhase -Name filter-all -Action {
                 $count = Get-AgentViewRowCount
-                Invoke-SidebarFilter -Name 'Agents only'
+                Set-SidebarHistory -Open $true
                 Wait-AgentViewLoaded -Count $count
                 @{ Count = $count }
             }
-            Invoke-TelemetryPhase -Name filter-repeat -Action {
-                Invoke-SidebarFilter -Name 'Agents only'
+            Invoke-TelemetryPhase -Name history-refresh -Action {
                 Wait-AgentViewLoaded -Count $script:phases['filter-all'].Data.Count
                 Start-Sleep -Seconds 7
             }
@@ -323,28 +321,28 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
                     Should -BeIn @('No matching agent sessions.', 'No agent sessions found.')
             }
             Invoke-TelemetryPhase -Name filter-live-search -Action {
-                Invoke-SidebarFilter -Name 'All tabs'
+                Set-SidebarHistory -Open $false
                 Add-AgentViewFixtures
                 Set-SidebarQuery -Text $script:titleA
                 Wait-SidebarHeader -Title $script:titleA
                 $count = Get-AgentViewRowCount
                 $count | Should -BeGreaterOrEqual 2
-                Invoke-SidebarFilter -Name 'Agents only'
+                Set-SidebarHistory -Open $true
                 Wait-AgentViewLoaded -Count $count
                 Get-UiTree -App $script:app -Depth 12 | Set-Content -LiteralPath (Join-Path $script:root 'agent-view.txt')
                 @{ Count = $count }
             }
             Invoke-TelemetryPhase -Name filter-live-no-match -Action {
-                Invoke-SidebarFilter -Name 'All tabs'
+                Set-SidebarHistory -Open $false
                 Set-SidebarQuery -Text 'IT-sidebar-no-match'
                 Wait-SidebarHeader -Title $script:titleA -Hidden
                 Wait-SidebarHeader -Title $script:titleB -Hidden
                 $count = Get-AgentViewRowCount
-                Invoke-SidebarFilter -Name 'Agents only'
+                Set-SidebarHistory -Open $true
                 Wait-AgentViewLoaded -Count $count
                 @{ Count = $count }
             }
-            Invoke-SidebarFilter -Name 'All tabs'
+            Set-SidebarHistory -Open $false
             Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
             Invoke-TelemetryPhase -Name pin-first -Action {
                 Invoke-SidebarKeepRunning -Title $script:titleA -Enable $true
@@ -511,7 +509,7 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             Assert-SidebarSchema -Event $events[0] -Field row_count
             [uint32]$events[0].Fields.row_count | Should -Be $script:phases[$phase].Data.Count
         }
-        foreach ($phase in @('filter-repeat', 'filter-search-edit', 'layout-refresh')) {
+        foreach ($phase in @('history-refresh', 'filter-search-edit', 'layout-refresh')) {
             @(Get-TelemetryPhaseEvents -Phase $phase -Name SidebarAgentFilterApplied) | Should -HaveCount 0
         }
         @($script:records | Where-Object Name -eq SidebarAgentFilterApplied) | Should -HaveCount 3
@@ -537,7 +535,7 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             Assert-SidebarSchema -Event $events[0] -Field fields -Type AnsiString
             $events[0].Fields.fields | Should -BeExactly $case.Fields
         }
-        foreach ($phase in @('fields-menu-only', 'fields-third-disabled', 'filter-repeat', 'filter-live-search', 'layout-refresh', 'retain-restore')) {
+        foreach ($phase in @('fields-menu-only', 'fields-third-disabled', 'history-refresh', 'filter-live-search', 'layout-refresh', 'retain-restore')) {
             @(Get-TelemetryPhaseEvents -Phase $phase -Name SidebarRowFieldsChanged) | Should -HaveCount 0
         }
         $starts = @($script:records | Where-Object Name -eq AgentSessionStarted)

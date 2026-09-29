@@ -321,6 +321,25 @@ namespace winrt::TerminalApp::implementation
         group.tab.Shutdown();
     }
 
+    void ContentManager::DiscardAllKeptGroups()
+    {
+        // Closing a tab can synchronously change other groups. Snapshot the IDs
+        // and recheck ownership so restored or claimed tabs are never closed.
+        for (const auto& group : KeptGroups())
+        {
+            try
+            {
+                const auto id = group.Key();
+                const auto it = _keptGroups.find(id);
+                if (it != _keptGroups.end() && !it->second.restoring)
+                {
+                    DiscardKeptGroup(id);
+                }
+            }
+            CATCH_LOG()
+        }
+    }
+
     void ContentManager::_NotifyKeptSessionsChanged() noexcept
     {
         try

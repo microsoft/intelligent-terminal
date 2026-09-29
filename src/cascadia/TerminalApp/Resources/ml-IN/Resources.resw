@@ -527,25 +527,34 @@
     <value>എല്ലാ ടാബുകളും കാണിക്കുക</value>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>ഏജന്റ് ചരിത്രം</value>
+    <value>ഏജന്റ് സെഷനുകൾ</value>
+    <comment>Accessible name of the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>ഏജന്റ് ചരിത്രം</value>
+    <value>ഏജന്റ് സെഷനുകൾ</value>
+    <comment>Tooltip for the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
-    <value>ഏജന്റ് ചരിത്രം</value>
+    <value>ഏജന്റ് സെഷനുകൾ</value>
+    <comment>Header of the Agent sessions sidebar view, which lists all live and historical AI-agent sessions, not only session history.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>ഏജന്റ് ചരിത്രം അടയ്ക്കുക</value>
+    <value>ഏജന്റ് സെഷനുകളുടെ കാഴ്ച അടയ്ക്കുക</value>
+    <comment>Accessible name of the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>ഏജന്റ് ചരിത്രം അടയ്ക്കുക</value>
+    <value>ഏജന്റ് സെഷനുകളുടെ കാഴ്ച അടയ്ക്കുക</value>
+    <comment>Tooltip for the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
     <value>ഏജന്റ് സെഷനുകൾ തിരയുക</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>ഏജന്റ് സെഷനുകൾ തിരയുക</value>
+  </data>
+  <data name="VerticalTabsHistoryCurrentSession" xml:space="preserve">
+    <value>നിലവിലെ സെഷൻ</value>
+    <comment>UI Automation status for the live AI-agent session associated with the active terminal pane. This identifies the currently displayed session, not keyboard selection or the most recent session.</comment>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>ഏജന്റ് സെഷനുകളൊന്നും കണ്ടെത്തിയില്ല.</value>
@@ -554,10 +563,12 @@
     <value>പൊരുത്തപ്പെടുന്ന ഏജന്റ് സെഷനുകളൊന്നുമില്ല.</value>
   </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
-    <value>ഏജന്റ് ചരിത്രം ലോഡ് ചെയ്യാനായില്ല.</value>
+    <value>ഏജന്റ് സെഷനുകൾ ലോഡ് ചെയ്യാനായില്ല.</value>
+    <comment>Error shown when the Agent sessions sidebar view cannot load its list of live and historical AI-agent sessions. This refers to loading the session list, not starting or resuming a session.</comment>
   </data>
   <data name="VerticalTabsHistoryInvalidResponse" xml:space="preserve">
-    <value>ഏജന്റ് ചരിത്രം അസാധുവായ പ്രതികരണം നൽകി.</value>
+    <value>ഏജന്റ് സെഷനുകൾ ലോഡ് ചെയ്യാനായില്ല: അസാധുവായ പ്രതികരണം.</value>
+    <comment>Error shown when the Agent sessions sidebar receives an invalid response while loading its list of live and historical AI-agent sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryActivationError" xml:space="preserve">
     <value>തിരഞ്ഞെടുത്ത സെഷൻ സജീവമാക്കാനായില്ല.</value>
@@ -668,5 +679,9 @@
   <data name="VerticalTabsHistoryAgeUnknown" xml:space="preserve">
     <value>അജ്ഞാതം</value>
     <comment>Agent History time label when the session&apos;s latest activity timestamp is missing or invalid. Do not imply that the session was recently active.</comment>
+  </data>
+  <data name="NotificationIconCloseAllKeptTabs" xml:space="preserve">
+    <value>പശ്ചാത്തലത്തിൽ പ്രവർത്തിക്കുന്ന എല്ലാ ടാബുകളും അടയ്ക്കുക</value>
+    <comment>Command below the background tabs in the notification-area menu. Closes all detached tabs retained by Keep tab running and terminates their panes and processes. Does not close tabs still in a window or only turn off keep running.</comment>
   </data>
 </root>

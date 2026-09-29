@@ -307,7 +307,7 @@ namespace winrt::TerminalApp::implementation
         textBlock.TextAlignment(WUX::TextAlignment::Center);
         textBlock.Inlines().Append(titleRun);
 
-        if (!_richTabTooltipText.empty())
+        if (_isVerticalTabLayout && !_richTabTooltipText.empty())
         {
             auto metadataRun = WUX::Documents::Run();
             metadataRun.Text(_richTabTooltipText);
@@ -614,7 +614,7 @@ namespace winrt::TerminalApp::implementation
         _richTabAccessibilityText = accessibilityText;
         _headerControl.MetadataText(text);
         _headerControl.MetadataAutomationName(_richTabAccessibilityText);
-        _headerControl.IsMetadataVisible(hasVisibleMetadata);
+        _headerControl.IsMetadataVisible(_isVerticalTabLayout && hasVisibleMetadata);
 
         _UpdateAutomationName();
         _UpdateToolTip();
@@ -623,7 +623,7 @@ namespace winrt::TerminalApp::implementation
     void Tab::_UpdateAutomationName()
     {
         auto name = std::wstring{ Title() };
-        if (!_richTabAccessibilityText.empty())
+        if (_isVerticalTabLayout && !_richTabAccessibilityText.empty())
         {
             name += L", ";
             name += _richTabAccessibilityText;
@@ -2037,8 +2037,13 @@ namespace winrt::TerminalApp::implementation
 
     void Tab::SetVerticalTabLayout(const bool vertical)
     {
-        _isVerticalTabLayout = vertical;
+        if (_isVerticalTabLayout != vertical)
+        {
+            _isVerticalTabLayout = vertical;
+            _RecalculateAndApplyTabColor();
+        }
         _UpdateKeepRunningMenuItem();
+        _UpdateRichTabPresentation();
 
         const auto label = vertical ? RS_(L"TabCloseBelow") : RS_(L"TabCloseAfter");
         const auto tooltip = vertical ? RS_(L"TabCloseBelowToolTip") : RS_(L"TabCloseAfterToolTip");
@@ -3217,15 +3222,15 @@ namespace winrt::TerminalApp::implementation
     void Tab::_RecalculateAndApplyTabColor()
     {
         // GetTabColor will return the color set by the color picker, or the
-        // color specified in the profile. If neither of those were set,
-        // then look to _themeColor to see if there's a value there.
-        // Otherwise, clear our color, falling back to the TabView defaults.
+        // color specified in the profile. Theme-derived backgrounds only apply
+        // to horizontal tabs; the sidebar uses native themed selection states
+        // unless an explicit tab color is set.
         const auto currentColor = GetTabColor();
         if (currentColor.has_value())
         {
             _ApplyTabColorOnUIThread(currentColor.value());
         }
-        else if (_themeColor != nullptr)
+        else if (!_isVerticalTabLayout && _themeColor != nullptr)
         {
             // Safely get the active control's brush.
             const Media::Brush terminalBrush{ _BackgroundBrush() };

@@ -7021,6 +7021,8 @@ fn host_history_agent_ids(
 ) -> Vec<&'static str> {
     crate::agent_registry::KNOWN_AGENTS
         .iter()
+        // Gemini remains available for chat, but must not start solely for sidebar history.
+        .filter(|profile| profile.id != crate::agent_registry::GEMINI_AGENT_ID)
         .filter(|profile| allowed_ids.is_none_or(|ids| ids.contains(profile.id)))
         .filter(|profile| is_available(profile.id))
         .map(|profile| profile.id)

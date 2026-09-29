@@ -11170,6 +11170,64 @@ fn sidebar_history_discovery_checks_policy_before_installation() {
 }
 
 #[tokio::test]
+async fn sidebar_history_discovery_keeps_registered_gemini_sessions() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut state = make_state();
+            Arc::get_mut(&mut state).unwrap().allowed_agent_ids = Some(allow_set(&["gemini"]));
+            let mut row = crate::session_registry::SessionInfo::new(
+                SessionId::new("existing-gemini"),
+                PathBuf::from("C:\\repo"),
+            );
+            row.cli_source = Some(crate::agent_sessions::CliSource::Gemini);
+            row.status = Some(crate::agent_sessions::AgentStatus::Idle);
+            state.registry.upsert(row.clone()).await;
+
+            request_host_history_refresh(&state);
+            let _finished = state.history_refresh.lock().await;
+            let response = handle_sessions_list(
+                &state,
+                None,
+                &crate::session_registry::SessionsListParams {
+                    all_agents: true,
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+            let snapshot =
+                crate::session_registry::parse_sessions_list_response(&response.0).unwrap();
+            assert_eq!(snapshot.sessions, [row]);
+            assert!(state.agents.lock().await.is_empty());
+            assert_eq!(
+                snapshot.history_status,
+                Some(crate::session_registry::HistoryLoadStatus::Ready)
+            );
+        })
+        .await;
+}
+
+#[test]
+fn sidebar_history_discovery_excludes_gemini_but_allows_explicit_chat() {
+    let mut checked = Vec::new();
+    let ids = host_history_agent_ids(None, |id| {
+        checked.push(id.to_owned());
+        true
+    });
+    assert_eq!(ids, ["copilot", "claude", "codex", "opencode"]);
+    assert_eq!(checked, ids);
+
+    let allowed = allow_set(&["gemini"]);
+    assert!(host_history_agent_ids(Some(&allowed), |_| {
+        panic!("Gemini must not be probed for sidebar discovery");
+    })
+    .is_empty());
+    let (command, id) = resolve(Some(&allowed), Some("gemini"), None);
+    assert_eq!(command, "gemini --acp");
+    assert_eq!(id.as_deref(), Some("gemini"));
+}
+
+#[tokio::test]
 async fn sidebar_history_discovery_is_background_and_single_flight() {
     tokio::task::LocalSet::new()
         .run_until(async {

@@ -6,7 +6,6 @@
         <description>Enables built-in Rich Tab providers and structured tab metadata.</description>
         <stage>AlwaysEnabled</stage>
         <alwaysDisabledBrandingTokens>
-            <brandingToken>Release</brandingToken>
             <brandingToken>WindowsInbox</brandingToken>
         </alwaysDisabledBrandingTokens>
     </feature>

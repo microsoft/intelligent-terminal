@@ -248,7 +248,7 @@ and explicitly reopening tab search emits again.
 
 ### App.SidebarAgentFilterApplied
 
-**Trigger:** the user switches from All tabs to the Agent view and its first
+**Trigger:** the user opens the dedicated Agent sessions sidebar view and its first
 explicitly `Ready` session snapshot is committed. `Loading` or `Error` snapshots
 may display cached rows but do not emit or consume the pending measurement.
 The pending measurement is canceled
@@ -263,9 +263,9 @@ including historical sessions. It does not count current-window tabs,
 split-pane children, or Agent-pane sessions excluded by that view's scope.
 Its search is independent of the live-tab search; entering the view clears
 the session query, but a query entered while loading is honored.
-Selecting Agents only again while it is already active, switching to All
-tabs, editing search, and automatic refreshes do not emit again. Returning
-to All tabs and then Agents only arms another measurement. Load failure
+Repeated open requests while the view is already active, closing the view,
+editing search, and automatic refreshes do not emit again. Closing and
+reopening Agent sessions arms another measurement. Load failure
 does not fabricate a zero-count event; a later successful refresh while
 the same entry remains active can complete the pending measurement.
 

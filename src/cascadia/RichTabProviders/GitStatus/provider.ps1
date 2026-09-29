@@ -1,6 +1,11 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
+$utf8NoBom = New-Object System.Text.UTF8Encoding $false
+[Console]::InputEncoding = $utf8NoBom
+[Console]::OutputEncoding = $utf8NoBom
+$OutputEncoding = $utf8NoBom
+
 $ErrorActionPreference = 'Stop'
 
 function New-EmptyResponse([string]$RequestId, [hashtable]$Fields) {
