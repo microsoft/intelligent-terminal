@@ -412,7 +412,7 @@ namespace winrt::TerminalApp::implementation
                 }
                 for (const auto& pane : current)
                 {
-                    pane.SearchText(display.SearchText());
+                    pane.HighlightQuery(display.SearchText());
                 }
                 display.IsGroup(isGroup);
                 winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed);
@@ -445,7 +445,7 @@ namespace winrt::TerminalApp::implementation
                 }
                 for (const auto& pane : display.PaneItems())
                 {
-                    pane.SearchText(searchText);
+                    pane.HighlightQuery(searchText);
                 }
             }
         }
