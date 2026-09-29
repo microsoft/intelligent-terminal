@@ -528,6 +528,10 @@
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Agent seanslarini qidirish</value>
   </data>
+  <data name="VerticalTabsHistoryCurrentSession" xml:space="preserve">
+    <value>Joriy seans</value>
+    <comment>UI Automation status for the live AI-agent session associated with the active terminal pane. This identifies the currently displayed session, not keyboard selection or the most recent session.</comment>
+  </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Agent seanslari topilmadi.</value>
   </data>

@@ -531,6 +531,10 @@
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>ఏజెంట్ సెషన్‌లను శోధించండి</value>
   </data>
+  <data name="VerticalTabsHistoryCurrentSession" xml:space="preserve">
+    <value>ప్రస్తుత సెషన్</value>
+    <comment>UI Automation status for the live AI-agent session associated with the active terminal pane. This identifies the currently displayed session, not keyboard selection or the most recent session.</comment>
+  </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>ఏ ఏజెంట్ సెషన్‌లు కనుగొనబడలేదు.</value>
   </data>

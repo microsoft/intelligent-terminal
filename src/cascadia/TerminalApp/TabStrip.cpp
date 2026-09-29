@@ -457,26 +457,40 @@ namespace winrt::TerminalApp::implementation
         return luminance >= 0.6 ? Windows::UI::Colors::Black() : Windows::UI::Colors::White();
     }
 
-    static void _applyHistoryRowForeground(FrameworkElement const& root, WUX::Media::Brush const& foreground)
+    static void _applyHistoryRowForeground(FrameworkElement const& root, TerminalApp::TabStripHistoryItem const& item)
     {
         if (!root)
         {
             return;
         }
+        const auto isCurrent = item && item.IsCurrent();
+        const auto foreground = isCurrent ? item.CurrentForeground() : nullptr;
+        const auto palette = root.FindName(L"HistorySelectionPalette").try_as<Control>();
         for (const auto name : { L"HistoryTitleText", L"HistorySubtitleText", L"HistoryStatusText" })
         {
             if (const auto control = root.FindName(name).try_as<Control>())
             {
+                control.ClearValue(Control::ForegroundProperty());
                 if (foreground)
                 {
                     control.Foreground(foreground);
                 }
-                else
+                else if (isCurrent && palette)
                 {
-                    control.ClearValue(Control::ForegroundProperty());
+                    WUX::Data::Binding binding;
+                    binding.Source(palette);
+                    binding.Path(PropertyPath{ L"Foreground" });
+                    binding.Mode(WUX::Data::BindingMode::OneWay);
+                    control.SetBinding(Control::ForegroundProperty(), binding);
                 }
             }
         }
+    }
+
+    static void _applyHistoryRowAutomation(DependencyObject const& container, TerminalApp::TabStripHistoryItem const& item)
+    {
+        WUX::Automation::AutomationProperties::SetItemStatus(
+            container, item && item.IsCurrent() ? RS_(L"VerticalTabsHistoryCurrentSession") : winrt::hstring{});
     }
 
     void TabStrip::_updateDisplayItemVisuals(FrameworkElement const& root,
@@ -752,7 +766,8 @@ namespace winrt::TerminalApp::implementation
             item.CurrentForeground(isCurrent ? foreground : nullptr);
             if (const auto container = HistoryList().ContainerFromIndex(index).try_as<ListViewItem>())
             {
-                _applyHistoryRowForeground(container.ContentTemplateRoot().try_as<FrameworkElement>(), item.CurrentForeground());
+                _applyHistoryRowForeground(container.ContentTemplateRoot().try_as<FrameworkElement>(), item);
+                _applyHistoryRowAutomation(container, item);
             }
         }
     }
@@ -1199,7 +1214,7 @@ namespace winrt::TerminalApp::implementation
     {
         const auto root = sender.as<FrameworkElement>();
         const auto item = root.DataContext().try_as<TerminalApp::TabStripHistoryItem>();
-        _applyHistoryRowForeground(root, item ? item.CurrentForeground() : nullptr);
+        _applyHistoryRowForeground(root, item);
     }
 
     void TabStrip::OnHistoryContainerContentChanging(ListViewBase const&, ContainerContentChangingEventArgs const& e)
@@ -1208,7 +1223,8 @@ namespace winrt::TerminalApp::implementation
         {
             const auto item = e.InRecycleQueue() ? nullptr : e.Item().try_as<TerminalApp::TabStripHistoryItem>();
             _applyHistoryRowForeground(container.ContentTemplateRoot().try_as<FrameworkElement>(),
-                                       item ? item.CurrentForeground() : nullptr);
+                                       item);
+            _applyHistoryRowAutomation(container, item);
         }
     }
 

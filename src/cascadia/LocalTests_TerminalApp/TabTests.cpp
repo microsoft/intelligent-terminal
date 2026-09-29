@@ -4482,6 +4482,10 @@ namespace TerminalAppLocalTests
             const auto propertyChanged = first.PropertyChanged(winrt::auto_revoke, [&](auto&&, const auto& args) {
                 notified |= args.PropertyName() == L"IsCurrent";
             });
+            const auto currentStatus = winrt::Windows::ApplicationModel::Resources::Core::ResourceManager::Current()
+                                           .MainResourceMap().GetSubtree(L"TerminalApp/Resources")
+                                           .GetValue(L"VerticalTabsHistoryCurrentSession").ValueAsString();
+            VERIFY_IS_FALSE(currentStatus.empty());
 
             for (const auto theme : { ElementTheme::Dark, ElementTheme::Light })
             {
@@ -4489,14 +4493,17 @@ namespace TerminalAppLocalTests
                 tab.Background(nullptr);
                 impl->SetCurrentHistoryItem(nullptr, tab);
                 host.UpdateLayout();
-                const auto row = impl->HistoryList().ContainerFromIndex(0).as<ListViewItem>().ContentTemplateRoot().as<Grid>();
+                const auto container = impl->HistoryList().ContainerFromIndex(0).as<ListViewItem>();
+                const auto row = container.ContentTemplateRoot().as<Grid>();
                 const auto title = row.FindName(L"HistoryTitleText").as<winrt::TerminalApp::HighlightedTextControl>();
                 const auto selection = row.FindName(L"HistorySelectionBackground").as<Border>();
+                const auto palette = row.FindName(L"HistorySelectionPalette").as<ContentControl>();
                 const auto inheritedForeground = title.Foreground();
                 VERIFY_IS_NOT_NULL(inheritedForeground);
                 VERIFY_IS_NULL(row.GetBindingExpression(Panel::BackgroundProperty()));
                 VERIFY_IS_TRUE(title.ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
                 VERIFY_ARE_EQUAL(Visibility::Collapsed, selection.Visibility());
+                VERIFY_IS_TRUE(Automation::AutomationProperties::GetItemStatus(container).empty());
 
                 impl->SetCurrentHistoryItem(first, tab);
                 host.UpdateLayout();
@@ -4507,15 +4514,17 @@ namespace TerminalAppLocalTests
                 VERIFY_IS_NULL(second.CurrentBackground());
                 VERIFY_ARE_EQUAL(Visibility::Visible, selection.Visibility());
                 VERIFY_IS_NOT_NULL(selection.Background());
-                VERIFY_IS_TRUE(title.Foreground() == inheritedForeground);
-                VERIFY_IS_TRUE(title.ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
+                VERIFY_IS_TRUE(title.Foreground() == palette.Foreground());
+                VERIFY_ARE_EQUAL(currentStatus, Automation::AutomationProperties::GetItemStatus(container));
+                VERIFY_IS_TRUE(Automation::AutomationProperties::GetItemStatus(
+                                   impl->HistoryList().ContainerFromIndex(1)).empty());
 
                 auto tabBrush = Media::SolidColorBrush{ winrt::Windows::UI::Colors::DarkBlue() };
                 tabBrush.Opacity(0.3);
                 tab.Background(tabBrush);
                 impl->SetCurrentHistoryItem(first, tab);
                 host.UpdateLayout();
-                VERIFY_ARE_EQUAL(tabBrush.Color(), selection.Child().as<Border>().Background().as<Media::SolidColorBrush>().Color());
+                VERIFY_ARE_EQUAL(tabBrush.Color(), palette.Content().as<Border>().Background().as<Media::SolidColorBrush>().Color());
                 VERIFY_ARE_EQUAL(1.0, first.CurrentBackground().Opacity());
                 VERIFY_ARE_EQUAL(winrt::Windows::UI::Colors::White(), title.Foreground().as<Media::SolidColorBrush>().Color());
 
@@ -4527,12 +4536,22 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(Visibility::Collapsed, selection.Visibility());
                 VERIFY_IS_TRUE(title.ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
                 VERIFY_IS_TRUE(title.Foreground() == inheritedForeground);
+                VERIFY_IS_TRUE(Automation::AutomationProperties::GetItemStatus(container).empty());
+                VERIFY_ARE_EQUAL(currentStatus, Automation::AutomationProperties::GetItemStatus(
+                                                    impl->HistoryList().ContainerFromIndex(1)));
             }
             impl->SetCurrentHistoryItem(nullptr, tab);
             VERIFY_IS_FALSE(second.IsCurrent());
             VERIFY_ARE_EQUAL(0u, collectionChanges);
 
+            tab.Background(nullptr);
             impl->SetCurrentHistoryItem(first, tab);
+            const auto currentRow = impl->HistoryList().ContainerFromIndex(0).as<ListViewItem>().ContentTemplateRoot().as<Grid>();
+            const auto currentTitle = currentRow.FindName(L"HistoryTitleText").as<winrt::TerminalApp::HighlightedTextControl>();
+            const auto currentPalette = currentRow.FindName(L"HistorySelectionPalette").as<ContentControl>();
+            currentPalette.Foreground(Media::SolidColorBrush{ winrt::Windows::UI::Colors::Magenta() });
+            host.UpdateLayout();
+            VERIFY_IS_TRUE(currentTitle.Foreground() == currentPalette.Foreground());
             const auto replacement = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
             replacement.Title(L"Replacement session");
             impl->CommitHistorySnapshot({ replacement });
@@ -4541,6 +4560,8 @@ namespace TerminalAppLocalTests
             const auto recycledTitle = recycledRow.FindName(L"HistoryTitleText").as<winrt::TerminalApp::HighlightedTextControl>();
             VERIFY_IS_TRUE(recycledTitle.ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, recycledRow.FindName(L"HistorySelectionBackground").as<Border>().Visibility());
+            VERIFY_IS_TRUE(Automation::AutomationProperties::GetItemStatus(
+                               impl->HistoryList().ContainerFromIndex(0)).empty());
         });
     }
 

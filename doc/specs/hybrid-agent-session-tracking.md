@@ -317,6 +317,10 @@ Unselected rows keep their original container styling and inherited foreground.
 The theme selection background is a separate visual shown only for the current
 row; custom tab-color foreground overrides are cleared when a row loses the
 marker or its container is recycled.
+The default current-row palette pairs the theme's selected background and
+selected foreground, including theme changes. UI Automation exposes a localized
+Current session item status on the current row's list container and clears it
+on deselection or recycling; keyboard selection remains independent.
 Missing or unrecognized states display Unknown rather than implying a historical
 session. Search matches both the displayed status and the raw registry value;
 the existing `live` and `history` search terms remain available. This presentation

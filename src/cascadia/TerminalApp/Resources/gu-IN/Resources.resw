@@ -552,6 +552,10 @@
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>એજન્ટ સત્રો શોધો</value>
   </data>
+  <data name="VerticalTabsHistoryCurrentSession" xml:space="preserve">
+    <value>હાલનું સત્ર</value>
+    <comment>UI Automation status for the live AI-agent session associated with the active terminal pane. This identifies the currently displayed session, not keyboard selection or the most recent session.</comment>
+  </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>કોઈ એજન્ટ સત્રો મળ્યાં નથી.</value>
   </data>

@@ -581,8 +581,15 @@
                                         CornerRadius="{StaticResource SidebarTabCornerRadius}"
                                         IsHitTestVisible="False"
                                         Visibility="{x:Bind IsCurrent, Mode=OneWay}">
-                                    <Border Background="{x:Bind CurrentBackground, Mode=OneWay}"
-                                            CornerRadius="{StaticResource SidebarTabCornerRadius}" />
+                                    <ContentControl x:Name="HistorySelectionPalette"
+                                                    HorizontalContentAlignment="Stretch"
+                                                    VerticalContentAlignment="Stretch"
+                                                    AutomationProperties.AccessibilityView="Raw"
+                                                    Foreground="{ThemeResource ListViewItemForegroundSelected}"
+                                                    IsTabStop="False">
+                                        <Border Background="{x:Bind CurrentBackground, Mode=OneWay}"
+                                                CornerRadius="{StaticResource SidebarTabCornerRadius}" />
+                                    </ContentControl>
                                 </Border>
                                 <ContentControl Grid.RowSpan="2"
                                                 Width="16"

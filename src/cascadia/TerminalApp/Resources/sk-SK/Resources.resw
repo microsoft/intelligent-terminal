@@ -529,6 +529,10 @@
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Vyhľadať relácie agentov</value>
   </data>
+  <data name="VerticalTabsHistoryCurrentSession" xml:space="preserve">
+    <value>Aktuálna relácia</value>
+    <comment>UI Automation status for the live AI-agent session associated with the active terminal pane. This identifies the currently displayed session, not keyboard selection or the most recent session.</comment>
+  </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Nenašli sa žiadne relácie agentov.</value>
   </data>

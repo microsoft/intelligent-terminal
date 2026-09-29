@@ -550,6 +550,10 @@
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Пребарај сесии на агенти</value>
   </data>
+  <data name="VerticalTabsHistoryCurrentSession" xml:space="preserve">
+    <value>Тековна сесија</value>
+    <comment>UI Automation status for the live AI-agent session associated with the active terminal pane. This identifies the currently displayed session, not keyboard selection or the most recent session.</comment>
+  </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Не се пронајдени сесии на агенти.</value>
   </data>
