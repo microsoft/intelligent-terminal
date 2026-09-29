@@ -82,6 +82,8 @@ namespace TerminalApp
         Windows.UI.Xaml.Visibility GroupVisibility;
         Windows.UI.Xaml.Visibility ChildrenVisibility;
         String ChevronGlyph;
+        Windows.UI.Xaml.Visibility IconVisibility;
+        Double HeaderMinHeight;
     };
 
     [default_interface] runtimeclass TabStripPaneEventArgs

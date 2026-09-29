@@ -97,6 +97,8 @@ namespace winrt::TerminalApp::implementation
         const auto isGroup = IsGroup();
         GroupVisibility(isGroup && !railCollapsed ? Visibility::Visible : Visibility::Collapsed);
         ChildrenVisibility(isGroup && !railCollapsed && IsExpanded() ? Visibility::Visible : Visibility::Collapsed);
+        IconVisibility(isGroup && !railCollapsed ? Visibility::Collapsed : Visibility::Visible);
+        HeaderMinHeight(railCollapsed ? 32.0 : 40.0);
         ChevronGlyph(IsExpanded() ? L"\xE70D" : L"\xE76C");
     }
 
@@ -520,18 +522,17 @@ namespace winrt::TerminalApp::implementation
             }
             const auto tabColor = _tabSelectionColor(display.Tab());
             const auto selected = display.SelectionVisibility() == Visibility::Visible;
-            const auto color = tabColor && selected ? *tabColor : Windows::UI::Colors::Transparent();
-            const auto previous = grid.Background().try_as<WUX::Media::SolidColorBrush>();
-            if (previous && previous.Color() == color)
+            if (const auto selectionBackground = grid.FindName(L"TabColorSelectionBackground").try_as<WUX::Controls::Border>())
             {
-                return;
+                const auto color = tabColor && selected ? *tabColor : Windows::UI::Colors::Transparent();
+                selectionBackground.Background(WUX::Media::SolidColorBrush{ color });
             }
-            grid.Background(WUX::Media::SolidColorBrush{ color });
+            grid.Background(WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
             const auto header = display.Header().try_as<WUX::Controls::Control>();
             const auto close = grid.FindName(L"TabCloseButton").try_as<WUX::Controls::Control>();
             if (tabColor && selected)
             {
-                const auto foreground = WUX::Media::SolidColorBrush{ _tabSelectionForeground(color) };
+                const auto foreground = WUX::Media::SolidColorBrush{ _tabSelectionForeground(*tabColor) };
                 for (const auto& control : { header, toggle, close })
                 {
                     if (control)
@@ -871,10 +872,19 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void TabStrip::HistoryRefreshError(winrt::hstring const& value)
+    {
+        if (_historyRefreshError != value)
+        {
+            _historyRefreshError = value;
+            _updateHistoryVisualState();
+        }
+    }
+
     void TabStrip::ProjectionControlsEnabled(bool value)
     {
         _projectionControlsEnabled = value;
-        SearchTabsButton().IsEnabled(value && !_isRailCollapsed);
+        SearchTabsButton().IsEnabled(value);
         FilterTabsButton().IsEnabled(value && !_isRailCollapsed);
         TabHistoryButton().IsEnabled(value && !_isRailCollapsed);
     }
@@ -983,8 +993,9 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::RichTabMetadataControlsVisible(const bool value)
     {
+        _richTabMetadataControlsVisible = value;
         const auto visibility = value ? Visibility::Visible : Visibility::Collapsed;
-        FilterTabsButton().Visibility(visibility);
+        FilterTabsButton().Visibility(value && !_isRailCollapsed ? Visibility::Visible : Visibility::Collapsed);
         RichTabMetadataSectionItem().Visibility(visibility);
         RichTabAgentStatusVisibleItem().Visibility(visibility);
         RichTabWorkingDirectoryVisibleItem().Visibility(visibility);
@@ -1110,8 +1121,13 @@ namespace winrt::TerminalApp::implementation
     {
         if (_isRailCollapsed)
         {
-            SearchTabsButton().IsChecked(false);
-            return;
+            RailCollapseRequested.raise(*this, nullptr);
+            if (_isRailCollapsed)
+            {
+                SearchTabsButton().IsChecked(false);
+                return;
+            }
+            SearchTabsButton().IsChecked(true);
         }
 
         _searchActive = SearchTabsButton().IsChecked().GetBoolean();
@@ -1133,7 +1149,7 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::OnSearchPointerPressed(IInspectable const&, WUX::Input::PointerRoutedEventArgs const&)
     {
-        if (!_searchActive && !_isRailCollapsed)
+        if (!_searchActive)
         {
             SearchActivationRequested.raise(*this, nullptr);
         }
@@ -1261,10 +1277,12 @@ namespace winrt::TerminalApp::implementation
         MinWidth(_isRailCollapsed ? 40.0 : 180.0);
         CompactNewTabToolbar().Visibility(collapsedVisibility);
         VerticalTabsHeader().Visibility(expandedVisibility);
-        SearchTabsButton().IsHitTestVisible(!_isRailCollapsed);
-        SearchTabsButton().IsEnabled(_projectionControlsEnabled && !_isRailCollapsed);
+        SearchTabsButton().IsHitTestVisible(true);
+        SearchTabsButton().IsEnabled(_projectionControlsEnabled);
+        FilterTabsButton().Visibility(_richTabMetadataControlsVisible ? expandedVisibility : Visibility::Collapsed);
         FilterTabsButton().IsHitTestVisible(!_isRailCollapsed);
         FilterTabsButton().IsEnabled(_projectionControlsEnabled && !_isRailCollapsed);
+        TabHistoryButton().Visibility(expandedVisibility);
         TabHistoryButton().IsHitTestVisible(!_isRailCollapsed);
         TabHistoryButton().IsEnabled(_projectionControlsEnabled && !_isRailCollapsed);
         FilterStatusBar().IsHitTestVisible(!_isRailCollapsed);
@@ -1608,9 +1626,9 @@ namespace winrt::TerminalApp::implementation
         {
             HistoryMessage().Visibility(Visibility::Collapsed);
         }
-        else if (!_historyError.empty())
+        else if (const auto error = HistoryError(); !error.empty())
         {
-            HistoryMessage().Text(_historyError);
+            HistoryMessage().Text(error);
             HistoryMessage().Visibility(Visibility::Visible);
         }
         else if (_historyItems.Size() == 0)
@@ -2071,6 +2089,30 @@ namespace winrt::TerminalApp::implementation
         {
             e.Handled(true);
             PaneCloseRequested.raise(*this, winrt::make<TabStripPaneEventArgs>(pane.Tab(), pane.ContentId()));
+        }
+    }
+
+    void TabStrip::OnPanePointerEntered(IInspectable const& sender,
+                                        WUX::Input::PointerRoutedEventArgs const&)
+    {
+        if (const auto root = sender.try_as<FrameworkElement>())
+        {
+            if (const auto background = root.FindName(L"PaneHoverBackground").try_as<UIElement>())
+            {
+                background.Opacity(1.0);
+            }
+        }
+    }
+
+    void TabStrip::OnPanePointerExited(IInspectable const& sender,
+                                       WUX::Input::PointerRoutedEventArgs const&)
+    {
+        if (const auto root = sender.try_as<FrameworkElement>())
+        {
+            if (const auto background = root.FindName(L"PaneHoverBackground").try_as<UIElement>())
+            {
+                background.Opacity(0.0);
+            }
         }
     }
 

@@ -356,6 +356,34 @@ query stay visible without the full-list loading spinner while focus/resume runs
 Repeated activation clicks are ignored until completion, and background snapshots
 cannot clear the activation guard. Closing History resets that guard.
 
+History list requests are single-flight per window. Notifications received during
+activation are coalesced and serviced after activation completes, without hiding
+the existing rows. Initial load failures (including non-zero CLI exits) show a
+warning rather than an empty-history success state. Background refresh failures
+retain the previous snapshot and display a warning alongside it. Refresh errors
+and activation errors are independent: a successful refresh clears only the
+refresh warning, not a failed focus/resume result. Existing localized error
+messages are reused.
+
+Consecutive list failures impose a 5, 10, 20, 40, then 60-second retry delay,
+measured from completion. Both registry notifications and the five-second timer
+respect it; the timer retries on its first eligible tick. Failed requests discard
+the coalesced pending refresh instead of immediately retrying. A `ready` snapshot
+or leaving/reopening the Agents view resets the retry delay. A `loading` discovery
+snapshot is not a failure and does not increase the retry delay.
+
+Closing the view, destroying its page, or starting activation signals cancellation
+of the in-flight list command. The background capture loop checks cancellation
+before launch, while draining output, and between bounded process waits. It
+terminates only its own short-lived list process, not shared WTA master, provider
+discovery, or agent sessions. The UI thread never waits for process exit.
+Late/canceled responses cannot replace the snapshot, display an error, or add
+retry backoff. Reopening coalesces a fresh request until the old worker completes,
+using a new cancellation flag for the new request.
+
+Activation timeout outcome reconciliation remains separate; a client timeout
+does not prove that the backend took no action.
+
 At startup, once its named pipe is ready, master checks policy and local
 native agent CLI and required `npx` prerequisites, then initializes installed
 Windows-host providers through the existing native-provider agent pool. Discovery

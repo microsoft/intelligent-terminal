@@ -307,7 +307,7 @@ namespace winrt::TerminalApp::implementation
         textBlock.TextAlignment(WUX::TextAlignment::Center);
         textBlock.Inlines().Append(titleRun);
 
-        if (!_richTabTooltipText.empty())
+        if (_isVerticalTabLayout && !_richTabTooltipText.empty())
         {
             auto metadataRun = WUX::Documents::Run();
             metadataRun.Text(_richTabTooltipText);
@@ -614,7 +614,7 @@ namespace winrt::TerminalApp::implementation
         _richTabAccessibilityText = accessibilityText;
         _headerControl.MetadataText(text);
         _headerControl.MetadataAutomationName(_richTabAccessibilityText);
-        _headerControl.IsMetadataVisible(hasVisibleMetadata);
+        _headerControl.IsMetadataVisible(_isVerticalTabLayout && hasVisibleMetadata);
 
         _UpdateAutomationName();
         _UpdateToolTip();
@@ -623,7 +623,7 @@ namespace winrt::TerminalApp::implementation
     void Tab::_UpdateAutomationName()
     {
         auto name = std::wstring{ Title() };
-        if (!_richTabAccessibilityText.empty())
+        if (_isVerticalTabLayout && !_richTabAccessibilityText.empty())
         {
             name += L", ";
             name += _richTabAccessibilityText;
@@ -2039,6 +2039,7 @@ namespace winrt::TerminalApp::implementation
     {
         _isVerticalTabLayout = vertical;
         _UpdateKeepRunningMenuItem();
+        _UpdateRichTabPresentation();
 
         const auto label = vertical ? RS_(L"TabCloseBelow") : RS_(L"TabCloseAfter");
         const auto tooltip = vertical ? RS_(L"TabCloseBelowToolTip") : RS_(L"TabCloseAfterToolTip");
