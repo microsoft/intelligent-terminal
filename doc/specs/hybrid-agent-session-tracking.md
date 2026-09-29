@@ -310,6 +310,10 @@ with the same contrasting foreground, or the theme's default list selection
 background otherwise. Switching tabs or panes, changing the tab color, and
 refreshing the snapshot update the marker without resetting the session list.
 No row is highlighted when the active pane has no matching live session.
+Unselected rows keep their original container styling and inherited foreground.
+The theme selection background is a separate visual shown only for the current
+row; custom tab-color foreground overrides are cleared when a row loses the
+marker or its container is recycled.
 Missing or unrecognized states display Unknown rather than implying a historical
 session. Search matches both the displayed status and the raw registry value;
 the existing `live` and `history` search terms remain available. This presentation

@@ -262,7 +262,6 @@ namespace winrt::TerminalApp::implementation
 
         InitializeComponent();
 
-        _historyUnselectedBackground = WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() };
         ItemsList().ItemsSource(_displayItems);
         _vectorChangedRevoker = _tabItems.VectorChanged(auto_revoke, { get_weak(), &TabStrip::_onItemsVectorChanged });
         Loaded([weakThis{ get_weak() }](auto&&, auto&&) {
@@ -456,6 +455,28 @@ namespace winrt::TerminalApp::implementation
     {
         const auto luminance = (0.2126 * color.R + 0.7152 * color.G + 0.0722 * color.B) / 255.0;
         return luminance >= 0.6 ? Windows::UI::Colors::Black() : Windows::UI::Colors::White();
+    }
+
+    static void _applyHistoryRowForeground(FrameworkElement const& root, WUX::Media::Brush const& foreground)
+    {
+        if (!root)
+        {
+            return;
+        }
+        for (const auto name : { L"HistoryTitleText", L"HistorySubtitleText", L"HistoryStatusText" })
+        {
+            if (const auto control = root.FindName(name).try_as<Control>())
+            {
+                if (foreground)
+                {
+                    control.Foreground(foreground);
+                }
+                else
+                {
+                    control.ClearValue(Control::ForegroundProperty());
+                }
+            }
+        }
     }
 
     void TabStrip::_updateDisplayItemVisuals(FrameworkElement const& root,
@@ -698,7 +719,7 @@ namespace winrt::TerminalApp::implementation
         for (const auto& item : _historySnapshot)
         {
             item.IsCurrent(false);
-            item.CurrentBackground(_historyUnselectedBackground);
+            item.CurrentBackground(nullptr);
             item.CurrentForeground(nullptr);
             item.StatusTextStyle(_historyStatusTextStyle(item.Status()));
             auto iconKey = box_value(L"AgentIcon." + item.AgentId());
@@ -722,12 +743,17 @@ namespace winrt::TerminalApp::implementation
             background = WUX::Media::SolidColorBrush{ *color };
             foreground = WUX::Media::SolidColorBrush{ _tabSelectionForeground(*color) };
         }
-        for (const auto& item : _historyItems)
+        for (uint32_t index = 0; index < _historyItems.Size(); ++index)
         {
+            const auto item = _historyItems.GetAt(index);
             const auto isCurrent = item == current;
             item.IsCurrent(isCurrent);
-            item.CurrentBackground(isCurrent ? background : _historyUnselectedBackground);
+            item.CurrentBackground(isCurrent ? background : nullptr);
             item.CurrentForeground(isCurrent ? foreground : nullptr);
+            if (const auto container = HistoryList().ContainerFromIndex(index).try_as<ListViewItem>())
+            {
+                _applyHistoryRowForeground(container.ContentTemplateRoot().try_as<FrameworkElement>(), item.CurrentForeground());
+            }
         }
     }
 
@@ -1166,6 +1192,23 @@ namespace winrt::TerminalApp::implementation
             HistoryActivationRequested.raise(
                 *this,
                 winrt::make<TabStripHistoryActivationEventArgs>(item));
+        }
+    }
+
+    void TabStrip::OnHistoryRowLoaded(IInspectable const& sender, RoutedEventArgs const&)
+    {
+        const auto root = sender.as<FrameworkElement>();
+        const auto item = root.DataContext().try_as<TerminalApp::TabStripHistoryItem>();
+        _applyHistoryRowForeground(root, item ? item.CurrentForeground() : nullptr);
+    }
+
+    void TabStrip::OnHistoryContainerContentChanging(ListViewBase const&, ContainerContentChangingEventArgs const& e)
+    {
+        if (const auto container = e.ItemContainer())
+        {
+            const auto item = e.InRecycleQueue() ? nullptr : e.Item().try_as<TerminalApp::TabStripHistoryItem>();
+            _applyHistoryRowForeground(container.ContentTemplateRoot().try_as<FrameworkElement>(),
+                                       item ? item.CurrentForeground() : nullptr);
         }
     }
 

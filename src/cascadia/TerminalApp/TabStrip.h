@@ -307,6 +307,10 @@ namespace winrt::TerminalApp::implementation
                                        winrt::Windows::UI::Xaml::Input::KeyRoutedEventArgs const& e);
         void OnHistoryItemClick(winrt::Windows::Foundation::IInspectable const& sender,
                                 winrt::Windows::UI::Xaml::Controls::ItemClickEventArgs const& e);
+        void OnHistoryRowLoaded(winrt::Windows::Foundation::IInspectable const& sender,
+                                winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void OnHistoryContainerContentChanging(winrt::Windows::UI::Xaml::Controls::ListViewBase const& sender,
+                                               winrt::Windows::UI::Xaml::Controls::ContainerContentChangingEventArgs const& e);
         void OnContainerContentChanging(winrt::Windows::UI::Xaml::Controls::ListViewBase const& sender,
                                         winrt::Windows::UI::Xaml::Controls::ContainerContentChangingEventArgs const& e);
         void OnTabHeaderLoaded(winrt::Windows::Foundation::IInspectable const& sender,
@@ -392,7 +396,6 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::Foundation::Collections::IObservableVector<TerminalApp::TabStripHistoryItem> _historyItems{ nullptr };
         std::vector<TerminalApp::TabStripHistoryItem> _historySnapshot;
         std::vector<std::vector<winrt::hstring>> _historySearchTerms;
-        winrt::Windows::UI::Xaml::Media::Brush _historyUnselectedBackground{ nullptr };
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Windows::Foundation::IInspectable>::VectorChanged_revoker _vectorChangedRevoker;
 
         struct CloseRequestedSubscription

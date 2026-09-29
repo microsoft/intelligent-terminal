@@ -550,16 +550,10 @@
                 </Grid.RowDefinitions>
                 <ListView x:Name="HistoryList"
                           ItemsSource="{x:Bind HistoryItems}"
+                          ContainerContentChanging="OnHistoryContainerContentChanging"
                           IsItemClickEnabled="True"
                           ItemClick="OnHistoryItemClick"
                           SelectionMode="None">
-                    <ListView.ItemContainerStyle>
-                        <Style BasedOn="{StaticResource DefaultListViewItemStyle}"
-                               TargetType="ListViewItem">
-                            <Setter Property="Padding" Value="0" />
-                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                        </Style>
-                    </ListView.ItemContainerStyle>
                     <ListView.ItemsPanel>
                         <ItemsPanelTemplate>
                             <ItemsStackPanel ItemsUpdatingScrollMode="KeepScrollOffset" />
@@ -568,8 +562,7 @@
                     <ListView.ItemTemplate>
                         <DataTemplate x:DataType="local:TabStripHistoryItem">
                             <Grid Padding="12,8"
-                                  Background="{Binding CurrentBackground, Mode=OneWay, TargetNullValue={ThemeResource ListViewItemBackgroundSelected}}"
-                                  CornerRadius="{StaticResource SidebarTabCornerRadius}">
+                                  Loaded="OnHistoryRowLoaded">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
@@ -578,6 +571,17 @@
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
+                                <Border x:Name="HistorySelectionBackground"
+                                        Grid.RowSpan="2"
+                                        Grid.ColumnSpan="2"
+                                        Margin="-12,-8"
+                                        Background="{ThemeResource ListViewItemBackgroundSelected}"
+                                        CornerRadius="{StaticResource SidebarTabCornerRadius}"
+                                        IsHitTestVisible="False"
+                                        Visibility="{x:Bind IsCurrent, Mode=OneWay}">
+                                    <Border Background="{x:Bind CurrentBackground, Mode=OneWay}"
+                                            CornerRadius="{StaticResource SidebarTabCornerRadius}" />
+                                </Border>
                                 <ContentControl Grid.RowSpan="2"
                                                 Width="16"
                                                 Height="16"
@@ -592,7 +596,6 @@
                                                 IsTabStop="False" />
                                 <local:HighlightedTextControl x:Name="HistoryTitleText"
                                                               Grid.Column="1"
-                                                              Foreground="{Binding CurrentForeground, Mode=OneWay, TargetNullValue={ThemeResource ListViewItemForeground}}"
                                                               Text="{x:Bind Title}"
                                                               SearchText="{x:Bind SearchQuery}"
                                                               TextBlockStyle="{StaticResource HistoryTitleTextStyle}" />
@@ -604,13 +607,13 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <local:HighlightedTextControl SearchText="{x:Bind SearchQuery}"
-                                                                  Foreground="{Binding CurrentForeground, Mode=OneWay, TargetNullValue={ThemeResource ListViewItemForeground}}"
+                                    <local:HighlightedTextControl x:Name="HistorySubtitleText"
+                                                                  SearchText="{x:Bind SearchQuery}"
                                                                   Text="{x:Bind Subtitle}"
                                                                   TextBlockStyle="{StaticResource HistorySubtitleTextStyle}" />
-                                    <local:HighlightedTextControl Grid.Column="1"
+                                    <local:HighlightedTextControl x:Name="HistoryStatusText"
+                                                                  Grid.Column="1"
                                                                   Margin="4,0,0,0"
-                                                                  Foreground="{Binding CurrentForeground, Mode=OneWay, TargetNullValue={ThemeResource ListViewItemForeground}}"
                                                                   SearchText="{x:Bind SearchQuery}"
                                                                   Text="{x:Bind StatusText}"
                                                                   TextBlockStyle="{x:Bind StatusTextStyle}" />
