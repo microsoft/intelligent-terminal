@@ -263,7 +263,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 ### Chat/session view switching
 
-- [ ] `C083` `[UT✓]` `[E2E]` **Session view opens from chat:** `/sessions`, session button, or `Ctrl+Shift+/` opens the session view. _(UT: `slash_sessions_opens_agents_view` + `DefaultAgentKeybindings`.)_
+- [ ] `C083` `[UT✓]` `[E2E]` **Session view opens from chat:** `/sessions` opens the agent-pane session view in either layout; the session-management button does so in horizontal layout. `Ctrl+Shift+/` follows the layout-aware history contract in `C110`. _(UT: `slash_sessions_opens_agents_view`.)_
 - [ ] `C084` `[E2E]` **Chat view restores:** User can return to chat view after opening session view.
 - [x] `C085` `[UT✓]` `[E2E]` **View switch preserves input:** Draft prompt text is not unexpectedly lost when switching views. _(E2E `Feature.SessionList` 'View switch preserves the draft input': types a draft, switches chat↔sessions via the bottom-bar buttons (SessionToggleButton/AgentToggleButton — not the `/sessions` slash that would type into the draft, not Esc which is overloaded), observing the view via the `AgentLabelText` UIA element (winapp get-value, no jsonl pane ambiguity), then asserts the draft survives. UT: `view_switch_preserves_chat_draft_input` drives the Esc key handler and asserts draft + cursor survive.)_
 - [ ] `C086` `[E2E]` **View switch preserves connection:** Agent connection state remains correct after switching views.

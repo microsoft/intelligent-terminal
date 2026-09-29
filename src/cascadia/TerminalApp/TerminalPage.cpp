@@ -6006,16 +6006,27 @@ namespace winrt::TerminalApp::implementation
 
         const bool expanded = visible && !_isVerticalRailCollapsed;
         const auto width = visible ? (_isVerticalRailCollapsed ? railCollapsedWidth : _verticalRailWidth) : 0.0;
-        winrt::hstring sidebarKeyChordText;
-        for (const auto& binding : _settings.ActionMap().KeyBindings())
+        const auto actionMap = _settings.ActionMap();
+        Command sidebarCommand{ nullptr };
+        for (const auto& command : actionMap.AllCommands())
         {
-            const auto command = binding.Value();
-            if (command && command.ActionAndArgs() && command.ActionAndArgs().Action() == ShortcutAction::ToggleSidebar)
+            if (!command || !command.ActionAndArgs() ||
+                command.ActionAndArgs().Action() != ShortcutAction::ToggleSidebar ||
+                !actionMap.GetKeyBindingForAction(command.ID()))
             {
-                sidebarKeyChordText = KeyChordSerialization::ToString(binding.Key());
-                break;
+                continue;
+            }
+            const auto isUserCommand = command.Origin() == OriginTag::User;
+            const auto selectedIsUserCommand = sidebarCommand && sidebarCommand.Origin() == OriginTag::User;
+            if (!sidebarCommand || (isUserCommand && !selectedIsUserCommand) ||
+                (isUserCommand == selectedIsUserCommand && command.ID() < sidebarCommand.ID()))
+            {
+                sidebarCommand = command;
             }
         }
+        const auto sidebarKeyChordText = sidebarCommand ?
+                                             KeyChordSerialization::ToString(actionMap.GetKeyBindingForAction(sidebarCommand.ID())) :
+                                             winrt::hstring{};
         const auto tabRow = winrt::get_self<implementation::TabRowControl>(_tabRow);
         tabRow->SidebarToggleKeyChordText(sidebarKeyChordText);
         tabRow->SetVerticalRailState(visible, _isVerticalRailCollapsed, width);

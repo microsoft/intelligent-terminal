@@ -225,9 +225,10 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
             $pane = Get-ActivePane -App $horizontal
             Set-WtPaneFocus -App $horizontal -SessionId ([string]$pane.session_id)
             $draftMarker = "HOTKEY_NOOP_$([guid]::NewGuid().ToString('N'))"
-            Send-WtInput -App $horizontal -SessionId ([string]$pane.session_id) -Text $draftMarker | Out-Null
+            $draftCommand = "echo $draftMarker"
+            Send-WtInput -App $horizontal -SessionId ([string]$pane.session_id) -Text $draftCommand | Out-Null
             Wait-Until -TimeoutSec 8 -Because 'the focused shell to echo the unsent draft before testing the accelerator' -Condition {
-                (Get-WtCapture -App $horizontal -SessionId ([string]$pane.session_id) -MaxLines 30).TrimEnd().EndsWith($draftMarker)
+                (Get-WtCapture -App $horizontal -SessionId ([string]$pane.session_id) -MaxLines 30).TrimEnd().EndsWith($draftCommand)
             } | Out-Null
             $before = Get-WtCapture -App $horizontal -SessionId ([string]$pane.session_id) -MaxLines 30
             $before | Set-Content -LiteralPath (Join-Path $script:evidenceDir 'sidebar-horizontal-before.txt') -Encoding utf8
@@ -238,6 +239,14 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
             $after | Set-Content -LiteralPath (Join-Path $script:evidenceDir 'sidebar-horizontal-after.txt') -Encoding utf8
             Save-UiScreenshot -App $horizontal -Path (Join-Path $script:evidenceDir 'sidebar-horizontal-after.png') | Out-Null
             $after | Should -BeExactly $before -Because 'the sidebar-only accelerator must be consumed without typing into the active horizontal pane'
+            Send-WtWindowKey -App $horizontal -Vk 0x0D -RequireForeground | Out-Null
+            (Test-Until -TimeoutSec 8 -IntervalSec 0.25 -Condition {
+                (Get-WtCapture -App $horizontal -SessionId ([string]$pane.session_id) -MaxLines 30) -match
+                    "(?m)^\s*$([regex]::Escape($draftMarker))\s*$"
+            }) | Should -BeTrue -Because 'input and output must remain live after the sidebar hotkey, not frozen by a leaked Ctrl+S'
+            Get-WtCapture -App $horizontal -SessionId ([string]$pane.session_id) -MaxLines 30 |
+                Set-Content -LiteralPath (Join-Path $script:evidenceDir 'sidebar-horizontal-liveness.txt') -Encoding utf8
+            Save-UiScreenshot -App $horizontal -Path (Join-Path $script:evidenceDir 'sidebar-horizontal-liveness.png') | Out-Null
             $newTab = Get-UiElement -App $horizontal -Selector 'NewTabButton'
             ($newTab -and -not $newTab.isOffscreen -and $newTab.width -gt 0 -and $newTab.height -gt 0) |
                 Should -BeTrue -Because 'Ctrl+Shift+S must not change classic horizontal tabs into a sidebar or hide their chrome'
@@ -288,6 +297,9 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
             $states = @(
                 @{ Name = 'collapse'; Label = 'Collapse tabs pane'; Chord = 'Ctrl+Shift+S' }
                 @{ Name = 'expand'; Label = 'Expand tabs pane'; Chord = 'Ctrl+Shift+S'; Collapsed = $true }
+                @{ Name = 'additional'; Label = 'Collapse tabs pane'; Chord = 'Ctrl+Shift+Y'; Reload = @{
+                    actions = @(@{ command = 'toggleSidebar'; keys = 'ctrl+shift+y' })
+                } }
                 @{ Name = 'rebound'; Label = 'Collapse tabs pane'; Chord = 'Ctrl+Shift+Y'; Reload = @{
                     actions = @(
                         @{ command = 'unbound'; keys = 'ctrl+shift+s' }

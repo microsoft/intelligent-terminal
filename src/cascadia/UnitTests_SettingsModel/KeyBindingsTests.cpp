@@ -865,6 +865,22 @@ namespace SettingsModelUnitTests
 
     void KeyBindingsTests::SidebarKeybindingsRespectOverrides()
     {
+        {
+            const auto defaults = winrt::make_self<implementation::ActionMap>();
+            defaults->LayerJson(VerifyParseSucceeded(R"([
+                { "command": "toggleSidebar", "id": "Terminal.ToggleSidebar", "keys": "ctrl+shift+s" }
+            ])"), OriginTag::InBox);
+            const auto user = winrt::make_self<implementation::ActionMap>();
+            user->AddLeastImportantParent(defaults);
+            user->LayerJson(VerifyParseSucceeded(R"([
+                { "id": "Terminal.ToggleSidebar", "keys": "ctrl+shift+y" }
+            ])"), OriginTag::User);
+            VERIFY_ARE_EQUAL(2u, user->KeyBindings().Size(), L"The user chord supplements rather than removes the default");
+            const auto preferred = user->GetKeyBindingForAction(L"Terminal.ToggleSidebar");
+            VERIFY_IS_NOT_NULL(preferred);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"ctrl+shift+y" }, KeyChordSerialization::ToString(preferred));
+        }
+
         struct testCase
         {
             std::string json;
