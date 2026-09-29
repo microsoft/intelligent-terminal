@@ -78,6 +78,8 @@ namespace TerminalApp
         Windows.UI.Xaml.Visibility SelectionVisibility;
         Windows.UI.Xaml.Visibility GroupVisibility;
         Windows.UI.Xaml.Visibility ChildrenVisibility;
+        Windows.UI.Xaml.Visibility IconVisibility;
+        Double HeaderMinHeight;
         String ChevronGlyph;
     };
 

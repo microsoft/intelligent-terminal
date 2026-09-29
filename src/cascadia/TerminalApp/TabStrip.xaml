@@ -243,7 +243,7 @@
                 <DataTemplate x:DataType="local:TabStripDisplayItem">
                     <StackPanel HorizontalAlignment="Stretch">
                         <Grid x:Name="TabHeaderGrid"
-                              MinHeight="32"
+                              MinHeight="{x:Bind HeaderMinHeight, Mode=OneWay}"
                               ContextFlyout="{x:Bind ContextFlyout, Mode=OneWay}"
                               CornerRadius="{StaticResource SidebarTabCornerRadius}"
                               DoubleTapped="OnTabHeaderDoubleTapped"
@@ -256,6 +256,18 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
+                            <Border x:Name="TabSelectionBackground"
+                                    Grid.ColumnSpan="4"
+                                    Background="{ThemeResource ListViewItemBackgroundSelected}"
+                                    CornerRadius="{StaticResource SidebarTabCornerRadius}"
+                                    IsHitTestVisible="False"
+                                    Visibility="{x:Bind SelectionVisibility, Mode=OneWay}" />
+                            <Border x:Name="TabColorSelectionBackground"
+                                    Grid.ColumnSpan="4"
+                                    Background="Transparent"
+                                    CornerRadius="{StaticResource SidebarTabCornerRadius}"
+                                    IsHitTestVisible="False"
+                                    Visibility="{x:Bind SelectionVisibility, Mode=OneWay}" />
                             <Button x:Name="TabGroupToggleButton"
                                     Grid.Column="0"
                                     Width="24"
@@ -278,7 +290,8 @@
                                               Height="16"
                                               Margin="4,0,8,0"
                                               VerticalAlignment="Center"
-                                              Content="{x:Bind Icon, Mode=OneWay}" />
+                                              Content="{x:Bind Icon, Mode=OneWay}"
+                                              Visibility="{x:Bind IconVisibility, Mode=OneWay}" />
                             <ContentPresenter x:Name="TabHeaderPresenter"
                                               Grid.Column="2"
                                               Margin="0,3"
@@ -317,7 +330,15 @@
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="28" />
                                         </Grid.ColumnDefinitions>
-                                        <Button Grid.Column="0"
+                                        <Border x:Name="PaneActiveBackground"
+                                                Grid.ColumnSpan="2"
+                                                Background="{ThemeResource ListViewItemBackgroundSelected}"
+                                                CornerRadius="{StaticResource SidebarTabCornerRadius}"
+                                                IsHitTestVisible="False"
+                                                Visibility="{x:Bind ActiveIndicatorVisibility, Mode=OneWay}" />
+                                        <Button x:Name="PaneActivateButton"
+                                                Grid.Column="0"
+                                                Grid.ColumnSpan="2"
                                                 Padding="0"
                                                 HorizontalContentAlignment="Stretch"
                                                 VerticalContentAlignment="Stretch"
@@ -325,7 +346,7 @@
                                                 Background="Transparent"
                                                 BorderThickness="0"
                                                 Click="OnPaneActivateClick">
-                                            <Grid>
+                                            <Grid Margin="0,0,28,0">
                                                 <Grid.RowDefinitions>
                                                     <RowDefinition Height="Auto" />
                                                     <RowDefinition Height="Auto" />
@@ -431,10 +452,10 @@
                                                        PointerOverForeground="{ThemeResource ListViewItemForegroundPointerOver}"
                                                        PressedBackground="{ThemeResource ListViewItemBackgroundPressed}"
                                                        ReorderHintOffset="{ThemeResource ListViewItemReorderHintThemeOffset}"
-                                                       SelectedBackground="{ThemeResource ListViewItemBackgroundSelected}"
+                                                       SelectedBackground="Transparent"
                                                        SelectedForeground="{ThemeResource ListViewItemForegroundSelected}"
-                                                       SelectedPointerOverBackground="{ThemeResource ListViewItemBackgroundSelectedPointerOver}"
-                                                       SelectedPressedBackground="{ThemeResource ListViewItemBackgroundSelectedPressed}"
+                                                       SelectedPointerOverBackground="Transparent"
+                                                       SelectedPressedBackground="Transparent"
                                                        SelectionCheckMarkVisualEnabled="{ThemeResource ListViewItemSelectionCheckMarkVisualEnabled}"
                                                        VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
                             </ControlTemplate>

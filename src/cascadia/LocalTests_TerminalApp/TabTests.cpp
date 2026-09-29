@@ -4955,6 +4955,8 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(display.ContextFlyout() == contextFlyout);
             VERIFY_ARE_EQUAL(2u, display.PaneItems().Size());
             VERIFY_ARE_EQUAL(Visibility::Visible, display.ChildrenVisibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, display.IconVisibility());
+            VERIFY_ARE_EQUAL(40.0, display.HeaderMinHeight());
             VERIFY_IS_FALSE(header.IsMetadataVisible());
             VERIFY_ARE_EQUAL(firstPaneMetadata, display.PaneItems().GetAt(0).MetadataText());
             VERIFY_ARE_EQUAL(Visibility::Visible, display.PaneItems().GetAt(0).MetadataVisibility());
@@ -4964,9 +4966,19 @@ namespace TerminalAppLocalTests
             const auto originalIcon = display.Icon();
             const auto firstPaneItem = display.PaneItems().GetAt(0);
             const auto secondPaneItem = display.PaneItems().GetAt(1);
-            const auto paneList = container.ContentTemplateRoot().as<StackPanel>().Children().GetAt(1).as<ItemsControl>();
+            const auto templateRoot = container.ContentTemplateRoot().as<StackPanel>();
+            const auto headerRoot = templateRoot.Children().GetAt(0).as<Grid>();
+            const auto iconPresenter = headerRoot.FindName(L"TabIconPresenter").as<ContentPresenter>();
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, iconPresenter.Visibility());
+            VERIFY_ARE_EQUAL(40.0, headerRoot.ActualHeight());
+            const auto paneList = templateRoot.Children().GetAt(1).as<ItemsControl>();
             const auto firstPaneContainer = paneList.ContainerFromIndex(0).as<ContentPresenter>();
             const auto firstPaneRoot = Media::VisualTreeHelper::GetChild(firstPaneContainer, 0).as<Grid>();
+            const auto firstPaneBackground = firstPaneRoot.FindName(L"PaneActiveBackground").as<Border>();
+            const auto firstPaneActivateButton = firstPaneRoot.FindName(L"PaneActivateButton").as<Button>();
+            VERIFY_ARE_EQUAL(Visibility::Visible, firstPaneBackground.Visibility());
+            VERIFY_ARE_EQUAL(firstPaneRoot.ActualWidth(), firstPaneBackground.ActualWidth());
+            VERIFY_ARE_EQUAL(firstPaneRoot.ActualWidth(), firstPaneActivateButton.ActualWidth());
             uint32_t collectionChanges = 0;
             const auto changed = display.PaneItems().VectorChanged(winrt::auto_revoke, [&](auto&&, auto&&) {
                 ++collectionChanges;
@@ -4992,6 +5004,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(secondPaneItem.IsActive());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, firstPaneItem.ActiveIndicatorVisibility());
             VERIFY_ARE_EQUAL(Visibility::Visible, secondPaneItem.ActiveIndicatorVisibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, firstPaneBackground.Visibility());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"updated metadata" }, firstPaneItem.MetadataText());
             VERIFY_ARE_EQUAL(Visibility::Visible, firstPaneItem.MetadataVisibility());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane, updated metadata" }, firstPaneItem.AutomationName());
@@ -5026,8 +5039,14 @@ namespace TerminalAppLocalTests
 
             strip.SetPaneItems(tab, display.PaneItems(), false);
             VERIFY_IS_TRUE(header.IsMetadataVisible());
+            VERIFY_ARE_EQUAL(Visibility::Visible, display.IconVisibility());
+            host.UpdateLayout();
+            VERIFY_IS_TRUE(headerRoot.ActualHeight() > display.HeaderMinHeight());
             strip.SetPaneItems(tab, display.PaneItems(), true);
             VERIFY_IS_FALSE(header.IsMetadataVisible());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, display.IconVisibility());
+            host.UpdateLayout();
+            VERIFY_ARE_EQUAL(display.HeaderMinHeight(), headerRoot.ActualHeight());
 
             header.BeginRename();
             VERIFY_IS_TRUE(header.InRename());
@@ -5038,10 +5057,17 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(strip.SelectedItem() == tab);
             VERIFY_IS_TRUE(stripImpl->ItemsList().SelectedItem().as<winrt::TerminalApp::TabStripDisplayItem>().Tab() == tab);
             VERIFY_ARE_EQUAL(Visibility::Visible, display.SelectionVisibility());
+            host.UpdateLayout();
+            const auto selectionBackground = headerRoot.FindName(L"TabSelectionBackground").as<Border>();
+            VERIFY_ARE_EQUAL(Visibility::Visible, selectionBackground.Visibility());
+            VERIFY_ARE_EQUAL(headerRoot.ActualHeight(), selectionBackground.ActualHeight());
+            VERIFY_IS_TRUE(container.ActualHeight() > selectionBackground.ActualHeight());
 
             strip.IsRailCollapsed(true);
             host.UpdateLayout();
             VERIFY_ARE_EQUAL(Visibility::Collapsed, display.ChildrenVisibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, display.IconVisibility());
+            VERIFY_ARE_EQUAL(32.0, display.HeaderMinHeight());
             VERIFY_IS_TRUE(container.ActualHeight() <= 40.0);
 
             winrt::MUX::Controls::TabViewItem secondTab;
