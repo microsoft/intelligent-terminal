@@ -287,6 +287,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabIconChangesUpdatePresentation);
         TEST_METHOD(VerticalTabThemeChangesDoNotReprojectPanes);
         TEST_METHOD(VerticalTabStripUsesNativeInteractionStates);
+        TEST_METHOD(VerticalTabGroupingIgnoresAgentPane);
         TEST_METHOD(AgentViewFiltersSplitPaneChildren);
         TEST_METHOD(VerticalTabSearchMatchesCommittedTitle);
         TEST_METHOD(VerticalTabSearchUiState);
@@ -4937,6 +4938,59 @@ namespace TerminalAppLocalTests
             page->_tabFilterMode = winrt::TerminalApp::TabStripFilterMode::AllTabs;
             page->_ApplyTabListProjection();
             VERIFY_ARE_EQUAL(2u, display.PaneItems().Size());
+        });
+    }
+
+    void TabTests::VerticalTabGroupingIgnoresAgentPane()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(tab);
+
+            const auto sourcePane = tab->GetActivePane();
+            VERIFY_IS_NOT_NULL(sourcePane);
+            VERIFY_IS_FALSE(sourcePane->IsAgentPane());
+            VERIFY_IS_TRUE(sourcePane->ContentId().has_value());
+
+            const auto agentPane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
+            VERIFY_IS_NOT_NULL(agentPane);
+            agentPane->IsAgentPane(true);
+            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, agentPane));
+            VERIFY_IS_TRUE(tab->GetActivePane() == agentPane);
+
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            const auto display = stripImpl->ItemsList().Items().GetAt(0).as<winrt::TerminalApp::TabStripDisplayItem>();
+            const auto verifySingleSourcePane = [&]() {
+                page->_RefreshTabStripPaneItems(tab);
+                VERIFY_ARE_EQUAL(1u, display.PaneItems().Size());
+                VERIFY_ARE_EQUAL(sourcePane->ContentId().value(), display.PaneItems().GetAt(0).ContentId());
+                VERIFY_IS_TRUE(display.PaneItems().GetAt(0).IsActive());
+                VERIFY_IS_FALSE(display.IsGroup());
+            };
+
+            verifySingleSourcePane();
+            tab->StashAgentPane();
+            VERIFY_IS_TRUE(tab->HasStashedAgentPane());
+            verifySingleSourcePane();
+            VERIFY_IS_TRUE(tab->RestoreStashedAgentPane(SplitDirection::Right));
+            verifySingleSourcePane();
+
+            VERIFY_IS_TRUE(sourcePane->Id().has_value());
+            VERIFY_IS_TRUE(tab->FocusPane(sourcePane->Id().value()));
+            const auto secondTerminalPane = page->_MakePane(nullptr, page->_GetFocusedTab(), nullptr);
+            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, secondTerminalPane));
+            VERIFY_IS_TRUE(agentPane->Id().has_value());
+            VERIFY_IS_TRUE(tab->FocusPane(agentPane->Id().value()));
+
+            page->_RefreshTabStripPaneItems(tab);
+            VERIFY_ARE_EQUAL(2u, display.PaneItems().Size());
+            VERIFY_IS_TRUE(display.IsGroup());
+            for (const auto& item : display.PaneItems())
+            {
+                VERIFY_ARE_NOT_EQUAL(agentPane->ContentId().value(), item.ContentId());
+            }
         });
     }
 

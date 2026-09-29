@@ -11892,9 +11892,19 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto visiblePanes = tab->GetVisiblePaneSnapshot();
+        const auto activeSourcePane = _SourceTerminalPaneForTab(tab);
+        const auto activeSourceContentId = activeSourcePane && activeSourcePane->ContentId() ?
+                                               activeSourcePane->ContentId() :
+                                               std::nullopt;
+        size_t groupPaneCount = 0;
         std::vector<TerminalApp::TabStripPaneItem> items;
         for (const auto& pane : visiblePanes)
         {
+            if (pane.IsAgentPane)
+            {
+                continue;
+            }
+            ++groupPaneCount;
             if (_IsAgentScopeEffective() && !_MatchesPaneAgentScope(pane))
             {
                 continue;
@@ -11903,7 +11913,7 @@ namespace winrt::TerminalApp::implementation
                 tab->TabViewItem(),
                 pane.ContentId,
                 pane.Title,
-                pane.IsActive);
+                pane.IsActive || activeSourceContentId == pane.ContentId);
             if (pane.SessionId != winrt::guid{})
             {
                 const auto sessionId = _FormatRichTabSessionId(pane.SessionId);
@@ -11929,7 +11939,7 @@ namespace winrt::TerminalApp::implementation
         _tabStrip.SetPaneItems(
             tab->TabViewItem(),
             single_threaded_vector<TerminalApp::TabStripPaneItem>(std::move(items)),
-            visiblePanes.size() > 1);
+            groupPaneCount > 1);
     }
 
     void TerminalPage::_ActivatePaneFromTabStrip(const TerminalApp::TabStripPaneEventArgs& args)
