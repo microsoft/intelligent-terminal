@@ -5203,21 +5203,42 @@ namespace TerminalAppLocalTests
             presentation.accessibilityText = L"Branch: main, Changes: 2";
             tab->SetRichTabPresentation(presentation);
 
+            const auto tooltipText = [&]() {
+                const auto toolTip = ToolTipService::GetToolTip(tab->TabViewItem()).as<ToolTip>();
+                const auto textBlock = toolTip.Content().as<TextBlock>();
+                std::wstring text;
+                for (const auto& inlineElement : textBlock.Inlines())
+                {
+                    if (const auto run = inlineElement.try_as<Documents::Run>())
+                    {
+                        text.append(run.Text());
+                    }
+                    else if (inlineElement.try_as<Documents::LineBreak>())
+                    {
+                        text.push_back(L'\n');
+                    }
+                }
+                return text;
+            };
+
             const auto title = tab->Title();
             VERIFY_ARE_EQUAL(winrt::hstring{ presentation.text }, tab->_headerControl.MetadataText());
             VERIFY_IS_FALSE(tab->_headerControl.IsMetadataVisible());
             VERIFY_ARE_EQUAL(title, Automation::AutomationProperties::GetName(tab->TabViewItem()));
+            VERIFY_ARE_EQUAL(std::wstring::npos, tooltipText().find(presentation.tooltip));
 
             tab->SetVerticalTabLayout(true);
             VERIFY_IS_TRUE(tab->_headerControl.IsMetadataVisible());
             VERIFY_ARE_EQUAL(
                 winrt::hstring{ std::wstring{ title } + L", " + presentation.accessibilityText },
                 Automation::AutomationProperties::GetName(tab->TabViewItem()));
+            VERIFY_ARE_NOT_EQUAL(std::wstring::npos, tooltipText().find(presentation.tooltip));
 
             tab->SetVerticalTabLayout(false);
             VERIFY_IS_FALSE(tab->_headerControl.IsMetadataVisible());
             VERIFY_ARE_EQUAL(title, Automation::AutomationProperties::GetName(tab->TabViewItem()));
             VERIFY_ARE_EQUAL(winrt::hstring{ presentation.text }, tab->_headerControl.MetadataText());
+            VERIFY_ARE_EQUAL(std::wstring::npos, tooltipText().find(presentation.tooltip));
         });
     }
 
