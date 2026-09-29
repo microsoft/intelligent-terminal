@@ -70,6 +70,11 @@ with zero windows. Its menu preserves the original Focus Terminal action and
 Windows submenu for selecting an existing window. Kept tabs add their own
 Restore and Close submenus without removing inherited tray actions. Restore reattaches
 the same live content; Close terminates the entire kept tab, including its helper.
+The kept-tab entries and **Close all keep-running tabs** form one section between
+native menu separators. The bulk-close command appears immediately below the
+last kept tab and closes all currently detached, unclaimed tabs, including their
+panes and helpers. Tabs still in a window or already being restored are not
+closed. The section is absent when no kept tabs are available.
 Tray Restore targets the most recently active terminal window, or creates a
 receiver window when none exists.
 An ordinary Start-menu or command-line launch follows the original startup

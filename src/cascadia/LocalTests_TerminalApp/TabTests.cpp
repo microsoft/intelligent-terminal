@@ -355,6 +355,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(KeepRunningPageProjectionDoesNotRewriteManagerBinding);
         TEST_METHOD(KeepRunningCliExitRetainsDetachedShell);
         TEST_METHOD(KeepRunningReattachClaimAndRollback);
+        TEST_METHOD(KeepRunningCloseAllPreservesAttachedAndRestoringTabs);
+        TEST_METHOD(KeepRunningCloseAllRechecksGroupsAfterNotifications);
         TEST_METHOD(KeepRunningFailedRestorePreservesGroup);
         TEST_METHOD(KeepRunningConnectionExitPreservesTabLayout);
         TEST_METHOD(KeepRunningPreservesAssistantAndLayout);
@@ -1390,6 +1392,102 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(0u, connection->CloseCount());
             page->_GetFocusedTabImpl()->Close();
         });
+    }
+
+    void TabTests::KeepRunningCloseAllPreservesAttachedAndRestoringTabs()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto first = winrt::make_self<TestConnection>(winrt::guid{ L"{13f7aa41-8837-473e-92a3-f1e682ab1050}" }, State::Connected);
+        const auto second = winrt::make_self<TestConnection>(winrt::guid{ L"{13f7aa41-8837-473e-92a3-f1e682ab1051}" }, State::Connected);
+        const auto restoring = winrt::make_self<TestConnection>(winrt::guid{ L"{13f7aa41-8837-473e-92a3-f1e682ab1052}" }, State::Connected);
+        const auto attached = winrt::make_self<TestConnection>(winrt::guid{ L"{13f7aa41-8837-473e-92a3-f1e682ab1053}" }, State::Connected);
+        const auto page = _commonSetup(*first);
+        TestOnUIThread([&]() {
+            const auto firstTab = page->_GetFocusedTabImpl();
+            firstTab->KeepRunning(true);
+            page->_KeepTabRunning(firstTab);
+            for (const auto& connection : { second, restoring, attached })
+            {
+                page->_CreateNewTabFromPane(page->_MakePane(nullptr, nullptr, *connection));
+                const auto tab = page->_GetFocusedTabImpl();
+                tab->SuppressAgentPrewarm();
+                tab->KeepRunning(true);
+                if (connection != attached)
+                {
+                    page->_KeepTabRunning(tab);
+                }
+            }
+            const auto manager = page->_manager;
+            const auto restoringGroup = manager.KeptGroupForPane(restoring->SessionId());
+            manager.BeginReattachKeptGroup(restoringGroup);
+            VERIFY_ARE_EQUAL(2u, manager.KeptGroups().Size());
+            manager.DiscardAllKeptGroups();
+            VERIFY_IS_TRUE(manager.HasKeptSessions());
+            VERIFY_ARE_EQUAL(0u, manager.KeptGroups().Size());
+            VERIFY_ARE_EQUAL(1u, page->_tabs.Size());
+            VERIFY_ARE_EQUAL(0u, restoring->CloseCount());
+            VERIFY_ARE_EQUAL(0u, attached->CloseCount());
+
+            manager.CompleteKeptGroupReattach(restoringGroup, false);
+            VERIFY_IS_TRUE(page->RestoreKeptGroup(restoringGroup));
+            manager.DiscardAllKeptGroups();
+            VERIFY_IS_FALSE(manager.HasKeptSessions());
+            VERIFY_ARE_EQUAL(2u, page->_tabs.Size());
+            VERIFY_ARE_EQUAL(0u, restoring->CloseCount());
+            VERIFY_ARE_EQUAL(0u, attached->CloseCount());
+            for (const auto& tab : page->_tabs)
+            {
+                tab.Shutdown();
+            }
+        });
+        VERIFY_IS_TRUE(first->WaitForClose());
+        VERIFY_IS_TRUE(second->WaitForClose());
+        VERIFY_ARE_EQUAL(1u, first->CloseCount());
+        VERIFY_ARE_EQUAL(1u, second->CloseCount());
+    }
+
+    void TabTests::KeepRunningCloseAllRechecksGroupsAfterNotifications()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto first = winrt::make_self<TestConnection>(winrt::guid{ L"{13f7aa41-8837-473e-92a3-f1e682ab1054}" }, State::Connected);
+        const auto second = winrt::make_self<TestConnection>(winrt::guid{ L"{13f7aa41-8837-473e-92a3-f1e682ab1055}" }, State::Connected);
+        const auto page = _commonSetup(*first);
+        winrt::guid restoredSession{};
+        TestOnUIThread([&]() {
+            const auto firstTab = page->_GetFocusedTabImpl();
+            firstTab->KeepRunning(true);
+            page->_KeepTabRunning(firstTab);
+            page->_CreateNewTabFromPane(page->_MakePane(nullptr, nullptr, *second));
+            const auto secondTab = page->_GetFocusedTabImpl();
+            secondTab->SuppressAgentPrewarm();
+            secondTab->KeepRunning(true);
+            page->_KeepTabRunning(secondTab);
+            const auto manager = page->_manager;
+            bool restored = false;
+            const auto token = manager.KeptSessionsChanged([&](auto&&, auto&&) {
+                if (!restored && manager.KeptGroups().Size() == 1)
+                {
+                    restored = true;
+                    const auto groupId = manager.KeptGroups().First().Current().Key();
+                    VERIFY_IS_TRUE(page->RestoreKeptGroup(groupId));
+                    restoredSession = page->_GetFocusedTabImpl()->GetActiveTerminalControl().Connection().SessionId();
+                }
+            });
+            const auto revoke = wil::scope_exit([&]() noexcept { manager.KeptSessionsChanged(token); });
+            manager.DiscardAllKeptGroups();
+            VERIFY_IS_TRUE(restored);
+            VERIFY_IS_FALSE(manager.HasKeptSessions());
+            VERIFY_ARE_EQUAL(1u, page->_tabs.Size());
+            const auto restoredConnection = restoredSession == first->SessionId() ? first : second;
+            VERIFY_ARE_EQUAL(0u, restoredConnection->CloseCount());
+            manager.DiscardAllKeptGroups();
+            VERIFY_ARE_EQUAL(0u, restoredConnection->CloseCount());
+            page->_GetFocusedTabImpl()->Close();
+        });
+        VERIFY_IS_TRUE(first->WaitForClose());
+        VERIFY_IS_TRUE(second->WaitForClose());
+        VERIFY_ARE_EQUAL(1u, first->CloseCount());
+        VERIFY_ARE_EQUAL(1u, second->CloseCount());
     }
 
     void TabTests::KeepRunningFailedRestorePreservesGroup()
