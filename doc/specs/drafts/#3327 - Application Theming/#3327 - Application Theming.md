@@ -257,8 +257,13 @@ than transparent state overrides or an additional selection-background overlay.
 The native item presenter and the tab-color header share a 6px corner radius,
 including hover, pressed, and selected backgrounds.
 Unselected rows have a transparent normal background, including when the
-horizontal tab theme supplies a background color. Tab colors only fill the
-selected row; unselected text inherits the ListView foreground.
+horizontal tab theme supplies a background color. By default, selected sidebar
+rows also leave their content background transparent so the native ListView
+selection state follows the application's light, dark, or high-contrast theme.
+Only explicit profile or runtime tab colors fill the selected sidebar row;
+unselected text inherits the ListView foreground. Theme `tab.background` and
+`tab.unfocusedBackground` still apply to horizontal tabs, but do not override
+the sidebar's native selection colors.
 
 Selecting a sidebar tab updates selection and filter status without rebuilding
 every tab's pane projection. Insertion and title/agent-state changes project only

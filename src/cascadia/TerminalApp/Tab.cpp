@@ -2037,7 +2037,11 @@ namespace winrt::TerminalApp::implementation
 
     void Tab::SetVerticalTabLayout(const bool vertical)
     {
-        _isVerticalTabLayout = vertical;
+        if (_isVerticalTabLayout != vertical)
+        {
+            _isVerticalTabLayout = vertical;
+            _RecalculateAndApplyTabColor();
+        }
         _UpdateKeepRunningMenuItem();
 
         const auto label = vertical ? RS_(L"TabCloseBelow") : RS_(L"TabCloseAfter");
@@ -3213,15 +3217,15 @@ namespace winrt::TerminalApp::implementation
     void Tab::_RecalculateAndApplyTabColor()
     {
         // GetTabColor will return the color set by the color picker, or the
-        // color specified in the profile. If neither of those were set,
-        // then look to _themeColor to see if there's a value there.
-        // Otherwise, clear our color, falling back to the TabView defaults.
+        // color specified in the profile. Theme-derived backgrounds only apply
+        // to horizontal tabs; the sidebar uses native themed selection states
+        // unless an explicit tab color is set.
         const auto currentColor = GetTabColor();
         if (currentColor.has_value())
         {
             _ApplyTabColorOnUIThread(currentColor.value());
         }
-        else if (_themeColor != nullptr)
+        else if (!_isVerticalTabLayout && _themeColor != nullptr)
         {
             // Safely get the active control's brush.
             const Media::Brush terminalBrush{ _BackgroundBrush() };

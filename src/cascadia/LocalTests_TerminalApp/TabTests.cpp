@@ -290,6 +290,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabSelectionPreservesPresentation);
         TEST_METHOD(VerticalTabIconChangesUpdatePresentation);
         TEST_METHOD(VerticalTabThemeChangesDoNotReprojectPanes);
+        TEST_METHOD(VerticalTabColorsFollowSidebarTheme);
         TEST_METHOD(VerticalTabStripUsesNativeInteractionStates);
         TEST_METHOD(AgentViewFiltersSplitPaneChildren);
         TEST_METHOD(VerticalTabSearchMatchesCommittedTitle);
@@ -5031,6 +5032,86 @@ namespace TerminalAppLocalTests
             const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
             const auto display = strip->ItemsList().Items().GetAt(0).as<winrt::TerminalApp::TabStripDisplayItem>();
             VERIFY_ARE_EQUAL(2u, display.PaneItems().Size());
+        });
+    }
+
+    void TabTests::VerticalTabColorsFollowSidebarTheme()
+    {
+        const CascadiaSettings settings{ LR"({
+            "defaultProfile": "{6239a42c-1111-49a3-80bd-e8fdd045185c}",
+            "showTabsInTitlebar": false,
+            "tabLayout": "vertical",
+            "theme": "sidebar",
+            "themes": [{
+                "name": "sidebar",
+                "window": { "applicationTheme": "light" },
+                "tab": { "background": "terminalBackground", "unfocusedBackground": "#00000000" }
+            }],
+            "profiles": [
+                { "name": "default", "guid": "{6239a42c-1111-49a3-80bd-e8fdd045185c}", "background": "#111111", "closeOnExit": "never" },
+                { "name": "colored", "guid": "{6239a42c-2222-49a3-80bd-e8fdd045185c}", "tabColor": "#FF0000", "closeOnExit": "never" }
+            ]
+        })",
+                                         {} };
+        winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> page;
+        _initializeTerminalPage(page, settings);
+
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto terminalColor = ThemeColor::ColorFromBrush(tab->_BackgroundBrush());
+            const auto headerGrid = [&](const uint32_t index) {
+                page->UpdateLayout();
+                return page->_tabStrip.ContainerFromIndex(index).as<ListViewItem>().ContentTemplateRoot().as<StackPanel>().Children().GetAt(0).as<Grid>();
+            };
+            const auto verifyNativeBackground = [&]() {
+                const auto grid = headerGrid(0);
+                VERIFY_ARE_EQUAL(uint8_t{ 0 }, grid.Background().as<Media::SolidColorBrush>().Color().A);
+                const auto header = grid.FindName(L"TabHeaderPresenter").as<ContentPresenter>().Content().as<Control>();
+                VERIFY_IS_TRUE(header.ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
+                VERIFY_ARE_EQUAL(terminalColor, ThemeColor::ColorFromBrush(tab->_BackgroundBrush()));
+            };
+            const auto selectedTabColor = [](const winrt::MUX::Controls::TabViewItem& item) {
+                const auto resources = item.Resources().ThemeDictionaries().Lookup(winrt::box_value(L"Light")).as<ResourceDictionary>();
+                return resources.Lookup(winrt::box_value(L"TabViewItemHeaderBackgroundSelected")).as<Media::SolidColorBrush>().Color();
+            };
+
+            for (const auto theme : { ElementTheme::Light, ElementTheme::Dark })
+            {
+                page->RequestedTheme(theme);
+                tab->ThemeColor(ThemeColor::FromTerminalBackground(), nullptr, til::color{});
+                VERIFY_ARE_EQUAL(theme, headerGrid(0).ActualTheme());
+                verifyNativeBackground();
+                for (const auto color : { winrt::Windows::UI::Colors::Black(), winrt::Windows::UI::Colors::White() })
+                {
+                    tab->SetRuntimeTabColor(color);
+                    VERIFY_ARE_EQUAL(color, headerGrid(0).Background().as<Media::SolidColorBrush>().Color());
+                    tab->ResetRuntimeTabColor();
+                    verifyNativeBackground();
+                }
+            }
+
+            VERIFY_IS_TRUE(page->_ApplyTabLayout(TabLayout::Horizontal));
+            page->_CompleteTabLayoutChange(page->_tabLayoutGeneration);
+            VERIFY_ARE_EQUAL(terminalColor, til::color{ selectedTabColor(tab->TabViewItem()) });
+            VERIFY_IS_TRUE(page->_ApplyTabLayout(TabLayout::Vertical));
+            page->_CompleteTabLayoutChange(page->_tabLayoutGeneration);
+            verifyNativeBackground();
+
+            NewTerminalArgs args;
+            args.Profile(L"colored");
+            VERIFY_SUCCEEDED(page->_OpenNewTab(args));
+            const auto coloredTab = page->_GetFocusedTabImpl();
+            VERIFY_ARE_EQUAL(winrt::Windows::UI::Colors::Red(), headerGrid(1).Background().as<Media::SolidColorBrush>().Color());
+            coloredTab->SetRuntimeTabColor(winrt::Windows::UI::Colors::Blue());
+            VERIFY_ARE_EQUAL(winrt::Windows::UI::Colors::Blue(), headerGrid(1).Background().as<Media::SolidColorBrush>().Color());
+            coloredTab->ResetRuntimeTabColor();
+            VERIFY_ARE_EQUAL(winrt::Windows::UI::Colors::Red(), headerGrid(1).Background().as<Media::SolidColorBrush>().Color());
+            VERIFY_IS_TRUE(page->_ApplyTabLayout(TabLayout::Horizontal));
+            page->_CompleteTabLayoutChange(page->_tabLayoutGeneration);
+            VERIFY_ARE_EQUAL(winrt::Windows::UI::Colors::Red(), selectedTabColor(coloredTab->TabViewItem()));
+            VERIFY_IS_TRUE(page->_ApplyTabLayout(TabLayout::Vertical));
+            page->_CompleteTabLayoutChange(page->_tabLayoutGeneration);
+            VERIFY_ARE_EQUAL(winrt::Windows::UI::Colors::Red(), headerGrid(1).Background().as<Media::SolidColorBrush>().Color());
         });
     }
 
