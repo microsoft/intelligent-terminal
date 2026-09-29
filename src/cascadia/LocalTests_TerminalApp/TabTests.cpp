@@ -3123,7 +3123,8 @@ namespace TerminalAppLocalTests
                     const auto image = fre.FindName(name).as<Image>();
                     VERIFY_ARE_EQUAL(actualTheme, image.RequestedTheme());
                     const auto source = image.Source().as<Media::Imaging::BitmapImage>().UriSource().AbsoluteUri();
-                    VERIFY_IS_TRUE(std::wstring_view{ source }.ends_with(actualTheme == ElementTheme::Light ? L"-light.png" : L"-dark.png"));
+                    const winrt::hstring expectedSource{ std::wstring_view{ name } == L"SidebarImage" ? L"ms-appx:///FREAssets/sidebar.png" : L"ms-appx:///FREAssets/Error-detection.png" };
+                    VERIFY_ARE_EQUAL(expectedSource, source);
                 }
             }
         });
