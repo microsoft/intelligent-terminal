@@ -411,25 +411,34 @@
     <value>Whakaaturia ngā ripa katoa</value>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Hītori agent</value>
+    <value>Ngā wātū agent</value>
+    <comment>Accessible name of the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Hītori agent</value>
+    <value>Ngā wātū agent</value>
+    <comment>Tooltip for the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
-    <value>Hītori agent</value>
+    <value>Ngā wātū agent</value>
+    <comment>Header of the Agent sessions sidebar view, which lists all live and historical AI-agent sessions, not only session history.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Katia te hītori agent</value>
+    <value>Katia te tirohanga wātū agent</value>
+    <comment>Accessible name of the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Katia te hītori agent</value>
+    <value>Katia te tirohanga wātū agent</value>
+    <comment>Tooltip for the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
     <value>Rapua ngā wātū agent</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Rapua ngā wātū agent</value>
+  </data>
+  <data name="VerticalTabsHistoryCurrentSession" xml:space="preserve">
+    <value>Wātū onāianei</value>
+    <comment>UI Automation status for the live AI-agent session associated with the active terminal pane. This identifies the currently displayed session, not keyboard selection or the most recent session.</comment>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Kāore i kitea he wātū agent.</value>
@@ -438,10 +447,12 @@
     <value>Kāore he wātū agent e ōrite ana.</value>
   </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
-    <value>Kāore e taea te uta i te hītori agent.</value>
+    <value>Kāore e taea te uta i ngā wātū agent.</value>
+    <comment>Error shown when the Agent sessions sidebar view cannot load its list of live and historical AI-agent sessions. This refers to loading the session list, not starting or resuming a session.</comment>
   </data>
   <data name="VerticalTabsHistoryInvalidResponse" xml:space="preserve">
-    <value>I whakahokia mai e te hītori agent he urupare muhu.</value>
+    <value>Kāore e taea te uta i ngā wātū agent: urupare muhu.</value>
+    <comment>Error shown when the Agent sessions sidebar receives an invalid response while loading its list of live and historical AI-agent sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryActivationError" xml:space="preserve">
     <value>Kāore e taea te whakahohe i te wātū kua tīpakohia.</value>

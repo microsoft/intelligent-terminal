@@ -28,15 +28,15 @@
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Default">
                     <BitmapImage x:Key="FreSidebarImage"
-                                 UriSource="ms-appx:///FREAssets/sidebar-dark.png" />
+                                 UriSource="ms-appx:///FREAssets/sidebar.png" />
                     <BitmapImage x:Key="FreErrorDetectionImage"
-                                 UriSource="ms-appx:///FREAssets/Error-detection-dark.png" />
+                                 UriSource="ms-appx:///FREAssets/Error-detection.png" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Light">
                     <BitmapImage x:Key="FreSidebarImage"
-                                 UriSource="ms-appx:///FREAssets/sidebar-light.png" />
+                                 UriSource="ms-appx:///FREAssets/sidebar.png" />
                     <BitmapImage x:Key="FreErrorDetectionImage"
-                                 UriSource="ms-appx:///FREAssets/Error-detection-light.png" />
+                                 UriSource="ms-appx:///FREAssets/Error-detection.png" />
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
 

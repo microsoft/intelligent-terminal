@@ -124,8 +124,9 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(Install_PreservesLfFromExistingProfile);
     TEST_METHOD(Install_AppendsEolWhenProfileMissingTrailingNewline);
     TEST_METHOD(Install_IdempotentWhenAlreadyInstalled);
+    TEST_METHOD(Install_RelocatesExistingBlockAfterPromptRenderer);
     TEST_METHOD(Install_ReinstallsWhenScriptMissingButBlockMatches);
-    TEST_METHOD(Install_RewritesLegacyDotSourceLineInPlace);
+    TEST_METHOD(Install_RewritesLegacyDotSourceLineAtEnd);
     TEST_METHOD(Install_UpgradesWhenBlockReferencesOlderScriptVersion);
     TEST_METHOD(Install_OverwritesOrphanOpenMarker);
     TEST_METHOD(Install_CreatesBackupForNonEmptyProfile);
@@ -875,6 +876,35 @@ void ShellIntegrationTests::Install_IdempotentWhenAlreadyInstalled()
     VERIFY_ARE_EQUAL(firstContents, _ReadFile(profile));
 }
 
+void ShellIntegrationTests::Install_RelocatesExistingBlockAfterPromptRenderer()
+{
+    const auto profile = _ProfilePath();
+    VERIFY_IS_TRUE(Install(profile.wstring()).success);
+
+    auto contents = _ReadFile(profile);
+    contents += "oh-my-posh init pwsh | Invoke-Expression\n";
+    _WriteFile(profile, contents);
+
+    const auto result = Install(profile.wstring());
+    VERIFY_IS_TRUE(result.success);
+    VERIFY_IS_FALSE(result.alreadyInstalled);
+
+    const auto relocated = _ReadFile(profile);
+    const auto promptRenderer = relocated.find("oh-my-posh init pwsh | Invoke-Expression");
+    const auto block = relocated.find(kShellIntegrationBlockOpenMarker);
+    const auto close = relocated.find(kShellIntegrationBlockCloseMarker, block);
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, promptRenderer);
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, block);
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, close);
+    VERIFY_IS_TRUE(promptRenderer < block, L"PowerShell integration must load after prompt renderers");
+    VERIFY_IS_TRUE(std::all_of(
+        relocated.begin() + close + kShellIntegrationBlockCloseMarker.size(),
+        relocated.end(),
+        [](const char ch) {
+            return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n';
+        }));
+}
+
 void ShellIntegrationTests::Install_ReinstallsWhenScriptMissingButBlockMatches()
 {
     const auto profile = _ProfilePath();
@@ -891,7 +921,7 @@ void ShellIntegrationTests::Install_ReinstallsWhenScriptMissingButBlockMatches()
     VERIFY_IS_TRUE(std::filesystem::exists(scriptPath));
 }
 
-void ShellIntegrationTests::Install_RewritesLegacyDotSourceLineInPlace()
+void ShellIntegrationTests::Install_RewritesLegacyDotSourceLineAtEnd()
 {
     const auto profile = _ProfilePath();
     const std::string original =
@@ -909,10 +939,9 @@ void ShellIntegrationTests::Install_RewritesLegacyDotSourceLineInPlace()
     VERIFY_IS_TRUE(_Contains(contents, kShellIntegrationBlockOpenMarker));
     VERIFY_IS_TRUE(_Contains(contents, "Set-Alias ll"), L"Surrounding user content preserved");
     VERIFY_IS_TRUE(_Contains(contents, "Write-Host 'tail'"), L"Trailing user content preserved");
-    // The block should be in the middle, not at the end of the file.
     const auto blockPos = contents.find(kShellIntegrationBlockOpenMarker);
     const auto tailPos = contents.find("Write-Host 'tail'");
-    VERIFY_IS_TRUE(blockPos < tailPos, L"In-place rewrite — block stays where legacy line was");
+    VERIFY_IS_TRUE(tailPos < blockPos, L"PowerShell integration must load after all user profile content");
 }
 
 void ShellIntegrationTests::Install_UpgradesWhenBlockReferencesOlderScriptVersion()

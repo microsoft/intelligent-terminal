@@ -359,6 +359,9 @@ namespace winrt::TerminalApp::implementation
         Windows::UI::Xaml::DispatcherTimer _historyRefreshTimer{ nullptr };
         bool _historyRefreshInFlight{ false };
         bool _historyRefreshPending{ false };
+        std::shared_ptr<std::atomic<bool>> _historyRefreshCancellation;
+        std::chrono::seconds _historyRetryDelay{ 0 };
+        std::chrono::steady_clock::time_point _historyNextRefresh{};
         bool _tabDragReorderAuthorized{ false };
         Windows::Foundation::IInspectable _tabDragSelectedItem{ nullptr };
         // Spec A §5.2: hand-rolled splitter for resizing the vertical rail.
@@ -973,6 +976,7 @@ namespace winrt::TerminalApp::implementation
         void _StopSidebarHistoryRefreshTimer();
         void _CloseSidebarHistory(bool restoreFocus);
         void _RequestSidebarHistoryRefresh(bool initialLoad);
+        void _UpdateSidebarHistoryCurrentSession();
         static winrt::hstring _SidebarHistoryStatusText(std::string_view status);
         bool _ApplyAgentSessionStatusDelta(std::string_view sessionId,
                                            std::string_view paneSessionId,
@@ -986,6 +990,7 @@ namespace winrt::TerminalApp::implementation
                 Ready,
                 Error,
                 InvalidResponse,
+                Cancelled,
             };
             State state{ State::Error };
             std::vector<TerminalApp::TabStripHistoryItem> items;

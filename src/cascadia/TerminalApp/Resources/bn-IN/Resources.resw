@@ -526,25 +526,34 @@
     <value>সব ট্যাব দেখান</value>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>এজেন্টের ইতিহাস</value>
+    <value>এজেন্ট সেশন</value>
+    <comment>Accessible name of the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>এজেন্টের ইতিহাস</value>
+    <value>এজেন্ট সেশন</value>
+    <comment>Tooltip for the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
-    <value>এজেন্টের ইতিহাস</value>
+    <value>এজেন্ট সেশন</value>
+    <comment>Header of the Agent sessions sidebar view, which lists all live and historical AI-agent sessions, not only session history.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>এজেন্টের ইতিহাস বন্ধ করুন</value>
+    <value>এজেন্ট সেশনের ভিউ বন্ধ করুন</value>
+    <comment>Accessible name of the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>এজেন্টের ইতিহাস বন্ধ করুন</value>
+    <value>এজেন্ট সেশনের ভিউ বন্ধ করুন</value>
+    <comment>Tooltip for the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
     <value>এজেন্ট সেশন খুঁজুন</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>এজেন্ট সেশন খুঁজুন</value>
+  </data>
+  <data name="VerticalTabsHistoryCurrentSession" xml:space="preserve">
+    <value>বর্তমান সেশন</value>
+    <comment>UI Automation status for the live AI-agent session associated with the active terminal pane. This identifies the currently displayed session, not keyboard selection or the most recent session.</comment>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>কোনো এজেন্ট সেশন পাওয়া যায়নি।</value>
@@ -553,10 +562,12 @@
     <value>মিলে যাওয়া কোনো এজেন্ট সেশন নেই।</value>
   </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
-    <value>এজেন্টের ইতিহাস লোড করা যায়নি।</value>
+    <value>এজেন্ট সেশনগুলো লোড করা যায়নি।</value>
+    <comment>Error shown when the Agent sessions sidebar view cannot load its list of live and historical AI-agent sessions. This refers to loading the session list, not starting or resuming a session.</comment>
   </data>
   <data name="VerticalTabsHistoryInvalidResponse" xml:space="preserve">
-    <value>এজেন্টের ইতিহাস একটি অবৈধ প্রতিক্রিয়া দিয়েছে।</value>
+    <value>এজেন্ট সেশনগুলো লোড করা যায়নি: অবৈধ প্রতিক্রিয়া।</value>
+    <comment>Error shown when the Agent sessions sidebar receives an invalid response while loading its list of live and historical AI-agent sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryActivationError" xml:space="preserve">
     <value>নির্বাচিত সেশনটি সক্রিয় করা যায়নি।</value>

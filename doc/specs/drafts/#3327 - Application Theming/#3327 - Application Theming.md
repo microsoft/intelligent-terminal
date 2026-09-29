@@ -252,14 +252,14 @@ the two buttons rather than spanning their full height.
 High-contrast mode retains opaque button fills.
 
 Sidebar icon and pane-row instances likewise remain stable during focus updates.
-Sidebar rows use the native ListView hover, pressed, and selected states rather
-than transparent state overrides or an additional selection-background overlay.
-The native item presenter and the tab-color header share a 6px corner radius,
-including hover, pressed, and selected backgrounds.
+Sidebar rows retain native ListView hover and pressed feedback. Selection uses
+the ListView theme brush within each tab header rather than tinting the entire
+expanded tab-and-pane group. The native item presenter and the header selection
+layers share a 6px corner radius.
 Unselected rows have a transparent normal background, including when the
 horizontal tab theme supplies a background color. By default, selected sidebar
-rows also leave their content background transparent so the native ListView
-selection state follows the application's light, dark, or high-contrast theme.
+rows leave their tab-color layer transparent so the selection background follows
+the application's light, dark, or high-contrast theme.
 Only explicit profile or runtime tab colors fill the selected sidebar row;
 unselected text inherits the ListView foreground. Theme `tab.background` and
 `tab.unfocusedBackground` still apply to horizontal tabs, but do not override

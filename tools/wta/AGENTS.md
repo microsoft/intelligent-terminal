@@ -12,8 +12,10 @@ WTA is a Rust binary with three launch modes:
   and their ACP stdio connections, accepts helper named-pipe connections, and
   routes each ACP SessionId to its owning helper. Helpers with the same
   master-derived agent key share a process. Installed, policy-allowed native
-  host agents initialize in the background at startup and remain resident;
-  other selections initialize on demand. Implementation: `src/master/mod.rs`.
+  host agents other than Gemini initialize in the background at startup and
+  remain resident. Gemini is excluded from automatic sidebar discovery;
+  explicit Gemini and other selections initialize on demand.
+  Implementation: `src/master/mod.rs`.
 - **Helper** (`--connect-master <pipe>`): one ratatui UI per agent pane. It is
   an ACP client of master and owns pane-local UI state and `ShellManager`.
   Implementation: `src/helper/mod.rs` and `src/app.rs`.

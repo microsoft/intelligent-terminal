@@ -262,25 +262,34 @@
     <value>顯示所有索引標籤</value>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>智能體歷程記錄</value>
+    <value>智慧智能體工作階段</value>
+    <comment>Accessible name of the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>智能體歷程記錄</value>
+    <value>智慧智能體工作階段</value>
+    <comment>Tooltip for the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
-    <value>智能體歷程記錄</value>
+    <value>智慧智能體工作階段</value>
+    <comment>Header of the Agent sessions sidebar view, which lists all live and historical AI-agent sessions, not only session history.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>關閉智能體歷程記錄</value>
+    <value>關閉智慧智能體工作階段檢視</value>
+    <comment>Accessible name of the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>關閉智能體歷程記錄</value>
+    <value>關閉智慧智能體工作階段檢視</value>
+    <comment>Tooltip for the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
     <value>搜尋智能體工作階段</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>搜尋智能體工作階段</value>
+  </data>
+  <data name="VerticalTabsHistoryCurrentSession" xml:space="preserve">
+    <value>目前的工作階段</value>
+    <comment>UI Automation status for the live AI-agent session associated with the active terminal pane. This identifies the currently displayed session, not keyboard selection or the most recent session.</comment>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>找不到智能體工作階段。</value>
@@ -289,10 +298,12 @@
     <value>沒有相符的智能體工作階段。</value>
   </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
-    <value>無法載入智能體歷程記錄。</value>
+    <value>無法載入智慧智能體工作階段。</value>
+    <comment>Error shown when the Agent sessions sidebar view cannot load its list of live and historical AI-agent sessions. This refers to loading the session list, not starting or resuming a session.</comment>
   </data>
   <data name="VerticalTabsHistoryInvalidResponse" xml:space="preserve">
-    <value>智能體歷程記錄傳回了無效的回應。</value>
+    <value>無法載入智慧智能體工作階段：無效的回應。</value>
+    <comment>Error shown when the Agent sessions sidebar receives an invalid response while loading its list of live and historical AI-agent sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryActivationError" xml:space="preserve">
     <value>無法啟用所選的工作階段。</value>
