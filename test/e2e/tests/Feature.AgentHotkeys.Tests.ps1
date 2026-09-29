@@ -155,7 +155,8 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
         }
     }
 
-    It 'Agent history hotkey toggles the layout-appropriate history surface' {
+    # One result owns both checklist contracts, including their shared focus and data-preservation oracles.
+    It 'Agent history hotkey toggles the layout-appropriate history surface; Sidebar show/collapse hotkey works' {
         $horizontal = $null
         try {
             $horizontal = & $script:StartLayoutApp 'horizontal'
@@ -237,6 +238,9 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
             Open-AgentPane -App $vertical | Out-Null
             Wait-AgentReady -App $vertical -TimeoutSec 30 | Out-Null
             $agent = Get-AgentPaneSession -App $vertical
+            $agent.AcpSessionId | Should -Match '^chat-fixture-\d+-\d+$' -Because 'this public regression must never submit to a real provider'
+            (Get-UiElement -App $vertical -Selector AgentLabelText).name |
+                Should -Match '^Chat Fixture\b' -Because 'a provider fallback must fail before the deterministic test prompt is sent'
             $turn = "SCROLL_TURN_00_$([guid]::NewGuid().ToString('N'))"
             $agentDraft = "CHAT_DRAFT_$([guid]::NewGuid().ToString('N').Substring(0, 8))"
             $terminalDraft = "SHELL_DRAFT_$([guid]::NewGuid().ToString('N').Substring(0, 8))"
@@ -269,17 +273,27 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
             } | Out-Null
             & $verifyPreservation
             $origins = @(
-                @{ Name = 'terminal'; Id = $terminal.session_id; Agent = $false }
-                @{ Name = 'split'; Id = $split.session_id; Agent = $false }
-                @{ Name = 'agent'; Id = $agent.PaneSessionId; Agent = $true }
+                @{ Name = 'terminal'; Id = $terminal.session_id; Agent = $false; Draft = $terminalDraft }
+                @{ Name = 'split'; Id = $split.session_id; Agent = $false; Draft = $splitDraft }
+                @{ Name = 'agent'; Id = $agent.PaneSessionId; Agent = $true; Draft = $agentDraft }
             )
             foreach ($origin in $origins) {
                 Set-WtWindowForeground -App $vertical | Should -BeTrue
-                Invoke-WtCli -App $vertical -Arguments @('focus-pane', '-t', $origin.Id) | Out-Null
+                if ($origin.Agent) {
+                    Invoke-WtCli -App $vertical -Arguments @('focus-pane', '-t', $origin.Id) | Out-Null
+                }
+                else {
+                    Set-WtPaneFocus -App $vertical -SessionId $origin.Id
+                }
                 $originFocus = Wait-Until -TimeoutSec 5 -Because "the $($origin.Name) input to receive focus" -Condition {
                     $focused = [Windows.Automation.AutomationElement]::FocusedElement
                     if ($focused -and $focused.Current.ProcessId -eq $vertical.Pid -and $focused.Current.HasKeyboardFocus -and
-                        (($focused.Current.Name -eq 'Agent Pane') -eq $origin.Agent)) { $focused }
+                        $focused.Current.ClassName -eq 'TermControl' -and
+                        (($focused.Current.Name -eq 'Agent Pane') -eq $origin.Agent)) {
+                        $pattern = $null
+                        if ($focused.TryGetCurrentPattern([Windows.Automation.TextPattern]::Pattern, [ref]$pattern) -and
+                            $pattern.DocumentRange.GetText(-1).Contains($origin.Draft)) { $focused }
+                    }
                 }
                 $focusRestored = {
                     [Windows.Automation.Automation]::Compare(
@@ -378,9 +392,6 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
         finally {
             if ($vertical) { Stop-Terminal -App $vertical }
         }
-    }
-
-    It 'Sidebar show/collapse hotkey works' {
         $horizontal = $null
         try {
             $horizontal = & $script:StartLayoutApp 'horizontal'
