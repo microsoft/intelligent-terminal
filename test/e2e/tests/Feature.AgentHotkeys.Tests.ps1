@@ -120,8 +120,9 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
         }
         $script:evidenceDir = Join-Path ([IO.Path]::GetFullPath($root)) "agent-hotkeys\$([guid]::NewGuid().ToString('N'))"
         New-Item -ItemType Directory -Force -Path $script:evidenceDir | Out-Null
-        $fixtureLog = Join-Path $script:evidenceDir 'fixture.log'
-        $invocation = "& '$($fixture.Replace("'", "''"))' -LogPath '$($fixtureLog.Replace("'", "''"))'"
+        $script:fixtureLog = Join-Path $script:evidenceDir 'fixture.log'
+        $script:releasePromptPath = Join-Path $script:evidenceDir 'release-prompt'
+        $invocation = "& '$($fixture.Replace("'", "''"))' -LogPath '$($script:fixtureLog.Replace("'", "''"))' -ReleasePromptPath '$($script:releasePromptPath.Replace("'", "''"))'"
         $script:fixtureCommand = "pwsh -NoProfile -EncodedCommand $([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($invocation)))"
         $script:OpenAgentHistoryHotkey = {
             param($App)
@@ -236,6 +237,37 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
             Open-AgentPane -App $vertical | Out-Null
             Wait-AgentReady -App $vertical -TimeoutSec 30 | Out-Null
             $agent = Get-AgentPaneSession -App $vertical
+            $turn = "SCROLL_TURN_00_$([guid]::NewGuid().ToString('N'))"
+            $agentDraft = "CHAT_DRAFT_$([guid]::NewGuid().ToString('N').Substring(0, 8))"
+            $terminalDraft = "SHELL_DRAFT_$([guid]::NewGuid().ToString('N').Substring(0, 8))"
+            $splitDraft = "SPLIT_DRAFT_$([guid]::NewGuid().ToString('N').Substring(0, 8))"
+            Send-AgentPrompt -App $vertical -PaneSessionId $agent.PaneSessionId -Text "$turn HOLD_FOR_RELEASE" | Out-Null
+            Wait-Until -TimeoutSec 10 -Because 'the deterministic agent turn to be pending' -Condition {
+                (Get-AgentPaneText -App $vertical -PaneSessionId $agent.PaneSessionId).Contains("PENDING_$turn")
+            } | Out-Null
+            Send-AgentPrompt -App $vertical -PaneSessionId $agent.PaneSessionId -Text $agentDraft -NoSubmit | Out-Null
+            Send-WtInput -App $vertical -SessionId $terminal.session_id -Text $terminalDraft | Out-Null
+            Send-WtInput -App $vertical -SessionId $split.session_id -Text $splitDraft | Out-Null
+            $verifyPreservation = {
+                (Get-AgentPaneText -App $vertical -PaneSessionId $agent.PaneSessionId) |
+                    Should -MatchExactly ([regex]::Escape($agentDraft)) -Because 'the unsent agent draft must survive the view transition'
+                foreach ($draft in @(
+                    @{ Id = $terminal.session_id; Text = $terminalDraft }
+                    @{ Id = $split.session_id; Text = $splitDraft }
+                )) {
+                    (Get-WtCapture -App $vertical -SessionId $draft.Id -MaxLines 30).TrimEnd() |
+                        Should -MatchExactly ([regex]::Escape($draft.Text) + '$') -Because 'the unsent terminal draft must remain intact'
+                }
+                $log = Get-Content -LiteralPath $script:fixtureLog -Raw
+                $log | Should -Match ('\|held\|' + [regex]::Escape($turn))
+                $log | Should -Not -Match ('\|cancel\|' + [regex]::Escape($agent.AcpSessionId))
+                $log | Should -Not -Match ('\|released\|' + [regex]::Escape($turn))
+            }
+            Wait-Until -TimeoutSec 5 -Condition {
+                (Get-AgentPaneText -App $vertical -PaneSessionId $agent.PaneSessionId).Contains($agentDraft) -and
+                    (Get-WtCapture -App $vertical -SessionId $split.session_id -MaxLines 30).TrimEnd().EndsWith($splitDraft)
+            } | Out-Null
+            & $verifyPreservation
             $origins = @(
                 @{ Name = 'terminal'; Id = $terminal.session_id; Agent = $false }
                 @{ Name = 'split'; Id = $split.session_id; Agent = $false }
@@ -267,6 +299,7 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
                         Wait-UiElement -App $vertical -Selector $expectedLabel | Out-Null
                         (Test-Until -TimeoutSec 5 -Condition $focusRestored) |
                             Should -BeTrue -Because "closing history must restore the exact $($origin.Name) input and original sidebar state"
+                        & $verifyPreservation
                     }
                     if ($initiallyCollapsed) {
                         & $script:ToggleSidebarHotkey $vertical
@@ -285,6 +318,7 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
                         $focused.Current.Name -ne 'Agent Pane' -and $focused.Current.ClassName -eq 'TermControl'
                 }) | Should -BeTrue -Because 'collapsing from history must choose a visible terminal without restoring an agent origin'
                 Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir "focus-$($origin.Name)-restored.png") | Out-Null
+                & $verifyPreservation
                 $fallbackFocus = [Windows.Automation.AutomationElement]::FocusedElement
                 & $script:ToggleSidebarHotkey $vertical
                 Wait-UiElement -App $vertical -Selector 'Collapse tabs pane' | Out-Null
@@ -311,6 +345,8 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
             (Get-AgentPaneSession -App $vertical -PaneSessionId $agent.PaneSessionId).AcpSessionId |
                 Should -BeExactly $boundSession -Because 'view toggling must not replace or terminate the agent session'
             Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'focus-hidden-agent-fallback.png') | Out-Null
+            Open-AgentPane -App $vertical | Out-Null
+            & $verifyPreservation
 
             Set-WtPaneFocus -App $vertical -SessionId $split.session_id
             & $script:OpenAgentHistoryHotkey $vertical
@@ -323,6 +359,21 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
                     $focused.Current.Name -ne 'Agent Pane' -and $focused.Current.ClassName -eq 'TermControl'
             }) | Should -BeTrue -Because 'a closed terminal origin must fall back without recreating the pane or blocking input'
             Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'focus-closed-terminal-fallback.png') | Out-Null
+            (Get-WtCapture -App $vertical -SessionId $terminal.session_id -MaxLines 30).TrimEnd() |
+                Should -MatchExactly ([regex]::Escape($terminalDraft) + '$')
+            (Get-AgentPaneText -App $vertical -PaneSessionId $agent.PaneSessionId) |
+                Should -MatchExactly ([regex]::Escape($agentDraft))
+            (Get-Content -LiteralPath $script:fixtureLog -Raw) |
+                Should -Not -Match ('\|cancel\|' + [regex]::Escape($agent.AcpSessionId))
+            [IO.File]::WriteAllText($script:releasePromptPath, 'release')
+            Wait-Until -TimeoutSec 10 -Because 'the same pending agent work to complete after all view transitions' -Condition {
+                (Get-AgentPaneText -App $vertical -PaneSessionId $agent.PaneSessionId).Contains("ACK_$turn")
+            } | Out-Null
+            (Get-AgentPaneText -App $vertical -PaneSessionId $agent.PaneSessionId) |
+                Should -MatchExactly ([regex]::Escape($agentDraft))
+            (Get-AgentPaneSession -App $vertical -PaneSessionId $agent.PaneSessionId).AcpSessionId |
+                Should -BeExactly $boundSession
+            Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'drafts-and-agent-work-preserved.png') | Out-Null
         }
         finally {
             if ($vertical) { Stop-Terminal -App $vertical }
