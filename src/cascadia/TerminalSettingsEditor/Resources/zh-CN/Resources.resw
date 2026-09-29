@@ -3043,7 +3043,15 @@ Alt+Shift+/ 输入提示词；Alt+Shift+B 不带初始提示词启动。</value>
     <comment>Tooltip for the X button that removes a custom agent from the agent list.</comment>
   </data>
   <data name="Globals_TabLayout.HelpText" xml:space="preserve">
-    <value>垂直标签页显示在窗口左侧可调整大小的列中。更改会立即应用于所有 Terminal 窗口。</value>
+    <value>在新的侧边栏视图与经典的水平标签页视图之间切换</value>
     <comment>A description for what the &quot;tab layout&quot; setting does. Presented near &quot;Globals_TabLayout.Header&quot;.</comment>
+  </data>
+  <data name="Globals_TabLayoutHorizontal.Content" xml:space="preserve">
+    <value>水平</value>
+    <comment>An option to choose from for the &quot;tab layout&quot; setting. When selected, tabs run across the top of the window.</comment>
+  </data>
+  <data name="Globals_TabLayoutVertical.Content" xml:space="preserve">
+    <value>侧边栏</value>
+    <comment>An option to choose from for the &quot;tab layout&quot; setting. When selected, tabs run down the left side of the window in a resizable sidebar. Use the same translation as FreOverlay_TabModeSidebar in TerminalApp.</comment>
   </data>
 </root>
