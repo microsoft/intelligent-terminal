@@ -269,10 +269,10 @@ namespace winrt::TerminalApp::implementation
                                   winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnCompactNewTabMenuClick(winrt::Windows::Foundation::IInspectable const& sender,
                                       winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
-        void OnAllTabsFilterClick(winrt::Windows::Foundation::IInspectable const& sender,
-                                  winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
-        void OnAgentsOnlyFilterClick(winrt::Windows::Foundation::IInspectable const& sender,
-                                     winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void OnHistoryClick(winrt::Windows::Foundation::IInspectable const& sender,
+                            winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void OnHistoryCloseClick(winrt::Windows::Foundation::IInspectable const& sender,
+                                 winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnRichTabRepositoryVisibleClick(winrt::Windows::Foundation::IInspectable const& sender,
                                              winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnRichTabBranchVisibleClick(winrt::Windows::Foundation::IInspectable const& sender,

@@ -507,19 +507,24 @@
     <value>تمام ٹیبز دکھائیں</value>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>ایجنٹ کی سرگزشت</value>
+    <value>ایجنٹ سیشنز</value>
+    <comment>Accessible name of the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>ایجنٹ کی سرگزشت</value>
+    <value>ایجنٹ سیشنز</value>
+    <comment>Tooltip for the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
-    <value>ایجنٹ کی سرگزشت</value>
+    <value>ایجنٹ سیشنز</value>
+    <comment>Header of the Agent sessions sidebar view, which lists all live and historical AI-agent sessions, not only session history.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>ایجنٹ کی سرگزشت بند کریں</value>
+    <value>ایجنٹ سیشنز کا منظر بند کریں</value>
+    <comment>Accessible name of the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>ایجنٹ کی سرگزشت بند کریں</value>
+    <value>ایجنٹ سیشنز کا منظر بند کریں</value>
+    <comment>Tooltip for the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
     <value>ایجنٹ سیشن تلاش کریں</value>
@@ -534,10 +539,12 @@
     <value>کوئی مماثل ایجنٹ سیشن نہیں ہے۔</value>
   </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
-    <value>ایجنٹ کی سرگزشت لوڈ نہیں کی جا سکی۔</value>
+    <value>ایجنٹ سیشنز لوڈ نہیں کیے جا سکے۔</value>
+    <comment>Error shown when the Agent sessions sidebar view cannot load its list of live and historical AI-agent sessions. This refers to loading the session list, not starting or resuming a session.</comment>
   </data>
   <data name="VerticalTabsHistoryInvalidResponse" xml:space="preserve">
-    <value>ایجنٹ کی سرگزشت نے ایک غیر موزوں جواب دیا۔</value>
+    <value>ایجنٹ سیشنز لوڈ نہیں کیے جا سکے: غیر درست جواب۔</value>
+    <comment>Error shown when the Agent sessions sidebar receives an invalid response while loading its list of live and historical AI-agent sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryActivationError" xml:space="preserve">
     <value>منتخب سیشن فعال نہیں کیا جا سکا۔</value>

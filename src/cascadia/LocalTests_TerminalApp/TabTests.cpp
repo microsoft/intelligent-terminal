@@ -291,8 +291,9 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabSearchMatchesCommittedTitle);
         TEST_METHOD(VerticalTabSearchUiState);
         TEST_METHOD(LiteralSearchHighlighting);
-        TEST_METHOD(AgentViewOpensHistory);
-        TEST_METHOD(AgentViewAllTabsStopsHistoryRefresh);
+        TEST_METHOD(VerticalTabHistoryButtonOpensView);
+        TEST_METHOD(VerticalTabHistoryCloseStopsRefresh);
+        TEST_METHOD(VerticalTabFilterContainsOnlyMetadata);
         TEST_METHOD(VerticalTabHistoryStatusText);
         TEST_METHOD(SessionRegistryStatusDeltaUpdatesCaches);
         TEST_METHOD(BottomBarOmitsSessionsButton);
@@ -3280,22 +3281,27 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(40.0, stripImpl->SearchPanel().Height());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"power" }, stripImpl->SearchTextBox().Text());
             VERIFY_IS_TRUE(stripImpl->FilterTabsButton().IsTabStop());
+            VERIFY_IS_TRUE(stripImpl->TabHistoryButton().IsTabStop());
 
             strip.IsRailCollapsed(true);
             VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->SearchPanel().Visibility());
             VERIFY_IS_FALSE(stripImpl->SearchTabsButton().IsEnabled());
             VERIFY_IS_FALSE(stripImpl->FilterTabsButton().IsEnabled());
+            VERIFY_IS_FALSE(stripImpl->TabHistoryButton().IsEnabled());
 
             strip.IsRailCollapsed(false);
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->SearchPanel().Visibility());
             VERIFY_IS_TRUE(stripImpl->SearchTabsButton().IsEnabled());
             VERIFY_IS_TRUE(stripImpl->FilterTabsButton().IsEnabled());
+            VERIFY_IS_TRUE(stripImpl->TabHistoryButton().IsEnabled());
             stripImpl->ProjectionControlsEnabled(false);
             VERIFY_IS_FALSE(stripImpl->SearchTabsButton().IsEnabled());
             VERIFY_IS_FALSE(stripImpl->FilterTabsButton().IsEnabled());
+            VERIFY_IS_FALSE(stripImpl->TabHistoryButton().IsEnabled());
             stripImpl->ProjectionControlsEnabled(true);
             VERIFY_IS_TRUE(stripImpl->SearchTabsButton().IsEnabled());
             VERIFY_IS_TRUE(stripImpl->FilterTabsButton().IsEnabled());
+            VERIFY_IS_TRUE(stripImpl->TabHistoryButton().IsEnabled());
             strip.SearchQuery(L"");
             strip.SearchQuery(L"");
             strip.SearchActive(false);
@@ -3304,11 +3310,16 @@ namespace TerminalAppLocalTests
         });
     }
 
-    void TabTests::AgentViewOpensHistory()
+    void TabTests::VerticalTabHistoryButtonOpensView()
     {
         TestOnUIThread([&]() {
             winrt::TerminalApp::TabStrip strip;
             const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            const auto title = stripImpl->HistoryHeader().Text();
+            VERIFY_IS_FALSE(title.empty());
+            VERIFY_ARE_EQUAL(title, Automation::AutomationProperties::GetName(stripImpl->TabHistoryButton()));
+            VERIFY_ARE_EQUAL(title, winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(stripImpl->TabHistoryButton())));
+            VERIFY_IS_FALSE(Automation::AutomationProperties::GetName(stripImpl->HistoryCloseButton()).empty());
             bool historyRequested = false;
             bool historyClosed = false;
             strip.HistoryRequested([&](auto&&, auto&&) {
@@ -3319,20 +3330,31 @@ namespace TerminalAppLocalTests
                 strip.HistoryActive(false);
             });
 
-            stripImpl->OnAgentsOnlyFilterClick(nullptr, {});
+            strip.IsRailCollapsed(true);
+            stripImpl->OnHistoryClick(nullptr, {});
+            VERIFY_IS_FALSE(historyRequested);
+            VERIFY_IS_FALSE(strip.HistoryActive());
+            strip.IsRailCollapsed(false);
+            stripImpl->ProjectionControlsEnabled(false);
+            stripImpl->OnHistoryClick(nullptr, {});
+            VERIFY_IS_FALSE(historyRequested);
+            VERIFY_IS_FALSE(strip.HistoryActive());
+            stripImpl->ProjectionControlsEnabled(true);
+
+            strip.SearchActive(true);
+            strip.SearchQuery(L"power");
+            stripImpl->OnHistoryClick(nullptr, {});
 
             VERIFY_IS_TRUE(historyRequested);
             VERIFY_IS_TRUE(strip.HistoryActive());
             VERIFY_ARE_EQUAL(winrt::TerminalApp::TabStripFilterMode::AllTabs, strip.FilterMode());
-            VERIFY_IS_FALSE(stripImpl->AllTabsFilterItem().IsChecked());
-            VERIFY_IS_TRUE(stripImpl->AgentsOnlyFilterItem().IsChecked());
-            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->TabsToolbar().Visibility());
-            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->SearchTabsButton().Visibility());
-            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->FilterTabsButton().Visibility());
-            VERIFY_ARE_EQUAL(4, Grid::GetRow(stripImpl->HistoryPanel()));
-            VERIFY_ARE_EQUAL(1, Grid::GetRowSpan(stripImpl->HistoryPanel()));
-            VERIFY_ARE_EQUAL(0, Grid::GetRow(stripImpl->HistorySearchTextBox()));
-            VERIFY_ARE_EQUAL(1, Grid::GetRow(Media::VisualTreeHelper::GetParent(stripImpl->HistoryList()).as<FrameworkElement>()));
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->TabsToolbar().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->SearchPanel().Visibility());
+            VERIFY_ARE_EQUAL(2, Grid::GetRow(stripImpl->HistoryPanel()));
+            VERIFY_ARE_EQUAL(4, Grid::GetRowSpan(stripImpl->HistoryPanel()));
+            VERIFY_ARE_EQUAL(1, Grid::GetRow(stripImpl->HistorySearchTextBox()));
+            VERIFY_ARE_EQUAL(2, Grid::GetRow(Media::VisualTreeHelper::GetParent(stripImpl->HistoryList()).as<FrameworkElement>()));
+            VERIFY_IS_TRUE(stripImpl->HistoryCloseButton().IsTabStop());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->ItemsList().Visibility());
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->HistoryPanel().Visibility());
 
@@ -3341,17 +3363,21 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->ItemsList().Visibility());
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->HistoryPanel().Visibility());
 
-            stripImpl->OnAllTabsFilterClick(nullptr, {});
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->TabsToolbar().Visibility());
+            stripImpl->HistorySearchTextBox().Text(L"agent query");
+            stripImpl->OnHistoryCloseClick(nullptr, {});
             VERIFY_IS_TRUE(historyClosed);
             VERIFY_IS_FALSE(strip.HistoryActive());
-            VERIFY_IS_TRUE(stripImpl->AllTabsFilterItem().IsChecked());
-            VERIFY_IS_FALSE(stripImpl->AgentsOnlyFilterItem().IsChecked());
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->TabsToolbar().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->SearchPanel().Visibility());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"power" }, strip.SearchQuery());
+            VERIFY_IS_TRUE(stripImpl->HistorySearchTextBox().Text().empty());
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->ItemsList().Visibility());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->HistoryPanel().Visibility());
         });
     }
 
-    void TabTests::AgentViewAllTabsStopsHistoryRefresh()
+    void TabTests::VerticalTabHistoryCloseStopsRefresh()
     {
         auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
 
@@ -3361,12 +3387,49 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(page->_historyRefreshTimer.IsEnabled());
 
             const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
-            stripImpl->OnAllTabsFilterClick(nullptr, {});
+            stripImpl->OnHistoryCloseClick(nullptr, {});
 
             VERIFY_IS_FALSE(page->_historyRefreshTimer.IsEnabled());
             VERIFY_IS_FALSE(page->_tabStrip.HistoryActive());
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->ItemsList().Visibility());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->HistoryPanel().Visibility());
+        });
+    }
+
+    void TabTests::VerticalTabFilterContainsOnlyMetadata()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            const auto items = stripImpl->FilterTabsButton().Flyout().as<MenuFlyout>().Items();
+            VERIFY_ARE_EQUAL(6u, items.Size());
+            VERIFY_IS_TRUE(items.GetAt(0) == stripImpl->RichTabMetadataSectionItem());
+            VERIFY_IS_TRUE(items.GetAt(1) == stripImpl->RichTabAgentStatusVisibleItem());
+            VERIFY_IS_TRUE(items.GetAt(2) == stripImpl->RichTabWorkingDirectoryVisibleItem());
+            VERIFY_IS_TRUE(items.GetAt(3) == stripImpl->RichTabRepositoryVisibleItem());
+            VERIFY_IS_TRUE(items.GetAt(4) == stripImpl->RichTabBranchVisibleItem());
+            VERIFY_IS_TRUE(items.GetAt(5) == stripImpl->RichTabChangesVisibleItem());
+
+            bool fieldsChanged = false;
+            bool historyRequested = false;
+            strip.VisibleFieldsChanged([&](auto&&, auto&&) { fieldsChanged = true; });
+            strip.HistoryRequested([&](auto&&, auto&&) { historyRequested = true; });
+            stripImpl->RichTabWorkingDirectoryVisibleItem().IsChecked(false);
+            stripImpl->OnRichTabWorkingDirectoryVisibleClick(nullptr, {});
+            stripImpl->RichTabRepositoryVisibleItem().IsChecked(true);
+            stripImpl->OnRichTabRepositoryVisibleClick(nullptr, {});
+            VERIFY_IS_TRUE(fieldsChanged);
+            VERIFY_IS_TRUE(strip.RichTabRepositoryVisible());
+            VERIFY_IS_FALSE(strip.RichTabWorkingDirectoryVisible());
+            VERIFY_IS_FALSE(historyRequested);
+            VERIFY_IS_FALSE(strip.HistoryActive());
+            VERIFY_ARE_EQUAL(winrt::TerminalApp::TabStripFilterMode::AllTabs, strip.FilterMode());
+
+            stripImpl->RichTabMetadataControlsVisible(false);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->FilterTabsButton().Visibility());
+            VERIFY_IS_TRUE(stripImpl->TabHistoryButton().IsEnabled());
+            stripImpl->RichTabMetadataControlsVisible(true);
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->FilterTabsButton().Visibility());
         });
     }
 

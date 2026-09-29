@@ -269,9 +269,12 @@ starts `Idle`; terminal states are `Historical` (startup history scan) and
 `Ended` (pane/process gone); lock removal, pane close, or a hook lifecycle event
 moves a row out of the live states.
 
-The vertical sidebar's Agents view hosts Agent History; selecting All tabs returns
-to the live tab/pane groups and stops History refreshes. Agent History displays the
-registry activity:
+The vertical sidebar's dedicated Agent sessions button opens live and historical
+sessions in a view with its own header, search box, and close button. Closing it
+returns to the live tab/pane groups and stops session refreshes, preserving the tab
+search and foreground selection. The Filter flyout contains only Tab Metadata
+controls; it does not switch between All tabs and Agents only. The Agent sessions
+view displays the registry activity:
 `Idle` (Idle), `Working` (Active), `Attention` (Waiting for input), `Error`
 (Error), and both `Ended` and `Historical` as Historical, with localized labels.
 This is presentation-only: the raw status, liveness, and focus/resume routing remain
@@ -280,7 +283,7 @@ pane header and tinted using the row foreground; unknown/custom providers use a
 generic session icon rather than another provider's brand.
 The bottom bar no longer has a Show sessions button. The existing
 `Ctrl+Shift+/` binding and `openAgentSessions` action still open the agent pane's
-session manager; the sidebar Agents view remains a separate entry point.
+session manager; the sidebar Agent sessions view remains a separate entry point.
 The second line is left-aligned as `Agent name · relative age · status`, using
 the provider's display name and `last_activity_at_ms`. Like the session manager,
 timestamps less than seven days old use localized relative time; timestamps at

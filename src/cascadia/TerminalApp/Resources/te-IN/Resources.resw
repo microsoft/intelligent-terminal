@@ -506,19 +506,24 @@
     <value>అన్ని ట్యాబ్‌లను చూపండి</value>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>ఏజెంట్ చరిత్ర</value>
+    <value>ఏజెంట్ సెషన్‌లు</value>
+    <comment>Accessible name of the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>ఏజెంట్ చరిత్ర</value>
+    <value>ఏజెంట్ సెషన్‌లు</value>
+    <comment>Tooltip for the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
-    <value>ఏజెంట్ చరిత్ర</value>
+    <value>ఏజెంట్ సెషన్‌లు</value>
+    <comment>Header of the Agent sessions sidebar view, which lists all live and historical AI-agent sessions, not only session history.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>ఏజెంట్ చరిత్రను మూసివేయండి</value>
+    <value>ఏజెంట్ సెషన్‌ల వీక్షణను మూసివేయండి</value>
+    <comment>Accessible name of the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>ఏజెంట్ చరిత్రను మూసివేయండి</value>
+    <value>ఏజెంట్ సెషన్‌ల వీక్షణను మూసివేయండి</value>
+    <comment>Tooltip for the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
     <value>ఏజెంట్ సెషన్‌లను శోధించండి</value>
@@ -533,10 +538,12 @@
     <value>సరిపోలే ఏజెంట్ సెషన్‌లు లేవు.</value>
   </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
-    <value>ఏజెంట్ చరిత్రను లోడ్ చేయడం సాధ్యం కాలేదు.</value>
+    <value>ఏజెంట్ సెషన్‌లను లోడ్ చేయడం సాధ్యం కాలేదు.</value>
+    <comment>Error shown when the Agent sessions sidebar view cannot load its list of live and historical AI-agent sessions. This refers to loading the session list, not starting or resuming a session.</comment>
   </data>
   <data name="VerticalTabsHistoryInvalidResponse" xml:space="preserve">
-    <value>ఏజెంట్ చరిత్ర చెల్లని ప్రతిస్పందనను అందించింది.</value>
+    <value>ఏజెంట్ సెషన్‌లను లోడ్ చేయడం సాధ్యం కాలేదు: చెల్లని ప్రతిస్పందన.</value>
+    <comment>Error shown when the Agent sessions sidebar receives an invalid response while loading its list of live and historical AI-agent sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryActivationError" xml:space="preserve">
     <value>ఎంచుకున్న సెషన్‌ను సక్రియం చేయడం సాధ్యం కాలేదు.</value>

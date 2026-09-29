@@ -279,7 +279,6 @@ namespace winrt::TerminalApp::implementation
             }
         });
         _applyRailState();
-        _updateHistoryVisualState();
         _updateRichTabMetadataSelectionState();
     }
 
@@ -636,8 +635,6 @@ namespace winrt::TerminalApp::implementation
     {
         const auto changed = _filterMode != value;
         _filterMode = value;
-        AllTabsFilterItem().IsChecked(value == TerminalApp::TabStripFilterMode::AllTabs);
-        AgentsOnlyFilterItem().IsChecked(value == TerminalApp::TabStripFilterMode::AgentsOnly);
         FilterStatusBar().Visibility(value != TerminalApp::TabStripFilterMode::AllTabs ?
                                          Visibility::Visible :
                                          Visibility::Collapsed);
@@ -766,14 +763,13 @@ namespace winrt::TerminalApp::implementation
     void TabStrip::HistoryActive(bool value)
     {
         FilterMode(TerminalApp::TabStripFilterMode::AllTabs);
-        AllTabsFilterItem().IsChecked(!value);
-        AgentsOnlyFilterItem().IsChecked(value);
 
         if (_historyActive != value)
         {
             _historyActive = value;
             _historyActivating = false;
             ClearHistorySearch();
+            _updateSearchVisualState();
             _updateHistoryVisualState();
         }
     }
@@ -810,6 +806,7 @@ namespace winrt::TerminalApp::implementation
         _projectionControlsEnabled = value;
         SearchTabsButton().IsEnabled(value && !_isRailCollapsed);
         FilterTabsButton().IsEnabled(value && !_isRailCollapsed);
+        TabHistoryButton().IsEnabled(value && !_isRailCollapsed);
     }
 
     void TabStrip::MoveTabItem(uint32_t from, uint32_t to)
@@ -917,7 +914,7 @@ namespace winrt::TerminalApp::implementation
     void TabStrip::RichTabMetadataControlsVisible(const bool value)
     {
         const auto visibility = value ? Visibility::Visible : Visibility::Collapsed;
-        RichTabMetadataSeparator().Visibility(visibility);
+        FilterTabsButton().Visibility(visibility);
         RichTabMetadataSectionItem().Visibility(visibility);
         RichTabAgentStatusVisibleItem().Visibility(visibility);
         RichTabWorkingDirectoryVisibleItem().Visibility(visibility);
@@ -927,6 +924,7 @@ namespace winrt::TerminalApp::implementation
 
         if (!value)
         {
+            FilterTabsButton().Flyout().Hide();
             RichTabAgentStatusVisible(false);
             RichTabWorkingDirectoryVisible(false);
             RichTabRepositoryVisible(false);
@@ -980,19 +978,7 @@ namespace winrt::TerminalApp::implementation
         CompactNewTabMenuRequested.raise(*this, CompactNewTabMenuButton());
     }
 
-    void TabStrip::OnAllTabsFilterClick(IInspectable const&, WUX::RoutedEventArgs const&)
-    {
-        if (_historyActive)
-        {
-            HistoryClosed.raise(*this, nullptr);
-        }
-        else
-        {
-            FilterMode(TerminalApp::TabStripFilterMode::AllTabs);
-        }
-    }
-
-    void TabStrip::OnAgentsOnlyFilterClick(IInspectable const&, WUX::RoutedEventArgs const&)
+    void TabStrip::OnHistoryClick(IInspectable const&, WUX::RoutedEventArgs const&)
     {
         if (_isRailCollapsed || !_projectionControlsEnabled)
         {
@@ -1001,6 +987,11 @@ namespace winrt::TerminalApp::implementation
         HistoryActive(true);
         HistoryRequested.raise(*this, nullptr);
         HistorySearchTextBox().Focus(WUX::FocusState::Programmatic);
+    }
+
+    void TabStrip::OnHistoryCloseClick(IInspectable const&, WUX::RoutedEventArgs const&)
+    {
+        HistoryClosed.raise(*this, nullptr);
     }
 
     void TabStrip::OnRichTabRepositoryVisibleClick(IInspectable const&, WUX::RoutedEventArgs const&)
@@ -1186,14 +1177,15 @@ namespace winrt::TerminalApp::implementation
         SearchTabsButton().IsEnabled(_projectionControlsEnabled && !_isRailCollapsed);
         FilterTabsButton().IsHitTestVisible(!_isRailCollapsed);
         FilterTabsButton().IsEnabled(_projectionControlsEnabled && !_isRailCollapsed);
+        TabHistoryButton().IsHitTestVisible(!_isRailCollapsed);
+        TabHistoryButton().IsEnabled(_projectionControlsEnabled && !_isRailCollapsed);
         FilterStatusBar().IsHitTestVisible(!_isRailCollapsed);
         ItemsList().AllowDrop(ItemsList().CanDragItems() && !_isRailCollapsed);
         TabsToolbar().Padding(_isRailCollapsed ? WUX::Thickness{} : WUX::Thickness{ 12, 0, 8, 0 });
         WUX::Controls::Grid::SetColumn(SearchTabsButton(), _isRailCollapsed ? 0 : 1);
-        WUX::Controls::Grid::SetColumnSpan(SearchTabsButton(), _isRailCollapsed ? 3 : 1);
+        WUX::Controls::Grid::SetColumnSpan(SearchTabsButton(), _isRailCollapsed ? 4 : 1);
         SearchTabsButton().Width(40.0);
         SearchTabsButton().Height(40.0);
-        ItemsList().Visibility(_tabsVisible && !_historyActive ? Visibility::Visible : Visibility::Collapsed);
 
         if (_isRailCollapsed)
         {
@@ -1201,7 +1193,6 @@ namespace winrt::TerminalApp::implementation
             {
                 flyout.Hide();
             }
-            _updateHistoryVisualState();
         }
 
         for (uint32_t index = 0; index < _tabItems.Size(); ++index)
@@ -1217,6 +1208,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         _updateSearchVisualState();
+        _updateHistoryVisualState();
     }
 
     void TabStrip::_applyTabItemRailState(MUX::Controls::TabViewItem const& item)
@@ -1387,8 +1379,8 @@ namespace winrt::TerminalApp::implementation
         SearchTabsButton().IsChecked(_searchActive);
         _syncingSearchState = false;
 
-        const auto expanded = _searchActive && !_isRailCollapsed;
-        _setSearchPanelExpanded(expanded, _searchAnimationEnabled && !_isRailCollapsed);
+        const auto expanded = _searchActive && !_isRailCollapsed && !_historyActive;
+        _setSearchPanelExpanded(expanded, _searchAnimationEnabled && !_isRailCollapsed && !_historyActive);
     }
 
     std::vector<winrt::hstring> TabStrip::_buildHistorySearchTerms(TerminalApp::TabStripHistoryItem const& item)
@@ -1513,6 +1505,7 @@ namespace winrt::TerminalApp::implementation
     {
         const auto visible = _historyActive && !_isRailCollapsed;
         HistoryPanel().Visibility(visible ? Visibility::Visible : Visibility::Collapsed);
+        TabsToolbar().Visibility(visible ? Visibility::Collapsed : Visibility::Visible);
         ItemsList().Visibility(_tabsVisible && !visible ? Visibility::Visible : Visibility::Collapsed);
         HistoryLoadingIndicator().IsActive(visible && _historyLoading);
         HistoryLoadingIndicator().Visibility(visible && _historyLoading ? Visibility::Visible : Visibility::Collapsed);

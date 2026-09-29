@@ -506,19 +506,24 @@
     <value>அனைத்துத் தாவல்களையும் காட்டு</value>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>எஜென்ட் வரலாறு</value>
+    <value>எஜென்ட் அமர்வுகள்</value>
+    <comment>Accessible name of the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>எஜென்ட் வரலாறு</value>
+    <value>எஜென்ட் அமர்வுகள்</value>
+    <comment>Tooltip for the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
-    <value>எஜென்ட் வரலாறு</value>
+    <value>எஜென்ட் அமர்வுகள்</value>
+    <comment>Header of the Agent sessions sidebar view, which lists all live and historical AI-agent sessions, not only session history.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>எஜென்ட் வரலாற்றை மூடு</value>
+    <value>எஜென்ட் அமர்வுகளின் காட்சியை மூடு</value>
+    <comment>Accessible name of the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>எஜென்ட் வரலாற்றை மூடு</value>
+    <value>எஜென்ட் அமர்வுகளின் காட்சியை மூடு</value>
+    <comment>Tooltip for the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
     <value>எஜென்ட் அமர்வுகளைத் தேடு</value>
@@ -533,10 +538,12 @@
     <value>பொருந்தும் எஜென்ட் அமர்வுகள் எதுவும் இல்லை.</value>
   </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
-    <value>எஜென்ட் வரலாற்றை ஏற்ற முடியவில்லை.</value>
+    <value>எஜென்ட் அமர்வுகளை ஏற்ற முடியவில்லை.</value>
+    <comment>Error shown when the Agent sessions sidebar view cannot load its list of live and historical AI-agent sessions. This refers to loading the session list, not starting or resuming a session.</comment>
   </data>
   <data name="VerticalTabsHistoryInvalidResponse" xml:space="preserve">
-    <value>எஜென்ட் வரலாறு செல்லுபடியாகாத பதிலை வழங்கியது.</value>
+    <value>எஜென்ட் அமர்வுகளை ஏற்ற முடியவில்லை: செல்லுபடியாகாத பதில்.</value>
+    <comment>Error shown when the Agent sessions sidebar receives an invalid response while loading its list of live and historical AI-agent sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryActivationError" xml:space="preserve">
     <value>தேர்ந்தெடுத்த அமர்வைச் செயல்படுத்த முடியவில்லை.</value>
