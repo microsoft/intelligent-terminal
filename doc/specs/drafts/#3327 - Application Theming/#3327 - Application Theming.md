@@ -244,8 +244,8 @@ while inactive. Windows can still substitute a solid fallback when transparency
 effects are unavailable or disabled. Profile `useAcrylic` / `opacity` settings
 apply to terminal content, not this window chrome.
 
-The new-tab and dropdown button shares this backdrop: with Acrylic enabled,
-its normal background is transparent and hover/pressed states use translucent
+The new-tab and dropdown buttons share this backdrop: with Acrylic enabled,
+their normal backgrounds are transparent and hover/pressed states use translucent
 overlays. Solid-background and high-contrast modes retain opaque button fills.
 
 Sidebar icon and pane-row instances likewise remain stable during focus updates.

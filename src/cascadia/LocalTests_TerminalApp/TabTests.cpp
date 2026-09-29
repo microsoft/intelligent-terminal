@@ -3470,6 +3470,11 @@ namespace TerminalAppLocalTests
     void TabTests::VerticalTabHistorySharesBackdrop()
     {
         winrt::TerminalApp::TabStrip strip{ nullptr };
+        UIElement previousContent{ nullptr };
+        TestOnUIThread([&]() { previousContent = Window::Current().Content(); });
+        const auto cleanup = wil::scope_exit([&]() {
+            TestOnUIThread([&]() { Window::Current().Content(previousContent); });
+        });
         TestOnUIThread([&]() {
             strip = winrt::TerminalApp::TabStrip{};
             Window::Current().Content(strip);
