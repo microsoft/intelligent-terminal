@@ -297,7 +297,9 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabFilterContainsOnlyMetadata);
         TEST_METHOD(VerticalTabHistoryStatusText);
         TEST_METHOD(SessionRegistryStatusDeltaUpdatesCaches);
-        TEST_METHOD(BottomBarOmitsSessionsButton);
+        TEST_METHOD(BottomBarSessionsButtonFollowsLayout);
+        TEST_METHOD(BottomBarSessionsButtonDispatchesExistingAction);
+        TEST_METHOD(BottomBarSessionsButtonTracksVisibleView);
         TEST_METHOD(VerticalTabHistoryRelativeAge);
         TEST_METHOD(VerticalTabHistoryMetadataLayout);
         TEST_METHOD(VerticalTabHistoryWslDistroMetadata);
@@ -3221,12 +3223,15 @@ namespace TerminalAppLocalTests
             page->Create();
 
             VERIFY_ARE_EQUAL(0u, page->_tabs.Size());
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->SessionToggleButton().Visibility());
             VERIFY_IS_TRUE(page->_ApplyTabLayout(TabLayout::Vertical));
             VERIFY_IS_TRUE(page->_isVerticalLayout);
             VERIFY_IS_FALSE(page->_changingTabLayout);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->SessionToggleButton().Visibility());
             VERIFY_IS_TRUE(page->_ApplyTabLayout(TabLayout::Horizontal));
             VERIFY_IS_FALSE(page->_isVerticalLayout);
             VERIFY_IS_FALSE(page->_changingTabLayout);
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->SessionToggleButton().Visibility());
         });
     }
 
@@ -3237,6 +3242,7 @@ namespace TerminalAppLocalTests
         TestOnUIThread([&]() {
             const auto infoBar = page->FindName(L"TabLayoutRestartInfoBar").as<winrt::Microsoft::UI::Xaml::Controls::InfoBar>();
             VERIFY_IS_FALSE(infoBar.IsOpen());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->SessionToggleButton().Visibility());
 
             const auto selectedItem = page->_selectedTabItem();
             VERIFY_IS_NOT_NULL(selectedItem);
@@ -3275,6 +3281,7 @@ namespace TerminalAppLocalTests
             page->_CompleteTabLayoutChange(page->_tabLayoutGeneration);
             VERIFY_IS_FALSE(infoBar.IsOpen());
             VERIFY_IS_FALSE(page->_isVerticalLayout);
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->SessionToggleButton().Visibility());
             VERIFY_ARE_EQUAL(page->_tabs.Size(), page->_tabView.TabItems().Size());
             VERIFY_ARE_EQUAL(0u, page->_tabStrip.TabItems().Size());
             VERIFY_IS_TRUE(page->_tabView.SelectedItem() == selectedItem);
@@ -3295,6 +3302,7 @@ namespace TerminalAppLocalTests
             page->_CompleteTabLayoutChange(page->_tabLayoutGeneration);
             VERIFY_IS_FALSE(infoBar.IsOpen());
             VERIFY_IS_TRUE(page->_isVerticalLayout);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->SessionToggleButton().Visibility());
             VERIFY_ARE_EQUAL(0u, page->_tabView.TabItems().Size());
             VERIFY_ARE_EQUAL(page->_tabs.Size(), page->_tabStrip.TabItems().Size());
             VERIFY_IS_TRUE(page->_tabStrip.SelectedItem() == selectedItem);
@@ -3550,12 +3558,87 @@ namespace TerminalAppLocalTests
         });
     }
 
-    void TabTests::BottomBarOmitsSessionsButton()
+    void TabTests::BottomBarSessionsButtonFollowsLayout()
+    {
+        for (const auto vertical : { false, true })
+        {
+            auto page = _commonSetup(nullptr, nullptr, std::nullopt, vertical);
+            TestOnUIThread([&]() {
+                const auto button = page->SessionToggleButton();
+                VERIFY_IS_NOT_NULL(button);
+                VERIFY_ARE_EQUAL(vertical ? Visibility::Collapsed : Visibility::Visible, button.Visibility());
+                VERIFY_ARE_EQUAL(3, Grid::GetColumn(button));
+                VERIFY_ARE_EQUAL(4u, page->BottomBar().ColumnDefinitions().Size());
+                Command sessionsCommand;
+                sessionsCommand.ActionAndArgs(ActionAndArgs{ ShortcutAction::OpenAgentSessions, nullptr });
+                const auto label = sessionsCommand.Name();
+                VERIFY_IS_FALSE(label.empty());
+                VERIFY_ARE_EQUAL(label, page->SessionToggleLabel().Text());
+                VERIFY_ARE_EQUAL(label, Automation::AutomationProperties::GetName(button));
+                VERIFY_IS_NOT_NULL(page->AgentToggleButton());
+                if (vertical)
+                {
+                    page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
+                    VERIFY_IS_TRUE(page->_isVerticalRailCollapsed);
+                    VERIFY_ARE_EQUAL(Visibility::Collapsed, button.Visibility());
+                    page->_SetVerticalRailVisibility(false);
+                    VERIFY_ARE_EQUAL(Visibility::Collapsed, button.Visibility());
+                }
+            });
+        }
+    }
+
+    void TabTests::BottomBarSessionsButtonDispatchesExistingAction()
     {
         auto page = _commonSetup();
         TestOnUIThread([&]() {
-            VERIFY_IS_NULL(page->FindName(L"SessionToggleButton"));
-            VERIFY_IS_NOT_NULL(page->FindName(L"AgentToggleButton"));
+            auto dispatch = winrt::make_self<winrt::TerminalApp::implementation::ShortcutActionDispatch>();
+            uint32_t invocations = 0;
+            dispatch->OpenAgentSessions([&](auto&&, const ActionEventArgs& args) {
+                ++invocations;
+                args.Handled(true);
+            });
+            const auto previousDispatch = std::exchange(page->_actionDispatch, dispatch);
+            const auto restoreDispatch = wil::scope_exit([&]() {
+                page->_actionDispatch = previousDispatch;
+            });
+
+            page->_SessionToggleButtonOnClick(nullptr, {});
+
+            VERIFY_ARE_EQUAL(1u, invocations);
+        });
+    }
+
+    void TabTests::BottomBarSessionsButtonTracksVisibleView()
+    {
+        auto page = _commonSetup();
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            auto agentPane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
+            agentPane->IsAgentPane(true);
+            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, agentPane));
+            const auto content = tab->FindAgentPaneContent();
+            VERIFY_IS_NOT_NULL(content);
+            const auto alpha = [](const Button& button) {
+                return button.Background().as<Media::SolidColorBrush>().Color().A;
+            };
+
+            content.SetSessionsView(true);
+            page->_UpdateBottomBarState();
+            VERIFY_ARE_EQUAL(uint8_t{ 30 }, alpha(page->SessionToggleButton()));
+            VERIFY_ARE_EQUAL(uint8_t{ 0 }, alpha(page->AgentToggleButton()));
+
+            content.SetSessionsView(false);
+            page->_UpdateBottomBarState();
+            VERIFY_ARE_EQUAL(uint8_t{ 0 }, alpha(page->SessionToggleButton()));
+            VERIFY_ARE_EQUAL(uint8_t{ 30 }, alpha(page->AgentToggleButton()));
+
+            content.SetSessionsView(true);
+            tab->StashAgentPane();
+            page->_UpdateBottomBarState();
+            VERIFY_ARE_EQUAL(uint8_t{ 0 }, alpha(page->SessionToggleButton()));
+            VERIFY_ARE_EQUAL(uint8_t{ 0 }, alpha(page->AgentToggleButton()));
+            VERIFY_IS_TRUE(tab->FindAgentPaneContent() == content);
         });
     }
 

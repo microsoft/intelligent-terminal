@@ -117,6 +117,7 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
             <!-- Button 1: AI toggle (dock/collapse bottom pane) -->
@@ -213,6 +214,41 @@
                         Spacing="12"
                         Margin="12,0"
                         Visibility="Collapsed" />
+
+            <Button x:Name="SessionToggleButton"
+                    Grid.Column="3"
+                    Width="32"
+                    Height="32"
+                    Padding="0"
+                    Background="Transparent"
+                    BorderBrush="Transparent"
+                    Visibility="Collapsed"
+                    Click="_SessionToggleButtonOnClick">
+                <ToolTipService.ToolTip>
+                    <ToolTip>
+                        <StackPanel>
+                            <TextBlock x:Name="SessionToggleLabel"
+                                       FontFamily="Segoe UI Variable"
+                                       FontSize="12"
+                                       LineHeight="16" />
+                            <TextBlock Text="Ctrl+Shift+/"
+                                       FontFamily="Segoe UI Variable"
+                                       FontSize="12"
+                                       LineHeight="16"
+                                       Opacity="0.7" />
+                        </StackPanel>
+                    </ToolTip>
+                </ToolTipService.ToolTip>
+                <Image Width="16"
+                       Height="16"
+                       Stretch="Uniform">
+                    <Image.Source>
+                        <SvgImageSource UriSource="ms-appx:///AgentIcons/session.svg"
+                                        RasterizePixelWidth="32"
+                                        RasterizePixelHeight="32" />
+                    </Image.Source>
+                </Image>
+            </Button>
 
         </Grid>
         </Border>

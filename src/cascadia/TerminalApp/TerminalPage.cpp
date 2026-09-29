@@ -492,6 +492,12 @@ namespace winrt::TerminalApp::implementation
         // Hookup the key bindings
         _HookupKeyBindings(_settings.ActionMap());
 
+        Command sessionsCommand;
+        sessionsCommand.ActionAndArgs(ActionAndArgs{ ShortcutAction::OpenAgentSessions, nullptr });
+        const auto sessionsLabel = sessionsCommand.Name();
+        SessionToggleLabel().Text(sessionsLabel);
+        Automation::AutomationProperties::SetName(SessionToggleButton(), sessionsLabel);
+
         _tabContent = this->TabContent();
         _tabRow = this->TabRow();
         _tabView = _tabRow.TabView();
@@ -4215,6 +4221,37 @@ namespace winrt::TerminalApp::implementation
         _UpdateBottomBarState();
     }
 
+    void TerminalPage::_SessionToggleButtonOnClick(const winrt::Windows::Foundation::IInspectable& /*sender*/,
+                                                   const winrt::Windows::UI::Xaml::RoutedEventArgs& /*eventArgs*/)
+    {
+        const auto activeTab = _GetFocusedTabImpl();
+        const auto content = activeTab ? activeTab->FindAgentPaneContent() : nullptr;
+        const auto pane = activeTab ? activeTab->FindAgentPane() : nullptr;
+        const auto chatControl = content && pane && !pane->IsHidden() && !content.IsSessionsView() ?
+                                     content.GetTermControl() :
+                                     nullptr;
+
+        _actionDispatch->DoAction(ActionAndArgs{ ShortcutAction::OpenAgentSessions, nullptr });
+        _UpdateBottomBarState();
+
+        // Pointer-up can restore focus to the button after the action has
+        // focused the visible pane. Unstashing already defers its own focus.
+        if (chatControl)
+        {
+            if (const auto dispatcher = winrt::Windows::System::DispatcherQueue::GetForCurrentThread())
+            {
+                dispatcher.TryEnqueue(
+                    winrt::Windows::System::DispatcherQueuePriority::Low,
+                    [weakControl = winrt::make_weak(chatControl)]() {
+                        if (const auto control = weakControl.get())
+                        {
+                            control.Focus(FocusState::Programmatic);
+                        }
+                    });
+            }
+        }
+    }
+
     // Window-level bottom-bar "diagnostics" click. Targets the active tab's
     // AgentPaneContent — fires the cached autofix for that tab, or asks
     // wta to execute / dismiss / re-trigger the diagnosis depending on
@@ -4360,7 +4397,7 @@ namespace winrt::TerminalApp::implementation
             activeAgent = focusedTabImpl->FindAgentPaneContent();
         }
 
-        // The chat toggle is highlighted only while the chat view is visible.
+        // Each toggle is highlighted only while its view is visible.
         const auto kLitOverlay = winrt::Windows::UI::Xaml::Media::SolidColorBrush{
             winrt::Windows::UI::ColorHelper::FromArgb(30, 255, 255, 255)
         };
@@ -4387,6 +4424,10 @@ namespace winrt::TerminalApp::implementation
         if (auto toggleBtn = AgentToggleButton())
         {
             toggleBtn.Background(chatLit ? kLitOverlay : kTransparent);
+        }
+        if (auto sessionsBtn = SessionToggleButton())
+        {
+            sessionsBtn.Background(sessionsView ? kLitOverlay : kTransparent);
         }
 
         // Swap the toggle icon to match the current pane position.
@@ -5530,6 +5571,7 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_UpdateTabLayoutHost()
     {
+        SessionToggleButton().Visibility(_isVerticalLayout ? Visibility::Collapsed : Visibility::Visible);
         _tabStrip.TopChromeContent(nullptr);
         if (_hasTitlebarHost)
         {

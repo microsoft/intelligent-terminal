@@ -284,9 +284,14 @@ This is presentation-only: the raw status, liveness, and focus/resume routing re
 unchanged. Each row has its provider's vector icon on the left, shared with the agent
 pane header and tinted using the row foreground; unknown/custom providers use a
 generic session icon rather than another provider's brand.
-The bottom bar no longer has a Show sessions button. The existing
-`Ctrl+Shift+/` binding and `openAgentSessions` action still open the agent pane's
-session manager; the sidebar Agent sessions view remains a separate entry point.
+The bottom-right session-management button is hidden only in the Vertical tab
+layout; other layouts retain it. Its visibility updates on startup and live
+layout changes, independently of whether the vertical sidebar is expanded,
+collapsed, or hidden. The button shares the existing `Ctrl+Shift+/` /
+`openAgentSessions` action: open or restore the active tab's session manager,
+switch from chat to sessions, or stash an already-visible session manager.
+The shortcut remains available in every layout; the sidebar Agent sessions view is a
+separate entry point.
 Session titles use only the text before the first CR or LF. An empty first line
 uses the existing missing-title fallback. The title occupies one non-wrapping
 line with ellipsis; the metadata line below it is unchanged.
