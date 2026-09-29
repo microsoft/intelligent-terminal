@@ -45,13 +45,16 @@ namespace winrt::TerminalApp::implementation
         {
             WUX::Controls::FontIcon fallback;
             fallback.FontFamily(WUX::Media::FontFamily{ L"Segoe Fluent Icons" });
+            fallback.FontSize(12);
             fallback.Glyph(L"\xE756");
-            _icon = fallback;
+            Icon(fallback);
         }
         else
         {
-            _icon = Microsoft::Terminal::UI::IconPathConverter::IconWUX(iconPath);
+            Icon(Microsoft::Terminal::UI::IconPathConverter::IconWUX(iconPath));
         }
+        Icon().Width(16);
+        Icon().Height(16);
         Title(std::move(title));
         AutomationName(Title());
         IsActive(isActive);
@@ -405,6 +408,7 @@ namespace winrt::TerminalApp::implementation
                     {
                         // Keep the row and its bindings alive during focus/title updates.
                         const auto existing = current.GetAt(match);
+                        existing.Icon(pane.Icon());
                         existing.Title(pane.Title());
                         existing.IsActive(pane.IsActive());
                         existing.ActiveIndicatorVisibility(pane.ActiveIndicatorVisibility());

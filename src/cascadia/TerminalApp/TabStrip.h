@@ -74,13 +74,13 @@ namespace winrt::TerminalApp::implementation
 
         winrt::Microsoft::UI::Xaml::Controls::TabViewItem Tab() const noexcept { return _tab; }
         uint32_t ContentId() const noexcept { return _contentId; }
-        winrt::Windows::UI::Xaml::Controls::IconElement Icon() const noexcept { return _icon; }
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, Title, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(bool, IsActive, PropertyChanged.raise, false);
         WINRT_OBSERVABLE_PROPERTY(winrt::Windows::UI::Xaml::Visibility, ActiveIndicatorVisibility, PropertyChanged.raise, winrt::Windows::UI::Xaml::Visibility::Collapsed);
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, MetadataText, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, AutomationName, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(winrt::Windows::UI::Xaml::Visibility, MetadataVisibility, PropertyChanged.raise, winrt::Windows::UI::Xaml::Visibility::Collapsed);
+        WINRT_OBSERVABLE_PROPERTY(winrt::Windows::UI::Xaml::Controls::IconElement, Icon, PropertyChanged.raise, nullptr);
 
     public:
         til::property_changed_event PropertyChanged;
@@ -88,7 +88,6 @@ namespace winrt::TerminalApp::implementation
     private:
         winrt::Microsoft::UI::Xaml::Controls::TabViewItem _tab{ nullptr };
         uint32_t _contentId{};
-        winrt::Windows::UI::Xaml::Controls::IconElement _icon{ nullptr };
     };
 
     struct TabStripDisplayItem : TabStripDisplayItemT<TabStripDisplayItem>

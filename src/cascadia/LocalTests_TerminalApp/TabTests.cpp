@@ -5841,7 +5841,7 @@ namespace TerminalAppLocalTests
             strip.SetTabPresentation(tab, L"Split tab", L"\xE8A5");
 
             std::vector<winrt::TerminalApp::TabStripPaneItem> panes;
-            auto firstPane = winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"First pane", true);
+            auto firstPane = winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"", L"First pane", true);
             const auto firstPaneImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStripPaneItem>(firstPane);
             const winrt::hstring firstPaneMetadata{ L"first metadata\n"
                                                     L"first branch" };
@@ -5849,7 +5849,7 @@ namespace TerminalAppLocalTests
             firstPaneImpl->MetadataVisibility(Visibility::Visible);
             firstPaneImpl->AutomationName(L"First pane, first metadata, first branch");
             panes.emplace_back(std::move(firstPane));
-            panes.emplace_back(winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 12, L"Second pane", false));
+            panes.emplace_back(winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 12, L"", L"Second pane", false));
             strip.SetPaneItems(tab, winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>(std::move(panes)), true);
 
             host.Children().Append(strip);
@@ -5873,6 +5873,10 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(header.IsMetadataVisible());
             VERIFY_ARE_EQUAL(firstPaneMetadata, display.PaneItems().GetAt(0).MetadataText());
             VERIFY_ARE_EQUAL(Visibility::Visible, display.PaneItems().GetAt(0).MetadataVisibility());
+            const auto fallbackPaneIcon = display.PaneItems().GetAt(0).Icon().as<FontIcon>();
+            VERIFY_ARE_EQUAL(12.0, fallbackPaneIcon.FontSize());
+            VERIFY_ARE_EQUAL(16.0, fallbackPaneIcon.Width());
+            VERIFY_ARE_EQUAL(16.0, fallbackPaneIcon.Height());
             VERIFY_IS_TRUE(container.ActualHeight() > 32.0);
             VERIFY_IS_NOT_NULL(header.Parent());
 
@@ -5901,13 +5905,14 @@ namespace TerminalAppLocalTests
             const auto updatePanes = [&](std::vector<winrt::TerminalApp::TabStripPaneItem> values) {
                 strip.SetPaneItems(tab, winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>(std::move(values)), true);
             };
-            auto updatedFirstPane = winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"Renamed pane", false);
+            auto updatedFirstPane = winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"\xE8A5", L"Renamed pane", false);
             const auto updatedFirstPaneImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStripPaneItem>(updatedFirstPane);
             updatedFirstPaneImpl->MetadataText(L"updated metadata");
             updatedFirstPaneImpl->MetadataVisibility(Visibility::Visible);
             updatedFirstPaneImpl->AutomationName(L"Renamed pane, updated metadata");
+            const auto updatedFirstPaneIcon = updatedFirstPane.Icon();
             updatePanes({ updatedFirstPane,
-                          winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 12, L"Second pane", true) });
+                          winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 12, L"", L"Second pane", true) });
             strip.SetTabPresentation(tab, L"Renamed tab", L"\xE8A5");
             host.UpdateLayout();
             VERIFY_ARE_EQUAL(0u, collectionChanges);
@@ -5923,12 +5928,15 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(winrt::hstring{ L"updated metadata" }, firstPaneItem.MetadataText());
             VERIFY_ARE_EQUAL(Visibility::Visible, firstPaneItem.MetadataVisibility());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane, updated metadata" }, firstPaneItem.AutomationName());
+            VERIFY_IS_TRUE(firstPaneItem.Icon() == updatedFirstPaneIcon);
+            VERIFY_ARE_EQUAL(16.0, firstPaneItem.Icon().Width());
+            VERIFY_ARE_EQUAL(16.0, firstPaneItem.Icon().Height());
             VERIFY_IS_TRUE(paneList.ContainerFromIndex(0) == firstPaneContainer);
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane" }, firstPaneRoot.FindName(L"PaneTitleText").as<TextBlock>().Text());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, firstPaneRoot.FindName(L"PaneActiveIndicator").as<FrameworkElement>().Visibility());
 
-            updatePanes({ winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"Renamed pane", false),
-                          winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 12, L"Second pane", true) });
+            updatePanes({ winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"", L"Renamed pane", false),
+                          winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 12, L"", L"Second pane", true) });
             VERIFY_ARE_EQUAL(winrt::hstring{}, firstPaneItem.MetadataText());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, firstPaneItem.MetadataVisibility());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane" }, firstPaneItem.AutomationName());
