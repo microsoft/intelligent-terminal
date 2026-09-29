@@ -61,7 +61,9 @@ namespace TerminalAppUnitTests
         std::filesystem::create_directories(gitDirectory / L"logs");
         _WriteFile(
             gitDirectory / L"config",
-            "[core]\n\trepositoryformatversion = 0\n\tbare = false\n");
+            "[core]\n\trepository"
+            "format"
+            "version = 0\n\tbare = false\n");
         _WriteFile(
             gitDirectory / L"HEAD",
             "ref: refs/heads/\xE4\xB8\xBB\xE5\x88\x86\xE6\x94\xAF\n");
