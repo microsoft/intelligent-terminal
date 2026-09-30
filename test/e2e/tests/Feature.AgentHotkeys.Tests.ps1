@@ -163,7 +163,7 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
         }
     }
 
-    It 'Agent history hotkey toggles the layout-appropriate history surface' {
+    It 'Agent history hotkey toggles the layout-appropriate history surface' -Tag 'SidebarHistory' {
         $horizontal = $null
         try {
             $horizontal = & $script:StartLayoutApp 'horizontal'
@@ -342,6 +342,14 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
                         & $verifyPreservation
                     }
                 }
+                if ($origin.Agent) {
+                    Invoke-WtCli -App $vertical -Arguments @('focus-pane', '-t', $origin.Id) | Out-Null
+                }
+                else {
+                    Set-WtPaneFocus -App $vertical -SessionId $origin.Id
+                }
+                (Test-Until -TimeoutSec 5 -Condition $focusRestored) |
+                    Should -BeTrue -Because 'the source input must own focus before invoking the History hotkey'
                 & $script:OpenAgentHistoryHotkey $vertical
                 (Test-Until -TimeoutSec 5 -Condition { & $script:HistorySearchFocused $vertical }) | Should -BeTrue
                 & $script:ToggleSidebarHotkey $vertical
