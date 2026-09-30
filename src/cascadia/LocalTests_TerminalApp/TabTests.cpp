@@ -3968,9 +3968,13 @@ namespace TerminalAppLocalTests
 
             search(L"visible pane metadata");
             VERIFY_ARE_EQUAL(Visibility::Collapsed, container.Visibility());
-            applyRichTabUpdate(unicodePane, L"feature\nvisible pane metadata", 1);
+            std::wstring visiblePaneMetadataText{ L"feature" };
+            visiblePaneMetadataText.push_back(static_cast<wchar_t>(0x0A));
+            visiblePaneMetadataText.append(L"visible pane metadata");
+            const winrt::hstring visiblePaneMetadata{ visiblePaneMetadataText };
+            applyRichTabUpdate(unicodePane, visiblePaneMetadata, 1);
             VERIFY_ARE_EQUAL(Visibility::Visible, container.Visibility());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"feature\nvisible pane metadata" }, projectedUnicodePane.MetadataText());
+            VERIFY_ARE_EQUAL(visiblePaneMetadata, projectedUnicodePane.MetadataText());
             VERIFY_IS_TRUE(unicodePane->Id().has_value());
             VERIFY_IS_TRUE(tab->FocusPane(unicodePane->Id().value()));
             page->UpdateLayout();
@@ -6404,6 +6408,14 @@ namespace TerminalAppLocalTests
             const auto originalIcon = display.Icon();
             const auto firstPaneItem = display.PaneItems().GetAt(0);
             const auto secondPaneItem = display.PaneItems().GetAt(1);
+            const auto originalFirstPaneIcon = firstPaneItem.Icon();
+            uint32_t firstPaneIconChanges = 0;
+            const auto firstPanePropertyChanged = firstPaneItem.PropertyChanged(winrt::auto_revoke, [&](auto&&, const auto& args) {
+                if (args.PropertyName() == L"Icon")
+                {
+                    ++firstPaneIconChanges;
+                }
+            });
             const auto templateRoot = container.ContentTemplateRoot().as<StackPanel>();
             const auto headerRoot = templateRoot.Children().GetAt(0).as<Grid>();
             const auto iconPresenter = headerRoot.FindName(L"TabIconPresenter").as<ContentPresenter>();
@@ -6445,7 +6457,6 @@ namespace TerminalAppLocalTests
             updatedFirstPaneImpl->MetadataText(L"updated metadata");
             updatedFirstPaneImpl->MetadataVisibility(Visibility::Visible);
             updatedFirstPaneImpl->AutomationName(L"Renamed pane, updated metadata");
-            const auto updatedFirstPaneIcon = updatedFirstPane.Icon();
             updatePanes({ updatedFirstPane,
                           winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 12, L"", L"Second pane", true) });
             strip.SetTabPresentation(tab, L"Renamed tab", L"\xE8A5");
@@ -6463,7 +6474,9 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(winrt::hstring{ L"updated metadata" }, firstPaneItem.MetadataText());
             VERIFY_ARE_EQUAL(Visibility::Visible, firstPaneItem.MetadataVisibility());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane, updated metadata" }, firstPaneItem.AutomationName());
-            VERIFY_IS_TRUE(firstPaneItem.Icon() == updatedFirstPaneIcon);
+            const auto updatedFirstPaneIcon = firstPaneItem.Icon();
+            VERIFY_IS_FALSE(updatedFirstPaneIcon == originalFirstPaneIcon);
+            VERIFY_ARE_EQUAL(1u, firstPaneIconChanges);
             VERIFY_ARE_EQUAL(16.0, firstPaneItem.Icon().Width());
             VERIFY_ARE_EQUAL(16.0, firstPaneItem.Icon().Height());
             VERIFY_IS_TRUE(paneList.ContainerFromIndex(0) == firstPaneContainer);
@@ -6477,10 +6490,12 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(winrt::hstring{ L"pane" }, secondPaneItem.HighlightQuery());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"pane" }, firstPaneTitle.SearchText());
 
-            updatePanes({ winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"", L"Renamed pane", false),
+            updatePanes({ winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"\xE8A5", L"Renamed pane", false),
                           winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 12, L"", L"Second pane", true) });
             VERIFY_ARE_EQUAL(winrt::hstring{ L"pane" }, display.PaneItems().GetAt(0).HighlightQuery());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"pane" }, display.PaneItems().GetAt(1).HighlightQuery());
+            VERIFY_IS_TRUE(firstPaneItem.Icon() == updatedFirstPaneIcon);
+            VERIFY_ARE_EQUAL(1u, firstPaneIconChanges);
             VERIFY_ARE_EQUAL(winrt::hstring{}, firstPaneItem.MetadataText());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, firstPaneItem.MetadataVisibility());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane" }, firstPaneItem.AutomationName());

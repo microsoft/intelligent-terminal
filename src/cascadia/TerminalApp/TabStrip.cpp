@@ -41,6 +41,20 @@ namespace winrt::TerminalApp::implementation
         _tab{ std::move(tab) },
         _contentId{ contentId }
     {
+        SyncIcon(iconPath);
+        Title(std::move(title));
+        AutomationName(Title());
+        IsActive(isActive);
+        ActiveIndicatorVisibility(isActive ? Visibility::Visible : Visibility::Collapsed);
+    }
+
+    void TabStripPaneItem::SyncIcon(const hstring& iconPath)
+    {
+        if (_iconPath == iconPath && Icon())
+        {
+            return;
+        }
+
         if (iconPath.empty())
         {
             WUX::Controls::FontIcon fallback;
@@ -55,10 +69,7 @@ namespace winrt::TerminalApp::implementation
         }
         Icon().Width(16);
         Icon().Height(16);
-        Title(std::move(title));
-        AutomationName(Title());
-        IsActive(isActive);
-        ActiveIndicatorVisibility(isActive ? Visibility::Visible : Visibility::Collapsed);
+        _iconPath = iconPath;
     }
 
     TabStripDisplayItem::TabStripDisplayItem(MUX::Controls::TabViewItem tab,
@@ -423,7 +434,7 @@ namespace winrt::TerminalApp::implementation
             {
                 // Keep the row and its bindings alive during focus/title updates.
                 const auto existing = current.GetAt(match);
-                existing.Icon(pane.Icon());
+                winrt::get_self<TabStripPaneItem>(existing)->SyncIcon(winrt::get_self<TabStripPaneItem>(pane)->IconPath());
                 existing.Title(pane.Title());
                 existing.IsActive(pane.IsActive());
                 existing.ActiveIndicatorVisibility(pane.ActiveIndicatorVisibility());
@@ -653,7 +664,7 @@ namespace winrt::TerminalApp::implementation
         {
             if (const auto pane = root.DataContext().try_as<TerminalApp::TabStripPaneItem>())
             {
-                if (const auto title = _findNamedElement(root, L"PaneTitleText").try_as<TextBlock>())
+                if (const auto title = _findNamedElement(root, L"PaneTitleText").try_as<TerminalApp::HighlightedTextControl>())
                 {
                     title.Text(pane.Title());
                 }
