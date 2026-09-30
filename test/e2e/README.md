@@ -186,7 +186,9 @@ after selecting a non-default pair to verify current, not hard-coded, values.
 The same scenario checks that explicit opt-ins emit distinct random `KeepId`
 values, a real tab close and restoration emit matching detached/live events,
 and a prompt on the unchanged ACP session after reattachment carries
-`AgentPromptSent.Reattached=true` while an earlier prompt carries `false`.
+`AgentPromptSent.Reattached=true` and `UserPromptOrdinal=Second` while that
+session's earlier prompt carries `false` and `First`. A separate helper's
+first prompt also remains `First`.
 Disabling or restoring a tab alone must not mark it again or dispatch a prompt.
 The decoder explicitly selects startup/sidebar event names; unrelated structured
 diagnostic events remain in the raw ETL rather than blocking these typed

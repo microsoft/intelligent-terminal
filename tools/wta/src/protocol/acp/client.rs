@@ -4728,6 +4728,7 @@ fn dispatch_load_session_with_aliases(
                 {
                     crate::protocol::acp::model_select::forget_session(old.0.as_ref());
                     client_state.native_yolo.forget_session(old);
+                    client_state.prompt_timing.forget_session(old.0.as_ref());
                 }
                 client_state
                     .native_yolo
@@ -4943,6 +4944,7 @@ fn dispatch_new_session_with_aliases(
             let old_str = old.to_string();
             crate::protocol::acp::model_select::forget_session(&old_str);
             client_state.native_yolo.forget_session(old);
+            client_state.prompt_timing.forget_session(&old_str);
             template_memo.forget(&old_str).await;
         }
 
@@ -5062,6 +5064,7 @@ async fn dispatch_drop_session_with_aliases(
         let old_str = old.to_string();
         crate::protocol::acp::model_select::forget_session(&old_str);
         client_state.native_yolo.forget_session(&old);
+        client_state.prompt_timing.forget_session(&old_str);
         template_memo.forget(&old_str).await;
     }
 
@@ -6007,6 +6010,8 @@ async fn dispatch_prompt_body(
                         );
                     }
                     telemetry_timing.mark_prompt_sent(&telemetry_session_id);
+                    let user_prompt_ordinal = telemetry_timing
+                        .record_user_prompt_dispatch(&telemetry_session_id, telemetry_is_autofix);
                     crate::telemetry::log_agent_prompt_sent(
                         telemetry_prompt_len,
                         telemetry_is_autofix,
@@ -6014,6 +6019,7 @@ async fn dispatch_prompt_body(
                         telemetry_is_byok,
                         &telemetry_agent_id,
                         telemetry_reattached,
+                        user_prompt_ordinal,
                     );
                 }
                 should_send

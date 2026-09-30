@@ -44,7 +44,7 @@ established separately. See [privacy information](../PRIVACY.md).
 | Which rich-tab fields do people select? | App `SidebarRowFieldsChanged.fields` | Current selection at successful agent-session start and after each user toggle; not displayed metadata values |
 | Which providers are configured at startup or changed later? | App `AppCreated` snapshot and Model `AgentProviderChanged` | Configuration, not CLI installation, authentication, or successful session use |
 | How many custom agents are configured under policy? | App `AppCreated` custom-agent inventory fields | Both roles in the same window-created snapshot, including unused entries and zero counts; no commands or custom names |
-| How often are prompts dispatched? | WTA `AgentPromptSent`, grouped by `AgentId`, `IsAutofix`, `IsByok`, `TemplateKind` | ACP prompt dispatches; Command Palette delegation is a separate path |
+| How often are prompts dispatched, and does a user send a second prompt in the same session? | WTA `AgentPromptSent`, grouped by `AgentId`, `IsAutofix`, `IsByok`, `TemplateKind`, `UserPromptOrdinal` | ACP prompt dispatches; `First` and `Second` count observed user turns per helper-bound ACP session, not prompt contents or cross-restart history |
 | How responsive are agent turns? | WTA `AgentResponseFirstToken` and `AgentResponseComplete` | Dispatch-to-first-counted-text and dispatch-to-RPC-completion durations |
 | How reliable and fast are ACP operations? | WTA `AcpInitializeComplete`, `AcpNewSessionComplete`, `AcpLoadSessionComplete` | RPC outcomes; initialize/new timings must be separated by `Route` |
 | What does starting a cold agent process cost? | WTA `AgentColdStartComplete` | Master process-pool startup, excluding warm reuse |
@@ -162,7 +162,7 @@ Business-field counts exclude the common `PartA_PrivTags` field.
 | WTA | [AcpNewSessionComplete](#wtaacpnewsessioncomplete) | 5 | Performance |
 | WTA | [AcpLoadSessionComplete](#wtaacploadsessioncomplete) | 2 | Performance |
 | WTA | [AgentColdStartComplete](#wtaagentcoldstartcomplete) | 5 | Performance |
-| WTA | [AgentPromptSent](#wtaagentpromptsent) | 7 | Usage |
+| WTA | [AgentPromptSent](#wtaagentpromptsent) | 8 | Usage |
 | WTA | [AgentResponseFirstToken](#wtaagentresponsefirsttoken) | 3 | Performance |
 | WTA | [AgentResponseComplete](#wtaagentresponsecomplete) | 4 | Performance |
 | WTA | [ErrorDetected](#wtaerrordetected) | 5 | Usage |
@@ -572,6 +572,7 @@ the App snapshot's `AgentSource`.
 | `IsAutofix` | Bool | Whether this dispatch is an autofix prompt |
 | `IsByok` | Bool | BYOK state captured for this prompt |
 | `Reattached` | Bool | The owning tab was reattached by Keep running and this is still the ACP session bound at reattachment |
+| `UserPromptOrdinal` | String | `First`, `Second`, or `Later` for dispatched non-autofix prompts in this helper's ACP session; `NotUserPrompt` for autofix |
 | `AgentId` | String | Agent category |
 | `TemplateKind` | String | `Planner`, `Autofix`, or `AgentCommand` |
 | `Route` | String | Constant `AcpDispatch` |
@@ -582,7 +583,15 @@ is false for a new ACP session started after the tab was restored and for
 prompts before the helper receives the scoped reattachment notification.
 It stays true for subsequent prompts on that surviving session. Filter
 `IsAutofix=false` to measure user-initiated turns rather than background
-autofix analysis.
+autofix analysis. `UserPromptOrdinal` advances only when a non-autofix
+prompt reaches the ACP dispatch boundary. Blocked or cancelled-before-send
+prompts and autofix prompts do not advance it. A second prompt in the same
+observed session emits `Second` exactly once; subsequent prompts emit
+`Later`. The ordinal is kept in helper memory, separated by actual ACP
+session ID, and forgotten when the session is dropped or replaced; no
+identifier or ordinal counter is exported. Loading an older ACP session in
+a fresh helper starts a new *observed* sequence at `First`, even if its
+provider-side transcript already contains turns.
 
 ### WTA.AgentResponseFirstToken
 
@@ -844,6 +853,56 @@ does not assume a particular backend table or query language.
 | Prompt RPC success rate | Successful `AgentResponseComplete` / all observed response completions | Not answer quality or task success; unfinished turns are absent |
 | Model catalog success rate | `Succeeded=true` completions / all Editor probe completions | Report discards separately; not cache acceptance rate |
 | Command/tool usage | Counts by command/tool category within its event | Attempts, not actions successfully executed |
+
+### Per-event query and aggregation recipes
+
+Filter by **provider and event name**, a consistent time window, build, and
+distribution before applying the recipes below. `COUNT(*)` counts emitted
+observations, not users. Device-level reach or D7/D28 retention requires a
+backend-provided device dimension; it is not in these payloads. Distinct IDs
+below are only the independent, explicitly documented correlation keys.
+Rates require the same eligible population and capture window in numerator
+and denominator. These are logical query operations, not a backend-specific
+SQL dialect.
+
+| Provider and event | Query / aggregation | Interpretation boundary |
+|---|---|---|
+| Win32Host `SessionBecameInteractive` | Count per day and distinct backend devices; join device-day cohorts to later days for D7/D28. Group by `Branding`, `Distribution`. | First user interaction, not every launch; inherited event outside the dedicated catalog. |
+| App `ConnectionCreated` | Count connections and distinct backend devices, optionally filtering `ConnectionTypeGuid` for the desired connection type. | Connections, not unique windows or proof of an interactive shell; inherited event outside the dedicated catalog. |
+| App `AgentPaneOpened` | Count by `TriggerSource` and `Branding`; divide devices with an open by interactive devices in the same cohort for reach. | Instrumented open requests, not every pane creation or restoration. |
+| App `CommandPaletteAgentPromptEntered` | Count foreground prompt-mode entries and distinct devices; compare aggregate entry counts to dispatched foreground prompts. | No entry-to-submission identifier; editing and abandonment do not dispatch. |
+| App `CommandPaletteDispatchedAgentPrompt` | Count by `IsBackgroundMode`; compare foreground submissions to mode entries only at aggregate scope. | Dispatch request, not delegate startup or task completion. |
+| App `AppCreated` | Count window-created snapshots; group by `SidebarEnabled`, provider/effective-provider fields, policy categories, and both custom-agent counts. Divide matching snapshots by all snapshots in the same cohort. | One observation per created window; do not sum primary and delegate custom counts as distinct agents or infer CLI availability. |
+| App `SidebarSearchOpened` | Count explicit search-box opens and distinct devices. | Search entry, not query edits, result views, or Agent-view search. |
+| App `SidebarAgentFilterApplied` | Count Agent-view entries; group or histogram `row_count`, including zero. | First successful Ready snapshot after entry, not tab-search filtering or unique sessions. |
+| App `SidebarTabPinned` | Count enable actions; group by the post-action `pinned_count`. | Keep-running menu action, not tab-order pinning; count covers attached tabs in one window. |
+| App `KeepRunningMarked` | Count distinct `KeepId`; group by `HasAgentPane`. | Tab-level opt-ins, not connected agent sessions. |
+| App `KeepRunningDetached` | Count distinct `KeepId` and join to marked IDs in the same process-lifetime cohort. | Successful retention inside a live process; process exit cannot emit a detach. |
+| App `KeepRunningReattached` | Count attempts by `Outcome`; count distinct `KeepId` with `live` over distinct detached `KeepId`, reporting failed attempts separately. | A failed restore can be retried; no `gone` outcome or cross-process recovery. |
+| App `SidebarRowFieldsChanged` | Count by the complete `fields` selection; split comma-separated fixed IDs for field-presence frequency if needed. | Includes session-start snapshots as well as user toggles, with no discriminator; not an edit count. |
+| App `DelegateInvoked` | Count by `TriggerSource`. | App-side process launch only; do not merge with the WTA event solely by name. |
+| App `ErrorDetected` | Count by `Branding`. | Pending UI projections can repeat; cannot join one-to-one with WTA classifications. |
+| App `AgentSessionStarted` | Count distinct `StartId` by `StartKind`, `AgentId`, `AgentSource`, configuration fields, `Branding`, and `Distribution`. | Successful host-accepted New/Load observations include prewarm; a load is not necessarily a user resume. |
+| WTA `AcpInitializeComplete` | Group by `Route`, `Success`, `FailureKind`; compute successes / attempts and latency percentiles from `DurationMs` within each route and outcome. | Helper, probe, and sessions-CLI populations are different; not process cold-start time. |
+| WTA `AcpNewSessionComplete` | Group by `Route`, `Success`; count successes and duration percentiles per route. Select one helper route population, excluding `Probe`, for chat-session starts. | `MasterForward` and helper routes can describe the same creation; do not sum them. |
+| WTA `AcpLoadSessionComplete` | Count by `Success`; calculate success share and `DurationMs` percentiles separately by outcome. | No route/session ID; cannot distinguish layout restore from session-view resume. |
+| WTA `AgentColdStartComplete` | Group by `AgentId`, `Source`, `Success`, `FailureKind`; compute cold-start success share and `DurationMs` percentiles. | Warm process reuse does not emit. |
+| WTA `AgentPromptSent` | Count by `AgentId`, `IsAutofix`, `IsByok`, `TemplateKind`, `Reattached`, and `UserPromptOrdinal`. For the document's 2.4, count `Second` / count `First` after filtering `IsAutofix=false` in a fully observed session cohort. | Each `Second` represents one observed ACP session reaching a second user prompt; `Later` counts extra turns. No session ID is exported, so a window cutting across session lifetime cannot form an exact session cohort. |
+| WTA `AgentResponseFirstToken` | Calculate median/P95 `FirstTokenLatencyMs` by `AgentId`; count events with first text. | Tool-only or timestamp-less turns may emit none; not first final-answer text. |
+| WTA `AgentResponseComplete` | Group by `AgentId`, `IsByok`, `Success`; compute successful completions / all tracked completions and `TotalDurationMs` percentiles per outcome. | RPC completion, not task success; cannot join to one prompt or count unfinished turns. |
+| WTA `ErrorDetected` | Count by `Severity`, `Method`, `AllowAutoFixPolicy`, `AutoFixEnabled`. | Only classified actionable/critical signals, not every failed command or unique incident. |
+| WTA `ErrorFixOffered` | Count distinct `OfferId`; join accepted IDs to the offer cohort to calculate acceptance. | Concrete visible offers, including manual `/fix`; no reliable join to `ErrorDetected`. |
+| WTA `ErrorFixAccepted` | Count distinct accepted `OfferId` / distinct offered `OfferId` for the same offer cohort; allow later-window acceptances. | Confirmed Run successfully queued, not command execution or successful repair. |
+| WTA `AgentSlashCommandUsed` | Count by `command`, optionally splitting distinct backend devices by command. | Built-in command dispatch before guards, not agent-provided slash commands or success. |
+| WTA `SessionsViewOpened` | Count view-open routine entries and distinct backend devices. | No row-load, selection, or unique view-instance guarantee. |
+| WTA `SessionResumeInvoked` | Count by `Route` and `AgentId`. | Resume-route dispatch, not ACP load success or provider-native CLI completion. |
+| WTA `DelegateInvoked` | Count where `TriggerSource=Agent` separately from App `DelegateInvoked`. | Agent-requested delegation after target creation, not completed work. |
+| WTA `SessionMcpToolCalled` | Count by `ToolName`, retaining `unknown` as its own bucket. | Calls reaching dispatch, before validation, approval, or execution; not agent-owned tools. |
+| WTA `HookOperationCompleted` | Count by `Operation`, `Cli`, `Outcome`; compute `failed` share separately for installs and uninstalls. | One command may emit for multiple CLIs; `skipped` is not necessarily an error. |
+| Model `AgentProviderChanged` | Count by `role`, `from`, `to`; use App `AppCreated` separately for current configuration share. | Successful settings reloads, not every UI edit; custom-to-custom may hide a raw ID change. |
+| Editor `AcpModelProbeStarted` | Count starts by `AgentId`, optionally by `CacheRevision` for diagnostics. | Revision is not a probe ID; do not use it for exact joins or as a retry count. |
+| Editor `AcpModelProbeDiscarded` | Count stale discards by `AgentId` separately from completions. | A discarded generation is not a provider failure. |
+| Editor `AcpModelProbeCompleted` | Group by `AgentId`, `Succeeded`; compute successful parsed catalogs / completed probes and `ModelCount` distribution. | No per-probe ID to join starts/discards/completions; parsing success is not cache acceptance. |
 
 **Correlation rules:**
 

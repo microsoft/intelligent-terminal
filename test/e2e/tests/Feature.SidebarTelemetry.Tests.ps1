@@ -241,6 +241,17 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             $script:tabCount = @(Get-WtTabs -App $script:app -WindowId ([string]$script:app.WindowId)).Count
             $script:tabCount | Should -Be 3
 
+            Invoke-TelemetryPhase -Name pre-reattach-prompt -Action {
+                $script:preReattachAgentSessionId = (Get-AgentPaneSession -App $script:app -PaneSessionId $script:helperB.PaneSessionId).AcpSessionId
+                $script:preReattachAgentSessionId | Should -Not -BeNullOrEmpty
+                $marker = 'TELEMETRY_CHAT_' + [guid]::NewGuid().ToString('N')
+                Send-AgentPrompt -App $script:app -PaneSessionId $script:helperB.PaneSessionId -Text $marker | Out-Null
+                Assert-AgentPaneText -App $script:app -PaneSessionId $script:helperB.PaneSessionId -Pattern "ACK:$marker" -TimeoutSec 20
+                Wait-Until -TimeoutSec 20 -Because 'the retained ACP session completes its first user prompt' -Condition {
+                    (Get-Content -LiteralPath $log -Raw).Contains("telemetry-chat-complete|$($script:preReattachAgentSessionId)|$marker")
+                } | Out-Null
+                Start-Sleep -Seconds 1
+            }
             Invoke-TelemetryPhase -Name fields-menu-only -Action {
                 Invoke-UiElement -App $script:app -Selector FilterTabsButton | Out-Null
                 Assert-SidebarRowFields -Fields 'agentStatus,workingDirectory'
@@ -365,7 +376,7 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             Invoke-TelemetryPhase -Name retain-restore -Action {
                 $before = Get-WtPaneStatus -App $script:app -SessionId $script:tabB.session_id
                 $script:restoredAgentSessionId = (Get-AgentPaneSession -App $script:app -PaneSessionId $script:helperB.PaneSessionId).AcpSessionId
-                $script:restoredAgentSessionId | Should -Not -BeNullOrEmpty
+                $script:restoredAgentSessionId | Should -Be $script:preReattachAgentSessionId
                 Open-SidebarContextMenu -Title $script:titleB
                 Invoke-UiElement -App $script:app -Selector 'Close tab' | Out-Null
                 Wait-Until -TimeoutSec 15 -Because 'the kept tab detaches' -Condition {
@@ -580,13 +591,22 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
     It 'Restored agent prompt telemetry identifies the surviving ACP session' {
         if ($script:phaseErrors.Count) { throw ($script:phaseErrors.Values | Out-String) }
         $before = @(Get-TelemetryPhaseEvents -Phase session-id-privacy -Name AgentPromptSent -Provider $script:wtaProvider)
+        $beforeRetained = @(Get-TelemetryPhaseEvents -Phase pre-reattach-prompt -Name AgentPromptSent -Provider $script:wtaProvider)
         $after = @(Get-TelemetryPhaseEvents -Phase reattach-prompt -Name AgentPromptSent -Provider $script:wtaProvider)
         $before | Should -HaveCount 1
+        $beforeRetained | Should -HaveCount 1
         $after | Should -HaveCount 1
         $before[0].Fields.Reattached | Should -BeIn @('false', '0')
+        $beforeRetained[0].Fields.Reattached | Should -BeIn @('false', '0')
         $after[0].Fields.Reattached | Should -BeIn @('true', '1')
+        $before[0].Fields.UserPromptOrdinal | Should -BeExactly 'First'
+        $beforeRetained[0].Fields.UserPromptOrdinal | Should -BeExactly 'First'
+        $after[0].Fields.UserPromptOrdinal | Should -BeExactly 'Second'
+        $beforeRetained[0].ProcessId | Should -Be $after[0].ProcessId
         $after[0].Fields.IsAutofix | Should -BeIn @('false', '0')
         $after[0].Types.Reattached | Should -Match 'Boolean$'
+        $after[0].Types.UserPromptOrdinal | Should -Match 'AnsiString$'
+        @($script:records | Where-Object Name -eq AgentPromptSent) | Should -HaveCount 3
         $after[0].Fields.Keys | Should -Not -Contain 'SessionId'
         foreach ($phase in @('pin-first', 'pin-second-hidden-first', 'unpin', 'repin', 'retain-restore')) {
             @(Get-TelemetryPhaseEvents -Phase $phase -Name AgentPromptSent) | Should -HaveCount 0

@@ -372,6 +372,8 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
             $record.Fields.IsAutofix | Should -BeIn @('false', '0')
             $record.Fields.TemplateKind | Should -Not -Be 'AgentCommand'
             $record.Types.PromptLengthBytes | Should -Match 'UInt32$'
+            $record.Types.UserPromptOrdinal | Should -Match 'AnsiString$'
+            $record.Fields.UserPromptOrdinal | Should -BeIn @('First', 'Second', 'Later')
         }
         $completed = @(Get-TelemetryPhaseEvents -Phase conversation -Name AgentResponseComplete | Where-Object {
             $_.ProcessId -eq $script:agent.HelperProcessId
