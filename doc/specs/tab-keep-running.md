@@ -28,6 +28,13 @@ also truncates before the indicator column.
 The menu icons and title indicator use Segoe Fluent Icons with Segoe MDL2 Assets as a fallback,
 not a bitmap asset.
 
+**Pin tab** is a separate context-menu action in both tab layouts. It keeps a
+terminal tab before unpinned tabs and can be undone with **Unpin tab**. Pinned
+tabs still close normally, including with bulk close actions; pinning does not
+enable background retention. The order is kept while moving a tab to another
+window or restoring it from Keep running in the same process, but is not saved
+across application restarts. Settings tabs cannot be pinned.
+
 ## UI integration contract
 
 `TerminalPage` exposes APIs keyed by `Tab::StableId()`, parsed as a GUID, not

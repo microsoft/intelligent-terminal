@@ -26,6 +26,12 @@
         </Grid.ColumnDefinitions>
         <StackPanel x:Name="HeaderStackPanel"
                     Orientation="Horizontal">
+            <FontIcon x:Name="HeaderPinnedIcon"
+                      Margin="0,0,8,0"
+                      FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                      FontSize="12"
+                      Glyph="&#xE718;"
+                      Visibility="{x:Bind TabStatus.IsPinned, Mode=OneWay}" />
             <mux:ProgressRing x:Name="HeaderProgressRing"
                               Width="15"
                               Height="15"

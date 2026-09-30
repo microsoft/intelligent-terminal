@@ -74,6 +74,7 @@ namespace winrt::TerminalApp::implementation
         if (const auto header = Header().try_as<TerminalApp::TabHeaderControl>())
         {
             Title(header.Title());
+            IsPinned(header.TabStatus().IsPinned());
             header.IsMetadataVisible(!railCollapsed && !IsGroup() && !header.MetadataText().empty());
         }
         else if (const auto headerText = Header().try_as<hstring>())
@@ -113,6 +114,7 @@ namespace winrt::TerminalApp::implementation
         GroupVisibility(isGroup && !railCollapsed ? Visibility::Visible : Visibility::Collapsed);
         ChildrenVisibility(isGroup && !railCollapsed && IsExpanded() ? Visibility::Visible : Visibility::Collapsed);
         IconVisibility(isGroup && !railCollapsed ? Visibility::Collapsed : Visibility::Visible);
+        PinnedIconVisibility(railCollapsed && IsPinned() ? Visibility::Visible : Visibility::Collapsed);
         HeaderMinHeight(railCollapsed ? 32.0 : 40.0);
         LeadingContentMargin(railCollapsed ? WUX::Thickness{} : WUX::Thickness{ 6, 0, 10, 0 });
         ChevronGlyph(IsExpanded() ? L"\xE70D" : L"\xE76C");
@@ -942,6 +944,25 @@ namespace winrt::TerminalApp::implementation
         _tabItems.InsertAt(to, item);
         _displayItems.RemoveAt(from);
         _displayItems.InsertAt(to, display);
+    }
+
+    void TabStrip::RestoreTabOrder(const std::vector<IInspectable>& items)
+    {
+        _syncingNativeReorder = true;
+        auto endSync = wil::scope_exit([&]() noexcept {
+            _syncingNativeReorder = false;
+        });
+        _tabItems.ReplaceAll(items);
+        _syncDisplayItems();
+    }
+
+    void TabStrip::SetTabPinned(const MUX::Controls::TabViewItem& item, bool pinned)
+    {
+        if (const auto display = _displayItemForTab(item))
+        {
+            display.IsPinned(pinned);
+            winrt::get_self<TabStripDisplayItem>(display)->UpdatePresentation(_isRailCollapsed);
+        }
     }
 
     void TabStrip::BeginHeaderTransfer()

@@ -300,6 +300,14 @@
                                                   VerticalAlignment="Center"
                                                   Content="{x:Bind Icon, Mode=OneWay}"
                                                   Visibility="{x:Bind IconVisibility, Mode=OneWay}" />
+                                <FontIcon x:Uid="CollapsedPinnedTabIcon"
+                                          FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                          FontSize="9"
+                                          Glyph="&#xE718;"
+                                          HorizontalAlignment="Right"
+                                          VerticalAlignment="Bottom"
+                                          IsHitTestVisible="False"
+                                          Visibility="{x:Bind PinnedIconVisibility, Mode=OneWay}" />
                             </Grid>
                             <ContentPresenter x:Name="TabHeaderPresenter"
                                               Grid.Column="1"

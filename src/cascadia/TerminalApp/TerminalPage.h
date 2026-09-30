@@ -371,6 +371,8 @@ namespace winrt::TerminalApp::implementation
         std::chrono::steady_clock::time_point _historyNextRefresh{};
         bool _tabDragReorderAuthorized{ false };
         Windows::Foundation::IInspectable _tabDragSelectedItem{ nullptr };
+        winrt::weak_ref<Tab> _pendingPinTab;
+        bool _pendingPinValue{ false };
         // Spec A §5.2: hand-rolled splitter for resizing the vertical rail.
         // Lives in column 1 of the Root Grid, hugging its left edge, so the
         // hit strip straddles the column boundary.
@@ -396,6 +398,11 @@ namespace winrt::TerminalApp::implementation
         static winrt::com_ptr<Tab> _GetTabImpl(const TerminalApp::Tab& tab);
 
         void _UpdateTabIndices();
+        uint32_t _PinnedTabCount() const;
+        void _RequestPinTab(const winrt::com_ptr<Tab>& tab, bool pinned);
+        void _ApplyPendingPinRequest();
+        void _SetTabPinned(const winrt::com_ptr<Tab>& tab, bool pinned);
+        void _MoveTabToIndex(uint32_t from, uint32_t to, bool selectMoved);
 
         TerminalApp::Tab _settingsTab{ nullptr };
         winrt::Microsoft::Terminal::Settings::Editor::MainPage _settingsMainPage{ nullptr };

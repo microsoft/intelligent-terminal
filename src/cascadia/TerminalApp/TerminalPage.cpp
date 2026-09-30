@@ -5804,6 +5804,7 @@ namespace winrt::TerminalApp::implementation
             _tabLayoutTransitionTarget.reset();
             _tabLayoutTransitionSelectedItem = nullptr;
             _ApplyTabListProjection();
+            _ApplyPendingPinRequest();
             return false;
         }
     }
@@ -5951,6 +5952,7 @@ namespace winrt::TerminalApp::implementation
         _tabLayoutTransitionTarget.reset();
         _tabLayoutTransitionSelectedItem = nullptr;
         _ApplyTabListProjection();
+        _ApplyPendingPinRequest();
 
         if (const auto infoBar = FindName(L"TabLayoutRestartInfoBar").try_as<MUX::Controls::InfoBar>())
         {
@@ -12203,7 +12205,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto direction = args.Direction();
-        if (direction != MoveTabDirection::None)
+        if (direction != MoveTabDirection::None && !_IsTabListPositionOperationBlocked())
         {
             // Use the requested tab, if provided. Otherwise, use the currently
             // focused tab.
@@ -12589,9 +12591,16 @@ namespace winrt::TerminalApp::implementation
                 THROW_HR_IF(E_ABORT, !_SplitPane(targetTab, firstSplit.SplitDirection(), firstSplit.SplitSize(), incomingRoot));
                 destinationTab = targetTab;
             }
-            else if (tabIndex != -1)
+            else
             {
-                _TryMoveTab(*_GetTabIndex(*destinationTab), tabIndex);
+                if (sourceTab->IsPinned())
+                {
+                    _SetTabPinned(destinationTab, true);
+                }
+                if (tabIndex != -1)
+                {
+                    _TryMoveTab(*_GetTabIndex(*destinationTab), tabIndex);
+                }
             }
             for (const auto& control : sourceControls)
             {

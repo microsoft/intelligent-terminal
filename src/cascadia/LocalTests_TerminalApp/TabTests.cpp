@@ -363,6 +363,13 @@ namespace TerminalAppLocalTests
         TEST_METHOD(AgentPaneRestoreDoesNotRequireAgentSession);
         TEST_METHOD(PaneAgentSessionEndClearsAgentBinding);
         TEST_METHOD(KeepRunningAcceptsPlainTerminalTabs);
+        TEST_METHOD(PinnedTabMenuReordersWithoutStealingSelection);
+        TEST_METHOD(PinnedTabInsertAndMoveRespectGroups);
+        TEST_METHOD(PinnedTabSidebarRejectsCrossGroupDrag);
+        TEST_METHOD(PinnedTabRequestDuringDragIsDeferred);
+        TEST_METHOD(PinnedTabCollapsedRailHasIndicator);
+        TEST_METHOD(PinnedTabLayoutRoundTripKeepsOrder);
+        TEST_METHOD(PinnedTabTransferPreservesState);
         TEST_METHOD(KeepRunningMenuIsFirstAndVerticalOnly);
         TEST_METHOD(KeepRunningMenuTogglesOwningTab);
         TEST_METHOD(KeepRunningBadgeFitsLongTitle);
@@ -488,7 +495,7 @@ namespace TerminalAppLocalTests
         using TransferStage = winrt::TerminalApp::implementation::TerminalPage::ContentTransferStage;
         static winrt::TerminalApp::implementation::SharedWtaLease _acquireIsolatedAgentLease();
         std::unique_ptr<ContentTransferFixture> _createContentTransferFixture(bool agentFirst, bool hidden, bool freshReceiver = false, bool twoLeaves = false, std::optional<int32_t> historySize = std::nullopt);
-        void _verifyContentTransferReviewZoom(bool hidden, bool zoomed, bool freshReceiver, bool twoLeaves = true, bool restoredAgent = false);
+        void _verifyContentTransferReviewZoom(bool hidden, bool zoomed, bool freshReceiver, bool twoLeaves = true, bool restoredAgent = false, bool pinned = false);
         void _verifyContentTransferReviewScroll(bool transfer, bool reject = true);
         void _verifyContentTransferReviewSuppression(bool singlePane, bool destinationSuppressed = false);
         void _waitForContentTransferReviewUI(const std::function<bool()>& predicate);
@@ -1131,6 +1138,7 @@ namespace TerminalAppLocalTests
             page->_manager.OnPaneAgentSessionChanged(_keepRunningHook(keptId, "agent.session.start"));
             page->_manager.OnPaneAgentSessionChanged(_keepRunningHook(closedId, "agent.session.start"));
             page->SetTabKeepRunning(groupId, true);
+            page->_SetTabPinned(tab, true);
             page->_HandleCloseTabRequested(*tab, true);
 
             VERIFY_ARE_EQUAL(0u, page->_tabs.Size());
@@ -1158,6 +1166,8 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(std::wstring_view{ restoredControl.ReadEntireBuffer() }.find(L"still running while detached") != std::wstring_view::npos);
             VERIFY_IS_TRUE(page->IsTabKeepRunning(groupId));
             VERIFY_IS_TRUE(restored->TabStatus().IsKeepRunning());
+            VERIFY_IS_TRUE(restored->IsPinned());
+            VERIFY_IS_TRUE(restored->TabStatus().IsPinned());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Turn off keep running" }, restored->_keepRunningMenuItem.Text());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE711" }, restored->_keepRunningMenuItem.Icon().as<FontIcon>().Glyph());
             VERIFY_IS_FALSE(page->_manager.HasKeptSessions());
@@ -1222,6 +1232,158 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(item.IsEnabled());
             tab->_rootPane = root;
             tab->_UpdateKeepRunningMenuItem();
+        });
+    }
+
+    void TabTests::PinnedTabMenuReordersWithoutStealingSelection()
+    {
+        using namespace winrt::Windows::UI::Xaml::Automation;
+        const auto page = _commonSetup();
+        TestOnUIThread([&]() {
+            const auto first = page->_GetFocusedTabImpl();
+            const auto second = page->_GetTabImpl(page->_CreateNewTabFromPane(page->_MakePane(nullptr, nullptr, nullptr)));
+            const auto third = page->_GetTabImpl(page->_CreateNewTabFromPane(page->_MakePane(nullptr, nullptr, nullptr)));
+            const auto selected = page->_selectedTabItem();
+            const auto content = third->Content();
+            const Peers::MenuFlyoutItemAutomationPeer peer{ second->_pinMenuItem };
+            const auto invoke = peer.GetPattern(Peers::PatternInterface::Invoke).as<Provider::IInvokeProvider>();
+
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Pin tab" }, peer.GetName());
+            invoke.Invoke();
+            VERIFY_IS_TRUE(second->IsPinned());
+            VERIFY_IS_TRUE(second->TabStatus().IsPinned());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Unpin tab" }, peer.GetName());
+            VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(0)) == second);
+            VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(1)) == first);
+            VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == third);
+            VERIFY_IS_TRUE(page->_selectedTabItem() == selected);
+            VERIFY_IS_TRUE(page->_GetTabImpl(page->_mruTabs.GetAt(0)) == third);
+            VERIFY_IS_TRUE(third->Content() == content);
+
+            invoke.Invoke();
+            VERIFY_IS_FALSE(second->IsPinned());
+            VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(0)) == second);
+            VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == third);
+        });
+    }
+
+    void TabTests::PinnedTabInsertAndMoveRespectGroups()
+    {
+        const auto page = _commonSetup();
+        TestOnUIThread([&]() {
+            const auto first = page->_GetFocusedTabImpl();
+            const auto second = page->_GetTabImpl(page->_CreateNewTabFromPane(page->_MakePane(nullptr, nullptr, nullptr)));
+            page->_SetTabPinned(first, true);
+            page->_SetTabPinned(second, true);
+            const auto inserted = page->_GetTabImpl(page->_CreateNewTabFromPane(page->_MakePane(nullptr, nullptr, nullptr), 0));
+            VERIFY_IS_FALSE(inserted->IsPinned());
+            VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(2)) == inserted);
+            page->_TryMoveTab(2, 0);
+            VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(2)) == inserted);
+            page->_TryMoveTab(1, 2);
+            VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(1)) == second);
+            page->_TryMoveTab(1, 0);
+            VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(0)) == second);
+            VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(1)) == first);
+
+            page->_settings.GlobalSettings().NewTabPosition(NewTabPosition::AfterCurrentTab);
+            page->_selectedTabItem(second->TabViewItem());
+            const auto afterPinned = page->_GetTabImpl(page->_CreateNewTabFromPane(page->_MakePane(nullptr, nullptr, nullptr)));
+            VERIFY_IS_FALSE(afterPinned->IsPinned());
+            VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(2)) == afterPinned);
+            VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(3)) == inserted);
+            second->Close();
+            VERIFY_ARE_EQUAL(3u, page->_tabs.Size());
+            VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(0)) == first);
+            VERIFY_ARE_EQUAL(1u, page->_PinnedTabCount());
+        });
+    }
+
+    void TabTests::PinnedTabSidebarRejectsCrossGroupDrag()
+    {
+        const auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto pinned = page->_GetFocusedTabImpl();
+            const auto regular = page->_GetTabImpl(page->_CreateNewTabFromPane(page->_MakePane(nullptr, nullptr, nullptr)));
+            page->_SetTabPinned(pinned, true);
+            const auto selected = page->_selectedTabItem();
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            const auto displays = strip->ItemsList().ItemsSource().as<IObservableVector<winrt::TerminalApp::TabStripDisplayItem>>();
+            page->_rearranging = true;
+            page->_tabDragReorderAuthorized = true;
+            page->_tabDragSelectedItem = selected;
+            const auto firstDisplay = displays.GetAt(0);
+            displays.RemoveAt(0);
+            displays.InsertAt(1, firstDisplay);
+            const auto items = page->_tabStrip.TabItems();
+            const auto firstItem = items.GetAt(0);
+            strip->_syncingNativeReorder = true;
+            items.RemoveAt(0);
+            items.InsertAt(1, firstItem);
+            strip->_syncingNativeReorder = false;
+            page->_TabDragCompleted(page->_tabStrip, nullptr);
+
+            VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(0)) == pinned);
+            VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(1)) == regular);
+            VERIFY_IS_TRUE(items.GetAt(0) == pinned->TabViewItem());
+            VERIFY_IS_TRUE(displays.GetAt(0).Tab() == pinned->TabViewItem());
+            VERIFY_IS_TRUE(page->_selectedTabItem() == selected);
+        });
+    }
+
+    void TabTests::PinnedTabRequestDuringDragIsDeferred()
+    {
+        const auto page = _commonSetup();
+        TestOnUIThread([&]() {
+            const auto first = page->_GetFocusedTabImpl();
+            const auto second = page->_GetTabImpl(page->_CreateNewTabFromPane(page->_MakePane(nullptr, nullptr, nullptr)));
+            page->_rearranging = true;
+            page->_RequestPinTab(second, true);
+            VERIFY_IS_FALSE(second->IsPinned());
+            VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(0)) == first);
+            page->_rearranging = false;
+            page->_ApplyPendingPinRequest();
+            VERIFY_IS_TRUE(second->IsPinned());
+            VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(0)) == second);
+        });
+    }
+
+    void TabTests::PinnedTabCollapsedRailHasIndicator()
+    {
+        const auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            page->_SetTabPinned(tab, true);
+            const auto badge = tab->_headerControl.FindName(L"HeaderPinnedIcon").as<FontIcon>();
+            VERIFY_ARE_EQUAL(Visibility::Visible, badge.Visibility());
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            const auto displays = strip->ItemsList().ItemsSource().as<IObservableVector<winrt::TerminalApp::TabStripDisplayItem>>();
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, displays.GetAt(0).PinnedIconVisibility());
+            page->_tabStrip.IsRailCollapsed(true);
+            VERIFY_ARE_EQUAL(Visibility::Visible, displays.GetAt(0).PinnedIconVisibility());
+            const auto name = std::wstring{ winrt::Windows::UI::Xaml::Automation::AutomationProperties::GetName(tab->TabViewItem()) };
+            VERIFY_IS_TRUE(name.find(L"Pinned") != std::wstring::npos);
+            page->_SetTabPinned(tab, false);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, displays.GetAt(0).PinnedIconVisibility());
+        });
+    }
+
+    void TabTests::PinnedTabLayoutRoundTripKeepsOrder()
+    {
+        const auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto first = page->_GetFocusedTabImpl();
+            const auto second = page->_GetTabImpl(page->_CreateNewTabFromPane(page->_MakePane(nullptr, nullptr, nullptr)));
+            page->_SetTabPinned(second, true);
+            VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(0)) == second);
+            VERIFY_IS_TRUE(page->_ApplyTabLayout(TabLayout::Horizontal));
+            VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(0)) == second);
+            VERIFY_IS_TRUE(page->_tabView.TabItems().GetAt(0) == second->TabViewItem());
+            VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == second);
+            VERIFY_IS_TRUE(page->_ApplyTabLayout(TabLayout::Vertical));
+            VERIFY_IS_TRUE(page->_tabStrip.TabItems().GetAt(0) == second->TabViewItem());
+            VERIFY_IS_TRUE(page->_tabStrip.TabItems().GetAt(1) == first->TabViewItem());
+            VERIFY_IS_TRUE(second->IsPinned());
         });
     }
 
@@ -8674,7 +8836,7 @@ namespace TerminalAppLocalTests
         VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(settled.m_handle, 10000));
     }
 
-    void TabTests::_verifyContentTransferReviewZoom(bool hidden, bool zoomed, bool freshReceiver, bool twoLeaves, bool restoredAgent)
+    void TabTests::_verifyContentTransferReviewZoom(bool hidden, bool zoomed, bool freshReceiver, bool twoLeaves, bool restoredAgent, bool pinned)
     {
         auto fixture = _createContentTransferFixture(true, hidden, freshReceiver, twoLeaves);
         const auto cleanup = wil::scope_exit([&]() {
@@ -8690,6 +8852,10 @@ namespace TerminalAppLocalTests
         });
         TestOnUIThread([&]() {
             const auto tab = fixture->original.tab;
+            if (pinned)
+            {
+                fixture->source->_SetTabPinned(tab, true);
+            }
             if (restoredAgent)
             {
                 fixture->agentOverrideOrigin = winrt::TerminalApp::implementation::Tab::AgentOverrideOrigin::Restore;
@@ -8775,6 +8941,12 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(shellId, moved->GetActiveTerminalControl().ContentId());
             VERIFY_IS_FALSE(moved->GetActivePane()->IsAgentPane());
             VERIFY_ARE_EQUAL(zoomed, moved->IsZoomed());
+            if (pinned)
+            {
+                VERIFY_IS_TRUE(moved->IsPinned());
+                VERIFY_ARE_EQUAL(1u, destination->_PinnedTabCount());
+                VERIFY_IS_TRUE(destination->_GetTabImpl(destination->_tabs.GetAt(0)) == moved);
+            }
             fixture->host.UpdateLayout();
         });
         _waitForContentTransferReviewUI([&]() {
@@ -8790,6 +8962,11 @@ namespace TerminalAppLocalTests
     void TabTests::ContentTransferReviewHiddenZoomedTabMovesToExistingPage()
     {
         _verifyContentTransferReviewZoom(true, true, false);
+    }
+
+    void TabTests::PinnedTabTransferPreservesState()
+    {
+        _verifyContentTransferReviewZoom(false, false, false, true, false, true);
     }
 
     void TabTests::ContentTransferReviewHiddenZoomedTabMovesToFreshReceiver()

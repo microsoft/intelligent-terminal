@@ -77,6 +77,7 @@ namespace TerminalApp
         Windows.UI.Xaml.Controls.Primitives.FlyoutBase ContextFlyout;
         Boolean IsExpanded;
         Boolean IsGroup;
+        Boolean IsPinned;
         Windows.UI.Xaml.Visibility HeaderVisibility;
         Windows.UI.Xaml.Visibility CloseVisibility;
         Windows.UI.Xaml.Visibility SelectionVisibility;
@@ -84,6 +85,7 @@ namespace TerminalApp
         Windows.UI.Xaml.Visibility ChildrenVisibility;
         String ChevronGlyph;
         Windows.UI.Xaml.Visibility IconVisibility;
+        Windows.UI.Xaml.Visibility PinnedIconVisibility;
         Double HeaderMinHeight;
         Windows.UI.Xaml.Thickness LeadingContentMargin;
     };

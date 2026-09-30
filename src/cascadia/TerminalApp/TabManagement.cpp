@@ -141,6 +141,7 @@ namespace winrt::TerminalApp::implementation
                 }
             }
         }
+        insertPosition = std::clamp(insertPosition, _PinnedTabCount(), _tabs.Size());
 
         // Add the new tab to the list of our tabs.
         _tabs.InsertAt(insertPosition, *newTabImpl);
@@ -180,6 +181,15 @@ namespace winrt::TerminalApp::implementation
             {
                 winrt::get_self<implementation::TabStrip>(page->_tabStrip)->RefreshTabColor(tab->TabViewItem());
                 page->_UpdateSidebarHistoryCurrentSession();
+            }
+        });
+        newTabImpl->PinRequested([weakTab, weakThis{ get_weak() }](bool pinned) {
+            if (const auto page = weakThis.get())
+            {
+                if (const auto tab = weakTab.get())
+                {
+                    page->_RequestPinTab(tab, pinned);
+                }
             }
         });
 
@@ -2219,11 +2229,79 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_UpdateTabIndices()
     {
         const auto size = _tabs.Size();
+        const auto pinnedCount = _PinnedTabCount();
         for (uint32_t i = 0; i < size; ++i)
         {
             auto tab{ _tabs.GetAt(i) };
             auto tabImpl{ winrt::get_self<Tab>(tab) };
-            tabImpl->UpdateTabViewIndex(i, size);
+            tabImpl->UpdateTabViewIndex(i, size, pinnedCount);
+        }
+    }
+
+    uint32_t TerminalPage::_PinnedTabCount() const
+    {
+        uint32_t count = 0;
+        for (const auto& tab : _tabs)
+        {
+            if (!_GetTabImpl(tab)->IsPinned())
+            {
+                break;
+            }
+            ++count;
+        }
+        return count;
+    }
+
+    void TerminalPage::_RequestPinTab(const winrt::com_ptr<Tab>& tab, bool pinned)
+    {
+        if (!tab || !_GetTabIndex(*tab) || !tab->CanKeepRunning() || _IsTabListPositionOperationBlocked())
+        {
+            return;
+        }
+        if (_rearranging || _changingTabLayout)
+        {
+            _pendingPinTab = tab->get_weak();
+            _pendingPinValue = pinned;
+            return;
+        }
+        _SetTabPinned(tab, pinned);
+    }
+
+    void TerminalPage::_ApplyPendingPinRequest()
+    {
+        if (!_rearranging && !_changingTabLayout)
+        {
+            const auto tab = _pendingPinTab.get();
+            _pendingPinTab = {};
+            if (tab)
+            {
+                _RequestPinTab(tab, _pendingPinValue);
+            }
+        }
+    }
+
+    void TerminalPage::_SetTabPinned(const winrt::com_ptr<Tab>& tab, bool pinned)
+    {
+        if (!tab || tab->IsPinned() == pinned || !tab->CanKeepRunning())
+        {
+            return;
+        }
+        const auto index = _GetTabIndex(*tab);
+        if (!index)
+        {
+            return;
+        }
+        const auto boundary = _PinnedTabCount();
+        const auto destination = pinned ? boundary : boundary - 1;
+        tab->IsPinned(pinned);
+        _MoveTabToIndex(*index, destination, false);
+        if (*index == destination)
+        {
+            _UpdateTabIndices();
+        }
+        if (_isVerticalLayout)
+        {
+            winrt::get_self<implementation::TabStrip>(_tabStrip)->SetTabPinned(tab->TabViewItem(), pinned);
         }
     }
 
@@ -2256,9 +2334,25 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_TryMoveTab(const uint32_t currentTabIndex,
                                    const int32_t suggestedNewTabIndex)
     {
-        auto newTabIndex = gsl::narrow_cast<uint32_t>(std::clamp<int32_t>(suggestedNewTabIndex, 0, _tabs.Size() - 1));
+        if (currentTabIndex >= _tabs.Size())
+        {
+            return;
+        }
+        const auto boundary = _PinnedTabCount();
+        const auto pinned = _GetTabImpl(_tabs.GetAt(currentTabIndex))->IsPinned();
+        const auto first = pinned ? 0 : boundary;
+        const auto last = pinned ? boundary - 1 : _tabs.Size() - 1;
+        const auto newTabIndex = gsl::narrow_cast<uint32_t>(std::clamp<int32_t>(suggestedNewTabIndex,
+                                                                              gsl::narrow_cast<int32_t>(first),
+                                                                              gsl::narrow_cast<int32_t>(last)));
+        _MoveTabToIndex(currentTabIndex, newTabIndex, true);
+    }
+
+    void TerminalPage::_MoveTabToIndex(uint32_t currentTabIndex, uint32_t newTabIndex, bool selectMoved)
+    {
         if (currentTabIndex != newTabIndex)
         {
+            const auto previouslySelected = _selectedTabItem();
             _mutatingTabCollections = true;
             auto endMutation = wil::scope_exit([&]() noexcept {
                 _mutatingTabCollections = false;
@@ -2279,20 +2373,23 @@ namespace winrt::TerminalApp::implementation
                 _tabItems().RemoveAt(currentTabIndex);
                 _tabItems().InsertAt(newTabIndex, tabViewItem);
             }
-            _selectedTabItem(tabViewItem);
+            _selectedTabItem(selectMoved ? tabViewItem : previouslySelected);
 
             _mutatingTabCollections = false;
             endMutation.release();
             _UpdateTabView();
             _ApplyTabListProjection();
 
-            if (auto autoPeer = Automation::Peers::FrameworkElementAutomationPeer::FromElement(*this))
+            if (selectMoved)
             {
-                const auto tabTitle = tab.Title();
-                autoPeer.RaiseNotificationEvent(Automation::Peers::AutomationNotificationKind::ActionCompleted,
-                                                Automation::Peers::AutomationNotificationProcessing::ImportantMostRecent,
-                                                RS_fmt(L"TerminalPage_TabMovedAnnouncement_Direction", tabTitle, newTabIndex + 1),
-                                                L"TerminalPageMoveTabWithDirection" /* unique name for this notification category */);
+                if (auto autoPeer = Automation::Peers::FrameworkElementAutomationPeer::FromElement(*this))
+                {
+                    const auto tabTitle = tab.Title();
+                    autoPeer.RaiseNotificationEvent(Automation::Peers::AutomationNotificationKind::ActionCompleted,
+                                                    Automation::Peers::AutomationNotificationProcessing::ImportantMostRecent,
+                                                    RS_fmt(L"TerminalPage_TabMovedAnnouncement_Direction", tabTitle, newTabIndex + 1),
+                                                    L"TerminalPageMoveTabWithDirection" /* unique name for this notification category */);
+                }
             }
         }
     }
@@ -2336,7 +2433,13 @@ namespace winrt::TerminalApp::implementation
         auto& from{ _rearrangeFrom };
         auto& to{ _rearrangeTo };
 
-        const auto canCommitReorder = _tabDragReorderAuthorized;
+        const auto validIndices = from.has_value() && to.has_value() &&
+                                  *from >= 0 && *to >= 0 &&
+                                  *from < gsl::narrow_cast<int32_t>(_tabs.Size()) &&
+                                  *to < gsl::narrow_cast<int32_t>(_tabs.Size());
+        const auto canCommitReorder = _tabDragReorderAuthorized && validIndices &&
+                                      _GetTabImpl(_tabs.GetAt(*from))->IsPinned() ==
+                                          _GetTabImpl(_tabs.GetAt(*to))->IsPinned();
 
         if (canCommitReorder && from.has_value() && to.has_value() && to != from)
         {
@@ -2356,11 +2459,19 @@ namespace winrt::TerminalApp::implementation
             auto endMutation = wil::scope_exit([&]() noexcept {
                 _mutatingTabCollections = false;
             });
-            const auto items = _tabItems();
-            items.Clear();
+            std::vector<IInspectable> canonicalItems;
+            canonicalItems.reserve(_tabs.Size());
             for (const auto& tab : _tabs)
             {
-                items.Append(tab.TabViewItem());
+                canonicalItems.emplace_back(tab.TabViewItem());
+            }
+            if (_isVerticalLayout)
+            {
+                winrt::get_self<implementation::TabStrip>(_tabStrip)->RestoreTabOrder(canonicalItems);
+            }
+            else
+            {
+                _tabItems().ReplaceAll(canonicalItems);
             }
             if (_tabDragSelectedItem)
             {
@@ -2386,6 +2497,7 @@ namespace winrt::TerminalApp::implementation
         _tabDragSelectedItem = nullptr;
         winrt::get_self<implementation::TabStrip>(_tabStrip)->ProjectionControlsEnabled(true);
         _ApplyTabListProjection();
+        _ApplyPendingPinRequest();
 
         if (_pendingTabLayout)
         {
