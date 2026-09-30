@@ -329,10 +329,12 @@
     <value>Cau&apos;r tabiau isod</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>Cwympo&apos;r cwarel tabiau</value>
+    <value>Cwympo&apos;r bar ochr</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>Ehangu&apos;r cwarel tabiau</value>
+    <value>Ehangu&apos;r bar ochr</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>Ehangu'r grŵp tabiau</value>

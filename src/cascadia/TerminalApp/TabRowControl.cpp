@@ -146,6 +146,8 @@ namespace winrt::TerminalApp::implementation
         }
         _verticalRailToggleShortcut.Opacity(0.7);
         WUX::Controls::StackPanel tooltipContent;
+        tooltipContent.Orientation(WUX::Controls::Orientation::Horizontal);
+        tooltipContent.Spacing(8);
         tooltipContent.Children().Append(_verticalRailToggleLabel);
         tooltipContent.Children().Append(_verticalRailToggleShortcut);
         WUX::Controls::ToolTip tooltip;

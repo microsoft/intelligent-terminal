@@ -11432,7 +11432,7 @@ namespace winrt::TerminalApp::implementation
                     page->_UpdateTitle(*tab);
                     page->_ApplyTabListProjection(*tab, false);
                 }
-                else if (propertyName == L"Icon" && page->_isVerticalLayout)
+                else if ((propertyName == L"Icon" || propertyName == L"ToolTip") && page->_isVerticalLayout)
                 {
                     page->_tabStrip.SetTabPresentation(tab->TabViewItem(), tab->Title(), tab->Icon());
                 }

@@ -446,10 +446,12 @@
     <value>खालील टॅब बंद करा</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>टॅब उपखंड संकुचित करा</value>
+    <value>साइडबार संकुचित करा</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>टॅब उपखंड विस्तृत करा</value>
+    <value>साइडबार विस्तृत करा</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>टॅब गट विस्तृत करा</value>

@@ -184,10 +184,12 @@
     <value>关闭下方标签页</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>折叠标签页窗格</value>
+    <value>折叠侧边栏</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>展开标签页窗格</value>
+    <value>展开侧边栏</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>展开标签页组</value>

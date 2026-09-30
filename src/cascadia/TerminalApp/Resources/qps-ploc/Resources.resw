@@ -181,10 +181,12 @@
     <value>Ċĺőѕé ťªвѕ вéĺőŵ !!! !!!</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>Ċőĺĺªρѕé ťªвѕ ρªñé !!! !!!</value>
+    <value>Ċőĺĺªρѕé ѕĭđéвªя !!! !!!</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>É×ρªñđ ťªвѕ ρªñé !!! !!!</value>
+    <value>É×ρªñđ ѕĭđéвªя !!! !!!</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>É×ρªñđ ťªв ğřőµρ !!! !!!</value>

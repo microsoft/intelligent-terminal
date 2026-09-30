@@ -181,10 +181,12 @@
     <value>關閉下方的索引標籤</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>摺疊索引標籤窗格</value>
+    <value>摺疊側邊欄</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>展開索引標籤窗格</value>
+    <value>展開側邊欄</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>展開索引標籤群組</value>

@@ -375,10 +375,12 @@
     <value>Tutup tab di bawah</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>Ciutkan panel tab</value>
+    <value>Ciutkan bilah sisi</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>Perluas panel tab</value>
+    <value>Perluas bilah sisi</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>Perluas grup tab</value>

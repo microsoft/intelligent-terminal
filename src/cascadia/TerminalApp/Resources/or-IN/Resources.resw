@@ -447,10 +447,12 @@
     <value>ତଳେ ଥିବା ଟ୍ୟାବ୍‌ଗୁଡ଼ିକ ବନ୍ଦ କରନ୍ତୁ</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>ଟ୍ୟାବ୍ ଫଳକ ସଙ୍କୁଚିତ କରନ୍ତୁ</value>
+    <value>ସାଇଡବାର୍ ସଙ୍କୁଚିତ କରନ୍ତୁ</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>ଟ୍ୟାବ୍ ଫଳକ ବିସ୍ତାର କରନ୍ତୁ</value>
+    <value>ସାଇଡବାର୍ ବିସ୍ତାର କରନ୍ତୁ</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>ଟ୍ୟାବ୍ ଗୋଷ୍ଠୀ ବିସ୍ତାର କରନ୍ତୁ</value>

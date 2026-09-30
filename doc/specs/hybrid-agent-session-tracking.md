@@ -299,8 +299,8 @@ the source chat input or terminal split, with a visible-terminal fallback.
 In contrast, `Ctrl+Shift+S` only expands/collapses the sidebar: expansion does not
 move focus or activate search, and collapse uses the no-source focus policy even
 when the Agents view was visible. Neither action deletes session data or stops agent tasks.
-The sidebar hint uses the effective binding, with display casing such as
-`Ctrl+Shift+S`, and matches the Agent Pane tooltip's separate dimmed shortcut line.
+The sidebar hint uses **Expand sidebar** / **Collapse sidebar** and shows the
+effective binding on the same line in dimmed text, with casing such as `Ctrl+Shift+S`.
 
 Session titles use only the text before the first CR or LF. An empty first line
 uses the existing missing-title fallback. The title occupies one non-wrapping

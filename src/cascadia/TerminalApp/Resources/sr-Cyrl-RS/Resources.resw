@@ -181,10 +181,12 @@
     <value>Затвори картице испод</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>Скупи окно картица</value>
+    <value>Скупи бочну траку</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>Прошири окно картица</value>
+    <value>Прошири бочну траку</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>Прошири групу картица</value>

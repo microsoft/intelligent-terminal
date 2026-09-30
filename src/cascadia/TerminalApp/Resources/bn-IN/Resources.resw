@@ -445,10 +445,12 @@
     <value>নিচের ট্যাবগুলি বন্ধ করুন</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>ট্যাব ফলক সংকুচিত করুন</value>
+    <value>সাইডবার সংকুচিত করুন</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>ট্যাব ফলক প্রসারিত করুন</value>
+    <value>সাইডবার প্রসারিত করুন</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>ট্যাব গোষ্ঠী প্রসারিত করুন</value>

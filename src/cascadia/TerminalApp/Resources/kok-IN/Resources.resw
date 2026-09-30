@@ -447,10 +447,12 @@
     <value>सकयले टॅब बंद करात</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>टॅब फलक संकुचीत करात</value>
+    <value>बाजू पट्टी संकुचीत करात</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>टॅब फलक विस्तारीत करात</value>
+    <value>बाजू पट्टी विस्तारीत करात</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>टॅब गट विस्तारीत करात</value>

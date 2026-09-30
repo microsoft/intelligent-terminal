@@ -87,6 +87,8 @@ namespace TerminalApp
         Windows.UI.Xaml.Visibility IconVisibility;
         Double HeaderMinHeight;
         Windows.UI.Xaml.Thickness LeadingContentMargin;
+        String ToolTipText;
+        String AcceleratorKey;
     };
 
     [default_interface] runtimeclass TabStripPaneEventArgs

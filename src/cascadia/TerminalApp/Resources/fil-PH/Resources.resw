@@ -375,10 +375,12 @@
     <value>Isara ang mga tab sa ibaba</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>I-collapse ang pane ng mga tab</value>
+    <value>I-collapse ang bar sa gilid</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>I-expand ang pane ng mga tab</value>
+    <value>I-expand ang bar sa gilid</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>I-expand ang grupo ng mga tab</value>

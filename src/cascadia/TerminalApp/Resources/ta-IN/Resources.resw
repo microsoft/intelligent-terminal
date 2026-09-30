@@ -425,10 +425,12 @@
     <value>கீழே உள்ள தாவல்களை மூடு</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>தாவல்கள் பலகத்தைச் சுருக்கு</value>
+    <value>பக்கப்பட்டியைச் சுருக்கு</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>தாவல்கள் பலகத்தை விரிவாக்கு</value>
+    <value>பக்கப்பட்டியை விரிவாக்கு</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>தாவல் குழுவை விரிவாக்கு</value>

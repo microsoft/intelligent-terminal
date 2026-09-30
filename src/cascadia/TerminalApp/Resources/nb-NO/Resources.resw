@@ -443,10 +443,12 @@
     <value>Lukk fanene nedenfor</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>Skjul faneruten</value>
+    <value>Skjul sidefeltet</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>Utvid faneruten</value>
+    <value>Utvid sidefeltet</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>Utvid fanegruppen</value>

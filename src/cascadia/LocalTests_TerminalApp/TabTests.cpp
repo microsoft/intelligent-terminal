@@ -297,12 +297,14 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabGroupingIgnoresAgentPane);
         TEST_METHOD(AgentViewFiltersSplitPaneChildren);
         TEST_METHOD(VerticalTabSearchMatchesCommittedTitle);
+        TEST_METHOD(VerticalTabTooltipsExposeStableShortcuts);
         TEST_METHOD(VerticalTabSearchTracksActivePaneMetadata);
         TEST_METHOD(VerticalTabSearchUiState);
         TEST_METHOD(LiteralSearchHighlighting);
         TEST_METHOD(VerticalTabHistoryButtonOpensView);
         TEST_METHOD(VerticalTabHistoryCloseStopsRefresh);
         TEST_METHOD(VerticalTabFilterContainsOnlyMetadata);
+        TEST_METHOD(RichTabMetadataFlyoutDismissalBehavior);
         TEST_METHOD(VerticalTabHistoryStatusText);
         TEST_METHOD(SessionRegistryStatusDeltaUpdatesCaches);
         TEST_METHOD(BottomBarSessionsButtonFollowsLayout);
@@ -3281,7 +3283,8 @@ namespace TerminalAppLocalTests
                 VERIFY_IS_FALSE(label.empty());
                 const auto content = ToolTipService::GetToolTip(button).as<ToolTip>().Content().as<StackPanel>();
                 VERIFY_ARE_EQUAL(2u, content.Children().Size());
-                VERIFY_ARE_EQUAL(Orientation::Vertical, content.Orientation());
+                VERIFY_ARE_EQUAL(Orientation::Horizontal, content.Orientation());
+                VERIFY_ARE_EQUAL(8.0, content.Spacing());
                 for (uint32_t index = 0; index < 2; ++index)
                 {
                     const auto actual = content.Children().GetAt(index).as<TextBlock>();
@@ -4137,6 +4140,129 @@ namespace TerminalAppLocalTests
         });
     }
 
+    void TabTests::VerticalTabTooltipsExposeStableShortcuts()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            NewTerminalArgs args;
+            VERIFY_SUCCEEDED(page->_OpenNewTab(args));
+            VERIFY_SUCCEEDED(page->_OpenNewTab(args));
+            VERIFY_ARE_EQUAL(3u, page->_tabs.Size());
+
+            const auto first = page->_GetTabImpl(page->_tabs.GetAt(0));
+            const auto second = page->_GetTabImpl(page->_tabs.GetAt(1));
+            const auto third = page->_GetTabImpl(page->_tabs.GetAt(2));
+            first->SetTabText(L"First tab");
+            second->SetTabText(L"Hidden tab");
+            third->SetTabText(L"Third tab");
+
+            page->_tabSearchActive = true;
+            page->_tabSearchQuery = L"Third";
+            page->_ApplyTabListProjection();
+            page->UpdateLayout();
+
+            VERIFY_ARE_EQUAL(0u, first->TabViewIndex());
+            VERIFY_ARE_EQUAL(1u, second->TabViewIndex());
+            VERIFY_ARE_EQUAL(2u, third->TabViewIndex());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_tabStrip.ContainerFromIndex(0).as<ListViewItem>().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_tabStrip.ContainerFromIndex(1).as<ListViewItem>().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabStrip.ContainerFromIndex(2).as<ListViewItem>().Visibility());
+
+            const auto tooltipText = [](const DependencyObject& owner) {
+                const auto toolTip = ToolTipService::GetToolTip(owner).as<ToolTip>();
+                const auto textBlock = toolTip.Content().as<TextBlock>();
+                std::wstring text;
+                for (const auto& inlineElement : textBlock.Inlines())
+                {
+                    if (const auto run = inlineElement.try_as<Documents::Run>())
+                    {
+                        text.append(run.Text());
+                    }
+                    else if (inlineElement.try_as<Documents::LineBreak>())
+                    {
+                        text.push_back(L'\n');
+                    }
+                }
+                return text;
+            };
+
+            const auto horizontalTooltip = tooltipText(third->TabViewItem());
+            const auto thirdContainer = page->_tabStrip.ContainerFromIndex(2).as<ListViewItem>();
+            const auto thirdHeader = thirdContainer.ContentTemplateRoot().as<StackPanel>().Children().GetAt(0).as<Grid>();
+            const auto thirdDisplay = thirdContainer.Content().as<winrt::TerminalApp::TabStripDisplayItem>();
+            const std::wstring verticalTooltip{ winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(thirdHeader)) };
+            VERIFY_ARE_EQUAL(horizontalTooltip, verticalTooltip);
+            VERIFY_ARE_EQUAL(winrt::hstring{ verticalTooltip }, thirdDisplay.ToolTipText());
+            VERIFY_ARE_NOT_EQUAL(std::wstring::npos, verticalTooltip.find(L"Third tab"));
+            VERIFY_ARE_NOT_EQUAL(std::wstring::npos, verticalTooltip.find(L"ctrl+alt+3"));
+            VERIFY_ARE_EQUAL(winrt::hstring{ verticalTooltip }, Automation::AutomationProperties::GetHelpText(thirdContainer));
+            VERIFY_IS_NULL(ToolTipService::GetToolTip(thirdContainer));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"ctrl+alt+3" }, Automation::AutomationProperties::GetAcceleratorKey(third->TabViewItem()));
+            VERIFY_ARE_EQUAL(
+                winrt::hstring{ L"ctrl+alt+3" },
+                Automation::AutomationProperties::GetAcceleratorKey(thirdContainer));
+
+            third->SetTabText(L"Renamed third tab");
+            page->UpdateLayout();
+            VERIFY_ARE_EQUAL(tooltipText(third->TabViewItem()), std::wstring{ winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(thirdHeader)) });
+            VERIFY_ARE_EQUAL(Automation::AutomationProperties::GetHelpText(third->TabViewItem()), thirdDisplay.ToolTipText());
+
+            ::Microsoft::Terminal::RichTab::Provider::Presentation presentation;
+            presentation.text = L"main\n2 changes";
+            presentation.tooltip = L"Branch: main, Changes: 2";
+            presentation.accessibilityText = presentation.tooltip;
+            third->SetRichTabPresentation(presentation);
+            page->UpdateLayout();
+            VERIFY_ARE_EQUAL(tooltipText(third->TabViewItem()), std::wstring{ winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(thirdHeader)) });
+            VERIFY_ARE_EQUAL(Automation::AutomationProperties::GetHelpText(third->TabViewItem()), thirdDisplay.ToolTipText());
+            VERIFY_ARE_NOT_EQUAL(std::wstring::npos, std::wstring{ thirdDisplay.ToolTipText() }.find(presentation.tooltip));
+
+            third->UpdateTabViewIndex(1, 3);
+            page->UpdateLayout();
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"ctrl+alt+2" }, Automation::AutomationProperties::GetAcceleratorKey(thirdContainer));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"ctrl+alt+2" }, thirdDisplay.AcceleratorKey());
+            VERIFY_ARE_NOT_EQUAL(
+                std::wstring::npos,
+                std::wstring{ winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(thirdHeader)) }.find(L"ctrl+alt+2"));
+
+            page->_SelectTab(2);
+            VERIFY_IS_TRUE(page->_selectedTabItem() == third->TabViewItem());
+
+            page->_tabStrip.IsRailCollapsed(true);
+            page->UpdateLayout();
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, thirdHeader.FindName(L"TabHeaderPresenter").as<ContentPresenter>().Visibility());
+            VERIFY_ARE_EQUAL(tooltipText(third->TabViewItem()), std::wstring{ winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(thirdHeader)) });
+            page->_tabStrip.IsRailCollapsed(false);
+
+            page->_tabSearchActive = false;
+            page->_ApplyTabListProjection();
+            for (auto i = 0; i < 6; ++i)
+            {
+                VERIFY_SUCCEEDED(page->_OpenNewTab(args));
+            }
+            page->UpdateLayout();
+            VERIFY_ARE_EQUAL(9u, page->_tabs.Size());
+            const auto ninth = page->_GetTabImpl(page->_tabs.GetAt(8));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"ctrl+alt+9" }, Automation::AutomationProperties::GetAcceleratorKey(ninth->TabViewItem()));
+            const auto ninthDisplay = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->DisplayItemForTab(ninth->TabViewItem());
+            VERIFY_ARE_EQUAL(Automation::AutomationProperties::GetHelpText(ninth->TabViewItem()), ninthDisplay.ToolTipText());
+            VERIFY_ARE_NOT_EQUAL(std::wstring::npos, std::wstring{ ninthDisplay.ToolTipText() }.find(L"ctrl+alt+9"));
+
+            VERIFY_SUCCEEDED(page->_OpenNewTab(args));
+            page->UpdateLayout();
+            VERIFY_ARE_EQUAL(10u, page->_tabs.Size());
+            VERIFY_ARE_EQUAL(winrt::hstring{}, Automation::AutomationProperties::GetAcceleratorKey(ninth->TabViewItem()));
+            VERIFY_ARE_EQUAL(Automation::AutomationProperties::GetHelpText(ninth->TabViewItem()), ninthDisplay.ToolTipText());
+            VERIFY_ARE_EQUAL(winrt::hstring{}, ninthDisplay.AcceleratorKey());
+            const auto tenth = page->_GetTabImpl(page->_tabs.GetAt(9));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"ctrl+alt+9" }, Automation::AutomationProperties::GetAcceleratorKey(tenth->TabViewItem()));
+            const auto tenthDisplay = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->DisplayItemForTab(tenth->TabViewItem());
+            VERIFY_ARE_EQUAL(Automation::AutomationProperties::GetHelpText(tenth->TabViewItem()), tenthDisplay.ToolTipText());
+            VERIFY_ARE_NOT_EQUAL(std::wstring::npos, std::wstring{ tenthDisplay.ToolTipText() }.find(L"ctrl+alt+9"));
+        });
+    }
+
     void TabTests::VerticalTabSearchUiState()
     {
         TestOnUIThread([&]() {
@@ -4335,6 +4461,51 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->FilterTabsButton().Visibility());
             strip.IsRailCollapsed(false);
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->FilterTabsButton().Visibility());
+        });
+    }
+
+    void TabTests::RichTabMetadataFlyoutDismissalBehavior()
+    {
+        using namespace winrt::Windows::UI::Xaml::Automation;
+
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+            Grid host;
+            const auto window = Window::Current();
+            const auto previousContent = window.Content();
+            const auto restore = wil::scope_exit([&]() { window.Content(previousContent); });
+            host.Children().Append(strip);
+            window.Content(host);
+            window.Activate();
+            host.UpdateLayout();
+
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            const auto filterButton = stripImpl->FilterTabsButton();
+            const auto flyout = filterButton.Flyout().as<MenuFlyout>();
+            uint32_t closingCount = 0;
+            bool closeCanceled = false;
+            const auto closing = flyout.Closing(winrt::auto_revoke, [&](auto&&, const Controls::Primitives::FlyoutBaseClosingEventArgs& args) {
+                ++closingCount;
+                closeCanceled = args.Cancel();
+            });
+
+            flyout.ShowAt(filterButton);
+            VERIFY_IS_TRUE(flyout.IsOpen());
+
+            const Peers::ToggleMenuFlyoutItemAutomationPeer peer{ stripImpl->RichTabWorkingDirectoryVisibleItem() };
+            const auto toggle = peer.GetPattern(Peers::PatternInterface::Toggle).as<Provider::IToggleProvider>();
+            toggle.Toggle();
+
+            VERIFY_ARE_EQUAL(1u, closingCount);
+            VERIFY_IS_TRUE(closeCanceled);
+            VERIFY_IS_TRUE(flyout.IsOpen());
+            VERIFY_IS_FALSE(strip.RichTabWorkingDirectoryVisible());
+
+            closeCanceled = true;
+            flyout.Hide();
+            VERIFY_ARE_EQUAL(2u, closingCount);
+            VERIFY_IS_FALSE(closeCanceled);
+            VERIFY_IS_FALSE(flyout.IsOpen());
         });
     }
 
@@ -6482,6 +6653,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(paneList.ContainerFromIndex(0) == firstPaneContainer);
             const auto firstPaneTitle = firstPaneRoot.FindName(L"PaneTitleText").as<winrt::TerminalApp::HighlightedTextControl>();
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane" }, firstPaneTitle.Text());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane" }, winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(firstPaneActivateButton)));
             VERIFY_ARE_EQUAL(Visibility::Collapsed, firstPaneRoot.FindName(L"PaneActiveIndicator").as<FrameworkElement>().Visibility());
 
             stripImpl->SetTabSearchText(tab, L"pane");
