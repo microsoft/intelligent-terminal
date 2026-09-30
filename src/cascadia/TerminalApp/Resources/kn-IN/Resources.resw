@@ -446,10 +446,12 @@
     <value>ಕೆಳಗಿನ ಟ್ಯಾಬ್‌ಗಳನ್ನು ಮುಚ್ಚಿ</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>ಟ್ಯಾಬ್‌ಗಳ ಫಲಕವನ್ನು ಸಂಕುಚಿಸಿ</value>
+    <value>ಸೈಡ್‌ಬಾರ್ ಅನ್ನು ಸಂಕುಚಿಸಿ</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>ಟ್ಯಾಬ್‌ಗಳ ಫಲಕವನ್ನು ವಿಸ್ತರಿಸಿ</value>
+    <value>ಸೈಡ್‌ಬಾರ್ ಅನ್ನು ವಿಸ್ತರಿಸಿ</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>ಟ್ಯಾಬ್ ಗುಂಪನ್ನು ವಿಸ್ತರಿಸಿ</value>

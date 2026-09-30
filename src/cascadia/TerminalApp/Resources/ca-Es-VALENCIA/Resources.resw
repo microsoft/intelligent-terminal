@@ -261,10 +261,12 @@
     <value>Tanca les pestanyes de davall</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>Reduïx el tauler de pestanyes</value>
+    <value>Reduïx la barra lateral</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>Expandix el tauler de pestanyes</value>
+    <value>Expandix la barra lateral</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>Expandix el grup de pestanyes</value>

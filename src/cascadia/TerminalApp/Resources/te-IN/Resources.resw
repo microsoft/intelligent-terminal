@@ -425,10 +425,12 @@
     <value>కింద ఉన్న ట్యాబ్‌లను మూసివేయండి</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>ట్యాబ్‌ల పేన్‌ను కుదించండి</value>
+    <value>సైడ్‌బార్‌ను కుదించండి</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>ట్యాబ్‌ల పేన్‌ను విస్తరించండి</value>
+    <value>సైడ్‌బార్‌ను విస్తరించండి</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>ట్యాబ్‌ల సమూహాన్ని విస్తరించండి</value>

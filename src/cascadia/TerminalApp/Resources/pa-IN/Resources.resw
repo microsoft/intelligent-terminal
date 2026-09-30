@@ -446,10 +446,12 @@
     <value>ਹੇਠਾਂ ਦੀਆਂ ਟੈਬਾਂ ਬੰਦ ਕਰੋ</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>ਟੈਬਾਂ ਵਾਲਾ ਪੈਨ ਸਮੇਟੋ</value>
+    <value>ਸਾਈਡਬਾਰ ਸਮੇਟੋ</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>ਟੈਬਾਂ ਵਾਲਾ ਪੈਨ ਫੈਲਾਓ</value>
+    <value>ਸਾਈਡਬਾਰ ਫੈਲਾਓ</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>ਟੈਬ ਗਰੁੱਪ ਫੈਲਾਓ</value>

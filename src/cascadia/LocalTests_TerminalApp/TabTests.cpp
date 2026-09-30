@@ -3279,7 +3279,8 @@ namespace TerminalAppLocalTests
                 VERIFY_IS_FALSE(label.empty());
                 const auto content = ToolTipService::GetToolTip(button).as<ToolTip>().Content().as<StackPanel>();
                 VERIFY_ARE_EQUAL(2u, content.Children().Size());
-                VERIFY_ARE_EQUAL(Orientation::Vertical, content.Orientation());
+                VERIFY_ARE_EQUAL(Orientation::Horizontal, content.Orientation());
+                VERIFY_ARE_EQUAL(8.0, content.Spacing());
                 for (uint32_t index = 0; index < 2; ++index)
                 {
                     const auto actual = content.Children().GetAt(index).as<TextBlock>();

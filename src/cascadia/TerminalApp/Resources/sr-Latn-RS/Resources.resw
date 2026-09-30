@@ -310,10 +310,12 @@
     <value>Zatvori kartice ispod</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>Skupi panel kartica</value>
+    <value>Skupi bočnu traku</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>Proširi panel kartica</value>
+    <value>Proširi bočnu traku</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>Proširi grupu kartica</value>

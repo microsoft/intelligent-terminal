@@ -330,10 +330,12 @@
     <value>Փակել ներքևի ներդիրները</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>Ծալել ներդիրների վահանակը</value>
+    <value>Ծալել կողային վահանակը</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>Ընդարձակել ներդիրների վահանակը</value>
+    <value>Ընդարձակել կողային վահանակը</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>Ընդարձակել ներդիրների խումբը</value>

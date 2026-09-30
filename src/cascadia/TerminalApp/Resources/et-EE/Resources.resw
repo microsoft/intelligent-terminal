@@ -443,10 +443,12 @@
     <value>Sulge allolevad vahekaardid</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>Ahenda vahekaartide paan</value>
+    <value>Ahenda külgriba</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>Laienda vahekaartide paani</value>
+    <value>Laienda külgriba</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>Laienda vahekaartide rühma</value>

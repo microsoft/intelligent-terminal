@@ -442,10 +442,12 @@
     <value>Sulje alapuolella olevat välilehdet</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>Kutista välilehtiruutu</value>
+    <value>Kutista sivupalkki</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>Laajenna välilehtiruutu</value>
+    <value>Laajenna sivupalkki</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>Laajenna välilehtiryhmä</value>

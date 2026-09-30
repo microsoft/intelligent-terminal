@@ -354,10 +354,12 @@
     <value>Đóng các tab bên dưới</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>Thu gọn ngăn tab</value>
+    <value>Thu gọn thanh bên</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>Mở rộng ngăn tab</value>
+    <value>Mở rộng thanh bên</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>Mở rộng nhóm tab</value>

@@ -423,10 +423,12 @@
     <value>Mbyll skedat poshtë</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>Palos panelin e skedave</value>
+    <value>Palos shiritin anësor</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>Zgjero panelin e skedave</value>
+    <value>Zgjero shiritin anësor</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>Zgjero grupin e skedave</value>

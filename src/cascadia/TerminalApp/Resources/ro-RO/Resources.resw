@@ -422,10 +422,12 @@
     <value>Închideți filele de mai jos</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>Restrângeți panoul de file</value>
+    <value>Restrângeți bara laterală</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>Extindeți panoul de file</value>
+    <value>Extindeți bara laterală</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>Extindeți grupul de file</value>

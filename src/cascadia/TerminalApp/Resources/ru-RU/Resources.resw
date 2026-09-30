@@ -181,10 +181,12 @@
     <value>Закрыть вкладки ниже</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>Свернуть панель вкладок</value>
+    <value>Свернуть боковую панель</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>Развернуть панель вкладок</value>
+    <value>Развернуть боковую панель</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>Развернуть группу вкладок</value>

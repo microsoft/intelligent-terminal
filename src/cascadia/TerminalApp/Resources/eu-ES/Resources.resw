@@ -261,10 +261,12 @@
     <value>Itxi azpiko fitxak</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>Tolestu fitxen panela</value>
+    <value>Tolestu alboko barra</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>Zabaldu fitxen panela</value>
+    <value>Zabaldu alboko barra</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>Zabaldu fitxa-taldea</value>

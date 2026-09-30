@@ -423,10 +423,12 @@
     <value>Zavrieť karty nižšie</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>Zbaliť panel kariet</value>
+    <value>Zbaliť bočný panel</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>Rozbaliť panel kariet</value>
+    <value>Rozbaliť bočný panel</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>Rozbaliť skupinu kariet</value>
