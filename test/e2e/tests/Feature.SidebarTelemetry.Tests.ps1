@@ -33,6 +33,7 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             changes = 'RichTabChangesVisibleItem'
         }
         $script:appProvider = '24a1622f-7da7-5c77-3303-d850bd1ab2ed'
+        $script:wtaProvider = '4cfcff80-4e6b-5bfd-8ea1-d38e1226f70b'
         if ((Get-ItTestPackage) -ne 'Dev') { throw 'Sidebar telemetry validation requires explicitly selected Dev.' }
         if (-not $env:ITE2E_EXPECTED_APP_SHA256 -or -not $env:ITE2E_EXPECTED_WTA_SHA256) {
             throw 'Supply TerminalApp.dll and WTA SHA256 values from the exact-source build receipt.'
@@ -233,6 +234,7 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             $helperB = Wait-NewAgentPaneSession -App $script:app -ExcludePaneSessionId $existingHelpers -TimeoutSec 40
             @(Get-AgentPaneSessions -App $script:app | Where-Object PaneSessionId -notin $existingHelpers) | Should -HaveCount 1
             Wait-AgentReady -App $script:app -PaneSessionId $helperB.PaneSessionId -TimeoutSec 40 | Should -BeTrue
+            $script:helperB = $helperB
             Split-WtPane -App $script:app -SessionId $script:tabA.session_id -Direction right -Size 0.4 -Command 'pwsh -NoProfile' | Out-Null
             Set-WtPaneFocus -App $script:app -SessionId $script:tabA.session_id
             Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
@@ -362,6 +364,8 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
             Invoke-TelemetryPhase -Name retain-restore -Action {
                 $before = Get-WtPaneStatus -App $script:app -SessionId $script:tabB.session_id
+                $script:restoredAgentSessionId = (Get-AgentPaneSession -App $script:app -PaneSessionId $script:helperB.PaneSessionId).AcpSessionId
+                $script:restoredAgentSessionId | Should -Not -BeNullOrEmpty
                 Open-SidebarContextMenu -Title $script:titleB
                 Invoke-UiElement -App $script:app -Selector 'Close tab' | Out-Null
                 Wait-Until -TimeoutSec 15 -Because 'the kept tab detaches' -Condition {
@@ -372,10 +376,21 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
                 Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
                 Wait-SidebarHeader -Title $script:titleB
                 (Get-WtPaneStatus -App $script:app -SessionId $script:tabB.session_id).pid | Should -Be $before.pid
+                (Get-AgentPaneSession -App $script:app -PaneSessionId $script:helperB.PaneSessionId).AcpSessionId |
+                    Should -Be $script:restoredAgentSessionId
                 @(Get-WtWindows -App $script:app | Where-Object { [string]$_.window_id -eq [string]$script:app.WindowId })[0].tab_count |
                     Should -Be $script:tabCount
                 Invoke-SidebarKeepRunning -Title $script:titleB -Enable $false
                 Invoke-SidebarKeepRunning -Title $script:titleA -Enable $false
+            }
+            Invoke-TelemetryPhase -Name reattach-prompt -Action {
+                $marker = 'TELEMETRY_CHAT_' + [guid]::NewGuid().ToString('N')
+                Send-AgentPrompt -App $script:app -PaneSessionId $script:helperB.PaneSessionId -Text $marker | Out-Null
+                Assert-AgentPaneText -App $script:app -PaneSessionId $script:helperB.PaneSessionId -Pattern "ACK:$marker" -TimeoutSec 20
+                Wait-Until -TimeoutSec 20 -Because 'the retained ACP session completes a prompt after reattachment' -Condition {
+                    (Get-Content -LiteralPath $log -Raw).Contains("telemetry-chat-complete|$($script:restoredAgentSessionId)|$marker")
+                } | Out-Null
+                Start-Sleep -Seconds 1
             }
             Invoke-TelemetryPhase -Name layout-refresh -Action {
                 Set-WtSetting -App $script:app -Key tabLayout -Value horizontal | Out-Null
@@ -397,7 +412,7 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             finally { Stop-TestTelemetryTrace -Trace $trace }
         }
         $script:records = @(Read-TestTelemetryTrace -Directory $trace.Directory -ProcessIds @($script:ownedPids) `
-            -IncludeEventName @('AppCreated', 'AgentSessionStarted', 'AcpNewSessionComplete', 'AgentPromptSent', 'AgentResponseFirstToken', 'AgentResponseComplete', 'SidebarStateOnLaunch', 'SidebarSearchOpened', 'SidebarAgentFilterApplied', 'SidebarTabPinned', 'SidebarRowFieldsChanged'))
+            -IncludeEventName @('AppCreated', 'AgentSessionStarted', 'AcpNewSessionComplete', 'AgentPromptSent', 'AgentResponseFirstToken', 'AgentResponseComplete', 'SidebarStateOnLaunch', 'SidebarSearchOpened', 'SidebarAgentFilterApplied', 'SidebarTabPinned', 'SidebarRowFieldsChanged', 'KeepRunningMarked', 'KeepRunningDetached', 'KeepRunningReattached'))
         Initialize-TelemetryPhaseClock -CaptureDirectory $trace.Directory
         ConvertTo-Json -InputObject $script:records -Depth 12 | Set-Content -LiteralPath (Join-Path $script:root 'scoped-events.json')
         [xml]$raw = Get-Content -LiteralPath (Join-Path $trace.Directory 'events.xml') -Raw
@@ -410,7 +425,7 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
                 if ($provider.GetAttribute('Guid').Trim('{}') -ne $script:appProvider -or
                     [int]$execution.GetAttribute('ProcessID') -ne $script:app.Pid) { continue }
                 $name = $event.SelectSingleNode("*[local-name()='RenderingInfo']/*[local-name()='Task']").InnerText
-                if ($name -notin @('AppCreated', 'SidebarSearchOpened', 'SidebarAgentFilterApplied', 'SidebarTabPinned', 'SidebarRowFieldsChanged')) { continue }
+                if ($name -notin @('AppCreated', 'SidebarSearchOpened', 'SidebarAgentFilterApplied', 'SidebarTabPinned', 'SidebarRowFieldsChanged', 'KeepRunningMarked', 'KeepRunningDetached', 'KeepRunningReattached')) { continue }
                 [pscustomobject]@{
                     Name = $name
                     Level = $system.SelectSingleNode("*[local-name()='Level']").InnerText
@@ -481,7 +496,7 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             @($event.Fields.Keys) | Should -HaveCount 14
         }
         $starts = @($script:records | Where-Object Name -eq AgentSessionStarted)
-        $script:metadata | Should -HaveCount (11 + $script:rowFieldCases.Count + $starts.Count)
+        $script:metadata | Should -HaveCount (16 + $script:rowFieldCases.Count + $starts.Count)
         $startupMetadata = @($script:metadata | Where-Object Name -eq AppCreated)[0]
         foreach ($metadata in $script:metadata) {
             [int]$metadata.Level | Should -Be 5
@@ -526,6 +541,56 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             @(Get-TelemetryPhaseEvents -Phase $phase -Name SidebarTabPinned) | Should -HaveCount 0
         }
         @($script:records | Where-Object Name -eq SidebarTabPinned) | Should -HaveCount 3
+    }
+
+    It 'Keep-running telemetry correlates opt-in, retention, and live reattachment' {
+        if ($script:phaseErrors.Count) { throw ($script:phaseErrors.Values | Out-String) }
+        $ids = @()
+        foreach ($phase in @('pin-first', 'pin-second-hidden-first', 'repin')) {
+            $events = @(Get-TelemetryPhaseEvents -Phase $phase -Name KeepRunningMarked -Provider $script:appProvider)
+            $events | Should -HaveCount 1
+            $event = $events[0]
+            @($event.Fields.Keys | Sort-Object) | Should -Be @('HasAgentPane', 'KeepId', 'PartA_PrivTags')
+            $event.Types.KeepId | Should -Match 'UnicodeString$'
+            $event.Types.HasAgentPane | Should -Match 'Boolean$'
+            $event.Fields.KeepId | Should -Match '^\{[0-9a-fA-F-]{36}\}$'
+            $event.Fields.HasAgentPane | Should -BeIn @('true', '1')
+            $ids += $event.Fields.KeepId
+        }
+        @($ids | Select-Object -Unique) | Should -HaveCount 3
+        foreach ($phase in @('unpin', 'retain-restore', 'layout-refresh')) {
+            @(Get-TelemetryPhaseEvents -Phase $phase -Name KeepRunningMarked) | Should -HaveCount 0
+        }
+        $detached = @(Get-TelemetryPhaseEvents -Phase retain-restore -Name KeepRunningDetached -Provider $script:appProvider)
+        $reattached = @(Get-TelemetryPhaseEvents -Phase retain-restore -Name KeepRunningReattached -Provider $script:appProvider)
+        $detached | Should -HaveCount 1
+        $reattached | Should -HaveCount 1
+        @($detached[0].Fields.Keys | Sort-Object) | Should -Be @('HasAgentPane', 'KeepId', 'PartA_PrivTags')
+        @($reattached[0].Fields.Keys | Sort-Object) | Should -Be @('HasAgentPane', 'KeepId', 'Outcome', 'PartA_PrivTags')
+        $detached[0].Types.KeepId | Should -Match 'UnicodeString$'
+        $reattached[0].Types.Outcome | Should -Match 'AnsiString$'
+        $detached[0].Fields.KeepId | Should -Be $ids[2]
+        $reattached[0].Fields.KeepId | Should -Be $ids[2]
+        $reattached[0].Fields.Outcome | Should -BeExactly 'live'
+        @($script:records | Where-Object Name -eq KeepRunningMarked) | Should -HaveCount 3
+        @($script:records | Where-Object Name -eq KeepRunningDetached) | Should -HaveCount 1
+        @($script:records | Where-Object Name -eq KeepRunningReattached) | Should -HaveCount 1
+    }
+
+    It 'Restored agent prompt telemetry identifies the surviving ACP session' {
+        if ($script:phaseErrors.Count) { throw ($script:phaseErrors.Values | Out-String) }
+        $before = @(Get-TelemetryPhaseEvents -Phase session-id-privacy -Name AgentPromptSent -Provider $script:wtaProvider)
+        $after = @(Get-TelemetryPhaseEvents -Phase reattach-prompt -Name AgentPromptSent -Provider $script:wtaProvider)
+        $before | Should -HaveCount 1
+        $after | Should -HaveCount 1
+        $before[0].Fields.Reattached | Should -BeIn @('false', '0')
+        $after[0].Fields.Reattached | Should -BeIn @('true', '1')
+        $after[0].Fields.IsAutofix | Should -BeIn @('false', '0')
+        $after[0].Types.Reattached | Should -Match 'Boolean$'
+        $after[0].Fields.Keys | Should -Not -Contain 'SessionId'
+        foreach ($phase in @('pin-first', 'pin-second-hidden-first', 'unpin', 'repin', 'retain-restore')) {
+            @(Get-TelemetryPhaseEvents -Phase $phase -Name AgentPromptSent) | Should -HaveCount 0
+        }
     }
 
     It 'Sidebar row-field telemetry reports only selected field identifiers' {

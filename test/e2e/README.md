@@ -16,7 +16,7 @@ authenticated ACP agents. Available suites (results depend on the selected packa
 | `Feature.Packaging.Tests.ps1` | §9 packaging/protocol (incl. WT_COM_CLSID injected into pane shells) + §10 logging + log retention/cleanup | 18 |
 | `Feature.HookShutdown.Tests.ps1` | Fixed-CLSID native/cached hook delivery without COM activation, late-hook suppression, and ordinary headless COM compatibility; no windows, agents, or configuration edits | 3 |
 | `Feature.TelemetryFunnels.Tests.ps1` | PR #990: opt-in, provider-only ETW adoption/engagement, per-window startup inventory/sidebar, slash rename, concrete Autofix offer/Run, palette entry, provider changes, and native-ready/startup-policy state; hot-policy checks remain separately visible | 18 (requires `ITE2E_TELEMETRY=1` and explicit policy approval) |
-| `Feature.SidebarTelemetry.Tests.ps1` | Opt-in typed ETW for startup sidebar state, real search/filter/context-menu actions, loaded Agent-view session counts, keep-running counts, rich-tab field changes/session-start snapshots, provider-session-ID exclusion, and suppression during editing/refresh/restore | 7 (requires `ITE2E_TELEMETRY=1`; no policy changes) |
+| `Feature.SidebarTelemetry.Tests.ps1` | Opt-in typed ETW for startup sidebar state, real search/filter/context-menu actions, loaded Agent-view session counts, keep-running opt-in/detach/reattach and surviving-session prompts, rich-tab field changes/session-start snapshots, provider-session-ID exclusion, and suppression during editing/refresh/restore | 9 (requires `ITE2E_TELEMETRY=1`; no policy changes) |
 | `Feature.WtcliPublishStdin.Tests.ps1` | PR #652: WTA/wtcli stdin transport delivers command-line-limit-sized events intact and preserves positional compatibility | 3 |
 | `Feature.Settings.Tests.ps1` | §1 Settings>AI Agents + §0 FRE settings/positions/auto-error/session-mgmt | 18 |
 | `Feature.FreFlow.Tests.ps1` | §0 FRE overlay click-through (Next→Save, privacy link, close-safety) plus topmost Tab Mode, Sidebar default, explicit preferences, Save-only persistence, setup failure/retry and restart | 9 (failure injection requires Dev) |
@@ -177,6 +177,11 @@ during menu-only actions and metadata/layout refresh.
 Every successful agent-session start also emits the selection: the suite pairs
 these snapshots with `AgentSessionStarted` and starts a new fixture session
 after selecting a non-default pair to verify current, not hard-coded, values.
+The same scenario checks that explicit opt-ins emit distinct random `KeepId`
+values, a real tab close and restoration emit matching detached/live events,
+and a prompt on the unchanged ACP session after reattachment carries
+`AgentPromptSent.Reattached=true` while an earlier prompt carries `false`.
+Disabling or restoring a tab alone must not mark it again or dispatch a prompt.
 The decoder explicitly selects startup/sidebar event names; unrelated structured
 diagnostic events remain in the raw ETL rather than blocking these typed
 assertions. Missing or unsupported schemas for selected events still fail.
