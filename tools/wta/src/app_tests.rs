@@ -2105,8 +2105,22 @@ fn kept_tab_reattachment_marks_only_the_owning_live_session() {
     let tab = app.tab_mut("owned-tab");
     assert_eq!(tab.reattached_session_id.as_deref(), Some("original"));
     assert!(tab.is_reattached_session());
-    tab.session_id = Some("new-session".into());
-    assert!(!tab.is_reattached_session());
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: "owned-tab".into(),
+        session_id: "new-session".into(),
+        prompt_id: None,
+        available_models: Vec::new(),
+        current_model_id: None,
+    });
+    assert!(!app.tab_mut("owned-tab").is_reattached_session());
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: "owned-tab".into(),
+        session_id: "original".into(),
+        prompt_id: None,
+        available_models: Vec::new(),
+        current_model_id: None,
+    });
+    assert!(!app.tab_mut("owned-tab").is_reattached_session());
 }
 
 // ─── load_session owner_tab_id filter ───────────────────────────────────

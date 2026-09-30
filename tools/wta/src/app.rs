@@ -3996,6 +3996,7 @@ impl App {
             tab.usage_staleness = crate::usage::UsageStaleness::default();
             tab.clear_completed_turns();
             tab.session_id = None;
+            tab.reattached_session_id = None;
             // The new agent starts with nothing to resume. Everything else
             // that constitutes a conversation is cleared just above, so this
             // flag has to go with it: `resumable_session_id` gates on it, and
@@ -6040,6 +6041,7 @@ impl App {
         tab.config_pending_id = None;
         tab.native_yolo_config_pending = false;
         let old_sid = tab.session_id.take();
+        tab.reattached_session_id = None;
         tab.has_meaningful_conversation = false;
         tab.meaningful_conversation_before_load = None;
         tab.loading_session = false;
@@ -6109,14 +6111,14 @@ impl App {
         };
 
         let hint = hint.trim().to_string();
-        let reattached = self
+        let reattached_session_id = self
             .tab_sessions
             .get(&target_tab_id)
-            .is_some_and(|tab| tab.is_reattached_session());
+            .and_then(|tab| tab.reattached_session_id().map(str::to_string));
         let prompt = PromptSubmission::new_autofix(hint.clone(), Some(pane_context))
             .with_byok(self.current_model_is_byok())
             .with_agent_id(self.current_agent_id.clone())
-            .with_reattached(reattached);
+            .with_reattached_session(reattached_session_id);
         let submitted = SubmittedPrompt {
             id: prompt.id,
             text: prompt.text.clone(),
@@ -6394,6 +6396,7 @@ impl App {
             tab.usage_staleness = crate::usage::UsageStaleness::default();
             tab.clear_completed_turns();
             tab.session_id = None;
+            tab.reattached_session_id = None;
             tab.has_meaningful_conversation = false;
             tab.meaningful_conversation_before_load = None;
             tab.loading_session = false;
@@ -6871,6 +6874,7 @@ impl App {
         // `clear_chat_history` deliberately leaves alone.
         if let Some(tab) = self.tab_sessions.get_mut(tab_id) {
             removed_session_id = tab.session_id.take();
+            tab.reattached_session_id = None;
             tab.config_picker = ConfigPickerState::Closed;
             tab.config_pending_id = None;
             tab.native_yolo_config_pending = false;

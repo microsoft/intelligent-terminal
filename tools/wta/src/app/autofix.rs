@@ -321,15 +321,15 @@ impl App {
             tab.autofix.armed_at = Some(std::time::Instant::now());
         }
 
-        let reattached = self
+        let reattached_session_id = self
             .tab_sessions
             .get(&target_tab_id)
-            .is_some_and(|tab| tab.is_reattached_session());
+            .and_then(|tab| tab.reattached_session_id().map(str::to_string));
         let prompt =
             PromptSubmission::new_autofix_failure(notification.summary.clone(), Some(pane_context))
                 .with_byok(self.current_model_is_byok())
                 .with_agent_id(self.current_agent_id.clone())
-                .with_reattached(reattached);
+                .with_reattached_session(reattached_session_id);
         let submitted = SubmittedPrompt {
             id: prompt.id,
             text: prompt.text.clone(),

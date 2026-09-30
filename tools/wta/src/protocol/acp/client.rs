@@ -91,7 +91,7 @@ pub struct PromptSubmission {
     pub images: Vec<crate::clipboard_image::PastedImage>,
     is_byok: bool,
     agent_id: String,
-    reattached: bool,
+    reattached_session_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -525,7 +525,7 @@ impl PromptSubmission {
             images: Vec::new(),
             is_byok: false,
             agent_id: String::new(),
-            reattached: false,
+            reattached_session_id: None,
         }
     }
 
@@ -555,9 +555,13 @@ impl PromptSubmission {
         &self.agent_id
     }
 
-    pub fn with_reattached(mut self, reattached: bool) -> Self {
-        self.reattached = reattached;
+    pub fn with_reattached_session(mut self, session_id: Option<String>) -> Self {
+        self.reattached_session_id = session_id;
         self
+    }
+
+    fn was_reattached_at_dispatch(&self, session_id: &str) -> bool {
+        self.reattached_session_id.as_deref() == Some(session_id)
     }
 
     pub fn cancellation_token(&self) -> CancellationToken {
@@ -5958,7 +5962,7 @@ async fn dispatch_prompt_body(
     };
     let telemetry_is_byok = prompt.is_byok();
     let telemetry_agent_id = prompt.agent_id().to_string();
-    let telemetry_reattached = prompt.reattached;
+    let telemetry_reattached = prompt.was_reattached_at_dispatch(&telemetry_session_id);
     let telemetry_prompt_id = prompt.id;
     let telemetry_is_agent_command = prompt.is_agent_command();
     let prompt_started = Arc::new(AtomicBool::new(false));

@@ -977,6 +977,7 @@ impl App {
                 if tab.session_id.as_deref() != Some(session_id.as_str()) {
                     tab.usage = None;
                     tab.usage_staleness = crate::usage::UsageStaleness::default();
+                    tab.reattached_session_id = None;
                 }
                 tab.session_id = Some(session_id.clone());
                 let has_real_content = !tab.completed_turns.is_empty()
@@ -1067,6 +1068,7 @@ impl App {
                     tab.config_picker = ConfigPickerState::Closed;
                     tab.config_pending_id = None;
                     tab.native_yolo_config_pending = false;
+                    tab.reattached_session_id = None;
                 }
                 tab.session_id = Some(session_id.clone());
                 if let Some(prompt_id) = prompt_id {

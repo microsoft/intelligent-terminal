@@ -726,8 +726,13 @@ impl TabSession {
     const MAX_STREAMING_THOUGHT_CHARS: usize = 4000;
 
     pub(crate) fn is_reattached_session(&self) -> bool {
-        self.session_id.is_some()
-            && self.reattached_session_id.as_deref() == self.session_id.as_deref()
+        self.reattached_session_id().is_some()
+    }
+
+    pub(crate) fn reattached_session_id(&self) -> Option<&str> {
+        self.reattached_session_id
+            .as_deref()
+            .filter(|id| self.session_id.as_deref() == Some(*id))
     }
 
     /// Returns the ACP session id only after the conversation is worth restoring.
