@@ -963,9 +963,11 @@
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
     <value>Пређи на бочну траку</value>
+    <comment>Context-menu command that changes the tab layout from horizontal tabs to the sidebar.</comment>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
     <value>Користи бочну траку у свим прозорима терминала</value>
+    <comment>Tooltip for the command that changes the tab layout from horizontal tabs to the sidebar in every Terminal window.</comment>
   </data>
   <data name="CloseOnExitInfoBar.Message" xml:space="preserve">
     <value>Понашање при прекиду извршавања може да се подеси у напредним подешавањима профила.</value>

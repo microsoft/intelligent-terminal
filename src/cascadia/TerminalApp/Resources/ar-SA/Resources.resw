@@ -594,9 +594,11 @@
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
     <value>التبديل إلى الشريط الجانبي</value>
+    <comment>Context-menu command that changes the tab layout from horizontal tabs to the sidebar.</comment>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
     <value>استخدام الشريط الجانبي في جميع نوافذ Terminal</value>
+    <comment>Tooltip for the command that changes the tab layout from horizontal tabs to the sidebar in every Terminal window.</comment>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>إغلاق جميع علامات التبويب أسفل علامة التبويب هذه</value>

@@ -983,9 +983,11 @@
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
     <value>Cambiar a la barra lateral</value>
+    <comment>Context-menu command that changes the tab layout from horizontal tabs to the sidebar.</comment>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
     <value>Usar la barra lateral en todas las ventanas de Terminal</value>
+    <comment>Tooltip for the command that changes the tab layout from horizontal tabs to the sidebar in every Terminal window.</comment>
   </data>
   <data name="CloseOnExitInfoBar.Message" xml:space="preserve">
     <value>El comportamiento de finalización se puede configurar en la configuración avanzada del perfil.</value>

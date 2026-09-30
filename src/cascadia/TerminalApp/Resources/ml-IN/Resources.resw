@@ -597,9 +597,11 @@
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
     <value>സൈഡ്ബാറിലേക്ക് മാറുക</value>
+    <comment>Context-menu command that changes the tab layout from horizontal tabs to the sidebar.</comment>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
     <value>എല്ലാ Terminal വിൻഡോകളിലും സൈഡ്ബാർ ഉപയോഗിക്കുക</value>
+    <comment>Tooltip for the command that changes the tab layout from horizontal tabs to the sidebar in every Terminal window.</comment>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>ഈ ടാബിന് താഴെയുള്ള എല്ലാ ടാബുകളും അടയ്ക്കുക</value>

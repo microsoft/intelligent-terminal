@@ -598,9 +598,11 @@
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
     <value>साइडबारमा स्विच गर्नुहोस्</value>
+    <comment>Context-menu command that changes the tab layout from horizontal tabs to the sidebar.</comment>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
     <value>सबै Terminal विन्डोमा साइडबार प्रयोग गर्नुहोस्</value>
+    <comment>Tooltip for the command that changes the tab layout from horizontal tabs to the sidebar in every Terminal window.</comment>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>यस ट्याबमुनिका सबै ट्याब बन्द गर्नुहोस्</value>

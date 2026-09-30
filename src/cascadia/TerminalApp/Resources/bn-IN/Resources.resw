@@ -596,9 +596,11 @@
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
     <value>সাইডবারে স্যুইচ করুন</value>
+    <comment>Context-menu command that changes the tab layout from horizontal tabs to the sidebar.</comment>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
     <value>সব Terminal উইন্ডোতে সাইডবার ব্যবহার করুন</value>
+    <comment>Tooltip for the command that changes the tab layout from horizontal tabs to the sidebar in every Terminal window.</comment>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>এই ট্যাবের নিচের সব ট্যাব বন্ধ করুন</value>

@@ -574,9 +574,11 @@
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
     <value>Preklopi na stransko vrstico</value>
+    <comment>Context-menu command that changes the tab layout from horizontal tabs to the sidebar.</comment>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
     <value>Uporabi stransko vrstico v vseh oknih aplikacije Terminal</value>
+    <comment>Tooltip for the command that changes the tab layout from horizontal tabs to the sidebar in every Terminal window.</comment>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Zapri vse zavihke pod tem zavihkom</value>

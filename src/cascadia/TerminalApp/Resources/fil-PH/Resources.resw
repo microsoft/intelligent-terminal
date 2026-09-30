@@ -526,9 +526,11 @@
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
     <value>Lumipat sa bar sa gilid</value>
+    <comment>Context-menu command that changes the tab layout from horizontal tabs to the sidebar.</comment>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
     <value>Gumamit ng bar sa gilid sa lahat ng Terminal window</value>
+    <comment>Tooltip for the command that changes the tab layout from horizontal tabs to the sidebar in every Terminal window.</comment>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Isara ang lahat ng tab sa ibaba ng tab na ito</value>

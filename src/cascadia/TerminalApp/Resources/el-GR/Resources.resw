@@ -481,9 +481,11 @@
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
     <value>Μετάβαση στην πλαϊνή γραμμή</value>
+    <comment>Context-menu command that changes the tab layout from horizontal tabs to the sidebar.</comment>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
     <value>Χρήση της πλαϊνής γραμμής σε όλα τα παράθυρα του Terminal</value>
+    <comment>Tooltip for the command that changes the tab layout from horizontal tabs to the sidebar in every Terminal window.</comment>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Κλείσιμο όλων των καρτελών κάτω από αυτήν την καρτέλα</value>

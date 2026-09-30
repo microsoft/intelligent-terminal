@@ -576,9 +576,11 @@
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
     <value>సైడ్‌బార్‌కు మారండి</value>
+    <comment>Context-menu command that changes the tab layout from horizontal tabs to the sidebar.</comment>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
     <value>అన్ని Terminal విండోలలో సైడ్‌బార్‌ను ఉపయోగించండి</value>
+    <comment>Tooltip for the command that changes the tab layout from horizontal tabs to the sidebar in every Terminal window.</comment>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>ఈ ట్యాబ్ కింద ఉన్న అన్ని ట్యాబ్‌లను మూసివేయండి</value>

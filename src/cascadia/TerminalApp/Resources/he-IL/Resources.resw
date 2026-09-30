@@ -595,9 +595,11 @@
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
     <value>עבור לסרגל הצדי</value>
+    <comment>Context-menu command that changes the tab layout from horizontal tabs to the sidebar.</comment>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
     <value>השתמש בסרגל הצדי בכל חלונות Terminal</value>
+    <comment>Tooltip for the command that changes the tab layout from horizontal tabs to the sidebar in every Terminal window.</comment>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>סגור את כל הכרטיסיות שמתחת לכרטיסייה זו</value>

@@ -983,9 +983,11 @@
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
     <value>사이드바로 전환</value>
+    <comment>Context-menu command that changes the tab layout from horizontal tabs to the sidebar.</comment>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
     <value>모든 터미널 창에서 사이드바 사용</value>
+    <comment>Tooltip for the command that changes the tab layout from horizontal tabs to the sidebar in every Terminal window.</comment>
   </data>
   <data name="CloseOnExitInfoBar.Message" xml:space="preserve">
     <value>고급 프로필 설정에서 종료 동작을 구성할 수 있습니다.</value>

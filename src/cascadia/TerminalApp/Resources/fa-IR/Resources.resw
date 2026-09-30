@@ -594,9 +594,11 @@
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
     <value>تغییر به نوار کناری</value>
+    <comment>Context-menu command that changes the tab layout from horizontal tabs to the sidebar.</comment>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
     <value>استفاده از نوار کناری در همهٔ پنجره‌های Terminal</value>
+    <comment>Tooltip for the command that changes the tab layout from horizontal tabs to the sidebar in every Terminal window.</comment>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>بستن همهٔ زبانه‌های زیر این زبانه</value>
