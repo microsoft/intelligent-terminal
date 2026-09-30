@@ -288,6 +288,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TabLayoutSwitchMenuTracksOrientation);
         TEST_METHOD(VerticalTabStripPreservesClosePolicy);
         TEST_METHOD(VerticalTabStripCollapsedItemsPreserveSelection);
+        TEST_METHOD(VerticalTabKeyboardFocusPreservesSelection);
         TEST_METHOD(VerticalTabStripHostsPaneGroups);
         TEST_METHOD(VerticalTabRepeatedMovesPreserveCollections);
         TEST_METHOD(VerticalTabSelectionPreservesPresentation);
@@ -6674,6 +6675,64 @@ namespace TerminalAppLocalTests
             host.UpdateLayout();
             VERIFY_IS_TRUE(strip.SelectedItem() == third);
             VERIFY_IS_TRUE(stripImpl->ItemsList().SelectedItem().as<winrt::TerminalApp::TabStripDisplayItem>().Tab() == third);
+        });
+    }
+
+    void TabTests::VerticalTabKeyboardFocusPreservesSelection()
+    {
+        winrt::TerminalApp::TabStrip strip;
+        Grid host;
+        winrt::MUX::Controls::TabViewItem first;
+        winrt::MUX::Controls::TabViewItem second;
+        winrt::MUX::Controls::TabViewItem third;
+
+        TestOnUIThread([&]() {
+            host.Width(240);
+            host.Height(240);
+            strip.Width(240);
+            strip.Height(240);
+            first.Header(winrt::box_value(L"First"));
+            second.Header(winrt::box_value(L"Second"));
+            third.Header(winrt::box_value(L"Third"));
+            strip.TabItems().Append(first);
+            strip.TabItems().Append(second);
+            strip.TabItems().Append(third);
+            host.Children().Append(strip);
+            Window::Current().Content(host);
+            Window::Current().Activate();
+            host.UpdateLayout();
+
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            const auto items = stripImpl->ItemsList();
+            const auto firstContainer = items.ContainerFromIndex(0).as<ListViewItem>();
+            const auto secondContainer = items.ContainerFromIndex(1).as<ListViewItem>();
+            strip.SelectedItem(third);
+
+            uint32_t selectionChanges = 0;
+            const auto token = strip.SelectionChanged([&](auto&&, auto&&) {
+                ++selectionChanges;
+            });
+            const auto revokeSelection = wil::scope_exit([&]() {
+                strip.SelectionChanged(token);
+            });
+
+            VERIFY_IS_TRUE(firstContainer.Focus(FocusState::Keyboard));
+            VERIFY_IS_TRUE(strip.SelectedItem() == third);
+            VERIFY_IS_TRUE(secondContainer.Focus(FocusState::Keyboard));
+            VERIFY_IS_TRUE(strip.SelectedItem() == third);
+            VERIFY_ARE_EQUAL(0u, selectionChanges);
+
+            strip.SetTabItemVisibility(first, false);
+            host.UpdateLayout();
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, firstContainer.Visibility());
+            VERIFY_IS_TRUE(secondContainer.Focus(FocusState::Keyboard));
+            VERIFY_IS_TRUE(strip.SelectedItem() == third);
+            VERIFY_ARE_EQUAL(0u, selectionChanges);
+            VERIFY_IS_FALSE(items.SingleSelectionFollowsFocus());
+
+            strip.SelectedItem(second);
+            VERIFY_IS_TRUE(strip.SelectedItem() == second);
+            VERIFY_ARE_EQUAL(1u, selectionChanges);
         });
     }
 

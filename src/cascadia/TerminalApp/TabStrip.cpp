@@ -296,6 +296,10 @@ namespace winrt::TerminalApp::implementation
         InitializeComponent();
 
         ItemsList().ItemsSource(_displayItems);
+        // ListView consumes Enter even when its focused row is already selected.
+        ItemsList().AddHandler(WUX::UIElement::KeyDownEvent(),
+                               winrt::box_value(WUX::Input::KeyEventHandler{ get_weak(), &TabStrip::_onListKeyDown }),
+                               true);
         _vectorChangedRevoker = _tabItems.VectorChanged(auto_revoke, { get_weak(), &TabStrip::_onItemsVectorChanged });
         Loaded([weakThis{ get_weak() }](auto&&, auto&&) {
             if (const auto self = weakThis.get())
@@ -2126,6 +2130,45 @@ namespace winrt::TerminalApp::implementation
     WUX::Automation::Peers::AutomationPeer TabStrip::OnCreateAutomationPeer()
     {
         return winrt::make<TabStripAutomationPeer>(*this);
+    }
+
+    void TabStrip::_onListKeyDown(IInspectable const&, WUX::Input::KeyRoutedEventArgs const& e)
+    {
+        if (e.OriginalKey() != Windows::System::VirtualKey::Enter)
+        {
+            return;
+        }
+
+        const auto coreWindow = winrt::Windows::UI::Core::CoreWindow::GetForCurrentThread();
+        if (!coreWindow)
+        {
+            return;
+        }
+        constexpr auto down = winrt::Windows::UI::Core::CoreVirtualKeyStates::Down;
+        if (WI_IsFlagSet(coreWindow.GetKeyState(Windows::System::VirtualKey::Control), down) ||
+            WI_IsFlagSet(coreWindow.GetKeyState(Windows::System::VirtualKey::Menu), down) ||
+            WI_IsFlagSet(coreWindow.GetKeyState(Windows::System::VirtualKey::Shift), down))
+        {
+            return;
+        }
+
+        const auto selectedItem = ItemsList().SelectedItem();
+        const auto root = XamlRoot();
+        if (!selectedItem || !root)
+        {
+            return;
+        }
+
+        const auto selectedContainer = ItemsList().ContainerFromItem(selectedItem).try_as<ListViewItem>();
+        const auto focused = WUX::Input::FocusManager::GetFocusedElement(root).try_as<ListViewItem>();
+        if (selectedContainer && focused && selectedContainer == focused)
+        {
+            if (const auto tab = _tabFromItem(selectedItem))
+            {
+                TabFocusRequested.raise(*this, winrt::make<TabStripCloseRequestedEventArgs>(tab));
+                e.Handled(true);
+            }
+        }
     }
 
     void TabStrip::OnListSelectionChanged(IInspectable const& /*sender*/,

@@ -263,7 +263,8 @@
                   IsItemClickEnabled="False"
                   ReorderMode="Disabled"
                   SelectionChanged="OnListSelectionChanged"
-                  SelectionMode="Single">
+                  SelectionMode="Single"
+                  SingleSelectionFollowsFocus="False">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="local:TabStripDisplayItem">
                     <StackPanel HorizontalAlignment="Stretch">

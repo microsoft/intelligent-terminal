@@ -57,6 +57,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C348` `[new]` `[E2E]` **FRE retries Tab Mode after setup failure:** Failed setup does not persist the new layout or complete FRE. The selection is retained for a successful retry, which applies it and leaves an active terminal. _(E2E: `Feature.FreFlow`, Dev-only fault marker.)_
 - [ ] `C357` `[new]` `[E2E]` **Settings Tab Mode matches FRE:** Appearance shows the same localized Tab Mode label as the first-run selection. _(E2E: `Feature.SettingsUi`; locale parity: `TabModeCopy.Unit`.)_
 - [ ] `C356` `[new]` `[UT~]` `[MANUAL]` **Sidebar titlebar whitespace moves the window:** With tabs in the titlebar, the empty space between the sidebar toggle and new-tab controls supports native window dragging and double-click maximize/restore. Buttons stay clickable after sidebar resizing, collapse/expand, DPI changes, and layout switches; Horizontal mode keeps its existing tab and window dragging behavior. _(UT: `VerticalTitlebarDragAreaExcludesControls`.)_
+- [ ] `C358` `[new]` `[E2E]` **Sidebar tabs keyboard navigation stays in the list:** With or without a search filter, Tab and Up/Down move focus among visible tab rows without focusing a terminal; bare Enter activates the focused tab and enters its terminal, while Ctrl+Enter does not. Pointer selection remains available. _(#1045; UT: `VerticalTabKeyboardFocusPreservesSelection`; E2E: `Feature.SidebarTabKeyboard`.)_
 
 ### FRE agent selection
 

@@ -482,6 +482,8 @@ namespace winrt::TerminalApp::implementation
         winrt::weak_ref<winrt::Microsoft::UI::Xaml::Controls::TabViewItem> _pressedHeaderTab;
         bool _pressedHeaderWasSelected{ false };
 
+        void _onListKeyDown(winrt::Windows::Foundation::IInspectable const& sender,
+                            winrt::Windows::UI::Xaml::Input::KeyRoutedEventArgs const& e);
         void _onItemsVectorChanged(winrt::Windows::Foundation::Collections::IObservableVector<winrt::Windows::Foundation::IInspectable> const& sender,
                                      winrt::Windows::Foundation::Collections::IVectorChangedEventArgs const& args);
         TerminalApp::TabStripDisplayItem _displayItemAt(uint32_t index) const;
