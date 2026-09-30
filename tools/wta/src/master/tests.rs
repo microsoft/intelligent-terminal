@@ -12225,13 +12225,13 @@ async fn history_refresh_coalesces_waiters_and_queries_history_and_titles_once()
                 .await
                 .insert(HelperId(1), notifications);
 
-            let refresh = refresh_agent_history(&state, &agent, true);
+            let refresh = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
             tokio::pin!(refresh);
             let first = tokio::select! {
                 request = requests.recv() => request.unwrap(),
                 _ = &mut refresh => panic!("refresh completed before agent replied"),
             };
-            let waiter = refresh_agent_history(&state, &agent, true);
+            let waiter = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
             tokio::pin!(waiter);
             assert!(futures::poll!(&mut waiter).is_pending());
             first
@@ -12386,6 +12386,55 @@ async fn history_refresh_runs_without_views_and_does_not_block_on_a_slow_connect
 }
 
 #[tokio::test(start_paused = true)]
+async fn history_refresh_periodic_dispatch_jitter_does_not_skip_the_next_tick() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let (agent, mut requests) =
+                controlled_history_agent("copilot", crate::agent_source::AgentSource::Host);
+            add_test_agent_to_pool(&state, &agent).await;
+            start_history_refresh_loop(&state);
+            tokio::task::yield_now().await;
+
+            let jitter = std::time::Duration::from_millis(10);
+            tokio::time::advance(HISTORY_REFRESH_INTERVAL + jitter).await;
+            tokio::time::timeout(std::time::Duration::from_millis(1), requests.recv())
+                .await
+                .expect("first delayed tick issues a request")
+                .unwrap()
+                .send(Ok(vec![]))
+                .unwrap();
+            while agent
+                .history_refresh
+                .generation
+                .load(std::sync::atomic::Ordering::Acquire)
+                == 0
+            {
+                tokio::task::yield_now().await;
+            }
+
+            tokio::time::advance(HISTORY_REFRESH_INTERVAL - jitter).await;
+            tokio::time::timeout(std::time::Duration::from_millis(1), requests.recv())
+                .await
+                .expect(
+                    "the next nominal tick must not be suppressed by the previous dispatch delay",
+                )
+                .unwrap()
+                .send(Ok(vec![]))
+                .unwrap();
+            while agent
+                .history_refresh
+                .generation
+                .load(std::sync::atomic::Ordering::Acquire)
+                < 2
+            {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await;
+}
+
+#[tokio::test(start_paused = true)]
 async fn history_refresh_failure_backs_off_without_clearing_rows_and_manual_refresh_bypasses_delay()
 {
     tokio::task::LocalSet::new()
@@ -12405,7 +12454,8 @@ async fn history_refresh_failure_backs_off_without_clearing_rows_and_manual_refr
                 ))
                 .await;
             for delay in [5, 10, 20, 40, 60, 60] {
-                let refresh = refresh_agent_history(&state, &agent, true);
+                let refresh =
+                    refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
                 let reply = async {
                     requests
                         .recv()
@@ -12431,14 +12481,23 @@ async fn history_refresh_failure_backs_off_without_clearing_rows_and_manual_refr
                         - tokio::time::Instant::now(),
                     std::time::Duration::from_secs(delay)
                 );
-                assert!(refresh_agent_history(&state, &agent, false).await.is_none());
+                assert!(
+                    refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Event)
+                        .await
+                        .is_none()
+                );
+                assert!(
+                    refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Periodic)
+                        .await
+                        .is_none()
+                );
                 assert!(
                     requests.try_recv().is_err(),
                     "background refresh observes failure backoff"
                 );
                 assert_eq!(state.registry.snapshot().await.len(), 1);
             }
-            let refresh = refresh_agent_history(&state, &agent, true);
+            let refresh = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
             let reply = async {
                 requests.recv().await.unwrap().send(Ok(vec![])).unwrap();
             };
@@ -12460,7 +12519,7 @@ async fn history_refresh_discards_a_retired_connections_late_response() {
             let state = make_state();
             let (agent, mut requests) =
                 controlled_history_agent("copilot", crate::agent_source::AgentSource::Host);
-            let refresh = refresh_agent_history(&state, &agent, true);
+            let refresh = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
             let reply = async {
                 let request = requests.recv().await.unwrap();
                 agent
@@ -12473,7 +12532,11 @@ async fn history_refresh_discards_a_retired_connections_late_response() {
             };
             assert!(tokio::join!(refresh, reply).0.is_none());
             assert!(state.registry.snapshot().await.is_empty());
-            assert!(refresh_agent_history(&state, &agent, true).await.is_none());
+            assert!(
+                refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate)
+                    .await
+                    .is_none()
+            );
             assert!(requests.try_recv().is_err());
         })
         .await;
@@ -12516,7 +12579,8 @@ async fn history_refresh_isolates_colliding_ids_across_sources_and_custom_provid
             ] {
                 let (agent, mut requests) = controlled_history_agent(provider, source);
                 add_test_agent_to_pool(&state, &agent).await;
-                let refresh = refresh_agent_history(&state, &agent, true);
+                let refresh =
+                    refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
                 let reply = async {
                     requests
                         .recv()
@@ -12530,7 +12594,8 @@ async fn history_refresh_isolates_colliding_ids_across_sources_and_custom_provid
             }
             assert_eq!(state.registry.snapshot().await.len(), 5);
             for (agent, requests, title) in &mut probes {
-                let refresh = refresh_agent_history(&state, agent, true);
+                let refresh =
+                    refresh_agent_history(&state, agent, HistoryRefreshTrigger::Immediate);
                 let reply = async {
                     requests
                         .recv()

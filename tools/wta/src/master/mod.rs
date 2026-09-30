@@ -6998,7 +6998,14 @@ fn is_stale_host_history_row(
 /// Seed + reconcile `agent`'s history against its own `session/list`,
 /// broadcasting when anything changed. Returns the listed count.
 async fn seed_host_and_broadcast(state: &MasterStateInner, agent: &AgentCli) -> Option<usize> {
-    refresh_agent_history(state, agent, true).await
+    refresh_agent_history(state, agent, HistoryRefreshTrigger::Immediate).await
+}
+
+#[derive(Clone, Copy)]
+enum HistoryRefreshTrigger {
+    Immediate,
+    Periodic,
+    Event,
 }
 
 fn row_belongs_to_agent(row: &crate::session_registry::SessionInfo, agent: &AgentCli) -> bool {
@@ -7013,7 +7020,7 @@ fn row_belongs_to_agent(row: &crate::session_registry::SessionInfo, agent: &Agen
 async fn refresh_agent_history(
     state: &MasterStateInner,
     agent: &AgentCli,
-    force: bool,
+    trigger: HistoryRefreshTrigger,
 ) -> Option<usize> {
     use std::sync::atomic::Ordering;
     if agent.history_refresh.retired.load(Ordering::Acquire)
@@ -7031,9 +7038,16 @@ async fn refresh_agent_history(
     if agent.history_refresh.retired.load(Ordering::Acquire) {
         return None;
     }
+    // The interval already paces periodic work. Applying the success cooldown
+    // again would skip ticks whenever the previous dispatch started slightly late.
+    let honor_cooldown = match trigger {
+        HistoryRefreshTrigger::Immediate => false,
+        HistoryRefreshTrigger::Periodic => refresh.failures != 0,
+        HistoryRefreshTrigger::Event => true,
+    };
     // Waiters share the completed refresh rather than queueing another ACP call.
     if agent.history_refresh.generation.load(Ordering::Acquire) != generation
-        || (!force
+        || (honor_cooldown
             && refresh
                 .next_refresh_at
                 .is_some_and(|at| at > tokio::time::Instant::now()))
@@ -7128,7 +7142,7 @@ fn start_history_refresh_loop(state: &Arc<MasterStateInner>) {
                 }
                 let state = Arc::clone(&state);
                 tokio::task::spawn_local(async move {
-                    refresh_agent_history(&state, &agent, false).await;
+                    refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Periodic).await;
                 });
             }
         }
@@ -9986,7 +10000,7 @@ async fn try_refresh_title_via_acp(
     if !row_belongs_to_agent(&info, &agent) {
         return false;
     }
-    refresh_agent_history(state, &agent, false).await;
+    refresh_agent_history(state, &agent, HistoryRefreshTrigger::Event).await;
     state
         .registry
         .lookup(sid)

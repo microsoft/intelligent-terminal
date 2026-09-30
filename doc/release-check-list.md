@@ -330,6 +330,11 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 ## 4. Session management
 
+- [ ] `C358` `[new]` `[E2E]` **Master refreshes history without an open session view:** Background synchronization keeps history current while views are closed, and ordinary snapshot reads do not multiply upstream ACP requests. _(E2E: `Feature.SessionRefresh`.)_
+- [ ] `C359` `[new]` `[E2E]` **Session fallback follows vertical and horizontal layouts:** Real 60-second fallback reads use Sidebar in vertical layout and the open helper view in horizontal layout, including a live round trip without reconnecting ACP. _(E2E: `Feature.SessionRefresh`.)_
+- [ ] `C360` `[new]` `[E2E]` **Closed session views suppress fallback reads:** Closing the session view stops frontend polling while master continues synchronizing existing connections. _(E2E: `Feature.SessionRefresh`.)_
+- [ ] `C361` `[new]` `[E2E]` **Explicit history refresh preserves connection and updates visible rows:** Helper F5 updates the rendered list, the explicit CLI refresh returns a status snapshot, and the removed discovery flag is rejected without recreating the fixture connection. _(E2E: `Feature.SessionRefresh`.)_
+
 **Feature definition:** Session management lists known live and historical agent sessions, shows their state, and lets users focus or resume supported sessions.
 
 - [ ] `C342` `[new]` `[E2E]` **Focusing a kept session reattaches its original tab:** The shared history/session focus path restores a detached whole tab, focuses the original pane, preserves shell/helper processes and state, and does not duplicate tabs or restore unrelated stale targets. _(E2E: `Feature.KeepRunningFocus`.)_

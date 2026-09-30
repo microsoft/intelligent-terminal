@@ -47,6 +47,7 @@ authenticated ACP agents. Available suites (results depend on the selected packa
 | `Feature.CommandResolution.Tests.ps1` | PR #418: packaged WTA resolves PowerShell profile-only aliases to their real targets | 1 |
 | `Feature.AutofixCommandResolution.Tests.ps1` | Issue #844: Debug Dev, deterministic ACP fixture; no startup/tab-selection probes, first/later Autofix contracts without enumeration, and explicit local-candidate lookup | 3 |
 | `Feature.SessionList.Tests.ps1` | session view (button + `/sessions` slash), session states, view switching (incl. draft-preservation), focus/restore | 13 (+1 skip) |
+| `Feature.SessionRefresh.Tests.ps1` | Master-owned history synchronization with closed views, read-only snapshots, real 60-second layout-specific fallback, live layout switching, and explicit refresh; deterministic listing-capable ACP fixture, no model quota, explicit Dev hashes and inactive package required | 4 |
 | `Feature.KeepRunningFocus.Tests.ps1` | Explicit history/session `focus-pane` reattachment; ordinary Start-menu and profile launches create a new tab while two kept tabs remain detached; original shell/helper identity and stale-target safety; deterministic ACP fixture | 2 |
 | `Feature.NonAsciiCwd.Tests.ps1` | issue #641: a non-ASCII starting directory survives `wtcli` argv → COM → `CreateProcessW`, so the resume launch path connects and starts in that directory | 2 |
 | `Feature.AgentPaneCwd.Tests.ps1` | agent-pane source workspace reaches ACP `session/new` and remains stable across `/new` without a model prompt | 1 |
