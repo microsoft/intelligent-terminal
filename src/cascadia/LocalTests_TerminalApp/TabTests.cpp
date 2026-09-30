@@ -298,6 +298,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(AgentViewFiltersSplitPaneChildren);
         TEST_METHOD(VerticalTabSearchMatchesCommittedTitle);
         TEST_METHOD(VerticalTabTooltipsExposeStableShortcuts);
+        TEST_METHOD(VerticalTabSearchTracksActivePaneMetadata);
         TEST_METHOD(VerticalTabSearchUiState);
         TEST_METHOD(LiteralSearchHighlighting);
         TEST_METHOD(VerticalTabHistoryButtonOpensView);
@@ -1299,7 +1300,7 @@ namespace TerminalAppLocalTests
             const auto header = tab->_headerControl;
             const auto layout = header.FindName(L"HeaderLayout").as<Grid>();
             const auto badge = header.FindName(L"HeaderKeepRunningIcon").as<FontIcon>();
-            const auto metadata = header.FindName(L"HeaderMetadataTextBlock").as<TextBlock>();
+            const auto metadata = header.FindName(L"HeaderMetadataTextBlock").as<winrt::TerminalApp::HighlightedTextControl>();
             tab->SetTabText(winrt::hstring{ std::wstring(240, L'W') });
             tab->KeepRunning(true);
             VERIFY_ARE_EQUAL(2, Grid::GetRowSpan(badge));
@@ -3878,28 +3879,262 @@ namespace TerminalAppLocalTests
 
     void TabTests::VerticalTabSearchMatchesCommittedTitle()
     {
-        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        const auto rootConnection = winrt::make_self<TestConnection>(
+            winrt::guid{ L"{cbb39c84-08be-4d32-bb38-4e2394e7ab62}" },
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        auto page = _commonSetup(*rootConnection, nullptr, std::nullopt, true);
 
         TestOnUIThread([&]() {
             const auto tab = page->_GetFocusedTabImpl();
             VERIFY_IS_NOT_NULL(tab);
 
-            tab->Title(L"PowerShell");
+            tab->Title(L"PowerShell Ångström");
             page->_tabSearchActive = true;
             page->_tabSearchQuery = L"shell";
             VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
-
-            page->_tabSearchQuery = L"POWER";
+            page->_tabSearchQuery = L"ångSTRÖM";
             VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
 
-            page->_tabSearchQuery = L"copilot";
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            const auto display = stripImpl->DisplayItemForTab(tab->TabViewItem());
+            VERIFY_IS_NOT_NULL(display);
+            VERIFY_IS_FALSE(display.IsGroup());
+            page->UpdateLayout();
+            const auto container = page->_tabStrip.ContainerFromIndex(0).as<ListViewItem>();
+
+            page->_tabStrip.SearchActive(true);
+            const auto search = [&](const winrt::hstring& query) {
+                stripImpl->SearchTextBox().Text(query);
+                page->UpdateLayout();
+                VERIFY_IS_TRUE(page->_tabSearchActive);
+                VERIFY_ARE_EQUAL(query, page->_tabSearchQuery);
+            };
+            const auto applyRichTabUpdate = [&](const std::shared_ptr<Pane>& pane,
+                                                const std::wstring_view text,
+                                                const uint64_t updateSequence) {
+                const auto control = pane->GetTerminalControl();
+                VERIFY_IS_NOT_NULL(control);
+                page->_AttachOrUpdateRichTabControl(control);
+                const auto key = reinterpret_cast<uintptr_t>(winrt::get_abi(control));
+                const auto attachment = page->_richTabAttachments.find(key);
+                VERIFY_IS_TRUE(attachment != page->_richTabAttachments.end());
+                if (attachment == page->_richTabAttachments.end())
+                {
+                    return;
+                }
+
+                ::Microsoft::Terminal::RichTab::Provider::Presentation presentation;
+                presentation.text = text;
+                ::Microsoft::Terminal::RichTab::Provider::BrokerUpdate update;
+                update.sessionId = attachment->second.sessionId;
+                update.sessionIncarnation = std::numeric_limits<uint64_t>::max();
+                update.updateSequence = updateSequence;
+                update.presentation = std::move(presentation);
+                page->_ApplyRichTabUpdate(key, attachment->second.reservation, update);
+                page->UpdateLayout();
+            };
+
+            search(L"änderUNGEN");
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, container.Visibility());
+            applyRichTabUpdate(tab->GetRootPane(), L"main\n2 Änderungen", 1);
+            VERIFY_ARE_EQUAL(Visibility::Visible, container.Visibility());
+            VERIFY_IS_TRUE(display.Header().as<winrt::TerminalApp::TabHeaderControl>().IsMetadataVisible());
+
+            const auto unicodePaneConnection = winrt::make_self<TestConnection>(
+                winrt::guid{ L"{ed7ea490-998e-4aac-aecd-a74051a9faee}" },
+                winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+            const auto unicodePane = page->_MakePane(nullptr, page->_GetFocusedTab(), *unicodePaneConnection);
+            VERIFY_IS_NOT_NULL(unicodePane);
+            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, unicodePane, false));
+            page->UpdateLayout();
+            VERIFY_IS_TRUE(display.IsGroup());
+            VERIFY_IS_TRUE(display.IsExpanded());
+            VERIFY_IS_FALSE(display.Header().as<winrt::TerminalApp::TabHeaderControl>().IsMetadataVisible());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, container.Visibility());
+
+            search(L"münchen");
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, container.Visibility());
+            const std::u16string unicodePaneTitle{ u"\x1b]0;MÜNCHEN \U0001F680\x07" };
+            unicodePaneConnection->TerminalOutput.raise(
+                winrt::array_view<const char16_t>{ unicodePaneTitle.data(), unicodePaneTitle.data() + unicodePaneTitle.size() });
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"PowerShell Ångström" }, tab->Title());
+            page->UpdateLayout();
+            VERIFY_ARE_EQUAL(Visibility::Visible, container.Visibility());
+            const auto projectedUnicodePane = display.PaneItems().GetAt(1);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"MÜNCHEN \U0001F680" }, projectedUnicodePane.Title());
+            const auto toggle = container.ContentTemplateRoot().as<FrameworkElement>().FindName(L"TabGroupToggleButton").as<Button>();
+
+            search(L"\U0001F680");
+            VERIFY_ARE_EQUAL(Visibility::Visible, container.Visibility());
+
+            search(L"visible pane metadata");
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, container.Visibility());
+            std::wstring visiblePaneMetadataText{ L"feature" };
+            visiblePaneMetadataText.push_back(static_cast<wchar_t>(0x0A));
+            visiblePaneMetadataText.append(L"visible pane metadata");
+            const winrt::hstring visiblePaneMetadata{ visiblePaneMetadataText };
+            applyRichTabUpdate(unicodePane, visiblePaneMetadata, 1);
+            VERIFY_ARE_EQUAL(Visibility::Visible, container.Visibility());
+            VERIFY_ARE_EQUAL(visiblePaneMetadata, projectedUnicodePane.MetadataText());
+            VERIFY_IS_TRUE(unicodePane->Id().has_value());
+            VERIFY_IS_TRUE(tab->FocusPane(unicodePane->Id().value()));
+            page->UpdateLayout();
+            VERIFY_IS_FALSE(display.Header().as<winrt::TerminalApp::TabHeaderControl>().IsMetadataVisible());
+
+            uint32_t selectionChanges = 0;
+            const auto selectionToken = page->_tabStrip.SelectionChanged([&](auto&&, auto&&) {
+                ++selectionChanges;
+            });
+            const auto revokeSelection = wil::scope_exit([&]() {
+                page->_tabStrip.SelectionChanged(selectionToken);
+            });
+
+            stripImpl->OnGroupToggleClick(toggle, RoutedEventArgs{});
+            VERIFY_IS_FALSE(display.IsExpanded());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, display.ChildrenVisibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, container.Visibility());
+            VERIFY_IS_FALSE(page->_MatchesTabSearch(*tab));
+            page->_tabSearchQuery = L"münchen";
+            VERIFY_IS_FALSE(page->_MatchesTabSearch(*tab));
+            VERIFY_IS_TRUE(page->_tabStrip.SelectedItem() == tab->TabViewItem());
+            VERIFY_ARE_EQUAL(0, page->_tabStrip.SelectedIndex());
+            VERIFY_ARE_EQUAL(0u, selectionChanges);
+
+            page->_tabSearchQuery = L"visible pane metadata";
+            stripImpl->OnGroupToggleClick(toggle, RoutedEventArgs{});
+            VERIFY_IS_TRUE(display.IsExpanded());
+            VERIFY_ARE_EQUAL(Visibility::Visible, display.ChildrenVisibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, container.Visibility());
+            VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
+            page->_tabSearchQuery = L"münchen";
+            VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
+            VERIFY_IS_TRUE(page->_tabStrip.SelectedItem() == tab->TabViewItem());
+            VERIFY_ARE_EQUAL(0, page->_tabStrip.SelectedIndex());
+            VERIFY_ARE_EQUAL(0u, selectionChanges);
+
+            const auto agentConnection = winrt::make_self<TestConnection>(
+                winrt::guid{ L"{6a480c9d-7cef-4e90-a18a-68c66c7e0888}" },
+                winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+            const auto agentPane = page->_WrapInAgentPaneContent(
+                page->_MakePane(nullptr, page->_GetFocusedTab(), *agentConnection));
+            VERIFY_IS_NOT_NULL(agentPane);
+            agentPane->IsAgentPane(true);
+            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, agentPane, false));
+
+            search(L"Hidden Agent Search Title");
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, container.Visibility());
+            const std::u16string agentTitle{ u"\x1b]0;Hidden Agent Search Title\x07" };
+            agentConnection->TerminalOutput.raise(
+                winrt::array_view<const char16_t>{ agentTitle.data(), agentTitle.data() + agentTitle.size() });
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"PowerShell Ångström" }, tab->Title());
+            page->UpdateLayout();
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, container.Visibility());
             VERIFY_IS_FALSE(page->_MatchesTabSearch(*tab));
 
-            page->_tabSearchQuery = L"";
-            VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
+            search(L"POWER");
+            VERIFY_ARE_EQUAL(Visibility::Visible, container.Visibility());
+        });
+    }
 
-            page->_tabSearchActive = false;
-            VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
+    void TabTests::VerticalTabSearchTracksActivePaneMetadata()
+    {
+        const auto rootConnection = winrt::make_self<TestConnection>(
+            winrt::guid{ L"{b7c8ba10-99df-41e5-a637-087f325cd186}" },
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        auto page = _commonSetup(*rootConnection, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(tab);
+            const auto rootPane = tab->GetActivePane();
+            VERIFY_IS_NOT_NULL(rootPane);
+            VERIFY_IS_TRUE(rootPane->Id().has_value());
+
+            const auto agentConnection = winrt::make_self<TestConnection>(
+                winrt::guid{ L"{a4ac8309-d880-40dc-8822-c22469369419}" },
+                winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+            const auto agentPane = page->_WrapInAgentPaneContent(
+                page->_MakePane(nullptr, page->_GetFocusedTab(), *agentConnection));
+            VERIFY_IS_NOT_NULL(agentPane);
+            agentPane->IsAgentPane(true);
+            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, agentPane));
+            VERIFY_IS_TRUE(agentPane->Id().has_value());
+            VERIFY_IS_TRUE(tab->GetActivePane() == agentPane);
+
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            const auto display = stripImpl->DisplayItemForTab(tab->TabViewItem());
+            VERIFY_IS_NOT_NULL(display);
+            VERIFY_IS_FALSE(display.IsGroup());
+            page->UpdateLayout();
+            const auto container = page->_tabStrip.ContainerFromIndex(0).as<ListViewItem>();
+
+            const auto applyRichTabUpdate = [&](const std::shared_ptr<Pane>& pane,
+                                                const std::wstring_view text,
+                                                const uint64_t updateSequence) {
+                const auto control = pane->GetTerminalControl();
+                VERIFY_IS_NOT_NULL(control);
+                page->_AttachOrUpdateRichTabControl(control);
+                const auto key = reinterpret_cast<uintptr_t>(winrt::get_abi(control));
+                const auto attachment = page->_richTabAttachments.find(key);
+                VERIFY_IS_TRUE(attachment != page->_richTabAttachments.end());
+                if (attachment == page->_richTabAttachments.end())
+                {
+                    return;
+                }
+
+                ::Microsoft::Terminal::RichTab::Provider::Presentation presentation;
+                presentation.text = text;
+                ::Microsoft::Terminal::RichTab::Provider::BrokerUpdate update;
+                update.sessionId = attachment->second.sessionId;
+                update.sessionIncarnation = std::numeric_limits<uint64_t>::max();
+                update.updateSequence = updateSequence;
+                update.presentation = std::move(presentation);
+                page->_ApplyRichTabUpdate(key, attachment->second.reservation, update);
+                page->UpdateLayout();
+            };
+            const auto search = [&](const winrt::hstring& query) {
+                page->_tabStrip.SearchActive(true);
+                stripImpl->SearchTextBox().Text(query);
+                page->UpdateLayout();
+                VERIFY_ARE_EQUAL(query, page->_tabSearchQuery);
+            };
+
+            search(L"Committed Search Title");
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, container.Visibility());
+            tab->SetTabText(L"Committed Search Title");
+            page->UpdateLayout();
+            VERIFY_ARE_EQUAL(Visibility::Visible, container.Visibility());
+            VERIFY_ARE_EQUAL(
+                winrt::hstring{ L"Committed Search Title" },
+                display.Header().as<winrt::TerminalApp::TabHeaderControl>().SearchText());
+
+            applyRichTabUpdate(agentPane, L"new-agent-metadata", 1);
+            VERIFY_IS_TRUE(tab->FocusPane(rootPane->Id().value()));
+            applyRichTabUpdate(rootPane, L"old-shell-metadata", 1);
+            VERIFY_IS_FALSE(display.IsGroup());
+
+            search(L"old-shell-metadata");
+            VERIFY_ARE_EQUAL(Visibility::Visible, container.Visibility());
+            VERIFY_IS_TRUE(tab->FocusPane(agentPane->Id().value()));
+            page->UpdateLayout();
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, container.Visibility());
+
+            search(L"new-agent-metadata");
+            VERIFY_ARE_EQUAL(Visibility::Visible, container.Visibility());
+            VERIFY_IS_TRUE(tab->FocusPane(rootPane->Id().value()));
+            page->UpdateLayout();
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, container.Visibility());
+
+            search(L"old-shell-metadata");
+            VERIFY_ARE_EQUAL(Visibility::Visible, container.Visibility());
+            const auto controlLessPane = std::make_shared<Pane>(page->_makeSettingsContent());
+            controlLessPane->IsAgentPane(true);
+            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, controlLessPane));
+            VERIFY_IS_NULL(controlLessPane->GetTerminalControl());
+            VERIFY_IS_TRUE(tab->GetActivePane() == controlLessPane);
+            VERIFY_IS_FALSE(display.IsGroup());
+            page->UpdateLayout();
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, container.Visibility());
         });
     }
 
@@ -4217,9 +4452,17 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Shell" }, highlighted.Text());
             VERIFY_ARE_EQUAL(FontWeights::Bold().Weight, highlighted.FontWeight().Weight);
 
+            control.Text(L"Launch \U0001F680 now");
+            control.SearchText(L"\U0001F680");
+            VERIFY_ARE_EQUAL(3u, textBlock.Inlines().Size());
+            const auto rocket = textBlock.Inlines().GetAt(1).as<Documents::Run>();
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"\U0001F680" }, rocket.Text());
+            VERIFY_ARE_EQUAL(2u, rocket.Text().size());
+            VERIFY_ARE_EQUAL(FontWeights::Bold().Weight, rocket.FontWeight().Weight);
+
             control.SearchText(L"");
             VERIFY_ARE_EQUAL(1u, textBlock.Inlines().Size());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"PowerShell" }, textBlock.Inlines().GetAt(0).as<Documents::Run>().Text());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Launch \U0001F680 now" }, textBlock.Inlines().GetAt(0).as<Documents::Run>().Text());
         });
     }
 
@@ -6132,6 +6375,15 @@ namespace TerminalAppLocalTests
             strip.SelectedItem(second);
             VERIFY_IS_TRUE(strip.SelectedItem() == second);
             VERIFY_IS_TRUE(stripImpl->ItemsList().SelectedItem().as<winrt::TerminalApp::TabStripDisplayItem>().Tab() == second);
+            VERIFY_ARE_EQUAL(1, strip.SelectedIndex());
+
+            uint32_t selectionChanges = 0;
+            const auto selectionToken = strip.SelectionChanged([&](auto&&, auto&&) {
+                ++selectionChanges;
+            });
+            const auto revokeSelection = wil::scope_exit([&]() {
+                strip.SelectionChanged(selectionToken);
+            });
 
             const auto firstTop = firstContainer.TransformToVisual(strip).TransformPoint({ 0, 0 }).Y;
             const auto secondTop = secondContainer.TransformToVisual(strip).TransformPoint({ 0, 0 }).Y;
@@ -6145,6 +6397,9 @@ namespace TerminalAppLocalTests
 
             VERIFY_IS_TRUE(strip.SelectedItem() == second);
             VERIFY_IS_TRUE(stripImpl->ItemsList().SelectedItem().as<winrt::TerminalApp::TabStripDisplayItem>().Tab() == second);
+            VERIFY_ARE_EQUAL(1, strip.SelectedIndex());
+            VERIFY_IS_TRUE(stripImpl->ItemsList().Items().GetAt(strip.SelectedIndex()).as<winrt::TerminalApp::TabStripDisplayItem>().Tab() == second);
+            VERIFY_ARE_EQUAL(0u, selectionChanges);
             const auto collapsedThirdTop = thirdContainer.TransformToVisual(strip).TransformPoint({ 0, 0 }).Y;
             VERIFY_IS_TRUE(collapsedThirdTop < thirdTop);
             VERIFY_IS_TRUE(collapsedThirdTop <= firstTop + firstContainer.ActualHeight() + 1.0);
@@ -6252,6 +6507,14 @@ namespace TerminalAppLocalTests
             const auto originalIcon = display.Icon();
             const auto firstPaneItem = display.PaneItems().GetAt(0);
             const auto secondPaneItem = display.PaneItems().GetAt(1);
+            const auto originalFirstPaneIcon = firstPaneItem.Icon();
+            uint32_t firstPaneIconChanges = 0;
+            const auto firstPanePropertyChanged = firstPaneItem.PropertyChanged(winrt::auto_revoke, [&](auto&&, const auto& args) {
+                if (args.PropertyName() == L"Icon")
+                {
+                    ++firstPaneIconChanges;
+                }
+            });
             const auto templateRoot = container.ContentTemplateRoot().as<StackPanel>();
             const auto headerRoot = templateRoot.Children().GetAt(0).as<Grid>();
             const auto iconPresenter = headerRoot.FindName(L"TabIconPresenter").as<ContentPresenter>();
@@ -6293,7 +6556,6 @@ namespace TerminalAppLocalTests
             updatedFirstPaneImpl->MetadataText(L"updated metadata");
             updatedFirstPaneImpl->MetadataVisibility(Visibility::Visible);
             updatedFirstPaneImpl->AutomationName(L"Renamed pane, updated metadata");
-            const auto updatedFirstPaneIcon = updatedFirstPane.Icon();
             updatePanes({ updatedFirstPane,
                           winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 12, L"", L"Second pane", true) });
             strip.SetTabPresentation(tab, L"Renamed tab", L"\xE8A5");
@@ -6311,17 +6573,29 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(winrt::hstring{ L"updated metadata" }, firstPaneItem.MetadataText());
             VERIFY_ARE_EQUAL(Visibility::Visible, firstPaneItem.MetadataVisibility());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane, updated metadata" }, firstPaneItem.AutomationName());
-            VERIFY_IS_TRUE(firstPaneItem.Icon() == updatedFirstPaneIcon);
+            const auto updatedFirstPaneIcon = firstPaneItem.Icon();
+            VERIFY_IS_FALSE(updatedFirstPaneIcon == originalFirstPaneIcon);
+            VERIFY_ARE_EQUAL(1u, firstPaneIconChanges);
             VERIFY_ARE_EQUAL(16.0, firstPaneItem.Icon().Width());
             VERIFY_ARE_EQUAL(16.0, firstPaneItem.Icon().Height());
             VERIFY_IS_TRUE(paneList.ContainerFromIndex(0) == firstPaneContainer);
-            const auto paneTitleText = firstPaneRoot.FindName(L"PaneTitleText").as<TextBlock>();
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane" }, paneTitleText.Text());
+            const auto firstPaneTitle = firstPaneRoot.FindName(L"PaneTitleText").as<winrt::TerminalApp::HighlightedTextControl>();
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane" }, firstPaneTitle.Text());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane" }, winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(firstPaneActivateButton)));
             VERIFY_ARE_EQUAL(Visibility::Collapsed, firstPaneRoot.FindName(L"PaneActiveIndicator").as<FrameworkElement>().Visibility());
 
-            updatePanes({ winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"", L"Renamed pane", false),
+            stripImpl->SetTabSearchText(tab, L"pane");
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"pane" }, display.SearchText());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"pane" }, firstPaneItem.HighlightQuery());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"pane" }, secondPaneItem.HighlightQuery());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"pane" }, firstPaneTitle.SearchText());
+
+            updatePanes({ winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"\xE8A5", L"Renamed pane", false),
                           winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 12, L"", L"Second pane", true) });
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"pane" }, display.PaneItems().GetAt(0).HighlightQuery());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"pane" }, display.PaneItems().GetAt(1).HighlightQuery());
+            VERIFY_IS_TRUE(firstPaneItem.Icon() == updatedFirstPaneIcon);
+            VERIFY_ARE_EQUAL(1u, firstPaneIconChanges);
             VERIFY_ARE_EQUAL(winrt::hstring{}, firstPaneItem.MetadataText());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, firstPaneItem.MetadataVisibility());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane" }, firstPaneItem.AutomationName());

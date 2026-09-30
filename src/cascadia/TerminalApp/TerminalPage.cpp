@@ -685,7 +685,7 @@ namespace winrt::TerminalApp::implementation
                 const auto wasSearchActive = page->_tabSearchActive;
                 page->_tabSearchActive = sender.SearchActive();
                 page->_tabSearchQuery = sender.SearchQuery();
-                page->_ApplyTabListProjection();
+                page->_ApplyTabListProjection(nullptr, false);
                 page->_suppressTabFocusRequests = false;
                 if (!wasSearchActive && page->_IsTabSearchEffective())
                 {
@@ -695,6 +695,15 @@ namespace winrt::TerminalApp::implementation
                         TraceLoggingDescription("User opened sidebar tab search"),
                         TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                         TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+                }
+            }
+        });
+        winrt::get_self<implementation::TabStrip>(_tabStrip)->GroupExpansionChanged([weakThis{ get_weak() }](auto&&, const auto& item) {
+            if (const auto page = weakThis.get(); page && page->_IsTabSearchEffective())
+            {
+                if (const auto tab = page->_GetTabByTabViewItem(item))
+                {
+                    page->_ApplyTabListProjection(tab, false);
                 }
             }
         });
@@ -10936,7 +10945,7 @@ namespace winrt::TerminalApp::implementation
                 {
                     tab->SetRichTabPresentation(update.presentation);
                 }
-                _RefreshTabStripPaneItems(tab);
+                _ApplyTabListProjection(*tab);
             }
         }
     }
@@ -11421,7 +11430,7 @@ namespace winrt::TerminalApp::implementation
                 if (propertyName == L"Title")
                 {
                     page->_UpdateTitle(*tab);
-                    page->_ApplyTabListProjection(*tab);
+                    page->_ApplyTabListProjection(*tab, false);
                 }
                 else if ((propertyName == L"Icon" || propertyName == L"ToolTip") && page->_isVerticalLayout)
                 {
@@ -12228,9 +12237,13 @@ namespace winrt::TerminalApp::implementation
     {
         if (const auto tab{ _GetTabImpl(sender) })
         {
+            const auto tabStrip = _isVerticalLayout && _tabStrip ?
+                                      winrt::get_self<implementation::TabStrip>(_tabStrip) :
+                                      nullptr;
+            const auto display = tabStrip ? tabStrip->DisplayItemForTab(tab->TabViewItem()) : nullptr;
             // Possibly update the icon of the tab.
             _UpdateTabIcon(*tab);
-            _RefreshTabStripPaneItems(tab);
+            _RefreshTabStripPaneItems(tab, display);
 
             if (const auto selected = _GetFocusedTabImpl(); selected && selected.get() == tab.get())
             {
@@ -12244,16 +12257,31 @@ namespace winrt::TerminalApp::implementation
                 auto profile = tab->GetFocusedProfile();
                 _UpdateBackground(profile);
             }
-            _RefreshRichTabForTab(*tab, true);
+            _RefreshRichTabForTab(*tab, true, false);
+            if (tabStrip)
+            {
+                tabStrip->SyncTabPresentation(display);
+            }
+            _ApplyTabListProjection(*tab, false, false);
         }
 
         _UpdateSidebarHistoryCurrentSession();
         _adjustProcessPriorityThrottled->Run();
     }
 
-    void TerminalPage::_RefreshTabStripPaneItems(const winrt::com_ptr<Tab>& tab)
+    void TerminalPage::_RefreshTabStripPaneItems(
+        const winrt::com_ptr<Tab>& tab,
+        const TerminalApp::TabStripDisplayItem& projectedDisplay)
     {
         if (!_tabStrip || !_isVerticalLayout || !tab)
+        {
+            return;
+        }
+
+        const auto tabStrip = winrt::get_self<implementation::TabStrip>(_tabStrip);
+        const auto display = projectedDisplay ? projectedDisplay :
+                                                tabStrip->DisplayItemForTab(tab->TabViewItem());
+        if (!display)
         {
             return;
         }
@@ -12267,12 +12295,11 @@ namespace winrt::TerminalApp::implementation
         std::vector<TerminalApp::TabStripPaneItem> items;
         for (const auto& pane : visiblePanes)
         {
-            if (pane.IsAgentPane)
+            if (!pane.IsAgentPane)
             {
-                continue;
+                ++groupPaneCount;
             }
-            ++groupPaneCount;
-            if (_IsAgentScopeEffective() && !_MatchesPaneAgentScope(pane))
+            if (!_IsPaneRowProjectionEligible(pane))
             {
                 continue;
             }
@@ -12303,9 +12330,9 @@ namespace winrt::TerminalApp::implementation
             }
             items.emplace_back(std::move(item));
         }
-        _tabStrip.SetTabPresentation(tab->TabViewItem(), tab->Title(), tab->Icon());
-        _tabStrip.SetPaneItems(
-            tab->TabViewItem(),
+        tabStrip->SetTabPresentation(display, tab->Title(), tab->Icon());
+        tabStrip->SetPaneItems(
+            display,
             single_threaded_vector<TerminalApp::TabStripPaneItem>(std::move(items)),
             groupPaneCount > 1);
     }
