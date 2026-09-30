@@ -16,6 +16,13 @@ function New-EmptyResponse([string]$RequestId, [hashtable]$Fields) {
     }
 }
 
+function Format-LabeledValue([string]$Label, [string]$Value) {
+    if ([string]::IsNullOrWhiteSpace($Label)) {
+        return $Value
+    }
+    return "${Label}: $Value"
+}
+
 function Test-LocalPathWithoutReparsePoint([string]$Path) {
     try {
         $fullPath = [IO.Path]::GetFullPath($Path)
@@ -130,11 +137,17 @@ try {
     if ($authoritative -and -not [string]::IsNullOrWhiteSpace($workingDirectory)) {
         $baseFields.workingDirectory = $workingDirectory
     }
+    $localizedLabels = @{}
     $allowedFirstPartyFields = @('agentStatus')
+    $allowedLocalizedLabels = @('branchLabel', 'changesLabel')
     foreach ($property in $request.params.firstPartyFields.PSObject.Properties) {
         if ($allowedFirstPartyFields -contains $property.Name -and
             -not [string]::IsNullOrWhiteSpace([string]$property.Value)) {
             $baseFields[$property.Name] = [string]$property.Value
+        }
+        elseif ($allowedLocalizedLabels -contains $property.Name -and
+                -not [string]::IsNullOrWhiteSpace([string]$property.Value)) {
+            $localizedLabels[$property.Name] = [string]$property.Value
         }
     }
 
@@ -379,19 +392,18 @@ try {
                         $fields.repository = $repositoryName
                         $fields.branch = $branch
                         $fields.changes = "~$changedFileCount +$additions -$deletions"
+                        $changesValue = $fields.changes
                         $tooltip = @(
                             $root
-                            "branch: $branch"
-                            "changes: $changedFileCount files, +$additions, -$deletions"
+                            (Format-LabeledValue $localizedLabels.branchLabel $branch)
+                            (Format-LabeledValue $localizedLabels.changesLabel $changesValue)
                         )
                         if (-not [string]::IsNullOrWhiteSpace($upstream)) {
-                            $tooltip += "upstream: $upstream"
+                            $tooltip += $upstream
                         }
                         if ($ahead -gt 0 -or $behind -gt 0) {
-                            $tooltip += "ahead $ahead, behind $behind"
+                            $tooltip += "+$ahead / -$behind"
                         }
-
-                        $accessibility = "$repositoryName repository, branch $branch, $changedFileCount changed files, $additions additions, $deletions deletions"
 
                         $response = @{
                             protocolVersion = 1
@@ -399,7 +411,6 @@ try {
                             result = @{
                                 fields = $fields
                                 tooltip = $tooltip -join "`n"
-                                accessibilityText = $accessibility
                             }
                         }
                     }

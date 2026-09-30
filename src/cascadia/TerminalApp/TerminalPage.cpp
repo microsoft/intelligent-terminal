@@ -739,6 +739,15 @@ namespace winrt::TerminalApp::implementation
         {
             constexpr std::string_view gitStatusProviderId{ "com.microsoft.intelligent-terminal.git-status" };
             auto& richTabBroker = ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance();
+            richTabBroker.SetFieldDisplayNames(
+                gitStatusProviderId,
+                {
+                    { "agentStatus", winrt::to_string(RS_(L"VerticalTabsMetadataAgentStatus.Text")) },
+                    { "workingDirectory", winrt::to_string(RS_(L"VerticalTabsMetadataWorkingDirectory.Text")) },
+                    { "repository", winrt::to_string(RS_(L"VerticalTabsMetadataRepository.Text")) },
+                    { "branch", winrt::to_string(RS_(L"VerticalTabsMetadataBranch.Text")) },
+                    { "changes", winrt::to_string(RS_(L"VerticalTabsMetadataChanges.Text")) },
+                });
             if (const auto fields = richTabBroker.VisibleFields(gitStatusProviderId))
             {
                 const auto contains = [&](const std::string_view field) {
@@ -10723,6 +10732,8 @@ namespace winrt::TerminalApp::implementation
         {
             firstPartyFields.emplace("agentStatus", winrt::to_string(_SidebarHistoryStatusText(*rawAgentStatus)));
         }
+        firstPartyFields.emplace("branchLabel", winrt::to_string(RS_(L"VerticalTabsMetadataBranch.Text")));
+        firstPartyFields.emplace("changesLabel", winrt::to_string(RS_(L"VerticalTabsMetadataChanges.Text")));
         ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance().UpdateFirstPartyFields(
             attachment,
             std::move(firstPartyFields));
