@@ -85,6 +85,7 @@ namespace TerminalApp
         String ChevronGlyph;
         Windows.UI.Xaml.Visibility IconVisibility;
         Double HeaderMinHeight;
+        Windows.UI.Xaml.Thickness LeadingContentMargin;
     };
 
     [default_interface] runtimeclass TabStripPaneEventArgs

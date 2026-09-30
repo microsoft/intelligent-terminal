@@ -698,9 +698,11 @@ namespace winrt::TerminalApp::implementation
                 }
             }
         });
+        _tabStrip.KeyDown({ get_weak(), &TerminalPage::_KeyDownHandler });
         _tabStrip.HistoryRequested([weakThis{ get_weak() }](auto&&, auto&&) {
             if (const auto page = weakThis.get())
             {
+                page->_CaptureSidebarHistoryEntry();
                 page->_UpdateSidebarHistoryCurrentSession();
                 page->_StartSidebarHistoryRefreshTimer();
                 page->_RequestSidebarHistoryRefresh(true);
@@ -6022,6 +6024,86 @@ namespace winrt::TerminalApp::implementation
         Root().Children().Append(_verticalRailSplitter);
     }
 
+    static bool _IsVisibleControlInSubtree(const WUX::Controls::Control& control, const DependencyObject& root)
+    {
+        if (!control || !root || !control.IsEnabled() || !control.IsLoaded() ||
+            control.ActualWidth() <= 0 || control.ActualHeight() <= 0)
+        {
+            return false;
+        }
+        for (auto element = control.as<DependencyObject>(); element; element = Media::VisualTreeHelper::GetParent(element))
+        {
+            if (const auto visual = element.try_as<UIElement>(); visual && visual.Visibility() != Visibility::Visible)
+            {
+                return false;
+            }
+            if (element == root)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    WUX::Controls::Control TerminalPage::_SidebarFocusedControl() const
+    {
+        if (const auto root = _tabStrip ? _tabStrip.XamlRoot() : nullptr)
+        {
+            const auto focused = WUX::Input::FocusManager::GetFocusedElement(root);
+            for (auto element = focused.try_as<DependencyObject>(); element; element = Media::VisualTreeHelper::GetParent(element))
+            {
+                if (element == _tabStrip)
+                {
+                    return focused.try_as<WUX::Controls::Control>();
+                }
+            }
+        }
+        return nullptr;
+    }
+
+    bool TerminalPage::_TryFocusSidebarInput(const TermControl& control)
+    {
+        try
+        {
+            return _IsVisibleControlInSubtree(control, _tabContent) && control.Focus(FocusState::Programmatic);
+        }
+        catch (const winrt::hresult_error& error)
+        {
+            LOG_HR(error.code());
+            return false;
+        }
+    }
+
+    void TerminalPage::_FocusSidebarTerminalFallback()
+    {
+        const auto tab = _GetFocusedTabImpl();
+        const auto preferred = _SourceTerminalPaneForTab(tab);
+        if (preferred && _TryFocusSidebarInput(preferred->GetTerminalControl()))
+        {
+            return;
+        }
+        if (const auto root = tab ? tab->GetRootPane() : nullptr)
+        {
+            root->WalkTree([&](const std::shared_ptr<Pane>& pane) {
+                return !pane->IsAgentPane() && pane->GetContent().try_as<TerminalApp::TerminalPaneContent>() &&
+                       _TryFocusSidebarInput(pane->GetTerminalControl());
+            });
+        }
+    }
+
+    void TerminalPage::_CaptureSidebarHistoryEntry()
+    {
+        if (!_historyEntryState)
+        {
+            _historyEntryState.emplace();
+            _historyEntryState->railWasCollapsed = _isVerticalRailCollapsed;
+            if (const auto control = _GetActiveControl())
+            {
+                _historyEntryState->sourceControl = winrt::make_weak(control);
+            }
+        }
+    }
+
     void TerminalPage::_SetVerticalRailVisibility(const bool visible)
     {
         if (!_isVerticalLayout)
@@ -6029,6 +6111,7 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
+        const auto sidebarFocus = _SidebarFocusedControl();
         if (!visible)
         {
             _CloseSidebarHistory(false);
@@ -6050,24 +6133,52 @@ namespace winrt::TerminalApp::implementation
 
         const bool expanded = visible && !_isVerticalRailCollapsed;
         const auto width = visible ? (_isVerticalRailCollapsed ? railCollapsedWidth : _verticalRailWidth) : 0.0;
-        winrt::get_self<implementation::TabRowControl>(_tabRow)->SetVerticalRailState(visible, _isVerticalRailCollapsed, width);
-        if (!expanded)
+        const auto actionMap = _settings.ActionMap();
+        Command sidebarCommand{ nullptr };
+        KeyChord sidebarChord{ nullptr };
+        for (const auto& command : actionMap.AllCommands())
         {
-            bool focusWasInRail = false;
-            if (const auto xamlRoot = _tabStrip.XamlRoot())
+            if (!command || !command.ActionAndArgs() ||
+                command.ActionAndArgs().Action() != ShortcutAction::ToggleSidebar)
             {
-                auto focused = WUX::Input::FocusManager::GetFocusedElement(xamlRoot).try_as<DependencyObject>();
-                while (focused)
+                continue;
+            }
+            auto chord = actionMap.GetKeyBindingForAction(command.ID());
+            const auto resolved = chord ? actionMap.GetActionByKeyChord(chord) : nullptr;
+            if (!resolved || resolved.ID() != command.ID())
+            {
+                chord = nullptr;
+                for (const auto& candidate : actionMap.AllKeyBindingsForAction(command.ID()))
                 {
-                    if (focused == _tabStrip)
+                    const auto effective = actionMap.GetActionByKeyChord(candidate);
+                    if (effective && effective.ID() == command.ID() &&
+                        (!chord || KeyChordSerialization::ToString(candidate) < KeyChordSerialization::ToString(chord)))
                     {
-                        focusWasInRail = true;
-                        break;
+                        chord = candidate;
                     }
-                    focused = Media::VisualTreeHelper::GetParent(focused);
                 }
             }
-
+            if (!chord)
+            {
+                continue;
+            }
+            const auto isUserCommand = command.Origin() == OriginTag::User;
+            const auto selectedIsUserCommand = sidebarCommand && sidebarCommand.Origin() == OriginTag::User;
+            if (!sidebarCommand || (isUserCommand && !selectedIsUserCommand) ||
+                (isUserCommand == selectedIsUserCommand && command.ID() < sidebarCommand.ID()))
+            {
+                sidebarCommand = command;
+                sidebarChord = chord;
+            }
+        }
+        const auto sidebarKeyChordText = sidebarChord ?
+                                             KeyChordSerialization::ToString(sidebarChord) :
+                                             winrt::hstring{};
+        const auto tabRow = winrt::get_self<implementation::TabRowControl>(_tabRow);
+        tabRow->SidebarToggleKeyChordText(sidebarKeyChordText);
+        tabRow->SetVerticalRailState(visible, _isVerticalRailCollapsed, width);
+        if (!expanded)
+        {
             if (_newTabButton && _newTabButton.Flyout())
             {
                 _newTabButton.Flyout().Hide();
@@ -6075,13 +6186,6 @@ namespace winrt::TerminalApp::implementation
             _DismissTabContextMenus();
             _CancelRailSplitterDrag();
 
-            if (focusWasInRail)
-            {
-                if (auto tab{ _GetFocusedTab() })
-                {
-                    tab.Focus(FocusState::Programmatic);
-                }
-            }
         }
 
         if (visible)
@@ -6107,6 +6211,10 @@ namespace winrt::TerminalApp::implementation
             }
             VerticalRailColumn().Width(GridLengthHelper::FromValueAndType(0, GridUnitType::Pixel));
         }
+        if (sidebarFocus && !_IsVisibleControlInSubtree(sidebarFocus, _tabStrip))
+        {
+            _FocusSidebarTerminalFallback();
+        }
     }
 
     void TerminalPage::_OnVerticalRailCollapseRequested(const IInspectable&, const IInspectable&)
@@ -6117,6 +6225,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto collapsing = !_isVerticalRailCollapsed;
+        const auto sidebarFocus = collapsing ? _SidebarFocusedControl() : nullptr;
         if (collapsing)
         {
             _ClearTabSearch();
@@ -6124,6 +6233,10 @@ namespace winrt::TerminalApp::implementation
         }
         _isVerticalRailCollapsed = collapsing;
         _SetVerticalRailVisibility(true);
+        if (sidebarFocus && !_IsVisibleControlInSubtree(sidebarFocus, _tabStrip))
+        {
+            _FocusSidebarTerminalFallback();
+        }
     }
 
     void TerminalPage::_UpdateSidebarHistoryCurrentSession()
@@ -6201,24 +6314,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto selectedTabItem = _selectedTabItem();
-        bool focusWasInHistory = false;
-        if (restoreFocus)
-        {
-            if (const auto xamlRoot = _tabStrip.XamlRoot())
-            {
-                const auto historyPanel = winrt::get_self<implementation::TabStrip>(_tabStrip)->HistoryPanel();
-                auto focused = WUX::Input::FocusManager::GetFocusedElement(xamlRoot).try_as<DependencyObject>();
-                while (focused)
-                {
-                    if (focused == historyPanel)
-                    {
-                        focusWasInHistory = true;
-                        break;
-                    }
-                    focused = Media::VisualTreeHelper::GetParent(focused);
-                }
-            }
-        }
+        const auto entry = std::exchange(_historyEntryState, std::nullopt);
 
         ++_historyActivationSerial;
         _StopSidebarHistoryRefreshTimer();
@@ -6238,11 +6334,20 @@ namespace winrt::TerminalApp::implementation
             _selectedTabItem(selectedTabItem);
         }
 
-        if (focusWasInHistory)
+        if (restoreFocus)
         {
-            if (const auto tab = _GetFocusedTab())
+            if (entry && _isVerticalLayout && _isVerticalRailVisible)
             {
-                tab.Focus(FocusState::Programmatic);
+                if (entry->railWasCollapsed)
+                {
+                    _ClearTabSearch();
+                }
+                _isVerticalRailCollapsed = entry->railWasCollapsed;
+                _SetVerticalRailVisibility(true);
+            }
+            if (!entry || !_TryFocusSidebarInput(entry->sourceControl.get()))
+            {
+                _FocusSidebarTerminalFallback();
             }
         }
     }

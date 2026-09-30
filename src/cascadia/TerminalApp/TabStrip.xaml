@@ -261,55 +261,55 @@
                               Tapped="OnTabHeaderTapped">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <Border x:Name="TabSelectionBackground"
-                                    Grid.ColumnSpan="4"
+                                    Grid.ColumnSpan="3"
                                     Background="{ThemeResource ListViewItemBackgroundSelected}"
                                     CornerRadius="{StaticResource SidebarTabCornerRadius}"
                                     IsHitTestVisible="False"
                                     Visibility="{x:Bind SelectionVisibility, Mode=OneWay}" />
                             <Border x:Name="TabColorSelectionBackground"
-                                    Grid.ColumnSpan="4"
+                                    Grid.ColumnSpan="3"
                                     Background="Transparent"
                                     CornerRadius="{StaticResource SidebarTabCornerRadius}"
                                     IsHitTestVisible="False"
                                     Visibility="{x:Bind SelectionVisibility, Mode=OneWay}" />
-                            <Button x:Name="TabGroupToggleButton"
-                                    Grid.Column="0"
-                                    Width="28"
-                                    Height="28"
-                                    Padding="0"
-                                    HorizontalAlignment="Left"
-                                    VerticalAlignment="Center"
-                                    Background="Transparent"
-                                    BorderThickness="0"
-                                    Click="OnGroupToggleClick"
-                                    Visibility="{x:Bind GroupVisibility, Mode=OneWay}">
-                                <FontIcon x:Name="TabGroupChevronIcon"
-                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                          FontSize="10"
-                                          Glyph="{x:Bind ChevronGlyph, Mode=OneWay}" />
-                            </Button>
-                            <ContentPresenter x:Name="TabIconPresenter"
-                                              Grid.Column="1"
-                                              Width="16"
-                                              Height="16"
-                                              Margin="4,0,8,0"
-                                              VerticalAlignment="Center"
-                                              Content="{x:Bind Icon, Mode=OneWay}"
-                                              Visibility="{x:Bind IconVisibility, Mode=OneWay}" />
+                            <!--  Share one centerline for shell icons and group toggles.  -->
+                            <Grid Width="28"
+                                  Margin="{x:Bind LeadingContentMargin, Mode=OneWay}"
+                                  VerticalAlignment="Center">
+                                <Button x:Name="TabGroupToggleButton"
+                                        Width="28"
+                                        Height="28"
+                                        Padding="0"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        Click="OnGroupToggleClick"
+                                        Visibility="{x:Bind GroupVisibility, Mode=OneWay}">
+                                    <FontIcon x:Name="TabGroupChevronIcon"
+                                              FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                              FontSize="10"
+                                              Glyph="{x:Bind ChevronGlyph, Mode=OneWay}" />
+                                </Button>
+                                <ContentPresenter x:Name="TabIconPresenter"
+                                                  Width="16"
+                                                  Height="16"
+                                                  HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"
+                                                  Content="{x:Bind Icon, Mode=OneWay}"
+                                                  Visibility="{x:Bind IconVisibility, Mode=OneWay}" />
+                            </Grid>
                             <ContentPresenter x:Name="TabHeaderPresenter"
-                                              Grid.Column="2"
+                                              Grid.Column="1"
                                               Margin="0,3"
                                               HorizontalAlignment="Stretch"
                                               VerticalAlignment="Center"
                                               Content="{x:Bind Header, Mode=OneWay}"
                                               Visibility="{x:Bind HeaderVisibility, Mode=OneWay}" />
                             <Button x:Name="TabCloseButton"
-                                    Grid.Column="3"
+                                    Grid.Column="2"
                                     Width="28"
                                     Height="28"
                                     Padding="0"

@@ -1159,6 +1159,14 @@
   <data name="TabMoveRight" xml:space="preserve">
     <value>오른쪽으로 이동</value>
   </data>
+  <data name="TabMoveUp" xml:space="preserve">
+    <value>위로 이동</value>
+    <comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment>
+  </data>
+  <data name="TabMoveDown" xml:space="preserve">
+    <value>아래로 이동</value>
+    <comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment>
+  </data>
   <data name="InvalidRegex" xml:space="preserve">
     <value>잘못된 정규식을 찾았습니다.</value>
   </data>

@@ -1160,6 +1160,14 @@
   <data name="TabMoveRight" xml:space="preserve">
     <value>右へ移動</value>
   </data>
+  <data name="TabMoveUp" xml:space="preserve">
+    <value>上に移動</value>
+    <comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment>
+  </data>
+  <data name="TabMoveDown" xml:space="preserve">
+    <value>下に移動</value>
+    <comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment>
+  </data>
   <data name="InvalidRegex" xml:space="preserve">
     <value>無効な正規表現が見つかりました。</value>
   </data>
