@@ -297,6 +297,21 @@ namespace winrt::TerminalApp::implementation
 
         ItemsList().ItemsSource(_displayItems);
         _vectorChangedRevoker = _tabItems.VectorChanged(auto_revoke, { get_weak(), &TabStrip::_onItemsVectorChanged });
+        _highContrastChangedRevoker = _accessibilitySettings.HighContrastChanged(auto_revoke, [weakThis{ get_weak() }, dispatcher{ Dispatcher() }](auto&&, auto&&) {
+            try
+            {
+                dispatcher.RunAsync(Windows::UI::Core::CoreDispatcherPriority::Normal, [weakThis]() {
+                    if (const auto self = weakThis.get())
+                    {
+                        for (const auto& display : self->_displayItems)
+                        {
+                            self->_refreshDisplayItemVisuals(display);
+                        }
+                    }
+                });
+            }
+            CATCH_LOG();
+        });
         Loaded([weakThis{ get_weak() }](auto&&, auto&&) {
             if (const auto self = weakThis.get())
             {
@@ -573,7 +588,7 @@ namespace winrt::TerminalApp::implementation
     void TabStrip::_updateDisplayItemVisuals(FrameworkElement const& root,
                                              TerminalApp::TabStripDisplayItem const& display)
     {
-        if (!root || !display)
+        if (!root)
         {
             return;
         }
@@ -585,6 +600,15 @@ namespace winrt::TerminalApp::implementation
                               _findNamedElement(root, L"TabHeaderGrid").try_as<Grid>();
         if (grid)
         {
+            const auto selectionBackground = grid.FindName(L"TabColorSelectionBackground").try_as<WUX::Controls::Border>();
+            if (!display)
+            {
+                if (selectionBackground)
+                {
+                    selectionBackground.Background(WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
+                }
+                return;
+            }
             const auto toggle = grid.FindName(L"TabGroupToggleButton").try_as<WUX::Controls::Control>();
             if (toggle)
             {
@@ -597,10 +621,15 @@ namespace winrt::TerminalApp::implementation
             }
             const auto tabColor = _tabSelectionColor(display.Tab());
             const auto selected = display.SelectionVisibility() == Visibility::Visible;
-            if (const auto selectionBackground = grid.FindName(L"TabColorSelectionBackground").try_as<WUX::Controls::Border>())
+            if (selectionBackground)
             {
-                const auto color = tabColor && selected ? *tabColor : Windows::UI::Colors::Transparent();
-                selectionBackground.Background(WUX::Media::SolidColorBrush{ color });
+                const auto showColor = tabColor && (selected || !Windows::UI::ViewManagement::AccessibilitySettings{}.HighContrast());
+                WUX::Media::SolidColorBrush brush{ showColor ? *tabColor : Windows::UI::Colors::Transparent() };
+                if (showColor && !selected)
+                {
+                    brush.Opacity(display.Tab().Background().as<WUX::Media::SolidColorBrush>().Opacity());
+                }
+                selectionBackground.Background(brush);
             }
             grid.Background(WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
             const auto header = display.Header().try_as<WUX::Controls::Control>();
@@ -746,11 +775,7 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::RefreshTabColor(MUX::Controls::TabViewItem const& item)
     {
-        if (const auto display = ItemsList().SelectedItem().try_as<TerminalApp::TabStripDisplayItem>();
-            display && display.Tab() == item)
-        {
-            _refreshDisplayItemVisuals(display);
-        }
+        _refreshDisplayItemVisuals(_displayItemForTab(item));
     }
 
     void TabStrip::FilterMode(TerminalApp::TabStripFilterMode value)
@@ -1389,6 +1414,7 @@ namespace winrt::TerminalApp::implementation
 
         if (e.InRecycleQueue())
         {
+            _updateDisplayItemVisuals(container.ContentTemplateRoot().try_as<FrameworkElement>(), nullptr);
             container.Visibility(Visibility::Visible);
             return;
         }
@@ -1401,6 +1427,8 @@ namespace winrt::TerminalApp::implementation
         {
             container.Visibility(Visibility::Visible);
         }
+        _updateDisplayItemVisuals(container.ContentTemplateRoot().try_as<FrameworkElement>(),
+                                  e.Item().try_as<TerminalApp::TabStripDisplayItem>());
     }
 
     void TabStrip::_applyRailState()

@@ -6,6 +6,7 @@
 #pragma once
 
 #include "winrt/Microsoft.UI.Xaml.Controls.h"
+#include "winrt/Windows.UI.ViewManagement.h"
 
 #include "TabStrip.g.h"
 #include "TabStripSelectionChangedEventArgs.g.h"
@@ -441,6 +442,8 @@ namespace winrt::TerminalApp::implementation
         std::vector<TerminalApp::TabStripHistoryItem> _historySnapshot;
         std::vector<std::vector<winrt::hstring>> _historySearchTerms;
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Windows::Foundation::IInspectable>::VectorChanged_revoker _vectorChangedRevoker;
+        winrt::Windows::UI::ViewManagement::AccessibilitySettings _accessibilitySettings;
+        winrt::Windows::UI::ViewManagement::AccessibilitySettings::HighContrastChanged_revoker _highContrastChangedRevoker;
 
         struct CloseRequestedSubscription
         {

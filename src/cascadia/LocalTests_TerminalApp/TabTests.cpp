@@ -7122,9 +7122,26 @@ namespace TerminalAppLocalTests
             VERIFY_SUCCEEDED(page->_OpenNewTab(args));
             const auto coloredTab = page->_GetFocusedTabImpl();
             VERIFY_ARE_EQUAL(winrt::Windows::UI::Colors::Red(), sidebarTabColor(1));
+            page->_SelectTab(0);
+            VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == tab);
+            const auto highContrast = winrt::Windows::UI::ViewManagement::AccessibilitySettings{}.HighContrast();
+            if (!highContrast)
+            {
+                VERIFY_ARE_EQUAL(winrt::Windows::UI::Colors::Red(), sidebarTabColor(1));
+                const auto border = headerGrid(1).FindName(L"TabColorSelectionBackground").as<Border>();
+                VERIFY_IS_TRUE(border.Background().as<Media::SolidColorBrush>().Opacity() < 1);
+            }
             coloredTab->SetRuntimeTabColor(winrt::Windows::UI::Colors::Blue());
-            VERIFY_ARE_EQUAL(winrt::Windows::UI::Colors::Blue(), sidebarTabColor(1));
+            if (!highContrast)
+            {
+                VERIFY_ARE_EQUAL(winrt::Windows::UI::Colors::Blue(), sidebarTabColor(1));
+            }
             coloredTab->ResetRuntimeTabColor();
+            if (!highContrast)
+            {
+                VERIFY_ARE_EQUAL(winrt::Windows::UI::Colors::Red(), sidebarTabColor(1));
+            }
+            page->_SelectTab(1);
             VERIFY_ARE_EQUAL(winrt::Windows::UI::Colors::Red(), sidebarTabColor(1));
             VERIFY_IS_TRUE(page->_ApplyTabLayout(TabLayout::Horizontal));
             page->_CompleteTabLayoutChange(page->_tabLayoutGeneration);
@@ -7177,21 +7194,34 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(uint8_t{ 0 }, headerGrid.Background().as<Media::SolidColorBrush>().Color().A);
             VERIFY_ARE_EQUAL(Visibility::Collapsed, selectionBackground.Visibility());
             VERIFY_IS_TRUE(header.ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
+            const auto highContrast = winrt::Windows::UI::ViewManagement::AccessibilitySettings{}.HighContrast();
 
             for (const auto color : { winrt::Windows::UI::Colors::Black(), winrt::Windows::UI::Colors::White() })
             {
                 tabBrush.Color(color);
-                strip.SetTabPresentation(tab, header.Title(), L"");
-                VERIFY_ARE_EQUAL(uint8_t{ 0 }, colorSelectionBackground.Background().as<Media::SolidColorBrush>().Color().A);
+                impl->RefreshTabColor(tab);
+                const auto inactiveBrush = colorSelectionBackground.Background().as<Media::SolidColorBrush>();
+                if (!highContrast)
+                {
+                    VERIFY_ARE_EQUAL(color, inactiveBrush.Color());
+                    VERIFY_ARE_EQUAL(tabBrush.Opacity(), inactiveBrush.Opacity());
+                }
+                else
+                {
+                    VERIFY_ARE_EQUAL(uint8_t{ 0 }, inactiveBrush.Color().A);
+                }
                 strip.SelectedItem(tab);
                 VERIFY_ARE_EQUAL(Visibility::Visible, selectionBackground.Visibility());
                 VERIFY_ARE_EQUAL(color, colorSelectionBackground.Background().as<Media::SolidColorBrush>().Color());
+                VERIFY_ARE_EQUAL(1.0, colorSelectionBackground.Background().as<Media::SolidColorBrush>().Opacity());
                 strip.SelectedItem(nullptr);
                 VERIFY_ARE_EQUAL(Visibility::Collapsed, selectionBackground.Visibility());
-                VERIFY_ARE_EQUAL(uint8_t{ 0 }, colorSelectionBackground.Background().as<Media::SolidColorBrush>().Color().A);
+                if (!highContrast)
+                {
+                    VERIFY_ARE_EQUAL(color, colorSelectionBackground.Background().as<Media::SolidColorBrush>().Color());
+                }
                 VERIFY_IS_TRUE(header.ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
             }
-
             const auto findPresenter = [](const auto& self, const DependencyObject& element) -> Primitives::ListViewItemPresenter {
                 if (const auto presenter = element.try_as<Primitives::ListViewItemPresenter>())
                 {
@@ -7228,7 +7258,30 @@ namespace TerminalAppLocalTests
             {
                 VERIFY_IS_TRUE(VisualStateManager::GoToState(container, state, false));
                 VERIFY_ARE_EQUAL(CornerRadiusHelper::FromUniformRadius(6), presenter.CornerRadius());
+                if (!highContrast)
+                {
+                    VERIFY_ARE_EQUAL(tabBrush.Opacity(), colorSelectionBackground.Background().as<Media::SolidColorBrush>().Opacity());
+                }
             }
+            tabBrush.Color(winrt::Windows::UI::Colors::Transparent());
+            impl->RefreshTabColor(tab);
+            VERIFY_ARE_EQUAL(uint8_t{ 0 }, colorSelectionBackground.Background().as<Media::SolidColorBrush>().Color().A);
+            tabBrush.Color(winrt::Windows::UI::Colors::White());
+            impl->RefreshTabColor(tab);
+            if (!highContrast)
+            {
+                VERIFY_ARE_EQUAL(winrt::Windows::UI::Colors::White(), colorSelectionBackground.Background().as<Media::SolidColorBrush>().Color());
+            }
+
+            winrt::MUX::Controls::TabViewItem replacement;
+            replacement.Header(winrt::TerminalApp::TabHeaderControl{});
+            replacement.Background(Media::SolidColorBrush{ winrt::Windows::UI::Colors::Transparent() });
+            strip.TabItems().SetAt(0, replacement);
+            strip.UpdateLayout();
+            const auto replacementRoot = strip.ContainerFromIndex(0).as<ListViewItem>().ContentTemplateRoot().as<StackPanel>();
+            const auto replacementGrid = replacementRoot.Children().GetAt(0).as<Grid>();
+            const auto replacementColor = replacementGrid.FindName(L"TabColorSelectionBackground").as<Border>();
+            VERIFY_ARE_EQUAL(uint8_t{ 0 }, replacementColor.Background().as<Media::SolidColorBrush>().Color().A);
         });
     }
 

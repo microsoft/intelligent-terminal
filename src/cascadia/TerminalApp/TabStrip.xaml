@@ -292,8 +292,7 @@
                                     Grid.ColumnSpan="3"
                                     Background="Transparent"
                                     CornerRadius="{StaticResource SidebarTabCornerRadius}"
-                                    IsHitTestVisible="False"
-                                    Visibility="{x:Bind SelectionVisibility, Mode=OneWay}" />
+                                    IsHitTestVisible="False" />
                             <!--  Share one centerline for shell icons and group toggles.  -->
                             <Grid Width="28"
                                   Margin="{x:Bind LeadingContentMargin, Mode=OneWay}"
