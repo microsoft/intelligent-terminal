@@ -189,7 +189,7 @@
                 </Button.Content>
                 <Button.Flyout>
                     <MenuFlyout Closing="OnRichTabMetadataFlyoutClosing"
-                                Placement="BottomEdgeAlignedRight">
+                                Placement="BottomEdgeAlignedLeft">
                         <MenuFlyoutItem x:Name="RichTabMetadataSectionItem"
                                         x:Uid="VerticalTabsMetadataSection"
                                         IsEnabled="False"
