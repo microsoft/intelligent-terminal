@@ -517,6 +517,22 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
                 [Windows.Automation.Automation]::Compare(
                     $shellFocus, [Windows.Automation.AutomationElement]::FocusedElement)
             }) | Should -BeTrue -Because 'repeated sidebar hotkeys must return focus to the same shell'
+
+            Invoke-UiClick -App $vertical -Selector SearchTabsButton | Out-Null
+            (Test-Until -TimeoutSec 5 -Condition { & $script:TabSearchFocused $vertical }) |
+                Should -BeTrue -Because 'the mouse can open tab search without creating a hotkey return source'
+            $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]([long]$vertical.Hwnd))
+            $condition = [Windows.Automation.PropertyCondition]::new(
+                [Windows.Automation.AutomationElement]::AutomationIdProperty, 'SearchTabsButton')
+            $searchButton = $root.FindFirst([Windows.Automation.TreeScope]::Descendants, $condition)
+            $searchButton | Should -Not -BeNullOrEmpty
+            $searchButton.SetFocus()
+            & $script:ToggleSidebarHotkey $vertical
+            Wait-UiElement -App $vertical -Selector 'CompactNewTabButton' | Out-Null
+            (Test-Until -TimeoutSec 6 -Condition {
+                [Windows.Automation.Automation]::Compare(
+                    $shellFocus, [Windows.Automation.AutomationElement]::FocusedElement)
+            }) | Should -BeTrue -Because 'exiting from a still-visible sidebar button must fall back to a terminal even without a saved source'
         }
         finally {
             if ($vertical) { Stop-Terminal -App $vertical }

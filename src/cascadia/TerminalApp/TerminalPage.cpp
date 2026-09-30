@@ -6249,7 +6249,10 @@ namespace winrt::TerminalApp::implementation
         if (!_isVerticalRailCollapsed && _SidebarFocusedControl())
         {
             const auto source = std::exchange(_sidebarHotkeyReturnControl, {});
-            _TryFocusSidebarInput(source.get());
+            if (!_TryFocusSidebarInput(source.get()))
+            {
+                _FocusSidebarTerminalFallback();
+            }
             _OnVerticalRailCollapseRequested(nullptr, nullptr);
             return;
         }

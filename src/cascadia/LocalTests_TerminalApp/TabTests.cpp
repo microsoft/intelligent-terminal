@@ -3532,6 +3532,13 @@ namespace TerminalAppLocalTests
             toggle();
             VERIFY_IS_TRUE(page->_isVerticalRailCollapsed);
             VERIFY_IS_TRUE(terminal.FocusState() != FocusState::Unfocused);
+
+            page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
+            page->_sidebarHotkeyReturnControl = {};
+            VERIFY_IS_TRUE(strip->SearchTabsButton().Focus(FocusState::Programmatic));
+            toggle();
+            VERIFY_IS_TRUE(page->_isVerticalRailCollapsed);
+            VERIFY_IS_TRUE(terminal.FocusState() != FocusState::Unfocused);
         });
     }
 
