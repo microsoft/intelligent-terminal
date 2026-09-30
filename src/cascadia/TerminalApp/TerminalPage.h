@@ -341,6 +341,7 @@ namespace winrt::TerminalApp::implementation
         bool _isRightToLeft{ false };
         bool _changingTabLayout{ false };
         bool _hasTitlebarHost{ false };
+        bool _verticalTitlebarKeyHandlerInstalled{ false };
         uint64_t _tabLayoutGeneration{ 0 };
         std::optional<winrt::Microsoft::Terminal::Settings::Model::TabLayout> _pendingTabLayout;
         std::optional<winrt::Microsoft::Terminal::Settings::Model::TabLayout> _tabLayoutTransitionTarget;

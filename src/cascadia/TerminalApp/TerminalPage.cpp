@@ -5690,6 +5690,12 @@ namespace winrt::TerminalApp::implementation
 
             if (const auto content = winrt::get_self<implementation::TabRowControl>(_tabRow)->VerticalTitleBarContent())
             {
+                if (_hasTitlebarHost && !_verticalTitlebarKeyHandlerInstalled)
+                {
+                    // Hosted chrome is detached from TabRow, so its keys cannot reach TabRow.KeyUp.
+                    content.KeyDown({ get_weak(), &TerminalPage::_KeyDownHandler });
+                    _verticalTitlebarKeyHandlerInstalled = true;
+                }
                 if (_hasTitlebarHost)
                 {
                     SetTitleBarContent.raise(*this, content);

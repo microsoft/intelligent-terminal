@@ -792,7 +792,20 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
             $button.Current.IsOffscreen | Should -BeFalse
             $button.SetFocus()
             $button.Current.HasKeyboardFocus | Should -BeTrue
+            $focusedBefore = $button.Current.HasKeyboardFocus
             & $script:ToggleSidebarHotkey $vertical
+            Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'titlebar-after-shortcut.png') | Out-Null
+            $focusedAfter = [Windows.Automation.AutomationElement]::FocusedElement
+            [pscustomobject]@{
+                ButtonFocusedBefore = $focusedBefore
+                ButtonFocusedAfter = $button.Current.HasKeyboardFocus
+                FocusedClassAfter = if ($focusedAfter) { $focusedAfter.Current.ClassName } else { '' }
+                FocusedNameAfter = if ($focusedAfter) { $focusedAfter.Current.Name } else { '' }
+                FocusedIdAfter = if ($focusedAfter) { $focusedAfter.Current.AutomationId } else { '' }
+                ExpandedButtonVisible = Test-UiElementExists -App $vertical -Selector 'Collapse sidebar' -TimeoutSec 1
+                CollapsedButtonVisible = Test-UiElementExists -App $vertical -Selector 'Expand sidebar' -TimeoutSec 1
+                SearchFocused = [bool](& $script:TabSearchFocused $vertical)
+            } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:evidenceDir 'titlebar-after-shortcut.json') -Encoding utf8
             Wait-UiElement -App $vertical -Selector CompactNewTabButton | Out-Null
             (Test-Until -TimeoutSec 6 -Condition {
                 [Windows.Automation.Automation]::Compare(
