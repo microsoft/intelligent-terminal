@@ -111,7 +111,7 @@ retention and refresh cancellation/backoff behavior.
 These native-provider ACP processes remain in the master pool after History closes;
 there is no History-specific idle timeout or eviction. Further refreshes reuse them,
 and concurrent windows share one discovery pass. Registry and discovery-status changes notify the sidebar,
-with a 60-second snapshot poll while the view is open as a fallback. Opening the
+with a 60-second snapshot poll while the view is open in vertical layout as a fallback. Opening the
 view still fetches immediately. Unavailable or failed
 providers do not clear other providers' rows or overwrite live activity and pane
 bindings. Failures are logged under `master_history`; listing never installs a native
@@ -127,7 +127,11 @@ installation scan. `wta sessions refresh --json` schedules discovery and returns
 current snapshot with `history_status`; it does not wait for discovery to finish.
 The removed `--all-agents` flag is no longer accepted. F5 in a helper's session view
 explicitly refreshes that helper's bound connection without discovering other agents.
-Ordinary helper reads are also snapshot-only, with a 60-second visible-view fallback.
+Ordinary helper reads are also snapshot-only. Their 60-second open-view fallback runs
+only in nonvertical layout; vertical layout uses the Sidebar fallback instead.
+Live layout changes and helper-ready runtime configuration update this selection per
+window without reconnecting ACP. Push updates remain immediate in either layout,
+and returning to nonvertical layout immediately refreshes an already-open helper view.
 ACP initialization retry behavior is unchanged; history-query retries do not restart
 or initialize agents.
 

@@ -2616,6 +2616,11 @@ impl App {
             AppEvent::SessionsChanged => {
                 self.schedule_agents_refetch_for_open_views();
             }
+            AppEvent::SessionsFallbackTick => {
+                if !self.sessions_in_sidebar {
+                    self.schedule_agents_refetch_for_open_views();
+                }
+            }
             AppEvent::DirectTerminalActionProposal {
                 context,
                 payload,
@@ -2978,6 +2983,17 @@ impl App {
                         && target_tab == owner_tab
                         && !owner_window.is_empty()
                         && target_window == owner_window;
+
+                    if let Some(in_sidebar) = params
+                        .get("sessions_in_sidebar")
+                        .and_then(|value| value.as_bool())
+                    {
+                        let changed = self.sessions_in_sidebar != in_sidebar;
+                        self.sessions_in_sidebar = in_sidebar;
+                        if changed && !in_sidebar {
+                            self.schedule_agents_refetch_for_open_views();
+                        }
+                    }
 
                     if let Some(enabled) = params.get("autofix_enabled").and_then(|v| v.as_bool()) {
                         tracing::info!(

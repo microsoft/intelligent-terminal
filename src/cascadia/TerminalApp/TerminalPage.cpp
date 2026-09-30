@@ -513,6 +513,8 @@ namespace winrt::TerminalApp::implementation
         // Cache the layout mode so the routing helpers (_tabItems /
         // _selectedTabItem) don't have to reach into _tabRow on every call.
         _isVerticalLayout = _tabRow.IsVerticalLayout();
+        // SetSettings captures the runtime baseline before Create applies the layout.
+        _lastAgentRuntimeConfig.sessionsInSidebar = _isVerticalLayout;
 
         _ApplyVerticalLayoutReshape(true);
 
@@ -2662,6 +2664,7 @@ namespace winrt::TerminalApp::implementation
             globals.AgentPaneYoloMode(),
             globals.IsYoloModePolicyLocked(),
             AgentPolicyTelemetry::AutoFixPolicyName(AgentPolicy::GetAutoFixPolicy()),
+            _isVerticalLayout,
         };
     }
 
@@ -2678,6 +2681,7 @@ namespace winrt::TerminalApp::implementation
         params["yolo_policy_blocked"] = config.yoloPolicyBlocked;
         params["autofix_enabled"] = config.autofixEnabled;
         params["autofix_policy_state"] = config.autofixPolicyState;
+        params["sessions_in_sidebar"] = config.sessionsInSidebar;
         return params;
     }
 
@@ -2691,6 +2695,7 @@ namespace winrt::TerminalApp::implementation
     //     credential-free picker metadata and its selected entry.
     //   - yolo_enabled + yolo_policy_blocked : the per-tab desired state,
     //     resolved for that tab's current provider, and the administrative gate.
+    //   - sessions_in_sidebar : the active window layout's session-list surface.
     void TerminalPage::_EmitAgentRuntimeConfigIfChanged()
     {
         const auto current = _CaptureAgentRuntimeConfig();
@@ -2717,8 +2722,9 @@ namespace winrt::TerminalApp::implementation
         const bool yoloChanged = last.defaultAgentId != current.defaultAgentId ||
                                  last.yoloEnabled != current.yoloEnabled ||
                                  last.yoloPolicyBlocked != current.yoloPolicyBlocked;
+        const bool sessionsLayoutChanged = last.sessionsInSidebar != current.sessionsInSidebar;
 
-        if (!autofixChanged && !autofixPolicyChanged && !delegateChanged && !customModelsChanged && !yoloChanged)
+        if (!autofixChanged && !autofixPolicyChanged && !delegateChanged && !customModelsChanged && !yoloChanged && !sessionsLayoutChanged)
         {
             _lastAgentRuntimeConfig = current;
             return;
@@ -2745,7 +2751,11 @@ namespace winrt::TerminalApp::implementation
             params["custom_models"] =
                 ::Microsoft::Terminal::CustomModels::CatalogToJson(current.customModels);
         }
-        const bool commonChanged = autofixChanged || autofixPolicyChanged || delegateChanged || customModelsChanged;
+        if (sessionsLayoutChanged)
+        {
+            params["sessions_in_sidebar"] = current.sessionsInSidebar;
+        }
+        const bool commonChanged = autofixChanged || autofixPolicyChanged || delegateChanged || customModelsChanged || sessionsLayoutChanged;
         if (commonChanged)
         {
             _agentPaneLog("emitting agent_config_changed (hot settings update)");
@@ -5814,6 +5824,7 @@ namespace winrt::TerminalApp::implementation
             _tabLayoutTransitionSelectedItem = nullptr;
             _ApplyTabListProjection();
             _ApplyPendingPinRequest();
+            _EmitAgentRuntimeConfigIfChanged();
             return false;
         }
     }
@@ -5962,6 +5973,7 @@ namespace winrt::TerminalApp::implementation
         _tabLayoutTransitionSelectedItem = nullptr;
         _ApplyTabListProjection();
         _ApplyPendingPinRequest();
+        _EmitAgentRuntimeConfigIfChanged();
 
         if (const auto infoBar = FindName(L"TabLayoutRestartInfoBar").try_as<MUX::Controls::InfoBar>())
         {
@@ -6289,12 +6301,17 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_StartSidebarHistoryRefreshTimer()
     {
+        if (!_isVerticalLayout || !_tabStrip || !_tabStrip.HistoryActive())
+        {
+            _StopSidebarHistoryRefreshTimer();
+            return;
+        }
         if (!_historyRefreshTimer)
         {
             _historyRefreshTimer = Windows::UI::Xaml::DispatcherTimer{};
             _historyRefreshTimer.Interval(std::chrono::seconds{ 60 });
             _historyRefreshTimer.Tick([weakThis{ get_weak() }](auto&&, auto&&) {
-                if (const auto page = weakThis.get(); page && page->_tabStrip.HistoryActive())
+                if (const auto page = weakThis.get(); page && page->_isVerticalLayout && page->_tabStrip.HistoryActive())
                 {
                     page->_RequestSidebarHistoryRefresh(false);
                 }

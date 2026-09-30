@@ -3820,11 +3820,8 @@ pub async fn run_acp_client_over_pipe(
 
     let conn = Arc::new(conn);
 
-    // Periodic fallback that fans out an AppEvent::SessionsChanged to
-    // force a refetch in any open session management view. Belt-and-suspenders against
-    // missed `intellterm.wta/sessions/changed` broadcasts. Cheap:
-    // refetch only fires for tabs whose snapshot.is_some() (i.e. session management view is
-    // currently open).
+    // The app applies this fallback only to open helper session views in
+    // nonvertical layouts. Master notifications remain independent of layout.
     let mut periodic_refetch = tokio::time::interval(std::time::Duration::from_secs(60));
     periodic_refetch.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     // Burn the first tick (fires immediately on creation).
@@ -3838,7 +3835,7 @@ pub async fn run_acp_client_over_pipe(
         tokio::select! {
             biased;
             _ = periodic_refetch.tick() => {
-                let _ = event_tx.send(AppEvent::SessionsChanged);
+                let _ = event_tx.send(AppEvent::SessionsFallbackTick);
             }
             Some(event) = session_hook_rx.recv() => {
                 let conn_for_hook = conn.clone();
