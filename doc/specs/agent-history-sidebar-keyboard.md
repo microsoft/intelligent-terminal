@@ -30,7 +30,7 @@ The two focus policies referenced here are defined separately below.
 | Sidebar collapsed | `Ctrl+Shift+S` | Expand the sidebar and open **Search tabs**. | Remember the current terminal or Agent input, then focus the tab-search box. |
 | Sidebar expanded, focus outside the sidebar | `Ctrl+Shift+S` | Keep the sidebar expanded and open **Search tabs**. | Remember the current input, then focus the tab-search box. |
 | Sidebar expanded, focus inside the sidebar | `Ctrl+Shift+S` | Collapse the sidebar and close tab search or History. | Best-effort return to the input used before entering the sidebar; fall back to a visible terminal. |
-| Sidebar expanded, History hidden | `Ctrl+Shift+/` | Show History; remember that the sidebar was expanded. | Remember the source input, then focus the History search box. |
+| Sidebar expanded, History hidden | `Ctrl+Shift+/` | Show History; remember that the sidebar was expanded. | Remember focused tab search or the source input, then focus the History search box. |
 | Sidebar collapsed, History hidden | `Ctrl+Shift+/` | Expand the sidebar and show History; remember that the sidebar was originally collapsed. | Remember the source input, then focus the History search box. |
 | History visible; sidebar was collapsed before History opened | `Ctrl+Shift+/` or the History close button | Hide History **and collapse the sidebar**. | History source-restoration policy. |
 | History visible; sidebar was expanded before History opened | `Ctrl+Shift+/` or the History close button | Hide History; **keep the sidebar expanded**, displaying its ordinary page without History. | History source-restoration policy. |
@@ -48,11 +48,15 @@ When transitioning from hidden History to visible History, retain:
   History.
 - The source input location: the Agent Pane chat input or the specific terminal
   pane, including its particular split.
+- Whether ordinary tab search had keyboard focus, retaining its query.
 
 Do not replace this entry context with the History search box when focus moves
 there. When History is closed by its shortcut or close button, restore the
 remembered sidebar expanded/collapsed state and attempt to restore the source
 input.
+
+If History was opened from focused tab search and the rail remains expanded,
+restore focus to that search box with its query intact. Otherwise:
 
 1. If the source is still visible and focusable, return to that input location,
    preserving its unsent draft.
@@ -93,6 +97,9 @@ The titlebar's Expand/Collapse button retains its existing visibility behavior;
 it does not itself open tab search. `Ctrl+Shift+S` while History is visible
 does not invoke History's source-restoration path. A subsequent History opening
 captures its own new entry context.
+The public `toggleSidebar` command remains a visibility toggle when invoked
+from the command palette or another non-key source. The titlebar rail toggle
+counts as inside the sidebar for the keybinding's focus policy.
 
 ## Data and lifecycle invariants
 

@@ -362,6 +362,7 @@ namespace winrt::TerminalApp::implementation
         struct _SidebarHistoryEntryState
         {
             bool railWasCollapsed{ false };
+            bool tabSearchHadFocus{ false };
             winrt::weak_ref<Microsoft::Terminal::Control::TermControl> sourceControl;
         };
         std::optional<_SidebarHistoryEntryState> _historyEntryState;

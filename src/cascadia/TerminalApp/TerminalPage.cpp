@@ -6102,9 +6102,12 @@ namespace winrt::TerminalApp::implementation
         if (const auto root = _tabStrip ? _tabStrip.XamlRoot() : nullptr)
         {
             const auto focused = WUX::Input::FocusManager::GetFocusedElement(root);
+            const auto railToggle = _tabRow ?
+                                        winrt::get_self<implementation::TabRowControl>(_tabRow)->VerticalRailToggleButton() :
+                                        nullptr;
             for (auto element = focused.try_as<DependencyObject>(); element; element = Media::VisualTreeHelper::GetParent(element))
             {
-                if (element == _tabStrip)
+                if (element == _tabStrip || (railToggle && element == railToggle))
                 {
                     return focused.try_as<WUX::Controls::Control>();
                 }
@@ -6149,6 +6152,11 @@ namespace winrt::TerminalApp::implementation
         {
             _historyEntryState.emplace();
             _historyEntryState->railWasCollapsed = _isVerticalRailCollapsed;
+            if (_tabSearchActive && _tabStrip)
+            {
+                _historyEntryState->tabSearchHadFocus =
+                    _SidebarFocusedControl() == winrt::get_self<implementation::TabStrip>(_tabStrip)->SearchTextBox();
+            }
             if (const auto control = _GetActiveControl())
             {
                 _historyEntryState->sourceControl = winrt::make_weak(control);
@@ -6445,6 +6453,12 @@ namespace winrt::TerminalApp::implementation
                 }
                 _isVerticalRailCollapsed = entry->railWasCollapsed;
                 _SetVerticalRailVisibility(true);
+            }
+            if (entry && entry->tabSearchHadFocus &&
+                _isVerticalLayout && _isVerticalRailVisible && !_isVerticalRailCollapsed &&
+                winrt::get_self<implementation::TabStrip>(_tabStrip)->FocusTabSearch())
+            {
+                return;
             }
             if (!entry || !_TryFocusSidebarInput(entry->sourceControl.get()))
             {
@@ -10376,31 +10390,36 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        const auto cmd = actionMap.GetActionByKeyChord({
+        const KeyChord chord{
             modifiers.IsCtrlPressed(),
             modifiers.IsAltPressed(),
             modifiers.IsShiftPressed(),
             modifiers.IsWinPressed(),
             vkey,
             scanCode,
-        });
+        };
+        const auto cmd = actionMap.GetActionByKeyChord(chord);
         if (!cmd)
         {
             return;
         }
 
-        if (!_actionDispatch->DoAction(cmd.ActionAndArgs()))
+        const auto action = cmd.ActionAndArgs();
+        const auto handled = action.Action() == ShortcutAction::ToggleSidebar ?
+                                 _actionDispatch->DoAction(chord, action) :
+                                 _actionDispatch->DoAction(action);
+        if (!handled)
         {
             return;
         }
 
         if (_commandPaletteIs(Visibility::Visible) &&
-            cmd.ActionAndArgs().Action() != ShortcutAction::ToggleCommandPalette)
+            action.Action() != ShortcutAction::ToggleCommandPalette)
         {
             CommandPaletteElement().Visibility(Visibility::Collapsed);
         }
         if (_suggestionsControlIs(Visibility::Visible) &&
-            cmd.ActionAndArgs().Action() != ShortcutAction::ToggleCommandPalette)
+            action.Action() != ShortcutAction::ToggleCommandPalette)
         {
             SuggestionsElement().Visibility(Visibility::Collapsed);
         }
@@ -10419,16 +10438,20 @@ namespace winrt::TerminalApp::implementation
         {
             if (const auto actionMap = _settings.ActionMap())
             {
-                if (const auto cmd = actionMap.GetActionByKeyChord({
+                const KeyChord chord{
                         modifiers.IsCtrlPressed(),
                         modifiers.IsAltPressed(),
                         modifiers.IsShiftPressed(),
                         modifiers.IsWinPressed(),
                         gsl::narrow_cast<int32_t>(vkey),
                         scanCode,
-                    }))
+                    };
+                if (const auto cmd = actionMap.GetActionByKeyChord(chord))
                 {
-                    return _actionDispatch->DoAction(cmd.ActionAndArgs());
+                    const auto action = cmd.ActionAndArgs();
+                    return action.Action() == ShortcutAction::ToggleSidebar ?
+                               _actionDispatch->DoAction(chord, action) :
+                               _actionDispatch->DoAction(action);
                 }
             }
         }
