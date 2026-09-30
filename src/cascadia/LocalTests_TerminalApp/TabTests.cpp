@@ -6392,6 +6392,12 @@ namespace TerminalAppLocalTests
                 VERIFY_IS_TRUE(page->_tabs.GetAt(expectedIndex) == *tab);
                 VERIFY_IS_TRUE(page->_tabStrip.TabItems().GetAt(expectedIndex) == tab->TabViewItem());
                 VERIFY_IS_TRUE(strip->ItemsList().Items().GetAt(expectedIndex).as<winrt::TerminalApp::TabStripDisplayItem>().Tab() == tab->TabViewItem());
+                for (uint32_t index = 0; index < page->_tabs.Size(); ++index)
+                {
+                    const auto item = page->_tabs.GetAt(index).TabViewItem();
+                    VERIFY_IS_TRUE(page->_tabStrip.TabItems().GetAt(index) == item);
+                    VERIFY_IS_TRUE(strip->ItemsList().Items().GetAt(index).as<winrt::TerminalApp::TabStripDisplayItem>().Tab() == item);
+                }
             });
         }
 
@@ -6421,6 +6427,12 @@ namespace TerminalAppLocalTests
                 VERIFY_IS_TRUE(page->_tabs.GetAt(i) == *tab);
                 VERIFY_IS_TRUE(page->_tabStrip.TabItems().GetAt(i) == tab->TabViewItem());
                 VERIFY_IS_TRUE(strip->ItemsList().Items().GetAt(i).as<winrt::TerminalApp::TabStripDisplayItem>().Tab() == tab->TabViewItem());
+                for (uint32_t index = 0; index < page->_tabs.Size(); ++index)
+                {
+                    const auto item = page->_tabs.GetAt(index).TabViewItem();
+                    VERIFY_IS_TRUE(page->_tabStrip.TabItems().GetAt(index) == item);
+                    VERIFY_IS_TRUE(strip->ItemsList().Items().GetAt(index).as<winrt::TerminalApp::TabStripDisplayItem>().Tab() == item);
+                }
             });
         }
 
