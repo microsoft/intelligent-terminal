@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 #include "pch.h"
+#include "TabStrip.h"
 #include "../inc/AgentPaneRestore.h"
 #include "App.h"
 
@@ -645,6 +646,13 @@ namespace winrt::TerminalApp::implementation
             control.ToggleShaderEffects();
         });
         args.Handled(res);
+    }
+
+    void TerminalPage::_HandleToggleSidebar(const IInspectable& /*sender*/,
+                                            const ActionEventArgs& args)
+    {
+        _OnVerticalRailCollapseRequested(nullptr, nullptr);
+        args.Handled(true);
     }
 
     void TerminalPage::_HandleToggleFocusMode(const IInspectable& /*sender*/,
@@ -1739,6 +1747,32 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_HandleOpenAgentSessions(const IInspectable& /*sender*/,
                                                 const ActionEventArgs& args)
     {
+        if (_isVerticalLayout)
+        {
+            if (_tabStrip && _isVerticalRailVisible)
+            {
+                if (_tabStrip.HistoryActive())
+                {
+                    _CloseSidebarHistory(true);
+                }
+                else
+                {
+                    _CaptureSidebarHistoryEntry();
+                    if (_isVerticalRailCollapsed)
+                    {
+                        _OnVerticalRailCollapseRequested(nullptr, nullptr);
+                    }
+                    winrt::get_self<implementation::TabStrip>(_tabStrip)->OpenHistory();
+                    if (!_tabStrip.HistoryActive())
+                    {
+                        _historyEntryState.reset();
+                    }
+                }
+            }
+            args.Handled(true);
+            return;
+        }
+
         OutputDebugStringW(L"[AgentPane] _HandleOpenAgentSessions called\n");
         const auto activeTabPre = _GetFocusedTabImpl();
         const auto agentPanePre = activeTabPre ? activeTabPre->FindAgentPane() : nullptr;

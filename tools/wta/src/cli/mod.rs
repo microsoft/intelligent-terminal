@@ -78,6 +78,7 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
                 universe,
                 window_id,
                 activation_id,
+                status_only,
             } => {
                 sessions::run_activate(
                     &session_id,
@@ -87,6 +88,7 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
                     universe,
                     window_id,
                     activation_id,
+                    status_only,
                     json_mode,
                 )
                 .await

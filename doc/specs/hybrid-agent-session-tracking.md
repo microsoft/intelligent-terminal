@@ -287,11 +287,20 @@ generic session icon rather than another provider's brand.
 The bottom-right session-management button is hidden only in the Vertical tab
 layout; other layouts retain it. Its visibility updates on startup and live
 layout changes, independently of whether the vertical sidebar is expanded,
-collapsed, or hidden. The button shares the existing `Ctrl+Shift+/` /
-`openAgentSessions` action: open or restore the active tab's session manager,
-switch from chat to sessions, or stash an already-visible session manager.
-The shortcut remains available in every layout; the sidebar Agent sessions view is a
-separate entry point.
+collapsed, or hidden. The button shares the existing `openAgentSessions` action.
+The final agreed keyboard and focus behavior is specified in
+[Agent History and Sidebar Keyboard Navigation](./agent-history-sidebar-keyboard.md).
+That contract does not change horizontal agent-session behavior.
+In vertical layout, `Ctrl+Shift+/` opens History
+and focuses its search box. Closing it with the same shortcut or close button
+restores the sidebar's pre-History expanded/collapsed state and attempts to restore
+the source chat input or terminal split, with a visible-terminal fallback.
+In contrast, `Ctrl+Shift+S` only expands/collapses the sidebar: expansion does not
+move focus or activate search, and collapse uses the no-source focus policy even
+when History was visible. Neither action deletes session data or stops agent tasks.
+The sidebar hint uses the effective binding, with display casing such as
+`Ctrl+Shift+S`, and matches the Agent Pane tooltip's separate dimmed shortcut line.
+
 Session titles use only the text before the first CR or LF. An empty first line
 uses the existing missing-title fallback. The title occupies one non-wrapping
 line with ellipsis; the metadata line below it is unchanged.
@@ -386,8 +395,32 @@ Late/canceled responses cannot replace the snapshot, display an error, or add
 retry backoff. Reopening coalesces a fresh request until the old worker completes,
 using a new cancellation flag for the new request.
 
-Activation timeout outcome reconciliation remains separate; a client timeout
-does not prove that the backend took no action.
+Activation operations are reserved by activation ID before dispatch and owned by
+master, not by the short-lived CLI connection. Concurrent requests with the same
+ID return its pending or completed receipt rather than focusing or restoring
+again. Reusing an ID for another qualified session identity or window is rejected.
+The bounded receipt cache never evicts pending operations.
+Timeouts or unreadable responses from the master's own `wtcli` mutation also
+remain unknown, rather than being converted into a definitive rejection that
+would permit a duplicate restore. A created tab without a usable pane binding
+is likewise not safe to restore again.
+
+A client timeout does not prove that the backend took no action. After an
+unconfirmed activation response, Terminal makes one bounded, read-only
+`sessions activate --status-only` request with the original activation ID and
+qualified identity. This uses the separate `session/activation_status` extension
+method, so an older master cannot mistake a status lookup for another activation.
+An unavailable, pending, malformed, or mismatched receipt leaves the operation
+unresolved and displays the existing activation error. Clicking that row again
+checks the same operation instead of generating a new ID or restoring again.
+Other rows remain independently activatable.
+
+Unresolved IDs survive History close/reopen and list refreshes for the lifetime
+of the page. A matching completed receipt releases the ID, even if the view closed
+while the request was running, without applying a stale UI callback. A late
+receipt cannot release a newer operation. If master restarts or evicts a completed
+receipt before it is observed, status is `unknown`; Terminal conservatively keeps
+the ID and does not automatically redispatch a potentially completed mutation.
 
 At startup, once its named pipe is ready, master checks policy and local
 native agent CLI and required `npx` prerequisites, then initializes installed

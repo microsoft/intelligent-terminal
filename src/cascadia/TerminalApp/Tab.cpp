@@ -2051,6 +2051,9 @@ namespace winrt::TerminalApp::implementation
         WUX::Controls::ToolTipService::SetToolTip(_closeTabsAfterMenuItem, box_value(tooltip));
         Automation::AutomationProperties::SetHelpText(_closeTabsAfterMenuItem, tooltip);
 
+        _moveRightMenuItem.Text(vertical ? RS_(L"TabMoveDown") : RS_(L"TabMoveRight"));
+        _moveLeftMenuItem.Text(vertical ? RS_(L"TabMoveUp") : RS_(L"TabMoveLeft"));
+
         _switchTabLayoutTarget = vertical ? TabLayout::Horizontal : TabLayout::Vertical;
         const auto switchLabel = vertical ? RS_(L"SwitchToHorizontalTabsText") : RS_(L"SwitchToVerticalTabsText");
         const auto switchTooltip = vertical ? RS_(L"SwitchToHorizontalTabsToolTip") : RS_(L"SwitchToVerticalTabsToolTip");
@@ -3042,10 +3045,12 @@ namespace winrt::TerminalApp::implementation
                     {
                         title = Title();
                     }
+                    const auto profile = pane->GetProfile();
                     result.emplace_back(VisiblePaneSnapshot{
                         .ContentId = pane->_contentId.value(),
                         .SessionId = pane->GetSessionId(),
                         .Title = std::move(title),
+                        .Icon = profile ? profile.Icon().Resolved() : winrt::hstring{},
                         .IsActive = pane == activeLeaf,
                         .IsAgentPane = pane->_content.try_as<winrt::TerminalApp::AgentPaneContent>() != nullptr ||
                                        pane->IsAgentPane(),

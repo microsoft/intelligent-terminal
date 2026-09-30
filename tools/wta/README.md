@@ -94,6 +94,17 @@ a successful empty result. Errors remain visible alongside any available rows;
 failed refreshes do not clear previously displayed sessions. This does not depend
 on the agent pane's chat connection or hooks being ready.
 
+History activation keeps an operation ID until its outcome is confirmed.
+If the activation CLI times out, the sidebar checks the receipt using
+`wta sessions activate --status-only` with the same identity, target window, and
+`--activation-id`. This is a read-only status request: `pending` and `unknown`
+never start another focus or restore. Master continues an accepted activation
+after the requesting CLI disconnects. Retrying an unresolved row checks the
+same receipt, including after closing and reopening History; it does not generate
+a fresh activation ID. See
+[session tracking](../../doc/specs/hybrid-agent-session-tracking.md) for receipt
+retention and refresh cancellation/backoff behavior.
+
 These native-provider ACP processes remain in the master pool after History closes;
 there is no History-specific idle timeout or eviction. Further refreshes reuse them,
 and concurrent windows share one discovery pass. Registry and discovery-status changes notify the sidebar,

@@ -35,11 +35,26 @@ namespace winrt::TerminalApp::implementation
 {
     TabStripPaneItem::TabStripPaneItem(MUX::Controls::TabViewItem tab,
                                        uint32_t contentId,
+                                       hstring iconPath,
                                        hstring title,
                                        bool isActive) :
         _tab{ std::move(tab) },
         _contentId{ contentId }
     {
+        if (iconPath.empty())
+        {
+            WUX::Controls::FontIcon fallback;
+            fallback.FontFamily(WUX::Media::FontFamily{ L"Segoe Fluent Icons, Segoe MDL2 Assets" });
+            fallback.FontSize(12);
+            fallback.Glyph(L"\xE756");
+            Icon(fallback);
+        }
+        else
+        {
+            Icon(Microsoft::Terminal::UI::IconPathConverter::IconWUX(iconPath));
+        }
+        Icon().Width(16);
+        Icon().Height(16);
         Title(std::move(title));
         AutomationName(Title());
         IsActive(isActive);
@@ -99,6 +114,7 @@ namespace winrt::TerminalApp::implementation
         ChildrenVisibility(isGroup && !railCollapsed && IsExpanded() ? Visibility::Visible : Visibility::Collapsed);
         IconVisibility(isGroup && !railCollapsed ? Visibility::Collapsed : Visibility::Visible);
         HeaderMinHeight(railCollapsed ? 32.0 : 40.0);
+        LeadingContentMargin(railCollapsed ? WUX::Thickness{} : WUX::Thickness{ 6, 0, 10, 0 });
         ChevronGlyph(IsExpanded() ? L"\xE70D" : L"\xE76C");
     }
 
@@ -407,6 +423,7 @@ namespace winrt::TerminalApp::implementation
             {
                 // Keep the row and its bindings alive during focus/title updates.
                 const auto existing = current.GetAt(match);
+                existing.Icon(pane.Icon());
                 existing.Title(pane.Title());
                 existing.IsActive(pane.IsActive());
                 existing.ActiveIndicatorVisibility(pane.ActiveIndicatorVisibility());
@@ -1118,6 +1135,11 @@ namespace winrt::TerminalApp::implementation
     }
 
     void TabStrip::OnHistoryClick(IInspectable const&, WUX::RoutedEventArgs const&)
+    {
+        OpenHistory();
+    }
+
+    void TabStrip::OpenHistory()
     {
         if (_isRailCollapsed || !_projectionControlsEnabled)
         {

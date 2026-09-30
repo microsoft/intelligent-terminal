@@ -14,8 +14,7 @@ namespace TerminalApp
 
         // When adding a new action, add them to AllShortcutActions.h!
         #define ON_ALL_ACTIONS(action) ACTION_EVENT(action);
-        ALL_SHORTCUT_ACTIONS
-        INTERNAL_SHORTCUT_ACTIONS
+        ALL_SHORTCUT_ACTIONS_IN_ABI_ORDER
         #undef ON_ALL_ACTIONS
 
     }

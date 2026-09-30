@@ -10269,10 +10269,12 @@ async fn sidebar_activation_uses_exact_collision_row_and_replays_receipt() {
         activation_id: "activation-1".to_string(),
     };
 
-    let first = handle_session_activate(&state, &params)
+    let first = tokio::task::LocalSet::new()
+        .run_until(handle_session_activate(&state, &params))
         .await
         .expect("first activation succeeds");
-    let replay = handle_session_activate(&state, &params)
+    let replay = tokio::task::LocalSet::new()
+        .run_until(handle_session_activate(&state, &params))
         .await
         .expect("receipt replay succeeds");
     let first = crate::session_registry::parse_session_activate_response(&first.0).unwrap();
@@ -10328,7 +10330,8 @@ async fn sidebar_cli_resume_binds_created_pane_for_agent_filtering() {
         activation_id: "resume-copilot-history".to_string(),
     };
 
-    let response = handle_session_activate(&state, &params)
+    let response = tokio::task::LocalSet::new()
+        .run_until(handle_session_activate(&state, &params))
         .await
         .expect("sidebar activation succeeds");
     let response = crate::session_registry::parse_session_activate_response(&response.0).unwrap();
@@ -10370,12 +10373,192 @@ async fn sidebar_cli_resume_binds_created_pane_for_agent_filtering() {
             serde_json::json!({ "session_id": "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE" })
         )
     );
-    let replay = handle_session_activate(&state, &params).await.unwrap();
+    let replay = handle_session_activation_status(&state, &params)
+        .await
+        .unwrap();
     assert_eq!(
         response,
         crate::session_registry::parse_session_activate_response(&replay.0).unwrap()
     );
     assert_eq!(mock.calls().len(), 2);
+}
+
+#[tokio::test]
+async fn sidebar_activation_survives_disconnect_and_deduplicates_pending_retries() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
+    use crate::session_registry::{
+        parse_session_activate_response, SessionActivateParams, SessionActivationState,
+        SessionIdentity, SessionInfo,
+    };
+    use std::sync::atomic::Ordering;
+    use std::time::Duration;
+
+    struct PausedCreate {
+        entered: tokio::sync::Notify,
+        release: tokio::sync::Notify,
+        calls: std::sync::atomic::AtomicUsize,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::shell::wt_channel::WtChannel for PausedCreate {
+        async fn request(
+            &self,
+            method: &str,
+            _params: serde_json::Value,
+        ) -> anyhow::Result<serde_json::Value> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            if method == "create_tab" {
+                self.entered.notify_one();
+                self.release.notified().await;
+            }
+            Ok(serde_json::json!({ "session_id": "restored-pane" }))
+        }
+
+        fn is_available(&self) -> bool {
+            true
+        }
+    }
+
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let wt = Arc::new(PausedCreate {
+                entered: tokio::sync::Notify::new(),
+                release: tokio::sync::Notify::new(),
+                calls: std::sync::atomic::AtomicUsize::new(0),
+            });
+            let state = make_state_with_wt(wt.clone());
+            let mut row = SessionInfo::new(SessionId::new("history"), "C:\\repo".into());
+            row.provider_id = Some("copilot".to_string());
+            row.location = SessionLocation::Host;
+            row.cli_source = Some(CliSource::Copilot);
+            row.origin = Some(SessionOrigin::Unknown);
+            row.status = Some(AgentStatus::Historical);
+            let params = SessionActivateParams {
+                identity: SessionIdentity::from_info(&row),
+                window_id: 42,
+                activation_id: "interrupted-activation".to_string(),
+            };
+            state.registry.upsert(row).await;
+
+            let caller = tokio::task::spawn_local({
+                let state = state.clone();
+                let params = params.clone();
+                async move { handle_session_activate(&state, &params).await }
+            });
+            wt.entered.notified().await;
+            for response in [
+                handle_session_activate(&state, &params).await.unwrap(),
+                handle_session_activation_status(&state, &params)
+                    .await
+                    .unwrap(),
+            ] {
+                let receipt = parse_session_activate_response(&response.0).unwrap();
+                assert_eq!(receipt.state, SessionActivationState::Pending);
+                assert!(!receipt.accepted);
+            }
+            assert_eq!(wt.calls.load(Ordering::SeqCst), 1);
+
+            let mut different_window = params.clone();
+            different_window.window_id = 43;
+            assert!(handle_session_activate(&state, &different_window)
+                .await
+                .is_err());
+            assert!(handle_session_activation_status(&state, &different_window)
+                .await
+                .is_err());
+            let mut different_session = params.clone();
+            different_session.identity.session_id = SessionId::new("other");
+            assert!(handle_session_activation_status(&state, &different_session)
+                .await
+                .is_err());
+
+            caller.abort();
+            assert!(caller.await.unwrap_err().is_cancelled());
+            wt.release.notify_one();
+            let completed = tokio::time::timeout(Duration::from_secs(5), async {
+                loop {
+                    let response = handle_session_activation_status(&state, &params)
+                        .await
+                        .unwrap();
+                    let receipt = parse_session_activate_response(&response.0).unwrap();
+                    if receipt.state == SessionActivationState::Complete {
+                        break receipt;
+                    }
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .expect("master finishes after caller cancellation");
+            assert!(completed.accepted);
+            assert_eq!(completed.action, "resume_cli");
+            assert_eq!(wt.calls.load(Ordering::SeqCst), 2);
+            let replay = handle_session_activate(&state, &params).await.unwrap();
+            assert_eq!(
+                parse_session_activate_response(&replay.0).unwrap(),
+                completed
+            );
+            assert_eq!(wt.calls.load(Ordering::SeqCst), 2);
+
+            // Eviction or master restart must never turn a status lookup into a restore.
+            state.session_activation_receipts.lock().await.clear();
+            let response = handle_session_activation_status(&state, &params)
+                .await
+                .unwrap();
+            assert_eq!(
+                parse_session_activate_response(&response.0).unwrap().state,
+                SessionActivationState::Unknown
+            );
+            assert_eq!(wt.calls.load(Ordering::SeqCst), 2);
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn sidebar_activation_receipt_capacity_preserves_pending_operations() {
+    use crate::session_registry::{
+        SessionActivateParams, SessionActivateResponse, SessionActivationState, SessionIdentity,
+    };
+    let state = make_state();
+    let params = SessionActivateParams {
+        identity: SessionIdentity::legacy(SessionId::new("missing")),
+        window_id: 42,
+        activation_id: "new".to_string(),
+    };
+    {
+        let mut receipts = state.session_activation_receipts.lock().await;
+        for index in 0..256 {
+            let mut pending = params.clone();
+            pending.activation_id = index.to_string();
+            receipts.insert(
+                pending.activation_id.clone(),
+                SessionActivationReceipt {
+                    response: SessionActivateResponse {
+                        activation_id: pending.activation_id.clone(),
+                        state: SessionActivationState::Pending,
+                        action: String::new(),
+                        accepted: false,
+                        detail: None,
+                    },
+                    params: pending,
+                },
+            );
+        }
+    }
+    assert!(handle_session_activate(&state, &params).await.is_err());
+    {
+        let mut receipts = state.session_activation_receipts.lock().await;
+        assert_eq!(receipts.len(), 256);
+        receipts.get_mut("0").unwrap().response.state = SessionActivationState::Complete;
+    }
+    tokio::task::LocalSet::new()
+        .run_until(handle_session_activate(&state, &params))
+        .await
+        .unwrap();
+    let receipts = state.session_activation_receipts.lock().await;
+    assert_eq!(receipts.len(), 256);
+    assert!(!receipts.contains_key("0"));
+    assert!(receipts.contains_key("255"));
+    assert!(receipts.contains_key("new"));
 }
 
 #[tokio::test]
@@ -10421,12 +10604,23 @@ async fn sidebar_cli_resume_reports_creation_and_focus_failures() {
             window_id: 42,
             activation_id: "failure".to_string(),
         };
-        let response = handle_session_activate(&state, &params).await.unwrap();
+        let response = tokio::task::LocalSet::new()
+            .run_until(handle_session_activate(&state, &params))
+            .await
+            .unwrap();
         let response =
             crate::session_registry::parse_session_activate_response(&response.0).unwrap();
         assert!(!response.accepted);
         assert_eq!(response.action, "resume_cli");
         assert!(response.detail.as_deref().unwrap().contains(detail));
+        assert_eq!(
+            response.state,
+            if fail_method.is_none() {
+                crate::session_registry::SessionActivationState::Unknown
+            } else {
+                crate::session_registry::SessionActivationState::Complete
+            }
+        );
         assert_eq!(mock.calls().len(), call_count);
         let row = state.registry.lookup_identity(&identity).await.unwrap();
         if call_count == 2 {
@@ -10494,7 +10688,8 @@ async fn sidebar_cli_resume_updates_only_selected_collision_identity() {
         window_id: 42,
         activation_id: "resume-selected-collision".to_string(),
     };
-    let response = handle_session_activate(&state, &params)
+    let response = tokio::task::LocalSet::new()
+        .run_until(handle_session_activate(&state, &params))
         .await
         .expect("qualified collision activation succeeds");
     let response = crate::session_registry::parse_session_activate_response(&response.0).unwrap();
@@ -11126,6 +11321,23 @@ async fn sidebar_history_control_initialize_skips_agent_and_restricts_surface() 
         ))
         .await
         .expect("control client may list sessions");
+
+    let response = handler
+        .ext_method(crate::session_registry::build_session_activate_request(
+            crate::session_registry::SessionIdentity::legacy(SessionId::new("session")),
+            42,
+            "unknown-activation".to_string(),
+            true,
+        ))
+        .await
+        .expect("control client may query an activation without binding an agent");
+    assert_eq!(
+        crate::session_registry::parse_session_activate_response(&response.0)
+            .unwrap()
+            .state,
+        crate::session_registry::SessionActivationState::Unknown
+    );
+    assert!(state.session_activation_receipts.lock().await.is_empty());
 
     let raw = serde_json::value::RawValue::from_string("{}".to_string()).unwrap();
     let error = handler

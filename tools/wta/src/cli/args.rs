@@ -519,6 +519,9 @@ pub(crate) enum SessionsAction {
         window_id: u64,
         #[arg(long)]
         activation_id: String,
+        /// Read the existing activation outcome without focusing or restoring again.
+        #[arg(long)]
+        status_only: bool,
     },
 }
 

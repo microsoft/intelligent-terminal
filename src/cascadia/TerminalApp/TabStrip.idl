@@ -63,6 +63,7 @@ namespace TerminalApp
         String MetadataText;
         String AutomationName;
         Windows.UI.Xaml.Visibility MetadataVisibility;
+        Windows.UI.Xaml.Controls.IconElement Icon;
         String HighlightQuery;
     };
 
@@ -85,6 +86,7 @@ namespace TerminalApp
         String ChevronGlyph;
         Windows.UI.Xaml.Visibility IconVisibility;
         Double HeaderMinHeight;
+        Windows.UI.Xaml.Thickness LeadingContentMargin;
     };
 
     [default_interface] runtimeclass TabStripPaneEventArgs

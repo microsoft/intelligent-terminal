@@ -68,18 +68,20 @@ namespace winrt::TerminalApp::implementation
         TabStripPaneItem() = default;
         TabStripPaneItem(winrt::Microsoft::UI::Xaml::Controls::TabViewItem tab,
                          uint32_t contentId,
+                         winrt::hstring iconPath,
                          winrt::hstring title,
                          bool isActive);
 
         winrt::Microsoft::UI::Xaml::Controls::TabViewItem Tab() const noexcept { return _tab; }
         uint32_t ContentId() const noexcept { return _contentId; }
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, Title, PropertyChanged.raise);
-        WINRT_OBSERVABLE_PROPERTY(winrt::hstring, HighlightQuery, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(bool, IsActive, PropertyChanged.raise, false);
         WINRT_OBSERVABLE_PROPERTY(winrt::Windows::UI::Xaml::Visibility, ActiveIndicatorVisibility, PropertyChanged.raise, winrt::Windows::UI::Xaml::Visibility::Collapsed);
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, MetadataText, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, AutomationName, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(winrt::Windows::UI::Xaml::Visibility, MetadataVisibility, PropertyChanged.raise, winrt::Windows::UI::Xaml::Visibility::Collapsed);
+        WINRT_OBSERVABLE_PROPERTY(winrt::Windows::UI::Xaml::Controls::IconElement, Icon, PropertyChanged.raise, nullptr);
+        WINRT_OBSERVABLE_PROPERTY(winrt::hstring, HighlightQuery, PropertyChanged.raise);
 
     public:
         til::property_changed_event PropertyChanged;
@@ -112,6 +114,7 @@ namespace winrt::TerminalApp::implementation
         WINRT_OBSERVABLE_PROPERTY(winrt::Windows::UI::Xaml::Visibility, IconVisibility, PropertyChanged.raise, winrt::Windows::UI::Xaml::Visibility::Visible);
         WINRT_OBSERVABLE_PROPERTY(double, HeaderMinHeight, PropertyChanged.raise, 40.0);
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, ChevronGlyph, PropertyChanged.raise, L"\xE70D");
+        WINRT_OBSERVABLE_PROPERTY(winrt::Windows::UI::Xaml::Thickness, LeadingContentMargin, PropertyChanged.raise, 6, 0, 10, 0);
 
     public:
         void SyncTabPresentation(bool railCollapsed);
@@ -249,6 +252,7 @@ namespace winrt::TerminalApp::implementation
         bool HasHistoryItems() const noexcept { return !_historySnapshot.empty(); }
         void ClearHistorySnapshot();
         void ClearHistorySearch();
+        void OpenHistory();
         bool HistoryActive() const noexcept { return _historyActive; }
         void HistoryActive(bool value);
         bool HistoryLoading() const noexcept { return _historyLoading; }
