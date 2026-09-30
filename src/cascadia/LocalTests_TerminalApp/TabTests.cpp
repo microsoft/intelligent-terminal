@@ -289,7 +289,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabStripPreservesClosePolicy);
         TEST_METHOD(VerticalTabStripCollapsedItemsPreserveSelection);
         TEST_METHOD(VerticalTabStripHostsPaneGroups);
-        TEST_METHOD(VerticalTabRepeatedMoveBackwardPreservesCollections);
+        TEST_METHOD(VerticalTabRepeatedMovesPreserveCollections);
         TEST_METHOD(VerticalTabSelectionPreservesPresentation);
         TEST_METHOD(VerticalTabIconChangesUpdatePresentation);
         TEST_METHOD(VerticalTabThemeChangesDoNotReprojectPanes);
@@ -6363,7 +6363,7 @@ namespace TerminalAppLocalTests
         });
     }
 
-    void TabTests::VerticalTabRepeatedMoveBackwardPreservesCollections()
+    void TabTests::VerticalTabRepeatedMovesPreserveCollections()
     {
         auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
 
@@ -6391,7 +6391,7 @@ namespace TerminalAppLocalTests
                 const auto expectedIndex = 31u - i;
                 VERIFY_IS_TRUE(page->_tabs.GetAt(expectedIndex) == *tab);
                 VERIFY_IS_TRUE(page->_tabStrip.TabItems().GetAt(expectedIndex) == tab->TabViewItem());
-                VERIFY_IS_TRUE(strip->ItemsList().Items().GetAt(expectedIndex).as<TerminalApp::TabStripDisplayItem>().Tab() == tab->TabViewItem());
+                VERIFY_IS_TRUE(strip->ItemsList().Items().GetAt(expectedIndex).as<winrt::TerminalApp::TabStripDisplayItem>().Tab() == tab->TabViewItem());
             });
         }
 
@@ -6404,6 +6404,35 @@ namespace TerminalAppLocalTests
             }
             page->UpdateLayout();
             VERIFY_ARE_EQUAL(0u, page->_GetFocusedTabIndex().value());
+        });
+
+        for (uint32_t i = 1; i < 32; ++i)
+        {
+            TestOnUIThread([&]() {
+                const auto tab = page->_GetFocusedTabImpl();
+                VERIFY_IS_NOT_NULL(tab);
+                VERIFY_IS_TRUE(page->_MoveTab(tab, MoveTabArgs{ L"", MoveTabDirection::Forward }));
+                page->UpdateLayout();
+
+                const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+                VERIFY_ARE_EQUAL(page->_tabs.Size(), page->_tabStrip.TabItems().Size());
+                VERIFY_ARE_EQUAL(page->_tabs.Size(), strip->ItemsList().Items().Size());
+                VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == tab);
+                VERIFY_IS_TRUE(page->_tabs.GetAt(i) == *tab);
+                VERIFY_IS_TRUE(page->_tabStrip.TabItems().GetAt(i) == tab->TabViewItem());
+                VERIFY_IS_TRUE(strip->ItemsList().Items().GetAt(i).as<winrt::TerminalApp::TabStripDisplayItem>().Tab() == tab->TabViewItem());
+            });
+        }
+
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(tab);
+            for (uint32_t i = 0; i < 128; ++i)
+            {
+                VERIFY_IS_TRUE(page->_MoveTab(tab, MoveTabArgs{ L"", MoveTabDirection::Forward }));
+            }
+            page->UpdateLayout();
+            VERIFY_ARE_EQUAL(31u, page->_GetFocusedTabIndex().value());
         });
     }
 
