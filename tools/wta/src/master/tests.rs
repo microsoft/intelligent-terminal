@@ -29,7 +29,7 @@ fn unbound_test_agent(key: &str) -> Arc<AgentCli> {
         cmd_key: key.to_string(),
         cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
         bound_helpers: Mutex::new(HashSet::new()),
-        host_list_cache: Mutex::new(None),
+        history_refresh: AgentHistoryRefresh::default(),
         listed_ever: Mutex::new(HashSet::new()),
     })
 }
@@ -439,7 +439,7 @@ async fn delayed_clean_probe_does_not_block_initialize_and_notifies_bound_helper
                 cmd_key: "delayed-probe-agent".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Pending),
                 bound_helpers: Mutex::new(HashSet::from([helper_id])),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             });
             let (complete_tx, complete_rx) = tokio::sync::oneshot::channel();
@@ -542,7 +542,7 @@ async fn initialize_response_preserves_ready_cloud_catalog_with_identity_and_pro
                     source: CloudCatalogSource::Helper,
                 })),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             };
 
@@ -595,7 +595,7 @@ async fn failed_clean_probe_is_recorded_without_catalog_delivery() {
                 cmd_key: "failed-probe-agent".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Pending),
                 bound_helpers: Mutex::new(HashSet::from([helper_id])),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             });
             start_clean_cloud_catalog_probe(
@@ -864,7 +864,7 @@ async fn model_scoped_agent_retires_only_after_its_final_helper_unbinds() {
                 cmd_key: key.clone(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             });
             let cell = Arc::new(tokio::sync::OnceCell::new());
@@ -914,7 +914,7 @@ async fn helper_claim_retries_when_captured_agent_cell_is_replaced() {
                     cmd_key: key.clone(),
                     cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                     bound_helpers: Mutex::new(HashSet::new()),
-                    host_list_cache: Mutex::new(None),
+                    history_refresh: AgentHistoryRefresh::default(),
                     listed_ever: Mutex::new(HashSet::new()),
                 })
             };
@@ -1502,6 +1502,8 @@ fn make_state_with_retirement_pending_timeout(
         wt: None,
         agents: Mutex::new(HashMap::new()),
         history_refresh: Arc::new(Mutex::new(())),
+        history_discovery_pending: std::sync::atomic::AtomicBool::new(false),
+        history_discovery_errors: Mutex::new(HashSet::new()),
         history_status: watch::channel(crate::session_registry::HistoryLoadStatus::Loading).0,
         helper_roles: Mutex::new(HashMap::new()),
         custom_model_generations: Mutex::new(HashMap::new()),
@@ -2299,7 +2301,7 @@ async fn pooled_agents_keep_model_switch_channels_isolated() {
                 cmd_key: "agent-a".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             });
 
@@ -2321,7 +2323,7 @@ async fn pooled_agents_keep_model_switch_channels_isolated() {
                 cmd_key: "agent-b".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             });
 
@@ -2383,7 +2385,7 @@ async fn direct_resume_updates_model_switch_channel_from_load_response() {
                 cmd_key: "resume-only-agent".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             });
             let response: acp::schema::v1::LoadSessionResponse = serde_json::from_str(
@@ -2442,7 +2444,7 @@ async fn new_session_timeout_is_enforced_by_master_forwarder() {
                 cmd_key: "copilot --acp --stdio".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             }));
             let handler = HelperHandler {
@@ -2594,7 +2596,7 @@ async fn load_session_gate_timeout_does_not_reach_agent_or_mutate_state() {
                     cmd_key: "pending-load-session-agent".to_string(),
                     cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                     bound_helpers: Mutex::new(HashSet::new()),
-                    host_list_cache: Mutex::new(None),
+                    history_refresh: AgentHistoryRefresh::default(),
                     listed_ever: Mutex::new(HashSet::new()),
                 }))
                 .is_ok());
@@ -2682,7 +2684,7 @@ async fn load_session_timeout_rolls_back_replacement_state_and_releases_gate() {
                     cmd_key: "pending-load-session-agent".to_string(),
                     cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                     bound_helpers: Mutex::new(HashSet::new()),
-                    host_list_cache: Mutex::new(None),
+                    history_refresh: AgentHistoryRefresh::default(),
                     listed_ever: Mutex::new(HashSet::new()),
                 }))
                 .is_ok());
@@ -2799,7 +2801,7 @@ async fn helper_close_session_physically_closes_and_retires_owned_session() {
                     cmd_key: "tab-close-agent".to_string(),
                     cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                     bound_helpers: Mutex::new(HashSet::new()),
-                    host_list_cache: Mutex::new(None),
+                    history_refresh: AgentHistoryRefresh::default(),
                     listed_ever: Mutex::new(HashSet::new()),
                 }))
                 .is_ok());
@@ -2927,7 +2929,7 @@ async fn master_reset_tab_session_resolves_owner_and_physically_retires_session(
                 cmd_key: "sibling-close-agent".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             });
             let cell = Arc::new(tokio::sync::OnceCell::new());
@@ -3114,7 +3116,7 @@ async fn retirement_event_physically_closes_once_and_replays_completion() {
                 cmd_key: "retirement-live-agent".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             });
             let cell = Arc::new(tokio::sync::OnceCell::new());
@@ -3705,7 +3707,7 @@ async fn scope_all_retires_ownerless_helper_live_route_directly() {
                 cmd_key: "ownerless-live-route-agent".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             });
             let cell = Arc::new(tokio::sync::OnceCell::new());
@@ -3825,7 +3827,7 @@ async fn scope_all_captured_helper_disconnect_still_closes_once() {
                 cmd_key: "captured-disconnect-agent".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             });
             let cell = Arc::new(tokio::sync::OnceCell::new());
@@ -3914,7 +3916,7 @@ async fn scope_all_retirement_captures_orphan_after_route_drop_before_connected_
                 cmd_key: "disconnect-ordering-agent".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             });
             let cell = Arc::new(tokio::sync::OnceCell::new());
@@ -4124,7 +4126,7 @@ async fn orphan_retirement_blocked_cancel_uses_total_budget() {
                 cmd_key: "blocked-orphan-cancel-agent".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             });
             let cell = Arc::new(tokio::sync::OnceCell::new());
@@ -4232,7 +4234,7 @@ async fn scope_all_physically_closes_ownerless_orphaned_session() {
                 cmd_key: "ownerless-orphan-physical-agent".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             });
             let cell = Arc::new(tokio::sync::OnceCell::new());
@@ -4319,7 +4321,7 @@ async fn scope_all_preserves_ownerless_orphan_claimed_by_replacement_route() {
                 cmd_key: "ownerless-orphan-rebound-agent".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             });
             let cell = Arc::new(tokio::sync::OnceCell::new());
@@ -4639,7 +4641,7 @@ async fn scope_all_waits_for_ownerless_pending_transaction_cleanup() {
                 cmd_key: "ownerless-pending-agent".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             });
             let cell = Arc::new(tokio::sync::OnceCell::new());
@@ -4748,7 +4750,7 @@ async fn scope_all_unsupported_retirement_reports_failed_owner_tab() {
                 cmd_key: "retirement-unsupported-agent".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             });
             let cell = Arc::new(tokio::sync::OnceCell::new());
@@ -4824,7 +4826,7 @@ async fn scope_all_starts_independent_session_closes_concurrently() {
                 cmd_key: "retirement-all-agent-a".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             });
             let agent_b = Arc::new(AgentCli {
@@ -4837,7 +4839,7 @@ async fn scope_all_starts_independent_session_closes_concurrently() {
                 cmd_key: "retirement-all-agent-b".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             });
             let cell_a = Arc::new(tokio::sync::OnceCell::new());
@@ -4965,7 +4967,7 @@ async fn retirement_uses_one_deadline_for_close_wait_and_forced_cleanup() {
                 cmd_key: "retirement-single-deadline-agent".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             });
             let cell = Arc::new(tokio::sync::OnceCell::new());
@@ -5070,7 +5072,7 @@ async fn retirement_lifecycle_gate_wait_does_not_renew_close_budget() {
                 cmd_key: "retirement-gate-deadline-agent".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             });
             let gate = session_lifecycle_gate(&state, &session_id).await;
@@ -5175,7 +5177,7 @@ async fn retirement_waits_for_and_retires_late_session_new() {
                 cmd_key: "retirement-pending-agent".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             });
             let cell = Arc::new(tokio::sync::OnceCell::new());
@@ -5290,7 +5292,7 @@ async fn retirement_timeout_cleans_before_completion_and_fences_late_session_new
                 cmd_key: "retirement-timeout-agent".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             });
             let cell = Arc::new(tokio::sync::OnceCell::new());
@@ -5537,7 +5539,7 @@ async fn active_retirement_follows_tab_rename_and_clears_moved_fence_on_disconne
                 cmd_key: "retirement-drag-race-agent".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             });
             let cell = Arc::new(tokio::sync::OnceCell::new());
@@ -5673,7 +5675,7 @@ async fn close_by_tab_retires_session_new_that_finishes_after_tab_destruction() 
                 cmd_key: "pending-new-close-agent".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             });
             let cell = Arc::new(tokio::sync::OnceCell::new());
@@ -5819,7 +5821,7 @@ async fn disconnect_during_session_new_fences_late_result() {
                 cmd_key: "disconnect-pending-new-agent".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             });
             let agent_slot = empty_agent_cell();
@@ -5931,7 +5933,7 @@ async fn disconnect_tombstone_rejects_queued_replacement_after_in_flight_failure
                 cmd_key: "disconnect-queued-new-agent".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             });
             let agent_slot = empty_agent_cell();
@@ -6060,7 +6062,7 @@ async fn disconnect_during_session_load_fences_late_result() {
                 cmd_key: "disconnect-pending-load-agent".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             });
             let agent_slot = empty_agent_cell();
@@ -6205,7 +6207,7 @@ async fn session_new_result_is_closed_when_helper_forwarder_disappears() {
                 cmd_key: "missing-forwarder-new-session-agent".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             });
             let agent_slot = empty_agent_cell();
@@ -6287,7 +6289,7 @@ async fn close_by_tab_resolves_pre_registered_load_route_without_last_session_me
                 cmd_key: "pending-load-close-agent".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             });
             let cell = Arc::new(tokio::sync::OnceCell::new());
@@ -6480,7 +6482,7 @@ async fn overlapping_new_sessions_retire_the_intermediate_replacement() {
                     cmd_key: "serialized-replacement-agent".to_string(),
                     cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                     bound_helpers: Mutex::new(HashSet::new()),
-                    host_list_cache: Mutex::new(None),
+                    history_refresh: AgentHistoryRefresh::default(),
                     listed_ever: Mutex::new(HashSet::new()),
                 }))
                 .is_ok());
@@ -6661,7 +6663,7 @@ async fn unsupported_session_close_capability_cancels_and_logically_retires_sess
                     cmd_key: "unsupported-close-agent".to_string(),
                     cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                     bound_helpers: Mutex::new(HashSet::new()),
-                    host_list_cache: Mutex::new(None),
+                    history_refresh: AgentHistoryRefresh::default(),
                     listed_ever: Mutex::new(HashSet::new()),
                 }))
                 .is_ok());
@@ -6835,7 +6837,7 @@ async fn advertised_but_unimplemented_session_close_cancels_and_logically_retire
                 cmd_key: "advertised-unimplemented-close-agent".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             });
             let agent_cell = Arc::new(tokio::sync::OnceCell::new());
@@ -6999,7 +7001,7 @@ async fn close_failure_keeps_predecessor_and_does_not_create_replacement() {
                     cmd_key: "failing-close-agent".to_string(),
                     cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                     bound_helpers: Mutex::new(HashSet::new()),
-                    host_list_cache: Mutex::new(None),
+                    history_refresh: AgentHistoryRefresh::default(),
                     listed_ever: Mutex::new(HashSet::new()),
                 }))
                 .is_ok());
@@ -7198,7 +7200,7 @@ async fn load_close_failure_restores_target_route_and_capability() {
                         cmd_key: "load-close-failure-agent".to_string(),
                         cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                         bound_helpers: Mutex::new(HashSet::new()),
-                        host_list_cache: Mutex::new(None),
+                        history_refresh: AgentHistoryRefresh::default(),
                         listed_ever: Mutex::new(HashSet::new()),
                     }))
                     .is_ok()
@@ -7345,7 +7347,7 @@ async fn load_close_failure_closes_target_when_restored_route_uses_another_agent
                     cmd_key: "cross-agent-close-failure".to_string(),
                     cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                     bound_helpers: Mutex::new(HashSet::new()),
-                    host_list_cache: Mutex::new(None),
+                    history_refresh: AgentHistoryRefresh::default(),
                     listed_ever: Mutex::new(HashSet::new()),
                 }))
                 .is_ok());
@@ -7466,7 +7468,7 @@ async fn run_target_rebound_during_predecessor_close_failure(rebound_to_current_
             cmd_key: "rebind-during-close-agent".to_string(),
             cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
             bound_helpers: Mutex::new(HashSet::new()),
-            host_list_cache: Mutex::new(None),
+            history_refresh: AgentHistoryRefresh::default(),
             listed_ever: Mutex::new(HashSet::new()),
         }))
         .is_ok());
@@ -7615,7 +7617,7 @@ async fn orphan_rebind_close_failure_does_not_mark_target_owned_by_another_helpe
                     cmd_key: agent_key.clone(),
                     cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                     bound_helpers: Mutex::new(HashSet::new()),
-                    host_list_cache: Mutex::new(None),
+                    history_refresh: AgentHistoryRefresh::default(),
                     listed_ever: Mutex::new(HashSet::new()),
                 }))
                 .is_ok());
@@ -7833,7 +7835,7 @@ async fn load_reserves_time_to_close_loaded_target_after_predecessor_timeout() {
                     cmd_key: "deadline-rollback-agent".to_string(),
                     cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                     bound_helpers: Mutex::new(HashSet::new()),
-                    host_list_cache: Mutex::new(None),
+                    history_refresh: AgentHistoryRefresh::default(),
                     listed_ever: Mutex::new(HashSet::new()),
                 }))
                 .is_ok());
@@ -8577,7 +8579,7 @@ async fn prompt_forward_survives_reentrant_permission() {
                 cmd_key: "copilot --acp --stdio".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             }));
             let handler = HelperHandler {
@@ -9482,7 +9484,7 @@ async fn replaced_session_already_rebound_is_not_physically_closed() {
                 cmd_key: "already-rebound-agent".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             };
 
@@ -9549,7 +9551,7 @@ async fn physical_close_allows_agent_callback_route_lookup_before_response() {
                 cmd_key: "callback-close-agent".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             };
 
@@ -9665,7 +9667,7 @@ async fn physical_close_blocks_rebind_until_retirement_completes() {
                 cmd_key: "blocking-close-agent".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
-                host_list_cache: Mutex::new(None),
+                history_refresh: AgentHistoryRefresh::default(),
                 listed_ever: Mutex::new(HashSet::new()),
             });
 
@@ -10947,6 +10949,8 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
         wt: Some(wt),
         agents: Mutex::new(HashMap::new()),
         history_refresh: Arc::new(Mutex::new(())),
+        history_discovery_pending: std::sync::atomic::AtomicBool::new(false),
+        history_discovery_errors: Mutex::new(HashSet::new()),
         history_status: watch::channel(crate::session_registry::HistoryLoadStatus::Loading).0,
         helper_roles: Mutex::new(HashMap::new()),
         custom_model_generations: Mutex::new(HashMap::new()),
@@ -11316,9 +11320,7 @@ async fn sidebar_history_control_initialize_skips_agent_and_restricts_surface() 
     );
 
     handler
-        .ext_method(crate::session_registry::build_sessions_list_request(
-            false, false,
-        ))
+        .ext_method(crate::session_registry::build_sessions_list_request(false))
         .await
         .expect("control client may list sessions");
 
@@ -11401,7 +11403,7 @@ async fn sidebar_history_discovery_keeps_registered_gemini_sessions() {
                 &state,
                 None,
                 &crate::session_registry::SessionsListParams {
-                    all_agents: true,
+                    rescan: true,
                     ..Default::default()
                 },
             )
@@ -11453,7 +11455,7 @@ async fn sidebar_history_discovery_is_background_and_single_flight() {
             row.status = Some(crate::agent_sessions::AgentStatus::Historical);
             state.registry.upsert(row.clone()).await;
             let params = crate::session_registry::SessionsListParams {
-                all_agents: true,
+                rescan: true,
                 ..Default::default()
             };
             for _ in 0..2 {
@@ -11506,7 +11508,7 @@ async fn sidebar_history_empty_discovery_publishes_readiness_and_recovers_from_e
                 .await
                 .insert(HelperId(1), tx);
             let params = SessionsListParams {
-                all_agents: true,
+                rescan: true,
                 ..Default::default()
             };
             for status in [
@@ -11632,7 +11634,7 @@ async fn sidebar_history_discovery_isolates_failed_and_unsupported_agents() {
                 add_sidebar_listing_agent(&state, CliSource::Claude, &["kept-history"]).await;
             assert!(refresh_host_history_agents(&state, &["claude"]).await);
             failed.conn.shutdown();
-            *failed.host_list_cache.lock().await = None;
+            *failed.history_refresh.gate.lock().await = HistoryRefreshState::default();
             add_sidebar_listing_agent(&state, CliSource::Copilot, &["healthy-history"]).await;
             let mut unsupported = listing_agent(CliSource::Gemini, &["must-not-be-listed"]);
             let key = agent_cmd_key(
@@ -11674,7 +11676,7 @@ async fn sidebar_history_discovery_isolates_failed_and_unsupported_agents() {
 // ── refresh_synthetic_titles_from ───────────────────────────────
 
 #[tokio::test]
-async fn refresh_synthetic_titles_from_upgrades_known_placeholder_titles_only() {
+async fn refresh_titles_from_listing_upgrades_known_placeholders() {
     use std::collections::HashMap;
 
     let state = make_state();
@@ -11714,10 +11716,9 @@ async fn refresh_synthetic_titles_from_upgrades_known_placeholder_titles_only() 
             "sid-placeholder".to_string(),
             "OpenCode Real Title".to_string(),
         ),
-        ("sid-real".to_string(), "Should Not Overwrite".to_string()),
     ]);
 
-    assert!(refresh_synthetic_titles_from(&*state.registry, &titles).await);
+    assert!(refresh_titles_from_listing(&*state.registry, &titles, None, None).await);
     assert_eq!(
         state
             .registry
@@ -11763,7 +11764,7 @@ async fn refresh_synthetic_titles_from_upgrades_known_placeholder_titles_only() 
 }
 
 #[tokio::test]
-async fn refresh_synthetic_titles_from_skips_when_id_absent() {
+async fn refresh_titles_from_listing_skips_when_id_absent() {
     let state = make_state();
     let mut row = crate::session_registry::SessionInfo::new(
         acp::schema::v1::SessionId::new("sid-missing".to_string()),
@@ -11773,7 +11774,13 @@ async fn refresh_synthetic_titles_from_skips_when_id_absent() {
     state.registry.upsert(row).await;
 
     assert!(
-        !refresh_synthetic_titles_from(&*state.registry, &std::collections::HashMap::new()).await
+        !refresh_titles_from_listing(
+            &*state.registry,
+            &std::collections::HashMap::new(),
+            None,
+            None
+        )
+        .await
     );
     assert_eq!(
         state
@@ -11812,7 +11819,8 @@ async fn refresh_titles_from_listing_adopts_changed_real_title() {
         "Check Copilot Resume Hooks".to_string(),
     )]);
     assert!(
-        refresh_titles_from_listing(&*state.registry, &titles, Some(&CliSource::Copilot)).await
+        refresh_titles_from_listing(&*state.registry, &titles, Some(&CliSource::Copilot), None)
+            .await
     );
     assert_eq!(
         state
@@ -11827,7 +11835,8 @@ async fn refresh_titles_from_listing_adopts_changed_real_title() {
 
     // Steady state must not report a change, or every poll would broadcast.
     assert!(
-        !refresh_titles_from_listing(&*state.registry, &titles, Some(&CliSource::Copilot)).await
+        !refresh_titles_from_listing(&*state.registry, &titles, Some(&CliSource::Copilot), None)
+            .await
     );
 }
 
@@ -11847,7 +11856,8 @@ async fn refresh_titles_from_listing_skips_rows_from_another_cli() {
 
     let titles = HashMap::from([("sid-claude".to_string(), "hijacked".to_string())]);
     assert!(
-        !refresh_titles_from_listing(&*state.registry, &titles, Some(&CliSource::Copilot)).await
+        !refresh_titles_from_listing(&*state.registry, &titles, Some(&CliSource::Copilot), None)
+            .await
     );
     assert_eq!(
         state
@@ -11888,7 +11898,8 @@ async fn refresh_titles_from_listing_judges_unstamped_rows_by_the_listing_cli() 
         "New session - 2026-07-23T01:14:00.422Z".to_string(),
     )]);
     assert!(
-        !refresh_titles_from_listing(&*state.registry, &titles, Some(&CliSource::OpenCode)).await,
+        !refresh_titles_from_listing(&*state.registry, &titles, Some(&CliSource::OpenCode), None)
+            .await,
         "the listing agent's provider must supply the placeholder rule"
     );
     assert_eq!(
@@ -11907,7 +11918,8 @@ async fn refresh_titles_from_listing_judges_unstamped_rows_by_the_listing_cli() 
     // The same string is a legitimate title for a CLI that has no such
     // placeholder convention, so the fallback must not over-reject.
     assert!(
-        refresh_titles_from_listing(&*state.registry, &titles, Some(&CliSource::Copilot)).await
+        refresh_titles_from_listing(&*state.registry, &titles, Some(&CliSource::Copilot), None)
+            .await
     );
 }
 
@@ -11937,7 +11949,8 @@ async fn refresh_titles_from_listing_retitles_an_unstamped_in_distro_row() {
     // stamped `Wsl { Ubuntu }` had they been seeded through `sync_host_history`.
     let titles = HashMap::from([("sid-in-distro".to_string(), "Real Summary".to_string())]);
     assert!(
-        refresh_titles_from_listing(&*state.registry, &titles, Some(&CliSource::Copilot)).await
+        refresh_titles_from_listing(&*state.registry, &titles, Some(&CliSource::Copilot), None)
+            .await
     );
     assert_eq!(
         state
@@ -11956,7 +11969,7 @@ async fn refresh_titles_from_listing_retitles_an_unstamped_in_distro_row() {
 /// `adopt_agent_title` overwrites unconditionally, so a candidate that must
 /// never be displayed would not merely stick (the pre-`adopt` failure mode) but
 /// actively clobber a good title on every poll. The guard lives at the point of
-/// mutation, not only where `host_titles_via_acp` builds the map.
+/// mutation, not only where `titles_from_listing` builds the map.
 #[tokio::test]
 async fn refresh_titles_from_listing_rejects_undisplayable_candidates() {
     use crate::agent_sessions::CliSource;
@@ -11994,7 +12007,7 @@ async fn refresh_titles_from_listing_rejects_undisplayable_candidates() {
 
     // A `None` listing cli is the lenient case that reaches every row, so this
     // also proves the guard does not depend on the cli gate.
-    assert!(!refresh_titles_from_listing(&*state.registry, &titles, None).await);
+    assert!(!refresh_titles_from_listing(&*state.registry, &titles, None, None).await);
     for id in ["sid-echo", "sid-placeholder", "sid-empty"] {
         assert_eq!(
             state
@@ -12028,6 +12041,7 @@ async fn refresh_titles_from_listing_ignores_unlisted_rows() {
             &*state.registry,
             &std::collections::HashMap::new(),
             Some(&CliSource::Copilot),
+            None,
         )
         .await
     );
@@ -12124,6 +12138,476 @@ fn listing_agent(cli: crate::agent_sessions::CliSource, ids: &[&str]) -> Arc<Age
     listing_agent_with_cli(Some(cli), ids)
 }
 
+type HistoryReply = tokio::sync::oneshot::Sender<acp::Result<Vec<acp::schema::v1::SessionInfo>>>;
+
+fn controlled_history_agent(
+    provider: &str,
+    source: crate::agent_source::AgentSource,
+) -> (Arc<AgentCli>, mpsc::UnboundedReceiver<HistoryReply>) {
+    let (requests, receiver) = mpsc::unbounded_channel::<HistoryReply>();
+    let (client_pipe, agent_pipe) = tokio::io::duplex(8192);
+    let (client_read, client_write) = tokio::io::split(client_pipe);
+    let (agent_read, agent_write) = tokio::io::split(agent_pipe);
+    let builder = acp::Agent
+        .builder()
+        .name("controlled-history")
+        .on_receive_request(
+            move |_req: acp::schema::v1::ListSessionsRequest,
+                  responder: acp::Responder<acp::schema::v1::ListSessionsResponse>,
+                  _cx| {
+                let requests = requests.clone();
+                async move {
+                    let (reply, response) = tokio::sync::oneshot::channel();
+                    requests.send(reply).unwrap();
+                    match response.await.unwrap() {
+                        Ok(rows) => {
+                            responder.respond(acp::schema::v1::ListSessionsResponse::new(rows))
+                        }
+                        Err(error) => responder.respond_with_error(error),
+                    }
+                }
+            },
+            acp::on_receive_request!(),
+        );
+    let (_, agent_io) = conn::spawn_agent(
+        builder,
+        conn::byte_streams(agent_write.compat_write(), agent_read.compat()),
+    );
+    let (client, client_io) = conn::spawn_client(
+        acp::Client.builder().name("history-test-client"),
+        conn::byte_streams(client_write.compat_write(), client_read.compat()),
+    );
+    tokio::task::spawn_local(async move {
+        let _ = agent_io.await;
+    });
+    tokio::task::spawn_local(async move {
+        let _ = client_io.await;
+    });
+    let cli = crate::agent_sessions::CliSource::from_agent_id(provider);
+    let mut agent = listing_agent_from(cli, source, &[]);
+    let inner = Arc::get_mut(&mut agent).unwrap();
+    inner.conn.shutdown();
+    inner.conn = client;
+    inner.resolved_agent_id = provider.to_string();
+    inner.cmd_key = format!("controlled-{provider}-{}", inner.source);
+    (agent, receiver)
+}
+
+fn history_row(id: &str, title: &str) -> acp::schema::v1::SessionInfo {
+    let mut row = acp::schema::v1::SessionInfo::new(SessionId::new(id), PathBuf::from("C:\\repo"));
+    row.title = Some(title.to_string());
+    row
+}
+
+#[tokio::test]
+async fn history_refresh_coalesces_waiters_and_queries_history_and_titles_once() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let (agent, mut requests) =
+                controlled_history_agent("copilot", crate::agent_source::AgentSource::Host);
+            let mut live = crate::session_registry::SessionInfo::new(
+                SessionId::new("live"),
+                PathBuf::from("C:\\repo"),
+            );
+            live.provider_id = Some("copilot".into());
+            live.location = crate::agent_sessions::SessionLocation::Host;
+            live.cli_source = Some(crate::agent_sessions::CliSource::Copilot);
+            live.status = Some(crate::agent_sessions::AgentStatus::Working);
+            live.origin = Some(crate::agent_sessions::SessionOrigin::AgentPane);
+            live.pane_session_id = Some("pane".into());
+            live.title = Some("repo".into());
+            state.registry.upsert(live.clone()).await;
+            let (notifications, mut changes) = mpsc::unbounded_channel();
+            state
+                .helper_ext_subscribers
+                .lock()
+                .await
+                .insert(HelperId(1), notifications);
+
+            let refresh = refresh_agent_history(&state, &agent, true);
+            tokio::pin!(refresh);
+            let first = tokio::select! {
+                request = requests.recv() => request.unwrap(),
+                _ = &mut refresh => panic!("refresh completed before agent replied"),
+            };
+            let waiter = refresh_agent_history(&state, &agent, true);
+            tokio::pin!(waiter);
+            assert!(futures::poll!(&mut waiter).is_pending());
+            first
+                .send(Ok(vec![
+                    history_row("live", "Generated summary"),
+                    history_row("saved", "Saved task"),
+                ]))
+                .unwrap();
+            let (first_count, second_count) = tokio::join!(refresh, waiter);
+            assert_eq!(first_count, second_count);
+            assert!(first_count.is_some());
+            assert!(
+                requests.try_recv().is_err(),
+                "one RPC serves both callers and title updates"
+            );
+            assert!(changes.try_recv().is_ok());
+            assert!(
+                changes.try_recv().is_err(),
+                "coalesced waiters do not rebroadcast"
+            );
+            let updated = state
+                .registry
+                .lookup_identity(&crate::session_registry::SessionIdentity::from_info(&live))
+                .await
+                .unwrap();
+            assert_eq!(updated.title.as_deref(), Some("Generated summary"));
+            assert_eq!(updated.status, live.status);
+            assert_eq!(updated.pane_session_id, live.pane_session_id);
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn history_snapshot_reads_never_query_even_with_a_bound_agent() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let (agent, mut requests) =
+                controlled_history_agent("copilot", crate::agent_source::AgentSource::Host);
+            let mut row = crate::session_registry::SessionInfo::new(
+                SessionId::new("synthetic"),
+                PathBuf::from("C:\\repo"),
+            );
+            row.title = Some(String::new());
+            state.registry.upsert(row.clone()).await;
+            let reply = handle_sessions_list(&state, Some(&agent), &Default::default())
+                .await
+                .unwrap();
+            assert_eq!(
+                crate::session_registry::parse_sessions_list_response(&reply.0)
+                    .unwrap()
+                    .sessions,
+                [row]
+            );
+            assert!(requests.try_recv().is_err());
+            assert!(
+                state.agents.lock().await.is_empty(),
+                "reading creates no connections"
+            );
+        })
+        .await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn history_refresh_runs_without_views_and_does_not_block_on_a_slow_connection() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let (slow, mut slow_requests) =
+                controlled_history_agent("copilot", crate::agent_source::AgentSource::Host);
+            let (fast, mut fast_requests) = controlled_history_agent(
+                "custom:local",
+                crate::agent_source::AgentSource::Wsl {
+                    distro: "Ubuntu".into(),
+                },
+            );
+            add_test_agent_to_pool(&state, &slow).await;
+            add_test_agent_to_pool(&state, &fast).await;
+            start_history_refresh_loop(&state);
+            tokio::task::yield_now().await;
+            tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
+            let slow_reply = slow_requests.recv().await.unwrap();
+            fast_requests
+                .recv()
+                .await
+                .unwrap()
+                .send(Ok(vec![history_row("same-id", "WSL custom")]))
+                .unwrap();
+            while fast
+                .history_refresh
+                .generation
+                .load(std::sync::atomic::Ordering::Acquire)
+                == 0
+            {
+                tokio::task::yield_now().await;
+            }
+            let rows = state.registry.snapshot().await;
+            assert_eq!(
+                rows.len(),
+                1,
+                "fast connection completes while slow one is blocked"
+            );
+            assert_eq!(rows[0].provider_id.as_deref(), Some("custom:local"));
+            assert_eq!(
+                rows[0].location,
+                crate::agent_sessions::SessionLocation::Wsl {
+                    distro: "Ubuntu".into()
+                }
+            );
+            slow_reply.send(Ok(vec![])).unwrap();
+            while slow
+                .history_refresh
+                .generation
+                .load(std::sync::atomic::Ordering::Acquire)
+                == 0
+            {
+                tokio::task::yield_now().await;
+            }
+            tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
+            fast_requests
+                .recv()
+                .await
+                .unwrap()
+                .send(Ok(vec![history_row("same-id", "Updated summary")]))
+                .unwrap();
+            slow_requests
+                .recv()
+                .await
+                .unwrap()
+                .send(Ok(vec![]))
+                .unwrap();
+            while fast
+                .history_refresh
+                .generation
+                .load(std::sync::atomic::Ordering::Acquire)
+                < 2
+            {
+                tokio::task::yield_now().await;
+            }
+            assert_eq!(
+                state.registry.snapshot().await[0].title.as_deref(),
+                Some("Updated summary")
+            );
+            assert_eq!(
+                state.agents.lock().await.len(),
+                2,
+                "polling never discovers or spawns agents"
+            );
+            assert!(state.helper_ext_subscribers.lock().await.is_empty());
+        })
+        .await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn history_refresh_failure_backs_off_without_clearing_rows_and_manual_refresh_bypasses_delay()
+{
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let (agent, mut requests) =
+                controlled_history_agent("copilot", crate::agent_source::AgentSource::Host);
+            add_test_agent_to_pool(&state, &agent).await;
+            state
+                .history_status
+                .send_replace(crate::session_registry::HistoryLoadStatus::Ready);
+            state
+                .registry
+                .upsert(crate::session_registry::SessionInfo::new(
+                    SessionId::new("kept"),
+                    PathBuf::from("C:\\repo"),
+                ))
+                .await;
+            for delay in [5, 10, 20, 40, 60, 60] {
+                let refresh = refresh_agent_history(&state, &agent, true);
+                let reply = async {
+                    requests
+                        .recv()
+                        .await
+                        .unwrap()
+                        .send(Err(acp::Error::internal_error()))
+                        .unwrap();
+                };
+                let (count, ()) = tokio::join!(refresh, reply);
+                assert!(count.is_none());
+                assert_eq!(
+                    *state.history_status.borrow(),
+                    crate::session_registry::HistoryLoadStatus::Error
+                );
+                assert_eq!(
+                    agent
+                        .history_refresh
+                        .gate
+                        .lock()
+                        .await
+                        .next_refresh_at
+                        .unwrap()
+                        - tokio::time::Instant::now(),
+                    std::time::Duration::from_secs(delay)
+                );
+                assert!(refresh_agent_history(&state, &agent, false).await.is_none());
+                assert!(
+                    requests.try_recv().is_err(),
+                    "background refresh observes failure backoff"
+                );
+                assert_eq!(state.registry.snapshot().await.len(), 1);
+            }
+            let refresh = refresh_agent_history(&state, &agent, true);
+            let reply = async {
+                requests.recv().await.unwrap().send(Ok(vec![])).unwrap();
+            };
+            let (count, ()) = tokio::join!(refresh, reply);
+            assert_eq!(count, Some(0));
+            assert_eq!(agent.history_refresh.gate.lock().await.failures, 0);
+            assert_eq!(
+                *state.history_status.borrow(),
+                crate::session_registry::HistoryLoadStatus::Ready
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn history_refresh_discards_a_retired_connections_late_response() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let (agent, mut requests) =
+                controlled_history_agent("copilot", crate::agent_source::AgentSource::Host);
+            let refresh = refresh_agent_history(&state, &agent, true);
+            let reply = async {
+                let request = requests.recv().await.unwrap();
+                agent
+                    .history_refresh
+                    .retired
+                    .store(true, std::sync::atomic::Ordering::Release);
+                request
+                    .send(Ok(vec![history_row("late", "Retired connection")]))
+                    .unwrap();
+            };
+            assert!(tokio::join!(refresh, reply).0.is_none());
+            assert!(state.registry.snapshot().await.is_empty());
+            assert!(refresh_agent_history(&state, &agent, true).await.is_none());
+            assert!(requests.try_recv().is_err());
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn history_refresh_isolates_colliding_ids_across_sources_and_custom_providers() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let mut foreign = crate::session_registry::SessionInfo::new(
+                SessionId::new("same"),
+                PathBuf::from("C:\\repo"),
+            );
+            foreign.provider_id = Some("copilot".into());
+            foreign.location = crate::agent_sessions::SessionLocation::Host;
+            foreign.session_universe = Some("other-account".into());
+            foreign.title = Some("Other account title".into());
+            state.registry.upsert(foreign.clone()).await;
+            let mut probes = Vec::new();
+            for (provider, source, title) in [
+                ("copilot", crate::agent_source::AgentSource::Host, "Host"),
+                (
+                    "copilot",
+                    crate::agent_source::AgentSource::Wsl {
+                        distro: "Ubuntu".into(),
+                    },
+                    "Ubuntu",
+                ),
+                (
+                    "custom:one",
+                    crate::agent_source::AgentSource::Host,
+                    "Custom one",
+                ),
+                (
+                    "custom:two",
+                    crate::agent_source::AgentSource::Host,
+                    "Custom two",
+                ),
+            ] {
+                let (agent, mut requests) = controlled_history_agent(provider, source);
+                add_test_agent_to_pool(&state, &agent).await;
+                let refresh = refresh_agent_history(&state, &agent, true);
+                let reply = async {
+                    requests
+                        .recv()
+                        .await
+                        .unwrap()
+                        .send(Ok(vec![history_row("same", title)]))
+                        .unwrap();
+                };
+                assert_eq!(tokio::join!(refresh, reply).0, Some(1));
+                probes.push((agent, requests, title));
+            }
+            assert_eq!(state.registry.snapshot().await.len(), 5);
+            for (agent, requests, title) in &mut probes {
+                let refresh = refresh_agent_history(&state, agent, true);
+                let reply = async {
+                    requests
+                        .recv()
+                        .await
+                        .unwrap()
+                        .send(Ok(vec![history_row("same", &format!("{title} updated"))]))
+                        .unwrap();
+                };
+                assert_eq!(tokio::join!(refresh, reply).0, Some(1));
+            }
+            for (agent, _, title) in probes {
+                let rows = state.registry.snapshot().await;
+                let row = rows
+                    .iter()
+                    .find(|row| row_belongs_to_agent(row, &agent))
+                    .unwrap();
+                let owner = agent_for_row(
+                    &state,
+                    row.cli_source.as_ref(),
+                    &row.location,
+                    row.provider_id.as_deref(),
+                )
+                .await
+                .unwrap();
+                assert!(
+                    Arc::ptr_eq(&owner, &agent),
+                    "title triggers select the exact provider and source"
+                );
+                assert_eq!(
+                    row.title.as_deref(),
+                    Some(format!("{title} updated").as_str())
+                );
+            }
+            assert_eq!(
+                state
+                    .registry
+                    .lookup_identity(&crate::session_registry::SessionIdentity::from_info(
+                        &foreign
+                    ))
+                    .await,
+                Some(foreign),
+                "unqualified listings cannot update another session universe"
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn history_discovery_only_reacts_to_confirmed_installation_events() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut state = make_state();
+            Arc::get_mut(&mut state).unwrap().allowed_agent_ids = Some(HashSet::new());
+            for installed in [false, true] {
+                handle_master_wt_event(
+                    &state,
+                    serde_json::from_str(
+                        &crate::wt_protocol_events::agent_availability_changed_event(
+                            "copilot", None, installed,
+                        ),
+                    )
+                    .unwrap(),
+                )
+                .await;
+                assert_eq!(state.history_refresh.try_lock().is_err(), installed);
+                if installed {
+                    let _finished = state.history_refresh.lock().await;
+                    assert_eq!(
+                        *state.history_status.borrow(),
+                        crate::session_registry::HistoryLoadStatus::Ready
+                    );
+                }
+            }
+        })
+        .await;
+}
+
 /// `cli = None` models a `custom:<name>` provider, which the agent registry
 /// does not resolve to a known `CliSource`.
 fn listing_agent_with_cli(
@@ -12178,7 +12662,7 @@ fn listing_agent_from(
         cmd_key: format!("listing-agent-{cli:?}-{source}"),
         cloud_catalog: Mutex::new(NativeCloudCatalogState::Pending),
         bound_helpers: Mutex::new(HashSet::new()),
-        host_list_cache: Mutex::new(None),
+        history_refresh: AgentHistoryRefresh::default(),
         listed_ever: Mutex::new(HashSet::new()),
     })
 }
@@ -12498,19 +12982,24 @@ async fn agent_for_row_matches_provider_and_execution_source() {
             };
 
             // Same provider, different source → must not collapse onto each other.
-            let found = agent_for_row(&state, Some(&CliSource::Copilot), &SessionLocation::Host)
-                .await
-                .expect("host copilot row resolves");
+            let found = agent_for_row(
+                &state,
+                Some(&CliSource::Copilot),
+                &SessionLocation::Host,
+                None,
+            )
+            .await
+            .expect("host copilot row resolves");
             assert_eq!(found.cmd_key, host_copilot.cmd_key);
 
-            let found = agent_for_row(&state, Some(&CliSource::Copilot), &debian)
+            let found = agent_for_row(&state, Some(&CliSource::Copilot), &debian, None)
                 .await
                 .expect("debian copilot row resolves");
             assert_eq!(found.cmd_key, debian_copilot.cmd_key);
 
             // A custom-stamped row still reaches the unrecognized agent.
             let stamped = stamped_cli(None);
-            let found = agent_for_row(&state, Some(&stamped), &SessionLocation::Host)
+            let found = agent_for_row(&state, Some(&stamped), &SessionLocation::Host, None)
                 .await
                 .expect("custom-stamped row resolves");
             assert_eq!(found.cmd_key, custom.cmd_key);
@@ -12521,7 +13010,8 @@ async fn agent_for_row_matches_provider_and_execution_source() {
                 Some(&CliSource::Copilot),
                 &SessionLocation::Wsl {
                     distro: "Ubuntu".to_string()
-                }
+                },
+                None
             )
             .await
             .is_none());

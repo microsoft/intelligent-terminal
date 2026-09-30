@@ -3960,6 +3960,18 @@ impl App {
                 if installed {
                     let status = crate::agent_check::recheck_agent(&agent_id);
                     if status.cli_found {
+                        if matches!(
+                            self.current_agent_source,
+                            crate::agent_source::AgentSource::Host
+                        ) {
+                            crate::wt_protocol_events::send(
+                                crate::wt_protocol_events::agent_availability_changed_event(
+                                    &agent_id,
+                                    self.agent_routing_tab_id(),
+                                    true,
+                                ),
+                            );
+                        }
                         if self.state == ConnectionState::Connected
                             && self.current_agent_id.eq_ignore_ascii_case(&agent_id)
                         {

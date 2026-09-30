@@ -3887,6 +3887,9 @@ namespace TerminalAppLocalTests
             page->_tabStrip.HistoryActive(true);
             page->_StartSidebarHistoryRefreshTimer();
             VERIFY_IS_TRUE(page->_historyRefreshTimer.IsEnabled());
+            VERIFY_ARE_EQUAL(
+                std::chrono::duration_cast<winrt::Windows::Foundation::TimeSpan>(std::chrono::seconds{ 60 }).count(),
+                page->_historyRefreshTimer.Interval().count());
 
             const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
             stripImpl->OnHistoryCloseClick(nullptr, {});

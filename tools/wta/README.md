@@ -80,9 +80,12 @@ and may require network access; discovery is not an offline-only operation. See
 and ACP wrapper prerequisites.
 
 Sidebar Agent sessions runs
-`wta sessions list --origin shell --all-agents --json --include-status`.
-This returns the current registry snapshot immediately and requests a background
-refresh using the same resident pool; it is not the initial connection trigger.
+`wta sessions list --origin shell --json --include-status`.
+This only reads the current registry snapshot; it never starts an agent or waits
+for an ACP history query. Master synchronizes initialized, listing-capable pooled
+connections every five seconds, including already-connected WSL and custom agents.
+Each connection has one refresh in flight; history and title updates share its
+single response. Failed queries retain prior rows and back off up to 60 seconds.
 The opt-in JSON object contains `sessions` and `history_status` (`loading`, `ready`,
 or `error`); ordinary `--json` output remains one session per line. The initial
 discovery stays `loading` until all eligible host providers finish. Providers that
@@ -108,15 +111,25 @@ retention and refresh cancellation/backoff behavior.
 These native-provider ACP processes remain in the master pool after History closes;
 there is no History-specific idle timeout or eviction. Further refreshes reuse them,
 and concurrent windows share one discovery pass. Registry and discovery-status changes notify the sidebar,
-with its existing five-second snapshot poll as a fallback. Unavailable or failed
+with a 60-second snapshot poll while the view is open as a fallback. Opening the
+view still fetches immediately. Unavailable or failed
 providers do not clear other providers' rows or overwrite live activity and pane
 bindings. Failures are logged under `master_history`; listing never installs a native
 agent CLI or starts an interactive login flow.
 
 This discovery covers built-in agents on the Windows host. It does not start WSL
 distributions or discover arbitrary custom commands; sessions already in the registry
-remain visible according to the requested origin filter. Plain `wta sessions list`
-without `--all-agents` remains a snapshot-only operation.
+remain visible according to the requested origin filter.
+
+Host discovery runs only at master startup, after a confirmed host-agent
+installation, or on an explicit `wta sessions refresh` request. There is no periodic
+installation scan. `wta sessions refresh --json` schedules discovery and returns the
+current snapshot with `history_status`; it does not wait for discovery to finish.
+The removed `--all-agents` flag is no longer accepted. F5 in a helper's session view
+explicitly refreshes that helper's bound connection without discovering other agents.
+Ordinary helper reads are also snapshot-only, with a 60-second visible-view fallback.
+ACP initialization retry behavior is unchanged; history-query retries do not restart
+or initialize agents.
 
 ### tmux-like CLI
 

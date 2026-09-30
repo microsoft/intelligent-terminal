@@ -271,13 +271,13 @@ listing could delete another CLI's rows.
 
 ### Design
 
-Host history is sourced, stamped, cached, and reconciled **per `AgentCli`**.
+Host history is sourced, stamped, refreshed, and reconciled **per `AgentCli`**.
 
 | Concern | Before | After |
 |---|---|---|
 | ACP connection for `session/list` | `MasterStateInner::agent_conn` (`OnceLock`, first agent wins) | `AgentCli::conn` of the requesting/seeding agent |
 | Capability gate | `MasterStateInner::cached_init_resp` | `AgentCli::cached_init_resp` |
-| 2 s `session/list` cache | one per master | `AgentCli::host_list_cache`, dies with the agent |
+| Refresh deduplication | TTL result cache | `AgentCli::history_refresh`, one in-flight refresh per connection; no TTL cache |
 | Row `cli_source` stamp | `MasterStateInner::cli_source` (launch CLI) | `AgentCli::cli_source` |
 | History seed | first pooled agent only | **every** agent entering the pool |
 | Reconcile authority | any listing prunes any row | only rows whose `cli_source` equals the listing agent's |
@@ -320,7 +320,7 @@ became load-bearing in a way they were not before: an injected-context echo or a
 provider placeholder would clobber a good title on every poll instead of merely
 failing to replace a synthetic one. They live in
 `session_registry::title_is_displayable` and are applied both where
-`host_titles_via_acp` builds the map and at the point of mutation.
+`titles_from_listing` builds the map and at the point of mutation.
 
 ### Consequences
 

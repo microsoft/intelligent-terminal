@@ -3887,6 +3887,7 @@ impl App {
                 crate::wt_protocol_events::agent_availability_changed_event(
                     agent_id,
                     self.agent_routing_tab_id(),
+                    false,
                 ),
             );
         }

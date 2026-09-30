@@ -89,12 +89,11 @@ flowchart LR
 ### Host
 
 1. **Reuse the running agent — no extra spawn.** `wta-master` already spawns the
-   agent CLI once at startup and stores its connection + handshake
-   (`MasterStateInner::{agent_conn, cached_init_resp}`). Host history calls
-   `session/list` on that existing connection (`host_history_via_acp` →
-   `host_session_list_raw`), so it costs one round-trip, not a process spawn. A
-   2 s TTL cache (`host_list_cache`, holding an `Arc<[SessionInfo]>`) lets the
-   reconcile and the title-refresh share that single round-trip.
+   agent CLIs in its pool and stores each connection and handshake in `AgentCli`.
+   The master-owned five-second refresh calls `session/list` on initialized
+   connections, including WSL/custom connections already in the pool. A per-connection
+   gate coalesces concurrent triggers. Reconciliation and title updates use the same
+   response directly; no TTL result cache or additional process spawn is needed.
 2. **Capability gate, no disk fallback.** Gated on
    `cached_init_resp.agent_capabilities.session_capabilities.list`. `None`
    (Gemini, non-ACP `custom:` agents) ⇒ **empty history** — there is no on-disk
@@ -143,19 +142,17 @@ its generated name. The 5 s rescan re-fetches `session/list` (which carries the
 real title), but `upsert_if_absent` drops the row for an already-live session —
 so the title is upgraded **in place** instead:
 
-- `host_titles_via_acp` returns **raw, unfiltered** `session/list` rows
+- `titles_from_listing` consumes **raw, unfiltered** `session/list` rows
   (session-id → title). Raw because Class-A agent-pane rows are excluded from the
   history list yet their *live* registry entries still need a title.
-- `refresh_synthetic_titles_from` / `try_refresh_title_via_acp` upgrade only rows
-  whose title is still synthetic (`session_registry::title_is_synthetic`).
+- `try_refresh_title_via_acp` requests the same gated refresh for a still-synthetic
+  row; `refresh_titles_from_listing` also adopts changed summaries for existing rows.
 - Three guards keep this cheap:
   - **synthetic-gate** — only fetch when some row is still synthetic (steady state
     makes no extra ACP calls);
-  - **2 s TTL cache** of the raw `session/list` (`host_list_cache`, holding an
-    `Arc<[SessionInfo]>` so callers clone a pointer, not the list) — a burst of
-    hook/watcher events, the title-refresh, and the reconcile all share one
-    `list_sessions` round-trip, instead of the serial, un-debounced watcher loop
-    issuing (and stalling up to the 5 s timeout on) one call per event;
+  - **per-connection refresh gate** — concurrent triggers share an in-flight
+    refresh; background requests respect the five-second cadence and failed queries
+    back off up to 60 seconds. Each response updates both history and titles;
   - **cli-source gate** (`row_refreshable_by_connected_agent`) — the connected
     agent enumerates only *its own* CLI's sessions, so a row stamped with a
     *different* known CLI (e.g. a watched `claude` shell session while the agent
@@ -383,14 +380,11 @@ Implemented and verified on the feature branch:
   `initialize` + `session/list` exchange (probe and production).
 - `session_history.rs` — `classify_and_map`, the shared `acp::SessionInfo` →
   `AgentSession` mapper + Class-A filter (host and WSL).
-- `master/mod.rs` — `seed_host_and_broadcast` (immediate host seed) +
-  `spawn_wsl_seed` (async WSL), `host_history_via_acp` → `host_session_list_raw`
-  (the `Arc<[SessionInfo]>` 2 s cache), the `sync_host_history` /
-  `is_stale_host_history_row` reconcile, `host_titles_via_acp` + the
-  title refresh (`refresh_synthetic_titles_from`, `try_refresh_title_via_acp`
-  for still-synthetic rows, `refresh_titles_from_listing` for rows whose
-  CLI-side title has since changed, `row_refreshable_by_connected_agent`,
-  `host_list_cache`).
+- `master/mod.rs` — `seed_host_and_broadcast` (initial connection seed),
+  `refresh_agent_history` (single-connection refresh and failure backoff),
+  `start_history_refresh_loop` (master-owned scheduling), `sync_host_history` /
+  `is_stale_host_history_row` reconciliation, and `titles_from_listing` /
+  `refresh_titles_from_listing` (title updates from that same response).
 - The on-disk loaders, title parsers, the resume phantom-guard, **and the live
   phantom-prune flow** were deleted; `session_watcher` was kept. Phantom cleanup
   is now the `session/list` reconcile (host) + `session_watcher` (live status).

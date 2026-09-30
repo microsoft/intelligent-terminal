@@ -6168,7 +6168,7 @@ namespace winrt::TerminalApp::implementation
         if (!_historyRefreshTimer)
         {
             _historyRefreshTimer = Windows::UI::Xaml::DispatcherTimer{};
-            _historyRefreshTimer.Interval(std::chrono::seconds{ 5 });
+            _historyRefreshTimer.Interval(std::chrono::seconds{ 60 });
             _historyRefreshTimer.Tick([weakThis{ get_weak() }](auto&&, auto&&) {
                 if (const auto page = weakThis.get(); page && page->_tabStrip.HistoryActive())
                 {
@@ -6571,7 +6571,7 @@ namespace winrt::TerminalApp::implementation
         const auto result = Wta::RunWtaCapture(
             Wta::ResolveWtaExePath(),
             // Keep the Agent Management MVP's shell-origin visibility contract.
-            L"sessions list --origin shell --all-agents --json --include-status",
+            L"sessions list --origin shell --json --include-status",
             15'000,
             nullptr,
             false,

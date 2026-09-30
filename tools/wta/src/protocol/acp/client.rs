@@ -3820,12 +3820,12 @@ pub async fn run_acp_client_over_pipe(
 
     let conn = Arc::new(conn);
 
-    // Periodic 5s tick that fans out an AppEvent::SessionsChanged to
+    // Periodic fallback that fans out an AppEvent::SessionsChanged to
     // force a refetch in any open session management view. Belt-and-suspenders against
     // missed `intellterm.wta/sessions/changed` broadcasts. Cheap:
     // refetch only fires for tabs whose snapshot.is_some() (i.e. session management view is
     // currently open).
-    let mut periodic_refetch = tokio::time::interval(std::time::Duration::from_secs(5));
+    let mut periodic_refetch = tokio::time::interval(std::time::Duration::from_secs(60));
     periodic_refetch.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     // Burn the first tick (fires immediately on creation).
     periodic_refetch.tick().await;
@@ -4107,7 +4107,7 @@ fn dispatch_master_ext_request_with_yolo_timeout(
     tokio::task::spawn_local(async move {
         match req {
             MasterExtRequest::SessionsList { request_id, rescan } => {
-                let wire = crate::session_registry::build_sessions_list_request(rescan, false);
+                let wire = crate::session_registry::build_sessions_list_request(rescan);
                 // Bound the wait so a single dropped RPC response can't
                 // permanently strand the tab's `refetch_in_flight=true`.
                 //
@@ -4126,15 +4126,15 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                 // Without this timeout the failure mode is: helper opens
                 // /sessions, fires `sessions/list`, response gets
                 // truncated → `refetch_in_flight` stuck `true` → every
-                // subsequent `sessions/changed` broadcast and 5s tick
+                // subsequent `sessions/changed` broadcast and fallback tick
                 // hits `if refetch_in_flight { dirty=true; return; }`
                 // and never refetches → the tab's row activity / status
                 // is frozen until the user toggles /sessions off and
                 // on (which calls `close_agents_view_for_tab` and
                 // resets the gate).
                 //
-                // 8s > the 5s periodic tick so a healthy in-flight
-                // request never gets cancelled spuriously; under the
+                // 8s exceeds the bound-agent history query's 5s timeout.
+                // A healthy in-flight request is not cancelled spuriously; under the
                 // bug the worst-case visible staleness becomes
                 // ~timeout + tick ≈ 13s instead of "until next manual
                 // toggle".
@@ -4174,7 +4174,7 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                             timeout_secs = SESSIONS_LIST_TIMEOUT.as_secs(),
                             "sessions/list timed out — likely ACP-0.10 \
                              cancellation-safety bug; unblocking refetch_in_flight \
-                             so 5s tick can retry"
+                             so the fallback tick can retry"
                         );
                         let _ = event_tx.send(AppEvent::AgentsSnapshotFailed { request_id });
                     }
