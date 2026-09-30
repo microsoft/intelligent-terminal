@@ -346,11 +346,8 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
                 (Test-Until -TimeoutSec 5 -Condition { & $script:HistorySearchFocused $vertical }) | Should -BeTrue
                 & $script:ToggleSidebarHotkey $vertical
                 Wait-UiElement -App $vertical -Selector 'Expand sidebar' | Out-Null
-                (Test-Until -TimeoutSec 5 -Condition {
-                    $focused = [Windows.Automation.AutomationElement]::FocusedElement
-                    $focused -and $focused.Current.ProcessId -eq $vertical.Pid -and $focused.Current.HasKeyboardFocus -and
-                        $focused.Current.Name -ne 'Agent Pane' -and $focused.Current.ClassName -eq 'TermControl'
-                }) | Should -BeTrue -Because 'collapsing from history must choose a visible terminal without restoring an agent origin'
+                (Test-Until -TimeoutSec 5 -Condition $focusRestored) |
+                    Should -BeTrue -Because "collapsing from history should return to the still-visible $($origin.Name) input without reading History's saved source"
                 Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir "focus-$($origin.Name)-restored.png") | Out-Null
                 & $verifyPreservation
                 Invoke-UiElement -App $vertical -Selector 'Expand sidebar' | Out-Null

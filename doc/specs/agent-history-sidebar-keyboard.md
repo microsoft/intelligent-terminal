@@ -79,8 +79,9 @@ History's remembered source, not the separate `Ctrl+Shift+S` entry input.
   A later entry from another input replaces that best-effort return target.
 - When focus is inside the expanded sidebar, collapse it. If the remembered
   input remains visible and focusable, return there without changing its
-  unsent draft. Otherwise choose a visible terminal pane in the current tab,
-  best effort; never reopen a hidden Agent Pane or create a pane to recover focus.
+  unsent draft. Otherwise try the currently active visible terminal or Agent
+  input, then a visible terminal pane in the current tab, best effort; never
+  reopen a hidden Agent Pane or create a pane to recover focus.
 - If no target exists, leave any remaining valid focus unchanged; do not
   display an error, block, or retry indefinitely.
 
