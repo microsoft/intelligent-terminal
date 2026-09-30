@@ -292,7 +292,7 @@ than just a live-session list:
 ### 3. Two WSL traps that masquerade as "ACP doesn't work"
 
 Both produced misleading `"server shut down unexpectedly"` failures until
-`wta-probe.log` (which drains the child's stderr) revealed the real cause:
+`wta-probe*.log` (which drains the child's stderr) revealed the real cause:
 
 - **`wsl.exe -- <cmd>` runs under a NON-login `bash -c`**, so a PATH-installed CLI
   (`~/.local/node22/bin/copilot`) is `command not found`. **Fix:** `bash -lc`.
@@ -358,7 +358,7 @@ wta probe-wsl-sessions --cli copilot                      # one CLI
 ```
 
 Diagnostic log (drains the child CLI's stderr — decisive for the WSL traps):
-`…\IntelligentTerminal\logs\<pkgver>\wta-probe.log`.
+`…\IntelligentTerminal\logs\<pkgver>\wta-probe*.log`.
 
 ## Costs & open questions
 

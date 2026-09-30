@@ -44,6 +44,7 @@
     </ClInclude>
     <ClInclude Include="AppCommandlineArgs.h" />
     <ClInclude Include="Commandline.h" />
+    <ClInclude Include="ContentTransfer.h" />
     <ClInclude Include="DebugTapConnection.h" />
     <ClInclude Include="Jumplist.h" />
     <ClInclude Include="FilteredCommand.h">
@@ -123,6 +124,7 @@
     <Page Include="SnippetsPaneContent.xaml" />
     <Page Include="MarkdownPaneContent.xaml" />
     <Page Include="AgentPaneContent.xaml" />
+    <Page Include="AgentIconResources.xaml" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="app">

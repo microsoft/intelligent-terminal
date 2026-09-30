@@ -26,6 +26,7 @@ pub use command_popup::{CommandCandidate, PopupCandidates, PopupState};
 pub use config_popup::ConfigPopupState;
 #[cfg(test)]
 pub(crate) use input::input_height;
+pub(crate) use input::{adjacent_input_cursor, input_cursor_at};
 pub use layout::render;
 pub use model_popup::ModelPopupState;
 pub use shimmer::CYCLE_FRAMES as ACTIVITY_CYCLE_FRAMES;

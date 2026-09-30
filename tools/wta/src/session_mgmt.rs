@@ -87,6 +87,13 @@ pub enum NotResumableReason {
     UnknownCli,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LoadSessionCapability {
+    Supported,
+    Unsupported,
+    Unknown,
+}
+
 /// What the caller should actually do in response to Enter.
 ///
 /// Pure data; no `Box<dyn FnOnce>` or futures. Dispatch (and its
@@ -100,7 +107,8 @@ pub enum EnterAction {
     Focus { pane_session_id: String },
     /// Open a new WT tab + agent pane reconciled to `cli`, then issue
     /// ACP `session/load(key)` so the agent rehydrates the conversation
-    /// in-place. Requires `load_session_supported`.
+    /// in-place. A known unsupported target is rejected before dispatch;
+    /// an unknown target validates capability after it starts.
     ResumeInAgentPane { key: AgentKey, cli: CliSource },
     /// Open a new WT tab + plain pane running `<cli> <resume_flag>
     /// <key>` so the CLI itself rehydrates from its on-disk session
@@ -120,9 +128,11 @@ pub struct RowSnapshot {
     pub liveness: Liveness,
     pub key: AgentKey,
     pub cli_source: CliSource,
-    /// Whether the connected agent (the one the helper is talking to via
-    /// ACP) advertised the `loadSession` capability at initialize.
-    pub load_session_supported: bool,
+    /// Whether the target agent advertised `loadSession`. This is only known
+    /// when the selected row targets the helper's current provider and exact
+    /// execution source. Cross-provider/source restores validate capability
+    /// after the target starts.
+    pub load_session_capability: LoadSessionCapability,
     /// Whether the CLI exposes a resume flag or verb of its own. The
     /// spelling varies per agent — `--resume` for Claude/Copilot/Gemini,
     /// the `resume` subcommand for Codex, `--session` for OpenCode — so
@@ -167,14 +177,14 @@ pub fn decide_enter_action(row: &RowSnapshot) -> EnterAction {
             };
 
             if want_agent_pane {
-                if row.load_session_supported {
+                if row.load_session_capability == LoadSessionCapability::Unsupported {
+                    EnterAction::NotResumable {
+                        reason: NotResumableReason::LoadSessionNotSupported,
+                    }
+                } else {
                     EnterAction::ResumeInAgentPane {
                         key: row.key.clone(),
                         cli: row.cli_source.clone(),
-                    }
-                } else {
-                    EnterAction::NotResumable {
-                        reason: NotResumableReason::LoadSessionNotSupported,
                     }
                 }
             } else if row.cli_supports_resume_flag {
@@ -227,7 +237,11 @@ mod tests {
             liveness,
             key: "k".to_string(),
             cli_source: cli,
-            load_session_supported,
+            load_session_capability: if load_session_supported {
+                LoadSessionCapability::Supported
+            } else {
+                LoadSessionCapability::Unsupported
+            },
             cli_supports_resume_flag,
             is_wsl: false,
         }
@@ -418,6 +432,25 @@ mod tests {
             EnterAction::ResumeInAgentPane {
                 key: "k".into(),
                 cli: CliSource::Gemini
+            }
+        );
+    }
+
+    #[test]
+    fn class_a_historical_enter_defers_unknown_target_capability() {
+        let mut r = row(
+            SessionOrigin::AgentPane,
+            Liveness::Historical,
+            CliSource::Claude,
+            false,
+            true,
+        );
+        r.load_session_capability = LoadSessionCapability::Unknown;
+        assert_eq!(
+            decide_enter_action(&r),
+            EnterAction::ResumeInAgentPane {
+                key: "k".into(),
+                cli: CliSource::Claude
             }
         );
     }

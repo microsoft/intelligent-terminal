@@ -25,6 +25,15 @@ namespace Microsoft.Terminal.Control
         Shown
     };
 
+    enum ContentTransferState
+    {
+        Owned,
+        Prepared,
+        Suspended,
+        Detached,
+        Closed
+    };
+
     [default_interface] runtimeclass TermControl : Windows.UI.Xaml.Controls.UserControl,
                                                    IDirectKeyListener,
                                                    IMouseWheelListener,
@@ -38,6 +47,12 @@ namespace Microsoft.Terminal.Control
                     Microsoft.Terminal.TerminalConnection.ITerminalConnection connection);
 
         static TermControl NewControlByAttachingContent(ControlInteractivity content);
+        static TermControl PrepareControlByAttachingContent(ControlInteractivity content);
+        void SuspendContentTransfer();
+        Boolean ResumeContentTransfer();
+        void CommitContentTransfer();
+        void CommitContentDetach();
+        ContentTransferState TransferState { get; };
 
         static Windows.Foundation.Size GetProposedDimensions(IControlSettings settings,
                                                              UInt32 dpi,

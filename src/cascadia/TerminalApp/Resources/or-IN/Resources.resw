@@ -164,6 +164,22 @@
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
     <value>ଡାଟା କିପରି ବ୍ୟବହୃତ ହୁଏ ତାହା ଜାଣନ୍ତୁ</value>
   </data>
+  <data name="FreOverlay_TabModeLabel.Text" xml:space="preserve">
+    <value>ଟ୍ୟାବ୍ ମୋଡ୍</value>
+    <comment>Label for the first-run dropdown that chooses the layout of terminal tabs, not indentation or the keyboard Tab key.</comment>
+  </data>
+  <data name="FreOverlay_TabModeDescription.Text" xml:space="preserve">
+    <value>ନୂଆ ସାଇଡବାର୍ ଏବଂ ପାରମ୍ପରିକ ଭୂସମାନ୍ତର ଟ୍ୟାବ୍ ଦୃଶ୍ୟ ମଧ୍ୟରେ ସୁଇଚ୍ କରନ୍ତୁ</value>
+    <comment>Help text for the first-run tab layout dropdown. The sidebar shows tabs vertically in a side panel; the classic layout shows tabs horizontally across the top. This is a choice between layouts, not an on/off switch.</comment>
+  </data>
+  <data name="FreOverlay_TabModeSidebar" xml:space="preserve">
+    <value>ସାଇଡବାର୍</value>
+    <comment>Dropdown option for displaying terminal tabs vertically in a side panel. This is the same layout called Vertical in Settings.</comment>
+  </data>
+  <data name="FreOverlay_TabModeHorizontal" xml:space="preserve">
+    <value>ଭୂସମାନ୍ତର</value>
+    <comment>Dropdown option for displaying terminal tabs across the top of the window. Use the same terminology as the Horizontal tab layout option in Settings.</comment>
+  </data>
   <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
     <value>ଏଜେଣ୍ଟ</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
@@ -216,13 +232,17 @@
     <value>ଆରମ୍ଭ କରନ୍ତୁ</value>
   </data>
   <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
-  <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
-    <value> (ଇନ୍‌ଷ୍ଟଲ୍ ହେବ)</value>
-    <comment>Status suffix appended directly to an AI agent display name when setup will install that agent. Include any spacing and punctuation needed to separate the suffix from the agent name.</comment>
+  <data name="FreOverlay_AgentStatusSetupRequired" xml:space="preserve">
+    <value> (ସେଟଅପ୍ ଆବଶ୍ୟକ)</value>
+    <comment>Status suffix appended directly to the GitHub Copilot display name when Copilot is confirmed missing and will be set up later in the Agent pane. Include any spacing and punctuation needed to separate the suffix from the agent name.</comment>
   </data>
   <data name="FreOverlay_AgentStatusInstalled" xml:space="preserve">
     <value> (ଇନ୍‌ଷ୍ଟଲ୍ ଅଛି)</value>
     <comment>Status suffix appended directly to an AI agent display name when that agent is already installed. Include any spacing and punctuation needed to separate the suffix from the agent name.</comment>
+  </data>
+  <data name="FreOverlay_AgentProbeUnavailable" xml:space="preserve">
+    <value>କେଉଁ AI ଏଜେଣ୍ଟଗୁଡ଼ିକ ଇନ୍‌ଷ୍ଟଲ୍ ହୋଇଛି ତାହା ଆମେ ଯାଞ୍ଚ କରିପାରିଲୁ ନାହିଁ। ଏଜେଣ୍ଟ ଫଳକ ଖୋଲିଲେ ଉପଲବ୍ଧତା ପୁଣି ଯାଞ୍ଚ କରାଯିବ।</value>
+    <comment>Non-blocking warning shown in the first-run settings page when installed AI agents could not be detected. In this context, "Agent pane" is the product UI that hosts an AI agent.</comment>
   </data>
   <data name="FreOverlay_PanePositionBottom" xml:space="preserve">
     <value>ତଳ</value>
@@ -238,6 +258,36 @@
   </data>
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>ସେଟଅପ୍ ହେଉଛି...</value>
+  </data>
+  <data name="FreOverlay_HookingUpAgent" xml:space="preserve">
+    <value>{0}କୁ ଆପଣଙ୍କ ଏଜେଣ୍ଟ ପେନ୍ ସହିତ ସଂଯୋଗ କରାଯାଉଛି...</value>
+    <comment>Progress text shown while preparing the selected AI agent. {0} is the localized agent display name, for example "GitHub Copilot". In this context, "agent" refers to an AI agent, not a human representative.</comment>
+  </data>
+  <data name="FreOverlay_HookingUpAgentFallback" xml:space="preserve">
+    <value>ଆପଣଙ୍କ ଏଜେଣ୍ଟ ପେନ୍‌କୁ ସଂଯୋଗ କରାଯାଉଛି...</value>
+    <comment>Progress text shown while preparing an AI agent when its display name is unavailable. In this context, "agent" refers to an AI agent, not a human representative.</comment>
+  </data>
+  <data name="FreOverlay_TurningOnErrorDetection" xml:space="preserve">
+    <value>ତ୍ରୁଟି ଚିହ୍ନଟ ଚାଲୁ କରାଯାଉଛି...</value>
+  </data>
+  <data name="FreOverlay_TurningOnSessions" xml:space="preserve">
+    <value>ସେସନ୍‌ଗୁଡ଼ିକ ଚାଲୁ କରାଯାଉଛି...</value>
+  </data>
+  <data name="FreOverlay_ProgressCompleted" xml:space="preserve">
+    <value>ସମ୍ପୂର୍ଣ୍ଣ ହେଲା</value>
+    <comment>Accessible status for a completed step in the FRE setup progress checklist.</comment>
+  </data>
+  <data name="FreOverlay_ProgressWarning" xml:space="preserve">
+    <value>ଏକ ଚେତାବନୀ ସହିତ ସମ୍ପୂର୍ଣ୍ଣ ହେଲା</value>
+    <comment>Accessible status for a non-blocking warning in the FRE setup progress checklist.</comment>
+  </data>
+  <data name="FreOverlay_ProgressFailed" xml:space="preserve">
+    <value>ବିଫଳ ହେଲା</value>
+    <comment>Accessible status for a failed step in the FRE setup progress checklist.</comment>
+  </data>
+  <data name="FreOverlay_ProgressAccessibleStatus" xml:space="preserve">
+    <value>{0}, {1}</value>
+    <comment>Accessible name for a completed FRE setup step. {0} is the step label and {1} is its result, such as "Completed" or "Failed".</comment>
   </data>
   <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
     <value>Windows Package Manager ନୀତି ଦ୍ୱାରା {0} ର ଇନ୍‌ଷ୍ଟଲେସନ୍ ଅବରୋଧ କରାଯାଇଛି। ଆପଣ ଯଦି ପରିଚାଳିତ ଡିଭାଇସ୍‌ରେ ଅଛନ୍ତି, ତେବେ ଆପଣଙ୍କ IT ଆଡମିନ୍‌ଙ୍କୁ ସମ୍ପର୍କ କରନ୍ତୁ।</value>
@@ -366,6 +416,10 @@
     <value>ଏଜେଣ୍ଟ ସେସନ୍: {0}</value>
     <comment>Title shown in the agent pane title bar when the session-management view is active. {0} is replaced with the AI agent display name.</comment>
   </data>
+  <data name="AgentPane_SessionsDisabledHint.Text" xml:space="preserve">
+    <value>ସେସନ୍ ପରିଚାଳନାର ସର୍ବୋତ୍ତମ ଅନୁଭୂତି ପାଇଁ, Settings &gt; Agentsରେ Sessions ଚାଲୁ କରନ୍ତୁ।</value>
+    <comment>Subtle hint below the agent sessions title, shown only in session management when Sessions is off and policy permits changes. Navigation is Settings &gt; Agents, then turn on Sessions. Match the displayed labels: Settings uses SettingsMenuItem/SettingsTab, Agents uses Nav_AIAgents.Content, and Sessions uses AIAgents_SessionManagement.Header, including fallback labels where a locale has no translation. Turning Sessions off only prevents hook updates; existing hooks and session functionality can keep working. Do not imply that tracking, data refresh, or functionality stops.</comment>
+  </data>
   <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
@@ -388,5 +442,283 @@
   <data name="AgentPane_ConnectingTitle" xml:space="preserve">
     <value>ଏଜେଣ୍ଟ · ସଂଯୋଗ ହେଉଛି</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+  </data>
+  <data name="TabCloseBelow" xml:space="preserve">
+    <value>ତଳେ ଥିବା ଟ୍ୟାବ୍‌ଗୁଡ଼ିକ ବନ୍ଦ କରନ୍ତୁ</value>
+  </data>
+  <data name="VerticalTabsCollapsePane" xml:space="preserve">
+    <value>ସାଇଡବାର୍ ସଙ୍କୁଚିତ କରନ୍ତୁ</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
+  </data>
+  <data name="VerticalTabsExpandPane" xml:space="preserve">
+    <value>ସାଇଡବାର୍ ବିସ୍ତାର କରନ୍ତୁ</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
+  </data>
+  <data name="VerticalTabsExpandGroup" xml:space="preserve">
+    <value>ଟ୍ୟାବ୍ ଗୋଷ୍ଠୀ ବିସ୍ତାର କରନ୍ତୁ</value>
+    <comment>Accessibility name and tooltip for the button that expands a group of tabs in the sidebar.</comment>
+  </data>
+  <data name="VerticalTabsCollapseGroup" xml:space="preserve">
+    <value>ଟ୍ୟାବ୍ ଗୋଷ୍ଠୀ ସଙ୍କୁଚିତ କରନ୍ତୁ</value>
+    <comment>Accessibility name and tooltip for the button that collapses a group of tabs in the sidebar.</comment>
+  </data>
+  <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
+    <value>ଟ୍ୟାବ୍</value>
+    <comment>Fallback title for a terminal tab in the sidebar when no title is available.</comment>
+  </data>
+  <data name="VerticalTabsHeader.Text" xml:space="preserve">
+    <value>ଟ୍ୟାବ୍</value>
+  </data>
+  <data name="VerticalTabsSearchButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>ଟ୍ୟାବ୍ ଖୋଜନ୍ତୁ</value>
+  </data>
+  <data name="VerticalTabsSearchButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>ଟ୍ୟାବ୍ ଖୋଜନ୍ତୁ</value>
+  </data>
+  <data name="VerticalTabsSearchBox.PlaceholderText" xml:space="preserve">
+    <value>ଟ୍ୟାବ୍ ଖୋଜନ୍ତୁ</value>
+  </data>
+  <data name="VerticalTabsSearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>ଟ୍ୟାବ୍ ଖୋଜନ୍ତୁ</value>
+  </data>
+  <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>ଟ୍ୟାବ୍‌ଗୁଡ଼ିକୁ ଫିଲ୍ଟର୍ କରନ୍ତୁ</value>
+  </data>
+  <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>ଟ୍ୟାବ୍‌ଗୁଡ଼ିକୁ ଫିଲ୍ଟର୍ କରନ୍ତୁ</value>
+  </data>
+  <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
+    <value>ଫିଲ୍ଟର୍</value>
+    <comment>Section heading above the controls that filter which tabs are shown in the sidebar.</comment>
+  </data>
+  <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
+    <value>ସମସ୍ତ ଟ୍ୟାବ୍</value>
+  </data>
+  <data name="VerticalTabsFilterAgentsOnly.Text" xml:space="preserve">
+    <value>କେବଳ ଏଜେଣ୍ଟ</value>
+  </data>
+  <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
+    <value>ଟ୍ୟାବ୍ ମେଟାଡାଟା</value>
+    <comment>Section heading above the options that choose which metadata appears in sidebar tab rows.</comment>
+  </data>
+  <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
+    <value>ଏଜେଣ୍ଟ ସ୍ଥିତି</value>
+    <comment>Option that shows an agent's current status in sidebar tab rows.</comment>
+  </data>
+  <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
+    <value>ସାମ୍ପ୍ରତିକ କାର୍ଯ୍ୟ ଡିରେକ୍ଟୋରୀ</value>
+    <comment>Option that shows the current working directory in sidebar tab rows.</comment>
+  </data>
+  <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
+    <value>Git  ସଂଗ୍ରହାଳୟ</value>
+    <comment>Option that shows the Git repository name in sidebar tab rows.</comment>
+  </data>
+  <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
+    <value>Git  ଶାଖା</value>
+    <comment>Option that shows the Git branch name in sidebar tab rows.</comment>
+  </data>
+  <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
+    <value>Git  ପରିବର୍ତ୍ତନ ହୁଏ</value>
+    <comment>Option that shows the Git working tree change summary in sidebar tab rows.</comment>
+  </data>
+  <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
+    <value>1ଟି ଏଜେଣ୍ଟ ସେସନ୍ ଦେଖାଯାଉଛି</value>
+  </data>
+  <data name="VerticalTabsFilterStatusPlural" xml:space="preserve">
+    <value>{0}ଟି ଏଜେଣ୍ଟ ସେସନ୍ ଦେଖାଯାଉଛି</value>
+  </data>
+  <data name="VerticalTabsFilterCurrentHidden.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>ବର୍ତ୍ତମାନର ଟ୍ୟାବ୍ ଏହି ଫିଲ୍ଟର୍ ଦ୍ୱାରା ଲୁକ୍କାୟିତ</value>
+  </data>
+  <data name="VerticalTabsFilterCurrentHidden.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>ବର୍ତ୍ତମାନର ଟ୍ୟାବ୍ ଏହି ଫିଲ୍ଟର୍ ଦ୍ୱାରା ଲୁକ୍କାୟିତ</value>
+  </data>
+  <data name="VerticalTabsFilterShowAll.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>ସମସ୍ତ ଟ୍ୟାବ୍ ଦେଖାନ୍ତୁ</value>
+  </data>
+  <data name="VerticalTabsFilterShowAll.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>ସମସ୍ତ ଟ୍ୟାବ୍ ଦେଖାନ୍ତୁ</value>
+  </data>
+  <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>ଏଜେଣ୍ଟମାନେ</value>
+    <comment>Accessible name of the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
+  </data>
+  <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>ଏଜେଣ୍ଟମାନେ</value>
+    <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
+  </data>
+  <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
+    <value>ଏଜେଣ୍ଟମାନେ</value>
+    <comment>Header of the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
+  </data>
+  <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>ଏଜେଣ୍ଟମାନଙ୍କ ଦୃଶ୍ୟ ବନ୍ଦ କରନ୍ତୁ</value>
+    <comment>Accessible name of the button that closes the Agents sidebar view. Closing this view hides the sidebar; it does not terminate any agents or sessions.</comment>
+  </data>
+  <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>ଏଜେଣ୍ଟମାନଙ୍କ ଦୃଶ୍ୟ ବନ୍ଦ କରନ୍ତୁ</value>
+    <comment>Tooltip for the button that closes the Agents sidebar view. Closing this view hides the sidebar; it does not terminate any agents or sessions.</comment>
+  </data>
+  <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
+    <value>ଏଜେଣ୍ଟ ସେସନ୍ ଖୋଜନ୍ତୁ</value>
+  </data>
+  <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>ଏଜେଣ୍ଟ ସେସନ୍ ଖୋଜନ୍ତୁ</value>
+  </data>
+  <data name="VerticalTabsHistoryCurrentSession" xml:space="preserve">
+    <value>ବର୍ତ୍ତମାନର ସେସନ୍</value>
+    <comment>UI Automation status for the live AI-agent session associated with the active terminal pane. This identifies the currently displayed session, not keyboard selection or the most recent session.</comment>
+  </data>
+  <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
+    <value>କୌଣସି ଏଜେଣ୍ଟ ସେସନ୍ ମିଳିଲା ନାହିଁ।</value>
+  </data>
+  <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
+    <value>ମେଳ ଖାଉଥିବା କୌଣସି ଏଜେଣ୍ଟ ସେସନ୍ ନାହିଁ।</value>
+  </data>
+  <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
+    <value>ଏଜେଣ୍ଟ ସେସନ୍‌ଗୁଡ଼ିକ ଲୋଡ୍ କରିହେଲା ନାହିଁ।</value>
+    <comment>Error shown when the Agent sessions sidebar view cannot load its list of live and historical AI-agent sessions. This refers to loading the session list, not starting or resuming a session.</comment>
+  </data>
+  <data name="VerticalTabsHistoryInvalidResponse" xml:space="preserve">
+    <value>ଏଜେଣ୍ଟ ସେସନ୍‌ଗୁଡ଼ିକ ଲୋଡ୍ କରିହେଲା ନାହିଁ: ଅବୈଧ ପ୍ରତିକ୍ରିୟା।</value>
+    <comment>Error shown when the Agent sessions sidebar receives an invalid response while loading its list of live and historical AI-agent sessions.</comment>
+  </data>
+  <data name="VerticalTabsHistoryActivationError" xml:space="preserve">
+    <value>ଚୟନିତ ସେସନ୍ ସକ୍ରିୟ କରିହେଲା ନାହିଁ।</value>
+  </data>
+  <data name="VerticalTabsHistoryLiveAgentTitleFormat" xml:space="preserve">
+    <value>{0} ଏଜେଣ୍ଟ ସେସନ୍</value>
+    <comment>History row title for a live agent-pane session whose provider did not supply a conversation title. {0} is the provider display name.</comment>
+  </data>
+  <data name="CompactNewTabButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>ନୂଆ ଟ୍ୟାବ୍</value>
+  </data>
+  <data name="CompactNewTabButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>ନୂଆ ଟ୍ୟାବ୍</value>
+  </data>
+  <data name="CompactNewTabMenuButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>ନୂଆ ଟ୍ୟାବ୍ ମେନୁ</value>
+  </data>
+  <data name="CompactNewTabMenuButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>ନୂଆ ଟ୍ୟାବ୍ ମେନୁ</value>
+  </data>
+  <data name="SwitchToHorizontalTabsText" xml:space="preserve">
+    <value>ଭୂସମାନ୍ତର ଟ୍ୟାବ୍‌କୁ ବଦଳାନ୍ତୁ</value>
+  </data>
+  <data name="SwitchToHorizontalTabsToolTip" xml:space="preserve">
+    <value>ସମସ୍ତ Terminal ୱିଣ୍ଡୋରେ ଭୂସମାନ୍ତର ଟ୍ୟାବ୍ ବ୍ୟବହାର କରନ୍ତୁ</value>
+  </data>
+  <data name="SwitchToVerticalTabsText" xml:space="preserve">
+    <value>ସାଇଡବାର୍‌କୁ ବଦଳାନ୍ତୁ</value>
+    <comment>Context-menu command that changes the tab layout from horizontal tabs to the sidebar.</comment>
+  </data>
+  <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
+    <value>ସମସ୍ତ Terminal ୱିଣ୍ଡୋରେ ସାଇଡବାର୍ ବ୍ୟବହାର କରନ୍ତୁ</value>
+    <comment>Tooltip for the command that changes the tab layout from horizontal tabs to the sidebar in every Terminal window.</comment>
+  </data>
+  <data name="TabCloseBelowToolTip" xml:space="preserve">
+    <value>ଏହି ଟ୍ୟାବ୍ ତଳେ ଥିବା ସମସ୍ତ ଟ୍ୟାବ୍ ବନ୍ଦ କରନ୍ତୁ</value>
+  </data>
+  <data name="NotificationIconRestoreKeptTab" xml:space="preserve">
+    <value>ପୁନଃସ୍ଥାପନ କରନ୍ତୁ</value>
+    <comment>Command in the notification-area menu that brings a background tab and its still-running terminal panes back into a window. It does not restart the processes or restore a file backup.</comment>
+  </data>
+  <data name="KeepTabRunningText" xml:space="preserve">
+    <value>ଟ୍ୟାବ୍ ଚାଲୁ ରଖନ୍ତୁ</value>
+    <comment>Command at the top of a vertical terminal tab's context menu that enables keeping all panes running after the tab or window is closed. Also labels the tab's keep-running status indicator. This does not pin the tab or save it for a restart.</comment>
+  </data>
+  <data name="PinTabText" xml:space="preserve">
+    <value>ଟ୍ୟାବ୍ ପିନ୍ କରନ୍ତୁ</value>
+    <comment>Context menu action to keep a terminal tab at the start of the tab list until unpinned. Does not keep its processes running after closing or persist across restarts.</comment>
+  </data>
+  <data name="PinTabToolTip" xml:space="preserve">
+    <value>ଏହି ଟ୍ୟାବ୍‌କୁ ପିନ୍ ହୋଇନଥିବା ଟ୍ୟାବ୍‌ଗୁଡ଼ିକର ଆଗକୁ ନିଅନ୍ତୁ।</value>
+  </data>
+  <data name="UnpinTabText" xml:space="preserve">
+    <value>ଟ୍ୟାବ୍‌ର ପିନ୍ ହଟାନ୍ତୁ</value>
+    <comment>Context menu action to move a pinned terminal tab back into the regular tab group.</comment>
+  </data>
+  <data name="UnpinTabToolTip" xml:space="preserve">
+    <value>ଏହି ଟ୍ୟାବ୍‌କୁ ପିନ୍ ହୋଇଥିବା ଟ୍ୟାବ୍‌ଗୁଡ଼ିକର ପଛକୁ ନିଅନ୍ତୁ।</value>
+  </data>
+  <data name="PinnedTabName" xml:space="preserve">
+    <value>ପିନ୍ ହୋଇଛି</value>
+    <comment>Accessibility name and tooltip for a terminal tab pinned at the beginning of the tab list.</comment>
+  </data>
+  <data name="CollapsedPinnedTabIcon.AutomationProperties.Name" xml:space="preserve">
+    <value>ପିନ୍ ହୋଇଛି</value>
+    <comment>Accessibility name for the pin indicator on a terminal tab in the collapsed sidebar.</comment>
+  </data>
+  <data name="KeepTabRunningToolTip" xml:space="preserve">
+    <value>ଟ୍ୟାବ୍ କିମ୍ବା ୱିଣ୍ଡୋ ବନ୍ଦ କରିବା ପରେ ମଧ୍ୟ ଏହି ଟ୍ୟାବ୍‌କୁ ପୃଷ୍ଠଭୂମିରେ ଚାଲୁ ରଖନ୍ତୁ।</value>
+    <comment>Tooltip and accessibility help for Keep tab running. Includes shell panes and the AI assistant; their current processes and sessions stay alive, rather than restarting later.</comment>
+  </data>
+  <data name="TurnOffKeepTabRunningText" xml:space="preserve">
+    <value>ଚାଲୁ ରଖିବା ସୁବିଧା ବନ୍ଦ କରନ୍ତୁ</value>
+    <comment>Command shown instead of Keep tab running when that tab already has keep running enabled. It only turns off the background-running behavior; it does not close the tab or stop its current processes immediately.</comment>
+  </data>
+  <data name="TurnOffKeepTabRunningToolTip" xml:space="preserve">
+    <value>ଆପଣ ଟ୍ୟାବ୍ କିମ୍ବା ୱିଣ୍ଡୋ ବନ୍ଦ କରିବା ପରେ ଏହି ଟ୍ୟାବ୍ ଆଉ ଚାଲୁ ରହିବ ନାହିଁ।</value>
+    <comment>Tooltip and accessibility help for Turn off keep running. After this action, closing the tab or its window closes its panes normally instead of retaining them in the background. The current tab and processes are not closed by this action.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusIdle" xml:space="preserve">
+    <value>ନିଷ୍କ୍ରିୟ</value>
+    <comment>Agent History session status: the session is live but has no active work.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusWorking" xml:space="preserve">
+    <value>ସକ୍ରିୟ</value>
+    <comment>Agent History session status: the agent is actively processing a request.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusAttention" xml:space="preserve">
+    <value>ଇନ୍‌ପୁଟ୍ ପାଇଁ ଅପେକ୍ଷା</value>
+    <comment>Agent History session status: the agent needs a response or approval from the user.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusError" xml:space="preserve">
+    <value>ତ୍ରୁଟି</value>
+    <comment>Agent History session status: the session encountered an error.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusHistorical" xml:space="preserve">
+    <value>ଇତିହାସରୁ</value>
+    <comment>Agent History session status: a closed or saved session with no live pane. Both ended and historical registry states use this label.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusUnknown" xml:space="preserve">
+    <value>ଅଜ୍ଞାତ</value>
+    <comment>Agent History session status: the registry did not provide a recognized status.</comment>
+  </data>
+  <data name="VerticalTabsHistoryAgeJustNow" xml:space="preserve">
+    <value>ଏମାତ୍ର</value>
+    <comment>Agent History relative time: the session&apos;s latest activity was less than one minute ago.</comment>
+  </data>
+  <data name="VerticalTabsHistoryAgeMinute" xml:space="preserve">
+    <value>1 ମିନିଟ୍ ପୂର୍ବରୁ</value>
+    <comment>Agent History relative time: the session&apos;s latest activity was one minute ago.</comment>
+  </data>
+  <data name="VerticalTabsHistoryAgeMinutes" xml:space="preserve">
+    <value>{0} ମିନିଟ୍ ପୂର୍ବରୁ</value>
+    <comment>Agent History relative time. {0} is the whole number of minutes since the session&apos;s latest activity, from 2 to 59.</comment>
+  </data>
+  <data name="VerticalTabsHistoryAgeHour" xml:space="preserve">
+    <value>1 ଘଣ୍ଟା ପୂର୍ବରୁ</value>
+    <comment>Agent History relative time: the session&apos;s latest activity was one hour ago.</comment>
+  </data>
+  <data name="VerticalTabsHistoryAgeHours" xml:space="preserve">
+    <value>{0} ଘଣ୍ଟା ପୂର୍ବରୁ</value>
+    <comment>Agent History relative time. {0} is the whole number of hours since the session&apos;s latest activity, from 2 to 23.</comment>
+  </data>
+  <data name="VerticalTabsHistoryAgeDay" xml:space="preserve">
+    <value>1 ଦିନ ପୂର୍ବରୁ</value>
+    <comment>Agent History relative time: the session&apos;s latest activity was one day ago.</comment>
+  </data>
+  <data name="VerticalTabsHistoryAgeDays" xml:space="preserve">
+    <value>{0} ଦିନ ପୂର୍ବରୁ</value>
+    <comment>Agent History relative time. {0} is the whole number of days since the session&apos;s latest activity, at least 2.</comment>
+  </data>
+  <data name="VerticalTabsHistoryAgeUnknown" xml:space="preserve">
+    <value>ଅଜ୍ଞାତ</value>
+    <comment>Agent History time label when the session&apos;s latest activity timestamp is missing or invalid. Do not imply that the session was recently active.</comment>
+  </data>
+  <data name="NotificationIconCloseAllKeptTabs" xml:space="preserve">
+    <value>ପୃଷ୍ଠଭୂମିରେ ଚାଲୁଥିବା ସମସ୍ତ ଟ୍ୟାବ୍ ବନ୍ଦ କରନ୍ତୁ</value>
+    <comment>Command below the background tabs in the notification-area menu. Closes all detached tabs retained by Keep tab running and terminates their panes and processes. Does not close tabs still in a window or only turn off keep running.</comment>
   </data>
 </root>

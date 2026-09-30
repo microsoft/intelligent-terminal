@@ -4,6 +4,8 @@
 #include "pch.h"
 #include "GlobalAppSettings.h"
 #include "../inc/AgentPolicy.h"
+#include "../inc/AgentRegistry.h"
+#include "../inc/AgentYoloPolicy.h"
 #include "../../types/inc/Utils.hpp"
 #include "JsonUtils.h"
 #include "KeyChordSerialization.h"
@@ -13,6 +15,7 @@
 #include "MediaResourceSupport.h"
 
 namespace AgentPolicy = ::Microsoft::Terminal::Settings::Model::AgentPolicy;
+namespace AgentYoloPolicy = ::Microsoft::Terminal::Settings::Model::AgentYoloPolicy;
 using namespace winrt::Microsoft::Terminal::Settings::Model::implementation;
 using namespace winrt::Windows::UI::Xaml;
 using namespace ::Microsoft::Console;
@@ -685,11 +688,56 @@ bool GlobalAppSettings::IsAgentSessionHooksPolicyLocked() const
 
 bool GlobalAppSettings::EffectiveAgentPaneYoloMode() const
 {
-    if (!AgentPolicy::IsYoloModeAllowed())
+    if (!CanEnableAgentPaneYoloMode())
     {
         return false;
     }
     return AgentPaneYoloMode();
+}
+
+bool GlobalAppSettings::CanEnableAgentPaneYoloMode() const
+{
+    return CanEnableAgentPaneYoloModeForAgent(EffectiveAcpAgent());
+}
+
+bool GlobalAppSettings::CanEnableAgentPaneYoloModeForAgent(const winrt::hstring& agentId) const
+{
+    if (!AgentYoloPolicy::IsAutomaticEnableAvailable(
+            IsYoloModePolicyLocked(),
+            std::wstring_view{ agentId }))
+    {
+        return false;
+    }
+
+    const auto agentIdString = winrt::to_string(agentId);
+    return agentIdString.starts_with("custom:") ?
+               AgentPolicy::IsCustomAgentAllowed() :
+               AgentPolicy::IsAgentAllowed(std::wstring_view{ agentId });
+}
+
+bool GlobalAppSettings::ClearAgentPaneYoloModeIfPolicyBlocked()
+{
+    if (AgentYoloPolicy::CanUserRequestEnable(IsYoloModePolicyLocked()) ||
+        !AgentPaneYoloMode())
+    {
+        return false;
+    }
+
+    AgentPaneYoloMode(false);
+    return true;
+}
+
+bool GlobalAppSettings::ClearAgentPaneYoloModeIfUnavailableDefault()
+{
+    if (!AgentYoloPolicy::IsAutomaticProviderKnownUnsupported(
+            std::wstring_view{ AcpAgent() }) ||
+        !AgentPaneYoloMode())
+    {
+        return false;
+    }
+
+    AgentPaneYoloMode(false);
+    return true;
 }
 
 bool GlobalAppSettings::IsYoloModePolicyLocked() const

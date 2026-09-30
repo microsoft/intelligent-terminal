@@ -62,6 +62,7 @@ namespace Microsoft::Terminal::Protocol::Parsing
     {
         AutofixState,         // Direct to TerminalPage, no broadcast
         AgentStatus,          // Direct to TerminalPage, no broadcast
+        AgentAvailability,    // Direct to TerminalPage, no broadcast — post-install hook reconciliation
         AgentSwitch,          // Direct to TerminalPage, no broadcast — `/agent` per-tab switch
         CloseAgentPane,       // Direct to TerminalPage, no broadcast
         DefaultPaste,         // Direct to TerminalPage, no broadcast — WTA-owned right-click copy-or-paste
@@ -71,6 +72,7 @@ namespace Microsoft::Terminal::Protocol::Parsing
         AgentChipTarget,      // Direct to TerminalPage, no broadcast — "draw the Agent chip on this pane (or hide override)"
         RestartAgentStack,    // Direct to TerminalPage, no broadcast — `/restart` from any agent pane TUI
         AgentSessionsRetired, // Direct to TerminalPage, no broadcast — destructive retirement transaction completed
+        SessionRegistryChanged, // Direct to TerminalPage, no broadcast — refresh open Sidebar History views
         Broadcast,            // Normalize envelope + broadcast to all subscribers
         Invalid               // Failed validation
     };
@@ -108,6 +110,10 @@ namespace Microsoft::Terminal::Protocol::Parsing
             {
                 return SendEventRoute::AgentStatus;
             }
+            if (method == "agent_availability_changed")
+            {
+                return SendEventRoute::AgentAvailability;
+            }
             if (method == "switch_agent")
             {
                 return SendEventRoute::AgentSwitch;
@@ -143,6 +149,10 @@ namespace Microsoft::Terminal::Protocol::Parsing
             if (method == "agent_sessions_retired")
             {
                 return SendEventRoute::AgentSessionsRetired;
+            }
+            if (method == "session_registry_changed")
+            {
+                return SendEventRoute::SessionRegistryChanged;
             }
         }
 

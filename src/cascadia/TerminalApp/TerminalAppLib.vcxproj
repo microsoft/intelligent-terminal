@@ -86,6 +86,9 @@
     <Page Include="AgentPaneContent.xaml">
       <SubType>Designer</SubType>
     </Page>
+    <Page Include="AgentIconResources.xaml">
+      <SubType>Designer</SubType>
+    </Page>
     <Page Include="FreOverlay.xaml">
       <SubType>Designer</SubType>
     </Page>
@@ -93,9 +96,13 @@
   <!-- ========================= Headers ======================== -->
   <ItemGroup>
     <ClInclude Include="App.base.h" />
+    <ClInclude Include="AgentSessionTelemetry.h" />
+    <ClInclude Include="AgentPolicyTelemetry.h" />
+    <ClInclude Include="AgentProviderTelemetry.h" />
     <ClInclude Include="AppCommandlineArgs.h" />
     <ClInclude Include="Commandline.h" />
     <ClInclude Include="CommandPaletteItems.h" />
+    <ClInclude Include="CommandPaletteTelemetry.h" />
     <ClInclude Include="Jumplist.h" />
     <ClInclude Include="LanguageProfileNotifier.h" />
     <ClInclude Include="MinMaxCloseControl.h">
@@ -112,6 +119,8 @@
     <ClInclude Include="SharedWta.h" />
     <ClInclude Include="AgentPaneLog.h" />
     <ClInclude Include="AgentPaneDragStash.h" />
+    <ClInclude Include="ContentTransfer.h" />
+    <ClInclude Include="AgentPaneLifetime.h" />
     <ClInclude Include="..\inc\AgentPaneRestore.h" />
     <ClInclude Include="Tab.h">
       <DependentUpon>Tab.idl</DependentUpon>
@@ -331,6 +340,7 @@
       <DependentUpon>MarkdownPaneContent.xaml</DependentUpon>
       <SubType>Code</SubType>
     </ClCompile>
+    <ClCompile Include="AgentPaneLifetime.cpp" />
     <ClCompile Include="AgentPaneContent.cpp">
       <DependentUpon>AgentPaneContent.xaml</DependentUpon>
       <SubType>Code</SubType>
@@ -442,6 +452,7 @@
       make sure that if you add a cppwinrt dependency to any of these projects,
       you also update all the consumers
     -->
+    <ProjectReference Include="$(OpenConsoleDir)src\cascadia\RichTabProvider\RichTabProvider.vcxproj" />
     <ProjectReference Include="$(OpenConsoleDir)src\types\lib\types.vcxproj" />
     <ProjectReference Include="$(OpenConsoleDir)src\cascadia\TerminalProtocol\TerminalProtocol.vcxproj">
       <Project>{F1A2B3C4-D5E6-4F7A-8B9C-0D1E2F3A4B5D}</Project>

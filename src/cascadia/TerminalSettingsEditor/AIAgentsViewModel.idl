@@ -106,9 +106,8 @@ namespace Microsoft.Terminal.Settings.Editor
         // Global "Yolo mode" — requests each supported provider's advertised
         // native ACP session mode. WTA never selects a permission option;
         // providers without a reviewed native mode continue prompting.
-        // Getter/setter route through EffectiveAgentPaneYoloMode /
-        // IsYoloModePolicyLocked so the toggle reads Off and rejects writes
-        // when org policy blocks it.
+        // Getter/setter route through the shared SettingsModel availability
+        // contract so unavailable rows read Off, reject writes, and hide.
         Boolean AgentPaneYoloMode;
         Boolean HasAgentPaneYoloMode { get; };
 
@@ -129,7 +128,8 @@ namespace Microsoft.Terminal.Settings.Editor
         IInspectable CurrentAgentPanePosition;
         Windows.Foundation.Collections.IObservableVector<EnumEntry> AgentPanePositionList { get; };
 
-        Boolean ShowOpenCodeYoloWarning { get; };
         Boolean ShowGeminiYoloInfo { get; };
+        Boolean CanEnableAgentPaneYoloMode { get; };
+        Windows.UI.Xaml.Visibility AgentPaneYoloModeVisibility { get; };
     }
 }

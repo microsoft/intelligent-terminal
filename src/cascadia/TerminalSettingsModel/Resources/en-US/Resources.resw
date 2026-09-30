@@ -503,6 +503,10 @@
   <data name="TogglePaneVisibilityCommandKey" xml:space="preserve">
     <value>Toggle pane visibility</value>
   <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+  <data name="ToggleSidebarCommandKey" xml:space="preserve">
+    <value>Toggle sidebar</value>
+    <comment>A command that shows or collapses the vertical tabs sidebar.</comment>
+  </data>
   <data name="TogglePaneReadOnlyCommandKey" xml:space="preserve">
     <value>Toggle pane read-only mode</value>
   </data>

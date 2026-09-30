@@ -16,6 +16,7 @@ pub(crate) struct HelperConfig {
     pub(crate) delegate_agent: Option<String>,
     pub(crate) delegate_model: Option<String>,
     pub(crate) no_autofix: bool,
+    pub(crate) autofix_policy_state: crate::telemetry::AutoFixPolicyState,
     pub(crate) yolo_mode: bool,
     pub(crate) yolo_policy_blocked: bool,
     pub(crate) setup: Option<String>,
@@ -25,6 +26,7 @@ pub(crate) struct HelperConfig {
     pub(crate) owner_window_id: Option<String>,
     pub(crate) initial_load_session_id: Option<String>,
     pub(crate) initial_load_cwd: Option<String>,
+    pub(crate) initial_yolo_control_owner: Option<crate::app_contracts::YoloControlOwner>,
     pub(crate) start_stashed: bool,
 }
 

@@ -110,7 +110,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         });
 
         // GH#8969: pre-seed working directory to prevent potential races
-        _terminal->SetWorkingDirectory(_settings.StartingDirectory());
+        _terminal->SetInitialWorkingDirectory(_settings.StartingDirectory());
 
         _terminal->SetCopyToClipboardCallback([this](wil::zwstring_view wstr) {
             WriteToClipboard.raise(*this, winrt::make<WriteToClipboardEventArgs>(winrt::hstring{ std::wstring_view{ wstr } }, std::string{}, std::string{}));
@@ -327,6 +327,11 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         // revoke ALL old handlers immediately
 
         _closeConnection();
+
+        {
+            const auto lock = _terminal->LockForWriting();
+            _terminal->ResetShellIntegrationState();
+        }
 
         _connection = newConnection;
         if (_connection)
@@ -1558,6 +1563,12 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         return hstring{ _terminal->GetWorkingDirectory() };
     }
 
+    bool ControlCore::WorkingDirectoryReportedByShell() const
+    {
+        const auto lock = _terminal->LockForReading();
+        return _terminal->IsWorkingDirectoryReportedByShell();
+    }
+
     hstring ControlCore::ShellName() const
     {
         const auto lock = _terminal->LockForReading();
@@ -1892,10 +1903,10 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
     void ControlCore::Close()
     {
-        if (!_IsClosing())
+        // An abandoned, exclusively owned core can be retired after its window
+        // dispatcher is gone. Its queued callbacks must still observe closure.
+        if (!_closing.exchange(true))
         {
-            _closing = true;
-
             // Ensure Close() doesn't hang, waiting for MidiAudio to finish playing an hour long song.
             _midiAudio.BeginSkip();
         }

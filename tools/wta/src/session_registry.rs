@@ -15,13 +15,15 @@
 //! here to avoid mixing a lock refactor into the routing change.
 
 use agent_client_protocol as acp;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::agent_sessions::{AgentSession, AgentStatus, CliSource, SessionEvent, SessionOrigin};
+use crate::agent_sessions::{
+    AgentSession, AgentStatus, CliSource, SessionEvent, SessionLocation, SessionOrigin,
+};
 use tokio::sync::Mutex;
 
 /// Top-level key under `_meta` reserved for our extension. ACP lets
@@ -30,6 +32,77 @@ use tokio::sync::Mutex;
 /// through master untouched.
 pub const WTA_META_NAMESPACE: &str = "wta";
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct HistoryRowKey {
+    pub provider_id: String,
+    pub location: SessionLocation,
+    pub session_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_universe: Option<String>,
+}
+
+impl HistoryRowKey {
+    pub fn new(
+        provider_id: impl AsRef<str>,
+        location: SessionLocation,
+        session_id: impl AsRef<str>,
+        session_universe: Option<String>,
+    ) -> Option<Self> {
+        let provider_id = provider_id.as_ref().trim().to_ascii_lowercase();
+        let session_id = session_id.as_ref().trim().to_string();
+        if provider_id.is_empty() || session_id.is_empty() || !location.is_actionable() {
+            return None;
+        }
+        Some(Self {
+            provider_id,
+            location,
+            session_id,
+            session_universe: session_universe.filter(|value| !value.trim().is_empty()),
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct SessionIdentity {
+    pub session_id: acp::schema::v1::SessionId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub history_key: Option<HistoryRowKey>,
+}
+
+impl SessionIdentity {
+    pub fn from_info(info: &SessionInfo) -> Self {
+        Self {
+            session_id: info.session_id.clone(),
+            history_key: info.history_row_key(),
+        }
+    }
+
+    pub fn legacy(session_id: acp::schema::v1::SessionId) -> Self {
+        Self {
+            session_id,
+            history_key: None,
+        }
+    }
+}
+
+impl From<&acp::schema::v1::SessionId> for SessionIdentity {
+    fn from(session_id: &acp::schema::v1::SessionId) -> Self {
+        Self::legacy(session_id.clone())
+    }
+}
+
+impl From<&SessionInfo> for SessionIdentity {
+    fn from(info: &SessionInfo) -> Self {
+        Self::from_info(info)
+    }
+}
+
+impl From<&SessionIdentity> for SessionIdentity {
+    fn from(identity: &SessionIdentity) -> Self {
+        identity.clone()
+    }
+}
+
 /// The subset of `_meta.wta` we read/write today. A struct (rather than
 /// just shipping `pane_session_id: Option<String>` directly) so that
 /// future fields (titles, owner_tab_id, etc.) can join without
@@ -37,6 +110,9 @@ pub const WTA_META_NAMESPACE: &str = "wta";
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct WtaMeta {
     pub pane_session_id: Option<String>,
+    /// Declares a master-local control client that must not bind or spawn an
+    /// agent CLI. The only supported value is `sidebar-history-v1`.
+    pub control_client: Option<String>,
     /// Legacy/advisory full command line. **The master no longer spawns
     /// this** — it is a security hazard to execute an arbitrary string
     /// arriving over the pipe (any same-user process could connect and
@@ -58,6 +134,9 @@ pub struct WtaMeta {
     /// and fallback resolution. Returned only in the initialize response so
     /// helper-side agent-specific behavior never trusts its own request.
     pub resolved_agent_id: Option<String>,
+    /// Master-resolved process binding category, never a model identifier.
+    /// Returned on initialize; absent when talking to an older master.
+    pub resolved_model_source: Option<String>,
     /// Model override the tab wants (e.g. `gpt-5`). Folded into the
     /// reconstructed command by `build_acp_command` for agents that
     /// take a `--model` flag (adapter agents ignore it and receive the
@@ -106,9 +185,11 @@ impl WtaMeta {
             field.as_deref().map_or(true, |s| s.trim().is_empty())
         }
         blank(&self.pane_session_id)
+            && blank(&self.control_client)
             && blank(&self.agent_cmd)
             && blank(&self.agent_id)
             && blank(&self.resolved_agent_id)
+            && blank(&self.resolved_model_source)
             && blank(&self.model)
             && blank(&self.provider_binding)
             && blank(&self.agent_source)
@@ -158,9 +239,11 @@ pub fn extract_wta_meta(meta: &mut Option<acp::schema::v1::Meta>) -> WtaMeta {
     };
     WtaMeta {
         pane_session_id: str_field("pane_session_id"),
+        control_client: str_field("control_client"),
         agent_cmd: str_field("agent_cmd"),
         agent_id: str_field("agent_id"),
         resolved_agent_id: str_field("resolved_agent_id"),
+        resolved_model_source: str_field("resolved_model_source"),
         model: str_field("model"),
         provider_binding: str_field("provider_binding"),
         agent_source: str_field("agent_source"),
@@ -200,9 +283,11 @@ pub fn inject_wta_meta(meta: &mut Option<acp::schema::v1::Meta>, wta: &WtaMeta) 
         }
     };
     put("pane_session_id", &wta.pane_session_id);
+    put("control_client", &wta.control_client);
     put("agent_cmd", &wta.agent_cmd);
     put("agent_id", &wta.agent_id);
     put("resolved_agent_id", &wta.resolved_agent_id);
+    put("resolved_model_source", &wta.resolved_model_source);
     put("model", &wta.model);
     put("provider_binding", &wta.provider_binding);
     put("agent_source", &wta.agent_source);
@@ -277,6 +362,9 @@ pub const INTELLTERM_METHOD_SESSIONS_CHANGED: &str = "_intellterm.wta/sessions/c
 
 /// ExtRequest method for fetching the master's full session registry snapshot.
 pub const INTELLTERM_METHOD_SESSIONS_LIST: &str = "_intellterm.wta/sessions/list";
+pub const INTELLTERM_METHOD_SESSION_ACTIVATE: &str = "_intellterm.wta/session/activate";
+pub const INTELLTERM_METHOD_SESSION_ACTIVATION_STATUS: &str =
+    "_intellterm.wta/session/activation_status";
 
 /// ExtRequest method for physically closing the ACP session owned by a
 /// destroyed WT tab. Any surviving helper may send this because master owns
@@ -290,11 +378,23 @@ pub struct CloseTabSessionParams {
 
 /// Wire payload for [`INTELLTERM_METHOD_SESSION_REMOVED`].
 ///
-/// We only need the session id — helpers look the row up locally to
-/// retrieve cwd / pane_session_id before dropping it.
+/// New senders include the qualified history key so helpers can remove the
+/// exact row when two providers or locations reuse the same raw ACP id.
+/// `history_key` remains optional for compatibility with older masters.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct SessionRemovedParams {
     pub session_id: acp::schema::v1::SessionId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub history_key: Option<HistoryRowKey>,
+}
+
+impl SessionRemovedParams {
+    pub fn identity(&self) -> SessionIdentity {
+        SessionIdentity {
+            session_id: self.session_id.clone(),
+            history_key: self.history_key.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -302,18 +402,55 @@ pub struct SessionsChangedParams {}
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct SessionsListParams {
-    /// When true, master re-scans the on-disk historical session logs
-    /// (`load_for_cli`) and upserts them into the registry before answering —
-    /// the F5 refresh path. `#[serde(default)]` keeps old empty `{}` params
-    /// deserializing as false, so the periodic 5s poll and view-open stay on
-    /// the cheap snapshot-only path.
+    /// Refresh the calling helper's bound agent through ACP before answering.
     #[serde(default)]
     pub rescan: bool,
+    /// Refresh installed, policy-allowed host agents in the background. Their
+    /// ACP connections stay in the master pool; the response is still a snapshot.
+    #[serde(default)]
+    pub all_agents: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct SessionsListResponse {
     pub sessions: Vec<SessionInfo>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub history_status: Option<HistoryLoadStatus>,
+}
+
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum HistoryLoadStatus {
+    Loading,
+    Ready,
+    Error,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct SessionActivateParams {
+    pub identity: SessionIdentity,
+    pub window_id: u64,
+    pub activation_id: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct SessionActivateResponse {
+    pub activation_id: String,
+    #[serde(default)]
+    pub state: SessionActivationState,
+    pub action: String,
+    pub accepted: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionActivationState {
+    Pending,
+    #[default]
+    Complete,
+    Unknown,
 }
 
 /// Build a `session_added` ExtNotification from a registry row.
@@ -331,10 +468,12 @@ pub fn build_session_added_notification(info: &SessionInfo) -> acp::schema::v1::
 
 /// Build a `session_removed` ExtNotification.
 pub fn build_session_removed_notification(
-    sid: &acp::schema::v1::SessionId,
+    identity: impl Into<SessionIdentity>,
 ) -> acp::schema::v1::ExtNotification {
+    let identity = identity.into();
     let params = SessionRemovedParams {
-        session_id: sid.clone(),
+        session_id: identity.session_id.clone(),
+        history_key: identity.history_key.clone(),
     };
     let json =
         serde_json::to_string(&params).expect("SessionRemovedParams is trivially serializable");
@@ -352,14 +491,38 @@ pub fn build_sessions_changed_notification() -> acp::schema::v1::ExtNotification
     acp::schema::v1::ExtNotification::new(INTELLTERM_METHOD_SESSIONS_CHANGED, Arc::from(raw))
 }
 
-/// Build an `ExtRequest` for `intellterm.wta/sessions/list`. `rescan` asks
-/// master to re-load the on-disk historical session logs before answering.
-pub fn build_sessions_list_request(rescan: bool) -> acp::schema::v1::ExtRequest {
-    let json = serde_json::to_string(&SessionsListParams { rescan })
+/// Build an `ExtRequest` for `intellterm.wta/sessions/list`. `rescan` refreshes
+/// the bound agent; `all_agents` schedules background host-agent discovery.
+pub fn build_sessions_list_request(rescan: bool, all_agents: bool) -> acp::schema::v1::ExtRequest {
+    let json = serde_json::to_string(&SessionsListParams { rescan, all_agents })
         .expect("SessionsListParams is trivially serializable");
     let raw = serde_json::value::RawValue::from_string(json)
         .expect("serde_json::to_string always produces valid JSON");
     acp::schema::v1::ExtRequest::new(INTELLTERM_METHOD_SESSIONS_LIST, Arc::from(raw))
+}
+
+pub fn build_session_activate_request(
+    identity: SessionIdentity,
+    window_id: u64,
+    activation_id: String,
+    status_only: bool,
+) -> acp::schema::v1::ExtRequest {
+    let json = serde_json::to_string(&SessionActivateParams {
+        identity,
+        window_id,
+        activation_id,
+    })
+    .expect("SessionActivateParams is trivially serializable");
+    let raw = serde_json::value::RawValue::from_string(json)
+        .expect("serde_json::to_string always produces valid JSON");
+    acp::schema::v1::ExtRequest::new(
+        if status_only {
+            INTELLTERM_METHOD_SESSION_ACTIVATION_STATUS
+        } else {
+            INTELLTERM_METHOD_SESSION_ACTIVATE
+        },
+        Arc::from(raw),
+    )
 }
 
 pub fn build_close_tab_session_request(tab_id: &str) -> acp::schema::v1::ExtRequest {
@@ -384,10 +547,20 @@ pub fn parse_sessions_list_params(
     serde_json::from_str::<SessionsListParams>(raw.get())
 }
 
+pub fn parse_session_activate_params(
+    raw: &serde_json::value::RawValue,
+) -> Result<SessionActivateParams, serde_json::Error> {
+    serde_json::from_str::<SessionActivateParams>(raw.get())
+}
+
 pub fn build_sessions_list_response(
     sessions: Vec<SessionInfo>,
+    history_status: Option<HistoryLoadStatus>,
 ) -> Box<serde_json::value::RawValue> {
-    let response = SessionsListResponse { sessions };
+    let response = SessionsListResponse {
+        sessions,
+        history_status,
+    };
     serde_json::value::to_raw_value(&response)
         .expect("SessionsListResponse serialization is infallible for owned data")
 }
@@ -396,6 +569,12 @@ pub fn parse_sessions_list_response(
     raw: &serde_json::value::RawValue,
 ) -> Result<SessionsListResponse, serde_json::Error> {
     serde_json::from_str::<SessionsListResponse>(raw.get())
+}
+
+pub fn parse_session_activate_response(
+    raw: &serde_json::value::RawValue,
+) -> Result<SessionActivateResponse, serde_json::Error> {
+    serde_json::from_str::<SessionActivateResponse>(raw.get())
 }
 
 /// Parsed view of an inbound ACP `ExtNotification` from master, as
@@ -407,7 +586,7 @@ pub fn parse_sessions_list_response(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WtaExtNotification {
     SessionAdded(SessionInfo),
-    SessionRemoved(acp::schema::v1::SessionId),
+    SessionRemoved(SessionRemovedParams),
     SessionsChanged,
     /// Not one of ours. Caller should silently ignore.
     Unknown,
@@ -448,7 +627,7 @@ pub fn parse_ext_notification(n: &acp::schema::v1::ExtNotification) -> WtaExtNot
         }
     } else if ext_method_matches(method, INTELLTERM_METHOD_SESSION_REMOVED) {
         match serde_json::from_str::<SessionRemovedParams>(raw.get()) {
-            Ok(p) => WtaExtNotification::SessionRemoved(p.session_id),
+            Ok(p) => WtaExtNotification::SessionRemoved(p),
             Err(err) => WtaExtNotification::MalformedParams {
                 method: method.to_string(),
                 error: err.to_string(),
@@ -496,6 +675,10 @@ pub enum WtaExtRequest {
     FocusSession(FocusSessionParams),
     /// `_intellterm.wta/sessions/list` — full registry snapshot.
     SessionsList(SessionsListParams),
+    /// `_intellterm.wta/session/activate` — qualified Sidebar History activation.
+    SessionActivate(SessionActivateParams),
+    /// Read an activation receipt without dispatching any terminal operation.
+    SessionActivationStatus(SessionActivateParams),
     /// `_intellterm.wta/session_hook` — a helper-originated session event
     /// (resume bookkeeping, pane lifecycle). Agent CLI hooks reach master over
     /// the COM broadcast instead.
@@ -548,6 +731,10 @@ pub fn parse_ext_request(req: acp::schema::v1::ExtRequest) -> WtaExtRequest {
         decode!(FocusSession, parse_focus_session_params)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSIONS_LIST) {
         decode!(SessionsList, parse_sessions_list_params)
+    } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_ACTIVATE) {
+        decode!(SessionActivate, parse_session_activate_params)
+    } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_ACTIVATION_STATUS) {
+        decode!(SessionActivationStatus, parse_session_activate_params)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_HOOK) {
         decode!(SessionHook, parse_session_hook_params)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_BORN_BOUND) {
@@ -785,6 +972,10 @@ pub enum SessionHookParams {
     ResumeDispatched {
         key: crate::agent_sessions::AgentKey,
     },
+    ResumeFailed {
+        key: crate::agent_sessions::AgentKey,
+        reason: String,
+    },
     ResumePaneAssigned {
         key: crate::agent_sessions::AgentKey,
         pane_session_id: String,
@@ -832,6 +1023,10 @@ impl From<&crate::agent_sessions::SessionEvent> for SessionHookParams {
                 pane_session_id: pane_session_id.clone(),
             },
             SessionEvent::ResumeDispatched { key } => Self::ResumeDispatched { key: key.clone() },
+            SessionEvent::ResumeFailed { key, reason } => Self::ResumeFailed {
+                key: key.clone(),
+                reason: reason.clone(),
+            },
             SessionEvent::ResumePaneAssigned {
                 key,
                 pane_session_id,
@@ -878,6 +1073,7 @@ impl From<SessionHookParams> for crate::agent_sessions::SessionEvent {
                 Self::PaneClosed { pane_session_id }
             }
             SessionHookParams::ResumeDispatched { key } => Self::ResumeDispatched { key },
+            SessionHookParams::ResumeFailed { key, reason } => Self::ResumeFailed { key, reason },
             SessionHookParams::ResumePaneAssigned {
                 key,
                 pane_session_id,
@@ -1012,6 +1208,10 @@ pub fn build_session_hook_response(applied: bool) -> acp::schema::v1::ExtRespons
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct SessionInfo {
     pub session_id: acp::schema::v1::SessionId,
+    #[serde(default)]
+    pub provider_id: Option<String>,
+    #[serde(default)]
+    pub session_universe: Option<String>,
     pub cwd: PathBuf,
     #[serde(default)]
     pub title: Option<String>,
@@ -1040,7 +1240,7 @@ pub struct SessionInfo {
     /// `/sessions` view (which renders from master's `SessionInfo`
     /// snapshot, not the helper's `AgentSession` registry).
     #[serde(default)]
-    pub location: crate::agent_sessions::SessionLocation,
+    pub location: SessionLocation,
     /// PID of the process that owns this Class-B session (Copilot worker /
     /// Codex rollout holder / cwd-matched Claude), captured at bind time.
     /// Master's liveness poll checks it to demote shell-pane sessions whose
@@ -1078,6 +1278,8 @@ impl SessionInfo {
     pub fn new(session_id: acp::schema::v1::SessionId, cwd: PathBuf) -> Self {
         Self {
             session_id,
+            provider_id: None,
+            session_universe: None,
             cwd,
             title: None,
             updated_at: None,
@@ -1089,7 +1291,7 @@ impl SessionInfo {
             last_activity_at_ms: None,
             origin: None,
             last_error: None,
-            location: crate::agent_sessions::SessionLocation::Host,
+            location: SessionLocation::Unknown,
             bound_pid: None,
             born_bound_pane: false,
         }
@@ -1100,6 +1302,15 @@ impl SessionInfo {
     pub fn with_pane_session_id(mut self, pane_session_id: impl Into<String>) -> Self {
         self.pane_session_id = Some(pane_session_id.into());
         self
+    }
+
+    pub fn history_row_key(&self) -> Option<HistoryRowKey> {
+        HistoryRowKey::new(
+            self.provider_id.as_deref()?,
+            self.location.clone(),
+            self.session_id.to_string(),
+            self.session_universe.clone(),
+        )
     }
 }
 
@@ -1119,6 +1330,8 @@ pub fn agent_session_to_session_info(s: &AgentSession) -> SessionInfo {
         .map(|d| d.as_millis() as u64);
     SessionInfo {
         session_id: acp::schema::v1::SessionId::new(s.key.clone()),
+        provider_id: s.cli_source.canonical_provider_id(),
+        session_universe: None,
         cwd: s.cwd.clone(),
         title: if s.title.is_empty() {
             None
@@ -1162,30 +1375,38 @@ pub trait SessionRegistry: Send + Sync {
     /// already occupies). The default impl is a (non-atomic) lookup-then-upsert;
     /// `InMemoryRegistry` overrides it with an atomic check under one lock.
     async fn upsert_if_absent(&self, info: SessionInfo) {
-        if self.lookup(&info.session_id).await.is_none() {
+        if self
+            .lookup_identity(&SessionIdentity::from_info(&info))
+            .await
+            .is_none()
+        {
             self.upsert(info).await;
         }
     }
 
-    /// Remove the row for `sid`. Returns the prior value if any (the master
-    /// uses this both for routing teardown and to know what to broadcast
-    /// in `session_removed` ext-notifications).
+    /// Remove the only row for `sid`. Ambiguous raw ids fail closed.
     async fn remove(&self, sid: &acp::schema::v1::SessionId) -> Option<SessionInfo>;
 
-    /// Atomically remove the row for `sid` **only if** the current entry still
-    /// satisfies `predicate`. The check + remove happen under one lock, so a
-    /// concurrent `apply_event` that flips the row live between a caller's
-    /// snapshot and this call cannot be clobbered by a stale-snapshot remove.
-    /// Returns the removed row, or `None` if absent or rejected by `predicate`.
+    /// Atomically remove the only row for `sid` satisfying `predicate`.
+    /// Multiple matching rows fail closed.
     async fn remove_if(
         &self,
         sid: &acp::schema::v1::SessionId,
         predicate: &(dyn for<'a> Fn(&'a SessionInfo) -> bool + Sync),
     ) -> Option<SessionInfo>;
 
-    /// Fetch a clone of the current entry for `sid`. Returns `None` if the
-    /// session isn't alive (or hasn't been mirrored yet on the helper side).
+    /// Fetch the only row for `sid`. Ambiguous raw ids fail closed.
     async fn lookup(&self, sid: &acp::schema::v1::SessionId) -> Option<SessionInfo>;
+
+    async fn remove_identity(&self, identity: &SessionIdentity) -> Option<SessionInfo>;
+
+    async fn remove_identity_if(
+        &self,
+        identity: &SessionIdentity,
+        predicate: &(dyn for<'a> Fn(&'a SessionInfo) -> bool + Sync),
+    ) -> Option<SessionInfo>;
+
+    async fn lookup_identity(&self, identity: &SessionIdentity) -> Option<SessionInfo>;
 
     /// Snapshot the full set. Order is unspecified — callers that need a
     /// stable order should sort by `session_id` themselves. The clone is
@@ -1217,6 +1438,19 @@ pub trait SessionRegistry: Send + Sync {
         sid: &acp::schema::v1::SessionId,
     ) -> Option<(bool, String)>;
 
+    /// Atomically flip the exact qualified row for resume dispatch.
+    async fn mark_resume_dispatched_identity(
+        &self,
+        identity: &SessionIdentity,
+    ) -> Option<(bool, String)>;
+
+    /// Bind a newly created resume pane to the exact qualified row.
+    async fn assign_resume_pane_identity(
+        &self,
+        identity: &SessionIdentity,
+        pane_session_id: String,
+    ) -> bool;
+
     /// Atomically replace `title` for `sid` only if the current title is
     /// "synthetic" (`None`, empty, or equal to the cwd basename). Returns
     /// `true` iff the title was actually changed. The candidate must be
@@ -1235,6 +1469,12 @@ pub trait SessionRegistry: Send + Sync {
     async fn upgrade_title_if_synthetic(
         &self,
         sid: &acp::schema::v1::SessionId,
+        candidate: &str,
+    ) -> bool;
+
+    async fn upgrade_title_if_synthetic_identity(
+        &self,
+        identity: &SessionIdentity,
         candidate: &str,
     ) -> bool;
 
@@ -1259,6 +1499,9 @@ pub trait SessionRegistry: Send + Sync {
     ///
     /// [`upgrade_title_if_synthetic`]: SessionRegistry::upgrade_title_if_synthetic
     async fn adopt_agent_title(&self, sid: &acp::schema::v1::SessionId, candidate: &str) -> bool;
+
+    async fn adopt_agent_title_identity(&self, identity: &SessionIdentity, candidate: &str)
+        -> bool;
 }
 
 /// Production implementation. Uses `tokio::sync::Mutex` for parity with the
@@ -1266,8 +1509,9 @@ pub trait SessionRegistry: Send + Sync {
 /// so a future sync-lock conversion is a mechanical swap.
 #[derive(Default)]
 struct RegistryState {
-    sessions: HashMap<acp::schema::v1::SessionId, SessionInfo>,
-    active_by_pane: HashMap<String, acp::schema::v1::SessionId>,
+    sessions: HashMap<SessionIdentity, SessionInfo>,
+    identities_by_raw: HashMap<acp::schema::v1::SessionId, HashSet<SessionIdentity>>,
+    active_by_pane: HashMap<String, SessionIdentity>,
 }
 
 #[derive(Default)]
@@ -1359,14 +1603,18 @@ impl SessionRegistry for InMemoryRegistry {
 
     async fn upsert_if_absent(&self, info: SessionInfo) {
         let mut guard = self.inner.lock().await;
-        if !guard.sessions.contains_key(&info.session_id) {
+        if !guard
+            .sessions
+            .contains_key(&SessionIdentity::from_info(&info))
+        {
             upsert_locked(&mut guard, info);
         }
     }
 
     async fn remove(&self, sid: &acp::schema::v1::SessionId) -> Option<SessionInfo> {
         let mut guard = self.inner.lock().await;
-        remove_locked(&mut guard, sid)
+        let identity = unique_identity_for_raw(&guard, sid)?;
+        remove_identity_locked(&mut guard, &identity)
     }
 
     async fn remove_if(
@@ -1375,21 +1623,41 @@ impl SessionRegistry for InMemoryRegistry {
         predicate: &(dyn for<'a> Fn(&'a SessionInfo) -> bool + Sync),
     ) -> Option<SessionInfo> {
         let mut guard = self.inner.lock().await;
-        let matches = guard
+        let identity = unique_matching_identity_for_raw(&guard, sid, predicate)?;
+        remove_identity_locked(&mut guard, &identity)
+    }
+
+    async fn lookup(&self, sid: &acp::schema::v1::SessionId) -> Option<SessionInfo> {
+        let guard = self.inner.lock().await;
+        let identity = unique_identity_for_raw(&guard, sid)?;
+        guard.sessions.get(&identity).cloned()
+    }
+
+    async fn remove_identity(&self, identity: &SessionIdentity) -> Option<SessionInfo> {
+        let mut guard = self.inner.lock().await;
+        remove_identity_locked(&mut guard, identity)
+    }
+
+    async fn remove_identity_if(
+        &self,
+        identity: &SessionIdentity,
+        predicate: &(dyn for<'a> Fn(&'a SessionInfo) -> bool + Sync),
+    ) -> Option<SessionInfo> {
+        let mut guard = self.inner.lock().await;
+        if guard
             .sessions
-            .get(sid)
-            .map(|cur| predicate(cur))
-            .unwrap_or(false);
-        if matches {
-            remove_locked(&mut guard, sid)
+            .get(identity)
+            .is_some_and(|current| predicate(current))
+        {
+            remove_identity_locked(&mut guard, identity)
         } else {
             None
         }
     }
 
-    async fn lookup(&self, sid: &acp::schema::v1::SessionId) -> Option<SessionInfo> {
+    async fn lookup_identity(&self, identity: &SessionIdentity) -> Option<SessionInfo> {
         let guard = self.inner.lock().await;
-        guard.sessions.get(sid).cloned()
+        guard.sessions.get(identity).cloned()
     }
 
     async fn snapshot(&self) -> Vec<SessionInfo> {
@@ -1404,7 +1672,10 @@ impl SessionRegistry for InMemoryRegistry {
 
     async fn set_origin(&self, sid: &acp::schema::v1::SessionId, origin: SessionOrigin) -> bool {
         let mut guard = self.inner.lock().await;
-        let Some(entry) = guard.sessions.get_mut(sid) else {
+        let Some(identity) = unique_identity_for_raw(&guard, sid) else {
+            return false;
+        };
+        let Some(entry) = guard.sessions.get_mut(&identity) else {
             return false;
         };
         if entry.origin.as_ref() == Some(&origin) {
@@ -1420,13 +1691,18 @@ impl SessionRegistry for InMemoryRegistry {
         location: crate::agent_sessions::SessionLocation,
     ) -> bool {
         let mut guard = self.inner.lock().await;
-        let Some(entry) = guard.sessions.get_mut(sid) else {
+        let Some(identity) = unique_identity_for_raw(&guard, sid) else {
+            return false;
+        };
+        let Some(mut entry) = remove_identity_locked(&mut guard, &identity) else {
             return false;
         };
         if entry.location == location {
+            upsert_locked(&mut guard, entry);
             return false;
         }
         entry.location = location;
+        upsert_locked(&mut guard, entry);
         true
     }
 
@@ -1435,18 +1711,25 @@ impl SessionRegistry for InMemoryRegistry {
         sid: &acp::schema::v1::SessionId,
     ) -> Option<(bool, String)> {
         let mut guard = self.inner.lock().await;
-        let row = guard.sessions.get_mut(sid)?;
-        let current_label = match &row.status {
-            Some(s) => format!("{:?}", s),
-            None => "Idle".to_string(),
-        };
-        if matches!(row.status, Some(AgentStatus::Historical)) {
-            row.status = Some(AgentStatus::Idle);
-            row.last_activity_at_ms = Some(now_ms());
-            Some((true, "Idle".to_string()))
-        } else {
-            Some((false, current_label))
-        }
+        let identity = unique_identity_for_raw(&guard, sid)?;
+        mark_resume_dispatched_identity_locked(&mut guard, &identity)
+    }
+
+    async fn mark_resume_dispatched_identity(
+        &self,
+        identity: &SessionIdentity,
+    ) -> Option<(bool, String)> {
+        let mut guard = self.inner.lock().await;
+        mark_resume_dispatched_identity_locked(&mut guard, identity)
+    }
+
+    async fn assign_resume_pane_identity(
+        &self,
+        identity: &SessionIdentity,
+        pane_session_id: String,
+    ) -> bool {
+        let mut guard = self.inner.lock().await;
+        assign_resume_pane_identity_locked(&mut guard, identity, pane_session_id, now_ms())
     }
 
     async fn upgrade_title_if_synthetic(
@@ -1458,7 +1741,10 @@ impl SessionRegistry for InMemoryRegistry {
             return false;
         }
         let mut guard = self.inner.lock().await;
-        let Some(entry) = guard.sessions.get_mut(sid) else {
+        let Some(identity) = unique_identity_for_raw(&guard, sid) else {
+            return false;
+        };
+        let Some(entry) = guard.sessions.get_mut(&identity) else {
             return false;
         };
         if !title_is_synthetic(entry) {
@@ -1471,12 +1757,53 @@ impl SessionRegistry for InMemoryRegistry {
         true
     }
 
+    async fn upgrade_title_if_synthetic_identity(
+        &self,
+        identity: &SessionIdentity,
+        candidate: &str,
+    ) -> bool {
+        if candidate.is_empty() {
+            return false;
+        }
+        let mut guard = self.inner.lock().await;
+        let Some(entry) = guard.sessions.get_mut(identity) else {
+            return false;
+        };
+        if !title_is_synthetic(entry) || entry.title.as_deref() == Some(candidate) {
+            return false;
+        }
+        entry.title = Some(candidate.to_string());
+        true
+    }
+
     async fn adopt_agent_title(&self, sid: &acp::schema::v1::SessionId, candidate: &str) -> bool {
         if candidate.is_empty() {
             return false;
         }
         let mut guard = self.inner.lock().await;
-        let Some(entry) = guard.sessions.get_mut(sid) else {
+        let Some(identity) = unique_identity_for_raw(&guard, sid) else {
+            return false;
+        };
+        let Some(entry) = guard.sessions.get_mut(&identity) else {
+            return false;
+        };
+        if entry.title.as_deref() == Some(candidate) {
+            return false;
+        }
+        entry.title = Some(candidate.to_string());
+        true
+    }
+
+    async fn adopt_agent_title_identity(
+        &self,
+        identity: &SessionIdentity,
+        candidate: &str,
+    ) -> bool {
+        if candidate.is_empty() {
+            return false;
+        }
+        let mut guard = self.inner.lock().await;
+        let Some(entry) = guard.sessions.get_mut(identity) else {
             return false;
         };
         if entry.title.as_deref() == Some(candidate) {
@@ -1496,11 +1823,12 @@ fn now_ms() -> u64 {
 }
 
 fn pane_key(pane_session_id: &str) -> String {
-    pane_session_id.to_ascii_lowercase()
+    crate::agent_sessions::pane_key(pane_session_id)
 }
 
 fn upsert_locked(state: &mut RegistryState, info: SessionInfo) {
-    if let Some(old) = state.sessions.get(&info.session_id) {
+    let identity = SessionIdentity::from_info(&info);
+    if let Some(old) = state.sessions.get(&identity) {
         if let Some(old_pane) = old.pane_session_id.as_deref() {
             state.active_by_pane.remove(&pane_key(old_pane));
         }
@@ -1509,28 +1837,115 @@ fn upsert_locked(state: &mut RegistryState, info: SessionInfo) {
         if !pane.is_empty() {
             state
                 .active_by_pane
-                .insert(pane_key(pane), info.session_id.clone());
+                .insert(pane_key(pane), identity.clone());
         }
     }
-    state.sessions.insert(info.session_id.clone(), info);
+    state
+        .identities_by_raw
+        .entry(info.session_id.clone())
+        .or_default()
+        .insert(identity.clone());
+    state.sessions.insert(identity, info);
 }
 
-fn remove_locked(
+fn remove_identity_locked(
     state: &mut RegistryState,
-    sid: &acp::schema::v1::SessionId,
+    identity: &SessionIdentity,
 ) -> Option<SessionInfo> {
-    let removed = state.sessions.remove(sid);
+    let removed = state.sessions.remove(identity);
     if let Some(info) = &removed {
         if let Some(pane) = info.pane_session_id.as_deref() {
             state.active_by_pane.remove(&pane_key(pane));
+        }
+        if let Some(identities) = state.identities_by_raw.get_mut(&info.session_id) {
+            identities.remove(identity);
+            if identities.is_empty() {
+                state.identities_by_raw.remove(&info.session_id);
+            }
         }
     }
     removed
 }
 
+fn unique_identity_for_raw(
+    state: &RegistryState,
+    sid: &acp::schema::v1::SessionId,
+) -> Option<SessionIdentity> {
+    let mut identities = state.identities_by_raw.get(sid)?.iter();
+    let identity = identities.next()?.clone();
+    identities.next().is_none().then_some(identity)
+}
+
+fn mark_resume_dispatched_identity_locked(
+    state: &mut RegistryState,
+    identity: &SessionIdentity,
+) -> Option<(bool, String)> {
+    let row = state.sessions.get_mut(identity)?;
+    let current_label = match &row.status {
+        Some(status) => format!("{status:?}"),
+        None => "Idle".to_string(),
+    };
+    if matches!(
+        row.status,
+        Some(AgentStatus::Historical | AgentStatus::Ended)
+    ) {
+        row.status = Some(AgentStatus::Idle);
+        row.last_activity_at_ms = Some(now_ms());
+        Some((true, "Idle".to_string()))
+    } else {
+        Some((false, current_label))
+    }
+}
+
+fn assign_resume_pane_identity_locked(
+    state: &mut RegistryState,
+    identity: &SessionIdentity,
+    pane_session_id: String,
+    now: u64,
+) -> bool {
+    let pane_session_id = pane_key(&pane_session_id);
+    if let Some(previous) = state.active_by_pane.get(&pane_session_id).cloned() {
+        if &previous != identity {
+            let _ = end_entry(state, &previous, now);
+        }
+    }
+    let Some(entry) = state.sessions.get_mut(identity) else {
+        return false;
+    };
+    if entry.pane_session_id.as_deref() == Some(pane_session_id.as_str()) {
+        return false;
+    }
+    if let Some(old_pane) = entry.pane_session_id.take() {
+        if old_pane != pane_session_id {
+            state.active_by_pane.remove(&pane_key(&old_pane));
+        }
+    }
+    entry.pane_session_id = Some(pane_session_id.clone());
+    entry.last_activity_at_ms = Some(now);
+    entry.born_bound_pane = true;
+    state
+        .active_by_pane
+        .insert(pane_session_id, identity.clone());
+    true
+}
+
+fn unique_matching_identity_for_raw(
+    state: &RegistryState,
+    sid: &acp::schema::v1::SessionId,
+    predicate: &(dyn for<'a> Fn(&'a SessionInfo) -> bool + Sync),
+) -> Option<SessionIdentity> {
+    let mut matches = state
+        .identities_by_raw
+        .get(sid)?
+        .iter()
+        .filter(|identity| state.sessions.get(*identity).is_some_and(predicate));
+    let identity = matches.next()?.clone();
+    matches.next().is_none().then_some(identity)
+}
+
 #[allow(dead_code)] // Used through apply_event once Task B forwards hook events.
-fn end_entry(state: &mut RegistryState, sid: &acp::schema::v1::SessionId, now: u64) -> bool {
-    let Some(entry) = state.sessions.get_mut(sid) else {
+fn end_entry(state: &mut RegistryState, identity: &SessionIdentity, now: u64) -> bool {
+    let Some(entry) = state.sessions.get_mut(identity) else {
         return false;
     };
     entry.status = Some(AgentStatus::Ended);
@@ -1598,6 +2013,7 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
         } => {
             let sid = acp::schema::v1::SessionId::new(key.clone());
             let pane_known = !pane_session_id.is_empty();
+            let existing_identity = unique_identity_for_raw(state, &sid);
 
             // GUARD: PowerShell shell-integration hooks fire from wherever
             // an agent ran a tool, NOT from the agent's home pane. For
@@ -1618,9 +2034,9 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             // pwsh) the shell pane IS the agent pane, so the hook is
             // authoritative. The guard only triggers when the existing
             // row is firmly an agent pane AND already has a pane bound.
-            let is_protected_agent_pane = state
-                .sessions
-                .get(&sid)
+            let is_protected_agent_pane = existing_identity
+                .as_ref()
+                .and_then(|identity| state.sessions.get(identity))
                 .map(|s| s.origin == Some(SessionOrigin::AgentPane) && s.pane_session_id.is_some())
                 .unwrap_or(false);
             if is_protected_agent_pane {
@@ -1629,7 +2045,11 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
                 // is alive.
                 let entry = state
                     .sessions
-                    .get_mut(&sid)
+                    .get_mut(
+                        existing_identity
+                            .as_ref()
+                            .expect("protected row has a unique identity"),
+                    )
                     .expect("just verified by lookup");
                 entry.last_activity_at_ms = Some(now);
                 // Refresh title if the hook brought a non-empty one and
@@ -1656,8 +2076,8 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             let pane_owned_by_other_born_bound = state
                 .active_by_pane
                 .get(&pane_session_id)
-                .filter(|owner_sid| **owner_sid != sid)
-                .and_then(|owner_sid| state.sessions.get(owner_sid))
+                .filter(|owner| Some(*owner) != existing_identity.as_ref())
+                .and_then(|owner| state.sessions.get(owner))
                 .is_some_and(|owner| {
                     owner.born_bound_pane
                         && matches!(
@@ -1668,18 +2088,18 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             let pane_known = pane_known && !pane_owned_by_other_born_bound;
 
             if pane_known {
-                if let Some(prev_sid) = state.active_by_pane.get(&pane_session_id).cloned() {
-                    if prev_sid != sid {
-                        let _ = end_entry(state, &prev_sid, now);
+                if let Some(previous) = state.active_by_pane.get(&pane_session_id).cloned() {
+                    if Some(&previous) != existing_identity.as_ref() {
+                        let _ = end_entry(state, &previous, now);
                     }
                 }
             }
 
-            let is_new_entry = !state.sessions.contains_key(&sid);
-            let entry = state
-                .sessions
-                .entry(sid.clone())
-                .or_insert_with(|| SessionInfo::new(sid.clone(), cwd.clone()));
+            let is_new_entry = existing_identity.is_none();
+            let mut entry = existing_identity
+                .as_ref()
+                .and_then(|identity| remove_identity_locked(state, identity))
+                .unwrap_or_else(|| SessionInfo::new(sid.clone(), cwd.clone()));
             if let Some(old_pane) = entry.pane_session_id.take() {
                 if old_pane != pane_session_id {
                     state.active_by_pane.remove(&pane_key(&old_pane));
@@ -1689,7 +2109,11 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             if !title.is_empty() {
                 entry.title = Some(title);
             }
+            entry.provider_id = cli_source.canonical_provider_id();
             entry.cli_source = Some(cli_source);
+            if entry.location == SessionLocation::Unknown {
+                entry.location = SessionLocation::Host;
+            }
             // Status baseline. Preserve a live status on an EXISTING row instead
             // of clobbering it to Idle: some CLIs fire activity hooks before
             // `session.start` — e.g. Copilot sends `prompt.submit` (→ Working)
@@ -1716,7 +2140,6 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             entry.last_activity_at_ms = Some(now);
             if pane_known {
                 entry.pane_session_id = Some(pane_session_id.clone());
-                state.active_by_pane.insert(pane_session_id, sid);
             } else {
                 entry.pane_session_id = None;
             }
@@ -1724,11 +2147,15 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             // the WTA-owned resume binding no longer needs protecting: a later
             // session started in the same pane may take over normally.
             entry.born_bound_pane = false;
+            upsert_locked(state, entry);
             true
         }
         SessionEvent::ToolStarting { key, tool_name } => {
             let sid = acp::schema::v1::SessionId::new(key);
-            let Some(entry) = state.sessions.get_mut(&sid) else {
+            let Some(identity) = unique_identity_for_raw(state, &sid) else {
+                return false;
+            };
+            let Some(entry) = state.sessions.get_mut(&identity) else {
                 return false;
             };
             // Refuse to resurrect terminal-state rows. If a prior
@@ -1754,7 +2181,10 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
         }
         SessionEvent::ToolCompleted { key } => {
             let sid = acp::schema::v1::SessionId::new(key);
-            let Some(entry) = state.sessions.get_mut(&sid) else {
+            let Some(identity) = unique_identity_for_raw(state, &sid) else {
+                return false;
+            };
+            let Some(entry) = state.sessions.get_mut(&identity) else {
                 return false;
             };
             // Same resurrection guard as ToolStarting — a stale
@@ -1780,7 +2210,10 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
         }
         SessionEvent::Notification { key, message } => {
             let sid = acp::schema::v1::SessionId::new(key);
-            let Some(entry) = state.sessions.get_mut(&sid) else {
+            let Some(identity) = unique_identity_for_raw(state, &sid) else {
+                return false;
+            };
+            let Some(entry) = state.sessions.get_mut(&identity) else {
                 return false;
             };
             // Same resurrection guard — a stale Notification on an
@@ -1800,19 +2233,22 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
         }
         SessionEvent::SessionStopped { key, reason } => {
             let sid = acp::schema::v1::SessionId::new(key);
+            let Some(identity) = unique_identity_for_raw(state, &sid) else {
+                return false;
+            };
             let reason_keeps_session_alive = reason == "complete";
             let pane_still_live = state
                 .sessions
-                .get(&sid)
+                .get(&identity)
                 .and_then(|s| s.pane_session_id.as_deref())
-                .map(|p| state.active_by_pane.get(&pane_key(p)) == Some(&sid))
+                .map(|p| state.active_by_pane.get(&pane_key(p)) == Some(&identity))
                 .unwrap_or(false);
             let is_agent_pane_session = state
                 .sessions
-                .get(&sid)
+                .get(&identity)
                 .map(|s| s.origin == Some(SessionOrigin::AgentPane))
                 .unwrap_or(false);
-            let Some(entry) = state.sessions.get_mut(&sid) else {
+            let Some(entry) = state.sessions.get_mut(&identity) else {
                 return false;
             };
             if is_agent_pane_session && pane_still_live && reason_keeps_session_alive {
@@ -1872,14 +2308,23 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
         }
         SessionEvent::ResumeDispatched { key } => {
             let sid = acp::schema::v1::SessionId::new(key);
-            let Some(entry) = state.sessions.get_mut(&sid) else {
+            let Some(identity) = unique_identity_for_raw(state, &sid) else {
                 return false;
             };
-            if matches!(
-                entry.status,
-                Some(AgentStatus::Historical | AgentStatus::Ended)
-            ) {
-                entry.status = Some(AgentStatus::Idle);
+            mark_resume_dispatched_identity_locked(state, &identity)
+                .is_some_and(|(flipped, _)| flipped)
+        }
+        SessionEvent::ResumeFailed { key, reason } => {
+            let sid = acp::schema::v1::SessionId::new(key);
+            let Some(identity) = unique_identity_for_raw(state, &sid) else {
+                return false;
+            };
+            let Some(entry) = state.sessions.get_mut(&identity) else {
+                return false;
+            };
+            if entry.status == Some(AgentStatus::Idle) && entry.pane_session_id.is_none() {
+                entry.status = Some(AgentStatus::Historical);
+                entry.last_error = Some(reason);
                 entry.last_activity_at_ms = Some(now);
                 return true;
             }
@@ -1890,30 +2335,10 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             pane_session_id,
         } => {
             let sid = acp::schema::v1::SessionId::new(key);
-            if let Some(prev_sid) = state.active_by_pane.get(&pane_session_id).cloned() {
-                if prev_sid != sid {
-                    let _ = end_entry(state, &prev_sid, now);
-                }
-            }
-            let Some(entry) = state.sessions.get_mut(&sid) else {
+            let Some(identity) = unique_identity_for_raw(state, &sid) else {
                 return false;
             };
-            if entry.pane_session_id.as_deref() == Some(pane_session_id.as_str()) {
-                return false;
-            }
-            if let Some(old_pane) = entry.pane_session_id.take() {
-                if old_pane != pane_session_id {
-                    state.active_by_pane.remove(&pane_key(&old_pane));
-                }
-            }
-            entry.pane_session_id = Some(pane_session_id.clone());
-            entry.last_activity_at_ms = Some(now);
-            // WTA created this pane and bound it before the agent CLI started,
-            // so until the CLI's own hook confirms the binding, no other
-            // session id may claim the pane. See `born_bound_pane`.
-            entry.born_bound_pane = true;
-            state.active_by_pane.insert(pane_session_id, sid);
-            true
+            assign_resume_pane_identity_locked(state, &identity, pane_session_id, now)
         }
     }
 }
@@ -1951,7 +2376,7 @@ pub async fn apply_snapshot(
     // win against this routine — see comment on `alive_loaded` for
     // why we tolerate the small race window.
     for old in reg.snapshot().await {
-        reg.remove(&old.session_id).await;
+        reg.remove_identity(&SessionIdentity::from_info(&old)).await;
     }
     for item in items {
         reg.upsert(item).await;
@@ -1979,8 +2404,12 @@ pub async fn apply_ext_notification(
         WtaExtNotification::SessionAdded(info) => {
             reg.upsert(info.clone()).await;
         }
-        WtaExtNotification::SessionRemoved(sid) => {
-            reg.remove(sid).await;
+        WtaExtNotification::SessionRemoved(params) => {
+            if params.history_key.is_some() {
+                reg.remove_identity(&params.identity()).await;
+            } else {
+                reg.remove(&params.session_id).await;
+            }
         }
         WtaExtNotification::SessionsChanged => {}
         // Unknown / MalformedParams: caller's job to log; never panic
@@ -2005,6 +2434,20 @@ mod tests {
             s = s.with_pane_session_id(p.to_string());
         }
         s
+    }
+
+    fn qualified_info(
+        id: &str,
+        provider: &str,
+        location: SessionLocation,
+        title: &str,
+    ) -> SessionInfo {
+        let mut row = info(id, None);
+        row.provider_id = Some(provider.to_string());
+        row.location = location;
+        row.title = Some(title.to_string());
+        row.status = Some(AgentStatus::Historical);
+        row
     }
 
     #[tokio::test]
@@ -2039,6 +2482,79 @@ mod tests {
             .unwrap();
         assert_eq!(found.pane_session_id.as_deref(), Some("pane-B"));
         assert_eq!(reg.snapshot().await.len(), 1, "no duplicate rows");
+    }
+
+    #[tokio::test]
+    async fn qualified_rows_with_equal_raw_ids_coexist_and_raw_lookup_fails_closed() {
+        let reg = InMemoryRegistry::new();
+        let copilot = qualified_info("same-id", "copilot", SessionLocation::Host, "copilot");
+        let claude = qualified_info("same-id", "claude", SessionLocation::Host, "claude");
+        let ubuntu = qualified_info(
+            "same-id",
+            "copilot",
+            SessionLocation::Wsl {
+                distro: "Ubuntu".to_string(),
+            },
+            "ubuntu",
+        );
+        let copilot_identity = SessionIdentity::from_info(&copilot);
+        let claude_identity = SessionIdentity::from_info(&claude);
+        let ubuntu_identity = SessionIdentity::from_info(&ubuntu);
+
+        reg.upsert(copilot).await;
+        reg.upsert(claude).await;
+        reg.upsert(ubuntu).await;
+
+        assert_eq!(reg.snapshot().await.len(), 3);
+        assert!(
+            reg.lookup(&acp::schema::v1::SessionId::new("same-id".to_string()))
+                .await
+                .is_none(),
+            "ambiguous raw lookup must not select an arbitrary provider or location"
+        );
+        assert_eq!(
+            reg.lookup_identity(&copilot_identity)
+                .await
+                .and_then(|row| row.title),
+            Some("copilot".to_string())
+        );
+        assert_eq!(
+            reg.lookup_identity(&claude_identity)
+                .await
+                .and_then(|row| row.title),
+            Some("claude".to_string())
+        );
+        assert_eq!(
+            reg.lookup_identity(&ubuntu_identity)
+                .await
+                .and_then(|row| row.title),
+            Some("ubuntu".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn qualified_remove_and_notification_remove_only_the_exact_collision() {
+        let reg = InMemoryRegistry::new();
+        let host = qualified_info("same-id", "copilot", SessionLocation::Host, "host");
+        let wsl = qualified_info(
+            "same-id",
+            "copilot",
+            SessionLocation::Wsl {
+                distro: "Debian".to_string(),
+            },
+            "wsl",
+        );
+        let host_identity = SessionIdentity::from_info(&host);
+        let wsl_identity = SessionIdentity::from_info(&wsl);
+        reg.upsert(host).await;
+        reg.upsert(wsl).await;
+
+        let ext = build_session_removed_notification(&host_identity);
+        apply_ext_notification(&reg, &ext).await;
+
+        assert!(reg.lookup_identity(&host_identity).await.is_none());
+        assert!(reg.lookup_identity(&wsl_identity).await.is_some());
+        assert_eq!(reg.snapshot().await.len(), 1);
     }
 
     #[tokio::test]
@@ -2690,7 +3206,10 @@ mod tests {
         let ext = build_session_removed_notification(&sid);
         assert_eq!(&*ext.method, INTELLTERM_METHOD_SESSION_REMOVED);
         match parse_ext_notification(&ext) {
-            WtaExtNotification::SessionRemoved(parsed) => assert_eq!(parsed, sid),
+            WtaExtNotification::SessionRemoved(parsed) => {
+                assert_eq!(parsed.session_id, sid);
+                assert!(parsed.history_key.is_none());
+            }
             other => panic!("expected SessionRemoved, got {other:?}"),
         }
     }
@@ -2723,6 +3242,8 @@ mod tests {
     fn session_info_json_round_trips_all_master_fields() {
         let row = SessionInfo {
             session_id: acp::schema::v1::SessionId::new("sess-full".to_string()),
+            provider_id: None,
+            session_universe: None,
             cwd: PathBuf::from("C:\\repo"),
             title: Some("fix the build".into()),
             updated_at: Some("2026-05-27T12:34:56Z".into()),
@@ -2751,8 +3272,32 @@ mod tests {
     }
 
     #[test]
+    fn history_row_key_qualifies_provider_location_and_raw_session_id() {
+        let key = HistoryRowKey::new(
+            " CoPilot ",
+            SessionLocation::Wsl {
+                distro: "Ubuntu".to_string(),
+            },
+            "raw-session-id",
+            Some("tenant-a".to_string()),
+        )
+        .expect("qualified identity");
+
+        assert_eq!(key.provider_id, "copilot");
+        assert_eq!(key.session_id, "raw-session-id");
+        assert_eq!(key.session_universe.as_deref(), Some("tenant-a"));
+    }
+
+    #[test]
+    fn history_row_key_rejects_missing_provenance() {
+        assert!(HistoryRowKey::new("copilot", SessionLocation::Unknown, "sid", None).is_none());
+        assert!(HistoryRowKey::new("", SessionLocation::Host, "sid", None).is_none());
+        assert!(HistoryRowKey::new("copilot", SessionLocation::Host, "", None).is_none());
+    }
+
+    #[test]
     fn build_sessions_list_request_round_trips_rescan() {
-        let req = build_sessions_list_request(false);
+        let req = build_sessions_list_request(false, false);
         assert_eq!(&*req.method, INTELLTERM_METHOD_SESSIONS_LIST);
         assert!(
             !parse_sessions_list_params(&req.params)
@@ -2760,7 +3305,7 @@ mod tests {
                 .rescan
         );
 
-        let req_rescan = build_sessions_list_request(true);
+        let req_rescan = build_sessions_list_request(true, false);
         assert!(
             parse_sessions_list_params(&req_rescan.params)
                 .expect("params are valid")
@@ -2774,6 +3319,77 @@ mod tests {
             !parse_sessions_list_params(&empty)
                 .expect("empty is valid")
                 .rescan
+        );
+        assert!(!parse_sessions_list_params(&empty).unwrap().all_agents);
+        assert!(!parse_sessions_list_params(&req.params).unwrap().all_agents);
+
+        let all = build_sessions_list_request(false, true);
+        let params = parse_sessions_list_params(&all.params).unwrap();
+        assert!(params.all_agents);
+        assert!(!params.rescan);
+    }
+
+    #[test]
+    fn session_activate_request_round_trips_qualified_identity() {
+        let identity = SessionIdentity {
+            session_id: acp::schema::v1::SessionId::new("same-raw-id"),
+            history_key: HistoryRowKey::new(
+                "copilot",
+                SessionLocation::Wsl {
+                    distro: "Ubuntu".to_string(),
+                },
+                "same-raw-id",
+                Some("tenant-a".to_string()),
+            ),
+        };
+        let request =
+            build_session_activate_request(identity.clone(), 42, "activation-1".to_string(), false);
+        assert_eq!(&*request.method, INTELLTERM_METHOD_SESSION_ACTIVATE);
+        let parsed = parse_session_activate_params(&request.params).expect("params parse");
+        assert_eq!(parsed.identity, identity);
+        assert_eq!(parsed.window_id, 42);
+        assert_eq!(parsed.activation_id, "activation-1");
+
+        let request =
+            build_session_activate_request(identity, 42, "activation-1".to_string(), true);
+        assert_eq!(
+            &*request.method,
+            INTELLTERM_METHOD_SESSION_ACTIVATION_STATUS
+        );
+        assert_eq!(
+            parse_session_activate_params(&request.params).unwrap(),
+            parsed
+        );
+        assert!(matches!(
+            parse_ext_request(request),
+            WtaExtRequest::SessionActivationStatus(_)
+        ));
+    }
+
+    #[test]
+    fn session_activation_response_distinguishes_pending_complete_and_unknown() {
+        for state in [
+            SessionActivationState::Pending,
+            SessionActivationState::Complete,
+            SessionActivationState::Unknown,
+        ] {
+            let response = SessionActivateResponse {
+                activation_id: "activation-1".to_string(),
+                state,
+                action: String::new(),
+                accepted: false,
+                detail: None,
+            };
+            let raw = serde_json::value::to_raw_value(&response).unwrap();
+            assert_eq!(parse_session_activate_response(&raw).unwrap(), response);
+        }
+        let legacy = serde_json::value::RawValue::from_string(
+            r#"{"activation_id":"legacy","action":"focus","accepted":true}"#.to_string(),
+        )
+        .unwrap();
+        assert_eq!(
+            parse_session_activate_response(&legacy).unwrap().state,
+            SessionActivationState::Complete
         );
     }
 
@@ -2792,6 +3408,8 @@ mod tests {
     fn sessions_list_response_round_trips_rows() {
         let row = SessionInfo {
             session_id: acp::schema::v1::SessionId::new("sess-list".to_string()),
+            provider_id: None,
+            session_universe: None,
             cwd: PathBuf::from("C:\\repo"),
             title: Some("title".into()),
             updated_at: Some("2026-05-27T12:34:56Z".into()),
@@ -2807,7 +3425,7 @@ mod tests {
             bound_pid: None,
             born_bound_pane: false,
         };
-        let raw = build_sessions_list_response(vec![row.clone()]);
+        let raw = build_sessions_list_response(vec![row.clone()], None);
         let parsed = parse_sessions_list_response(&raw).expect("response parses");
         assert_eq!(parsed.sessions, vec![row]);
     }
@@ -3143,6 +3761,8 @@ mod tests {
         let reg = InMemoryRegistry::new();
         reg.upsert(SessionInfo {
             session_id: acp::schema::v1::SessionId::new("sid".to_string()),
+            provider_id: None,
+            session_universe: None,
             cwd: PathBuf::from("C:\\x"),
             title: Some("historical".into()),
             updated_at: None,
@@ -3643,10 +4263,36 @@ mod tests {
         info.last_activity_at_ms = Some(42);
         let resp = SessionsListResponse {
             sessions: vec![info.clone()],
+            history_status: Some(HistoryLoadStatus::Ready),
         };
         let raw = serde_json::value::to_raw_value(&resp).unwrap();
         let parsed = parse_sessions_list_response(&raw).unwrap();
         assert_eq!(parsed.sessions, vec![info]);
+        assert_eq!(parsed.history_status, Some(HistoryLoadStatus::Ready));
+    }
+
+    #[test]
+    fn sessions_list_response_distinguishes_loading_empty_and_failed_history() {
+        for (status, wire) in [
+            (HistoryLoadStatus::Loading, "loading"),
+            (HistoryLoadStatus::Ready, "ready"),
+            (HistoryLoadStatus::Error, "error"),
+        ] {
+            let raw = build_sessions_list_response(Vec::new(), Some(status));
+            let json: serde_json::Value = serde_json::from_str(raw.get()).unwrap();
+            assert_eq!(json["history_status"], wire);
+            let parsed = parse_sessions_list_response(&raw).unwrap();
+            assert!(parsed.sessions.is_empty());
+            assert_eq!(parsed.history_status, Some(status));
+        }
+
+        let legacy = serde_json::value::RawValue::from_string(r#"{"sessions":[]}"#.into()).unwrap();
+        assert_eq!(
+            parse_sessions_list_response(&legacy)
+                .unwrap()
+                .history_status,
+            None
+        );
     }
 
     #[test]
@@ -3736,7 +4382,7 @@ mod tests {
             WtaExtRequest::FocusSession(_)
         ));
         assert!(
-            matches!(parse_ext_request(build_sessions_list_request(true)), WtaExtRequest::SessionsList(p) if p.rescan)
+            matches!(parse_ext_request(build_sessions_list_request(true, false)), WtaExtRequest::SessionsList(p) if p.rescan)
         );
         assert!(matches!(
             parse_ext_request(build_session_hook_request(&ev)),
@@ -3770,7 +4416,9 @@ mod tests {
             WtaExtRequest::FocusSession(_)
         ));
         assert!(matches!(
-            parse_ext_request(strip_leading_underscore(build_sessions_list_request(false))),
+            parse_ext_request(strip_leading_underscore(build_sessions_list_request(
+                false, false
+            ))),
             WtaExtRequest::SessionsList(_)
         ));
         assert!(matches!(
@@ -4209,6 +4857,7 @@ mod tests {
             agent_cmd: Some("npx -y @agentclientprotocol/claude-agent-acp@0.65.0".to_string()),
             agent_id: Some("gemini".to_string()),
             resolved_agent_id: Some("copilot".to_string()),
+            resolved_model_source: Some("byok".to_string()),
             model: Some("gemini-2.5-pro".to_string()),
             provider_binding: Some("custom:provider-openrouter:qwen/qwen3.5-9b".to_string()),
             agent_source: Some("wsl".to_string()),
@@ -4221,6 +4870,18 @@ mod tests {
         inject_wta_meta(&mut meta, &original);
         let parsed = extract_wta_meta(&mut meta);
         assert_eq!(parsed, original, "agent identity survives the wire");
+    }
+
+    #[test]
+    fn inject_then_extract_round_trips_control_client_role() {
+        let original = WtaMeta {
+            control_client: Some("sidebar-history-v1".to_string()),
+            ..Default::default()
+        };
+        let mut meta: Option<acp::schema::v1::Meta> = None;
+        inject_wta_meta(&mut meta, &original);
+        assert_eq!(extract_wta_meta(&mut meta), original);
+        assert!(meta.is_none());
     }
 
     #[test]
@@ -4262,9 +4923,11 @@ mod tests {
             &mut meta,
             &WtaMeta {
                 pane_session_id: Some("  ".to_string()),
+                control_client: Some(" ".to_string()),
                 agent_cmd: Some(String::new()),
                 agent_id: Some("\t".to_string()),
                 resolved_agent_id: Some(" ".to_string()),
+                resolved_model_source: Some(" ".to_string()),
                 model: Some(" ".to_string()),
                 provider_binding: Some(" ".to_string()),
                 agent_source: Some(" ".to_string()),
@@ -4305,9 +4968,11 @@ mod tests {
         assert!(
             WtaMeta {
                 pane_session_id: Some("  ".to_string()),
+                control_client: Some(" ".to_string()),
                 agent_cmd: Some(String::new()),
                 agent_id: Some("\t".to_string()),
                 resolved_agent_id: Some(" ".to_string()),
+                resolved_model_source: Some(" ".to_string()),
                 model: Some(" ".to_string()),
                 provider_binding: Some(" ".to_string()),
                 agent_source: Some(" ".to_string()),
@@ -4461,10 +5126,10 @@ mod tests {
     }
 
     /// A `SessionInfo` JSON object that has no `location` key (e.g. produced
-    /// by an older master that predates this field) must deserialize as `Host`
-    /// thanks to `#[serde(default)]`.
+    /// by an older master that predates this field) must deserialize as
+    /// `Unknown`, so activation cannot guess where its artefacts live.
     #[test]
-    fn session_info_without_location_defaults_to_host() {
+    fn session_info_without_location_defaults_to_unknown() {
         use crate::agent_sessions::SessionLocation;
 
         // Build a valid SessionInfo, serialise it, then strip the location key.
@@ -4476,8 +5141,8 @@ mod tests {
         let parsed: SessionInfo = serde_json::from_str(&json).unwrap();
         assert_eq!(
             parsed.location,
-            SessionLocation::Host,
-            "missing location key must default to Host"
+            SessionLocation::Unknown,
+            "missing location key must fail closed"
         );
     }
 }

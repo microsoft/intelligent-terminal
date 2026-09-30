@@ -2,7 +2,7 @@
 //!
 //! Prompts shipped to the agent CLI carry a set of `### …` runtime context
 //! sections (delegate agents, terminal layout, shell info, the failing
-//! command's output, did-you-mean near-matches, …). These used to be
+//! command's output, on-demand command resolver invocation, …). These used to be
 //! assembled by inline `runtime_sections.push(format!("### X\n…"))` calls
 //! scattered across two mutually-exclusive branches of `build_prompt_text`;
 //! adding a source meant another nested `if let … push(…)` block.
@@ -14,10 +14,8 @@
 //! [`ContextRequest`], then runs [`default_providers`] in order — no source is
 //! hand-stuffed.
 //!
-//! The command-not-found "did you mean" feature (issue #287) is one such
-//! provider, [`CommandNotFoundProvider`]; it is the *local context injection*
-//! implementation of this abstraction, not a special case bolted into the
-//! assembler.
+//! Command resolution is agent-initiated through [`CommandResolverProvider`]'s
+//! invocation contract. Prompt assembly never enumerates shell commands.
 
 use async_trait::async_trait;
 
@@ -367,6 +365,15 @@ async fn capture_pane_context(
     max_chars: usize,
 ) -> Option<CapturedPaneContext> {
     let started = std::time::Instant::now();
+    let warn_unavailable = |reason: &'static str| {
+        tracing::warn!(
+            target: "acp.terminal_context",
+            reason,
+            explicit_source = explicit_source.is_some(),
+            rpc_ms = started.elapsed().as_millis() as u64,
+            "pane_context_unavailable"
+        );
+    };
     let (pane, response) = match shell_mgr
         .wt_get_pane_context(explicit_source, max_lines, max_chars)
         .await
@@ -375,8 +382,9 @@ async fn capture_pane_context(
             let pane = match validate_pane_context(&value) {
                 Ok(pane) => pane.clone(),
                 Err(error) => {
-                    tracing::debug!(
+                    tracing::warn!(
                         target: "acp.terminal_context",
+                        reason = "response_contract_invalid",
                         explicit_source = explicit_source.is_some(),
                         rpc_ms = started.elapsed().as_millis() as u64,
                         error,
@@ -394,12 +402,17 @@ async fn capture_pane_context(
                 "pane_context_legacy_fallback"
             );
             let pane = match explicit_source {
-                Some(source) => resolve_pane_by_session_id(shell_mgr, source).await?,
-                None => shell_mgr.wt_get_active_pane().await.ok()?,
+                Some(source) => resolve_pane_by_session_id(shell_mgr, source).await,
+                None => shell_mgr.wt_get_active_pane().await.ok(),
+            };
+            let Some(pane) = pane else {
+                warn_unavailable("legacy_source_unresolved");
+                return None;
             };
             (pane, None)
         }
         Err(error) => {
+            warn_unavailable("protocol_request_failed");
             tracing::debug!(
                 target: "acp.terminal_context",
                 explicit_source = explicit_source.is_some(),
@@ -415,6 +428,7 @@ async fn capture_pane_context(
         .and_then(serde_json::Value::as_bool)
         .unwrap_or(false)
     {
+        warn_unavailable("agent_pane_selected");
         return None;
     }
 
@@ -443,7 +457,10 @@ async fn capture_pane_context(
         );
         (output, true)
     } else {
-        let pane_id = json_str_or_num(pane.get("session_id"))?;
+        let pane_id = json_str_or_num(pane.get("session_id")).or_else(|| {
+            warn_unavailable("legacy_source_unresolved");
+            None
+        })?;
         let output = read_pane_last_message_legacy(shell_mgr, &pane_id, max_lines, max_chars).await;
         let output_available = output.is_some();
         (output, output_available)
@@ -490,8 +507,7 @@ async fn build_terminal_context(
     // `cd`, etc.). We use the real process rather than the WT profile name,
     // which the user can rename.
     let target_shell = shell_from_active(&active);
-    let resolver_invocation =
-        command_resolver_invocation(false, target_shell.as_deref(), Some(&active));
+    let resolver_invocation = command_resolver_invocation(target_shell.as_deref(), Some(&active));
 
     tracing::debug!(
         target: "acp.terminal_context",
@@ -537,6 +553,8 @@ pub(crate) struct AutofixSnapshot {
     context_pane: serde_json::Value,
     shell_exe: String,
     terminal_output: Option<String>,
+    command_resolver_invocation:
+        Option<crate::agent_tools::command_resolution::CommandResolverInvocation>,
 }
 
 impl AutofixSnapshot {
@@ -556,6 +574,10 @@ impl AutofixSnapshot {
             }),
             shell_exe: "cmd.exe".to_string(),
             terminal_output: Some("failing-command\r\nCommand failed with exit code 1".to_string()),
+            command_resolver_invocation: command_resolver_invocation(
+                Some("cmd.exe"),
+                Some(&serde_json::json!({ "cwd": "C:\\test" })),
+            ),
         }
     }
 
@@ -565,6 +587,10 @@ impl AutofixSnapshot {
             + self.shell_exe.len()
             + self.terminal_output.as_ref().map_or(0, String::len)
             + self.context_pane.to_string().len()
+            + self
+                .command_resolver_invocation
+                .as_ref()
+                .map_or(0, |invocation| invocation.payload_bytes())
     }
 
     pub(super) fn resolved_context(&self) -> ResolvedProviderContext {
@@ -575,7 +601,7 @@ impl AutofixSnapshot {
             resolved_fix_pane: Some(self.source_pane_id.clone()),
             planner_terminal_context: None,
             resolved_planner_pane: None,
-            command_resolver_invocation: None,
+            command_resolver_invocation: self.command_resolver_invocation.clone(),
         }
     }
 }
@@ -639,6 +665,10 @@ pub(crate) async fn capture_autofix_snapshot(
     }
     Ok(AutofixSnapshot {
         source_pane_id: source_pane_id.to_string(),
+        command_resolver_invocation: command_resolver_invocation(
+            Some(&shell_exe),
+            Some(&context_pane),
+        ),
         context_pane,
         shell_exe,
         terminal_output,
@@ -669,7 +699,11 @@ pub(super) async fn resolve_provider_context(
         resolved_fix_pane: None,
         planner_terminal_context: None,
         resolved_planner_pane: None,
-        command_resolver_invocation: command_resolver_invocation(is_autofix, None, None),
+        command_resolver_invocation: if is_autofix {
+            None
+        } else {
+            command_resolver_invocation(None, None)
+        },
     };
     if !wt_connected {
         return resolved;
@@ -700,6 +734,8 @@ pub(super) async fn resolve_provider_context(
         resolved.resolved_fix_pane = source_pane_id.clone();
     }
     resolved.shell_exe = shell_from_active(&captured.pane);
+    resolved.command_resolver_invocation =
+        command_resolver_invocation(resolved.shell_exe.as_deref(), Some(&captured.pane));
     resolved.context_pane = Some(captured.pane);
     resolved.terminal_output = captured.output;
 
@@ -739,7 +775,7 @@ pub(super) struct ContextRequest<'a> {
     pub(super) terminal_output: Option<&'a str>,
     /// Planner only: terminal context assembled with its authoritative target.
     pub(super) planner_terminal_context: Option<&'a str>,
-    /// Planner only: resolver contract derived from the same authoritative pane.
+    /// Resolver contract derived from the same authoritative pane.
     pub(super) command_resolver_invocation:
         Option<&'a crate::agent_tools::command_resolution::CommandResolverInvocation>,
 }
@@ -767,7 +803,7 @@ impl ContextSection {
 /// they emit ([`provide`](Self::provide)). Keeping the two split lets the
 /// assembler skip the (possibly expensive) `provide` for a provider that does
 /// not apply, and lets `provide` return `None` when it applies in principle but
-/// has nothing to add this turn (e.g. the failing command actually exists).
+/// has nothing to add this turn (e.g. the pane context is unavailable).
 #[async_trait]
 pub(super) trait ContextProvider: Send + Sync {
     /// Stable identifier, used for per-provider timing logs.
@@ -789,45 +825,42 @@ pub(super) trait ContextProvider: Send + Sync {
 /// `&'static` slice of const-promoted instances — no per-prompt allocation.
 pub(super) fn default_providers() -> &'static [&'static dyn ContextProvider] {
     &[
-        // Planner turns.
+        // Both turn kinds.
         &CommandResolverProvider,
+        // Planner turns.
         &DelegateAgentsProvider,
         &TerminalContextProvider,
         // Autofix turns.
         &ShellContextProvider,
         &TerminalOutputProvider,
-        &CommandNotFoundProvider,
     ]
 }
 
-/// Planner: a deterministic invocation of this WTA installation's local
+/// A deterministic invocation of this WTA installation's local
 /// command resolver through the package execution alias injected into the
 /// agent CLI's PATH.
 struct CommandResolverProvider;
 
 pub(super) fn command_resolver_invocation(
-    is_autofix: bool,
-    planner_shell: Option<&str>,
-    planner_pane: Option<&serde_json::Value>,
+    pane_shell: Option<&str>,
+    pane: Option<&serde_json::Value>,
 ) -> Option<crate::agent_tools::command_resolution::CommandResolverInvocation> {
-    if is_autofix
-        || planner_shell.is_some_and(|shell| {
-            !crate::agent_tools::command_resolution::has_applicable_source(shell)
-        })
+    if pane_shell
+        .is_some_and(|shell| !crate::agent_tools::command_resolution::has_applicable_source(shell))
     {
         return None;
     }
 
     let executable = "wta.exe".to_string();
-    let cwd = planner_pane
+    let cwd = pane
         .and_then(|pane| pane.get("cwd"))
         .and_then(serde_json::Value::as_str)
         .filter(|cwd| !cwd.is_empty())
         .map(str::to_string);
 
-    let mut shell = planner_shell.unwrap_or("unknown").to_string();
+    let mut shell = pane_shell.unwrap_or("unknown").to_string();
     if crate::command_recall::is_powershell(&shell) && !std::path::Path::new(&shell).is_absolute() {
-        if let Some(path) = planner_pane
+        if let Some(path) = pane
             .and_then(|pane| pane.get("pid"))
             .and_then(serde_json::Value::as_u64)
             .and_then(|pid| u32::try_from(pid).ok())
@@ -860,14 +893,27 @@ impl ContextProvider for CommandResolverProvider {
         let contract = serde_json::to_string_pretty(&invocation.contract("<name>")).ok()?;
         let cwd_instruction = if invocation.cwd().is_some() {
             "Keep the injected `--cwd` value unchanged so resolution uses the \
-             active pane's working directory. "
+             target pane's working directory. "
         } else {
             ""
         };
         Some(ContextSection {
             heading: "Command Resolver Invocation",
             body: format!(
-                "Replace `<name>` with the command name as one argument. Prefer \
+                "This optional local CLI queries command existence and, for missing \
+                 PowerShell commands, similar installed names. Invoke it only when \
+                 diagnosis needs command resolution, not routinely on every failure. \
+                 Propose an obvious typo correction in a familiar command directly, \
+                 without querying merely to verify it. Query when an unfamiliar local \
+                 command or genuine ambiguity requires local evidence; do not invent \
+                 local command names. A command-not-found error alone does not require \
+                 a query. \
+                 `exists` identifies a resolved command; `not_found` reports no \
+                 resolution from an authoritative source; `indeterminate` and \
+                 `unsupported` do not prove absence. It cannot observe aliases or \
+                 functions defined only in the running pane's memory. \
+                 Keep the injected `--shell` value unchanged. \
+                 Replace `<name>` with the command name as one argument. Prefer \
                  invoking `executable` with each `arguments` entry as a separate \
                  argv. {}Use `powershell` only when the tool executes a PowerShell \
                  command string; replace `<name>` inside its existing \
@@ -980,61 +1026,8 @@ impl ContextProvider for TerminalOutputProvider {
     }
 }
 
-/// Autofix: local "did you mean" near-matches when the failing command does not
-/// resolve on this machine (issue #287). PowerShell-only in v1; the matching
-/// logic lives in [`crate::command_recall`], this provider just gates and
-/// formats it into a section.
-struct CommandNotFoundProvider;
-
-#[async_trait]
-impl ContextProvider for CommandNotFoundProvider {
-    fn id(&self) -> &'static str {
-        "command_not_found"
-    }
-
-    fn applies(&self, req: &ContextRequest<'_>) -> bool {
-        req.is_autofix
-            && req.terminal_output.is_some()
-            && req
-                .shell_exe
-                .is_some_and(crate::command_recall::is_powershell)
-    }
-
-    async fn provide(&self, req: &ContextRequest<'_>) -> Option<ContextSection> {
-        let shell_exe = req.shell_exe?;
-        let content = req.terminal_output?;
-        let token = crate::command_recall::extract_command_token(content)?;
-        let matches = crate::command_recall::powershell_near_matches(shell_exe, &token).await?;
-        tracing::debug!(
-            target: "acp.terminal_context",
-            token = %token,
-            matches = ?matches,
-            mode = "autofix",
-            "near_matches_resolved"
-        );
-        Some(ContextSection {
-            heading: "Near Matches",
-            body: format!(
-                "`{}` was not found as a command in this shell. Closest commands \
-                 that DO exist on this machine: {}",
-                token,
-                near_match_list(&matches)
-            ),
-        })
-    }
-}
-
-/// Render near-match command names as a comma-separated, back-ticked list.
-fn near_match_list(matches: &[String]) -> String {
-    matches
-        .iter()
-        .map(|m| format!("`{m}`"))
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use crate::shell::ShellManager;
     use std::sync::{
@@ -1094,6 +1087,8 @@ mod tests {
 
     struct MockWtChannel {
         active_pane: serde_json::Value,
+        source_pane: Option<serde_json::Value>,
+        source_output: String,
     }
 
     #[async_trait::async_trait]
@@ -1101,18 +1096,30 @@ mod tests {
         async fn request(
             &self,
             method: &str,
-            _params: serde_json::Value,
+            params: serde_json::Value,
         ) -> anyhow::Result<serde_json::Value> {
             match method {
-                "get_pane_context" => Ok(serde_json::json!({
-                    "pane": self.active_pane.clone(),
-                    "content": "",
-                    "output_source": "metadata_only",
-                    "fallback_reason": "",
-                    "line_count": 0,
-                    "truncated": false,
-                    "has_marks": false,
-                })),
+                "get_pane_context" => {
+                    let (pane, output) = if let Some(session_id) = params.get("session_id") {
+                        let pane = self
+                            .source_pane
+                            .as_ref()
+                            .filter(|pane| pane.get("session_id") == Some(session_id))
+                            .ok_or_else(|| anyhow::anyhow!("MockWtChannel: source pane missing"))?;
+                        (pane, self.source_output.as_str())
+                    } else {
+                        (&self.active_pane, "")
+                    };
+                    Ok(serde_json::json!({
+                        "pane": pane,
+                        "content": output,
+                        "output_source": if output.is_empty() { "metadata_only" } else { "last_command" },
+                        "fallback_reason": "",
+                        "line_count": output.lines().count(),
+                        "truncated": false,
+                        "has_marks": !output.is_empty(),
+                    }))
+                }
                 other => Err(anyhow::anyhow!("MockWtChannel: unhandled method {other}")),
             }
         }
@@ -1123,7 +1130,19 @@ mod tests {
     }
 
     fn shell_mgr_with_pane(active_pane: serde_json::Value) -> ShellManager {
-        ShellManager::new().with_wt_channel(Arc::new(MockWtChannel { active_pane }))
+        shell_mgr_with_source_pane(active_pane, None, "")
+    }
+
+    pub(crate) fn shell_mgr_with_source_pane(
+        active_pane: serde_json::Value,
+        source_pane: Option<serde_json::Value>,
+        source_output: &str,
+    ) -> ShellManager {
+        ShellManager::new().with_wt_channel(Arc::new(MockWtChannel {
+            active_pane,
+            source_pane,
+            source_output: source_output.to_string(),
+        }))
     }
 
     fn pane_context_response() -> serde_json::Value {
@@ -1155,7 +1174,12 @@ mod tests {
             method: &str,
             params: serde_json::Value,
         ) -> anyhow::Result<serde_json::Value> {
-            assert_eq!(method, "get_pane_context");
+            if method != "get_pane_context" {
+                assert!(self
+                    .error
+                    .is_some_and(|error| error.contains("WT_PROTOCOL_UNSUPPORTED_PANE_CONTEXT")));
+                assert!(matches!(method, "get_active_pane" | "list_windows"));
+            }
             self.requests.fetch_add(1, Ordering::Relaxed);
             *self.params.lock().unwrap() = Some(params);
             if let Some(error) = self.error {
@@ -1216,6 +1240,40 @@ mod tests {
         assert_eq!(captured.pane["session_id"], "pane-explicit");
         assert!(captured.output.is_none());
         assert_eq!(channel.requests.load(Ordering::Relaxed), 1);
+    }
+
+    #[tokio::test]
+    async fn autofix_snapshot_preserves_supported_resolver_without_context_rereads() {
+        for shell in ["pwsh.exe", "cmd.exe", "wsl:Ubuntu"] {
+            let mut response = pane_context_response();
+            response["pane"]["shell"] = serde_json::json!(shell);
+            response["pane"]["cwd"] = serde_json::json!("C:\\frozen");
+            let channel = Arc::new(RecordingPaneContextChannel {
+                requests: AtomicUsize::new(0),
+                params: Mutex::new(None),
+                error: None,
+                response: Some(response),
+            });
+            let mgr = ShellManager::new().with_wt_channel(channel.clone());
+            let context = PaneContext {
+                source_pane_id: Some("pane-explicit".into()),
+                ..Default::default()
+            };
+            let snapshot =
+                capture_autofix_snapshot(&mgr, &context, AutofixTextKind::FailureSummary)
+                    .await
+                    .unwrap();
+            let resolved = snapshot.resolved_context();
+            if shell == "wsl:Ubuntu" {
+                assert!(resolved.command_resolver_invocation.is_none());
+            } else {
+                let invocation = resolved.command_resolver_invocation.unwrap();
+                assert_eq!(invocation.shell(), shell);
+                assert_eq!(invocation.cwd(), Some("C:\\frozen"));
+            }
+            assert_eq!(resolved.resolved_fix_pane.as_deref(), Some("pane-explicit"));
+            assert_eq!(channel.requests.load(Ordering::Relaxed), 1);
+        }
     }
 
     #[tokio::test]
@@ -1425,7 +1483,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn malformed_pane_context_logs_contract_error_without_fallback_or_content() {
+    async fn unavailable_pane_context_warns_without_private_content() {
         use tracing::instrument::WithSubscriber;
 
         struct SharedWriter(Arc<Mutex<Vec<u8>>>);
@@ -1529,7 +1587,25 @@ mod tests {
             cases.push((value, error));
         }
 
-        for (mut response, error) in cases {
+        let mut cases: Vec<_> = cases
+            .into_iter()
+            .map(|(value, error)| (value, error, None))
+            .collect();
+        let mut agent = pane_context_response();
+        agent["pane"]["is_agent_pane"] = serde_json::json!(true);
+        cases.push((agent, "agent_pane_selected", None));
+        cases.push((
+            serde_json::Value::Null,
+            "protocol_request_failed",
+            Some("DO_NOT_LOG_REQUEST_ERROR"),
+        ));
+        cases.push((
+            serde_json::Value::Null,
+            "legacy_source_unresolved",
+            Some("WT_PROTOCOL_UNSUPPORTED_PANE_CONTEXT DO_NOT_LOG_REQUEST_ERROR"),
+        ));
+
+        for (mut response, error, request_error) in cases {
             if response.is_object() {
                 response["private_terminal_content"] =
                     serde_json::json!("DO_NOT_LOG_TERMINAL_CONTENT");
@@ -1538,7 +1614,7 @@ mod tests {
                 let channel = Arc::new(RecordingPaneContextChannel {
                     requests: AtomicUsize::new(0),
                     params: Mutex::new(None),
-                    error: None,
+                    error: request_error,
                     response: Some(response.clone()),
                 });
                 let mgr = ShellManager::new().with_wt_channel(channel.clone());
@@ -1547,23 +1623,29 @@ mod tests {
                 let subscriber = tracing_subscriber::fmt()
                     .without_time()
                     .with_ansi(false)
-                    .with_max_level(tracing::Level::DEBUG)
+                    .with_max_level(tracing::Level::WARN)
                     .with_writer(move || SharedWriter(writer.clone()))
                     .finish();
                 let result = capture_pane_context(&mgr, explicit_source, 30, 4000)
                     .with_subscriber(subscriber)
                     .await;
                 assert!(result.is_none(), "{response:?}");
-                assert_eq!(channel.requests.load(Ordering::Relaxed), 1);
+                let legacy = error == "legacy_source_unresolved";
+                assert_eq!(
+                    channel.requests.load(Ordering::Relaxed),
+                    if legacy { 2 } else { 1 }
+                );
                 let log = String::from_utf8(logs.lock().unwrap().clone()).unwrap();
-                assert!(
-                    log.contains("pane_context_response_contract_error"),
+                assert!(log.contains("WARN"), "{log}");
+                assert!(log.contains(error), "{log}");
+                assert_eq!(
+                    log.contains("pane_context_legacy_fallback"),
+                    legacy,
                     "{log}"
                 );
-                assert!(log.contains(error), "{log}");
-                assert!(!log.contains("pane_context_legacy_fallback"), "{log}");
                 assert!(!log.contains("pane_context_request_complete"), "{log}");
                 assert!(!log.contains("DO_NOT_LOG_TERMINAL_CONTENT"), "{log}");
+                assert!(!log.contains("DO_NOT_LOG_REQUEST_ERROR"), "{log}");
             }
         }
     }
@@ -1803,19 +1885,10 @@ mod tests {
     #[test]
     fn render_prefixes_heading_marker() {
         let section = ContextSection {
-            heading: "Near Matches",
+            heading: "Terminal Output",
             body: "body text".to_string(),
         };
-        assert_eq!(section.render(), "### Near Matches\nbody text");
-    }
-
-    #[test]
-    fn near_match_list_backticks_and_joins() {
-        assert_eq!(
-            near_match_list(&["git".to_string(), "gci".to_string()]),
-            "`git`, `gci`"
-        );
-        assert_eq!(near_match_list(&[]), "");
+        assert_eq!(section.render(), "### Terminal Output\nbody text");
     }
 
     #[test]
@@ -1830,42 +1903,39 @@ mod tests {
     }
 
     #[test]
-    fn command_resolver_applies_to_supported_planner_shells() {
+    fn command_resolver_applies_to_supported_shells_in_both_turn_kinds() {
         let mgr = ShellManager::new();
         let pane = serde_json::json!({ "session_id": "pane-1" });
-        for shell in ["pwsh", "powershell.exe", "cmd.exe"] {
-            let invocation = command_resolver_invocation(false, Some(shell), Some(&pane));
+        for is_autofix in [false, true] {
+            for shell in ["pwsh", "powershell.exe", "cmd.exe"] {
+                let invocation = command_resolver_invocation(Some(shell), Some(&pane));
+                let req = ContextRequest {
+                    is_autofix,
+                    command_resolver_invocation: invocation.as_ref(),
+                    ..req_planner(&mgr, true)
+                };
+                assert!(CommandResolverProvider.applies(&req), "shell={shell}");
+            }
+            let invocation = command_resolver_invocation(Some("wsl:Ubuntu"), Some(&pane));
             let req = ContextRequest {
+                is_autofix,
                 command_resolver_invocation: invocation.as_ref(),
                 ..req_planner(&mgr, true)
             };
-            assert!(CommandResolverProvider.applies(&req), "shell={shell}");
+            assert!(!CommandResolverProvider.applies(&req));
         }
 
-        let unknown_invocation = command_resolver_invocation(false, None, None);
+        let unknown_invocation = command_resolver_invocation(None, None);
         let unknown = ContextRequest {
             command_resolver_invocation: unknown_invocation.as_ref(),
             ..req_planner(&mgr, false)
         };
         assert!(CommandResolverProvider.applies(&unknown));
-        let wsl_invocation = command_resolver_invocation(false, Some("wsl:Ubuntu"), Some(&pane));
-        let wsl = ContextRequest {
-            command_resolver_invocation: wsl_invocation.as_ref(),
-            ..req_planner(&mgr, true)
-        };
-        assert!(!CommandResolverProvider.applies(&wsl));
-        let autofix_invocation = command_resolver_invocation(true, Some("pwsh"), Some(&pane));
-        let autofix = ContextRequest {
-            is_autofix: true,
-            command_resolver_invocation: autofix_invocation.as_ref(),
-            ..req_planner(&mgr, true)
-        };
-        assert!(!CommandResolverProvider.applies(&autofix));
     }
 
     #[test]
     fn command_resolver_uses_short_wta_execution_alias() {
-        let invocation = command_resolver_invocation(false, Some("cmd.exe"), None).unwrap();
+        let invocation = command_resolver_invocation(Some("cmd.exe"), None).unwrap();
         let contract = serde_json::to_value(invocation.contract("git")).unwrap();
 
         assert_eq!(contract["executable"], "wta.exe");
@@ -1884,7 +1954,7 @@ mod tests {
     #[test]
     fn command_resolver_binds_active_pane_working_directory() {
         let pane = serde_json::json!({ "cwd": "C:\\workspace" });
-        let invocation = command_resolver_invocation(false, Some("pwsh.exe"), Some(&pane)).unwrap();
+        let invocation = command_resolver_invocation(Some("pwsh.exe"), Some(&pane)).unwrap();
         let contract = serde_json::to_value(invocation.contract("deploy-it")).unwrap();
 
         assert_eq!(invocation.cwd(), Some("C:\\workspace"));
@@ -1936,41 +2006,68 @@ mod tests {
         assert!(!ShellContextProvider.applies(&planner));
     }
 
-    #[test]
-    fn command_not_found_gates_on_powershell_and_output() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn autofix_providers_return_immediately_without_command_lookup() {
+        use futures::FutureExt;
+
+        let probes = crate::command_recall::probe_observer::ProbeObserver::start();
         let mgr = ShellManager::new();
-        let base = ContextRequest {
-            is_autofix: true,
-            shell_exe: Some("pwsh.exe"),
-            terminal_output: Some("gti status\n..."),
-            ..req_planner(&mgr, true)
-        };
-        assert!(CommandNotFoundProvider.applies(&base));
-
-        // Non-PowerShell shell: feature is PowerShell-only in v1.
-        let bash = ContextRequest {
-            is_autofix: true,
-            shell_exe: Some("bash"),
-            terminal_output: Some("gti status"),
-            ..req_planner(&mgr, true)
-        };
-        assert!(!CommandNotFoundProvider.applies(&bash));
-
-        // No captured output: nothing to extract a token from.
-        let no_output = ContextRequest {
-            is_autofix: true,
-            shell_exe: Some("pwsh.exe"),
-            terminal_output: None,
-            ..req_planner(&mgr, true)
-        };
-        assert!(!CommandNotFoundProvider.applies(&no_output));
-
-        // Planner turn: never runs the autofix-only provider.
-        let planner = ContextRequest {
-            shell_exe: Some("pwsh.exe"),
-            terminal_output: Some("gti status"),
-            ..req_planner(&mgr, true)
-        };
-        assert!(!CommandNotFoundProvider.applies(&planner));
+        let pane = serde_json::json!({ "cwd": "C:\\failing-pane" });
+        let invocation = command_resolver_invocation(Some("pwsh.exe"), Some(&pane)).unwrap();
+        for output in [
+            "wta-missing-command-844\nThe term is not recognized",
+            "Get-Item missing.txt\nPath not found",
+            "gci missing.txt\nPath not found",
+            "MyProfileFunction\nCustom failure",
+        ] {
+            let req = ContextRequest {
+                is_autofix: true,
+                context_pane: Some(&pane),
+                shell_exe: Some("pwsh.exe"),
+                terminal_output: Some(output),
+                command_resolver_invocation: Some(&invocation),
+                ..req_planner(&mgr, true)
+            };
+            for _ in 0..2 {
+                let mut sections = Vec::new();
+                for provider in default_providers() {
+                    if provider.applies(&req) {
+                        if let Some(section) =
+                            provider.provide(&req).now_or_never().unwrap_or_else(|| {
+                                panic!("{} waited for asynchronous work", provider.id())
+                            })
+                        {
+                            sections.push(section);
+                        }
+                    }
+                }
+                assert_eq!(
+                    sections
+                        .iter()
+                        .map(|section| section.heading)
+                        .collect::<Vec<_>>(),
+                    [
+                        "Command Resolver Invocation",
+                        "Shell Context",
+                        "Terminal Output"
+                    ]
+                );
+                assert!(sections[0].body.contains("not routinely on every failure"));
+                assert!(sections[0]
+                    .body
+                    .contains("without querying merely to verify it"));
+                assert!(sections[0]
+                    .body
+                    .contains("unfamiliar local command or genuine ambiguity"));
+                assert!(sections[0].body.contains("indeterminate"));
+                assert!(sections[0].body.contains("unsupported"));
+                assert!(sections[0].body.contains(r"C:\\failing-pane"));
+                assert_eq!(sections[2].body, format!("```\n{output}\n```"));
+                assert!(
+                    probes.attempts().is_empty(),
+                    "complete Autofix provider processing must not attempt command queries"
+                );
+            }
+        }
     }
 }

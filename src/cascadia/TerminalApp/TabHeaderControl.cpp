@@ -15,6 +15,18 @@ namespace winrt::TerminalApp::implementation
     {
         InitializeComponent();
 
+        const auto keepRunningIcon = HeaderKeepRunningIcon();
+        const auto keepRunningName = RS_(L"KeepTabRunningText");
+        const auto keepRunningHelp = RS_(L"KeepTabRunningToolTip");
+        Windows::UI::Xaml::Automation::AutomationProperties::SetName(keepRunningIcon, keepRunningName);
+        Windows::UI::Xaml::Automation::AutomationProperties::SetHelpText(keepRunningIcon, keepRunningHelp);
+        Windows::UI::Xaml::Controls::ToolTipService::SetToolTip(keepRunningIcon, box_value(keepRunningHelp));
+
+        const auto pinnedIcon = HeaderPinnedIcon();
+        const auto pinnedName = RS_(L"PinnedTabName");
+        Windows::UI::Xaml::Automation::AutomationProperties::SetName(pinnedIcon, pinnedName);
+        Windows::UI::Xaml::Controls::ToolTipService::SetToolTip(pinnedIcon, box_value(pinnedName));
+
         // We'll only process the KeyUp event if we received an initial KeyDown event first.
         // Avoids issue immediately closing the tab rename when we see the enter KeyUp event that was
         // sent to the command palette to trigger the openTabRenamer action in the first place.
@@ -67,6 +79,28 @@ namespace winrt::TerminalApp::implementation
         return Windows::UI::Xaml::Visibility::Visible == HeaderRenamerTextBox().Visibility();
     }
 
+    bool TabHeaderControl::IsMetadataVisible() const noexcept
+    {
+        return _isMetadataVisible;
+    }
+
+    void TabHeaderControl::IsMetadataVisible(const bool value)
+    {
+        if (_isMetadataVisible != value)
+        {
+            _isMetadataVisible = value;
+            PropertyChanged.raise(*this, Windows::UI::Xaml::Data::PropertyChangedEventArgs{ L"IsMetadataVisible" });
+        }
+        _UpdateMetadataVisibility();
+    }
+
+    void TabHeaderControl::_UpdateMetadataVisibility()
+    {
+        HeaderMetadataTextBlock().Visibility(_isMetadataVisible && !InRename() ?
+                                                 Windows::UI::Xaml::Visibility::Visible :
+                                                 Windows::UI::Xaml::Visibility::Collapsed);
+    }
+
     // Method Description:
     // - Show the tab rename box for the user to rename the tab title
     // - We automatically use the previous title as the initial text of the box
@@ -77,6 +111,7 @@ namespace winrt::TerminalApp::implementation
 
         HeaderTextBlock().Visibility(Windows::UI::Xaml::Visibility::Collapsed);
         HeaderRenamerTextBox().Visibility(Windows::UI::Xaml::Visibility::Visible);
+        _UpdateMetadataVisibility();
 
         HeaderRenamerTextBox().Text(Title());
         HeaderRenamerTextBox().SelectAll();
@@ -88,6 +123,15 @@ namespace winrt::TerminalApp::implementation
             TraceLoggingDescription("Event emitted when the tab renamer is opened"),
             TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
             TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+    }
+
+    void TabHeaderControl::CancelRename()
+    {
+        if (InRename())
+        {
+            _renameCancelled = true;
+            _CloseRenameBox();
+        }
     }
 
     // Method Description:
@@ -132,6 +176,7 @@ namespace winrt::TerminalApp::implementation
         {
             HeaderRenamerTextBox().Visibility(Windows::UI::Xaml::Visibility::Collapsed);
             HeaderTextBlock().Visibility(Windows::UI::Xaml::Visibility::Visible);
+            _UpdateMetadataVisibility();
             RenameEnded.raise(*this, nullptr);
         }
     }

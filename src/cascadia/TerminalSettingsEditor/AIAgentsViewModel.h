@@ -170,7 +170,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         bool AgentPaneYoloMode() const;
         void AgentPaneYoloMode(bool value);
         bool HasAgentPaneYoloMode() const;
-        bool ShowOpenCodeYoloWarning() const;
+        bool CanEnableAgentPaneYoloMode() const;
+        winrt::Windows::UI::Xaml::Visibility AgentPaneYoloModeVisibility() const;
         bool ShowGeminiYoloInfo() const;
 
         // GPO policy lock indicators

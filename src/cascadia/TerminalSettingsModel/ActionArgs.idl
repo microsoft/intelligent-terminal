@@ -204,6 +204,9 @@ namespace Microsoft.Terminal.Settings.Model
         // itself. Declared as a method rather than a property so it doesn't
         // collide with the inherited read-only `Type`.
         void SetContentType(String type);
+
+        // Process-local generation paired with ContentId during a live move.
+        UInt64 AgentPaneTransferId { get; set; };
     };
 
     [default_interface] runtimeclass ActionEventArgs : IActionEventArgs

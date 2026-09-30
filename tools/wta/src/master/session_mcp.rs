@@ -241,31 +241,31 @@ pub(super) struct PendingCapability {
 #[derive(Default)]
 pub(super) struct CapabilityRegistry {
     routes: Mutex<CapabilityRoutes>,
-    active_user_inputs: Arc<std::sync::Mutex<HashSet<acp::schema::v1::SessionId>>>,
+    active_user_inputs: Arc<std::sync::Mutex<HashSet<super::LiveRouteKey>>>,
 }
 
 #[derive(Default)]
 struct CapabilityRoutes {
     by_capability: HashMap<[u8; 32], CapabilityRoute>,
-    by_session: HashMap<acp::schema::v1::SessionId, [u8; 32]>,
+    by_session: HashMap<super::LiveRouteKey, [u8; 32]>,
     by_owner: HashMap<AgentInstanceId, HashSet<[u8; 32]>>,
 }
 
 struct CapabilityRoute {
-    session_id: Option<acp::schema::v1::SessionId>,
+    route_key: Option<super::LiveRouteKey>,
     owner: AgentInstanceId,
     server_name: String,
 }
 
 struct UserInputLease {
-    active: Arc<std::sync::Mutex<HashSet<acp::schema::v1::SessionId>>>,
-    session_id: acp::schema::v1::SessionId,
+    active: Arc<std::sync::Mutex<HashSet<super::LiveRouteKey>>>,
+    route_key: super::LiveRouteKey,
 }
 
 impl Drop for UserInputLease {
     fn drop(&mut self) {
         if let Ok(mut active) = self.active.lock() {
-            active.remove(&self.session_id);
+            active.remove(&self.route_key);
         }
     }
 }
@@ -285,7 +285,7 @@ impl CapabilityRegistry {
         routes.by_capability.insert(
             hash,
             CapabilityRoute {
-                session_id,
+                route_key: session_id.map(|session_id| super::LiveRouteKey::new(owner, session_id)),
                 owner,
                 server_name: server_name.clone(),
             },
@@ -304,16 +304,21 @@ impl CapabilityRegistry {
         session_id: acp::schema::v1::SessionId,
     ) -> bool {
         let mut routes = self.routes.lock().await;
-        if !routes.by_capability.contains_key(&pending.hash) {
+        let Some(owner) = routes
+            .by_capability
+            .get(&pending.hash)
+            .map(|route| route.owner)
+        else {
             return false;
-        }
-        if let Some(old) = routes.by_session.insert(session_id.clone(), pending.hash) {
+        };
+        let route_key = super::LiveRouteKey::new(owner, session_id);
+        if let Some(old) = routes.by_session.insert(route_key.clone(), pending.hash) {
             if old != pending.hash {
                 Self::remove_capability(&mut routes, &old);
             }
         }
         if let Some(route) = routes.by_capability.get_mut(&pending.hash) {
-            route.session_id = Some(session_id);
+            route.route_key = Some(route_key);
         }
         true
     }
@@ -329,9 +334,29 @@ impl CapabilityRegistry {
         meta: &mut Option<acp::schema::v1::Meta>,
     ) {
         let routes = self.routes.lock().await;
+        let mut matches = routes
+            .by_session
+            .iter()
+            .filter(|(key, _)| &key.session_id == session_id);
+        let server_name = matches
+            .next()
+            .filter(|_| matches.next().is_none())
+            .map(|(_, hash)| hash)
+            .and_then(|hash| routes.by_capability.get(hash))
+            .map(|route| route.server_name.as_str());
+        crate::agent_tools::session_mcp::stamp_server_identity(meta, server_name);
+    }
+
+    pub(super) async fn stamp_server_identity_for_instance(
+        &self,
+        session_id: &acp::schema::v1::SessionId,
+        owner: AgentInstanceId,
+        meta: &mut Option<acp::schema::v1::Meta>,
+    ) {
+        let routes = self.routes.lock().await;
         let server_name = routes
             .by_session
-            .get(session_id)
+            .get(&super::LiveRouteKey::new(owner, session_id.clone()))
             .and_then(|hash| routes.by_capability.get(hash))
             .map(|route| route.server_name.as_str());
         crate::agent_tools::session_mcp::stamp_server_identity(meta, server_name);
@@ -345,9 +370,9 @@ impl CapabilityRegistry {
         let count = hashes.len();
         for hash in hashes {
             if let Some(route) = routes.by_capability.remove(&hash) {
-                if let Some(session_id) = route.session_id {
-                    if routes.by_session.get(&session_id) == Some(&hash) {
-                        routes.by_session.remove(&session_id);
+                if let Some(route_key) = route.route_key {
+                    if routes.by_session.get(&route_key) == Some(&hash) {
+                        routes.by_session.remove(&route_key);
                     }
                 }
             }
@@ -355,9 +380,52 @@ impl CapabilityRegistry {
         count
     }
 
+    #[cfg(test)]
     pub(super) async fn remove_session(&self, session_id: &acp::schema::v1::SessionId) -> bool {
         let mut routes = self.routes.lock().await;
-        let Some(hash) = routes.by_session.get(session_id).copied() else {
+        let mut matches = routes
+            .by_session
+            .iter()
+            .filter(|(key, _)| &key.session_id == session_id);
+        let Some((_, hash)) = matches.next() else {
+            return false;
+        };
+        if matches.next().is_some() {
+            return false;
+        }
+        let hash = *hash;
+        Self::remove_capability(&mut routes, &hash);
+        true
+    }
+
+    pub(super) async fn remove_all_sessions(
+        &self,
+        session_id: &acp::schema::v1::SessionId,
+    ) -> usize {
+        let mut routes = self.routes.lock().await;
+        let hashes = routes
+            .by_session
+            .iter()
+            .filter_map(|(key, hash)| (&key.session_id == session_id).then_some(*hash))
+            .collect::<Vec<_>>();
+        let count = hashes.len();
+        for hash in hashes {
+            Self::remove_capability(&mut routes, &hash);
+        }
+        count
+    }
+
+    pub(super) async fn remove_for_instance(
+        &self,
+        session_id: &acp::schema::v1::SessionId,
+        owner: AgentInstanceId,
+    ) -> bool {
+        let mut routes = self.routes.lock().await;
+        let Some(hash) = routes
+            .by_session
+            .get(&super::LiveRouteKey::new(owner, session_id.clone()))
+            .copied()
+        else {
             return false;
         };
         Self::remove_capability(&mut routes, &hash);
@@ -371,29 +439,26 @@ impl CapabilityRegistry {
             .await
             .by_capability
             .get(&hash_secret(secret))
-            .map(|route| route.session_id.clone())
+            .map(|route| route.route_key.clone())
         {
-            Some(Some(session_id)) => CapabilityResolution::Bound(session_id),
+            Some(Some(route_key)) => CapabilityResolution::Bound(route_key),
             Some(None) => CapabilityResolution::Pending,
             None => CapabilityResolution::Unknown,
         }
     }
 
-    fn try_begin_user_input(
-        &self,
-        session_id: acp::schema::v1::SessionId,
-    ) -> Result<UserInputLease> {
+    fn try_begin_user_input(&self, route_key: super::LiveRouteKey) -> Result<UserInputLease> {
         let mut active = self
             .active_user_inputs
             .lock()
             .map_err(|_| anyhow::anyhow!("user input request registry is unavailable"))?;
-        if !active.insert(session_id.clone()) {
+        if !active.insert(route_key.clone()) {
             anyhow::bail!("this ACP session already has a pending user input request");
         }
         drop(active);
         Ok(UserInputLease {
             active: Arc::clone(&self.active_user_inputs),
-            session_id,
+            route_key,
         })
     }
 
@@ -410,9 +475,9 @@ impl CapabilityRegistry {
         if remove_owner {
             routes.by_owner.remove(&route.owner);
         }
-        if let Some(session_id) = route.session_id {
-            if routes.by_session.get(&session_id) == Some(hash) {
-                routes.by_session.remove(&session_id);
+        if let Some(route_key) = route.route_key {
+            if routes.by_session.get(&route_key) == Some(hash) {
+                routes.by_session.remove(&route_key);
             }
         }
     }
@@ -420,7 +485,7 @@ impl CapabilityRegistry {
 
 #[derive(Clone)]
 enum CapabilityResolution {
-    Bound(acp::schema::v1::SessionId),
+    Bound(super::LiveRouteKey),
     Pending,
     Unknown,
 }
@@ -874,7 +939,9 @@ async fn serve_connection(
                         .unwrap_or(""),
                 );
                 let session_id = match &capability {
-                    CapabilityResolution::Bound(session_id) => Some(session_id.to_string()),
+                    CapabilityResolution::Bound(route_key) => {
+                        Some(route_key.session_id.to_string())
+                    }
                     CapabilityResolution::Pending | CapabilityResolution::Unknown => None,
                 };
                 tracing::info!(
@@ -985,11 +1052,12 @@ async fn submit_user_input_to_helper(
         serde_json::from_value(arguments).context("decode user input request")?;
     let request = request.validate().context("validate user input request")?;
     let started = std::time::Instant::now();
-    let (session_id, helper_id, forwarder) =
+    let (route_key, helper_id, forwarder) =
         resolve_helper(state, capability, "request_user_input").await?;
+    let session_id = route_key.session_id.clone();
     let _lease = state
         .session_mcp_capabilities
-        .try_begin_user_input(session_id.clone())?;
+        .try_begin_user_input(route_key)?;
     let request_id = Uuid::new_v4().simple().to_string();
     let params = serde_json::value::to_raw_value(&UserInputHelperRequest {
         request_id: request_id.clone(),
@@ -1070,9 +1138,9 @@ async fn resolve_helper(
     state: &MasterStateInner,
     capability: CapabilityResolution,
     op: &'static str,
-) -> Result<(acp::schema::v1::SessionId, HelperId, conn::AgentLink)> {
-    let session_id = match capability {
-        CapabilityResolution::Bound(session_id) => session_id,
+) -> Result<(super::LiveRouteKey, HelperId, conn::AgentLink)> {
+    let route_key = match capability {
+        CapabilityResolution::Bound(route_key) => route_key,
         CapabilityResolution::Pending => {
             tracing::warn!(
                 target: "session_mcp",
@@ -1096,7 +1164,9 @@ async fn resolve_helper(
     };
     let route = {
         let routes = state.session_to_helper.lock().await;
-        routes.get(&session_id).cloned()
+        routes
+            .get_for_instance(&route_key.session_id, route_key.agent_instance_id)
+            .cloned()
     };
     let Some(route) = route else {
         tracing::warn!(
@@ -1104,7 +1174,7 @@ async fn resolve_helper(
             step = "master→helper",
             op,
             stage = "resolve_helper",
-            session_id = %session_id,
+            session_id = %route_key.session_id,
             "MCP call rejected because its owning Helper is disconnected"
         );
         anyhow::bail!("owning Helper is disconnected");
@@ -1116,12 +1186,12 @@ async fn resolve_helper(
             op,
             stage = "resolve_helper",
             helper_id = ?route.helper_id,
-            session_id = %session_id,
+            session_id = %route_key.session_id,
             "MCP route has no Helper forwarder"
         );
         anyhow::bail!("owning Helper route has no forwarder");
     };
-    Ok((session_id, route.helper_id, forwarder))
+    Ok((route_key, route.helper_id, forwarder))
 }
 
 async fn forward_to_helper(
@@ -1134,7 +1204,8 @@ async fn forward_to_helper(
     timeout: Duration,
 ) -> Result<(acp::schema::v1::SessionId, String)> {
     let started = std::time::Instant::now();
-    let (session_id, helper_id, forwarder) = resolve_helper(state, capability, op).await?;
+    let (route_key, helper_id, forwarder) = resolve_helper(state, capability, op).await?;
+    let session_id = route_key.session_id;
     let params = serde_json::value::to_raw_value(&HelperRequest {
         session_id: session_id.to_string(),
         tool: tool.to_string(),
@@ -1336,7 +1407,8 @@ mod tests {
         ));
         assert!(matches!(
             registry.resolve(&new.secret).await,
-            CapabilityResolution::Bound(found) if found == session_id
+            CapabilityResolution::Bound(found)
+                if found == super::super::LiveRouteKey::new(owner, session_id)
         ));
     }
 
@@ -1353,7 +1425,8 @@ mod tests {
 
         assert!(matches!(
             registry.resolve(&committed.secret).await,
-            CapabilityResolution::Bound(found) if found == session_id
+            CapabilityResolution::Bound(found)
+                if found == super::super::LiveRouteKey::new(owner, session_id)
         ));
         assert!(matches!(
             registry.resolve(&replacement.secret).await,
@@ -1376,28 +1449,89 @@ mod tests {
         assert!(!registry.remove_session(&session_id).await);
     }
 
+    #[tokio::test]
+    async fn equal_raw_session_ids_keep_capabilities_isolated_by_agent_instance() {
+        let registry = CapabilityRegistry::default();
+        let session_id = acp::schema::v1::SessionId::new("shared-session");
+        let first_owner = AgentInstanceId::new_v4();
+        let second_owner = AgentInstanceId::new_v4();
+        let first = registry.prepare(first_owner, None).await;
+        let second = registry.prepare(second_owner, None).await;
+        assert!(registry.bind(&first, session_id.clone()).await);
+        assert!(registry.bind(&second, session_id.clone()).await);
+
+        assert!(
+            !registry.remove_session(&session_id).await,
+            "ambiguous raw removal must fail closed"
+        );
+        assert!(matches!(
+            registry.resolve(&first.secret).await,
+            CapabilityResolution::Bound(route_key)
+                if route_key == super::super::LiveRouteKey::new(first_owner, session_id.clone())
+        ));
+        assert!(matches!(
+            registry.resolve(&second.secret).await,
+            CapabilityResolution::Bound(route_key)
+                if route_key == super::super::LiveRouteKey::new(second_owner, session_id.clone())
+        ));
+
+        assert!(registry.remove_for_instance(&session_id, first_owner).await);
+        assert!(matches!(
+            registry.resolve(&first.secret).await,
+            CapabilityResolution::Unknown
+        ));
+        assert!(matches!(
+            registry.resolve(&second.secret).await,
+            CapabilityResolution::Bound(route_key)
+                if route_key == super::super::LiveRouteKey::new(second_owner, session_id)
+        ));
+    }
+
+    #[tokio::test]
+    async fn ownerless_raw_cleanup_revokes_all_colliding_capabilities() {
+        let registry = CapabilityRegistry::default();
+        let session_id = acp::schema::v1::SessionId::new("shared-session");
+        let first = registry.prepare(AgentInstanceId::new_v4(), None).await;
+        let second = registry.prepare(AgentInstanceId::new_v4(), None).await;
+        assert!(registry.bind(&first, session_id.clone()).await);
+        assert!(registry.bind(&second, session_id.clone()).await);
+
+        assert_eq!(registry.remove_all_sessions(&session_id).await, 2);
+        assert!(matches!(
+            registry.resolve(&first.secret).await,
+            CapabilityResolution::Unknown
+        ));
+        assert!(matches!(
+            registry.resolve(&second.secret).await,
+            CapabilityResolution::Unknown
+        ));
+    }
+
     #[test]
     fn user_input_lease_allows_only_one_request_per_session() {
         let registry = CapabilityRegistry::default();
         let session_id = acp::schema::v1::SessionId::new("session");
-        let lease = registry.try_begin_user_input(session_id.clone()).unwrap();
-        assert!(registry.try_begin_user_input(session_id.clone()).is_err());
+        let route_key = super::super::LiveRouteKey::new(AgentInstanceId::new_v4(), session_id);
+        let lease = registry.try_begin_user_input(route_key.clone()).unwrap();
+        assert!(registry.try_begin_user_input(route_key.clone()).is_err());
         drop(lease);
-        assert!(registry.try_begin_user_input(session_id).is_ok());
+        assert!(registry.try_begin_user_input(route_key).is_ok());
     }
 
     #[tokio::test]
     async fn removing_session_preserves_active_user_input_lease() {
         let registry = CapabilityRegistry::default();
         let session_id = acp::schema::v1::SessionId::new("session");
-        let pending = registry.prepare(AgentInstanceId::new_v4(), None).await;
+        let owner = AgentInstanceId::new_v4();
+        let pending = registry.prepare(owner, None).await;
         assert!(registry.bind(&pending, session_id.clone()).await);
-        let lease = registry.try_begin_user_input(session_id.clone()).unwrap();
+        let route_key = super::super::LiveRouteKey::new(owner, session_id.clone());
+        let lease = registry.try_begin_user_input(route_key.clone()).unwrap();
 
         assert!(registry.remove_session(&session_id).await);
-        assert!(registry.try_begin_user_input(session_id.clone()).is_err());
+        assert!(registry.try_begin_user_input(route_key.clone()).is_err());
         drop(lease);
-        assert!(registry.try_begin_user_input(session_id).is_ok());
+        assert!(registry.try_begin_user_input(route_key).is_ok());
     }
 
     #[tokio::test]
@@ -1417,7 +1551,8 @@ mod tests {
         ));
         assert!(matches!(
             registry.resolve(&replacement.secret).await,
-            CapabilityResolution::Bound(found) if found == session_id
+            CapabilityResolution::Bound(found)
+                if found == super::super::LiveRouteKey::new(owner, session_id)
         ));
     }
 
@@ -1602,8 +1737,11 @@ mod tests {
         ));
         assert!(matches!(
             registry.resolve(&retained.secret).await,
-            CapabilityResolution::Bound(session_id)
-                if session_id == acp::schema::v1::SessionId::new("retained-session")
+            CapabilityResolution::Bound(route_key)
+                if route_key == super::super::LiveRouteKey::new(
+                    retained_owner,
+                    acp::schema::v1::SessionId::new("retained-session")
+                )
         ));
     }
 

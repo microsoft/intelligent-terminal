@@ -21,9 +21,9 @@
     # PR #505 provider-native Yolo. Publishable mappings are zero-token only. Real model/tool
     # acceptance intentionally stays local-only and therefore has no release-report mapping.
     'Yolo setting persists'             = 'Feature provider-native Yolo with Copilot\.Yolo setting persists'
-    'Settings explains OpenCode Yolo compatibility' = 'Feature Settings Yolo provider compatibility\.Settings warns that OpenCode Yolo remains interactive'
-    'Settings explains Gemini Yolo restrictions' = 'Feature Settings Yolo provider compatibility\.Settings explains Gemini workspace trust dependency'
-    'AllowYoloMode policy blocks Yolo'  = 'Feature AllowYoloMode policy\.AllowYoloMode policy blocks Yolo'
+    'Settings hides unsupported automatic approval and forces it off' = 'Settings hides unsupported automatic approval and forces it off'
+    'Settings explains Gemini automatic approval restrictions' = 'Settings explains Gemini automatic approval restrictions'
+    'AllowAutomaticApproval hides automatic approval and turns it off' = 'AllowAutomaticApproval hides automatic approval and turns it off'
     'Esc/back navigation works'         = 'Esc/back navigation works|TRIGGERS the selected option'
     # §2/§5 WT accelerators + delegation palette (Feature.AgentHotkeys) — driven via window-level
     # OS keystrokes (Send-WtWindowKey), which reach WT's keybinding layer (the conpty path can't).
@@ -96,18 +96,21 @@
     # 'Session view opens from chat' (C083): the checklist lists three triggers (`/sessions`, session
     # button, or Ctrl+Shift+/); the `/sessions` slash trigger is deterministically asserted by
     # Feature.SessionState's Idle test ("the /sessions slash command must open the session view",
-    # a hard Should -BeTrue before any skip path). The Ctrl+Shift+/ WT-accelerator variant (C110) is
-    # binding-covered by the Rust UT DefaultAgentKeybindings; its live open-behavior isn't stably
-    # observable in E2E (harness pane-resolution vs. the per-tab pre-warm's extra stashed pane).
+    # a hard Should -BeTrue before any skip path). The layout-aware Ctrl+Shift+/ path (C110)
+    # is separately covered by Feature.AgentHotkeys and the C++ DefaultAgentKeybindings test.
     'Session view opens from chat'      = 'Idle state is correct.*Idle badge'
     # C111 'Slash command works' (`/sessions` opens the session view) is the same hard assertion in
     # Feature.SessionState's Idle test as the C083 `/sessions` trigger above.
     'Slash command works'               = 'Idle state is correct.*Idle badge'
+    # AgentActionsParse pins openAgentSessions; the physical accelerator case exercises
+    # that same action's layout-specific dispatch, not WTA's independent /sessions command.
+    'Command action works'              = 'Feature: layout-aware agent history and sidebar hotkeys\.Agent history hotkey toggles the layout-appropriate history surface'
 
     # §0 FRE flow
     'FRE can be skipped or closed safely' = 'FRE can be closed safely'
     'FRE privacy / help links work'     = 'FRE privacy / help link'
-    'FRE save progress works'           = 'FRE save progress'
+    'FRE save progress works'           = 'Session management on installs agent hooks \(FRE Save\)'
+    'FRE execution-policy remediation is correct' = 'Feature §0 FRE automatic execution-policy remediation'
 
     # §4 session view switching
     # 'Ended state is correct' (C121-adjacent) — see below.

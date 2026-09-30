@@ -42,8 +42,22 @@ namespace winrt::TerminalApp::implementation
         return ::IntelligentTerminal::LogDirVersioned();
     }
 
-    inline void _agentPaneLog(const std::string& msg)
+    enum class AgentPaneLogLevel
     {
+        Info,
+        Debug,
+    };
+
+    inline void _agentPaneLog(const std::string& msg, AgentPaneLogLevel level = AgentPaneLogLevel::Info)
+    {
+#if !defined(_DEBUG)
+        if (level == AgentPaneLogLevel::Debug)
+        {
+            return;
+        }
+#else
+        (void)level;
+#endif
         std::filesystem::path logDir = _intelligentTerminalLogDir();
         if (logDir.empty())
         {

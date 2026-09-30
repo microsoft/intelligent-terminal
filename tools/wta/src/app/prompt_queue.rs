@@ -331,6 +331,7 @@ impl App {
         let Some(mut item) = tab.prompt_queue.entries.remove(index) else {
             return;
         };
+        tab.reset_input_undo_history();
         item.submission.cancellation_token().cancel();
         let mut input = item.restore_text.take().unwrap_or_else(|| {
             if item.kind == RequestKind::ManualFix {
@@ -597,12 +598,13 @@ impl App {
             return;
         }
         let tab = self.current_tab_mut();
+        tab.reset_input_undo_history();
         item.submission = item.submission.with_images(tab.attachments.take_images());
         tab.record_input_history(&history_text);
         let request_id = item.submission.id;
         let cancellation = item.submission.cancellation_token();
         tab.prompt_queue.insert(item);
-        tab.clear_input();
+        tab.discard_input();
         if kind == RequestKind::ManualFix {
             self.launch_autofix_capture(
                 request_id,
@@ -1377,6 +1379,60 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn queued_submission_resets_draft_undo_without_retaining_image_copies() {
+        let _locale = crate::test_support::lock_locale();
+        let (mut app, mut rx) = app();
+        hold(&mut app);
+        let tab = app.current_tab_mut();
+        tab.insert_input_str("inspect ");
+        tab.insert_image_attachment(crate::clipboard_image::PastedImage {
+            data_base64: "aW1hZ2U=".into(),
+            mime_type: "image/png".into(),
+            label: "sample.png".into(),
+        });
+        let payload = tab
+            .attachments
+            .images()
+            .next()
+            .unwrap()
+            .data_base64
+            .as_ptr();
+        app.enqueue_input(None);
+        let tab = app.current_tab_mut();
+        tab.undo_input();
+        tab.redo_input();
+        assert!(tab.input.is_empty());
+        assert!(tab.attachments.is_empty());
+        assert_eq!(tab.prompt_queue.entries.len(), 1);
+        assert_eq!(
+            tab.prompt_queue.entries[0].submission.images[0]
+                .data_base64
+                .as_ptr(),
+            payload
+        );
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn queue_recall_starts_fresh_draft_undo_history() {
+        let _locale = crate::test_support::lock_locale();
+        let (mut app, _) = app();
+        hold(&mut app);
+        enter(&mut app, "queued request");
+        let tab = app.current_tab_mut();
+        tab.insert_input_str("discarded draft");
+        tab.clear_input();
+        app.recall_last_pending_input();
+        let tab = app.current_tab_mut();
+        tab.undo_input();
+        assert_eq!(tab.input, "queued request");
+        tab.insert_input_char('!');
+        tab.undo_input();
+        assert_eq!(tab.input, "queued request");
+        assert!(tab.prompt_queue.entries.is_empty());
     }
 
     #[test]

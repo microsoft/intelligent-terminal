@@ -15,6 +15,7 @@
 #include "ContentManager.h"
 #include "TerminalPage.h"
 #include "SharedWta.h"
+#include "AgentPaneLog.h"
 #include "../../types/inc/utils.hpp"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 
@@ -205,14 +206,16 @@ namespace winrt::TerminalApp::implementation
         co_await wil::resume_foreground(Dispatcher());
 
         Protocol::PaneContext result{};
+        const auto runtimeTabs = _RuntimeTabs();
         std::shared_ptr<Pane> targetPane;
-        uint32_t targetTabIndex = 0;
+        uint32_t targetTabIndex = UINT32_MAX;
+        const char* missingReason = "no_focused_tab";
 
         if (hasExplicitSource)
         {
-            for (uint32_t tabIndex = 0; tabIndex < _tabs.Size() && !targetPane; ++tabIndex)
+            for (uint32_t tabIndex = 0; tabIndex < runtimeTabs.size() && !targetPane; ++tabIndex)
             {
-                const auto tabImpl = _GetTabImpl(_tabs.GetAt(tabIndex));
+                const auto tabImpl = _GetTabImpl(runtimeTabs.at(tabIndex));
                 const auto rootPane = tabImpl ? tabImpl->GetRootPane() : nullptr;
                 if (rootPane)
                 {
@@ -227,15 +230,40 @@ namespace winrt::TerminalApp::implementation
         else if (const auto focusedTabIndex = _GetFocusedTabIndex())
         {
             targetTabIndex = focusedTabIndex.value();
-            if (const auto tabImpl = _GetTabImpl(_tabs.GetAt(targetTabIndex)))
+            missingReason = "tab_unavailable";
+            if (const auto tabImpl = _GetTabImpl(runtimeTabs.at(targetTabIndex)))
             {
+                missingReason = "no_active_pane";
                 targetPane = _getProtocolSourcePane(tabImpl);
             }
         }
 
         const auto sessionId = targetPane ? _getSessionIdFromPane(targetPane) : winrt::guid{};
+        const auto logFailure = [&](const char* reason) noexcept {
+            try
+            {
+                _agentPaneLog(fmt::format("pane_context_unavailable reason={} server_pid={} window_id={} tab_index={} explicit_source={} source_session={} selected_session={}",
+                                          reason,
+                                          GetCurrentProcessId(),
+                                          _WindowProperties.WindowId(),
+                                          targetTabIndex,
+                                          hasExplicitSource,
+                                          winrt::to_string(winrt::to_hstring(sourceSessionId)),
+                                          winrt::to_string(winrt::to_hstring(sessionId))));
+            }
+            catch (...)
+            {
+            }
+        };
         if (!targetPane || sessionId == winrt::guid{} || targetPane->IsAgentPane())
         {
+            // A per-window miss is expected; COM reports failure after searching all windows.
+            if (!hasExplicitSource || targetPane)
+            {
+                logFailure(!targetPane               ? missingReason :
+                           targetPane->IsAgentPane() ? (hasExplicitSource ? "agent_pane_selected" : "active_agent_without_source") :
+                                                       "selected_pane_has_no_session");
+            }
             co_return result;
         }
 
@@ -243,7 +271,7 @@ namespace winrt::TerminalApp::implementation
         paneInfo.SessionId = sessionId;
         paneInfo.TabId = targetTabIndex;
 
-        if (const auto tabImpl = _GetTabImpl(_tabs.GetAt(targetTabIndex)))
+        if (const auto tabImpl = _GetTabImpl(runtimeTabs.at(targetTabIndex)))
         {
             const auto activePane = tabImpl->GetActivePane();
             paneInfo.IsActive = activePane && activePane->IsAgentPane()
@@ -318,10 +346,11 @@ namespace winrt::TerminalApp::implementation
 
         auto tabs = winrt::single_threaded_vector<Protocol::TabInfo>();
         const auto focusedIdx = _GetFocusedTabIndex();
+        const auto runtimeTabs = _RuntimeTabs();
 
-        for (uint32_t i = 0; i < _tabs.Size(); ++i)
+        for (uint32_t i = 0; i < runtimeTabs.size(); ++i)
         {
-            const auto tab = _tabs.GetAt(i);
+            const auto tab = runtimeTabs.at(i);
             const auto tabImpl = _GetTabImpl(tab);
             if (!tabImpl)
                 continue;
@@ -353,13 +382,14 @@ namespace winrt::TerminalApp::implementation
         co_await wil::resume_foreground(Dispatcher());
 
         auto panes = winrt::single_threaded_vector<Protocol::PaneInfo>();
+        const auto runtimeTabs = _RuntimeTabs();
 
-        for (uint32_t tabIdx = 0; tabIdx < _tabs.Size(); ++tabIdx)
+        for (uint32_t tabIdx = 0; tabIdx < runtimeTabs.size(); ++tabIdx)
         {
             if (tabIdFilter != UINT32_MAX && tabIdx != tabIdFilter)
                 continue;
 
-            const auto tab = _tabs.GetAt(tabIdx);
+            const auto tab = runtimeTabs.at(tabIdx);
             const auto tabImpl = _GetTabImpl(tab);
             if (!tabImpl)
                 continue;
@@ -413,7 +443,7 @@ namespace winrt::TerminalApp::implementation
         // UI-thread work: find pane, read buffer.
         hstring fullBuffer;
         int32_t viewHeight = 0;
-        for (const auto& tab : _tabs)
+        for (const auto& tab : _RuntimeTabs())
         {
             const auto tabImpl = _GetTabImpl(tab);
             if (!tabImpl)
@@ -546,7 +576,7 @@ namespace winrt::TerminalApp::implementation
 
         Protocol::ProcessStatus result{};
 
-        for (const auto& tab : _tabs)
+        for (const auto& tab : _RuntimeTabs())
         {
             const auto tabImpl = _GetTabImpl(tab);
             if (!tabImpl)
@@ -619,7 +649,7 @@ namespace winrt::TerminalApp::implementation
 
         Protocol::SessionVariable result{};
 
-        for (const auto& tab : _tabs)
+        for (const auto& tab : _RuntimeTabs())
         {
             const auto tabImpl = _GetTabImpl(tab);
             if (!tabImpl)
@@ -664,7 +694,7 @@ namespace winrt::TerminalApp::implementation
 
         co_await wil::resume_foreground(Dispatcher());
 
-        for (const auto& tab : _tabs)
+        for (const auto& tab : _RuntimeTabs())
         {
             const auto tabImpl = _GetTabImpl(tab);
             if (!tabImpl)
@@ -748,14 +778,24 @@ namespace winrt::TerminalApp::implementation
         if (!pane)
             co_return result;
 
-        _CreateNewTabFromPane(pane, -1, /*openInBackground=*/background);
-        _tabContent.UpdateLayout(); // Force synchronous terminal initialization
-
-        if (_tabs.Size() == 0)
+        const auto newTab = _CreateNewTabFromPane(pane, -1, /*openInBackground=*/background);
+        if (!newTab)
             co_return result;
 
-        const auto newTabIdx = _tabs.Size() - 1;
-        const auto newTab = _tabs.GetAt(newTabIdx);
+        _tabContent.UpdateLayout(); // Force synchronous terminal initialization
+
+        // UpdateLayout can realize the vertical ListView and restore its
+        // previous row selection. Reassert the
+        // protocol-created foreground tab after layout has settled.
+        if (!background)
+        {
+            _selectedTabItem(newTab.TabViewItem());
+        }
+
+        uint32_t newTabIdx{};
+        if (!_tabs.IndexOf(newTab, newTabIdx))
+            co_return result;
+
         const auto tabImpl = _GetTabImpl(newTab);
 
         result.TabId = newTabIdx;
@@ -826,7 +866,7 @@ namespace winrt::TerminalApp::implementation
 
         co_await wil::resume_foreground(Dispatcher());
 
-        for (const auto& tab : _tabs)
+        for (const auto& tab : _RuntimeTabs())
         {
             const auto tabImpl = _GetTabImpl(tab);
             if (!tabImpl)
@@ -857,7 +897,7 @@ namespace winrt::TerminalApp::implementation
 
         co_await wil::resume_foreground(Dispatcher());
 
-        for (const auto& tab : _tabs)
+        for (const auto& tab : _RuntimeTabs())
         {
             const auto tabImpl = _GetTabImpl(tab);
             if (!tabImpl)
@@ -882,15 +922,29 @@ namespace winrt::TerminalApp::implementation
         co_return false;
     }
 
-    // Switch focus to `sessionId`: if it lives in a non-active tab, switch tabs
-    // first; then focus the pane within its tab and programmatically focus
-    // its TermControl. Used by the recommendation executor so that hitting
-    // "Run" follows focus to the destination pane.
+    // Restore a kept tab if needed, then select the tab and its original pane.
+    // History/session activation and recommendation execution share this path.
     IAsyncOperation<bool> TerminalPage::FocusProtocolPane(winrt::guid sessionId)
     {
         auto strong = get_strong();
 
         co_await wil::resume_foreground(Dispatcher());
+
+        if (_windowPanesShutdown || _windowCloseAccepted)
+        {
+            co_return false;
+        }
+        const auto preserveHistory = std::exchange(_preserveSidebarHistory, true);
+        const auto restoreHistoryBehavior = wil::scope_exit([&]() {
+            _preserveSidebarHistory = preserveHistory;
+        });
+        if (const auto groupId = _manager.KeptGroupForPane(sessionId); groupId != winrt::guid{})
+        {
+            _agentPaneLog(fmt::format("focus_pane: reattaching kept tab={} pane={}",
+                                      winrt::to_string(winrt::to_hstring(groupId)),
+                                      winrt::to_string(winrt::to_hstring(sessionId))));
+            THROW_HR_IF(E_ABORT, !RestoreKeptGroup(groupId));
+        }
 
         for (const auto& tab : _tabs)
         {
@@ -926,6 +980,10 @@ namespace winrt::TerminalApp::implementation
             SummonWindowRequested.raise(nullptr, nullptr);
 
             _SetFocusedTab(tab);
+            if (tabImpl->IsZoomed() && tabImpl->GetActivePane() != foundPane)
+            {
+                _UnZoomIfNeeded();
+            }
 
             // The pane may be a currently-stashed agent pane (Ctrl+Shift+. /
             // openAgentPane toggle). `FindPaneBySessionId` happily returns
@@ -939,9 +997,13 @@ namespace winrt::TerminalApp::implementation
             // actually receives focus.
             if (foundPane->IsHidden())
             {
+                if (!foundPane->IsAgentPane())
+                {
+                    tabImpl->ShowPane();
+                }
                 const auto splitDir = _AgentPanePositionToSplitDirection(
                     tabImpl->EffectiveAgentPanePosition(_settings.GlobalSettings().AgentPanePosition()));
-                if (tabImpl->RestoreStashedAgentPane(splitDir))
+                if (foundPane->IsAgentPane() && tabImpl->RestoreStashedAgentPane(splitDir))
                 {
                     // Mirror the unstash to wta so wta's tab.pane_open
                     // state stays in sync. Without this, the

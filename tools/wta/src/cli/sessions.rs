@@ -3,37 +3,75 @@ use anyhow::{Context, Result};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 const MASTER_NOT_RUNNING: &str = "wta-master not running. Start Windows Terminal first.";
+const SIDEBAR_HISTORY_CONTROL_CLIENT: &str = "sidebar-history-v1";
+
+fn control_initialize_request(
+    name: &'static str,
+    title: &'static str,
+) -> acp::schema::v1::InitializeRequest {
+    let mut request = acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
+        .client_capabilities(acp::schema::v1::ClientCapabilities::new())
+        .client_info(
+            acp::schema::v1::Implementation::new(name, env!("CARGO_PKG_VERSION")).title(title),
+        );
+    crate::session_registry::inject_wta_meta(
+        &mut request.meta,
+        &crate::session_registry::WtaMeta {
+            control_client: Some(SIDEBAR_HISTORY_CONTROL_CLIENT.to_string()),
+            ..Default::default()
+        },
+    );
+    request
+}
 
 pub(crate) async fn run_list(
     master_override: Option<String>,
     origin_filter: crate::agent_sessions::OriginFilter,
+    all_agents: bool,
     json_mode: bool,
+    include_status: bool,
 ) -> Result<()> {
     let local = tokio::task::LocalSet::new();
-    let sessions = local.run_until(fetch_from_master(master_override)).await?;
+    let mut snapshot = local
+        .run_until(fetch_from_master(master_override, all_agents))
+        .await?;
+    filter_snapshot(&mut snapshot, origin_filter);
+    if include_status {
+        snapshot
+            .history_status
+            .context("master does not report history loading status")?;
+        println!("{}", serde_json::to_string(&snapshot)?);
+    } else if json_mode {
+        print!("{}", format_json_lines(&snapshot.sessions)?);
+    } else {
+        print!("{}", format_table(&snapshot.sessions));
+    }
+    Ok(())
+}
+
+fn filter_snapshot(
+    snapshot: &mut crate::session_registry::SessionsListResponse,
+    origin_filter: crate::agent_sessions::OriginFilter,
+) {
     // Origin filter is applied client-side: master always returns the
     // full registry so this command can act as the debug eye-of-god
     // view (default `--origin all`). `--origin shell` matches what
     // the MVP sessions picker shows; `--origin agent-pane` surfaces the
     // rows MVP sessions hides.
-    let mut filtered: Vec<crate::session_registry::SessionInfo> = sessions
-        .into_iter()
-        .filter(|s| origin_filter.matches_opt(s.origin.as_ref()))
-        .collect();
+    snapshot
+        .sessions
+        .retain(|s| origin_filter.matches_opt(s.origin.as_ref()));
     // Match the `/sessions` picker, which renders newest-activity-first.
     // `None` (no timestamp) sorts last.
-    filtered.sort_by(|a, b| b.last_activity_at_ms.cmp(&a.last_activity_at_ms));
-    if json_mode {
-        print!("{}", format_json_lines(&filtered)?);
-    } else {
-        print!("{}", format_table(&filtered));
-    }
-    Ok(())
+    snapshot
+        .sessions
+        .sort_by(|a, b| b.last_activity_at_ms.cmp(&a.last_activity_at_ms));
 }
 
 async fn fetch_from_master(
     master_override: Option<String>,
-) -> Result<Vec<crate::session_registry::SessionInfo>> {
+    all_agents: bool,
+) -> Result<crate::session_registry::SessionsListResponse> {
     let pipe_name = resolve_master_pipe(master_override).await?;
     let pipe = open_master_pipe(&pipe_name).await?;
     let (read_half, write_half) = tokio::io::split(pipe);
@@ -43,42 +81,132 @@ async fn fetch_from_master(
         acp::Client.builder().name("wta-sessions"),
         crate::protocol::acp::conn::byte_streams(outgoing, incoming),
     );
-    tokio::task::spawn_local(async move {
+    let io_task = tokio::task::spawn_local(async move {
         let _ = handle_io.await;
     });
 
-    let init_started = std::time::Instant::now();
-    let init_result = conn
-        .initialize(
-            acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
-                .client_capabilities(acp::schema::v1::ClientCapabilities::new())
-                .client_info(
-                    acp::schema::v1::Implementation::new("wta-sessions", env!("CARGO_PKG_VERSION"))
-                        .title("Windows Terminal Agent sessions CLI"),
-                ),
-        )
-        .await;
-    crate::telemetry::log_acp_initialize_complete(
-        init_started.elapsed().as_secs_f64() * 1000.0,
-        init_result.is_ok(),
-        "SessionsCli",
-        if init_result.is_ok() { "" } else { "AcpError" },
-        init_result
-            .as_ref()
-            .err()
-            .map(|e| e.code.into())
-            .unwrap_or(0),
-    );
-    init_result.map_err(|_| anyhow::anyhow!(MASTER_NOT_RUNNING))?;
+    let result = async {
+        let init_started = std::time::Instant::now();
+        let init_result = conn
+            .initialize(control_initialize_request(
+                "wta-sessions",
+                "Windows Terminal Agent sessions CLI",
+            ))
+            .await;
+        crate::telemetry::log_acp_initialize_complete(
+            init_started.elapsed().as_secs_f64() * 1000.0,
+            init_result.is_ok(),
+            "SessionsCli",
+            if init_result.is_ok() { "" } else { "AcpError" },
+            init_result
+                .as_ref()
+                .err()
+                .map(|e| e.code.into())
+                .unwrap_or(0),
+        );
+        init_result.map_err(|_| anyhow::anyhow!(MASTER_NOT_RUNNING))?;
 
-    let req = crate::session_registry::build_sessions_list_request(false);
-    let resp = conn
-        .ext_method(req)
-        .await
-        .map_err(|_| anyhow::anyhow!(MASTER_NOT_RUNNING))?;
-    let parsed = crate::session_registry::parse_sessions_list_response(&resp.0)
-        .context("parse sessions/list response")?;
-    Ok(parsed.sessions)
+        let req = crate::session_registry::build_sessions_list_request(false, all_agents);
+        let resp = conn
+            .ext_method(req)
+            .await
+            .map_err(|_| anyhow::anyhow!(MASTER_NOT_RUNNING))?;
+        crate::session_registry::parse_sessions_list_response(&resp.0)
+            .context("parse sessions/list response")
+    }
+    .await;
+    drop(conn);
+    io_task.abort();
+    let _ = io_task.await;
+    result
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn run_activate(
+    session_id: &str,
+    provider: &str,
+    location: &str,
+    wsl_distro: Option<&str>,
+    universe: Option<String>,
+    window_id: u64,
+    activation_id: String,
+    status_only: bool,
+    json_mode: bool,
+) -> Result<()> {
+    let location = match location {
+        "host" => crate::agent_sessions::SessionLocation::Host,
+        "wsl" => crate::agent_sessions::SessionLocation::Wsl {
+            distro: wsl_distro
+                .filter(|value| !value.trim().is_empty())
+                .context("--wsl-distro is required for WSL sessions")?
+                .to_string(),
+        },
+        _ => anyhow::bail!("unsupported session location"),
+    };
+    let history_key =
+        crate::session_registry::HistoryRowKey::new(provider, location, session_id, universe)
+            .context("session identity is incomplete")?;
+    let identity = crate::session_registry::SessionIdentity {
+        session_id: acp::schema::v1::SessionId::new(session_id.to_string()),
+        history_key: Some(history_key),
+    };
+
+    let local = tokio::task::LocalSet::new();
+    let response = local
+        .run_until(async move {
+            let pipe_name = resolve_master_pipe(None).await?;
+            let pipe = open_master_pipe(&pipe_name).await?;
+            let (read_half, write_half) = tokio::io::split(pipe);
+            let outgoing = write_half.compat_write();
+            let incoming = read_half.compat();
+            let (conn, handle_io) = crate::protocol::acp::conn::spawn_client(
+                acp::Client.builder().name("wta-sidebar-history"),
+                crate::protocol::acp::conn::byte_streams(outgoing, incoming),
+            );
+            let io_task = tokio::task::spawn_local(async move {
+                let _ = handle_io.await;
+            });
+            let result = async {
+                conn.initialize(control_initialize_request(
+                    "wta-sidebar-history",
+                    "Windows Terminal Sidebar History",
+                ))
+                .await
+                .map_err(|_| anyhow::anyhow!(MASTER_NOT_RUNNING))?;
+                let request = crate::session_registry::build_session_activate_request(
+                    identity,
+                    window_id,
+                    activation_id,
+                    status_only,
+                );
+                let raw = conn
+                    .ext_method(request)
+                    .await
+                    .map_err(|error| anyhow::anyhow!("session activation failed: {error}"))?;
+                crate::session_registry::parse_session_activate_response(&raw.0)
+                    .context("parse session activation response")
+            }
+            .await;
+            drop(conn);
+            io_task.abort();
+            let _ = io_task.await;
+            result
+        })
+        .await?;
+
+    if json_mode {
+        println!("{}", serde_json::to_string(&response)?);
+    } else if response.accepted {
+        println!("{}", response.action);
+    } else {
+        anyhow::bail!(
+            "{}",
+            response
+                .detail
+                .unwrap_or_else(|| "session is not resumable".to_string())
+        );
+    }
+    Ok(())
 }
 
 /// Best-effort: register a WTA-launched CLI session with `wta-master` as a
@@ -280,6 +408,7 @@ fn location_label(location: &crate::agent_sessions::SessionLocation) -> String {
     match location {
         crate::agent_sessions::SessionLocation::Host => "host".to_string(),
         crate::agent_sessions::SessionLocation::Wsl { distro } => format!("wsl:{distro}"),
+        crate::agent_sessions::SessionLocation::Unknown => "unknown".to_string(),
     }
 }
 
@@ -320,6 +449,55 @@ fn format_epoch_ms_utc(ms: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn status_snapshot_preserves_loading_state_and_shell_filter_order() {
+        use crate::agent_sessions::{OriginFilter, SessionOrigin};
+        use crate::session_registry::{HistoryLoadStatus, SessionInfo, SessionsListResponse};
+        let row = |id: &str, origin, activity| {
+            let mut row = SessionInfo::new(
+                acp::schema::v1::SessionId::new(id.to_string()),
+                std::path::PathBuf::from("C:\\repo"),
+            );
+            row.origin = Some(origin);
+            row.last_activity_at_ms = Some(activity);
+            row
+        };
+        for status in [
+            HistoryLoadStatus::Loading,
+            HistoryLoadStatus::Ready,
+            HistoryLoadStatus::Error,
+        ] {
+            let mut snapshot = SessionsListResponse {
+                sessions: vec![
+                    row("older", SessionOrigin::Unknown, 1),
+                    row("agent-pane", SessionOrigin::AgentPane, 3),
+                    row("newer", SessionOrigin::Unknown, 2),
+                ],
+                history_status: Some(status),
+            };
+            filter_snapshot(&mut snapshot, OriginFilter::ShellOnly);
+            assert_eq!(snapshot.history_status, Some(status));
+            assert_eq!(snapshot.sessions.len(), 2);
+            assert_eq!(snapshot.sessions[0].session_id.0.as_ref(), "newer");
+            assert_eq!(snapshot.sessions[1].session_id.0.as_ref(), "older");
+            let json = serde_json::to_value(&snapshot).unwrap();
+            assert!(json["sessions"].is_array());
+            assert_eq!(
+                json["history_status"],
+                serde_json::to_value(status).unwrap()
+            );
+
+            filter_snapshot(&mut snapshot, OriginFilter::AgentPaneOnly);
+            assert!(snapshot.sessions.is_empty());
+            assert_eq!(snapshot.history_status, Some(status));
+        }
+        assert_eq!(
+            format_json_lines(&[]).unwrap(),
+            "",
+            "legacy empty JSONL stays empty"
+        );
+    }
 
     #[test]
     fn json_lines_prints_one_session_info_per_line() {

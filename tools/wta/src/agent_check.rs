@@ -381,21 +381,31 @@ pub fn save_copilot_enterprise_host(host: &str) {
 /// Install an agent via winget. Streams output lines through `on_line` callback.
 /// On success, refreshes the process PATH so subsequent `find_exe` calls find
 /// the new binary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AgentInstallOutcome {
+    Installed,
+    AlreadyAvailable,
+    Failed(String),
+    TimedOut,
+    DetectionTimedOut,
+}
+
 pub async fn install(
     agent_id: &str,
     on_line: impl FnMut(String) + Send + 'static,
-) -> Result<(), String> {
+) -> AgentInstallOutcome {
     match agent_id {
         "copilot" => install_copilot(on_line).await,
-        _ => Err(t!("agent.install.unsupported", agent = agent_id).into_owned()),
+        _ => AgentInstallOutcome::Failed(
+            t!("agent.install.unsupported", agent = agent_id).into_owned(),
+        ),
     }
 }
 
 /// Refresh the current process's PATH from the Windows registry.
 /// Call after installing software so `find_exe` picks up the new binary.
 pub fn refresh_path() {
-    let path = fresh_path();
-    if !path.is_empty() {
+    if let Some(path) = spawn_path() {
         std::env::set_var("PATH", &path);
     }
 }
@@ -404,8 +414,8 @@ pub fn refresh_path() {
 ///
 /// Windows Terminal (and therefore the `wta-master` / `wta` children it
 /// spawns) captures its environment block at process start. When an agent
-/// CLI is installed *after* WT is already running — e.g. the FRE
-/// winget-installs `copilot` mid-session — our inherited PATH stays stale,
+/// CLI is installed *after* WT is already running — e.g. the Agent pane
+/// installs `copilot` mid-session — our inherited PATH stays stale,
 /// so `CreateProcess` (or `cmd /c <cli>`) can't resolve the bare CLI name
 /// and the spawn fails with "is not recognized", which surfaces as an
 /// immediate ACP-initialize failure. Rebuild PATH from the registry
@@ -444,18 +454,72 @@ fn merge_paths(fresh: &str, current: &str) -> String {
 /// Check a single agent: find executable and surface setup hints.
 pub fn check_agent(agent_id: &str) -> AgentStatus {
     let profile = agent_registry::lookup_profile_by_id(agent_id);
-    let cli_path = find_exe(agent_id);
-    let cli_found =
-        host_requirements_available(profile, cli_path.is_some(), || find_exe("npx").is_some());
+    let availability = check_host_agent_availability(agent_id, host_npx_available());
 
     AgentStatus {
         id: agent_id.to_string(),
         display_name: profile.display_name.to_string(),
-        cli_found,
-        cli_path,
+        cli_found: availability.launch_ready,
+        cli_path: availability.cli_path,
         install_hint: profile.install_hint.to_string(),
         auth_hint: profile.auth_hint.to_string(),
         auto_installable: agent_id == "copilot",
+    }
+}
+
+pub fn recheck_agent(agent_id: &str) -> AgentStatus {
+    refresh_path();
+    let status = check_agent(agent_id);
+    if status.cli_found {
+        clear_install_uncertainty(agent_id);
+    }
+    status
+}
+
+pub fn is_install_uncertain(agent_id: &str) -> bool {
+    const UNCERTAINTY_WINDOW: std::time::Duration = std::time::Duration::from_secs(2 * 60);
+
+    let Some(path) = install_uncertainty_path(agent_id) else {
+        return false;
+    };
+    let Ok(metadata) = std::fs::metadata(&path) else {
+        return false;
+    };
+    let still_active = metadata
+        .modified()
+        .ok()
+        .and_then(|modified| modified.elapsed().ok())
+        .is_none_or(|age| age < UNCERTAINTY_WINDOW);
+    if !still_active {
+        clear_install_uncertainty(agent_id);
+    }
+    still_active
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostAgentAvailability {
+    pub cli_path: Option<String>,
+    pub native_cli_found: bool,
+    pub launch_ready: bool,
+    pub requires_npx: bool,
+}
+
+pub fn host_npx_available() -> bool {
+    find_exe("npx").is_some()
+}
+
+pub fn check_host_agent_availability(agent_id: &str, npx_found: bool) -> HostAgentAvailability {
+    let profile = agent_registry::lookup_profile_by_id(agent_id);
+    let cli_path = find_exe(agent_id);
+    let native_cli_found = cli_path.is_some();
+    let requires_npx = profile.acp_launch_command.starts_with("npx ");
+    let launch_ready = host_requirements_available(profile, native_cli_found, || npx_found);
+
+    HostAgentAvailability {
+        cli_path,
+        native_cli_found,
+        launch_ready,
+        requires_npx,
     }
 }
 
@@ -465,14 +529,6 @@ fn host_requirements_available(
     find_npx: impl FnOnce() -> bool,
 ) -> bool {
     cli_found && (!profile.acp_launch_command.starts_with("npx ") || find_npx())
-}
-
-/// Whether a built-in agent has every Host-side executable required to start
-/// its configured ACP command. Adapter-backed agents need both their native
-/// CLI and npx; this is the same gate used by preflight and exposed to the
-/// Terminal settings surfaces through `probe-host-agents`.
-pub fn host_agent_available(agent_id: &str) -> bool {
-    check_agent(agent_id).cli_found
 }
 
 pub async fn check_agent_in_source(
@@ -502,9 +558,21 @@ pub async fn check_agent_in_source(
 // ─── Internal helpers ───────────────────────────────────────────────────────
 
 /// Install GitHub Copilot via winget with streaming output.
-async fn install_copilot(mut on_line: impl FnMut(String) + Send + 'static) -> Result<(), String> {
+async fn install_copilot(mut on_line: impl FnMut(String) + Send + 'static) -> AgentInstallOutcome {
     use std::process::Stdio;
     use tokio::io::{AsyncBufReadExt, BufReader};
+
+    const INSTALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+    const DETECTION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
+
+    let _install_guard = match acquire_copilot_install_mutex().await {
+        Ok(guard) => guard,
+        Err(error) => return AgentInstallOutcome::Failed(error),
+    };
+
+    if recheck_agent("copilot").cli_found {
+        return AgentInstallOutcome::AlreadyAvailable;
+    }
 
     let mut cmd = tokio::process::Command::new("winget");
     cmd.args([
@@ -529,21 +597,32 @@ async fn install_copilot(mut on_line: impl FnMut(String) + Send + 'static) -> Re
 
     on_line(t!("agent.install.running_winget").into_owned());
 
+    if let Err(error) = mark_install_uncertain("copilot") {
+        tracing::warn!(target: "agent_check", %error, "failed to persist install uncertainty");
+    }
+
     let mut child = match cmd.spawn() {
         Ok(c) => c,
-        Err(e) => return Err(t!("agent.install.launch_failed", error = e.to_string()).into_owned()),
+        Err(e) => {
+            clear_install_uncertainty("copilot");
+            return AgentInstallOutcome::Failed(
+                t!("agent.install.launch_failed", error = e.to_string()).into_owned(),
+            );
+        }
     };
 
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
-    let (line_tx, mut line_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+    let (line_tx, mut line_rx) = tokio::sync::mpsc::channel::<String>(64);
 
     if let Some(stdout) = stdout {
         let tx = line_tx.clone();
         tokio::spawn(async move {
             let mut reader = BufReader::new(stdout).lines();
             while let Ok(Some(line)) = reader.next_line().await {
-                let _ = tx.send(line);
+                if tx.send(line.chars().take(4096).collect()).await.is_err() {
+                    break;
+                }
             }
         });
     }
@@ -552,7 +631,9 @@ async fn install_copilot(mut on_line: impl FnMut(String) + Send + 'static) -> Re
         tokio::spawn(async move {
             let mut reader = BufReader::new(stderr).lines();
             while let Ok(Some(line)) = reader.next_line().await {
-                let _ = tx.send(line);
+                if tx.send(line.chars().take(4096).collect()).await.is_err() {
+                    break;
+                }
             }
         });
     }
@@ -567,19 +648,118 @@ async fn install_copilot(mut on_line: impl FnMut(String) + Send + 'static) -> Re
         }
     });
 
-    let status = match child.wait().await {
-        Ok(s) => s,
-        Err(e) => return Err(t!("agent.install.winget_exited", error = e.to_string()).into_owned()),
+    let status = match tokio::time::timeout(INSTALL_TIMEOUT, child.wait()).await {
+        Ok(Ok(status)) => status,
+        Ok(Err(error)) => {
+            clear_install_uncertainty("copilot");
+            return AgentInstallOutcome::Failed(
+                t!("agent.install.winget_exited", error = error.to_string()).into_owned(),
+            );
+        }
+        Err(_) => {
+            let _ = child.kill().await;
+            let _ = child.wait().await;
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(2), forward).await;
+            return AgentInstallOutcome::TimedOut;
+        }
     };
 
-    let _ = forward.await;
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), forward).await;
 
-    if status.success() {
-        refresh_path();
-        Ok(())
-    } else {
+    if !status.success() {
+        clear_install_uncertainty("copilot");
         let code = status.code().unwrap_or(-1);
-        Err(t!("agent.install.winget_failed_code", code = code.to_string()).into_owned())
+        return AgentInstallOutcome::Failed(
+            t!("agent.install.winget_failed_code", code = code.to_string()).into_owned(),
+        );
+    }
+
+    let detection_deadline = tokio::time::Instant::now() + DETECTION_TIMEOUT;
+    loop {
+        refresh_path();
+        if check_agent("copilot").cli_found {
+            clear_install_uncertainty("copilot");
+            return AgentInstallOutcome::Installed;
+        }
+        if tokio::time::Instant::now() >= detection_deadline {
+            return AgentInstallOutcome::DetectionTimedOut;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    }
+}
+
+struct CopilotInstallMutex(windows_sys::Win32::Foundation::HANDLE);
+
+impl Drop for CopilotInstallMutex {
+    fn drop(&mut self) {
+        unsafe {
+            windows_sys::Win32::System::Threading::ReleaseMutex(self.0);
+            windows_sys::Win32::Foundation::CloseHandle(self.0);
+        }
+    }
+}
+
+async fn acquire_copilot_install_mutex() -> Result<CopilotInstallMutex, String> {
+    use windows_sys::Win32::Foundation::{
+        WAIT_ABANDONED, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT,
+    };
+    use windows_sys::Win32::System::Threading::{CreateMutexW, WaitForSingleObject};
+
+    const INSTALL_LOCK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+    let name: Vec<u16> = "Local\\Microsoft.WindowsTerminal.Wta.CopilotInstall\0"
+        .encode_utf16()
+        .collect();
+    let handle = unsafe { CreateMutexW(std::ptr::null(), 0, name.as_ptr()) };
+    if handle.is_null() {
+        return Err("failed to create the Copilot installation lock".to_string());
+    }
+
+    let deadline = tokio::time::Instant::now() + INSTALL_LOCK_TIMEOUT;
+    loop {
+        let wait = unsafe { WaitForSingleObject(handle, 0) };
+        if wait == WAIT_OBJECT_0 || wait == WAIT_ABANDONED {
+            return Ok(CopilotInstallMutex(handle));
+        }
+        if wait == WAIT_FAILED {
+            unsafe {
+                windows_sys::Win32::Foundation::CloseHandle(handle);
+            }
+            return Err("failed while waiting for the Copilot installation lock".to_string());
+        }
+        if wait != WAIT_TIMEOUT || tokio::time::Instant::now() >= deadline {
+            unsafe {
+                windows_sys::Win32::Foundation::CloseHandle(handle);
+            }
+            return Err("timed out waiting for another Copilot installation".to_string());
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    }
+}
+
+fn install_uncertainty_path(agent_id: &str) -> Option<std::path::PathBuf> {
+    crate::runtime_paths::intelligent_terminal_root()
+        .map(|root| root.join(format!("{agent_id}-install-uncertain")))
+}
+
+fn mark_install_uncertain(agent_id: &str) -> std::io::Result<()> {
+    let Some(path) = install_uncertainty_path(agent_id) else {
+        return Ok(());
+    };
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, b"installation outcome requires recheck")
+}
+
+fn clear_install_uncertainty(agent_id: &str) {
+    if let Some(path) = install_uncertainty_path(agent_id) {
+        match std::fs::remove_file(path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                tracing::warn!(target: "agent_check", %error, "failed to clear install uncertainty")
+            }
+        }
     }
 }
 

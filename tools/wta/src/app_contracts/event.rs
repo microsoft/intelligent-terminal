@@ -36,6 +36,7 @@ pub enum AppEvent {
         load_session_supported: bool,
         image_supported: bool,
         session_capabilities_ready: bool,
+        telemetry_byok_binding: Option<bool>,
     },
     /// The old helper↔master ACP task has closed its pipe intentionally and
     /// the stable helper process may start the replacement connection.
@@ -70,12 +71,17 @@ pub enum AppEvent {
         restart_required: bool,
         result: Result<(), String>,
     },
+    YoloControlOwnerChanged {
+        session_id: String,
+    },
     ModelSetCompleted {
+        request_id: uuid::Uuid,
         session_id: String,
         model: String,
         pane_override: bool,
     },
     ModelSetFailed {
+        request_id: uuid::Uuid,
         session_id: String,
         model: String,
         pane_override: bool,
@@ -137,6 +143,12 @@ pub enum AppEvent {
         failure: crate::protocol::acp::failure::AgentFailure,
         message: String,
     },
+    /// A non-authentication failure from the helper's initial ACP connection.
+    /// It belongs to startup/setup diagnostics, not the conversation history.
+    InitialAgentStartupFailed {
+        failure: crate::protocol::acp::failure::AgentFailure,
+        message: String,
+    },
     /// The helper's pipe to wta-master closed. A retained helper reconnects
     /// its existing immutable binding over the stable pipe.
     MasterDisconnected,
@@ -188,6 +200,7 @@ pub enum AppEvent {
         title: String,
         status: String,
         kind: crate::app::ToolCallKind,
+        query: Option<crate::app::ToolCallOutput>,
         /// See `ChatMessage::ToolCall::location`.
         location: Option<String>,
         /// See `ChatMessage::ToolCall::location_is_command`.
@@ -204,6 +217,8 @@ pub enum AppEvent {
         title: Option<String>,
         status: Option<String>,
         kind: Option<crate::app::ToolCallKind>,
+        /// Omitted input leaves the retained query unchanged.
+        query: Option<crate::app::ToolCallOutput>,
         /// `Some` only when the agent's `tool_call_update` actually
         /// reported new `locations`/`raw_input` — `None` means "no
         /// change", so the existing card's location hint (if any) is
@@ -269,7 +284,11 @@ pub enum AppEvent {
         tab_id: Option<String>,
         params: serde_json::Value,
     },
-    AgentInstallComplete,
+    AgentInstallComplete {
+        request_id: u64,
+        agent_id: String,
+        outcome: crate::agent_check::AgentInstallOutcome,
+    },
     LoginProgress {
         device_code: String,
         verify_url: String,
@@ -301,7 +320,7 @@ pub enum AppEvent {
     AgentSessionEvent(crate::agent_sessions::SessionEvent),
     AliveSnapshotLoaded(Vec<crate::session_registry::SessionInfo>),
     AliveSessionAdded(crate::session_registry::SessionInfo),
-    AliveSessionRemoved(agent_client_protocol::schema::v1::SessionId),
+    AliveSessionRemoved(crate::session_registry::SessionRemovedParams),
     AliveJoinUpgrade(Vec<(String, Option<String>)>),
     SessionsChanged,
     DirectTerminalActionProposal {

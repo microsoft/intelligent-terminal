@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "id": "com.microsoft.intelligent-terminal.git-status",
+  "displayName": "Git Status",
+  "publisher": "Microsoft",
+  "version": "1.0.0",
+  "protocol": {
+    "minVersion": 1,
+    "maxVersion": 1
+  },
+  "runtime": {
+    "type": "powerShellV1",
+    "entrypoint": "provider.ps1",
+    "arguments": []
+  },
+  "activationEvents": [
+    "onWorkingDirectoryChanged",
+    "onCommandFinished",
+    "onTabActivated",
+    "onManualRefresh"
+  ],
+  "fields": [
+    {
+      "id": "agentStatus",
+      "displayName": "Agent status",
+      "type": "string",
+      "defaultVisible": true
+    },
+    {
+      "id": "workingDirectory",
+      "displayName": "Current working directory",
+      "type": "string",
+      "defaultVisible": true
+    },
+    {
+      "id": "repository",
+      "displayName": "Git repo",
+      "type": "string",
+      "defaultVisible": false
+    },
+    {
+      "id": "branch",
+      "displayName": "Git branch",
+      "type": "string",
+      "defaultVisible": false
+    },
+    {
+      "id": "changes",
+      "displayName": "Git changes",
+      "type": "string",
+      "defaultVisible": false
+    }
+  ]
+}

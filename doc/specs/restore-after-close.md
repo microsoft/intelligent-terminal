@@ -67,6 +67,13 @@ failed exit, so a save that happens later can still describe how to bring the CL
 back. The binding is dropped for good in `_NotifyPanesClosing`, when the pane
 itself goes away.
 
+Host sessions resumed from session management do not need a hook to establish
+this binding. After `wtcli new-tab` returns the created pane's ID, WTA publishes
+`pane_agent_session_changed` with that pane ID and the agent/session identity
+already selected for resume. The loading banner and launch command are
+presentation, not identity sources; changing or removing their text does not
+affect persistence.
+
 `_StampAgentResumeCommandlines` is the whole of the save-side work: for each
 persisted pane that has a binding, it replaces `commandline` with
 `AgentPaneRestore::BuildResumeCommandline`. That command is rebuilt from the
@@ -85,7 +92,8 @@ run's master pipe, this window's id, this tab's id, and a CLI path already
 resolved through GPO `AllowedAgents` — meaningless after a restart, and in the
 last case a frozen policy decision. So the saved form keeps only the session,
 the agent identity (with the WSL distro folded into one `AgentPaneBackend`
-token), the view, and a custom provider's command.
+token), the view, and a custom provider's command. Runtime agent-override intent
+is not persisted.
 
 The agent identity has to be written down rather than recovered from the session
 id, because nothing on the wta side outlives the process: `session_registry` is
@@ -120,6 +128,25 @@ conversation twice and compound it on every restart. Asking what the pane will
 run — rather than consulting a persisted marker — means a pane the user pointed
 at a resume command themselves behaves the same way.
 
+Restoring also registers the shell pane's conversation as a live, **Idle**
+session without waiting for an agent hook or a new prompt. Layout replay runs
+before WTA's COM listeners subscribe, so the page retains each restored binding
+in memory instead of broadcasting it immediately. On an actual listener-ready
+acknowledgement (including a successful background reconnect), the owning helper
+requests its tab's pending bindings through `pane_agent_session_changed`.
+When a resumed pane joins a tab after its helper already subscribed, the page
+emits a tab/window-scoped `restore_bindings_available` notification after tree
+attachment. Only the owning helper requests replay; no listener-readiness cache
+is retained. If that notification precedes subscription, the listener-ready
+handshake still requests the pending bindings.
+If layout replay is still in progress, the response waits for its outermost
+batch to finish so that later panes in the same tab are included.
+The page emits scoped `session_born_bound` events once, and only that helper
+forwards them to master. An already-arrived live hook keeps its activity,
+metadata and ownership; a pending binding is discarded if its session or
+connection ends before delivery. This handshake does not gate ACP startup,
+chat, Autofix, or session management on hook-listener availability.
+
 **The agent pane.** `_HandleSplitPane` sees the agent content type and hands the
 action to `_RestoreAgentPaneFromLayout` instead of `_MakePane`, because the pane
 cannot be built from saved state alone. That reads the session, agent, view and
@@ -130,6 +157,33 @@ never launch an agent that policy now forbids. The conversation comes back
 through a boot-time ACP `session/load` driven by wta's
 `--initial-load-session-id`, and `agentStashed` restores the pane already
 toggled away.
+
+The saved session owner does not pin the pane's future Settings binding.
+When the saved identity and custom command match the inherited global or
+profile selection, restore uses that binding. Otherwise, the tab keeps a
+runtime-only `Restore` origin for the saved backend so the conversation loads
+with its owning agent. This does not immediately switch the restored session
+to today's Settings or discard its saved model.
+
+A subsequent relevant Settings change resolves the desired global/profile
+binding without treating the restored owner as a user override. Matching
+backends use the normal model-update path. A different backend retires the old
+session before rebinding the helper, or recreating it across an unsupported
+agent/execution-source boundary. Unrelated profile or runtime settings do not
+discard the restored owner. Choosing an agent explicitly during this run uses
+the separate `User` origin, including selecting the already-restored agent.
+Both origins are carried across live pane transfers, but neither is written
+to the persisted layout.
+
+Agent and model inheritance are independent. A pane pinned to the same built-in
+Host agent currently selected in Settings inherits that agent's global model
+unless it has an explicit model override. Pinning the agent does not also pin its
+model. A pane-local `/model` selection affects only that pane; subsequent
+Settings model changes still update the other matching panes. Other agents,
+WSL sources, custom-command overrides, and explicit profile backends do not inherit this Host model
+selection. Model updates carry the target window, tab, agent, and current
+model-follow mode so a helper's spawn-time binding cannot leave it permanently
+excluded.
 
 Pre-warm is suppressed for the duration of a startup replay
 (`_replayingStartupActions`), because a tab is created before the `splitPane`

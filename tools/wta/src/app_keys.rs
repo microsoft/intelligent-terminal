@@ -60,6 +60,24 @@ impl App {
     }
 
     pub(super) fn handle_key(&mut self, key: KeyEvent) {
+        let typing_key = matches!(key.code, KeyCode::Char(ch) if !ch.is_control())
+            && modifiers_allow_text_input(key.modifiers);
+        if !typing_key || !self.chat_input_has_edit_focus() {
+            self.current_tab_mut().break_input_undo_group();
+        }
+        let input_vertical_key = key.modifiers.is_empty()
+            && matches!(key.code, KeyCode::Up | KeyCode::Down)
+            && self.mode == AppMode::Chat
+            && self.current_tab().current_view == View::Chat
+            && self.pane_focused
+            && self.current_tab().input_has_nav_focus()
+            && !self.help_overlay_visible
+            && !self.command_popup_visible()
+            && (!self.current_tab().input_history_is_browsing()
+                || self.current_tab().input_all_selected);
+        if !input_vertical_key {
+            self.current_tab_mut().input_vertical_goal = None;
+        }
         // Per-keystroke and carries the raw `KeyCode` (the typed character for
         // `Char` keys) — the user's prompt can be reconstructed from this
         // stream. Trace only so it never persists in shipping (info) or
@@ -89,6 +107,19 @@ impl App {
         }
         if is_ctrl_c && self.mode == AppMode::Chat {
             self.handle_global_ctrl_c();
+            return;
+        }
+
+        if key.modifiers == KeyModifiers::CONTROL
+            && matches!(key.code, KeyCode::Char('z' | 'Z' | 'y' | 'Y'))
+            && self.chat_input_has_edit_focus()
+        {
+            self.text_selection.clear();
+            if matches!(key.code, KeyCode::Char('z' | 'Z')) {
+                self.current_tab_mut().undo_input();
+            } else {
+                self.current_tab_mut().redo_input();
+            }
             return;
         }
 
@@ -270,9 +301,7 @@ impl App {
                                     install_url: String::new(),
                                     auth_hint: profile.auth_hint.to_string(),
                                 },
-                                install_in_progress: false,
-                                install_log: Vec::new(),
-                                install_error: None,
+                                phase: SetupPhase::Ready,
                                 options,
                                 title: t!("setup.title.sign_in").into_owned(),
                                 subtitle: if profile.id == "copilot" {
@@ -619,6 +648,19 @@ impl App {
             return;
         }
 
+        if input_vertical_key {
+            let width = self
+                .input_dialog_area
+                .map(|area| area.width)
+                .unwrap_or_else(|| self.main_area_width());
+            if self
+                .current_tab_mut()
+                .move_cursor_vertical(width, key.code == KeyCode::Up)
+            {
+                return;
+            }
+        }
+
         match key.code {
             KeyCode::Up if self.current_tab().turn.recommendations().is_some() => {
                 if self.current_tab().recommendation_focus == RecommendationFocus::Input {
@@ -721,10 +763,12 @@ impl App {
                 // slash-command popup cannot edit the input behind a card.
             }
             KeyCode::Char('o') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.current_tab_mut().toggle_thinking_details();
                 self.current_tab_mut().toggle_all_completed_tool_calls();
             }
             KeyCode::F(12) => {
                 self.show_debug_panel = !self.show_debug_panel;
+                self.invalidate_input_layout();
                 self.debug_capture_enabled
                     .store(self.show_debug_panel, Ordering::Relaxed);
                 self.debug_scroll = 0;
@@ -757,7 +801,11 @@ impl App {
                 // `turn_cancel` bumps generation, emits autofix_state_cleared,
                 // and resets the state machine to Idle.
                 let tab_id = self.active_tab_key().to_string();
+                let completed_turn_count = self.current_tab().completed_turns.len();
                 self.request_turn_cancel_for_tab(&tab_id);
+                if self.current_tab().completed_turns.len() > completed_turn_count {
+                    self.current_tab_mut().scroll_to_bottom();
+                }
             }
             // Dismiss the bottom-bar Suggested indicator (autofix produced an
             // explanation, not an executable fix). Reachable only when the user

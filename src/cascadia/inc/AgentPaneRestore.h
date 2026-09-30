@@ -51,8 +51,19 @@ namespace Microsoft::Terminal::AgentPaneRestore
     inline constexpr std::wstring_view ViewFlag{ L"--initial-view" };
     inline constexpr std::wstring_view AgentIdentityFlag{ L"--agent-backend" };
     inline constexpr std::wstring_view CustomCommandFlag{ L"--agent-custom-command" };
+    inline constexpr std::wstring_view YoloControlOwnerFlag{ L"--initial-yolo-control-owner" };
     inline constexpr std::wstring_view SessionsView{ L"sessions" };
     inline constexpr std::wstring_view ChatView{ L"chat" };
+    inline constexpr std::wstring_view AutomaticYoloOwner{ L"automatic" };
+    inline constexpr std::wstring_view ManualYoloOwner{ L"manual" };
+    inline constexpr std::wstring_view ProviderRestoredYoloOwner{ L"provider-restored" };
+
+    inline constexpr bool IsValidYoloControlOwner(const std::wstring_view value) noexcept
+    {
+        return value == AutomaticYoloOwner ||
+               value == ManualYoloOwner ||
+               value == ProviderRestoredYoloOwner;
+    }
 
     struct Fields
     {
@@ -60,6 +71,7 @@ namespace Microsoft::Terminal::AgentPaneRestore
         std::wstring view;
         std::wstring agentIdentity;
         std::wstring customCommand;
+        std::wstring yoloControlOwner;
     };
 
     // Quote a value so that `CommandLineToArgvW` — which is what
@@ -120,12 +132,17 @@ namespace Microsoft::Terminal::AgentPaneRestore
     inline std::wstring BuildPaneCommandline(const std::wstring_view executable, const Fields& fields)
     {
         std::wstring cmd;
-        cmd.reserve(executable.size() + fields.sessionId.size() + fields.customCommand.size() + 128);
+        cmd.reserve(executable.size() + fields.sessionId.size() + fields.customCommand.size() +
+                    fields.yoloControlOwner.size() + 128);
         AppendQuoted(cmd, executable);
         AppendFlag(cmd, SessionIdFlag, fields.sessionId);
         AppendFlag(cmd, ViewFlag, fields.view);
         AppendFlag(cmd, AgentIdentityFlag, fields.agentIdentity);
         AppendFlag(cmd, CustomCommandFlag, fields.customCommand);
+        if (!fields.sessionId.empty() && IsValidYoloControlOwner(fields.yoloControlOwner))
+        {
+            AppendFlag(cmd, YoloControlOwnerFlag, fields.yoloControlOwner);
+        }
         return cmd;
     }
 
@@ -162,6 +179,15 @@ namespace Microsoft::Terminal::AgentPaneRestore
                 fields.customCommand = next();
                 ++i;
             }
+            else if (token == YoloControlOwnerFlag)
+            {
+                const auto value = next();
+                if (IsValidYoloControlOwner(value))
+                {
+                    fields.yoloControlOwner = value;
+                }
+                ++i;
+            }
         }
         return fields;
     }
@@ -181,6 +207,17 @@ namespace Microsoft::Terminal::AgentPaneRestore
 
     inline constexpr std::wstring_view ResumeShellPrefix{ L"cmd.exe /d /s /c \"" };
 
+    inline bool IsValidSessionId(const std::wstring_view sessionId)
+    {
+        return !sessionId.empty() &&
+               !sessionId.starts_with(L"sidekick-") &&
+               sessionId.size() <= 256 &&
+               std::all_of(sessionId.begin(), sessionId.end(), [](const wchar_t ch) {
+                   return (ch < 128 && std::isalnum(static_cast<unsigned char>(ch))) ||
+                          ch == L'-' || ch == L'_' || ch == L'.' || ch == L':';
+               });
+    }
+
     // The command line that resumes `agentSessionId` under `cliSource`, or
     // empty when that is not something we can safely spell.
     //
@@ -189,13 +226,7 @@ namespace Microsoft::Terminal::AgentPaneRestore
     inline std::wstring BuildResumeCommandline(const std::wstring_view cliSource,
                                                const std::wstring_view agentSessionId)
     {
-        if (agentSessionId.empty() ||
-            agentSessionId.starts_with(L"sidekick-") ||
-            agentSessionId.size() > 256 ||
-            !std::all_of(agentSessionId.begin(), agentSessionId.end(), [](const wchar_t ch) {
-                return (ch < 128 && std::isalnum(static_cast<unsigned char>(ch))) ||
-                       ch == L'-' || ch == L'_' || ch == L'.' || ch == L':';
-            }))
+        if (!IsValidSessionId(agentSessionId))
         {
             return {};
         }
@@ -243,22 +274,63 @@ namespace Microsoft::Terminal::AgentPaneRestore
     // Empty `agent` means the command line is not one of ours.
     inline ResumeTarget ParseResumeCommandline(const std::wstring_view commandline)
     {
-        if (!commandline.starts_with(ResumeShellPrefix) || !commandline.ends_with(L'"'))
+        auto inner = commandline;
+        while (!inner.empty() && std::iswspace(inner.front()))
+        {
+            inner.remove_prefix(1);
+        }
+        while (!inner.empty() && std::iswspace(inner.back()))
+        {
+            inner.remove_suffix(1);
+        }
+
+        if (inner.starts_with(ResumeShellPrefix) && inner.ends_with(L'"'))
+        {
+            inner = inner.substr(ResumeShellPrefix.size(),
+                                 inner.size() - ResumeShellPrefix.size() - 1);
+        }
+
+        const auto firstSpace = inner.find_first_of(L" \t");
+        if (firstSpace == std::wstring_view::npos)
         {
             return {};
         }
 
-        const auto inner = commandline.substr(ResumeShellPrefix.size(),
-                                              commandline.size() - ResumeShellPrefix.size() - 1);
+        const auto requestedExecutable = inner.substr(0, firstSpace);
+        auto arguments = inner.substr(firstSpace);
+        while (!arguments.empty() && std::iswspace(arguments.front()))
+        {
+            arguments.remove_prefix(1);
+        }
+
         for (const auto& [executable, resumeArg] : ResumeInvocations)
         {
-            std::wstring prefix{ executable };
-            prefix.push_back(L' ');
-            prefix.append(resumeArg);
-            prefix.push_back(L' ');
-            if (inner.starts_with(prefix))
+            if (requestedExecutable != executable)
             {
-                return { std::wstring{ executable }, std::wstring{ inner.substr(prefix.size()) } };
+                continue;
+            }
+
+            if (!arguments.starts_with(resumeArg))
+            {
+                continue;
+            }
+            auto sessionId = arguments.substr(resumeArg.size());
+            if (sessionId.empty() ||
+                (!std::iswspace(sessionId.front()) && sessionId.front() != L'='))
+            {
+                continue;
+            }
+            if (sessionId.front() == L'=')
+            {
+                sessionId.remove_prefix(1);
+            }
+            while (!sessionId.empty() && std::iswspace(sessionId.front()))
+            {
+                sessionId.remove_prefix(1);
+            }
+            if (IsValidSessionId(sessionId))
+            {
+                return { std::wstring{ executable }, std::wstring{ sessionId } };
             }
         }
         return {};

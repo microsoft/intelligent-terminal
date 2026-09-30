@@ -67,9 +67,10 @@ pub(crate) struct Cli {
     pub(crate) allowed_agent_ids: Vec<String>,
 
     /// Boot-time hint from Windows Terminal: start directly on the auth screen
-    /// for the given agent instead of attempting the initial ACP session. Used
-    /// when FRE just installed Copilot, where the next expected action is
-    /// signing in. Hidden — only Windows Terminal should pass it.
+    /// for the given agent instead of attempting the initial ACP session.
+    /// Retained for explicit host-driven auth entry; normal deferred installs
+    /// now reconnect through preflight. Hidden — only Windows Terminal should
+    /// pass it.
     #[arg(long, hide = true, value_name = "AGENT_ID")]
     pub(crate) initial_auth_agent: Option<String>,
 
@@ -80,9 +81,9 @@ pub(crate) struct Cli {
     #[arg(long)]
     pub(crate) acp_model: Option<String>,
 
-    /// This helper inherited `acp_model` from the global agent settings rather
-    /// than a per-tab/profile pin. Hidden because TerminalPage is the
-    /// authoritative source of this scope.
+    /// This helper inherits the matching global agent's model, independently
+    /// of its agent selection. TerminalPage owns this initial scope and may
+    /// refresh it through a targeted settings update or agent rebind.
     #[arg(long, hide = true)]
     pub(crate) follows_global_acp_model: bool,
 
@@ -114,6 +115,10 @@ pub(crate) struct Cli {
     /// Disable auto-fix on command failure
     #[arg(long)]
     pub(crate) no_autofix: bool,
+
+    /// Host-resolved AllowAutoFix policy for telemetry, not an enforcement flag.
+    #[arg(long, hide = true, value_parser = ["notConfigured", "enabled", "disabled", "unknown"])]
+    pub(crate) autofix_policy_state: Option<String>,
 
     /// Disable automatic agent hook reconciliation at master startup.
     #[arg(long, hide = true)]
@@ -187,6 +192,14 @@ pub(crate) struct Cli {
     /// resumed conversation runs against the right repo root. Hidden.
     #[arg(long, hide = true, value_name = "PATH")]
     pub(crate) initial_load_cwd: Option<String>,
+
+    /// Saved Yolo ownership provenance paired with an initial loaded session.
+    #[arg(
+        long,
+        hide = true,
+        value_parser = ["automatic", "manual", "provider-restored"]
+    )]
+    pub(crate) initial_yolo_control_owner: Option<String>,
 
     /// Pre-warm mode: the helper is being spawned for a tab whose agent
     /// pane is *already stashed* on the C++ side (see TerminalPage::
@@ -294,7 +307,7 @@ pub(crate) enum Command {
         #[arg(short = 't', long)]
         target: Option<String>,
         /// Split horizontally (panes side by side)
-        #[arg(short = 'h', long)]
+        #[arg(short = 'H', long)]
         horizontal: bool,
         /// Split vertically (panes stacked)
         #[arg(short = 'v', long)]
@@ -480,6 +493,35 @@ pub(crate) enum SessionsAction {
         /// WTA spawned for an Intelligent Terminal agent pane.
         #[arg(long, value_enum, default_value_t = SessionsOriginArg::All)]
         origin: SessionsOriginArg,
+        /// Refresh all installed, policy-allowed host agents in the background.
+        /// Connections remain in the master pool; this command returns the current snapshot.
+        #[arg(long)]
+        all_agents: bool,
+        /// With --json, return a snapshot object including history loading status
+        /// instead of one session per line.
+        #[arg(long, requires = "json")]
+        include_status: bool,
+    },
+    /// Activate one exact session row from the Sidebar History projection.
+    #[command(hide = true)]
+    Activate {
+        #[arg(long)]
+        session_id: String,
+        #[arg(long)]
+        provider: String,
+        #[arg(long, value_parser = ["host", "wsl"])]
+        location: String,
+        #[arg(long)]
+        wsl_distro: Option<String>,
+        #[arg(long)]
+        universe: Option<String>,
+        #[arg(long)]
+        window_id: u64,
+        #[arg(long)]
+        activation_id: String,
+        /// Read the existing activation outcome without focusing or restoring again.
+        #[arg(long)]
+        status_only: bool,
     },
 }
 

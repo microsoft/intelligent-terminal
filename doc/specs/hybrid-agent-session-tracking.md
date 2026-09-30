@@ -19,17 +19,11 @@ This spec adds a **file/process watcher as a pure fallback** that fills exactly
 that hole, for all four CLIs, **without changing anything about the hook path**.
 The design principle is one sentence:
 
-> **A real hook owns a session outright; #266 born-bound owns only its binding;
-> the watcher fills the rest — surfacing user-typed sessions and supplying
-> *status* for born-bound (delegate/resume) sessions that have no hook — and the
-> three never double-track.**
+> **A real hook owns a session outright; born-bound owns only its binding; the
+> watcher supplies status when hooks are absent; and the paths never
+> double-track.**
 
-The C++ side is unchanged — this is entirely a `wta` (Rust) addition: the
-watcher itself, the two-set dedup (`hook_owned` / `born_bound`), an in-window
-liveness gate, a liveness reaper, the born-bound *status* fallback, per-CLI
-status detection (all four turn-based; Gemini is Working-only — it shows live
-Working/Attention but defers the turn-end → Idle), and a codex
-title-extraction fix.
+The C++ side is unchanged — this is entirely a `wta` (Rust) addition.
 
 ## Background: Class A / Class B
 
@@ -44,14 +38,8 @@ IT classifies every session by `SessionOrigin` (`agent_sessions.rs`):
     opens, `/sessions` resume) — see the companion spec; or
   - **hooks** when the user typed it *and* the CLI has `wt-agent-hooks`.
 
-The watcher targets the **remaining** Class-B sessions: **user-typed CLIs with
-no hooks installed**. It is the last slice of the "de-hook" effort, shipped as
-an opt-out-free fallback rather than a hook replacement.
-
 ## Goals
 
-- When hooks are absent, still discover user-typed Class-B sessions, bind them
-  to their pane, show live activity, and reap them when the process exits.
 - Never produce a duplicate, a ghost, or a wrong-pane row when hooks **are**
   present — the watcher must be a no-op for any session a hook owns.
 - Never surface a session that is not actually running in **this** IT window
@@ -72,9 +60,6 @@ an opt-out-free fallback rather than a hook replacement.
    real hook / ACP event   ──►  `hook_owned`  ──► watcher fully suppressed
    #266 born-bound              `born_bound`   ──► watcher supplies STATUS only
    (delegate / resume)     ──►                     (never re-binds)
-   user-typed CLI, no hook ───────────────────► watcher creates + binds the row
-                                  │
-                                  ▼
                     wta-master registry (one row per session)
 ```
 
@@ -114,32 +99,6 @@ Codex subagent rollouts (`multi_agent_v1` / `spawn_agent` forks, identified by
 the parent's history and would otherwise appear as a duplicate row with the same
 title.
 
-### Binding & liveness (process-driven)
-
-`proc_bind.rs` resolves the `(pane GUID, owner pid, cwd)` for a watched session,
-best-effort, via Win32:
-
-- `wt_session_for_pid` — reads the `WT_SESSION` environment variable straight
-  out of a process's PEB; this **is** the pane GUID.
-- `copilot_pid_from_lock` — copilot writes `inuse.<pid>.lock` in its session
-  dir, giving an exact session→pid link.
-- `file_owner_pid` — Restart-Manager (`RmStartSession` / `RmGetList`) reports
-  which process holds a rollout file open (used for codex).
-- `pid_alive`, `env_var_for_pid`, `cwd_for_pid` — supporting probes.
-
-Binding confidence differs per CLI, and **this is the core reason hooks remain
-preferred**:
-
-- **Copilot**: lock-file → pid → `WT_SESSION` is exact.
-- **Codex**: RM file-owner → pid → `WT_SESSION` is exact *while codex holds the
-  rollout open*.
-- **Claude / Gemini**: no lock file and no reliable open-file owner, so binding
-  falls back to cwd correlation, which is ambiguous when two panes share a cwd.
-
-A failed bind never blocks the row — it yields `pane = None` / `pid = None`. The
-resolved `pid` is stored on the row as `bound_pid` (`session_registry.rs`) and
-feeds the reaper.
-
 ### Dedup: how the watcher coordinates with hooks and born-bound
 
 The master keeps **two disjoint** ownership sets (`master/mod.rs`):
@@ -167,12 +126,11 @@ every watcher status event for the resumed row was dropped and the row sat at
 `Idle` for its whole life. A real hook re-claims ownership on its very next
 event, so nothing is lost when hooks are working.
 
-`apply_watcher_event` then, in order:
+Watcher processing then, in order:
 
 1. `hook_owned.contains(sid)` → **drop** (the hook owns binding and activity);
-2. `born_bound.contains(sid)` → **apply status only** (see below), never re-bind;
-3. existing row `origin == AgentPane` → drop (Class A, ACP-driven);
-4. otherwise → the normal create/bind/gate path (user-typed sessions).
+2. `born_bound` → **apply status only**, never re-bind;
+3. anything else → drop rather than guess.
 
 There is no ordering requirement and the row identity is the same session id
 throughout, so no duplicate is ever produced.
@@ -247,24 +205,6 @@ The gate runs **only** when a row is being created (`None`) or revived from a
 terminal state (`Historical` / `Ended`); already-live rows skip it so a chatty
 session doesn't re-walk COM on every keystroke.
 
-### The 5-second reaper
-
-Hooks emit an explicit close event; the watcher has no such signal, so a
-dedicated `tokio::time::interval(5s)` task (`reap_dead_class_b_sessions`) ends
-fallback rows whose process has gone. It transitions a row to `SessionStopped`
-when **all** hold:
-
-- `origin != AgentPane` (Class B only),
-- `status ∈ {Working, Idle, Attention}` (not already terminal),
-- `bound_pid.is_some()` — and `bound_pid` is set **only** by the watcher bind
-  path, so the reaper effectively only ever reaps watcher-tracked rows, and
-- `!pid_alive(bound_pid)`.
-
-`pid_alive` is ~13 µs for a live pid; the per-tick cost is well under 0.1 ms for
-realistic row counts, so the 5 s cadence is negligible. This is a net-new task
-(master has no other interval; the `/sessions` view's 5 s re-poll is
-helper-side and unrelated).
-
 ### Title resolution (and the codex AGENTS.md fix)
 
 > **Superseded.** The on-disk title scan described below was removed with the
@@ -315,11 +255,8 @@ title).
 |---------|---------|
 | Watcher loop, roots, seed | `tools/wta/src/session_watcher/mod.rs` |
 | Per-CLI discovery / classify | `session_watcher/{discover,classify_copilot,classify_codex,classify_claude,classify_gemini}.rs` |
-| Pane binding helper | `session_watcher/bind.rs` |
-| Win32 probes (PEB, lock, RM) | `tools/wta/src/proc_bind.rs` |
-| Apply / dedup / gate / reaper | `tools/wta/src/master/mod.rs` (`apply_watcher_event`, `handle_session_hook`, `ensure_watched_session_row`, `watcher_row_allowed`, `live_it_pane_guids`, `reap_dead_class_b_sessions`, `hook_owned` + `born_bound` sets) |
+| Apply / ownership | `tools/wta/src/master/mod.rs` (`apply_watcher_event`, `hook_owned`, `born_bound`) |
 | Born-bound registration | `session_registry.rs` (`build_born_bound_request`, `INTELLTERM_METHOD_SESSION_BORN_BOUND`), `main.rs` (`register_launched_session_with_master`) |
-| Row `bound_pid` field | `tools/wta/src/session_registry.rs` |
 | Codex subagent fork detection | `session_watcher/classify_codex.rs` (`record_is_subagent_meta`) |
 | User-input tool heuristic | `agent_sessions.rs` (`is_user_input_tool`) |
 
@@ -329,8 +266,179 @@ The watcher maps each CLI's on-disk transcript to the same `AgentStatus` the
 hook reducer uses, via three events: `ToolStarting` → **Working**,
 `ToolCompleted` → **Idle**, `Notification` → **Attention**. A fresh/bound session
 starts `Idle`; terminal states are `Historical` (startup history scan) and
-`Ended` (pane/process gone); the 5 s reaper or a hook taking over moves a row out
-of the live states.
+`Ended` (pane/process gone); lock removal, pane close, or a hook lifecycle event
+moves a row out of the live states.
+
+The vertical sidebar's dedicated Agents button uses the Fluent UI System Icons
+`Agents 16 Regular` vector icon and opens live and historical sessions in a view
+with an **Agents** header, search box, and close button. Closing it
+returns to the live tab/pane groups and stops session refreshes, preserving the tab
+search and foreground selection. The Filter flyout contains only Tab Metadata
+controls; it does not switch between All tabs and Agents only. The Agents
+view displays the registry activity:
+`Idle` (Idle), `Working` (Active), `Attention` (Waiting for input), `Error`
+(Error), and both `Ended` and `Historical` as Historical, with localized labels.
+Automatic Host discovery and prewarming exclude Gemini; opening this sidebar
+does not start a Gemini ACP process. Explicit Gemini chat selection remains
+available, and existing Gemini registry rows are still eligible for display.
+This is presentation-only: the raw status, liveness, and focus/resume routing remain
+unchanged. Each row has its provider's vector icon on the left, shared with the agent
+pane header and tinted using the row foreground; unknown/custom providers use a
+generic session icon rather than another provider's brand.
+The bottom-right session-management button is hidden only in the Vertical tab
+layout; other layouts retain it. Its visibility updates on startup and live
+layout changes, independently of whether the vertical sidebar is expanded,
+collapsed, or hidden. The button shares the existing `openAgentSessions` action.
+The final agreed keyboard and focus behavior is specified in
+[Agent History and Sidebar Keyboard Navigation](./agent-history-sidebar-keyboard.md).
+That contract does not change horizontal agent-session behavior.
+In vertical layout, `Ctrl+Shift+/` opens the Agents view
+and focuses its search box. Closing it with the same shortcut or close button
+restores the sidebar's previous expanded/collapsed state and attempts to restore
+the source chat input or terminal split, with a visible-terminal fallback.
+In contrast, `Ctrl+Shift+S` only expands/collapses the sidebar: expansion does not
+move focus or activate search, and collapse uses the no-source focus policy even
+when the Agents view was visible. Neither action deletes session data or stops agent tasks.
+The sidebar hint uses **Expand sidebar** / **Collapse sidebar** and shows the
+effective binding on the same line in dimmed text, with casing such as `Ctrl+Shift+S`.
+
+Session titles use only the text before the first CR or LF. An empty first line
+uses the existing missing-title fallback. The title occupies one non-wrapping
+line with ellipsis; the metadata line below it is unchanged.
+The second line is left-aligned as `Agent name · relative age · status` for Host
+sessions and `Agent name · distro name · relative age · status` for WSL sessions,
+using the provider's display name, the exact WSL distro name, and
+`last_activity_at_ms`. Like the session manager,
+timestamps less than seven days old use localized relative time; timestamps at
+least seven days old use the UTC calendar date formatted with Windows' localized
+long-date format. The display refreshes with each snapshot. Missing,
+zero, or invalid timestamps display Unknown, and future timestamps display just now.
+Active uses a theme-aware green success accent, Waiting for input a yellow caution
+accent, and Error a red critical accent, matching the session management view.
+Only the status text is accented; the provider, distro name,
+age, and separators stay muted, and search matches remain highlighted. Host/WSL
+location remains searchable and available for routing; Host has no extra location
+label. Status-only updates preserve the provider, distro name, and age from the
+latest snapshot.
+The live session bound to the current terminal pane has a selected background.
+This follows the active pane and its current agent-session binding, not the last
+clicked row; failed activation and search do not change the displayed session.
+The background reuses the current tab's selected color when one is configured,
+with the same contrasting foreground, or the theme's default list selection
+background otherwise. Switching tabs or panes, changing the tab color, and
+refreshing the snapshot update the marker without resetting the session list.
+No row is highlighted when the active pane has no matching live session.
+Unselected rows keep their original container styling and inherited foreground.
+The theme selection background is a separate visual shown only for the current
+row; custom tab-color foreground overrides are cleared when a row loses the
+marker or its container is recycled.
+The default current-row palette pairs the theme's selected background and
+selected foreground, including theme changes. UI Automation exposes a localized
+Current session item status on the current row's list container and clears it
+on deselection or recycling; keyboard selection remains independent.
+Missing or unrecognized states display Unknown rather than implying a historical
+session. Search matches both the displayed status and the raw registry value;
+the existing `live` and `history` search terms remain available. This presentation
+does not change shell-session visibility, liveness classification, or focus/resume
+routing. Registry-change notifications and the existing five-second snapshot
+refresh update the displayed status.
+Rows whose raw status is neither `Ended` nor `Historical` appear first, followed by
+closed/history rows. Within each group, rows retain newest-first ordering by
+`last_activity_at_ms`, the same timestamp used for relative age. This stable grouping
+is applied by the sidebar when accepting each snapshot, including after session
+closure or resume, and is preserved by search. The WTA CLI's time-based ordering
+and other session-management views are unchanged.
+For imported history the timestamp comes from ACP `session/list.updated_at`;
+live registry events update it, including tool activity, notifications, and session
+or pane closure. It is not a creation time or the time History was opened. Missing
+timestamps sort last within their group.
+Background snapshots update individual list slots rather than resetting the
+collection, retaining unchanged row objects and the scroll offset. Changes to
+the search query still rebuild the filtered results; periodic refreshes do not
+pull the user's viewport back to the top.
+
+Activating a History row focuses or resumes its session without leaving History
+or clearing its search query. Protocol pane focus (including kept-tab restore)
+preserves the sidebar view while changing the selected tab and terminal keyboard
+focus. Sidebar resume creates a background tab, then explicitly focuses its newly
+returned pane using the existing `focus_pane` operation. This preservation is
+activation-specific: generic foreground `CreateProtocolTab` creation exits History.
+Ordinary background tab creation and kept-tab focus retain their existing behavior.
+Successful activation restarts History refreshes; explicit user new-tab actions
+and closing History retain their existing behavior.
+Activation has a separate busy state from list loading: existing rows and the search
+query stay visible without the full-list loading spinner while focus/resume runs.
+Repeated activation clicks are ignored until completion, and background snapshots
+cannot clear the activation guard. Closing History resets that guard.
+
+History list requests are single-flight per window. Notifications received during
+activation are coalesced and serviced after activation completes, without hiding
+the existing rows. Initial load failures (including non-zero CLI exits) show a
+warning rather than an empty-history success state. Background refresh failures
+retain the previous snapshot and display a warning alongside it. Refresh errors
+and activation errors are independent: a successful refresh clears only the
+refresh warning, not a failed focus/resume result. Existing localized error
+messages are reused.
+
+Consecutive list failures impose a 5, 10, 20, 40, then 60-second retry delay,
+measured from completion. Both registry notifications and the five-second timer
+respect it; the timer retries on its first eligible tick. Failed requests discard
+the coalesced pending refresh instead of immediately retrying. A `ready` snapshot
+or leaving/reopening the Agents view resets the retry delay. A `loading` discovery
+snapshot is not a failure and does not increase the retry delay.
+
+Closing the view, destroying its page, or starting activation signals cancellation
+of the in-flight list command. The background capture loop checks cancellation
+before launch, while draining output, and between bounded process waits. It
+terminates only its own short-lived list process, not shared WTA master, provider
+discovery, or agent sessions. The UI thread never waits for process exit.
+Late/canceled responses cannot replace the snapshot, display an error, or add
+retry backoff. Reopening coalesces a fresh request until the old worker completes,
+using a new cancellation flag for the new request.
+
+Activation operations are reserved by activation ID before dispatch and owned by
+master, not by the short-lived CLI connection. Concurrent requests with the same
+ID return its pending or completed receipt rather than focusing or restoring
+again. Reusing an ID for another qualified session identity or window is rejected.
+The bounded receipt cache never evicts pending operations.
+Timeouts or unreadable responses from the master's own `wtcli` mutation also
+remain unknown, rather than being converted into a definitive rejection that
+would permit a duplicate restore. A created tab without a usable pane binding
+is likewise not safe to restore again.
+
+A client timeout does not prove that the backend took no action. After an
+unconfirmed activation response, Terminal makes one bounded, read-only
+`sessions activate --status-only` request with the original activation ID and
+qualified identity. This uses the separate `session/activation_status` extension
+method, so an older master cannot mistake a status lookup for another activation.
+An unavailable, pending, malformed, or mismatched receipt leaves the operation
+unresolved and displays the existing activation error. Clicking that row again
+checks the same operation instead of generating a new ID or restoring again.
+Other rows remain independently activatable.
+
+Unresolved IDs survive History close/reopen and list refreshes for the lifetime
+of the page. A matching completed receipt releases the ID, even if the view closed
+while the request was running, without applying a stale UI callback. A late
+receipt cannot release a newer operation. If master restarts or evicts a completed
+receipt before it is observed, status is `unknown`; Terminal conservatively keeps
+the ID and does not automatically redispatch a potentially completed mutation.
+
+At startup, once its named pipe is ready, master checks policy and local
+native agent CLI and required `npx` prerequisites, then initializes installed
+Windows-host providers through the existing native-provider agent pool. Discovery
+never automatically installs a native agent CLI or starts an interactive login.
+The pinned Claude and Codex ACP adapters are separate from those native CLIs;
+adapter cache presence is not checked. Existing `npx -y` behavior is allowed to
+download and bootstrap an uncached adapter during initial startup or a later
+refresh that starts a provider, so discovery may require network access.
+Each provider lists its own history; no helper or chat session is created.
+Connections stay warm for the lifetime of master,
+including while History is closed. Discovery is asynchronous and single-flight across
+windows, so slow or failed providers do not block existing rows. History synchronization
+preserves live status and pane bindings. WSL/custom sessions already known to the registry
+are still displayed, but this pass does not start WSL distros or unknown custom commands.
+Sidebar snapshots use `--all-agents` to refresh the same resident pool; opening History
+is not required to establish these connections or load the initial histories.
 
 - **Claude** (`classify_claude.rs`) — **turn-based, keyed on `stop_reason`**.
   Claude re-writes the same assistant message id several times as it streams
@@ -406,30 +514,17 @@ of the live states.
 - **Hooks installed mid-session**: the first hook event marks the session
   `hook_owned`; the watcher row (if any) is adopted by the hook from then on,
   same session id, no duplicate.
-- **Bind fails (Claude/Gemini shared cwd)**: row is created with `pane = None`;
-  the liveness gate then withholds it (no live pane to match) rather than risk a
-  wrong-window row. This is the conservative, accepted limitation that keeps
-  hooks preferred for those two CLIs.
-- **Codex holds, then releases, the rollout file**: binding is exact only while
-  the file is held; if codex closes it the reaper still ends the row on process
-  exit via `bound_pid`.
-- **Other IT window**: that window's panes aren't in this master's
-  `live_it_pane_guids`, so the gate withholds the row — each window shows only
-  its own.
 - **`notify` miss**: a dropped FS event means a late or missing appearance; the
   fallback nature makes this acceptable, and the startup seed bounds the blast
   radius after a restart.
 
 ## Capabilities
 
-- **Security / Privacy**: reads only the user's own CLI session-state files and
-  process metadata for the current user; no new network or cross-user access.
-- **Reliability**: best-effort throughout; every probe failure degrades to "no
-  row" rather than a wrong row. Dedup and the liveness gate are the two
-  invariants that prevent duplicates/ghosts.
-- **Performance**: event-driven (no sweep); the only timer is the 5 s reaper
-  (sub-0.1 ms/tick). COM pane walks are cached 2 s and only run on
-  create/revive.
+- **Security / Privacy**: reads only the user's own CLI session-state files; no
+  new network or cross-user access.
+- **Reliability**: every mapping failure degrades to "no row" rather than a
+  wrong row.
+- **Performance**: event-driven with no polling sweep.
 - **Compatibility**: additive; with hooks installed, behaviour is identical to
   `main` (watcher events are all deduped).
 
@@ -447,16 +542,13 @@ of the live states.
 - Manual matrix:
   - hooks installed → row tracked by hook; master log shows watcher events
     deduped.
-  - hooks uninstalled → user-typed codex tracked by the watcher with the correct
-    real-prompt title (verified in an `AGENTS.md` repo); external/non-IT copilot
-    sessions stay hidden; no PowerShell shell-hook events in the master log.
   - hooks uninstalled → a **delegate** (`?<prompt>`) and a **resumed** Claude
     session show live status (Working/Idle/Attention) from the watcher, not a
     frozen `Idle`.
 
 ## Diagnostics
 
-`wta-main_master.log` (`target: "session_watcher"`):
+`wta-main_master*.log` (`target: "session_watcher"`):
 
 - `refreshed live IT pane set panes={…}` — the COM-walked live pane set.
 - `watcher liveness gate decision … resolved_pane=… gated=… live_pane_count=…
@@ -470,11 +562,8 @@ of the live states.
   Claude/Gemini binding is too ambiguous and codex's RM binding is fragile, so
   hooks must stay authoritative. This spec is the salvaged *fallback* half of
   that work.
-- **Polling sweep for perfect liveness** — rejected: disproportionate for a
-  fallback; event-driven + the 5 s reaper is enough.
-- **Pane-is-some filter instead of the in-window gate** — rejected: machine-wide
-  CLI sessions also carry `WT_SESSION`, so only membership in *this* window's
-  live pane set is sufficient.
+- **Polling sweep for perfect liveness** — rejected: the watcher is a fallback,
+  and an idle process scan is disproportionate.
 - **Gemini turn-end → Idle** — **deferred** (see *Status detection*): Gemini's
   transcript has no turn-completion signal and a 2-phase / `$set`-interleaved
   shape, so the *end* of a turn can't be told from the log. Gemini already shows
@@ -490,5 +579,3 @@ of the live states.
   watcher cover those two as confidently as Copilot/Codex.
 - A reliable Gemini turn signal (a `finishReason`, or a stable per-message
   completion marker) would let Gemini join the turn-based status model.
-- If a CLI gains a first-class "session ended" file marker, the reaper could
-  react to it instead of polling pid liveness.

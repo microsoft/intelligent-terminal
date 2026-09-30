@@ -133,14 +133,19 @@ void AppHost::_HandleCommandlineArgs(const winrt::TerminalApp::WindowRequestedAr
     // We don't have XAML yet, but we do have other stuff.
     _windowLogic = _appLogic.CreateNewWindow();
 
-    if (const auto layout = windowArgs.PersistedLayout())
+    if (const auto groups = windowArgs.KeptGroupIds(); groups && groups.Size() > 0)
+    {
+        _windowLogic.SetStartupKeptGroups(groups.GetView(), windowArgs.InitialBounds());
+        _launchShowWindowCommand = SW_NORMAL;
+    }
+    else if (const auto layout = windowArgs.PersistedLayout())
     {
         _windowLogic.SetPersistedLayout(layout);
         _launchShowWindowCommand = SW_NORMAL;
     }
     else if (const auto content = windowArgs.Content(); !content.empty())
     {
-        _windowLogic.SetStartupContent(content, windowArgs.InitialBounds());
+        _windowLogic.SetStartupContent(content, windowArgs.InitialBounds(), windowArgs.TransferId());
         _launchShowWindowCommand = SW_NORMAL;
     }
     else if (const auto actions = windowArgs.StartupActions(); actions && actions.Size() > 0)
@@ -332,6 +337,12 @@ void AppHost::Close()
 
     _revokeWindowCallbacks();
 
+    // Headless content outlives this window. Explicitly close everything still
+    // owned by its controls rather than relying on XAML to release them.
+    if (const auto page = _windowLogic ? _windowLogic.GetRoot().try_as<winrt::TerminalApp::TerminalPage>() : nullptr)
+    {
+        page.ShutdownPanes();
+    }
     _window->Close();
 
     winrt::TerminalApp::TerminalWindow logic{ nullptr };
@@ -1352,6 +1363,7 @@ winrt::TerminalApp::TerminalWindow AppHost::Logic()
 void AppHost::_handleMoveContent(const winrt::Windows::Foundation::IInspectable& /*sender*/,
                                  winrt::TerminalApp::RequestMoveContentArgs args)
 {
+    const auto keepAlive = shared_from_this();
     winrt::Windows::Foundation::IReference<winrt::Windows::Foundation::Rect> windowBoundsReference{ nullptr };
 
     if (args.WindowPosition() && _window)
@@ -1429,11 +1441,13 @@ void AppHost::_handleMoveContent(const winrt::Windows::Foundation::IInspectable&
 
     if (target)
     {
-        target->_windowLogic.AttachContent(args.Content(), args.TabIndex());
+        target->_windowLogic.AttachContent(args.Content(), args.TabIndex(), args.TransferId());
     }
     else
     {
-        _windowManager->CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs{ sanitizedWindowName, args.Content(), windowBoundsReference });
+        const auto windowArgs = winrt::TerminalApp::WindowRequestedArgs{ sanitizedWindowName, args.Content(), windowBoundsReference };
+        windowArgs.TransferId(args.TransferId());
+        _windowManager->CreateNewWindow(windowArgs);
     }
 }
 

@@ -26,7 +26,7 @@ $publicFns = @(
     'Get-WtSettingsObject', 'Set-WtSetting', 'Get-WtSetting', 'Set-WtAgent', 'Set-WtDelegateAgent',
     'Set-WtAutofix', 'Set-WtPanePosition', 'Set-WtSettings', 'ConvertFrom-JsonC',
     'Get-WtStateObject', 'Set-WtState', 'Invoke-FrePass', 'Reset-Fre', 'Get-FreCompleted',
-    'Invoke-FrePassViaUi', 'Test-FreShowing',
+    'Invoke-FrePassViaUi', 'Test-FreShowing', 'Test-FreProgressOrder',
     'Get-WtExecutionPolicyState', 'Set-WtExecutionPolicy', 'Restore-WtExecutionPolicy',
     'Test-WtExecutionPolicyControllable', 'Test-WtPwshBlocksShellIntegration',
     # Hooks (agent session-management hook install state on disk)
