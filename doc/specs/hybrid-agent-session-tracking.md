@@ -269,11 +269,12 @@ starts `Idle`; terminal states are `Historical` (startup history scan) and
 `Ended` (pane/process gone); lock removal, pane close, or a hook lifecycle event
 moves a row out of the live states.
 
-The vertical sidebar's dedicated Agent sessions button opens live and historical
-sessions in a view with its own header, search box, and close button. Closing it
+The vertical sidebar's dedicated Agents button uses the Fluent UI System Icons
+`Agents 16 Regular` vector icon and opens live and historical sessions in a view
+with an **Agents** header, search box, and close button. Closing it
 returns to the live tab/pane groups and stops session refreshes, preserving the tab
 search and foreground selection. The Filter flyout contains only Tab Metadata
-controls; it does not switch between All tabs and Agents only. The Agent sessions
+controls; it does not switch between All tabs and Agents only. The Agents
 view displays the registry activity:
 `Idle` (Idle), `Working` (Active), `Attention` (Waiting for input), `Error`
 (Error), and both `Ended` and `Historical` as Historical, with localized labels.
@@ -287,11 +288,20 @@ generic session icon rather than another provider's brand.
 The bottom-right session-management button is hidden only in the Vertical tab
 layout; other layouts retain it. Its visibility updates on startup and live
 layout changes, independently of whether the vertical sidebar is expanded,
-collapsed, or hidden. The button shares the existing `Ctrl+Shift+/` /
-`openAgentSessions` action: open or restore the active tab's session manager,
-switch from chat to sessions, or stash an already-visible session manager.
-The shortcut remains available in every layout; the sidebar Agent sessions view is a
-separate entry point.
+collapsed, or hidden. The button shares the existing `openAgentSessions` action.
+The final agreed keyboard and focus behavior is specified in
+[Agent History and Sidebar Keyboard Navigation](./agent-history-sidebar-keyboard.md).
+That contract does not change horizontal agent-session behavior.
+In vertical layout, `Ctrl+Shift+/` opens the Agents view
+and focuses its search box. Closing it with the same shortcut or close button
+restores the sidebar's previous expanded/collapsed state and attempts to restore
+the source chat input or terminal split, with a visible-terminal fallback.
+In contrast, `Ctrl+Shift+S` only expands/collapses the sidebar: expansion does not
+move focus or activate search, and collapse uses the no-source focus policy even
+when the Agents view was visible. Neither action deletes session data or stops agent tasks.
+The sidebar hint uses **Expand sidebar** / **Collapse sidebar** and shows the
+effective binding on the same line in dimmed text, with casing such as `Ctrl+Shift+S`.
+
 Session titles use only the text before the first CR or LF. An empty first line
 uses the existing missing-title fallback. The title occupies one non-wrapping
 line with ellipsis; the metadata line below it is unchanged.

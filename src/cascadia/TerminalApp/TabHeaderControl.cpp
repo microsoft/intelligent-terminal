@@ -22,6 +22,11 @@ namespace winrt::TerminalApp::implementation
         Windows::UI::Xaml::Automation::AutomationProperties::SetHelpText(keepRunningIcon, keepRunningHelp);
         Windows::UI::Xaml::Controls::ToolTipService::SetToolTip(keepRunningIcon, box_value(keepRunningHelp));
 
+        const auto pinnedIcon = HeaderPinnedIcon();
+        const auto pinnedName = RS_(L"PinnedTabName");
+        Windows::UI::Xaml::Automation::AutomationProperties::SetName(pinnedIcon, pinnedName);
+        Windows::UI::Xaml::Controls::ToolTipService::SetToolTip(pinnedIcon, box_value(pinnedName));
+
         // We'll only process the KeyUp event if we received an initial KeyDown event first.
         // Avoids issue immediately closing the tab rename when we see the enter KeyUp event that was
         // sent to the command palette to trigger the openTabRenamer action in the first place.

@@ -181,10 +181,12 @@
     <value>關閉下方的索引標籤</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>摺疊索引標籤窗格</value>
+    <value>摺疊側邊欄</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>展開索引標籤窗格</value>
+    <value>展開側邊欄</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>展開索引標籤群組</value>
@@ -262,24 +264,24 @@
     <value>顯示所有索引標籤</value>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>智慧智能體工作階段</value>
-    <comment>Accessible name of the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
+    <value>智能體</value>
+    <comment>Accessible name of the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>智慧智能體工作階段</value>
-    <comment>Tooltip for the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
+    <value>智能體</value>
+    <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
-    <value>智慧智能體工作階段</value>
-    <comment>Header of the Agent sessions sidebar view, which lists all live and historical AI-agent sessions, not only session history.</comment>
+    <value>智能體</value>
+    <comment>Header of the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>關閉智慧智能體工作階段檢視</value>
-    <comment>Accessible name of the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
+    <value>關閉智能體檢視</value>
+    <comment>Accessible name of the button that closes the Agents sidebar view. Closing this view hides the sidebar; it does not terminate any agents or sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>關閉智慧智能體工作階段檢視</value>
-    <comment>Tooltip for the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
+    <value>關閉智能體檢視</value>
+    <comment>Tooltip for the button that closes the Agents sidebar view. Closing this view hides the sidebar; it does not terminate any agents or sessions.</comment>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
     <value>搜尋智能體工作階段</value>
@@ -982,10 +984,12 @@
     <value>在所有終端機視窗中使用水平索引標籤</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>切換為垂直索引標籤</value>
+    <value>切換至側邊欄</value>
+    <comment>Context-menu command that changes the tab layout from horizontal tabs to the sidebar.</comment>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>在所有終端機視窗中使用垂直索引標籤</value>
+    <value>在所有終端機視窗中使用側邊欄</value>
+    <comment>Tooltip for the command that changes the tab layout from horizontal tabs to the sidebar in every Terminal window.</comment>
   </data>
   <data name="CloseOnExitInfoBar.Message" xml:space="preserve">
     <value>您可以在進階設定檔設定中設定終止行為。</value>
@@ -1158,6 +1162,14 @@
   </data>
   <data name="TabMoveRight" xml:space="preserve">
     <value>右移</value>
+  </data>
+  <data name="TabMoveUp" xml:space="preserve">
+    <value>上移</value>
+    <comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment>
+  </data>
+  <data name="TabMoveDown" xml:space="preserve">
+    <value>下移</value>
+    <comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment>
   </data>
   <data name="InvalidRegex" xml:space="preserve">
     <value>發現無效的規則運算式。</value>
@@ -1502,6 +1514,28 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="KeepTabRunningText" xml:space="preserve">
     <value>保持索引標籤執行</value>
     <comment>Command at the top of a vertical terminal tab's context menu that enables keeping all panes running after the tab or window is closed. Also labels the tab's keep-running status indicator. This does not pin the tab or save it for a restart.</comment>
+  </data>
+  <data name="PinTabText" xml:space="preserve">
+    <value>釘選索引標籤</value>
+    <comment>Context menu action to keep a terminal tab at the start of the tab list until unpinned. Does not keep its processes running after closing or persist across restarts.</comment>
+  </data>
+  <data name="PinTabToolTip" xml:space="preserve">
+    <value>將此索引標籤移至未釘選的索引標籤之前。</value>
+  </data>
+  <data name="UnpinTabText" xml:space="preserve">
+    <value>取消釘選索引標籤</value>
+    <comment>Context menu action to move a pinned terminal tab back into the regular tab group.</comment>
+  </data>
+  <data name="UnpinTabToolTip" xml:space="preserve">
+    <value>將此索引標籤移至已釘選的索引標籤之後。</value>
+  </data>
+  <data name="PinnedTabName" xml:space="preserve">
+    <value>已釘選</value>
+    <comment>Accessibility name and tooltip for a terminal tab pinned at the beginning of the tab list.</comment>
+  </data>
+  <data name="CollapsedPinnedTabIcon.AutomationProperties.Name" xml:space="preserve">
+    <value>已釘選</value>
+    <comment>Accessibility name for the pin indicator on a terminal tab in the collapsed sidebar.</comment>
   </data>
   <data name="KeepTabRunningToolTip" xml:space="preserve">
     <value>關閉索引標籤或視窗後，保持此索引標籤在背景繼續執行。</value>

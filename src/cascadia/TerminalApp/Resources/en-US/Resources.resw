@@ -181,10 +181,12 @@
     <value>Close tabs below</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>Collapse tabs pane</value>
+    <value>Collapse sidebar</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>Expand tabs pane</value>
+    <value>Expand sidebar</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>Expand tab group</value>
@@ -262,24 +264,24 @@
     <value>Show all tabs</value>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Agent sessions</value>
-    <comment>Accessible name of the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
+    <value>Agents</value>
+    <comment>Accessible name of the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Agent sessions</value>
-    <comment>Tooltip for the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
+    <value>Agents</value>
+    <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
-    <value>Agent sessions</value>
-    <comment>Header of the Agent sessions sidebar view, which lists all live and historical AI-agent sessions, not only session history.</comment>
+    <value>Agents</value>
+    <comment>Header of the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Close agent sessions</value>
-    <comment>Accessible name of the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
+    <value>Close Agents view</value>
+    <comment>Accessible name of the button that closes the Agents sidebar view. Closing this view hides the sidebar; it does not terminate any agents or sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Close agent sessions</value>
-    <comment>Tooltip for the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
+    <value>Close Agents view</value>
+    <comment>Tooltip for the button that closes the Agents sidebar view. Closing this view hides the sidebar; it does not terminate any agents or sessions.</comment>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
     <value>Search agent session</value>
@@ -1067,10 +1069,12 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Use horizontal tabs in all Terminal windows</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Switch to vertical tabs</value>
+    <value>Switch to sidebar</value>
+    <comment>Context-menu command that changes the tab layout from horizontal tabs to the sidebar.</comment>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Use vertical tabs in all Terminal windows</value>
+    <value>Use the sidebar in all Terminal windows</value>
+    <comment>Tooltip for the command that changes the tab layout from horizontal tabs to the sidebar in every Terminal window.</comment>
   </data>
   <data name="TabLayoutRestartInfoBar.Title" xml:space="preserve">
     <value>Tab layout change requires restart</value>
@@ -1252,6 +1256,14 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="TabMoveRight" xml:space="preserve">
     <value>Move right</value>
+  </data>
+  <data name="TabMoveUp" xml:space="preserve">
+    <value>Move up</value>
+    <comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment>
+  </data>
+  <data name="TabMoveDown" xml:space="preserve">
+    <value>Move down</value>
+    <comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment>
   </data>
   <data name="InvalidRegex" xml:space="preserve">
     <value>An invalid regular expression was found.</value>
@@ -1635,6 +1647,28 @@ For all available options, run 'wt new-tab --help'.</value>
   <data name="KeepTabRunningText" xml:space="preserve">
     <value>Keep tab running</value>
     <comment>Command at the top of a vertical terminal tab's context menu that enables keeping all panes running after the tab or window is closed. Also labels the tab's keep-running status indicator. This does not pin the tab or save it for a restart.</comment>
+  </data>
+  <data name="PinTabText" xml:space="preserve">
+    <value>Pin tab</value>
+    <comment>Context menu action to keep a terminal tab at the start of the tab list until unpinned. Does not keep its processes running after closing or persist across restarts.</comment>
+  </data>
+  <data name="PinTabToolTip" xml:space="preserve">
+    <value>Move this tab before unpinned tabs.</value>
+  </data>
+  <data name="UnpinTabText" xml:space="preserve">
+    <value>Unpin tab</value>
+    <comment>Context menu action to move a pinned terminal tab back into the regular tab group.</comment>
+  </data>
+  <data name="UnpinTabToolTip" xml:space="preserve">
+    <value>Move this tab after pinned tabs.</value>
+  </data>
+  <data name="PinnedTabName" xml:space="preserve">
+    <value>Pinned</value>
+    <comment>Accessibility name and tooltip for a terminal tab pinned at the beginning of the tab list.</comment>
+  </data>
+  <data name="CollapsedPinnedTabIcon.AutomationProperties.Name" xml:space="preserve">
+    <value>Pinned</value>
+    <comment>Accessibility name for the pin indicator on a terminal tab in the collapsed sidebar.</comment>
   </data>
   <data name="KeepTabRunningToolTip" xml:space="preserve">
     <value>Keep this tab running in the background after closing the tab or window.</value>

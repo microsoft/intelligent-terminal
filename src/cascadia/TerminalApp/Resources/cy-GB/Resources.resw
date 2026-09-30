@@ -329,10 +329,12 @@
     <value>Cau&apos;r tabiau isod</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>Cwympo&apos;r cwarel tabiau</value>
+    <value>Cwympo&apos;r bar ochr</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>Ehangu&apos;r cwarel tabiau</value>
+    <value>Ehangu&apos;r bar ochr</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>Ehangu'r grŵp tabiau</value>
@@ -410,24 +412,24 @@
     <value>Dangos pob tab</value>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Sesiynau asiant</value>
-    <comment>Accessible name of the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
+    <value>Asiantau</value>
+    <comment>Accessible name of the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Sesiynau asiant</value>
-    <comment>Tooltip for the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
+    <value>Asiantau</value>
+    <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
-    <value>Sesiynau asiant</value>
-    <comment>Header of the Agent sessions sidebar view, which lists all live and historical AI-agent sessions, not only session history.</comment>
+    <value>Asiantau</value>
+    <comment>Header of the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Cau golwg sesiynau asiant</value>
-    <comment>Accessible name of the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
+    <value>Cau golwg yr asiantau</value>
+    <comment>Accessible name of the button that closes the Agents sidebar view. Closing this view hides the sidebar; it does not terminate any agents or sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Cau golwg sesiynau asiant</value>
-    <comment>Tooltip for the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
+    <value>Cau golwg yr asiantau</value>
+    <comment>Tooltip for the button that closes the Agents sidebar view. Closing this view hides the sidebar; it does not terminate any agents or sessions.</comment>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
     <value>Chwilio sesiynau asiant</value>
@@ -479,10 +481,12 @@
     <value>Defnyddio tabiau llorweddol ym mhob ffenestr Terminal</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Newid i dabiau fertigol</value>
+    <value>Newid i'r bar ochr</value>
+    <comment>Context-menu command that changes the tab layout from horizontal tabs to the sidebar.</comment>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Defnyddio tabiau fertigol ym mhob ffenestr Terminal</value>
+    <value>Defnyddio'r bar ochr ym mhob ffenestr Terminal</value>
+    <comment>Tooltip for the command that changes the tab layout from horizontal tabs to the sidebar in every Terminal window.</comment>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Cau pob tab o dan y tab hwn</value>
@@ -494,6 +498,28 @@
   <data name="KeepTabRunningText" xml:space="preserve">
     <value>Cadw&apos;r tab yn rhedeg</value>
     <comment>Command at the top of a vertical terminal tab's context menu that enables keeping all panes running after the tab or window is closed. Also labels the tab's keep-running status indicator. This does not pin the tab or save it for a restart.</comment>
+  </data>
+  <data name="PinTabText" xml:space="preserve">
+    <value>Pinio&apos;r tab</value>
+    <comment>Context menu action to keep a terminal tab at the start of the tab list until unpinned. Does not keep its processes running after closing or persist across restarts.</comment>
+  </data>
+  <data name="PinTabToolTip" xml:space="preserve">
+    <value>Symud y tab hwn o flaen y tabiau sydd heb eu pinio.</value>
+  </data>
+  <data name="UnpinTabText" xml:space="preserve">
+    <value>Dad-binio&apos;r tab</value>
+    <comment>Context menu action to move a pinned terminal tab back into the regular tab group.</comment>
+  </data>
+  <data name="UnpinTabToolTip" xml:space="preserve">
+    <value>Symud y tab hwn ar ôl y tabiau wedi&apos;u pinio.</value>
+  </data>
+  <data name="PinnedTabName" xml:space="preserve">
+    <value>Wedi&apos;i binio</value>
+    <comment>Accessibility name and tooltip for a terminal tab pinned at the beginning of the tab list.</comment>
+  </data>
+  <data name="CollapsedPinnedTabIcon.AutomationProperties.Name" xml:space="preserve">
+    <value>Wedi&apos;i binio</value>
+    <comment>Accessibility name for the pin indicator on a terminal tab in the collapsed sidebar.</comment>
   </data>
   <data name="KeepTabRunningToolTip" xml:space="preserve">
     <value>Cadw&apos;r tab hwn yn rhedeg yn y cefndir ar ôl cau&apos;r tab neu&apos;r ffenestr.</value>

@@ -181,10 +181,12 @@
     <value>Закрыть вкладки ниже</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>Свернуть панель вкладок</value>
+    <value>Свернуть боковую панель</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>Развернуть панель вкладок</value>
+    <value>Развернуть боковую панель</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>Развернуть группу вкладок</value>
@@ -262,24 +264,24 @@
     <value>Показать все вкладки</value>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Сеансы агентов</value>
-    <comment>Accessible name of the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
+    <value>Агенты</value>
+    <comment>Accessible name of the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Сеансы агентов</value>
-    <comment>Tooltip for the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
+    <value>Агенты</value>
+    <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
-    <value>Сеансы агентов</value>
-    <comment>Header of the Agent sessions sidebar view, which lists all live and historical AI-agent sessions, not only session history.</comment>
+    <value>Агенты</value>
+    <comment>Header of the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Закрыть представление сеансов агентов</value>
-    <comment>Accessible name of the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
+    <value>Закрыть представление «Агенты»</value>
+    <comment>Accessible name of the button that closes the Agents sidebar view. Closing this view hides the sidebar; it does not terminate any agents or sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Закрыть представление сеансов агентов</value>
-    <comment>Tooltip for the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
+    <value>Закрыть представление «Агенты»</value>
+    <comment>Tooltip for the button that closes the Agents sidebar view. Closing this view hides the sidebar; it does not terminate any agents or sessions.</comment>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
     <value>Поиск сеансов агентов</value>
@@ -982,10 +984,12 @@
     <value>Использовать горизонтальные вкладки во всех окнах терминала</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Переключиться на вертикальные вкладки</value>
+    <value>Переключиться на боковую панель</value>
+    <comment>Context-menu command that changes the tab layout from horizontal tabs to the sidebar.</comment>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Использовать вертикальные вкладки во всех окнах терминала</value>
+    <value>Использовать боковую панель во всех окнах терминала</value>
+    <comment>Tooltip for the command that changes the tab layout from horizontal tabs to the sidebar in every Terminal window.</comment>
   </data>
   <data name="CloseOnExitInfoBar.Message" xml:space="preserve">
     <value>Поведение завершения можно настроить в дополнительных параметрах профиля.</value>
@@ -1158,6 +1162,14 @@
   </data>
   <data name="TabMoveRight" xml:space="preserve">
     <value>Вправо</value>
+  </data>
+  <data name="TabMoveUp" xml:space="preserve">
+    <value>Переместить вверх</value>
+    <comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment>
+  </data>
+  <data name="TabMoveDown" xml:space="preserve">
+    <value>Переместить вниз</value>
+    <comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment>
   </data>
   <data name="InvalidRegex" xml:space="preserve">
     <value>Обнаружено недопустимое регулярное выражение.</value>
@@ -1530,6 +1542,28 @@
   <data name="KeepTabRunningText" xml:space="preserve">
     <value>Продолжать работу вкладки</value>
     <comment>Command at the top of a vertical terminal tab's context menu that enables keeping all panes running after the tab or window is closed. Also labels the tab's keep-running status indicator. This does not pin the tab or save it for a restart.</comment>
+  </data>
+  <data name="PinTabText" xml:space="preserve">
+    <value>Закрепить вкладку</value>
+    <comment>Context menu action to keep a terminal tab at the start of the tab list until unpinned. Does not keep its processes running after closing or persist across restarts.</comment>
+  </data>
+  <data name="PinTabToolTip" xml:space="preserve">
+    <value>Переместить эту вкладку перед незакреплёнными вкладками.</value>
+  </data>
+  <data name="UnpinTabText" xml:space="preserve">
+    <value>Открепить вкладку</value>
+    <comment>Context menu action to move a pinned terminal tab back into the regular tab group.</comment>
+  </data>
+  <data name="UnpinTabToolTip" xml:space="preserve">
+    <value>Переместить эту вкладку после закреплённых вкладок.</value>
+  </data>
+  <data name="PinnedTabName" xml:space="preserve">
+    <value>Закреплена</value>
+    <comment>Accessibility name and tooltip for a terminal tab pinned at the beginning of the tab list.</comment>
+  </data>
+  <data name="CollapsedPinnedTabIcon.AutomationProperties.Name" xml:space="preserve">
+    <value>Закреплена</value>
+    <comment>Accessibility name for the pin indicator on a terminal tab in the collapsed sidebar.</comment>
   </data>
   <data name="KeepTabRunningToolTip" xml:space="preserve">
     <value>Продолжать работу этой вкладки в фоновом режиме после закрытия вкладки или окна.</value>

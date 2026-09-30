@@ -685,7 +685,7 @@ namespace winrt::TerminalApp::implementation
                 const auto wasSearchActive = page->_tabSearchActive;
                 page->_tabSearchActive = sender.SearchActive();
                 page->_tabSearchQuery = sender.SearchQuery();
-                page->_ApplyTabListProjection();
+                page->_ApplyTabListProjection(nullptr, false);
                 page->_suppressTabFocusRequests = false;
                 if (!wasSearchActive && page->_IsTabSearchEffective())
                 {
@@ -698,9 +698,20 @@ namespace winrt::TerminalApp::implementation
                 }
             }
         });
+        winrt::get_self<implementation::TabStrip>(_tabStrip)->GroupExpansionChanged([weakThis{ get_weak() }](auto&&, const auto& item) {
+            if (const auto page = weakThis.get(); page && page->_IsTabSearchEffective())
+            {
+                if (const auto tab = page->_GetTabByTabViewItem(item))
+                {
+                    page->_ApplyTabListProjection(tab, false);
+                }
+            }
+        });
+        _tabStrip.KeyDown({ get_weak(), &TerminalPage::_KeyDownHandler });
         _tabStrip.HistoryRequested([weakThis{ get_weak() }](auto&&, auto&&) {
             if (const auto page = weakThis.get())
             {
+                page->_CaptureSidebarHistoryEntry();
                 page->_UpdateSidebarHistoryCurrentSession();
                 page->_StartSidebarHistoryRefreshTimer();
                 page->_RequestSidebarHistoryRefresh(true);
@@ -5802,6 +5813,7 @@ namespace winrt::TerminalApp::implementation
             _tabLayoutTransitionTarget.reset();
             _tabLayoutTransitionSelectedItem = nullptr;
             _ApplyTabListProjection();
+            _ApplyPendingPinRequest();
             return false;
         }
     }
@@ -5949,6 +5961,7 @@ namespace winrt::TerminalApp::implementation
         _tabLayoutTransitionTarget.reset();
         _tabLayoutTransitionSelectedItem = nullptr;
         _ApplyTabListProjection();
+        _ApplyPendingPinRequest();
 
         if (const auto infoBar = FindName(L"TabLayoutRestartInfoBar").try_as<MUX::Controls::InfoBar>())
         {
@@ -6022,6 +6035,86 @@ namespace winrt::TerminalApp::implementation
         Root().Children().Append(_verticalRailSplitter);
     }
 
+    static bool _IsVisibleControlInSubtree(const WUX::Controls::Control& control, const DependencyObject& root)
+    {
+        if (!control || !root || !control.IsEnabled() || !control.IsLoaded() ||
+            control.ActualWidth() <= 0 || control.ActualHeight() <= 0)
+        {
+            return false;
+        }
+        for (auto element = control.as<DependencyObject>(); element; element = Media::VisualTreeHelper::GetParent(element))
+        {
+            if (const auto visual = element.try_as<UIElement>(); visual && visual.Visibility() != Visibility::Visible)
+            {
+                return false;
+            }
+            if (element == root)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    WUX::Controls::Control TerminalPage::_SidebarFocusedControl() const
+    {
+        if (const auto root = _tabStrip ? _tabStrip.XamlRoot() : nullptr)
+        {
+            const auto focused = WUX::Input::FocusManager::GetFocusedElement(root);
+            for (auto element = focused.try_as<DependencyObject>(); element; element = Media::VisualTreeHelper::GetParent(element))
+            {
+                if (element == _tabStrip)
+                {
+                    return focused.try_as<WUX::Controls::Control>();
+                }
+            }
+        }
+        return nullptr;
+    }
+
+    bool TerminalPage::_TryFocusSidebarInput(const TermControl& control)
+    {
+        try
+        {
+            return _IsVisibleControlInSubtree(control, _tabContent) && control.Focus(FocusState::Programmatic);
+        }
+        catch (const winrt::hresult_error& error)
+        {
+            LOG_HR(error.code());
+            return false;
+        }
+    }
+
+    void TerminalPage::_FocusSidebarTerminalFallback()
+    {
+        const auto tab = _GetFocusedTabImpl();
+        const auto preferred = _SourceTerminalPaneForTab(tab);
+        if (preferred && _TryFocusSidebarInput(preferred->GetTerminalControl()))
+        {
+            return;
+        }
+        if (const auto root = tab ? tab->GetRootPane() : nullptr)
+        {
+            root->WalkTree([&](const std::shared_ptr<Pane>& pane) {
+                return !pane->IsAgentPane() && pane->GetContent().try_as<TerminalApp::TerminalPaneContent>() &&
+                       _TryFocusSidebarInput(pane->GetTerminalControl());
+            });
+        }
+    }
+
+    void TerminalPage::_CaptureSidebarHistoryEntry()
+    {
+        if (!_historyEntryState)
+        {
+            _historyEntryState.emplace();
+            _historyEntryState->railWasCollapsed = _isVerticalRailCollapsed;
+            if (const auto control = _GetActiveControl())
+            {
+                _historyEntryState->sourceControl = winrt::make_weak(control);
+            }
+        }
+    }
+
     void TerminalPage::_SetVerticalRailVisibility(const bool visible)
     {
         if (!_isVerticalLayout)
@@ -6029,6 +6122,7 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
+        const auto sidebarFocus = _SidebarFocusedControl();
         if (!visible)
         {
             _CloseSidebarHistory(false);
@@ -6050,24 +6144,52 @@ namespace winrt::TerminalApp::implementation
 
         const bool expanded = visible && !_isVerticalRailCollapsed;
         const auto width = visible ? (_isVerticalRailCollapsed ? railCollapsedWidth : _verticalRailWidth) : 0.0;
-        winrt::get_self<implementation::TabRowControl>(_tabRow)->SetVerticalRailState(visible, _isVerticalRailCollapsed, width);
-        if (!expanded)
+        const auto actionMap = _settings.ActionMap();
+        Command sidebarCommand{ nullptr };
+        KeyChord sidebarChord{ nullptr };
+        for (const auto& command : actionMap.AllCommands())
         {
-            bool focusWasInRail = false;
-            if (const auto xamlRoot = _tabStrip.XamlRoot())
+            if (!command || !command.ActionAndArgs() ||
+                command.ActionAndArgs().Action() != ShortcutAction::ToggleSidebar)
             {
-                auto focused = WUX::Input::FocusManager::GetFocusedElement(xamlRoot).try_as<DependencyObject>();
-                while (focused)
+                continue;
+            }
+            auto chord = actionMap.GetKeyBindingForAction(command.ID());
+            const auto resolved = chord ? actionMap.GetActionByKeyChord(chord) : nullptr;
+            if (!resolved || resolved.ID() != command.ID())
+            {
+                chord = nullptr;
+                for (const auto& candidate : actionMap.AllKeyBindingsForAction(command.ID()))
                 {
-                    if (focused == _tabStrip)
+                    const auto effective = actionMap.GetActionByKeyChord(candidate);
+                    if (effective && effective.ID() == command.ID() &&
+                        (!chord || KeyChordSerialization::ToString(candidate) < KeyChordSerialization::ToString(chord)))
                     {
-                        focusWasInRail = true;
-                        break;
+                        chord = candidate;
                     }
-                    focused = Media::VisualTreeHelper::GetParent(focused);
                 }
             }
-
+            if (!chord)
+            {
+                continue;
+            }
+            const auto isUserCommand = command.Origin() == OriginTag::User;
+            const auto selectedIsUserCommand = sidebarCommand && sidebarCommand.Origin() == OriginTag::User;
+            if (!sidebarCommand || (isUserCommand && !selectedIsUserCommand) ||
+                (isUserCommand == selectedIsUserCommand && command.ID() < sidebarCommand.ID()))
+            {
+                sidebarCommand = command;
+                sidebarChord = chord;
+            }
+        }
+        const auto sidebarKeyChordText = sidebarChord ?
+                                             KeyChordSerialization::ToString(sidebarChord) :
+                                             winrt::hstring{};
+        const auto tabRow = winrt::get_self<implementation::TabRowControl>(_tabRow);
+        tabRow->SidebarToggleKeyChordText(sidebarKeyChordText);
+        tabRow->SetVerticalRailState(visible, _isVerticalRailCollapsed, width);
+        if (!expanded)
+        {
             if (_newTabButton && _newTabButton.Flyout())
             {
                 _newTabButton.Flyout().Hide();
@@ -6075,13 +6197,6 @@ namespace winrt::TerminalApp::implementation
             _DismissTabContextMenus();
             _CancelRailSplitterDrag();
 
-            if (focusWasInRail)
-            {
-                if (auto tab{ _GetFocusedTab() })
-                {
-                    tab.Focus(FocusState::Programmatic);
-                }
-            }
         }
 
         if (visible)
@@ -6107,6 +6222,10 @@ namespace winrt::TerminalApp::implementation
             }
             VerticalRailColumn().Width(GridLengthHelper::FromValueAndType(0, GridUnitType::Pixel));
         }
+        if (sidebarFocus && !_IsVisibleControlInSubtree(sidebarFocus, _tabStrip))
+        {
+            _FocusSidebarTerminalFallback();
+        }
     }
 
     void TerminalPage::_OnVerticalRailCollapseRequested(const IInspectable&, const IInspectable&)
@@ -6117,6 +6236,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto collapsing = !_isVerticalRailCollapsed;
+        const auto sidebarFocus = collapsing ? _SidebarFocusedControl() : nullptr;
         if (collapsing)
         {
             _ClearTabSearch();
@@ -6124,6 +6244,10 @@ namespace winrt::TerminalApp::implementation
         }
         _isVerticalRailCollapsed = collapsing;
         _SetVerticalRailVisibility(true);
+        if (sidebarFocus && !_IsVisibleControlInSubtree(sidebarFocus, _tabStrip))
+        {
+            _FocusSidebarTerminalFallback();
+        }
     }
 
     void TerminalPage::_UpdateSidebarHistoryCurrentSession()
@@ -6201,24 +6325,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto selectedTabItem = _selectedTabItem();
-        bool focusWasInHistory = false;
-        if (restoreFocus)
-        {
-            if (const auto xamlRoot = _tabStrip.XamlRoot())
-            {
-                const auto historyPanel = winrt::get_self<implementation::TabStrip>(_tabStrip)->HistoryPanel();
-                auto focused = WUX::Input::FocusManager::GetFocusedElement(xamlRoot).try_as<DependencyObject>();
-                while (focused)
-                {
-                    if (focused == historyPanel)
-                    {
-                        focusWasInHistory = true;
-                        break;
-                    }
-                    focused = Media::VisualTreeHelper::GetParent(focused);
-                }
-            }
-        }
+        const auto entry = std::exchange(_historyEntryState, std::nullopt);
 
         ++_historyActivationSerial;
         _StopSidebarHistoryRefreshTimer();
@@ -6238,11 +6345,20 @@ namespace winrt::TerminalApp::implementation
             _selectedTabItem(selectedTabItem);
         }
 
-        if (focusWasInHistory)
+        if (restoreFocus)
         {
-            if (const auto tab = _GetFocusedTab())
+            if (entry && _isVerticalLayout && _isVerticalRailVisible)
             {
-                tab.Focus(FocusState::Programmatic);
+                if (entry->railWasCollapsed)
+                {
+                    _ClearTabSearch();
+                }
+                _isVerticalRailCollapsed = entry->railWasCollapsed;
+                _SetVerticalRailVisibility(true);
+            }
+            if (!entry || !_TryFocusSidebarInput(entry->sourceControl.get()))
+            {
+                _FocusSidebarTerminalFallback();
             }
         }
     }
@@ -10831,7 +10947,7 @@ namespace winrt::TerminalApp::implementation
                 {
                     tab->SetRichTabPresentation(update.presentation);
                 }
-                _RefreshTabStripPaneItems(tab);
+                _ApplyTabListProjection(*tab);
             }
         }
     }
@@ -11316,9 +11432,9 @@ namespace winrt::TerminalApp::implementation
                 if (propertyName == L"Title")
                 {
                     page->_UpdateTitle(*tab);
-                    page->_ApplyTabListProjection(*tab);
+                    page->_ApplyTabListProjection(*tab, false);
                 }
-                else if (propertyName == L"Icon" && page->_isVerticalLayout)
+                else if ((propertyName == L"Icon" || propertyName == L"ToolTip") && page->_isVerticalLayout)
                 {
                     page->_tabStrip.SetTabPresentation(tab->TabViewItem(), tab->Title(), tab->Icon());
                 }
@@ -12098,7 +12214,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto direction = args.Direction();
-        if (direction != MoveTabDirection::None)
+        if (direction != MoveTabDirection::None && !_IsTabListPositionOperationBlocked())
         {
             // Use the requested tab, if provided. Otherwise, use the currently
             // focused tab.
@@ -12123,9 +12239,13 @@ namespace winrt::TerminalApp::implementation
     {
         if (const auto tab{ _GetTabImpl(sender) })
         {
+            const auto tabStrip = _isVerticalLayout && _tabStrip ?
+                                      winrt::get_self<implementation::TabStrip>(_tabStrip) :
+                                      nullptr;
+            const auto display = tabStrip ? tabStrip->DisplayItemForTab(tab->TabViewItem()) : nullptr;
             // Possibly update the icon of the tab.
             _UpdateTabIcon(*tab);
-            _RefreshTabStripPaneItems(tab);
+            _RefreshTabStripPaneItems(tab, display);
 
             if (const auto selected = _GetFocusedTabImpl(); selected && selected.get() == tab.get())
             {
@@ -12139,16 +12259,31 @@ namespace winrt::TerminalApp::implementation
                 auto profile = tab->GetFocusedProfile();
                 _UpdateBackground(profile);
             }
-            _RefreshRichTabForTab(*tab, true);
+            _RefreshRichTabForTab(*tab, true, false);
+            if (tabStrip)
+            {
+                tabStrip->SyncTabPresentation(display);
+            }
+            _ApplyTabListProjection(*tab, false, false);
         }
 
         _UpdateSidebarHistoryCurrentSession();
         _adjustProcessPriorityThrottled->Run();
     }
 
-    void TerminalPage::_RefreshTabStripPaneItems(const winrt::com_ptr<Tab>& tab)
+    void TerminalPage::_RefreshTabStripPaneItems(
+        const winrt::com_ptr<Tab>& tab,
+        const TerminalApp::TabStripDisplayItem& projectedDisplay)
     {
         if (!_tabStrip || !_isVerticalLayout || !tab)
+        {
+            return;
+        }
+
+        const auto tabStrip = winrt::get_self<implementation::TabStrip>(_tabStrip);
+        const auto display = projectedDisplay ? projectedDisplay :
+                                                tabStrip->DisplayItemForTab(tab->TabViewItem());
+        if (!display)
         {
             return;
         }
@@ -12162,12 +12297,11 @@ namespace winrt::TerminalApp::implementation
         std::vector<TerminalApp::TabStripPaneItem> items;
         for (const auto& pane : visiblePanes)
         {
-            if (pane.IsAgentPane)
+            if (!pane.IsAgentPane)
             {
-                continue;
+                ++groupPaneCount;
             }
-            ++groupPaneCount;
-            if (_IsAgentScopeEffective() && !_MatchesPaneAgentScope(pane))
+            if (!_IsPaneRowProjectionEligible(pane))
             {
                 continue;
             }
@@ -12198,9 +12332,9 @@ namespace winrt::TerminalApp::implementation
             }
             items.emplace_back(std::move(item));
         }
-        _tabStrip.SetTabPresentation(tab->TabViewItem(), tab->Title(), tab->Icon());
-        _tabStrip.SetPaneItems(
-            tab->TabViewItem(),
+        tabStrip->SetTabPresentation(display, tab->Title(), tab->Icon());
+        tabStrip->SetPaneItems(
+            display,
             single_threaded_vector<TerminalApp::TabStripPaneItem>(std::move(items)),
             groupPaneCount > 1);
     }
@@ -12484,9 +12618,16 @@ namespace winrt::TerminalApp::implementation
                 THROW_HR_IF(E_ABORT, !_SplitPane(targetTab, firstSplit.SplitDirection(), firstSplit.SplitSize(), incomingRoot));
                 destinationTab = targetTab;
             }
-            else if (tabIndex != -1)
+            else
             {
-                _TryMoveTab(*_GetTabIndex(*destinationTab), tabIndex);
+                if (!firstSplit && sourceTab->IsPinned())
+                {
+                    _SetTabPinned(destinationTab, true);
+                }
+                if (tabIndex != -1)
+                {
+                    _TryMoveTab(*_GetTabIndex(*destinationTab), tabIndex);
+                }
             }
             for (const auto& control : sourceControls)
             {

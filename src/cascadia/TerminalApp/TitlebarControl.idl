@@ -33,5 +33,9 @@ namespace TerminalApp
 
         IInspectable Content;
         Windows.UI.Xaml.Controls.Border DragBar { get; };
+
+        static Windows.UI.Xaml.DependencyProperty ContentDragAreaProperty { get; };
+        static Windows.UI.Xaml.FrameworkElement GetContentDragArea(Windows.UI.Xaml.DependencyObject target);
+        static void SetContentDragArea(Windows.UI.Xaml.DependencyObject target, Windows.UI.Xaml.FrameworkElement value);
     }
 }
