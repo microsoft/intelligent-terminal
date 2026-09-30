@@ -373,6 +373,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(PinnedTabCollapsedRailHasIndicator);
         TEST_METHOD(PinnedTabLayoutRoundTripKeepsOrder);
         TEST_METHOD(PinnedTabTransferPreservesState);
+        TEST_METHOD(PinnedPaneTransferDoesNotPinNewTab);
         TEST_METHOD(KeepRunningMenuIsFirstAndVerticalOnly);
         TEST_METHOD(KeepRunningMenuTogglesOwningTab);
         TEST_METHOD(KeepRunningBadgeFitsLongTitle);
@@ -1380,10 +1381,12 @@ namespace TerminalAppLocalTests
             page->_SetTabPinned(second, true);
             VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(0)) == second);
             VERIFY_IS_TRUE(page->_ApplyTabLayout(TabLayout::Horizontal));
+            page->_CompleteTabLayoutChange(page->_tabLayoutGeneration);
             VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(0)) == second);
             VERIFY_IS_TRUE(page->_tabView.TabItems().GetAt(0) == second->TabViewItem());
             VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == second);
             VERIFY_IS_TRUE(page->_ApplyTabLayout(TabLayout::Vertical));
+            page->_CompleteTabLayoutChange(page->_tabLayoutGeneration);
             VERIFY_IS_TRUE(page->_tabStrip.TabItems().GetAt(0) == second->TabViewItem());
             VERIFY_IS_TRUE(page->_tabStrip.TabItems().GetAt(1) == first->TabViewItem());
             VERIFY_IS_TRUE(second->IsPinned());
@@ -9414,6 +9417,43 @@ namespace TerminalAppLocalTests
     void TabTests::PinnedTabTransferPreservesState()
     {
         _verifyContentTransferReviewZoom(false, false, false, true, false, true);
+    }
+
+    void TabTests::PinnedPaneTransferDoesNotPinNewTab()
+    {
+        auto fixture = _createContentTransferFixture(false, false, false, false);
+        const auto cleanup = wil::scope_exit([&]() {
+            RunOnUIThread([&]() {
+                _closeContentTransferFixture(*fixture, false);
+                fixture.reset();
+            });
+        });
+        TestOnUIThread([&]() {
+            fixture->source->_HandleClosePaneRequested(fixture->original.tab->FindAgentPane());
+        });
+        _waitForContentTransferReviewUI([&]() { return fixture->original.tab->FindAgentPane() == nullptr; });
+        TestOnUIThread([&]() {
+            const auto sourceTab = fixture->original.tab;
+            VERIFY_ARE_EQUAL(2, sourceTab->GetLeafPaneCount());
+            fixture->source->_SetTabPinned(sourceTab, true);
+
+            winrt::TerminalApp::RequestMoveContentArgs request{ nullptr };
+            const auto token = fixture->source->RequestMoveContent([&](auto&&, const winrt::TerminalApp::RequestMoveContentArgs& args) { request = args; });
+            const auto revoke = wil::scope_exit([&]() { fixture->source->RequestMoveContent(token); });
+            MovePaneArgs args{ 0, L"transaction-destination" };
+            VERIFY_IS_TRUE(fixture->source->_MovePane(args));
+            VERIFY_IS_NOT_NULL(request);
+            VERIFY_IS_TRUE(ActionAndArgs::Deserialize(request.Content()).GetAt(0).Action() == ShortcutAction::SplitPane);
+
+            const auto destination = fixture->destination;
+            const auto originalTabCount = destination->_tabs.Size();
+            VERIFY_IS_TRUE(destination->AttachContent(ActionAndArgs::Deserialize(request.Content()), originalTabCount, request.TransferId()));
+            VERIFY_ARE_EQUAL(originalTabCount + 1, destination->_tabs.Size());
+            VERIFY_IS_FALSE(destination->_GetFocusedTabImpl()->IsPinned());
+            VERIFY_ARE_EQUAL(0u, destination->_PinnedTabCount());
+            VERIFY_IS_TRUE(sourceTab->IsPinned());
+            VERIFY_ARE_EQUAL(1u, fixture->source->_PinnedTabCount());
+        });
     }
 
     void TabTests::ContentTransferReviewHiddenZoomedTabMovesToFreshReceiver()

@@ -12620,7 +12620,7 @@ namespace winrt::TerminalApp::implementation
             }
             else
             {
-                if (sourceTab->IsPinned())
+                if (!firstSplit && sourceTab->IsPinned())
                 {
                     _SetTabPinned(destinationTab, true);
                 }
