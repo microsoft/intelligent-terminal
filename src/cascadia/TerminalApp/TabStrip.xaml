@@ -259,7 +259,7 @@
                               Loaded="OnTabHeaderLoaded"
                               PointerPressed="OnTabHeaderPointerPressed"
                               Tapped="OnTabHeaderTapped"
-                              ToolTipService.ToolTip="{Binding Tab.(AutomationProperties.HelpText)}">
+                              ToolTipService.ToolTip="{x:Bind ToolTipText, Mode=OneWay}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
@@ -363,8 +363,7 @@
                                                 AutomationProperties.Name="{x:Bind AutomationName, Mode=OneWay}"
                                                 Background="Transparent"
                                                 BorderThickness="0"
-                                                Click="OnPaneActivateClick"
-                                                ToolTipService.ToolTip="{x:Bind Title, Mode=OneWay}">
+                                                Click="OnPaneActivateClick">
                                             <Button.Resources>
                                                 <SolidColorBrush x:Key="ButtonBackgroundPointerOver"
                                                                  Color="Transparent" />
@@ -402,7 +401,8 @@
                                                            Margin="2,3,0,0"
                                                            VerticalAlignment="Center"
                                                            Text="{x:Bind Title, Mode=OneWay}"
-                                                           TextTrimming="CharacterEllipsis" />
+                                                           TextTrimming="CharacterEllipsis"
+                                                           ToolTipService.ToolTip="{x:Bind Title, Mode=OneWay}" />
                                                 <TextBlock Grid.Row="1"
                                                            Grid.Column="2"
                                                            Margin="2,1,0,3"
@@ -447,8 +447,8 @@
                     <Setter Property="BorderThickness" Value="0" />
                     <Setter Property="CornerRadius" Value="{StaticResource SidebarTabCornerRadius}" />
                     <Setter Property="UseSystemFocusVisuals" Value="True" />
-                    <Setter Property="AutomationProperties.AcceleratorKey" Value="{Binding Tab.(AutomationProperties.AcceleratorKey)}" />
-                    <Setter Property="AutomationProperties.HelpText" Value="{Binding Tab.(AutomationProperties.HelpText)}" />
+                    <Setter Property="AutomationProperties.AcceleratorKey" Value="{Binding AcceleratorKey}" />
+                    <Setter Property="AutomationProperties.HelpText" Value="{Binding ToolTipText}" />
                     <!--  Keep the native presenter and state brushes, but forward the row's corner radius.  -->
                     <Setter Property="Template">
                         <Setter.Value>

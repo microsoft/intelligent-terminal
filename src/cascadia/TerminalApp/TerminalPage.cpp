@@ -11322,6 +11322,10 @@ namespace winrt::TerminalApp::implementation
                 {
                     page->_tabStrip.SetTabPresentation(tab->TabViewItem(), tab->Title(), tab->Icon());
                 }
+                else if (propertyName == L"ToolTip" && page->_isVerticalLayout)
+                {
+                    page->_tabStrip.SetTabPresentation(tab->TabViewItem(), tab->Title(), tab->Icon());
+                }
                 else if (propertyName == L"Content")
                 {
                     if (*tab == page->_GetFocusedTab())

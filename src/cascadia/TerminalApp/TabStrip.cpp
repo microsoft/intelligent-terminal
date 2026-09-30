@@ -81,6 +81,8 @@ namespace winrt::TerminalApp::implementation
             Title(*headerText);
         }
         ContextFlyout(_tab.ContextFlyout());
+        ToolTipText(WUX::Automation::AutomationProperties::GetHelpText(_tab));
+        AcceleratorKey(WUX::Automation::AutomationProperties::GetAcceleratorKey(_tab));
         HeaderVisibility(railCollapsed ? Visibility::Collapsed : Visibility::Visible);
         CloseVisibility(!railCollapsed && _tab.IsClosable() ? Visibility::Visible : Visibility::Collapsed);
         UpdatePresentation(railCollapsed);

@@ -337,6 +337,7 @@ namespace winrt::TerminalApp::implementation
         toolTip.Content(textBlock);
         WUX::Controls::ToolTipService::SetToolTip(TabViewItem(), toolTip);
         Automation::AutomationProperties::SetHelpText(TabViewItem(), tooltipText);
+        PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"ToolTip" });
     }
 
     // Method Description:

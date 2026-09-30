@@ -3811,8 +3811,10 @@ namespace TerminalAppLocalTests
             const auto horizontalTooltip = tooltipText(third->TabViewItem());
             const auto thirdContainer = page->_tabStrip.ContainerFromIndex(2).as<ListViewItem>();
             const auto thirdHeader = thirdContainer.ContentTemplateRoot().as<StackPanel>().Children().GetAt(0).as<Grid>();
+            const auto thirdDisplay = thirdContainer.Content().as<winrt::TerminalApp::TabStripDisplayItem>();
             const std::wstring verticalTooltip{ winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(thirdHeader)) };
             VERIFY_ARE_EQUAL(horizontalTooltip, verticalTooltip);
+            VERIFY_ARE_EQUAL(winrt::hstring{ verticalTooltip }, thirdDisplay.ToolTipText());
             VERIFY_ARE_NOT_EQUAL(std::wstring::npos, verticalTooltip.find(L"Third tab"));
             VERIFY_ARE_NOT_EQUAL(std::wstring::npos, verticalTooltip.find(L"ctrl+alt+3"));
             VERIFY_ARE_EQUAL(winrt::hstring{ verticalTooltip }, Automation::AutomationProperties::GetHelpText(thirdContainer));
@@ -3826,10 +3828,12 @@ namespace TerminalAppLocalTests
             third->SetTabText(L"Renamed third tab");
             page->UpdateLayout();
             VERIFY_ARE_EQUAL(tooltipText(third->TabViewItem()), std::wstring{ winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(thirdHeader)) });
+            VERIFY_ARE_EQUAL(Automation::AutomationProperties::GetHelpText(third->TabViewItem()), thirdDisplay.ToolTipText());
 
             third->UpdateTabViewIndex(1, 3);
             page->UpdateLayout();
             VERIFY_ARE_EQUAL(winrt::hstring{ L"ctrl+alt+2" }, Automation::AutomationProperties::GetAcceleratorKey(thirdContainer));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"ctrl+alt+2" }, thirdDisplay.AcceleratorKey());
             VERIFY_ARE_NOT_EQUAL(
                 std::wstring::npos,
                 std::wstring{ winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(thirdHeader)) }.find(L"ctrl+alt+2"));
@@ -6127,7 +6131,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(paneList.ContainerFromIndex(0) == firstPaneContainer);
             const auto paneTitleText = firstPaneRoot.FindName(L"PaneTitleText").as<TextBlock>();
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane" }, paneTitleText.Text());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane" }, winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(firstPaneActivateButton)));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane" }, winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(paneTitleText)));
             VERIFY_ARE_EQUAL(Visibility::Collapsed, firstPaneRoot.FindName(L"PaneActiveIndicator").as<FrameworkElement>().Visibility());
 
             updatePanes({ winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"", L"Renamed pane", false),
