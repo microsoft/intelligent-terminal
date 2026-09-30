@@ -543,6 +543,131 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
         }
     }
 
+    It 'Sidebar hotkey opens search and returns to input after pointer search replaces hotkey session' -Tag 'SidebarStaleSource' {
+        $vertical = $null
+        try {
+            $vertical = & $script:StartLayoutApp 'vertical'
+            if (-not (Test-WtWindowKeyFocusable -App $vertical)) {
+                Set-ItResult -Skipped -Because 'WT window cannot take foreground for physical keyboard input'
+                return
+            }
+            Wait-UiElement -App $vertical -Selector SearchTabsButton | Out-Null
+            $source = Get-ActivePane -App $vertical
+            $other = Split-WtPane -App $vertical -SessionId $source.session_id -Direction right -Command 'pwsh.exe -NoLogo -NoProfile -NoExit'
+
+            Set-WtPaneFocus -App $vertical -SessionId $source.session_id
+            (Test-Until -TimeoutSec 5 -Condition {
+                [string](Get-ActivePane -App $vertical).session_id -eq [string]$source.session_id
+            }) | Should -BeTrue -Because 'split A must be the active pane saved by the first hotkey'
+            $sourceFocus = [Windows.Automation.AutomationElement]::FocusedElement
+            $sourceFocus.Current.ClassName | Should -Be 'TermControl'
+            & $script:ToggleSidebarHotkey $vertical
+            (Test-Until -TimeoutSec 6 -Condition { & $script:TabSearchFocused $vertical }) |
+                Should -BeTrue -Because 'the first hotkey must capture split A as its return source'
+
+            Send-WtWindowKey -App $vertical -Vk 0x1B -RequireForeground | Out-Null
+            (Test-Until -TimeoutSec 5 -Condition {
+                $search = Get-UiElement -App $vertical -Selector SearchTextBox
+                -not ($search -and -not $search.isOffscreen -and $search.width -gt 0)
+            }) | Should -BeTrue -Because 'Escape ends the hotkey-opened search session'
+            Wait-UiElement -App $vertical -Selector 'Collapse sidebar' | Out-Null
+
+            Set-WtPaneFocus -App $vertical -SessionId $other.session_id
+            (Test-Until -TimeoutSec 5 -Condition {
+                [string](Get-ActivePane -App $vertical).session_id -eq [string]$other.session_id
+            }) | Should -BeTrue -Because 'split B must be active before the pointer opens a new search'
+            $otherFocus = Wait-Until -TimeoutSec 5 -Because 'split B to take keyboard focus' -Condition {
+                $focused = [Windows.Automation.AutomationElement]::FocusedElement
+                if ($focused -and $focused.Current.ProcessId -eq $vertical.Pid -and
+                    $focused.Current.ClassName -eq 'TermControl' -and
+                    -not [Windows.Automation.Automation]::Compare($sourceFocus, $focused)) { $focused }
+            }
+            $otherFocus | Should -Not -BeNullOrEmpty
+            Invoke-UiClick -App $vertical -Selector SearchTabsButton | Out-Null
+            (Test-Until -TimeoutSec 5 -Condition { & $script:TabSearchFocused $vertical }) |
+                Should -BeTrue -Because 'pointer search must start a new session without split A as its hotkey source'
+            $sourceFocus.Current.IsOffscreen | Should -BeFalse -Because 'the stale split A target remains visible and focusable'
+            [string](Get-ActivePane -App $vertical).session_id |
+                Should -BeExactly ([string]$other.session_id) -Because 'split B remains the active fallback'
+
+            & $script:ToggleSidebarHotkey $vertical
+            Wait-UiElement -App $vertical -Selector CompactNewTabButton | Out-Null
+            Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'pointer-search-return.png') | Out-Null
+            (Test-Until -TimeoutSec 6 -Condition {
+                [Windows.Automation.Automation]::Compare(
+                    $otherFocus, [Windows.Automation.AutomationElement]::FocusedElement)
+            }) | Should -BeTrue -Because 'pointer-opened search must return to active split B, not the stale hotkey source in split A'
+
+            & $script:ToggleSidebarHotkey $vertical
+            (Test-Until -TimeoutSec 6 -Condition { & $script:TabSearchFocused $vertical }) |
+                Should -BeTrue -Because 'a later hotkey must capture a fresh source from split B'
+            & $script:ToggleSidebarHotkey $vertical
+            Wait-UiElement -App $vertical -Selector CompactNewTabButton | Out-Null
+            (Test-Until -TimeoutSec 6 -Condition {
+                [Windows.Automation.Automation]::Compare(
+                    $otherFocus, [Windows.Automation.AutomationElement]::FocusedElement)
+            }) | Should -BeTrue -Because 'the next hotkey-only session must still return to its fresh split B source'
+        }
+        finally {
+            if ($vertical) { Stop-Terminal -App $vertical }
+        }
+    }
+
+    It 'Sidebar hotkey opens search and returns to input after pointer replaces an agent source' -Tag 'SidebarStaleSource' {
+        $vertical = $null
+        try {
+            $vertical = & $script:StartLayoutApp 'vertical'
+            if (-not (Test-WtWindowKeyFocusable -App $vertical)) {
+                Set-ItResult -Skipped -Because 'WT window cannot take foreground for physical keyboard input'
+                return
+            }
+            Wait-UiElement -App $vertical -Selector SearchTabsButton | Out-Null
+            $shell = Get-ActivePane -App $vertical
+            Open-AgentPane -App $vertical | Out-Null
+            Wait-AgentReady -App $vertical -TimeoutSec 30 | Out-Null
+            $agent = Get-AgentPaneSession -App $vertical
+            $agent.AcpSessionId | Should -Match '^chat-fixture-\d+-\d+$' -Because 'this regression uses a deterministic provider without real inference'
+            Invoke-WtCli -App $vertical -Arguments @('focus-pane', '-t', $agent.PaneSessionId) | Out-Null
+            $agentFocus = Wait-Until -TimeoutSec 5 -Because 'the visible Agent chat input to take focus' -Condition {
+                $focused = [Windows.Automation.AutomationElement]::FocusedElement
+                if ($focused -and $focused.Current.ProcessId -eq $vertical.Pid -and
+                    $focused.Current.ClassName -eq 'TermControl' -and $focused.Current.Name -eq 'Agent Pane') { $focused }
+            }
+            $agentFocus | Should -Not -BeNullOrEmpty
+            & $script:ToggleSidebarHotkey $vertical
+            (Test-Until -TimeoutSec 6 -Condition { & $script:TabSearchFocused $vertical }) |
+                Should -BeTrue -Because 'the first hotkey enters search from the Agent input'
+            Send-WtWindowKey -App $vertical -Vk 0x1B -RequireForeground | Out-Null
+            (Test-Until -TimeoutSec 5 -Condition {
+                $search = Get-UiElement -App $vertical -Selector SearchTextBox
+                -not ($search -and -not $search.isOffscreen -and $search.width -gt 0)
+            }) | Should -BeTrue
+            Wait-UiElement -App $vertical -Selector 'Collapse sidebar' | Out-Null
+
+            Set-WtPaneFocus -App $vertical -SessionId $shell.session_id
+            $shellFocus = Wait-Until -TimeoutSec 5 -Because 'the active shell to receive focus' -Condition {
+                $focused = [Windows.Automation.AutomationElement]::FocusedElement
+                if ($focused -and $focused.Current.ProcessId -eq $vertical.Pid -and
+                    $focused.Current.ClassName -eq 'TermControl' -and
+                    -not [Windows.Automation.Automation]::Compare($agentFocus, $focused)) { $focused }
+            }
+            $shellFocus | Should -Not -BeNullOrEmpty
+            Invoke-UiClick -App $vertical -Selector SearchTabsButton | Out-Null
+            (Test-Until -TimeoutSec 5 -Condition { & $script:TabSearchFocused $vertical }) | Should -BeTrue
+            Test-AgentPaneOpen -App $vertical | Should -BeTrue -Because 'the stale Agent source remains visible and focusable'
+            & $script:ToggleSidebarHotkey $vertical
+            Wait-UiElement -App $vertical -Selector CompactNewTabButton | Out-Null
+            Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'pointer-search-agent-source-return.png') | Out-Null
+            (Test-Until -TimeoutSec 6 -Condition {
+                [Windows.Automation.Automation]::Compare(
+                    $shellFocus, [Windows.Automation.AutomationElement]::FocusedElement)
+            }) | Should -BeTrue -Because 'pointer search must return to the current shell, not a stale visible Agent input'
+        }
+        finally {
+            if ($vertical) { Stop-Terminal -App $vertical }
+        }
+    }
+
     It 'Sidebar rail hover hints show the shortcut' -Tag 'SidebarHint' {
         $vertical = $null
         $originalCursor = $null

@@ -699,6 +699,10 @@ namespace winrt::TerminalApp::implementation
                 const auto wasSearchActive = page->_tabSearchActive;
                 page->_tabSearchActive = sender.SearchActive();
                 page->_tabSearchQuery = sender.SearchQuery();
+                if (wasSearchActive != page->_tabSearchActive)
+                {
+                    page->_sidebarHotkeyReturnControl = {};
+                }
                 page->_ApplyTabListProjection(nullptr, false);
                 page->_suppressTabFocusRequests = false;
                 if (!wasSearchActive && page->_IsTabSearchEffective())
@@ -6285,22 +6289,24 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
+        winrt::weak_ref<TermControl> returnControl;
         if (const auto source = _GetActiveControl();
             source && _IsVisibleControlInSubtree(source, _tabContent))
         {
-            _sidebarHotkeyReturnControl = winrt::make_weak(source);
+            returnControl = winrt::make_weak(source);
         }
-        else
-        {
-            _sidebarHotkeyReturnControl = {};
-        }
+        _sidebarHotkeyReturnControl = {};
 
         if (_isVerticalRailCollapsed)
         {
             _OnVerticalRailCollapseRequested(nullptr, nullptr);
         }
         _CloseSidebarHistory(false);
-        if (!winrt::get_self<implementation::TabStrip>(_tabStrip)->FocusTabSearch())
+        if (winrt::get_self<implementation::TabStrip>(_tabStrip)->FocusTabSearch())
+        {
+            _sidebarHotkeyReturnControl = std::move(returnControl);
+        }
+        else
         {
             LOG_HR(E_FAIL);
         }
@@ -7042,6 +7048,7 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_ClearTabSearch()
     {
+        _sidebarHotkeyReturnControl = {};
         if (!_tabSearchActive && _tabSearchQuery.empty())
         {
             return;

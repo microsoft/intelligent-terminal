@@ -3641,6 +3641,18 @@ namespace TerminalAppLocalTests
             toggle();
             VERIFY_IS_TRUE(page->_isVerticalRailCollapsed);
             VERIFY_IS_TRUE(terminal.FocusState() != FocusState::Unfocused);
+
+            toggle();
+            VERIFY_IS_TRUE(page->_tabSearchActive);
+            VERIFY_IS_TRUE(page->_sidebarHotkeyReturnControl.get() == terminal);
+            strip->SearchTabsButton().IsChecked(false);
+            strip->OnSearchToggleClick(nullptr, nullptr);
+            VERIFY_IS_FALSE(page->_tabSearchActive);
+            VERIFY_IS_NULL(page->_sidebarHotkeyReturnControl.get());
+            strip->SearchTabsButton().IsChecked(true);
+            strip->OnSearchToggleClick(nullptr, nullptr);
+            VERIFY_IS_TRUE(page->_tabSearchActive);
+            VERIFY_IS_NULL(page->_sidebarHotkeyReturnControl.get());
         });
     }
 

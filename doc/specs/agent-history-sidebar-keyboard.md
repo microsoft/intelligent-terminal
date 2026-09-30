@@ -77,6 +77,10 @@ History's remembered source, not the separate `Ctrl+Shift+S` entry input.
   box without collapsing the sidebar.
 - Remember the terminal or Agent chat input used just before this hotkey entry.
   A later entry from another input replaces that best-effort return target.
+  Closing Search tabs with Escape or its button expires the target; opening
+  Search tabs without the hotkey (including its pointer or keyboard button)
+  starts without a saved hotkey source. A new hotkey entry captures its input
+  only after search has opened successfully.
 - When focus is inside the expanded sidebar, collapse it. If the remembered
   input remains visible and focusable, return there without changing its
   unsent draft. Otherwise, try the currently active visible terminal or Agent
