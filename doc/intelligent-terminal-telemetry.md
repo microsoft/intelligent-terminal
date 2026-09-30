@@ -85,7 +85,7 @@ the original wording; the last column identifies those limits.
 
 ### Shared query conventions
 
-These are backend-neutral query recipes, not executable SQL or KQL against
+These are backend-neutral query recipes, not executable queries against
 an assumed table. Map provider, event name, timestamp, payload fields, and
 the backend's device dimension to the actual ingestion schema first.
 
@@ -108,7 +108,7 @@ event as a continuous count series. A device without a configuration snapshot
 has unknown state; do not silently classify it as disabled or unconfigured.
 
 For **D0/D7/D28**, choose an explicit cohort-entry rule, such as the first
-observed interactive day in a documented lookback. D0 is that device's
+observed interactive day in a documented historical window. D0 is that device's
 entry day; exact-day D7/D28 retention means interaction on entry day + 7/+28.
 Only include cohorts with enough elapsed follow-up. Fetch follow-up events
 beyond the 28-day cohort-selection window where necessary; an immature
