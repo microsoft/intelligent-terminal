@@ -277,6 +277,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(EmptyTabLayoutChangeCompletesBeforeStartup);
         TEST_METHOD(VerticalRailVisibilityRestoresWidth);
         TEST_METHOD(VerticalRailCollapseRestoresWidth);
+        TEST_METHOD(SidebarHotkeyFocusesSearchAndReturnsToInput);
         TEST_METHOD(VerticalTitlebarDragAreaExcludesControls);
         TEST_METHOD(SidebarRailHintsTrackBindings);
         TEST_METHOD(VerticalTabChromeBackgroundTracksTheme);
@@ -3467,11 +3468,15 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(CSTR_EQUAL, CompareStringOrdinal(chord.c_str(), -1, shortcut.Text().c_str(), -1, FALSE));
                 VERIFY_ARE_EQUAL(chord.empty() ? Visibility::Collapsed : Visibility::Visible, shortcut.Visibility());
             };
+            verifyHint({});
+            page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
             verifyHint(L"Ctrl+Shift+S");
 
             actionMap.RebindKeys(initial, rebound);
             page->_RefreshUIForSettingsReload();
             verifyHint(L"Ctrl+Shift+Y");
+            page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
+            verifyHint({});
             page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
             verifyHint(L"Ctrl+Shift+Y");
 
@@ -3481,6 +3486,52 @@ namespace TerminalAppLocalTests
             actionMap.RegisterKeyBinding(initial, ActionAndArgs{ ShortcutAction::CopyText, nullptr });
             page->_RefreshUIForSettingsReload();
             verifyHint({});
+        });
+    }
+
+    void TabTests::SidebarHotkeyFocusesSearchAndReturnsToInput()
+    {
+        const auto connection = winrt::make_self<TestConnection>(
+            winrt::guid{ L"{6239a42c-bbbb-49a3-80bd-e8fdd045185c}" },
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        const auto page = _commonSetup(*connection, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            const auto terminal = page->_GetActiveControl();
+            VERIFY_IS_NOT_NULL(terminal);
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            const auto search = strip->SearchTextBox();
+            const auto toggle = [&]() {
+                ActionEventArgs args{};
+                page->_HandleToggleSidebar(nullptr, args);
+                VERIFY_IS_TRUE(args.Handled());
+            };
+
+            VERIFY_IS_TRUE(terminal.Focus(FocusState::Programmatic));
+            toggle();
+            VERIFY_IS_FALSE(page->_isVerticalRailCollapsed);
+            VERIFY_IS_TRUE(page->_tabSearchActive);
+            VERIFY_IS_TRUE(page->_tabStrip.SearchActive());
+            VERIFY_IS_TRUE(page->_SidebarFocusedControl() == search);
+
+            toggle();
+            VERIFY_IS_TRUE(page->_isVerticalRailCollapsed);
+            VERIFY_IS_FALSE(page->_tabSearchActive);
+            VERIFY_IS_TRUE(terminal.FocusState() != FocusState::Unfocused);
+
+            toggle();
+            VERIFY_IS_FALSE(page->_isVerticalRailCollapsed);
+            VERIFY_IS_TRUE(page->_SidebarFocusedControl() == search);
+
+            VERIFY_IS_TRUE(terminal.Focus(FocusState::Programmatic));
+            toggle();
+            VERIFY_IS_FALSE(page->_isVerticalRailCollapsed);
+            VERIFY_IS_TRUE(page->_SidebarFocusedControl() == search);
+
+            VERIFY_IS_TRUE(strip->TabHistoryButton().Focus(FocusState::Programmatic));
+            toggle();
+            VERIFY_IS_TRUE(page->_isVerticalRailCollapsed);
+            VERIFY_IS_TRUE(terminal.FocusState() != FocusState::Unfocused);
         });
     }
 

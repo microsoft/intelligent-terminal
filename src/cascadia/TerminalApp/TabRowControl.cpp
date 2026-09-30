@@ -283,7 +283,7 @@ namespace winrt::TerminalApp::implementation
             WUX::Automation::AutomationProperties::SetName(_verticalRailToggleButton, label);
             _verticalRailToggleLabel.Text(label);
             _verticalRailToggleShortcut.Text(_sidebarToggleKeyChordText);
-            _verticalRailToggleShortcut.Visibility(_sidebarToggleKeyChordText.empty() ?
+            _verticalRailToggleShortcut.Visibility(!collapsed || _sidebarToggleKeyChordText.empty() ?
                                                       WUX::Visibility::Collapsed :
                                                       WUX::Visibility::Visible);
         }

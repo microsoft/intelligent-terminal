@@ -787,6 +787,22 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    bool TabStrip::FocusTabSearch()
+    {
+        if (_isRailCollapsed || _historyActive || !SearchTabsButton().IsEnabled())
+        {
+            return false;
+        }
+
+        if (!_searchActive)
+        {
+            SearchActivationRequested.raise(*this, nullptr);
+            SearchTabsButton().IsChecked(true);
+            OnSearchToggleClick(nullptr, nullptr);
+        }
+        return SearchTextBox().Focus(WUX::FocusState::Programmatic);
+    }
+
     WUX::Style TabStrip::_historyStatusTextStyle(winrt::hstring const& status)
     {
         const auto styleKey = status == L"Working"   ? L"HistoryActiveTextStyle" :

@@ -140,6 +140,14 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
             $search = $root.FindFirst([Windows.Automation.TreeScope]::Descendants, $condition)
             $search -and -not $search.Current.IsOffscreen -and $search.Current.HasKeyboardFocus
         }
+        $script:TabSearchFocused = {
+            param($App)
+            $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]([long]$App.Hwnd))
+            $condition = [Windows.Automation.PropertyCondition]::new(
+                [Windows.Automation.AutomationElement]::AutomationIdProperty, 'SearchTextBox')
+            $search = $root.FindFirst([Windows.Automation.TreeScope]::Descendants, $condition)
+            $search -and -not $search.Current.IsOffscreen -and $search.Current.HasKeyboardFocus
+        }
         $script:StartLayoutApp = {
             param([ValidateSet('horizontal', 'vertical')][string]$Layout)
             Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
@@ -155,8 +163,7 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
         }
     }
 
-    # One result owns both checklist contracts, including their shared focus and data-preservation oracles.
-    It 'Agent history hotkey toggles the layout-appropriate history surface; Sidebar show/collapse hotkey works' {
+    It 'Agent history hotkey toggles the layout-appropriate history surface' {
         $horizontal = $null
         try {
             $horizontal = & $script:StartLayoutApp 'horizontal'
@@ -229,9 +236,23 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
             Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'history-from-collapsed-sidebar.png') | Out-Null
             $reopened | Should -BeTrue -Because 'the history accelerator must expand a collapsed sidebar and restore history search focus'
 
+            $historyTerminal = Get-ActivePane -App $vertical
+            Set-WtPaneFocus -App $vertical -SessionId ([string]$historyTerminal.session_id)
+            & $script:ToggleSidebarHotkey $vertical
+            Wait-UiElement -App $vertical -Selector 'Collapse sidebar' | Out-Null
+            (Test-Until -TimeoutSec 5 -Condition { & $script:TabSearchFocused $vertical }) |
+                Should -BeTrue -Because 'from focus outside History, the sidebar hotkey must enter tab search instead of collapsing the rail'
+            $hiddenHistory = Get-UiElement -App $vertical -Selector 'HistorySearchTextBox'
+            ($hiddenHistory -and -not $hiddenHistory.isOffscreen -and $hiddenHistory.width -gt 0) |
+                Should -BeFalse -Because 'entering tab search must dismiss History without restoring its old focus'
+            & $script:ToggleSidebarHotkey $vertical
+            Wait-UiElement -App $vertical -Selector 'Expand sidebar' | Out-Null
+
+            & $script:OpenAgentHistoryHotkey $vertical
+            (Test-Until -TimeoutSec 5 -Condition { & $script:HistorySearchFocused $vertical }) | Should -BeTrue
             & $script:OpenAgentHistoryHotkey $vertical
             Wait-UiElement -App $vertical -Selector 'Expand sidebar' | Out-Null
-            & $script:ToggleSidebarHotkey $vertical
+            Invoke-UiElement -App $vertical -Selector 'Expand sidebar' | Out-Null
             Wait-UiElement -App $vertical -Selector 'Collapse sidebar' | Out-Null
             $terminal = Get-ActivePane -App $vertical
             $split = Split-WtPane -App $vertical -SessionId $terminal.session_id -Direction right -Command 'pwsh.exe -NoLogo -NoProfile -NoExit'
@@ -301,7 +322,7 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
                 }.GetNewClosure()
                 foreach ($initiallyCollapsed in @($false, $true)) {
                     if ($initiallyCollapsed) {
-                        & $script:ToggleSidebarHotkey $vertical
+                        Invoke-UiElement -App $vertical -Selector 'Collapse sidebar' | Out-Null
                         Wait-UiElement -App $vertical -Selector 'Expand sidebar' | Out-Null
                     }
                     foreach ($closeWithButton in @($false, $true)) {
@@ -316,10 +337,9 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
                         & $verifyPreservation
                     }
                     if ($initiallyCollapsed) {
-                        & $script:ToggleSidebarHotkey $vertical
+                        Invoke-UiElement -App $vertical -Selector 'Expand sidebar' | Out-Null
                         Wait-UiElement -App $vertical -Selector 'Collapse sidebar' | Out-Null
-                        (Test-Until -TimeoutSec 5 -Condition $focusRestored) |
-                            Should -BeTrue -Because 'expanding the sidebar must not steal input focus or activate search'
+                        & $verifyPreservation
                     }
                 }
                 & $script:OpenAgentHistoryHotkey $vertical
@@ -333,14 +353,33 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
                 }) | Should -BeTrue -Because 'collapsing from history must choose a visible terminal without restoring an agent origin'
                 Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir "focus-$($origin.Name)-restored.png") | Out-Null
                 & $verifyPreservation
-                $fallbackFocus = [Windows.Automation.AutomationElement]::FocusedElement
+                Invoke-UiElement -App $vertical -Selector 'Expand sidebar' | Out-Null
+                Wait-UiElement -App $vertical -Selector 'Collapse sidebar' | Out-Null
+                & $verifyPreservation
+            }
+
+            foreach ($origin in $origins) {
+                Set-WtWindowForeground -App $vertical | Should -BeTrue
+                if ($origin.Agent) {
+                    Invoke-WtCli -App $vertical -Arguments @('focus-pane', '-t', $origin.Id) | Out-Null
+                }
+                else {
+                    Set-WtPaneFocus -App $vertical -SessionId $origin.Id
+                }
+                $sourceFocus = [Windows.Automation.AutomationElement]::FocusedElement
                 & $script:ToggleSidebarHotkey $vertical
                 Wait-UiElement -App $vertical -Selector 'Collapse sidebar' | Out-Null
+                (Test-Until -TimeoutSec 5 -Condition { & $script:TabSearchFocused $vertical }) |
+                    Should -BeTrue -Because "the $($origin.Name) input must enter Search tabs without collapsing the rail"
+                & $script:ToggleSidebarHotkey $vertical
+                Wait-UiElement -App $vertical -Selector 'Expand sidebar' | Out-Null
                 (Test-Until -TimeoutSec 5 -Condition {
                     [Windows.Automation.Automation]::Compare(
-                        $fallbackFocus, [Windows.Automation.AutomationElement]::FocusedElement)
-                }) |
-                    Should -BeTrue -Because 'expanding the sidebar must not steal input focus'
+                        $sourceFocus, [Windows.Automation.AutomationElement]::FocusedElement)
+                }) | Should -BeTrue -Because "the hotkey must return to the exact $($origin.Name) input when it is still available"
+                & $verifyPreservation
+                Invoke-UiElement -App $vertical -Selector 'Expand sidebar' | Out-Null
+                Wait-UiElement -App $vertical -Selector 'Collapse sidebar' | Out-Null
             }
 
             $boundSession = $agent.AcpSessionId
@@ -434,38 +473,50 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
         finally {
             if ($horizontal) { Stop-Terminal -App $horizontal }
         }
+    }
 
+    It 'Sidebar hotkey opens search and returns to input' -Tag 'SidebarHotkey' {
         $vertical = $null
         try {
-            $vertical = & $script:StartLayoutApp 'horizontal'
+            $vertical = & $script:StartLayoutApp 'vertical'
             if (-not (Test-WtWindowKeyFocusable -App $vertical)) {
                 Set-ItResult -Skipped -Because 'WT window cannot take foreground for window-level keys'
                 return
             }
-            Set-WtSetting -App $vertical -Key tabLayout -Value 'vertical' | Out-Null
             Wait-UiElement -App $vertical -Selector 'SearchTabsButton' | Out-Null
-            $sidebarReady = Test-Until -TimeoutSec 6 -IntervalSec 0.5 -Condition {
-                $button = Get-UiElement -App $vertical -Selector 'Collapse sidebar'
-                $button -and -not $button.isOffscreen -and $button.width -gt 0 -and $button.height -gt 0
-            }
             Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'sidebar-expanded-before.png') | Out-Null
-            $sidebarReady | Should -BeTrue -Because 'switching to vertical layout must initialize the sidebar toggle action label before the first hotkey'
 
+            $pane = Get-ActivePane -App $vertical
+            Set-WtPaneFocus -App $vertical -SessionId ([string]$pane.session_id)
+            $shellFocus = [Windows.Automation.AutomationElement]::FocusedElement
             & $script:ToggleSidebarHotkey $vertical
-            $sidebarCollapsed = Test-Until -TimeoutSec 6 -IntervalSec 0.5 -Condition {
-                $button = Get-UiElement -App $vertical -Selector 'Expand sidebar'
-                $button -and -not $button.isOffscreen -and $button.width -gt 0 -and $button.height -gt 0
-            }
+            (Test-Until -TimeoutSec 6 -IntervalSec 0.5 -Condition { & $script:TabSearchFocused $vertical }) |
+                Should -BeTrue -Because 'the hotkey must enter and focus Search tabs from an expanded rail'
             Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'sidebar-after-first-hotkey.png') | Out-Null
-            $sidebarCollapsed | Should -BeTrue -Because 'Ctrl+Shift+S must collapse the expanded vertical sidebar'
+            Set-WtPaneFocus -App $vertical -SessionId ([string]$pane.session_id)
+            & $script:ToggleSidebarHotkey $vertical
+            (Test-Until -TimeoutSec 6 -Condition { & $script:TabSearchFocused $vertical }) |
+                Should -BeTrue -Because 'the hotkey must reenter Search tabs without collapsing an expanded rail'
 
             & $script:ToggleSidebarHotkey $vertical
-            $sidebarExpanded = Test-Until -TimeoutSec 6 -IntervalSec 0.5 -Condition {
-                $button = Get-UiElement -App $vertical -Selector 'Collapse sidebar'
-                $button -and -not $button.isOffscreen -and $button.width -gt 0 -and $button.height -gt 0
-            }
+            Wait-UiElement -App $vertical -Selector 'CompactNewTabButton' | Out-Null
+            (Test-Until -TimeoutSec 6 -Condition {
+                [Windows.Automation.Automation]::Compare(
+                    $shellFocus, [Windows.Automation.AutomationElement]::FocusedElement)
+            }) | Should -BeTrue -Because 'the hotkey must return to the shell input used before entering the sidebar'
+            Test-UiElementExists -App $vertical -Selector SearchTextBox -TimeoutSec 1 |
+                Should -BeFalse -Because 'collapsing the rail must close tab search'
+            & $script:ToggleSidebarHotkey $vertical
+            & $script:ToggleSidebarHotkey $vertical
+            (Test-Until -TimeoutSec 6 -Condition { & $script:TabSearchFocused $vertical }) |
+                Should -BeTrue -Because 'entering a collapsed sidebar must expand and focus tab search'
             Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'sidebar-expanded-after.png') | Out-Null
-            $sidebarExpanded | Should -BeTrue -Because 'a second Ctrl+Shift+S must show the collapsed vertical sidebar'
+            & $script:ToggleSidebarHotkey $vertical
+            Wait-UiElement -App $vertical -Selector 'CompactNewTabButton' | Out-Null
+            (Test-Until -TimeoutSec 6 -Condition {
+                [Windows.Automation.Automation]::Compare(
+                    $shellFocus, [Windows.Automation.AutomationElement]::FocusedElement)
+            }) | Should -BeTrue -Because 'repeated sidebar hotkeys must return focus to the same shell'
         }
         finally {
             if ($vertical) { Stop-Terminal -App $vertical }
@@ -479,24 +530,24 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
             $tooltipCondition = [Windows.Automation.PropertyCondition]::new(
                 [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::ToolTip)
             $states = @(
-                @{ Name = 'collapse'; Label = 'Collapse sidebar'; Chord = 'Ctrl+Shift+S' }
+                @{ Name = 'collapse'; Label = 'Collapse sidebar'; Chord = '' }
                 @{ Name = 'expand'; Label = 'Expand sidebar'; Chord = 'Ctrl+Shift+S'; Collapsed = $true }
-                @{ Name = 'additional'; Label = 'Collapse sidebar'; Chord = 'Ctrl+Shift+Y'; Reload = @{
+                @{ Name = 'additional'; Label = 'Expand sidebar'; Chord = 'Ctrl+Shift+Y'; Collapsed = $true; Reload = @{
                     actions = @(@{ command = 'toggleSidebar'; keys = 'ctrl+shift+y' })
                 } }
-                @{ Name = 'rebound'; Label = 'Collapse sidebar'; Chord = 'Ctrl+Shift+Y'; Reload = @{
+                @{ Name = 'rebound'; Label = 'Expand sidebar'; Chord = 'Ctrl+Shift+Y'; Collapsed = $true; Reload = @{
                     actions = @(
                         @{ command = 'unbound'; keys = 'ctrl+shift+s' }
                         @{ command = 'toggleSidebar'; keys = 'ctrl+shift+y' }
                     )
                 } }
-                @{ Name = 'unbound'; Label = 'Collapse sidebar'; Chord = ''; Reload = @{
+                @{ Name = 'unbound'; Label = 'Expand sidebar'; Chord = ''; Collapsed = $true; Reload = @{
                     actions = @(@{ command = 'unbound'; keys = 'ctrl+shift+s' })
                 } }
-                @{ Name = 'reassigned'; Label = 'Collapse sidebar'; Chord = ''; Reload = @{
+                @{ Name = 'reassigned'; Label = 'Expand sidebar'; Chord = ''; Collapsed = $true; Reload = @{
                     actions = @(@{ command = 'copy'; keys = 'ctrl+shift+s' })
                 } }
-                @{ Name = 'overridden'; Label = 'Collapse sidebar'; Chord = ''; Reload = @{
+                @{ Name = 'overridden'; Label = 'Expand sidebar'; Chord = ''; Collapsed = $true; Reload = @{
                     actions = @(@{ command = 'copy'; id = 'Terminal.ToggleSidebar' })
                 } }
             )
@@ -514,7 +565,7 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
                 $processCondition = [Windows.Automation.PropertyCondition]::new(
                     [Windows.Automation.AutomationElement]::ProcessIdProperty, [int]$vertical.Pid)
                 if ($state.Collapsed) {
-                    & $script:ToggleSidebarHotkey $vertical
+                    Invoke-UiElement -App $vertical -Selector 'Collapse sidebar' | Out-Null
                 }
                 if ($state.Reload) { Set-WtSettings -App $vertical -Settings $state.Reload | Out-Null }
                 Wait-UiElement -App $vertical -Selector $state.Label | Out-Null

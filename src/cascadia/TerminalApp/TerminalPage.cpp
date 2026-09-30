@@ -5964,6 +5964,7 @@ namespace winrt::TerminalApp::implementation
         {
             _CloseSidebarHistory(false);
             _ClearTabSearch();
+            _sidebarHotkeyReturnControl = {};
         }
 
         _changingTabLayout = false;
@@ -6136,6 +6137,7 @@ namespace winrt::TerminalApp::implementation
         {
             _CloseSidebarHistory(false);
             _ClearTabSearch();
+            _sidebarHotkeyReturnControl = {};
         }
         _isVerticalRailVisible = visible;
 
@@ -6237,6 +6239,42 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void TerminalPage::_ToggleSidebarHotkey()
+    {
+        if (!_isVerticalLayout || !_isVerticalRailVisible)
+        {
+            return;
+        }
+
+        if (!_isVerticalRailCollapsed && _SidebarFocusedControl())
+        {
+            const auto source = std::exchange(_sidebarHotkeyReturnControl, {});
+            _TryFocusSidebarInput(source.get());
+            _OnVerticalRailCollapseRequested(nullptr, nullptr);
+            return;
+        }
+
+        if (const auto source = _GetActiveControl();
+            source && _IsVisibleControlInSubtree(source, _tabContent))
+        {
+            _sidebarHotkeyReturnControl = winrt::make_weak(source);
+        }
+        else
+        {
+            _sidebarHotkeyReturnControl = {};
+        }
+
+        if (_isVerticalRailCollapsed)
+        {
+            _OnVerticalRailCollapseRequested(nullptr, nullptr);
+        }
+        _CloseSidebarHistory(false);
+        if (!winrt::get_self<implementation::TabStrip>(_tabStrip)->FocusTabSearch())
+        {
+            LOG_HR(E_FAIL);
+        }
+    }
+
     void TerminalPage::_OnVerticalRailCollapseRequested(const IInspectable&, const IInspectable&)
     {
         if (!_isVerticalLayout || !_isVerticalRailVisible)
@@ -6248,6 +6286,7 @@ namespace winrt::TerminalApp::implementation
         const auto sidebarFocus = collapsing ? _SidebarFocusedControl() : nullptr;
         if (collapsing)
         {
+            _sidebarHotkeyReturnControl = {};
             _ClearTabSearch();
             _CloseSidebarHistory(false);
         }

@@ -651,7 +651,7 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_HandleToggleSidebar(const IInspectable& /*sender*/,
                                             const ActionEventArgs& args)
     {
-        _OnVerticalRailCollapseRequested(nullptr, nullptr);
+        _ToggleSidebarHotkey();
         args.Handled(true);
     }
 

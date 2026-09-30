@@ -248,6 +248,7 @@ namespace winrt::TerminalApp::implementation
         void SearchActive(bool value);
         winrt::hstring SearchQuery() const { return _searchQuery; }
         void SearchQuery(winrt::hstring const& value);
+        bool FocusTabSearch();
         winrt::Windows::Foundation::Collections::IObservableVector<TerminalApp::TabStripHistoryItem> HistoryItems() const { return _historyItems; }
         void CommitHistorySnapshot(std::vector<TerminalApp::TabStripHistoryItem> items, bool ready = false);
         void SetCurrentHistoryItem(TerminalApp::TabStripHistoryItem const& item,
