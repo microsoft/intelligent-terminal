@@ -278,6 +278,11 @@ controls; it does not switch between All tabs and Agents only. The Agents
 view displays the registry activity:
 `Idle` (Idle), `Working` (Active), `Attention` (Waiting for input), `Error`
 (Error), and both `Ended` and `Historical` as Historical, with localized labels.
+An unread dot on the Agents button marks a shell-origin session newly waiting
+for input. Opening the Agents view acknowledges all current waits; a session
+must leave and re-enter Attention to light the dot again. Snapshot refreshes
+reconcile waiting sessions even while the view is closed, without treating an
+incomplete or failed query as an empty list.
 Automatic Host discovery and prewarming exclude Gemini; opening this sidebar
 does not start a Gemini ACP process. Explicit Gemini chat selection remains
 available, and existing Gemini registry rows are still eligible for display.

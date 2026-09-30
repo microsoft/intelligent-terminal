@@ -250,6 +250,8 @@ namespace winrt::TerminalApp::implementation
         void SearchQuery(winrt::hstring const& value);
         winrt::Windows::Foundation::Collections::IObservableVector<TerminalApp::TabStripHistoryItem> HistoryItems() const { return _historyItems; }
         void CommitHistorySnapshot(std::vector<TerminalApp::TabStripHistoryItem> items, bool ready = false);
+        void ReconcileSidebarWaitingSessions(const std::vector<TerminalApp::TabStripHistoryItem>& items, bool complete = true);
+        bool ApplySidebarWaitingStatus(std::string_view sessionId, bool waiting);
         void SetCurrentHistoryItem(TerminalApp::TabStripHistoryItem const& item,
                                    winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& tab);
         bool ApplyHistoryStatusDelta(winrt::hstring const& sessionId,
@@ -440,6 +442,9 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::Foundation::Collections::IObservableVector<TerminalApp::TabStripHistoryItem> _historyItems{ nullptr };
         std::vector<TerminalApp::TabStripHistoryItem> _historySnapshot;
         std::vector<std::vector<winrt::hstring>> _historySearchTerms;
+        std::unordered_set<std::string> _knownSidebarSessions;
+        std::unordered_set<std::string> _waitingSidebarSessions;
+        std::unordered_set<std::string> _unreadWaitingSessions;
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Windows::Foundation::IInspectable>::VectorChanged_revoker _vectorChangedRevoker;
 
         struct CloseRequestedSubscription
@@ -508,6 +513,7 @@ namespace winrt::TerminalApp::implementation
         bool _matchesHistorySearch(size_t index) const;
         void _applyHistoryProjection(bool preserveScroll = false);
         void _updateHistoryVisualState();
+        void _updateWaitingIndicator();
         uint32_t _richTabMetadataSelectionCount() const noexcept;
         void _updateRichTabMetadataSelectionState();
         void _refreshDisplayItemVisuals(TerminalApp::TabStripDisplayItem const& display);

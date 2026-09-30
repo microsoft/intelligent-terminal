@@ -796,9 +796,82 @@ namespace winrt::TerminalApp::implementation
         return Resources().Lookup(box_value(styleKey)).as<WUX::Style>();
     }
 
+    void TabStrip::_updateWaitingIndicator()
+    {
+        const auto visible = !_historyActive && !_unreadWaitingSessions.empty();
+        HistoryUnreadIndicator().Visibility(visible ? Visibility::Visible : Visibility::Collapsed);
+        const auto title = HistoryHeader().Text();
+        const auto label = visible ? title + L" \u00b7 " + RS_(L"VerticalTabsHistoryStatusAttention") : title;
+        WUX::Automation::AutomationProperties::SetName(TabHistoryButton(), label);
+        ToolTipService::SetToolTip(TabHistoryButton(), box_value(label));
+    }
+
+    void TabStrip::ReconcileSidebarWaitingSessions(const std::vector<TerminalApp::TabStripHistoryItem>& items, const bool complete)
+    {
+        std::unordered_set<std::string> present;
+        for (const auto& item : items)
+        {
+            const auto sessionId = winrt::to_string(item.SessionId());
+            if (sessionId.empty())
+            {
+                continue;
+            }
+            present.insert(sessionId);
+            _knownSidebarSessions.insert(sessionId);
+            if (item.Status() == L"Attention")
+            {
+                if (_waitingSidebarSessions.insert(sessionId).second && !_historyActive)
+                {
+                    _unreadWaitingSessions.insert(sessionId);
+                }
+            }
+            else
+            {
+                _waitingSidebarSessions.erase(sessionId);
+                _unreadWaitingSessions.erase(sessionId);
+            }
+        }
+
+        if (complete)
+        {
+            const auto missing = [&](const auto& sessionId) { return !present.contains(sessionId); };
+            std::erase_if(_knownSidebarSessions, missing);
+            std::erase_if(_waitingSidebarSessions, missing);
+            std::erase_if(_unreadWaitingSessions, missing);
+        }
+        _updateWaitingIndicator();
+    }
+
+    bool TabStrip::ApplySidebarWaitingStatus(const std::string_view sessionId, const bool waiting)
+    {
+        const auto id = std::string{ sessionId };
+        if (!_knownSidebarSessions.contains(id))
+        {
+            return false;
+        }
+        if (waiting)
+        {
+            if (_waitingSidebarSessions.insert(id).second && !_historyActive)
+            {
+                _unreadWaitingSessions.insert(id);
+            }
+        }
+        else
+        {
+            _waitingSidebarSessions.erase(id);
+            _unreadWaitingSessions.erase(id);
+        }
+        _updateWaitingIndicator();
+        return true;
+    }
+
     void TabStrip::CommitHistorySnapshot(std::vector<TerminalApp::TabStripHistoryItem> items, const bool ready)
     {
         _historySnapshot = std::move(items);
+        if (ready)
+        {
+            ReconcileSidebarWaitingSessions(_historySnapshot);
+        }
         // WTA supplies newest-activity-first rows; preserve that order within each group.
         std::stable_partition(_historySnapshot.begin(), _historySnapshot.end(), [](const auto& item) {
             const auto status = item.Status();
@@ -919,6 +992,11 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::HistoryActive(bool value)
     {
+        if (value && !_unreadWaitingSessions.empty())
+        {
+            _unreadWaitingSessions.clear();
+            _updateWaitingIndicator();
+        }
         if (!value)
         {
             _agentFilterTelemetryPending = false;

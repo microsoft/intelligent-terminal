@@ -369,6 +369,10 @@ namespace winrt::TerminalApp::implementation
         std::shared_ptr<std::atomic<bool>> _historyRefreshCancellation;
         std::chrono::seconds _historyRetryDelay{ 0 };
         std::chrono::steady_clock::time_point _historyNextRefresh{};
+        Windows::UI::Xaml::DispatcherTimer _waitingRefreshTimer{ nullptr };
+        bool _waitingRefreshInFlight{ false };
+        bool _waitingRefreshPending{ false };
+        uint32_t _waitingRefreshRetryCount{ 0 };
         bool _tabDragReorderAuthorized{ false };
         Windows::Foundation::IInspectable _tabDragSelectedItem{ nullptr };
         winrt::weak_ref<Tab> _pendingPinTab;
@@ -1023,6 +1027,9 @@ namespace winrt::TerminalApp::implementation
         static _SidebarHistorySnapshot _ParseSidebarHistorySnapshot(const std::string& output);
         safe_void_coroutine _LoadSidebarHistory(uint64_t generation);
         void _CompleteSidebarHistoryRefresh(uint64_t generation, _SidebarHistorySnapshot snapshot);
+        void _RequestSidebarWaitingRefresh();
+        safe_void_coroutine _LoadSidebarWaiting();
+        void _CompleteSidebarWaitingRefresh(_SidebarHistorySnapshot snapshot);
         struct _SidebarHistoryActivationRequest
         {
             std::wstring arguments;

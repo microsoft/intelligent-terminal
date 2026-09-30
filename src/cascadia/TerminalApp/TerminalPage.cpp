@@ -81,6 +81,8 @@ using namespace std::chrono_literals;
 static constexpr double railMin = 180.0;
 static constexpr double railMax = 480.0;
 static constexpr double railCollapsedWidth = 40.0;
+// Match the session manager's shell-origin visibility contract for both views.
+static constexpr auto sidebarSessionsListCommand = L"sessions list --origin shell --all-agents --json --include-status";
 
 #define HOOKUP_ACTION(action) _actionDispatch->action({ this, &TerminalPage::_Handle##action });
 
@@ -264,6 +266,10 @@ namespace winrt::TerminalApp::implementation
 
     TerminalPage::~TerminalPage()
     {
+        if (_waitingRefreshTimer)
+        {
+            _waitingRefreshTimer.Stop();
+        }
         if (_historyRefreshCancellation)
         {
             _historyRefreshCancellation->store(true, std::memory_order_relaxed);
@@ -715,6 +721,12 @@ namespace winrt::TerminalApp::implementation
                 page->_UpdateSidebarHistoryCurrentSession();
                 page->_StartSidebarHistoryRefreshTimer();
                 page->_RequestSidebarHistoryRefresh(true);
+            }
+        });
+        _tabStrip.Loaded([weakThis{ get_weak() }](auto&&, auto&&) {
+            if (const auto page = weakThis.get())
+            {
+                page->_RequestSidebarWaitingRefresh();
             }
         });
         _tabStrip.HistoryClosed([weakThis{ get_weak() }](auto&&, auto&&) {
@@ -3317,6 +3329,7 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
+        _RequestSidebarWaitingRefresh();
         if (_tabStrip.RichTabAgentStatusVisible())
         {
             _RequestRichTabAgentStatusRefresh();
@@ -3344,6 +3357,10 @@ namespace winrt::TerminalApp::implementation
 
         const auto sessionIdString = std::string{ sessionId };
         const auto statusString = std::string{ status };
+        if (_waitingRefreshInFlight)
+        {
+            _waitingRefreshPending = true;
+        }
         ++_richTabAgentStatusRequestGeneration;
         if (_richTabAgentStatusRefreshInFlight)
         {
@@ -3376,11 +3393,16 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        winrt::get_self<implementation::TabStrip>(_tabStrip)->ApplyHistoryStatusDelta(
+        const auto strip = winrt::get_self<implementation::TabStrip>(_tabStrip);
+        strip->ApplyHistoryStatusDelta(
             winrt::to_hstring(sessionId),
             winrt::to_hstring(paneSessionId),
             winrt::to_hstring(status),
             _SidebarHistoryStatusText(status));
+        if (!strip->ApplySidebarWaitingStatus(sessionId, status == "Attention") && status == "Attention")
+        {
+            _RequestSidebarWaitingRefresh();
+        }
         return true;
     }
 
@@ -5962,6 +5984,10 @@ namespace winrt::TerminalApp::implementation
         _tabLayoutTransitionSelectedItem = nullptr;
         _ApplyTabListProjection();
         _ApplyPendingPinRequest();
+        if (succeeded && targetVertical)
+        {
+            _RequestSidebarWaitingRefresh();
+        }
 
         if (const auto infoBar = FindName(L"TabLayoutRestartInfoBar").try_as<MUX::Controls::InfoBar>())
         {
@@ -6686,8 +6712,7 @@ namespace winrt::TerminalApp::implementation
         namespace Wta = ::Microsoft::Terminal::WtaProcess;
         const auto result = Wta::RunWtaCapture(
             Wta::ResolveWtaExePath(),
-            // Keep the Agent Management MVP's shell-origin visibility contract.
-            L"sessions list --origin shell --all-agents --json --include-status",
+            sidebarSessionsListCommand,
             15'000,
             nullptr,
             false,
@@ -6768,6 +6793,113 @@ namespace winrt::TerminalApp::implementation
         {
             _historyRefreshPending = false;
             _RequestSidebarHistoryRefresh(false);
+        }
+    }
+
+    void TerminalPage::_RequestSidebarWaitingRefresh()
+    {
+        if (!_tabStrip || !_isVerticalLayout)
+        {
+            return;
+        }
+        if (_waitingRefreshTimer)
+        {
+            _waitingRefreshTimer.Stop();
+        }
+        if (_waitingRefreshInFlight)
+        {
+            _waitingRefreshPending = true;
+            return;
+        }
+
+        _waitingRefreshInFlight = true;
+        _LoadSidebarWaiting();
+    }
+
+    safe_void_coroutine TerminalPage::_LoadSidebarWaiting()
+    {
+        const auto weakThis = get_weak();
+        const auto dispatcher = Dispatcher();
+        co_await winrt::resume_background();
+
+        namespace Wta = ::Microsoft::Terminal::WtaProcess;
+        const auto result = Wta::RunWtaCapture(
+            Wta::ResolveWtaExePath(),
+            sidebarSessionsListCommand,
+            15'000,
+            nullptr,
+            false);
+        _SidebarHistorySnapshot snapshot;
+        if (result.completed && result.exitCode == 0)
+        {
+            snapshot = _ParseSidebarHistorySnapshot(result.output);
+        }
+        else
+        {
+            _agentPaneLog(
+                "sidebar waiting indicator unavailable completed=" + std::to_string(result.completed) +
+                " exit=" + std::to_string(result.exitCode));
+        }
+
+        co_await wil::resume_foreground(dispatcher);
+        if (const auto page = weakThis.get())
+        {
+            page->_CompleteSidebarWaitingRefresh(std::move(snapshot));
+        }
+    }
+
+    void TerminalPage::_CompleteSidebarWaitingRefresh(_SidebarHistorySnapshot snapshot)
+    {
+        _waitingRefreshInFlight = false;
+        // A status event received during capture makes this snapshot stale.
+        if (_waitingRefreshPending)
+        {
+            _waitingRefreshPending = false;
+            _RequestSidebarWaitingRefresh();
+            return;
+        }
+        if (!_isVerticalLayout)
+        {
+            return;
+        }
+
+        using State = _SidebarHistorySnapshot::State;
+        if (snapshot.state == State::Ready)
+        {
+            _waitingRefreshRetryCount = 0;
+            winrt::get_self<implementation::TabStrip>(_tabStrip)->ReconcileSidebarWaitingSessions(snapshot.items);
+        }
+        else if (snapshot.state == State::Loading || snapshot.state == State::Error)
+        {
+            if (!snapshot.items.empty())
+            {
+                winrt::get_self<implementation::TabStrip>(_tabStrip)->ReconcileSidebarWaitingSessions(snapshot.items, false);
+            }
+        }
+        if (snapshot.state == State::Loading || snapshot.state == State::Error)
+        {
+            if (snapshot.state == State::Error)
+            {
+                _agentPaneLog("sidebar waiting indicator history source reported an error");
+            }
+            // Discovery completion broadcasts a registry change; startup retries need not poll indefinitely.
+            if (++_waitingRefreshRetryCount > 3)
+            {
+                return;
+            }
+            if (!_waitingRefreshTimer)
+            {
+                _waitingRefreshTimer = Windows::UI::Xaml::DispatcherTimer{};
+                _waitingRefreshTimer.Tick([weakThis{ get_weak() }](auto&&, auto&&) {
+                    if (const auto page = weakThis.get())
+                    {
+                        page->_waitingRefreshTimer.Stop();
+                        page->_RequestSidebarWaitingRefresh();
+                    }
+                });
+            }
+            _waitingRefreshTimer.Interval(std::chrono::seconds{ 5 * _waitingRefreshRetryCount });
+            _waitingRefreshTimer.Start();
         }
     }
 

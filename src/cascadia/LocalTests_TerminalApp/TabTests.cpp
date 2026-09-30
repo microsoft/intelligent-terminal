@@ -302,6 +302,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabSearchUiState);
         TEST_METHOD(LiteralSearchHighlighting);
         TEST_METHOD(VerticalTabHistoryButtonOpensView);
+        TEST_METHOD(VerticalTabAgentsUnreadIndicator);
         TEST_METHOD(VerticalTabHistoryCloseStopsRefresh);
         TEST_METHOD(VerticalTabFilterContainsOnlyMetadata);
         TEST_METHOD(RichTabMetadataFlyoutDismissalBehavior);
@@ -4544,6 +4545,69 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(stripImpl->HistorySearchTextBox().Text().empty());
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->ItemsList().Visibility());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->HistoryPanel().Visibility());
+        });
+    }
+
+    void TabTests::VerticalTabAgentsUnreadIndicator()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            const auto button = impl->TabHistoryButton();
+            const auto title = impl->HistoryHeader().Text();
+            const auto resources = winrt::Windows::ApplicationModel::Resources::Core::ResourceManager::Current()
+                                       .MainResourceMap()
+                                       .GetSubtree(L"TerminalApp/Resources");
+            const auto attentionName = title + L" \u00b7 " +
+                                       resources.GetValue(L"VerticalTabsHistoryStatusAttention").ValueAsString();
+            const auto dot = impl->HistoryUnreadIndicator();
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, dot.Visibility());
+            VERIFY_IS_FALSE(impl->ApplySidebarWaitingStatus("agent-pane", true));
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, dot.Visibility());
+
+            auto first = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            first.SessionId(L"shell-a");
+            first.Status(L"Idle");
+            impl->ReconcileSidebarWaitingSessions({ first });
+            VERIFY_IS_TRUE(impl->ApplySidebarWaitingStatus("shell-a", true));
+            VERIFY_ARE_EQUAL(Visibility::Visible, dot.Visibility());
+            VERIFY_ARE_EQUAL(attentionName, Automation::AutomationProperties::GetName(button));
+            VERIFY_ARE_EQUAL(attentionName, winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(button)));
+
+            strip.HistoryActive(true);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, dot.Visibility());
+            VERIFY_ARE_EQUAL(title, Automation::AutomationProperties::GetName(button));
+            strip.HistoryActive(false);
+            VERIFY_IS_TRUE(impl->ApplySidebarWaitingStatus("shell-a", true));
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, dot.Visibility());
+            first.Status(L"Attention");
+            impl->ReconcileSidebarWaitingSessions({ first });
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, dot.Visibility());
+
+            auto second = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            second.SessionId(L"shell-b");
+            second.Status(L"Attention");
+            impl->ReconcileSidebarWaitingSessions({ first, second });
+            VERIFY_ARE_EQUAL(Visibility::Visible, dot.Visibility());
+            impl->ApplySidebarWaitingStatus("shell-b", false);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, dot.Visibility());
+
+            impl->ApplySidebarWaitingStatus("shell-a", false);
+            impl->ApplySidebarWaitingStatus("shell-a", true);
+            VERIFY_ARE_EQUAL(Visibility::Visible, dot.Visibility());
+            impl->ReconcileSidebarWaitingSessions({}, false);
+            VERIFY_ARE_EQUAL(Visibility::Visible, dot.Visibility());
+            impl->ReconcileSidebarWaitingSessions({});
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, dot.Visibility());
+
+            second.Status(L"Attention");
+            impl->ReconcileSidebarWaitingSessions({ second });
+            VERIFY_ARE_EQUAL(Visibility::Visible, dot.Visibility());
+            strip.HistoryActive(true);
+            strip.HistoryActive(false);
+            impl->ReconcileSidebarWaitingSessions({ second });
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, dot.Visibility());
+            VERIFY_ARE_EQUAL(title, winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(button)));
         });
     }
 
