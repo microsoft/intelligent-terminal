@@ -118,6 +118,7 @@
     <ClInclude Include="BasePaletteItem.h" />
     <ClInclude Include="SharedWta.h" />
     <ClInclude Include="AgentPaneLog.h" />
+    <ClInclude Include="AgentIconUtils.h" />
     <ClInclude Include="AgentPaneDragStash.h" />
     <ClInclude Include="ContentTransfer.h" />
     <ClInclude Include="AgentPaneLifetime.h" />

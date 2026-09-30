@@ -11272,17 +11272,185 @@ async fn session_hook_broadcasts_sessions_changed_after_valid_payload() {
     );
     assert_eq!(notification.params.get(), "{}");
     let terminal_events = crate::wt_protocol_events::take_test_published_events();
-    assert_eq!(terminal_events.len(), 2);
+    assert_eq!(terminal_events.len(), 1);
+    let structural: serde_json::Value = serde_json::from_str(&terminal_events[0]).unwrap();
+    assert_eq!(structural["method"], "session_registry_changed");
+    assert_eq!(structural["params"], serde_json::json!({}));
+
+    handle_session_hook(
+        &state,
+        crate::agent_sessions::SessionEvent::ToolStarting {
+            key: "sid-for-hook".into(),
+            tool_name: "edit".into(),
+        },
+        false,
+    )
+    .await
+    .unwrap();
+    assert!(rx.try_recv().is_ok());
+    assert!(rx.try_recv().is_err());
+    let terminal_events = crate::wt_protocol_events::take_test_published_events();
+    assert_eq!(terminal_events.len(), 1);
     let status_delta: serde_json::Value =
         serde_json::from_str(&terminal_events[0]).expect("terminal event should be JSON");
     assert_eq!(status_delta["method"], "session_registry_changed");
     assert_eq!(status_delta["params"]["session_id"], "sid-for-hook");
     assert_eq!(status_delta["params"]["pane_session_id"], "pane-for-hook");
-    assert_eq!(status_delta["params"]["status"], "Idle");
-    let fallback: serde_json::Value =
-        serde_json::from_str(&terminal_events[1]).expect("terminal event should be JSON");
-    assert_eq!(fallback["method"], "session_registry_changed");
-    assert_eq!(fallback["params"], serde_json::json!({}));
+    assert_eq!(status_delta["params"]["provider_id"], "copilot");
+    assert!(status_delta["params"]["last_activity_at_ms"].is_u64());
+    assert_eq!(status_delta["params"]["status"], "Working");
+}
+
+#[tokio::test]
+async fn session_status_change_start_move_end_and_unbound_activity_require_snapshot() {
+    use crate::agent_sessions::{CliSource, SessionEvent};
+
+    let state = make_state();
+    let _capture = crate::wt_protocol_events::capture_test_published_events();
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    state
+        .helper_ext_subscribers
+        .lock()
+        .await
+        .insert(HelperId(7), tx);
+    let start = |pane: &str| SessionEvent::SessionStarted {
+        key: "binding-status".into(),
+        cli_source: CliSource::Copilot,
+        pane_session_id: pane.into(),
+        cwd: PathBuf::from("C:\\repo"),
+        title: String::new(),
+    };
+    for event in [
+        start("old-pane"),
+        start("new-pane"),
+        SessionEvent::SessionStopped {
+            key: "binding-status".into(),
+            reason: "done".into(),
+        },
+    ] {
+        handle_session_hook(&state, event, false).await.unwrap();
+        let events = crate::wt_protocol_events::take_test_published_events();
+        assert_eq!(events.len(), 1);
+        let event: serde_json::Value = serde_json::from_str(&events[0]).unwrap();
+        assert_eq!(event["method"], "session_registry_changed");
+        assert_eq!(event["params"], serde_json::json!({}));
+        assert!(rx.try_recv().is_ok());
+        assert!(rx.try_recv().is_err());
+    }
+    let mut unbound = crate::session_registry::SessionInfo::new(
+        SessionId::new("unbound-activity"),
+        PathBuf::from("C:\\repo"),
+    );
+    unbound.status = Some(crate::agent_sessions::AgentStatus::Idle);
+    state.registry.upsert(unbound).await;
+    handle_session_hook(
+        &state,
+        SessionEvent::ToolStarting {
+            key: "unbound-activity".into(),
+            tool_name: "edit".into(),
+        },
+        false,
+    )
+    .await
+    .unwrap();
+    let events = crate::wt_protocol_events::take_test_published_events();
+    assert_eq!(events.len(), 1);
+    let event: serde_json::Value = serde_json::from_str(&events[0]).unwrap();
+    assert_eq!(event["params"], serde_json::json!({}));
+    assert!(rx.try_recv().is_ok());
+    assert!(rx.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn session_status_change_falls_back_to_one_generic_event_and_preserves_structural_events() {
+    let state = make_state();
+    let _capture = crate::wt_protocol_events::capture_test_published_events();
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    state
+        .helper_ext_subscribers
+        .lock()
+        .await
+        .insert(HelperId(7), tx);
+    state
+        .registry
+        .upsert(crate::session_registry::SessionInfo::new(
+            SessionId::new("no-status"),
+            PathBuf::from("C:\\repo"),
+        ))
+        .await;
+
+    for key in [None, Some("missing"), Some("no-status")] {
+        broadcast_session_status_change(&state, key).await;
+        let events = crate::wt_protocol_events::take_test_published_events();
+        assert_eq!(events.len(), 1, "one fallback event for {key:?}");
+        let event: serde_json::Value = serde_json::from_str(&events[0]).unwrap();
+        assert_eq!(event["method"], "session_registry_changed");
+        assert_eq!(event["params"], serde_json::json!({}));
+        let notification = rx.try_recv().expect("helper is still notified");
+        assert_eq!(
+            &*notification.method,
+            crate::session_registry::INTELLTERM_METHOD_SESSIONS_CHANGED
+        );
+        assert!(rx.try_recv().is_err());
+    }
+
+    broadcast_ext_to_helpers(
+        &state,
+        crate::session_registry::build_sessions_changed_notification(),
+    )
+    .await;
+    let events = crate::wt_protocol_events::take_test_published_events();
+    assert_eq!(
+        events.len(),
+        1,
+        "structural broadcasts still invalidate Terminal"
+    );
+    let event: serde_json::Value = serde_json::from_str(&events[0]).unwrap();
+    assert_eq!(event["method"], "session_registry_changed");
+    assert_eq!(event["params"], serde_json::json!({}));
+    assert!(rx.try_recv().is_ok());
+    assert!(rx.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn session_status_change_connection_transitions_publish_one_snapshot() {
+    use crate::agent_sessions::{CliSource, SessionEvent};
+
+    let state = make_state();
+    let _capture = crate::wt_protocol_events::capture_test_published_events();
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    state
+        .helper_ext_subscribers
+        .lock()
+        .await
+        .insert(HelperId(7), tx);
+    for pane_state in ["closed", "failed"] {
+        state
+            .registry
+            .apply_event(SessionEvent::SessionStarted {
+                key: "connection-status".into(),
+                cli_source: CliSource::Copilot,
+                pane_session_id: "connection-pane".into(),
+                cwd: PathBuf::from("C:\\repo"),
+                title: String::new(),
+            })
+            .await;
+        handle_master_wt_event(
+            &state,
+            serde_json::json!({
+                "method": "connection_state",
+                "params": {"pane_id": "connection-pane", "state": pane_state}
+            }),
+        )
+        .await;
+        let events = crate::wt_protocol_events::take_test_published_events();
+        assert_eq!(events.len(), 1, "one event for {pane_state}");
+        let event: serde_json::Value = serde_json::from_str(&events[0]).unwrap();
+        assert_eq!(event["method"], "session_registry_changed");
+        assert_eq!(event["params"], serde_json::json!({}));
+        assert!(rx.try_recv().is_ok());
+        assert!(rx.try_recv().is_err());
+    }
 }
 
 #[tokio::test]
@@ -14102,6 +14270,7 @@ async fn born_bound_session_gets_watcher_activity_without_rebinding() {
     // The whole point: a born-bound row (no hook) gets STATUS from the
     // watcher, while its pane binding (owned by born-bound) is untouched.
     let state = make_state();
+    let _capture = crate::wt_protocol_events::capture_test_published_events();
     let sid = acp::schema::v1::SessionId::new("bb-activity".to_string());
 
     let mut info = crate::session_registry::SessionInfo::new(
@@ -14118,6 +14287,12 @@ async fn born_bound_session_gets_watcher_activity_without_rebinding() {
     // Watcher observes a tool start (the Emitted's cli is irrelevant on the
     // born-bound path — binding/gate are skipped).
     apply_watcher_event(&state, codex_emitted("bb-activity")).await;
+    let events = crate::wt_protocol_events::take_test_published_events();
+    assert_eq!(events.len(), 1);
+    let event: serde_json::Value = serde_json::from_str(&events[0]).unwrap();
+    assert_eq!(event["method"], "session_registry_changed");
+    assert_eq!(event["params"]["session_id"], "bb-activity");
+    assert_eq!(event["params"]["status"], "Working");
 
     let row = state.registry.lookup(&sid).await.unwrap();
     assert_eq!(
@@ -14288,6 +14463,7 @@ async fn born_bound_delegate_clears_a_stale_hook_ownership_claim() {
 #[tokio::test]
 async fn master_com_agent_event_routes_directly_into_the_registry() {
     let state = make_state();
+    let _capture = crate::wt_protocol_events::capture_test_published_events();
     let sid = acp::schema::v1::SessionId::new("direct-hook".to_string());
 
     handle_master_wt_event(
@@ -14308,6 +14484,15 @@ async fn master_com_agent_event_routes_directly_into_the_registry() {
     )
     .await;
 
+    let events = crate::wt_protocol_events::take_test_published_events();
+    assert_eq!(
+        events.len(),
+        1,
+        "a multi-transition COM plan publishes once"
+    );
+    let event: serde_json::Value = serde_json::from_str(&events[0]).unwrap();
+    assert_eq!(event["method"], "session_registry_changed");
+    assert_eq!(event["params"], serde_json::json!({}));
     let row = state.registry.lookup(&sid).await.expect("row created");
     assert_eq!(
         row.status,
@@ -14319,6 +14504,26 @@ async fn master_com_agent_event_routes_directly_into_the_registry() {
         "a real COM hook must suppress the hookless watcher just like the old \
          helper-forwarded path did"
     );
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_event",
+            "params": {
+                "event": "agent.stop",
+                "cli_source": "copilot",
+                "agent_session_id": "direct-hook",
+                "pane_id": "pane-direct",
+                "payload": {}
+            }
+        }),
+    )
+    .await;
+    let events = crate::wt_protocol_events::take_test_published_events();
+    assert_eq!(events.len(), 1, "bound COM activity publishes one delta");
+    let event: serde_json::Value = serde_json::from_str(&events[0]).unwrap();
+    assert_eq!(event["method"], "session_registry_changed");
+    assert_eq!(event["params"]["session_id"], "direct-hook");
+    assert_eq!(event["params"]["status"], "Idle");
 }
 
 #[tokio::test]
@@ -14414,6 +14619,7 @@ async fn master_com_shell_prompt_ends_session_when_helper_exit_overtook_start() 
     use crate::agent_sessions::{AgentStatus, SessionEvent};
 
     let state = make_state();
+    let _capture = crate::wt_protocol_events::capture_test_published_events();
     let sid = acp::schema::v1::SessionId::new("queued-shell-session");
     let pane = "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE";
     let (tx, mut notifications) = mpsc::unbounded_channel();
@@ -14456,6 +14662,10 @@ async fn master_com_shell_prompt_ends_session_when_helper_exit_overtook_start() 
         Some(AgentStatus::Idle)
     );
     assert!(notifications.try_recv().is_ok());
+    assert_eq!(
+        crate::wt_protocol_events::take_test_published_events().len(),
+        1
+    );
 
     // No agent.session.end arrives. The queued prompt on the same COM stream
     // must still end the session, allowing /sessions to resume rather than focus.
@@ -14468,12 +14678,18 @@ async fn master_com_shell_prompt_ends_session_when_helper_exit_overtook_start() 
     assert_eq!(row.status, Some(AgentStatus::Ended));
     assert_eq!(row.pane_session_id, None);
     assert!(notifications.try_recv().is_ok());
+    let events = crate::wt_protocol_events::take_test_published_events();
+    assert_eq!(events.len(), 1, "prompt-ended transition publishes once");
+    let event: serde_json::Value = serde_json::from_str(&events[0]).unwrap();
+    assert_eq!(event["method"], "session_registry_changed");
+    assert_eq!(event["params"], serde_json::json!({}));
 
     handle_master_wt_event(&state, prompt).await;
     assert!(
         notifications.try_recv().is_err(),
         "duplicate prompt must not broadcast"
     );
+    assert!(crate::wt_protocol_events::take_test_published_events().is_empty());
 }
 
 #[tokio::test]

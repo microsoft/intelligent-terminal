@@ -5,6 +5,7 @@
 
 #include "pch.h"
 #include "TabStrip.h"
+#include "AgentIconUtils.h"
 #include "TabStripAutomationPeer.h"
 
 #include "TabStrip.g.cpp"
@@ -65,7 +66,7 @@ namespace winrt::TerminalApp::implementation
         }
         else
         {
-            Icon(Microsoft::Terminal::UI::IconPathConverter::IconWUX(iconPath));
+            Icon(::Microsoft::Terminal::UI::AgentIcons::ElementForIconPath(iconPath));
         }
         Icon().Width(16);
         Icon().Height(16);
@@ -116,7 +117,7 @@ namespace winrt::TerminalApp::implementation
         }
         else
         {
-            Icon(Microsoft::Terminal::UI::IconPathConverter::IconWUX(iconPath));
+            Icon(::Microsoft::Terminal::UI::AgentIcons::ElementForIconPath(iconPath));
         }
         _iconPath = iconPath;
     }
@@ -294,6 +295,7 @@ namespace winrt::TerminalApp::implementation
         _historyItems = single_threaded_observable_vector<TerminalApp::TabStripHistoryItem>();
 
         InitializeComponent();
+        ::Microsoft::Terminal::UI::AgentIcons::Resources() = Resources();
 
         ItemsList().ItemsSource(_displayItems);
         _vectorChangedRevoker = _tabItems.VectorChanged(auto_revoke, { get_weak(), &TabStrip::_onItemsVectorChanged });

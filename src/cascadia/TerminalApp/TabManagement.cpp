@@ -59,6 +59,30 @@ namespace winrt
 
 namespace winrt::TerminalApp::implementation
 {
+    winrt::hstring TerminalPage::_AgentIconForControl(const TermControl& control, const winrt::hstring& profileIcon)
+    {
+        if (control)
+        {
+            if (const auto agentInfo = _RichTabAgentInfoForControl(control);
+                agentInfo &&
+                (agentInfo->status == "Idle" ||
+                 agentInfo->status == "Working" ||
+                 agentInfo->status == "Attention" ||
+                 agentInfo->status == "Error"))
+            {
+                const auto providerId = winrt::to_hstring(agentInfo->providerId);
+                for (const auto& agent : ::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinAcpAgents)
+                {
+                    if (::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(agent.id, providerId))
+                    {
+                        return winrt::hstring{ L"ms-appx:///AgentIcons/" } + winrt::hstring{ agent.id } + L".svg";
+                    }
+                }
+            }
+        }
+        return profileIcon;
+    }
+
     // Method Description:
     // - Open a new tab. This will create the TerminalControl hosting the
     //   terminal, and add a new Tab to our list of tabs. The method can
@@ -493,14 +517,14 @@ namespace winrt::TerminalApp::implementation
     // - tab: the Tab to update the title for.
     void TerminalPage::_UpdateTabIcon(Tab& tab)
     {
-        // Don't change the icon when an agent pane has focus — same as title.
-        if (const auto activePane = tab.GetActivePane(); activePane && activePane->IsAgentPane())
+        const auto sourcePane = _SourceTerminalPaneForTab(tab.get_strong());
+        if (!sourcePane)
         {
             return;
         }
-        if (const auto content{ tab.GetActiveContent() })
+        if (const auto content{ sourcePane->GetContent() })
         {
-            const auto& icon{ content.Icon() };
+            const auto icon = _AgentIconForControl(sourcePane->GetTerminalControl(), content.Icon());
             const auto theme = _settings.GlobalSettings().CurrentTheme();
             const auto iconStyle = (theme && theme.Tab()) ? theme.Tab().IconStyle() : IconStyle::Default;
 

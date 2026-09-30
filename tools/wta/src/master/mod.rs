@@ -6615,8 +6615,16 @@ pub(crate) async fn broadcast_ext_to_helpers(
     state: &MasterStateInner,
     notification: acp::schema::v1::ExtNotification,
 ) {
-    let notify_terminal =
-        &*notification.method == crate::session_registry::INTELLTERM_METHOD_SESSIONS_CHANGED;
+    broadcast_ext_to_helpers_impl(state, notification, true).await;
+}
+
+async fn broadcast_ext_to_helpers_impl(
+    state: &MasterStateInner,
+    notification: acp::schema::v1::ExtNotification,
+    notify_terminal: bool,
+) {
+    let notify_terminal = notify_terminal
+        && &*notification.method == crate::session_registry::INTELLTERM_METHOD_SESSIONS_CHANGED;
     let mut subs = state.helper_ext_subscribers.lock().await;
     let mut dead: Vec<HelperId> = Vec::new();
     for (helper_id, tx) in subs.iter() {
@@ -6640,19 +6648,53 @@ pub(crate) async fn broadcast_ext_to_helpers(
     }
 }
 
-async fn publish_session_status_delta(state: &MasterStateInner, session_id: &str) {
+/// Only activity events leave registry membership and pane ownership unchanged.
+/// Binding changes need a snapshot: a delta cannot remove Terminal's old pane entry.
+fn session_event_is_activity_only(event: &crate::agent_sessions::SessionEvent) -> bool {
+    use crate::agent_sessions::SessionEvent;
+    matches!(
+        event,
+        SessionEvent::ToolStarting { .. }
+            | SessionEvent::ToolCompleted { .. }
+            | SessionEvent::Notification { .. }
+    )
+}
+
+/// Helpers still refetch. A known, bound activity row can use a complete status
+/// delta; structural changes and unbound rows require generic invalidation.
+async fn broadcast_session_status_change(state: &MasterStateInner, session_id: Option<&str>) {
+    let delta_published = if let Some(session_id) = session_id {
+        publish_session_status_delta(state, session_id).await
+    } else {
+        false
+    };
+    broadcast_ext_to_helpers_impl(
+        state,
+        crate::session_registry::build_sessions_changed_notification(),
+        !delta_published,
+    )
+    .await;
+}
+
+async fn publish_session_status_delta(state: &MasterStateInner, session_id: &str) -> bool {
     let sid = acp::schema::v1::SessionId::new(session_id.to_string());
     let Some(row) = state.registry.lookup(&sid).await else {
-        return;
+        return false;
     };
     let Some(status) = row.status.as_ref() else {
-        return;
+        return false;
     };
+    if row.pane_session_id.as_deref().is_none_or(str::is_empty) {
+        return false;
+    }
     crate::wt_protocol_events::send(crate::wt_protocol_events::session_status_changed_event(
         session_id,
         row.pane_session_id.as_deref(),
+        row.provider_id.as_deref(),
+        row.last_activity_at_ms,
         status,
     ));
+    true
 }
 
 /// Called only under the per-connection refresh gate. Failure is not an empty list.
@@ -7798,17 +7840,13 @@ async fn handle_session_hook(
         }
     }
 
+    let activity_only = session_event_is_activity_only(&event);
     let status_key = session_event_status_key(state, &event).await;
     let (applied, refresh_key) = apply_master_session_event(state, event, is_born_bound).await;
     if applied {
-        if let Some(key) = status_key {
-            publish_session_status_delta(state, &key).await;
-        }
-    }
-    if applied {
-        broadcast_ext_to_helpers(
+        broadcast_session_status_change(
             state,
-            crate::session_registry::build_sessions_changed_notification(),
+            status_key.as_deref().filter(|_| applied && activity_only),
         )
         .await;
     }
@@ -8050,14 +8088,12 @@ async fn apply_watcher_event(state: &MasterStateInner, emitted: crate::session_w
     // status and never changes that binding.
     if state.born_bound.lock().await.contains(&sid) {
         let key = emitted.key.clone();
+        let activity_only = session_event_is_activity_only(&emitted.event);
         let applied = state.registry.apply_event(emitted.event).await;
         if applied {
-            publish_session_status_delta(state, &key).await;
-        }
-        if applied {
-            broadcast_ext_to_helpers(
+            broadcast_session_status_change(
                 state,
-                crate::session_registry::build_sessions_changed_notification(),
+                Some(key.as_str()).filter(|_| applied && activity_only),
             )
             .await;
         }
@@ -9557,6 +9593,7 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
     if plan.events.is_empty() {
         return;
     }
+    let activity_only = plan.events.iter().all(session_event_is_activity_only);
 
     let mut changed = false;
     let mut refresh_keys = HashSet::new();
@@ -9588,20 +9625,9 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
         "processed COM agent hook"
     );
     if changed {
-        if let Some(row) = final_row {
-            if let Some(status) = row.status.as_ref() {
-                crate::wt_protocol_events::send(
-                    crate::wt_protocol_events::session_status_changed_event(
-                        &session_key,
-                        row.pane_session_id.as_deref(),
-                        status,
-                    ),
-                );
-            }
-        }
-        broadcast_ext_to_helpers(
+        broadcast_session_status_change(
             state,
-            crate::session_registry::build_sessions_changed_notification(),
+            Some(session_key.as_str()).filter(|_| activity_only),
         )
         .await;
     }
@@ -9907,12 +9933,7 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
                     session_key = %row.session_id.0,
                     "shell prompt ended bound session in COM event order"
                 );
-                publish_session_status_delta(state, &row.session_id.0).await;
-                broadcast_ext_to_helpers(
-                    state,
-                    crate::session_registry::build_sessions_changed_notification(),
-                )
-                .await;
+                broadcast_session_status_change(state, None).await;
             }
         }
         return;
@@ -9935,7 +9956,6 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
         }
         _ => return,
     };
-    let status_key = session_event_status_key(state, &event).await;
     tracing::info!(
         target: "master_wt_event",
         pane_id = %pane_id,
@@ -9945,19 +9965,12 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
     );
     let applied = state.registry.apply_event(event).await;
     if applied {
-        if let Some(key) = status_key {
-            publish_session_status_delta(state, &key).await;
-        }
         tracing::info!(
             target: "master_wt_event",
             pane_id = %pane_id,
             "broadcasting sessions/changed after WT-driven demotion"
         );
-        broadcast_ext_to_helpers(
-            state,
-            crate::session_registry::build_sessions_changed_notification(),
-        )
-        .await;
+        broadcast_session_status_change(state, None).await;
     } else {
         tracing::debug!(
             target: "master_wt_event",
