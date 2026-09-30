@@ -281,14 +281,7 @@ namespace winrt::TerminalApp::implementation
             const auto tab = weakTab.get();
             if (page && tab && page->_GetTabIndex(*tab))
             {
-                uint32_t pinnedCount = 0;
-                for (const auto& candidate : page->_tabs)
-                {
-                    if (const auto impl = page->_GetTabImpl(candidate); impl && impl->KeepRunning())
-                    {
-                        ++pinnedCount;
-                    }
-                }
+                const auto pinnedCount = page->_KeepRunningTabCounts().second;
                 TraceLoggingWrite(
                     g_hTerminalAppProvider,
                     "SidebarTabPinned",
@@ -296,6 +289,7 @@ namespace winrt::TerminalApp::implementation
                     TraceLoggingUInt32(pinnedCount, "pinned_count"),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+                page->_LogKeepRunningMarked(tab);
             }
         });
 
@@ -889,7 +883,44 @@ namespace winrt::TerminalApp::implementation
         const auto tab = _FindTabByStableId(winrt::hstring{ ::Microsoft::Console::Utils::GuidToString(tabId) });
         THROW_HR_IF(E_INVALIDARG, !tab || !_GetTabIndex(*tab));
         THROW_HR_IF(E_ILLEGAL_METHOD_CALL, enabled && !CanKeepTabRunning(tabId));
+        const auto wasEnabled = tab->KeepRunning();
         tab->KeepRunning(enabled);
+        if (enabled && !wasEnabled)
+        {
+            _LogKeepRunningMarked(tab);
+        }
+    }
+
+    std::pair<uint32_t, uint32_t> TerminalPage::_KeepRunningTabCounts() const
+    {
+        uint32_t totalTabCount = 0;
+        uint32_t keepRunningTabCount = 0;
+        for (const auto& candidate : _tabs)
+        {
+            if (const auto tab = _GetTabImpl(candidate); tab && tab->CanKeepRunning())
+            {
+                ++totalTabCount;
+                if (tab->KeepRunning())
+                {
+                    ++keepRunningTabCount;
+                }
+            }
+        }
+        return { totalTabCount, keepRunningTabCount };
+    }
+
+    void TerminalPage::_LogKeepRunningMarked(const winrt::com_ptr<Tab>& tab)
+    {
+        const auto [totalTabCount, keepRunningTabCount] = _KeepRunningTabCounts();
+        TraceLoggingWrite(
+            g_hTerminalAppProvider,
+            "KeepRunningMarked",
+            TraceLoggingWideString(tab->KeepRunningTelemetryId().c_str(), "KeepId"),
+            TraceLoggingBool(!!tab->FindAgentPaneContent(), "HasAgentPane"),
+            TraceLoggingUInt32(totalTabCount, "TotalTabCount"),
+            TraceLoggingUInt32(keepRunningTabCount, "KeepRunningTabCount"),
+            TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+            TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
     }
 
     bool TerminalPage::_KeepTabRunning(const winrt::com_ptr<Tab>& tab)
@@ -928,6 +959,13 @@ namespace winrt::TerminalApp::implementation
         });
         _RemoveTab(*tab, true, true);
         rollback.release();
+        TraceLoggingWrite(
+            g_hTerminalAppProvider,
+            "KeepRunningDetached",
+            TraceLoggingWideString(tab->KeepRunningTelemetryId().c_str(), "KeepId"),
+            TraceLoggingBool(!!tab->FindAgentPaneContent(), "HasAgentPane"),
+            TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+            TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
         return true;
     }
 
@@ -944,10 +982,51 @@ namespace winrt::TerminalApp::implementation
             }
             CATCH_LOG()
         });
-        auto actions = winrt::single_threaded_vector(sourceTab->BuildStartupActions(BuildStartupKind::Content));
-        THROW_HR_IF(E_ABORT, !_AttachTransferredContent(*winrt::get_self<TerminalPage>(owner), sourceTab, sourceTab->GetRootPane(), actions, -1));
+        const auto keepId = sourceTab->KeepRunningTelemetryId();
+        const auto hasAgentPane = !!sourceTab->FindAgentPaneContent();
+        const auto logReattach = [&](const char* outcome) {
+            TraceLoggingWrite(
+                g_hTerminalAppProvider,
+                "KeepRunningReattached",
+                TraceLoggingWideString(keepId.c_str(), "KeepId"),
+                TraceLoggingString(outcome, "Outcome"),
+                TraceLoggingBool(hasAgentPane, "HasAgentPane"),
+                TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+        };
+        bool attached = false;
+        try
+        {
+            auto actions = winrt::single_threaded_vector(sourceTab->BuildStartupActions(BuildStartupKind::Content));
+            attached = _AttachTransferredContent(*winrt::get_self<TerminalPage>(owner), sourceTab, sourceTab->GetRootPane(), actions, -1);
+        }
+        catch (...)
+        {
+            rollback.reset();
+            logReattach("failed");
+            throw;
+        }
+        if (!attached)
+        {
+            rollback.reset();
+            logReattach("failed");
+            return false;
+        }
         _manager.CompleteKeptGroupReattach(groupId, true);
         rollback.release();
+        logReattach("live");
+        const auto restoredTab = _GetFocusedTabImpl();
+        if (hasAgentPane)
+        {
+            try
+            {
+                Json::Value params;
+                params["tab_id"] = winrt::to_string(restoredTab->StableId());
+                params["window_id"] = std::to_string(_WindowProperties.WindowId());
+                _RaiseProtocolEvent("keep_running_reattached", params);
+            }
+            CATCH_LOG()
+        }
         _GetFocusedTabImpl()->GetRootPane()->WalkTree([&](const auto& pane) {
             const auto control = pane->GetTerminalControl();
             const auto binding = control ? _manager.AgentSessionEvent(control.ContentId()) : winrt::hstring{};

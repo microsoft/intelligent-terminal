@@ -215,9 +215,12 @@ pub fn log_agent_prompt_sent(
     template_kind: &str,
     is_byok: bool,
     agent_id: &str,
+    reattached: bool,
+    user_prompt_ordinal: &str,
 ) {
     let is_autofix_i32: i32 = if is_autofix { 1 } else { 0 };
     let is_byok_i32: i32 = if is_byok { 1 } else { 0 };
+    let reattached_i32: i32 = if reattached { 1 } else { 0 };
     tlg::write_event!(
         AGENT_PROVIDER,
         "AgentPromptSent",
@@ -226,6 +229,8 @@ pub fn log_agent_prompt_sent(
         u32("PromptLengthBytes", &prompt_byte_len),
         bool32("IsAutofix", &is_autofix_i32),
         bool32("IsByok", &is_byok_i32),
+        bool32("Reattached", &reattached_i32),
+        str8("UserPromptOrdinal", user_prompt_ordinal),
         str8("AgentId", sanitize_agent_id(agent_id)),
         str8("TemplateKind", template_kind),
         str8("Route", "AcpDispatch"),

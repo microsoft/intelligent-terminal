@@ -1026,7 +1026,7 @@ pub fn classify_wt_event(
                 age_ticks: 100,
             }
         }
-        "set_agent_state" | "agent_paste_text" => {
+        "set_agent_state" | "agent_paste_text" | "agent_availability_changed" => {
             // handle_event consumes these at the top of WtEvent
             // before classification runs, so classify normally never sees
             // it. Add an explicit arm anyway so a future refactor that
@@ -1284,6 +1284,7 @@ pub struct App {
     // AgentPaneContent / bottom bar window without fan-out.
     pub owner_tab_id: Option<String>,
     pub window_id: Option<String>,
+    pub(crate) sessions_in_sidebar: bool,
     // WT event notifications (global — affects bottom-bar / banner across tabs)
     pub wt_notifications: std::collections::VecDeque<WtNotification>,
     pub show_notification_banner: bool,
@@ -1618,6 +1619,7 @@ impl App {
             tab_id: None,
             owner_tab_id: None,
             window_id: None,
+            sessions_in_sidebar: false,
             wt_notifications: VecDeque::new(),
             show_notification_banner: false,
             autofix_enabled,
@@ -3887,6 +3889,7 @@ impl App {
                 crate::wt_protocol_events::agent_availability_changed_event(
                     agent_id,
                     self.agent_routing_tab_id(),
+                    false,
                 ),
             );
         }
@@ -3996,6 +3999,7 @@ impl App {
             tab.usage_staleness = crate::usage::UsageStaleness::default();
             tab.clear_completed_turns();
             tab.session_id = None;
+            tab.reattached_session_id = None;
             // The new agent starts with nothing to resume. Everything else
             // that constitutes a conversation is cleared just above, so this
             // flag has to go with it: `resumable_session_id` gates on it, and
@@ -4991,6 +4995,7 @@ impl App {
             AppEvent::AliveSessionRemoved(_) => "alive_session_removed",
             AppEvent::AliveJoinUpgrade(_) => "alive_join_upgrade",
             AppEvent::SessionsChanged => "sessions_changed",
+            AppEvent::SessionsFallbackTick => "sessions_fallback_tick",
             AppEvent::AgentsSnapshotLoaded { .. } => "agents_snapshot_loaded",
             AppEvent::AgentsSnapshotFailed { .. } => "agents_snapshot_failed",
             AppEvent::RegisterBornBoundSession { .. } => "register_born_bound_session",
@@ -6040,6 +6045,7 @@ impl App {
         tab.config_pending_id = None;
         tab.native_yolo_config_pending = false;
         let old_sid = tab.session_id.take();
+        tab.reattached_session_id = None;
         tab.has_meaningful_conversation = false;
         tab.meaningful_conversation_before_load = None;
         tab.loading_session = false;
@@ -6109,9 +6115,14 @@ impl App {
         };
 
         let hint = hint.trim().to_string();
+        let reattached_session_id = self
+            .tab_sessions
+            .get(&target_tab_id)
+            .and_then(|tab| tab.reattached_session_id().map(str::to_string));
         let prompt = PromptSubmission::new_autofix(hint.clone(), Some(pane_context))
             .with_byok(self.current_model_is_byok())
-            .with_agent_id(self.current_agent_id.clone());
+            .with_agent_id(self.current_agent_id.clone())
+            .with_reattached_session(reattached_session_id);
         let submitted = SubmittedPrompt {
             id: prompt.id,
             text: prompt.text.clone(),
@@ -6389,6 +6400,7 @@ impl App {
             tab.usage_staleness = crate::usage::UsageStaleness::default();
             tab.clear_completed_turns();
             tab.session_id = None;
+            tab.reattached_session_id = None;
             tab.has_meaningful_conversation = false;
             tab.meaningful_conversation_before_load = None;
             tab.loading_session = false;
@@ -6866,6 +6878,7 @@ impl App {
         // `clear_chat_history` deliberately leaves alone.
         if let Some(tab) = self.tab_sessions.get_mut(tab_id) {
             removed_session_id = tab.session_id.take();
+            tab.reattached_session_id = None;
             tab.config_picker = ConfigPickerState::Closed;
             tab.config_pending_id = None;
             tab.native_yolo_config_pending = false;

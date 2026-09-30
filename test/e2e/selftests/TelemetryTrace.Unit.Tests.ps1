@@ -108,7 +108,7 @@ Describe 'Telemetry typed decoding' -Tag Unit {
             $env:ITE2E_TELEMETRY_POLICY_APPROVED = '1'
             $trace = Start-TestTelemetryTrace -Directory $directory
             $script:telemetryPolicyBroker | Should -Be $trace.Directory
-            Should -Invoke Start-Process -Times 1 -Exactly
+            Should -Invoke Start-Process -Times 1 -Exactly -ParameterFilter { $Verb -eq 'RunAs' -and $WindowStyle -eq 'Hidden' }
         }
         finally {
             $env:ITE2E_TELEMETRY_POLICY_APPROVED = $saved

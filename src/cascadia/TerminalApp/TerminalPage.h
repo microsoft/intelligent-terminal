@@ -338,6 +338,7 @@ namespace winrt::TerminalApp::implementation
         // Populated with real TabViewItems via the routed _tabItems() helper.
         TerminalApp::TabStrip _tabStrip{ nullptr };
         bool _isVerticalLayout{ false };
+        bool _isRightToLeft{ false };
         bool _changingTabLayout{ false };
         bool _hasTitlebarHost{ false };
         uint64_t _tabLayoutGeneration{ 0 };
@@ -375,8 +376,7 @@ namespace winrt::TerminalApp::implementation
         winrt::weak_ref<Tab> _pendingPinTab;
         bool _pendingPinValue{ false };
         // Spec A §5.2: hand-rolled splitter for resizing the vertical rail.
-        // Lives in column 1 of the Root Grid, hugging its left edge, so the
-        // hit strip straddles the column boundary.
+        // Lives in the content column and straddles the rail boundary.
         Windows::UI::Xaml::Controls::Border _verticalRailSplitter{ nullptr };
         Windows::UI::Core::CoreCursor _railSplitterPriorCursor{ nullptr };
         bool _railSplitterCursorSaved{ false };
@@ -575,6 +575,7 @@ namespace winrt::TerminalApp::implementation
             bool yoloEnabled{ false };
             bool yoloPolicyBlocked{ false };
             std::string autofixPolicyState{ "unknown" };
+            bool sessionsInSidebar{ false };
         };
         AgentRuntimeConfigSnapshot _lastAgentRuntimeConfig{};
         bool _agentRuntimeConfigInitialized{ false };
@@ -932,6 +933,8 @@ namespace winrt::TerminalApp::implementation
         std::vector<winrt::guid> _startupKeptGroups;
         bool _restoringStartupKeptGroups{ false };
         std::vector<winrt::TerminalApp::Tab> _RuntimeTabs() const;
+        std::pair<uint32_t, uint32_t> _KeepRunningTabCounts() const;
+        void _LogKeepRunningMarked(const winrt::com_ptr<Tab>& tab);
         bool _KeepTabRunning(const winrt::com_ptr<Tab>& tab);
         friend struct ContentManager;
         void _SettingsButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
@@ -1016,6 +1019,7 @@ namespace winrt::TerminalApp::implementation
                 Loading,
                 Ready,
                 Error,
+                Timeout,
                 InvalidResponse,
                 Cancelled,
             };
@@ -1280,6 +1284,7 @@ namespace winrt::TerminalApp::implementation
         void _OnFirstLayout(const IInspectable& sender, const IInspectable& eventArgs);
         void _ApplyVerticalLayoutReshape(bool initializeWidth = false);
         void _ApplyHorizontalLayoutReshape();
+        void _SetVerticalRailColumnWidth(double width);
         void _UpdateTabLayoutHost();
         void _RequestTabLayoutChange(winrt::Microsoft::Terminal::Settings::Model::TabLayout targetLayout);
         bool _ApplyTabLayout(winrt::Microsoft::Terminal::Settings::Model::TabLayout targetLayout);

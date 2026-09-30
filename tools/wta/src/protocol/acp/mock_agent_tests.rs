@@ -1094,7 +1094,17 @@ fn test_prompt(id: u64, text: &str, is_autofix: bool) -> PromptSubmission {
         images: Vec::new(),
         is_byok: false,
         agent_id: "copilot".to_string(),
+        reattached_session_id: None,
     }
+}
+
+#[test]
+fn reattached_prompt_matches_the_dispatched_session() {
+    let prompt =
+        test_prompt(1, "hello", false).with_reattached_session(Some("surviving-session".into()));
+    assert!(prompt.was_reattached_at_dispatch("surviving-session"));
+    assert!(!prompt.was_reattached_at_dispatch("replacement-session"));
+    assert!(!test_prompt(2, "hello", false).was_reattached_at_dispatch("surviving-session"));
 }
 
 fn record_copilot_yolo_state(

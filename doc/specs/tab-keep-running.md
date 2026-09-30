@@ -121,6 +121,24 @@ twice and continues keeping the process alive.
 - A horizontal-tab menu entry is not implemented here.
 - Missing hooks may delay agent status updates but do not gate keeping a tab.
 
+## Telemetry
+
+`App.KeepRunningMarked` records explicit menu/API opt-in together with
+post-enable `TotalTabCount` and `KeepRunningTabCount` for attached terminal
+tabs in the owning window. Search-hidden tabs count; detached tabs, other
+windows, Settings, and other nonterminal tabs do not. The paired counts measure
+the tab share at enable time, not a per-agent-session mark rate. Disabling,
+startup, and repeated enable requests do not emit a snapshot.
+
+`App.KeepRunningDetached` records successful background retention; and
+`App.KeepRunningReattached` records committed (`live`) or rolled-back
+(`failed`) restoration. A random `KeepId` correlates those three tab-level
+events without publishing the tab routing ID. `HasAgentPane` distinguishes
+tabs containing an agent pane from shell-only tabs, but does not assert an
+active ACP session. After reattachment, `WTA.AgentPromptSent.Reattached`
+is true only for prompts on the same ACP session that survived the transfer;
+it cannot be joined to `KeepId`. Process exit has no `gone` event.
+
 Focused coverage lives in `TabTests::KeepRunning*` in
 `src/cascadia/LocalTests_TerminalApp/TabTests.cpp`. The shared history/session
 focus boundary also has the `Feature.KeepRunningFocus` ItE2E suite, covering

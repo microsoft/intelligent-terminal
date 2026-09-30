@@ -263,7 +263,8 @@
                   IsItemClickEnabled="False"
                   ReorderMode="Disabled"
                   SelectionChanged="OnListSelectionChanged"
-                  SelectionMode="Single">
+                  SelectionMode="Single"
+                  SingleSelectionFollowsFocus="False">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="local:TabStripDisplayItem">
                     <StackPanel HorizontalAlignment="Stretch">
@@ -292,8 +293,7 @@
                                     Grid.ColumnSpan="3"
                                     Background="Transparent"
                                     CornerRadius="{StaticResource SidebarTabCornerRadius}"
-                                    IsHitTestVisible="False"
-                                    Visibility="{x:Bind SelectionVisibility, Mode=OneWay}" />
+                                    IsHitTestVisible="False" />
                             <!--  Share one centerline for shell icons and group toggles.  -->
                             <Grid Width="28"
                                   Margin="{x:Bind LeadingContentMargin, Mode=OneWay}"

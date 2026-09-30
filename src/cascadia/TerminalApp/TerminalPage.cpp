@@ -25,6 +25,7 @@
 #include "../inc/AgentPaneBackend.h"
 #include "../inc/AgentSourceUtils.h"
 #include "../inc/AgentYoloPolicy.h"
+#include "../inc/RtlHelper.h"
 #include "../inc/WtaProcess.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 #include "../inc/CustomModelProviderUtils.h"
@@ -250,6 +251,7 @@ namespace winrt::TerminalApp::implementation
 {
     static std::optional<winrt::guid> _TryParsePaneSessionId(std::string_view value) noexcept;
     static winrt::hstring _BuildAgentResumeCommandline(std::string_view cliSource, std::string_view agentSessionId);
+    static winrt::hstring _ResolveEffectiveLanguage(const winrt::Microsoft::Terminal::Settings::Model::GlobalAppSettings& globals);
 
     TerminalPage::TerminalPage(TerminalApp::WindowProperties properties, const TerminalApp::ContentManager& manager) :
         _tabs{ winrt::single_threaded_observable_vector<TerminalApp::Tab>() },
@@ -502,8 +504,19 @@ namespace winrt::TerminalApp::implementation
         _tabRow = this->TabRow();
         _tabView = _tabRow.TabView();
         _tabStrip = this->VerticalTabStrip();
+        auto tabRowImpl = winrt::get_self<implementation::TabRowControl>(_tabRow);
         _rearranging = false;
         _hasTitlebarHost = _settings.GlobalSettings().ShowTabsInTitlebar();
+
+        const auto language = _ResolveEffectiveLanguage(_settings.GlobalSettings());
+        _isRightToLeft = ::Microsoft::Terminal::RtlHelper::IsRtlLocale(language);
+        const auto flowDirection = _isRightToLeft ? FlowDirection::RightToLeft : FlowDirection::LeftToRight;
+        _tabRow.FlowDirection(flowDirection);
+        _tabStrip.FlowDirection(flowDirection);
+        if (const auto titlebar = tabRowImpl->VerticalTitleBarContent().try_as<FrameworkElement>())
+        {
+            titlebar.FlowDirection(flowDirection);
+        }
 
         // Spec A §1: layout is driven by the tabLayout global setting.
         if (_settings.GlobalSettings().TabLayout() == TabLayout::Vertical)
@@ -513,6 +526,8 @@ namespace winrt::TerminalApp::implementation
         // Cache the layout mode so the routing helpers (_tabItems /
         // _selectedTabItem) don't have to reach into _tabRow on every call.
         _isVerticalLayout = _tabRow.IsVerticalLayout();
+        // SetSettings captures the runtime baseline before Create applies the layout.
+        _lastAgentRuntimeConfig.sessionsInSidebar = _isVerticalLayout;
 
         _ApplyVerticalLayoutReshape(true);
 
@@ -523,7 +538,6 @@ namespace winrt::TerminalApp::implementation
         _tabView.TabDragStarting({ get_weak(), &TerminalPage::_TabDragStarted });
         _tabView.TabDragCompleted({ get_weak(), &TerminalPage::_TabDragCompleted });
 
-        auto tabRowImpl = winrt::get_self<implementation::TabRowControl>(_tabRow);
         _horizontalNewTabButton = tabRowImpl->NewTabButton();
         _verticalNewTabButton = tabRowImpl->VerticalNewTabButton();
         _newTabButton = _isVerticalLayout ? _verticalNewTabButton : _horizontalNewTabButton;
@@ -2671,6 +2685,7 @@ namespace winrt::TerminalApp::implementation
             globals.AgentPaneYoloMode(),
             globals.IsYoloModePolicyLocked(),
             AgentPolicyTelemetry::AutoFixPolicyName(AgentPolicy::GetAutoFixPolicy()),
+            _isVerticalLayout,
         };
     }
 
@@ -2687,6 +2702,7 @@ namespace winrt::TerminalApp::implementation
         params["yolo_policy_blocked"] = config.yoloPolicyBlocked;
         params["autofix_enabled"] = config.autofixEnabled;
         params["autofix_policy_state"] = config.autofixPolicyState;
+        params["sessions_in_sidebar"] = config.sessionsInSidebar;
         return params;
     }
 
@@ -2700,6 +2716,7 @@ namespace winrt::TerminalApp::implementation
     //     credential-free picker metadata and its selected entry.
     //   - yolo_enabled + yolo_policy_blocked : the per-tab desired state,
     //     resolved for that tab's current provider, and the administrative gate.
+    //   - sessions_in_sidebar : the active window layout's session-list surface.
     void TerminalPage::_EmitAgentRuntimeConfigIfChanged()
     {
         const auto current = _CaptureAgentRuntimeConfig();
@@ -2726,8 +2743,9 @@ namespace winrt::TerminalApp::implementation
         const bool yoloChanged = last.defaultAgentId != current.defaultAgentId ||
                                  last.yoloEnabled != current.yoloEnabled ||
                                  last.yoloPolicyBlocked != current.yoloPolicyBlocked;
+        const bool sessionsLayoutChanged = last.sessionsInSidebar != current.sessionsInSidebar;
 
-        if (!autofixChanged && !autofixPolicyChanged && !delegateChanged && !customModelsChanged && !yoloChanged)
+        if (!autofixChanged && !autofixPolicyChanged && !delegateChanged && !customModelsChanged && !yoloChanged && !sessionsLayoutChanged)
         {
             _lastAgentRuntimeConfig = current;
             return;
@@ -2754,7 +2772,11 @@ namespace winrt::TerminalApp::implementation
             params["custom_models"] =
                 ::Microsoft::Terminal::CustomModels::CatalogToJson(current.customModels);
         }
-        const bool commonChanged = autofixChanged || autofixPolicyChanged || delegateChanged || customModelsChanged;
+        if (sessionsLayoutChanged)
+        {
+            params["sessions_in_sidebar"] = current.sessionsInSidebar;
+        }
+        const bool commonChanged = autofixChanged || autofixPolicyChanged || delegateChanged || customModelsChanged || sessionsLayoutChanged;
         if (commonChanged)
         {
             _agentPaneLog("emitting agent_config_changed (hot settings update)");
@@ -5567,11 +5589,17 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void TerminalPage::_SetVerticalRailColumnWidth(const double width)
+    {
+        const auto railLength = GridLengthHelper::FromValueAndType(width, GridUnitType::Pixel);
+        const auto contentLength = GridLengthHelper::FromValueAndType(1, GridUnitType::Star);
+        VerticalRailColumn().Width(_isRightToLeft ? contentLength : railLength);
+        TrailingColumn().Width(_isRightToLeft ? railLength : contentLength);
+    }
+
     // Spec A §5.1: give the vertical rail its column width and re-anchor
-    // TabRow + the primary content children so the strip owns column 0 (full
-    // height, including under the bottom bar) and everything else stacks in
-    // column 1. BottomBarRoot drops its ColumnSpan so the bar only sits under
-    // the terminal content, per the spec mock.
+    // the primary content children on the opposite side. BottomBarRoot drops
+    // its ColumnSpan so the bar only sits under the terminal content.
     void TerminalPage::_ApplyVerticalLayoutReshape(const bool initializeWidth)
     {
         if (!_isVerticalLayout)
@@ -5586,20 +5614,22 @@ namespace winrt::TerminalApp::implementation
             const double persistedWidth = static_cast<double>(_settings.GlobalSettings().TabLayoutVerticalWidth());
             _verticalRailWidth = std::clamp(persistedWidth, railMin, railMax);
         }
-        VerticalRailColumn().Width(GridLengthHelper::FromValueAndType(_verticalRailWidth, GridUnitType::Pixel));
+        _SetVerticalRailColumnWidth(_verticalRailWidth);
+        const uint32_t railColumn = _isRightToLeft ? 1 : 0;
+        const uint32_t contentColumn = _isRightToLeft ? 0 : 1;
 
         Grid::SetRow(_tabStrip, 0);
         Grid::SetRowSpan(_tabStrip, 4);
-        Grid::SetColumn(_tabStrip, 0);
+        Grid::SetColumn(_tabStrip, railColumn);
         Grid::SetColumnSpan(_tabStrip, 1);
 
-        Grid::SetColumn(InfoBarsPanel(), 1);
+        Grid::SetColumn(InfoBarsPanel(), contentColumn);
         Grid::SetColumnSpan(InfoBarsPanel(), 1);
 
-        Grid::SetColumn(_tabContent, 1);
+        Grid::SetColumn(_tabContent, contentColumn);
         Grid::SetColumnSpan(_tabContent, 1);
 
-        Grid::SetColumn(BottomBarRoot(), 1);
+        Grid::SetColumn(BottomBarRoot(), contentColumn);
         Grid::SetColumnSpan(BottomBarRoot(), 1);
 
         _InstallVerticalRailSplitter();
@@ -5608,7 +5638,7 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_ApplyHorizontalLayoutReshape()
     {
         _CancelRailSplitterDrag();
-        VerticalRailColumn().Width(GridLengthHelper::FromValueAndType(0, GridUnitType::Pixel));
+        _SetVerticalRailColumnWidth(0);
 
         Grid::SetRow(_tabRow, 0);
         Grid::SetRowSpan(_tabRow, 1);
@@ -5823,6 +5853,7 @@ namespace winrt::TerminalApp::implementation
             _tabLayoutTransitionSelectedItem = nullptr;
             _ApplyTabListProjection();
             _ApplyPendingPinRequest();
+            _EmitAgentRuntimeConfigIfChanged();
             return false;
         }
     }
@@ -5972,6 +6003,7 @@ namespace winrt::TerminalApp::implementation
         _tabLayoutTransitionSelectedItem = nullptr;
         _ApplyTabListProjection();
         _ApplyPendingPinRequest();
+        _EmitAgentRuntimeConfigIfChanged();
 
         if (const auto infoBar = FindName(L"TabLayoutRestartInfoBar").try_as<MUX::Controls::InfoBar>())
         {
@@ -6008,41 +6040,36 @@ namespace winrt::TerminalApp::implementation
     }
 
     // Spec A §5.2: hand-rolled splitter mirroring the Pane splitter idiom
-    // (Pane.cpp:3704). Lives in column 1 of Root, HorizontalAlignment=Left
-    // with a negative left margin so the hit strip (8px total) straddles the
-    // column boundary. Transparent Background so it visually disappears but
-    // still receives pointer hit-tests.
+    // (Pane.cpp:3704). It lives in the content column and straddles the rail
+    // boundary. Transparent Background keeps it visually hidden while still
+    // receiving pointer hit-tests.
     void TerminalPage::_InstallVerticalRailSplitter()
     {
-        if (_verticalRailSplitter)
+        if (!_verticalRailSplitter)
         {
-            return;
+            _verticalRailSplitter = Controls::Border{};
+            _verticalRailSplitter.Background(Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
+            _verticalRailSplitter.IsHitTestVisible(true);
+            _verticalRailSplitter.Width(8.0);
+            _verticalRailSplitter.VerticalAlignment(VerticalAlignment::Stretch);
+
+            _verticalRailSplitter.PointerEntered({ this, &TerminalPage::_OnRailSplitterPointerEntered });
+            _verticalRailSplitter.PointerExited({ this, &TerminalPage::_OnRailSplitterPointerExited });
+            _verticalRailSplitter.PointerPressed({ this, &TerminalPage::_OnRailSplitterPointerPressed });
+            _verticalRailSplitter.PointerMoved({ this, &TerminalPage::_OnRailSplitterPointerMoved });
+            _verticalRailSplitter.PointerReleased({ this, &TerminalPage::_OnRailSplitterPointerReleased });
+            _verticalRailSplitter.PointerCaptureLost({ this, &TerminalPage::_OnRailSplitterPointerCaptureLost });
+            _verticalRailSplitter.PointerCanceled({ this, &TerminalPage::_OnRailSplitterPointerCaptureLost });
+
+            Root().Children().Append(_verticalRailSplitter);
         }
 
-        constexpr double splitterHitThickness = 8.0;
-        constexpr double half = splitterHitThickness / 2.0;
-
-        _verticalRailSplitter = Controls::Border{};
-        _verticalRailSplitter.Background(Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
-        _verticalRailSplitter.IsHitTestVisible(true);
-        _verticalRailSplitter.Width(splitterHitThickness);
-        _verticalRailSplitter.HorizontalAlignment(HorizontalAlignment::Left);
-        _verticalRailSplitter.VerticalAlignment(VerticalAlignment::Stretch);
-        _verticalRailSplitter.Margin(Thickness{ -half, 0, 0, 0 });
-
-        Grid::SetColumn(_verticalRailSplitter, 1);
+        constexpr double half = 4.0;
+        _verticalRailSplitter.HorizontalAlignment(_isRightToLeft ? HorizontalAlignment::Right : HorizontalAlignment::Left);
+        _verticalRailSplitter.Margin(_isRightToLeft ? Thickness{ 0, 0, -half, 0 } : Thickness{ -half, 0, 0, 0 });
+        Grid::SetColumn(_verticalRailSplitter, _isRightToLeft ? 0 : 1);
         Grid::SetRow(_verticalRailSplitter, 0);
         Grid::SetRowSpan(_verticalRailSplitter, 4);
-
-        _verticalRailSplitter.PointerEntered({ this, &TerminalPage::_OnRailSplitterPointerEntered });
-        _verticalRailSplitter.PointerExited({ this, &TerminalPage::_OnRailSplitterPointerExited });
-        _verticalRailSplitter.PointerPressed({ this, &TerminalPage::_OnRailSplitterPointerPressed });
-        _verticalRailSplitter.PointerMoved({ this, &TerminalPage::_OnRailSplitterPointerMoved });
-        _verticalRailSplitter.PointerReleased({ this, &TerminalPage::_OnRailSplitterPointerReleased });
-        _verticalRailSplitter.PointerCaptureLost({ this, &TerminalPage::_OnRailSplitterPointerCaptureLost });
-        _verticalRailSplitter.PointerCanceled({ this, &TerminalPage::_OnRailSplitterPointerCaptureLost });
-
-        Root().Children().Append(_verticalRailSplitter);
     }
 
     static bool _IsVisibleControlInSubtree(const WUX::Controls::Control& control, const DependencyObject& root)
@@ -6212,7 +6239,7 @@ namespace winrt::TerminalApp::implementation
 
         if (visible)
         {
-            VerticalRailColumn().Width(GridLengthHelper::FromValueAndType(width, GridUnitType::Pixel));
+            _SetVerticalRailColumnWidth(width);
             if (_verticalRailSplitter && expanded)
             {
                 _verticalRailSplitter.IsHitTestVisible(true);
@@ -6231,7 +6258,7 @@ namespace winrt::TerminalApp::implementation
                 _verticalRailSplitter.IsHitTestVisible(false);
                 _verticalRailSplitter.Visibility(Visibility::Collapsed);
             }
-            VerticalRailColumn().Width(GridLengthHelper::FromValueAndType(0, GridUnitType::Pixel));
+            _SetVerticalRailColumnWidth(0);
         }
         if (sidebarFocus && !_IsVisibleControlInSubtree(sidebarFocus, _tabStrip))
         {
@@ -6341,12 +6368,17 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_StartSidebarHistoryRefreshTimer()
     {
+        if (!_isVerticalLayout || !_tabStrip || !_tabStrip.HistoryActive())
+        {
+            _StopSidebarHistoryRefreshTimer();
+            return;
+        }
         if (!_historyRefreshTimer)
         {
             _historyRefreshTimer = Windows::UI::Xaml::DispatcherTimer{};
-            _historyRefreshTimer.Interval(std::chrono::seconds{ 5 });
+            _historyRefreshTimer.Interval(std::chrono::seconds{ 60 });
             _historyRefreshTimer.Tick([weakThis{ get_weak() }](auto&&, auto&&) {
-                if (const auto page = weakThis.get(); page && page->_tabStrip.HistoryActive())
+                if (const auto page = weakThis.get(); page && page->_isVerticalLayout && page->_tabStrip.HistoryActive())
                 {
                     page->_RequestSidebarHistoryRefresh(false);
                 }
@@ -6551,7 +6583,8 @@ namespace winrt::TerminalApp::implementation
         std::string errors;
         if (!Json::parseFromStream(builder, json, &response, &errors) ||
             !response.isObject() || !response["sessions"].isArray() ||
-            !response["history_status"].isString())
+            !response["history_status"].isString() ||
+            (!response["history_error_kind"].isNull() && !response["history_error_kind"].isString()))
         {
             _agentPaneLog("invalid sidebar history snapshot: " + errors);
             return snapshot;
@@ -6567,7 +6600,9 @@ namespace winrt::TerminalApp::implementation
         }
         else if (historyStatus == "error")
         {
-            snapshot.state = _SidebarHistorySnapshot::State::Error;
+            snapshot.state = response["history_error_kind"].asString() == "timeout" ?
+                                 _SidebarHistorySnapshot::State::Timeout :
+                                 _SidebarHistorySnapshot::State::Error;
         }
         else
         {
@@ -6739,7 +6774,7 @@ namespace winrt::TerminalApp::implementation
         const auto result = Wta::RunWtaCapture(
             Wta::ResolveWtaExePath(),
             // Keep the Agent Management MVP's shell-origin visibility contract.
-            L"sessions list --origin shell --all-agents --json --include-status",
+            L"sessions list --origin shell --json --include-status",
             15'000,
             nullptr,
             false,
@@ -6748,6 +6783,10 @@ namespace winrt::TerminalApp::implementation
         if (result.cancelled)
         {
             snapshot.state = _SidebarHistorySnapshot::State::Cancelled;
+        }
+        else if (result.timedOut)
+        {
+            snapshot.state = _SidebarHistorySnapshot::State::Timeout;
         }
         else if (result.completed && result.exitCode == 0)
         {
@@ -6787,6 +6826,10 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         const auto strip = winrt::get_self<implementation::TabStrip>(_tabStrip);
+        if (snapshot.state == State::Timeout)
+        {
+            _agentPaneLog("sidebar history refresh timed out; retaining the current snapshot");
+        }
         if (snapshot.state == State::Ready ||
             (snapshot.state != State::InvalidResponse && !snapshot.items.empty()))
         {
@@ -6804,7 +6847,7 @@ namespace winrt::TerminalApp::implementation
         {
             strip->HistoryRefreshError(L"");
         }
-        if (snapshot.state == State::Error || snapshot.state == State::InvalidResponse)
+        if (snapshot.state == State::Error || snapshot.state == State::InvalidResponse || snapshot.state == State::Timeout)
         {
             _historyRetryDelay = (std::min)((std::max)(_historyRetryDelay * 2, std::chrono::seconds{ 5 }), std::chrono::seconds{ 60 });
             _historyNextRefresh = std::chrono::steady_clock::now() + _historyRetryDelay;
@@ -6815,7 +6858,7 @@ namespace winrt::TerminalApp::implementation
             _historyRetryDelay = std::chrono::seconds{ 0 };
             _historyNextRefresh = {};
         }
-        _tabStrip.HistoryLoading(snapshot.state == State::Loading && !strip->HasHistoryItems());
+        _tabStrip.HistoryLoading((snapshot.state == State::Loading || snapshot.state == State::Timeout) && !strip->HasHistoryItems());
         if (_historyRefreshPending)
         {
             _historyRefreshPending = false;
@@ -7103,12 +7146,16 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         const auto point = e.GetCurrentPoint(Root()).Position();
-        const auto delta = static_cast<double>(point.X - _railSplitterStartPointer.X);
+        auto delta = static_cast<double>(point.X - _railSplitterStartPointer.X);
+        if (_isRightToLeft)
+        {
+            delta = -delta;
+        }
         const auto requested = std::clamp(_railSplitterStartWidth + delta, railMin, railMax);
         if (std::isfinite(requested))
         {
             _verticalRailWidth = requested;
-            VerticalRailColumn().Width(GridLengthHelper::FromValueAndType(_verticalRailWidth, GridUnitType::Pixel));
+            _SetVerticalRailColumnWidth(_verticalRailWidth);
             winrt::get_self<implementation::TabRowControl>(_tabRow)->SetVerticalRailState(true, false, _verticalRailWidth);
         }
         e.Handled(true);
@@ -12786,7 +12833,7 @@ namespace winrt::TerminalApp::implementation
         }
         if (!firstSplit)
         {
-            destinationTab->KeepRunning(sourceTab->KeepRunning());
+            destinationTab->CopyKeepRunningState(*sourceTab);
             if (sourceTab->AgentPrewarmSuppressed())
             {
                 destinationTab->SuppressAgentPrewarm();

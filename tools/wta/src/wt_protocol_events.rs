@@ -124,13 +124,18 @@ pub(crate) fn restart_agent_stack_event_with_id(request_id: &str) -> String {
     .to_string()
 }
 
-pub(crate) fn agent_availability_changed_event(agent_id: &str, tab_id: Option<&str>) -> String {
+pub(crate) fn agent_availability_changed_event(
+    agent_id: &str,
+    tab_id: Option<&str>,
+    installation_completed: bool,
+) -> String {
     serde_json::json!({
         "type": "event",
         "method": "agent_availability_changed",
         "params": {
             "agent_id": agent_id,
             "tab_id": tab_id,
+            "installation_completed": installation_completed,
         },
     })
     .to_string()
@@ -376,7 +381,7 @@ mod tests {
     #[test]
     fn availability_event_routes_to_the_installing_tab() {
         let event: serde_json::Value = serde_json::from_str(
-            &super::agent_availability_changed_event("copilot", Some("tab-a")),
+            &super::agent_availability_changed_event("copilot", Some("tab-a"), false),
         )
         .unwrap();
 

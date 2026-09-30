@@ -2079,6 +2079,50 @@ fn tab_renamed_kept_tab_updates_only_its_helpers_window() {
     }
 }
 
+#[test]
+fn kept_tab_reattachment_marks_only_the_owning_live_session() {
+    let mut app = test_app();
+    app.owner_tab_id = Some("owned-tab".into());
+    app.window_id = Some("owned-window".into());
+    app.tab_mut("owned-tab").session_id = Some("original".into());
+
+    for (tab, window) in [("other-tab", "owned-window"), ("owned-tab", "other-window")] {
+        app.handle_event(AppEvent::WtEvent {
+            method: "keep_running_reattached".into(),
+            pane_id: String::new(),
+            tab_id: None,
+            params: json!({"tab_id": tab, "window_id": window}),
+        });
+        assert!(app.tab_mut("owned-tab").reattached_session_id.is_none());
+    }
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "keep_running_reattached".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({"tab_id": "owned-tab", "window_id": "owned-window"}),
+    });
+    let tab = app.tab_mut("owned-tab");
+    assert_eq!(tab.reattached_session_id.as_deref(), Some("original"));
+    assert!(tab.is_reattached_session());
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: "owned-tab".into(),
+        session_id: "new-session".into(),
+        prompt_id: None,
+        available_models: Vec::new(),
+        current_model_id: None,
+    });
+    assert!(!app.tab_mut("owned-tab").is_reattached_session());
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: "owned-tab".into(),
+        session_id: "original".into(),
+        prompt_id: None,
+        available_models: Vec::new(),
+        current_model_id: None,
+    });
+    assert!(!app.tab_mut("owned-tab").is_reattached_session());
+}
+
 // ─── load_session owner_tab_id filter ───────────────────────────────────
 //
 // WT broadcasts `load_session` over shared COM, so every helper in every
@@ -3519,6 +3563,131 @@ fn sessions_changed_with_closed_agents_view_is_noop() {
     app.current_tab_mut().agents_view.snapshot = None;
     app.handle_event(AppEvent::SessionsChanged);
     assert!(master_rx.try_recv().is_err(), "closed UI must not refetch");
+}
+
+#[test]
+fn installation_completion_broadcast_does_not_surface_a_helper_notification() {
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    let messages = app.current_tab().messages.len();
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_availability_changed".into(),
+        pane_id: String::new(),
+        tab_id: Some(DEFAULT_TAB_ID.into()),
+        params: json!({
+            "agent_id": "copilot",
+            "tab_id": DEFAULT_TAB_ID,
+            "installation_completed": true,
+        }),
+    });
+    assert!(app.wt_notifications.is_empty());
+    assert_eq!(app.current_tab().messages.len(), messages);
+    assert!(
+        master_rx.try_recv().is_err(),
+        "helpers must not repeat master's discovery request"
+    );
+}
+
+#[test]
+fn sessions_fallback_only_reads_open_helper_views_in_nonvertical_layouts() {
+    for in_sidebar in [false, true] {
+        for view_open in [false, true] {
+            let (mut app, mut master_rx) = test_app_with_master_rx();
+            app.sessions_in_sidebar = in_sidebar;
+            if view_open {
+                app.current_tab_mut().current_view = View::Agents;
+                app.current_tab_mut().agents_view.snapshot = Some(Vec::new());
+            }
+
+            app.handle_event(AppEvent::SessionsFallbackTick);
+            if view_open && !in_sidebar {
+                assert!(matches!(
+                    master_rx.try_recv(),
+                    Ok(
+                        crate::protocol::acp::client::MasterExtRequest::SessionsList {
+                            rescan: false,
+                            ..
+                        }
+                    )
+                ));
+            } else {
+                assert!(master_rx.try_recv().is_err());
+                assert!(!app.current_tab().agents_view.refetch_in_flight);
+            }
+        }
+    }
+}
+
+#[test]
+fn sessions_fallback_layout_updates_are_scoped_and_preserve_pushes() {
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    app.owner_tab_id = Some(DEFAULT_TAB_ID.into());
+    app.window_id = Some("42".into());
+    app.current_tab_mut().current_view = View::Agents;
+    app.current_tab_mut().agents_view.snapshot = Some(Vec::new());
+    let update = |window: &str, tab: &str, value: serde_json::Value| AppEvent::WtEvent {
+        method: "agent_config_changed".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "window_id": window,
+            "tab_id": tab,
+            "sessions_in_sidebar": value,
+        }),
+    };
+
+    app.handle_event(update("other-window", DEFAULT_TAB_ID, json!(true)));
+    app.handle_event(update("42", "other-tab", json!(true)));
+    assert!(!app.sessions_in_sidebar);
+    app.handle_event(update("42", "", json!(true)));
+    assert!(
+        app.sessions_in_sidebar,
+        "window layout applies to its own helper"
+    );
+    app.handle_event(AppEvent::SessionsFallbackTick);
+    assert!(master_rx.try_recv().is_err());
+
+    app.handle_event(update("42", DEFAULT_TAB_ID, json!("false")));
+    assert!(
+        app.sessions_in_sidebar,
+        "invalid optional fields do not reset layout"
+    );
+    app.handle_event(AppEvent::SessionsChanged);
+    assert!(
+        matches!(
+            master_rx.try_recv(),
+            Ok(crate::protocol::acp::client::MasterExtRequest::SessionsList { rescan: false, .. })
+        ),
+        "push notifications remain independent of the fallback layout gate"
+    );
+    app.current_tab_mut().agents_view.refetch_in_flight = false;
+
+    app.handle_event(update("42", DEFAULT_TAB_ID, json!(false)));
+    assert!(!app.sessions_in_sidebar);
+    assert!(
+        master_rx.try_recv().is_ok(),
+        "returning to helper layout refreshes an open view immediately"
+    );
+    app.current_tab_mut().agents_view.refetch_in_flight = false;
+    app.handle_event(AppEvent::SessionsFallbackTick);
+    assert!(
+        master_rx.try_recv().is_ok(),
+        "nonvertical fallback resumes without reconnecting ACP"
+    );
+}
+
+#[test]
+fn sessions_fallback_does_not_open_a_view_when_layout_changes() {
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    app.sessions_in_sidebar = true;
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_config_changed".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({"sessions_in_sidebar": false}),
+    });
+    assert!(!app.sessions_in_sidebar);
+    assert!(app.current_tab().agents_view.snapshot.is_none());
+    assert!(master_rx.try_recv().is_err());
 }
 
 // ─── /model and Settings model updates ──────────────────────────────────

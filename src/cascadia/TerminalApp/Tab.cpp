@@ -2340,8 +2340,25 @@ namespace winrt::TerminalApp::implementation
     void Tab::KeepRunning(const bool enabled)
     {
         ASSERT_UI_THREAD();
+        if (enabled && !_keepRunning)
+        {
+            _keepRunningTelemetryId = winrt::hstring{ ::Microsoft::Console::Utils::GuidToString(::Microsoft::Console::Utils::CreateGuid()) };
+        }
         _keepRunning = enabled;
+        if (!enabled)
+        {
+            _keepRunningTelemetryId = {};
+        }
         _tabStatus.IsKeepRunning(enabled);
+        _UpdateKeepRunningMenuItem();
+    }
+
+    void Tab::CopyKeepRunningState(const Tab& source)
+    {
+        ASSERT_UI_THREAD();
+        _keepRunning = source._keepRunning;
+        _keepRunningTelemetryId = source._keepRunningTelemetryId;
+        _tabStatus.IsKeepRunning(_keepRunning);
         _UpdateKeepRunningMenuItem();
     }
 
@@ -2733,7 +2750,7 @@ namespace winrt::TerminalApp::implementation
     void Tab::RestoreKeptTabState(const Tab& source)
     {
         ASSERT_UI_THREAD();
-        KeepRunning(source.KeepRunning());
+        CopyKeepRunningState(source);
         _agentCurrentId = source._agentCurrentId;
         SetAgentChipOverride(source._agentChipOverride);
         if (_tabStatus.IsInputBroadcastActive() != source._tabStatus.IsInputBroadcastActive())

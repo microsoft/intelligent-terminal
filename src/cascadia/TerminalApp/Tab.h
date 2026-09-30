@@ -223,7 +223,9 @@ namespace winrt::TerminalApp::implementation
         const winrt::hstring& StableId() const noexcept { return _stableId; }
         bool CanKeepRunning() const;
         bool KeepRunning() const noexcept { return _keepRunning; }
+        const winrt::hstring& KeepRunningTelemetryId() const noexcept { return _keepRunningTelemetryId; }
         void KeepRunning(bool enabled);
+        void CopyKeepRunningState(const Tab& source);
         bool IsPinned() const noexcept { return _isPinned; }
         void IsPinned(bool pinned);
         void RestoreKeptTabState(const Tab& source);
@@ -377,6 +379,7 @@ namespace winrt::TerminalApp::implementation
 
         winrt::hstring _stableId{};
         bool _keepRunning{ false };
+        winrt::hstring _keepRunningTelemetryId{};
         bool _isPinned{ false };
         uint32_t _pinnedTabCount{ 0 };
 

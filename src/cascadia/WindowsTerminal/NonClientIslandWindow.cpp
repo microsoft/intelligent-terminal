@@ -118,22 +118,24 @@ LRESULT NonClientIslandWindow::_dragBarNcHitTest(const til::point pointer)
 
     // make sure to account for the width of the window frame!
     const til::rect nonClientFrame{ GetNonClientFrame(_currentDpi) };
-    const auto rightBorder{ rcParent.right - nonClientFrame.right };
-    // From the right to the left,
+    const auto rtl = _titlebar.FlowDirection() == FlowDirection::RightToLeft;
+    const auto captionEdge = rtl ? rcParent.left - nonClientFrame.left : rcParent.right - nonClientFrame.right;
+    const auto distanceFromCaptionEdge = rtl ? pointer.x - captionEdge : captionEdge - pointer.x;
+    // From the outer edge toward the center,
     // * are we in the close button?
     // * the maximize button?
     // * the minimize button?
     // If we're not, then we're in either the top resize border, or just
     // generally in the titlebar.
-    if ((rightBorder - pointer.x) < (buttonWidthInPixels))
+    if (distanceFromCaptionEdge < buttonWidthInPixels)
     {
         return HTCLOSE;
     }
-    else if ((rightBorder - pointer.x) < (buttonWidthInPixels * 2))
+    else if (distanceFromCaptionEdge < (buttonWidthInPixels * 2))
     {
         return HTMAXBUTTON;
     }
-    else if ((rightBorder - pointer.x) < (buttonWidthInPixels * 3))
+    else if (distanceFromCaptionEdge < (buttonWidthInPixels * 3))
     {
         return HTMINBUTTON;
     }
@@ -453,6 +455,10 @@ void NonClientIslandWindow::SetTitlebarContent(winrt::Windows::UI::Xaml::UIEleme
     const auto fwe = content.try_as<winrt::Windows::UI::Xaml::FrameworkElement>();
     if (fwe)
     {
+        // The custom titlebar is the window chrome boundary. Mirror it with
+        // the hosted titlebar content without cascading RTL into the client
+        // terminal, settings, or other internal pages.
+        _titlebar.FlowDirection(fwe.FlowDirection());
         _titlebarContentSizeChangedRevoker = fwe.SizeChanged(winrt::auto_revoke, { this, &NonClientIslandWindow::_OnDragBarSizeChanged });
         _contentDragArea = winrt::TerminalApp::TitlebarControl::GetContentDragArea(fwe);
         if (_contentDragArea)
@@ -494,34 +500,26 @@ til::rect NonClientIslandWindow::_GetDragAreaRect() const noexcept
         const auto scale = GetCurrentDpiScale();
         const auto transform = _dragBar.TransformToVisual(_rootGrid);
 
-        // GH#9443: Previously, we'd only extend the drag bar from the left of
-        // the tabs to the right of the caption buttons. Now, we're extending it
-        // all the way to the right side of the window, covering the caption
-        // buttons. We'll manually handle input to those buttons, to make it
-        // seem like they're still getting XAML input. We do this so we can get
-        // snap layout support for the maximize button.
-        const auto logicalDragBarRect = winrt::Windows::Foundation::Rect{
+        const auto clientDragBarRect = transform.TransformBounds({
             0.0f,
             0.0f,
-            static_cast<float>(_rootGrid.ActualWidth()),
+            static_cast<float>(_dragBar.ActualWidth()),
             static_cast<float>(_dragBar.ActualHeight())
-        };
+        });
 
-        const auto clientDragBarRect = transform.TransformBounds(logicalDragBarRect);
-
-        // Make sure to trim the right side of the rectangle, so that it doesn't
-        // hang off the right side of the root window. This normally wouldn't
-        // matter, but UIA will still think its bounds can extend past the right
-        // of the parent HWND.
-        //
-        // x here is the width of the tabs.
-        const auto x = gsl::narrow_cast<til::CoordType>(clientDragBarRect.X * scale);
+        // Cover the drag area plus the caption buttons so the maximize button
+        // continues to expose HTMAXBUTTON for Snap Layouts. Leave the titlebar
+        // content side uncovered so its XAML controls remain interactive.
+        const auto rtl = _titlebar.FlowDirection() == FlowDirection::RightToLeft;
+        const auto left = rtl ? 0.0f : clientDragBarRect.X;
+        const auto right = rtl ? clientDragBarRect.X + clientDragBarRect.Width : static_cast<float>(_rootGrid.ActualWidth());
 
         return {
-            x,
-            gsl::narrow_cast<til::CoordType>(clientDragBarRect.Y * scale),
-            gsl::narrow_cast<til::CoordType>((clientDragBarRect.Width + clientDragBarRect.X) * scale) - x,
-            gsl::narrow_cast<til::CoordType>((clientDragBarRect.Height + clientDragBarRect.Y) * scale),
+            til::math::rounding,
+            left * scale,
+            clientDragBarRect.Y * scale,
+            right * scale,
+            (clientDragBarRect.Y + clientDragBarRect.Height) * scale,
         };
     }
 

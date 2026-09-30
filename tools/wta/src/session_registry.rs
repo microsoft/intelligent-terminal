@@ -402,13 +402,10 @@ pub struct SessionsChangedParams {}
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct SessionsListParams {
-    /// Refresh the calling helper's bound agent through ACP before answering.
+    /// Explicit refresh: synchronize a bound helper's agent, or schedule host
+    /// discovery for an unbound control client. Ordinary snapshots are read-only.
     #[serde(default)]
     pub rescan: bool,
-    /// Refresh installed, policy-allowed host agents in the background. Their
-    /// ACP connections stay in the master pool; the response is still a snapshot.
-    #[serde(default)]
-    pub all_agents: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -416,6 +413,8 @@ pub struct SessionsListResponse {
     pub sessions: Vec<SessionInfo>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub history_status: Option<HistoryLoadStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub history_error_kind: Option<HistoryErrorKind>,
 }
 
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -424,6 +423,14 @@ pub enum HistoryLoadStatus {
     Loading,
     Ready,
     Error,
+}
+
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum HistoryErrorKind {
+    Timeout,
+    #[serde(other)]
+    Other,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -492,9 +499,9 @@ pub fn build_sessions_changed_notification() -> acp::schema::v1::ExtNotification
 }
 
 /// Build an `ExtRequest` for `intellterm.wta/sessions/list`. `rescan` refreshes
-/// the bound agent; `all_agents` schedules background host-agent discovery.
-pub fn build_sessions_list_request(rescan: bool, all_agents: bool) -> acp::schema::v1::ExtRequest {
-    let json = serde_json::to_string(&SessionsListParams { rescan, all_agents })
+/// the bound agent, or requests background host discovery for a control client.
+pub fn build_sessions_list_request(rescan: bool) -> acp::schema::v1::ExtRequest {
+    let json = serde_json::to_string(&SessionsListParams { rescan })
         .expect("SessionsListParams is trivially serializable");
     let raw = serde_json::value::RawValue::from_string(json)
         .expect("serde_json::to_string always produces valid JSON");
@@ -556,10 +563,12 @@ pub fn parse_session_activate_params(
 pub fn build_sessions_list_response(
     sessions: Vec<SessionInfo>,
     history_status: Option<HistoryLoadStatus>,
+    history_error_kind: Option<HistoryErrorKind>,
 ) -> Box<serde_json::value::RawValue> {
     let response = SessionsListResponse {
         sessions,
         history_status,
+        history_error_kind,
     };
     serde_json::value::to_raw_value(&response)
         .expect("SessionsListResponse serialization is infallible for owned data")
@@ -1581,7 +1590,7 @@ pub(crate) fn title_is_injected_context_echo(title: &str) -> bool {
 /// session's display name.
 ///
 /// The single source of truth for "is this candidate usable", shared by the
-/// producer (`master::host_titles_via_acp`, which builds the title map) and the
+/// producer (`master::titles_from_listing`, which builds the title map) and the
 /// destructive consumer (`master::refresh_titles_from_listing`, which feeds
 /// [`SessionRegistry::adopt_agent_title`]). An agent's *latest* answer is not
 /// automatically a *displayable* one: it can be empty, the delegate's injected
@@ -2814,7 +2823,7 @@ mod tests {
         // Mirrors the `?<prompt>` prompt built in `cli/delegate.rs` from
         // `TERMINAL_CONTEXT_TITLE_MARKER`: an agent CLI can echo this whole first
         // user message back as a `session/list` title before it generates a real
-        // summary. Such an echo must be dropped (see `host_titles_via_acp`), or
+        // summary. Such an echo must be dropped (see `titles_from_listing`), or
         // `adopt_agent_title` would overwrite the row's title with the injected
         // pane GUID and captured pane output on every poll until the summary
         // lands.
@@ -3297,7 +3306,7 @@ mod tests {
 
     #[test]
     fn build_sessions_list_request_round_trips_rescan() {
-        let req = build_sessions_list_request(false, false);
+        let req = build_sessions_list_request(false);
         assert_eq!(&*req.method, INTELLTERM_METHOD_SESSIONS_LIST);
         assert!(
             !parse_sessions_list_params(&req.params)
@@ -3305,7 +3314,7 @@ mod tests {
                 .rescan
         );
 
-        let req_rescan = build_sessions_list_request(true, false);
+        let req_rescan = build_sessions_list_request(true);
         assert!(
             parse_sessions_list_params(&req_rescan.params)
                 .expect("params are valid")
@@ -3320,13 +3329,6 @@ mod tests {
                 .expect("empty is valid")
                 .rescan
         );
-        assert!(!parse_sessions_list_params(&empty).unwrap().all_agents);
-        assert!(!parse_sessions_list_params(&req.params).unwrap().all_agents);
-
-        let all = build_sessions_list_request(false, true);
-        let params = parse_sessions_list_params(&all.params).unwrap();
-        assert!(params.all_agents);
-        assert!(!params.rescan);
     }
 
     #[test]
@@ -3425,7 +3427,7 @@ mod tests {
             bound_pid: None,
             born_bound_pane: false,
         };
-        let raw = build_sessions_list_response(vec![row.clone()], None);
+        let raw = build_sessions_list_response(vec![row.clone()], None, None);
         let parsed = parse_sessions_list_response(&raw).expect("response parses");
         assert_eq!(parsed.sessions, vec![row]);
     }
@@ -4264,6 +4266,7 @@ mod tests {
         let resp = SessionsListResponse {
             sessions: vec![info.clone()],
             history_status: Some(HistoryLoadStatus::Ready),
+            history_error_kind: None,
         };
         let raw = serde_json::value::to_raw_value(&resp).unwrap();
         let parsed = parse_sessions_list_response(&raw).unwrap();
@@ -4278,7 +4281,7 @@ mod tests {
             (HistoryLoadStatus::Ready, "ready"),
             (HistoryLoadStatus::Error, "error"),
         ] {
-            let raw = build_sessions_list_response(Vec::new(), Some(status));
+            let raw = build_sessions_list_response(Vec::new(), Some(status), None);
             let json: serde_json::Value = serde_json::from_str(raw.get()).unwrap();
             assert_eq!(json["history_status"], wire);
             let parsed = parse_sessions_list_response(&raw).unwrap();
@@ -4292,6 +4295,56 @@ mod tests {
                 .unwrap()
                 .history_status,
             None
+        );
+    }
+
+    #[test]
+    fn sessions_list_response_timeout_kind_is_optional_and_backward_compatible() {
+        let raw = build_sessions_list_response(
+            Vec::new(),
+            Some(HistoryLoadStatus::Error),
+            Some(HistoryErrorKind::Timeout),
+        );
+        let json: serde_json::Value = serde_json::from_str(raw.get()).unwrap();
+        assert_eq!(json["history_status"], "error");
+        assert_eq!(json["history_error_kind"], "timeout");
+        let parsed = parse_sessions_list_response(&raw).unwrap();
+        assert_eq!(parsed.history_error_kind, Some(HistoryErrorKind::Timeout));
+
+        #[derive(serde::Deserialize)]
+        struct LegacyResponse {
+            sessions: Vec<SessionInfo>,
+            history_status: Option<HistoryLoadStatus>,
+        }
+        let legacy: LegacyResponse = serde_json::from_str(raw.get()).unwrap();
+        assert!(legacy.sessions.is_empty());
+        assert_eq!(legacy.history_status, Some(HistoryLoadStatus::Error));
+
+        for wire in [
+            r#"{"sessions":[]}"#,
+            r#"{"sessions":[],"history_status":"error"}"#,
+        ] {
+            let raw = serde_json::value::RawValue::from_string(wire.into()).unwrap();
+            assert_eq!(
+                parse_sessions_list_response(&raw)
+                    .unwrap()
+                    .history_error_kind,
+                None
+            );
+        }
+        let raw = build_sessions_list_response(Vec::new(), Some(HistoryLoadStatus::Ready), None);
+        let json: serde_json::Value = serde_json::from_str(raw.get()).unwrap();
+        assert!(json.get("history_error_kind").is_none());
+        let unknown = serde_json::value::RawValue::from_string(
+            r#"{"sessions":[],"history_status":"error","history_error_kind":"future_error"}"#
+                .into(),
+        )
+        .unwrap();
+        assert_eq!(
+            parse_sessions_list_response(&unknown)
+                .unwrap()
+                .history_error_kind,
+            Some(HistoryErrorKind::Other)
         );
     }
 
@@ -4382,7 +4435,7 @@ mod tests {
             WtaExtRequest::FocusSession(_)
         ));
         assert!(
-            matches!(parse_ext_request(build_sessions_list_request(true, false)), WtaExtRequest::SessionsList(p) if p.rescan)
+            matches!(parse_ext_request(build_sessions_list_request(true)), WtaExtRequest::SessionsList(p) if p.rescan)
         );
         assert!(matches!(
             parse_ext_request(build_session_hook_request(&ev)),
@@ -4416,9 +4469,7 @@ mod tests {
             WtaExtRequest::FocusSession(_)
         ));
         assert!(matches!(
-            parse_ext_request(strip_leading_underscore(build_sessions_list_request(
-                false, false
-            ))),
+            parse_ext_request(strip_leading_underscore(build_sessions_list_request(false))),
             WtaExtRequest::SessionsList(_)
         ));
         assert!(matches!(

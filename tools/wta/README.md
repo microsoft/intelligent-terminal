@@ -80,18 +80,25 @@ and may require network access; discovery is not an offline-only operation. See
 and ACP wrapper prerequisites.
 
 Sidebar Agent sessions runs
-`wta sessions list --origin shell --all-agents --json --include-status`.
-This returns the current registry snapshot immediately and requests a background
-refresh using the same resident pool; it is not the initial connection trigger.
+`wta sessions list --origin shell --json --include-status`.
+This only reads the current registry snapshot; it never starts an agent or waits
+for an ACP history query. Master synchronizes initialized, listing-capable pooled
+connections every five seconds, including already-connected WSL and custom agents.
+Each connection has one refresh in flight; history and title updates share its
+single response. Failed queries retain prior rows and back off up to 60 seconds.
 The opt-in JSON object contains `sessions` and `history_status` (`loading`, `ready`,
-or `error`); ordinary `--json` output remains one session per line. The initial
+or `error`), with optional `history_error_kind` to distinguish timeout-only failures;
+ordinary `--json` output remains one session per line. The initial
 discovery stays `loading` until all eligible host providers finish. Providers that
 do not support listing are skipped, while initialization or listing failures
 produce `error`. Later refreshes retain the last completed status until they finish.
 The sidebar shows available rows immediately, shows a loading indicator while an
 empty snapshot is still loading, and displays "No agent sessions found" only after
-a successful empty result. Errors remain visible alongside any available rows;
-failed refreshes do not clear previously displayed sessions. This does not depend
+a successful empty result. Non-timeout errors remain visible alongside available
+rows. Query timeouts are logged without an error banner: cached sessions remain
+usable, or the initial loading indicator remains until a result is available.
+Mixed failures are not treated as timeout-only. Failed refreshes do not clear
+previously displayed sessions. This does not depend
 on the agent pane's chat connection or hooks being ready.
 
 History activation keeps an operation ID until its outcome is confirmed.
@@ -108,15 +115,29 @@ retention and refresh cancellation/backoff behavior.
 These native-provider ACP processes remain in the master pool after History closes;
 there is no History-specific idle timeout or eviction. Further refreshes reuse them,
 and concurrent windows share one discovery pass. Registry and discovery-status changes notify the sidebar,
-with its existing five-second snapshot poll as a fallback. Unavailable or failed
+with a 60-second snapshot poll while the view is open in vertical layout as a fallback. Opening the
+view still fetches immediately. Unavailable or failed
 providers do not clear other providers' rows or overwrite live activity and pane
 bindings. Failures are logged under `master_history`; listing never installs a native
 agent CLI or starts an interactive login flow.
 
 This discovery covers built-in agents on the Windows host. It does not start WSL
 distributions or discover arbitrary custom commands; sessions already in the registry
-remain visible according to the requested origin filter. Plain `wta sessions list`
-without `--all-agents` remains a snapshot-only operation.
+remain visible according to the requested origin filter.
+
+Host discovery runs only at master startup, after a confirmed host-agent
+installation, or on an explicit `wta sessions refresh` request. There is no periodic
+installation scan. `wta sessions refresh --json` schedules discovery and returns the
+current snapshot with `history_status`; it does not wait for discovery to finish.
+The removed `--all-agents` flag is no longer accepted. F5 in a helper's session view
+explicitly refreshes that helper's bound connection without discovering other agents.
+Ordinary helper reads are also snapshot-only. Their 60-second open-view fallback runs
+only in nonvertical layout; vertical layout uses the Sidebar fallback instead.
+Live layout changes and helper-ready runtime configuration update this selection per
+window without reconnecting ACP. Push updates remain immediate in either layout,
+and returning to nonvertical layout immediately refreshes an already-open helper view.
+ACP initialization retry behavior is unchanged; history-query retries do not restart
+or initialize agents.
 
 ### tmux-like CLI
 

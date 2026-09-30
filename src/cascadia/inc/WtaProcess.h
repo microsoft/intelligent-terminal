@@ -81,6 +81,7 @@ namespace Microsoft::Terminal::WtaProcess
         DWORD exitCode{ 1 };
         std::string output;
         bool cancelled{ false };
+        bool timedOut{ false };
     };
 
     // Spawn `wta.exe <argsAfterExe>` and capture its output regardless of
@@ -233,6 +234,7 @@ namespace Microsoft::Terminal::WtaProcess
             if (cancelled() || timedOut())
             {
                 result.cancelled = cancelled();
+                result.timedOut = !result.cancelled;
                 if (!TerminateProcess(proc.get(), result.cancelled ? ERROR_CANCELLED : ERROR_TIMEOUT))
                 {
                     const auto error = GetLastError();
@@ -260,6 +262,7 @@ namespace Microsoft::Terminal::WtaProcess
                 if (cancelled() || timedOut())
                 {
                     result.cancelled = cancelled();
+                    result.timedOut = !result.cancelled;
                     return result;
                 }
                 break;
