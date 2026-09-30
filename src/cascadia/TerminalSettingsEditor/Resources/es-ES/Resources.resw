@@ -3009,4 +3009,8 @@ Alt+Shift+/ introduzca una consulta; Alt+Shift+B inicie sin una consulta inicial
     <value>Barra lateral</value>
     <comment>An option to choose from for the &quot;tab layout&quot; setting. When selected, tabs run down the left side of the window in a resizable sidebar. Use the same translation as FreOverlay_TabModeSidebar in TerminalApp.</comment>
   </data>
+  <data name="Globals_TabLayout.Header" xml:space="preserve">
+    <value>Modo de pestañas</value>
+    <comment>Header for a control to choose whether tabs are laid out horizontally across the top of the window or vertically down the left side.</comment>
+  </data>
 </root>
