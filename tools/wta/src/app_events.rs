@@ -2946,6 +2946,20 @@ impl App {
                     return;
                 }
 
+                if method == "keep_running_reattached" {
+                    let target_tab = params.get("tab_id").and_then(|value| value.as_str());
+                    let target_window = params.get("window_id").and_then(|value| value.as_str());
+                    if let (Some(target_tab), Some(target_window)) = (target_tab, target_window) {
+                        if self.owner_tab_id.as_deref() == Some(target_tab)
+                            && self.window_id.as_deref() == Some(target_window)
+                        {
+                            let tab = self.tab_mut(target_tab);
+                            tab.reattached_session_id = tab.session_id.clone();
+                        }
+                    }
+                    return;
+                }
+
                 if method == "agent_config_changed" {
                     // C++ pushes this when the user changes a hot-updatable
                     // agent setting (auto-suggest gate, acp-model, delegate

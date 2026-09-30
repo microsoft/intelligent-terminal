@@ -1094,6 +1094,7 @@ fn test_prompt(id: u64, text: &str, is_autofix: bool) -> PromptSubmission {
         images: Vec::new(),
         is_byok: false,
         agent_id: "copilot".to_string(),
+        reattached: false,
     }
 }
 

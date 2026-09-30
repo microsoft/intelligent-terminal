@@ -4,7 +4,7 @@ This document defines the telemetry emitted by Intelligent Terminal's AI
 integration: what each event measures, when it is emitted, its complete
 business payload, and the limits on interpreting that payload.
 
-The scope is **31 event definitions**: 11 App, 16 WTA, 1 Settings Model,
+The scope is **34 event definitions**: 14 App, 16 WTA, 1 Settings Model,
 and 3 Settings Editor. This includes the existing `AppCreated` event,
 extended with the startup configuration snapshot.
 An event is identified by **provider name plus event name**, not by event
@@ -39,6 +39,8 @@ established separately. See [privacy information](../PRIVACY.md).
 | How often is foreground agent prompt mode entered or submitted? | App `CommandPaletteAgentPromptEntered` and `CommandPaletteDispatchedAgentPrompt` | Entry and submission are separate boundaries; neither proves task completion |
 | Is the sidebar enabled at window creation? | App `AppCreated.SidebarEnabled` | Vertical tab layout at window creation, not a session-weighted snapshot |
 | Are sidebar search, agent filtering, and keep-running used? | App `SidebarSearchOpened`, `SidebarAgentFilterApplied`, `SidebarTabPinned` | Explicit UI transitions, not automatic projection refresh, retention, or restore |
+| Do marked tabs actually stay alive and reattach? | App `KeepRunningMarked`, `KeepRunningDetached`, `KeepRunningReattached` joined by `KeepId` | Runtime-only tab retention, not recovery after process exit or an ACP session resume |
+| Are restored agent sessions prompted again? | WTA `AgentPromptSent.Reattached=true`, filter `IsAutofix=false` for user turns | Prompt dispatch on the same ACP session after a kept tab was reattached; not proof of completion |
 | Which rich-tab fields do people select? | App `SidebarRowFieldsChanged.fields` | Current selection at successful agent-session start and after each user toggle; not displayed metadata values |
 | Which providers are configured at startup or changed later? | App `AppCreated` snapshot and Model `AgentProviderChanged` | Configuration, not CLI installation, authentication, or successful session use |
 | How many custom agents are configured under policy? | App `AppCreated` custom-agent inventory fields | Both roles in the same window-created snapshot, including unused entries and zero counts; no commands or custom names |
@@ -84,7 +86,7 @@ or resolve that hot-refresh limitation.
 
 | Alias | Provider name | GUID | Dedicated events |
 |---|---|---|---|
-| App | `Microsoft.Windows.Terminal.App` | `{24a1622f-7da7-5c77-3303-d850bd1ab2ed}` | 11 |
+| App | `Microsoft.Windows.Terminal.App` | `{24a1622f-7da7-5c77-3303-d850bd1ab2ed}` | 14 |
 | WTA | `Microsoft.Windows.Terminal.WTA` | `{4cfcff80-4e6b-5bfd-8ea1-d38e1226f70b}` | 16 |
 | Model | `Microsoft.Windows.Terminal.Setting.Model` | `{be579944-4d33-5202-e5d6-a7a57f1935cb}` | 1 |
 | Editor | `Microsoft.Windows.Terminal.Settings.Editor` | `{1b16317d-b594-51f8-c552-5d50572b5efc}` | 3 |
@@ -149,6 +151,9 @@ Business-field counts exclude the common `PartA_PrivTags` field.
 | App | [SidebarSearchOpened](#appsidebarsearchopened) | 0 | Usage |
 | App | [SidebarAgentFilterApplied](#appsidebaragentfilterapplied) | 1 | Usage |
 | App | [SidebarTabPinned](#appsidebartabpinned) | 1 | Usage |
+| App | [KeepRunningMarked](#appkeeprunningmarked) | 2 | Usage |
+| App | [KeepRunningDetached](#appkeeprunningdetached) | 2 | Usage |
+| App | [KeepRunningReattached](#appkeeprunningreattached) | 3 | Usage |
 | App | [SidebarRowFieldsChanged](#appsidebarrowfieldschanged) | 1 | Usage |
 | App | [DelegateInvoked](#appdelegateinvoked) | 1 | Usage |
 | App | [ErrorDetected](#apperrordetected) | 1 | Usage |
@@ -157,7 +162,7 @@ Business-field counts exclude the common `PartA_PrivTags` field.
 | WTA | [AcpNewSessionComplete](#wtaacpnewsessioncomplete) | 5 | Performance |
 | WTA | [AcpLoadSessionComplete](#wtaacploadsessioncomplete) | 2 | Performance |
 | WTA | [AgentColdStartComplete](#wtaagentcoldstartcomplete) | 5 | Performance |
-| WTA | [AgentPromptSent](#wtaagentpromptsent) | 6 | Usage |
+| WTA | [AgentPromptSent](#wtaagentpromptsent) | 7 | Usage |
 | WTA | [AgentResponseFirstToken](#wtaagentresponsefirsttoken) | 3 | Performance |
 | WTA | [AgentResponseComplete](#wtaagentresponsecomplete) | 4 | Performance |
 | WTA | [ErrorDetected](#wtaerrordetected) | 5 | Usage |
@@ -285,6 +290,44 @@ emit. Re-enabling emits again. State copying, programmatic setters, layout
 changes, closing into background retention, and restoring a retained tab do
 not emit. This measures opt-in actions, not successful background work or
 retention across an application restart.
+
+### App.KeepRunningMarked
+
+**Trigger:** Keep tab running is enabled by the sidebar menu or the explicit
+tab-control API. Copying the choice into a transferred tab does not emit.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `KeepId` | WideString | Random ID generated for this opt-in; a later disable and re-enable generates a new ID |
+| `HasAgentPane` | Bool | Whether an agent pane (including a stashed pane) is present; not proof of a connected ACP session |
+
+### App.KeepRunningDetached
+
+**Trigger:** a marked tab is removed from the visible strip and retained by
+the process after a tab or window close. A failed close that rolls back does
+not emit.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `KeepId` | WideString | ID from the corresponding opt-in |
+| `HasAgentPane` | Bool | Whether the retained tab contains an agent pane |
+
+### App.KeepRunningReattached
+
+**Trigger:** a retained tab's transactional transfer succeeds or fails.
+Failures leave the tab retained for a possible retry. Invalid/stale restore
+requests rejected before a transfer do not emit.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `KeepId` | WideString | ID of the original opt-in, preserved through the transfer |
+| `Outcome` | String | `live` for a committed reattach; `failed` for a rolled-back transfer |
+| `HasAgentPane` | Bool | Whether the tab contains an agent pane |
+
+There is no `gone` outcome: a crashed, updated, or terminated process cannot
+emit an event, and keep running cannot survive process exit. These are
+tab-level events, including tabs with no agent. Only the random opt-in ID is
+reported, not the tab's routing GUID or title.
 
 ### App.SidebarRowFieldsChanged
 
@@ -528,12 +571,18 @@ the App snapshot's `AgentSource`.
 | `PromptLengthBytes` | UInt32 | Byte length of the constructed dispatch prompt, including context/templates |
 | `IsAutofix` | Bool | Whether this dispatch is an autofix prompt |
 | `IsByok` | Bool | BYOK state captured for this prompt |
+| `Reattached` | Bool | The owning tab was reattached by Keep running and this is still the ACP session bound at reattachment |
 | `AgentId` | String | Agent category |
 | `TemplateKind` | String | `Planner`, `Autofix`, or `AgentCommand` |
 | `Route` | String | Constant `AcpDispatch` |
 
 Includes manual and automatic autofix analysis. The length is not the user's
-typed character count, a token count, or the prompt contents.
+typed character count, a token count, or the prompt contents. `Reattached`
+is false for a new ACP session started after the tab was restored and for
+prompts before the helper receives the scoped reattachment notification.
+It stays true for subsequent prompts on that surviving session. Filter
+`IsAutofix=false` to measure user-initiated turns rather than background
+autofix analysis.
 
 ### WTA.AgentResponseFirstToken
 
@@ -790,6 +839,7 @@ does not assume a particular backend table or query language.
 | Cold-start reliability | Successful cold starts / all observed cold starts | Excludes warm pool reuse |
 | Prompt dispatch volume | Count WTA `AgentPromptSent` | Split autofix, BYOK, and template category as needed |
 | Repair-offer acceptance | Distinct accepted `OfferId` / distinct offered `OfferId` in the same cohort | Attribute acceptance to the offer cohort; allow for acceptance outside the initial window; not fix success |
+| Keep-running reattachment | Distinct `KeepId` by `KeepRunningReattached.Outcome` / distinct detached `KeepId` | Process-lifetime observed tab restores, not a survival rate across restart; a failed restore can be retried |
 | First-text latency | Percentiles of `FirstTokenLatencyMs` | Only turns producing this event; thought text can count |
 | Prompt RPC success rate | Successful `AgentResponseComplete` / all observed response completions | Not answer quality or task success; unfinished turns are absent |
 | Model catalog success rate | `Succeeded=true` completions / all Editor probe completions | Report discards separately; not cache acceptance rate |
@@ -811,6 +861,9 @@ does not assume a particular backend table or query language.
 - `OfferId` joins a concrete repair offer to its confirmed execution request.
   It does not join to `ErrorDetected`: manual `/fix` may have no preceding
   classified error, and multiple classifications can describe one failure.
+- `KeepId` joins an opt-in to observed retention and reattachment in the
+  same process. WTA prompt events do not carry it, so the post-reattach prompt
+  share cannot be joined to a particular tab-level opt-in.
 - The three Editor probe events do not share a unique probe ID. Do not
   construct exact per-probe joins solely from `AgentId` or `CacheRevision`.
 - Events without a completion signal, such as session MCP requests and
@@ -851,7 +904,7 @@ excluded. It is not a blanket filter for all future AI settings.
 
 Other Terminal settings retain their existing telemetry behavior, including
 `tabLayout` and `firstWindowPreference`. The inherited `ActionDispatched`
-event can also describe AI actions; it is not one of these 27 cataloged
+event can also describe AI actions; it is not one of these 34 cataloged
 events. The Settings Model provider,
 `Microsoft.Windows.Terminal.Setting.Model`
 (`{be579944-4d33-5202-e5d6-a7a57f1935cb}`), remains in use for inherited
@@ -860,7 +913,7 @@ settings telemetry and the independent `AgentProviderChanged` event.
 ## Privacy and collection boundaries
 
 The dedicated payloads contain categories, booleans, counts, durations,
-independent telemetry correlation IDs (`StartId` and `OfferId`), terminal pane
+independent telemetry correlation IDs (`StartId`, `OfferId`, and `KeepId`), terminal pane
 identity where documented, and numeric ACP error codes. They do not contain
 agent/provider session identifiers, prompt/response text, terminal contents, command text, custom agent names,
 custom commands, model IDs, API keys, credential identifiers, or custom

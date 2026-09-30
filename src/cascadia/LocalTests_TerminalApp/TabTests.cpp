@@ -1089,6 +1089,11 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(page->IsTabKeepRunning(tabId));
             page->SetTabKeepRunning(tabId, true);
             VERIFY_IS_TRUE(page->IsTabKeepRunning(tabId));
+            const auto keepId = page->_GetFocusedTabImpl()->KeepRunningTelemetryId();
+            VERIFY_IS_FALSE(keepId.empty());
+            VERIFY_IS_TRUE(keepId != page->_GetFocusedTabImpl()->StableId());
+            page->SetTabKeepRunning(tabId, true);
+            VERIFY_ARE_EQUAL(keepId, page->_GetFocusedTabImpl()->KeepRunningTelemetryId());
             page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.start"));
             page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.prompt.submit", "nested-session"));
             page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.end", "stale-session"));
@@ -1098,6 +1103,10 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(page->IsTabKeepRunning(tabId));
             page->SetTabKeepRunning(tabId, false);
             VERIFY_IS_FALSE(page->IsTabKeepRunning(tabId));
+            VERIFY_IS_TRUE(page->_GetFocusedTabImpl()->KeepRunningTelemetryId().empty());
+            page->SetTabKeepRunning(tabId, true);
+            VERIFY_IS_TRUE(keepId != page->_GetFocusedTabImpl()->KeepRunningTelemetryId());
+            page->SetTabKeepRunning(tabId, false);
             VERIFY_IS_FALSE(page->CanKeepTabRunning(id));
             VERIFY_THROWS(page->SetTabKeepRunning(id, true), winrt::hresult_error);
             VERIFY_IS_FALSE(page->CanKeepTabRunning(winrt::guid{}));
@@ -1130,6 +1139,7 @@ namespace TerminalAppLocalTests
             page->_manager.OnPaneAgentSessionChanged(_keepRunningHook(keptId, "agent.session.start"));
             page->_manager.OnPaneAgentSessionChanged(_keepRunningHook(closedId, "agent.session.start"));
             page->SetTabKeepRunning(groupId, true);
+            const auto keepId = tab->KeepRunningTelemetryId();
             page->_HandleCloseTabRequested(*tab, true);
 
             VERIFY_ARE_EQUAL(0u, page->_tabs.Size());
@@ -1148,6 +1158,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(page->RestoreKeptGroup(groupId));
             const auto restored = page->_GetFocusedTabImpl();
             VERIFY_ARE_EQUAL(stableId, restored->StableId());
+            VERIFY_ARE_EQUAL(keepId, restored->KeepRunningTelemetryId());
             VERIFY_ARE_EQUAL(2, restored->GetLeafPaneCount());
             const auto restoredControl = restored->GetRootPane()->FindPaneBySessionId(keptId)->GetTerminalControl();
             VERIFY_ARE_EQUAL(contentId, restoredControl.ContentId());

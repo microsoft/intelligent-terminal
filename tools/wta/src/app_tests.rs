@@ -2079,6 +2079,36 @@ fn tab_renamed_kept_tab_updates_only_its_helpers_window() {
     }
 }
 
+#[test]
+fn kept_tab_reattachment_marks_only_the_owning_live_session() {
+    let mut app = test_app();
+    app.owner_tab_id = Some("owned-tab".into());
+    app.window_id = Some("owned-window".into());
+    app.tab_mut("owned-tab").session_id = Some("original".into());
+
+    for (tab, window) in [("other-tab", "owned-window"), ("owned-tab", "other-window")] {
+        app.handle_event(AppEvent::WtEvent {
+            method: "keep_running_reattached".into(),
+            pane_id: String::new(),
+            tab_id: None,
+            params: json!({"tab_id": tab, "window_id": window}),
+        });
+        assert!(app.tab_mut("owned-tab").reattached_session_id.is_none());
+    }
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "keep_running_reattached".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({"tab_id": "owned-tab", "window_id": "owned-window"}),
+    });
+    let tab = app.tab_mut("owned-tab");
+    assert_eq!(tab.reattached_session_id.as_deref(), Some("original"));
+    assert!(tab.is_reattached_session());
+    tab.session_id = Some("new-session".into());
+    assert!(!tab.is_reattached_session());
+}
+
 // ─── load_session owner_tab_id filter ───────────────────────────────────
 //
 // WT broadcasts `load_session` over shared COM, so every helper in every

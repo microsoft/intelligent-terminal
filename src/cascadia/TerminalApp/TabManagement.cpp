@@ -286,6 +286,13 @@ namespace winrt::TerminalApp::implementation
                     TraceLoggingUInt32(pinnedCount, "pinned_count"),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+                TraceLoggingWrite(
+                    g_hTerminalAppProvider,
+                    "KeepRunningMarked",
+                    TraceLoggingWideString(tab->KeepRunningTelemetryId().c_str(), "KeepId"),
+                    TraceLoggingBool(!!tab->FindAgentPaneContent(), "HasAgentPane"),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
             }
         });
 
@@ -879,7 +886,18 @@ namespace winrt::TerminalApp::implementation
         const auto tab = _FindTabByStableId(winrt::hstring{ ::Microsoft::Console::Utils::GuidToString(tabId) });
         THROW_HR_IF(E_INVALIDARG, !tab || !_GetTabIndex(*tab));
         THROW_HR_IF(E_ILLEGAL_METHOD_CALL, enabled && !CanKeepTabRunning(tabId));
+        const auto wasEnabled = tab->KeepRunning();
         tab->KeepRunning(enabled);
+        if (enabled && !wasEnabled)
+        {
+            TraceLoggingWrite(
+                g_hTerminalAppProvider,
+                "KeepRunningMarked",
+                TraceLoggingWideString(tab->KeepRunningTelemetryId().c_str(), "KeepId"),
+                TraceLoggingBool(!!tab->FindAgentPaneContent(), "HasAgentPane"),
+                TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+        }
     }
 
     bool TerminalPage::_KeepTabRunning(const winrt::com_ptr<Tab>& tab)
@@ -918,6 +936,13 @@ namespace winrt::TerminalApp::implementation
         });
         _RemoveTab(*tab, true, true);
         rollback.release();
+        TraceLoggingWrite(
+            g_hTerminalAppProvider,
+            "KeepRunningDetached",
+            TraceLoggingWideString(tab->KeepRunningTelemetryId().c_str(), "KeepId"),
+            TraceLoggingBool(!!tab->FindAgentPaneContent(), "HasAgentPane"),
+            TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+            TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
         return true;
     }
 
@@ -934,10 +959,51 @@ namespace winrt::TerminalApp::implementation
             }
             CATCH_LOG()
         });
+        const auto keepId = sourceTab->KeepRunningTelemetryId();
+        const auto hasAgentPane = !!sourceTab->FindAgentPaneContent();
+        const auto logReattach = [&](const char* outcome) {
+            TraceLoggingWrite(
+                g_hTerminalAppProvider,
+                "KeepRunningReattached",
+                TraceLoggingWideString(keepId.c_str(), "KeepId"),
+                TraceLoggingString(outcome, "Outcome"),
+                TraceLoggingBool(hasAgentPane, "HasAgentPane"),
+                TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+        };
         auto actions = winrt::single_threaded_vector(sourceTab->BuildStartupActions(BuildStartupKind::Content));
-        THROW_HR_IF(E_ABORT, !_AttachTransferredContent(*winrt::get_self<TerminalPage>(owner), sourceTab, sourceTab->GetRootPane(), actions, -1));
+        bool attached = false;
+        try
+        {
+            attached = _AttachTransferredContent(*winrt::get_self<TerminalPage>(owner), sourceTab, sourceTab->GetRootPane(), actions, -1);
+        }
+        catch (...)
+        {
+            rollback.reset();
+            logReattach("failed");
+            throw;
+        }
+        if (!attached)
+        {
+            rollback.reset();
+            logReattach("failed");
+            return false;
+        }
         _manager.CompleteKeptGroupReattach(groupId, true);
         rollback.release();
+        logReattach("live");
+        const auto restoredTab = _GetFocusedTabImpl();
+        if (hasAgentPane)
+        {
+            try
+            {
+                Json::Value params;
+                params["tab_id"] = winrt::to_string(restoredTab->StableId());
+                params["window_id"] = std::to_string(_WindowProperties.WindowId());
+                _RaiseProtocolEvent("keep_running_reattached", params);
+            }
+            CATCH_LOG()
+        }
         _GetFocusedTabImpl()->GetRootPane()->WalkTree([&](const auto& pane) {
             const auto control = pane->GetTerminalControl();
             const auto binding = control ? _manager.AgentSessionEvent(control.ContentId()) : winrt::hstring{};
