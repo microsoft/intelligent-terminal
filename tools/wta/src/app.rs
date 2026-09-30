@@ -1026,7 +1026,7 @@ pub fn classify_wt_event(
                 age_ticks: 100,
             }
         }
-        "set_agent_state" | "agent_paste_text" => {
+        "set_agent_state" | "agent_paste_text" | "agent_availability_changed" => {
             // handle_event consumes these at the top of WtEvent
             // before classification runs, so classify normally never sees
             // it. Add an explicit arm anyway so a future refactor that

@@ -87,14 +87,18 @@ connections every five seconds, including already-connected WSL and custom agent
 Each connection has one refresh in flight; history and title updates share its
 single response. Failed queries retain prior rows and back off up to 60 seconds.
 The opt-in JSON object contains `sessions` and `history_status` (`loading`, `ready`,
-or `error`); ordinary `--json` output remains one session per line. The initial
+or `error`), with optional `history_error_kind` to distinguish timeout-only failures;
+ordinary `--json` output remains one session per line. The initial
 discovery stays `loading` until all eligible host providers finish. Providers that
 do not support listing are skipped, while initialization or listing failures
 produce `error`. Later refreshes retain the last completed status until they finish.
 The sidebar shows available rows immediately, shows a loading indicator while an
 empty snapshot is still loading, and displays "No agent sessions found" only after
-a successful empty result. Errors remain visible alongside any available rows;
-failed refreshes do not clear previously displayed sessions. This does not depend
+a successful empty result. Non-timeout errors remain visible alongside available
+rows. Query timeouts are logged without an error banner: cached sessions remain
+usable, or the initial loading indicator remains until a result is available.
+Mixed failures are not treated as timeout-only. Failed refreshes do not clear
+previously displayed sessions. This does not depend
 on the agent pane's chat connection or hooks being ready.
 
 History activation keeps an operation ID until its outcome is confirmed.

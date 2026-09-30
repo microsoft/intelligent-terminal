@@ -4105,41 +4105,12 @@ fn dispatch_master_ext_request_with_yolo_timeout(
         match req {
             MasterExtRequest::SessionsList { request_id, rescan } => {
                 let wire = crate::session_registry::build_sessions_list_request(rescan);
-                // Bound the wait so a single dropped RPC response can't
-                // permanently strand the tab's `refetch_in_flight=true`.
-                //
-                // Root cause is in agent-client-protocol@0.10's
-                // `RpcConnection::handle_io`: `read_line` is *not*
-                // cancellation-safe, but it's polled in a
-                // `select_biased!` whose outgoing arm has priority. When
-                // a concurrent outgoing message preempts an in-progress
-                // `read_line`, BufReader bytes already pulled off the
-                // pipe vanish; the next read starts mid-message, JSON
-                // parse fails, and the pending response future for the
-                // request whose response was being read never resolves.
-                // From our side `conn.ext_method(...)` then awaits
-                // forever.
-                //
-                // Without this timeout the failure mode is: helper opens
-                // /sessions, fires `sessions/list`, response gets
-                // truncated → `refetch_in_flight` stuck `true` → every
-                // subsequent `sessions/changed` broadcast and fallback tick
-                // hits `if refetch_in_flight { dirty=true; return; }`
-                // and never refetches → the tab's row activity / status
-                // is frozen until the user toggles /sessions off and
-                // on (which calls `close_agents_view_for_tab` and
-                // resets the gate).
-                //
-                // 8s exceeds the bound-agent history query's 5s timeout.
-                // A healthy in-flight request is not cancelled spuriously; under the
-                // bug the worst-case visible staleness becomes
-                // ~timeout + tick ≈ 13s instead of "until next manual
-                // toggle".
-                //
-                // The proper fix lives upstream — ACP 0.12 rewrote
-                // `handle_io` into separate incoming/outgoing actors,
-                // which is cancellation-safe by construction. Until we
-                // upgrade, this timeout is the guardrail.
+                // Bound stalled responses so refetch_in_flight cannot suppress
+                // every later request indefinitely. Eight seconds allows the
+                // bound-agent rescan's five-second timeout plus local IPC overhead.
+                // Without a push, a nonvertical view may need this timeout plus
+                // the next 60-second fallback (up to about 68 seconds) to recover.
+                // Vertical helper views instead rely on pushes or explicit reads.
                 const SESSIONS_LIST_TIMEOUT: std::time::Duration =
                     std::time::Duration::from_secs(8);
                 let result =

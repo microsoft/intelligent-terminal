@@ -475,6 +475,7 @@ mod tests {
                     row("newer", SessionOrigin::Unknown, 2),
                 ],
                 history_status: Some(status),
+                history_error_kind: None,
             };
             filter_snapshot(&mut snapshot, OriginFilter::ShellOnly);
             assert_eq!(snapshot.history_status, Some(status));

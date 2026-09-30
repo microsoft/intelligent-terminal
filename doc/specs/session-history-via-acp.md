@@ -113,26 +113,17 @@ flowchart LR
 The helper-facing `intellterm.wta/sessions/list` handler still answers from
 master's registry; what changed is that the registry is now both **seeded** and
 continuously **reconciled** against the agent's `session/list` instead of from
-disk. The host seed is immediate (`seed_host_and_broadcast`); the slower WSL seed
-is spawned asynchronously (`spawn_wsl_seed`) so a distro scan never blocks host
-rows. See *Reconcile* below.
+disk. Each newly initialized pooled connection seeds its own history asynchronously
+(`seed_host_and_broadcast`), so a slow WSL connection does not block host rows.
+See *Reconcile* below.
 
 ### WSL
 
-WSL history is sourced the same way, but the agent runs *inside* the distro, so
-it needs a per-distro ACP spawn (proved out by the feasibility study below):
-
-- **Per running distro, per ACP-capable CLI**, `wsl_acp::scan_running_distros_acp`
-  spawns `wsl -d <distro> -- bash -lc "<cli> --acp …"`, runs `initialize` +
-  `list_sessions`, and maps the rows to `AgentSession` /
-  `SessionLocation::Wsl{distro}` through the same shared mapper.
-- **Login-shell carrier.** `wsl.exe -- <cmd>` runs a **non-login** `bash -c`,
-  which can't find a PATH-installed CLI; the scan uses `bash -lc`.
-- **snap cold-start tolerance.** snap copilot's first `--acp` launch pays a
-  one-time `Package extraction` (~5–6 s); the WSL `initialize` gets a generous
-  timeout so a cold snap isn't misread as failure.
-- **Running-distros only**, on the existing 5 s `SessionsChanged` tick — never
-  auto-boots a stopped distro.
+WSL history uses the same mapper and refresh scheduler, but only after an
+explicit selection has initialized an ACP connection inside that distro.
+Subsequent refreshes reuse that connection and stamp its rows with
+`SessionLocation::Wsl{distro}`. Neither the periodic refresh nor host discovery
+enumerates or starts additional WSL distributions or agent processes.
 
 ### Titles come from `session/list`, not disk
 
@@ -148,8 +139,9 @@ so the title is upgraded **in place** instead:
 - `try_refresh_title_via_acp` requests the same gated refresh for a still-synthetic
   row; `refresh_titles_from_listing` also adopts changed summaries for existing rows.
 - Three guards keep this cheap:
-  - **synthetic-gate** — only fetch when some row is still synthetic (steady state
-    makes no extra ACP calls);
+  - **synthetic-gate** — only request an event-driven title refresh when a row is
+    still synthetic. This does not suppress the master's periodic queries: healthy,
+    listing-capable pooled connections are still synchronized every five seconds;
   - **per-connection refresh gate** — concurrent triggers share an in-flight
     refresh; background requests respect the five-second cadence and failed queries
     back off up to 60 seconds. Each response updates both history and titles;
@@ -165,24 +157,21 @@ CLI generated, surfaced by the CLI itself.
 ### `session/list` is authoritative: reconcile, not just seed
 
 `session/list` isn't only the startup seed — it is the ongoing source of truth.
-On every 5 s poll the master reconciles its host-history rows against the latest
+On every 5 s poll the master reconciles the connected agent's own history against the latest
 `session/list` (`sync_host_history`):
 
 - **Add** any newly-listed session not yet in the registry.
-- **Drop** any *stale* host row the agent no longer lists. The drop rule
-  (`is_stale_host_history_row`, a pure unit-tested predicate) is deliberately
-  narrow: only a **Host**, **non-AgentPane**, **terminal** (Ended / Historical)
-  row that is **absent from `session/list`** is removed. Live rows, agent-pane
-  (Class-A) rows, and anything the agent still lists are always kept.
+- **Drop** a stale row only when that connection previously listed its ID and no
+  longer does. The source-aware predicate requires the exact provider, execution
+  source (including the WSL distro), and session identity, plus **non-AgentPane**
+  and **terminal** (Ended / Historical) state. Live rows, agent-pane rows, another
+  provider/distro/universe's rows, and IDs the connection never listed are kept.
 
-This is what makes a phantom self-heal: a session the user opened and exited with
-no real content never enters the CLI's `session/list` (the agent lists only
-sessions with real events — see *Feasibility evidence §2*), so the next poll
-drops its leftover row within ~5 s — authoritatively, from the agent's own
-enumeration, with **no disk read**. A transient `session/list` failure returns
-`None` and is a no-op, so an error never wipes the view. Reconcile runs only for
-agents that support `session/list`; for Gemini / non-ACP `custom:` there is
-nothing to reconcile against (and no history either).
+This removes history entries deleted from the owning agent's successful listing,
+without claiming authority over unclassified or never-listed rows. A transient
+`session/list` failure returns `None` and is a no-op, so an error never wipes the
+view. Connections that do not advertise `session/list` retain their existing
+registry rows and do not use an on-disk history fallback.
 
 ### What was deleted vs. kept
 

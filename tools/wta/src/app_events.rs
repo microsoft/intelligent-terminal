@@ -2951,6 +2951,11 @@ impl App {
                     return;
                 }
 
+                if method == "agent_availability_changed" {
+                    // Native UI and master own the installation-completion broadcast.
+                    return;
+                }
+
                 if method == "agent_config_changed" {
                     // C++ pushes this when the user changes a hot-updatable
                     // agent setting (auto-suggest gate, acp-model, delegate

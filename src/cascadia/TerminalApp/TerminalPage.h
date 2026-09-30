@@ -1015,6 +1015,7 @@ namespace winrt::TerminalApp::implementation
                 Loading,
                 Ready,
                 Error,
+                Timeout,
                 InvalidResponse,
                 Cancelled,
             };

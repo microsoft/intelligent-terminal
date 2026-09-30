@@ -6516,7 +6516,8 @@ namespace winrt::TerminalApp::implementation
         std::string errors;
         if (!Json::parseFromStream(builder, json, &response, &errors) ||
             !response.isObject() || !response["sessions"].isArray() ||
-            !response["history_status"].isString())
+            !response["history_status"].isString() ||
+            (!response["history_error_kind"].isNull() && !response["history_error_kind"].isString()))
         {
             _agentPaneLog("invalid sidebar history snapshot: " + errors);
             return snapshot;
@@ -6532,7 +6533,9 @@ namespace winrt::TerminalApp::implementation
         }
         else if (historyStatus == "error")
         {
-            snapshot.state = _SidebarHistorySnapshot::State::Error;
+            snapshot.state = response["history_error_kind"].asString() == "timeout" ?
+                                 _SidebarHistorySnapshot::State::Timeout :
+                                 _SidebarHistorySnapshot::State::Error;
         }
         else
         {
@@ -6714,6 +6717,10 @@ namespace winrt::TerminalApp::implementation
         {
             snapshot.state = _SidebarHistorySnapshot::State::Cancelled;
         }
+        else if (result.timedOut)
+        {
+            snapshot.state = _SidebarHistorySnapshot::State::Timeout;
+        }
         else if (result.completed && result.exitCode == 0)
         {
             snapshot = _ParseSidebarHistorySnapshot(result.output);
@@ -6752,6 +6759,10 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         const auto strip = winrt::get_self<implementation::TabStrip>(_tabStrip);
+        if (snapshot.state == State::Timeout)
+        {
+            _agentPaneLog("sidebar history refresh timed out; retaining the current snapshot");
+        }
         if (snapshot.state == State::Ready ||
             (snapshot.state != State::InvalidResponse && !snapshot.items.empty()))
         {
@@ -6769,7 +6780,7 @@ namespace winrt::TerminalApp::implementation
         {
             strip->HistoryRefreshError(L"");
         }
-        if (snapshot.state == State::Error || snapshot.state == State::InvalidResponse)
+        if (snapshot.state == State::Error || snapshot.state == State::InvalidResponse || snapshot.state == State::Timeout)
         {
             _historyRetryDelay = (std::min)((std::max)(_historyRetryDelay * 2, std::chrono::seconds{ 5 }), std::chrono::seconds{ 60 });
             _historyNextRefresh = std::chrono::steady_clock::now() + _historyRetryDelay;
@@ -6780,7 +6791,7 @@ namespace winrt::TerminalApp::implementation
             _historyRetryDelay = std::chrono::seconds{ 0 };
             _historyNextRefresh = {};
         }
-        _tabStrip.HistoryLoading(snapshot.state == State::Loading && !strip->HasHistoryItems());
+        _tabStrip.HistoryLoading((snapshot.state == State::Loading || snapshot.state == State::Timeout) && !strip->HasHistoryItems());
         if (_historyRefreshPending)
         {
             _historyRefreshPending = false;

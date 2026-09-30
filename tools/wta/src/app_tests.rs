@@ -3522,6 +3522,28 @@ fn sessions_changed_with_closed_agents_view_is_noop() {
 }
 
 #[test]
+fn installation_completion_broadcast_does_not_surface_a_helper_notification() {
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    let messages = app.current_tab().messages.len();
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_availability_changed".into(),
+        pane_id: String::new(),
+        tab_id: Some(DEFAULT_TAB_ID.into()),
+        params: json!({
+            "agent_id": "copilot",
+            "tab_id": DEFAULT_TAB_ID,
+            "installation_completed": true,
+        }),
+    });
+    assert!(app.wt_notifications.is_empty());
+    assert_eq!(app.current_tab().messages.len(), messages);
+    assert!(
+        master_rx.try_recv().is_err(),
+        "helpers must not repeat master's discovery request"
+    );
+}
+
+#[test]
 fn sessions_fallback_only_reads_open_helper_views_in_nonvertical_layouts() {
     for in_sidebar in [false, true] {
         for view_open in [false, true] {
