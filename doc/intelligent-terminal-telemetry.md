@@ -1,8 +1,9 @@
 # Intelligent Terminal telemetry reference
 
-This document defines the telemetry emitted by Intelligent Terminal's AI
-integration: what each event measures, when it is emitted, its complete
-business payload, and the limits on interpreting that payload.
+This is the complete catalog of Intelligent Terminal's **AI/Agent telemetry**:
+each current event, its trigger, typed business fields, and measurement
+meaning. It describes implemented source behavior, not proposed events,
+test results, or deployment history.
 
 The scope is **34 event definitions**: 14 App, 16 WTA, 1 Settings Model,
 and 3 Settings Editor. This includes the existing `AppCreated` event,
@@ -11,17 +12,15 @@ An event is identified by **provider name plus event name**, not by event
 name alone. In particular, App and WTA each define their own `ErrorDetected`
 and `DelegateInvoked`.
 
-This is a source contract, not a statement that every installed release
-contains these definitions. Deployment and backend ingestion must be
-established separately. See [privacy information](../PRIVACY.md).
+Inherited Terminal/OpenConsole events, such as `SessionBecameInteractive`,
+`ConnectionCreated`, and `ActionDispatched`, are outside this catalog.
+Their separate reference is [TelemetryEvents.md](../TelemetryEvents.md#inherited-windows-terminal--openconsole-reference).
+See [privacy information](../PRIVACY.md) for collection controls.
 
 ## Contents
 
-- [Measurement guide](#measurement-guide)
-- [Requirement alignment and open gaps](#requirement-alignment-and-open-gaps)
-- [Validation snapshot](#validation-snapshot)
-- [Providers and common metadata](#providers-and-common-metadata)
 - [Event catalog](#event-catalog)
+- [Providers and common metadata](#providers-and-common-metadata)
 - [App event schemas](#app-event-schemas)
 - [WTA event schemas](#wta-event-schemas)
 - [Settings Model event schemas](#settings-model-event-schemas)
@@ -31,106 +30,50 @@ established separately. See [privacy information](../PRIVACY.md).
 - [Privacy and collection boundaries](#privacy-and-collection-boundaries)
 - [Source references](#source-references)
 
-## Measurement guide
+## Event catalog
 
-| Question | Event or fields | Measurement boundary |
-|---|---|---|
-| How many successful agent session starts or loads occur? | App `AgentSessionStarted`, split by `StartKind` | Includes pre-warmed sessions, not just sessions with a user prompt |
-| Which agents and configurations are used at session start? | App `AgentSessionStarted` settings snapshot | Session-weighted configuration, not installation or user adoption |
-| How often is the assistant opened through an instrumented UI entry point? | App `AgentPaneOpened`, grouped by `TriggerSource` | Not every pane creation or restoration path |
-| How often is foreground agent prompt mode entered or submitted? | App `CommandPaletteAgentPromptEntered` and `CommandPaletteDispatchedAgentPrompt` | Entry and submission are separate boundaries; neither proves task completion |
-| Is the sidebar enabled at window creation? | App `AppCreated.SidebarEnabled` | Vertical tab layout at window creation, not a session-weighted snapshot |
-| Are sidebar search, agent filtering, and keep-running used? | App `SidebarSearchOpened`, `SidebarAgentFilterApplied`, `SidebarTabPinned` | Explicit UI transitions, not automatic projection refresh, retention, or restore |
-| Do marked tabs actually stay alive and reattach? | App `KeepRunningMarked`, `KeepRunningDetached`, `KeepRunningReattached` joined by `KeepId` | Runtime-only tab retention, not recovery after process exit or an ACP session resume |
-| What share of terminal tabs has Keep running enabled when it is turned on? | App `KeepRunningMarked.KeepRunningTabCount / TotalTabCount` | Post-enable snapshot of attached terminal tabs in the owning window; not a per-agent-session or continuous adoption rate |
-| Are restored agent sessions prompted again? | WTA `AgentPromptSent.Reattached=true`, filter `IsAutofix=false` for user turns | Prompt dispatch on the same ACP session after a kept tab was reattached; not proof of completion |
-| Which rich-tab fields do people select? | App `SidebarRowFieldsChanged.fields` | Current selection at successful agent-session start and after each user toggle; not displayed metadata values |
-| Which providers are configured at startup or changed later? | App `AppCreated` snapshot and Model `AgentProviderChanged` | Configuration, not CLI installation, authentication, or successful session use |
-| How many custom agents are configured under policy? | App `AppCreated` custom-agent inventory fields | Both roles in the same window-created snapshot, including unused entries and zero counts; no commands or custom names |
-| How often are prompts dispatched, and does a user send a second prompt in the same session? | WTA `AgentPromptSent`, grouped by `AgentId`, `IsAutofix`, `IsByok`, `TemplateKind`, `UserPromptOrdinal` | ACP prompt dispatches; `First` and `Second` count observed user turns per helper-bound ACP session, not prompt contents or cross-restart history |
-| How responsive are agent turns? | WTA `AgentResponseFirstToken` and `AgentResponseComplete` | Dispatch-to-first-counted-text and dispatch-to-RPC-completion durations |
-| How reliable and fast are ACP operations? | WTA `AcpInitializeComplete`, `AcpNewSessionComplete`, `AcpLoadSessionComplete` | RPC outcomes; initialize/new timings must be separated by `Route` |
-| What does starting a cold agent process cost? | WTA `AgentColdStartComplete` | Master process-pool startup, excluding warm reuse |
-| How often are terminal errors classified? | WTA `ErrorDetected`, grouped by `Severity`, `Method`, `AllowAutoFixPolicy`, `AutoFixEnabled` | Classifier signals, not unique incidents or fixes |
-| Are concrete repair offers accepted? | WTA `ErrorFixOffered` and `ErrorFixAccepted`, joined by `OfferId` | Presented autofix cards and confirmed Run requests queued for execution, not execution success |
-| How often are commands, session views, or resume routes used? | WTA `AgentSlashCommandUsed`, `SessionsViewOpened`, `SessionResumeInvoked` | Entry or dispatch counts, not completion counts |
-| How often is delegation requested? | App and WTA `DelegateInvoked`, kept separate | Different launch boundaries; neither measures task completion |
-| Which session MCP tools are requested? | WTA `SessionMcpToolCalled`, grouped by `ToolName` | Calls reaching dispatch, not approved or executed actions |
-| What are hook installation outcomes? | WTA `HookOperationCompleted` | Per-CLI installation/uninstallation outcome |
-| Are Settings model probes producing catalogs? | Settings Editor probe events | Parsed catalog result, not proof of cache acceptance |
+All **34 current AI/Agent event definitions** are listed here. Follow an
+event link for its complete field names, types, values, and trigger rules.
+Business-field counts exclude the common `PartA_PrivTags` field.
 
-These events do **not** establish task success, automatic fix success,
-time-to-fix, total response bytes, token consumption, monetary cost, session
-lifetime, or unique active users. `ShowTokenUsageAndCost` is a UI setting,
-not a usage or cost measurement.
-
-## Requirement alignment and open gaps
-
-The schema below describes implemented behavior, not proposed additions.
-The requirement review on **2026-09-30**, against product source
-`7a221adaf967a80da144e48fd4c67700b6bf8625`, established the following boundaries.
-The original requirement's 6.1 wording, "mark rate per agent session", is
-superseded by the agreed enable-time terminal-tab snapshot definition below.
-
-| Requirement | Implemented measurement | Remaining gap or decision |
-|---|---|---|
-| 2.3 Turn completion rate | All tracked prompt RPC completions have `Success`; prompt dispatches also have `IsAutofix`. | Completion events have no `IsAutofix`, so user-only dispatches cannot be paired with a user-only completion population. Adding that classification was discussed but is not implemented. Success among observed completions is not the fraction of all sent turns that finish. |
-| 3.2 Detection becomes an offer | A concrete visible autofix offer emits `ErrorFixOffered`, including offers from manual `/fix`. | No automatic/manual source discriminator or detection-to-offer relation exists. Do not divide all offers by all error detections as a conversion rate. A source category alone would not deduplicate multiple signals or prove which detections produced an offer. |
-| 5.3 Agent filter use | Entry into the Agent view emits its first successfully loaded `row_count`. | Confirm that the requirement means this UI entry point; "behind search" does not establish a required search-then-filter sequence. |
-| 5.4 Pin use | `SidebarTabPinned` measures the Keep running menu, not tab-order pinning. | If the requirement means the separate Pin Tab feature, its instrumentation is still missing from this event. |
-| 5.5 Rich-tab field choices | Complete field selections are emitted on successful agent-session starts and user toggles. | There is no trigger discriminator or unconditional per-window launch snapshot. Observed combinations can be counted, but not pure edit frequency or an unbiased installed-base configuration distribution. Launch snapshots and trigger classification were discussed, not implemented. |
-| 6.1 Keep-running tab share | On a false-to-true transition, emit the owning window's paired attached-terminal-tab counts after enabling. | Use `KeepRunningTabCount / TotalTabCount`; exclude detached and nonterminal tabs, include search-hidden tabs, and count a split tab once. This is not an agent-session mark rate and needs no `KeepId` for the ratio. |
-| 6.3 Reattachment | Same-process retained-tab transfers emit `live` or `failed`. | Process-exit recovery and `gone` are not supported. The original relaunch wording needs a product-scope decision, not just another event. |
-
-Backend ingestion, device identity, sampling, and D0/D7/D28 cohort definitions
-remain separate dashboard prerequisites. Random correlation IDs such as
-`StartId`, `OfferId`, and `KeepId` are existing schema choices; they must not
-be presented as required by the original counts/booleans/enums-only constraint.
-
-## Validation snapshot
-
-On **2026-09-30**, the local **Dev 0.8.0.9** package was successfully registered
-and exercised. Its `TerminalApp.dll` and `wta.exe` hashes matched the binaries
-built from product revision `7a221adaf967a80da144e48fd4c67700b6bf8625`.
-The local package-version change and test-runner fixes were not part of that
-commit. This does not establish availability in the Store release.
-
-| Validation | Observed result | Scope |
-|---|---|---|
-| Focused `Feature.SidebarTelemetry` keep-running run | **3 passed, 0 failed**, with real UI actions and typed ETW | Mark snapshots had `(TotalTabCount, KeepRunningTabCount)` of `(3,1)`, `(3,2)`, `(3,2)`, including a search-hidden tab and a split tab. Detach and live reattach preserved `KeepId`. The same helper/ACP session emitted `First` before retention and `Second` with `Reattached=true` after restoration. |
-| Release-report mapping | `C362` and `C363` checked in both full and incremental reports regenerated from the retained focused results | Reassigned after merging main to avoid the SessionRefresh `C358`/`C359` IDs. Credits these focused contracts only, not a new live run or the full sidebar suite. |
-| Telemetry decoder/collector helper tests | **8 passed** | Includes hidden-window launch of the elevated collector. |
-| Full sidebar scenario run | **Failed** in search/history setup before completing all contracts | Not superseded by the focused pass; no full-suite pass is claimed. |
-| Elevated `TabTests::KeepRunning*` run | **11 passed, 12 failed**, none blocked | Elevation allowed the test host to execute. Failures included the snapshot test's split setup, other assertions, and host crashes; C++ regression coverage is not all green. |
-
-The focused run restored settings/state bytes and verified their hashes.
-It does not independently prove every schema edge case, backend delivery,
-or retention across application exit. Reproduction instructions, including
-the focused Pester selector, are in the
-[E2E telemetry guide](../test/e2e/README.md#opt-in-telemetry-funnel-validation).
+| Provider | Event | What it records / trigger | Business fields | Privacy category |
+|---|---|---|---|---|
+| App | [AppCreated](#appappcreated) | Window-created provider, custom-agent, policy, and sidebar configuration snapshot | 13 | Usage |
+| App | [AgentPaneOpened](#appagentpaneopened) | Instrumented assistant-open or sessions-view request | 2 | Usage |
+| App | [CommandPaletteAgentPromptEntered](#appcommandpaletteagentpromptentered) | Entry into visible foreground agent prompt mode | 0 | Usage |
+| App | [CommandPaletteDispatchedAgentPrompt](#appcommandpalettedispatchedagentprompt) | Submission of an agent prompt through the Command Palette | 1 | Usage |
+| App | [SidebarSearchOpened](#appsidebarsearchopened) | Explicit opening of sidebar tab search | 0 | Usage |
+| App | [SidebarAgentFilterApplied](#appsidebaragentfilterapplied) | First successfully loaded Agent-view row count after entry | 1 | Usage |
+| App | [SidebarTabPinned](#appsidebartabpinned) | Sidebar Keep running enable action and resulting kept-tab count | 1 | Usage |
+| App | [KeepRunningMarked](#appkeeprunningmarked) | Keep running opt-in with paired total/kept terminal-tab counts | 4 | Usage |
+| App | [KeepRunningDetached](#appkeeprunningdetached) | Marked tab successfully retained after closing | 2 | Usage |
+| App | [KeepRunningReattached](#appkeeprunningreattached) | Retained-tab transfer outcome: live or failed | 3 | Usage |
+| App | [SidebarRowFieldsChanged](#appsidebarrowfieldschanged) | Selected rich-tab field IDs at session start or user toggle | 1 | Usage |
+| App | [DelegateInvoked](#appdelegateinvoked) | Successful launch of the delegate process | 1 | Usage |
+| App | [ErrorDetected](#apperrordetected) | Receipt of a pending autofix-state projection | 1 | Usage |
+| App | [AgentSessionStarted](#appagentsessionstarted) | Successful ACP creation/load and effective configuration snapshot | 23 | Usage |
+| WTA | [AcpInitializeComplete](#wtaacpinitializecomplete) | ACP initialization attempt duration and outcome | 5 | Performance |
+| WTA | [AcpNewSessionComplete](#wtaacpnewsessioncomplete) | ACP session creation attempt duration and outcome by route | 5 | Performance |
+| WTA | [AcpLoadSessionComplete](#wtaacploadsessioncomplete) | ACP session load attempt duration and outcome | 2 | Performance |
+| WTA | [AgentColdStartComplete](#wtaagentcoldstartcomplete) | Cold agent-process startup and initialization outcome | 5 | Performance |
+| WTA | [AgentPromptSent](#wtaagentpromptsent) | ACP prompt dispatch, category, observed user-turn ordinal, and reattachment state | 8 | Usage |
+| WTA | [AgentResponseFirstToken](#wtaagentresponsefirsttoken) | Latency and byte length of the first counted text/thought chunk | 3 | Performance |
+| WTA | [AgentResponseComplete](#wtaagentresponsecomplete) | Tracked prompt RPC completion duration and outcome | 4 | Performance |
+| WTA | [ErrorDetected](#wtaerrordetected) | Actionable/critical terminal-error classification and autofix policy state | 5 | Usage |
+| WTA | [ErrorFixOffered](#wtaerrorfixoffered) | First visible presentation of a concrete autofix offer | 1 | Usage |
+| WTA | [ErrorFixAccepted](#wtaerrorfixaccepted) | Confirmed Run request successfully queued for a presented offer | 1 | Usage |
+| WTA | [AgentSlashCommandUsed](#wtaagentslashcommandused) | Built-in slash-command dispatch | 1 | Usage |
+| WTA | [SessionsViewOpened](#wtasessionsviewopened) | Entry into the session-view open routine | 0 | Usage |
+| WTA | [SessionResumeInvoked](#wtasessionresumeinvoked) | Dispatch of an ACP or native-CLI resume route | 2 | Usage |
+| WTA | [DelegateInvoked](#wtadelegateinvoked) | Agent-requested delegation after creating its target | 1 | Usage |
+| WTA | [SessionMcpToolCalled](#wtasessionmcptoolcalled) | Parsed session MCP tool call reaching dispatch | 1 | Usage |
+| WTA | [HookOperationCompleted](#wtahookoperationcompleted) | Per-CLI hook installation/removal outcome | 3 | Usage |
+| Model | [AgentProviderChanged](#modelagentproviderchanged) | Primary/delegate provider change on an accepted settings reload | 3 | Usage |
+| Editor | [AcpModelProbeStarted](#editoracpmodelprobestarted) | Start of a clean ACP model-catalog probe | 2 | Performance |
+| Editor | [AcpModelProbeDiscarded](#editoracpmodelprobediscarded) | Discard of a superseded probe generation | 1 | Performance |
+| Editor | [AcpModelProbeCompleted](#editoracpmodelprobecompleted) | Current probe's parsed catalog outcome and model count | 3 | Performance |
 
 ## Providers and common metadata
-
-The original usage funnel also depends on inherited
-`Microsoft.Windows.Terminal.Win32Host.SessionBecameInteractive` and
-`App.ConnectionCreated`, outside the dedicated agent-event catalog below.
-The opt-in `Feature.TelemetryFunnels` suite captures those sources as well as
-the agent events, checks real triggers and negative controls, and records
-process-scoped typed ETW evidence. See the [live validation instructions](../test/e2e/README.md#opt-in-telemetry-funnel-validation).
-Local event capture does not establish backend ingestion or D7/D28 retention.
-Startup policy segmentation and live policy refresh are separate acceptance boundaries:
-the suite's startup-policy cases require typed WTA `ErrorDetected` raw-policy and
-effective-flag values after real failures with policy configured before launch.
-Enabled policy uses shell-failure `Method=vt_sequence`. Blocked policy suppresses
-OSC forwarding, which the test asserts independently of rendered shell-error
-completion. Its typed `disabled`/`false` evidence instead comes from a controlled
-nonzero shell exit with `Method=connection_state`, keeping the helper alive via
-`closeOnExit=never`. That notification must not create an Autofix prompt or offer;
-it does not establish observation of a policy-blocked VT failure.
-Hot-policy notification remains unresolved on the validation host, is tracked in
-[issue #991](https://github.com/microsoft/intelligent-terminal/issues/991), and is reported
-by separate, unchanged tests. Preparing startup coverage does not establish a live pass
-or resolve that hot-refresh limitation.
 
 | Alias | Provider name | GUID | Dedicated events |
 |---|---|---|---|
@@ -186,47 +129,6 @@ Custom names and command lines are not reported.
 and `3` for Release. `Distribution` is `0` for other/unpackaged, `1` for
 portable, and `2` for packaged. Packaged does not mean Store-installed.
 
-## Event catalog
-
-Business-field counts exclude the common `PartA_PrivTags` field.
-
-| Provider | Event | Business fields | Privacy category |
-|---|---|---|---|
-| App | [AgentPaneOpened](#appagentpaneopened) | 2 | Usage |
-| App | [CommandPaletteAgentPromptEntered](#appcommandpaletteagentpromptentered) | 0 | Usage |
-| App | [CommandPaletteDispatchedAgentPrompt](#appcommandpalettedispatchedagentprompt) | 1 | Usage |
-| App | [AppCreated](#appappcreated) | 13 | Usage |
-| App | [SidebarSearchOpened](#appsidebarsearchopened) | 0 | Usage |
-| App | [SidebarAgentFilterApplied](#appsidebaragentfilterapplied) | 1 | Usage |
-| App | [SidebarTabPinned](#appsidebartabpinned) | 1 | Usage |
-| App | [KeepRunningMarked](#appkeeprunningmarked) | 4 | Usage |
-| App | [KeepRunningDetached](#appkeeprunningdetached) | 2 | Usage |
-| App | [KeepRunningReattached](#appkeeprunningreattached) | 3 | Usage |
-| App | [SidebarRowFieldsChanged](#appsidebarrowfieldschanged) | 1 | Usage |
-| App | [DelegateInvoked](#appdelegateinvoked) | 1 | Usage |
-| App | [ErrorDetected](#apperrordetected) | 1 | Usage |
-| App | [AgentSessionStarted](#appagentsessionstarted) | 23 | Usage |
-| WTA | [AcpInitializeComplete](#wtaacpinitializecomplete) | 5 | Performance |
-| WTA | [AcpNewSessionComplete](#wtaacpnewsessioncomplete) | 5 | Performance |
-| WTA | [AcpLoadSessionComplete](#wtaacploadsessioncomplete) | 2 | Performance |
-| WTA | [AgentColdStartComplete](#wtaagentcoldstartcomplete) | 5 | Performance |
-| WTA | [AgentPromptSent](#wtaagentpromptsent) | 8 | Usage |
-| WTA | [AgentResponseFirstToken](#wtaagentresponsefirsttoken) | 3 | Performance |
-| WTA | [AgentResponseComplete](#wtaagentresponsecomplete) | 4 | Performance |
-| WTA | [ErrorDetected](#wtaerrordetected) | 5 | Usage |
-| WTA | [ErrorFixOffered](#wtaerrorfixoffered) | 1 | Usage |
-| WTA | [ErrorFixAccepted](#wtaerrorfixaccepted) | 1 | Usage |
-| WTA | [AgentSlashCommandUsed](#wtaagentslashcommandused) | 1 | Usage |
-| WTA | [SessionsViewOpened](#wtasessionsviewopened) | 0 | Usage |
-| WTA | [SessionResumeInvoked](#wtasessionresumeinvoked) | 2 | Usage |
-| WTA | [DelegateInvoked](#wtadelegateinvoked) | 1 | Usage |
-| WTA | [SessionMcpToolCalled](#wtasessionmcptoolcalled) | 1 | Usage |
-| WTA | [HookOperationCompleted](#wtahookoperationcompleted) | 3 | Usage |
-| Model | [AgentProviderChanged](#modelagentproviderchanged) | 3 | Usage |
-| Editor | [AcpModelProbeStarted](#editoracpmodelprobestarted) | 2 | Performance |
-| Editor | [AcpModelProbeDiscarded](#editoracpmodelprobediscarded) | 1 | Performance |
-| Editor | [AcpModelProbeCompleted](#editoracpmodelprobecompleted) | 3 | Performance |
-
 ## App event schemas
 
 ### App.AgentPaneOpened
@@ -272,22 +174,6 @@ No prompt text is included. This is a submission event, not evidence that
 the selected mode launched or completed an agent task. In particular,
 the reserved background entry point is not a completed background workflow.
 
-### Sidebar measurement plan
-
-| Plan item | Shipped-source contract |
-|---|---|
-| 5.1 `SidebarStateOnLaunch(enabled)` | Consolidated into `AppCreated.SidebarEnabled`; no standalone event |
-| 5.2 `SidebarSearchOpened` | Opening the current-window tab search box |
-| 5.3 `SidebarAgentFilterApplied(row_count)` | Entering the Agent view; count visible session rows on its first successful snapshot |
-| 5.4 `SidebarTabPinned(pinned_count)` | Enabling **Keep tab running** from a sidebar tab's context menu |
-| 5.5 `SidebarRowFieldsChanged(fields)` | Successful agent-session start and Tab metadata toggles both emit the current zero-to-two field IDs |
-
-Search and filtering are independent, adjacent entry points, not a mandatory
-ordered funnel. All four sidebar events use the existing App provider,
-Verbose level, measures keyword, and Usage privacy tag. No search text, tab
-titles, paths, session content, or configurable row values are collected.
-These definitions do not by themselves establish deployment or backend ingestion.
-
 ### App.SidebarSearchOpened
 
 **Trigger:** the user opens the sidebar tab search box, transitioning from
@@ -325,7 +211,7 @@ the same entry remains active can complete the pending measurement.
 ### App.SidebarTabPinned
 
 **Trigger:** the user enables **Keep tab running** through the sidebar tab
-context menu. The telemetry name retains the plan's "pinned" terminology;
+context menu. The telemetry name uses "pinned" terminology;
 it does not mean tab-order pinning or a Windows taskbar pin.
 
 | Field | Type | Meaning / values |
@@ -358,7 +244,7 @@ tabs are included; detached background tabs, other windows, Settings tabs,
 and other nonterminal tabs are excluded. Split panes do not count as separate
 tabs. The marked terminal tab makes `TotalTabCount` nonzero.
 
-For requirement 6.1, use `KeepRunningTabCount / TotalTabCount` for each
+For the enable-time tab share, use `KeepRunningTabCount / TotalTabCount` for each
 observation, or `SUM(KeepRunningTabCount) / SUM(TotalTabCount)` across the
 same selected observations using floating-point division. The latter is a
 tab-count-weighted ratio of enable-time snapshots, not distinct tabs, agent
@@ -906,27 +792,6 @@ a newer cache revision can cause rejection after this event.
 
 ## Counting and correlation
 
-Use a consistent capture/time window and deployment scope for each
-measurement. These formulas describe logical aggregations; this document
-does not assume a particular backend table or query language.
-
-| Metric | Aggregation | Required qualification |
-|---|---|---|
-| Startup configuration share | `AppCreated` records matching the configuration / all `AppCreated` records in the same population | Window-created observations, not unique users or processes; primary and delegate are fields on one record |
-| Successful starts | Distinct `StartId` on App `AgentSessionStarted` | Split `New` and `Load`; includes prewarm |
-| Configuration share at start | Distinct starts matching a snapshot value / all distinct starts in the same population | Session-weighted, not user-weighted; display `unknown` separately |
-| ACP operation success rate | Successful completion events / all completion events for the same event and route | Measures observed RPC attempts; exclude probes from chat analysis |
-| ACP operation latency | Duration percentiles for one event, route, and outcome | Do not mix helper and master timings or successes and timeouts |
-| Cold-start reliability | Successful cold starts / all observed cold starts | Excludes warm pool reuse |
-| Prompt dispatch volume | Count WTA `AgentPromptSent` | Split autofix, BYOK, and template category as needed |
-| Repair-offer acceptance | Distinct accepted `OfferId` / distinct offered `OfferId` in the same cohort | Attribute acceptance to the offer cohort; allow for acceptance outside the initial window; not fix success |
-| Keep-running enable-time tab share | `SUM(KeepRunningTabCount) / SUM(TotalTabCount)` on App `KeepRunningMarked`, using floating-point division | Same-window post-enable snapshots; excludes detached and nonterminal tabs; not a per-session rate or continuous adoption measurement |
-| Keep-running reattachment | Distinct `KeepId` by `KeepRunningReattached.Outcome` / distinct detached `KeepId` | Process-lifetime observed tab restores, not a survival rate across restart; a failed restore can be retried |
-| First-text latency | Percentiles of `FirstTokenLatencyMs` | Only turns producing this event; thought text can count |
-| Prompt RPC success rate | Successful `AgentResponseComplete` / all observed response completions | Not answer quality or task success; unfinished turns are absent |
-| Model catalog success rate | `Succeeded=true` completions / all Editor probe completions | Report discards separately; not cache acceptance rate |
-| Command/tool usage | Counts by command/tool category within its event | Attempts, not actions successfully executed |
-
 ### Per-event query and aggregation recipes
 
 Filter by **provider and event name**, a consistent time window, build, and
@@ -940,8 +805,6 @@ SQL dialect.
 
 | Provider and event | Query / aggregation | Interpretation boundary |
 |---|---|---|
-| Win32Host `SessionBecameInteractive` | Count per day and distinct backend devices; join device-day cohorts to later days for D7/D28. Group by `Branding`, `Distribution`. | First user interaction, not every launch; inherited event outside the dedicated catalog. |
-| App `ConnectionCreated` | Count connections and distinct backend devices, optionally filtering `ConnectionTypeGuid` for the desired connection type. | Connections, not unique windows or proof of an interactive shell; inherited event outside the dedicated catalog. |
 | App `AgentPaneOpened` | Count by `TriggerSource` and `Branding`; divide devices with an open by interactive devices in the same cohort for reach. | Instrumented open requests, not every pane creation or restoration. |
 | App `CommandPaletteAgentPromptEntered` | Count foreground prompt-mode entries and distinct devices; compare aggregate entry counts to dispatched foreground prompts. | No entry-to-submission identifier; editing and abandonment do not dispatch. |
 | App `CommandPaletteDispatchedAgentPrompt` | Count by `IsBackgroundMode`; compare foreground submissions to mode entries only at aggregate scope. | Dispatch request, not delegate startup or task completion. |
@@ -949,7 +812,7 @@ SQL dialect.
 | App `SidebarSearchOpened` | Count explicit search-box opens and distinct devices. | Search entry, not query edits, result views, or Agent-view search. |
 | App `SidebarAgentFilterApplied` | Count Agent-view entries; group or histogram `row_count`, including zero. | First successful Ready snapshot after entry, not tab-search filtering or unique sessions. |
 | App `SidebarTabPinned` | Count enable actions; group by the post-action `pinned_count`. | Keep-running menu action, not tab-order pinning; count covers attached tabs in one window. |
-| App `KeepRunningMarked` | For 6.1, divide `SUM(KeepRunningTabCount)` by `SUM(TotalTabCount)` with floating-point division; no records means no measurement, not zero. Count opt-ins separately by distinct `KeepId`. | Enable-time attached terminal-tab snapshots in the owning window, including search-hidden tabs; excludes detached tabs and Settings. Not unique tabs, agent sessions, or all-device adoption. |
+| App `KeepRunningMarked` | Divide `SUM(KeepRunningTabCount)` by `SUM(TotalTabCount)` with floating-point division; no records means no measurement, not zero. Count opt-ins separately by distinct `KeepId`. | Enable-time attached terminal-tab snapshots in the owning window, including search-hidden tabs; excludes detached tabs and Settings. Not unique tabs, agent sessions, or all-device adoption. |
 | App `KeepRunningDetached` | Count distinct `KeepId` and join to marked IDs in the same process-lifetime cohort. | Successful retention inside a live process; process exit cannot emit a detach. |
 | App `KeepRunningReattached` | Count attempts by `Outcome`; count distinct `KeepId` with `live` over distinct detached `KeepId`, reporting failed attempts separately. | A failed restore can be retried; no `gone` outcome or cross-process recovery. |
 | App `SidebarRowFieldsChanged` | Count by the complete `fields` selection; split comma-separated fixed IDs for field-presence frequency if needed. | Includes session-start snapshots as well as user toggles, with no discriminator; not an edit count. |
@@ -960,7 +823,7 @@ SQL dialect.
 | WTA `AcpNewSessionComplete` | Group by `Route`, `Success`; count successes and duration percentiles per route. Select one helper route population, excluding `Probe`, for chat-session starts. | `MasterForward` and helper routes can describe the same creation; do not sum them. |
 | WTA `AcpLoadSessionComplete` | Count by `Success`; calculate success share and `DurationMs` percentiles separately by outcome. | No route/session ID; cannot distinguish layout restore from session-view resume. |
 | WTA `AgentColdStartComplete` | Group by `AgentId`, `Source`, `Success`, `FailureKind`; compute cold-start success share and `DurationMs` percentiles. | Warm process reuse does not emit. |
-| WTA `AgentPromptSent` | Count by `AgentId`, `IsAutofix`, `IsByok`, `TemplateKind`, `Reattached`, and `UserPromptOrdinal`. For the document's 2.4, count `Second` / count `First` after filtering `IsAutofix=false` in a fully observed session cohort. | Each `Second` represents one observed ACP session reaching a second user prompt; `Later` counts extra turns. No session ID is exported, so a window cutting across session lifetime cannot form an exact session cohort. |
+| WTA `AgentPromptSent` | Count by `AgentId`, `IsAutofix`, `IsByok`, `TemplateKind`, `Reattached`, and `UserPromptOrdinal`. For second-user-prompt reach, count `Second` / count `First` after filtering `IsAutofix=false` in a fully observed session cohort. | Each `Second` represents one observed ACP session reaching a second user prompt; `Later` counts extra turns. No session ID is exported, so a window cutting across session lifetime cannot form an exact session cohort. |
 | WTA `AgentResponseFirstToken` | Calculate median/P95 `FirstTokenLatencyMs` by `AgentId`; count events with first text. | Tool-only or timestamp-less turns may emit none; not first final-answer text. |
 | WTA `AgentResponseComplete` | Group by `AgentId`, `IsByok`, `Success`; compute successful completions / all tracked completions and `TotalDurationMs` percentiles per outcome. | RPC completion, not task success; cannot join to one prompt or count unfinished turns. |
 | WTA `ErrorDetected` | Count by `Severity`, `Method`, `AllowAutoFixPolicy`, `AutoFixEnabled`. | Only classified actionable/critical signals, not every failed command or unique incident. |
@@ -1005,13 +868,18 @@ No delivery or completeness guarantee is implied. Account for disabled
 collection, process exit, event loss, and operations still in progress
 before comparing counts.
 
+These events do **not** establish task success, automatic fix success,
+time-to-fix, total response bytes, token consumption, monetary cost, session
+lifetime, or unique active users. `ShowTokenUsageAndCost` is a UI setting,
+not a usage or cost measurement.
+
 ## Retired events and settings filtering
 
 | Retired event or field | Replacement / interpretation |
 |---|---|
 | `WTA.SlashCommandInvoked.CommandName` | Renamed to `WTA.AgentSlashCommandUsed.command`; no dual-write. Union old and new spellings across the deployment boundary when querying history |
 | Legacy `AgentProviderConfigured` | Startup configuration is now carried by `App.AppCreated`; do not compare historical event counts directly. Connected-agent identity still comes from `App.AgentSessionStarted` |
-| Proposed `AgentProviderConfigured(schema_version=2)`, `CustomAgentConfigured`, and `SidebarStateOnLaunch` | Consolidated into `App.AppCreated` before this change lands; no standalone emissions or dual-write |
+| `AgentProviderConfigured(schema_version=2)`, `CustomAgentConfigured`, and `SidebarStateOnLaunch` | Not emitted as standalone events; their configuration fields are consolidated into `App.AppCreated` |
 | `CustomModelProviderConfigured` | Use `ModelSource` for active session category; unused configured providers are not inventoried |
 | `IntelligentFeatureConfigured` | Use the selected configuration fields on `AgentSessionStarted` |
 | `ErrorFixResolved` | No reliable fix-success replacement; clearing a pending UI state is not proof a fix worked |
@@ -1070,10 +938,13 @@ these event definitions.
 | Contract | Source |
 |---|---|
 | App pane, delegate, error, and snapshot emission | [TerminalPage.cpp](../src/cascadia/TerminalApp/TerminalPage.cpp) |
+| Sidebar search and rich-tab field selection | [TerminalPage.cpp](../src/cascadia/TerminalApp/TerminalPage.cpp) |
+| Agent-view entry and loaded row count | [TabStrip.cpp](../src/cascadia/TerminalApp/TabStrip.cpp) |
+| Keep-running menu, mark counts, detach, and reattach | [TabManagement.cpp](../src/cascadia/TerminalApp/TabManagement.cpp) |
 | Command Palette entry and submission | [CommandPalette.cpp](../src/cascadia/TerminalApp/CommandPalette.cpp), [CommandPaletteTelemetry.h](../src/cascadia/TerminalApp/CommandPaletteTelemetry.h) |
 | Window-created configuration and provider-change tracking | [AppLogic.cpp](../src/cascadia/TerminalApp/AppLogic.cpp), [AgentProviderTelemetry.h](../src/cascadia/TerminalApp/AgentProviderTelemetry.h) |
 | Provider-change emission and shared configuration helpers | [CascadiaSettingsSerialization.cpp](../src/cascadia/TerminalSettingsModel/CascadiaSettingsSerialization.cpp), [SettingsTelemetry.h](../src/cascadia/TerminalSettingsModel/SettingsTelemetry.h) |
-| Snapshot validation and categories | [AgentSessionTelemetry.h](../src/cascadia/TerminalApp/AgentSessionTelemetry.h) |
+| Session snapshot parsing and categories | [AgentSessionTelemetry.h](../src/cascadia/TerminalApp/AgentSessionTelemetry.h) |
 | Helper snapshot production | [app_status_projection.rs](../tools/wta/src/app_status_projection.rs), [app_events.rs](../tools/wta/src/app_events.rs) |
 | WTA event schemas and privacy tags | [telemetry.rs](../tools/wta/src/telemetry.rs) |
 | Concrete autofix offer presentation / acceptance | [autofix.rs](../tools/wta/src/app/autofix.rs), [app_turn.rs](../tools/wta/src/app_turn.rs), [recommendations.rs](../tools/wta/src/ui/recommendations.rs) |
@@ -1087,6 +958,3 @@ these event definitions.
 | Exact settings filter | [SettingsTelemetry.h](../src/cascadia/TerminalSettingsModel/SettingsTelemetry.h) |
 | Settings definitions | [MTSMSettings.h](../src/cascadia/TerminalSettingsModel/MTSMSettings.h) |
 | OSS metadata | [ProjectTelemetry.h](../dep/telemetry/ProjectTelemetry.h) |
-
-The [inherited Terminal/OpenConsole inventory](../TelemetryEvents.md#inherited-windows-terminal--openconsole-reference)
-is retained separately and is pinned to its historical source revision.
