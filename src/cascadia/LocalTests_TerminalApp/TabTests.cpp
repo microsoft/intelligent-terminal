@@ -4233,6 +4233,32 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Collapsed, thirdHeader.FindName(L"TabHeaderPresenter").as<ContentPresenter>().Visibility());
             VERIFY_ARE_EQUAL(tooltipText(third->TabViewItem()), std::wstring{ winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(thirdHeader)) });
             page->_tabStrip.IsRailCollapsed(false);
+
+            page->_tabSearchActive = false;
+            page->_ApplyTabListProjection();
+            for (auto i = 0; i < 6; ++i)
+            {
+                VERIFY_SUCCEEDED(page->_OpenNewTab(args));
+            }
+            page->UpdateLayout();
+            VERIFY_ARE_EQUAL(9u, page->_tabs.Size());
+            const auto ninth = page->_GetTabImpl(page->_tabs.GetAt(8));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"ctrl+alt+9" }, Automation::AutomationProperties::GetAcceleratorKey(ninth->TabViewItem()));
+            const auto ninthDisplay = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->DisplayItemForTab(ninth->TabViewItem());
+            VERIFY_ARE_EQUAL(Automation::AutomationProperties::GetHelpText(ninth->TabViewItem()), ninthDisplay.ToolTipText());
+            VERIFY_ARE_NOT_EQUAL(std::wstring::npos, std::wstring{ ninthDisplay.ToolTipText() }.find(L"ctrl+alt+9"));
+
+            VERIFY_SUCCEEDED(page->_OpenNewTab(args));
+            page->UpdateLayout();
+            VERIFY_ARE_EQUAL(10u, page->_tabs.Size());
+            VERIFY_ARE_EQUAL(winrt::hstring{}, Automation::AutomationProperties::GetAcceleratorKey(ninth->TabViewItem()));
+            VERIFY_ARE_EQUAL(Automation::AutomationProperties::GetHelpText(ninth->TabViewItem()), ninthDisplay.ToolTipText());
+            VERIFY_ARE_EQUAL(winrt::hstring{}, ninthDisplay.AcceleratorKey());
+            const auto tenth = page->_GetTabImpl(page->_tabs.GetAt(9));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"ctrl+alt+9" }, Automation::AutomationProperties::GetAcceleratorKey(tenth->TabViewItem()));
+            const auto tenthDisplay = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->DisplayItemForTab(tenth->TabViewItem());
+            VERIFY_ARE_EQUAL(Automation::AutomationProperties::GetHelpText(tenth->TabViewItem()), tenthDisplay.ToolTipText());
+            VERIFY_ARE_NOT_EQUAL(std::wstring::npos, std::wstring{ tenthDisplay.ToolTipText() }.find(L"ctrl+alt+9"));
         });
     }
 
