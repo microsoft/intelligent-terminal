@@ -1026,7 +1026,7 @@ pub fn classify_wt_event(
                 age_ticks: 100,
             }
         }
-        "set_agent_state" | "agent_paste_text" => {
+        "set_agent_state" | "agent_paste_text" | "agent_availability_changed" => {
             // handle_event consumes these at the top of WtEvent
             // before classification runs, so classify normally never sees
             // it. Add an explicit arm anyway so a future refactor that
@@ -1284,6 +1284,7 @@ pub struct App {
     // AgentPaneContent / bottom bar window without fan-out.
     pub owner_tab_id: Option<String>,
     pub window_id: Option<String>,
+    pub(crate) sessions_in_sidebar: bool,
     // WT event notifications (global — affects bottom-bar / banner across tabs)
     pub wt_notifications: std::collections::VecDeque<WtNotification>,
     pub show_notification_banner: bool,
@@ -1618,6 +1619,7 @@ impl App {
             tab_id: None,
             owner_tab_id: None,
             window_id: None,
+            sessions_in_sidebar: false,
             wt_notifications: VecDeque::new(),
             show_notification_banner: false,
             autofix_enabled,
@@ -3887,6 +3889,7 @@ impl App {
                 crate::wt_protocol_events::agent_availability_changed_event(
                     agent_id,
                     self.agent_routing_tab_id(),
+                    false,
                 ),
             );
         }
@@ -4992,6 +4995,7 @@ impl App {
             AppEvent::AliveSessionRemoved(_) => "alive_session_removed",
             AppEvent::AliveJoinUpgrade(_) => "alive_join_upgrade",
             AppEvent::SessionsChanged => "sessions_changed",
+            AppEvent::SessionsFallbackTick => "sessions_fallback_tick",
             AppEvent::AgentsSnapshotLoaded { .. } => "agents_snapshot_loaded",
             AppEvent::AgentsSnapshotFailed { .. } => "agents_snapshot_failed",
             AppEvent::RegisterBornBoundSession { .. } => "register_born_bound_session",

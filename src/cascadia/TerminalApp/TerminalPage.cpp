@@ -513,6 +513,8 @@ namespace winrt::TerminalApp::implementation
         // Cache the layout mode so the routing helpers (_tabItems /
         // _selectedTabItem) don't have to reach into _tabRow on every call.
         _isVerticalLayout = _tabRow.IsVerticalLayout();
+        // SetSettings captures the runtime baseline before Create applies the layout.
+        _lastAgentRuntimeConfig.sessionsInSidebar = _isVerticalLayout;
 
         _ApplyVerticalLayoutReshape(true);
 
@@ -739,6 +741,15 @@ namespace winrt::TerminalApp::implementation
         {
             constexpr std::string_view gitStatusProviderId{ "com.microsoft.intelligent-terminal.git-status" };
             auto& richTabBroker = ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance();
+            richTabBroker.SetFieldDisplayNames(
+                gitStatusProviderId,
+                {
+                    { "agentStatus", winrt::to_string(RS_(L"VerticalTabsMetadataAgentStatus.Text")) },
+                    { "workingDirectory", winrt::to_string(RS_(L"VerticalTabsMetadataWorkingDirectory.Text")) },
+                    { "repository", winrt::to_string(RS_(L"VerticalTabsMetadataRepository.Text")) },
+                    { "branch", winrt::to_string(RS_(L"VerticalTabsMetadataBranch.Text")) },
+                    { "changes", winrt::to_string(RS_(L"VerticalTabsMetadataChanges.Text")) },
+                });
             if (const auto fields = richTabBroker.VisibleFields(gitStatusProviderId))
             {
                 const auto contains = [&](const std::string_view field) {
@@ -2662,6 +2673,7 @@ namespace winrt::TerminalApp::implementation
             globals.AgentPaneYoloMode(),
             globals.IsYoloModePolicyLocked(),
             AgentPolicyTelemetry::AutoFixPolicyName(AgentPolicy::GetAutoFixPolicy()),
+            _isVerticalLayout,
         };
     }
 
@@ -2678,6 +2690,7 @@ namespace winrt::TerminalApp::implementation
         params["yolo_policy_blocked"] = config.yoloPolicyBlocked;
         params["autofix_enabled"] = config.autofixEnabled;
         params["autofix_policy_state"] = config.autofixPolicyState;
+        params["sessions_in_sidebar"] = config.sessionsInSidebar;
         return params;
     }
 
@@ -2691,6 +2704,7 @@ namespace winrt::TerminalApp::implementation
     //     credential-free picker metadata and its selected entry.
     //   - yolo_enabled + yolo_policy_blocked : the per-tab desired state,
     //     resolved for that tab's current provider, and the administrative gate.
+    //   - sessions_in_sidebar : the active window layout's session-list surface.
     void TerminalPage::_EmitAgentRuntimeConfigIfChanged()
     {
         const auto current = _CaptureAgentRuntimeConfig();
@@ -2717,8 +2731,9 @@ namespace winrt::TerminalApp::implementation
         const bool yoloChanged = last.defaultAgentId != current.defaultAgentId ||
                                  last.yoloEnabled != current.yoloEnabled ||
                                  last.yoloPolicyBlocked != current.yoloPolicyBlocked;
+        const bool sessionsLayoutChanged = last.sessionsInSidebar != current.sessionsInSidebar;
 
-        if (!autofixChanged && !autofixPolicyChanged && !delegateChanged && !customModelsChanged && !yoloChanged)
+        if (!autofixChanged && !autofixPolicyChanged && !delegateChanged && !customModelsChanged && !yoloChanged && !sessionsLayoutChanged)
         {
             _lastAgentRuntimeConfig = current;
             return;
@@ -2745,7 +2760,11 @@ namespace winrt::TerminalApp::implementation
             params["custom_models"] =
                 ::Microsoft::Terminal::CustomModels::CatalogToJson(current.customModels);
         }
-        const bool commonChanged = autofixChanged || autofixPolicyChanged || delegateChanged || customModelsChanged;
+        if (sessionsLayoutChanged)
+        {
+            params["sessions_in_sidebar"] = current.sessionsInSidebar;
+        }
+        const bool commonChanged = autofixChanged || autofixPolicyChanged || delegateChanged || customModelsChanged || sessionsLayoutChanged;
         if (commonChanged)
         {
             _agentPaneLog("emitting agent_config_changed (hot settings update)");
@@ -5814,6 +5833,7 @@ namespace winrt::TerminalApp::implementation
             _tabLayoutTransitionSelectedItem = nullptr;
             _ApplyTabListProjection();
             _ApplyPendingPinRequest();
+            _EmitAgentRuntimeConfigIfChanged();
             return false;
         }
     }
@@ -5962,6 +5982,7 @@ namespace winrt::TerminalApp::implementation
         _tabLayoutTransitionSelectedItem = nullptr;
         _ApplyTabListProjection();
         _ApplyPendingPinRequest();
+        _EmitAgentRuntimeConfigIfChanged();
 
         if (const auto infoBar = FindName(L"TabLayoutRestartInfoBar").try_as<MUX::Controls::InfoBar>())
         {
@@ -6289,12 +6310,17 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_StartSidebarHistoryRefreshTimer()
     {
+        if (!_isVerticalLayout || !_tabStrip || !_tabStrip.HistoryActive())
+        {
+            _StopSidebarHistoryRefreshTimer();
+            return;
+        }
         if (!_historyRefreshTimer)
         {
             _historyRefreshTimer = Windows::UI::Xaml::DispatcherTimer{};
-            _historyRefreshTimer.Interval(std::chrono::seconds{ 5 });
+            _historyRefreshTimer.Interval(std::chrono::seconds{ 60 });
             _historyRefreshTimer.Tick([weakThis{ get_weak() }](auto&&, auto&&) {
-                if (const auto page = weakThis.get(); page && page->_tabStrip.HistoryActive())
+                if (const auto page = weakThis.get(); page && page->_isVerticalLayout && page->_tabStrip.HistoryActive())
                 {
                     page->_RequestSidebarHistoryRefresh(false);
                 }
@@ -6499,7 +6525,8 @@ namespace winrt::TerminalApp::implementation
         std::string errors;
         if (!Json::parseFromStream(builder, json, &response, &errors) ||
             !response.isObject() || !response["sessions"].isArray() ||
-            !response["history_status"].isString())
+            !response["history_status"].isString() ||
+            (!response["history_error_kind"].isNull() && !response["history_error_kind"].isString()))
         {
             _agentPaneLog("invalid sidebar history snapshot: " + errors);
             return snapshot;
@@ -6515,7 +6542,9 @@ namespace winrt::TerminalApp::implementation
         }
         else if (historyStatus == "error")
         {
-            snapshot.state = _SidebarHistorySnapshot::State::Error;
+            snapshot.state = response["history_error_kind"].asString() == "timeout" ?
+                                 _SidebarHistorySnapshot::State::Timeout :
+                                 _SidebarHistorySnapshot::State::Error;
         }
         else
         {
@@ -6687,7 +6716,7 @@ namespace winrt::TerminalApp::implementation
         const auto result = Wta::RunWtaCapture(
             Wta::ResolveWtaExePath(),
             // Keep the Agent Management MVP's shell-origin visibility contract.
-            L"sessions list --origin shell --all-agents --json --include-status",
+            L"sessions list --origin shell --json --include-status",
             15'000,
             nullptr,
             false,
@@ -6696,6 +6725,10 @@ namespace winrt::TerminalApp::implementation
         if (result.cancelled)
         {
             snapshot.state = _SidebarHistorySnapshot::State::Cancelled;
+        }
+        else if (result.timedOut)
+        {
+            snapshot.state = _SidebarHistorySnapshot::State::Timeout;
         }
         else if (result.completed && result.exitCode == 0)
         {
@@ -6735,6 +6768,10 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         const auto strip = winrt::get_self<implementation::TabStrip>(_tabStrip);
+        if (snapshot.state == State::Timeout)
+        {
+            _agentPaneLog("sidebar history refresh timed out; retaining the current snapshot");
+        }
         if (snapshot.state == State::Ready ||
             (snapshot.state != State::InvalidResponse && !snapshot.items.empty()))
         {
@@ -6752,7 +6789,7 @@ namespace winrt::TerminalApp::implementation
         {
             strip->HistoryRefreshError(L"");
         }
-        if (snapshot.state == State::Error || snapshot.state == State::InvalidResponse)
+        if (snapshot.state == State::Error || snapshot.state == State::InvalidResponse || snapshot.state == State::Timeout)
         {
             _historyRetryDelay = (std::min)((std::max)(_historyRetryDelay * 2, std::chrono::seconds{ 5 }), std::chrono::seconds{ 60 });
             _historyNextRefresh = std::chrono::steady_clock::now() + _historyRetryDelay;
@@ -6763,7 +6800,7 @@ namespace winrt::TerminalApp::implementation
             _historyRetryDelay = std::chrono::seconds{ 0 };
             _historyNextRefresh = {};
         }
-        _tabStrip.HistoryLoading(snapshot.state == State::Loading && !strip->HasHistoryItems());
+        _tabStrip.HistoryLoading((snapshot.state == State::Loading || snapshot.state == State::Timeout) && !strip->HasHistoryItems());
         if (_historyRefreshPending)
         {
             _historyRefreshPending = false;
@@ -10545,12 +10582,14 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
+        auto firstPartyFields = _BuildRichTabFirstPartyFields(control);
         const auto attachment = broker.Attach(
             {
                 sessionId,
                 workingDirectory,
                 authoritative,
                 shellType,
+                std::move(firstPartyFields),
             },
             [weakThis = get_weak(), key, reservation](const auto& update) {
                 if (const auto page = weakThis.get())
@@ -10696,6 +10735,18 @@ namespace winrt::TerminalApp::implementation
         return std::nullopt;
     }
 
+    std::unordered_map<std::string, std::string> TerminalPage::_BuildRichTabFirstPartyFields(const TermControl& control)
+    {
+        std::unordered_map<std::string, std::string> firstPartyFields;
+        if (const auto rawAgentStatus = _RichTabAgentStatusForControl(control))
+        {
+            firstPartyFields.emplace("agentStatus", winrt::to_string(_SidebarHistoryStatusText(*rawAgentStatus)));
+        }
+        firstPartyFields.emplace("branchLabel", winrt::to_string(RS_(L"VerticalTabsMetadataBranch.Text")));
+        firstPartyFields.emplace("changesLabel", winrt::to_string(RS_(L"VerticalTabsMetadataChanges.Text")));
+        return firstPartyFields;
+    }
+
     void TerminalPage::_UpdateRichTabFirstPartyFields(const TermControl& control)
     {
         const auto key = reinterpret_cast<uintptr_t>(winrt::get_abi(control));
@@ -10718,14 +10769,9 @@ namespace winrt::TerminalApp::implementation
             _RequestRichTabAgentStatusRefresh();
         }
 
-        std::unordered_map<std::string, std::string> firstPartyFields;
-        if (const auto rawAgentStatus = _RichTabAgentStatusForControl(control))
-        {
-            firstPartyFields.emplace("agentStatus", winrt::to_string(_SidebarHistoryStatusText(*rawAgentStatus)));
-        }
         ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance().UpdateFirstPartyFields(
             attachment,
-            std::move(firstPartyFields));
+            _BuildRichTabFirstPartyFields(control));
     }
 
     void TerminalPage::_RefreshRichTabForTab(Tab& tab, const bool activate, const bool refreshPaneItems)
@@ -12224,7 +12270,7 @@ namespace winrt::TerminalApp::implementation
             {
                 const auto currentTabIndex = tabIndex.value();
                 const auto delta = direction == MoveTabDirection::Forward ? 1 : -1;
-                _TryMoveTab(currentTabIndex, currentTabIndex + delta);
+                _TryMoveTab(currentTabIndex, gsl::narrow_cast<int32_t>(currentTabIndex) + delta);
             }
         }
 

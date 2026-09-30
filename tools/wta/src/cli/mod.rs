@@ -58,15 +58,18 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
             SessionsAction::List {
                 master,
                 origin,
-                all_agents,
                 include_status,
             } => {
+                sessions::run_list(master, origin.to_filter(), false, json_mode, include_status)
+                    .await
+            }
+            SessionsAction::Refresh { master } => {
                 sessions::run_list(
                     master,
-                    origin.to_filter(),
-                    all_agents,
+                    crate::agent_sessions::OriginFilter::All,
+                    true,
                     json_mode,
-                    include_status,
+                    json_mode,
                 )
                 .await
             }

@@ -271,13 +271,13 @@ listing could delete another CLI's rows.
 
 ### Design
 
-Host history is sourced, stamped, cached, and reconciled **per `AgentCli`**.
+Host history is sourced, stamped, refreshed, and reconciled **per `AgentCli`**.
 
 | Concern | Before | After |
 |---|---|---|
 | ACP connection for `session/list` | `MasterStateInner::agent_conn` (`OnceLock`, first agent wins) | `AgentCli::conn` of the requesting/seeding agent |
 | Capability gate | `MasterStateInner::cached_init_resp` | `AgentCli::cached_init_resp` |
-| 2 s `session/list` cache | one per master | `AgentCli::host_list_cache`, dies with the agent |
+| Refresh deduplication | TTL result cache | `AgentCli::history_refresh`, one in-flight refresh per connection; no TTL cache |
 | Row `cli_source` stamp | `MasterStateInner::cli_source` (launch CLI) | `AgentCli::cli_source` |
 | History seed | first pooled agent only | **every** agent entering the pool |
 | Reconcile authority | any listing prunes any row | only rows whose `cli_source` equals the listing agent's |
@@ -292,10 +292,10 @@ enumerate that row — instead of assuming master's launch CLI. This also fixes 
 preexisting gap: a Claude row could never get a title while master had launched
 as Copilot, even with a live Claude CLI in the pool.
 
-Reconcile is deliberately stricter than title refresh:
-`row_refreshable_by_connected_agent` stays lenient about unknown CLIs because a
-title upgrade is non-destructive, while `is_stale_host_history_row` requires
-both sides known and equal because deletion is not.
+Both production title refresh and reconciliation require the listing connection's
+exact provider, execution source, and session identity through
+`row_belongs_to_agent`. Reconciliation additionally requires a previously listed,
+terminal shell-history row; live and AgentPane rows are never pruned.
 
 The title an agent reports is not stable, so the poll re-adopts it rather than
 only filling a blank. Copilot answers `session/list` with a session's **first
@@ -303,24 +303,22 @@ user message** until it generates a real summary; that echo is an ordinary
 non-synthetic title, so a synthetic-only upgrade latched it permanently and the
 session view kept showing the first message after the CLI had renamed the
 session. `refresh_titles_from_listing` therefore adopts the current listing
-title for every row `row_refreshable_by_connected_agent` admits, reusing the
-same 2 s-cached fetch, so no extra round-trip.
+title for each row admitted by both the candidate checks and the actual agent's
+ownership guard. History and title updates consume one response directly; there
+is no two-second response cache or additional title-query round trip.
 
-Authority there is the session id, **not** `SessionInfo::location`. Host Copilot
-and an in-distro Copilot share a `CliSource` while enumerating disjoint stores,
-but a host listing simply never contains an in-distro session id (a host/WSL key
-collision is astronomically unlikely — see `wsl-session-management.md`). Adding a
-`location` gate would instead lose refreshes: only the born-bound path calls
-`set_location`, so an ordinary `session_hook` row for a CLI running inside WSL
-keeps the reducer's default `Host` and the in-distro agent that actually holds
-its title would be skipped forever.
+Raw session IDs are not sufficient authority. Host Copilot and Copilot in two WSL
+distros may return the same ID while enumerating different stores. An Ubuntu
+connection may update its Ubuntu row, not a Host/Debian row with the same ID or
+an unqualified legacy row whose source is still unknown. A missing source is not
+inferred from whichever connection happens to list the ID first.
 
 Because `adopt_agent_title` overwrites unconditionally, the candidate filters
 became load-bearing in a way they were not before: an injected-context echo or a
 provider placeholder would clobber a good title on every poll instead of merely
 failing to replace a synthetic one. They live in
 `session_registry::title_is_displayable` and are applied both where
-`host_titles_via_acp` builds the map and at the point of mutation.
+`titles_from_listing` builds the map and at the point of mutation.
 
 ### Consequences
 

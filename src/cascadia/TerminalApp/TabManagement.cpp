@@ -2489,7 +2489,7 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_TryMoveTab(const uint32_t currentTabIndex,
                                    const int32_t suggestedNewTabIndex)
     {
-        if (currentTabIndex >= _tabs.Size())
+        if (_tabs.Size() == 0 || currentTabIndex >= _tabs.Size())
         {
             return;
         }
@@ -2533,7 +2533,7 @@ namespace winrt::TerminalApp::implementation
             _mutatingTabCollections = false;
             endMutation.release();
             _UpdateTabView();
-            _ApplyTabListProjection();
+            _ApplyTabListProjection(tab);
 
             if (selectMoved)
             {

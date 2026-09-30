@@ -6,6 +6,7 @@
 #pragma once
 
 #include "winrt/Microsoft.UI.Xaml.Controls.h"
+#include "winrt/Windows.UI.ViewManagement.h"
 
 #include "TabStrip.g.h"
 #include "TabStripSelectionChangedEventArgs.g.h"
@@ -441,6 +442,9 @@ namespace winrt::TerminalApp::implementation
         std::vector<TerminalApp::TabStripHistoryItem> _historySnapshot;
         std::vector<std::vector<winrt::hstring>> _historySearchTerms;
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Windows::Foundation::IInspectable>::VectorChanged_revoker _vectorChangedRevoker;
+        winrt::Windows::UI::ViewManagement::AccessibilitySettings _accessibilitySettings;
+        winrt::Windows::UI::ViewManagement::AccessibilitySettings::HighContrastChanged_revoker _highContrastChangedRevoker;
+        bool _highContrast{ false };
 
         struct CloseRequestedSubscription
         {
@@ -510,9 +514,10 @@ namespace winrt::TerminalApp::implementation
         void _updateHistoryVisualState();
         uint32_t _richTabMetadataSelectionCount() const noexcept;
         void _updateRichTabMetadataSelectionState();
+        void _setHighContrastMode(bool enabled);
         void _refreshDisplayItemVisuals(TerminalApp::TabStripDisplayItem const& display);
-        static void _updateDisplayItemVisuals(winrt::Windows::UI::Xaml::FrameworkElement const& root,
-                                              TerminalApp::TabStripDisplayItem const& display);
+        void _updateDisplayItemVisuals(winrt::Windows::UI::Xaml::FrameworkElement const& root,
+                                       TerminalApp::TabStripDisplayItem const& display);
         void _toggleGroup(TerminalApp::TabStripDisplayItem const& display);
 
         // Axis-parameterized per B→C rules. Returns -1 to mean "append at end."

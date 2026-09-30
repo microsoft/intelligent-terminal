@@ -3831,12 +3831,9 @@ pub async fn run_acp_client_over_pipe(
 
     let conn = Arc::new(conn);
 
-    // Periodic 5s tick that fans out an AppEvent::SessionsChanged to
-    // force a refetch in any open session management view. Belt-and-suspenders against
-    // missed `intellterm.wta/sessions/changed` broadcasts. Cheap:
-    // refetch only fires for tabs whose snapshot.is_some() (i.e. session management view is
-    // currently open).
-    let mut periodic_refetch = tokio::time::interval(std::time::Duration::from_secs(5));
+    // The app applies this fallback only to open helper session views in
+    // nonvertical layouts. Master notifications remain independent of layout.
+    let mut periodic_refetch = tokio::time::interval(std::time::Duration::from_secs(60));
     periodic_refetch.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     // Burn the first tick (fires immediately on creation).
     periodic_refetch.tick().await;
@@ -3849,7 +3846,7 @@ pub async fn run_acp_client_over_pipe(
         tokio::select! {
             biased;
             _ = periodic_refetch.tick() => {
-                let _ = event_tx.send(AppEvent::SessionsChanged);
+                let _ = event_tx.send(AppEvent::SessionsFallbackTick);
             }
             Some(event) = session_hook_rx.recv() => {
                 let conn_for_hook = conn.clone();
@@ -4118,42 +4115,13 @@ fn dispatch_master_ext_request_with_yolo_timeout(
     tokio::task::spawn_local(async move {
         match req {
             MasterExtRequest::SessionsList { request_id, rescan } => {
-                let wire = crate::session_registry::build_sessions_list_request(rescan, false);
-                // Bound the wait so a single dropped RPC response can't
-                // permanently strand the tab's `refetch_in_flight=true`.
-                //
-                // Root cause is in agent-client-protocol@0.10's
-                // `RpcConnection::handle_io`: `read_line` is *not*
-                // cancellation-safe, but it's polled in a
-                // `select_biased!` whose outgoing arm has priority. When
-                // a concurrent outgoing message preempts an in-progress
-                // `read_line`, BufReader bytes already pulled off the
-                // pipe vanish; the next read starts mid-message, JSON
-                // parse fails, and the pending response future for the
-                // request whose response was being read never resolves.
-                // From our side `conn.ext_method(...)` then awaits
-                // forever.
-                //
-                // Without this timeout the failure mode is: helper opens
-                // /sessions, fires `sessions/list`, response gets
-                // truncated → `refetch_in_flight` stuck `true` → every
-                // subsequent `sessions/changed` broadcast and 5s tick
-                // hits `if refetch_in_flight { dirty=true; return; }`
-                // and never refetches → the tab's row activity / status
-                // is frozen until the user toggles /sessions off and
-                // on (which calls `close_agents_view_for_tab` and
-                // resets the gate).
-                //
-                // 8s > the 5s periodic tick so a healthy in-flight
-                // request never gets cancelled spuriously; under the
-                // bug the worst-case visible staleness becomes
-                // ~timeout + tick ≈ 13s instead of "until next manual
-                // toggle".
-                //
-                // The proper fix lives upstream — ACP 0.12 rewrote
-                // `handle_io` into separate incoming/outgoing actors,
-                // which is cancellation-safe by construction. Until we
-                // upgrade, this timeout is the guardrail.
+                let wire = crate::session_registry::build_sessions_list_request(rescan);
+                // Bound stalled responses so refetch_in_flight cannot suppress
+                // every later request indefinitely. Eight seconds allows the
+                // bound-agent rescan's five-second timeout plus local IPC overhead.
+                // Without a push, a nonvertical view may need this timeout plus
+                // the next 60-second fallback (up to about 68 seconds) to recover.
+                // Vertical helper views instead rely on pushes or explicit reads.
                 const SESSIONS_LIST_TIMEOUT: std::time::Duration =
                     std::time::Duration::from_secs(8);
                 let result =
@@ -4185,7 +4153,7 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                             timeout_secs = SESSIONS_LIST_TIMEOUT.as_secs(),
                             "sessions/list timed out — likely ACP-0.10 \
                              cancellation-safety bug; unblocking refetch_in_flight \
-                             so 5s tick can retry"
+                             so the fallback tick can retry"
                         );
                         let _ = event_tx.send(AppEvent::AgentsSnapshotFailed { request_id });
                     }

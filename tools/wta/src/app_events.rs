@@ -2618,6 +2618,11 @@ impl App {
             AppEvent::SessionsChanged => {
                 self.schedule_agents_refetch_for_open_views();
             }
+            AppEvent::SessionsFallbackTick => {
+                if !self.sessions_in_sidebar {
+                    self.schedule_agents_refetch_for_open_views();
+                }
+            }
             AppEvent::DirectTerminalActionProposal {
                 context,
                 payload,
@@ -2962,6 +2967,11 @@ impl App {
                     return;
                 }
 
+                if method == "agent_availability_changed" {
+                    // Native UI and master own the installation-completion broadcast.
+                    return;
+                }
+
                 if method == "agent_config_changed" {
                     // C++ pushes this when the user changes a hot-updatable
                     // agent setting (auto-suggest gate, acp-model, delegate
@@ -2994,6 +3004,17 @@ impl App {
                         && target_tab == owner_tab
                         && !owner_window.is_empty()
                         && target_window == owner_window;
+
+                    if let Some(in_sidebar) = params
+                        .get("sessions_in_sidebar")
+                        .and_then(|value| value.as_bool())
+                    {
+                        let changed = self.sessions_in_sidebar != in_sidebar;
+                        self.sessions_in_sidebar = in_sidebar;
+                        if changed && !in_sidebar {
+                            self.schedule_agents_refetch_for_open_views();
+                        }
+                    }
 
                     if let Some(enabled) = params.get("autofix_enabled").and_then(|v| v.as_bool()) {
                         tracing::info!(
@@ -3976,6 +3997,18 @@ impl App {
                 if installed {
                     let status = crate::agent_check::recheck_agent(&agent_id);
                     if status.cli_found {
+                        if matches!(
+                            self.current_agent_source,
+                            crate::agent_source::AgentSource::Host
+                        ) {
+                            crate::wt_protocol_events::send(
+                                crate::wt_protocol_events::agent_availability_changed_event(
+                                    &agent_id,
+                                    self.agent_routing_tab_id(),
+                                    true,
+                                ),
+                            );
+                        }
                         if self.state == ConnectionState::Connected
                             && self.current_agent_id.eq_ignore_ascii_case(&agent_id)
                         {

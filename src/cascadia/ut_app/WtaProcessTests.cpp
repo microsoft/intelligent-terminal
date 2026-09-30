@@ -20,6 +20,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(CancellationStopsIdleChild);
         TEST_METHOD(CancellationStopsWritingChild);
         TEST_METHOD(TimeoutStillStopsChild);
+        TEST_METHOD(LaunchFailureIsNotTimeout);
         TEST_METHOD(CapturePreservesOutputAndExitCode);
 
         void _cancelChild(bool writeContinuously);
@@ -39,6 +40,7 @@ namespace TerminalAppUnitTests
         std::atomic<bool> cancellation{ true };
         const auto result = Wta::RunWtaCapture(_systemExecutable(L"cmd.exe"), L"/d /c exit 0", 5000, nullptr, true, &cancellation);
         VERIFY_IS_TRUE(result.cancelled);
+        VERIFY_IS_FALSE(result.timedOut);
         VERIFY_IS_FALSE(result.completed);
         VERIFY_IS_TRUE(result.output.empty());
     }
@@ -116,6 +118,7 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(static_cast<DWORD>(ERROR_SUCCESS), openError);
         VERIFY_IS_NOT_NULL(child.get());
         VERIFY_IS_TRUE(result.cancelled);
+        VERIFY_IS_FALSE(result.timedOut);
         VERIFY_IS_FALSE(result.completed);
         VERIFY_IS_TRUE(result.output.empty());
         VERIFY_IS_TRUE(finished - cancelledAt < std::chrono::seconds{ 3 });
@@ -139,6 +142,7 @@ namespace TerminalAppUnitTests
         const auto duration = std::chrono::steady_clock::now() - before;
         VERIFY_IS_FALSE(result.completed);
         VERIFY_IS_FALSE(result.cancelled);
+        VERIFY_IS_TRUE(result.timedOut);
         VERIFY_IS_TRUE(result.output.empty());
         VERIFY_IS_TRUE(duration < std::chrono::seconds{ 3 });
     }
@@ -149,6 +153,7 @@ namespace TerminalAppUnitTests
         const auto result = Wta::RunWtaCapture(command, L"/d /c \"echo captured & echo hidden 1>&2 & exit /b 7\"", 5000, nullptr, false);
         VERIFY_IS_TRUE(result.completed);
         VERIFY_IS_FALSE(result.cancelled);
+        VERIFY_IS_FALSE(result.timedOut);
         VERIFY_ARE_EQUAL(DWORD{ 7 }, result.exitCode);
         VERIFY_IS_TRUE(result.output.find("captured") != std::string::npos);
         VERIFY_IS_TRUE(result.output.find("hidden") == std::string::npos);
@@ -156,7 +161,16 @@ namespace TerminalAppUnitTests
         const auto merged = Wta::RunWtaCapture(command, L"/d /c \"echo captured & echo stderr 1>&2\"", 5000, nullptr, true, &cancellation);
         VERIFY_IS_TRUE(merged.completed);
         VERIFY_IS_FALSE(merged.cancelled);
+        VERIFY_IS_FALSE(merged.timedOut);
         VERIFY_ARE_EQUAL(DWORD{ 0 }, merged.exitCode);
         VERIFY_IS_TRUE(merged.output.find("stderr") != std::string::npos);
+    }
+
+    void WtaProcessTests::LaunchFailureIsNotTimeout()
+    {
+        const auto result = Wta::RunWtaCapture({}, L"", 100);
+        VERIFY_IS_FALSE(result.completed);
+        VERIFY_IS_FALSE(result.cancelled);
+        VERIFY_IS_FALSE(result.timedOut);
     }
 }

@@ -493,14 +493,16 @@ pub(crate) enum SessionsAction {
         /// WTA spawned for an Intelligent Terminal agent pane.
         #[arg(long, value_enum, default_value_t = SessionsOriginArg::All)]
         origin: SessionsOriginArg,
-        /// Refresh all installed, policy-allowed host agents in the background.
-        /// Connections remain in the master pool; this command returns the current snapshot.
-        #[arg(long)]
-        all_agents: bool,
         /// With --json, return a snapshot object including history loading status
         /// instead of one session per line.
         #[arg(long, requires = "json")]
         include_status: bool,
+    },
+    /// Request background host-agent discovery and return the current session snapshot.
+    Refresh {
+        /// Override the wta-master named pipe path.
+        #[arg(long, value_name = "PIPE_NAME")]
+        master: Option<String>,
     },
     /// Activate one exact session row from the Sidebar History projection.
     #[command(hide = true)]

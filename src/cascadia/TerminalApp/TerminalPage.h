@@ -574,6 +574,7 @@ namespace winrt::TerminalApp::implementation
             bool yoloEnabled{ false };
             bool yoloPolicyBlocked{ false };
             std::string autofixPolicyState{ "unknown" };
+            bool sessionsInSidebar{ false };
         };
         AgentRuntimeConfigSnapshot _lastAgentRuntimeConfig{};
         bool _agentRuntimeConfigInitialized{ false };
@@ -960,6 +961,7 @@ namespace winrt::TerminalApp::implementation
             ::Microsoft::Terminal::RichTab::Provider::ActivationEvent reason);
         void _ReleaseRichTabAttachments(const std::shared_ptr<Pane>& rootPane);
         std::optional<std::string> _RichTabAgentStatusForControl(const Microsoft::Terminal::Control::TermControl& control);
+        std::unordered_map<std::string, std::string> _BuildRichTabFirstPartyFields(const Microsoft::Terminal::Control::TermControl& control);
         void _UpdateRichTabFirstPartyFields(const Microsoft::Terminal::Control::TermControl& control);
         void _LogSidebarRowFieldsTelemetry() const;
         void _RefreshRichTabForTab(Tab& tab, bool activate, bool refreshPaneItems = true);
@@ -1016,6 +1018,7 @@ namespace winrt::TerminalApp::implementation
                 Loading,
                 Ready,
                 Error,
+                Timeout,
                 InvalidResponse,
                 Cancelled,
             };

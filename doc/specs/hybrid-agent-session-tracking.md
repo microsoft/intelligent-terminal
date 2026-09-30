@@ -437,8 +437,15 @@ including while History is closed. Discovery is asynchronous and single-flight a
 windows, so slow or failed providers do not block existing rows. History synchronization
 preserves live status and pane bindings. WSL/custom sessions already known to the registry
 are still displayed, but this pass does not start WSL distros or unknown custom commands.
-Sidebar snapshots use `--all-agents` to refresh the same resident pool; opening History
-is not required to establish these connections or load the initial histories.
+Master refreshes initialized, listing-capable pooled connections every five seconds,
+including already-connected WSL and custom agents. Snapshot reads never perform ACP
+queries; push notifications remain immediate. The 60-second open-view fallback runs
+in Sidebar for vertical layout and in the helper for nonvertical layout. The host
+propagates the actual window layout through helper-ready and hot runtime config,
+so layout switches do not require an ACP reconnect.
+Host discovery runs at startup, after confirmed installation, or through the explicit
+`wta sessions refresh` command, not on a timer or ordinary snapshot reads. Opening
+History is not required to establish these connections or load the initial histories.
 
 - **Claude** (`classify_claude.rs`) — **turn-based, keyed on `stop_reason`**.
   Claude re-writes the same assistant message id several times as it streams

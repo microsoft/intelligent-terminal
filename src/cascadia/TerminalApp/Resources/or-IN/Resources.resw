@@ -456,12 +456,15 @@
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>ଟ୍ୟାବ୍ ଗୋଷ୍ଠୀ ବିସ୍ତାର କରନ୍ତୁ</value>
+    <comment>Accessibility name and tooltip for the button that expands a group of tabs in the sidebar.</comment>
   </data>
   <data name="VerticalTabsCollapseGroup" xml:space="preserve">
     <value>ଟ୍ୟାବ୍ ଗୋଷ୍ଠୀ ସଙ୍କୁଚିତ କରନ୍ତୁ</value>
+    <comment>Accessibility name and tooltip for the button that collapses a group of tabs in the sidebar.</comment>
   </data>
   <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
     <value>ଟ୍ୟାବ୍</value>
+    <comment>Fallback title for a terminal tab in the sidebar when no title is available.</comment>
   </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>ଟ୍ୟାବ୍</value>
@@ -486,6 +489,7 @@
   </data>
   <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
     <value>ଫିଲ୍ଟର୍</value>
+    <comment>Section heading above the controls that filter which tabs are shown in the sidebar.</comment>
   </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>ସମସ୍ତ ଟ୍ୟାବ୍</value>
@@ -495,21 +499,27 @@
   </data>
   <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
     <value>ଟ୍ୟାବ୍ ମେଟାଡାଟା</value>
+    <comment>Section heading above the options that choose which metadata appears in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
     <value>ଏଜେଣ୍ଟ ସ୍ଥିତି</value>
+    <comment>Option that shows an agent's current status in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
     <value>ସାମ୍ପ୍ରତିକ କାର୍ଯ୍ୟ ଡିରେକ୍ଟୋରୀ</value>
+    <comment>Option that shows the current working directory in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
     <value>Git  ସଂଗ୍ରହାଳୟ</value>
+    <comment>Option that shows the Git repository name in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
     <value>Git  ଶାଖା</value>
+    <comment>Option that shows the Git branch name in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
     <value>Git  ପରିବର୍ତ୍ତନ ହୁଏ</value>
+    <comment>Option that shows the Git working tree change summary in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>1ଟି ଏଜେଣ୍ଟ ସେସନ୍ ଦେଖାଯାଉଛି</value>
