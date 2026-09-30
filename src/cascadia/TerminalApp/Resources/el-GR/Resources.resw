@@ -480,10 +480,10 @@
     <value>Χρήση οριζόντιων καρτελών σε όλα τα παράθυρα του Terminal</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Μετάβαση σε κατακόρυφες καρτέλες</value>
+    <value>Μετάβαση στην πλαϊνή γραμμή</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Χρήση κατακόρυφων καρτελών σε όλα τα παράθυρα του Terminal</value>
+    <value>Χρήση της πλαϊνής γραμμής σε όλα τα παράθυρα του Terminal</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Κλείσιμο όλων των καρτελών κάτω από αυτήν την καρτέλα</value>

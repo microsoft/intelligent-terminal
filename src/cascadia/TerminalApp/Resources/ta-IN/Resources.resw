@@ -575,10 +575,10 @@
     <value>அனைத்து Terminal சாளரங்களிலும் கிடைமட்டத் தாவல்களைப் பயன்படுத்து</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>செங்குத்துத் தாவல்களுக்கு மாறு</value>
+    <value>பக்கப்பட்டிக்கு மாறு</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>அனைத்து Terminal சாளரங்களிலும் செங்குத்துத் தாவல்களைப் பயன்படுத்து</value>
+    <value>அனைத்து Terminal சாளரங்களிலும் பக்கப்பட்டியைப் பயன்படுத்து</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>இந்தத் தாவலுக்குக் கீழே உள்ள அனைத்துத் தாவல்களையும் மூடு</value>

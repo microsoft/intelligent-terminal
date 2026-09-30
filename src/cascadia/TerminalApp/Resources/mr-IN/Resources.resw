@@ -596,10 +596,10 @@
     <value>सर्व Terminal विंडोमध्ये आडवे टॅब वापरा</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>उभ्या टॅबवर स्विच करा</value>
+    <value>साइडबारवर स्विच करा</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>सर्व Terminal विंडोमध्ये उभे टॅब वापरा</value>
+    <value>सर्व Terminal विंडोमध्ये साइडबार वापरा</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>या टॅबखालील सर्व टॅब बंद करा</value>

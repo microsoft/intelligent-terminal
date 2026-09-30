@@ -576,10 +576,10 @@
     <value>تمام Terminal ونڈوز میں افقی ٹیبز استعمال کریں</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>عمودی ٹیبز پر سوئچ کریں</value>
+    <value>سائیڈ بار پر سوئچ کریں</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>تمام Terminal ونڈوز میں عمودی ٹیبز استعمال کریں</value>
+    <value>تمام Terminal ونڈوز میں سائیڈ بار استعمال کریں</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>اس ٹیب کے نیچے موجود تمام ٹیبز بند کریں</value>

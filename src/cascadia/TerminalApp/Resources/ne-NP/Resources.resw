@@ -597,10 +597,10 @@
     <value>सबै Terminal विन्डोमा तेर्सो ट्याब प्रयोग गर्नुहोस्</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>ठाडो ट्याबमा स्विच गर्नुहोस्</value>
+    <value>साइडबारमा स्विच गर्नुहोस्</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>सबै Terminal विन्डोमा ठाडो ट्याब प्रयोग गर्नुहोस्</value>
+    <value>सबै Terminal विन्डोमा साइडबार प्रयोग गर्नुहोस्</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>यस ट्याबमुनिका सबै ट्याब बन्द गर्नुहोस्</value>

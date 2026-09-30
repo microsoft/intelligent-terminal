@@ -572,10 +572,10 @@
     <value>Барлык Terminal тәрәзәләрендә горизонталь кыстыргычларны куллану</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Вертикаль кыстыргычларга күчү</value>
+    <value>Ян панельгә күчү</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Барлык Terminal тәрәзәләрендә вертикаль кыстыргычларны куллану</value>
+    <value>Барлык Terminal тәрәзәләрендә ян панельне куллану</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Бу кыстыргыч астындагы барлык кыстыргычларны ябу</value>

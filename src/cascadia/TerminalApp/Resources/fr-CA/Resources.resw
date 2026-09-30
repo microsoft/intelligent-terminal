@@ -593,10 +593,10 @@
     <value>Utiliser des onglets horizontaux dans toutes les fenêtres de Terminal</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Passer aux onglets verticaux</value>
+    <value>Passer à la barre latérale</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Utiliser des onglets verticaux dans toutes les fenêtres de Terminal</value>
+    <value>Utiliser la barre latérale dans toutes les fenêtres de Terminal</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Fermer tous les onglets sous cet onglet</value>

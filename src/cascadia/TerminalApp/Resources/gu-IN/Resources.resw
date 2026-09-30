@@ -596,10 +596,10 @@
     <value>બધી Terminal વિન્ડોમાં આડી ટૅબનો ઉપયોગ કરો</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>ઊભી ટૅબ પર સ્વિચ કરો</value>
+    <value>સાઇડબાર પર સ્વિચ કરો</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>બધી Terminal વિન્ડોમાં ઊભી ટૅબનો ઉપયોગ કરો</value>
+    <value>બધી Terminal વિન્ડોમાં સાઇડબારનો ઉપયોગ કરો</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>આ ટૅબની નીચેની બધી ટૅબ બંધ કરો</value>

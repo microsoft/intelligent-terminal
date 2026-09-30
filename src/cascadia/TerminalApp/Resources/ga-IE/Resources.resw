@@ -480,10 +480,10 @@
     <value>Úsáid cluaisíní cothrománacha i ngach fuinneog Terminal</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Athraigh go cluaisíní ingearacha</value>
+    <value>Athraigh go dtí an barra taoibh</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Úsáid cluaisíní ingearacha i ngach fuinneog Terminal</value>
+    <value>Úsáid an barra taoibh i ngach fuinneog Terminal</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Dún gach cluaisín faoin gcluaisín seo</value>

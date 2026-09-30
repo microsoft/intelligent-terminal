@@ -982,10 +982,10 @@
     <value>在所有終端機視窗中使用水平索引標籤</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>切換為垂直索引標籤</value>
+    <value>切換至側邊欄</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>在所有終端機視窗中使用垂直索引標籤</value>
+    <value>在所有終端機視窗中使用側邊欄</value>
   </data>
   <data name="CloseOnExitInfoBar.Message" xml:space="preserve">
     <value>您可以在進階設定檔設定中設定終止行為。</value>

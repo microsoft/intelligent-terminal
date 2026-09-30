@@ -983,10 +983,10 @@
     <value>すべてのターミナル ウィンドウで水平タブを使用する</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>垂直タブに切り替える</value>
+    <value>サイドバーに切り替える</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>すべてのターミナル ウィンドウで垂直タブを使用する</value>
+    <value>すべてのターミナル ウィンドウでサイドバーを使用する</value>
   </data>
   <data name="CloseOnExitInfoBar.Message" xml:space="preserve">
     <value>終了動作は、プロファイルの詳細設定で構成できます。</value>

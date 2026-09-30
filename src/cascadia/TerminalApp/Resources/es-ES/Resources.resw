@@ -982,10 +982,10 @@
     <value>Usar pestañas horizontales en todas las ventanas de Terminal</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Cambiar a pestañas verticales</value>
+    <value>Cambiar a la barra lateral</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Usar pestañas verticales en todas las ventanas de Terminal</value>
+    <value>Usar la barra lateral en todas las ventanas de Terminal</value>
   </data>
   <data name="CloseOnExitInfoBar.Message" xml:space="preserve">
     <value>El comportamiento de finalización se puede configurar en la configuración avanzada del perfil.</value>

@@ -593,10 +593,10 @@
     <value>Bruk vassrette faner i alle Terminal-vindauge</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Byt til loddrette faner</value>
+    <value>Byt til sidefeltet</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Bruk loddrette faner i alle Terminal-vindauge</value>
+    <value>Bruk sidefeltet i alle Terminal-vindauge</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Lukk alle faner under denne fana</value>

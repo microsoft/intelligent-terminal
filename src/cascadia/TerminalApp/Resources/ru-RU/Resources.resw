@@ -982,10 +982,10 @@
     <value>Использовать горизонтальные вкладки во всех окнах терминала</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Переключиться на вертикальные вкладки</value>
+    <value>Переключиться на боковую панель</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Использовать вертикальные вкладки во всех окнах терминала</value>
+    <value>Использовать боковую панель во всех окнах терминала</value>
   </data>
   <data name="CloseOnExitInfoBar.Message" xml:space="preserve">
     <value>Поведение завершения можно настроить в дополнительных параметрах профиля.</value>

@@ -593,10 +593,10 @@
     <value>Nota lárétta flipa í öllum Terminal-gluggum</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Skipta yfir í lóðrétta flipa</value>
+    <value>Skipta yfir í hliðarstikuna</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Nota lóðrétta flipa í öllum Terminal-gluggum</value>
+    <value>Nota hliðarstikuna í öllum Terminal-gluggum</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Loka öllum flipum fyrir neðan þennan flipa</value>

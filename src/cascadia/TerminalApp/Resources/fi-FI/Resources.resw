@@ -592,10 +592,10 @@
     <value>Käytä vaakasuuntaisia välilehtiä kaikissa Terminal-ikkunoissa</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Vaihda pystysuuntaisiin välilehtiin</value>
+    <value>Vaihda sivupalkkiin</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Käytä pystysuuntaisia välilehtiä kaikissa Terminal-ikkunoissa</value>
+    <value>Käytä sivupalkkia kaikissa Terminal-ikkunoissa</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Sulje kaikki tämän välilehden alapuolella olevat välilehdet</value>

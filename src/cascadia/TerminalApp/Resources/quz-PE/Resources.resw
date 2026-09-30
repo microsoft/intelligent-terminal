@@ -480,10 +480,10 @@
     <value>Llapan Terminal ventanakunapi siriq pestañakunata llamk&apos;achiy</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Sayachkaq pestañakunaman tikray</value>
+    <value>Waqta siqiman tikray</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Llapan Terminal ventanakunapi sayachkaq pestañakunata llamk&apos;achiy</value>
+    <value>Llapan Terminal ventanakunapi waqta siqita llamk'achiy</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Kay pestañapa uranpi llapan pestañakunata wichq&apos;ay</value>

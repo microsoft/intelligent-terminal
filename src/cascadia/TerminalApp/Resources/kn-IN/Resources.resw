@@ -596,10 +596,10 @@
     <value>ಎಲ್ಲಾ Terminal ವಿಂಡೋಗಳಲ್ಲಿ ಅಡ್ಡ ಟ್ಯಾಬ್‌ಗಳನ್ನು ಬಳಸಿ</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>ಲಂಬ ಟ್ಯಾಬ್‌ಗಳಿಗೆ ಬದಲಿಸಿ</value>
+    <value>ಸೈಡ್‌ಬಾರ್‌ಗೆ ಬದಲಿಸಿ</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>ಎಲ್ಲಾ Terminal ವಿಂಡೋಗಳಲ್ಲಿ ಲಂಬ ಟ್ಯಾಬ್‌ಗಳನ್ನು ಬಳಸಿ</value>
+    <value>ಎಲ್ಲಾ Terminal ವಿಂಡೋಗಳಲ್ಲಿ ಸೈಡ್‌ಬಾರ್ ಬಳಸಿ</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>ಈ ಟ್ಯಾಬ್‌ನ ಕೆಳಗಿನ ಎಲ್ಲಾ ಟ್ಯಾಬ್‌ಗಳನ್ನು ಮುಚ್ಚಿ</value>

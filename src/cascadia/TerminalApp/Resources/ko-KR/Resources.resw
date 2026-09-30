@@ -982,10 +982,10 @@
     <value>모든 터미널 창에서 가로 탭 사용</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>세로 탭으로 전환</value>
+    <value>사이드바로 전환</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>모든 터미널 창에서 세로 탭 사용</value>
+    <value>모든 터미널 창에서 사이드바 사용</value>
   </data>
   <data name="CloseOnExitInfoBar.Message" xml:space="preserve">
     <value>고급 프로필 설정에서 종료 동작을 구성할 수 있습니다.</value>

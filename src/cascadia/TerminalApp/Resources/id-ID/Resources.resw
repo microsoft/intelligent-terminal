@@ -525,10 +525,10 @@
     <value>Gunakan tab horizontal di semua jendela Terminal</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Beralih ke tab vertikal</value>
+    <value>Beralih ke bilah sisi</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Gunakan tab vertikal di semua jendela Terminal</value>
+    <value>Gunakan bilah sisi di semua jendela Terminal</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Tutup semua tab di bawah tab ini</value>

@@ -594,10 +594,10 @@
     <value>Naudoti horizontalius skirtukus visuose Terminal languose</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Perjungti į vertikalius skirtukus</value>
+    <value>Perjungti į šoninę juostą</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Naudoti vertikalius skirtukus visuose Terminal languose</value>
+    <value>Naudoti šoninę juostą visuose Terminal languose</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Uždaryti visus skirtukus po šiuo skirtuku</value>

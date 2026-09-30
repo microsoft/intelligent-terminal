@@ -982,10 +982,10 @@
     <value>Usa schede orizzontali in tutte le finestre di Terminal</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Passa a schede verticali</value>
+    <value>Passa alla barra laterale</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Usa schede verticali in tutte le finestre di Terminal</value>
+    <value>Usa la barra laterale in tutte le finestre di Terminal</value>
   </data>
   <data name="CloseOnExitInfoBar.Message" xml:space="preserve">
     <value>È possibile configurare il comportamento di terminazione nelle impostazioni avanzate del profilo.</value>

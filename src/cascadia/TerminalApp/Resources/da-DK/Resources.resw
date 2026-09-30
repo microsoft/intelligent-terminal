@@ -592,10 +592,10 @@
     <value>Brug vandrette faner i alle Terminal-vinduer</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Skift til lodrette faner</value>
+    <value>Skift til sidepanelet</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Brug lodrette faner i alle Terminal-vinduer</value>
+    <value>Brug sidepanelet i alle Terminal-vinduer</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Luk alle faner under denne fane</value>

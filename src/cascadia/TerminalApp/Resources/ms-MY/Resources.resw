@@ -525,10 +525,10 @@
     <value>Gunakan tab mendatar dalam semua tetingkap Terminal</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Beralih kepada tab menegak</value>
+    <value>Beralih kepada bar sisi</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Gunakan tab menegak dalam semua tetingkap Terminal</value>
+    <value>Gunakan bar sisi dalam semua tetingkap Terminal</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Tutup semua tab di bawah tab ini</value>

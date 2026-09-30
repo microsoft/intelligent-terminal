@@ -525,10 +525,10 @@
     <value>Gumamit ng mga pahalang na tab sa lahat ng Terminal window</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Lumipat sa mga patayong tab</value>
+    <value>Lumipat sa bar sa gilid</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Gumamit ng mga patayong tab sa lahat ng Terminal window</value>
+    <value>Gumamit ng bar sa gilid sa lahat ng Terminal window</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Isara ang lahat ng tab sa ibaba ng tab na ito</value>

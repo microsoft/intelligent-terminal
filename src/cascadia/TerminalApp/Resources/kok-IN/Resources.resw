@@ -597,10 +597,10 @@
     <value>सगळ्या Terminal विंडोंनी आडवे टॅब वापरात</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>उब्या टॅबांचेर वचात</value>
+    <value>बाजू पट्टीचेर वचात</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>सगळ्या Terminal विंडोंनी उबे टॅब वापरात</value>
+    <value>सगळ्या Terminal विंडोंनी बाजू पट्टी वापरात</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>ह्या टॅबाच्या सकयले सगळे टॅब बंद करात</value>

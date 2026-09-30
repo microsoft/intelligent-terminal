@@ -594,10 +594,10 @@
     <value>השתמש בכרטיסיות אופקיות בכל חלונות Terminal</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>עבור לכרטיסיות אנכיות</value>
+    <value>עבור לסרגל הצדי</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>השתמש בכרטיסיות אנכיות בכל חלונות Terminal</value>
+    <value>השתמש בסרגל הצדי בכל חלונות Terminal</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>סגור את כל הכרטיסיות שמתחת לכרטיסייה זו</value>

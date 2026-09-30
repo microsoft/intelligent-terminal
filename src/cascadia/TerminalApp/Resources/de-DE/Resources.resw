@@ -985,10 +985,10 @@
     <value>Horizontale Tabs in allen Terminal-Fenstern verwenden</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Zu vertikalen Tabs wechseln</value>
+    <value>Zur Seitenleiste wechseln</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Vertikale Tabs in allen Terminal-Fenstern verwenden</value>
+    <value>Die Seitenleiste in allen Terminal-Fenstern verwenden</value>
   </data>
   <data name="CloseOnExitInfoBar.Message" xml:space="preserve">
     <value>Das Beendigungsverhalten kann in den erweiterten Profileinstellungen konfiguriert werden.</value>

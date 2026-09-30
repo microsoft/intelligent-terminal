@@ -1067,10 +1067,12 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Use horizontal tabs in all Terminal windows</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Switch to vertical tabs</value>
+    <value>Switch to sidebar</value>
+    <comment>Context-menu command that changes the tab layout from horizontal tabs to the sidebar.</comment>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Use vertical tabs in all Terminal windows</value>
+    <value>Use the sidebar in all Terminal windows</value>
+    <comment>Tooltip for the command that changes the tab layout from horizontal tabs to the sidebar in every Terminal window.</comment>
   </data>
   <data name="TabLayoutRestartInfoBar.Title" xml:space="preserve">
     <value>Tab layout change requires restart</value>

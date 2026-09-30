@@ -480,10 +480,10 @@
     <value>Օգտագործել հորիզոնական ներդիրներ Terminal-ի բոլոր պատուհաններում</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Անցնել ուղղահայաց ներդիրների</value>
+    <value>Անցնել կողային վահանակին</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Օգտագործել ուղղահայաց ներդիրներ Terminal-ի բոլոր պատուհաններում</value>
+    <value>Օգտագործել կողային վահանակը Terminal-ի բոլոր պատուհաններում</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Փակել այս ներդիրից ներքև գտնվող բոլոր ներդիրները</value>

@@ -596,10 +596,10 @@
     <value>ਸਾਰੀਆਂ Terminal ਵਿੰਡੋਜ਼ ਵਿੱਚ ਲੇਟਵੀਆਂ ਟੈਬਾਂ ਵਰਤੋ</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>ਖੜ੍ਹਵੀਆਂ ਟੈਬਾਂ &apos;ਤੇ ਸਵਿੱਚ ਕਰੋ</value>
+    <value>ਸਾਈਡਬਾਰ 'ਤੇ ਸਵਿੱਚ ਕਰੋ</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>ਸਾਰੀਆਂ Terminal ਵਿੰਡੋਜ਼ ਵਿੱਚ ਖੜ੍ਹਵੀਆਂ ਟੈਬਾਂ ਵਰਤੋ</value>
+    <value>ਸਾਰੀਆਂ Terminal ਵਿੰਡੋਜ਼ ਵਿੱਚ ਸਾਈਡਬਾਰ ਵਰਤੋ</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>ਇਸ ਟੈਬ ਦੇ ਹੇਠਾਂ ਦੀਆਂ ਸਾਰੀਆਂ ਟੈਬਾਂ ਬੰਦ ਕਰੋ</value>

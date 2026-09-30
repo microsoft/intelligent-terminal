@@ -575,10 +575,10 @@
     <value>అన్ని Terminal విండోలలో అడ్డం ట్యాబ్‌లను ఉపయోగించండి</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>నిలువు ట్యాబ్‌లకు మారండి</value>
+    <value>సైడ్‌బార్‌కు మారండి</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>అన్ని Terminal విండోలలో నిలువు ట్యాబ్‌లను ఉపయోగించండి</value>
+    <value>అన్ని Terminal విండోలలో సైడ్‌బార్‌ను ఉపయోగించండి</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>ఈ ట్యాబ్ కింద ఉన్న అన్ని ట్యాబ్‌లను మూసివేయండి</value>

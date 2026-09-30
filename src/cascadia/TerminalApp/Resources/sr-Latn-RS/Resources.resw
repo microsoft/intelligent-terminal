@@ -460,10 +460,10 @@
     <value>Koristi horizontalne kartice u svim prozorima aplikacije Terminal</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Pređi na vertikalne kartice</value>
+    <value>Pređi na bočnu traku</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Koristi vertikalne kartice u svim prozorima aplikacije Terminal</value>
+    <value>Koristi bočnu traku u svim prozorima aplikacije Terminal</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Zatvori sve kartice ispod ove kartice</value>

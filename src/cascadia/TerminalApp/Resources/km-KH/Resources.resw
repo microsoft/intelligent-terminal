@@ -412,10 +412,10 @@
     <value>ប្រើផ្ទាំងផ្ដេកនៅក្នុងបង្អួច Terminal ទាំងអស់</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>ប្ដូរទៅផ្ទាំងបញ្ឈរ</value>
+    <value>ប្ដូរទៅរបារចំហៀង</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>ប្រើផ្ទាំងបញ្ឈរនៅក្នុងបង្អួច Terminal ទាំងអស់</value>
+    <value>ប្រើរបារចំហៀងនៅក្នុងបង្អួច Terminal ទាំងអស់</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>បិទផ្ទាំងទាំងអស់នៅខាងក្រោមផ្ទាំងនេះ</value>

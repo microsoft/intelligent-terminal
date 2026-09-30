@@ -504,10 +504,10 @@
     <value>Sử dụng tab ngang trong tất cả cửa sổ Terminal</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Chuyển sang tab dọc</value>
+    <value>Chuyển sang thanh bên</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Sử dụng tab dọc trong tất cả cửa sổ Terminal</value>
+    <value>Sử dụng thanh bên trong tất cả cửa sổ Terminal</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Đóng tất cả tab bên dưới tab này</value>

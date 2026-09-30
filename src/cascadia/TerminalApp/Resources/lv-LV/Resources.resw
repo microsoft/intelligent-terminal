@@ -594,10 +594,10 @@
     <value>Izmantot horizontālas cilnes visos Terminal logos</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Pārslēgties uz vertikālām cilnēm</value>
+    <value>Pārslēgties uz sānjoslu</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Izmantot vertikālas cilnes visos Terminal logos</value>
+    <value>Izmantot sānjoslu visos Terminal logos</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Aizvērt visas cilnes zem šīs cilnes</value>

@@ -480,10 +480,10 @@
     <value>ჰორიზონტალური ჩანართების გამოყენება Terminal-ის ყველა ფანჯარაში</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>ვერტიკალურ ჩანართებზე გადართვა</value>
+    <value>გვერდით ზოლზე გადართვა</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>ვერტიკალური ჩანართების გამოყენება Terminal-ის ყველა ფანჯარაში</value>
+    <value>გვერდითი ზოლის გამოყენება Terminal-ის ყველა ფანჯარაში</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>ამ ჩანართის ქვემოთ ყველა ჩანართის დახურვა</value>

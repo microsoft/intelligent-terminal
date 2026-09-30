@@ -960,10 +960,10 @@
     <value>Використовувати горизонтальні вкладки в усіх вікнах терміналу</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Перейти на вертикальні вкладки</value>
+    <value>Перейти на бічну панель</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Використовувати вертикальні вкладки в усіх вікнах терміналу</value>
+    <value>Використовувати бічну панель в усіх вікнах терміналу</value>
   </data>
   <data name="PlainText" xml:space="preserve">
     <value>Звичайний текст</value>

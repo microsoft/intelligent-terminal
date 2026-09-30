@@ -593,10 +593,10 @@
     <value>Kasuta horisontaalseid vahekaarte kõigis rakenduse Terminal akendes</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Lülitu vertikaalsetele vahekaartidele</value>
+    <value>Lülitu külgribale</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Kasuta vertikaalseid vahekaarte kõigis rakenduse Terminal akendes</value>
+    <value>Kasuta külgriba kõigis rakenduse Terminal akendes</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Sulge kõik selle vahekaardi all olevad vahekaardid</value>

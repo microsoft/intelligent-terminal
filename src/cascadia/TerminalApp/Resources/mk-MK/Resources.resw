@@ -594,10 +594,10 @@
     <value>Користи хоризонтални јазичиња во сите прозорци на Terminal</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Префрли на вертикални јазичиња</value>
+    <value>Префрли на страничната лента</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Користи вертикални јазичиња во сите прозорци на Terminal</value>
+    <value>Користи ја страничната лента во сите прозорци на Terminal</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Затвори ги сите јазичиња под ова јазиче</value>

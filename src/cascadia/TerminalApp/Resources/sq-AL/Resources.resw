@@ -573,10 +573,10 @@
     <value>Përdor skeda horizontale në të gjitha dritaret e aplikacionit Terminal</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Kalo te skedat vertikale</value>
+    <value>Kalo te shiriti anësor</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Përdor skeda vertikale në të gjitha dritaret e aplikacionit Terminal</value>
+    <value>Përdor shiritin anësor në të gjitha dritaret e aplikacionit Terminal</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Mbyll të gjitha skedat poshtë kësaj skede</value>

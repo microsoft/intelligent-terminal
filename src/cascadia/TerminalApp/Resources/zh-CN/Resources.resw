@@ -985,10 +985,10 @@
     <value>在所有终端窗口中使用水平标签页</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>切换到垂直标签页</value>
+    <value>切换到侧边栏</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>在所有终端窗口中使用垂直标签页</value>
+    <value>在所有终端窗口中使用侧边栏</value>
   </data>
   <data name="CloseOnExitInfoBar.Message" xml:space="preserve">
     <value>可以在高级配置文件设置中配置终止行为。</value>

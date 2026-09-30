@@ -593,10 +593,10 @@
     <value>Барлық Terminal терезелерінде көлденең қойындыларды пайдалану</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Тік қойындыларға ауысу</value>
+    <value>Бүйірлік тақтаға ауысу</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Барлық Terminal терезелерінде тік қойындыларды пайдалану</value>
+    <value>Барлық Terminal терезелерінде бүйірлік тақтаны пайдалану</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Осы қойындының астындағы барлық қойындыларды жабу</value>

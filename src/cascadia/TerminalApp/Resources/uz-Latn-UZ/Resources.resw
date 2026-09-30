@@ -572,10 +572,10 @@
     <value>Barcha Terminal oynalarida gorizontal varaqlardan foydalanish</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Vertikal varaqlarga o‘tish</value>
+    <value>Yon panelga o‘tish</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Barcha Terminal oynalarida vertikal varaqlardan foydalanish</value>
+    <value>Barcha Terminal oynalarida yon paneldan foydalanish</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Ushbu varaq ostidagi barcha varaqlarni yopish</value>

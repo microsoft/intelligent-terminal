@@ -597,10 +597,10 @@
     <value>ସମସ୍ତ Terminal ୱିଣ୍ଡୋରେ ଭୂସମାନ୍ତର ଟ୍ୟାବ୍ ବ୍ୟବହାର କରନ୍ତୁ</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>ଭୂଲମ୍ବ ଟ୍ୟାବ୍‌କୁ ବଦଳାନ୍ତୁ</value>
+    <value>ସାଇଡବାର୍‌କୁ ବଦଳାନ୍ତୁ</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>ସମସ୍ତ Terminal ୱିଣ୍ଡୋରେ ଭୂଲମ୍ବ ଟ୍ୟାବ୍ ବ୍ୟବହାର କରନ୍ତୁ</value>
+    <value>ସମସ୍ତ Terminal ୱିଣ୍ଡୋରେ ସାଇଡବାର୍ ବ୍ୟବହାର କରନ୍ତୁ</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>ଏହି ଟ୍ୟାବ୍ ତଳେ ଥିବା ସମସ୍ତ ଟ୍ୟାବ୍ ବନ୍ଦ କରନ୍ତୁ</value>

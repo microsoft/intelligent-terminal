@@ -593,10 +593,10 @@
     <value>Horizontale tabbladen gebruiken in alle Terminal-vensters</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Overschakelen naar verticale tabbladen</value>
+    <value>Overschakelen naar de zijbalk</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Verticale tabbladen gebruiken in alle Terminal-vensters</value>
+    <value>De zijbalk gebruiken in alle Terminal-vensters</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Alle tabbladen onder dit tabblad sluiten</value>

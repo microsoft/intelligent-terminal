@@ -479,10 +479,10 @@
     <value>Defnyddio tabiau llorweddol ym mhob ffenestr Terminal</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Newid i dabiau fertigol</value>
+    <value>Newid i'r bar ochr</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Defnyddio tabiau fertigol ym mhob ffenestr Terminal</value>
+    <value>Defnyddio'r bar ochr ym mhob ffenestr Terminal</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Cau pob tab o dan y tab hwn</value>

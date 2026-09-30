@@ -593,10 +593,10 @@
     <value>استفاده از زبانه‌های افقی در همهٔ پنجره‌های Terminal</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>تغییر به زبانه‌های عمودی</value>
+    <value>تغییر به نوار کناری</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>استفاده از زبانه‌های عمودی در همهٔ پنجره‌های Terminal</value>
+    <value>استفاده از نوار کناری در همهٔ پنجره‌های Terminal</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>بستن همهٔ زبانه‌های زیر این زبانه</value>

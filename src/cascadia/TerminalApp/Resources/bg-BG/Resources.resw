@@ -593,10 +593,10 @@
     <value>Използване на хоризонтални раздели във всички прозорци на Terminal</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Превключване към вертикални раздели</value>
+    <value>Превключване към страничната лента</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Използване на вертикални раздели във всички прозорци на Terminal</value>
+    <value>Използване на страничната лента във всички прозорци на Terminal</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Затваряне на всички раздели под този раздел</value>

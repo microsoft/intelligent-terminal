@@ -594,10 +594,10 @@
     <value>Koristi vodoravne kartice u svim prozorima aplikacije Terminal</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Prijeđi na okomite kartice</value>
+    <value>Prijeđi na bočnu traku</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Koristi okomite kartice u svim prozorima aplikacije Terminal</value>
+    <value>Koristi bočnu traku u svim prozorima aplikacije Terminal</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Zatvori sve kartice ispod ove kartice</value>

@@ -459,10 +459,10 @@
     <value>بارلىق Terminal كۆزنەكلىرىدە توغرىسىغا بەتكۈچلەرنى ئىشلىتىش</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>تىك يۆنىلىشلىك بەتكۈچلەرگە ئالماشتۇرۇش</value>
+    <value>يان بالداققا ئالماشتۇرۇش</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>بارلىق Terminal كۆزنەكلىرىدە تىك يۆنىلىشلىك بەتكۈچلەرنى ئىشلىتىش</value>
+    <value>بارلىق Terminal كۆزنەكلىرىدە يان بالداقنى ئىشلىتىش</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>بۇ بەتكۈچنىڭ ئاستىدىكى بارلىق بەتكۈچلەرنى تاقاش</value>

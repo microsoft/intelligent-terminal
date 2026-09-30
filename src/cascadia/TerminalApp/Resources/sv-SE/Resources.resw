@@ -572,10 +572,10 @@
     <value>Använd vågräta flikar i alla Terminal-fönster</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Växla till lodräta flikar</value>
+    <value>Växla till sidofältet</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Använd lodräta flikar i alla Terminal-fönster</value>
+    <value>Använd sidofältet i alla Terminal-fönster</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Stäng alla flikar under den här fliken</value>

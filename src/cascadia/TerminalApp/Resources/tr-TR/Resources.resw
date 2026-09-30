@@ -573,10 +573,10 @@
     <value>Tüm Terminal pencerelerinde yatay sekmeleri kullan</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Dikey sekmelere geç</value>
+    <value>Kenar çubuğuna geç</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Tüm Terminal pencerelerinde dikey sekmeleri kullan</value>
+    <value>Tüm Terminal pencerelerinde kenar çubuğunu kullan</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Bu sekmenin altındaki tüm sekmeleri kapat</value>

@@ -595,10 +595,10 @@
     <value>সব Terminal উইন্ডোতে অনুভূমিক ট্যাব ব্যবহার করুন</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>উল্লম্ব ট্যাবে স্যুইচ করুন</value>
+    <value>সাইডবারে স্যুইচ করুন</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>সব Terminal উইন্ডোতে উল্লম্ব ট্যাব ব্যবহার করুন</value>
+    <value>সব Terminal উইন্ডোতে সাইডবার ব্যবহার করুন</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>এই ট্যাবের নিচের সব ট্যাব বন্ধ করুন</value>

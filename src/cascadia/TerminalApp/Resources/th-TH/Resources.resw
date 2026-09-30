@@ -504,10 +504,10 @@
     <value>ใช้แท็บแนวนอนในหน้าต่าง Terminal ทั้งหมด</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>สลับไปใช้แท็บแนวตั้ง</value>
+    <value>สลับไปใช้แถบด้านข้าง</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>ใช้แท็บแนวตั้งในหน้าต่าง Terminal ทั้งหมด</value>
+    <value>ใช้แถบด้านข้างในหน้าต่าง Terminal ทั้งหมด</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>ปิดแท็บทั้งหมดที่อยู่ใต้แท็บนี้</value>

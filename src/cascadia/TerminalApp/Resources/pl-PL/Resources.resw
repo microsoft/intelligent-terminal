@@ -594,10 +594,10 @@
     <value>Używaj kart poziomych we wszystkich oknach aplikacji Terminal</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Przełącz na karty pionowe</value>
+    <value>Przełącz na pasek boczny</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Używaj kart pionowych we wszystkich oknach aplikacji Terminal</value>
+    <value>Używaj paska bocznego we wszystkich oknach aplikacji Terminal</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Zamknij wszystkie karty poniżej tej karty</value>

@@ -479,10 +479,10 @@
     <value>በሁሉም የTerminal መስኮቶች ውስጥ አግድም ትሮችን ተጠቀም</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>ወደ ቁመት ትሮች ቀይር</value>
+    <value>ወደ ጎን አሞሌ ቀይር</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>በሁሉም የTerminal መስኮቶች ውስጥ ቁመት ትሮችን ተጠቀም</value>
+    <value>በሁሉም የTerminal መስኮቶች ውስጥ የጎን አሞሌውን ተጠቀም</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>ከዚህ ትር በታች ያሉትን ሁሉንም ትሮች ዝጋ</value>

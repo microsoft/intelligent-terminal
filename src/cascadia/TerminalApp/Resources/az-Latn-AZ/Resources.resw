@@ -592,10 +592,10 @@
     <value>Bütün Terminal pəncərələrində üfüqi tablardan istifadə et</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Şaquli tablara keç</value>
+    <value>Yan panelə keç</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Bütün Terminal pəncərələrində şaquli tablardan istifadə et</value>
+    <value>Bütün Terminal pəncərələrində yan paneldən istifadə et</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Bu tabın altındakı bütün tabları bağla</value>

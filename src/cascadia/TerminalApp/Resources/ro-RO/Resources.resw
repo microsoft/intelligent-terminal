@@ -572,10 +572,10 @@
     <value>Utilizați file orizontale în toate ferestrele Terminal</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Comutați la file verticale</value>
+    <value>Comutați la bara laterală</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Utilizați file verticale în toate ferestrele Terminal</value>
+    <value>Utilizați bara laterală în toate ferestrele Terminal</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Închideți toate filele de sub această filă</value>

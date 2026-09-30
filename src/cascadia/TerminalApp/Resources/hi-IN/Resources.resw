@@ -596,10 +596,10 @@
     <value>सभी Terminal विंडो में क्षैतिज टैब का उपयोग करें</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>अनुलंब टैब पर स्विच करें</value>
+    <value>साइडबार पर स्विच करें</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>सभी Terminal विंडो में अनुलंब टैब का उपयोग करें</value>
+    <value>सभी Terminal विंडो में साइडबार का उपयोग करें</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>इस टैब के नीचे के सभी टैब बंद करें</value>

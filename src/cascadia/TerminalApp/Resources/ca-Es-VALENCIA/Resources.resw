@@ -411,10 +411,10 @@
     <value>Utilitza pestanyes horitzontals en totes les finestres del Terminal</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Canvia a pestanyes verticals</value>
+    <value>Canvia a la barra lateral</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Utilitza pestanyes verticals en totes les finestres del Terminal</value>
+    <value>Utilitza la barra lateral en totes les finestres del Terminal</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Tanca totes les pestanyes que hi ha davall d&apos;esta</value>

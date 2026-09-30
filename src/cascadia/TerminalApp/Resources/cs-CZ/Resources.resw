@@ -593,10 +593,10 @@
     <value>Používat vodorovné karty ve všech oknech aplikace Terminal</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Přepnout na svislé karty</value>
+    <value>Přepnout na postranní panel</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Používat svislé karty ve všech oknech aplikace Terminal</value>
+    <value>Používat postranní panel ve všech oknech aplikace Terminal</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Zavřít všechny karty pod touto kartou</value>

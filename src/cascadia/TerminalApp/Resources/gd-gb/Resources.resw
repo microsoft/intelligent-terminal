@@ -480,10 +480,10 @@
     <value>Cleachd tabaichean còmhnard anns gach uinneag Terminal</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Atharraich gu tabaichean inghearach</value>
+    <value>Atharraich dhan bhàr-taoibh</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Cleachd tabaichean inghearach anns gach uinneag Terminal</value>
+    <value>Cleachd am bàr-taoibh anns gach uinneag Terminal</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Dùin a h-uile taba fon taba seo</value>

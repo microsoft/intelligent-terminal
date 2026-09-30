@@ -573,10 +573,10 @@
     <value>Používať vodorovné karty vo všetkých oknách aplikácie Terminal</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Prepnúť na zvislé karty</value>
+    <value>Prepnúť na bočný panel</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Používať zvislé karty vo všetkých oknách aplikácie Terminal</value>
+    <value>Používať bočný panel vo všetkých oknách aplikácie Terminal</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Zavrieť všetky karty pod touto kartou</value>

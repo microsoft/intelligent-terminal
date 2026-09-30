@@ -480,10 +480,10 @@
     <value>Whakamahia ngā ripa whakapae ki ngā matapihi Terminal katoa</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Whakawhiti ki ngā ripa poutū</value>
+    <value>Whakawhiti ki te paetaha</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Whakamahia ngā ripa poutū ki ngā matapihi Terminal katoa</value>
+    <value>Whakamahia te paetaha ki ngā matapihi Terminal katoa</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Katia ngā ripa katoa kei raro i tēnei ripa</value>

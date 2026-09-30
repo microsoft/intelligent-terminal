@@ -594,10 +594,10 @@
     <value>Vízszintes lapok használata a Terminal minden ablakában</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Váltás függőleges lapokra</value>
+    <value>Váltás az oldalsávra</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Függőleges lapok használata a Terminal minden ablakában</value>
+    <value>Az oldalsáv használata a Terminal minden ablakában</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>A lap alatti összes lap bezárása</value>

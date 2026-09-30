@@ -480,10 +480,10 @@
     <value>Horizontal Tabs an allen Terminal-Fënstere benotzen</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Op vertikal Tabs wiesselen</value>
+    <value>Op d'Säiteleeschte wiesselen</value>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Vertikal Tabs an allen Terminal-Fënstere benotzen</value>
+    <value>D'Säiteleeschte an allen Terminal-Fënstere benotzen</value>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>All Tabs ënner dësem Tab zoumaachen</value>
