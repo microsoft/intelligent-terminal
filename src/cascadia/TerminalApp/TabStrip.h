@@ -319,6 +319,9 @@ namespace winrt::TerminalApp::implementation
                                                    winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnRichTabChangesVisibleClick(winrt::Windows::Foundation::IInspectable const& sender,
                                           winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void OnRichTabMetadataFlyoutClosing(
+            winrt::Windows::Foundation::IInspectable const& sender,
+            winrt::Windows::UI::Xaml::Controls::Primitives::FlyoutBaseClosingEventArgs const& e);
         void OnShowAllTabsClick(winrt::Windows::Foundation::IInspectable const& sender,
                                 winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnSearchToggleClick(winrt::Windows::Foundation::IInspectable const& sender,
@@ -471,6 +474,7 @@ namespace winrt::TerminalApp::implementation
         std::optional<uint32_t> _draggingIndex;
         bool _syncingNativeReorder{ false };
         bool _dragCollectionChanged{ false };
+        bool _keepRichTabMetadataFlyoutOpen{ false };
         winrt::weak_ref<winrt::Microsoft::UI::Xaml::Controls::TabViewItem> _pressedHeaderTab;
         bool _pressedHeaderWasSelected{ false };
 

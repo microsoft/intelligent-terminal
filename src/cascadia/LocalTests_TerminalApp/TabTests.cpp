@@ -304,6 +304,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabHistoryButtonOpensView);
         TEST_METHOD(VerticalTabHistoryCloseStopsRefresh);
         TEST_METHOD(VerticalTabFilterContainsOnlyMetadata);
+        TEST_METHOD(RichTabMetadataFlyoutDismissalBehavior);
         TEST_METHOD(VerticalTabHistoryStatusText);
         TEST_METHOD(SessionRegistryStatusDeltaUpdatesCaches);
         TEST_METHOD(BottomBarSessionsButtonFollowsLayout);
@@ -4459,6 +4460,51 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->FilterTabsButton().Visibility());
             strip.IsRailCollapsed(false);
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->FilterTabsButton().Visibility());
+        });
+    }
+
+    void TabTests::RichTabMetadataFlyoutDismissalBehavior()
+    {
+        using namespace winrt::Windows::UI::Xaml::Automation;
+
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+            Grid host;
+            const auto window = Window::Current();
+            const auto previousContent = window.Content();
+            const auto restore = wil::scope_exit([&]() { window.Content(previousContent); });
+            host.Children().Append(strip);
+            window.Content(host);
+            window.Activate();
+            host.UpdateLayout();
+
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            const auto filterButton = stripImpl->FilterTabsButton();
+            const auto flyout = filterButton.Flyout().as<MenuFlyout>();
+            uint32_t closingCount = 0;
+            bool closeCanceled = false;
+            const auto closing = flyout.Closing(winrt::auto_revoke, [&](auto&&, const Controls::Primitives::FlyoutBaseClosingEventArgs& args) {
+                ++closingCount;
+                closeCanceled = args.Cancel();
+            });
+
+            flyout.ShowAt(filterButton);
+            VERIFY_IS_TRUE(flyout.IsOpen());
+
+            const Peers::ToggleMenuFlyoutItemAutomationPeer peer{ stripImpl->RichTabWorkingDirectoryVisibleItem() };
+            const auto toggle = peer.GetPattern(Peers::PatternInterface::Toggle).as<Provider::IToggleProvider>();
+            toggle.Toggle();
+
+            VERIFY_ARE_EQUAL(1u, closingCount);
+            VERIFY_IS_TRUE(closeCanceled);
+            VERIFY_IS_TRUE(flyout.IsOpen());
+            VERIFY_IS_FALSE(strip.RichTabWorkingDirectoryVisible());
+
+            closeCanceled = true;
+            flyout.Hide();
+            VERIFY_ARE_EQUAL(2u, closingCount);
+            VERIFY_IS_FALSE(closeCanceled);
+            VERIFY_IS_FALSE(flyout.IsOpen());
         });
     }
 
