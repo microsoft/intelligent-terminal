@@ -12,14 +12,16 @@ An event is identified by **provider name plus event name**, not by event
 name alone. In particular, App and WTA each define their own `ErrorDetected`
 and `DelegateInvoked`.
 
-Inherited Terminal/OpenConsole events, such as `SessionBecameInteractive`,
-`ConnectionCreated`, and `ActionDispatched`, are outside this catalog.
-Their separate reference is [TelemetryEvents.md](../TelemetryEvents.md#inherited-windows-terminal--openconsole-reference).
+Inherited Terminal/OpenConsole events are outside the 34-event catalog.
+The report mapping below also references `SessionBecameInteractive` and
+`ConnectionCreated` because they supply its general-usage measurements.
+The separate inherited reference is [TelemetryEvents.md](../TelemetryEvents.md#inherited-windows-terminal--openconsole-reference).
 See [privacy information](../PRIVACY.md) for collection controls.
 
 ## Contents
 
 - [Event catalog](#event-catalog)
+- [Usage report requirements and queries](#usage-report-requirements-and-queries)
 - [Providers and common metadata](#providers-and-common-metadata)
 - [App event schemas](#app-event-schemas)
 - [WTA event schemas](#wta-event-schemas)
@@ -72,6 +74,119 @@ Business-field counts exclude the common `PartA_PrivTags` field.
 | Editor | [AcpModelProbeStarted](#editoracpmodelprobestarted) | Start of a clean ACP model-catalog probe | 2 | Performance |
 | Editor | [AcpModelProbeDiscarded](#editoracpmodelprobediscarded) | Discard of a superseded probe generation | 1 | Performance |
 | Editor | [AcpModelProbeCompleted](#editoracpmodelprobecompleted) | Current probe's parsed catalog outcome and model count | 3 | Performance |
+
+## Usage report requirements and queries
+
+The following tables map **all 26 rows, 1.1 through 7.3**, in the
+*Intelligent Terminal Usage Report* to current event names and query logic.
+They describe how to build the requested views, not validation results.
+An available event does not necessarily support the exact funnel implied by
+the original wording; the last column identifies those limits.
+
+### Shared query conventions
+
+These are backend-neutral query recipes, not executable SQL or KQL against
+an assumed table. Map provider, event name, timestamp, payload fields, and
+the backend's device dimension to the actual ingestion schema first.
+
+| Notation | Query meaning |
+|---|---|
+| `E(App.Event)` | Records matching the exact provider and event name, after common time/build/population filters. Expand App, WTA, Model, and Editor using the provider table below; Win32Host means `Microsoft.Windows.Terminal.Win32Host`. |
+| `N(X)` | Event count after filtering `X`; not a device or session count. |
+| `Devices(X)` / `D(X)` | Set / distinct count of backend device IDs observed in `X`. Device identity is backend metadata, not an AI event payload field. |
+| `Ids(X, key)` / `U(X, key)` | Set / distinct count of the named payload key, such as `StartId`, `OfferId`, or `KeepId`. These keys are not device IDs. |
+| `Active` | `Devices(E(Win32Host.SessionBecameInteractive))` in the selected observation window. |
+| Reach of `X` | `size(Devices(X) intersect Active) / size(Active)`. Use the intersection so the numerator belongs to the denominator's population. |
+| Rate | Floating-point division on the same eligible population. An empty denominator is unavailable, not zero. |
+
+Use the same **28-day reporting window** `[end - 28 days, end)`, timezone,
+build/schema scope, distribution scope, and device eligibility across views.
+Not every event carries `Branding` or `Distribution`; apply those dimensions
+only where the payload or a documented backend enrichment supplies them.
+Keep retired schemas separate rather than treating a renamed or consolidated
+event as a continuous count series. A device without a configuration snapshot
+has unknown state; do not silently classify it as disabled or unconfigured.
+
+For **D0/D7/D28**, choose an explicit cohort-entry rule, such as the first
+observed interactive day in a documented lookback. D0 is that device's
+entry day; exact-day D7/D28 retention means interaction on entry day + 7/+28.
+Only include cohorts with enough elapsed follow-up. Fetch follow-up events
+beyond the 28-day cohort-selection window where necessary; an immature
+cohort is not a non-returning device. First observed is not necessarily first
+ever, and a rolling 28-day active-device count is not D28 retention.
+
+The report's **scaled** counts require the data team's sampling/weighting
+method. Raw event counts, distinct device counts, and scaled estimates are
+different measures; do not sum scaled device counts across events. A funnel
+requires intersections of eligible device sets (and event order if required),
+not division of two independently aggregated device counts. In particular,
+first-token and completion populations need not be nested.
+
+### 1. General usage
+
+| # | Required measurement | Current event / fields | Query / aggregation | Interpretation boundary |
+|---|---|---|---|---|
+| 1.1 | Window became interactive; active-device denominator | `Win32Host.SessionBecameInteractive` | Report `D(E)` and `N(E)`; use its device set as `Active`. Segment by `Branding` and `Distribution` where available. | Emitted on the first qualifying keyboard interaction in the process message loop, not once per window or for every launch. A continuously running process does not emit a fresh event every active day. |
+| 1.2 | Shell connection created; terminal use after launch | `App.ConnectionCreated` | Report `N(E)`, `D(E)`, and reach; filter `ConnectionTypeGuid` when a specific connection type is required. | Connection creation does not prove the shell became interactive or executed a command. No exact launch-to-shell conversion is established by counts alone. |
+| 1.3 | Agent provider configured; base set up for agent work | `App.AppCreated`: `PrimaryProvider`, `DelegateProvider`, corresponding effective-provider fields | For each role, select snapshots whose configured provider is neither `none` nor `unknown`; report snapshot share and reach. Show configured and effective categories separately. | Replaces the legacy `Setting.Model.AgentProviderConfigured` measurement. Configuration is not installation, authentication, or successful agent use. See 7.1. |
+| 1.4 | Agent session started; terminal-to-agent crossover | `App.AgentSessionStarted`: `StartId`, `StartKind`; `WTA.AcpNewSessionComplete`: `Success`, `Route` | For host-accepted starts, report `U(E, StartId)` and reach, splitting `New` and `Load`. For successful new-session RPCs, filter `Success=true` and select one route population rather than summing helper and master layers. | Includes pre-warm and does not prove a prompt was sent. RPC completion events without `Success=true` are not successful starts. |
+| 1.5 | Returned on a later day | Derived from `Win32Host.SessionBecameInteractive` and backend device/day metadata | For mature cohort `C`, compute `size(C intersect interactive_devices_on_entry_day_plus_n) / size(C)` for `n=7,28`; retain D0 cohort size alongside both rates. | No new event is required. This measures return observed through the 1.1 emission boundary, not all continuous-process activity; follow the cohort rules above. |
+
+### 2. Agent pane
+
+| # | Required measurement | Current event / fields | Query / aggregation | Interpretation boundary |
+|---|---|---|---|---|
+| 2.1 | ACP setup completing | `WTA.AcpNewSessionComplete`: `Success`, `Route`, `DurationMs`; `App.AgentSessionStarted` | For each selected non-probe RPC route, report attempt count, `N(Success=true) / N(all outcomes)`, and latency percentiles. Use distinct `StartId` for host-accepted session starts. | Do not combine `MasterForward` with helper routes as distinct sessions. Exclude `Probe` from chat setup metrics. |
+| 2.2 | Prompt sent; first real user use | `WTA.AgentPromptSent`: `IsAutofix`, `UserPromptOrdinal`, `AgentId` | Filter `IsAutofix=false`; report dispatch count and reach by agent. Filter `UserPromptOrdinal=First` to count first observed user dispatches. | Unfiltered counts include autofix analysis. `First` refers to the helper's observed ACP session, not first-ever use by a device. |
+| 2.3 | Response complete; turn completion rate | `WTA.AgentResponseComplete`: `Success`, `AgentId`, `IsByok`, `TotalDurationMs` | Report completions by outcome, successful completions / all observed completions, and duration percentiles. For device-level continuation, intersect prompt-sending and completing device sets within the same cohort. | Exact sent-turn completion rate is unavailable: no turn join key and no completion-side `IsAutofix`. Do not divide all completions by user-only dispatches or call an aggregate device overlap a per-turn success rate. |
+| 2.4 | Second prompt in the same session | `WTA.AgentPromptSent`: `IsAutofix`, `UserPromptOrdinal` | Filter `IsAutofix=false`; report counts of `First`, `Second`, and `Later`. `N(Second) / N(First)` is an aggregate second-prompt indicator when session boundaries are fully observed. | No session ID is exported. A fixed window may contain a second prompt whose first was outside it, so it cannot yield an exact session-cohort conversion. New helper observation of a loaded session restarts at `First`. |
+| 2.5 | Slash-command usage | `WTA.AgentSlashCommandUsed`: `command` | Group by `command`; report `N(E)`, `D(E)`, and reach. | Built-in dispatch before command guards; not execution success or agent-provided command names. |
+
+### 3. Error detection and fix
+
+| # | Required measurement | Current event / fields | Query / aggregation | Interpretation boundary |
+|---|---|---|---|---|
+| 3.1 | Command failures, segmented by policy | `WTA.ErrorDetected`: `Severity`, `Method`, `AllowAutoFixPolicy`, `AutoFixEnabled` | Report counts and devices by all four fields. Treat `AllowAutoFixPolicy=disabled` as policy-blocked; retain `notConfigured`, `enabled`, and `unknown` separately. | Classified actionable/critical signals, not all command failures or unique incidents. `AutoFixEnabled=false` alone does not establish a policy block. |
+| 3.2 | Fix offered; detection-to-offer conversion | `WTA.ErrorFixOffered`: `OfferId` | Report `U(E, OfferId)`, device count, and reach for concrete presented offers. | Offer volume is available; detection-to-offer conversion is not. Manual `/fix` and automatic offers share the event, with no source discriminator or detection correlation key. Do not divide all offers by all detections as a conversion rate. |
+| 3.3 | Offer accepted; value of the offer | `WTA.ErrorFixAccepted` joined to `WTA.ErrorFixOffered` by `OfferId` | Choose an offered-ID cohort `O`; compute `size(O intersect Ids(accepted events, OfferId)) / size(O)`. Allow a defined follow-up interval and report pending/unaccepted offers separately. | Deduplicate both sets. Acceptance means confirmed Run successfully queued, not command success or an error fixed. |
+
+### 4. Command palette kick off
+
+| # | Required measurement | Current event / fields | Query / aggregation | Interpretation boundary |
+|---|---|---|---|---|
+| 4.1 | `?` prompt-mode entry | `App.CommandPaletteAgentPromptEntered`; optionally `App.CommandPaletteDispatchedAgentPrompt.IsBackgroundMode` | Count entries and their device reach. Separately count submissions with `IsBackgroundMode=false` to describe foreground submission volume. | Entry includes abandonment. Entry and submission have no shared ID, so their counts are not an exact entry-to-submission funnel. |
+
+### 5. Sidebar
+
+| # | Required measurement | Current event / fields | Query / aggregation | Interpretation boundary |
+|---|---|---|---|---|
+| 5.1 | Sidebar state at launch; adoption and retention base | `App.AppCreated.SidebarEnabled` | Report `N(SidebarEnabled=true) / N(all AppCreated)` for window-snapshot share. For device adoption, choose an explicit rule, such as latest observed snapshot per device in the window; intersect with `Active`. Define an enabled-at-D0 device cohort for D7/D28 return. | Replaces the proposed `SidebarStateOnLaunch.enabled`. Multiple windows can have different state; snapshot share is not device share. Returning interactively does not itself prove the sidebar remained enabled. |
+| 5.2 | Search entered | `App.SidebarSearchOpened` | Report opens, devices, and reach. | Opens of sidebar tab search, not query edits or Agent-history search. |
+| 5.3 | Agent filter applied; resulting row count | `App.SidebarAgentFilterApplied.row_count` | Count successful view entries and devices; histogram `row_count`, retaining zero. | Implements entry into the Agent sessions view and its first successful snapshot, not a mandatory search-then-filter sequence. Rows are session rows, not terminal tabs. |
+| 5.4 | Tab pinned; resulting pinned count | `App.SidebarTabPinned.pinned_count` | Count enable actions and devices; histogram the post-action `pinned_count`. | This event means **Keep tab running**, not the separate tab-order Pin Tab feature. The latter cannot be measured with this event. |
+| 5.5 | Which rich-tab fields are selected | `App.SidebarRowFieldsChanged.fields` | Group by the complete canonical `fields` string for selection combinations; split the comma-separated fixed IDs for individual field-presence frequency. Retain empty and single-field selections. | Includes session-start snapshots and user toggles, without a discriminator. No unconditional per-window launch snapshot; not pure edit frequency or unbiased device adoption. Values such as paths or branch names are not collected. |
+
+### 6. Durable sessions
+
+| # | Required measurement | Current event / fields | Query / aggregation | Interpretation boundary |
+|---|---|---|---|---|
+| 6.1 | Marked Keep running; share of tabs enabled | `App.KeepRunningMarked`: `KeepId`, `TotalTabCount`, `KeepRunningTabCount`, `HasAgentPane` | Use `SUM(KeepRunningTabCount) / SUM(TotalTabCount)` with floating-point division for the agreed tab-count-weighted enable-time share. Report distinct `KeepId` separately for opt-in count. | Supersedes the original per-agent-session mark rate. Counts are paired post-enable snapshots in the owning window; not distinct tabs or all-device adoption. `HasAgentPane` is not an ACP session count. |
+| 6.2 | Terminal closed with the marked tab alive | `App.KeepRunningDetached.KeepId` joined to marked `KeepId` | Report distinct detached IDs. For opt-in cohort `M`, compute `size(M intersect Ids(detached events, KeepId)) / size(M)` as observed retention-after-close incidence. | Successful in-process retention only. Marks that were never closed are in the denominator unless an eligible close cohort is known; this is not a close-operation success rate. |
+| 6.3 | Reattached; live, gone, or failed outcome | `App.KeepRunningReattached`: `KeepId`, `Outcome` | Count attempts by `Outcome`. For detached-ID cohort `K`, compute `size(K intersect Ids(reattach events where Outcome=live, KeepId)) / size(K)`; report failed attempts separately and allow follow-up. | Actual outcomes are `live` and `failed`; retries can produce both for one ID. No `gone` or recovery after process exit. A new window can restore tabs only while the retaining process survives. |
+| 6.4 | Prompt after reattachment | `WTA.AgentPromptSent`: `Reattached`, `IsAutofix`, `AgentId`, `UserPromptOrdinal` | Filter `Reattached=true AND IsAutofix=false`; count user dispatches and devices by agent/ordinal. Compare to all user dispatches only as a prompt-volume share. | Same ACP session bound at reattachment; not a count of unique restored sessions. No `KeepId` on prompts, so exact restored-tab-to-prompt conversion is unavailable. Field name is `Reattached`, not lowercase `reattached`. |
+
+### 7. Settings configuration
+
+| # | Required measurement | Current event / fields | Query / aggregation | Interpretation boundary |
+|---|---|---|---|---|
+| 7.1 | Provider state at launch, separate from changes | `App.AppCreated`: `PrimaryProvider`, `PrimaryEffectiveProvider`, `DelegateProvider`, `DelegateEffectiveProvider`, `DefaultsFallback` | Group window snapshots by each role's configured/effective provider; calculate category share per role. For device share, use a documented snapshot-selection rule and intersect with `Active`, as in 5.1. | One combined event per created window; primary and delegate are fields, not separate events. Do not interpret it as a toggle count or treat legacy `AgentProviderConfigured` counts as equivalent. |
+| 7.2 | Provider changed; switching between agents | `Model.AgentProviderChanged`: `role`, `from`, `to` | Group counts and device counts by all three fields; keep `role` in transition analysis. | Accepted settings reloads only. Custom-to-custom changes can report `custom` to `custom`; no custom name is exported. |
+| 7.3 | Custom agent configuration and policy segmentation | `App.AppCreated`: `PrimaryCustomConfiguredCount`, `DelegateCustomConfiguredCount`, both `*Provider` and `*CustomSelectedCommandConfigured` fields, `AllowedAgentsPolicy`, `AllowCustomAgentsPolicy` | For each role, select configured count > 0 for inventory reach, provider = `custom` for selection, and the selected-command flag for matching configuration. Group by both policy categories; report count distributions and snapshot/device shares separately. | Replaces the proposed `CustomAgentConfigured`. Counts include unused entries; do not sum roles as unique agents. `AllowedAgents` gates built-ins, while `AllowCustomAgents` governs custom agents. No custom commands or allowlist entries are collected. |
+
+GitHub asset downloads and Microsoft Store acquisitions remain external
+distribution metrics, not client telemetry events. Retrieve those through
+their respective reporting systems; neither event counts nor backend device
+counts establish unique combined reach across distribution channels.
 
 ## Providers and common metadata
 
@@ -805,7 +920,7 @@ SQL dialect.
 
 | Provider and event | Query / aggregation | Interpretation boundary |
 |---|---|---|
-| App `AgentPaneOpened` | Count by `TriggerSource` and `Branding`; divide devices with an open by interactive devices in the same cohort for reach. | Instrumented open requests, not every pane creation or restoration. |
+| App `AgentPaneOpened` | Count by `TriggerSource` and `Branding`; use the device-set intersection in the shared reach definition for adoption among interactive devices. | Instrumented open requests, not every pane creation or restoration. |
 | App `CommandPaletteAgentPromptEntered` | Count foreground prompt-mode entries and distinct devices; compare aggregate entry counts to dispatched foreground prompts. | No entry-to-submission identifier; editing and abandonment do not dispatch. |
 | App `CommandPaletteDispatchedAgentPrompt` | Count by `IsBackgroundMode`; compare foreground submissions to mode entries only at aggregate scope. | Dispatch request, not delegate startup or task completion. |
 | App `AppCreated` | Count window-created snapshots; group by `SidebarEnabled`, provider/effective-provider fields, policy categories, and both custom-agent counts. Divide matching snapshots by all snapshots in the same cohort. | One observation per created window; do not sum primary and delegate custom counts as distinct agents or infer CLI availability. |
@@ -937,6 +1052,8 @@ these event definitions.
 
 | Contract | Source |
 |---|---|
+| General-usage interaction boundary used by the report | [WindowEmperor.cpp](../src/cascadia/WindowsTerminal/WindowEmperor.cpp) |
+| Shell connection creation used by the report | [TerminalPage.cpp](../src/cascadia/TerminalApp/TerminalPage.cpp) |
 | App pane, delegate, error, and snapshot emission | [TerminalPage.cpp](../src/cascadia/TerminalApp/TerminalPage.cpp) |
 | Sidebar search and rich-tab field selection | [TerminalPage.cpp](../src/cascadia/TerminalApp/TerminalPage.cpp) |
 | Agent-view entry and loaded row count | [TabStrip.cpp](../src/cascadia/TerminalApp/TabStrip.cpp) |
