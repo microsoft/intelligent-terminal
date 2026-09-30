@@ -3450,6 +3450,7 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(0, Grid::GetColumn(page->BottomBarRoot()));
             VERIFY_ARE_EQUAL(0, Grid::GetColumn(page->_verticalRailSplitter));
             VERIFY_ARE_EQUAL(HorizontalAlignment::Right, page->_verticalRailSplitter.HorizontalAlignment());
+            VERIFY_ARE_EQUAL(FlowDirection::RightToLeft, page->_tabRow.FlowDirection());
             VERIFY_ARE_EQUAL(FlowDirection::RightToLeft, page->_tabStrip.FlowDirection());
 
             const auto row = winrt::get_self<winrt::TerminalApp::implementation::TabRowControl>(page->_tabRow);
@@ -3663,6 +3664,21 @@ namespace TerminalAppLocalTests
             titlebar.UpdateLayout();
             VERIFY_IS_TRUE(winrt::TerminalApp::TitlebarControl::GetContentDragArea(titlebar.Content().as<DependencyObject>()) == area);
             VERIFY_IS_TRUE(area.ActualWidth() > 0);
+
+            titlebar.FlowDirection(FlowDirection::RightToLeft);
+            titlebar.UpdateLayout();
+
+            const auto contentRoot = titlebar.Children().GetAt(0).as<FrameworkElement>();
+            const auto captionButtons = titlebar.Children().GetAt(2).as<StackPanel>();
+            const auto contentBounds = contentRoot.TransformToVisual(titlebar).TransformBounds({ 0, 0, static_cast<float>(contentRoot.ActualWidth()), static_cast<float>(contentRoot.ActualHeight()) });
+            const auto captionBounds = captionButtons.TransformToVisual(titlebar).TransformBounds({ 0, 0, static_cast<float>(captionButtons.ActualWidth()), static_cast<float>(captionButtons.ActualHeight()) });
+            VERIFY_IS_TRUE(captionBounds.X < contentBounds.X);
+
+            const auto minimize = captionButtons.Children().GetAt(0).as<FrameworkElement>();
+            const auto close = captionButtons.Children().GetAt(2).as<FrameworkElement>();
+            const auto minimizeBounds = minimize.TransformToVisual(titlebar).TransformBounds({ 0, 0, static_cast<float>(minimize.ActualWidth()), static_cast<float>(minimize.ActualHeight()) });
+            const auto closeBounds = close.TransformToVisual(titlebar).TransformBounds({ 0, 0, static_cast<float>(close.ActualWidth()), static_cast<float>(close.ActualHeight()) });
+            VERIFY_IS_TRUE(closeBounds.X < minimizeBounds.X);
         });
     }
 

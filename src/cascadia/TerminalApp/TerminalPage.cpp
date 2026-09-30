@@ -522,6 +522,7 @@ namespace winrt::TerminalApp::implementation
         }
         _isRightToLeft = ::Microsoft::Terminal::RtlHelper::IsRtlLocale(language);
         const auto flowDirection = _isRightToLeft ? FlowDirection::RightToLeft : FlowDirection::LeftToRight;
+        _tabRow.FlowDirection(flowDirection);
         _tabStrip.FlowDirection(flowDirection);
         if (const auto titlebar = tabRowImpl->VerticalTitleBarContent().try_as<FrameworkElement>())
         {
