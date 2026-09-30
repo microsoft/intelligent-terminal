@@ -400,9 +400,12 @@ try {
                         )
                         if (-not [string]::IsNullOrWhiteSpace($upstream)) {
                             $tooltip += $upstream
-                        }
-                        if ($ahead -gt 0 -or $behind -gt 0) {
-                            $tooltip += "+$ahead / -$behind"
+                            if ($ahead -gt 0) {
+                                $tooltip += "$branch --$ahead--> $upstream"
+                            }
+                            if ($behind -gt 0) {
+                                $tooltip += "$upstream --$behind--> $branch"
+                            }
                         }
 
                         $response = @{
