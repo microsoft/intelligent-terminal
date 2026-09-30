@@ -363,7 +363,8 @@
                                                 AutomationProperties.Name="{x:Bind AutomationName, Mode=OneWay}"
                                                 Background="Transparent"
                                                 BorderThickness="0"
-                                                Click="OnPaneActivateClick">
+                                                Click="OnPaneActivateClick"
+                                                ToolTipService.ToolTip="{x:Bind Title, Mode=OneWay}">
                                             <Button.Resources>
                                                 <SolidColorBrush x:Key="ButtonBackgroundPointerOver"
                                                                  Color="Transparent" />
@@ -401,8 +402,7 @@
                                                            Margin="2,3,0,0"
                                                            VerticalAlignment="Center"
                                                            Text="{x:Bind Title, Mode=OneWay}"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           ToolTipService.ToolTip="{x:Bind Title, Mode=OneWay}" />
+                                                           TextTrimming="CharacterEllipsis" />
                                                 <TextBlock Grid.Row="1"
                                                            Grid.Column="2"
                                                            Margin="2,1,0,3"

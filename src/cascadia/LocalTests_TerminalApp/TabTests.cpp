@@ -6317,7 +6317,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(paneList.ContainerFromIndex(0) == firstPaneContainer);
             const auto paneTitleText = firstPaneRoot.FindName(L"PaneTitleText").as<TextBlock>();
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane" }, paneTitleText.Text());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane" }, winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(paneTitleText)));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed pane" }, winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(firstPaneActivateButton)));
             VERIFY_ARE_EQUAL(Visibility::Collapsed, firstPaneRoot.FindName(L"PaneActiveIndicator").as<FrameworkElement>().Visibility());
 
             updatePanes({ winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"", L"Renamed pane", false),
