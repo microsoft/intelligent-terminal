@@ -1356,6 +1356,25 @@ namespace winrt::TerminalApp::implementation
         return winrt::to_string(id).starts_with("custom:");
     }
 
+    static bool _IsBuiltinAgentProviderId(const std::string_view id)
+    {
+        return std::ranges::any_of(
+            ::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinAcpAgents,
+            [&](const auto& agent) {
+                return ::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(
+                    agent.id,
+                    winrt::to_hstring(id));
+            });
+    }
+
+    static bool _ShouldUseIncomingAgentProvider(const std::string_view existingProviderId,
+                                                const std::string_view incomingProviderId)
+    {
+        return incomingProviderId.empty() ||
+               !_IsBuiltinAgentProviderId(existingProviderId) ||
+               _IsBuiltinAgentProviderId(incomingProviderId);
+    }
+
     using SelectedCustomModel = std::pair<
         winrt::Microsoft::Terminal::Settings::Model::CustomModelProvider,
         winrt::Microsoft::Terminal::Settings::Model::CustomModel>;
@@ -3307,20 +3326,21 @@ namespace winrt::TerminalApp::implementation
             const auto& params = event["params"];
             const auto sessionId = params.get("session_id", "").asString();
             const auto status = params.get("status", "").asString();
+            const auto providerId = params.get("provider_id", "").asString();
+            const auto lastActivityAtMs = params["last_activity_at_ms"].isUInt64() ?
+                                              std::optional<uint64_t>{ params["last_activity_at_ms"].asUInt64() } :
+                                              std::nullopt;
             const auto paneSessionId = params["pane_session_id"].isString() ?
                                            params["pane_session_id"].asString() :
                                            std::string{};
             if (!sessionId.empty() && !status.empty() &&
-                _ApplyAgentSessionStatusDelta(sessionId, paneSessionId, status))
+                _ApplyAgentSessionStatusDelta(sessionId, paneSessionId, providerId, lastActivityAtMs, status))
             {
                 return;
             }
         }
 
-        if (_tabStrip.RichTabAgentStatusVisible())
-        {
-            _RequestRichTabAgentStatusRefresh();
-        }
+        _RequestRichTabAgentStatusRefresh();
         if (_tabStrip.HistoryActive())
         {
             _RequestSidebarHistoryRefresh(false);
@@ -3329,6 +3349,8 @@ namespace winrt::TerminalApp::implementation
 
     bool TerminalPage::_ApplyAgentSessionStatusDelta(const std::string_view sessionId,
                                                       const std::string_view paneSessionId,
+                                                      const std::string_view providerId,
+                                                      const std::optional<uint64_t> lastActivityAtMs,
                                                       const std::string_view status)
     {
         if (sessionId.empty() ||
@@ -3344,21 +3366,42 @@ namespace winrt::TerminalApp::implementation
 
         const auto sessionIdString = std::string{ sessionId };
         const auto statusString = std::string{ status };
+        const auto providerIdString = std::string{ providerId };
+        const auto updateInfo = [&](auto& info) {
+            const auto sameSession = info.sessionId.empty() || info.sessionId == sessionId;
+            if (sameSession && !_ShouldUseIncomingAgentProvider(info.providerId, providerId))
+            {
+                return;
+            }
+            info.sessionId = sessionIdString;
+            info.status = statusString;
+            if (!providerId.empty())
+            {
+                info.providerId = providerIdString;
+            }
+            if (lastActivityAtMs)
+            {
+                info.lastActivityAtMs = lastActivityAtMs;
+            }
+        };
         ++_richTabAgentStatusRequestGeneration;
         if (_richTabAgentStatusRefreshInFlight)
         {
             _richTabAgentStatusRefreshPending = true;
         }
-        _richTabAgentStatusBySessionId.insert_or_assign(sessionIdString, statusString);
+        auto& sessionInfo = _richTabAgentStatusBySessionId[sessionIdString];
+        updateInfo(sessionInfo);
         if (const auto paneId = _TryParsePaneSessionId(paneSessionId))
         {
-            _richTabAgentStatusByPaneId.insert_or_assign(*paneId, statusString);
+            auto& paneInfo = _richTabAgentStatusByPaneId[*paneId];
+            updateInfo(paneInfo);
         }
-        if (_tabStrip.RichTabAgentStatusVisible())
+        for (const auto& runtimeTab : _RuntimeTabs())
         {
-            for (const auto& runtimeTab : _RuntimeTabs())
+            if (const auto tab = _GetTabImpl(runtimeTab))
             {
-                if (const auto tab = _GetTabImpl(runtimeTab))
+                _UpdateTabIcon(*tab);
+                if (_tabStrip.RichTabAgentStatusVisible())
                 {
                     if (const auto rootPane = tab->GetRootPane())
                     {
@@ -10651,45 +10694,45 @@ namespace winrt::TerminalApp::implementation
         });
     }
 
-    std::optional<std::string> TerminalPage::_RichTabAgentStatusForControl(const TermControl& control)
+    std::optional<TerminalPage::_RichTabAgentInfo> TerminalPage::_RichTabAgentInfoForControl(const TermControl& control)
     {
         const auto paneSessionId = _TryParsePaneSessionId(_FindSessionIdForControl(control));
         if (!paneSessionId)
         {
             return std::nullopt;
         }
-        const auto findSessionStatus = [&](const winrt::hstring& sessionId) -> std::optional<std::string> {
+        const auto findSessionInfo = [&](const winrt::hstring& sessionId) -> std::optional<_RichTabAgentInfo> {
             if (sessionId.empty())
             {
                 return std::nullopt;
             }
-            if (const auto status = _richTabAgentStatusBySessionId.find(winrt::to_string(sessionId));
-                status != _richTabAgentStatusBySessionId.end())
+            if (const auto info = _richTabAgentStatusBySessionId.find(winrt::to_string(sessionId));
+                info != _richTabAgentStatusBySessionId.end())
             {
-                return status->second;
+                return info->second;
             }
             return std::nullopt;
         };
         if (const auto binding = _paneAgentSessions.find(*paneSessionId);
             binding != _paneAgentSessions.end())
         {
-            if (const auto status = findSessionStatus(binding->second.sessionId))
+            if (const auto info = findSessionInfo(binding->second.sessionId))
             {
-                return status;
+                return info;
             }
         }
         if (const auto active = _activeCliAgentPanes.find(*paneSessionId);
             active != _activeCliAgentPanes.end())
         {
-            if (const auto status = findSessionStatus(active->second.sessionId))
+            if (const auto info = findSessionInfo(active->second.sessionId))
             {
-                return status;
+                return info;
             }
         }
-        if (const auto status = _richTabAgentStatusByPaneId.find(*paneSessionId);
-            status != _richTabAgentStatusByPaneId.end())
+        if (const auto info = _richTabAgentStatusByPaneId.find(*paneSessionId);
+            info != _richTabAgentStatusByPaneId.end())
         {
-            return status->second;
+            return info->second;
         }
         return std::nullopt;
     }
@@ -10709,17 +10752,16 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
-        if (_tabStrip.RichTabAgentStatusVisible() &&
-            !_richTabAgentStatusSnapshotLoaded &&
+        if (!_richTabAgentStatusSnapshotLoaded &&
             !_richTabAgentStatusRefreshInFlight)
         {
             _RequestRichTabAgentStatusRefresh();
         }
 
         std::unordered_map<std::string, std::string> firstPartyFields;
-        if (const auto rawAgentStatus = _RichTabAgentStatusForControl(control))
+        if (const auto agentInfo = _RichTabAgentInfoForControl(control))
         {
-            firstPartyFields.emplace("agentStatus", winrt::to_string(_SidebarHistoryStatusText(*rawAgentStatus)));
+            firstPartyFields.emplace("agentStatus", winrt::to_string(_SidebarHistoryStatusText(agentInfo->status)));
         }
         ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance().UpdateFirstPartyFields(
             attachment,
@@ -10814,8 +10856,8 @@ namespace winrt::TerminalApp::implementation
             nullptr,
             false);
 
-        std::unordered_map<std::string, std::string> statusesBySessionId;
-        std::unordered_map<winrt::guid, std::string> statusesByPaneId;
+        std::unordered_map<std::string, _RichTabAgentInfo> statusesBySessionId;
+        std::unordered_map<winrt::guid, _RichTabAgentInfo> statusesByPaneId;
         bool parsed = result.completed && result.exitCode == 0;
         if (parsed)
         {
@@ -10842,9 +10884,30 @@ namespace winrt::TerminalApp::implementation
                 {
                     continue;
                 }
+                auto providerId = row.get("provider_id", "").asString();
+                if (providerId.empty() && row["cli_source"].isString())
+                {
+                    providerId = row["cli_source"].asString();
+                    std::ranges::transform(providerId, providerId.begin(), [](const unsigned char ch) {
+                        return static_cast<char>(std::tolower(ch));
+                    });
+                }
+                const auto lastActivityAtMs = row["last_activity_at_ms"].isUInt64() ?
+                                                  std::optional<uint64_t>{ row["last_activity_at_ms"].asUInt64() } :
+                                                  std::nullopt;
                 if (const auto sessionId = row.get("session_id", "").asString(); !sessionId.empty())
                 {
-                    statusesBySessionId.insert_or_assign(sessionId, status);
+                    auto incoming = _RichTabAgentInfo{ sessionId, status, providerId, lastActivityAtMs };
+                    const auto existing = statusesBySessionId.find(sessionId);
+                    if (existing == statusesBySessionId.end() ||
+                        _ShouldUseIncomingAgentProvider(existing->second.providerId, providerId))
+                    {
+                        if (providerId.empty() && existing != statusesBySessionId.end())
+                        {
+                            incoming.providerId = existing->second.providerId;
+                        }
+                        statusesBySessionId.insert_or_assign(sessionId, incoming);
+                    }
                 }
                 if (const auto paneId = _TryParsePaneSessionId(row.get("pane_session_id", "").asString()))
                 {
@@ -10853,10 +10916,21 @@ namespace winrt::TerminalApp::implementation
                                value == "Ended" ? 1 :
                                                   0;
                     };
-                    if (const auto existing = statusesByPaneId.find(*paneId);
-                        existing == statusesByPaneId.end() || rank(status) > rank(existing->second))
+                    const auto rowSessionId = row.get("session_id", "").asString();
+                    auto incoming = _RichTabAgentInfo{ rowSessionId, status, providerId, lastActivityAtMs };
+                    const auto existing = statusesByPaneId.find(*paneId);
+                    const auto sameSession = existing != statusesByPaneId.end() &&
+                                             existing->second.sessionId == rowSessionId;
+                    if (existing == statusesByPaneId.end() ||
+                        (sameSession ?
+                             _ShouldUseIncomingAgentProvider(existing->second.providerId, providerId) :
+                             rank(status) > rank(existing->second.status)))
                     {
-                        statusesByPaneId.insert_or_assign(*paneId, status);
+                        if (providerId.empty() && existing != statusesByPaneId.end())
+                        {
+                            incoming.providerId = existing->second.providerId;
+                        }
+                        statusesByPaneId.insert_or_assign(*paneId, incoming);
                     }
                 }
             }
@@ -10879,6 +10953,7 @@ namespace winrt::TerminalApp::implementation
             {
                 if (const auto tab = page->_GetTabImpl(runtimeTab))
                 {
+                    page->_UpdateTabIcon(*tab);
                     if (const auto rootPane = tab->GetRootPane())
                     {
                         rootPane->WalkTree([&](const auto& pane) {

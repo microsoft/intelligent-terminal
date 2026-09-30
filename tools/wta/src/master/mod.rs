@@ -6603,6 +6603,8 @@ async fn publish_session_status_delta(state: &MasterStateInner, session_id: &str
     crate::wt_protocol_events::send(crate::wt_protocol_events::session_status_changed_event(
         session_id,
         row.pane_session_id.as_deref(),
+        row.provider_id.as_deref(),
+        row.last_activity_at_ms,
         status,
     ));
 }
@@ -9387,6 +9389,8 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
                     crate::wt_protocol_events::session_status_changed_event(
                         &session_key,
                         row.pane_session_id.as_deref(),
+                        row.provider_id.as_deref(),
+                        row.last_activity_at_ms,
                         status,
                     ),
                 );

@@ -11270,6 +11270,8 @@ async fn session_hook_broadcasts_sessions_changed_after_valid_payload() {
     assert_eq!(status_delta["method"], "session_registry_changed");
     assert_eq!(status_delta["params"]["session_id"], "sid-for-hook");
     assert_eq!(status_delta["params"]["pane_session_id"], "pane-for-hook");
+    assert_eq!(status_delta["params"]["provider_id"], "copilot");
+    assert!(status_delta["params"]["last_activity_at_ms"].is_u64());
     assert_eq!(status_delta["params"]["status"], "Idle");
     let fallback: serde_json::Value =
         serde_json::from_str(&terminal_events[1]).expect("terminal event should be JSON");

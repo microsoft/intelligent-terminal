@@ -99,6 +99,8 @@ pub(crate) fn session_registry_changed_event() -> String {
 pub(crate) fn session_status_changed_event(
     session_id: &str,
     pane_session_id: Option<&str>,
+    provider_id: Option<&str>,
+    last_activity_at_ms: Option<u64>,
     status: &crate::agent_sessions::AgentStatus,
 ) -> String {
     serde_json::json!({
@@ -107,6 +109,8 @@ pub(crate) fn session_status_changed_event(
         "params": {
             "session_id": session_id,
             "pane_session_id": pane_session_id,
+            "provider_id": provider_id,
+            "last_activity_at_ms": last_activity_at_ms,
             "status": status,
         },
     })
@@ -363,6 +367,8 @@ mod tests {
         let event: serde_json::Value = serde_json::from_str(&super::session_status_changed_event(
             "session-a",
             Some("pane-a"),
+            Some("claude"),
+            Some(42),
             &crate::agent_sessions::AgentStatus::Attention,
         ))
         .unwrap();
@@ -370,6 +376,8 @@ mod tests {
         assert_eq!(event["method"], "session_registry_changed");
         assert_eq!(event["params"]["session_id"], "session-a");
         assert_eq!(event["params"]["pane_session_id"], "pane-a");
+        assert_eq!(event["params"]["provider_id"], "claude");
+        assert_eq!(event["params"]["last_activity_at_ms"], 42);
         assert_eq!(event["params"]["status"], "Attention");
     }
 

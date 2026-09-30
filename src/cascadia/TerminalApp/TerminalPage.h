@@ -950,7 +950,14 @@ namespace winrt::TerminalApp::implementation
             const Microsoft::Terminal::Control::TermControl& control,
             ::Microsoft::Terminal::RichTab::Provider::ActivationEvent reason);
         void _ReleaseRichTabAttachments(const std::shared_ptr<Pane>& rootPane);
-        std::optional<std::string> _RichTabAgentStatusForControl(const Microsoft::Terminal::Control::TermControl& control);
+        struct _RichTabAgentInfo
+        {
+            std::string sessionId;
+            std::string status;
+            std::string providerId;
+            std::optional<uint64_t> lastActivityAtMs;
+        };
+        std::optional<_RichTabAgentInfo> _RichTabAgentInfoForControl(const Microsoft::Terminal::Control::TermControl& control);
         void _UpdateRichTabFirstPartyFields(const Microsoft::Terminal::Control::TermControl& control);
         void _LogSidebarRowFieldsTelemetry() const;
         void _RefreshRichTabForTab(Tab& tab, bool activate, bool refreshPaneItems = true);
@@ -998,6 +1005,8 @@ namespace winrt::TerminalApp::implementation
         static winrt::hstring _SidebarHistoryStatusText(std::string_view status);
         bool _ApplyAgentSessionStatusDelta(std::string_view sessionId,
                                            std::string_view paneSessionId,
+                                           std::string_view providerId,
+                                           std::optional<uint64_t> lastActivityAtMs,
                                            std::string_view status);
         static winrt::hstring _SidebarHistoryAgeText(std::optional<uint64_t> lastActivityAtMs, uint64_t nowMs);
         struct _SidebarHistorySnapshot
@@ -1061,8 +1070,8 @@ namespace winrt::TerminalApp::implementation
         std::mutex _richTabAttachmentsMutex;
         std::unordered_map<uintptr_t, RichTabAttachment> _richTabAttachments;
         std::unordered_map<std::string, RichTabPresentationState> _richTabPresentations;
-        std::unordered_map<std::string, std::string> _richTabAgentStatusBySessionId;
-        std::unordered_map<winrt::guid, std::string> _richTabAgentStatusByPaneId;
+        std::unordered_map<std::string, _RichTabAgentInfo> _richTabAgentStatusBySessionId;
+        std::unordered_map<winrt::guid, _RichTabAgentInfo> _richTabAgentStatusByPaneId;
         bool _richTabAgentStatusSnapshotLoaded{ false };
         bool _richTabAgentStatusRefreshInFlight{ false };
         bool _richTabAgentStatusRefreshPending{ false };

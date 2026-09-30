@@ -490,10 +490,30 @@ namespace winrt::TerminalApp::implementation
         }
         if (const auto content{ tab.GetActiveContent() })
         {
-            const auto& icon{ content.Icon() };
+            auto icon = content.Icon();
             const auto theme = _settings.GlobalSettings().CurrentTheme();
             const auto iconStyle = (theme && theme.Tab()) ? theme.Tab().IconStyle() : IconStyle::Default;
 
+            if (const auto control = tab.GetActivePane()->GetTerminalControl())
+            {
+                if (const auto agentInfo = _RichTabAgentInfoForControl(control);
+                    agentInfo &&
+                    (agentInfo->status == "Idle" ||
+                     agentInfo->status == "Working" ||
+                     agentInfo->status == "Attention" ||
+                     agentInfo->status == "Error"))
+                {
+                    const auto providerId = winrt::to_hstring(agentInfo->providerId);
+                    for (const auto& agent : ::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinAcpAgents)
+                    {
+                        if (::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(agent.id, providerId))
+                        {
+                            icon = winrt::hstring{ L"ms-appx:///AgentIcons/" } + providerId + L".svg";
+                            break;
+                        }
+                    }
+                }
+            }
             tab.UpdateIcon(icon, iconStyle);
         }
     }
