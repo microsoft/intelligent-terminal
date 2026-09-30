@@ -11931,47 +11931,70 @@ async fn refresh_titles_from_listing_judges_unstamped_rows_by_the_listing_cli() 
     );
 }
 
-/// Title authority is the session id, not `SessionInfo::location`. An
-/// unqualified legacy row remains `Unknown`, but the owning agent's listing
-/// can still safely improve its display title without making it resumable.
 #[tokio::test]
-async fn refresh_titles_from_listing_retitles_an_unstamped_in_distro_row() {
+async fn refresh_titles_from_listing_requires_the_actual_wsl_owner() {
     use crate::agent_sessions::{CliSource, SessionLocation};
     use std::collections::HashMap;
 
-    let state = make_state();
-    let mut hook_row = crate::session_registry::SessionInfo::new(
-        acp::schema::v1::SessionId::new("sid-in-distro".to_string()),
-        std::path::PathBuf::from("/home/dev/repo"),
-    );
-    hook_row.cli_source = Some(CliSource::Copilot);
-    hook_row.title = Some("first user message echoed as a title".to_string());
-    assert_eq!(
-        hook_row.location,
-        SessionLocation::Unknown,
-        "an unstamped row must not guess Host provenance"
-    );
-    state.registry.upsert(hook_row).await;
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let agent = wsl_listing_agent(CliSource::Copilot, "Ubuntu", &[]);
+            let mut legacy = crate::session_registry::SessionInfo::new(
+                SessionId::new("legacy-in-distro"),
+                PathBuf::from("/home/dev/repo"),
+            );
+            legacy.cli_source = Some(CliSource::Copilot);
+            legacy.title = Some("Unqualified title".into());
+            assert_eq!(legacy.location, SessionLocation::Unknown);
 
-    // The listing comes from the Ubuntu Copilot agent, whose rows would be
-    // stamped `Wsl { Ubuntu }` had they been seeded through `sync_host_history`.
-    let titles = HashMap::from([("sid-in-distro".to_string(), "Real Summary".to_string())]);
-    assert!(
-        refresh_titles_from_listing(&*state.registry, &titles, Some(&CliSource::Copilot), None)
-            .await
-    );
-    assert_eq!(
-        state
-            .registry
-            .lookup(&acp::schema::v1::SessionId::new(
-                "sid-in-distro".to_string()
-            ))
-            .await
-            .unwrap()
-            .title
-            .as_deref(),
-        Some("Real Summary")
-    );
+            let mut owned = legacy.clone();
+            owned.session_id = SessionId::new("sid-in-distro");
+            owned.provider_id = Some("copilot".into());
+            owned.location = SessionLocation::Wsl {
+                distro: "Ubuntu".into(),
+            };
+            owned.title = Some("Old Ubuntu title".into());
+            let mut host = owned.clone();
+            host.location = SessionLocation::Host;
+            host.title = Some("Host title".into());
+            let mut debian = owned.clone();
+            debian.location = SessionLocation::Wsl {
+                distro: "Debian".into(),
+            };
+            debian.title = Some("Debian title".into());
+            for row in [&legacy, &owned, &host, &debian] {
+                state.registry.upsert(row.clone()).await;
+            }
+
+            let titles = HashMap::from([
+                ("sid-in-distro".into(), "Real Summary".into()),
+                ("legacy-in-distro".into(), "Do not infer ownership".into()),
+            ]);
+            assert!(
+                refresh_titles_from_listing(
+                    &*state.registry,
+                    &titles,
+                    Some(&CliSource::Copilot),
+                    Some(&agent),
+                )
+                .await
+            );
+            for (row, expected) in [
+                (&owned, "Real Summary"),
+                (&host, "Host title"),
+                (&debian, "Debian title"),
+                (&legacy, "Unqualified title"),
+            ] {
+                let actual = state
+                    .registry
+                    .lookup_identity(&crate::session_registry::SessionIdentity::from_info(row))
+                    .await
+                    .unwrap();
+                assert_eq!(actual.title.as_deref(), Some(expected));
+            }
+        })
+        .await;
 }
 
 /// `adopt_agent_title` overwrites unconditionally, so a candidate that must
