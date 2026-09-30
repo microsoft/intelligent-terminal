@@ -3570,7 +3570,7 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(CSTR_EQUAL, CompareStringOrdinal(chord.c_str(), -1, shortcut.Text().c_str(), -1, FALSE));
                 VERIFY_ARE_EQUAL(chord.empty() ? Visibility::Collapsed : Visibility::Visible, shortcut.Visibility());
             };
-            verifyHint({});
+            verifyHint(L"Ctrl+Shift+S");
             page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
             verifyHint(L"Ctrl+Shift+S");
 
@@ -3578,7 +3578,7 @@ namespace TerminalAppLocalTests
             page->_RefreshUIForSettingsReload();
             verifyHint(L"Ctrl+Shift+Y");
             page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
-            verifyHint({});
+            verifyHint(L"Ctrl+Shift+Y");
             page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
             verifyHint(L"Ctrl+Shift+Y");
 
@@ -3587,6 +3587,8 @@ namespace TerminalAppLocalTests
             verifyHint({});
             actionMap.RegisterKeyBinding(initial, ActionAndArgs{ ShortcutAction::CopyText, nullptr });
             page->_RefreshUIForSettingsReload();
+            verifyHint({});
+            page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
             verifyHint({});
         });
     }

@@ -111,12 +111,10 @@ captures its own new entry context.
 
 - Use the localized labels **Expand sidebar** and **Collapse sidebar** for the
   tooltip and automation name, retaining the existing resource identifiers.
-- Show the label and, on the collapsed **Expand sidebar** button, the dimmed
-  shortcut on the same line with 8 units of spacing. The expanded
-  **Collapse sidebar** button still collapses on click, but does not advertise
-  `Ctrl+Shift+S`: from focus outside the sidebar that key now opens Search tabs.
-  Keep Segoe UI Variable, `FontSize=12`, normal weight, `LineHeight=16`, and
-  shortcut opacity `0.7`.
+- Show the label and dimmed effective shortcut on the same line with 8 units
+  of spacing for both the collapsed **Expand sidebar** and expanded
+  **Collapse sidebar** buttons. Keep Segoe UI Variable, `FontSize=12`, normal
+  weight, `LineHeight=16`, and shortcut opacity `0.7`.
 - Display normal shortcut casing, such as `Ctrl+Shift+S`, rather than serialized
   lowercase text.
 - Resolve the effective sidebar binding and refresh the hint when settings

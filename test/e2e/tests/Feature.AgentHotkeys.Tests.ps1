@@ -675,7 +675,7 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
             $tooltipCondition = [Windows.Automation.PropertyCondition]::new(
                 [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::ToolTip)
             $states = @(
-                @{ Name = 'collapse'; Label = 'Collapse sidebar'; Chord = '' }
+                @{ Name = 'collapse'; Label = 'Collapse sidebar'; Chord = 'Ctrl+Shift+S' }
                 @{ Name = 'expand'; Label = 'Expand sidebar'; Chord = 'Ctrl+Shift+S'; Collapsed = $true }
                 @{ Name = 'additional'; Label = 'Expand sidebar'; Chord = 'Ctrl+Shift+Y'; Collapsed = $true; Reload = @{
                     actions = @(@{ command = 'toggleSidebar'; keys = 'ctrl+shift+y' })
