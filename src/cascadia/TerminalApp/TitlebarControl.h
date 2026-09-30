@@ -23,6 +23,10 @@ namespace winrt::TerminalApp::implementation
         IInspectable Content();
         void Content(IInspectable content);
 
+        static Windows::UI::Xaml::DependencyProperty ContentDragAreaProperty();
+        static Windows::UI::Xaml::FrameworkElement GetContentDragArea(const Windows::UI::Xaml::DependencyObject& target);
+        static void SetContentDragArea(const Windows::UI::Xaml::DependencyObject& target, const Windows::UI::Xaml::FrameworkElement& value);
+
         void SetWindowVisualState(WindowVisualState visualState);
         void Root_SizeChanged(const IInspectable& sender, const Windows::UI::Xaml::SizeChangedEventArgs& e);
         void FullscreenChanged(const bool fullscreen);

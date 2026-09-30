@@ -131,6 +131,7 @@ namespace winrt::TerminalApp::implementation
         {
             _tabListPositionOperationsRestricted = restricted;
             _EnableMenuItems();
+            _UpdatePinMenuItem();
         }
         void SetTabPointerInteractionRestricted(bool restricted);
 
@@ -225,6 +226,8 @@ namespace winrt::TerminalApp::implementation
         const winrt::hstring& KeepRunningTelemetryId() const noexcept { return _keepRunningTelemetryId; }
         void KeepRunning(bool enabled);
         void CopyKeepRunningState(const Tab& source);
+        bool IsPinned() const noexcept { return _isPinned; }
+        void IsPinned(bool pinned);
         void RestoreKeptTabState(const Tab& source);
 
         winrt::TerminalApp::TerminalTabStatus TabStatus()
@@ -234,7 +237,7 @@ namespace winrt::TerminalApp::implementation
 
         void SetDispatch(const winrt::TerminalApp::ShortcutActionDispatch& dispatch);
 
-        void UpdateTabViewIndex(const uint32_t idx, const uint32_t numTabs);
+        void UpdateTabViewIndex(uint32_t idx, uint32_t numTabs, uint32_t pinnedCount);
         void SetActionMap(const Microsoft::Terminal::Settings::Model::IActionMapView& actionMap);
         void SetVerticalTabLayout(bool vertical);
 
@@ -248,6 +251,7 @@ namespace winrt::TerminalApp::implementation
         til::event<winrt::delegate<void()>> RequestFocusActiveControl;
         til::typed_event<TerminalApp::Tab, winrt::Microsoft::Terminal::Settings::Model::TabLayout> TabLayoutChangeRequested;
         til::event<winrt::delegate<>> KeepRunningEnabledByUser;
+        til::event<winrt::delegate<bool>> PinRequested;
 
         til::event<winrt::Windows::Foundation::EventHandler<winrt::Windows::Foundation::IInspectable>> Closed;
         til::event<winrt::Windows::Foundation::EventHandler<winrt::Windows::Foundation::IInspectable>> CloseRequested;
@@ -280,6 +284,7 @@ namespace winrt::TerminalApp::implementation
 
         winrt::Windows::UI::Xaml::FocusState _focusState{ winrt::Windows::UI::Xaml::FocusState::Unfocused };
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _keepRunningMenuItem{};
+        winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _pinMenuItem{};
         bool _isVerticalTabLayout{ false };
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _duplicateTabMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _splitTabMenuItem{};
@@ -375,6 +380,8 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _stableId{};
         bool _keepRunning{ false };
         winrt::hstring _keepRunningTelemetryId{};
+        bool _isPinned{ false };
+        uint32_t _pinnedTabCount{ 0 };
 
         winrt::hstring _runtimeTabText{};
         std::optional<::Microsoft::Terminal::RichTab::Provider::Presentation> _richTabPresentation;
@@ -392,6 +399,7 @@ namespace winrt::TerminalApp::implementation
 
         void _CreateContextMenu();
         void _UpdateKeepRunningMenuItem();
+        void _UpdatePinMenuItem();
         winrt::hstring _CreateToolTipTitle();
 
         void _DetachEventHandlersFromContent(const uint32_t paneId);

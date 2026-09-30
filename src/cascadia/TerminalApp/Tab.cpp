@@ -279,7 +279,11 @@ namespace winrt::TerminalApp::implementation
     void Tab::_UpdateSwitchToTabKeyChord()
     {
         const auto id = fmt::format(FMT_COMPILE(L"Terminal.SwitchToTab{}"), _TabViewIndex);
-        const auto keyChord{ _actionMap.GetKeyBindingForAction(id) };
+        auto keyChord{ _actionMap.GetKeyBindingForAction(id) };
+        if (!keyChord && TabViewNumTabs() != 0 && _TabViewIndex == TabViewNumTabs() - 1)
+        {
+            keyChord = _actionMap.GetKeyBindingForAction(L"Terminal.SwitchToLastTab");
+        }
         const auto keyChordText = keyChord ? KeyChordSerialization::ToString(keyChord) : L"";
 
         if (_keyChord == keyChordText)
@@ -288,6 +292,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         _keyChord = keyChordText;
+        Automation::AutomationProperties::SetAcceleratorKey(TabViewItem(), _keyChord);
         _UpdateToolTip();
     }
 
@@ -299,16 +304,29 @@ namespace winrt::TerminalApp::implementation
     // - <none>
     void Tab::_UpdateToolTip()
     {
+        const auto title = _CreateToolTipTitle();
+        std::wstring tooltipText{ title };
+
         auto titleRun = WUX::Documents::Run();
-        titleRun.Text(_CreateToolTipTitle());
+        titleRun.Text(title);
 
         auto textBlock = WUX::Controls::TextBlock{};
         textBlock.TextWrapping(WUX::TextWrapping::Wrap);
         textBlock.TextAlignment(WUX::TextAlignment::Center);
         textBlock.Inlines().Append(titleRun);
 
+        if (_isPinned)
+        {
+            auto pinRun = WUX::Documents::Run();
+            pinRun.Text(RS_(L"PinnedTabName"));
+            textBlock.Inlines().Append(WUX::Documents::LineBreak{});
+            textBlock.Inlines().Append(pinRun);
+        }
+
         if (_isVerticalTabLayout && !_richTabTooltipText.empty())
         {
+            tooltipText.append(L"\n");
+            tooltipText.append(_richTabTooltipText);
             auto metadataRun = WUX::Documents::Run();
             metadataRun.Text(_richTabTooltipText);
             textBlock.Inlines().Append(WUX::Documents::LineBreak{});
@@ -317,6 +335,8 @@ namespace winrt::TerminalApp::implementation
 
         if (!_keyChord.empty())
         {
+            tooltipText.append(L"\n");
+            tooltipText.append(_keyChord);
             auto keyChordRun = WUX::Documents::Run();
             keyChordRun.Text(_keyChord);
             keyChordRun.FontStyle(winrt::Windows::UI::Text::FontStyle::Italic);
@@ -327,6 +347,8 @@ namespace winrt::TerminalApp::implementation
         WUX::Controls::ToolTip toolTip{};
         toolTip.Content(textBlock);
         WUX::Controls::ToolTipService::SetToolTip(TabViewItem(), toolTip);
+        Automation::AutomationProperties::SetHelpText(TabViewItem(), tooltipText);
+        PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"ToolTip" });
     }
 
     // Method Description:
@@ -623,6 +645,11 @@ namespace winrt::TerminalApp::implementation
     void Tab::_UpdateAutomationName()
     {
         auto name = std::wstring{ Title() };
+        if (_isPinned)
+        {
+            name += L", ";
+            name += RS_(L"PinnedTabName");
+        }
         if (_isVerticalTabLayout && !_richTabAccessibilityText.empty())
         {
             name += L", ";
@@ -1744,6 +1771,7 @@ namespace winrt::TerminalApp::implementation
     void Tab::_UpdateMenuItemStates()
     {
         _UpdateKeepRunningMenuItem();
+        _UpdatePinMenuItem();
 
         // Terminal-specific menu items
         const auto content = _activePane ? _activePane->GetContent() : nullptr;
@@ -2074,6 +2102,19 @@ namespace winrt::TerminalApp::implementation
     {
         auto weakThis{ get_weak() };
 
+        Controls::FontIcon pinIcon;
+        pinIcon.FontFamily(Media::FontFamily{ L"Segoe Fluent Icons, Segoe MDL2 Assets" });
+        pinIcon.Glyph(L"\xE718");
+        _pinMenuItem.Icon(pinIcon);
+        Automation::AutomationProperties::SetAutomationId(_pinMenuItem, L"PinTabMenuItem");
+        _pinMenuItem.Click([weakThis](auto&&, auto&&) {
+            if (const auto tab = weakThis.get())
+            {
+                tab->PinRequested.raise(!tab->IsPinned());
+            }
+        });
+        _UpdatePinMenuItem();
+
         Controls::FontIcon keepRunningIcon;
         keepRunningIcon.FontFamily(Media::FontFamily{ L"Segoe Fluent Icons, Segoe MDL2 Assets" });
         _keepRunningMenuItem.Icon(keepRunningIcon);
@@ -2232,6 +2273,7 @@ namespace winrt::TerminalApp::implementation
         Controls::MenuFlyout contextMenuFlyout;
         Controls::MenuFlyoutSeparator menuSeparator;
         contextMenuFlyout.Items().Append(_keepRunningMenuItem);
+        contextMenuFlyout.Items().Append(_pinMenuItem);
         contextMenuFlyout.Items().Append(chooseColorMenuItem);
         contextMenuFlyout.Items().Append(renameTabMenuItem);
         contextMenuFlyout.Items().Append(_duplicateTabMenuItem);
@@ -2250,6 +2292,7 @@ namespace winrt::TerminalApp::implementation
             if (const auto tab = weakThis.get())
             {
                 tab->_UpdateKeepRunningMenuItem();
+                tab->_UpdatePinMenuItem();
             }
         });
 
@@ -2312,8 +2355,33 @@ namespace winrt::TerminalApp::implementation
 
     void Tab::CopyKeepRunningState(const Tab& source)
     {
-        KeepRunning(source.KeepRunning());
+        ASSERT_UI_THREAD();
+        _keepRunning = source._keepRunning;
         _keepRunningTelemetryId = source._keepRunningTelemetryId;
+        _tabStatus.IsKeepRunning(_keepRunning);
+        _UpdateKeepRunningMenuItem();
+    }
+
+    void Tab::IsPinned(const bool pinned)
+    {
+        ASSERT_UI_THREAD();
+        _isPinned = pinned;
+        _tabStatus.IsPinned(pinned);
+        _UpdatePinMenuItem();
+        _UpdateAutomationName();
+        _UpdateToolTip();
+    }
+
+    void Tab::_UpdatePinMenuItem()
+    {
+        const auto available = CanKeepRunning();
+        _pinMenuItem.Visibility(available ? WUX::Visibility::Visible : WUX::Visibility::Collapsed);
+        _pinMenuItem.IsEnabled(available && !_tabListPositionOperationsRestricted);
+        const auto label = IsPinned() ? RS_(L"UnpinTabText") : RS_(L"PinTabText");
+        _pinMenuItem.Text(label);
+        const auto tooltip = IsPinned() ? RS_(L"UnpinTabToolTip") : RS_(L"PinTabToolTip");
+        WUX::Controls::ToolTipService::SetToolTip(_pinMenuItem, box_value(tooltip));
+        Automation::AutomationProperties::SetHelpText(_pinMenuItem, tooltip);
     }
 
     void Tab::_UpdateKeepRunningMenuItem()
@@ -2371,18 +2439,19 @@ namespace winrt::TerminalApp::implementation
         _closeTabsAfterMenuItem.IsEnabled(!_tabListPositionOperationsRestricted && tabIndex < numOfTabs - 1);
 
         // enabled if not left-most tab
-        _moveLeftMenuItem.IsEnabled(!_tabListPositionOperationsRestricted && tabIndex > 0);
+        _moveLeftMenuItem.IsEnabled(!_tabListPositionOperationsRestricted && tabIndex > (IsPinned() ? 0u : _pinnedTabCount));
 
         // enabled if not last tab
-        _moveRightMenuItem.IsEnabled(!_tabListPositionOperationsRestricted && tabIndex < numOfTabs - 1);
+        _moveRightMenuItem.IsEnabled(!_tabListPositionOperationsRestricted && tabIndex + 1 < (IsPinned() ? _pinnedTabCount : numOfTabs));
     }
 
-    void Tab::UpdateTabViewIndex(const uint32_t idx, const uint32_t numTabs)
+    void Tab::UpdateTabViewIndex(const uint32_t idx, const uint32_t numTabs, const uint32_t pinnedCount)
     {
         ASSERT_UI_THREAD();
 
         TabViewIndex(idx);
         TabViewNumTabs(numTabs);
+        _pinnedTabCount = pinnedCount;
         _EnableMenuItems();
         _UpdateSwitchToTabKeyChord();
     }

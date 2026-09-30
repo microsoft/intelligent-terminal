@@ -447,10 +447,12 @@
     <value>सकयले टॅब बंद करात</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>टॅब फलक संकुचीत करात</value>
+    <value>बाजू पट्टी संकुचीत करात</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>टॅब फलक विस्तारीत करात</value>
+    <value>बाजू पट्टी विस्तारीत करात</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>टॅब गट विस्तारीत करात</value>
@@ -528,24 +530,24 @@
     <value>सगळे टॅब दाखयात</value>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>एजंट सत्रां</value>
-    <comment>Accessible name of the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
+    <value>एजंट</value>
+    <comment>Accessible name of the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>एजंट सत्रां</value>
-    <comment>Tooltip for the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
+    <value>एजंट</value>
+    <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
-    <value>एजंट सत्रां</value>
-    <comment>Header of the Agent sessions sidebar view, which lists all live and historical AI-agent sessions, not only session history.</comment>
+    <value>एजंट</value>
+    <comment>Header of the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>एजंट सत्रांचें दृश्य बंद करात</value>
-    <comment>Accessible name of the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
+    <value>एजंटांचें दृश्य बंद करात</value>
+    <comment>Accessible name of the button that closes the Agents sidebar view. Closing this view hides the sidebar; it does not terminate any agents or sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>एजंट सत्रांचें दृश्य बंद करात</value>
-    <comment>Tooltip for the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
+    <value>एजंटांचें दृश्य बंद करात</value>
+    <comment>Tooltip for the button that closes the Agents sidebar view. Closing this view hides the sidebar; it does not terminate any agents or sessions.</comment>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
     <value>एजंट सत्र सोदात</value>
@@ -597,10 +599,12 @@
     <value>सगळ्या Terminal विंडोंनी आडवे टॅब वापरात</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>उब्या टॅबांचेर वचात</value>
+    <value>बाजू पट्टीचेर वचात</value>
+    <comment>Context-menu command that changes the tab layout from horizontal tabs to the sidebar.</comment>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>सगळ्या Terminal विंडोंनी उबे टॅब वापरात</value>
+    <value>सगळ्या Terminal विंडोंनी बाजू पट्टी वापरात</value>
+    <comment>Tooltip for the command that changes the tab layout from horizontal tabs to the sidebar in every Terminal window.</comment>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>ह्या टॅबाच्या सकयले सगळे टॅब बंद करात</value>
@@ -612,6 +616,28 @@
   <data name="KeepTabRunningText" xml:space="preserve">
     <value>टॅब चालू दवरात</value>
     <comment>Command at the top of a vertical terminal tab's context menu that enables keeping all panes running after the tab or window is closed. Also labels the tab's keep-running status indicator. This does not pin the tab or save it for a restart.</comment>
+  </data>
+  <data name="PinTabText" xml:space="preserve">
+    <value>टॅब पिन करात</value>
+    <comment>Context menu action to keep a terminal tab at the start of the tab list until unpinned. Does not keep its processes running after closing or persist across restarts.</comment>
+  </data>
+  <data name="PinTabToolTip" xml:space="preserve">
+    <value>हो टॅब पिन न केल्ल्या टॅबां पयलीं व्हरात.</value>
+  </data>
+  <data name="UnpinTabText" xml:space="preserve">
+    <value>टॅबाचो पिन काडात</value>
+    <comment>Context menu action to move a pinned terminal tab back into the regular tab group.</comment>
+  </data>
+  <data name="UnpinTabToolTip" xml:space="preserve">
+    <value>हो टॅब पिन केल्ल्या टॅबां उपरांत व्हरात.</value>
+  </data>
+  <data name="PinnedTabName" xml:space="preserve">
+    <value>पिन केल्लो</value>
+    <comment>Accessibility name and tooltip for a terminal tab pinned at the beginning of the tab list.</comment>
+  </data>
+  <data name="CollapsedPinnedTabIcon.AutomationProperties.Name" xml:space="preserve">
+    <value>पिन केल्लो</value>
+    <comment>Accessibility name for the pin indicator on a terminal tab in the collapsed sidebar.</comment>
   </data>
   <data name="KeepTabRunningToolTip" xml:space="preserve">
     <value>टॅब वा विंडो बंद केल्या उपरांत ही टॅब फाटभूंयेर चालू दवरात.</value>

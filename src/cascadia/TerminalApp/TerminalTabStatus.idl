@@ -17,5 +17,6 @@ namespace TerminalApp
         Boolean IsInputBroadcastActive { get; set; };
         Windows.UI.Color TabColorIndicator { get; set; };
         Boolean IsKeepRunning { get; set; };
+        Boolean IsPinned { get; set; };
     }
 }

@@ -34,6 +34,16 @@ Describe 'Feature §1/§6 Settings editor UI (opened via Ctrl+, accelerator)' -T
         Test-UiElementExists -App $script:app -Selector 'AcpAgent' -TimeoutSec 8 | Should -BeTrue -Because 'the AI Agents page must show the agent picker'
     }
 
+    It 'Settings Tab Mode matches FRE' {
+        if (-not $script:settingsOpen) { Set-ItResult -Skipped -Because 'the WT window could not take foreground to open Settings (env precondition)'; return }
+        Invoke-SettingsNav -App $script:app -NavItem 'AppearanceNavItem' | Out-Null
+        $tabModeLabel = Get-WtReswTextRegex -Key 'FreOverlay_TabModeLabel.Text'
+        $tabModeLabel | Should -Not -BeNullOrEmpty
+        (Test-Until -TimeoutSec 8 -IntervalSec 0.5 -Condition {
+                (Get-UiTree -App $script:app -Depth 18) -match $tabModeLabel
+            }) | Should -BeTrue -Because 'Appearance must render the same localized Tab Mode label as FRE'
+    }
+
     It 'Model selection visible: the model control shows on the AI Agents page for a custom agent' {
         if (-not $script:settingsOpen) { Set-ItResult -Skipped -Because 'the WT window could not take foreground to open Settings (env precondition)'; return }
         Invoke-SettingsNav -App $script:app -NavItem 'AIAgentsNavItem'
