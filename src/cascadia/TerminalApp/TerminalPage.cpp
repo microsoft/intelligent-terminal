@@ -742,11 +742,11 @@ namespace winrt::TerminalApp::implementation
             richTabBroker.SetFieldDisplayNames(
                 gitStatusProviderId,
                 {
-                    { "agentStatus", winrt::to_string(RS_(L"VerticalTabsMetadataAgentStatus.Text")) },
-                    { "workingDirectory", winrt::to_string(RS_(L"VerticalTabsMetadataWorkingDirectory.Text")) },
-                    { "repository", winrt::to_string(RS_(L"VerticalTabsMetadataRepository.Text")) },
-                    { "branch", winrt::to_string(RS_(L"VerticalTabsMetadataBranch.Text")) },
-                    { "changes", winrt::to_string(RS_(L"VerticalTabsMetadataChanges.Text")) },
+                    { "agentStatus", winrt::to_string(RS_(L"VerticalTabsMetadataAgentStatus/Text")) },
+                    { "workingDirectory", winrt::to_string(RS_(L"VerticalTabsMetadataWorkingDirectory/Text")) },
+                    { "repository", winrt::to_string(RS_(L"VerticalTabsMetadataRepository/Text")) },
+                    { "branch", winrt::to_string(RS_(L"VerticalTabsMetadataBranch/Text")) },
+                    { "changes", winrt::to_string(RS_(L"VerticalTabsMetadataChanges/Text")) },
                 });
             if (const auto fields = richTabBroker.VisibleFields(gitStatusProviderId))
             {
@@ -10697,8 +10697,8 @@ namespace winrt::TerminalApp::implementation
         {
             firstPartyFields.emplace("agentStatus", winrt::to_string(_SidebarHistoryStatusText(*rawAgentStatus)));
         }
-        firstPartyFields.emplace("branchLabel", winrt::to_string(RS_(L"VerticalTabsMetadataBranch.Text")));
-        firstPartyFields.emplace("changesLabel", winrt::to_string(RS_(L"VerticalTabsMetadataChanges.Text")));
+        firstPartyFields.emplace("branchLabel", winrt::to_string(RS_(L"VerticalTabsMetadataBranch/Text")));
+        firstPartyFields.emplace("changesLabel", winrt::to_string(RS_(L"VerticalTabsMetadataChanges/Text")));
         return firstPartyFields;
     }
 
