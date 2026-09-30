@@ -98,7 +98,7 @@ commit. This does not establish availability in the Store release.
 | Validation | Observed result | Scope |
 |---|---|---|
 | Focused `Feature.SidebarTelemetry` keep-running run | **3 passed, 0 failed**, with real UI actions and typed ETW | Mark snapshots had `(TotalTabCount, KeepRunningTabCount)` of `(3,1)`, `(3,2)`, `(3,2)`, including a search-hidden tab and a split tab. Detach and live reattach preserved `KeepId`. The same helper/ACP session emitted `First` before retention and `Second` with `Reattached=true` after restoration. |
-| Release-report mapping | `C358` and `C359` checked in both full and incremental reports | Credits these focused contracts only, not the full sidebar suite. |
+| Release-report mapping | `C362` and `C363` checked in both full and incremental reports regenerated from the retained focused results | Reassigned after merging main to avoid the SessionRefresh `C358`/`C359` IDs. Credits these focused contracts only, not a new live run or the full sidebar suite. |
 | Telemetry decoder/collector helper tests | **8 passed** | Includes hidden-window launch of the elevated collector. |
 | Full sidebar scenario run | **Failed** in search/history setup before completing all contracts | Not superseded by the focused pass; no full-suite pass is claimed. |
 | Elevated `TabTests::KeepRunning*` run | **11 passed, 12 failed**, none blocked | Elevation allowed the test host to execute. Failures included the snapshot test's split setup, other assertions, and host crashes; C++ regression coverage is not all green. |
