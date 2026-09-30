@@ -262,10 +262,12 @@
     <value>Pechar as pestanas de abaixo</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>Contraer o panel de pestanas</value>
+    <value>Contraer a barra lateral</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>Expandir o panel de pestanas</value>
+    <value>Expandir a barra lateral</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>Expandir o grupo de pestanas</value>

@@ -446,10 +446,12 @@
     <value>താഴെയുള്ള ടാബുകൾ അടയ്ക്കുക</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>ടാബുകളുടെ പാളി ചുരുക്കുക</value>
+    <value>സൈഡ്ബാർ ചുരുക്കുക</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>ടാബുകളുടെ പാളി വികസിപ്പിക്കുക</value>
+    <value>സൈഡ്ബാർ വികസിപ്പിക്കുക</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>ടാബ് ഗ്രൂപ്പ് വികസിപ്പിക്കുക</value>

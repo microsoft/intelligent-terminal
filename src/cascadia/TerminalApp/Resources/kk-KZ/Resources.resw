@@ -443,10 +443,12 @@
     <value>Төмендегі қойындыларды жабу</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>Қойындылар тақтасын жию</value>
+    <value>Бүйірлік тақтаны жию</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>Қойындылар тақтасын жаю</value>
+    <value>Бүйірлік тақтаны жаю</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>Қойындылар тобын жаю</value>

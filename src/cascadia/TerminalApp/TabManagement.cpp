@@ -1997,7 +1997,10 @@ namespace winrt::TerminalApp::implementation
         _UpdateTabFilterStatus();
     }
 
-    void TerminalPage::_ApplyTabListProjection(const TerminalApp::Tab& changedTab)
+    void TerminalPage::_ApplyTabListProjection(
+        const TerminalApp::Tab& changedTab,
+        const bool refreshPaneItems,
+        const bool updateBookkeeping)
     {
         if (!_tabStrip)
         {
@@ -2014,54 +2017,74 @@ namespace winrt::TerminalApp::implementation
         _pendingTabProjectionRefresh = false;
         const bool positionOperationsBlocked = _IsTabListPositionOperationBlocked();
         const auto highlightQuery = _IsTabSearchEffective() ? _tabSearchQuery : winrt::hstring{};
+        const auto tabStrip = _isVerticalLayout ?
+                                  winrt::get_self<implementation::TabStrip>(_tabStrip) :
+                                  nullptr;
 
-        const auto apply = [&](const TerminalApp::Tab& tab) {
+        const auto apply = [&](const TerminalApp::Tab& tab, const TerminalApp::TabStripDisplayItem& projectedDisplay) {
             const auto item = tab.TabViewItem();
-            auto header = item.Header().try_as<TerminalApp::TabHeaderControl>();
-            if (!header && _isVerticalLayout)
+            const auto display = projectedDisplay ? projectedDisplay :
+                                                    (tabStrip ? tabStrip->DisplayItemForTab(item) : nullptr);
+            auto header = display ?
+                              display.Header().try_as<TerminalApp::TabHeaderControl>() :
+                              item.Header().try_as<TerminalApp::TabHeaderControl>();
+            if (display)
             {
-                header = winrt::get_self<implementation::TabStrip>(_tabStrip)->HeaderForTab(item).try_as<TerminalApp::TabHeaderControl>();
+                display.SearchText(highlightQuery);
+                for (const auto& pane : display.PaneItems())
+                {
+                    pane.HighlightQuery(highlightQuery);
+                }
             }
             if (header)
             {
                 header.SearchText(highlightQuery);
             }
-            if (_isVerticalLayout)
-            {
-                winrt::get_self<implementation::TabStrip>(_tabStrip)->SetTabSearchText(item, highlightQuery);
-            }
             const auto tabImpl = _GetTabImpl(tab);
-            const auto visible = _IsTabVisibleInProjection(tabImpl);
+            if (tabImpl && _isVerticalLayout && refreshPaneItems)
+            {
+                _RefreshTabStripPaneItems(tabImpl, display);
+            }
+            const auto visible = _IsTabVisibleInProjection(tabImpl, display);
             if (tabImpl)
             {
                 tabImpl->SetTabListPositionOperationsRestricted(positionOperationsBlocked);
                 tabImpl->SetTabPointerInteractionRestricted(_IsCollapsedVerticalRail());
-                if (_isVerticalLayout)
-                {
-                    _RefreshTabStripPaneItems(tabImpl);
-                }
             }
-            _tabStrip.SetTabItemVisibility(item, visible);
+            if (display)
+            {
+                tabStrip->SetTabItemVisibility(display, visible);
+            }
+            else
+            {
+                _tabStrip.SetTabItemVisibility(item, visible);
+            }
         };
         if (!refreshAll)
         {
-            apply(changedTab);
+            apply(changedTab, nullptr);
         }
         else
         {
-            for (const auto& tab : _tabs)
+            for (uint32_t index = 0; index < _tabs.Size(); ++index)
             {
-                apply(tab);
+                apply(_tabs.GetAt(index), tabStrip ? tabStrip->DisplayItemAt(index) : nullptr);
             }
         }
 
-        _UpdateTabFilterStatus();
+        if (updateBookkeeping)
+        {
+            _UpdateTabFilterStatus();
+        }
         const auto canDragDrop = CanDragDrop() &&
                                  !positionOperationsBlocked &&
                                  !_IsCollapsedVerticalRail();
         _tabStrip.CanReorderTabs(canDragDrop);
         _tabStrip.CanDragTabs(canDragDrop);
-        _UpdateSidebarHistoryCurrentSession();
+        if (updateBookkeeping)
+        {
+            _UpdateSidebarHistoryCurrentSession();
+        }
     }
 
     void TerminalPage::_UpdateTabFilterStatus()
@@ -2095,7 +2118,7 @@ namespace winrt::TerminalApp::implementation
         return tab && (tab->IsAgentTab() || _TabHasCliAgent(tab));
     }
 
-    bool TerminalPage::_MatchesTabSearch(const Tab& tab) const
+    bool TerminalPage::_MatchesTabSearch(const Tab& tab, const TerminalApp::TabStripDisplayItem& projectedDisplay) const
     {
         if (!_IsTabSearchEffective())
         {
@@ -2108,31 +2131,78 @@ namespace winrt::TerminalApp::implementation
             return true;
         }
 
-        const auto titleValue = tab.Title();
-        const std::wstring_view title{ titleValue.c_str(), titleValue.size() };
-        if (query.size() > title.size())
+        const auto matches = [&](const std::wstring_view value) {
+            if (query.size() > value.size())
+            {
+                return false;
+            }
+
+            for (size_t offset = 0; offset + query.size() <= value.size(); ++offset)
+            {
+                if (til::compare_ordinal_insensitive(value.substr(offset, query.size()), query) == 0)
+                {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        const auto title = tab.Title();
+        if (matches(std::wstring_view{ title.c_str(), title.size() }))
+        {
+            return true;
+        }
+
+        const auto tabStrip = _isVerticalLayout && _tabStrip ?
+                                  winrt::get_self<implementation::TabStrip>(_tabStrip) :
+                                  nullptr;
+        const auto display = projectedDisplay ? projectedDisplay :
+                                                (tabStrip ? tabStrip->DisplayItemForTab(tab.TabViewItem()) : nullptr);
+        const auto header = display ?
+                                display.Header().try_as<TerminalApp::TabHeaderControl>() :
+                                tab.TabViewItem().Header().try_as<TerminalApp::TabHeaderControl>();
+        if (header && header.IsMetadataVisible())
+        {
+            const auto metadata = header.MetadataText();
+            if (matches(std::wstring_view{ metadata.c_str(), metadata.size() }))
+            {
+                return true;
+            }
+        }
+
+        if (!display || display.ChildrenVisibility() != Visibility::Visible)
         {
             return false;
         }
 
-        for (size_t offset = 0; offset + query.size() <= title.size(); ++offset)
+        for (const auto& pane : display.PaneItems())
         {
-            if (til::compare_ordinal_insensitive(title.substr(offset, query.size()), query) == 0)
+            const auto title = pane.Title();
+            if (matches(std::wstring_view{ title.c_str(), title.size() }))
             {
                 return true;
+            }
+
+            if (pane.MetadataVisibility() == Visibility::Visible)
+            {
+                const auto metadata = pane.MetadataText();
+                if (matches(std::wstring_view{ metadata.c_str(), metadata.size() }))
+                {
+                    return true;
+                }
             }
         }
         return false;
     }
 
-    bool TerminalPage::_IsTabVisibleInProjection(const winrt::com_ptr<Tab>& tab) const
+    bool TerminalPage::_IsTabVisibleInProjection(const winrt::com_ptr<Tab>& tab, const TerminalApp::TabStripDisplayItem& display) const
     {
         if (!tab)
         {
             return !_IsTabSearchEffective() && !_IsAgentScopeEffective();
         }
         return (!_IsAgentScopeEffective() || _MatchesTabScope(tab)) &&
-               _MatchesTabSearch(*tab);
+               _MatchesTabSearch(*tab, display);
     }
 
     bool TerminalPage::_IsKnownAgentCliTitle(const std::wstring_view title) noexcept
@@ -2178,6 +2248,12 @@ namespace winrt::TerminalApp::implementation
                (pane.SessionId != winrt::guid{} &&
                 (_activeCliAgentPanes.contains(pane.SessionId) ||
                  _paneAgentSessions.contains(pane.SessionId)));
+    }
+
+    bool TerminalPage::_IsPaneRowProjectionEligible(const Tab::VisiblePaneSnapshot& pane) const
+    {
+        return !pane.IsAgentPane &&
+               (!_IsAgentScopeEffective() || _MatchesPaneAgentScope(pane));
     }
 
     // Spec A §4.2: TabStrip's SelectionChanged uses custom args (TabStripSelectionChangedEventArgs),

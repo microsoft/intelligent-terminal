@@ -261,10 +261,12 @@
     <value>Tanca les pestanyes de sota</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>Redueix el tauler de pestanyes</value>
+    <value>Redueix la barra lateral</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>Expandeix el tauler de pestanyes</value>
+    <value>Expandeix la barra lateral</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>Expandeix el grup de pestanyes</value>

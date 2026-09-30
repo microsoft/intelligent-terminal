@@ -444,10 +444,12 @@
     <value>Uždaryti žemiau esančius skirtukus</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>Sutraukti skirtukų sritį</value>
+    <value>Sutraukti šoninę juostą</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>Išplėsti skirtukų sritį</value>
+    <value>Išplėsti šoninę juostą</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>Išplėsti skirtukų grupę</value>

@@ -309,10 +309,12 @@
     <value>ئاستىدىكى بەتكۈچلەرنى تاقاش</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>بەتكۈچ تاختىسىنى يىغىش</value>
+    <value>يان بالداقنى يىغىش</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>بەتكۈچ تاختىسىنى كېڭەيتىش</value>
+    <value>يان بالداقنى كېڭەيتىش</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>بەتكۈچ گۇرۇپپىسىنى كېڭەيتىش</value>

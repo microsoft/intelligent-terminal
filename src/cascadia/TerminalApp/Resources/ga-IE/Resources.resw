@@ -330,10 +330,12 @@
     <value>Dún na cluaisíní thíos</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>Laghdaigh pána na gcluaisíní</value>
+    <value>Laghdaigh an barra taoibh</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>Leathnaigh pána na gcluaisíní</value>
+    <value>Leathnaigh an barra taoibh</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>Leathnaigh grúpa na gcluaisíní</value>

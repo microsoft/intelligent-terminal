@@ -443,10 +443,12 @@
     <value>بستن زبانه‌های زیر</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>جمع کردن پنل زبانه‌ها</value>
+    <value>جمع کردن نوار کناری</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>باز کردن پنل زبانه‌ها</value>
+    <value>باز کردن نوار کناری</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>باز کردن گروه زبانه‌ها</value>

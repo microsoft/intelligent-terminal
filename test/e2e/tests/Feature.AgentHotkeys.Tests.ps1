@@ -219,7 +219,7 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
                 Should -BeTrue -Because 'history must reopen and focus search after being toggled closed'
 
             & $script:ToggleSidebarHotkey $vertical
-            Wait-UiElement -App $vertical -Selector 'Expand tabs pane' | Out-Null
+            Wait-UiElement -App $vertical -Selector 'Expand sidebar' | Out-Null
             $hiddenHistory = Get-UiElement -App $vertical -Selector 'HistorySearchTextBox'
             ($hiddenHistory -and -not $hiddenHistory.isOffscreen -and $hiddenHistory.width -gt 0) |
                 Should -BeFalse -Because 'collapsing the sidebar must close its history view'
@@ -230,9 +230,9 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
             $reopened | Should -BeTrue -Because 'the history accelerator must expand a collapsed sidebar and restore history search focus'
 
             & $script:OpenAgentHistoryHotkey $vertical
-            Wait-UiElement -App $vertical -Selector 'Expand tabs pane' | Out-Null
+            Wait-UiElement -App $vertical -Selector 'Expand sidebar' | Out-Null
             & $script:ToggleSidebarHotkey $vertical
-            Wait-UiElement -App $vertical -Selector 'Collapse tabs pane' | Out-Null
+            Wait-UiElement -App $vertical -Selector 'Collapse sidebar' | Out-Null
             $terminal = Get-ActivePane -App $vertical
             $split = Split-WtPane -App $vertical -SessionId $terminal.session_id -Direction right -Command 'pwsh.exe -NoLogo -NoProfile -NoExit'
             Open-AgentPane -App $vertical | Out-Null
@@ -302,14 +302,14 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
                 foreach ($initiallyCollapsed in @($false, $true)) {
                     if ($initiallyCollapsed) {
                         & $script:ToggleSidebarHotkey $vertical
-                        Wait-UiElement -App $vertical -Selector 'Expand tabs pane' | Out-Null
+                        Wait-UiElement -App $vertical -Selector 'Expand sidebar' | Out-Null
                     }
                     foreach ($closeWithButton in @($false, $true)) {
                         & $script:OpenAgentHistoryHotkey $vertical
                         (Test-Until -TimeoutSec 5 -Condition { & $script:HistorySearchFocused $vertical }) | Should -BeTrue
                         if ($closeWithButton) { Invoke-UiElement -App $vertical -Selector HistoryCloseButton | Out-Null }
                         else { & $script:OpenAgentHistoryHotkey $vertical }
-                        $expectedLabel = if ($initiallyCollapsed) { 'Expand tabs pane' } else { 'Collapse tabs pane' }
+                        $expectedLabel = if ($initiallyCollapsed) { 'Expand sidebar' } else { 'Collapse sidebar' }
                         Wait-UiElement -App $vertical -Selector $expectedLabel | Out-Null
                         (Test-Until -TimeoutSec 5 -Condition $focusRestored) |
                             Should -BeTrue -Because "closing history must restore the exact $($origin.Name) input and original sidebar state"
@@ -317,7 +317,7 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
                     }
                     if ($initiallyCollapsed) {
                         & $script:ToggleSidebarHotkey $vertical
-                        Wait-UiElement -App $vertical -Selector 'Collapse tabs pane' | Out-Null
+                        Wait-UiElement -App $vertical -Selector 'Collapse sidebar' | Out-Null
                         (Test-Until -TimeoutSec 5 -Condition $focusRestored) |
                             Should -BeTrue -Because 'expanding the sidebar must not steal input focus or activate search'
                     }
@@ -325,7 +325,7 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
                 & $script:OpenAgentHistoryHotkey $vertical
                 (Test-Until -TimeoutSec 5 -Condition { & $script:HistorySearchFocused $vertical }) | Should -BeTrue
                 & $script:ToggleSidebarHotkey $vertical
-                Wait-UiElement -App $vertical -Selector 'Expand tabs pane' | Out-Null
+                Wait-UiElement -App $vertical -Selector 'Expand sidebar' | Out-Null
                 (Test-Until -TimeoutSec 5 -Condition {
                     $focused = [Windows.Automation.AutomationElement]::FocusedElement
                     $focused -and $focused.Current.ProcessId -eq $vertical.Pid -and $focused.Current.HasKeyboardFocus -and
@@ -335,7 +335,7 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
                 & $verifyPreservation
                 $fallbackFocus = [Windows.Automation.AutomationElement]::FocusedElement
                 & $script:ToggleSidebarHotkey $vertical
-                Wait-UiElement -App $vertical -Selector 'Collapse tabs pane' | Out-Null
+                Wait-UiElement -App $vertical -Selector 'Collapse sidebar' | Out-Null
                 (Test-Until -TimeoutSec 5 -Condition {
                     [Windows.Automation.Automation]::Compare(
                         $fallbackFocus, [Windows.Automation.AutomationElement]::FocusedElement)
@@ -445,7 +445,7 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
             Set-WtSetting -App $vertical -Key tabLayout -Value 'vertical' | Out-Null
             Wait-UiElement -App $vertical -Selector 'SearchTabsButton' | Out-Null
             $sidebarReady = Test-Until -TimeoutSec 6 -IntervalSec 0.5 -Condition {
-                $button = Get-UiElement -App $vertical -Selector 'Collapse tabs pane'
+                $button = Get-UiElement -App $vertical -Selector 'Collapse sidebar'
                 $button -and -not $button.isOffscreen -and $button.width -gt 0 -and $button.height -gt 0
             }
             Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'sidebar-expanded-before.png') | Out-Null
@@ -453,7 +453,7 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
 
             & $script:ToggleSidebarHotkey $vertical
             $sidebarCollapsed = Test-Until -TimeoutSec 6 -IntervalSec 0.5 -Condition {
-                $button = Get-UiElement -App $vertical -Selector 'Expand tabs pane'
+                $button = Get-UiElement -App $vertical -Selector 'Expand sidebar'
                 $button -and -not $button.isOffscreen -and $button.width -gt 0 -and $button.height -gt 0
             }
             Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'sidebar-after-first-hotkey.png') | Out-Null
@@ -461,7 +461,7 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
 
             & $script:ToggleSidebarHotkey $vertical
             $sidebarExpanded = Test-Until -TimeoutSec 6 -IntervalSec 0.5 -Condition {
-                $button = Get-UiElement -App $vertical -Selector 'Collapse tabs pane'
+                $button = Get-UiElement -App $vertical -Selector 'Collapse sidebar'
                 $button -and -not $button.isOffscreen -and $button.width -gt 0 -and $button.height -gt 0
             }
             Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'sidebar-expanded-after.png') | Out-Null
@@ -479,24 +479,24 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
             $tooltipCondition = [Windows.Automation.PropertyCondition]::new(
                 [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::ToolTip)
             $states = @(
-                @{ Name = 'collapse'; Label = 'Collapse tabs pane'; Chord = 'Ctrl+Shift+S' }
-                @{ Name = 'expand'; Label = 'Expand tabs pane'; Chord = 'Ctrl+Shift+S'; Collapsed = $true }
-                @{ Name = 'additional'; Label = 'Collapse tabs pane'; Chord = 'Ctrl+Shift+Y'; Reload = @{
+                @{ Name = 'collapse'; Label = 'Collapse sidebar'; Chord = 'Ctrl+Shift+S' }
+                @{ Name = 'expand'; Label = 'Expand sidebar'; Chord = 'Ctrl+Shift+S'; Collapsed = $true }
+                @{ Name = 'additional'; Label = 'Collapse sidebar'; Chord = 'Ctrl+Shift+Y'; Reload = @{
                     actions = @(@{ command = 'toggleSidebar'; keys = 'ctrl+shift+y' })
                 } }
-                @{ Name = 'rebound'; Label = 'Collapse tabs pane'; Chord = 'Ctrl+Shift+Y'; Reload = @{
+                @{ Name = 'rebound'; Label = 'Collapse sidebar'; Chord = 'Ctrl+Shift+Y'; Reload = @{
                     actions = @(
                         @{ command = 'unbound'; keys = 'ctrl+shift+s' }
                         @{ command = 'toggleSidebar'; keys = 'ctrl+shift+y' }
                     )
                 } }
-                @{ Name = 'unbound'; Label = 'Collapse tabs pane'; Chord = ''; Reload = @{
+                @{ Name = 'unbound'; Label = 'Collapse sidebar'; Chord = ''; Reload = @{
                     actions = @(@{ command = 'unbound'; keys = 'ctrl+shift+s' })
                 } }
-                @{ Name = 'reassigned'; Label = 'Collapse tabs pane'; Chord = ''; Reload = @{
+                @{ Name = 'reassigned'; Label = 'Collapse sidebar'; Chord = ''; Reload = @{
                     actions = @(@{ command = 'copy'; keys = 'ctrl+shift+s' })
                 } }
-                @{ Name = 'overridden'; Label = 'Collapse tabs pane'; Chord = ''; Reload = @{
+                @{ Name = 'overridden'; Label = 'Collapse sidebar'; Chord = ''; Reload = @{
                     actions = @(@{ command = 'copy'; id = 'Terminal.ToggleSidebar' })
                 } }
             )
@@ -564,7 +564,8 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
                                         [string]::Equals($_.Current.Name, $state.Chord, [StringComparison]::Ordinal)
                                     })
                                     if ($titles.Count -eq 1 -and $shortcuts.Count -eq 1 -and
-                                        $shortcuts[0].Current.BoundingRectangle.Top -ge $titles[0].Current.BoundingRectangle.Bottom) {
+                                        $shortcuts[0].Current.BoundingRectangle.Left -gt $titles[0].Current.BoundingRectangle.Right -and
+                                        [Math]::Abs($shortcuts[0].Current.BoundingRectangle.Top - $titles[0].Current.BoundingRectangle.Top) -lt 1) {
                                         return $text
                                     }
                                 }

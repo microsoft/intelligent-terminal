@@ -279,7 +279,11 @@ namespace winrt::TerminalApp::implementation
     void Tab::_UpdateSwitchToTabKeyChord()
     {
         const auto id = fmt::format(FMT_COMPILE(L"Terminal.SwitchToTab{}"), _TabViewIndex);
-        const auto keyChord{ _actionMap.GetKeyBindingForAction(id) };
+        auto keyChord{ _actionMap.GetKeyBindingForAction(id) };
+        if (!keyChord && TabViewNumTabs() != 0 && _TabViewIndex == TabViewNumTabs() - 1)
+        {
+            keyChord = _actionMap.GetKeyBindingForAction(L"Terminal.SwitchToLastTab");
+        }
         const auto keyChordText = keyChord ? KeyChordSerialization::ToString(keyChord) : L"";
 
         if (_keyChord == keyChordText)
@@ -288,6 +292,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         _keyChord = keyChordText;
+        Automation::AutomationProperties::SetAcceleratorKey(TabViewItem(), _keyChord);
         _UpdateToolTip();
     }
 
@@ -299,8 +304,11 @@ namespace winrt::TerminalApp::implementation
     // - <none>
     void Tab::_UpdateToolTip()
     {
+        const auto title = _CreateToolTipTitle();
+        std::wstring tooltipText{ title };
+
         auto titleRun = WUX::Documents::Run();
-        titleRun.Text(_CreateToolTipTitle());
+        titleRun.Text(title);
 
         auto textBlock = WUX::Controls::TextBlock{};
         textBlock.TextWrapping(WUX::TextWrapping::Wrap);
@@ -317,6 +325,8 @@ namespace winrt::TerminalApp::implementation
 
         if (_isVerticalTabLayout && !_richTabTooltipText.empty())
         {
+            tooltipText.append(L"\n");
+            tooltipText.append(_richTabTooltipText);
             auto metadataRun = WUX::Documents::Run();
             metadataRun.Text(_richTabTooltipText);
             textBlock.Inlines().Append(WUX::Documents::LineBreak{});
@@ -325,6 +335,8 @@ namespace winrt::TerminalApp::implementation
 
         if (!_keyChord.empty())
         {
+            tooltipText.append(L"\n");
+            tooltipText.append(_keyChord);
             auto keyChordRun = WUX::Documents::Run();
             keyChordRun.Text(_keyChord);
             keyChordRun.FontStyle(winrt::Windows::UI::Text::FontStyle::Italic);
@@ -335,6 +347,8 @@ namespace winrt::TerminalApp::implementation
         WUX::Controls::ToolTip toolTip{};
         toolTip.Content(textBlock);
         WUX::Controls::ToolTipService::SetToolTip(TabViewItem(), toolTip);
+        Automation::AutomationProperties::SetHelpText(TabViewItem(), tooltipText);
+        PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"ToolTip" });
     }
 
     // Method Description:

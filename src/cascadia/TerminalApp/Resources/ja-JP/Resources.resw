@@ -182,10 +182,12 @@
     <value>下のタブを閉じる</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>タブ ペインを折りたたむ</value>
+    <value>サイドバーを折りたたむ</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>タブ ペインを展開する</value>
+    <value>サイドバーを展開する</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>タブ グループを展開する</value>

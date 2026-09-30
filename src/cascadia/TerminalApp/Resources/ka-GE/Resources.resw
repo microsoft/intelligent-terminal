@@ -330,10 +330,12 @@
     <value>ქვემოთ მოცემული ჩანართების დახურვა</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>ჩანართების პანელის აკეცვა</value>
+    <value>გვერდითი ზოლის აკეცვა</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>ჩანართების პანელის გაშლა</value>
+    <value>გვერდითი ზოლის გაშლა</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>ჩანართების ჯგუფის გაშლა</value>

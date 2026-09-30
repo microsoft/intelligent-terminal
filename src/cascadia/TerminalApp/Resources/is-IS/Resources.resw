@@ -443,10 +443,12 @@
     <value>Loka flipum fyrir neðan</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>Fella flipaspjald saman</value>
+    <value>Fella hliðarstiku saman</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>Stækka flipaspjald</value>
+    <value>Stækka hliðarstiku</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>Stækka flipahóp</value>

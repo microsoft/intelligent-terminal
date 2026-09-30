@@ -330,10 +330,12 @@
     <value>Dùin na tabaichean gu h-ìosal</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>Co-theannaich panail nan tabaichean</value>
+    <value>Co-theannaich am bàr-taoibh</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>Leudaich panail nan tabaichean</value>
+    <value>Leudaich am bàr-taoibh</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>Leudaich buidheann nan tabaichean</value>

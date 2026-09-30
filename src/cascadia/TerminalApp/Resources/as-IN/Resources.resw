@@ -446,10 +446,12 @@
     <value>তলৰ টেবসমূহ বন্ধ কৰক</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>টেব ফলক সংকুচিত কৰক</value>
+    <value>চাইডবাৰ সংকুচিত কৰক</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>টেব ফলক বিস্তাৰ কৰক</value>
+    <value>চাইডবাৰ বিস্তাৰ কৰক</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>টেব গোট বিস্তাৰ কৰক</value>

@@ -108,16 +108,22 @@
                   FontSize="12"
                   Glyph="&#xE8EE;"
                   Visibility="{x:Bind TabStatus.IsKeepRunning, Mode=OneWay}" />
-        <TextBlock x:Name="HeaderMetadataTextBlock"
-                   Grid.Row="1"
-                   Grid.ColumnSpan="2"
-                   Margin="0,1,0,0"
-                   MaxLines="2"
-                   FontSize="10"
-                   Opacity="0.72"
-                   Text="{x:Bind MetadataText, Mode=OneWay}"
-                   TextTrimming="CharacterEllipsis"
-                   Visibility="Collapsed"
-                   AutomationProperties.Name="{x:Bind MetadataAutomationName, Mode=OneWay}" />
+        <local:HighlightedTextControl x:Name="HeaderMetadataTextBlock"
+                                      Grid.Row="1"
+                                      Grid.ColumnSpan="2"
+                                      Margin="0,1,0,0"
+                                      Opacity="0.72"
+                                      SearchText="{x:Bind SearchText, Mode=OneWay}"
+                                      Text="{x:Bind MetadataText, Mode=OneWay}"
+                                      Visibility="Collapsed"
+                                      AutomationProperties.Name="{x:Bind MetadataAutomationName, Mode=OneWay}">
+            <local:HighlightedTextControl.TextBlockStyle>
+                <Style TargetType="TextBlock">
+                    <Setter Property="MaxLines" Value="2" />
+                    <Setter Property="FontSize" Value="10" />
+                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                </Style>
+            </local:HighlightedTextControl.TextBlockStyle>
+        </local:HighlightedTextControl>
     </Grid>
 </UserControl>

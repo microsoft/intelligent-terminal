@@ -262,10 +262,12 @@
     <value>ປິດແທັບຢູ່ລຸ່ມ</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>ຫຍໍ້ແຜງແທັບ</value>
+    <value>ຫຍໍ້ແຖບດ້ານຂ້າງ</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>ຂະຫຍາຍແຜງແທັບ</value>
+    <value>ຂະຫຍາຍແຖບດ້ານຂ້າງ</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>ຂະຫຍາຍກຸ່ມແທັບ</value>

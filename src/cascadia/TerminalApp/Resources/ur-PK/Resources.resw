@@ -426,10 +426,12 @@
     <value>نیچے موجود ٹیبز بند کریں</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>ٹیبز پین سکیڑیں</value>
+    <value>سائیڈ بار سکیڑیں</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>ٹیبز پین پھیلائیں</value>
+    <value>سائیڈ بار پھیلائیں</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>ٹیب گروپ پھیلائیں</value>

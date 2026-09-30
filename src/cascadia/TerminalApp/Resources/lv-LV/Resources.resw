@@ -444,10 +444,12 @@
     <value>Aizvērt zemāk esošās cilnes</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>Sakļaut ciļņu rūti</value>
+    <value>Sakļaut sānjoslu</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>Izvērst ciļņu rūti</value>
+    <value>Izvērst sānjoslu</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>Izvērst ciļņu grupu</value>

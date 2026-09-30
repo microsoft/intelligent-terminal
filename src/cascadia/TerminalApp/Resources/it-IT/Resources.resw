@@ -181,10 +181,12 @@
     <value>Chiudi schede sottostanti</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>Comprimi riquadro schede</value>
+    <value>Comprimi barra laterale</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>Espandi riquadro schede</value>
+    <value>Espandi barra laterale</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>Espandi gruppo di schede</value>

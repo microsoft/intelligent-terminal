@@ -442,10 +442,12 @@
     <value>Aşağıdakı tabları bağla</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>Tablar panelini yığcamlaşdır</value>
+    <value>Yan paneli yığcamlaşdır</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>Tablar panelini genişləndir</value>
+    <value>Yan paneli genişləndir</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>Tab qrupunu genişləndir</value>
