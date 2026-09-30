@@ -145,5 +145,5 @@ These are required checks for this contract, not claims of completed validation:
   casing, remapping, and unbinding.
 
 The related release-checklist IDs remain `C110` (History), `C112` (action
-dispatch), `C349` (sidebar toggle), and `C350` (hint presentation). Earlier
+dispatch), `C365` (sidebar toggle), and `C366` (hint presentation). Earlier
 results for a different behavior contract are not acceptance of this revision.
