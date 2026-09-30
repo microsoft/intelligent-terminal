@@ -168,7 +168,13 @@ typed decoder without policy writes. Select `ITE2E_PACKAGE=Dev`, opt in with
 `ITE2E_EXPECTED_WTA_SHA256` from the new build. The suite refuses an active Dev
 package, uses a deterministic ACP fixture without model quota, restores
 settings/state byte-for-byte, and retains real UI phase evidence and raw ETW
-artifacts. Its `row_count` oracle counts the unified Agent view's session rows
+artifacts. Before deploying Dev from another branch, compare its generated
+`AppxManifest.xml` version with the installed package: the safe Debug deployment
+script rejects downgrades before `DeployAppRecipe.exe` can unregister the working
+package. Bump `Package-Dev.appxmanifest` and rebuild rather than removing the
+installed package (which would discard LocalState).
+
+Its `row_count` oracle counts the unified Agent view's session rows
 on first successful load, independently of live-tab search and split-pane
 children. `SidebarTabPinned` means enabling Keep tab running,
 not tab-order pinning. Row-field selection verifies canonical field IDs for
