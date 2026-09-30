@@ -4112,9 +4112,12 @@ namespace TerminalAppLocalTests
         Grid host;
 
         TestOnUIThread([&]() {
+            const auto window = Window::Current();
+            const auto previousContent = window.Content();
+            const auto restore = wil::scope_exit([&]() { window.Content(previousContent); });
             host.Children().Append(strip);
-            Window::Current().Content(host);
-            Window::Current().Activate();
+            window.Content(host);
+            window.Activate();
             host.UpdateLayout();
 
             const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
