@@ -294,6 +294,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabThemeChangesDoNotReprojectPanes);
         TEST_METHOD(VerticalTabColorsFollowSidebarTheme);
         TEST_METHOD(VerticalTabStripUsesNativeInteractionStates);
+        TEST_METHOD(VerticalTabStripRefreshesHighContrastColors);
         TEST_METHOD(VerticalTabGroupingIgnoresAgentPane);
         TEST_METHOD(AgentViewFiltersSplitPaneChildren);
         TEST_METHOD(VerticalTabSearchMatchesCommittedTitle);
@@ -7282,6 +7283,57 @@ namespace TerminalAppLocalTests
             const auto replacementGrid = replacementRoot.Children().GetAt(0).as<Grid>();
             const auto replacementColor = replacementGrid.FindName(L"TabColorSelectionBackground").as<Border>();
             VERIFY_ARE_EQUAL(uint8_t{ 0 }, replacementColor.Background().as<Media::SolidColorBrush>().Color().A);
+        });
+    }
+
+    void TabTests::VerticalTabStripRefreshesHighContrastColors()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+            strip.Width(240);
+            strip.Height(200);
+            winrt::MUX::Controls::TabViewItem selectedTab;
+            selectedTab.Header(winrt::TerminalApp::TabHeaderControl{});
+            selectedTab.Background(Media::SolidColorBrush{ winrt::Windows::UI::Colors::Red() });
+            winrt::MUX::Controls::TabViewItem inactiveTab;
+            inactiveTab.Header(winrt::TerminalApp::TabHeaderControl{});
+            Media::SolidColorBrush inactiveBrush{ winrt::Windows::UI::Colors::Blue() };
+            inactiveBrush.Opacity(0.3);
+            inactiveTab.Background(inactiveBrush);
+            strip.TabItems().Append(selectedTab);
+            strip.TabItems().Append(inactiveTab);
+            Window::Current().Content(strip);
+            Window::Current().Activate();
+            strip.SelectedItem(selectedTab);
+            strip.UpdateLayout();
+
+            const auto selectedContainer = strip.ContainerFromIndex(0).as<ListViewItem>();
+            const auto inactiveContainer = strip.ContainerFromIndex(1).as<ListViewItem>();
+            const auto colorBorder = [](const ListViewItem& container) {
+                return container.ContentTemplateRoot().as<StackPanel>().Children().GetAt(0).as<Grid>()
+                    .FindName(L"TabColorSelectionBackground").as<Border>();
+            };
+            const auto selectedBorder = colorBorder(selectedContainer);
+            const auto inactiveBorder = colorBorder(inactiveContainer);
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+
+            impl->_setHighContrastMode(false);
+            VERIFY_ARE_EQUAL(winrt::Windows::UI::Colors::Red(), selectedBorder.Background().as<Media::SolidColorBrush>().Color());
+            VERIFY_ARE_EQUAL(1.0, selectedBorder.Background().as<Media::SolidColorBrush>().Opacity());
+            VERIFY_ARE_EQUAL(winrt::Windows::UI::Colors::Blue(), inactiveBorder.Background().as<Media::SolidColorBrush>().Color());
+            VERIFY_ARE_EQUAL(0.3, inactiveBorder.Background().as<Media::SolidColorBrush>().Opacity());
+
+            impl->_setHighContrastMode(true);
+            VERIFY_ARE_EQUAL(winrt::Windows::UI::Colors::Red(), selectedBorder.Background().as<Media::SolidColorBrush>().Color());
+            VERIFY_ARE_EQUAL(1.0, selectedBorder.Background().as<Media::SolidColorBrush>().Opacity());
+            VERIFY_ARE_EQUAL(uint8_t{ 0 }, inactiveBorder.Background().as<Media::SolidColorBrush>().Color().A);
+            VERIFY_ARE_EQUAL(winrt::Windows::UI::Colors::Blue(), inactiveBrush.Color());
+
+            impl->_setHighContrastMode(false);
+            VERIFY_ARE_EQUAL(winrt::Windows::UI::Colors::Blue(), inactiveBorder.Background().as<Media::SolidColorBrush>().Color());
+            VERIFY_ARE_EQUAL(0.3, inactiveBorder.Background().as<Media::SolidColorBrush>().Opacity());
+            VERIFY_IS_TRUE(strip.ContainerFromIndex(0) == selectedContainer);
+            VERIFY_IS_TRUE(strip.ContainerFromIndex(1) == inactiveContainer);
         });
     }
 

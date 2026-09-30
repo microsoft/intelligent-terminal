@@ -297,16 +297,14 @@ namespace winrt::TerminalApp::implementation
 
         ItemsList().ItemsSource(_displayItems);
         _vectorChangedRevoker = _tabItems.VectorChanged(auto_revoke, { get_weak(), &TabStrip::_onItemsVectorChanged });
+        _highContrast = _accessibilitySettings.HighContrast();
         _highContrastChangedRevoker = _accessibilitySettings.HighContrastChanged(auto_revoke, [weakThis{ get_weak() }, dispatcher{ Dispatcher() }](auto&&, auto&&) {
             try
             {
                 dispatcher.RunAsync(Windows::UI::Core::CoreDispatcherPriority::Normal, [weakThis]() {
                     if (const auto self = weakThis.get())
                     {
-                        for (const auto& display : self->_displayItems)
-                        {
-                            self->_refreshDisplayItemVisuals(display);
-                        }
+                        self->_setHighContrastMode(self->_accessibilitySettings.HighContrast());
                     }
                 });
             }
@@ -585,6 +583,15 @@ namespace winrt::TerminalApp::implementation
             container, item && item.IsCurrent() ? RS_(L"VerticalTabsHistoryCurrentSession") : winrt::hstring{});
     }
 
+    void TabStrip::_setHighContrastMode(bool enabled)
+    {
+        _highContrast = enabled;
+        for (const auto& display : _displayItems)
+        {
+            _refreshDisplayItemVisuals(display);
+        }
+    }
+
     void TabStrip::_updateDisplayItemVisuals(FrameworkElement const& root,
                                              TerminalApp::TabStripDisplayItem const& display)
     {
@@ -623,7 +630,7 @@ namespace winrt::TerminalApp::implementation
             const auto selected = display.SelectionVisibility() == Visibility::Visible;
             if (selectionBackground)
             {
-                const auto showColor = tabColor && (selected || !Windows::UI::ViewManagement::AccessibilitySettings{}.HighContrast());
+                const auto showColor = tabColor && (selected || !_highContrast);
                 WUX::Media::SolidColorBrush brush{ showColor ? *tabColor : Windows::UI::Colors::Transparent() };
                 if (showColor && !selected)
                 {
