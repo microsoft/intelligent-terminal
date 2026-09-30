@@ -258,7 +258,8 @@
                               DoubleTapped="OnTabHeaderDoubleTapped"
                               Loaded="OnTabHeaderLoaded"
                               PointerPressed="OnTabHeaderPointerPressed"
-                              Tapped="OnTabHeaderTapped">
+                              Tapped="OnTabHeaderTapped"
+                              ToolTipService.ToolTip="{Binding Tab.(AutomationProperties.HelpText)}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
@@ -446,6 +447,8 @@
                     <Setter Property="BorderThickness" Value="0" />
                     <Setter Property="CornerRadius" Value="{StaticResource SidebarTabCornerRadius}" />
                     <Setter Property="UseSystemFocusVisuals" Value="True" />
+                    <Setter Property="AutomationProperties.AcceleratorKey" Value="{Binding Tab.(AutomationProperties.AcceleratorKey)}" />
+                    <Setter Property="AutomationProperties.HelpText" Value="{Binding Tab.(AutomationProperties.HelpText)}" />
                     <!--  Keep the native presenter and state brushes, but forward the row's corner radius.  -->
                     <Setter Property="Template">
                         <Setter.Value>

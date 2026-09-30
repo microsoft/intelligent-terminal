@@ -524,16 +524,8 @@ namespace winrt::TerminalApp::implementation
         const auto grid = root.Name() == L"TabHeaderGrid" ?
                               root.try_as<Grid>() :
                               _findNamedElement(root, L"TabHeaderGrid").try_as<Grid>();
-        const auto helpText = WUX::Automation::AutomationProperties::GetHelpText(display.Tab());
-        const auto acceleratorKey = WUX::Automation::AutomationProperties::GetAcceleratorKey(display.Tab());
-        WUX::Automation::AutomationProperties::SetHelpText(root, helpText);
-        WUX::Automation::AutomationProperties::SetAcceleratorKey(root, acceleratorKey);
-        ToolTipService::SetToolTip(root, box_value(helpText));
         if (grid)
         {
-            WUX::Automation::AutomationProperties::SetHelpText(grid, helpText);
-            WUX::Automation::AutomationProperties::SetAcceleratorKey(grid, acceleratorKey);
-            ToolTipService::SetToolTip(grid, box_value(helpText));
             const auto toggle = grid.FindName(L"TabGroupToggleButton").try_as<WUX::Controls::Control>();
             if (toggle)
             {
@@ -620,10 +612,6 @@ namespace winrt::TerminalApp::implementation
                 if (const auto title = _findNamedElement(root, L"PaneTitleText").try_as<TextBlock>())
                 {
                     title.Text(pane.Title());
-                }
-                if (const auto activate = _findNamedElement(root, L"PaneActivateButton"))
-                {
-                    ToolTipService::SetToolTip(activate, box_value(pane.Title()));
                 }
                 if (const auto indicator = _findNamedElement(root, L"PaneActiveIndicator"))
                 {
@@ -1303,17 +1291,12 @@ namespace winrt::TerminalApp::implementation
         if (e.InRecycleQueue())
         {
             container.Visibility(Visibility::Visible);
-            WUX::Automation::AutomationProperties::SetHelpText(container, {});
-            WUX::Automation::AutomationProperties::SetAcceleratorKey(container, {});
-            ToolTipService::SetToolTip(container, nullptr);
             return;
         }
 
-        if (const auto display = e.Item().try_as<TerminalApp::TabStripDisplayItem>())
+        if (const auto item = _tabFromItem(e.Item()))
         {
-            const auto item = display.Tab();
             _applyTabItemVisibility(item, container);
-            _updateDisplayItemVisuals(container, display);
         }
         else
         {
@@ -2152,13 +2135,6 @@ namespace winrt::TerminalApp::implementation
             if (const auto background = root.FindName(L"PaneHoverBackground").try_as<UIElement>())
             {
                 background.Opacity(1.0);
-            }
-            if (const auto pane = root.DataContext().try_as<TerminalApp::TabStripPaneItem>())
-            {
-                if (const auto activate = root.FindName(L"PaneActivateButton").try_as<FrameworkElement>())
-                {
-                    ToolTipService::SetToolTip(activate, box_value(pane.Title()));
-                }
             }
         }
     }
