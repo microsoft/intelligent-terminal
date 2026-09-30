@@ -504,7 +504,6 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
             Test-UiElementExists -App $vertical -Selector SearchTextBox -TimeoutSec 1 |
                 Should -BeFalse -Because 'collapsing the rail must close tab search'
             & $script:ToggleSidebarHotkey $vertical
-            & $script:ToggleSidebarHotkey $vertical
             (Test-Until -TimeoutSec 6 -Condition { & $script:TabSearchFocused $vertical }) |
                 Should -BeTrue -Because 'entering a collapsed sidebar must expand and focus tab search'
             Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'sidebar-expanded-after.png') | Out-Null
