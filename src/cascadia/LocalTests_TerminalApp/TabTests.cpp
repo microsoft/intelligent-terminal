@@ -4197,7 +4197,6 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(winrt::hstring{ verticalTooltip }, Automation::AutomationProperties::GetHelpText(thirdContainer));
             VERIFY_IS_NULL(ToolTipService::GetToolTip(thirdContainer));
             VERIFY_ARE_EQUAL(winrt::hstring{ L"ctrl+alt+3" }, Automation::AutomationProperties::GetAcceleratorKey(third->TabViewItem()));
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"ctrl+alt+3" }, Automation::AutomationProperties::GetAcceleratorKey(third->_headerControl));
             VERIFY_ARE_EQUAL(
                 winrt::hstring{ L"ctrl+alt+3" },
                 Automation::AutomationProperties::GetAcceleratorKey(thirdContainer));

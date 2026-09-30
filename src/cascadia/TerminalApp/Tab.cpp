@@ -293,7 +293,6 @@ namespace winrt::TerminalApp::implementation
 
         _keyChord = keyChordText;
         Automation::AutomationProperties::SetAcceleratorKey(TabViewItem(), _keyChord);
-        Automation::AutomationProperties::SetAcceleratorKey(_headerControl, _keyChord);
         _UpdateToolTip();
     }
 
