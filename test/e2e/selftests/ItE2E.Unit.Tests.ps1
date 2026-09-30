@@ -644,6 +644,79 @@ Describe 'Package-scoped process cleanup' -Tag 'Unit' {
             Should -Invoke Get-AppxPackage -Times 0
         }
     }
+
+    It 'refuses an existing Dev window instead of closing it as a stale test process' {
+        InModuleScope ItE2E {
+            $app = [pscustomobject]@{
+                Package = 'IntelligentTerminal_rd9vj3e6a2mbr'
+                InstallLocation = 'C:\DevPackage\AppX'
+            }
+            Mock Get-CimInstance { $null }
+            $script:processQueryCount = 0
+            Mock Get-WtProcessesForApp {
+                $script:processQueryCount++
+                if ($script:processQueryCount -eq 1) {
+                    [pscustomobject]@{ Id = 901; Path = 'C:\DevPackage\AppX\WindowsTerminal.exe' }
+                }
+            }
+            Mock Test-Until { $false }
+            Mock Stop-Process
+            Mock Write-ItLog
+
+            { Stop-StaleItInstances -App $app } | Should -Throw '*Refusing to close*'
+
+            Should -Invoke Stop-Process -Times 0
+        }
+    }
+
+    It 'refuses a remaining packaged helper before changing user configuration' {
+        InModuleScope ItE2E {
+            $app = [pscustomobject]@{
+                Package = 'IntelligentTerminal_rd9vj3e6a2mbr'
+                InstallLocation = 'C:\DevPackage\AppX'
+            }
+            Mock Get-CimInstance { $null }
+            Mock Get-WtProcessesForApp {
+                if ($IncludePackageExecutables) {
+                    [pscustomobject]@{ Id = 902; Path = 'C:\DevPackage\AppX\wta.exe' }
+                }
+            }
+            Mock Stop-Process
+            Mock Backup-WtConfig
+            Mock Write-ItLog
+
+            { Stop-StaleItInstances -App $app } | Should -Throw '*Refusing to close*'
+
+            Should -Invoke Stop-Process -Times 0
+            Should -Invoke Backup-WtConfig -Times 0
+            Should -Invoke Get-WtProcessesForApp -Times 1 -ParameterFilter { $IncludePackageExecutables }
+        }
+    }
+
+    It 'rejects an active package before settings backup or process launch' {
+        InModuleScope ItE2E {
+            $app = [pscustomobject]@{
+                Package = 'IntelligentTerminal_rd9vj3e6a2mbr'
+                Version = '0.0.0.0'
+                WtcliPath = 'wtcli.exe'
+                InstallLocation = 'C:\DevPackage\AppX'
+            }
+            Mock Resolve-ItApp { $app }
+            Mock Get-WtProcessesForApp {
+                [pscustomobject]@{ Id = 903; Path = 'C:\DevPackage\AppX\WindowsTerminal.exe' }
+            }
+            Mock Backup-WtConfig
+            Mock Start-Process
+            Mock Stop-Process
+            Mock Write-ItLog
+
+            { Start-Terminal -Package Dev } | Should -Throw '*Refusing to close*'
+
+            Should -Invoke Backup-WtConfig -Times 0
+            Should -Invoke Start-Process -Times 0
+            Should -Invoke Stop-Process -Times 0
+        }
+    }
 }
 
 Describe 'Get-RunnableWtaPath staging' -Tag 'Unit' {
