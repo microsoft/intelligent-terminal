@@ -1118,32 +1118,48 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::OnRichTabRepositoryVisibleClick(IInspectable const&, WUX::RoutedEventArgs const&)
     {
+        _keepRichTabMetadataFlyoutOpen = true;
         RichTabRepositoryVisible(RichTabRepositoryVisibleItem().IsChecked());
         VisibleFieldsChanged.raise(*this, nullptr);
     }
 
     void TabStrip::OnRichTabBranchVisibleClick(IInspectable const&, WUX::RoutedEventArgs const&)
     {
+        _keepRichTabMetadataFlyoutOpen = true;
         RichTabBranchVisible(RichTabBranchVisibleItem().IsChecked());
         VisibleFieldsChanged.raise(*this, nullptr);
     }
 
     void TabStrip::OnRichTabAgentStatusVisibleClick(IInspectable const&, WUX::RoutedEventArgs const&)
     {
+        _keepRichTabMetadataFlyoutOpen = true;
         RichTabAgentStatusVisible(RichTabAgentStatusVisibleItem().IsChecked());
         VisibleFieldsChanged.raise(*this, nullptr);
     }
 
     void TabStrip::OnRichTabWorkingDirectoryVisibleClick(IInspectable const&, WUX::RoutedEventArgs const&)
     {
+        _keepRichTabMetadataFlyoutOpen = true;
         RichTabWorkingDirectoryVisible(RichTabWorkingDirectoryVisibleItem().IsChecked());
         VisibleFieldsChanged.raise(*this, nullptr);
     }
 
     void TabStrip::OnRichTabChangesVisibleClick(IInspectable const&, WUX::RoutedEventArgs const&)
     {
+        _keepRichTabMetadataFlyoutOpen = true;
         RichTabChangesVisible(RichTabChangesVisibleItem().IsChecked());
         VisibleFieldsChanged.raise(*this, nullptr);
+    }
+
+    void TabStrip::OnRichTabMetadataFlyoutClosing(
+        IInspectable const&,
+        WUX::Controls::Primitives::FlyoutBaseClosingEventArgs const& e)
+    {
+        if (_keepRichTabMetadataFlyoutOpen)
+        {
+            _keepRichTabMetadataFlyoutOpen = false;
+            e.Cancel(true);
+        }
     }
 
     void TabStrip::OnShowAllTabsClick(IInspectable const&, WUX::RoutedEventArgs const&)
