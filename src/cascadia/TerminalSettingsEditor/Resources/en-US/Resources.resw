@@ -622,7 +622,7 @@
     <comment>An option to choose from for the "tab width mode" setting. When selected, each tab adjusts its width to the content within the tab.</comment>
   </data>
   <data name="Globals_TabLayout.Header" xml:space="preserve">
-    <value>Tab layout</value>
+    <value>Tab Mode</value>
     <comment>Header for a control to choose whether tabs are laid out horizontally across the top of the window or vertically down the left side.</comment>
   </data>
   <data name="Globals_TabLayout.HelpText" xml:space="preserve">

@@ -52,6 +52,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         using AttachmentId = uint64_t;
         using Callback = std::function<void(const BrokerUpdate&)>;
         using VisibleFieldMap = std::unordered_map<std::string, std::unordered_set<std::string>>;
+        using FieldDisplayNameMap = std::unordered_map<std::string, std::unordered_map<std::string, std::string>>;
 
         static ProviderBroker& Instance();
 
@@ -68,6 +69,9 @@ namespace Microsoft::Terminal::RichTab::Provider
         void Activate(AttachmentId attachment);
         void Notify(AttachmentId attachment, ActivationEvent reason);
         void ReloadProviders();
+        void SetFieldDisplayNames(
+            std::string_view providerId,
+            std::unordered_map<std::string, std::string> displayNames);
         void SetVisibleFields(std::string_view providerId, std::vector<std::string> fields);
         std::optional<std::vector<std::string>> VisibleFields(std::string_view providerId) const;
 
@@ -76,7 +80,8 @@ namespace Microsoft::Terminal::RichTab::Provider
         static std::optional<Presentation> ComposePresentation(
             const std::vector<Registration>& providers,
             const std::unordered_map<std::string, Snapshot>& snapshots,
-            const VisibleFieldMap& visibleFields = {});
+            const VisibleFieldMap& visibleFields = {},
+            const FieldDisplayNameMap& fieldDisplayNames = {});
 
     private:
         struct PendingRequest
@@ -132,6 +137,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         CommandRunner _runner;
         std::vector<Registration> _providers;
         VisibleFieldMap _visibleFields;
+        FieldDisplayNameMap _fieldDisplayNames;
         std::unordered_map<std::string, SessionState> _sessions;
         std::unordered_map<AttachmentId, std::string> _attachmentSessions;
         uint64_t _processEpoch{ 0 };

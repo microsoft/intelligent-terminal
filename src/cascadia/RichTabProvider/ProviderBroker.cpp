@@ -270,6 +270,62 @@ namespace Microsoft::Terminal::RichTab::Provider
         }
     }
 
+    void ProviderBroker::SetFieldDisplayNames(
+        std::string_view providerId,
+        std::unordered_map<std::string, std::string> displayNames)
+    {
+        std::vector<std::pair<Callback, BrokerUpdate>> notifications;
+        {
+            std::lock_guard lock{ _mutex };
+            const auto provider = std::find_if(_providers.begin(), _providers.end(), [&](const auto& candidate) {
+                return candidate.manifest.id == providerId;
+            });
+            if (provider == _providers.end())
+            {
+                return;
+            }
+
+            std::unordered_set<std::string> declaredFields;
+            declaredFields.reserve(provider->manifest.fields.size());
+            for (const auto& field : provider->manifest.fields)
+            {
+                declaredFields.emplace(field.id);
+            }
+
+            std::unordered_map<std::string, std::string> localizedDisplayNames;
+            localizedDisplayNames.reserve(displayNames.size());
+            for (auto& [field, displayName] : displayNames)
+            {
+                if (declaredFields.contains(field) && !displayName.empty())
+                {
+                    localizedDisplayNames.emplace(std::move(field), std::move(displayName));
+                }
+            }
+
+            const auto current = _fieldDisplayNames.find(provider->manifest.id);
+            if (current != _fieldDisplayNames.end() && current->second == localizedDisplayNames)
+            {
+                return;
+            }
+            _fieldDisplayNames.insert_or_assign(provider->manifest.id, std::move(localizedDisplayNames));
+
+            for (auto& [sessionId, session] : _sessions)
+            {
+                ++session.updateSequence;
+                const auto update = _UpdateFor(sessionId, session);
+                for (const auto& [_, callback] : session.callbacks)
+                {
+                    notifications.emplace_back(callback, update);
+                }
+            }
+        }
+
+        for (const auto& [callback, update] : notifications)
+        {
+            callback(update);
+        }
+    }
+
     std::optional<std::vector<std::string>> ProviderBroker::VisibleFields(std::string_view providerId) const
     {
         std::lock_guard lock{ _mutex };
@@ -683,7 +739,7 @@ namespace Microsoft::Terminal::RichTab::Provider
             state.sessionIncarnation,
             state.contextRevision,
             state.updateSequence,
-            ComposePresentation(_providers, snapshots, _visibleFields),
+            ComposePresentation(_providers, snapshots, _visibleFields, _fieldDisplayNames),
             std::move(diagnostics)
         };
     }
@@ -691,7 +747,8 @@ namespace Microsoft::Terminal::RichTab::Provider
     std::optional<Presentation> ProviderBroker::ComposePresentation(
         const std::vector<Registration>& providers,
         const std::unordered_map<std::string, Snapshot>& snapshots,
-        const VisibleFieldMap& visibleFields)
+        const VisibleFieldMap& visibleFields,
+        const FieldDisplayNameMap& fieldDisplayNames)
     {
         Presentation result;
         for (const auto& provider : providers)
@@ -717,7 +774,18 @@ namespace Microsoft::Terminal::RichTab::Provider
                     const auto valueText = _ValueText(value->second);
                     _Append(result.text, valueText, L"\n");
 
-                    auto accessibilityText = _ToWide(field.displayName);
+                    auto displayName = field.displayName;
+                    if (const auto providerNames = fieldDisplayNames.find(provider.manifest.id);
+                        providerNames != fieldDisplayNames.end())
+                    {
+                        if (const auto localizedName = providerNames->second.find(field.id);
+                            localizedName != providerNames->second.end())
+                        {
+                            displayName = localizedName->second;
+                        }
+                    }
+
+                    auto accessibilityText = _ToWide(displayName);
                     accessibilityText.append(L": ");
                     accessibilityText.append(valueText);
                     _Append(result.accessibilityText, accessibilityText, L", ");

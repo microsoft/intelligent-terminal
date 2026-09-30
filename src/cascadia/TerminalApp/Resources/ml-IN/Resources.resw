@@ -446,19 +446,24 @@
     <value>താഴെയുള്ള ടാബുകൾ അടയ്ക്കുക</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>ടാബുകളുടെ പാളി ചുരുക്കുക</value>
+    <value>സൈഡ്ബാർ ചുരുക്കുക</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>ടാബുകളുടെ പാളി വികസിപ്പിക്കുക</value>
+    <value>സൈഡ്ബാർ വികസിപ്പിക്കുക</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>ടാബ് ഗ്രൂപ്പ് വികസിപ്പിക്കുക</value>
+    <comment>Accessibility name and tooltip for the button that expands a group of tabs in the sidebar.</comment>
   </data>
   <data name="VerticalTabsCollapseGroup" xml:space="preserve">
     <value>ടാബ് ഗ്രൂപ്പ് ചുരുക്കുക</value>
+    <comment>Accessibility name and tooltip for the button that collapses a group of tabs in the sidebar.</comment>
   </data>
   <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
     <value>ടാബ്</value>
+    <comment>Fallback title for a terminal tab in the sidebar when no title is available.</comment>
   </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>ടാബുകൾ</value>
@@ -483,6 +488,7 @@
   </data>
   <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
     <value>ഫിൽട്ടർ ചെയ്യുക</value>
+    <comment>Section heading above the controls that filter which tabs are shown in the sidebar.</comment>
   </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>എല്ലാ ടാബുകളും</value>
@@ -492,21 +498,27 @@
   </data>
   <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
     <value>ടാബ് മെറ്റാഡാറ്റ</value>
+    <comment>Section heading above the options that choose which metadata appears in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
     <value>ഏജൻ്റ് നില</value>
+    <comment>Option that shows an agent's current status in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
     <value>നിലവിലെ പ്രവർത്തന ഡയറക്ടറി</value>
+    <comment>Option that shows the current working directory in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
     <value>Git ശേഖരം</value>
+    <comment>Option that shows the Git repository name in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
     <value>Git ശാഖ</value>
+    <comment>Option that shows the Git branch name in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
     <value>Git മാറ്റങ്ങൾ</value>
+    <comment>Option that shows the Git working tree change summary in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>1 ഏജന്റ് സെഷൻ കാണിക്കുന്നു</value>
@@ -527,24 +539,24 @@
     <value>എല്ലാ ടാബുകളും കാണിക്കുക</value>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>ഏജന്റ് സെഷനുകൾ</value>
-    <comment>Accessible name of the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
+    <value>ഏജന്റുകൾ</value>
+    <comment>Accessible name of the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>ഏജന്റ് സെഷനുകൾ</value>
-    <comment>Tooltip for the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
+    <value>ഏജന്റുകൾ</value>
+    <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
-    <value>ഏജന്റ് സെഷനുകൾ</value>
-    <comment>Header of the Agent sessions sidebar view, which lists all live and historical AI-agent sessions, not only session history.</comment>
+    <value>ഏജന്റുകൾ</value>
+    <comment>Header of the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>ഏജന്റ് സെഷനുകളുടെ കാഴ്ച അടയ്ക്കുക</value>
-    <comment>Accessible name of the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
+    <value>ഏജന്റുകളുടെ കാഴ്ച അടയ്ക്കുക</value>
+    <comment>Accessible name of the button that closes the Agents sidebar view. Closing this view hides the sidebar; it does not terminate any agents or sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>ഏജന്റ് സെഷനുകളുടെ കാഴ്ച അടയ്ക്കുക</value>
-    <comment>Tooltip for the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
+    <value>ഏജന്റുകളുടെ കാഴ്ച അടയ്ക്കുക</value>
+    <comment>Tooltip for the button that closes the Agents sidebar view. Closing this view hides the sidebar; it does not terminate any agents or sessions.</comment>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
     <value>ഏജന്റ് സെഷനുകൾ തിരയുക</value>
@@ -596,10 +608,12 @@
     <value>എല്ലാ Terminal വിൻഡോകളിലും തിരശ്ചീന ടാബുകൾ ഉപയോഗിക്കുക</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>ലംബ ടാബുകളിലേക്ക് മാറുക</value>
+    <value>സൈഡ്ബാറിലേക്ക് മാറുക</value>
+    <comment>Context-menu command that changes the tab layout from horizontal tabs to the sidebar.</comment>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>എല്ലാ Terminal വിൻഡോകളിലും ലംബ ടാബുകൾ ഉപയോഗിക്കുക</value>
+    <value>എല്ലാ Terminal വിൻഡോകളിലും സൈഡ്ബാർ ഉപയോഗിക്കുക</value>
+    <comment>Tooltip for the command that changes the tab layout from horizontal tabs to the sidebar in every Terminal window.</comment>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>ഈ ടാബിന് താഴെയുള്ള എല്ലാ ടാബുകളും അടയ്ക്കുക</value>
@@ -611,6 +625,28 @@
   <data name="KeepTabRunningText" xml:space="preserve">
     <value>ടാബ് പ്രവർത്തിച്ചുകൊണ്ടിരിക്കട്ടെ</value>
     <comment>Command at the top of a vertical terminal tab's context menu that enables keeping all panes running after the tab or window is closed. Also labels the tab's keep-running status indicator. This does not pin the tab or save it for a restart.</comment>
+  </data>
+  <data name="PinTabText" xml:space="preserve">
+    <value>ടാബ് പിൻ ചെയ്യുക</value>
+    <comment>Context menu action to keep a terminal tab at the start of the tab list until unpinned. Does not keep its processes running after closing or persist across restarts.</comment>
+  </data>
+  <data name="PinTabToolTip" xml:space="preserve">
+    <value>ഈ ടാബ് പിൻ ചെയ്യാത്ത ടാബുകൾക്ക് മുന്നിലേക്ക് മാറ്റുക.</value>
+  </data>
+  <data name="UnpinTabText" xml:space="preserve">
+    <value>ടാബിന്റെ പിൻ നീക്കം ചെയ്യുക</value>
+    <comment>Context menu action to move a pinned terminal tab back into the regular tab group.</comment>
+  </data>
+  <data name="UnpinTabToolTip" xml:space="preserve">
+    <value>ഈ ടാബ് പിൻ ചെയ്ത ടാബുകൾക്ക് ശേഷത്തേക്ക് മാറ്റുക.</value>
+  </data>
+  <data name="PinnedTabName" xml:space="preserve">
+    <value>പിൻ ചെയ്തത്</value>
+    <comment>Accessibility name and tooltip for a terminal tab pinned at the beginning of the tab list.</comment>
+  </data>
+  <data name="CollapsedPinnedTabIcon.AutomationProperties.Name" xml:space="preserve">
+    <value>പിൻ ചെയ്തത്</value>
+    <comment>Accessibility name for the pin indicator on a terminal tab in the collapsed sidebar.</comment>
   </data>
   <data name="KeepTabRunningToolTip" xml:space="preserve">
     <value>ടാബോ വിൻഡോയോ അടച്ച ശേഷവും ഈ ടാബ് പശ്ചാത്തലത്തിൽ പ്രവർത്തിച്ചുകൊണ്ടിരിക്കട്ടെ.</value>

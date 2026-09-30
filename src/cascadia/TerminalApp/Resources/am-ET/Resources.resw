@@ -329,19 +329,24 @@
     <value>ከታች ያሉትን ትሮች ዝጋ</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>የትሮች ክፍልን ሰብስብ</value>
+    <value>የጎን አሞሌን ሰብስብ</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>የትሮች ክፍልን ዘርጋ</value>
+    <value>የጎን አሞሌን ዘርጋ</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>የትሮች ቡድንን ዘርጋ</value>
+    <comment>Accessibility name and tooltip for the button that expands a group of tabs in the sidebar.</comment>
   </data>
   <data name="VerticalTabsCollapseGroup" xml:space="preserve">
     <value>የትሮች ቡድንን ሰብስብ</value>
+    <comment>Accessibility name and tooltip for the button that collapses a group of tabs in the sidebar.</comment>
   </data>
   <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
     <value>ትር</value>
+    <comment>Fallback title for a terminal tab in the sidebar when no title is available.</comment>
   </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>ትሮች</value>
@@ -366,6 +371,7 @@
   </data>
   <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
     <value>አጣራ</value>
+    <comment>Section heading above the controls that filter which tabs are shown in the sidebar.</comment>
   </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>ሁሉም ትሮች</value>
@@ -375,21 +381,27 @@
   </data>
   <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
     <value>የትር ዲበ ውሂብ</value>
+    <comment>Section heading above the options that choose which metadata appears in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
     <value>የወኪል ሁኔታ</value>
+    <comment>Option that shows an agent's current status in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
     <value>የአሁኑ የስራ ማውጫ</value>
+    <comment>Option that shows the current working directory in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
     <value>Git ማከማቻ</value>
+    <comment>Option that shows the Git repository name in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
     <value>Git ቅርንጫፍ</value>
+    <comment>Option that shows the Git branch name in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
     <value>Git ይቀየራል።</value>
+    <comment>Option that shows the Git working tree change summary in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>1 የኤጅንት ክፍለ ጊዜን በማሳየት ላይ</value>
@@ -410,24 +422,24 @@
     <value>ሁሉንም ትሮች አሳይ</value>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>የኤጅንት ክፍለ ጊዜዎች</value>
-    <comment>Accessible name of the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
+    <value>ኤጅንቶች</value>
+    <comment>Accessible name of the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>የኤጅንት ክፍለ ጊዜዎች</value>
-    <comment>Tooltip for the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
+    <value>ኤጅንቶች</value>
+    <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
-    <value>የኤጅንት ክፍለ ጊዜዎች</value>
-    <comment>Header of the Agent sessions sidebar view, which lists all live and historical AI-agent sessions, not only session history.</comment>
+    <value>ኤጅንቶች</value>
+    <comment>Header of the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>የኤጅንት ክፍለ ጊዜዎች እይታን ዝጋ</value>
-    <comment>Accessible name of the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
+    <value>የኤጅንቶች እይታን ዝጋ</value>
+    <comment>Accessible name of the button that closes the Agents sidebar view. Closing this view hides the sidebar; it does not terminate any agents or sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>የኤጅንት ክፍለ ጊዜዎች እይታን ዝጋ</value>
-    <comment>Tooltip for the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
+    <value>የኤጅንቶች እይታን ዝጋ</value>
+    <comment>Tooltip for the button that closes the Agents sidebar view. Closing this view hides the sidebar; it does not terminate any agents or sessions.</comment>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
     <value>የኤጅንት ክፍለ ጊዜ ፈልግ</value>
@@ -479,10 +491,12 @@
     <value>በሁሉም የTerminal መስኮቶች ውስጥ አግድም ትሮችን ተጠቀም</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>ወደ ቁመት ትሮች ቀይር</value>
+    <value>ወደ ጎን አሞሌ ቀይር</value>
+    <comment>Context-menu command that changes the tab layout from horizontal tabs to the sidebar.</comment>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>በሁሉም የTerminal መስኮቶች ውስጥ ቁመት ትሮችን ተጠቀም</value>
+    <value>በሁሉም የTerminal መስኮቶች ውስጥ የጎን አሞሌውን ተጠቀም</value>
+    <comment>Tooltip for the command that changes the tab layout from horizontal tabs to the sidebar in every Terminal window.</comment>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>ከዚህ ትር በታች ያሉትን ሁሉንም ትሮች ዝጋ</value>
@@ -494,6 +508,28 @@
   <data name="KeepTabRunningText" xml:space="preserve">
     <value>ትሩ መሥራቱን እንዲቀጥል አድርግ</value>
     <comment>Command at the top of a vertical terminal tab's context menu that enables keeping all panes running after the tab or window is closed. Also labels the tab's keep-running status indicator. This does not pin the tab or save it for a restart.</comment>
+  </data>
+  <data name="PinTabText" xml:space="preserve">
+    <value>ትሩን ሰካ</value>
+    <comment>Context menu action to keep a terminal tab at the start of the tab list until unpinned. Does not keep its processes running after closing or persist across restarts.</comment>
+  </data>
+  <data name="PinTabToolTip" xml:space="preserve">
+    <value>ይህን ትር ካልተሰኩ ትሮች በፊት አንቀሳቅስ።</value>
+  </data>
+  <data name="UnpinTabText" xml:space="preserve">
+    <value>ትሩን ንቀል</value>
+    <comment>Context menu action to move a pinned terminal tab back into the regular tab group.</comment>
+  </data>
+  <data name="UnpinTabToolTip" xml:space="preserve">
+    <value>ይህን ትር ከተሰኩ ትሮች በኋላ አንቀሳቅስ።</value>
+  </data>
+  <data name="PinnedTabName" xml:space="preserve">
+    <value>የተሰካ</value>
+    <comment>Accessibility name and tooltip for a terminal tab pinned at the beginning of the tab list.</comment>
+  </data>
+  <data name="CollapsedPinnedTabIcon.AutomationProperties.Name" xml:space="preserve">
+    <value>የተሰካ</value>
+    <comment>Accessibility name for the pin indicator on a terminal tab in the collapsed sidebar.</comment>
   </data>
   <data name="KeepTabRunningToolTip" xml:space="preserve">
     <value>ትሩ ወይም መስኮቱ ከተዘጋ በኋላ ይህ ትር ከበስተጀርባ መሥራቱን እንዲቀጥል አድርግ።</value>

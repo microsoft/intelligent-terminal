@@ -184,19 +184,24 @@
     <value>关闭下方标签页</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>折叠标签页窗格</value>
+    <value>折叠侧边栏</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>展开标签页窗格</value>
+    <value>展开侧边栏</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>展开标签页组</value>
+    <comment>Accessibility name and tooltip for the button that expands a group of tabs in the sidebar.</comment>
   </data>
   <data name="VerticalTabsCollapseGroup" xml:space="preserve">
     <value>折叠标签页组</value>
+    <comment>Accessibility name and tooltip for the button that collapses a group of tabs in the sidebar.</comment>
   </data>
   <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
     <value>标签页</value>
+    <comment>Fallback title for a terminal tab in the sidebar when no title is available.</comment>
   </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>标签页</value>
@@ -221,6 +226,7 @@
   </data>
   <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
     <value>筛选</value>
+    <comment>Section heading above the controls that filter which tabs are shown in the sidebar.</comment>
   </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>所有标签页</value>
@@ -230,21 +236,27 @@
   </data>
   <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
     <value>选项卡元数据</value>
+    <comment>Section heading above the options that choose which metadata appears in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
     <value>智能体状态</value>
+    <comment>Option that shows an agent's current status in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
     <value>当前工作目录</value>
+    <comment>Option that shows the current working directory in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
     <value>Git 存储库</value>
+    <comment>Option that shows the Git repository name in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
     <value>Git 分支</value>
+    <comment>Option that shows the Git branch name in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
     <value>Git 更改</value>
+    <comment>Option that shows the Git working tree change summary in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>正在显示 1 个智能体会话</value>
@@ -265,24 +277,24 @@
     <value>显示所有标签页</value>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>智能体会话</value>
-    <comment>Accessible name of the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
+    <value>智能体</value>
+    <comment>Accessible name of the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>智能体会话</value>
-    <comment>Tooltip for the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
+    <value>智能体</value>
+    <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
-    <value>智能体会话</value>
-    <comment>Header of the Agent sessions sidebar view, which lists all live and historical AI-agent sessions, not only session history.</comment>
+    <value>智能体</value>
+    <comment>Header of the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>关闭智能体会话视图</value>
-    <comment>Accessible name of the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
+    <value>关闭智能体视图</value>
+    <comment>Accessible name of the button that closes the Agents sidebar view. Closing this view hides the sidebar; it does not terminate any agents or sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>关闭智能体会话视图</value>
-    <comment>Tooltip for the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
+    <value>关闭智能体视图</value>
+    <comment>Tooltip for the button that closes the Agents sidebar view. Closing this view hides the sidebar; it does not terminate any agents or sessions.</comment>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
     <value>搜索智能体会话</value>
@@ -985,10 +997,12 @@
     <value>在所有终端窗口中使用水平标签页</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>切换到垂直标签页</value>
+    <value>切换到侧边栏</value>
+    <comment>Context-menu command that changes the tab layout from horizontal tabs to the sidebar.</comment>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>在所有终端窗口中使用垂直标签页</value>
+    <value>在所有终端窗口中使用侧边栏</value>
+    <comment>Tooltip for the command that changes the tab layout from horizontal tabs to the sidebar in every Terminal window.</comment>
   </data>
   <data name="CloseOnExitInfoBar.Message" xml:space="preserve">
     <value>可以在高级配置文件设置中配置终止行为。</value>
@@ -1544,6 +1558,28 @@
   <data name="KeepTabRunningText" xml:space="preserve">
     <value>保持标签页运行</value>
     <comment>Command at the top of a vertical terminal tab's context menu that enables keeping all panes running after the tab or window is closed. Also labels the tab's keep-running status indicator. This does not pin the tab or save it for a restart.</comment>
+  </data>
+  <data name="PinTabText" xml:space="preserve">
+    <value>固定标签页</value>
+    <comment>Context menu action to keep a terminal tab at the start of the tab list until unpinned. Does not keep its processes running after closing or persist across restarts.</comment>
+  </data>
+  <data name="PinTabToolTip" xml:space="preserve">
+    <value>将此标签页移至未固定标签页之前。</value>
+  </data>
+  <data name="UnpinTabText" xml:space="preserve">
+    <value>取消固定标签页</value>
+    <comment>Context menu action to move a pinned terminal tab back into the regular tab group.</comment>
+  </data>
+  <data name="UnpinTabToolTip" xml:space="preserve">
+    <value>将此标签页移至已固定标签页之后。</value>
+  </data>
+  <data name="PinnedTabName" xml:space="preserve">
+    <value>已固定</value>
+    <comment>Accessibility name and tooltip for a terminal tab pinned at the beginning of the tab list.</comment>
+  </data>
+  <data name="CollapsedPinnedTabIcon.AutomationProperties.Name" xml:space="preserve">
+    <value>已固定</value>
+    <comment>Accessibility name for the pin indicator on a terminal tab in the collapsed sidebar.</comment>
   </data>
   <data name="KeepTabRunningToolTip" xml:space="preserve">
     <value>关闭标签页或窗口后，保持此标签页在后台继续运行。</value>

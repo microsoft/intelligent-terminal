@@ -64,6 +64,7 @@ namespace TerminalApp
         String AutomationName;
         Windows.UI.Xaml.Visibility MetadataVisibility;
         Windows.UI.Xaml.Controls.IconElement Icon;
+        String HighlightQuery;
     };
 
     [default_interface] runtimeclass TabStripDisplayItem : Windows.UI.Xaml.Data.INotifyPropertyChanged
@@ -86,6 +87,10 @@ namespace TerminalApp
         Windows.UI.Xaml.Visibility IconVisibility;
         Double HeaderMinHeight;
         Windows.UI.Xaml.Thickness LeadingContentMargin;
+        String ToolTipText;
+        String AcceleratorKey;
+        Boolean IsPinned;
+        Windows.UI.Xaml.Visibility PinnedIconVisibility;
     };
 
     [default_interface] runtimeclass TabStripPaneEventArgs

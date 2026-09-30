@@ -425,19 +425,24 @@
     <value>கீழே உள்ள தாவல்களை மூடு</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>தாவல்கள் பலகத்தைச் சுருக்கு</value>
+    <value>பக்கப்பட்டியைச் சுருக்கு</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>தாவல்கள் பலகத்தை விரிவாக்கு</value>
+    <value>பக்கப்பட்டியை விரிவாக்கு</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>தாவல் குழுவை விரிவாக்கு</value>
+    <comment>Accessibility name and tooltip for the button that expands a group of tabs in the sidebar.</comment>
   </data>
   <data name="VerticalTabsCollapseGroup" xml:space="preserve">
     <value>தாவல் குழுவைச் சுருக்கு</value>
+    <comment>Accessibility name and tooltip for the button that collapses a group of tabs in the sidebar.</comment>
   </data>
   <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
     <value>தாவல்</value>
+    <comment>Fallback title for a terminal tab in the sidebar when no title is available.</comment>
   </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>தாவல்கள்</value>
@@ -462,6 +467,7 @@
   </data>
   <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
     <value>வடிகட்டி</value>
+    <comment>Section heading above the controls that filter which tabs are shown in the sidebar.</comment>
   </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>அனைத்துத் தாவல்களும்</value>
@@ -471,21 +477,27 @@
   </data>
   <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
     <value>தாவல் மெட்டாடேட்டா</value>
+    <comment>Section heading above the options that choose which metadata appears in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
     <value>முகவர் நிலை</value>
+    <comment>Option that shows an agent's current status in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
     <value>தற்போதைய வேலை அடைவு</value>
+    <comment>Option that shows the current working directory in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
     <value>Git களஞ்சியம்</value>
+    <comment>Option that shows the Git repository name in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
     <value>Git கிளை</value>
+    <comment>Option that shows the Git branch name in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
     <value>Git மாற்றங்கள்</value>
+    <comment>Option that shows the Git working tree change summary in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>1 எஜென்ட் அமர்வு காட்டப்படுகிறது</value>
@@ -506,24 +518,24 @@
     <value>அனைத்துத் தாவல்களையும் காட்டு</value>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>எஜென்ட் அமர்வுகள்</value>
-    <comment>Accessible name of the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
+    <value>எஜென்ட்கள்</value>
+    <comment>Accessible name of the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>எஜென்ட் அமர்வுகள்</value>
-    <comment>Tooltip for the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
+    <value>எஜென்ட்கள்</value>
+    <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
-    <value>எஜென்ட் அமர்வுகள்</value>
-    <comment>Header of the Agent sessions sidebar view, which lists all live and historical AI-agent sessions, not only session history.</comment>
+    <value>எஜென்ட்கள்</value>
+    <comment>Header of the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>எஜென்ட் அமர்வுகளின் காட்சியை மூடு</value>
-    <comment>Accessible name of the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
+    <value>எஜென்ட்களின் காட்சியை மூடு</value>
+    <comment>Accessible name of the button that closes the Agents sidebar view. Closing this view hides the sidebar; it does not terminate any agents or sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>எஜென்ட் அமர்வுகளின் காட்சியை மூடு</value>
-    <comment>Tooltip for the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
+    <value>எஜென்ட்களின் காட்சியை மூடு</value>
+    <comment>Tooltip for the button that closes the Agents sidebar view. Closing this view hides the sidebar; it does not terminate any agents or sessions.</comment>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
     <value>எஜென்ட் அமர்வுகளைத் தேடு</value>
@@ -575,10 +587,12 @@
     <value>அனைத்து Terminal சாளரங்களிலும் கிடைமட்டத் தாவல்களைப் பயன்படுத்து</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>செங்குத்துத் தாவல்களுக்கு மாறு</value>
+    <value>பக்கப்பட்டிக்கு மாறு</value>
+    <comment>Context-menu command that changes the tab layout from horizontal tabs to the sidebar.</comment>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>அனைத்து Terminal சாளரங்களிலும் செங்குத்துத் தாவல்களைப் பயன்படுத்து</value>
+    <value>அனைத்து Terminal சாளரங்களிலும் பக்கப்பட்டியைப் பயன்படுத்து</value>
+    <comment>Tooltip for the command that changes the tab layout from horizontal tabs to the sidebar in every Terminal window.</comment>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>இந்தத் தாவலுக்குக் கீழே உள்ள அனைத்துத் தாவல்களையும் மூடு</value>
@@ -590,6 +604,28 @@
   <data name="KeepTabRunningText" xml:space="preserve">
     <value>தாவலைத் தொடர்ந்து இயக்கவும்</value>
     <comment>Command at the top of a vertical terminal tab's context menu that enables keeping all panes running after the tab or window is closed. Also labels the tab's keep-running status indicator. This does not pin the tab or save it for a restart.</comment>
+  </data>
+  <data name="PinTabText" xml:space="preserve">
+    <value>தாவலைப் பின்செய்</value>
+    <comment>Context menu action to keep a terminal tab at the start of the tab list until unpinned. Does not keep its processes running after closing or persist across restarts.</comment>
+  </data>
+  <data name="PinTabToolTip" xml:space="preserve">
+    <value>இந்தத் தாவலைப் பின்செய்யப்படாத தாவல்களுக்கு முன்னால் நகர்த்தவும்.</value>
+  </data>
+  <data name="UnpinTabText" xml:space="preserve">
+    <value>தாவலின் பின்செய்தலை நீக்கு</value>
+    <comment>Context menu action to move a pinned terminal tab back into the regular tab group.</comment>
+  </data>
+  <data name="UnpinTabToolTip" xml:space="preserve">
+    <value>இந்தத் தாவலைப் பின்செய்யப்பட்ட தாவல்களுக்குப் பின்னால் நகர்த்தவும்.</value>
+  </data>
+  <data name="PinnedTabName" xml:space="preserve">
+    <value>பின்செய்யப்பட்டது</value>
+    <comment>Accessibility name and tooltip for a terminal tab pinned at the beginning of the tab list.</comment>
+  </data>
+  <data name="CollapsedPinnedTabIcon.AutomationProperties.Name" xml:space="preserve">
+    <value>பின்செய்யப்பட்டது</value>
+    <comment>Accessibility name for the pin indicator on a terminal tab in the collapsed sidebar.</comment>
   </data>
   <data name="KeepTabRunningToolTip" xml:space="preserve">
     <value>தாவல் அல்லது சாளரத்தை மூடிய பிறகும் இந்தத் தாவலைப் பின்னணியில் தொடர்ந்து இயக்கவும்.</value>

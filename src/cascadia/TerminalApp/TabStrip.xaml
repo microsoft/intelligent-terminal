@@ -52,6 +52,21 @@
                 <Setter Property="Foreground" Value="{ThemeResource SystemFillColorSuccessBrush}" />
                 <Setter Property="Opacity" Value="1" />
             </Style>
+            <Style x:Key="RichTabMetadataSectionStyle"
+                   TargetType="MenuFlyoutItem">
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="MenuFlyoutItem">
+                            <Grid MinHeight="32">
+                                <TextBlock Margin="12,0"
+                                           VerticalAlignment="Center"
+                                           Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}"
+                                           Text="{TemplateBinding Text}" />
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
             <Style x:Key="HistoryErrorTextStyle"
                    BasedOn="{StaticResource HistorySubtitleTextStyle}"
                    TargetType="TextBlock">
@@ -173,10 +188,12 @@
                               Data="M2 3.5C2 3.22386 2.22386 3 2.5 3H13.5C13.7761 3 14 3.22386 14 3.5C14 3.77614 13.7761 4 13.5 4H2.5C2.22386 4 2 3.77614 2 3.5ZM4 7.5C4 7.22386 4.22386 7 4.5 7H11.5C11.7761 7 12 7.22386 12 7.5C12 7.77614 11.7761 8 11.5 8H4.5C4.22386 8 4 7.77614 4 7.5ZM6 11.5C6 11.2239 6.22386 11 6.5 11H9.5C9.77614 11 10 11.2239 10 11.5C10 11.7761 9.77614 12 9.5 12H6.5C6.22386 12 6 11.7761 6 11.5Z" />
                 </Button.Content>
                 <Button.Flyout>
-                    <MenuFlyout>
+                    <MenuFlyout Closing="OnRichTabMetadataFlyoutClosing"
+                                Placement="BottomEdgeAlignedLeft">
                         <MenuFlyoutItem x:Name="RichTabMetadataSectionItem"
                                         x:Uid="VerticalTabsMetadataSection"
-                                        IsEnabled="False" />
+                                        IsEnabled="False"
+                                        Style="{StaticResource RichTabMetadataSectionStyle}" />
                         <ToggleMenuFlyoutItem x:Name="RichTabAgentStatusVisibleItem"
                                               x:Uid="VerticalTabsMetadataAgentStatus"
                                               IsChecked="True"
@@ -209,7 +226,7 @@
                     Click="OnHistoryClick">
                 <PathIcon Width="16"
                           Height="16"
-                          Data="M7.99909 3C10.7605 3 12.9991 5.23858 12.9991 8C12.9991 10.7614 10.7605 13 7.99909 13C5.39117 13 3.2491 11.003 3.0195 8.45512C2.99471 8.1801 2.75167 7.97723 2.47664 8.00202C2.20161 8.0268 1.99875 8.26985 2.02353 8.54488C2.29916 11.6035 4.86898 14 7.99909 14C11.3128 14 13.9991 11.3137 13.9991 8C13.9991 4.68629 11.3128 2 7.99909 2C6.20656 2 4.59815 2.78613 3.49909 4.03138V2.5C3.49909 2.22386 3.27524 2 2.99909 2C2.72295 2 2.49909 2.22386 2.49909 2.5V5.5C2.49909 5.77614 2.72295 6 2.99909 6H3.08812C3.09498 6.00014 3.10184 6.00014 3.10868 6H5.99909C6.27524 6 6.49909 5.77614 6.49909 5.5C6.49909 5.22386 6.27524 5 5.99909 5H3.99863C4.91128 3.78495 6.36382 3 7.99909 3ZM7.99909 5.5C7.99909 5.22386 7.77524 5 7.49909 5C7.22295 5 6.99909 5.22386 6.99909 5.5V8.5C6.99909 8.77614 7.22295 9 7.49909 9H9.49909C9.77524 9 9.99909 8.77614 9.99909 8.5C9.99909 8.22386 9.77524 8 9.49909 8H7.99909V5.5Z" />
+                          Data="M5.10198 3C4.92335 3 4.75829 3.0953 4.66897 3.25L2.07089 7.75C1.98158 7.9047 1.98158 8.0953 2.07089 8.25L4.5746 12.5866C4.72231 12.8424 4.99529 13 5.29071 13C5.65144 13 5.97055 12.7662 6.0792 12.4222L8.96823 3.27622C9.20821 2.51649 9.913 2 10.7097 2C11.3622 2 11.9651 2.34809 12.2914 2.91316L14.7953 7.25C15.0632 7.7141 15.0632 8.2859 14.7953 8.75L12.1972 13.25C11.9292 13.7141 11.434 14 10.8981 14H8.50155C8.22541 14 8.00155 13.7761 8.00155 13.5C8.00155 13.2239 8.22541 13 8.50155 13H10.8981C11.0768 13 11.2418 12.9047 11.3311 12.75L13.9292 8.25C14.0185 8.0953 14.0185 7.9047 13.9292 7.75L11.4254 3.41316C11.2777 3.1575 11.005 3 10.7097 3C10.3493 3 10.0304 3.23369 9.92179 3.57743L7.03276 12.7234C6.7927 13.4834 6.08769 14 5.29071 14C4.63803 14 4.03492 13.6518 3.70858 13.0866L1.20487 8.75C0.936918 8.2859 0.936919 7.7141 1.20487 7.25L3.80295 2.75C4.07089 2.2859 4.56609 2 5.10198 2H7.50155C7.77769 2 8.00155 2.22386 8.00155 2.5C8.00155 2.77614 7.77769 3 7.50155 3H5.10198Z" />
             </Button>
         </Grid>
 
@@ -258,7 +275,8 @@
                               DoubleTapped="OnTabHeaderDoubleTapped"
                               Loaded="OnTabHeaderLoaded"
                               PointerPressed="OnTabHeaderPointerPressed"
-                              Tapped="OnTabHeaderTapped">
+                              Tapped="OnTabHeaderTapped"
+                              ToolTipService.ToolTip="{x:Bind ToolTipText, Mode=OneWay}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
@@ -300,6 +318,14 @@
                                                   VerticalAlignment="Center"
                                                   Content="{x:Bind Icon, Mode=OneWay}"
                                                   Visibility="{x:Bind IconVisibility, Mode=OneWay}" />
+                                <FontIcon x:Uid="CollapsedPinnedTabIcon"
+                                          FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                          FontSize="9"
+                                          Glyph="&#xE718;"
+                                          HorizontalAlignment="Right"
+                                          VerticalAlignment="Bottom"
+                                          IsHitTestVisible="False"
+                                          Visibility="{x:Bind PinnedIconVisibility, Mode=OneWay}" />
                             </Grid>
                             <ContentPresenter x:Name="TabHeaderPresenter"
                                               Grid.Column="1"
@@ -362,7 +388,8 @@
                                                 AutomationProperties.Name="{x:Bind AutomationName, Mode=OneWay}"
                                                 Background="Transparent"
                                                 BorderThickness="0"
-                                                Click="OnPaneActivateClick">
+                                                Click="OnPaneActivateClick"
+                                                ToolTipService.ToolTip="{x:Bind Title, Mode=OneWay}">
                                             <Button.Resources>
                                                 <SolidColorBrush x:Key="ButtonBackgroundPointerOver"
                                                                  Color="Transparent" />
@@ -395,22 +422,34 @@
                                                                   HorizontalAlignment="Center"
                                                                   VerticalAlignment="Center"
                                                                   Content="{x:Bind Icon, Mode=OneWay}" />
-                                                <TextBlock x:Name="PaneTitleText"
-                                                           Grid.Column="2"
-                                                           Margin="2,3,0,0"
-                                                           VerticalAlignment="Center"
-                                                           Text="{x:Bind Title, Mode=OneWay}"
-                                                           TextTrimming="CharacterEllipsis" />
-                                                <TextBlock Grid.Row="1"
-                                                           Grid.Column="2"
-                                                           Margin="2,1,0,3"
-                                                           MaxLines="2"
-                                                           FontSize="10"
-                                                           Opacity="0.72"
-                                                           Text="{x:Bind MetadataText, Mode=OneWay}"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           Visibility="{x:Bind MetadataVisibility, Mode=OneWay}"
-                                                           AutomationProperties.AccessibilityView="Raw" />
+                                                <local:HighlightedTextControl x:Name="PaneTitleText"
+                                                                              Grid.Column="2"
+                                                                              Margin="2,3,0,0"
+                                                                              VerticalAlignment="Center"
+                                                                              SearchText="{x:Bind HighlightQuery, Mode=OneWay}"
+                                                                              Text="{x:Bind Title, Mode=OneWay}">
+                                                    <local:HighlightedTextControl.TextBlockStyle>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                                        </Style>
+                                                    </local:HighlightedTextControl.TextBlockStyle>
+                                                </local:HighlightedTextControl>
+                                                <local:HighlightedTextControl Grid.Row="1"
+                                                                              Grid.Column="2"
+                                                                              Margin="2,1,0,3"
+                                                                              Opacity="0.72"
+                                                                              SearchText="{x:Bind HighlightQuery, Mode=OneWay}"
+                                                                              Text="{x:Bind MetadataText, Mode=OneWay}"
+                                                                              Visibility="{x:Bind MetadataVisibility, Mode=OneWay}"
+                                                                              AutomationProperties.AccessibilityView="Raw">
+                                                    <local:HighlightedTextControl.TextBlockStyle>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="MaxLines" Value="2" />
+                                                            <Setter Property="FontSize" Value="10" />
+                                                            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                                        </Style>
+                                                    </local:HighlightedTextControl.TextBlockStyle>
+                                                </local:HighlightedTextControl>
                                             </Grid>
                                         </Button>
                                         <Button x:Name="PaneCloseButton"
@@ -445,6 +484,8 @@
                     <Setter Property="BorderThickness" Value="0" />
                     <Setter Property="CornerRadius" Value="{StaticResource SidebarTabCornerRadius}" />
                     <Setter Property="UseSystemFocusVisuals" Value="True" />
+                    <Setter Property="AutomationProperties.AcceleratorKey" Value="{Binding AcceleratorKey}" />
+                    <Setter Property="AutomationProperties.HelpText" Value="{Binding ToolTipText}" />
                     <!--  Keep the native presenter and state brushes, but forward the row's corner radius.  -->
                     <Setter Property="Template">
                         <Setter.Value>

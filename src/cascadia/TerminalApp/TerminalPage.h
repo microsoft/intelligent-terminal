@@ -371,6 +371,8 @@ namespace winrt::TerminalApp::implementation
         std::chrono::steady_clock::time_point _historyNextRefresh{};
         bool _tabDragReorderAuthorized{ false };
         Windows::Foundation::IInspectable _tabDragSelectedItem{ nullptr };
+        winrt::weak_ref<Tab> _pendingPinTab;
+        bool _pendingPinValue{ false };
         // Spec A §5.2: hand-rolled splitter for resizing the vertical rail.
         // Lives in column 1 of the Root Grid, hugging its left edge, so the
         // hit strip straddles the column boundary.
@@ -396,6 +398,11 @@ namespace winrt::TerminalApp::implementation
         static winrt::com_ptr<Tab> _GetTabImpl(const TerminalApp::Tab& tab);
 
         void _UpdateTabIndices();
+        uint32_t _PinnedTabCount() const;
+        void _RequestPinTab(const winrt::com_ptr<Tab>& tab, bool pinned);
+        void _ApplyPendingPinRequest();
+        void _SetTabPinned(const winrt::com_ptr<Tab>& tab, bool pinned);
+        void _MoveTabToIndex(uint32_t from, uint32_t to, bool selectMoved);
 
         TerminalApp::Tab _settingsTab{ nullptr };
         winrt::Microsoft::Terminal::Settings::Editor::MainPage _settingsMainPage{ nullptr };
@@ -939,7 +946,10 @@ namespace winrt::TerminalApp::implementation
         void _UpdateTitle(const Tab& tab);
         void _UpdateTabIcon(Tab& tab);
         void _UpdateTabView();
-        void _ApplyTabListProjection(const TerminalApp::Tab& changedTab = nullptr);
+        void _ApplyTabListProjection(
+            const TerminalApp::Tab& changedTab = nullptr,
+            bool refreshPaneItems = true,
+            bool updateBookkeeping = true);
         void _UpdateTabFilterStatus();
         void _AttachOrUpdateRichTabControl(const Microsoft::Terminal::Control::TermControl& control);
         void _DetachRichTabControl(const Microsoft::Terminal::Control::TermControl& control);
@@ -948,6 +958,7 @@ namespace winrt::TerminalApp::implementation
             ::Microsoft::Terminal::RichTab::Provider::ActivationEvent reason);
         void _ReleaseRichTabAttachments(const std::shared_ptr<Pane>& rootPane);
         std::optional<std::string> _RichTabAgentStatusForControl(const Microsoft::Terminal::Control::TermControl& control);
+        std::unordered_map<std::string, std::string> _BuildRichTabFirstPartyFields(const Microsoft::Terminal::Control::TermControl& control);
         void _UpdateRichTabFirstPartyFields(const Microsoft::Terminal::Control::TermControl& control);
         void _LogSidebarRowFieldsTelemetry() const;
         void _RefreshRichTabForTab(Tab& tab, bool activate, bool refreshPaneItems = true);
@@ -957,6 +968,7 @@ namespace winrt::TerminalApp::implementation
             const ::Microsoft::Terminal::RichTab::Provider::BrokerUpdate& update);
         static bool _IsKnownAgentCliTitle(std::wstring_view title) noexcept;
         bool _MatchesPaneAgentScope(const Tab::VisiblePaneSnapshot& pane) const;
+        bool _IsPaneRowProjectionEligible(const Tab::VisiblePaneSnapshot& pane) const;
         bool _TabHasCliAgent(const winrt::com_ptr<Tab>& tab) const;
         bool _IsAgentScopeEffective() const noexcept
         {
@@ -979,8 +991,8 @@ namespace winrt::TerminalApp::implementation
             return _IsTabListProjectionActive();
         }
         bool _MatchesTabScope(const winrt::com_ptr<Tab>& tab) const;
-        bool _MatchesTabSearch(const Tab& tab) const;
-        bool _IsTabVisibleInProjection(const winrt::com_ptr<Tab>& tab) const;
+        bool _MatchesTabSearch(const Tab& tab, const TerminalApp::TabStripDisplayItem& display = nullptr) const;
+        bool _IsTabVisibleInProjection(const winrt::com_ptr<Tab>& tab, const TerminalApp::TabStripDisplayItem& display = nullptr) const;
         void _ClearTabSearch();
         void _StartSidebarHistoryRefreshTimer();
         void _StopSidebarHistoryRefreshTimer();
@@ -1136,7 +1148,9 @@ namespace winrt::TerminalApp::implementation
         std::string _FindTabIdForControl(const Microsoft::Terminal::Control::TermControl& control);
         std::string _FindTabIdForSessionId(std::string_view sessionId);
         void _RegisterTabEvents(Tab& hostingTab);
-        void _RefreshTabStripPaneItems(const winrt::com_ptr<Tab>& tab);
+        void _RefreshTabStripPaneItems(
+            const winrt::com_ptr<Tab>& tab,
+            const TerminalApp::TabStripDisplayItem& display = nullptr);
         void _ActivatePaneFromTabStrip(const TerminalApp::TabStripPaneEventArgs& args);
         safe_void_coroutine _ClosePaneFromTabStrip(TerminalApp::TabStripPaneEventArgs args);
 

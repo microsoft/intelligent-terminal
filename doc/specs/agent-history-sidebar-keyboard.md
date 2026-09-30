@@ -101,15 +101,16 @@ A subsequent History opening captures a new entry context.
 
 ## Sidebar toggle hint
 
-- Keep the existing localized Expand/Collapse label and its automation name.
-- Match the Agent Pane button's tooltip presentation: a label and a separate
-  dimmed shortcut line, using Segoe UI Variable, `FontSize=12`, normal weight,
-  `LineHeight=16`, and shortcut opacity `0.7`.
+- Use the localized labels **Expand sidebar** and **Collapse sidebar** for the
+  tooltip and automation name, retaining the existing resource identifiers.
+- Show the label and dimmed shortcut on the same line with 8 units of spacing.
+  Keep Segoe UI Variable, `FontSize=12`, normal weight, `LineHeight=16`, and
+  shortcut opacity `0.7`.
 - Display normal shortcut casing, such as `Ctrl+Shift+S`, rather than serialized
   lowercase text.
 - Resolve the effective sidebar binding and refresh the hint when settings
   change. Rebinding changes the displayed chord; unbinding or overriding the
-  action removes the obsolete shortcut line.
+  action hides the obsolete shortcut without leaving an empty gap.
 
 The previously discussed idea of expanding the sidebar directly into
 **Search tabs** is superseded. Do not implement it as part of `Ctrl+Shift+S`.
@@ -127,8 +128,9 @@ These are required checks for this contract, not claims of completed validation:
   unchanged session data/drafts, and nonblocking behavior.
 - Verify that `Ctrl+Shift+S` expansion does not activate search or move input
   focus, and that collapse uses no-source fallback even while History is open.
-- Inspect both Expand/Collapse hints against the Agent Pane reference, including
-  exact casing, separate dimmed shortcut text, remapping, and unbinding.
+- Inspect both Expand/Collapse hints against the single-line designer reference,
+  including the sidebar wording, exact casing, dimmed shortcut text, remapping,
+  and unbinding.
 
 The related release-checklist IDs remain `C110` (History), `C112` (action
 dispatch), `C349` (sidebar toggle), and `C350` (hint presentation). Earlier

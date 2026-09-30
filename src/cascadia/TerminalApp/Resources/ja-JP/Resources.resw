@@ -182,19 +182,24 @@
     <value>下のタブを閉じる</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>タブ ペインを折りたたむ</value>
+    <value>サイドバーを折りたたむ</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>タブ ペインを展開する</value>
+    <value>サイドバーを展開する</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>タブ グループを展開する</value>
+    <comment>Accessibility name and tooltip for the button that expands a group of tabs in the sidebar.</comment>
   </data>
   <data name="VerticalTabsCollapseGroup" xml:space="preserve">
     <value>タブ グループを折りたたむ</value>
+    <comment>Accessibility name and tooltip for the button that collapses a group of tabs in the sidebar.</comment>
   </data>
   <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
     <value>タブ</value>
+    <comment>Fallback title for a terminal tab in the sidebar when no title is available.</comment>
   </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>タブ</value>
@@ -219,6 +224,7 @@
   </data>
   <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
     <value>フィルター</value>
+    <comment>Section heading above the controls that filter which tabs are shown in the sidebar.</comment>
   </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>すべてのタブ</value>
@@ -228,21 +234,27 @@
   </data>
   <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
     <value>タブのメタデータ</value>
+    <comment>Section heading above the options that choose which metadata appears in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
     <value>エージェントのステータス</value>
+    <comment>Option that shows an agent's current status in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
     <value>現在の作業ディレクトリ</value>
+    <comment>Option that shows the current working directory in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
     <value>Git リポジトリ</value>
+    <comment>Option that shows the Git repository name in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
     <value>Git ブランチ</value>
+    <comment>Option that shows the Git branch name in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
     <value>Git の変更点</value>
+    <comment>Option that shows the Git working tree change summary in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>1 件のエージェント セッションを表示しています</value>
@@ -263,24 +275,24 @@
     <value>すべてのタブを表示する</value>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>エージェント セッション</value>
-    <comment>Accessible name of the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
+    <value>AI エージェント</value>
+    <comment>Accessible name of the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>エージェント セッション</value>
-    <comment>Tooltip for the toolbar button that opens the Agent sessions sidebar view. Agent means an AI agent; the view lists all live and historical agent sessions, not only session history.</comment>
+    <value>AI エージェント</value>
+    <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
-    <value>エージェント セッション</value>
-    <comment>Header of the Agent sessions sidebar view, which lists all live and historical AI-agent sessions, not only session history.</comment>
+    <value>AI エージェント</value>
+    <comment>Header of the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>エージェント セッション ビューを閉じる</value>
-    <comment>Accessible name of the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
+    <value>AI エージェント ビューを閉じる</value>
+    <comment>Accessible name of the button that closes the Agents sidebar view. Closing this view hides the sidebar; it does not terminate any agents or sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>エージェント セッション ビューを閉じる</value>
-    <comment>Tooltip for the button that closes the Agent sessions sidebar view, which lists all live and historical AI-agent sessions. Close means hide this sidebar view, not terminate any sessions.</comment>
+    <value>AI エージェント ビューを閉じる</value>
+    <comment>Tooltip for the button that closes the Agents sidebar view. Closing this view hides the sidebar; it does not terminate any agents or sessions.</comment>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
     <value>エージェント セッションを検索する</value>
@@ -983,10 +995,12 @@
     <value>すべてのターミナル ウィンドウで水平タブを使用する</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>垂直タブに切り替える</value>
+    <value>サイドバーに切り替える</value>
+    <comment>Context-menu command that changes the tab layout from horizontal tabs to the sidebar.</comment>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>すべてのターミナル ウィンドウで垂直タブを使用する</value>
+    <value>すべてのターミナル ウィンドウでサイドバーを使用する</value>
+    <comment>Tooltip for the command that changes the tab layout from horizontal tabs to the sidebar in every Terminal window.</comment>
   </data>
   <data name="CloseOnExitInfoBar.Message" xml:space="preserve">
     <value>終了動作は、プロファイルの詳細設定で構成できます。</value>
@@ -1529,6 +1543,28 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="KeepTabRunningText" xml:space="preserve">
     <value>タブの実行を継続する</value>
     <comment>Command at the top of a vertical terminal tab's context menu that enables keeping all panes running after the tab or window is closed. Also labels the tab's keep-running status indicator. This does not pin the tab or save it for a restart.</comment>
+  </data>
+  <data name="PinTabText" xml:space="preserve">
+    <value>タブをピン留めする</value>
+    <comment>Context menu action to keep a terminal tab at the start of the tab list until unpinned. Does not keep its processes running after closing or persist across restarts.</comment>
+  </data>
+  <data name="PinTabToolTip" xml:space="preserve">
+    <value>このタブをピン留めされていないタブより前に移動します。</value>
+  </data>
+  <data name="UnpinTabText" xml:space="preserve">
+    <value>タブのピン留めを解除する</value>
+    <comment>Context menu action to move a pinned terminal tab back into the regular tab group.</comment>
+  </data>
+  <data name="UnpinTabToolTip" xml:space="preserve">
+    <value>このタブをピン留めされたタブより後に移動します。</value>
+  </data>
+  <data name="PinnedTabName" xml:space="preserve">
+    <value>ピン留め済み</value>
+    <comment>Accessibility name and tooltip for a terminal tab pinned at the beginning of the tab list.</comment>
+  </data>
+  <data name="CollapsedPinnedTabIcon.AutomationProperties.Name" xml:space="preserve">
+    <value>ピン留め済み</value>
+    <comment>Accessibility name for the pin indicator on a terminal tab in the collapsed sidebar.</comment>
   </data>
   <data name="KeepTabRunningToolTip" xml:space="preserve">
     <value>タブまたはウィンドウを閉じた後も、このタブをバックグラウンドで実行し続けます。</value>

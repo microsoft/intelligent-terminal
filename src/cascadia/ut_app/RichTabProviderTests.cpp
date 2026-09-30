@@ -4,6 +4,7 @@
 #include "precomp.h"
 
 #include "../RichTabProvider/CommandRunner.h"
+#include "../RichTabProvider/ProviderBroker.h"
 
 using namespace WEX::TestExecution;
 using namespace Microsoft::Terminal::RichTab::Provider;
@@ -41,6 +42,7 @@ namespace TerminalAppUnitTests
         TEST_CLASS(RichTabProviderTests);
 
         TEST_METHOD(PowerShellProviderPreservesUnicodeAcrossProcessBoundary);
+        TEST_METHOD(LocalizedFieldDisplayNamesOverrideManifestFallbacks);
     };
 
     void RichTabProviderTests::PowerShellProviderPreservesUnicodeAcrossProcessBoundary()
@@ -95,6 +97,8 @@ namespace TerminalAppUnitTests
         request.firstPartyFields.emplace(
             "agentStatus",
             "\xE6\xAD\xA3\xE5\x9C\xA8\xE5\xB7\xA5\xE4\xBD\x9C");
+        request.firstPartyFields.emplace("branchLabel", "\xE5\x88\x86\xE6\x94\xAF");
+        request.firstPartyFields.emplace("changesLabel", "\xE6\x9B\xB4\xE6\x94\xB9");
 
         const auto serialized = SerializeRequest(request, manifest);
         VERIFY_IS_TRUE(static_cast<bool>(serialized));
@@ -117,5 +121,66 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(
             std::string{ "\xE4\xB8\xBB\xE5\x88\x86\xE6\x94\xAF" },
             std::get<std::string>(parsed.value->fields.at("branch")));
+        VERIFY_IS_TRUE(parsed.value->tooltip.has_value());
+        VERIFY_ARE_NOT_EQUAL(
+            std::string::npos,
+            parsed.value->tooltip->find("\xE5\x88\x86\xE6\x94\xAF: \xE4\xB8\xBB\xE5\x88\x86\xE6\x94\xAF"));
+        VERIFY_ARE_EQUAL(std::string::npos, parsed.value->tooltip->find("branch:"));
+
+        Registration registration;
+        registration.manifest = manifest;
+        ProviderBroker::FieldDisplayNameMap localizedDisplayNames;
+        localizedDisplayNames[manifest.id] = {
+            { "agentStatus", "\xE4\xBB\xA3\xE7\x90\x86\xE7\x8A\xB6\xE6\x80\x81" },
+            { "workingDirectory", "\xE5\xB7\xA5\xE4\xBD\x9C\xE7\x9B\xAE\xE5\xBD\x95" },
+            { "repository", "\xE4\xBB\x93\xE5\xBA\x93" },
+            { "branch", "\xE5\x88\x86\xE6\x94\xAF" },
+            { "changes", "\xE6\x9B\xB4\xE6\x94\xB9" },
+        };
+        const auto presentation = ProviderBroker::ComposePresentation(
+            { std::move(registration) },
+            { { manifest.id, *parsed.value } },
+            {},
+            localizedDisplayNames);
+        VERIFY_IS_TRUE(presentation.has_value());
+        VERIFY_ARE_NOT_EQUAL(
+            std::wstring::npos,
+            presentation->accessibilityText.find(L"\u4EE3\u7406\u72B6\u6001: \u6B63\u5728\u5DE5\u4F5C"));
+        VERIFY_ARE_NOT_EQUAL(
+            std::wstring::npos,
+            presentation->accessibilityText.find(L"\u5DE5\u4F5C\u76EE\u5F55: "));
+        VERIFY_ARE_EQUAL(std::wstring::npos, presentation->accessibilityText.find(L"Agent status"));
+        VERIFY_ARE_EQUAL(std::wstring::npos, presentation->accessibilityText.find(L"Current working directory"));
+    }
+
+    void RichTabProviderTests::LocalizedFieldDisplayNamesOverrideManifestFallbacks()
+    {
+        Registration provider;
+        provider.manifest.id = "git";
+        provider.manifest.fields = {
+            { "branch", "Git branch", FieldType::String, true },
+            { "changes", "Git changes", FieldType::String, true },
+        };
+
+        Snapshot snapshot;
+        snapshot.fields.emplace("branch", std::string{ "\xE4\xB8\xBB\xE5\x88\x86\xE6\x94\xAF" });
+        snapshot.fields.emplace("changes", std::string{ "~12 +200 -35" });
+
+        ProviderBroker::FieldDisplayNameMap localizedDisplayNames;
+        localizedDisplayNames["git"] = {
+            { "branch", "\xE5\x88\x86\xE6\x94\xAF" },
+            { "changes", "\xE6\x9B\xB4\xE6\x94\xB9" },
+        };
+
+        const auto presentation = ProviderBroker::ComposePresentation(
+            { provider },
+            { { "git", std::move(snapshot) } },
+            {},
+            localizedDisplayNames);
+
+        VERIFY_IS_TRUE(presentation.has_value());
+        VERIFY_ARE_EQUAL(
+            std::wstring{ L"\u5206\u652F: \u4E3B\u5206\u652F, \u66F4\u6539: ~12 +200 -35" },
+            presentation->accessibilityText);
     }
 }
