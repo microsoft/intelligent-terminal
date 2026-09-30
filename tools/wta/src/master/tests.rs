@@ -13175,6 +13175,94 @@ async fn master_com_agent_event_routes_directly_into_the_registry() {
 }
 
 #[tokio::test]
+async fn opencode_question_hooks_keep_attention_in_either_arrival_order() {
+    use crate::agent_sessions::{AgentSessionRegistry, AgentStatus, CliSource};
+
+    let key = "opencode-question".to_string();
+    let sid = acp::schema::v1::SessionId::new(key.clone());
+    let pane = "pane-question";
+    let hook = |event, payload| {
+        serde_json::json!({
+            "event": event,
+            "cli_source": "opencode",
+            "agent_session_id": key,
+            "pane_id": pane,
+            "payload": payload,
+        })
+    };
+    let question = hook(
+        "agent.tool.starting",
+        serde_json::json!({
+            "tool_name": "question",
+            "tool_input": {
+                "questions": [{
+                    "question": "Which option?",
+                    "header": "Choose",
+                    "options": [{"label": "A", "description": "Option A"}],
+                }],
+            },
+        }),
+    );
+    let notification = hook(
+        "agent.notification",
+        serde_json::json!({"message": "OpenCode is waiting for input"}),
+    );
+
+    for notification_first in [false, true] {
+        let state = make_state();
+        let mut helper = AgentSessionRegistry::new();
+        let events = if notification_first {
+            [&notification, &question]
+        } else {
+            [&question, &notification]
+        };
+        for params in events {
+            handle_master_agent_event(&state, params).await;
+            crate::app::route_agent_event_to_registry(&mut helper, pane, params);
+            assert_eq!(
+                state.registry.lookup(&sid).await.unwrap().status,
+                Some(AgentStatus::Attention),
+                "master must keep waiting for input after either hook"
+            );
+            assert_eq!(helper.get(&key).unwrap().status, AgentStatus::Attention);
+        }
+
+        let row = state.registry.lookup(&sid).await.unwrap();
+        assert_eq!(row.cli_source, Some(CliSource::OpenCode));
+        assert_eq!(row.pane_session_id.as_deref(), Some(pane));
+        assert_eq!(row.current_tool.as_deref(), Some("question"));
+        assert_eq!(
+            helper.get(&key).unwrap().current_tool.as_deref(),
+            Some("question")
+        );
+
+        for (event, payload, expected) in [
+            (
+                "agent.prompt.submit",
+                serde_json::json!({}),
+                AgentStatus::Working,
+            ),
+            (
+                "agent.tool.starting",
+                serde_json::json!({"tool_name": "bash"}),
+                AgentStatus::Working,
+            ),
+            ("agent.stop", serde_json::json!({}), AgentStatus::Idle),
+        ] {
+            let params = hook(event, payload);
+            handle_master_agent_event(&state, &params).await;
+            crate::app::route_agent_event_to_registry(&mut helper, pane, &params);
+            assert_eq!(
+                state.registry.lookup(&sid).await.unwrap().status,
+                Some(expected.clone()),
+                "{event} must leave the waiting state"
+            );
+            assert_eq!(helper.get(&key).unwrap().status, expected);
+        }
+    }
+}
+
+#[tokio::test]
 async fn master_com_shell_prompt_ends_session_when_helper_exit_overtook_start() {
     use crate::agent_sessions::{AgentStatus, SessionEvent};
 
