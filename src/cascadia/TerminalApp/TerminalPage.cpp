@@ -251,6 +251,7 @@ namespace winrt::TerminalApp::implementation
 {
     static std::optional<winrt::guid> _TryParsePaneSessionId(std::string_view value) noexcept;
     static winrt::hstring _BuildAgentResumeCommandline(std::string_view cliSource, std::string_view agentSessionId);
+    static winrt::hstring _ResolveEffectiveLanguage(const winrt::Microsoft::Terminal::Settings::Model::GlobalAppSettings& globals);
 
     TerminalPage::TerminalPage(TerminalApp::WindowProperties properties, const TerminalApp::ContentManager& manager) :
         _tabs{ winrt::single_threaded_observable_vector<TerminalApp::Tab>() },
@@ -507,19 +508,7 @@ namespace winrt::TerminalApp::implementation
         _rearranging = false;
         _hasTitlebarHost = _settings.GlobalSettings().ShowTabsInTitlebar();
 
-        winrt::hstring language = _settings.GlobalSettings().Language();
-        if (language.empty())
-        {
-            try
-            {
-                const auto languages = winrt::Windows::Globalization::ApplicationLanguages::Languages();
-                if (languages && languages.Size() > 0)
-                {
-                    language = languages.GetAt(0);
-                }
-            }
-            CATCH_LOG();
-        }
+        const auto language = _ResolveEffectiveLanguage(_settings.GlobalSettings());
         _isRightToLeft = ::Microsoft::Terminal::RtlHelper::IsRtlLocale(language);
         const auto flowDirection = _isRightToLeft ? FlowDirection::RightToLeft : FlowDirection::LeftToRight;
         _tabRow.FlowDirection(flowDirection);
