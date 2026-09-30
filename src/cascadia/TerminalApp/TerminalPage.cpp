@@ -6099,15 +6099,20 @@ namespace winrt::TerminalApp::implementation
 
     WUX::Controls::Control TerminalPage::_SidebarFocusedControl() const
     {
+        if (_tabRow)
+        {
+            const auto railToggle = winrt::get_self<implementation::TabRowControl>(_tabRow)->VerticalRailToggleButton();
+            if (railToggle && railToggle.FocusState() != FocusState::Unfocused)
+            {
+                return railToggle;
+            }
+        }
         if (const auto root = _tabStrip ? _tabStrip.XamlRoot() : nullptr)
         {
             const auto focused = WUX::Input::FocusManager::GetFocusedElement(root);
-            const auto railToggle = _tabRow ?
-                                        winrt::get_self<implementation::TabRowControl>(_tabRow)->VerticalRailToggleButton() :
-                                        nullptr;
             for (auto element = focused.try_as<DependencyObject>(); element; element = Media::VisualTreeHelper::GetParent(element))
             {
-                if (element == _tabStrip || (railToggle && element == railToggle))
+                if (element == _tabStrip)
                 {
                     return focused.try_as<WUX::Controls::Control>();
                 }
