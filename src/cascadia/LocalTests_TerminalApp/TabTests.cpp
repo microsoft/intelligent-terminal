@@ -4108,10 +4108,9 @@ namespace TerminalAppLocalTests
     {
         using namespace winrt::Windows::UI::Xaml::Automation;
 
-        winrt::TerminalApp::TabStrip strip;
-        Grid host;
-
         TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+            Grid host;
             const auto window = Window::Current();
             const auto previousContent = window.Content();
             const auto restore = wil::scope_exit([&]() { window.Content(previousContent); });
