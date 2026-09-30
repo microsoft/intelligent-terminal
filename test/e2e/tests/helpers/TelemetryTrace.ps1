@@ -6,7 +6,7 @@ function Start-TestTelemetryTrace {
     $script:telemetryPolicyBroker = $null
     $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
     $policyArgument = if ($env:ITE2E_TELEMETRY_POLICY_APPROVED -eq '1') { " -PolicyApproved -ExpectedUserSid `"$sid`"" } else { '' }
-    $process = Start-Process -FilePath (Get-Command pwsh).Source -Verb RunAs -PassThru `
+    $process = Start-Process -FilePath (Get-Command pwsh).Source -Verb RunAs -WindowStyle Hidden -PassThru `
         -ArgumentList "-NoProfile -File `"$collector`" -OutputDirectory `"$directoryPath`"$policyArgument"
     $deadline = [DateTime]::UtcNow.AddSeconds(45)
     while (-not (Test-Path -LiteralPath (Join-Path $directoryPath 'ready.json'))) {

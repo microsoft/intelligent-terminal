@@ -1,4 +1,6 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
+param([switch]$KeepRunningOnly)
+
 # Real UI actions -> App TraceLogging -> bounded ETW capture -> typed TDH payloads.
 # No policy writes, model quota, or synthetic telemetry producers.
 Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelemetry' -Skip:($env:ITE2E_TELEMETRY -ne '1') {
@@ -133,8 +135,13 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
         function Get-SidebarHeader {
             param([string]$Title)
             $tree = Get-UiTree -App $script:app -Selector ItemsList -Depth 8
-            $pattern = '(?m)^\s*(?<Selector>lbl-textview-\S+|TextView) Text "' + [regex]::Escape($Title) + '"(?<State>[^\r\n]*)'
+            $pattern = '(?m)^(?<Indent>[ \t]*)(?<Selector>lbl-textview-\S+|TextView) Text "' + [regex]::Escape($Title) + '"(?<State>[^\r\n]*)'
             $matches = @([regex]::Matches($tree, $pattern))
+            if ($matches.Count -gt 1) {
+                # Expanded split panes can repeat the tab title beneath its parent header.
+                $depth = ($matches | ForEach-Object { $_.Groups['Indent'].Length } | Measure-Object -Minimum).Minimum
+                $matches = @($matches | Where-Object { $_.Groups['Indent'].Length -eq $depth })
+            }
             if ($matches.Count -gt 1) { throw "Ambiguous sidebar parent header: $Title" }
             if ($matches.Count -eq 1 -and $matches[0].Groups['State'].Value -notmatch '\[offscreen\]') {
                 $matches[0].Groups['Selector'].Value
@@ -148,6 +155,7 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
         }
         function Open-SidebarContextMenu {
             param([string]$Title)
+            Set-WtWindowForeground -App $script:app | Should -BeTrue
             Wait-SidebarHeader -Title $Title
             Invoke-UiClick -App $script:app -Selector (Get-SidebarHeader -Title $Title) -Right | Out-Null
             Wait-UiElement -App $script:app -Selector KeepTabRunningMenuItem | Out-Null
@@ -252,111 +260,116 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
                 } | Out-Null
                 Start-Sleep -Seconds 1
             }
-            Invoke-TelemetryPhase -Name fields-menu-only -Action {
-                Invoke-UiElement -App $script:app -Selector FilterTabsButton | Out-Null
-                Assert-SidebarRowFields -Fields 'agentStatus,workingDirectory'
-                Send-WtWindowKey -App $script:app -Vk 0x1B -RequireForeground | Out-Null
-            }
-            Invoke-TelemetryPhase -Name fields-third-disabled -Action {
-                Invoke-UiElement -App $script:app -Selector FilterTabsButton | Out-Null
-                Test-UiElementEnabled -App $script:app -Selector RichTabRepositoryVisibleItem | Should -BeFalse
-                Invoke-UiClick -App $script:app -Selector RichTabRepositoryVisibleItem | Out-Null
-                Assert-SidebarRowFields -Fields 'agentStatus,workingDirectory'
-                Send-WtWindowKey -App $script:app -Vk 0x1B -RequireForeground | Out-Null
-            }
-            foreach ($case in $script:rowFieldCases) {
-                Invoke-TelemetryPhase -Name $case.Phase -Action {
+            function Invoke-OtherSidebarScenarios {
+                Invoke-TelemetryPhase -Name fields-menu-only -Action {
                     Invoke-UiElement -App $script:app -Selector FilterTabsButton | Out-Null
-                    Test-UiElementEnabled -App $script:app -Selector $case.Selector | Should -BeTrue
-                    Invoke-UiElement -App $script:app -Selector $case.Selector | Out-Null
-                    Invoke-UiElement -App $script:app -Selector FilterTabsButton | Out-Null
-                    Assert-SidebarRowFields -Fields $case.Fields
-                    Get-UiTree -App $script:app -Depth 8 |
-                        Set-Content -LiteralPath (Join-Path $script:root "$($case.Phase).txt")
+                    Assert-SidebarRowFields -Fields 'agentStatus,workingDirectory'
                     Send-WtWindowKey -App $script:app -Vk 0x1B -RequireForeground | Out-Null
                 }
-                if ($case.Phase -eq 'fields-repository-branch') {
-                    Invoke-TelemetryPhase -Name fields-session-start -Action {
-                        $existing = @(Get-AgentPaneSessions -App $script:app).PaneSessionId
-                        $tab = New-WtTab -App $script:app -Command 'pwsh -NoProfile' -Title 'IT-sidebar-start-snapshot'
-                        $helper = $null
-                        try {
-                            $helper = Wait-NewAgentPaneSession -App $script:app -ExcludePaneSessionId $existing -TimeoutSec 40
-                            Wait-AgentReady -App $script:app -PaneSessionId $helper.PaneSessionId -TimeoutSec 40 | Should -BeTrue
-                            Save-TelemetryOwnedProcesses -App $script:app
-                        }
-                        finally {
-                            if ($helper) {
-                                Close-WtPane -App $script:app -SessionId $helper.PaneSessionId
-                                Wait-Until -TimeoutSec 20 -Because 'the temporary session helper retires' -Condition {
-                                    -not (Get-Process -Id $helper.HelperProcessId -ErrorAction SilentlyContinue)
-                                } | Out-Null
+                Invoke-TelemetryPhase -Name fields-third-disabled -Action {
+                    Invoke-UiElement -App $script:app -Selector FilterTabsButton | Out-Null
+                    Test-UiElementEnabled -App $script:app -Selector RichTabRepositoryVisibleItem | Should -BeFalse
+                    Invoke-UiClick -App $script:app -Selector RichTabRepositoryVisibleItem | Out-Null
+                    Assert-SidebarRowFields -Fields 'agentStatus,workingDirectory'
+                    Send-WtWindowKey -App $script:app -Vk 0x1B -RequireForeground | Out-Null
+                }
+                foreach ($case in $script:rowFieldCases) {
+                    Invoke-TelemetryPhase -Name $case.Phase -Action {
+                        Invoke-UiElement -App $script:app -Selector FilterTabsButton | Out-Null
+                        Test-UiElementEnabled -App $script:app -Selector $case.Selector | Should -BeTrue
+                        Invoke-UiElement -App $script:app -Selector $case.Selector | Out-Null
+                        Invoke-UiElement -App $script:app -Selector FilterTabsButton | Out-Null
+                        Assert-SidebarRowFields -Fields $case.Fields
+                        Get-UiTree -App $script:app -Depth 8 |
+                            Set-Content -LiteralPath (Join-Path $script:root "$($case.Phase).txt")
+                        Send-WtWindowKey -App $script:app -Vk 0x1B -RequireForeground | Out-Null
+                    }
+                    if ($case.Phase -eq 'fields-repository-branch') {
+                        Invoke-TelemetryPhase -Name fields-session-start -Action {
+                            $existing = @(Get-AgentPaneSessions -App $script:app).PaneSessionId
+                            $tab = New-WtTab -App $script:app -Command 'pwsh -NoProfile' -Title 'IT-sidebar-start-snapshot'
+                            $helper = $null
+                            try {
+                                $helper = Wait-NewAgentPaneSession -App $script:app -ExcludePaneSessionId $existing -TimeoutSec 40
+                                Wait-AgentReady -App $script:app -PaneSessionId $helper.PaneSessionId -TimeoutSec 40 | Should -BeTrue
+                                Save-TelemetryOwnedProcesses -App $script:app
                             }
-                            Close-WtPane -App $script:app -SessionId $tab.session_id
-                            Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
+                            finally {
+                                if ($helper) {
+                                    Close-WtPane -App $script:app -SessionId $helper.PaneSessionId
+                                    Wait-Until -TimeoutSec 20 -Because 'the temporary session helper retires' -Condition {
+                                        -not (Get-Process -Id $helper.HelperProcessId -ErrorAction SilentlyContinue)
+                                    } | Out-Null
+                                }
+                                Close-WtPane -App $script:app -SessionId $tab.session_id
+                                Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
+                            }
                         }
                     }
                 }
-            }
-            Invoke-TelemetryPhase -Name search-open -Action {
-                Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
-                Wait-UiElement -App $script:app -Selector SearchTextBox | Out-Null
-            }
-            Invoke-TelemetryPhase -Name search-edit -Action {
-                Set-SidebarQuery -Text $script:titleB
-                Wait-SidebarHeader -Title $script:titleB
-                Wait-SidebarHeader -Title $script:titleA -Hidden
-                Set-SidebarQuery -Text 'IT-sidebar-'
-                Wait-SidebarHeader -Title $script:titleA
-            }
-            Invoke-TelemetryPhase -Name search-close -Action {
-                Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
-                Wait-UiElement -App $script:app -Selector SearchTextBox -Gone | Out-Null
-            }
-            Invoke-TelemetryPhase -Name search-reopen -Action {
-                Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
-                Wait-UiElement -App $script:app -Selector SearchTextBox | Out-Null
-            }
-            Invoke-TelemetryPhase -Name filter-all -Action {
-                $count = Get-AgentViewRowCount
-                Set-SidebarHistory -Open $true
-                Wait-AgentViewLoaded -Count $count
-                @{ Count = $count }
-            }
-            Invoke-TelemetryPhase -Name history-refresh -Action {
-                Wait-AgentViewLoaded -Count $script:phases['filter-all'].Data.Count
-                Start-Sleep -Seconds 7
-            }
-            Invoke-TelemetryPhase -Name filter-search-edit -Action {
-                Set-UiValue -App $script:app -Selector HistorySearchTextBox -Value ('no-session-' + [guid]::NewGuid().ToString('N')) | Out-Null
-                Wait-UiElement -App $script:app -Selector HistoryMessage | Out-Null
-                (Get-UiElement -App $script:app -Selector HistoryMessage).name |
-                    Should -BeIn @('No matching agent sessions.', 'No agent sessions found.')
-            }
-            Invoke-TelemetryPhase -Name filter-live-search -Action {
+                Invoke-TelemetryPhase -Name search-open -Action {
+                    Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+                    Wait-UiElement -App $script:app -Selector SearchTextBox | Out-Null
+                }
+                Invoke-TelemetryPhase -Name search-edit -Action {
+                    Set-SidebarQuery -Text $script:titleB
+                    Wait-SidebarHeader -Title $script:titleB
+                    Wait-SidebarHeader -Title $script:titleA -Hidden
+                    Set-SidebarQuery -Text 'IT-sidebar-'
+                    Wait-SidebarHeader -Title $script:titleA
+                }
+                Invoke-TelemetryPhase -Name search-close -Action {
+                    Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+                    Wait-UiElement -App $script:app -Selector SearchTextBox -Gone | Out-Null
+                }
+                Invoke-TelemetryPhase -Name search-reopen -Action {
+                    Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+                    Wait-UiElement -App $script:app -Selector SearchTextBox | Out-Null
+                }
+                Invoke-TelemetryPhase -Name filter-all -Action {
+                    $count = Get-AgentViewRowCount
+                    Set-SidebarHistory -Open $true
+                    Wait-AgentViewLoaded -Count $count
+                    @{ Count = $count }
+                }
+                Invoke-TelemetryPhase -Name history-refresh -Action {
+                    Wait-AgentViewLoaded -Count $script:phases['filter-all'].Data.Count
+                    Start-Sleep -Seconds 7
+                }
+                Invoke-TelemetryPhase -Name filter-search-edit -Action {
+                    Set-UiValue -App $script:app -Selector HistorySearchTextBox -Value ('no-session-' + [guid]::NewGuid().ToString('N')) | Out-Null
+                    Wait-UiElement -App $script:app -Selector HistoryMessage | Out-Null
+                    (Get-UiElement -App $script:app -Selector HistoryMessage).name |
+                        Should -BeIn @('No matching agent sessions.', 'No agent sessions found.')
+                }
+                Invoke-TelemetryPhase -Name filter-live-search -Action {
+                    Set-SidebarHistory -Open $false
+                    Add-AgentViewFixtures
+                    Set-SidebarQuery -Text $script:titleA
+                    Wait-SidebarHeader -Title $script:titleA
+                    $count = Get-AgentViewRowCount
+                    $count | Should -BeGreaterOrEqual 2
+                    Set-SidebarHistory -Open $true
+                    Wait-AgentViewLoaded -Count $count
+                    Get-UiTree -App $script:app -Depth 12 | Set-Content -LiteralPath (Join-Path $script:root 'agent-view.txt')
+                    @{ Count = $count }
+                }
+                Invoke-TelemetryPhase -Name filter-live-no-match -Action {
+                    Set-SidebarHistory -Open $false
+                    Set-SidebarQuery -Text 'IT-sidebar-no-match'
+                    Wait-SidebarHeader -Title $script:titleA -Hidden
+                    Wait-SidebarHeader -Title $script:titleB -Hidden
+                    $count = Get-AgentViewRowCount
+                    Set-SidebarHistory -Open $true
+                    Wait-AgentViewLoaded -Count $count
+                    @{ Count = $count }
+                }
                 Set-SidebarHistory -Open $false
-                Add-AgentViewFixtures
-                Set-SidebarQuery -Text $script:titleA
-                Wait-SidebarHeader -Title $script:titleA
-                $count = Get-AgentViewRowCount
-                $count | Should -BeGreaterOrEqual 2
-                Set-SidebarHistory -Open $true
-                Wait-AgentViewLoaded -Count $count
-                Get-UiTree -App $script:app -Depth 12 | Set-Content -LiteralPath (Join-Path $script:root 'agent-view.txt')
-                @{ Count = $count }
+                Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
             }
-            Invoke-TelemetryPhase -Name filter-live-no-match -Action {
-                Set-SidebarHistory -Open $false
-                Set-SidebarQuery -Text 'IT-sidebar-no-match'
-                Wait-SidebarHeader -Title $script:titleA -Hidden
-                Wait-SidebarHeader -Title $script:titleB -Hidden
-                $count = Get-AgentViewRowCount
-                Set-SidebarHistory -Open $true
-                Wait-AgentViewLoaded -Count $count
-                @{ Count = $count }
+            if (-not $KeepRunningOnly) {
+                Invoke-OtherSidebarScenarios
             }
-            Set-SidebarHistory -Open $false
-            Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
             Invoke-TelemetryPhase -Name pin-first -Action {
                 Invoke-SidebarKeepRunning -Title $script:titleA -Enable $true
             }

@@ -175,6 +175,14 @@ script rejects downgrades before `DeployAppRecipe.exe` can unregister the workin
 package. Bump `Package-Dev.appxmanifest` and rebuild rather than removing the
 installed package (which would discard LocalState).
 
+If registration fails with `0x80070020` while updating
+`AppRepository\Packages\<Dev-package>\PackagedCom\OpenConsoleProxy.dll`,
+check loaded modules in other Terminal processes as well as processes in the
+Dev layout. An ordinary Windows Terminal can retain that COM proxy after Dev
+closes. Rebuild with a fresh Dev manifest version to avoid overwriting the
+mapped proxy; do not terminate the current CLI host or delete AppRepository
+files to release it.
+
 Its `row_count` oracle counts the unified Agent view's session rows
 on first successful load, independently of live-tab search and split-pane
 children. `SidebarTabPinned` means enabling Keep tab running,
@@ -199,6 +207,31 @@ The same capture includes a real fixture prompt and verifies that App session
 starts and WTA session creation, prompt, first-text, and completion payloads
 contain no provider session identifiers. Prompt metrics are scoped by process
 and action phase rather than exported session IDs.
+
+To validate only keep-running telemetry without running the unrelated row-field
+and Agent-view scenarios, retain the same Dev selection, telemetry opt-in, and
+build-hash environment variables, then run the existing three contracts:
+
+```powershell
+$cfg = New-PesterConfiguration
+$cfg.Run.Container = New-PesterContainer `
+    -Path test\e2e\tests\Feature.SidebarTelemetry.Tests.ps1 `
+    -Data @{ KeepRunningOnly = $true }
+$cfg.Filter.FullName = @(
+    '*Sidebar pin telemetry counts explicit keep-running opt-ins'
+    '*Keep-running telemetry correlates opt-in, retention, and live reattachment'
+    '*Restored agent prompt telemetry identifies the surviving ACP session'
+)
+$cfg.TestResult.Enabled = $true
+$cfg.TestResult.OutputFormat = 'NUnitXml'
+$cfg.TestResult.OutputPath = 'test\e2e\artifacts\keep-running-results.xml'
+Invoke-Pester -Configuration $cfg
+```
+
+This focused run is not a pass for the complete sidebar suite. Expanded split
+tabs repeat their title in child rows; context-menu targeting selects the
+shallowest matching tab header. The elevated ETW collector runs with its window
+hidden so it does not compete with the unelevated UI runner for foreground.
 
 `Feature.TelemetryFunnels` requires an unused **Dev** package built from the target revision,
 the build receipt's `ITE2E_EXPECTED_WTA_SHA256` and `ITE2E_EXPECTED_APP_SHA256`

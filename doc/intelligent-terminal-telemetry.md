@@ -18,6 +18,8 @@ established separately. See [privacy information](../PRIVACY.md).
 ## Contents
 
 - [Measurement guide](#measurement-guide)
+- [Requirement alignment and open gaps](#requirement-alignment-and-open-gaps)
+- [Validation snapshot](#validation-snapshot)
 - [Providers and common metadata](#providers-and-common-metadata)
 - [Event catalog](#event-catalog)
 - [App event schemas](#app-event-schemas)
@@ -61,6 +63,51 @@ These events do **not** establish task success, automatic fix success,
 time-to-fix, total response bytes, token consumption, monetary cost, session
 lifetime, or unique active users. `ShowTokenUsageAndCost` is a UI setting,
 not a usage or cost measurement.
+
+## Requirement alignment and open gaps
+
+The schema below describes implemented behavior, not proposed additions.
+The requirement review on **2026-09-30**, against product source
+`7a221adaf967a80da144e48fd4c67700b6bf8625`, established the following boundaries.
+The original requirement's 6.1 wording, "mark rate per agent session", is
+superseded by the agreed enable-time terminal-tab snapshot definition below.
+
+| Requirement | Implemented measurement | Remaining gap or decision |
+|---|---|---|
+| 2.3 Turn completion rate | All tracked prompt RPC completions have `Success`; prompt dispatches also have `IsAutofix`. | Completion events have no `IsAutofix`, so user-only dispatches cannot be paired with a user-only completion population. Adding that classification was discussed but is not implemented. Success among observed completions is not the fraction of all sent turns that finish. |
+| 3.2 Detection becomes an offer | A concrete visible autofix offer emits `ErrorFixOffered`, including offers from manual `/fix`. | No automatic/manual source discriminator or detection-to-offer relation exists. Do not divide all offers by all error detections as a conversion rate. A source category alone would not deduplicate multiple signals or prove which detections produced an offer. |
+| 5.3 Agent filter use | Entry into the Agent view emits its first successfully loaded `row_count`. | Confirm that the requirement means this UI entry point; "behind search" does not establish a required search-then-filter sequence. |
+| 5.4 Pin use | `SidebarTabPinned` measures the Keep running menu, not tab-order pinning. | If the requirement means the separate Pin Tab feature, its instrumentation is still missing from this event. |
+| 5.5 Rich-tab field choices | Complete field selections are emitted on successful agent-session starts and user toggles. | There is no trigger discriminator or unconditional per-window launch snapshot. Observed combinations can be counted, but not pure edit frequency or an unbiased installed-base configuration distribution. Launch snapshots and trigger classification were discussed, not implemented. |
+| 6.1 Keep-running tab share | On a false-to-true transition, emit the owning window's paired attached-terminal-tab counts after enabling. | Use `KeepRunningTabCount / TotalTabCount`; exclude detached and nonterminal tabs, include search-hidden tabs, and count a split tab once. This is not an agent-session mark rate and needs no `KeepId` for the ratio. |
+| 6.3 Reattachment | Same-process retained-tab transfers emit `live` or `failed`. | Process-exit recovery and `gone` are not supported. The original relaunch wording needs a product-scope decision, not just another event. |
+
+Backend ingestion, device identity, sampling, and D0/D7/D28 cohort definitions
+remain separate dashboard prerequisites. Random correlation IDs such as
+`StartId`, `OfferId`, and `KeepId` are existing schema choices; they must not
+be presented as required by the original counts/booleans/enums-only constraint.
+
+## Validation snapshot
+
+On **2026-09-30**, the local **Dev 0.8.0.9** package was successfully registered
+and exercised. Its `TerminalApp.dll` and `wta.exe` hashes matched the binaries
+built from product revision `7a221adaf967a80da144e48fd4c67700b6bf8625`.
+The local package-version change and test-runner fixes were not part of that
+commit. This does not establish availability in the Store release.
+
+| Validation | Observed result | Scope |
+|---|---|---|
+| Focused `Feature.SidebarTelemetry` keep-running run | **3 passed, 0 failed**, with real UI actions and typed ETW | Mark snapshots had `(TotalTabCount, KeepRunningTabCount)` of `(3,1)`, `(3,2)`, `(3,2)`, including a search-hidden tab and a split tab. Detach and live reattach preserved `KeepId`. The same helper/ACP session emitted `First` before retention and `Second` with `Reattached=true` after restoration. |
+| Release-report mapping | `C358` and `C359` checked in both full and incremental reports | Credits these focused contracts only, not the full sidebar suite. |
+| Telemetry decoder/collector helper tests | **8 passed** | Includes hidden-window launch of the elevated collector. |
+| Full sidebar scenario run | **Failed** in search/history setup before completing all contracts | Not superseded by the focused pass; no full-suite pass is claimed. |
+| Elevated `TabTests::KeepRunning*` run | **11 passed, 12 failed**, none blocked | Elevation allowed the test host to execute. Failures included the snapshot test's split setup, other assertions, and host crashes; C++ regression coverage is not all green. |
+
+The focused run restored settings/state bytes and verified their hashes.
+It does not independently prove every schema edge case, backend delivery,
+or retention across application exit. Reproduction instructions, including
+the focused Pester selector, are in the
+[E2E telemetry guide](../test/e2e/README.md#opt-in-telemetry-funnel-validation).
 
 ## Providers and common metadata
 
@@ -641,6 +688,9 @@ known monotonic dispatch time.
 
 RPC success does not mean that the answer was correct, a tool succeeded,
 or the user's task was completed. `TotalResponseBytes` is not emitted.
+Unlike `AgentPromptSent`, this event has no `IsAutofix` or `TemplateKind`.
+Do not use all response completions as the numerator for a denominator
+filtered to non-autofix prompt dispatches.
 
 ### WTA.ErrorDetected
 
@@ -686,6 +736,10 @@ An autocomplete popup elsewhere in the pane does not suppress the event;
 its painted rectangle must overlap the recommendation card to obscure it.
 This measures application-level presentation, not proof that the user
 looked at the window.
+Manual `/fix` and automatically triggered offers share this schema, with no
+source field. `OfferId` joins an offer to acceptance, not to an error detection.
+Consequently, all offers divided by all detections is not a detection-to-offer
+conversion rate.
 
 ### WTA.ErrorFixAccepted
 
