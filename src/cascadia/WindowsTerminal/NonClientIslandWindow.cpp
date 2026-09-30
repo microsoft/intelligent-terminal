@@ -119,7 +119,7 @@ LRESULT NonClientIslandWindow::_dragBarNcHitTest(const til::point pointer)
     // make sure to account for the width of the window frame!
     const til::rect nonClientFrame{ GetNonClientFrame(_currentDpi) };
     const auto rtl = _titlebar.FlowDirection() == FlowDirection::RightToLeft;
-    const auto captionEdge = rtl ? rcParent.left + nonClientFrame.left : rcParent.right - nonClientFrame.right;
+    const auto captionEdge = rtl ? rcParent.left - nonClientFrame.left : rcParent.right - nonClientFrame.right;
     const auto distanceFromCaptionEdge = rtl ? pointer.x - captionEdge : captionEdge - pointer.x;
     // From the outer edge toward the center,
     // * are we in the close button?
