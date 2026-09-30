@@ -428,6 +428,28 @@
     <value>ໃຫ້ແທັບເຮັດວຽກຕໍ່ໄປ</value>
     <comment>Command at the top of a vertical terminal tab's context menu that enables keeping all panes running after the tab or window is closed. Also labels the tab's keep-running status indicator. This does not pin the tab or save it for a restart.</comment>
   </data>
+  <data name="PinTabText" xml:space="preserve">
+    <value>ປັກໝຸດແທັບ</value>
+    <comment>Context menu action to keep a terminal tab at the start of the tab list until unpinned. Does not keep its processes running after closing or persist across restarts.</comment>
+  </data>
+  <data name="PinTabToolTip" xml:space="preserve">
+    <value>ຍ້າຍແທັບນີ້ໄປໄວ້ກ່ອນແທັບທີ່ບໍ່ໄດ້ປັກໝຸດ.</value>
+  </data>
+  <data name="UnpinTabText" xml:space="preserve">
+    <value>ຖອນໝຸດແທັບ</value>
+    <comment>Context menu action to move a pinned terminal tab back into the regular tab group.</comment>
+  </data>
+  <data name="UnpinTabToolTip" xml:space="preserve">
+    <value>ຍ້າຍແທັບນີ້ໄປໄວ້ຫຼັງແທັບທີ່ປັກໝຸດ.</value>
+  </data>
+  <data name="PinnedTabName" xml:space="preserve">
+    <value>ປັກໝຸດແລ້ວ</value>
+    <comment>Accessibility name and tooltip for a terminal tab pinned at the beginning of the tab list.</comment>
+  </data>
+  <data name="CollapsedPinnedTabIcon.AutomationProperties.Name" xml:space="preserve">
+    <value>ປັກໝຸດແລ້ວ</value>
+    <comment>Accessibility name for the pin indicator on a terminal tab in the collapsed sidebar.</comment>
+  </data>
   <data name="KeepTabRunningToolTip" xml:space="preserve">
     <value>ໃຫ້ແທັບນີ້ເຮັດວຽກຕໍ່ໄປໃນພື້ນຫຼັງ ຫຼັງຈາກປິດແທັບ ຫຼື ໜ້າຕ່າງ.</value>
     <comment>Tooltip and accessibility help for Keep tab running. Includes shell panes and the AI assistant; their current processes and sessions stay alive, rather than restarting later.</comment>

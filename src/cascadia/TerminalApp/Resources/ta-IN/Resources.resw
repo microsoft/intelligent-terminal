@@ -591,6 +591,28 @@
     <value>தாவலைத் தொடர்ந்து இயக்கவும்</value>
     <comment>Command at the top of a vertical terminal tab's context menu that enables keeping all panes running after the tab or window is closed. Also labels the tab's keep-running status indicator. This does not pin the tab or save it for a restart.</comment>
   </data>
+  <data name="PinTabText" xml:space="preserve">
+    <value>தாவலைப் பின்செய்</value>
+    <comment>Context menu action to keep a terminal tab at the start of the tab list until unpinned. Does not keep its processes running after closing or persist across restarts.</comment>
+  </data>
+  <data name="PinTabToolTip" xml:space="preserve">
+    <value>இந்தத் தாவலைப் பின்செய்யப்படாத தாவல்களுக்கு முன்னால் நகர்த்தவும்.</value>
+  </data>
+  <data name="UnpinTabText" xml:space="preserve">
+    <value>தாவலின் பின்செய்தலை நீக்கு</value>
+    <comment>Context menu action to move a pinned terminal tab back into the regular tab group.</comment>
+  </data>
+  <data name="UnpinTabToolTip" xml:space="preserve">
+    <value>இந்தத் தாவலைப் பின்செய்யப்பட்ட தாவல்களுக்குப் பின்னால் நகர்த்தவும்.</value>
+  </data>
+  <data name="PinnedTabName" xml:space="preserve">
+    <value>பின்செய்யப்பட்டது</value>
+    <comment>Accessibility name and tooltip for a terminal tab pinned at the beginning of the tab list.</comment>
+  </data>
+  <data name="CollapsedPinnedTabIcon.AutomationProperties.Name" xml:space="preserve">
+    <value>பின்செய்யப்பட்டது</value>
+    <comment>Accessibility name for the pin indicator on a terminal tab in the collapsed sidebar.</comment>
+  </data>
   <data name="KeepTabRunningToolTip" xml:space="preserve">
     <value>தாவல் அல்லது சாளரத்தை மூடிய பிறகும் இந்தத் தாவலைப் பின்னணியில் தொடர்ந்து இயக்கவும்.</value>
     <comment>Tooltip and accessibility help for Keep tab running. Includes shell panes and the AI assistant; their current processes and sessions stay alive, rather than restarting later.</comment>

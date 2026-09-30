@@ -591,6 +591,28 @@
     <value>ట్యాబ్ అమలులో ఉండనివ్వండి</value>
     <comment>Command at the top of a vertical terminal tab's context menu that enables keeping all panes running after the tab or window is closed. Also labels the tab's keep-running status indicator. This does not pin the tab or save it for a restart.</comment>
   </data>
+  <data name="PinTabText" xml:space="preserve">
+    <value>ట్యాబ్‌ను పిన్ చేయండి</value>
+    <comment>Context menu action to keep a terminal tab at the start of the tab list until unpinned. Does not keep its processes running after closing or persist across restarts.</comment>
+  </data>
+  <data name="PinTabToolTip" xml:space="preserve">
+    <value>ఈ ట్యాబ్‌ను పిన్ చేయని ట్యాబ్‌ల ముందు ఉంచండి.</value>
+  </data>
+  <data name="UnpinTabText" xml:space="preserve">
+    <value>ట్యాబ్ పిన్‌ను తీసివేయండి</value>
+    <comment>Context menu action to move a pinned terminal tab back into the regular tab group.</comment>
+  </data>
+  <data name="UnpinTabToolTip" xml:space="preserve">
+    <value>ఈ ట్యాబ్‌ను పిన్ చేసిన ట్యాబ్‌ల తర్వాత ఉంచండి.</value>
+  </data>
+  <data name="PinnedTabName" xml:space="preserve">
+    <value>పిన్ చేయబడింది</value>
+    <comment>Accessibility name and tooltip for a terminal tab pinned at the beginning of the tab list.</comment>
+  </data>
+  <data name="CollapsedPinnedTabIcon.AutomationProperties.Name" xml:space="preserve">
+    <value>పిన్ చేయబడింది</value>
+    <comment>Accessibility name for the pin indicator on a terminal tab in the collapsed sidebar.</comment>
+  </data>
   <data name="KeepTabRunningToolTip" xml:space="preserve">
     <value>ట్యాబ్ లేదా విండోను మూసివేసిన తర్వాత కూడా ఈ ట్యాబ్ నేపథ్యంలో అమలులో ఉండనివ్వండి.</value>
     <comment>Tooltip and accessibility help for Keep tab running. Includes shell panes and the AI assistant; their current processes and sessions stay alive, rather than restarting later.</comment>
