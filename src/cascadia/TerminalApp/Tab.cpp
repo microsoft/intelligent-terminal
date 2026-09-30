@@ -2062,6 +2062,9 @@ namespace winrt::TerminalApp::implementation
         WUX::Controls::ToolTipService::SetToolTip(_closeTabsAfterMenuItem, box_value(tooltip));
         Automation::AutomationProperties::SetHelpText(_closeTabsAfterMenuItem, tooltip);
 
+        _moveRightMenuItem.Text(vertical ? RS_(L"TabMoveDown") : RS_(L"TabMoveRight"));
+        _moveLeftMenuItem.Text(vertical ? RS_(L"TabMoveUp") : RS_(L"TabMoveLeft"));
+
         _switchTabLayoutTarget = vertical ? TabLayout::Horizontal : TabLayout::Vertical;
         const auto switchLabel = vertical ? RS_(L"SwitchToHorizontalTabsText") : RS_(L"SwitchToVerticalTabsText");
         const auto switchTooltip = vertical ? RS_(L"SwitchToHorizontalTabsToolTip") : RS_(L"SwitchToVerticalTabsToolTip");
