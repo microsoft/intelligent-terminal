@@ -185,7 +185,8 @@ Every successful agent-session start also emits the selection: the suite pairs
 these snapshots with `AgentSessionStarted` and starts a new fixture session
 after selecting a non-default pair to verify current, not hard-coded, values.
 The same scenario checks that explicit opt-ins emit distinct random `KeepId`
-values, a real tab close and restoration emit matching detached/live events,
+values and typed post-enable `TotalTabCount` / `KeepRunningTabCount` snapshots,
+including search-hidden attached tabs. A real tab close and restoration emit matching detached/live events,
 and a prompt on the unchanged ACP session after reattachment carries
 `AgentPromptSent.Reattached=true` and `UserPromptOrdinal=Second` while that
 session's earlier prompt carries `false` and `First`. A separate helper's

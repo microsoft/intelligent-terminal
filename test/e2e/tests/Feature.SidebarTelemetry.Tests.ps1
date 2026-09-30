@@ -557,13 +557,17 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
     It 'Keep-running telemetry correlates opt-in, retention, and live reattachment' {
         if ($script:phaseErrors.Count) { throw ($script:phaseErrors.Values | Out-String) }
         $ids = @()
-        foreach ($phase in @('pin-first', 'pin-second-hidden-first', 'repin')) {
-            $events = @(Get-TelemetryPhaseEvents -Phase $phase -Name KeepRunningMarked -Provider $script:appProvider)
+        foreach ($case in @(@{ Phase = 'pin-first'; Count = 1 }, @{ Phase = 'pin-second-hidden-first'; Count = 2 }, @{ Phase = 'repin'; Count = 2 })) {
+            $events = @(Get-TelemetryPhaseEvents -Phase $case.Phase -Name KeepRunningMarked -Provider $script:appProvider)
             $events | Should -HaveCount 1
             $event = $events[0]
-            @($event.Fields.Keys | Sort-Object) | Should -Be @('HasAgentPane', 'KeepId', 'PartA_PrivTags')
+            @($event.Fields.Keys | Sort-Object) | Should -Be @('HasAgentPane', 'KeepId', 'KeepRunningTabCount', 'PartA_PrivTags', 'TotalTabCount')
             $event.Types.KeepId | Should -Match 'UnicodeString$'
             $event.Types.HasAgentPane | Should -Match 'Boolean$'
+            $event.Types.TotalTabCount | Should -Match 'UInt32$'
+            $event.Types.KeepRunningTabCount | Should -Match 'UInt32$'
+            [uint32]$event.Fields.TotalTabCount | Should -Be $script:tabCount
+            [uint32]$event.Fields.KeepRunningTabCount | Should -Be $case.Count
             $event.Fields.KeepId | Should -Match '^\{[0-9a-fA-F-]{36}\}$'
             $event.Fields.HasAgentPane | Should -BeIn @('true', '1')
             $ids += $event.Fields.KeepId

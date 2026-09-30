@@ -40,6 +40,7 @@ established separately. See [privacy information](../PRIVACY.md).
 | Is the sidebar enabled at window creation? | App `AppCreated.SidebarEnabled` | Vertical tab layout at window creation, not a session-weighted snapshot |
 | Are sidebar search, agent filtering, and keep-running used? | App `SidebarSearchOpened`, `SidebarAgentFilterApplied`, `SidebarTabPinned` | Explicit UI transitions, not automatic projection refresh, retention, or restore |
 | Do marked tabs actually stay alive and reattach? | App `KeepRunningMarked`, `KeepRunningDetached`, `KeepRunningReattached` joined by `KeepId` | Runtime-only tab retention, not recovery after process exit or an ACP session resume |
+| What share of terminal tabs has Keep running enabled when it is turned on? | App `KeepRunningMarked.KeepRunningTabCount / TotalTabCount` | Post-enable snapshot of attached terminal tabs in the owning window; not a per-agent-session or continuous adoption rate |
 | Are restored agent sessions prompted again? | WTA `AgentPromptSent.Reattached=true`, filter `IsAutofix=false` for user turns | Prompt dispatch on the same ACP session after a kept tab was reattached; not proof of completion |
 | Which rich-tab fields do people select? | App `SidebarRowFieldsChanged.fields` | Current selection at successful agent-session start and after each user toggle; not displayed metadata values |
 | Which providers are configured at startup or changed later? | App `AppCreated` snapshot and Model `AgentProviderChanged` | Configuration, not CLI installation, authentication, or successful session use |
@@ -151,7 +152,7 @@ Business-field counts exclude the common `PartA_PrivTags` field.
 | App | [SidebarSearchOpened](#appsidebarsearchopened) | 0 | Usage |
 | App | [SidebarAgentFilterApplied](#appsidebaragentfilterapplied) | 1 | Usage |
 | App | [SidebarTabPinned](#appsidebartabpinned) | 1 | Usage |
-| App | [KeepRunningMarked](#appkeeprunningmarked) | 2 | Usage |
+| App | [KeepRunningMarked](#appkeeprunningmarked) | 4 | Usage |
 | App | [KeepRunningDetached](#appkeeprunningdetached) | 2 | Usage |
 | App | [KeepRunningReattached](#appkeeprunningreattached) | 3 | Usage |
 | App | [SidebarRowFieldsChanged](#appsidebarrowfieldschanged) | 1 | Usage |
@@ -294,12 +295,29 @@ retention across an application restart.
 ### App.KeepRunningMarked
 
 **Trigger:** Keep tab running is enabled by the sidebar menu or the explicit
-tab-control API. Copying the choice into a transferred tab does not emit.
+tab-control API. The event captures the counts after the false-to-true
+transition. Disabling, repeated enable requests, startup, and copying the
+choice into a transferred tab do not emit.
 
 | Field | Type | Meaning |
 |---|---|---|
 | `KeepId` | WideString | Random ID generated for this opt-in; a later disable and re-enable generates a new ID |
 | `HasAgentPane` | Bool | Whether an agent pane (including a stashed pane) is present; not proof of a connected ACP session |
+| `TotalTabCount` | UInt32 | Attached tabs containing terminal content in the owning window |
+| `KeepRunningTabCount` | UInt32 | Those attached terminal tabs with Keep running enabled, including the newly marked tab |
+
+Both counts come from the same post-action window snapshot. Search-hidden
+tabs are included; detached background tabs, other windows, Settings tabs,
+and other nonterminal tabs are excluded. Split panes do not count as separate
+tabs. The marked terminal tab makes `TotalTabCount` nonzero.
+
+For requirement 6.1, use `KeepRunningTabCount / TotalTabCount` for each
+observation, or `SUM(KeepRunningTabCount) / SUM(TotalTabCount)` across the
+same selected observations using floating-point division. The latter is a
+tab-count-weighted ratio of enable-time snapshots, not distinct tabs, agent
+sessions, a time-weighted average, or an all-device adoption rate. Windows
+where Keep running is never enabled have no sample. This calculation needs
+no `KeepId`; that ID only links the separate retention/restoration events.
 
 ### App.KeepRunningDetached
 
@@ -848,6 +866,7 @@ does not assume a particular backend table or query language.
 | Cold-start reliability | Successful cold starts / all observed cold starts | Excludes warm pool reuse |
 | Prompt dispatch volume | Count WTA `AgentPromptSent` | Split autofix, BYOK, and template category as needed |
 | Repair-offer acceptance | Distinct accepted `OfferId` / distinct offered `OfferId` in the same cohort | Attribute acceptance to the offer cohort; allow for acceptance outside the initial window; not fix success |
+| Keep-running enable-time tab share | `SUM(KeepRunningTabCount) / SUM(TotalTabCount)` on App `KeepRunningMarked`, using floating-point division | Same-window post-enable snapshots; excludes detached and nonterminal tabs; not a per-session rate or continuous adoption measurement |
 | Keep-running reattachment | Distinct `KeepId` by `KeepRunningReattached.Outcome` / distinct detached `KeepId` | Process-lifetime observed tab restores, not a survival rate across restart; a failed restore can be retried |
 | First-text latency | Percentiles of `FirstTokenLatencyMs` | Only turns producing this event; thought text can count |
 | Prompt RPC success rate | Successful `AgentResponseComplete` / all observed response completions | Not answer quality or task success; unfinished turns are absent |
@@ -876,7 +895,7 @@ SQL dialect.
 | App `SidebarSearchOpened` | Count explicit search-box opens and distinct devices. | Search entry, not query edits, result views, or Agent-view search. |
 | App `SidebarAgentFilterApplied` | Count Agent-view entries; group or histogram `row_count`, including zero. | First successful Ready snapshot after entry, not tab-search filtering or unique sessions. |
 | App `SidebarTabPinned` | Count enable actions; group by the post-action `pinned_count`. | Keep-running menu action, not tab-order pinning; count covers attached tabs in one window. |
-| App `KeepRunningMarked` | Count distinct `KeepId`; group by `HasAgentPane`. | Tab-level opt-ins, not connected agent sessions. |
+| App `KeepRunningMarked` | For 6.1, divide `SUM(KeepRunningTabCount)` by `SUM(TotalTabCount)` with floating-point division; no records means no measurement, not zero. Count opt-ins separately by distinct `KeepId`. | Enable-time attached terminal-tab snapshots in the owning window, including search-hidden tabs; excludes detached tabs and Settings. Not unique tabs, agent sessions, or all-device adoption. |
 | App `KeepRunningDetached` | Count distinct `KeepId` and join to marked IDs in the same process-lifetime cohort. | Successful retention inside a live process; process exit cannot emit a detach. |
 | App `KeepRunningReattached` | Count attempts by `Outcome`; count distinct `KeepId` with `live` over distinct detached `KeepId`, reporting failed attempts separately. | A failed restore can be retried; no `gone` outcome or cross-process recovery. |
 | App `SidebarRowFieldsChanged` | Count by the complete `fields` selection; split comma-separated fixed IDs for field-presence frequency if needed. | Includes session-start snapshots as well as user toggles, with no discriminator; not an edit count. |

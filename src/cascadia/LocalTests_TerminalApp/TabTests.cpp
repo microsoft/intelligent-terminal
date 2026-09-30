@@ -366,6 +366,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(AgentPaneRestoreDoesNotRequireAgentSession);
         TEST_METHOD(PaneAgentSessionEndClearsAgentBinding);
         TEST_METHOD(KeepRunningAcceptsPlainTerminalTabs);
+        TEST_METHOD(KeepRunningSnapshotCountsAttachedTerminalTabs);
         TEST_METHOD(PinnedTabMenuReordersWithoutStealingSelection);
         TEST_METHOD(PinnedTabInsertAndMoveRespectGroups);
         TEST_METHOD(PinnedTabSidebarRejectsCrossGroupDrag);
@@ -1122,6 +1123,53 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(page->CanKeepTabRunning(id));
             VERIFY_THROWS(page->SetTabKeepRunning(id, true), winrt::hresult_error);
             VERIFY_IS_FALSE(page->CanKeepTabRunning(winrt::guid{}));
+        });
+    }
+
+    void TabTests::KeepRunningSnapshotCountsAttachedTerminalTabs()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto first = winrt::make_self<TestConnection>(winrt::guid{ L"{13f7aa41-8837-473e-92a3-f1e682ab1090}" }, State::Connected);
+        const auto second = winrt::make_self<TestConnection>(winrt::guid{ L"{13f7aa41-8837-473e-92a3-f1e682ab1091}" }, State::Connected);
+        const auto split = winrt::make_self<TestConnection>(winrt::guid{ L"{13f7aa41-8837-473e-92a3-f1e682ab1092}" }, State::Connected);
+        const auto page = _commonSetup(*first, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto firstTab = page->_GetFocusedTabImpl();
+            const auto splitPane = page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *split);
+            VERIFY_IS_TRUE(page->_SplitPane(firstTab, SplitDirection::Right, 0.5f, splitPane));
+            page->_CreateNewTabFromPane(page->_MakePane(nullptr, nullptr, *second));
+            const auto secondTab = page->_GetFocusedTabImpl();
+            secondTab->SuppressAgentPrewarm();
+            page->OpenSettingsUI();
+            VERIFY_ARE_EQUAL(3u, page->_tabs.Size());
+
+            const auto verifyCounts = [&](uint32_t expectedTotal, uint32_t expectedKept) {
+                const auto [total, kept] = page->_KeepRunningTabCounts();
+                VERIFY_ARE_EQUAL(expectedTotal, total);
+                VERIFY_ARE_EQUAL(expectedKept, kept);
+            };
+            verifyCounts(2, 0);
+            page->SetTabKeepRunning(winrt::guid{ firstTab->StableId() }, true);
+            verifyCounts(2, 1);
+            page->SetTabKeepRunning(winrt::guid{ secondTab->StableId() }, true);
+            verifyCounts(2, 2);
+
+            page->_tabSearchActive = true;
+            page->_tabSearchQuery = L"no-matching-keep-running-tab";
+            page->_ApplyTabListProjection();
+            verifyCounts(2, 2);
+            page->_tabSearchActive = false;
+            page->_ApplyTabListProjection();
+
+            VERIFY_IS_TRUE(page->_KeepTabRunning(firstTab));
+            verifyCounts(1, 1);
+            page->SetTabKeepRunning(winrt::guid{ secondTab->StableId() }, false);
+            verifyCounts(1, 0);
+            page->SetTabKeepRunning(winrt::guid{ secondTab->StableId() }, true);
+            verifyCounts(1, 1);
+            VERIFY_IS_TRUE(page->_KeepTabRunning(secondTab));
+            verifyCounts(0, 0);
+            page->_manager.DiscardAllKeptGroups();
         });
     }
 

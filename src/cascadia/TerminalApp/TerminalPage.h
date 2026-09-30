@@ -931,6 +931,8 @@ namespace winrt::TerminalApp::implementation
         std::vector<winrt::guid> _startupKeptGroups;
         bool _restoringStartupKeptGroups{ false };
         std::vector<winrt::TerminalApp::Tab> _RuntimeTabs() const;
+        std::pair<uint32_t, uint32_t> _KeepRunningTabCounts() const;
+        void _LogKeepRunningMarked(const winrt::com_ptr<Tab>& tab);
         bool _KeepTabRunning(const winrt::com_ptr<Tab>& tab);
         friend struct ContentManager;
         void _SettingsButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);

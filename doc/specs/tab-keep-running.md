@@ -123,7 +123,13 @@ twice and continues keeping the process alive.
 
 ## Telemetry
 
-`App.KeepRunningMarked` records explicit menu/API opt-in;
+`App.KeepRunningMarked` records explicit menu/API opt-in together with
+post-enable `TotalTabCount` and `KeepRunningTabCount` for attached terminal
+tabs in the owning window. Search-hidden tabs count; detached tabs, other
+windows, Settings, and other nonterminal tabs do not. The paired counts measure
+the tab share at enable time, not a per-agent-session mark rate. Disabling,
+startup, and repeated enable requests do not emit a snapshot.
+
 `App.KeepRunningDetached` records successful background retention; and
 `App.KeepRunningReattached` records committed (`live`) or rolled-back
 (`failed`) restoration. A random `KeepId` correlates those three tab-level

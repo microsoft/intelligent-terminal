@@ -281,14 +281,7 @@ namespace winrt::TerminalApp::implementation
             const auto tab = weakTab.get();
             if (page && tab && page->_GetTabIndex(*tab))
             {
-                uint32_t pinnedCount = 0;
-                for (const auto& candidate : page->_tabs)
-                {
-                    if (const auto impl = page->_GetTabImpl(candidate); impl && impl->KeepRunning())
-                    {
-                        ++pinnedCount;
-                    }
-                }
+                const auto pinnedCount = page->_KeepRunningTabCounts().second;
                 TraceLoggingWrite(
                     g_hTerminalAppProvider,
                     "SidebarTabPinned",
@@ -296,13 +289,7 @@ namespace winrt::TerminalApp::implementation
                     TraceLoggingUInt32(pinnedCount, "pinned_count"),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
-                TraceLoggingWrite(
-                    g_hTerminalAppProvider,
-                    "KeepRunningMarked",
-                    TraceLoggingWideString(tab->KeepRunningTelemetryId().c_str(), "KeepId"),
-                    TraceLoggingBool(!!tab->FindAgentPaneContent(), "HasAgentPane"),
-                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
-                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+                page->_LogKeepRunningMarked(tab);
             }
         });
 
@@ -900,14 +887,40 @@ namespace winrt::TerminalApp::implementation
         tab->KeepRunning(enabled);
         if (enabled && !wasEnabled)
         {
-            TraceLoggingWrite(
-                g_hTerminalAppProvider,
-                "KeepRunningMarked",
-                TraceLoggingWideString(tab->KeepRunningTelemetryId().c_str(), "KeepId"),
-                TraceLoggingBool(!!tab->FindAgentPaneContent(), "HasAgentPane"),
-                TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
-                TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+            _LogKeepRunningMarked(tab);
         }
+    }
+
+    std::pair<uint32_t, uint32_t> TerminalPage::_KeepRunningTabCounts() const
+    {
+        uint32_t totalTabCount = 0;
+        uint32_t keepRunningTabCount = 0;
+        for (const auto& candidate : _tabs)
+        {
+            if (const auto tab = _GetTabImpl(candidate); tab && tab->CanKeepRunning())
+            {
+                ++totalTabCount;
+                if (tab->KeepRunning())
+                {
+                    ++keepRunningTabCount;
+                }
+            }
+        }
+        return { totalTabCount, keepRunningTabCount };
+    }
+
+    void TerminalPage::_LogKeepRunningMarked(const winrt::com_ptr<Tab>& tab)
+    {
+        const auto [totalTabCount, keepRunningTabCount] = _KeepRunningTabCounts();
+        TraceLoggingWrite(
+            g_hTerminalAppProvider,
+            "KeepRunningMarked",
+            TraceLoggingWideString(tab->KeepRunningTelemetryId().c_str(), "KeepId"),
+            TraceLoggingBool(!!tab->FindAgentPaneContent(), "HasAgentPane"),
+            TraceLoggingUInt32(totalTabCount, "TotalTabCount"),
+            TraceLoggingUInt32(keepRunningTabCount, "KeepRunningTabCount"),
+            TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+            TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
     }
 
     bool TerminalPage::_KeepTabRunning(const winrt::com_ptr<Tab>& tab)
