@@ -338,6 +338,7 @@ namespace winrt::TerminalApp::implementation
         // Populated with real TabViewItems via the routed _tabItems() helper.
         TerminalApp::TabStrip _tabStrip{ nullptr };
         bool _isVerticalLayout{ false };
+        bool _isRightToLeft{ false };
         bool _changingTabLayout{ false };
         bool _hasTitlebarHost{ false };
         uint64_t _tabLayoutGeneration{ 0 };
@@ -374,8 +375,7 @@ namespace winrt::TerminalApp::implementation
         winrt::weak_ref<Tab> _pendingPinTab;
         bool _pendingPinValue{ false };
         // Spec A §5.2: hand-rolled splitter for resizing the vertical rail.
-        // Lives in column 1 of the Root Grid, hugging its left edge, so the
-        // hit strip straddles the column boundary.
+        // Lives in the content column and straddles the rail boundary.
         Windows::UI::Xaml::Controls::Border _verticalRailSplitter{ nullptr };
         Windows::UI::Core::CoreCursor _railSplitterPriorCursor{ nullptr };
         bool _railSplitterCursorSaved{ false };
@@ -1279,6 +1279,7 @@ namespace winrt::TerminalApp::implementation
         void _OnFirstLayout(const IInspectable& sender, const IInspectable& eventArgs);
         void _ApplyVerticalLayoutReshape(bool initializeWidth = false);
         void _ApplyHorizontalLayoutReshape();
+        void _SetVerticalRailColumnWidth(double width);
         void _UpdateTabLayoutHost();
         void _RequestTabLayoutChange(winrt::Microsoft::Terminal::Settings::Model::TabLayout targetLayout);
         bool _ApplyTabLayout(winrt::Microsoft::Terminal::Settings::Model::TabLayout targetLayout);

@@ -275,6 +275,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(FreTabModeSelectionDoesNotMutateSettings);
         TEST_METHOD(FreIllustrationsFollowThemeWithoutChangingChrome);
         TEST_METHOD(EmptyTabLayoutChangeCompletesBeforeStartup);
+        TEST_METHOD(VerticalLayoutMirrorsForRtl);
         TEST_METHOD(VerticalRailVisibilityRestoresWidth);
         TEST_METHOD(VerticalRailCollapseRestoresWidth);
         TEST_METHOD(VerticalTitlebarDragAreaExcludesControls);
@@ -3419,6 +3420,41 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Visible, page->_verticalRailSplitter.Visibility());
             VERIFY_IS_TRUE(page->_verticalRailSplitter.IsHitTestVisible());
 
+        });
+    }
+
+    void TabTests::VerticalLayoutMirrorsForRtl()
+    {
+        CascadiaSettings settings{ LR"({
+            "defaultProfile": "{6239a42c-1111-49a3-80bd-e8fdd045185c}",
+            "language": "qps-plocm",
+            "showTabsInTitlebar": false,
+            "tabLayout": "vertical",
+            "profiles": [{
+                "name": "profile0",
+                "guid": "{6239a42c-1111-49a3-80bd-e8fdd045185c}",
+                "commandline": "cmd.exe"
+            }]
+        })", {} };
+
+        winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> page{ nullptr };
+        _initializeTerminalPage(page, settings);
+
+        TestOnUIThread([&]() {
+            VERIFY_IS_TRUE(page->_isRightToLeft);
+            VERIFY_ARE_EQUAL(GridUnitType::Star, page->VerticalRailColumn().Width().GridUnitType);
+            VERIFY_ARE_EQUAL(GridUnitType::Pixel, page->TrailingColumn().Width().GridUnitType);
+            VERIFY_ARE_EQUAL(220.0, page->TrailingColumn().Width().Value);
+            VERIFY_ARE_EQUAL(1, Grid::GetColumn(page->_tabStrip));
+            VERIFY_ARE_EQUAL(0, Grid::GetColumn(page->_tabContent));
+            VERIFY_ARE_EQUAL(0, Grid::GetColumn(page->BottomBarRoot()));
+            VERIFY_ARE_EQUAL(0, Grid::GetColumn(page->_verticalRailSplitter));
+            VERIFY_ARE_EQUAL(HorizontalAlignment::Right, page->_verticalRailSplitter.HorizontalAlignment());
+            VERIFY_ARE_EQUAL(FlowDirection::RightToLeft, page->_tabStrip.FlowDirection());
+
+            const auto row = winrt::get_self<winrt::TerminalApp::implementation::TabRowControl>(page->_tabRow);
+            const auto titlebar = row->VerticalTitleBarContent().as<FrameworkElement>();
+            VERIFY_ARE_EQUAL(FlowDirection::RightToLeft, titlebar.FlowDirection());
         });
     }
 

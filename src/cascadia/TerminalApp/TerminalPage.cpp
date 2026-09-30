@@ -25,6 +25,7 @@
 #include "../inc/AgentPaneBackend.h"
 #include "../inc/AgentSourceUtils.h"
 #include "../inc/AgentYoloPolicy.h"
+#include "../inc/RtlHelper.h"
 #include "../inc/WtaProcess.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 #include "../inc/CustomModelProviderUtils.h"
@@ -502,8 +503,30 @@ namespace winrt::TerminalApp::implementation
         _tabRow = this->TabRow();
         _tabView = _tabRow.TabView();
         _tabStrip = this->VerticalTabStrip();
+        auto tabRowImpl = winrt::get_self<implementation::TabRowControl>(_tabRow);
         _rearranging = false;
         _hasTitlebarHost = _settings.GlobalSettings().ShowTabsInTitlebar();
+
+        winrt::hstring language = _settings.GlobalSettings().Language();
+        if (language.empty())
+        {
+            try
+            {
+                const auto languages = winrt::Windows::Globalization::ApplicationLanguages::Languages();
+                if (languages && languages.Size() > 0)
+                {
+                    language = languages.GetAt(0);
+                }
+            }
+            CATCH_LOG();
+        }
+        _isRightToLeft = ::Microsoft::Terminal::RtlHelper::IsRtlLocale(language);
+        const auto flowDirection = _isRightToLeft ? FlowDirection::RightToLeft : FlowDirection::LeftToRight;
+        _tabStrip.FlowDirection(flowDirection);
+        if (const auto titlebar = tabRowImpl->VerticalTitleBarContent().try_as<FrameworkElement>())
+        {
+            titlebar.FlowDirection(flowDirection);
+        }
 
         // Spec A §1: layout is driven by the tabLayout global setting.
         if (_settings.GlobalSettings().TabLayout() == TabLayout::Vertical)
@@ -523,7 +546,6 @@ namespace winrt::TerminalApp::implementation
         _tabView.TabDragStarting({ get_weak(), &TerminalPage::_TabDragStarted });
         _tabView.TabDragCompleted({ get_weak(), &TerminalPage::_TabDragCompleted });
 
-        auto tabRowImpl = winrt::get_self<implementation::TabRowControl>(_tabRow);
         _horizontalNewTabButton = tabRowImpl->NewTabButton();
         _verticalNewTabButton = tabRowImpl->VerticalNewTabButton();
         _newTabButton = _isVerticalLayout ? _verticalNewTabButton : _horizontalNewTabButton;
@@ -5567,11 +5589,17 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void TerminalPage::_SetVerticalRailColumnWidth(const double width)
+    {
+        const auto railLength = GridLengthHelper::FromValueAndType(width, GridUnitType::Pixel);
+        const auto contentLength = GridLengthHelper::FromValueAndType(1, GridUnitType::Star);
+        VerticalRailColumn().Width(_isRightToLeft ? contentLength : railLength);
+        TrailingColumn().Width(_isRightToLeft ? railLength : contentLength);
+    }
+
     // Spec A §5.1: give the vertical rail its column width and re-anchor
-    // TabRow + the primary content children so the strip owns column 0 (full
-    // height, including under the bottom bar) and everything else stacks in
-    // column 1. BottomBarRoot drops its ColumnSpan so the bar only sits under
-    // the terminal content, per the spec mock.
+    // the primary content children on the opposite side. BottomBarRoot drops
+    // its ColumnSpan so the bar only sits under the terminal content.
     void TerminalPage::_ApplyVerticalLayoutReshape(const bool initializeWidth)
     {
         if (!_isVerticalLayout)
@@ -5586,20 +5614,22 @@ namespace winrt::TerminalApp::implementation
             const double persistedWidth = static_cast<double>(_settings.GlobalSettings().TabLayoutVerticalWidth());
             _verticalRailWidth = std::clamp(persistedWidth, railMin, railMax);
         }
-        VerticalRailColumn().Width(GridLengthHelper::FromValueAndType(_verticalRailWidth, GridUnitType::Pixel));
+        _SetVerticalRailColumnWidth(_verticalRailWidth);
+        const uint32_t railColumn = _isRightToLeft ? 1 : 0;
+        const uint32_t contentColumn = _isRightToLeft ? 0 : 1;
 
         Grid::SetRow(_tabStrip, 0);
         Grid::SetRowSpan(_tabStrip, 4);
-        Grid::SetColumn(_tabStrip, 0);
+        Grid::SetColumn(_tabStrip, railColumn);
         Grid::SetColumnSpan(_tabStrip, 1);
 
-        Grid::SetColumn(InfoBarsPanel(), 1);
+        Grid::SetColumn(InfoBarsPanel(), contentColumn);
         Grid::SetColumnSpan(InfoBarsPanel(), 1);
 
-        Grid::SetColumn(_tabContent, 1);
+        Grid::SetColumn(_tabContent, contentColumn);
         Grid::SetColumnSpan(_tabContent, 1);
 
-        Grid::SetColumn(BottomBarRoot(), 1);
+        Grid::SetColumn(BottomBarRoot(), contentColumn);
         Grid::SetColumnSpan(BottomBarRoot(), 1);
 
         _InstallVerticalRailSplitter();
@@ -5608,7 +5638,7 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_ApplyHorizontalLayoutReshape()
     {
         _CancelRailSplitterDrag();
-        VerticalRailColumn().Width(GridLengthHelper::FromValueAndType(0, GridUnitType::Pixel));
+        _SetVerticalRailColumnWidth(0);
 
         Grid::SetRow(_tabRow, 0);
         Grid::SetRowSpan(_tabRow, 1);
@@ -6007,41 +6037,36 @@ namespace winrt::TerminalApp::implementation
     }
 
     // Spec A §5.2: hand-rolled splitter mirroring the Pane splitter idiom
-    // (Pane.cpp:3704). Lives in column 1 of Root, HorizontalAlignment=Left
-    // with a negative left margin so the hit strip (8px total) straddles the
-    // column boundary. Transparent Background so it visually disappears but
-    // still receives pointer hit-tests.
+    // (Pane.cpp:3704). It lives in the content column and straddles the rail
+    // boundary. Transparent Background keeps it visually hidden while still
+    // receiving pointer hit-tests.
     void TerminalPage::_InstallVerticalRailSplitter()
     {
-        if (_verticalRailSplitter)
+        if (!_verticalRailSplitter)
         {
-            return;
+            _verticalRailSplitter = Controls::Border{};
+            _verticalRailSplitter.Background(Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
+            _verticalRailSplitter.IsHitTestVisible(true);
+            _verticalRailSplitter.Width(8.0);
+            _verticalRailSplitter.VerticalAlignment(VerticalAlignment::Stretch);
+
+            _verticalRailSplitter.PointerEntered({ this, &TerminalPage::_OnRailSplitterPointerEntered });
+            _verticalRailSplitter.PointerExited({ this, &TerminalPage::_OnRailSplitterPointerExited });
+            _verticalRailSplitter.PointerPressed({ this, &TerminalPage::_OnRailSplitterPointerPressed });
+            _verticalRailSplitter.PointerMoved({ this, &TerminalPage::_OnRailSplitterPointerMoved });
+            _verticalRailSplitter.PointerReleased({ this, &TerminalPage::_OnRailSplitterPointerReleased });
+            _verticalRailSplitter.PointerCaptureLost({ this, &TerminalPage::_OnRailSplitterPointerCaptureLost });
+            _verticalRailSplitter.PointerCanceled({ this, &TerminalPage::_OnRailSplitterPointerCaptureLost });
+
+            Root().Children().Append(_verticalRailSplitter);
         }
 
-        constexpr double splitterHitThickness = 8.0;
-        constexpr double half = splitterHitThickness / 2.0;
-
-        _verticalRailSplitter = Controls::Border{};
-        _verticalRailSplitter.Background(Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
-        _verticalRailSplitter.IsHitTestVisible(true);
-        _verticalRailSplitter.Width(splitterHitThickness);
-        _verticalRailSplitter.HorizontalAlignment(HorizontalAlignment::Left);
-        _verticalRailSplitter.VerticalAlignment(VerticalAlignment::Stretch);
-        _verticalRailSplitter.Margin(Thickness{ -half, 0, 0, 0 });
-
-        Grid::SetColumn(_verticalRailSplitter, 1);
+        constexpr double half = 4.0;
+        _verticalRailSplitter.HorizontalAlignment(_isRightToLeft ? HorizontalAlignment::Right : HorizontalAlignment::Left);
+        _verticalRailSplitter.Margin(_isRightToLeft ? Thickness{ 0, 0, -half, 0 } : Thickness{ -half, 0, 0, 0 });
+        Grid::SetColumn(_verticalRailSplitter, _isRightToLeft ? 0 : 1);
         Grid::SetRow(_verticalRailSplitter, 0);
         Grid::SetRowSpan(_verticalRailSplitter, 4);
-
-        _verticalRailSplitter.PointerEntered({ this, &TerminalPage::_OnRailSplitterPointerEntered });
-        _verticalRailSplitter.PointerExited({ this, &TerminalPage::_OnRailSplitterPointerExited });
-        _verticalRailSplitter.PointerPressed({ this, &TerminalPage::_OnRailSplitterPointerPressed });
-        _verticalRailSplitter.PointerMoved({ this, &TerminalPage::_OnRailSplitterPointerMoved });
-        _verticalRailSplitter.PointerReleased({ this, &TerminalPage::_OnRailSplitterPointerReleased });
-        _verticalRailSplitter.PointerCaptureLost({ this, &TerminalPage::_OnRailSplitterPointerCaptureLost });
-        _verticalRailSplitter.PointerCanceled({ this, &TerminalPage::_OnRailSplitterPointerCaptureLost });
-
-        Root().Children().Append(_verticalRailSplitter);
     }
 
     static bool _IsVisibleControlInSubtree(const WUX::Controls::Control& control, const DependencyObject& root)
@@ -6210,7 +6235,7 @@ namespace winrt::TerminalApp::implementation
 
         if (visible)
         {
-            VerticalRailColumn().Width(GridLengthHelper::FromValueAndType(width, GridUnitType::Pixel));
+            _SetVerticalRailColumnWidth(width);
             if (_verticalRailSplitter && expanded)
             {
                 _verticalRailSplitter.IsHitTestVisible(true);
@@ -6229,7 +6254,7 @@ namespace winrt::TerminalApp::implementation
                 _verticalRailSplitter.IsHitTestVisible(false);
                 _verticalRailSplitter.Visibility(Visibility::Collapsed);
             }
-            VerticalRailColumn().Width(GridLengthHelper::FromValueAndType(0, GridUnitType::Pixel));
+            _SetVerticalRailColumnWidth(0);
         }
         if (sidebarFocus && !_IsVisibleControlInSubtree(sidebarFocus, _tabStrip))
         {
@@ -7060,12 +7085,16 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         const auto point = e.GetCurrentPoint(Root()).Position();
-        const auto delta = static_cast<double>(point.X - _railSplitterStartPointer.X);
+        auto delta = static_cast<double>(point.X - _railSplitterStartPointer.X);
+        if (_isRightToLeft)
+        {
+            delta = -delta;
+        }
         const auto requested = std::clamp(_railSplitterStartWidth + delta, railMin, railMax);
         if (std::isfinite(requested))
         {
             _verticalRailWidth = requested;
-            VerticalRailColumn().Width(GridLengthHelper::FromValueAndType(_verticalRailWidth, GridUnitType::Pixel));
+            _SetVerticalRailColumnWidth(_verticalRailWidth);
             winrt::get_self<implementation::TabRowControl>(_tabRow)->SetVerticalRailState(true, false, _verticalRailWidth);
         }
         e.Handled(true);
