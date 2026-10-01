@@ -1195,7 +1195,8 @@ namespace winrt::TerminalApp::implementation
             std::wstring binary(envLength, L'\0');
             if (GetEnvironmentVariableW(L"INTELLIGENT_TERMINAL_GIT_BINARY", binary.data(), envLength) > 0)
             {
-                if (std::filesystem::exists(binary.c_str()))
+                std::error_code ec;
+                if (std::filesystem::is_regular_file(binary.c_str(), ec))
                 {
                     return true;
                 }
@@ -1217,6 +1218,10 @@ namespace winrt::TerminalApp::implementation
                 {
                     return true;
                 }
+                // Override was specified but could not be resolved as an executable:
+                // provider.ps1 gives the override strict precedence and will fail,
+                // so do not fall back to git.exe.
+                return false;
             }
         }
 

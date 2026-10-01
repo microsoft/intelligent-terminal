@@ -8408,7 +8408,10 @@ namespace TerminalAppLocalTests
             const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(tabStrip);
             VERIFY_IS_NOT_NULL(stripImpl);
 
-            // Initially, if git is installed or by default, git items have IsEnabled matching RichTabGitAvailable()
+            // Free one metadata slot so the 2-field limit does not disable unchecked items
+            tabStrip.RichTabWorkingDirectoryVisible(false);
+
+            // With a slot available, git items have IsEnabled matching RichTabGitAvailable()
             VERIFY_ARE_EQUAL(stripImpl->RichTabGitAvailable(), stripImpl->RichTabRepositoryVisibleItem().IsEnabled());
             VERIFY_ARE_EQUAL(stripImpl->RichTabGitAvailable(), stripImpl->RichTabBranchVisibleItem().IsEnabled());
             VERIFY_ARE_EQUAL(stripImpl->RichTabGitAvailable(), stripImpl->RichTabChangesVisibleItem().IsEnabled());
