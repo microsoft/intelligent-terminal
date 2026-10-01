@@ -1,5 +1,141 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
 
+function Initialize-CombinedCleanupNative {
+    if ('ItE2ECombinedCleanup.Native' -as [type]) { return }
+    Add-Type @'
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+namespace ItE2ECombinedCleanup {
+    [ComImport, Guid("2e941141-7f97-4756-ba1d-9decde894a3d"),
+     InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface IApplicationActivationManager {
+        [PreserveSig]
+        int ActivateApplication([MarshalAs(UnmanagedType.LPWStr)] string appId,
+            [MarshalAs(UnmanagedType.LPWStr)] string arguments, uint options, out uint processId);
+    }
+    public static class Native {
+        delegate bool EnumWindowCallback(IntPtr hwnd, IntPtr parameter);
+        [DllImport("user32.dll", SetLastError=true)]
+        static extern bool EnumWindows(EnumWindowCallback callback, IntPtr parameter);
+        [DllImport("user32.dll")]
+        static extern bool IsWindowVisible(IntPtr hwnd);
+        [DllImport("user32.dll", SetLastError=true)]
+        static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+        public static uint[] VisibleProcessIds() {
+            var ids = new HashSet<uint>();
+            int error = 0;
+            bool failed = false;
+            if (!EnumWindows((hwnd, parameter) => {
+                if (IsWindowVisible(hwnd)) {
+                    uint pid;
+                    if (GetWindowThreadProcessId(hwnd, out pid) == 0) {
+                        failed = true;
+                        error = Marshal.GetLastWin32Error();
+                    } else
+                        ids.Add(pid);
+                }
+                return true;
+            }, IntPtr.Zero)) throw new Win32Exception(Marshal.GetLastWin32Error());
+            if (failed) throw new Win32Exception(error);
+            var result = new uint[ids.Count];
+            ids.CopyTo(result);
+            return result;
+        }
+        public static uint Activate(string appId) {
+            var instance = Activator.CreateInstance(Type.GetTypeFromCLSID(
+                new Guid("45ba127d-10a8-46ea-8ab7-56ea9078943c"), true));
+            try {
+                uint pid;
+                Marshal.ThrowExceptionForHR(((IApplicationActivationManager)instance)
+                    .ActivateApplication(appId,
+                        "-w new new-tab --title ite2e-combined-cleanup cmd.exe /c exit", 0, out pid));
+                return pid;
+            } finally {
+                Marshal.FinalReleaseComObject(instance);
+            }
+        }
+    }
+}
+'@
+}
+
+function Get-CombinedVisibleProcessIds {
+    Initialize-CombinedCleanupNative
+    [ItE2ECombinedCleanup.Native]::VisibleProcessIds()
+}
+
+function Start-CombinedCleanupTab {
+    param([Parameter(Mandatory)][string]$AppUserModelId)
+    $initializer = (Get-Command Initialize-CombinedCleanupNative).Definition
+    $launch = "function Initialize-CombinedCleanupNative { $initializer }; Initialize-CombinedCleanupNative; " +
+        "[ItE2ECombinedCleanup.Native]::Activate('$($AppUserModelId.Replace("'", "''"))')"
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($launch))
+    $result = Invoke-Native -FilePath (Get-Command pwsh -ErrorAction Stop).Source `
+        -Arguments @('-NoProfile', '-EncodedCommand', $encoded) -TimeoutSec 15
+    if ($result.TimedOut -or $result.ExitCode -ne 0) {
+        throw "Combined cleanup task-tab activation failed (timeout=$($result.TimedOut)): $($result.StdErr)"
+    }
+    [uint32]::Parse($result.StdOut.Trim())
+}
+
+function Invoke-CombinedHeadlessRecovery {
+    param([Parameter(Mandatory)]$App, [Parameter(Mandatory)]$Target, [bool]$InitiallyInactive)
+    if (-not $InitiallyInactive -or -not $App.Launched -or -not $App.OwnedProcess -or
+        $App.OwnedProcess.Id -ne $App.Pid -or -not $App.OwnedProcess.HasExited -or
+        $App.Package -ne $Target.Package -or -not $Target.AppUserModelId -or
+        $App.AppUserModelId -ne $Target.AppUserModelId -or -not $Target.WindowsTerminal) {
+        throw 'Combined headless recovery requires initial inactivity and a confirmed owned Dev host exit.'
+    }
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    $expectedPath = [IO.Path]::GetFullPath($Target.WindowsTerminal)
+    $remaining = @(Get-WtProcessesForApp -App $Target -IncludePackageExecutables)
+    if (-not $remaining.Count) { return }
+    $validate = {
+        $visible = @(Get-CombinedVisibleProcessIds)
+        foreach ($process in $remaining) {
+            if ($clock.Elapsed.TotalSeconds -ge 12) { throw 'Combined headless identity checks exceeded their time bound.' }
+            $null = $process.Handle
+            if ($process.HasExited -or $process.MainWindowHandle -ne 0 -or $process.Id -in $visible -or
+                -not $process.Path -or [IO.Path]::GetFullPath($process.Path) -ne $expectedPath) {
+                throw 'Combined recovery refuses visible, changed, or non-host package processes.'
+            }
+            $snapshot = Get-CimInstance Win32_Process -Filter "ProcessId=$($process.Id)" -OperationTimeoutSec 5 -ErrorAction Stop
+            $ticks = $process.StartTime.ToUniversalTime().Ticks
+            if (-not $snapshot -or $snapshot.ProcessId -ne $process.Id -or -not $snapshot.CreationDate -or
+                -not $snapshot.ExecutablePath -or $snapshot.Name -ine 'WindowsTerminal.exe' -or
+                [IO.Path]::GetFullPath($snapshot.ExecutablePath) -ne $expectedPath -or
+                $snapshot.CreationDate.ToUniversalTime().Ticks -ne ($ticks - $ticks % 10) -or
+                $process.StartTime -le $App.OwnedProcess.StartTime -or
+                $snapshot.CommandLine -notmatch '(?i)(?:^"[^"]+"|^\S+)\s+-Embedding\s*$') {
+                throw 'Combined recovery requires an exact, identity-bound headless Dev COM server.'
+            }
+        }
+    }
+    & $validate
+    $current = @(Get-WtProcessesForApp -App $Target -IncludePackageExecutables)
+    if (-not $current.Count) { return }
+    if ($current.Count -ne $remaining.Count -or @($current | Where-Object {
+        $currentId = $_.Id
+        $captured = $remaining | Where-Object Id -eq $currentId | Select-Object -First 1
+        -not $captured -or $captured.StartTime -ne $_.StartTime
+    }).Count) { throw 'Dev membership changed before the bounded cleanup activation.' }
+    & $validate
+    if ($clock.Elapsed.TotalSeconds -ge 12) { throw 'Combined headless verification exceeded its pre-activation time bound.' }
+    # A new self-exiting task tab supplies normal GUI lifetime without adopting or killing these hosts.
+    $activatedPid = Start-CombinedCleanupTab -AppUserModelId $Target.AppUserModelId
+    $waitSeconds = [Math]::Min(30, [Math]::Max(0, 57 - $clock.Elapsed.TotalSeconds))
+    if ($waitSeconds -le 0 -or -not (Test-Until -TimeoutSec $waitSeconds -IntervalSec 0.25 -Condition {
+        -not @(Get-WtProcessesForApp -App $Target -IncludePackageExecutables).Count
+    })) { throw 'Combined cleanup task tab did not quiesce Dev within 30 seconds; backups retained.' }
+    Start-Sleep -Seconds 3
+    if (@(Get-WtProcessesForApp -App $Target -IncludePackageExecutables).Count -or $clock.Elapsed.TotalSeconds -gt 60) {
+        throw 'Dev reactivated or bounded recovery expired; backups retained.'
+    }
+    [pscustomobject]@{ headless_ids = @($remaining.Id); activated_pid = $activatedPid; package_process_count = 0 }
+}
+
 BeforeDiscovery {
     if ($env:ITE2E_COMBINED_RETENTION_STATUS -and $env:ITE2E_COMBINED_RETENTION_STATUS -notin @('Idle', 'Working')) {
         throw 'ITE2E_COMBINED_RETENTION_STATUS must be Idle or Working when supplied.'
@@ -139,6 +275,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         function Get-CombinedSnapshot {
             $before = @(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables)
             $started = [DateTimeOffset]::UtcNow.ToString('o')
+            $stopError = $null
             try {
                 Invoke-Wta -App $script:app -TimeoutSec 10 -Arguments @(
                     'sessions', 'list', '--master', $script:pipe, '--json', '--include-status')
@@ -284,31 +421,56 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
     }
 
     AfterAll {
-        if ($script:app) {
-            $before = @(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables)
-            $started = [DateTimeOffset]::UtcNow.ToString('o')
-            try {
-                Stop-Terminal -App $script:app -RestoreSettings $false
-            }
-            finally {
-                @{
-                    phase = 'owned-terminal-stop'; owned_pid = $script:app.Pid
-                    started_at = $started; finished_at = [DateTimeOffset]::UtcNow.ToString('o')
-                    process_ids_before = @($before.Id)
-                    processes_after = @(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables |
-                        Select-Object Id, Path, StartTime)
-                } | ConvertTo-Json -Depth 4 -Compress |
-                    Add-Content -LiteralPath (Join-Path $script:evidence 'process-observations.jsonl')
+        $cleanupError = $null
+        try {
+            if ($script:app) {
+                $before = @(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables)
+                $started = [DateTimeOffset]::UtcNow.ToString('o')
+                try {
+                    Stop-Terminal -App $script:app -RestoreSettings $false
+                    if (@(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables).Count) {
+                        $recovery = Invoke-CombinedHeadlessRecovery -App $script:app -Target $script:target `
+                            -InitiallyInactive ([bool]($script:initialProcessCheckAt -and $script:initialProcesses.Count -eq 0))
+                        $recovery | ConvertTo-Json |
+                            Set-Content -LiteralPath (Join-Path $script:evidence 'headless-recovery.json')
+                    }
+                }
+                catch { $stopError = $_; throw }
+                finally {
+                    try {
+                        @{
+                            phase = 'owned-terminal-stop'; owned_pid = $script:app.Pid
+                            started_at = $started; finished_at = [DateTimeOffset]::UtcNow.ToString('o')
+                            process_ids_before = @($before.Id)
+                            processes_after = @(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables |
+                                Select-Object Id, Path, StartTime)
+                        } | ConvertTo-Json -Depth 4 -Compress |
+                            Add-Content -LiteralPath (Join-Path $script:evidence 'process-observations.jsonl')
+                    }
+                    catch {
+                        Write-ItLog -Level ERROR -Message "Combined stop observation failed: $_"
+                        if (-not $stopError) { throw }
+                    }
+                }
             }
         }
-        if ($script:ownsConfig) {
-            if (@(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables).Count) {
-                throw 'Dev remains active; retaining backups instead of touching unowned processes or racing configuration writes.'
+        catch { $cleanupError = $_; throw }
+        finally {
+            try {
+                if ($script:ownsConfig) {
+                    if (@(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables).Count) {
+                        throw 'Dev remains active; retaining backups instead of touching unowned processes or racing configuration writes.'
+                    }
+                    Restore-WtConfig -App $script:target
+                    foreach ($path in $script:originalHashes.Keys) {
+                        $hash = if (Test-Path -LiteralPath $path) { (Get-FileHash -LiteralPath $path).Hash } else { $null }
+                        $hash | Should -Be $script:originalHashes[$path] -Because 'restore original configuration bytes'
+                    }
+                }
             }
-            Restore-WtConfig -App $script:target
-            foreach ($path in $script:originalHashes.Keys) {
-                $hash = if (Test-Path -LiteralPath $path) { (Get-FileHash -LiteralPath $path).Hash } else { $null }
-                $hash | Should -Be $script:originalHashes[$path] -Because 'restore original configuration bytes'
+            catch {
+                Write-ItLog -Level ERROR -Message "Combined suite restoration failed; backups retained: $_"
+                if (-not $cleanupError) { throw }
             }
         }
     }
