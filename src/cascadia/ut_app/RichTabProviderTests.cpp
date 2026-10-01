@@ -406,7 +406,7 @@ namespace TerminalAppUnitTests
         takeWork()();
         VERIFY_IS_TRUE(state.snapshot.has_value());
         VERIFY_IS_TRUE(updates.back().presentation.has_value());
-        VERIFY_ARE_EQUAL(std::string{ "invoked\ninvoked\n" }, invocationContents());
+        VERIFY_ARE_EQUAL(std::string{ "invoked\n" "invoked\n" }, invocationContents());
 
         broker._Refresh(session.context.sessionId, ActivationEvent::ManualRefresh, false);
         auto staleWork = takeWork();
@@ -423,7 +423,7 @@ namespace TerminalAppUnitTests
         VERIFY_IS_TRUE(state.generation > runningGeneration);
         VERIFY_ARE_EQUAL(runningGeneration, state.runningGeneration);
         VERIFY_IS_TRUE(broker._executorQueue.empty());
-        VERIFY_ARE_EQUAL(std::string{ "invoked\ninvoked\n" }, invocationContents());
+        VERIFY_ARE_EQUAL(std::string{ "invoked\n" "invoked\n" }, invocationContents());
 
         // Only the previously dispatched invocation completes; it must not restore the snapshot.
         const auto updateCount = updates.size();
@@ -436,14 +436,14 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(updateSequence, session.updateSequence);
         VERIFY_ARE_EQUAL(uint64_t{ 7 }, session.contextRevision);
         VERIFY_IS_TRUE(broker._executorQueue.empty());
-        VERIFY_ARE_EQUAL(std::string{ "invoked\ninvoked\ninvoked\n" }, invocationContents());
+        VERIFY_ARE_EQUAL(std::string{ "invoked\n" "invoked\n" "invoked\n" }, invocationContents());
 
         broker._Refresh(session.context.sessionId, ActivationEvent::ManualRefresh, false);
         VERIFY_IS_FALSE(state.running);
         VERIFY_IS_FALSE(state.snapshot.has_value());
         VERIFY_IS_FALSE(state.pending.has_value());
         VERIFY_IS_TRUE(broker._executorQueue.empty());
-        VERIFY_ARE_EQUAL(std::string{ "invoked\ninvoked\ninvoked\n" }, invocationContents());
+        VERIFY_ARE_EQUAL(std::string{ "invoked\n" "invoked\n" "invoked\n" }, invocationContents());
     }
 
     void RichTabProviderTests::GitStatusProviderHandlesMissingGitGracefully()
