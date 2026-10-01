@@ -2438,8 +2438,8 @@ namespace winrt::TerminalApp::implementation
         }
         HistoryPanel().Visibility(visible ? Visibility::Visible : Visibility::Collapsed);
         TabsToolbar().Visibility(Visibility::Visible);
-        VerticalTabsHeader().Text(visible ? RS_(L"VerticalTabsHistoryHeader") :
-                                           RS_(L"VerticalTabsHeader"));
+        VerticalTabsHeader().Text(visible ? RS_(L"VerticalTabsHistoryHeader/Text") :
+                                           RS_(L"VerticalTabsHeader/Text"));
         ItemsList().Visibility(visible || _tabsVisible ? Visibility::Visible : Visibility::Collapsed);
         FilterStatusBar().Visibility(!visible && _filterMode != TerminalApp::TabStripFilterMode::AllTabs ?
                                          Visibility::Visible :

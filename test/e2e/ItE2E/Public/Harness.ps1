@@ -404,6 +404,10 @@ function Stop-Terminal {
         }
         # Collect OUR wta descendants before WT exits (parent links vanish afterwards).
         $wtaIds = if ($App.Pid) { @(Get-DescendantWtaIds -RootPid ([int]$App.Pid)) } else { @() }
+        # Stop owned COM listeners before closing the server; reconnecting during
+        # shutdown can activate a replacement headless Terminal.
+        $alive = @($wtaIds | Where-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue })
+        if ($alive.Count) { Stop-Process -Id $alive -Force -ErrorAction Stop }
 
         $forced = $false
         if ($App.Pid) {
