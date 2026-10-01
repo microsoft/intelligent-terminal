@@ -543,6 +543,10 @@
     <value>Agentar</value>
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
+  <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
+    <value>Ferill</value>
+    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+  </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>Agentar</value>
     <comment>Header of the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>

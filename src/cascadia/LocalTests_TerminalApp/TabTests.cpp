@@ -5067,6 +5067,8 @@ namespace TerminalAppLocalTests
 
             VERIFY_IS_TRUE(historyRequested);
             VERIFY_IS_TRUE(strip.HistoryActive());
+            VERIFY_IS_FALSE(stripImpl->HistoryHeader().Text().empty());
+            VERIFY_IS_FALSE(stripImpl->HistoryHeader().Text() == stripImpl->VerticalTabsHeader().Text());
             VERIFY_ARE_EQUAL(winrt::TerminalApp::TabStripFilterMode::AgentsOnly, strip.FilterMode());
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->TabsToolbar().Visibility());
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->SearchPanel().Visibility());
@@ -5088,6 +5090,7 @@ namespace TerminalAppLocalTests
             stripImpl->OnHeaderToggleClick(nullptr, {});
             VERIFY_IS_TRUE(historyClosed);
             VERIFY_IS_FALSE(strip.HistoryActive());
+            VERIFY_ARE_EQUAL(title, stripImpl->VerticalTabsHeader().Text());
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->TabsToolbar().Visibility());
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->SearchPanel().Visibility());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"agent query" }, strip.SearchQuery());
@@ -6702,7 +6705,9 @@ namespace TerminalAppLocalTests
         Grid host{ nullptr };
         UIElement previousContent{ nullptr };
         ScrollViewer scroll{ nullptr };
+        ScrollViewer tabsScroll{ nullptr };
         double offset = 0;
+        double tabsOffset = 0;
         const auto snapshot = [](const wchar_t* age, size_t count) {
             std::vector<winrt::TerminalApp::TabStripHistoryItem> items;
             for (size_t index = 0; index < count; ++index)
@@ -6722,6 +6727,7 @@ namespace TerminalAppLocalTests
         const auto cleanup = wil::scope_exit([&]() {
             TestOnUIThread([&]() {
                 Window::Current().Content(previousContent);
+                tabsScroll = nullptr;
                 scroll = nullptr;
                 strip = nullptr;
                 host = nullptr;
@@ -6735,6 +6741,12 @@ namespace TerminalAppLocalTests
             strip.Width(320);
             strip.Height(400);
             strip.HistoryActive(true);
+            for (uint32_t index = 0; index < 80; ++index)
+            {
+                winrt::MUX::Controls::TabViewItem tab;
+                tab.Header(winrt::box_value(winrt::hstring{ L"Agent tab " } + winrt::to_hstring(index)));
+                strip.TabItems().Append(tab);
+            }
             const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
             impl->CommitHistorySnapshot(snapshot(L"1 minute ago", 80));
             host.Children().Append(strip);
@@ -6769,8 +6781,12 @@ namespace TerminalAppLocalTests
                 return nullptr;
             };
             scroll = findScroll(list);
+            tabsScroll = findScroll(impl->ItemsList());
             VERIFY_IS_NOT_NULL(scroll);
+            VERIFY_IS_NOT_NULL(tabsScroll);
+            VERIFY_IS_FALSE(scroll == tabsScroll);
             VERIFY_IS_TRUE(scroll.ScrollableHeight() > 800);
+            VERIFY_IS_TRUE(tabsScroll.ScrollableHeight() > 120);
             VERIFY_IS_TRUE(impl->AgentTabsHost().Content() == impl->ItemsList());
             VERIFY_ARE_EQUAL(ScrollBarVisibility::Auto,
                              ScrollViewer::GetVerticalScrollBarVisibility(list));
@@ -6785,18 +6801,29 @@ namespace TerminalAppLocalTests
             host.UpdateLayout();
             offset = scroll.VerticalOffset();
             VERIFY_IS_TRUE(offset > 0);
+            VERIFY_ARE_EQUAL(0.0, tabsScroll.VerticalOffset());
+            VERIFY_IS_TRUE(tabsScroll.ChangeView(nullptr, 120.0, nullptr, true));
+            host.UpdateLayout();
+        });
+        TestOnUIThread([&]() {
+            host.UpdateLayout();
+            tabsOffset = tabsScroll.VerticalOffset();
+            VERIFY_IS_TRUE(tabsOffset > 0);
+            VERIFY_IS_TRUE(std::abs(scroll.VerticalOffset() - offset) <= 1.0);
             winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip)->CommitHistorySnapshot(snapshot(L"2 minutes ago", 81));
             host.UpdateLayout();
         });
         TestOnUIThread([&]() {
             host.UpdateLayout();
             VERIFY_IS_TRUE(std::abs(scroll.VerticalOffset() - offset) <= 1.0);
+            VERIFY_IS_TRUE(std::abs(tabsScroll.VerticalOffset() - tabsOffset) <= 1.0);
             winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip)->CommitHistorySnapshot(snapshot(L"3 minutes ago", 79));
             host.UpdateLayout();
         });
         TestOnUIThread([&]() {
             host.UpdateLayout();
             VERIFY_IS_TRUE(std::abs(scroll.VerticalOffset() - offset) <= 1.0);
+            VERIFY_IS_TRUE(std::abs(tabsScroll.VerticalOffset() - tabsOffset) <= 1.0);
         });
     }
 
@@ -7287,6 +7314,9 @@ namespace TerminalAppLocalTests
             const auto splitterHeight = stripImpl->HistorySplitter().ActualHeight();
             const auto availableHeight = totalHeight - splitterHeight;
             VERIFY_IS_TRUE(availableHeight > 0.0);
+            VERIFY_IS_TRUE(stripImpl->HistorySplitter().IsTabStop());
+            VERIFY_IS_TRUE(stripImpl->HistorySplitter().UseSystemFocusVisuals());
+            VERIFY_IS_TRUE(stripImpl->HistorySplitter().Focus(FocusState::Keyboard));
 
             // Initial rows use Star units for proportional scaling
             VERIFY_ARE_EQUAL(GridUnitType::Star, stripImpl->AgentTabsRow().Height().GridUnitType);
@@ -7311,6 +7341,12 @@ namespace TerminalAppLocalTests
             const auto expectedMin = std::min(80.0, std::max(0.0, (120.0 - stripImpl->HistorySplitter().Height()) / 2.0));
             VERIFY_ARE_EQUAL(expectedMin, stripImpl->AgentTabsRow().MinHeight());
             VERIFY_ARE_EQUAL(expectedMin, stripImpl->HistoryListRow().MinHeight());
+            VERIFY_IS_TRUE(stripImpl->AgentTabsRow().ActualHeight() >= expectedMin);
+            VERIFY_IS_TRUE(stripImpl->HistoryListRow().ActualHeight() >= expectedMin);
+            VERIFY_IS_TRUE(stripImpl->AgentTabsRow().ActualHeight() +
+                               stripImpl->HistoryListRow().ActualHeight() +
+                               stripImpl->HistorySplitter().ActualHeight() <=
+                           stripImpl->HistoryPanel().ActualHeight() + 1.0);
             VERIFY_ARE_EQUAL(GridUnitType::Star, stripImpl->AgentTabsRow().Height().GridUnitType);
             VERIFY_ARE_EQUAL(GridUnitType::Star, stripImpl->HistoryListRow().Height().GridUnitType);
         });
@@ -7323,8 +7359,16 @@ namespace TerminalAppLocalTests
 
         TestOnUIThread([&]() {
             const auto expectedMin = std::min(80.0, std::max(0.0, (600.0 - stripImpl->HistorySplitter().Height()) / 2.0));
+            const auto availableHeight = stripImpl->HistoryPanel().ActualHeight() - stripImpl->HistorySplitter().ActualHeight();
             VERIFY_ARE_EQUAL(expectedMin, stripImpl->AgentTabsRow().MinHeight());
             VERIFY_ARE_EQUAL(expectedMin, stripImpl->HistoryListRow().MinHeight());
+            VERIFY_IS_TRUE(stripImpl->AgentTabsRow().ActualHeight() >= expectedMin);
+            VERIFY_IS_TRUE(stripImpl->HistoryListRow().ActualHeight() >= expectedMin);
+            VERIFY_IS_TRUE(stripImpl->AgentTabsRow().ActualHeight() +
+                               stripImpl->HistoryListRow().ActualHeight() +
+                               stripImpl->HistorySplitter().ActualHeight() <=
+                           stripImpl->HistoryPanel().ActualHeight() + 1.0);
+            VERIFY_IS_TRUE(std::abs(stripImpl->AgentTabsRow().ActualHeight() - 0.6 * availableHeight) <= 1.0);
             VERIFY_ARE_EQUAL(GridUnitType::Star, stripImpl->AgentTabsRow().Height().GridUnitType);
             VERIFY_ARE_EQUAL(GridUnitType::Star, stripImpl->HistoryListRow().Height().GridUnitType);
         });
