@@ -653,6 +653,7 @@
                             IsTabStop="False" />
 
             <ContentControl x:Name="HistorySplitter"
+                    x:Uid="VerticalTabsHistorySplitter"
                     Grid.Row="1"
                     Height="8"
                     Background="Transparent"
@@ -679,13 +680,17 @@
             </ContentControl>
 
             <!-- Row 2: Lower section - history header and session list -->
-            <Grid Grid.Row="2">
+            <Grid x:Name="HistorySection"
+                  Grid.Row="2"
+                  SizeChanged="OnHistorySectionSizeChanged">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="44" />
+                    <RowDefinition x:Name="HistoryHeaderRow" Height="44" />
                     <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <Grid Grid.Row="0"
+                <Grid x:Name="HistoryHeaderPanel"
+                      Grid.Row="0"
                       Padding="12,0,8,0"
                       BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                       BorderThickness="0,0,0,1">
@@ -704,14 +709,6 @@
                               SelectionMode="None"
                               ScrollViewer.VerticalScrollBarVisibility="Auto"
                               ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                        <ListView.Footer>
-                            <TextBlock x:Name="HistoryMessage"
-                                       Margin="16"
-                                       HorizontalAlignment="Center"
-                                       TextAlignment="Center"
-                                       TextWrapping="Wrap"
-                                       Visibility="Collapsed" />
-                        </ListView.Footer>
                     <ListView.ItemsPanel>
                         <ItemsPanelTemplate>
                             <ItemsStackPanel ItemsUpdatingScrollMode="KeepScrollOffset" />
@@ -795,6 +792,18 @@
                               IsActive="False"
                               Visibility="Collapsed" />
                 </Grid>
+                <TextBlock x:Name="HistoryMessage"
+                           Grid.Row="2"
+                           Margin="16,0"
+                           HorizontalAlignment="Center"
+                           LineHeight="20"
+                           LineStackingStrategy="BlockLineHeight"
+                           MaxLines="3"
+                           TextAlignment="Center"
+                           TextTrimming="CharacterEllipsis"
+                           TextWrapping="Wrap"
+                           ToolTipService.ToolTip="{Binding Text, ElementName=HistoryMessage}"
+                           Visibility="Collapsed" />
             </Grid>
         </Grid>
     </Grid>

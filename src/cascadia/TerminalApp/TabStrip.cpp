@@ -1415,6 +1415,7 @@ namespace winrt::TerminalApp::implementation
     void TabStrip::ProjectionControlsEnabled(bool value)
     {
         _projectionControlsEnabled = value;
+        VerticalTabsHeaderButton().IsEnabled(value && !_isRailCollapsed);
         SearchTabsButton().IsEnabled(value);
         FilterTabsButton().IsEnabled(value && !_isRailCollapsed);
     }
@@ -1648,6 +1649,10 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::OnHeaderToggleClick(IInspectable const&, WUX::RoutedEventArgs const&)
     {
+        if (_isRailCollapsed || !_projectionControlsEnabled)
+        {
+            return;
+        }
         if (_historyActive)
         {
             HistoryClosed.raise(*this, nullptr);
@@ -1843,6 +1848,26 @@ namespace winrt::TerminalApp::implementation
         HistoryListRow().MinHeight(minimumHeight);
     }
 
+    void TabStrip::OnHistorySectionSizeChanged(IInspectable const&, SizeChangedEventArgs const& e)
+    {
+        _updateHistorySectionLayout(e.NewSize().Height);
+    }
+
+    void TabStrip::_updateHistorySectionLayout(const double height)
+    {
+        constexpr double minimumViewport = 24.0;
+        const auto message = HistoryMessage();
+        const auto hasMessage = message.Visibility() == Visibility::Visible;
+        const auto reservedHeight = minimumViewport * (hasMessage ? 2 : 1);
+        const auto headerHeight = height >= 44.0 + reservedHeight ? 44.0 :
+                                  height >= 24.0 + reservedHeight ? 24.0 : 0.0;
+        HistoryHeaderRow().Height(GridLength{ headerHeight, GridUnitType::Pixel });
+        HistoryHeaderPanel().Visibility(headerHeight > 0 ? Visibility::Visible : Visibility::Collapsed);
+        const auto messageHeight = std::max(0.0, (height - headerHeight) / 2.0);
+        message.MaxHeight(messageHeight);
+        message.MaxLines(std::clamp(static_cast<int32_t>(messageHeight / message.LineHeight()), 1, 3));
+    }
+
     void TabStrip::OnSplitterPointerEntered(IInspectable const&, WUX::Input::PointerRoutedEventArgs const&)
     {
         _setSplitterCursor();
@@ -2017,6 +2042,7 @@ namespace winrt::TerminalApp::implementation
         CompactNewTabToolbar().Visibility(collapsedVisibility);
         VerticalTabsHeader().Visibility(expandedVisibility);
         VerticalTabsHeaderButton().Visibility(expandedVisibility);
+        VerticalTabsHeaderButton().IsEnabled(_projectionControlsEnabled && !_isRailCollapsed);
         SearchTabsButton().IsHitTestVisible(true);
         SearchTabsButton().IsEnabled(_projectionControlsEnabled);
         FilterTabsButton().Visibility(_richTabMetadataControlsVisible ? expandedVisibility : Visibility::Collapsed);
@@ -2218,6 +2244,15 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::_updateSearchVisualState()
     {
+        const auto agentsLabel = _historyActive ? RS_(L"VerticalTabsAgentsSearch/Text") : winrt::hstring{};
+        SearchTextBox().PlaceholderText(_historyActive ? agentsLabel : RS_(L"VerticalTabsSearchBox/PlaceholderText"));
+        WUX::Automation::AutomationProperties::SetName(
+            SearchTextBox(), _historyActive ? agentsLabel : RS_(L"VerticalTabsSearchBox/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name"));
+        WUX::Automation::AutomationProperties::SetName(
+            SearchTabsButton(), _historyActive ? agentsLabel : RS_(L"VerticalTabsSearchButton/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name"));
+        ToolTipService::SetToolTip(
+            SearchTabsButton(), box_value(_historyActive ? agentsLabel : RS_(L"VerticalTabsSearchButton/[using:Windows.UI.Xaml.Controls]ToolTipService/ToolTip")));
+
         _syncingSearchState = true;
         SearchTabsButton().IsChecked(_searchActive);
         _syncingSearchState = false;
@@ -2470,6 +2505,7 @@ namespace winrt::TerminalApp::implementation
         {
             HistoryMessage().Visibility(Visibility::Collapsed);
         }
+        _updateHistorySectionLayout(HistorySection().ActualHeight());
     }
 
     void TabStrip::_onItemsVectorChanged(IObservableVector<IInspectable> const& sender,

@@ -66,12 +66,25 @@ and focuses ordinary tab search on entry.
   `SearchTextBox` in the sidebar filters both the upper live agent tabs and the
   lower history rows concurrently. Entering or leaving Agents does not discard
   an active search query.
+- In Agents, the search placeholder, automation names, and button tooltip read
+  **Search agents and history**; Tabs retains **Search tabs**. The header toggle
+  is disabled while projection controls are blocked, in either direction.
+- The focusable splitter has a localized automation name and keyboard-resizing
+  help text. Runtime Narrator/UIA behavior remains a separate validation step.
+- History errors and empty-state messages sit outside the scrolling rows so
+  retained sessions cannot scroll the status out of view. At small section
+  heights, the heading compacts or hides and status text truncates to leave a
+  list viewport; the tooltip retains the full message. This does not alter the
+  outer split ratio or introduce another scroll viewer.
 - Exclude only the represented history identity: provider, session ID, source
   location (host or WSL distro), and session universe. The open-pane binding
   supplies session ID, provider (when known), and pane ID; the matching history
   row supplies location and universe. Pane ID disambiguates colliding history
   identities, but an unambiguous session/provider remains represented after
   rebinding to a new pane even if its history row still names the old pane.
+  A graceful connection close refreshes this projection even when the pane is
+  retained by `closeOnExit: never`; a failed connection retains its binding until
+  the pane closes.
   If colliding rows cannot be disambiguated, retain them rather than hiding
   an unrelated session. Status alone is not identity: an idle or working
   session without a representing open pane remains in the lower section.

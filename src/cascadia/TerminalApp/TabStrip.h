@@ -402,6 +402,8 @@ namespace winrt::TerminalApp::implementation
                                winrt::Windows::UI::Xaml::Input::KeyRoutedEventArgs const& e);
         void OnHistoryPanelSizeChanged(winrt::Windows::Foundation::IInspectable const& sender,
                                        winrt::Windows::UI::Xaml::SizeChangedEventArgs const& e);
+        void OnHistorySectionSizeChanged(winrt::Windows::Foundation::IInspectable const& sender,
+                                         winrt::Windows::UI::Xaml::SizeChangedEventArgs const& e);
         void OnHistoryItemClick(winrt::Windows::Foundation::IInspectable const& sender,
                                 winrt::Windows::UI::Xaml::Controls::ItemClickEventArgs const& e);
         void OnHistoryRowLoaded(winrt::Windows::Foundation::IInspectable const& sender,
@@ -493,6 +495,7 @@ namespace winrt::TerminalApp::implementation
         bool _agentFilterTelemetryPending{ false };
         friend class ::TerminalAppLocalTests::TabTests;
         void _resizeHistorySplit(double upperHeight);
+        void _updateHistorySectionLayout(double height);
         bool _historyLoading{ false };
         bool _historyActivating{ false };
         bool _syncingHistorySearchState{ false };

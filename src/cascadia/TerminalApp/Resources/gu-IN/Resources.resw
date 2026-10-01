@@ -740,4 +740,16 @@
     <value>થોભાવેલું</value>
     <comment>Accessibility status for temporarily paused OSC 9;4 progress. A localized percentage is appended; this does not mean waiting for user input or approval.</comment>
   </data>
+  <data name="VerticalTabsAgentsSearch.Text" xml:space="preserve">
+    <value>એજન્ટ અને ઇતિહાસ શોધો</value>
+    <comment>Shared sidebar search field and button label in the Agents view. Filters both open AI-agent tabs and historical agent sessions. Agents means AI agents; history means prior agent sessions. Keep the separate Tabs view search labels unchanged.</comment>
+  </data>
+  <data name="VerticalTabsHistorySplitter.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>એજન્ટ ટૅબ અને ઇતિહાસનું કદ બદલો</value>
+    <comment>Accessible name for the adjustable horizontal divider between open AI-agent tabs and session History in the Agents sidebar.</comment>
+  </data>
+  <data name="VerticalTabsHistorySplitter.[using:Windows.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve">
+    <value>વિભાગોનું કદ બદલવા માટે ઉપર અને નીચેના તીરની કીઓનો ઉપયોગ કરો.</value>
+    <comment>Keyboard instructions for the divider between open AI-agent tabs and session History. Up reduces the upper section height; Down increases it. The lower section height adjusts oppositely.</comment>
+  </data>
 </root>
