@@ -51,6 +51,22 @@ namespace TerminalAppUnitTests
 
     void RichTabProviderTests::PowerShellProviderPreservesUnicodeAcrossProcessBoundary()
     {
+        constexpr auto gitBinaryEnv = L"INTELLIGENT_TERMINAL_GIT_BINARY";
+        SetLastError(ERROR_SUCCESS);
+        const auto priorLength = GetEnvironmentVariableW(gitBinaryEnv, nullptr, 0);
+        const auto priorMissing = priorLength == 0 && GetLastError() == ERROR_ENVVAR_NOT_FOUND;
+        std::wstring priorValue;
+        if (!priorMissing && priorLength > 0)
+        {
+            priorValue.resize(priorLength);
+            GetEnvironmentVariableW(gitBinaryEnv, priorValue.data(), priorLength);
+            priorValue.resize(wcslen(priorValue.c_str()));
+        }
+        SetEnvironmentVariableW(gitBinaryEnv, nullptr);
+        const auto envCleanup = wil::scope_exit([=]() {
+            SetEnvironmentVariableW(gitBinaryEnv, priorMissing ? nullptr : priorValue.c_str());
+        });
+
         const auto providerRoot = _TestModuleDirectory() / L"RichTabProviders" / L"GitStatus";
         const auto repositoryName =
             L"RichTabUnicode-" + std::to_wstring(GetCurrentProcessId()) + L"-\u7EC8\u7AEF";

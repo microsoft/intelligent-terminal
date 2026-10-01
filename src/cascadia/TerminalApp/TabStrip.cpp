@@ -1206,10 +1206,28 @@ namespace winrt::TerminalApp::implementation
                     std::wstring path(pathLength, L'\0');
                     if (GetEnvironmentVariableW(L"PATH", path.data(), pathLength) > 0)
                     {
-                        if (SearchPathW(path.c_str(), binary.c_str(), nullptr, MAX_PATH, buffer, nullptr) > 0 ||
-                            SearchPathW(path.c_str(), binary.c_str(), L".exe", MAX_PATH, buffer, nullptr) > 0)
+                        if (SearchPathW(path.c_str(), binary.c_str(), nullptr, MAX_PATH, buffer, nullptr) > 0)
                         {
                             return true;
+                        }
+
+                        const auto pathextLength = GetEnvironmentVariableW(L"PATHEXT", nullptr, 0);
+                        std::wstring pathext = (pathextLength > 0) ? std::wstring(pathextLength, L'\0') : L".COM;.EXE;.BAT;.CMD";
+                        if (pathextLength > 0)
+                        {
+                            GetEnvironmentVariableW(L"PATHEXT", pathext.data(), pathextLength);
+                        }
+
+                        for (const auto& ext : til::split_iterator{ std::wstring_view{ pathext }, L';' })
+                        {
+                            if (!ext.empty())
+                            {
+                                std::wstring extStr{ ext };
+                                if (SearchPathW(path.c_str(), binary.c_str(), extStr.c_str(), MAX_PATH, buffer, nullptr) > 0)
+                                {
+                                    return true;
+                                }
+                            }
                         }
                     }
                 }
