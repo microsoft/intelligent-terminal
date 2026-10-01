@@ -24,6 +24,7 @@ namespace Microsoft::Terminal::RichTab::Provider
             L"APPDATA",
             L"HOMEDRIVE",
             L"HOMEPATH",
+            L"INTELLIGENT_TERMINAL_GIT_BINARY",
             L"LOCALAPPDATA",
             L"PATH",
             L"PATHEXT",

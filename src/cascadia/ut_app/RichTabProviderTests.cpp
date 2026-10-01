@@ -44,6 +44,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(PowerShellProviderPreservesUnicodeAcrossProcessBoundary);
         TEST_METHOD(LocalizedFieldDisplayNamesOverrideManifestFallbacks);
         TEST_METHOD(GitStatusProviderHandlesMissingGitGracefully);
+        TEST_METHOD(GitStatusProviderHonorsGitBinaryEnvironmentVariable);
         TEST_METHOD(GitStatusProviderSkipsGitWhenNoGitFieldsVisible);
         TEST_METHOD(GitStatusProviderHandlesGitFailureGracefully);
     };
@@ -270,6 +271,98 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(
             repositoryRoot.string(),
             std::get<std::string>(parsed.value->fields.at("workingDirectory")));
+        VERIFY_IS_TRUE(parsed.value->fields.find("repository") == parsed.value->fields.end());
+        VERIFY_IS_TRUE(parsed.value->fields.find("branch") == parsed.value->fields.end());
+        VERIFY_IS_TRUE(parsed.value->fields.find("changes") == parsed.value->fields.end());
+    }
+
+    void RichTabProviderTests::GitStatusProviderHonorsGitBinaryEnvironmentVariable()
+    {
+        constexpr auto gitBinaryEnv = L"INTELLIGENT_TERMINAL_GIT_BINARY";
+        SetLastError(ERROR_SUCCESS);
+        const auto priorLength = GetEnvironmentVariableW(gitBinaryEnv, nullptr, 0);
+        const auto priorMissing = priorLength == 0 && GetLastError() == ERROR_ENVVAR_NOT_FOUND;
+        std::wstring priorValue;
+        if (!priorMissing && priorLength > 0)
+        {
+            priorValue.resize(priorLength);
+            GetEnvironmentVariableW(gitBinaryEnv, priorValue.data(), priorLength);
+            priorValue.resize(wcslen(priorValue.c_str()));
+        }
+
+        const auto providerRoot = _TestModuleDirectory() / L"RichTabProviders" / L"GitStatus";
+        const auto repositoryName =
+            L"RichTabEnvGit-" + std::to_wstring(GetCurrentProcessId());
+        const auto repositoryRoot = std::filesystem::temp_directory_path() / repositoryName;
+        std::filesystem::remove_all(repositoryRoot);
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(repositoryRoot, error);
+        });
+
+        // Set environment variable to a nonexistent binary to prove the environment block passes it to provider.ps1
+        SetEnvironmentVariableW(gitBinaryEnv, L"nonexistent-env-git.exe");
+        const auto envCleanup = wil::scope_exit([=]() {
+            SetEnvironmentVariableW(gitBinaryEnv, priorMissing ? nullptr : priorValue.c_str());
+        });
+
+        const auto gitDirectory = repositoryRoot / L".git";
+        std::filesystem::create_directories(gitDirectory / L"objects");
+        std::filesystem::create_directories(gitDirectory / L"refs" / L"heads");
+        std::filesystem::create_directories(gitDirectory / L"logs");
+        _WriteFile(
+            gitDirectory / L"config",
+            "[core]\n\t"
+            "repository"
+            "format"
+            "version = 0\n\tbare = false\n");
+        _WriteFile(
+            gitDirectory / L"HEAD",
+            "ref: refs/heads/main\n");
+
+        Manifest manifest;
+        manifest.id = "com.microsoft.intelligent-terminal.git-status";
+        manifest.runtime.kind = RuntimeKind::PowerShellV1;
+        manifest.runtime.entrypoint = L"provider.ps1";
+        manifest.extensionRoot = providerRoot;
+        manifest.activationEvents.emplace_back(ActivationEvent::ManualRefresh);
+        manifest.fields = {
+            { "agentStatus", "Agent status", FieldType::String, true },
+            { "workingDirectory", "Current working directory", FieldType::String, true },
+            { "repository", "Git repo", FieldType::String, false },
+            { "branch", "Git branch", FieldType::String, false },
+            { "changes", "Git changes", FieldType::String, false },
+        };
+
+        Request request;
+        request.requestId = "env-git-test";
+        request.providerId = manifest.id;
+        request.processEpoch = 1;
+        request.sessionId = "session";
+        request.reason = ActivationEvent::ManualRefresh;
+        request.workingDirectory = repositoryRoot;
+        request.workingDirectoryAuthoritative = true;
+        request.firstPartyFields.emplace("agentStatus", "idle");
+        // No firstPartyFields gitBinary set, so it relies on the environment variable override
+
+        const auto serialized = SerializeRequest(request, manifest);
+        VERIFY_IS_TRUE(static_cast<bool>(serialized));
+
+        const auto command =
+            CommandRunner{}.Run(manifest, *serialized.value, std::chrono::seconds{ 10 });
+        VERIFY_IS_TRUE(command.status == CommandResult::Status::Completed);
+        VERIFY_ARE_EQUAL(0u, command.exitCode);
+
+        const auto parsed = ParseSnapshot(command.standardOutput, manifest, request.requestId);
+        VERIFY_IS_TRUE(static_cast<bool>(parsed));
+        VERIFY_ARE_EQUAL(
+            std::string{ "idle" },
+            std::get<std::string>(parsed.value->fields.at("agentStatus")));
+        VERIFY_ARE_EQUAL(
+            repositoryRoot.string(),
+            std::get<std::string>(parsed.value->fields.at("workingDirectory")));
+        // Because INTELLIGENT_TERMINAL_GIT_BINARY was passed through the sanitized environment block,
+        // provider.ps1 used nonexistent-env-git.exe and returned empty git fields without failing.
         VERIFY_IS_TRUE(parsed.value->fields.find("repository") == parsed.value->fields.end());
         VERIFY_IS_TRUE(parsed.value->fields.find("branch") == parsed.value->fields.end());
         VERIFY_IS_TRUE(parsed.value->fields.find("changes") == parsed.value->fields.end());

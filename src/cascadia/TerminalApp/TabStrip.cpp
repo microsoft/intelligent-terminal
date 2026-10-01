@@ -1213,14 +1213,9 @@ namespace winrt::TerminalApp::implementation
                         }
                     }
                 }
-                if (SearchPathW(nullptr, binary.c_str(), nullptr, MAX_PATH, buffer, nullptr) > 0 ||
-                    SearchPathW(nullptr, binary.c_str(), L".exe", MAX_PATH, buffer, nullptr) > 0)
-                {
-                    return true;
-                }
                 // Override was specified but could not be resolved as an executable:
                 // provider.ps1 gives the override strict precedence and will fail,
-                // so do not fall back to git.exe.
+                // so do not fall back to git.exe or SearchPathW without PATH.
                 return false;
             }
         }
@@ -1237,7 +1232,7 @@ namespace winrt::TerminalApp::implementation
                 }
             }
         }
-        return SearchPathW(nullptr, L"git", L".exe", MAX_PATH, buffer, nullptr) > 0;
+        return false;
     }
 
     void TabStrip::RichTabGitAvailable(bool value)
