@@ -1245,22 +1245,30 @@ namespace winrt::TerminalApp::implementation
         if (_richTabGitAvailable != value)
         {
             _richTabGitAvailable = value;
+            bool changedVisibility = false;
             if (!value)
             {
                 if (_richTabRepositoryVisible)
                 {
                     RichTabRepositoryVisible(false);
+                    changedVisibility = true;
                 }
                 if (_richTabBranchVisible)
                 {
                     RichTabBranchVisible(false);
+                    changedVisibility = true;
                 }
                 if (_richTabChangesVisible)
                 {
                     RichTabChangesVisible(false);
+                    changedVisibility = true;
                 }
             }
             _updateRichTabMetadataSelectionState();
+            if (changedVisibility)
+            {
+                VisibleFieldsChanged.raise(*this, nullptr);
+            }
         }
     }
 
