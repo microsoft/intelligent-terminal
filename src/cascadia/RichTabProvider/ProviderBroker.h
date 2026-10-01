@@ -16,6 +16,11 @@
 #include <unordered_map>
 #include <unordered_set>
 
+namespace TerminalAppUnitTests
+{
+    class RichTabProviderTests;
+}
+
 namespace Microsoft::Terminal::RichTab::Provider
 {
     struct Presentation
@@ -84,6 +89,8 @@ namespace Microsoft::Terminal::RichTab::Provider
             const FieldDisplayNameMap& fieldDisplayNames = {});
 
     private:
+        friend class ::TerminalAppUnitTests::RichTabProviderTests;
+
         struct PendingRequest
         {
             Request request;

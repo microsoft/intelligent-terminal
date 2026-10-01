@@ -357,6 +357,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VisibleFieldsControlRichTabComposition);
         TEST_METHOD(RichTabMetadataSelectionIsLimitedToTwo);
         TEST_METHOD(RichTabGitAvailabilityControlsFilterOptions);
+        TEST_METHOD(RichTabGitAvailabilityResolvesOverrides);
         TEST_METHOD(RichTabMetadataIsVisibleOnlyInVerticalLayout);
         TEST_METHOD(RichTabMetadataExpandsVerticalRow);
         TEST_METHOD(RichTabManifestAcceptsCamelCaseFieldIds);
@@ -8450,6 +8451,103 @@ namespace TerminalAppLocalTests
             tabStrip.RichTabChangesVisible(true);
             VERIFY_IS_FALSE(tabStrip.RichTabChangesVisible());
         });
+    }
+
+    void TabTests::RichTabGitAvailabilityResolvesOverrides()
+    {
+        using Strip = winrt::TerminalApp::implementation::TabStrip;
+
+        const wchar_t* environmentNames[]{
+            L"INTELLIGENT_TERMINAL_GIT_BINARY", L"PATH", L"PATHEXT"
+        };
+        std::vector<std::optional<std::wstring>> previousEnvironment;
+        for (const auto name : environmentNames)
+        {
+            const auto length = GetEnvironmentVariableW(name, nullptr, 0);
+            if (length > 0)
+            {
+                std::wstring value(length, L'\0');
+                const auto copied = GetEnvironmentVariableW(name, value.data(), length);
+                VERIFY_IS_TRUE(copied < length);
+                value.resize(copied);
+                previousEnvironment.emplace_back(std::move(value));
+            }
+            else
+            {
+                previousEnvironment.emplace_back(GetLastError() == ERROR_ENVVAR_NOT_FOUND ?
+                                                     std::nullopt :
+                                                     std::optional<std::wstring>{ L"" });
+            }
+        }
+        const auto restoreEnvironment = wil::scope_exit([&]() noexcept {
+            for (size_t index = 0; index < previousEnvironment.size(); ++index)
+            {
+                LOG_IF_WIN32_BOOL_FALSE(SetEnvironmentVariableW(environmentNames[index],
+                                                               previousEnvironment[index] ? previousEnvironment[index]->c_str() : nullptr));
+            }
+        });
+
+        GUID id{};
+        VERIFY_SUCCEEDED(CoCreateGuid(&id));
+        const auto directory = std::filesystem::temp_directory_path() / std::wstring{ winrt::to_hstring(id) };
+        VERIFY_IS_TRUE(std::filesystem::create_directory(directory));
+        const auto cleanup = wil::scope_exit([&]() noexcept {
+            std::error_code ec;
+            std::filesystem::remove_all(directory, ec);
+            LOG_IF_FAILED(HRESULT_FROM_WIN32(ec.value()));
+        });
+        for (const auto name : { L"override.Ps1", L"override.txt", L"override.md", L"git.exe" })
+        {
+            const auto file = directory / name;
+            wil::unique_hfile handle{ CreateFileW(file.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr) };
+            VERIFY_IS_TRUE(static_cast<bool>(handle));
+        }
+        VERIFY_IS_TRUE(SetEnvironmentVariableW(L"PATH", directory.c_str()));
+        VERIFY_IS_TRUE(SetEnvironmentVariableW(L"PATHEXT", L".PS1;.CMD;.EXE"));
+
+        const auto setOverride = [](const wchar_t* value) {
+            VERIFY_IS_TRUE(SetEnvironmentVariableW(L"INTELLIGENT_TERMINAL_GIT_BINARY", value));
+        };
+        setOverride((directory / L"override.Ps1").c_str());
+        VERIFY_IS_FALSE(Strip::_isGitInstalled());
+        setOverride(L"override.Ps1");
+        VERIFY_IS_FALSE(Strip::_isGitInstalled());
+        setOverride(L"override");
+        VERIFY_IS_FALSE(Strip::_isGitInstalled());
+
+        {
+            wil::unique_hfile handle{ CreateFileW((directory / L"override.cmd").c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr) };
+            VERIFY_IS_TRUE(static_cast<bool>(handle));
+        }
+        VERIFY_IS_TRUE(Strip::_isGitInstalled());
+        setOverride((directory / L"override.cmd").c_str());
+        VERIFY_IS_TRUE(Strip::_isGitInstalled());
+        setOverride(L"override.cmd");
+        VERIFY_IS_TRUE(Strip::_isGitInstalled());
+
+        wchar_t systemDirectory[MAX_PATH]{};
+        const auto length = GetSystemDirectoryW(systemDirectory, MAX_PATH);
+        VERIFY_IS_TRUE(length > 0 && length < MAX_PATH);
+        setOverride((std::filesystem::path{ systemDirectory } / L"cmd.exe").c_str());
+        VERIFY_IS_TRUE(Strip::_isGitInstalled());
+        setOverride(L"git.exe");
+        VERIFY_IS_TRUE(Strip::_isGitInstalled());
+        setOverride(L"git");
+        VERIFY_IS_TRUE(Strip::_isGitInstalled());
+        for (const auto name : { L"override.txt", L"override.md" })
+        {
+            setOverride((directory / name).c_str());
+            VERIFY_IS_TRUE(Strip::_isGitInstalled());
+            setOverride(name);
+            VERIFY_IS_TRUE(Strip::_isGitInstalled());
+        }
+
+        setOverride(nullptr);
+        VERIFY_IS_TRUE(Strip::_isGitInstalled());
+        setOverride(L"missing-override");
+        VERIFY_IS_FALSE(Strip::_isGitInstalled());
+        setOverride((directory / L"missing.exe").c_str());
+        VERIFY_IS_FALSE(Strip::_isGitInstalled());
     }
 
     void TabTests::RichTabMetadataExpandsVerticalRow()

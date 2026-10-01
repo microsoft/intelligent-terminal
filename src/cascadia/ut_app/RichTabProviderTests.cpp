@@ -43,6 +43,7 @@ namespace TerminalAppUnitTests
 
         TEST_METHOD(PowerShellProviderPreservesUnicodeAcrossProcessBoundary);
         TEST_METHOD(LocalizedFieldDisplayNamesOverrideManifestFallbacks);
+        TEST_METHOD(BrokerClearsSuccessfulSnapshotAfterProviderFailure);
         TEST_METHOD(GitStatusProviderHandlesMissingGitGracefully);
         TEST_METHOD(GitStatusProviderHonorsGitBinaryEnvironmentVariable);
         TEST_METHOD(GitStatusProviderSkipsGitWhenNoGitFieldsVisible);
@@ -203,6 +204,106 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(
             std::wstring{ L"\u5206\u652F: \u4E3B\u5206\u652F, \u66F4\u6539: ~12 +200 -35" },
             presentation->accessibilityText);
+    }
+
+    void RichTabProviderTests::BrokerClearsSuccessfulSnapshotAfterProviderFailure()
+    {
+        const auto providerRoot = std::filesystem::temp_directory_path() /
+                                  (L"RichTabBrokerFailure-" + std::to_wstring(GetCurrentProcessId()) +
+                                   L"-" + std::to_wstring(GetTickCount64()));
+        VERIFY_IS_TRUE(std::filesystem::create_directory(providerRoot));
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(providerRoot, error);
+        });
+        const auto script = providerRoot / L"provider.ps1";
+        _WriteFile(
+            script,
+            "$request = [Console]::In.ReadToEnd() | ConvertFrom-Json\n"
+            "@{ protocolVersion = 1; requestId = $request.requestId; result = @{\n"
+            "    fields = @{ branch = 'main' }; tooltip = 'Current branch: main'\n"
+            "} } | ConvertTo-Json -Depth 4 -Compress\n");
+
+        Registration provider;
+        provider.manifest.id = "test.broker-failure";
+        provider.manifest.runtime.kind = RuntimeKind::PowerShellV1;
+        provider.manifest.runtime.entrypoint = L"provider.ps1";
+        provider.manifest.extensionRoot = providerRoot;
+        provider.manifest.activationEvents = { ActivationEvent::ManualRefresh };
+        provider.manifest.fields = { { "branch", "Git branch", FieldType::String, true } };
+        provider.enabled = true;
+        provider.integrityValid = true;
+
+        std::vector<BrokerUpdate> updates;
+        ProviderBroker broker;
+        broker._providers = { provider };
+        auto& session = broker._sessions["broker-failure-session"];
+        session.context.sessionId = "broker-failure-session";
+        session.context.workingDirectory = providerRoot;
+        session.context.workingDirectoryAuthoritative = true;
+        session.context.shellType = "powershell";
+        session.sessionIncarnation = 1;
+        session.contextRevision = 7;
+        session.callbacks.emplace(1, [&](const BrokerUpdate& update) {
+            updates.emplace_back(update);
+        });
+        auto& state = session.providers[provider.manifest.id];
+        state.generation = 1;
+        state.runningGeneration = 1;
+        state.running = true;
+
+        Request request;
+        request.requestId = "broker-success";
+        request.providerId = provider.manifest.id;
+        request.processEpoch = broker.ProcessEpoch();
+        request.sessionId = session.context.sessionId;
+        request.reason = ActivationEvent::ManualRefresh;
+        request.workingDirectory = session.context.workingDirectory;
+        request.workingDirectoryAuthoritative = session.context.workingDirectoryAuthoritative;
+        request.shellType = session.context.shellType;
+        request.contextRevision = session.contextRevision;
+
+        // Run synchronously with matching generations; no singleton or queued refreshes.
+        broker._RunProvider(provider, request, 1);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, updates.size());
+        VERIFY_IS_TRUE(updates[0].presentation.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"main" }, updates[0].presentation->text);
+        VERIFY_ARE_EQUAL(std::wstring{ L"Current branch: main" }, updates[0].presentation->tooltip);
+        VERIFY_ARE_EQUAL(std::wstring{ L"Git branch: main" }, updates[0].presentation->accessibilityText);
+        VERIFY_IS_TRUE(updates[0].diagnostics.empty());
+        VERIFY_ARE_EQUAL(uint64_t{ 1 }, updates[0].updateSequence);
+        VERIFY_IS_TRUE(state.snapshot.has_value());
+        VERIFY_IS_FALSE(state.running);
+
+        _WriteFile(
+            script,
+            "$null = [Console]::In.ReadToEnd()\n"
+            "[Console]::Error.WriteLine('broker-provider-failure')\n"
+            "exit 23\n");
+        request.requestId = "broker-failure";
+        state.generation = 2;
+        state.runningGeneration = 2;
+        state.running = true;
+        broker._RunProvider(provider, request, 2);
+
+        VERIFY_ARE_EQUAL(size_t{ 2 }, updates.size());
+        VERIFY_ARE_EQUAL(request.sessionId, updates[1].sessionId);
+        VERIFY_ARE_EQUAL(updates[0].sessionIncarnation, updates[1].sessionIncarnation);
+        VERIFY_ARE_EQUAL(uint64_t{ 7 }, updates[0].contextRevision);
+        VERIFY_ARE_EQUAL(updates[0].contextRevision, updates[1].contextRevision);
+        VERIFY_ARE_EQUAL(uint64_t{ 2 }, updates[1].updateSequence);
+        VERIFY_IS_FALSE(updates[1].presentation.has_value());
+        VERIFY_IS_FALSE(state.snapshot.has_value());
+        VERIFY_IS_FALSE(state.running);
+        VERIFY_IS_FALSE(state.pending.has_value());
+        VERIFY_ARE_EQUAL(size_t{ 2 }, updates[1].diagnostics.size());
+        VERIFY_ARE_EQUAL(
+            "Provider '" + provider.manifest.id + "' failed with status " +
+                std::to_string(static_cast<int>(CommandResult::Status::Completed)) + " and exit code 23",
+            updates[1].diagnostics[0]);
+        VERIFY_ARE_NOT_EQUAL(
+            std::string::npos,
+            updates[1].diagnostics[1].find("broker-provider-failure"));
     }
 
     void RichTabProviderTests::GitStatusProviderHandlesMissingGitGracefully()

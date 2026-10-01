@@ -1188,6 +1188,14 @@ namespace winrt::TerminalApp::implementation
 
     bool TabStrip::_isGitInstalled() noexcept
     {
+        const auto isApplication = [](const wchar_t* candidate) {
+            const std::filesystem::path path{ candidate };
+            // Get-Command -CommandType Application excludes PowerShell scripts,
+            // even when PATHEXT includes .PS1. Other extensions need not be in PATHEXT.
+            std::error_code ec;
+            return _wcsicmp(path.extension().c_str(), L".ps1") != 0 &&
+                   std::filesystem::is_regular_file(path, ec);
+        };
         wchar_t buffer[MAX_PATH];
         const auto envLength = GetEnvironmentVariableW(L"INTELLIGENT_TERMINAL_GIT_BINARY", nullptr, 0);
         if (envLength > 0)
@@ -1195,8 +1203,7 @@ namespace winrt::TerminalApp::implementation
             std::wstring binary(envLength, L'\0');
             if (GetEnvironmentVariableW(L"INTELLIGENT_TERMINAL_GIT_BINARY", binary.data(), envLength) > 0)
             {
-                std::error_code ec;
-                if (std::filesystem::is_regular_file(binary.c_str(), ec))
+                if (isApplication(binary.c_str()))
                 {
                     return true;
                 }
@@ -1206,7 +1213,8 @@ namespace winrt::TerminalApp::implementation
                     std::wstring path(pathLength, L'\0');
                     if (GetEnvironmentVariableW(L"PATH", path.data(), pathLength) > 0)
                     {
-                        if (SearchPathW(path.c_str(), binary.c_str(), nullptr, MAX_PATH, buffer, nullptr) > 0)
+                        if (const auto length = SearchPathW(path.c_str(), binary.c_str(), nullptr, MAX_PATH, buffer, nullptr);
+                            length > 0 && length < MAX_PATH && isApplication(buffer))
                         {
                             return true;
                         }
@@ -1223,7 +1231,8 @@ namespace winrt::TerminalApp::implementation
                             if (!ext.empty())
                             {
                                 std::wstring extStr{ ext };
-                                if (SearchPathW(path.c_str(), binary.c_str(), extStr.c_str(), MAX_PATH, buffer, nullptr) > 0)
+                                if (const auto length = SearchPathW(path.c_str(), binary.c_str(), extStr.c_str(), MAX_PATH, buffer, nullptr);
+                                    length > 0 && length < MAX_PATH && isApplication(buffer))
                                 {
                                     return true;
                                 }
