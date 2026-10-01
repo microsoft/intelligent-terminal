@@ -8440,6 +8440,15 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(stripImpl->RichTabRepositoryVisibleItem().IsEnabled());
             VERIFY_IS_TRUE(stripImpl->RichTabBranchVisibleItem().IsEnabled());
             VERIFY_IS_TRUE(stripImpl->RichTabChangesVisibleItem().IsEnabled());
+
+            // When Git is unavailable, setters reject enabling git fields directly
+            stripImpl->RichTabGitAvailable(false);
+            tabStrip.RichTabRepositoryVisible(true);
+            VERIFY_IS_FALSE(tabStrip.RichTabRepositoryVisible());
+            tabStrip.RichTabBranchVisible(true);
+            VERIFY_IS_FALSE(tabStrip.RichTabBranchVisible());
+            tabStrip.RichTabChangesVisible(true);
+            VERIFY_IS_FALSE(tabStrip.RichTabChangesVisible());
         });
     }
 

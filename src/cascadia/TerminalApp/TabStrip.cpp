@@ -1105,7 +1105,7 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::RichTabRepositoryVisible(bool value)
     {
-        if (value && !_richTabRepositoryVisible && _richTabMetadataSelectionCount() >= 2)
+        if (value && (!_richTabGitAvailable || (!_richTabRepositoryVisible && _richTabMetadataSelectionCount() >= 2)))
         {
             RichTabRepositoryVisibleItem().IsChecked(false);
             return;
@@ -1117,7 +1117,7 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::RichTabBranchVisible(bool value)
     {
-        if (value && !_richTabBranchVisible && _richTabMetadataSelectionCount() >= 2)
+        if (value && (!_richTabGitAvailable || (!_richTabBranchVisible && _richTabMetadataSelectionCount() >= 2)))
         {
             RichTabBranchVisibleItem().IsChecked(false);
             return;
@@ -1153,7 +1153,7 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::RichTabChangesVisible(bool value)
     {
-        if (value && !_richTabChangesVisible && _richTabMetadataSelectionCount() >= 2)
+        if (value && (!_richTabGitAvailable || (!_richTabChangesVisible && _richTabMetadataSelectionCount() >= 2)))
         {
             RichTabChangesVisibleItem().IsChecked(false);
             return;

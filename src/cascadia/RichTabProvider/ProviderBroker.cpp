@@ -251,10 +251,21 @@ namespace Microsoft::Terminal::RichTab::Provider
             {
                 return;
             }
+
+            const auto emptySelection = selectedFields.empty();
             _visibleFields.insert_or_assign(provider->manifest.id, std::move(selectedFields));
 
             for (auto& [sessionId, session] : _sessions)
             {
+                if (emptySelection)
+                {
+                    if (const auto state = session.providers.find(provider->manifest.id); state != session.providers.end())
+                    {
+                        state->second.generation = _nextGeneration++;
+                        state->second.pending.reset();
+                        state->second.snapshot.reset();
+                    }
+                }
                 ++session.updateSequence;
                 const auto update = _UpdateFor(sessionId, session);
                 for (const auto& [_, callback] : session.callbacks)
@@ -591,6 +602,10 @@ namespace Microsoft::Terminal::RichTab::Provider
                 {
                     if (selected->second.empty())
                     {
+                        auto& providerState = session.providers[provider.manifest.id];
+                        providerState.generation = _nextGeneration++;
+                        providerState.pending.reset();
+                        providerState.snapshot.reset();
                         continue;
                     }
                     visibleFieldsForProvider.assign(selected->second.begin(), selected->second.end());
@@ -606,6 +621,10 @@ namespace Microsoft::Terminal::RichTab::Provider
                     }
                     if (visibleFieldsForProvider.empty())
                     {
+                        auto& providerState = session.providers[provider.manifest.id];
+                        providerState.generation = _nextGeneration++;
+                        providerState.pending.reset();
+                        providerState.snapshot.reset();
                         continue;
                     }
                 }
