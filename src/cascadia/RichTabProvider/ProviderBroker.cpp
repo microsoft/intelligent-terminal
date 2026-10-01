@@ -268,6 +268,22 @@ namespace Microsoft::Terminal::RichTab::Provider
         {
             callback(update);
         }
+
+        std::vector<std::string> sessionIdsToRefresh;
+        {
+            std::lock_guard lock{ _mutex };
+            for (const auto& [sessionId, session] : _sessions)
+            {
+                if (!session.callbacks.empty())
+                {
+                    sessionIdsToRefresh.push_back(sessionId);
+                }
+            }
+        }
+        for (const auto& sid : sessionIdsToRefresh)
+        {
+            _Refresh(sid, ActivationEvent::ManualRefresh, false);
+        }
     }
 
     void ProviderBroker::SetFieldDisplayNames(

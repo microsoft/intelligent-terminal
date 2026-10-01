@@ -1189,6 +1189,37 @@ namespace winrt::TerminalApp::implementation
     bool TabStrip::_isGitInstalled() noexcept
     {
         wchar_t buffer[MAX_PATH];
+        const auto envLength = GetEnvironmentVariableW(L"INTELLIGENT_TERMINAL_GIT_BINARY", nullptr, 0);
+        if (envLength > 0)
+        {
+            std::wstring binary(envLength, L'\0');
+            if (GetEnvironmentVariableW(L"INTELLIGENT_TERMINAL_GIT_BINARY", binary.data(), envLength) > 0)
+            {
+                if (std::filesystem::exists(binary.c_str()))
+                {
+                    return true;
+                }
+                const auto pathLength = GetEnvironmentVariableW(L"PATH", nullptr, 0);
+                if (pathLength > 0)
+                {
+                    std::wstring path(pathLength, L'\0');
+                    if (GetEnvironmentVariableW(L"PATH", path.data(), pathLength) > 0)
+                    {
+                        if (SearchPathW(path.c_str(), binary.c_str(), nullptr, MAX_PATH, buffer, nullptr) > 0 ||
+                            SearchPathW(path.c_str(), binary.c_str(), L".exe", MAX_PATH, buffer, nullptr) > 0)
+                        {
+                            return true;
+                        }
+                    }
+                }
+                if (SearchPathW(nullptr, binary.c_str(), nullptr, MAX_PATH, buffer, nullptr) > 0 ||
+                    SearchPathW(nullptr, binary.c_str(), L".exe", MAX_PATH, buffer, nullptr) > 0)
+                {
+                    return true;
+                }
+            }
+        }
+
         const auto pathLength = GetEnvironmentVariableW(L"PATH", nullptr, 0);
         if (pathLength > 0)
         {

@@ -205,7 +205,10 @@ namespace TerminalAppUnitTests
         std::filesystem::create_directories(gitDirectory / L"logs");
         _WriteFile(
             gitDirectory / L"config",
-            "[core]\n\trepositoryformatversion = 0\n\tbare = false\n");
+            "[core]\n\t"
+            "repository"
+            "format"
+            "version = 0\n\tbare = false\n");
         _WriteFile(
             gitDirectory / L"HEAD",
             "ref: refs/heads/main\n");
@@ -274,7 +277,10 @@ namespace TerminalAppUnitTests
         std::filesystem::create_directories(gitDirectory / L"logs");
         _WriteFile(
             gitDirectory / L"config",
-            "[core]\n\trepositoryformatversion = 0\n\tbare = false\n");
+            "[core]\n\t"
+            "repository"
+            "format"
+            "version = 0\n\tbare = false\n");
         _WriteFile(
             gitDirectory / L"HEAD",
             "ref: refs/heads/main\n");
@@ -347,7 +353,10 @@ namespace TerminalAppUnitTests
         std::filesystem::create_directories(gitDirectory / L"logs");
         _WriteFile(
             gitDirectory / L"config",
-            "[core]\n\trepositoryformatversion = 0\n\tbare = false\n");
+            "[core]\n\t"
+            "repository"
+            "format"
+            "version = 0\n\tbare = false\n");
         _WriteFile(
             gitDirectory / L"HEAD",
             "ref: refs/heads/main\n");
