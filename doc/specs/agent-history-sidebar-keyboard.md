@@ -55,7 +55,8 @@ and focuses ordinary tab search on entry.
     (`ScrollBarVisibility::Auto`).
   - **Horizontal divider (`HistorySplitter`)**: an 8px draggable separator
     that resizes the upper section height. Defaults to ~50/50 split with
-    `MinHeight="80"` enforced on both sections. Supports mouse/pointer dragging
+    an 80px minimum on both sections, adaptively reduced when a small window
+    cannot fit both minima and the divider. Supports mouse/pointer dragging
     with `CoreCursorType::SizeNorthSouth` and keyboard resizing via `Up` and
     `Down` arrow keys (16px per step).
   - **Lower section (`HistoryList`)**: displays the History section heading

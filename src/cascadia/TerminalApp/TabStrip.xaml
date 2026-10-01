@@ -657,6 +657,7 @@
                     Height="8"
                     Background="Transparent"
                     IsTabStop="True"
+                    UseSystemFocusVisuals="True"
                     PointerEntered="OnSplitterPointerEntered"
                     PointerExited="OnSplitterPointerExited"
                     PointerPressed="OnSplitterPointerPressed"
@@ -689,7 +690,7 @@
                       BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                       BorderThickness="0,0,0,1">
                     <TextBlock x:Name="HistoryHeader"
-                               x:Uid="VerticalTabsHistoryHeader"
+                               x:Uid="VerticalTabsSessionHistoryHeader"
                                VerticalAlignment="Center"
                                FontWeight="SemiBold" />
                 </Grid>
