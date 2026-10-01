@@ -1,4 +1,4 @@
-# Agent History and Sidebar Keyboard Navigation
+﻿# Agent History and Sidebar Keyboard Navigation
 
 ## Status and scope
 
@@ -7,13 +7,15 @@ actions. It is not an acceptance report: build-specific results and remaining
 validation belong in the release checklist and validation evidence.
 
 The scenarios below cover the left sidebar in the **vertical** tab layout. The
-sidebar and the independent **Agent Pane** are different surfaces. This contract
-does not change `tabLayout`, horizontal agent-session behavior, or other
-agent/delegation shortcuts.
+sidebar and the independent **Agent Pane** are different surfaces. The **Agents**
+surface combines open agent tabs above the session history; **History** below
+refers to the existing view lifecycle, search, and focus state, not a page that
+replaces the tab list. This contract does not change `tabLayout`, horizontal
+agent-session behavior, or other agent/delegation shortcuts.
 
 | Default shortcut | Responsibility |
 |---|---|
-| `Ctrl+Shift+/` | Show/hide the Agent Session view in the sidebar, called **History** below. Opening History focuses its own search box. |
+| `Ctrl+Shift+/` | Show/hide **Agents** in the sidebar (the History view lifecycle below). Opening Agents focuses the unified search box. |
 | `Ctrl+Shift+S` | Enter the sidebar through **Search tabs**, or collapse it and return to the previous input when focus is already inside. |
 | `Ctrl+Shift+.` | Show/hide the independent Agent Pane; its behavior is unchanged. |
 
@@ -30,19 +32,52 @@ The two focus policies referenced here are defined separately below.
 | Sidebar collapsed | `Ctrl+Shift+S` | Expand the sidebar and open **Search tabs**. | Remember the current terminal or Agent input, then focus the tab-search box. |
 | Sidebar expanded, focus outside the sidebar | `Ctrl+Shift+S` | Keep the sidebar expanded and open **Search tabs**. | Remember the current input, then focus the tab-search box. |
 | Sidebar expanded, focus inside the sidebar | `Ctrl+Shift+S` | Collapse the sidebar and close tab search or History. | Best-effort return to the input used before entering the sidebar; fall back to a visible terminal. |
-| Sidebar expanded, History hidden | `Ctrl+Shift+/` | Show History; remember that the sidebar was expanded. | Remember focused tab search or the source input, then focus the History search box. |
-| Sidebar collapsed, History hidden | `Ctrl+Shift+/` | Expand the sidebar and show History; remember that the sidebar was originally collapsed. | Remember the source input, then focus the History search box. |
-| History visible; sidebar was collapsed before History opened | `Ctrl+Shift+/` or the History close button | Hide History **and collapse the sidebar**. | History source-restoration policy. |
-| History visible; sidebar was expanded before History opened | `Ctrl+Shift+/` or the History close button | Hide History; **keep the sidebar expanded**, displaying its ordinary page without History. | History source-restoration policy. |
+| Sidebar expanded, History hidden | `Ctrl+Shift+/` or the Tabs header | Show the combined Agents surface; remember that the sidebar was expanded. | Remember focused tab search or the source input, then focus the unified search box. |
+| Sidebar collapsed, History hidden | `Ctrl+Shift+/` | Expand the sidebar and show Agents; remember that the sidebar was originally collapsed. | Remember the source input, then focus the unified search box. |
+| Agents visible; sidebar was collapsed before History opened | `Ctrl+Shift+/` or the Agents header toggle | Return to Tabs **and collapse the sidebar**. | History source-restoration policy. |
+| Agents visible; sidebar was expanded before History opened | `Ctrl+Shift+/` or the Agents header toggle | Return to Tabs; **keep the sidebar expanded**, with its ordinary tab list and no history section. | History source-restoration policy. |
 | Sidebar expanded with History visible and focus inside | `Ctrl+Shift+S` | Collapse the whole sidebar and hide History. | Use the sidebar-hotkey entry input if still available, not History's saved entry state. |
 | Sidebar expanded with History visible and focus outside | `Ctrl+Shift+S` | Hide History, keep the sidebar expanded, and open **Search tabs**. | Remember the current input, then focus tab search. |
 
-The History close shortcut and close button have the same behavior. By contrast,
-`Ctrl+Shift+S` intentionally opens and focuses ordinary tab search on entry.
+The History close shortcut and Agents header toggle have the same close
+behavior. The Tabs header opens Agents when the sidebar is expanded; it does
+not expand a collapsed sidebar. By contrast, `Ctrl+Shift+S` intentionally opens
+and focuses ordinary tab search on entry.
+
+## Combined Agents surface
+
+- The toolbar header toggles **Tabs** and **Agents** (reversible via header button
+  or shortcut). There is no separate redundant Agents icon in the toolbar.
+- The Agents view consists of two distinct upper and lower sections separated
+  by a horizontal divider:
+  - **Upper section (`AgentTabsHost`)**: contains live/open agent tabs hosting
+    `ItemsList` with its own independent vertical scrollbar
+    (`ScrollBarVisibility::Auto`).
+  - **Horizontal divider (`HistorySplitter`)**: an 8px draggable separator
+    that resizes the upper section height. Defaults to ~50/50 split with
+    `MinHeight="80"` enforced on both sections. Supports mouse/pointer dragging
+    with `CoreCursorType::SizeNorthSouth` and keyboard resizing via `Up` and
+    `Down` arrow keys (16px per step).
+  - **Lower section (`HistoryList`)**: displays the History section heading
+    and resumable session rows, excluding represented sessions, with its own
+    independent vertical scrollbar.
+- **Unified Search**: There is no separate history search box. The single
+  `SearchTextBox` in the sidebar filters both the upper live agent tabs and the
+  lower history rows concurrently. Entering or leaving Agents does not discard
+  an active search query.
+- Exclude only the represented history identity: provider, session ID, source
+  location (host or WSL distro), and session universe. The open-pane binding
+  supplies session ID, provider (when known), and pane ID; the matching history
+  row supplies location and universe. Pane ID disambiguates colliding history
+  identities, but an unambiguous session/provider remains represented after
+  rebinding to a new pane even if its history row still names the old pane.
+  If colliding rows cannot be disambiguated, retain them rather than hiding
+  an unrelated session. Status alone is not identity: an idle or working
+  session without a representing open pane remains in the lower section.
 
 ## History: restore the entry state and input, best effort
 
-When transitioning from hidden History to visible History, retain:
+When transitioning from Tabs to Agents, retain:
 
 - Whether the sidebar was collapsed **before** any expansion needed to show
   History.
@@ -50,8 +85,8 @@ When transitioning from hidden History to visible History, retain:
   pane, including its particular split.
 - Whether ordinary tab search had keyboard focus, retaining its query.
 
-Do not replace this entry context with the History search box when focus moves
-there. When History is closed by its shortcut or close button, restore the
+Do not replace this entry context with the search box when focus moves
+there. When Agents is closed by its shortcut or header toggle, restore the
 remembered sidebar expanded/collapsed state and attempt to restore the source
 input.
 
@@ -245,9 +280,15 @@ Opening Search tabs with `Ctrl+Shift+S` does not change the separate
 
 These are required checks for this contract, not claims of completed validation:
 
-- Exercise History open/close from both an initially expanded and an initially
-  collapsed sidebar, using both the second physical shortcut and the close
-  button.
+- Exercise Agents open/close from both an initially expanded and an initially
+  collapsed sidebar, using the shortcut and header toggle.
+- Check that open agent tabs stay in the upper scrollable section and history
+  stays in the lower scrollable section, separated by the draggable/keyboard-navigable
+  splitter.
+- Check that only identity-matched represented sessions are absent from history,
+  and unattached idle sessions remain available.
+- Check that entering search queries in the single sidebar search box filters
+  both open agent tabs and history rows concurrently.
 - For both entry states, verify restoration to Agent Pane chat and to the exact
   originating terminal split when each remains available.
 - Repeat with an unavailable source and verify the visible-terminal fallback,
