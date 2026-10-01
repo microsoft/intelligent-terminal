@@ -46,6 +46,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(PowerShellProviderPreservesUnicodeAcrossProcessBoundary);
         TEST_METHOD(LocalizedFieldDisplayNamesOverrideManifestFallbacks);
         TEST_METHOD(BrokerClearsSuccessfulSnapshotAfterProviderFailure);
+        TEST_METHOD(BrokerClearsSnapshotAndSkipsExecutionWhenAllFieldsDeselected);
         TEST_METHOD(GitStatusProviderHandlesMissingGitGracefully);
         TEST_METHOD(GitStatusProviderHonorsGitBinaryEnvironmentVariable);
         TEST_METHOD(GitStatusProviderInvokesFirstResolvedApplication);
@@ -307,6 +308,142 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_NOT_EQUAL(
             std::string::npos,
             updates[1].diagnostics[1].find("broker-provider-failure"));
+    }
+
+    void RichTabProviderTests::BrokerClearsSnapshotAndSkipsExecutionWhenAllFieldsDeselected()
+    {
+        const auto providerRoot = std::filesystem::temp_directory_path() /
+                                  (L"RichTabBrokerEmptySelection-" + std::to_wstring(GetCurrentProcessId()) +
+                                   L"-" + std::to_wstring(GetTickCount64()));
+        VERIFY_IS_TRUE(std::filesystem::create_directory(providerRoot));
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(providerRoot, error);
+        });
+        const auto sentinel = providerRoot / L"invocations.txt";
+        _WriteFile(
+            providerRoot / L"provider.ps1",
+            "$request = [Console]::In.ReadToEnd() | ConvertFrom-Json\n"
+            "[IO.File]::AppendAllText((Join-Path $PSScriptRoot 'invocations.txt'), \"invoked`n\")\n"
+            "@{ protocolVersion = 1; requestId = $request.requestId; result = @{\n"
+            "    fields = @{ branch = 'main' }; tooltip = 'Current branch: main'\n"
+            "} } | ConvertTo-Json -Depth 4 -Compress\n");
+        const auto invocationContents = [&]() {
+            std::ifstream stream{ sentinel, std::ios::binary };
+            VERIFY_IS_TRUE(stream.is_open());
+            return std::string{ std::istreambuf_iterator<char>{ stream }, std::istreambuf_iterator<char>{} };
+        };
+
+        Registration provider;
+        provider.manifest.id = "test.broker-empty-selection";
+        provider.manifest.runtime.kind = RuntimeKind::PowerShellV1;
+        provider.manifest.runtime.entrypoint = L"provider.ps1";
+        provider.manifest.extensionRoot = providerRoot;
+        provider.manifest.activationEvents = { ActivationEvent::ManualRefresh };
+        provider.manifest.fields = { { "branch", "Git branch", FieldType::String, true } };
+        provider.enabled = true;
+        provider.integrityValid = true;
+
+        std::vector<BrokerUpdate> updates;
+        ProviderBroker broker;
+        // Stop idle workers before scheduling anything; drain actual broker work synchronously.
+        {
+            std::lock_guard lock{ broker._executorMutex };
+            broker._executorStopping = true;
+        }
+        broker._executorCondition.notify_all();
+        for (auto& worker : broker._executorWorkers)
+        {
+            worker.join();
+        }
+        broker._executorStopping = false;
+        const auto takeWork = [&]() {
+            VERIFY_ARE_EQUAL(size_t{ 1 }, broker._executorQueue.size());
+            auto work = std::move(broker._executorQueue.front());
+            broker._executorQueue.pop_front();
+            return work;
+        };
+
+        broker._providers = { provider };
+        broker._visibleFields[provider.manifest.id] = { "branch" };
+        auto& session = broker._sessions["broker-empty-selection-session"];
+        session.context.sessionId = "broker-empty-selection-session";
+        session.context.workingDirectory = providerRoot;
+        session.context.workingDirectoryAuthoritative = true;
+        session.context.shellType = "powershell";
+        session.sessionIncarnation = 1;
+        session.contextRevision = 7;
+        session.callbacks.emplace(1, [&](const BrokerUpdate& update) {
+            updates.emplace_back(update);
+        });
+        broker._Refresh(session.context.sessionId, ActivationEvent::ManualRefresh, false);
+        takeWork()();
+        auto& state = session.providers.at(provider.manifest.id);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, updates.size());
+        VERIFY_IS_TRUE(updates.back().presentation.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"main" }, updates.back().presentation->text);
+        VERIFY_IS_TRUE(updates.back().diagnostics.empty());
+        VERIFY_IS_TRUE(state.snapshot.has_value());
+        VERIFY_IS_FALSE(state.running);
+        VERIFY_ARE_EQUAL(std::string{ "invoked\n" }, invocationContents());
+
+        const auto successfulGeneration = state.generation;
+        broker.SetVisibleFields(provider.manifest.id, {});
+        VERIFY_ARE_EQUAL(size_t{ 2 }, updates.size());
+        VERIFY_IS_FALSE(updates.back().presentation.has_value());
+        VERIFY_ARE_EQUAL(uint64_t{ 7 }, updates.back().contextRevision);
+        VERIFY_ARE_EQUAL(uint64_t{ 1 }, updates.back().sessionIncarnation);
+        VERIFY_ARE_EQUAL(uint64_t{ 2 }, updates.back().updateSequence);
+        VERIFY_IS_TRUE(updates.back().diagnostics.empty());
+        VERIFY_IS_FALSE(state.snapshot.has_value());
+        VERIFY_IS_FALSE(state.running);
+        VERIFY_IS_FALSE(state.pending.has_value());
+        VERIFY_IS_TRUE(state.generation > successfulGeneration);
+        VERIFY_IS_TRUE(broker._executorQueue.empty());
+        VERIFY_ARE_EQUAL(std::string{ "invoked\n" }, invocationContents());
+
+        broker.SetVisibleFields(provider.manifest.id, { "branch" });
+        takeWork()();
+        VERIFY_IS_TRUE(state.snapshot.has_value());
+        VERIFY_IS_TRUE(updates.back().presentation.has_value());
+        VERIFY_ARE_EQUAL(std::string{ "invoked\ninvoked\n" }, invocationContents());
+
+        broker._Refresh(session.context.sessionId, ActivationEvent::ManualRefresh, false);
+        auto staleWork = takeWork();
+        const auto runningGeneration = state.runningGeneration;
+        broker._Refresh(session.context.sessionId, ActivationEvent::ManualRefresh, false);
+        VERIFY_IS_TRUE(state.running);
+        VERIFY_IS_TRUE(state.pending.has_value());
+        broker.SetVisibleFields(provider.manifest.id, {});
+        VERIFY_ARE_EQUAL(size_t{ 5 }, updates.size());
+        VERIFY_IS_FALSE(updates.back().presentation.has_value());
+        VERIFY_IS_FALSE(state.snapshot.has_value());
+        VERIFY_IS_FALSE(state.pending.has_value());
+        VERIFY_IS_TRUE(state.running);
+        VERIFY_IS_TRUE(state.generation > runningGeneration);
+        VERIFY_ARE_EQUAL(runningGeneration, state.runningGeneration);
+        VERIFY_IS_TRUE(broker._executorQueue.empty());
+        VERIFY_ARE_EQUAL(std::string{ "invoked\ninvoked\n" }, invocationContents());
+
+        // Only the previously dispatched invocation completes; it must not restore the snapshot.
+        const auto updateCount = updates.size();
+        const auto updateSequence = session.updateSequence;
+        staleWork();
+        VERIFY_IS_FALSE(state.running);
+        VERIFY_IS_FALSE(state.snapshot.has_value());
+        VERIFY_IS_FALSE(state.pending.has_value());
+        VERIFY_ARE_EQUAL(updateCount, updates.size());
+        VERIFY_ARE_EQUAL(updateSequence, session.updateSequence);
+        VERIFY_ARE_EQUAL(uint64_t{ 7 }, session.contextRevision);
+        VERIFY_IS_TRUE(broker._executorQueue.empty());
+        VERIFY_ARE_EQUAL(std::string{ "invoked\ninvoked\ninvoked\n" }, invocationContents());
+
+        broker._Refresh(session.context.sessionId, ActivationEvent::ManualRefresh, false);
+        VERIFY_IS_FALSE(state.running);
+        VERIFY_IS_FALSE(state.snapshot.has_value());
+        VERIFY_IS_FALSE(state.pending.has_value());
+        VERIFY_IS_TRUE(broker._executorQueue.empty());
+        VERIFY_ARE_EQUAL(std::string{ "invoked\ninvoked\ninvoked\n" }, invocationContents());
     }
 
     void RichTabProviderTests::GitStatusProviderHandlesMissingGitGracefully()
