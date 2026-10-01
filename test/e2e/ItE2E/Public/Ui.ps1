@@ -351,7 +351,7 @@ function Invoke-WinAppUi {
         (ExitCode/StdOut/StdErr). Telemetry is opted out.
     #>
     [CmdletBinding()]
-    param([Parameter(Mandatory)]$App, [Parameter(Mandatory)][string[]]$UiArgs, [int]$TimeoutSec = 30, [switch]$NoTarget)
+    param([Parameter(Mandatory)]$App, [Parameter(Mandatory)][AllowEmptyString()][string[]]$UiArgs, [int]$TimeoutSec = 30, [switch]$NoTarget)
     $winapp = Get-WinAppPath
     $args = @('ui') + $UiArgs
     if (-not $NoTarget) { $args += (Get-UiTarget -App $App) }
@@ -531,7 +531,7 @@ function Invoke-UiMouseDrag {
 
 function Set-UiValue {
     [CmdletBinding()]
-    param([Parameter(Mandatory, ValueFromPipeline)]$App, [Parameter(Mandatory)][string]$Selector, [Parameter(Mandatory)][string]$Value)
+    param([Parameter(Mandatory, ValueFromPipeline)]$App, [Parameter(Mandatory)][string]$Selector, [Parameter(Mandatory)][AllowEmptyString()][string]$Value)
     process {
         $r = Invoke-WinAppUi -App $App -UiArgs @('set-value', $Selector, $Value)
         if ($r.ExitCode -ne 0) { throw "winapp ui set-value '$Selector' failed: $($r.StdErr.Trim())" }
