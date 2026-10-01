@@ -2939,9 +2939,13 @@ namespace winrt::TerminalApp::implementation
             // itself goes away.
             if (state == "closed")
             {
-                _paneAgentSessions.erase(*paneSessionId);
+                const auto bindingRemoved = _paneAgentSessions.erase(*paneSessionId) != 0;
                 _activeCliAgentPanes.erase(*paneSessionId);
                 _interactiveResumeSessions.erase(*paneSessionId);
+                if (bindingRemoved)
+                {
+                    _ApplyTabListProjection();
+                }
             }
         }
 
