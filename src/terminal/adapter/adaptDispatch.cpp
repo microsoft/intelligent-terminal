@@ -2416,10 +2416,6 @@ void AdaptDispatch::CarriageReturn()
 // - wrapForced - Set to true if the line feed was the result of the line wrapping.
 // Return Value:
 // - true if the viewport panned down; otherwise, false.
-#if defined(_MSC_FULL_VER) && !defined(__clang__) && _MSC_FULL_VER == 195236725
-// MSVC 19.52.36725 can emit unguarded AVX instructions for this baseline x64 function.
-#pragma optimize("", off)
-#endif
 bool AdaptDispatch::_DoLineFeed(const Page& page, const bool withReturn, const bool wrapForced)
 {
     auto& textBuffer = page.Buffer();
@@ -2508,9 +2504,6 @@ bool AdaptDispatch::_DoLineFeed(const Page& page, const bool withReturn, const b
     cursor.SetPosition(newPosition);
     return viewportMoved;
 }
-#if defined(_MSC_FULL_VER) && !defined(__clang__) && _MSC_FULL_VER == 195236725
-#pragma optimize("", on)
-#endif
 
 // Routine Description:
 // - IND/NEL - Performs a line feed, possibly preceded by carriage return.
