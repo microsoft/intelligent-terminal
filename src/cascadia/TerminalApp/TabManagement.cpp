@@ -2185,6 +2185,27 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
+        if (tabStrip)
+        {
+            std::vector<implementation::TabStrip::RepresentedHistorySession> representedSessions;
+            for (const auto& tab : _tabs)
+            {
+                if (const auto impl = _GetTabImpl(tab); impl && impl->GetRootPane())
+                {
+                    impl->GetRootPane()->WalkTree([&](const auto& pane) {
+                        if (const auto binding = _paneAgentSessions.find(pane->GetSessionId());
+                            binding != _paneAgentSessions.end() && !binding->second.sessionId.empty())
+                        {
+                            representedSessions.push_back({ binding->second.sessionId,
+                                                            binding->second.agent,
+                                                            winrt::hstring{ ::Microsoft::Console::Utils::GuidToPlainString(pane->GetSessionId()) } });
+                        }
+                    });
+                }
+            }
+            tabStrip->SetRepresentedHistorySessions(std::move(representedSessions));
+        }
+
         if (updateBookkeeping)
         {
             _UpdateTabFilterStatus();
