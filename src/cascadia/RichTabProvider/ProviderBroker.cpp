@@ -569,6 +569,31 @@ namespace Microsoft::Terminal::RichTab::Provider
                     activation = ActivationEvent::ManualRefresh;
                 }
 
+                std::vector<std::string> visibleFieldsForProvider;
+                const auto selected = _visibleFields.find(provider.manifest.id);
+                if (selected != _visibleFields.end())
+                {
+                    if (selected->second.empty())
+                    {
+                        continue;
+                    }
+                    visibleFieldsForProvider.assign(selected->second.begin(), selected->second.end());
+                }
+                else
+                {
+                    for (const auto& field : provider.manifest.fields)
+                    {
+                        if (field.defaultVisible)
+                        {
+                            visibleFieldsForProvider.emplace_back(field.id);
+                        }
+                    }
+                    if (visibleFieldsForProvider.empty())
+                    {
+                        continue;
+                    }
+                }
+
                 auto& providerState = session.providers[provider.manifest.id];
                 const auto generation = _nextGeneration++;
                 providerState.generation = generation;
@@ -584,6 +609,7 @@ namespace Microsoft::Terminal::RichTab::Provider
                 request.contextRevision = session.contextRevision;
                 request.shellType = session.context.shellType;
                 request.firstPartyFields = session.context.firstPartyFields;
+                request.visibleFields = std::move(visibleFieldsForProvider);
                 if (providerState.running)
                 {
                     providerState.pending = PendingRequest{ std::move(request), generation };
@@ -672,10 +698,7 @@ namespace Microsoft::Terminal::RichTab::Provider
             if (state->second.generation == generation &&
                 session->second.contextRevision == request.contextRevision)
             {
-                if (snapshot)
-                {
-                    state->second.snapshot = std::move(snapshot);
-                }
+                state->second.snapshot = std::move(snapshot);
                 ++session->second.updateSequence;
                 update = _UpdateFor(request.sessionId, session->second, std::move(diagnostics));
                 callbacks.reserve(session->second.callbacks.size());

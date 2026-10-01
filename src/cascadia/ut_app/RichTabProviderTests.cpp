@@ -43,6 +43,9 @@ namespace TerminalAppUnitTests
 
         TEST_METHOD(PowerShellProviderPreservesUnicodeAcrossProcessBoundary);
         TEST_METHOD(LocalizedFieldDisplayNamesOverrideManifestFallbacks);
+        TEST_METHOD(GitStatusProviderHandlesMissingGitGracefully);
+        TEST_METHOD(GitStatusProviderSkipsGitWhenNoGitFieldsVisible);
+        TEST_METHOD(GitStatusProviderHandlesGitFailureGracefully);
     };
 
     void RichTabProviderTests::PowerShellProviderPreservesUnicodeAcrossProcessBoundary()
@@ -182,5 +185,215 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(
             std::wstring{ L"\u5206\u652F: \u4E3B\u5206\u652F, \u66F4\u6539: ~12 +200 -35" },
             presentation->accessibilityText);
+    }
+
+    void RichTabProviderTests::GitStatusProviderHandlesMissingGitGracefully()
+    {
+        const auto providerRoot = _TestModuleDirectory() / L"RichTabProviders" / L"GitStatus";
+        const auto repositoryName =
+            L"RichTabMissingGit-" + std::to_wstring(GetCurrentProcessId());
+        const auto repositoryRoot = std::filesystem::temp_directory_path() / repositoryName;
+        std::filesystem::remove_all(repositoryRoot);
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(repositoryRoot, error);
+        });
+
+        const auto gitDirectory = repositoryRoot / L".git";
+        std::filesystem::create_directories(gitDirectory / L"objects");
+        std::filesystem::create_directories(gitDirectory / L"refs" / L"heads");
+        std::filesystem::create_directories(gitDirectory / L"logs");
+        _WriteFile(
+            gitDirectory / L"config",
+            "[core]\n\trepositoryformatversion = 0\n\tbare = false\n");
+        _WriteFile(
+            gitDirectory / L"HEAD",
+            "ref: refs/heads/main\n");
+
+        Manifest manifest;
+        manifest.id = "com.microsoft.intelligent-terminal.git-status";
+        manifest.runtime.kind = RuntimeKind::PowerShellV1;
+        manifest.runtime.entrypoint = L"provider.ps1";
+        manifest.extensionRoot = providerRoot;
+        manifest.activationEvents.emplace_back(ActivationEvent::ManualRefresh);
+        manifest.fields = {
+            { "agentStatus", "Agent status", FieldType::String, true },
+            { "workingDirectory", "Current working directory", FieldType::String, true },
+            { "repository", "Git repo", FieldType::String, false },
+            { "branch", "Git branch", FieldType::String, false },
+            { "changes", "Git changes", FieldType::String, false },
+        };
+
+        Request request;
+        request.requestId = "missing-git-test";
+        request.providerId = manifest.id;
+        request.processEpoch = 1;
+        request.sessionId = "session";
+        request.reason = ActivationEvent::ManualRefresh;
+        request.workingDirectory = repositoryRoot;
+        request.workingDirectoryAuthoritative = true;
+        request.firstPartyFields.emplace("agentStatus", "idle");
+        request.firstPartyFields.emplace("gitBinary", "nonexistent-git-binary.exe");
+
+        const auto serialized = SerializeRequest(request, manifest);
+        VERIFY_IS_TRUE(static_cast<bool>(serialized));
+
+        const auto command =
+            CommandRunner{}.Run(manifest, *serialized.value, std::chrono::seconds{ 10 });
+        VERIFY_IS_TRUE(command.status == CommandResult::Status::Completed);
+        VERIFY_ARE_EQUAL(0u, command.exitCode);
+
+        const auto parsed = ParseSnapshot(command.standardOutput, manifest, request.requestId);
+        VERIFY_IS_TRUE(static_cast<bool>(parsed));
+        VERIFY_ARE_EQUAL(
+            std::string{ "idle" },
+            std::get<std::string>(parsed.value->fields.at("agentStatus")));
+        VERIFY_ARE_EQUAL(
+            repositoryRoot.string(),
+            std::get<std::string>(parsed.value->fields.at("workingDirectory")));
+        VERIFY_IS_TRUE(parsed.value->fields.find("repository") == parsed.value->fields.end());
+        VERIFY_IS_TRUE(parsed.value->fields.find("branch") == parsed.value->fields.end());
+        VERIFY_IS_TRUE(parsed.value->fields.find("changes") == parsed.value->fields.end());
+    }
+
+    void RichTabProviderTests::GitStatusProviderSkipsGitWhenNoGitFieldsVisible()
+    {
+        const auto providerRoot = _TestModuleDirectory() / L"RichTabProviders" / L"GitStatus";
+        const auto repositoryName =
+            L"RichTabNoGitFields-" + std::to_wstring(GetCurrentProcessId());
+        const auto repositoryRoot = std::filesystem::temp_directory_path() / repositoryName;
+        std::filesystem::remove_all(repositoryRoot);
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(repositoryRoot, error);
+        });
+
+        const auto gitDirectory = repositoryRoot / L".git";
+        std::filesystem::create_directories(gitDirectory / L"objects");
+        std::filesystem::create_directories(gitDirectory / L"refs" / L"heads");
+        std::filesystem::create_directories(gitDirectory / L"logs");
+        _WriteFile(
+            gitDirectory / L"config",
+            "[core]\n\trepositoryformatversion = 0\n\tbare = false\n");
+        _WriteFile(
+            gitDirectory / L"HEAD",
+            "ref: refs/heads/main\n");
+
+        Manifest manifest;
+        manifest.id = "com.microsoft.intelligent-terminal.git-status";
+        manifest.runtime.kind = RuntimeKind::PowerShellV1;
+        manifest.runtime.entrypoint = L"provider.ps1";
+        manifest.extensionRoot = providerRoot;
+        manifest.activationEvents.emplace_back(ActivationEvent::ManualRefresh);
+        manifest.fields = {
+            { "agentStatus", "Agent status", FieldType::String, true },
+            { "workingDirectory", "Current working directory", FieldType::String, true },
+            { "repository", "Git repo", FieldType::String, false },
+            { "branch", "Git branch", FieldType::String, false },
+            { "changes", "Git changes", FieldType::String, false },
+        };
+
+        Request request;
+        request.requestId = "no-git-fields-test";
+        request.providerId = manifest.id;
+        request.processEpoch = 1;
+        request.sessionId = "session";
+        request.reason = ActivationEvent::ManualRefresh;
+        request.workingDirectory = repositoryRoot;
+        request.workingDirectoryAuthoritative = true;
+        request.firstPartyFields.emplace("agentStatus", "working");
+        request.visibleFields = { "workingDirectory", "agentStatus" };
+        request.firstPartyFields.emplace("gitBinary", "broken-git-binary.exe");
+
+        const auto serialized = SerializeRequest(request, manifest);
+        VERIFY_IS_TRUE(static_cast<bool>(serialized));
+
+        const auto command =
+            CommandRunner{}.Run(manifest, *serialized.value, std::chrono::seconds{ 10 });
+        VERIFY_IS_TRUE(command.status == CommandResult::Status::Completed);
+        VERIFY_ARE_EQUAL(0u, command.exitCode);
+
+        const auto parsed = ParseSnapshot(command.standardOutput, manifest, request.requestId);
+        VERIFY_IS_TRUE(static_cast<bool>(parsed));
+        VERIFY_ARE_EQUAL(
+            std::string{ "working" },
+            std::get<std::string>(parsed.value->fields.at("agentStatus")));
+        VERIFY_ARE_EQUAL(
+            repositoryRoot.string(),
+            std::get<std::string>(parsed.value->fields.at("workingDirectory")));
+        VERIFY_IS_TRUE(parsed.value->fields.find("repository") == parsed.value->fields.end());
+    }
+
+    void RichTabProviderTests::GitStatusProviderHandlesGitFailureGracefully()
+    {
+        const auto providerRoot = _TestModuleDirectory() / L"RichTabProviders" / L"GitStatus";
+        const auto repositoryName =
+            L"RichTabGitFail-" + std::to_wstring(GetCurrentProcessId());
+        const auto repositoryRoot = std::filesystem::temp_directory_path() / repositoryName;
+        std::filesystem::remove_all(repositoryRoot);
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(repositoryRoot, error);
+        });
+
+        // Create a failing script to simulate git failure (exit code 1)
+        const auto failingGitScript = repositoryRoot / L"failing-git.cmd";
+        std::filesystem::create_directories(repositoryRoot);
+        _WriteFile(failingGitScript, "@echo off\r\nexit /b 1\r\n");
+
+        const auto gitDirectory = repositoryRoot / L".git";
+        std::filesystem::create_directories(gitDirectory / L"objects");
+        std::filesystem::create_directories(gitDirectory / L"refs" / L"heads");
+        std::filesystem::create_directories(gitDirectory / L"logs");
+        _WriteFile(
+            gitDirectory / L"config",
+            "[core]\n\trepositoryformatversion = 0\n\tbare = false\n");
+        _WriteFile(
+            gitDirectory / L"HEAD",
+            "ref: refs/heads/main\n");
+
+        Manifest manifest;
+        manifest.id = "com.microsoft.intelligent-terminal.git-status";
+        manifest.runtime.kind = RuntimeKind::PowerShellV1;
+        manifest.runtime.entrypoint = L"provider.ps1";
+        manifest.extensionRoot = providerRoot;
+        manifest.activationEvents.emplace_back(ActivationEvent::ManualRefresh);
+        manifest.fields = {
+            { "agentStatus", "Agent status", FieldType::String, true },
+            { "workingDirectory", "Current working directory", FieldType::String, true },
+            { "repository", "Git repo", FieldType::String, false },
+            { "branch", "Git branch", FieldType::String, false },
+            { "changes", "Git changes", FieldType::String, false },
+        };
+
+        Request request;
+        request.requestId = "git-fail-test";
+        request.providerId = manifest.id;
+        request.processEpoch = 1;
+        request.sessionId = "session";
+        request.reason = ActivationEvent::ManualRefresh;
+        request.workingDirectory = repositoryRoot;
+        request.workingDirectoryAuthoritative = true;
+        request.firstPartyFields.emplace("agentStatus", "busy");
+        request.firstPartyFields.emplace("gitBinary", failingGitScript.string());
+        request.visibleFields = { "repository", "branch", "changes", "workingDirectory" };
+
+        const auto serialized = SerializeRequest(request, manifest);
+        VERIFY_IS_TRUE(static_cast<bool>(serialized));
+
+        const auto command =
+            CommandRunner{}.Run(manifest, *serialized.value, std::chrono::seconds{ 10 });
+        VERIFY_IS_TRUE(command.status == CommandResult::Status::Completed);
+        VERIFY_ARE_EQUAL(0u, command.exitCode);
+
+        const auto parsed = ParseSnapshot(command.standardOutput, manifest, request.requestId);
+        VERIFY_IS_TRUE(static_cast<bool>(parsed));
+        VERIFY_ARE_EQUAL(
+            std::string{ "busy" },
+            std::get<std::string>(parsed.value->fields.at("agentStatus")));
+        VERIFY_ARE_EQUAL(
+            repositoryRoot.string(),
+            std::get<std::string>(parsed.value->fields.at("workingDirectory")));
+        VERIFY_IS_TRUE(parsed.value->fields.find("repository") == parsed.value->fields.end());
     }
 }

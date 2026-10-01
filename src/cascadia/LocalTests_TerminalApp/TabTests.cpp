@@ -356,6 +356,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(CliAgentClassifiesTab);
         TEST_METHOD(VisibleFieldsControlRichTabComposition);
         TEST_METHOD(RichTabMetadataSelectionIsLimitedToTwo);
+        TEST_METHOD(RichTabGitAvailabilityControlsFilterOptions);
         TEST_METHOD(RichTabMetadataIsVisibleOnlyInVerticalLayout);
         TEST_METHOD(RichTabMetadataExpandsVerticalRow);
         TEST_METHOD(RichTabManifestAcceptsCamelCaseFieldIds);
@@ -8395,6 +8396,47 @@ namespace TerminalAppLocalTests
 
             tabStrip.RichTabChangesVisible(true);
             VERIFY_IS_FALSE(tabStrip.RichTabChangesVisible());
+        });
+    }
+
+    void TabTests::RichTabGitAvailabilityControlsFilterOptions()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            auto& tabStrip = page->_tabStrip;
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(tabStrip);
+            VERIFY_IS_NOT_NULL(stripImpl);
+
+            // Initially, if git is installed or by default, git items have IsEnabled matching RichTabGitAvailable()
+            VERIFY_ARE_EQUAL(stripImpl->RichTabGitAvailable(), stripImpl->RichTabRepositoryVisibleItem().IsEnabled());
+            VERIFY_ARE_EQUAL(stripImpl->RichTabGitAvailable(), stripImpl->RichTabBranchVisibleItem().IsEnabled());
+            VERIFY_ARE_EQUAL(stripImpl->RichTabGitAvailable(), stripImpl->RichTabChangesVisibleItem().IsEnabled());
+
+            // Non-git items remain enabled regardless of git availability
+            VERIFY_IS_TRUE(stripImpl->RichTabAgentStatusVisibleItem().IsEnabled());
+            VERIFY_IS_TRUE(stripImpl->RichTabWorkingDirectoryVisibleItem().IsEnabled());
+
+            // Now explicitly simulate Git missing
+            stripImpl->RichTabGitAvailable(false);
+            VERIFY_IS_FALSE(stripImpl->RichTabGitAvailable());
+            VERIFY_IS_FALSE(stripImpl->RichTabRepositoryVisibleItem().IsEnabled());
+            VERIFY_IS_FALSE(stripImpl->RichTabBranchVisibleItem().IsEnabled());
+            VERIFY_IS_FALSE(stripImpl->RichTabChangesVisibleItem().IsEnabled());
+            VERIFY_IS_FALSE(stripImpl->RichTabRepositoryVisible());
+            VERIFY_IS_FALSE(stripImpl->RichTabBranchVisible());
+            VERIFY_IS_FALSE(stripImpl->RichTabChangesVisible());
+
+            // AgentStatus and WorkingDirectory are still enabled
+            VERIFY_IS_TRUE(stripImpl->RichTabAgentStatusVisibleItem().IsEnabled());
+            VERIFY_IS_TRUE(stripImpl->RichTabWorkingDirectoryVisibleItem().IsEnabled());
+
+            // Re-enabling git availability re-enables git items in filter menu
+            stripImpl->RichTabGitAvailable(true);
+            VERIFY_IS_TRUE(stripImpl->RichTabGitAvailable());
+            VERIFY_IS_TRUE(stripImpl->RichTabRepositoryVisibleItem().IsEnabled());
+            VERIFY_IS_TRUE(stripImpl->RichTabBranchVisibleItem().IsEnabled());
+            VERIFY_IS_TRUE(stripImpl->RichTabChangesVisibleItem().IsEnabled());
         });
     }
 

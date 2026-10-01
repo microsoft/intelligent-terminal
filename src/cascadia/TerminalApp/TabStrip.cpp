@@ -330,6 +330,7 @@ namespace winrt::TerminalApp::implementation
                 self->_setSearchPanelExpanded(false, false);
             }
         });
+        _richTabGitAvailable = _isGitInstalled();
         _applyRailState();
         _updateRichTabMetadataSelectionState();
     }
@@ -1185,6 +1186,48 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    bool TabStrip::_isGitInstalled() noexcept
+    {
+        wchar_t buffer[MAX_PATH];
+        const auto pathLength = GetEnvironmentVariableW(L"PATH", nullptr, 0);
+        if (pathLength > 0)
+        {
+            std::wstring path(pathLength, L'\0');
+            if (GetEnvironmentVariableW(L"PATH", path.data(), pathLength) > 0)
+            {
+                if (SearchPathW(path.c_str(), L"git", L".exe", MAX_PATH, buffer, nullptr) > 0)
+                {
+                    return true;
+                }
+            }
+        }
+        return SearchPathW(nullptr, L"git", L".exe", MAX_PATH, buffer, nullptr) > 0;
+    }
+
+    void TabStrip::RichTabGitAvailable(bool value)
+    {
+        if (_richTabGitAvailable != value)
+        {
+            _richTabGitAvailable = value;
+            if (!value)
+            {
+                if (_richTabRepositoryVisible)
+                {
+                    RichTabRepositoryVisible(false);
+                }
+                if (_richTabBranchVisible)
+                {
+                    RichTabBranchVisible(false);
+                }
+                if (_richTabChangesVisible)
+                {
+                    RichTabChangesVisible(false);
+                }
+            }
+            _updateRichTabMetadataSelectionState();
+        }
+    }
+
     uint32_t TabStrip::_richTabMetadataSelectionCount() const noexcept
     {
         return static_cast<uint32_t>(_richTabAgentStatusVisible) +
@@ -1200,9 +1243,9 @@ namespace winrt::TerminalApp::implementation
 
         RichTabAgentStatusVisibleItem().IsEnabled(_richTabAgentStatusVisible || canSelectAnother);
         RichTabWorkingDirectoryVisibleItem().IsEnabled(_richTabWorkingDirectoryVisible || canSelectAnother);
-        RichTabRepositoryVisibleItem().IsEnabled(_richTabRepositoryVisible || canSelectAnother);
-        RichTabBranchVisibleItem().IsEnabled(_richTabBranchVisible || canSelectAnother);
-        RichTabChangesVisibleItem().IsEnabled(_richTabChangesVisible || canSelectAnother);
+        RichTabRepositoryVisibleItem().IsEnabled(_richTabGitAvailable && (_richTabRepositoryVisible || canSelectAnother));
+        RichTabBranchVisibleItem().IsEnabled(_richTabGitAvailable && (_richTabBranchVisible || canSelectAnother));
+        RichTabChangesVisibleItem().IsEnabled(_richTabGitAvailable && (_richTabChangesVisible || canSelectAnother));
     }
 
     UIElement TabStrip::TopChromeContent()

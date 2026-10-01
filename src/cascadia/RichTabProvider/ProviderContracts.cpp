@@ -720,6 +720,17 @@ namespace Microsoft::Terminal::RichTab::Provider
             firstPartyFields[id] = value;
         }
         params["firstPartyFields"] = std::move(firstPartyFields);
+
+        if (!request.visibleFields.empty())
+        {
+            Json::Value visibleFields(Json::arrayValue);
+            for (const auto& field : request.visibleFields)
+            {
+                visibleFields.append(field);
+            }
+            params["visibleFields"] = std::move(visibleFields);
+        }
+
         root["params"] = std::move(params);
 
         Json::StreamWriterBuilder builder;
