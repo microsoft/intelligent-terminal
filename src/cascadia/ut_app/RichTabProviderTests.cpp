@@ -3,6 +3,8 @@
 
 #include "precomp.h"
 
+#include <iterator>
+
 #include "../RichTabProvider/CommandRunner.h"
 #include "../RichTabProvider/ProviderBroker.h"
 
@@ -46,6 +48,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(BrokerClearsSuccessfulSnapshotAfterProviderFailure);
         TEST_METHOD(GitStatusProviderHandlesMissingGitGracefully);
         TEST_METHOD(GitStatusProviderHonorsGitBinaryEnvironmentVariable);
+        TEST_METHOD(GitStatusProviderInvokesFirstResolvedApplication);
         TEST_METHOD(GitStatusProviderSkipsGitWhenNoGitFieldsVisible);
         TEST_METHOD(GitStatusProviderHandlesGitFailureGracefully);
         TEST_METHOD(GitStatusProviderSetsSafeGitConfigEnvironment);
@@ -486,6 +489,87 @@ namespace TerminalAppUnitTests
         VERIFY_IS_TRUE(parsed.value->fields.find("changes") == parsed.value->fields.end());
     }
 
+    void RichTabProviderTests::GitStatusProviderInvokesFirstResolvedApplication()
+    {
+        const auto providerRoot = _TestModuleDirectory() / L"RichTabProviders" / L"GitStatus";
+        const auto repositoryRoot = std::filesystem::temp_directory_path() /
+                                    (L"RichTabScalarGit-" + std::to_wstring(GetCurrentProcessId()) +
+                                     L"-" + std::to_wstring(GetTickCount64()));
+        VERIFY_IS_TRUE(std::filesystem::create_directory(repositoryRoot));
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(repositoryRoot, error);
+        });
+        std::filesystem::create_directory(repositoryRoot / L".git");
+        _WriteFile(repositoryRoot / L".git" / L"HEAD", "ref: refs/heads/scalar-branch\n");
+        _WriteFile(repositoryRoot / L"fake-git.ps1", R"(
+[IO.File]::AppendAllText((Join-Path $PSScriptRoot 'invocations.txt'), "invoked $args`n")
+$global:LASTEXITCODE = 0
+if ($args -contains 'status') {
+    '# branch.head scalar-branch'
+}
+)");
+        std::filesystem::copy_file(providerRoot / L"provider.ps1", repositoryRoot / L"original-provider.ps1");
+        _WriteFile(repositoryRoot / L"provider.ps1", R"(
+$fakeGit = Join-Path $PSScriptRoot 'fake-git.ps1'
+function Get-Command {
+    param($Name, $CommandType, $ErrorAction)
+    if ($Name -eq $fakeGit) {
+        if ($CommandType -ne 'Application') { throw 'Expected Application discovery' }
+        [IO.File]::WriteAllText((Join-Path $PSScriptRoot 'discovery.txt'), '2 Applications')
+        $resolved = [pscustomobject]@{ Source = $fakeGit; CommandType = [System.Management.Automation.CommandTypes]::Application }
+        $resolved
+        $resolved
+    }
+    else {
+        Microsoft.PowerShell.Core\Get-Command $Name -CommandType $CommandType -ErrorAction $ErrorAction
+    }
+}
+$env:INTELLIGENT_TERMINAL_GIT_BINARY = $fakeGit
+. (Join-Path $PSScriptRoot 'original-provider.ps1')
+)");
+
+        Manifest manifest;
+        manifest.id = "com.microsoft.intelligent-terminal.git-status";
+        manifest.runtime.kind = RuntimeKind::PowerShellV1;
+        manifest.runtime.entrypoint = L"provider.ps1";
+        manifest.extensionRoot = repositoryRoot;
+        manifest.activationEvents = { ActivationEvent::ManualRefresh };
+        manifest.fields = {
+            { "workingDirectory", "Current working directory", FieldType::String, true },
+            { "repository", "Git repo", FieldType::String, false },
+            { "branch", "Git branch", FieldType::String, false },
+            { "changes", "Git changes", FieldType::String, false },
+        };
+
+        Request request;
+        request.requestId = "scalar-git-test";
+        request.providerId = manifest.id;
+        request.processEpoch = 1;
+        request.sessionId = "session";
+        request.reason = ActivationEvent::ManualRefresh;
+        request.workingDirectory = repositoryRoot;
+        request.workingDirectoryAuthoritative = true;
+        request.visibleFields = { "repository", "branch" };
+
+        const auto serialized = SerializeRequest(request, manifest);
+        VERIFY_IS_TRUE(static_cast<bool>(serialized));
+        const auto command = CommandRunner{}.Run(manifest, *serialized.value, std::chrono::seconds{ 10 });
+        VERIFY_IS_TRUE(command.status == CommandResult::Status::Completed);
+        VERIFY_ARE_EQUAL(0u, command.exitCode);
+        VERIFY_IS_TRUE(command.standardError.empty());
+        VERIFY_IS_TRUE(std::filesystem::exists(repositoryRoot / L"discovery.txt"));
+        std::ifstream invocations{ repositoryRoot / L"invocations.txt" };
+        VERIFY_IS_TRUE(invocations.is_open());
+        const std::string recorded{ std::istreambuf_iterator<char>{ invocations }, std::istreambuf_iterator<char>{} };
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, recorded.find("status"));
+        invocations.close();
+        const auto parsed = ParseSnapshot(command.standardOutput, manifest, request.requestId);
+        VERIFY_IS_TRUE(static_cast<bool>(parsed));
+        VERIFY_ARE_EQUAL(repositoryRoot.filename().string(), std::get<std::string>(parsed.value->fields.at("repository")));
+        VERIFY_ARE_EQUAL(std::string{ "scalar-branch" }, std::get<std::string>(parsed.value->fields.at("branch")));
+    }
+
     void RichTabProviderTests::GitStatusProviderSkipsGitWhenNoGitFieldsVisible()
     {
         const auto providerRoot = _TestModuleDirectory() / L"RichTabProviders" / L"GitStatus";
@@ -498,11 +582,38 @@ namespace TerminalAppUnitTests
             std::filesystem::remove_all(repositoryRoot, error);
         });
 
-        // Create a fake git binary script that records sentinel execution
         const auto sentinelFile = repositoryRoot / L"sentinel.txt";
         const auto recordingGitScript = repositoryRoot / L"recording-git.cmd";
         std::filesystem::create_directories(repositoryRoot);
         _WriteFile(recordingGitScript, "@echo off\r\necho invoked > \"" + sentinelFile.string() + "\"\r\nexit /b 1\r\n");
+
+        const auto probeFile = repositoryRoot / L"probes.txt";
+        std::filesystem::copy_file(providerRoot / L"provider.ps1", repositoryRoot / L"original-provider.ps1");
+        _WriteFile(repositoryRoot / L"provider.ps1", R"(
+$probeFile = Join-Path $PSScriptRoot 'probes.txt'
+function Get-PSDrive {
+    [IO.File]::AppendAllText($probeFile, "Get-PSDrive`n")
+    Microsoft.PowerShell.Management\Get-PSDrive @args
+}
+function Test-Path {
+    [IO.File]::AppendAllText($probeFile, "Test-Path`n")
+    Microsoft.PowerShell.Management\Test-Path @args
+}
+function Get-Item {
+    [IO.File]::AppendAllText($probeFile, "Get-Item`n")
+    Microsoft.PowerShell.Management\Get-Item @args
+}
+function Get-ChildItem {
+    [IO.File]::AppendAllText($probeFile, "Get-ChildItem`n")
+    Microsoft.PowerShell.Management\Get-ChildItem @args
+}
+function Get-Command {
+    [IO.File]::AppendAllText($probeFile, "Get-Command $($args[0])`n")
+    Microsoft.PowerShell.Core\Get-Command @args
+}
+$env:INTELLIGENT_TERMINAL_GIT_BINARY = '   '
+. (Join-Path $PSScriptRoot 'original-provider.ps1')
+)");
 
         const auto gitDirectory = repositoryRoot / L".git";
         std::filesystem::create_directories(gitDirectory / L"objects");
@@ -544,6 +655,7 @@ namespace TerminalAppUnitTests
         request.visibleFields = { "workingDirectory", "agentStatus" };
         request.firstPartyFields.emplace("gitBinary", recordingGitScript.string());
 
+        manifest.extensionRoot = repositoryRoot;
         const auto serialized = SerializeRequest(request, manifest);
         VERIFY_IS_TRUE(static_cast<bool>(serialized));
 
@@ -552,7 +664,7 @@ namespace TerminalAppUnitTests
         VERIFY_IS_TRUE(command.status == CommandResult::Status::Completed);
         VERIFY_ARE_EQUAL(0u, command.exitCode);
 
-        // Verify that the Git binary was NOT invoked since no Git fields were visible
+        VERIFY_IS_FALSE(std::filesystem::exists(probeFile));
         VERIFY_IS_FALSE(std::filesystem::exists(sentinelFile));
 
         const auto parsed = ParseSnapshot(command.standardOutput, manifest, request.requestId);
@@ -564,6 +676,36 @@ namespace TerminalAppUnitTests
             repositoryRoot.string(),
             std::get<std::string>(parsed.value->fields.at("workingDirectory")));
         VERIFY_IS_TRUE(parsed.value->fields.find("repository") == parsed.value->fields.end());
+        VERIFY_IS_TRUE(parsed.value->fields.find("branch") == parsed.value->fields.end());
+        VERIFY_IS_TRUE(parsed.value->fields.find("changes") == parsed.value->fields.end());
+        VERIFY_ARE_EQUAL(size_t{ 2 }, parsed.value->fields.size());
+        VERIFY_IS_FALSE(parsed.value->tooltip.has_value());
+
+        // Positive controls prove the wrappers observe discovery, including legacy empty visibility.
+        for (const auto& visibleFields : std::vector<std::vector<std::string>>{ { "branch" }, {} })
+        {
+            request.visibleFields = visibleFields;
+            const auto controlRequest = SerializeRequest(request, manifest);
+            VERIFY_IS_TRUE(static_cast<bool>(controlRequest));
+            const auto control =
+                CommandRunner{}.Run(manifest, *controlRequest.value, std::chrono::seconds{ 10 });
+            VERIFY_IS_TRUE(control.status == CommandResult::Status::Completed);
+            VERIFY_ARE_EQUAL(0u, control.exitCode);
+            VERIFY_IS_TRUE(static_cast<bool>(ParseSnapshot(control.standardOutput, manifest, request.requestId)));
+            VERIFY_IS_TRUE(std::filesystem::exists(sentinelFile));
+
+            std::ifstream probes{ probeFile };
+            VERIFY_IS_TRUE(probes.is_open());
+            const std::string recorded{ std::istreambuf_iterator<char>{ probes }, std::istreambuf_iterator<char>{} };
+            for (const auto probe : { "Get-PSDrive\n", "Test-Path\n", "Get-Item\n", "Get-ChildItem\n" })
+            {
+                VERIFY_ARE_NOT_EQUAL(std::string::npos, recorded.find(probe));
+            }
+            VERIFY_ARE_NOT_EQUAL(std::string::npos, recorded.find("Get-Command " + recordingGitScript.string() + "\n"));
+            probes.close();
+            VERIFY_IS_TRUE(std::filesystem::remove(probeFile));
+            VERIFY_IS_TRUE(std::filesystem::remove(sentinelFile));
+        }
     }
 
     void RichTabProviderTests::GitStatusProviderHandlesGitFailureGracefully()

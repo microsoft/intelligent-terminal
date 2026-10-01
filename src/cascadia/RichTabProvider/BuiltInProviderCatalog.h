@@ -11,6 +11,7 @@ namespace Microsoft::Terminal::RichTab::Provider
     {
     public:
         static std::filesystem::path PackageRoot();
+        static std::filesystem::path GitStatusRoot(const std::filesystem::path& packageRoot);
         static RegistryResult<std::vector<Registration>> Load(const std::filesystem::path& packageRoot);
     };
 }

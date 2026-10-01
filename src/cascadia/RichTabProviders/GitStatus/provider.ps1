@@ -151,12 +151,6 @@ try {
         }
     }
 
-    $isLocalDrivePath = $workingDirectory -match '^[A-Za-z]:[\\/]'
-    $drive = if ($isLocalDrivePath) {
-        Get-PSDrive -Name $workingDirectory.Substring(0, 1) -PSProvider FileSystem -ErrorAction SilentlyContinue
-    }
-    $isRemoteDrive = $drive -and -not [string]::IsNullOrWhiteSpace([string]$drive.DisplayRoot)
-
     $visibleFields = @()
     if ($request.params.visibleFields) {
         $visibleFields = @($request.params.visibleFields)
@@ -175,14 +169,20 @@ try {
         }
     }
 
-    if (-not $authoritative -or
+    $isLocalDrivePath = $workingDirectory -match '^[A-Za-z]:[\\/]'
+    $drive = if ($needsGit -and $isLocalDrivePath) {
+        Get-PSDrive -Name $workingDirectory.Substring(0, 1) -PSProvider FileSystem -ErrorAction SilentlyContinue
+    }
+    $isRemoteDrive = $drive -and -not [string]::IsNullOrWhiteSpace([string]$drive.DisplayRoot)
+
+    if (-not $needsGit -or
+        -not $authoritative -or
         [string]::IsNullOrWhiteSpace($workingDirectory) -or
         -not $isLocalDrivePath -or
         -not $drive -or
         $isRemoteDrive -or
         -not (Test-Path -LiteralPath $workingDirectory -PathType Container) -or
-        -not (Test-LocalPathWithoutReparsePoint $workingDirectory) -or
-        -not $needsGit) {
+        -not (Test-LocalPathWithoutReparsePoint $workingDirectory)) {
         $response = New-EmptyResponse $requestId $baseFields
     }
     else {
@@ -259,7 +259,8 @@ try {
                         'git.exe'
                     }
 
-                    $git = Get-Command $gitBinary -CommandType Application -ErrorAction SilentlyContinue
+                    $git = Get-Command $gitBinary -CommandType Application -ErrorAction SilentlyContinue |
+                        Select-Object -First 1
                     if (-not $git) {
                         $response = New-EmptyResponse $requestId $baseFields
                     }

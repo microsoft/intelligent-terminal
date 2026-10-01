@@ -7,6 +7,7 @@
 #include "TabStrip.h"
 #include "AgentIconUtils.h"
 #include "TabStripAutomationPeer.h"
+#include "..\RichTabProvider\BuiltInProviderCatalog.h"
 
 #include "TabStrip.g.cpp"
 #include "TabStripSelectionChangedEventArgs.g.cpp"
@@ -1187,7 +1188,40 @@ namespace winrt::TerminalApp::implementation
     }
 
     bool TabStrip::_isGitInstalled() noexcept
+    try
     {
+        using Catalog = ::Microsoft::Terminal::RichTab::Provider::BuiltInProviderCatalog;
+        return _isGitInstalled(Catalog::GitStatusRoot(Catalog::PackageRoot()));
+    }
+    catch (...)
+    {
+        LOG_CAUGHT_EXCEPTION();
+        return false;
+    }
+
+    bool TabStrip::_isGitInstalled(const std::filesystem::path& providerRoot) noexcept
+    try
+    {
+        const auto readEnvironment = [](const wchar_t* name) {
+            std::wstring value;
+            for (;;)
+            {
+                SetLastError(ERROR_SUCCESS);
+                const auto length = GetEnvironmentVariableW(name, value.data(), static_cast<DWORD>(value.size()));
+                if (length == 0)
+                {
+                    const auto error = GetLastError();
+                    THROW_WIN32_IF(error, error != ERROR_SUCCESS && error != ERROR_ENVVAR_NOT_FOUND);
+                    return std::wstring{};
+                }
+                if (length < value.size())
+                {
+                    value.resize(length);
+                    return value;
+                }
+                value.resize(length);
+            }
+        };
         const auto isApplication = [](const wchar_t* candidate) {
             const std::filesystem::path path{ candidate };
             // Get-Command -CommandType Application excludes PowerShell scripts,
@@ -1197,68 +1231,72 @@ namespace winrt::TerminalApp::implementation
                    std::filesystem::is_regular_file(path, ec);
         };
         wchar_t buffer[MAX_PATH];
-        const auto envLength = GetEnvironmentVariableW(L"INTELLIGENT_TERMINAL_GIT_BINARY", nullptr, 0);
-        if (envLength > 0)
+        const auto binary = readEnvironment(L"INTELLIGENT_TERMINAL_GIT_BINARY");
+        // Match .NET Char.IsWhiteSpace independently of the process C locale.
+        const auto isWhitespace = [](wchar_t ch) {
+            return (ch >= L'\x0009' && ch <= L'\x000D') || ch == L' ' ||
+                   ch == L'\x0085' || ch == L'\x00A0' || ch == L'\x1680' ||
+                   (ch >= L'\x2000' && ch <= L'\x200A') ||
+                   ch == L'\x2028' || ch == L'\x2029' || ch == L'\x202F' ||
+                   ch == L'\x205F' || ch == L'\x3000';
+        };
+        const auto search = [&](const std::wstring& path, const std::wstring& name, const wchar_t* extension) {
+            const auto length = SearchPathW(path.c_str(), name.c_str(), extension, MAX_PATH, buffer, nullptr);
+            return length > 0 && length < MAX_PATH && isApplication(buffer);
+        };
+        const auto path = readEnvironment(L"PATH");
+        if (!std::all_of(binary.begin(), binary.end(), isWhitespace))
         {
-            std::wstring binary(envLength, L'\0');
-            if (GetEnvironmentVariableW(L"INTELLIGENT_TERMINAL_GIT_BINARY", binary.data(), envLength) > 0)
+            const std::filesystem::path overridePath{ binary };
+            const auto pathBearing = overridePath.has_parent_path() || overridePath.has_root_path();
+            std::wstring candidate = binary;
+            if (pathBearing)
             {
-                if (isApplication(binary.c_str()))
+                if (!overridePath.is_absolute() && !providerRoot.is_absolute())
+                {
+                    return false;
+                }
+                auto resolved = overridePath.is_absolute() ? overridePath : providerRoot / overridePath;
+                if (!resolved.is_absolute())
+                {
+                    // A different drive has no remembered directory in CommandRunner's
+                    // sanitized environment (no hidden =C: variables), so use its root.
+                    resolved = resolved.root_name() / L"\\" / resolved.relative_path();
+                }
+                candidate = resolved.native();
+                if (isApplication(candidate.c_str()))
                 {
                     return true;
                 }
-                const auto pathLength = GetEnvironmentVariableW(L"PATH", nullptr, 0);
-                if (pathLength > 0)
+            }
+            // Path-bearing overrides never search PATH or the UI process directory.
+            const auto searchRoot = pathBearing ? providerRoot.native() : path;
+            if (!searchRoot.empty())
+            {
+                if (search(searchRoot, candidate, nullptr))
                 {
-                    std::wstring path(pathLength, L'\0');
-                    if (GetEnvironmentVariableW(L"PATH", path.data(), pathLength) > 0)
+                    return true;
+                }
+                auto pathext = readEnvironment(L"PATHEXT");
+                if (pathext.empty())
+                {
+                    pathext = L".COM;.EXE;.BAT;.CMD";
+                }
+                for (const auto& ext : til::split_iterator{ std::wstring_view{ pathext }, L';' })
+                {
+                    if (!ext.empty() && search(searchRoot, candidate, std::wstring{ ext }.c_str()))
                     {
-                        if (const auto length = SearchPathW(path.c_str(), binary.c_str(), nullptr, MAX_PATH, buffer, nullptr);
-                            length > 0 && length < MAX_PATH && isApplication(buffer))
-                        {
-                            return true;
-                        }
-
-                        const auto pathextLength = GetEnvironmentVariableW(L"PATHEXT", nullptr, 0);
-                        std::wstring pathext = (pathextLength > 0) ? std::wstring(pathextLength, L'\0') : L".COM;.EXE;.BAT;.CMD";
-                        if (pathextLength > 0)
-                        {
-                            GetEnvironmentVariableW(L"PATHEXT", pathext.data(), pathextLength);
-                        }
-
-                        for (const auto& ext : til::split_iterator{ std::wstring_view{ pathext }, L';' })
-                        {
-                            if (!ext.empty())
-                            {
-                                std::wstring extStr{ ext };
-                                if (const auto length = SearchPathW(path.c_str(), binary.c_str(), extStr.c_str(), MAX_PATH, buffer, nullptr);
-                                    length > 0 && length < MAX_PATH && isApplication(buffer))
-                                {
-                                    return true;
-                                }
-                            }
-                        }
+                        return true;
                     }
                 }
-                // Override was specified but could not be resolved as an executable:
-                // provider.ps1 gives the override strict precedence and will fail,
-                // so do not fall back to git.exe or SearchPathW without PATH.
-                return false;
             }
+            return false;
         }
-
-        const auto pathLength = GetEnvironmentVariableW(L"PATH", nullptr, 0);
-        if (pathLength > 0)
-        {
-            std::wstring path(pathLength, L'\0');
-            if (GetEnvironmentVariableW(L"PATH", path.data(), pathLength) > 0)
-            {
-                if (SearchPathW(path.c_str(), L"git", L".exe", MAX_PATH, buffer, nullptr) > 0)
-                {
-                    return true;
-                }
-            }
-        }
+        return !path.empty() && search(path, L"git", L".exe");
+    }
+    catch (...)
+    {
+        LOG_CAUGHT_EXCEPTION();
         return false;
     }
 
