@@ -47,6 +47,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(GitStatusProviderHonorsGitBinaryEnvironmentVariable);
         TEST_METHOD(GitStatusProviderSkipsGitWhenNoGitFieldsVisible);
         TEST_METHOD(GitStatusProviderHandlesGitFailureGracefully);
+        TEST_METHOD(GitStatusProviderSetsSafeGitConfigEnvironment);
     };
 
     void RichTabProviderTests::PowerShellProviderPreservesUnicodeAcrossProcessBoundary()
@@ -396,6 +397,12 @@ namespace TerminalAppUnitTests
             std::filesystem::remove_all(repositoryRoot, error);
         });
 
+        // Create a fake git binary script that records sentinel execution
+        const auto sentinelFile = repositoryRoot / L"sentinel.txt";
+        const auto recordingGitScript = repositoryRoot / L"recording-git.cmd";
+        std::filesystem::create_directories(repositoryRoot);
+        _WriteFile(recordingGitScript, "@echo off\r\necho invoked > \"" + sentinelFile.string() + "\"\r\nexit /b 1\r\n");
+
         const auto gitDirectory = repositoryRoot / L".git";
         std::filesystem::create_directories(gitDirectory / L"objects");
         std::filesystem::create_directories(gitDirectory / L"refs" / L"heads");
@@ -434,7 +441,7 @@ namespace TerminalAppUnitTests
         request.workingDirectoryAuthoritative = true;
         request.firstPartyFields.emplace("agentStatus", "working");
         request.visibleFields = { "workingDirectory", "agentStatus" };
-        request.firstPartyFields.emplace("gitBinary", "broken-git-binary.exe");
+        request.firstPartyFields.emplace("gitBinary", recordingGitScript.string());
 
         const auto serialized = SerializeRequest(request, manifest);
         VERIFY_IS_TRUE(static_cast<bool>(serialized));
@@ -443,6 +450,9 @@ namespace TerminalAppUnitTests
             CommandRunner{}.Run(manifest, *serialized.value, std::chrono::seconds{ 10 });
         VERIFY_IS_TRUE(command.status == CommandResult::Status::Completed);
         VERIFY_ARE_EQUAL(0u, command.exitCode);
+
+        // Verify that the Git binary was NOT invoked since no Git fields were visible
+        VERIFY_IS_FALSE(std::filesystem::exists(sentinelFile));
 
         const auto parsed = ParseSnapshot(command.standardOutput, manifest, request.requestId);
         VERIFY_IS_TRUE(static_cast<bool>(parsed));
@@ -545,5 +555,113 @@ namespace TerminalAppUnitTests
             repositoryRoot.string(),
             std::get<std::string>(parsed.value->fields.at("workingDirectory")));
         VERIFY_IS_TRUE(parsed.value->fields.find("repository") == parsed.value->fields.end());
+    }
+
+    void RichTabProviderTests::GitStatusProviderSetsSafeGitConfigEnvironment()
+    {
+        constexpr auto gitBinaryEnv = L"INTELLIGENT_TERMINAL_GIT_BINARY";
+        SetLastError(ERROR_SUCCESS);
+        const auto priorLength = GetEnvironmentVariableW(gitBinaryEnv, nullptr, 0);
+        const auto priorMissing = priorLength == 0 && GetLastError() == ERROR_ENVVAR_NOT_FOUND;
+        std::wstring priorValue;
+        if (!priorMissing && priorLength > 0)
+        {
+            priorValue.resize(priorLength);
+            GetEnvironmentVariableW(gitBinaryEnv, priorValue.data(), priorLength);
+            priorValue.resize(wcslen(priorValue.c_str()));
+        }
+        SetEnvironmentVariableW(gitBinaryEnv, nullptr);
+        const auto envCleanup = wil::scope_exit([=]() {
+            SetEnvironmentVariableW(gitBinaryEnv, priorMissing ? nullptr : priorValue.c_str());
+        });
+
+        const auto providerRoot = _TestModuleDirectory() / L"RichTabProviders" / L"GitStatus";
+        const auto repositoryName =
+            L"RichTabGitEnv-" + std::to_wstring(GetCurrentProcessId());
+        const auto repositoryRoot = std::filesystem::temp_directory_path() / repositoryName;
+        std::filesystem::remove_all(repositoryRoot);
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(repositoryRoot, error);
+        });
+
+        // Create a fake git script that records GIT_CONFIG_GLOBAL and GIT_CONFIG_SYSTEM
+        const auto recordFile = repositoryRoot / L"git-env.txt";
+        const auto recordingGitScript = repositoryRoot / L"recording-git.cmd";
+        std::filesystem::create_directories(repositoryRoot);
+        _WriteFile(
+            recordingGitScript,
+            "@echo off\r\n"
+            "echo GLOBAL=%GIT_CONFIG_GLOBAL%> \"" + recordFile.string() + "\"\r\n"
+            "echo SYSTEM=%GIT_CONFIG_SYSTEM%>> \"" + recordFile.string() + "\"\r\n"
+            "exit /b 1\r\n");
+
+        const auto gitDirectory = repositoryRoot / L".git";
+        std::filesystem::create_directories(gitDirectory / L"objects");
+        std::filesystem::create_directories(gitDirectory / L"refs" / L"heads");
+        std::filesystem::create_directories(gitDirectory / L"logs");
+        _WriteFile(
+            gitDirectory / L"config",
+            "[core]\n\t"
+            "repository"
+            "format"
+            "version = 0\n\tbare = false\n");
+        _WriteFile(
+            gitDirectory / L"HEAD",
+            "ref: refs/heads/main\n");
+
+        Manifest manifest;
+        manifest.id = "com.microsoft.intelligent-terminal.git-status";
+        manifest.runtime.kind = RuntimeKind::PowerShellV1;
+        manifest.runtime.entrypoint = L"provider.ps1";
+        manifest.extensionRoot = providerRoot;
+        manifest.activationEvents.emplace_back(ActivationEvent::ManualRefresh);
+        manifest.fields = {
+            { "agentStatus", "Agent status", FieldType::String, true },
+            { "workingDirectory", "Current working directory", FieldType::String, true },
+            { "repository", "Git repo", FieldType::String, false },
+            { "branch", "Git branch", FieldType::String, false },
+            { "changes", "Git changes", FieldType::String, false },
+        };
+
+        Request request;
+        request.requestId = "git-env-test";
+        request.providerId = manifest.id;
+        request.processEpoch = 1;
+        request.sessionId = "session";
+        request.reason = ActivationEvent::ManualRefresh;
+        request.workingDirectory = repositoryRoot;
+        request.workingDirectoryAuthoritative = true;
+        request.firstPartyFields.emplace("agentStatus", "ready");
+        request.firstPartyFields.emplace("gitBinary", recordingGitScript.string());
+        request.visibleFields = { "repository", "branch", "changes", "workingDirectory" };
+
+        const auto serialized = SerializeRequest(request, manifest);
+        VERIFY_IS_TRUE(static_cast<bool>(serialized));
+
+        const auto command =
+            CommandRunner{}.Run(manifest, *serialized.value, std::chrono::seconds{ 10 });
+        VERIFY_IS_TRUE(command.status == CommandResult::Status::Completed);
+        VERIFY_ARE_EQUAL(0u, command.exitCode);
+
+        // Verify that the environment variables were set to /dev/null
+        VERIFY_IS_TRUE(std::filesystem::exists(recordFile));
+        std::ifstream stream{ recordFile };
+        std::string line;
+        bool globalVerified = false;
+        bool systemVerified = false;
+        while (std::getline(stream, line))
+        {
+            if (line.find("GLOBAL=/dev/null") != std::string::npos)
+            {
+                globalVerified = true;
+            }
+            if (line.find("SYSTEM=/dev/null") != std::string::npos)
+            {
+                systemVerified = true;
+            }
+        }
+        VERIFY_IS_TRUE(globalVerified);
+        VERIFY_IS_TRUE(systemVerified);
     }
 }
