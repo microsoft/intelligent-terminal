@@ -690,10 +690,6 @@ namespace Microsoft::Terminal::RichTab::Provider
                     "Provider '" + provider.manifest.id + "' failed with status " +
                     std::to_string(static_cast<int>(command.status)) +
                     " and exit code " + std::to_string(command.exitCode));
-                if (!command.standardError.empty())
-                {
-                    diagnostics.emplace_back(command.standardError);
-                }
             }
             else
             {
@@ -707,8 +703,12 @@ namespace Microsoft::Terminal::RichTab::Provider
                 }
                 else
                 {
-                    diagnostics = parsed.errors;
+                    diagnostics.insert(diagnostics.end(), parsed.errors.begin(), parsed.errors.end());
                 }
+            }
+            if (!command.standardError.empty())
+            {
+                diagnostics.emplace_back(command.standardError);
             }
         }
 

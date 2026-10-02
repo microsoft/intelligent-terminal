@@ -331,7 +331,10 @@ namespace winrt::TerminalApp::implementation
                 self->_setSearchPanelExpanded(false, false);
             }
         });
-        _richTabGitAvailable = ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance().GitAvailable();
+        if constexpr (Feature_RichTabProviders::IsEnabled())
+        {
+            _richTabGitAvailable = ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance().GitAvailable();
+        }
         _applyRailState();
         _updateRichTabMetadataSelectionState();
     }

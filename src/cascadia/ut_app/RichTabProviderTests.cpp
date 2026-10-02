@@ -251,6 +251,7 @@ namespace TerminalAppUnitTests
         _WriteFile(
             script,
             "$request = [Console]::In.ReadToEnd() | ConvertFrom-Json\n"
+            "[Console]::Error.WriteLine('broker-provider-warning')\n"
             "@{ protocolVersion = 1; requestId = $request.requestId; result = @{\n"
             "    fields = @{ branch = 'main' }; tooltip = 'Current branch: main'\n"
             "} } | ConvertTo-Json -Depth 4 -Compress\n");
@@ -301,7 +302,10 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(std::wstring{ L"main" }, updates[0].presentation->text);
         VERIFY_ARE_EQUAL(std::wstring{ L"Current branch: main" }, updates[0].presentation->tooltip);
         VERIFY_ARE_EQUAL(std::wstring{ L"Git branch: main" }, updates[0].presentation->accessibilityText);
-        VERIFY_IS_TRUE(updates[0].diagnostics.empty());
+        VERIFY_ARE_EQUAL(size_t{ 1 }, updates[0].diagnostics.size());
+        VERIFY_ARE_NOT_EQUAL(
+            std::string::npos,
+            updates[0].diagnostics[0].find("broker-provider-warning"));
         VERIFY_ARE_EQUAL(uint64_t{ 1 }, updates[0].updateSequence);
         VERIFY_IS_TRUE(state.snapshot.has_value());
         VERIFY_IS_FALSE(state.running);
@@ -1036,6 +1040,9 @@ function Get-Command {
             CommandRunner{}.Run(manifest, *serialized.value, std::chrono::seconds{ 10 });
         VERIFY_IS_TRUE(command.status == CommandResult::Status::Completed);
         VERIFY_ARE_EQUAL(0u, command.exitCode);
+        VERIFY_ARE_NOT_EQUAL(
+            std::string::npos,
+            command.standardError.find("Git status inspection failed:"));
 
         const auto parsed = ParseSnapshot(command.standardOutput, manifest, request.requestId);
         VERIFY_IS_TRUE(static_cast<bool>(parsed));
