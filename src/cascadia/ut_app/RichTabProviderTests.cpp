@@ -47,6 +47,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(LocalizedFieldDisplayNamesOverrideManifestFallbacks);
         TEST_METHOD(BrokerClearsSuccessfulSnapshotAfterProviderFailure);
         TEST_METHOD(BrokerClearsSnapshotAndSkipsExecutionWhenAllFieldsDeselected);
+        TEST_METHOD(ResolveGitUsesExplicitPathAndDetectsMissingExecutable);
         TEST_METHOD(GitStatusProviderHandlesMissingGitGracefully);
         TEST_METHOD(BrokerInjectsImmutableGitAvailabilityIntoRequests);
         TEST_METHOD(GitStatusProviderKnownMissingGitDoesNotFallBack);
@@ -55,6 +56,47 @@ namespace TerminalAppUnitTests
         TEST_METHOD(GitStatusProviderHandlesGitFailureGracefully);
         TEST_METHOD(GitStatusProviderSetsSafeGitConfigEnvironment);
     };
+
+    void RichTabProviderTests::ResolveGitUsesExplicitPathAndDetectsMissingExecutable()
+    {
+        BEGIN_TEST_METHOD_PROPERTIES()
+            TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
+        END_TEST_METHOD_PROPERTIES()
+
+        const auto fixtureRoot = std::filesystem::temp_directory_path() /
+                                 (L"RichTabResolveGit-" + std::to_wstring(GetCurrentProcessId()) +
+                                  L"-" + std::to_wstring(GetTickCount64()));
+        VERIFY_IS_TRUE(fixtureRoot.is_absolute());
+        VERIFY_IS_TRUE(std::filesystem::create_directory(fixtureRoot));
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(fixtureRoot, error);
+        });
+        const auto gitPath = fixtureRoot / L"git.exe";
+        _WriteFile(gitPath, "fixture");
+
+        SetLastError(ERROR_SUCCESS);
+        const auto priorLength = GetEnvironmentVariableW(L"PATH", nullptr, 0);
+        const auto priorError = GetLastError();
+        const auto priorMissing = priorLength == 0 && priorError == ERROR_ENVVAR_NOT_FOUND;
+        VERIFY_IS_TRUE(priorLength > 0 || priorMissing || priorError == ERROR_SUCCESS);
+        std::wstring priorPath(priorLength, L'\0');
+        if (priorLength > 0)
+        {
+            VERIFY_ARE_EQUAL(priorLength - 1, GetEnvironmentVariableW(L"PATH", priorPath.data(), priorLength));
+            priorPath.resize(priorLength - 1);
+        }
+        const auto restorePath = wil::scope_exit([&]() {
+            VERIFY_WIN32_BOOL_SUCCEEDED(SetEnvironmentVariableW(L"PATH", priorMissing ? nullptr : priorPath.c_str()));
+        });
+        VERIFY_WIN32_BOOL_SUCCEEDED(SetEnvironmentVariableW(L"PATH", fixtureRoot.c_str()));
+
+        const auto resolved = CommandRunner::ResolveGit();
+        VERIFY_IS_TRUE(resolved.has_value());
+        VERIFY_ARE_EQUAL(gitPath.native(), resolved->native());
+        VERIFY_IS_TRUE(std::filesystem::remove(gitPath));
+        VERIFY_IS_FALSE(CommandRunner::ResolveGit().has_value());
+    }
 
     void RichTabProviderTests::PowerShellProviderPreservesUnicodeAcrossProcessBoundary()
     {
