@@ -1985,6 +1985,7 @@ namespace winrt::TerminalApp::implementation
     {
         const auto weakThis = get_weak();
         const auto dispatcher = Dispatcher();
+        _tabStrip.HistoryError(L"");
         co_await winrt::resume_background();
         const auto result = ::Microsoft::Terminal::WtaProcess::RunWtaCapture(wtaPath, args, 30'000);
         co_await wil::resume_foreground(dispatcher);
