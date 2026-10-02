@@ -15,7 +15,7 @@ agent-session behavior, or other agent/delegation shortcuts.
 
 | Default shortcut | Responsibility |
 |---|---|
-| `Ctrl+Shift+/` | Show/hide **Agents** in the sidebar (the History view lifecycle below). Opening Agents focuses the unified search box. |
+| `Ctrl+Shift+/` | Show/hide **Agents** in the sidebar (the History view lifecycle below), preserving whether shared search is open. |
 | `Ctrl+Shift+S` | Enter the sidebar through **Search tabs**, or collapse it and return to the previous input when focus is already inside. |
 | `Ctrl+Shift+.` | Show/hide the independent Agent Pane; its behavior is unchanged. |
 
@@ -32,8 +32,8 @@ The two focus policies referenced here are defined separately below.
 | Sidebar collapsed | `Ctrl+Shift+S` | Expand the sidebar and open **Search tabs**. | Remember the current terminal or Agent input, then focus the tab-search box. |
 | Sidebar expanded, focus outside the sidebar | `Ctrl+Shift+S` | Keep the sidebar expanded and open **Search tabs**. | Remember the current input, then focus the tab-search box. |
 | Sidebar expanded, focus inside the sidebar | `Ctrl+Shift+S` | Collapse the sidebar and close tab search or History. | Best-effort return to the input used before entering the sidebar; fall back to a visible terminal. |
-| Sidebar expanded, History hidden | `Ctrl+Shift+/` or the Tabs header | Show the combined Agents surface; remember that the sidebar was expanded. | Remember focused tab search or the source input, then focus the unified search box. |
-| Sidebar collapsed, History hidden | `Ctrl+Shift+/` | Expand the sidebar and show Agents; remember that the sidebar was originally collapsed. | Remember the source input, then focus the unified search box. |
+| Sidebar expanded, History hidden | `Ctrl+Shift+/` or the Tabs header | Show the combined Agents surface; remember that the sidebar was expanded. | Remember focused tab search or the source input. Focus shared search only if it was already open; never activate it as a side effect of navigation. |
+| Sidebar collapsed, History hidden | `Ctrl+Shift+/` | Expand the sidebar and show Agents; remember that the sidebar was originally collapsed. | Remember the source input and preserve search state; navigation alone does not open search. |
 | Agents visible; sidebar was collapsed before History opened | `Ctrl+Shift+/` or the Agents header toggle | Return to Tabs **and collapse the sidebar**. | History source-restoration policy. |
 | Agents visible; sidebar was expanded before History opened | `Ctrl+Shift+/` or the Agents header toggle | Return to Tabs; **keep the sidebar expanded**, with its ordinary tab list and no history section. | History source-restoration policy. |
 | Sidebar expanded with History visible and focus inside | `Ctrl+Shift+S` | Collapse the whole sidebar and hide History. | Use the sidebar-hotkey entry input if still available, not History's saved entry state. |
@@ -65,7 +65,8 @@ and focuses ordinary tab search on entry.
 - **Unified Search**: There is no separate history search box. The single
   `SearchTextBox` in the sidebar filters both the upper live agent tabs and the
   lower history rows concurrently. Entering or leaving Agents does not discard
-  an active search query.
+  an active search query or activate a search that was closed. The shared search
+  action opens the box explicitly; selecting Agents does not imply searching.
 - In Agents, the search placeholder, automation names, and button tooltip read
   **Search agents and history**; Tabs retains **Search tabs**. The header toggle
   is disabled while projection controls are blocked, in either direction.

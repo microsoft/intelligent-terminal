@@ -519,7 +519,22 @@ impl ShellManager {
         title: Option<&str>,
         profile: Option<&str>,
     ) -> anyhow::Result<serde_json::Value> {
+        self.wt_create_tab_with_background(commandline, cwd, title, profile, false)
+            .await
+    }
+
+    pub async fn wt_create_tab_with_background(
+        &self,
+        commandline: Option<&str>,
+        cwd: Option<&str>,
+        title: Option<&str>,
+        profile: Option<&str>,
+        background: bool,
+    ) -> anyhow::Result<serde_json::Value> {
         let mut params = serde_json::Map::new();
+        if background {
+            params.insert("background".into(), true.into());
+        }
         if let Some(cmd) = commandline {
             params.insert("commandline".into(), cmd.into());
         }

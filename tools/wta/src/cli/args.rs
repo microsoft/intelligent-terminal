@@ -403,6 +403,19 @@ pub(crate) enum Command {
         /// Working directory for the delegate agent tab
         #[arg(long)]
         cwd: Option<String>,
+        /// Keep the current sidebar page when selecting the new delegate tab
+        #[arg(long)]
+        preserve_sidebar_view: bool,
+        /// Launch a fresh delegate in a split of this exact pane
+        #[arg(long, requires = "split_session")]
+        split_pane: Option<String>,
+        /// Current session identity used only to validate the split target
+        #[arg(long, requires = "split_pane")]
+        split_session: Option<String>,
+        #[arg(long, default_value = "auto", value_parser = ["auto", "right", "left", "up", "down"])]
+        split_direction: String,
+        #[arg(long, default_value_t = 0.5)]
+        split_size: f64,
     },
     /// Manage the wt-agent-hooks bridge for supported CLI agents
     /// (Copilot / Claude / Gemini). See `agent_hooks_installer` for

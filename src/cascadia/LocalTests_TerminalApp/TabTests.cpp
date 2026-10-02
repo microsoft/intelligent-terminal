@@ -29,6 +29,7 @@
 #include "../inc/AgentPaneBackend.h"
 #include "../UnitTests_Control/MockControlSettings.h"
 #include "CppWinrtTailored.h"
+#include <ScopedResourceLoader.h>
 
 #include <cmath>
 #include <set>
@@ -378,6 +379,10 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabHistoryUnfinishedFirst);
         TEST_METHOD(VerticalTabHistoryStatusStyles);
         TEST_METHOD(VerticalTabHistoryProtocolActivationPreservesView);
+        TEST_METHOD(AgentsDelegateProtocolCreationPreservesSearchOff);
+        TEST_METHOD(AgentsSplitUsesTargetLiveBindingWithoutResume);
+        TEST_METHOD(AgentsPlusLabelsFollowView);
+        TEST_METHOD(AgentsPlusInvalidProfileReportsFailure);
         TEST_METHOD(VerticalTabHistoryForegroundProtocolCreationExitsView);
         TEST_METHOD(VerticalTabHistoryActivationCompletionPreservesView);
         TEST_METHOD(VerticalTabHistoryActivationKeepsRows);
@@ -5096,6 +5101,21 @@ namespace TerminalAppLocalTests
             VERIFY_IS_NULL(stripImpl->AgentTabsHost().Content());
             stripImpl->ProjectionControlsEnabled(true);
 
+            VERIFY_IS_FALSE(strip.SearchActive());
+            stripImpl->OnHeaderToggleClick(nullptr, {});
+            VERIFY_IS_TRUE(historyRequested);
+            VERIFY_IS_TRUE(strip.HistoryActive());
+            VERIFY_IS_FALSE(strip.SearchActive());
+            VERIFY_IS_FALSE(stripImpl->SearchTabsButton().IsChecked().Value());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->SearchPanel().Visibility());
+            stripImpl->OnHeaderToggleClick(nullptr, {});
+            VERIFY_IS_TRUE(historyClosed);
+            VERIFY_IS_FALSE(strip.HistoryActive());
+            VERIFY_IS_FALSE(strip.SearchActive());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->SearchPanel().Visibility());
+            historyRequested = false;
+            historyClosed = false;
+
             strip.SearchActive(true);
             strip.SearchQuery(L"power");
             stripImpl->OnHeaderToggleClick(nullptr, {});
@@ -6057,6 +6077,97 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(1u, summonRequests);
             VERIFY_ARE_EQUAL(1.0, page->_tabs.GetAt(created.TabId).Content().Opacity());
             VERIFY_IS_TRUE(page->_tabs.GetAt(created.TabId).Content().IsHitTestVisible());
+            VERIFY_IS_FALSE(page->_preserveSidebarHistory);
+        });
+    }
+
+    void TabTests::AgentsPlusInvalidProfileReportsFailure()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto tabCount = page->_tabs.Size();
+            page->_tabStrip.HistoryActive(true);
+            const auto profile = page->_SourceTerminalProfileForTab(page->_GetFocusedTabImpl());
+            VERIFY_IS_NOT_NULL(profile);
+            profile.CommandPaletteAgent(L"wsl::copilot");
+            page->_OpenDefaultNewTab();
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryError().empty());
+            VERIFY_ARE_EQUAL(tabCount, page->_tabs.Size());
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryActive());
+        });
+    }
+
+    void TabTests::AgentsPlusLabelsFollowView()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto button = page->_verticalNewTabButton;
+            const auto name = Automation::AutomationProperties::GetName(button);
+            const auto help = Automation::AutomationProperties::GetHelpText(button);
+            const auto tooltip = ToolTipService::GetToolTip(button);
+            page->_tabStrip.HistoryActive(true);
+            const auto agentLabel = ScopedResourceLoader{ L"Microsoft.Terminal.Settings.Model/Resources" }.GetLocalizedString(L"OpenBackgroundAgentCommandKey");
+            VERIFY_ARE_EQUAL(agentLabel, Automation::AutomationProperties::GetName(button));
+            VERIFY_ARE_EQUAL(agentLabel, Automation::AutomationProperties::GetHelpText(button));
+            VERIFY_ARE_EQUAL(agentLabel, winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(button)));
+            page->_tabStrip.HistoryActive(false);
+            VERIFY_ARE_EQUAL(name, Automation::AutomationProperties::GetName(button));
+            VERIFY_ARE_EQUAL(help, Automation::AutomationProperties::GetHelpText(button));
+            VERIFY_IS_TRUE(tooltip == ToolTipService::GetToolTip(button));
+        });
+    }
+
+    void TabTests::AgentsSplitUsesTargetLiveBindingWithoutResume()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto target = page->_GetFocusedTabImpl();
+            const auto paneId = target->GetActivePane()->GetSessionId();
+            VERIFY_IS_FALSE(page->_BuildAgentSplitArguments(target, SplitDirection::Right, 0.5f).has_value());
+            using Page = winrt::TerminalApp::implementation::TerminalPage;
+            page->_paneAgentSessions.insert_or_assign(paneId, Page::_PaneAgentSession{ L"original-sid", L"copilot", L"copilot --resume original-sid" });
+            page->_activeCliAgentPanes.insert_or_assign(paneId, Page::_ActiveCliAgentPane{ L"original-sid" });
+            VERIFY_SUCCEEDED(page->_OpenNewTab(NewTerminalArgs{ 1 }));
+            VERIFY_IS_TRUE(page->_GetFocusedTabImpl() != target);
+            const auto args = page->_BuildAgentSplitArguments(target, SplitDirection::Right, 0.4f);
+            VERIFY_IS_TRUE(args.has_value());
+            if (args)
+            {
+                VERIFY_ARE_NOT_EQUAL(std::wstring::npos, args->find(L"--split-pane"));
+                VERIFY_ARE_NOT_EQUAL(std::wstring::npos, args->find(std::wstring{ winrt::to_hstring(paneId) }));
+                VERIFY_ARE_NOT_EQUAL(std::wstring::npos, args->find(L"--delegate-agent \"copilot\""));
+                VERIFY_ARE_NOT_EQUAL(std::wstring::npos, args->find(L"--split-session \"original-sid\""));
+                VERIFY_ARE_EQUAL(std::wstring::npos, args->find(L"--resume"));
+                VERIFY_ARE_EQUAL(std::wstring::npos, args->find(L"--delegate-source"));
+            }
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"original-sid" }, page->_paneAgentSessions.at(paneId).sessionId);
+            page->_activeCliAgentPanes.erase(paneId);
+            VERIFY_IS_FALSE(page->_BuildAgentSplitArguments(target, SplitDirection::Right, 0.5f).has_value());
+            VERIFY_IS_FALSE(page->_BuildAgentSplitArguments(nullptr, SplitDirection::Right, 0.5f).has_value());
+        });
+    }
+
+    void TabTests::AgentsDelegateProtocolCreationPreservesSearchOff()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        winrt::Windows::Foundation::IAsyncOperation<winrt::Microsoft::Terminal::Protocol::TabCreationResult> create{ nullptr };
+        TestOnUIThread([&]() {
+            page->_tabStrip.HistoryActive(true);
+            VERIFY_IS_FALSE(page->_tabSearchActive);
+            create = page->CreateProtocolTab(NewTerminalArgs{ 1 }, true);
+        });
+        const auto created = create.get();
+        winrt::Windows::Foundation::IAsyncOperation<bool> focus{ nullptr };
+        TestOnUIThread([&]() {
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryActive());
+            VERIFY_IS_FALSE(page->_tabSearchActive);
+            focus = page->FocusProtocolPane(created.SessionId);
+        });
+        VERIFY_IS_TRUE(focus.get());
+        TestOnUIThread([&]() {
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryActive());
+            VERIFY_IS_FALSE(page->_tabSearchActive);
+            VERIFY_ARE_EQUAL(created.SessionId, page->_GetActiveControl().Connection().SessionId());
             VERIFY_IS_FALSE(page->_preserveSidebarHistory);
         });
     }

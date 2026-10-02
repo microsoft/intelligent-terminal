@@ -1,5 +1,6 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
 
+BeforeAll {
 function Initialize-CombinedCleanupNative {
     if ('ItE2ECombinedCleanup.Native' -as [type]) { return }
     Add-Type @'
@@ -135,6 +136,7 @@ function Invoke-CombinedHeadlessRecovery {
     }
     [pscustomobject]@{ headless_ids = @($remaining.Id); activated_pid = $activatedPid; package_process_count = 0 }
 }
+}
 
 BeforeDiscovery {
     if ($env:ITE2E_COMBINED_RETENTION_STATUS -and $env:ITE2E_COMBINED_RETENTION_STATUS -notin @('Idle', 'Working')) {
@@ -254,8 +256,34 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             }
             Wait-Until -TimeoutSec 10 -Because 'the requested sidebar view renders' -Condition {
                 $list = Get-CombinedElement HistoryList
-                [bool]($list -and -not $list.Current.IsOffscreen) -eq $Agents
+                $header = Get-CombinedElement VerticalTabsHeader
+                $expected = if ($Agents) { 'Agents' } else { 'Tabs' }
+                [bool]($list -and -not $list.Current.IsOffscreen) -eq $Agents -and
+                    $header -and $header.Current.Name -eq $expected
             } | Out-Null
+        }
+        function Assert-CombinedSearchState {
+            param([bool]$Active)
+            $button = Get-CombinedElement SearchTabsButton
+            $button | Should -Not -BeNullOrEmpty
+            $toggle = $button.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
+            $expected = if ($Active) { [Windows.Automation.ToggleState]::On } else { [Windows.Automation.ToggleState]::Off }
+            $toggle.Current.ToggleState | Should -Be $expected
+            $search = Get-CombinedElement SearchTextBox
+            [bool]($search -and -not $search.Current.IsOffscreen -and
+                $search.Current.BoundingRectangle.Height -gt 0) | Should -Be $Active
+        }
+        function Open-CombinedSearch {
+            $search = Get-CombinedElement SearchTextBox
+            if (-not $search -or $search.Current.IsOffscreen) {
+                Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+            }
+            Assert-CombinedSearchState $true
+        }
+        function Set-CombinedQuery {
+            param([string]$Value)
+            Open-CombinedSearch
+            Set-UiValue -App $script:app -Selector SearchTextBox -Value $Value | Out-Null
         }
         function Assert-CombinedBounds {
             $upper = (Get-CombinedElement ItemsList).Current.BoundingRectangle
@@ -410,10 +438,11 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
     BeforeEach {
         Set-CombinedView $true
         $search = Get-CombinedElement SearchTextBox
-        if (-not $search -or $search.Current.IsOffscreen) {
+        if ($search -and -not $search.Current.IsOffscreen) {
+            Set-UiValue -App $script:app -Selector SearchTextBox -Value '' | Out-Null
             Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
         }
-        Set-UiValue -App $script:app -Selector SearchTextBox -Value '' | Out-Null
+        Assert-CombinedSearchState $false
         foreach ($id in @('ItemsList', 'HistoryList')) {
             (Get-CombinedScroll $id).SetScrollPercent(
                 [Windows.Automation.ScrollPattern]::NoScroll, 0)
@@ -476,6 +505,11 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
     }
 
     It 'Combined sidebar header switches Tabs and Agents' {
+        Assert-CombinedSearchState $false
+        Set-CombinedView $false
+        Assert-CombinedSearchState $false
+        Set-CombinedView $true
+        Assert-CombinedSearchState $false
         Assert-CombinedBounds
         foreach ($id in @('TabHistoryButton', 'HistoryCloseButton', 'HistorySearchTextBox')) {
             Get-CombinedElement $id | Should -BeNullOrEmpty -Because 'retired independent history controls must not remain'
@@ -489,43 +523,81 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         }).Count | Should -BeGreaterThan 0
         Set-CombinedView $false
         (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
+        Assert-CombinedSearchState $false
         Set-CombinedView $true
         (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
+        Assert-CombinedSearchState $false
         Assert-CombinedBounds
     }
 
     It 'Combined sidebar search filters both sections and preserves the query' {
-        Set-UiValue -App $script:app -Selector SearchTextBox -Value "$script:marker-open-00" | Out-Null
+        Assert-CombinedSearchState $false
+        Open-CombinedSearch
+        (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
+        Set-CombinedQuery "$script:marker-open-00"
         Wait-Until -TimeoutSec 10 -Because 'one open row and no unrelated historical rows remain' -Condition {
             @(Get-CombinedRows ItemsList).Count -eq 1 -and @(Get-CombinedRows HistoryList).Count -eq 0
         } | Out-Null
         (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
         Set-CombinedView $false
+        Assert-CombinedSearchState $true
         (Get-UiValue -App $script:app -Selector SearchTextBox) | Should -Be "$script:marker-open-00"
         Set-CombinedView $true
+        Assert-CombinedSearchState $true
         (Get-UiValue -App $script:app -Selector SearchTextBox) | Should -Be "$script:marker-open-00"
-        Set-UiValue -App $script:app -Selector SearchTextBox -Value "$script:marker-history-00" | Out-Null
+        Set-CombinedQuery "$script:marker-history-00"
         Wait-Until -TimeoutSec 10 -Because 'history-only search leaves Agents active' -Condition {
             @(Get-CombinedRows ItemsList).Count -eq 0 -and @(Get-CombinedRows HistoryList).Count -eq 1
         } | Out-Null
         foreach ($close in @($false, $true)) {
             if ($close) {
                 Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+                $closeClock = [Diagnostics.Stopwatch]::StartNew()
+                $closeSamples = @(foreach ($seconds in @(0.25, 1.0)) {
+                    $remaining = $seconds - $closeClock.Elapsed.TotalSeconds
+                    if ($remaining -gt 0) { Start-Sleep -Milliseconds ([int]($remaining * 1000)) }
+                    $box = Get-CombinedElement SearchTextBox
+                    $toggle = (Get-CombinedElement SearchTabsButton).GetCurrentPattern(
+                        [Windows.Automation.TogglePattern]::Pattern)
+                    $value = if ($box) { $box.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern) } else { $null }
+                    @{
+                        elapsed_seconds = $closeClock.Elapsed.TotalSeconds
+                        toggle = $toggle.Current.ToggleState.ToString()
+                        textbox_present = [bool]$box
+                        query = if ($value) { $value.Current.Value } else { $null }
+                        offscreen = if ($box) { $box.Current.IsOffscreen } else { $null }
+                        height = if ($box) { $box.Current.BoundingRectangle.Height } else { $null }
+                        upper_count = @(Get-CombinedRows ItemsList).Count
+                        history_count = @(Get-CombinedRows HistoryList).Count
+                    }
+                })
+                $closeSamples | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:evidence 'search-close-samples.json')
+                Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidence 'search-close-after-1s.png') | Out-Null
+                Get-UiTree -App $script:app -Depth 8 |
+                    Set-Content -LiteralPath (Join-Path $script:evidence 'search-close-after-1s.tree.txt')
+                Wait-Until -TimeoutSec 5 -Because 'search close animation settles with its textbox hidden' -Condition {
+                    $box = Get-CombinedElement SearchTextBox
+                    -not ($box -and -not $box.Current.IsOffscreen -and $box.Current.BoundingRectangle.Height -gt 0)
+                } | Out-Null
+                Assert-CombinedSearchState $false
             } else {
-                Set-UiValue -App $script:app -Selector SearchTextBox -Value '' | Out-Null
+                Set-CombinedQuery ''
             }
             Wait-Until -TimeoutSec 10 -Because 'clear or close restores both real lists' -Condition {
                 @(Get-CombinedRows ItemsList).Count -gt 1 -and @(Get-CombinedRows HistoryList).Count -gt 1
             } | Out-Null
             (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
             if (-not $close) {
-                Set-UiValue -App $script:app -Selector SearchTextBox -Value 'no-match-combined-sidebar' | Out-Null
+                Set-CombinedQuery 'no-match-combined-sidebar'
                 Wait-Until -TimeoutSec 10 -Condition {
                     @(Get-CombinedRows ItemsList).Count -eq 0 -and @(Get-CombinedRows HistoryList).Count -eq 0
                 } | Out-Null
             }
         }
-        Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+        Set-CombinedView $false
+        Assert-CombinedSearchState $false
+        Set-CombinedView $true
+        Assert-CombinedSearchState $false
     }
 
     It 'Combined sidebar sections scroll independently' {
@@ -604,7 +676,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 $_.session_id -eq $session.AcpSessionId -and $_.status -eq 'Idle'
             }).Count -eq 1
         } | Out-Null
-        Set-UiValue -App $script:app -Selector SearchTextBox -Value "$script:marker-open-00" | Out-Null
+        Set-CombinedQuery "$script:marker-open-00"
         Wait-Until -TimeoutSec 10 -Because 'the unique represented tab is rendered in the upper list' -Condition {
             @(Get-CombinedRows ItemsList).Count -eq 1
         } | Out-Null
@@ -613,7 +685,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         $current = Get-AgentPaneSession -App $script:app -PaneSessionId $session.PaneSessionId
         $current.AcpSessionId | Should -Be $session.AcpSessionId
         $current.HelperProcessId | Should -Be $session.HelperProcessId
-        Set-UiValue -App $script:app -Selector SearchTextBox -Value "$script:marker-represented" | Out-Null
+        Set-CombinedQuery "$script:marker-represented"
         Wait-Until -TimeoutSec 10 -Because 'open Idle agents remain above, not duplicated into History' -Condition {
             @(Get-CombinedRows HistoryList).Count -eq 0 -and
                 @((Get-CombinedSnapshot).sessions | Where-Object {
@@ -628,11 +700,11 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 $_.session_id -eq $script:history[1].sessionId -and $_.title -eq "$script:marker-open-00"
             }).Count -eq 1
         } | Out-Null
-        Set-UiValue -App $script:app -Selector SearchTextBox -Value "$script:marker-open-00" | Out-Null
+        Set-CombinedQuery "$script:marker-open-00"
         Wait-Until -TimeoutSec 15 -Because 'same-title different-identity history remains alongside the unique represented upper row' -Condition {
             @(Get-CombinedRows ItemsList).Count -eq 1 -and @(Get-CombinedRows HistoryList).Count -eq 1
         } | Out-Null
-        Set-UiValue -App $script:app -Selector SearchTextBox -Value "$script:marker-history-00" | Out-Null
+        Set-CombinedQuery "$script:marker-history-00"
         Wait-Until -TimeoutSec 10 -Condition { @(Get-CombinedRows HistoryList).Count -eq 1 } | Out-Null
         (Get-CombinedRowText (Get-CombinedRows HistoryList)[0]) |
             Should -Match ([regex]::Escape("$script:marker-history-00")) -Because 'unrepresented history must not be suppressed'
@@ -666,13 +738,13 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             }).Count -eq 1
         } | Out-Null
         Set-CombinedView $true
-        Set-UiValue -App $script:app -Selector SearchTextBox -Value $nativeTitle | Out-Null
+        Set-CombinedQuery $nativeTitle
         Wait-Until -TimeoutSec 15 -Because 'the explicitly started root identity is represented before detachment' -Condition {
             @(Get-CombinedRows HistoryList).Count -eq 0
         } | Out-Null
         Save-CombinedActionEvidence "before-detach-$Status"
         Set-CombinedView $false
-        Set-UiValue -App $script:app -Selector SearchTextBox -Value '' | Out-Null
+        Set-CombinedQuery ''
         $title = "$script:marker-open-$('{0:D2}' -f $Index)"
         $beforeCount = Get-CombinedAttachedTabCount
         try {
@@ -685,7 +757,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             } | Out-Null
             (Get-WtPaneStatus -App $script:app -SessionId $tab.session_id).pid | Should -Be $shellPid
             Set-CombinedView $true
-            Set-UiValue -App $script:app -Selector SearchTextBox -Value $nativeTitle | Out-Null
+            Set-CombinedQuery $nativeTitle
             try {
                 Wait-Until -TimeoutSec 15 -Because "unattached $Status remains actionable in real History" -Condition {
                     @(Get-CombinedRows HistoryList).Count -eq 1
@@ -709,7 +781,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             $current.HelperProcessId | Should -Be $session.HelperProcessId
             $current.AcpSessionId | Should -Be $session.AcpSessionId
             Set-CombinedView $true
-            Set-UiValue -App $script:app -Selector SearchTextBox -Value $nativeTitle | Out-Null
+            Set-CombinedQuery $nativeTitle
             try {
                 Wait-Until -TimeoutSec 10 -Because 'the reattached identity is represented above rather than duplicated in History' -Condition {
                     @(Get-CombinedRows HistoryList).Count -eq 0
@@ -736,7 +808,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
 
     It 'Combined sidebar reports unavailable history providers without creating a tab' {
         $history = $script:history[0]
-        Set-UiValue -App $script:app -Selector SearchTextBox -Value $history.title | Out-Null
+        Set-CombinedQuery $history.title
         Wait-Until -TimeoutSec 10 -Condition { @(Get-CombinedRows HistoryList).Count -eq 1 } | Out-Null
         $beforeTabs = @(Get-WtTabs -App $script:app -WindowId ([string]$script:app.WindowId))
         Invoke-CombinedHistoryRow
@@ -769,7 +841,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         } | Out-Null
         $shellPid = (Get-WtPaneStatus -App $script:app -SessionId $tab.session_id).pid
         Set-CombinedView $false
-        Set-UiValue -App $script:app -Selector SearchTextBox -Value '' | Out-Null
+        Set-CombinedQuery ''
         $title = "$script:marker-open-02"
         $before = Get-CombinedAttachedTabCount
         try {
@@ -781,7 +853,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 (Get-CombinedAttachedTabCount) -eq $before - 1
             } | Out-Null
             Set-CombinedView $true
-            Set-UiValue -App $script:app -Selector SearchTextBox -Value (Split-Path $script:evidence -Leaf) | Out-Null
+            Set-CombinedQuery (Split-Path $script:evidence -Leaf)
             try {
                 Wait-Until -TimeoutSec 15 -Because 'the detached known-provider row is available for a legitimate History action' -Condition {
                     @(Get-CombinedRows HistoryList).Count -eq 1
