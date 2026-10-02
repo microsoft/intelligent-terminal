@@ -149,6 +149,26 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
             } | Out-Null
             @(Get-ActionTabs | Where-Object tab_id -NotIn $before)[0]
         }
+        function Invoke-ActionRejectedSplit {
+            Initialize-LogOffsets -App $script:app | Out-Null
+            Send-WtWindowKey -App $script:app -Vk 0xBB -Alt -Shift | Out-Null
+            Wait-Until -TimeoutSec 10 -Because 'unidentified split reports a visible failure before retry' -Condition {
+                $message = Get-ActionElement HistoryMessage
+                $message -and -not $message.Current.IsOffscreen -and $message.Current.Name -and
+                    (Get-ItLogText -App $script:app -Name 'terminal-agent-pane.log' -SinceStart) -match
+                        'agent split rejected: missing live identity, unsupported provider, or policy'
+            } | Out-Null
+            Save-ActionUiEvidence "retry-failure-$script:caseIndex"
+            (Get-ActionElement HistoryMessage).Current.Name
+        }
+        function Assert-ActionRetryClearsError {
+            param([string]$PreviousError)
+            Wait-Until -TimeoutSec 10 -Because 'successful retry removes the old error without closing Agents' -Condition {
+                $message = Get-ActionElement HistoryMessage
+                $message -and ($message.Current.IsOffscreen -or $message.Current.Name -ne $PreviousError)
+            } | Out-Null
+            (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
+        }
         function Save-ActionUiEvidence {
             param([string]$Phase)
             $toggle = (Get-ActionElement SearchTabsButton).GetCurrentPattern(
@@ -205,6 +225,10 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
     It 'Agents plus creates a fresh interactive delegate' {
         Set-ActionView $true
         $original = Get-ActivePane -App $script:app
+        $tabsBeforeFailure = @(Get-ActionTabs).Count
+        $retryError = Invoke-ActionRejectedSplit
+        @(Get-ActionTabs).Count | Should -Be $tabsBeforeFailure
+        @(Get-ActionLaunches).Count | Should -Be 0
         $first = Invoke-ActionPlus
         Wait-Until -TimeoutSec 20 -Because 'interactive CLI logs its own launch' -Condition {
             @(Get-ActionLaunches).Count -eq 1
@@ -223,6 +247,7 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         $process.CommandLine | Should -Match ([regex]::Escape($fixture))
         Get-WtCapture -App $script:app -SessionId $one.pane_session_id -MaxLines 30 |
             Should -Match ([regex]::Escape("ITE2E-INTERACTIVE-DELEGATE $script:runId $($one.session_id)"))
+        Assert-ActionRetryClearsError $retryError
         (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
         $second = Invoke-ActionPlus
         Wait-Until -TimeoutSec 20 -Because 'second plus launches a fresh CLI' -Condition {
@@ -312,8 +337,13 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
             $rows.Count -eq 1 -and $rows[0].pane_session_id -eq $tab.session_id -and
                 $rows[0].provider_id -eq 'copilot' -and $rows[0].location -eq 'host'
         } | Out-Null
-        Set-WtPaneFocus -App $script:app -SessionId $tab.session_id | Out-Null
+        Set-WtPaneFocus -App $script:app -SessionId $probe.session_id | Out-Null
         Set-ActionView $true
+        $retryError = Invoke-ActionRejectedSplit
+        @(Get-CanonicalLaunches).Count | Should -Be ($beforeCount + 1)
+        Set-WtPaneFocus -App $script:app -SessionId $tab.session_id | Out-Null
+        (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
+        (Get-ActionElement HistoryMessage).Current.Name | Should -Be $retryError
         Send-WtWindowKey -App $script:app -Vk 0xBB -Alt -Shift | Out-Null
         Wait-Until -TimeoutSec 30 -Because 'UI same-provider split launches the canonical native shim' -Condition {
             @(Get-CanonicalLaunches).Count -eq $beforeCount + 2
@@ -342,6 +372,7 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         $originalProcess.HasExited | Should -BeFalse
         Get-WtCapture -App $script:app -SessionId $fresh.pane_session_id -MaxLines 30 |
             Should -Match ([regex]::Escape("ITE2E-INTERACTIVE-DELEGATE $script:runId $($fresh.session_id)"))
+        Assert-ActionRetryClearsError $retryError
         Send-WtInput -App $script:app -SessionId $tab.session_id -Text "split-alive-$script:runId"
         Send-WtKeys -App $script:app -SessionId $tab.session_id -Keys Enter
         Wait-Until -TimeoutSec 10 -Because 'original CLI remains responsive with unchanged session identity' -Condition {
