@@ -3317,7 +3317,7 @@ mod tests {
     }
 
     #[test]
-    fn delegate_host_split_cwd_wrapper_launches_in_exact_metacharacter_directory() {
+    fn delegate_host_split_cwd_wrapper_launches_in_exact_special_character_directory() {
         let root = std::env::temp_dir().join(format!(
             "wta split cwd ' & ; %WTA_TEST_UNUSED% ! [x] {}",
             uuid::Uuid::new_v4()
