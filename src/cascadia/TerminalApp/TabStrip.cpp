@@ -1638,7 +1638,10 @@ namespace winrt::TerminalApp::implementation
         }
         HistoryActive(true);
         HistoryRequested.raise(*this, nullptr);
-        FocusTabSearch();
+        if (_searchActive)
+        {
+            SearchTextBox().Focus(WUX::FocusState::Programmatic);
+        }
     }
 
     void TabStrip::OnHistoryCloseClick(IInspectable const&, WUX::RoutedEventArgs const&)
