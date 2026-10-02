@@ -751,8 +751,8 @@ function Get-Command {
         });
         std::filesystem::create_directory(repositoryRoot / L".git");
         _WriteFile(repositoryRoot / L".git" / L"HEAD", "ref: refs/heads/literal-branch\n");
-        const auto literalGit = repositoryRoot / L"git[s].cmd";
-        const auto lookalikeGit = repositoryRoot / L"gits.cmd";
+        const auto literalGit = repositoryRoot / L"git[1].cmd";
+        const auto alternateGit = repositoryRoot / L"git1.cmd";
         const auto invocationsFile = repositoryRoot / L"invocations.txt";
         const std::string fakeGit =
             "@echo off\r\necho invoked \"%~f0\" %* >> \"" + invocationsFile.string() +
@@ -760,7 +760,7 @@ function Get-Command {
             "if \"%~1\"==\"status\" echo # branch.head literal-branch\r\n"
             "shift\r\ngoto next\r\n";
         _WriteFile(literalGit, fakeGit);
-        _WriteFile(lookalikeGit, fakeGit);
+        _WriteFile(alternateGit, fakeGit);
         // Windows PowerShell passes the filter regexp's pipe through cmd.exe.
         _WriteFile(repositoryRoot / L"process)$.cmd", "@echo off\r\nexit /b 0\r\n");
         std::filesystem::copy_file(providerRoot / L"provider.ps1", repositoryRoot / L"original-provider.ps1");
@@ -809,7 +809,7 @@ function Get-Command {
         const std::string recorded{ std::istreambuf_iterator<char>{ invocations }, std::istreambuf_iterator<char>{} };
         VERIFY_ARE_NOT_EQUAL(std::string::npos, recorded.find("status"));
         VERIFY_ARE_NOT_EQUAL(std::string::npos, recorded.find(literalGit.string()));
-        VERIFY_ARE_EQUAL(std::string::npos, recorded.find(lookalikeGit.string()));
+        VERIFY_ARE_EQUAL(std::string::npos, recorded.find(alternateGit.string()));
         invocations.close();
         const auto parsed = ParseSnapshot(command.standardOutput, manifest, request.requestId);
         VERIFY_IS_TRUE(static_cast<bool>(parsed));
