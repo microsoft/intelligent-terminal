@@ -24,7 +24,6 @@ namespace Microsoft::Terminal::RichTab::Provider
             L"APPDATA",
             L"HOMEDRIVE",
             L"HOMEPATH",
-            L"INTELLIGENT_TERMINAL_GIT_BINARY",
             L"LOCALAPPDATA",
             L"PATH",
             L"PATHEXT",
@@ -171,6 +170,34 @@ namespace Microsoft::Terminal::RichTab::Provider
                 }
             }
         }
+    }
+
+    std::optional<std::filesystem::path> CommandRunner::ResolveGit()
+    {
+        const auto path = _ReadEnvironment(L"PATH");
+        if (!path || path->empty())
+        {
+            return std::nullopt;
+        }
+
+        // An explicit PATH avoids SearchPath's implicit current-directory search.
+        std::wstring buffer(32768, L'\0');
+        const auto length = SearchPathW(
+            path->c_str(), L"git.exe", nullptr,
+            static_cast<DWORD>(buffer.size()), buffer.data(), nullptr);
+        if (length == 0 || length >= buffer.size())
+        {
+            return std::nullopt;
+        }
+        buffer.resize(length);
+        std::filesystem::path resolved{ buffer };
+        const auto attributes = GetFileAttributesW(resolved.c_str());
+        if (!resolved.is_absolute() || attributes == INVALID_FILE_ATTRIBUTES ||
+            (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0)
+        {
+            return std::nullopt;
+        }
+        return resolved;
     }
 
     std::optional<std::filesystem::path> CommandRunner::ResolvePowerShell()

@@ -48,8 +48,9 @@ namespace TerminalAppUnitTests
         TEST_METHOD(BrokerClearsSuccessfulSnapshotAfterProviderFailure);
         TEST_METHOD(BrokerClearsSnapshotAndSkipsExecutionWhenAllFieldsDeselected);
         TEST_METHOD(GitStatusProviderHandlesMissingGitGracefully);
-        TEST_METHOD(GitStatusProviderHonorsGitBinaryEnvironmentVariable);
-        TEST_METHOD(GitStatusProviderInvokesFirstResolvedApplication);
+        TEST_METHOD(BrokerInjectsImmutableGitAvailabilityIntoRequests);
+        TEST_METHOD(GitStatusProviderKnownMissingGitDoesNotFallBack);
+        TEST_METHOD(GitStatusProviderInvokesLiteralApplicationPath);
         TEST_METHOD(GitStatusProviderSkipsGitWhenNoGitFieldsVisible);
         TEST_METHOD(GitStatusProviderHandlesGitFailureGracefully);
         TEST_METHOD(GitStatusProviderSetsSafeGitConfigEnvironment);
@@ -57,22 +58,6 @@ namespace TerminalAppUnitTests
 
     void RichTabProviderTests::PowerShellProviderPreservesUnicodeAcrossProcessBoundary()
     {
-        constexpr auto gitBinaryEnv = L"INTELLIGENT_TERMINAL_GIT_BINARY";
-        SetLastError(ERROR_SUCCESS);
-        const auto priorLength = GetEnvironmentVariableW(gitBinaryEnv, nullptr, 0);
-        const auto priorMissing = priorLength == 0 && GetLastError() == ERROR_ENVVAR_NOT_FOUND;
-        std::wstring priorValue;
-        if (!priorMissing && priorLength > 0)
-        {
-            priorValue.resize(priorLength);
-            GetEnvironmentVariableW(gitBinaryEnv, priorValue.data(), priorLength);
-            priorValue.resize(wcslen(priorValue.c_str()));
-        }
-        SetEnvironmentVariableW(gitBinaryEnv, nullptr);
-        const auto envCleanup = wil::scope_exit([=]() {
-            SetEnvironmentVariableW(gitBinaryEnv, priorMissing ? nullptr : priorValue.c_str());
-        });
-
         const auto providerRoot = _TestModuleDirectory() / L"RichTabProviders" / L"GitStatus";
         const auto repositoryName =
             L"RichTabUnicode-" + std::to_wstring(GetCurrentProcessId()) + L"-\u7EC8\u7AEF";
@@ -446,24 +431,90 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(std::string{ "invoked\n" "invoked\n" "invoked\n" }, invocationContents());
     }
 
+    void RichTabProviderTests::BrokerInjectsImmutableGitAvailabilityIntoRequests()
+    {
+        const auto providerRoot = std::filesystem::temp_directory_path() /
+                                  (L"RichTabBrokerGit-" + std::to_wstring(GetCurrentProcessId()) +
+                                   L"-" + std::to_wstring(GetTickCount64()));
+        VERIFY_IS_TRUE(std::filesystem::create_directory(providerRoot));
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(providerRoot, error);
+        });
+        const auto gitBinary = providerRoot / L"\u7EC8\u7AEF-git.cmd";
+        VERIFY_IS_TRUE(gitBinary.is_absolute());
+        _WriteFile(gitBinary, "@echo off\r\nexit /b 0\r\n");
+        _WriteFile(
+            providerRoot / L"provider.ps1",
+            "[Console]::InputEncoding = [Text.UTF8Encoding]::new($false)\n"
+            "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)\n"
+            "$request = [Console]::In.ReadToEnd() | ConvertFrom-Json\n"
+            "if (-not $request.params.firstPartyFields.PSObject.Properties['gitBinary']) { throw 'Missing gitBinary' }\n"
+            "$binary = [string]$request.params.firstPartyFields.gitBinary\n"
+            "$branch = if ($binary.Length) { $binary } else { '[missing]' }\n"
+            "@{ protocolVersion = 1; requestId = $request.requestId; result = @{\n"
+            "    fields = @{ branch = $branch }\n"
+            "} } | ConvertTo-Json -Depth 4 -Compress\n");
+
+        Registration provider;
+        provider.manifest.id = "com.microsoft.intelligent-terminal.git-status";
+        provider.manifest.runtime.kind = RuntimeKind::PowerShellV1;
+        provider.manifest.runtime.entrypoint = L"provider.ps1";
+        provider.manifest.extensionRoot = providerRoot;
+        provider.manifest.activationEvents = { ActivationEvent::ManualRefresh };
+        provider.manifest.fields = { { "branch", "Git branch", FieldType::String, true } };
+        provider.enabled = true;
+        provider.integrityValid = true;
+
+        for (const auto& binary : { std::optional<std::filesystem::path>{}, std::optional<std::filesystem::path>{ gitBinary } })
+        {
+            std::vector<BrokerUpdate> updates;
+            ProviderBroker broker{ binary };
+            VERIFY_ARE_EQUAL(binary.has_value(), broker.GitAvailable());
+            const auto utf8 = binary ? binary->u8string() : std::u8string{};
+            const std::string expected{ utf8.begin(), utf8.end() };
+            broker._providers = { provider };
+            auto& session = broker._sessions["broker-git-session"];
+            session.context.sessionId = "broker-git-session";
+            session.context.workingDirectory = providerRoot;
+            session.context.workingDirectoryAuthoritative = true;
+            session.sessionIncarnation = 1;
+            session.contextRevision = 1;
+            session.callbacks.emplace(1, [&](const BrokerUpdate& update) {
+                updates.emplace_back(update);
+            });
+            auto& state = session.providers[provider.manifest.id];
+            for (const auto spoofed : { "caller-override", "changed-override" })
+            {
+                session.context.firstPartyFields = { { "gitBinary", spoofed }, { "agentStatus", "idle" } };
+                // Capture the real refresh request as pending work without racing executor threads.
+                state.running = true;
+                broker._Refresh(session.context.sessionId, ActivationEvent::ManualRefresh, false);
+                VERIFY_IS_TRUE(state.pending.has_value());
+                auto pending = std::move(*state.pending);
+                state.pending.reset();
+                VERIFY_ARE_EQUAL(expected, pending.request.firstPartyFields.at("gitBinary"));
+                VERIFY_ARE_EQUAL(std::string{ "idle" }, pending.request.firstPartyFields.at("agentStatus"));
+                state.runningGeneration = pending.generation;
+                broker._RunProvider(provider, std::move(pending.request), pending.generation);
+                VERIFY_IS_FALSE(state.running);
+                VERIFY_IS_TRUE(broker._executorQueue.empty());
+                VERIFY_IS_TRUE(state.snapshot.has_value());
+                VERIFY_ARE_EQUAL(expected.empty() ? std::string{ "[missing]" } : expected,
+                                 std::get<std::string>(state.snapshot->fields.at("branch")));
+                VERIFY_IS_TRUE(updates.back().diagnostics.empty());
+                if (binary && std::filesystem::exists(*binary))
+                {
+                    VERIFY_IS_TRUE(std::filesystem::remove(*binary));
+                }
+                VERIFY_ARE_EQUAL(binary.has_value(), broker.GitAvailable());
+            }
+            VERIFY_ARE_EQUAL(size_t{ 2 }, updates.size());
+        }
+    }
+
     void RichTabProviderTests::GitStatusProviderHandlesMissingGitGracefully()
     {
-        constexpr auto gitBinaryEnv = L"INTELLIGENT_TERMINAL_GIT_BINARY";
-        SetLastError(ERROR_SUCCESS);
-        const auto priorLength = GetEnvironmentVariableW(gitBinaryEnv, nullptr, 0);
-        const auto priorMissing = priorLength == 0 && GetLastError() == ERROR_ENVVAR_NOT_FOUND;
-        std::wstring priorValue;
-        if (!priorMissing && priorLength > 0)
-        {
-            priorValue.resize(priorLength);
-            GetEnvironmentVariableW(gitBinaryEnv, priorValue.data(), priorLength);
-            priorValue.resize(wcslen(priorValue.c_str()));
-        }
-        SetEnvironmentVariableW(gitBinaryEnv, nullptr);
-        const auto envCleanup = wil::scope_exit([=]() {
-            SetEnvironmentVariableW(gitBinaryEnv, priorMissing ? nullptr : priorValue.c_str());
-        });
-
         const auto providerRoot = _TestModuleDirectory() / L"RichTabProviders" / L"GitStatus";
         const auto repositoryName =
             L"RichTabMissingGit-" + std::to_wstring(GetCurrentProcessId());
@@ -511,7 +562,7 @@ namespace TerminalAppUnitTests
         request.workingDirectory = repositoryRoot;
         request.workingDirectoryAuthoritative = true;
         request.firstPartyFields.emplace("agentStatus", "idle");
-        request.firstPartyFields.emplace("gitBinary", "nonexistent-git-binary.exe");
+        request.firstPartyFields.emplace("gitBinary", (repositoryRoot / L"nonexistent-git.exe").string());
 
         const auto serialized = SerializeRequest(request, manifest);
         VERIFY_IS_TRUE(static_cast<bool>(serialized));
@@ -534,34 +585,16 @@ namespace TerminalAppUnitTests
         VERIFY_IS_TRUE(parsed.value->fields.find("changes") == parsed.value->fields.end());
     }
 
-    void RichTabProviderTests::GitStatusProviderHonorsGitBinaryEnvironmentVariable()
+    void RichTabProviderTests::GitStatusProviderKnownMissingGitDoesNotFallBack()
     {
-        constexpr auto gitBinaryEnv = L"INTELLIGENT_TERMINAL_GIT_BINARY";
-        SetLastError(ERROR_SUCCESS);
-        const auto priorLength = GetEnvironmentVariableW(gitBinaryEnv, nullptr, 0);
-        const auto priorMissing = priorLength == 0 && GetLastError() == ERROR_ENVVAR_NOT_FOUND;
-        std::wstring priorValue;
-        if (!priorMissing && priorLength > 0)
-        {
-            priorValue.resize(priorLength);
-            GetEnvironmentVariableW(gitBinaryEnv, priorValue.data(), priorLength);
-            priorValue.resize(wcslen(priorValue.c_str()));
-        }
-
         const auto providerRoot = _TestModuleDirectory() / L"RichTabProviders" / L"GitStatus";
         const auto repositoryName =
-            L"RichTabEnvGit-" + std::to_wstring(GetCurrentProcessId());
+            L"RichTabKnownMissingGit-" + std::to_wstring(GetCurrentProcessId());
         const auto repositoryRoot = std::filesystem::temp_directory_path() / repositoryName;
         std::filesystem::remove_all(repositoryRoot);
         const auto cleanup = wil::scope_exit([&]() {
             std::error_code error;
             std::filesystem::remove_all(repositoryRoot, error);
-        });
-
-        // Set environment variable to a nonexistent binary to prove the environment block passes it to provider.ps1
-        SetEnvironmentVariableW(gitBinaryEnv, L"nonexistent-env-git.exe");
-        const auto envCleanup = wil::scope_exit([=]() {
-            SetEnvironmentVariableW(gitBinaryEnv, priorMissing ? nullptr : priorValue.c_str());
         });
 
         const auto gitDirectory = repositoryRoot / L".git";
@@ -578,11 +611,37 @@ namespace TerminalAppUnitTests
             gitDirectory / L"HEAD",
             "ref: refs/heads/main\n");
 
+        wchar_t systemDirectory[MAX_PATH]{};
+        const auto length = GetSystemDirectoryW(systemDirectory, MAX_PATH);
+        VERIFY_IS_TRUE(length > 0 && length < MAX_PATH);
+        std::filesystem::copy_file(std::filesystem::path{ systemDirectory } / L"cmd.exe", repositoryRoot / L"git.exe");
+        _WriteFile(repositoryRoot / L"recording-git.ps1",
+                   "$global:LASTEXITCODE = 0\n"
+                   "if ($args -contains 'status') { '# branch.head fallback-branch' }\n");
+        std::filesystem::copy_file(providerRoot / L"provider.ps1", repositoryRoot / L"original-provider.ps1");
+        _WriteFile(repositoryRoot / L"provider.ps1", R"(
+$env:PATH = "$PSScriptRoot;$env:PATH"
+if (-not (Microsoft.PowerShell.Core\Get-Command git.exe -CommandType Application -ErrorAction Stop)) {
+    throw 'Expected Git application on child PATH'
+}
+function Get-Command {
+    param($Name, $CommandType, $ErrorAction)
+    if ($Name -eq 'git.exe') {
+        [IO.File]::WriteAllText((Join-Path $PSScriptRoot 'fallback.txt'), 'discovered')
+        [pscustomobject]@{ Source = (Join-Path $PSScriptRoot 'recording-git.ps1') }
+    }
+    else {
+        Microsoft.PowerShell.Core\Get-Command $Name -CommandType $CommandType -ErrorAction $ErrorAction
+    }
+}
+. (Join-Path $PSScriptRoot 'original-provider.ps1')
+)");
+
         Manifest manifest;
         manifest.id = "com.microsoft.intelligent-terminal.git-status";
         manifest.runtime.kind = RuntimeKind::PowerShellV1;
         manifest.runtime.entrypoint = L"provider.ps1";
-        manifest.extensionRoot = providerRoot;
+        manifest.extensionRoot = repositoryRoot;
         manifest.activationEvents.emplace_back(ActivationEvent::ManualRefresh);
         manifest.fields = {
             { "agentStatus", "Agent status", FieldType::String, true },
@@ -593,7 +652,7 @@ namespace TerminalAppUnitTests
         };
 
         Request request;
-        request.requestId = "env-git-test";
+        request.requestId = "known-missing-git-test";
         request.providerId = manifest.id;
         request.processEpoch = 1;
         request.sessionId = "session";
@@ -601,7 +660,7 @@ namespace TerminalAppUnitTests
         request.workingDirectory = repositoryRoot;
         request.workingDirectoryAuthoritative = true;
         request.firstPartyFields.emplace("agentStatus", "idle");
-        // No firstPartyFields gitBinary set, so it relies on the environment variable override
+        request.firstPartyFields.emplace("gitBinary", "");
 
         const auto serialized = SerializeRequest(request, manifest);
         VERIFY_IS_TRUE(static_cast<bool>(serialized));
@@ -619,18 +678,29 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(
             repositoryRoot.string(),
             std::get<std::string>(parsed.value->fields.at("workingDirectory")));
-        // Because INTELLIGENT_TERMINAL_GIT_BINARY was passed through the sanitized environment block,
-        // provider.ps1 used nonexistent-env-git.exe and returned empty git fields without failing.
+        VERIFY_IS_FALSE(std::filesystem::exists(repositoryRoot / L"fallback.txt"));
         VERIFY_IS_TRUE(parsed.value->fields.find("repository") == parsed.value->fields.end());
         VERIFY_IS_TRUE(parsed.value->fields.find("branch") == parsed.value->fields.end());
         VERIFY_IS_TRUE(parsed.value->fields.find("changes") == parsed.value->fields.end());
+
+        // An absent parameter retains standalone discovery; this also proves the probe is live.
+        request.firstPartyFields.erase("gitBinary");
+        const auto legacyRequest = SerializeRequest(request, manifest);
+        VERIFY_IS_TRUE(static_cast<bool>(legacyRequest));
+        const auto legacy = CommandRunner{}.Run(manifest, *legacyRequest.value, std::chrono::seconds{ 10 });
+        VERIFY_IS_TRUE(legacy.status == CommandResult::Status::Completed);
+        VERIFY_ARE_EQUAL(0u, legacy.exitCode);
+        VERIFY_IS_TRUE(std::filesystem::exists(repositoryRoot / L"fallback.txt"));
+        const auto legacySnapshot = ParseSnapshot(legacy.standardOutput, manifest, request.requestId);
+        VERIFY_IS_TRUE(static_cast<bool>(legacySnapshot));
+        VERIFY_ARE_EQUAL(std::string{ "fallback-branch" }, std::get<std::string>(legacySnapshot.value->fields.at("branch")));
     }
 
-    void RichTabProviderTests::GitStatusProviderInvokesFirstResolvedApplication()
+    void RichTabProviderTests::GitStatusProviderInvokesLiteralApplicationPath()
     {
         const auto providerRoot = _TestModuleDirectory() / L"RichTabProviders" / L"GitStatus";
         const auto repositoryRoot = std::filesystem::temp_directory_path() /
-                                    (L"RichTabScalarGit-" + std::to_wstring(GetCurrentProcessId()) +
+                                    (L"RichTabLiteralGit-" + std::to_wstring(GetCurrentProcessId()) +
                                      L"-" + std::to_wstring(GetTickCount64()));
         VERIFY_IS_TRUE(std::filesystem::create_directory(repositoryRoot));
         const auto cleanup = wil::scope_exit([&]() {
@@ -638,31 +708,26 @@ namespace TerminalAppUnitTests
             std::filesystem::remove_all(repositoryRoot, error);
         });
         std::filesystem::create_directory(repositoryRoot / L".git");
-        _WriteFile(repositoryRoot / L".git" / L"HEAD", "ref: refs/heads/scalar-branch\n");
-        _WriteFile(repositoryRoot / L"fake-git.ps1", R"(
-[IO.File]::AppendAllText((Join-Path $PSScriptRoot 'invocations.txt'), "invoked $args`n")
-$global:LASTEXITCODE = 0
-if ($args -contains 'status') {
-    '# branch.head scalar-branch'
-}
-)");
+        _WriteFile(repositoryRoot / L".git" / L"HEAD", "ref: refs/heads/literal-branch\n");
+        const auto literalGit = repositoryRoot / L"git[s].cmd";
+        const auto lookalikeGit = repositoryRoot / L"gits.cmd";
+        const auto invocationsFile = repositoryRoot / L"invocations.txt";
+        const std::string fakeGit =
+            "@echo off\r\necho invoked \"%~f0\" %* >> \"" + invocationsFile.string() +
+            "\"\r\n:next\r\nif \"%~1\"==\"\" exit /b 0\r\n"
+            "if \"%~1\"==\"status\" echo # branch.head literal-branch\r\n"
+            "shift\r\ngoto next\r\n";
+        _WriteFile(literalGit, fakeGit);
+        _WriteFile(lookalikeGit, fakeGit);
+        // Windows PowerShell passes the filter regexp's pipe through cmd.exe.
+        _WriteFile(repositoryRoot / L"process)$.cmd", "@echo off\r\nexit /b 0\r\n");
         std::filesystem::copy_file(providerRoot / L"provider.ps1", repositoryRoot / L"original-provider.ps1");
         _WriteFile(repositoryRoot / L"provider.ps1", R"(
-$fakeGit = Join-Path $PSScriptRoot 'fake-git.ps1'
+$env:PATH = "$PSScriptRoot;$env:PATH"
 function Get-Command {
-    param($Name, $CommandType, $ErrorAction)
-    if ($Name -eq $fakeGit) {
-        if ($CommandType -ne 'Application') { throw 'Expected Application discovery' }
-        [IO.File]::WriteAllText((Join-Path $PSScriptRoot 'discovery.txt'), '2 Applications')
-        $resolved = [pscustomobject]@{ Source = $fakeGit; CommandType = [System.Management.Automation.CommandTypes]::Application }
-        $resolved
-        $resolved
-    }
-    else {
-        Microsoft.PowerShell.Core\Get-Command $Name -CommandType $CommandType -ErrorAction $ErrorAction
-    }
+    [IO.File]::WriteAllText((Join-Path $PSScriptRoot 'discovery.txt'), 'unexpected discovery')
+    Microsoft.PowerShell.Core\Get-Command @args
 }
-$env:INTELLIGENT_TERMINAL_GIT_BINARY = $fakeGit
 . (Join-Path $PSScriptRoot 'original-provider.ps1')
 )");
 
@@ -680,7 +745,7 @@ $env:INTELLIGENT_TERMINAL_GIT_BINARY = $fakeGit
         };
 
         Request request;
-        request.requestId = "scalar-git-test";
+        request.requestId = "literal-git-test";
         request.providerId = manifest.id;
         request.processEpoch = 1;
         request.sessionId = "session";
@@ -688,6 +753,7 @@ $env:INTELLIGENT_TERMINAL_GIT_BINARY = $fakeGit
         request.workingDirectory = repositoryRoot;
         request.workingDirectoryAuthoritative = true;
         request.visibleFields = { "repository", "branch" };
+        request.firstPartyFields.emplace("gitBinary", literalGit.string());
 
         const auto serialized = SerializeRequest(request, manifest);
         VERIFY_IS_TRUE(static_cast<bool>(serialized));
@@ -695,16 +761,36 @@ $env:INTELLIGENT_TERMINAL_GIT_BINARY = $fakeGit
         VERIFY_IS_TRUE(command.status == CommandResult::Status::Completed);
         VERIFY_ARE_EQUAL(0u, command.exitCode);
         VERIFY_IS_TRUE(command.standardError.empty());
-        VERIFY_IS_TRUE(std::filesystem::exists(repositoryRoot / L"discovery.txt"));
-        std::ifstream invocations{ repositoryRoot / L"invocations.txt" };
+        VERIFY_IS_FALSE(std::filesystem::exists(repositoryRoot / L"discovery.txt"));
+        std::ifstream invocations{ invocationsFile };
         VERIFY_IS_TRUE(invocations.is_open());
         const std::string recorded{ std::istreambuf_iterator<char>{ invocations }, std::istreambuf_iterator<char>{} };
         VERIFY_ARE_NOT_EQUAL(std::string::npos, recorded.find("status"));
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, recorded.find(literalGit.string()));
+        VERIFY_ARE_EQUAL(std::string::npos, recorded.find(lookalikeGit.string()));
         invocations.close();
         const auto parsed = ParseSnapshot(command.standardOutput, manifest, request.requestId);
         VERIFY_IS_TRUE(static_cast<bool>(parsed));
         VERIFY_ARE_EQUAL(repositoryRoot.filename().string(), std::get<std::string>(parsed.value->fields.at("repository")));
-        VERIFY_ARE_EQUAL(std::string{ "scalar-branch" }, std::get<std::string>(parsed.value->fields.at("branch")));
+        VERIFY_ARE_EQUAL(std::string{ "literal-branch" }, std::get<std::string>(parsed.value->fields.at("branch")));
+
+        VERIFY_IS_TRUE(std::filesystem::remove(literalGit));
+        VERIFY_IS_TRUE(std::filesystem::remove(invocationsFile));
+        request.requestId = "missing-literal-git-test";
+        const auto missingRequest = SerializeRequest(request, manifest);
+        VERIFY_IS_TRUE(static_cast<bool>(missingRequest));
+        const auto missing = CommandRunner{}.Run(manifest, *missingRequest.value, std::chrono::seconds{ 10 });
+        VERIFY_IS_TRUE(missing.status == CommandResult::Status::Completed);
+        VERIFY_ARE_EQUAL(0u, missing.exitCode);
+        VERIFY_IS_TRUE(missing.standardError.empty());
+        VERIFY_IS_FALSE(std::filesystem::exists(invocationsFile));
+        VERIFY_IS_FALSE(std::filesystem::exists(repositoryRoot / L"discovery.txt"));
+        const auto missingSnapshot = ParseSnapshot(missing.standardOutput, manifest, request.requestId);
+        VERIFY_IS_TRUE(static_cast<bool>(missingSnapshot));
+        VERIFY_ARE_EQUAL(repositoryRoot.string(), std::get<std::string>(missingSnapshot.value->fields.at("workingDirectory")));
+        VERIFY_IS_TRUE(missingSnapshot.value->fields.find("repository") == missingSnapshot.value->fields.end());
+        VERIFY_IS_TRUE(missingSnapshot.value->fields.find("branch") == missingSnapshot.value->fields.end());
+        VERIFY_IS_TRUE(missingSnapshot.value->fields.find("changes") == missingSnapshot.value->fields.end());
     }
 
     void RichTabProviderTests::GitStatusProviderSkipsGitWhenNoGitFieldsVisible()
@@ -748,7 +834,6 @@ function Get-Command {
     [IO.File]::AppendAllText($probeFile, "Get-Command $($args[0])`n")
     Microsoft.PowerShell.Core\Get-Command @args
 }
-$env:INTELLIGENT_TERMINAL_GIT_BINARY = '   '
 . (Join-Path $PSScriptRoot 'original-provider.ps1')
 )");
 
@@ -838,7 +923,7 @@ $env:INTELLIGENT_TERMINAL_GIT_BINARY = '   '
             {
                 VERIFY_ARE_NOT_EQUAL(std::string::npos, recorded.find(probe));
             }
-            VERIFY_ARE_NOT_EQUAL(std::string::npos, recorded.find("Get-Command " + recordingGitScript.string() + "\n"));
+            VERIFY_ARE_EQUAL(std::string::npos, recorded.find("Get-Command "));
             probes.close();
             VERIFY_IS_TRUE(std::filesystem::remove(probeFile));
             VERIFY_IS_TRUE(std::filesystem::remove(sentinelFile));
@@ -847,22 +932,6 @@ $env:INTELLIGENT_TERMINAL_GIT_BINARY = '   '
 
     void RichTabProviderTests::GitStatusProviderHandlesGitFailureGracefully()
     {
-        constexpr auto gitBinaryEnv = L"INTELLIGENT_TERMINAL_GIT_BINARY";
-        SetLastError(ERROR_SUCCESS);
-        const auto priorLength = GetEnvironmentVariableW(gitBinaryEnv, nullptr, 0);
-        const auto priorMissing = priorLength == 0 && GetLastError() == ERROR_ENVVAR_NOT_FOUND;
-        std::wstring priorValue;
-        if (!priorMissing && priorLength > 0)
-        {
-            priorValue.resize(priorLength);
-            GetEnvironmentVariableW(gitBinaryEnv, priorValue.data(), priorLength);
-            priorValue.resize(wcslen(priorValue.c_str()));
-        }
-        SetEnvironmentVariableW(gitBinaryEnv, nullptr);
-        const auto envCleanup = wil::scope_exit([=]() {
-            SetEnvironmentVariableW(gitBinaryEnv, priorMissing ? nullptr : priorValue.c_str());
-        });
-
         const auto providerRoot = _TestModuleDirectory() / L"RichTabProviders" / L"GitStatus";
         const auto repositoryName =
             L"RichTabGitFail-" + std::to_wstring(GetCurrentProcessId());
@@ -939,22 +1008,6 @@ $env:INTELLIGENT_TERMINAL_GIT_BINARY = '   '
 
     void RichTabProviderTests::GitStatusProviderSetsSafeGitConfigEnvironment()
     {
-        constexpr auto gitBinaryEnv = L"INTELLIGENT_TERMINAL_GIT_BINARY";
-        SetLastError(ERROR_SUCCESS);
-        const auto priorLength = GetEnvironmentVariableW(gitBinaryEnv, nullptr, 0);
-        const auto priorMissing = priorLength == 0 && GetLastError() == ERROR_ENVVAR_NOT_FOUND;
-        std::wstring priorValue;
-        if (!priorMissing && priorLength > 0)
-        {
-            priorValue.resize(priorLength);
-            GetEnvironmentVariableW(gitBinaryEnv, priorValue.data(), priorLength);
-            priorValue.resize(wcslen(priorValue.c_str()));
-        }
-        SetEnvironmentVariableW(gitBinaryEnv, nullptr);
-        const auto envCleanup = wil::scope_exit([=]() {
-            SetEnvironmentVariableW(gitBinaryEnv, priorMissing ? nullptr : priorValue.c_str());
-        });
-
         const auto providerRoot = _TestModuleDirectory() / L"RichTabProviders" / L"GitStatus";
         const auto repositoryName =
             L"RichTabGitEnv-" + std::to_wstring(GetCurrentProcessId());

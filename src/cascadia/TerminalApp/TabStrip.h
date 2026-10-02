@@ -5,8 +5,6 @@
 
 #pragma once
 
-#include <filesystem>
-
 #include "winrt/Microsoft.UI.Xaml.Controls.h"
 #include "winrt/Windows.UI.ViewManagement.h"
 
@@ -521,8 +519,6 @@ namespace winrt::TerminalApp::implementation
         void _applyHistoryProjection(bool preserveScroll = false);
         void _updateHistoryVisualState();
         uint32_t _richTabMetadataSelectionCount() const noexcept;
-        static bool _isGitInstalled() noexcept;
-        static bool _isGitInstalled(const std::filesystem::path& providerRoot) noexcept;
         void _updateRichTabMetadataSelectionState();
         void _setHighContrastMode(bool enabled);
         void _refreshDisplayItemVisuals(TerminalApp::TabStripDisplayItem const& display);

@@ -247,21 +247,22 @@ try {
                     $response = New-EmptyResponse $requestId $baseFields
                 }
                 else {
-                    $gitBinary = if (-not [string]::IsNullOrWhiteSpace($env:INTELLIGENT_TERMINAL_GIT_BINARY)) {
-                        $env:INTELLIGENT_TERMINAL_GIT_BINARY
-                    }
-                    elseif ($request.params.firstPartyFields -and
-                            $request.params.firstPartyFields.PSObject.Properties['gitBinary'] -and
-                            -not [string]::IsNullOrWhiteSpace([string]$request.params.firstPartyFields.gitBinary)) {
-                        [string]$request.params.firstPartyFields.gitBinary
+                    $gitPath = if ($request.params.firstPartyFields -and
+                            $request.params.firstPartyFields.PSObject.Properties['gitBinary']) {
+                        $gitBinary = [string]$request.params.firstPartyFields.gitBinary
+                        if (-not [string]::IsNullOrWhiteSpace($gitBinary) -and
+                            [IO.Path]::GetPathRoot($gitBinary).Length -gt 2 -and
+                            (Test-Path -LiteralPath $gitBinary -PathType Leaf)) {
+                            # The call operator also expands wildcard characters in command paths.
+                            [System.Management.Automation.WildcardPattern]::Escape($gitBinary)
+                        }
                     }
                     else {
-                        'git.exe'
+                        $legacyGit = Get-Command git.exe -CommandType Application -ErrorAction SilentlyContinue |
+                            Select-Object -First 1
+                        if ($legacyGit) { $legacyGit.Source }
                     }
-
-                    $git = Get-Command $gitBinary -CommandType Application -ErrorAction SilentlyContinue |
-                        Select-Object -First 1
-                    if (-not $git) {
+                    if (-not $gitPath) {
                         $response = New-EmptyResponse $requestId $baseFields
                     }
                     else {
@@ -303,7 +304,7 @@ try {
                         )
                         try {
                             $localAutoCrlf = @(
-                                & $git.Source @gitOptions config --local --get core.autocrlf 2>$null
+                                & $gitPath @gitOptions config --local --get core.autocrlf 2>$null
                             ) | Select-Object -Last 1
                             $autoCrlfExitCode = $LASTEXITCODE
                             if ($autoCrlfExitCode -ne 0 -and $autoCrlfExitCode -ne 1) {
@@ -314,7 +315,7 @@ try {
                             }
                             $gitOptions += @('-c', "core.autocrlf=$localAutoCrlf")
                             $filters = @(
-                                & $git.Source @gitOptions config --local --get-regexp `
+                                & $gitPath @gitOptions config --local --get-regexp `
                                     '^filter\..*\.(clean|process)$' 2>$null
                             )
                             $filterExitCode = $LASTEXITCODE
@@ -337,7 +338,7 @@ try {
                             }
 
                             $lines = @(
-                                & $git.Source @gitOptions status `
+                                & $gitPath @gitOptions status `
                                     --porcelain=v2 --branch --untracked-files=normal --ignore-submodules=all 2>$null
                             )
                             if ($LASTEXITCODE -ne 0) {
@@ -375,22 +376,22 @@ try {
                             }
                             $repositoryName = Split-Path -Leaf $root
 
-                            & $git.Source @gitOptions rev-parse --verify --quiet HEAD 2>$null | Out-Null
+                            & $gitPath @gitOptions rev-parse --verify --quiet HEAD 2>$null | Out-Null
                             $headExitCode = $LASTEXITCODE
                             if ($headExitCode -eq 0) {
                                 $numstatLines = @(
-                                    & $git.Source @gitOptions diff `
+                                    & $gitPath @gitOptions diff `
                                         --numstat --no-renames --no-ext-diff --no-textconv HEAD -- 2>$null
                                 )
                             }
                             elseif ($headExitCode -eq 1 -or $headExitCode -eq 128) {
                                 $cachedNumstatLines = @(
-                                    & $git.Source @gitOptions diff `
+                                    & $gitPath @gitOptions diff `
                                         --cached --numstat --no-renames --no-ext-diff --no-textconv -- 2>$null
                                 )
                                 $cachedNumstatExitCode = $LASTEXITCODE
                                 $unstagedNumstatLines = @(
-                                    & $git.Source @gitOptions diff `
+                                    & $gitPath @gitOptions diff `
                                         --numstat --no-renames --no-ext-diff --no-textconv -- 2>$null
                                 )
                                 $unstagedNumstatExitCode = $LASTEXITCODE

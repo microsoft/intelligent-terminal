@@ -98,7 +98,13 @@ namespace Microsoft::Terminal::RichTab::Provider
         return instance;
     }
 
-    ProviderBroker::ProviderBroker()
+    ProviderBroker::ProviderBroker() :
+        ProviderBroker{ CommandRunner::ResolveGit() }
+    {
+    }
+
+    ProviderBroker::ProviderBroker(std::optional<std::filesystem::path> gitBinary) :
+        _gitBinary{ std::move(gitBinary) }
     {
         if (BCryptGenRandom(
                 nullptr,
@@ -171,6 +177,11 @@ namespace Microsoft::Terminal::RichTab::Provider
         return _processEpoch;
     }
 
+    bool ProviderBroker::GitAvailable() const noexcept
+    {
+        return _gitBinary.has_value();
+    }
+
     void ProviderBroker::ReloadProviders()
     {
         auto builtIns = BuiltInProviderCatalog::Load(BuiltInProviderCatalog::PackageRoot());
@@ -219,6 +230,7 @@ namespace Microsoft::Terminal::RichTab::Provider
     void ProviderBroker::SetVisibleFields(std::string_view providerId, std::vector<std::string> fields)
     {
         std::vector<std::pair<Callback, BrokerUpdate>> notifications;
+        std::vector<std::string> sessionIdsToRefresh;
         {
             std::lock_guard lock{ _mutex };
             const auto provider = std::find_if(_providers.begin(), _providers.end(), [&](const auto& candidate) {
@@ -257,6 +269,10 @@ namespace Microsoft::Terminal::RichTab::Provider
 
             for (auto& [sessionId, session] : _sessions)
             {
+                if (!session.callbacks.empty())
+                {
+                    sessionIdsToRefresh.push_back(sessionId);
+                }
                 if (emptySelection)
                 {
                     if (const auto state = session.providers.find(provider->manifest.id); state != session.providers.end())
@@ -280,17 +296,6 @@ namespace Microsoft::Terminal::RichTab::Provider
             callback(update);
         }
 
-        std::vector<std::string> sessionIdsToRefresh;
-        {
-            std::lock_guard lock{ _mutex };
-            for (const auto& [sessionId, session] : _sessions)
-            {
-                if (!session.callbacks.empty())
-                {
-                    sessionIdsToRefresh.push_back(sessionId);
-                }
-            }
-        }
         for (const auto& sid : sessionIdsToRefresh)
         {
             _Refresh(sid, ActivationEvent::ManualRefresh, false);
@@ -600,14 +605,6 @@ namespace Microsoft::Terminal::RichTab::Provider
                 const auto selected = _visibleFields.find(provider.manifest.id);
                 if (selected != _visibleFields.end())
                 {
-                    if (selected->second.empty())
-                    {
-                        auto& providerState = session.providers[provider.manifest.id];
-                        providerState.generation = _nextGeneration++;
-                        providerState.pending.reset();
-                        providerState.snapshot.reset();
-                        continue;
-                    }
                     visibleFieldsForProvider.assign(selected->second.begin(), selected->second.end());
                 }
                 else
@@ -619,17 +616,16 @@ namespace Microsoft::Terminal::RichTab::Provider
                             visibleFieldsForProvider.emplace_back(field.id);
                         }
                     }
-                    if (visibleFieldsForProvider.empty())
-                    {
-                        auto& providerState = session.providers[provider.manifest.id];
-                        providerState.generation = _nextGeneration++;
-                        providerState.pending.reset();
-                        providerState.snapshot.reset();
-                        continue;
-                    }
                 }
 
                 auto& providerState = session.providers[provider.manifest.id];
+                if (visibleFieldsForProvider.empty())
+                {
+                    providerState.generation = _nextGeneration++;
+                    providerState.pending.reset();
+                    providerState.snapshot.reset();
+                    continue;
+                }
                 const auto generation = _nextGeneration++;
                 providerState.generation = generation;
                 Request request;
@@ -644,6 +640,11 @@ namespace Microsoft::Terminal::RichTab::Provider
                 request.contextRevision = session.contextRevision;
                 request.shellType = session.context.shellType;
                 request.firstPartyFields = session.context.firstPartyFields;
+                if (provider.manifest.id == "com.microsoft.intelligent-terminal.git-status")
+                {
+                    const auto binary = _gitBinary ? _gitBinary->u8string() : std::u8string{};
+                    request.firstPartyFields.insert_or_assign("gitBinary", std::string{ binary.begin(), binary.end() });
+                }
                 request.visibleFields = std::move(visibleFieldsForProvider);
                 if (providerState.running)
                 {

@@ -81,6 +81,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::optional<std::vector<std::string>> VisibleFields(std::string_view providerId) const;
 
         uint64_t ProcessEpoch() const noexcept;
+        bool GitAvailable() const noexcept;
 
         static std::optional<Presentation> ComposePresentation(
             const std::vector<Registration>& providers,
@@ -118,6 +119,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         };
 
         ProviderBroker();
+        explicit ProviderBroker(std::optional<std::filesystem::path> gitBinary);
         ~ProviderBroker();
 
         void _Refresh(
@@ -142,6 +144,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::vector<std::thread> _executorWorkers;
         bool _executorStopping{ false };
         CommandRunner _runner;
+        const std::optional<std::filesystem::path> _gitBinary;
         std::vector<Registration> _providers;
         VisibleFieldMap _visibleFields;
         FieldDisplayNameMap _fieldDisplayNames;

@@ -20,7 +20,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         };
 
         const std::array builtInProviders{
-            BuiltInProvider{ BuiltInProviderCatalog::GitStatusRoot({}), "com.microsoft.intelligent-terminal.git-status" },
+            BuiltInProvider{ std::filesystem::path{ L"RichTabProviders" } / L"GitStatus", "com.microsoft.intelligent-terminal.git-status" },
         };
 
         std::optional<std::string> _ReadManifest(
@@ -73,11 +73,6 @@ namespace Microsoft::Terminal::RichTab::Provider
             }
             path.resize(path.size() * 2);
         }
-    }
-
-    std::filesystem::path BuiltInProviderCatalog::GitStatusRoot(const std::filesystem::path& packageRoot)
-    {
-        return packageRoot / L"RichTabProviders" / L"GitStatus";
     }
 
     RegistryResult<std::vector<Registration>> BuiltInProviderCatalog::Load(
