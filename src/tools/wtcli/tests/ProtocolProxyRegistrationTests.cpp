@@ -3,11 +3,69 @@
 
 // Standalone, unpackaged test executable. No Terminal activation or registration
 // changes outside this process. argv[1] is an absolute path to a built proxy DLL.
-#include "../../../cascadia/inc/TerminalProtocolProxyRegistration.h"
+#include <windows.h>
+#include <appmodel.h>
+#include <objbase.h>
+#include <objidl.h>
+#include <string>
+#include <wil/stl.h>
+#include <wil/win32_helpers.h>
+#include <wil/resource.h>
+#include <wil/result.h>
+#include <wrl/client.h>
 #include <atomic>
 #include <cstdio>
 #include <thread>
 #include <wrl/implements.h>
+
+namespace PackageFixture
+{
+    static bool enabled = false;
+    static std::wstring root;
+    static LONG identityError = ERROR_SUCCESS;
+    static LONG probeError = ERROR_SUCCESS;
+    static LONG readError = ERROR_SUCCESS;
+    static bool invalidLength = false;
+
+    static LONG WINAPI FullName(UINT32* length, PWSTR value)
+    {
+        if (!enabled)
+        {
+            return GetCurrentPackageFullName(length, value);
+        }
+        *length = 16;
+        return identityError ? identityError : ERROR_INSUFFICIENT_BUFFER;
+    }
+
+    static LONG WINAPI Path(UINT32* length, PWSTR value)
+    {
+        if (!enabled)
+        {
+            return GetCurrentPackagePath(length, value);
+        }
+        if (const auto error = value ? readError : probeError)
+        {
+            return error;
+        }
+        const auto required = static_cast<UINT32>(root.size() + 1);
+        if (!value || *length < required)
+        {
+            *length = invalidLength ? 1 : required;
+            return ERROR_INSUFFICIENT_BUFFER;
+        }
+        wcscpy_s(value, *length, root.c_str());
+        *length = required;
+        return ERROR_SUCCESS;
+    }
+}
+
+// Substitute only the package API boundary. Path construction, sibling checks,
+// LoadLibraryEx, and module verification are the actual production code.
+#define GetCurrentPackageFullName PackageFixture::FullName
+#define GetCurrentPackagePath PackageFixture::Path
+#include "../../../cascadia/inc/TerminalProtocolProxyRegistration.h"
+#undef GetCurrentPackagePath
+#undef GetCurrentPackageFullName
 
 namespace Protocol = Microsoft::Terminal::Protocol;
 
@@ -47,6 +105,43 @@ try
         THROW_LAST_ERROR_IF_NULL(output);
         Check(Protocol::LoadAndVerifyLocalProxyDll(output) == HRESULT_FROM_WIN32(APPMODEL_ERROR_NO_PACKAGE), "Unpackaged production must fail before loading");
         Check(!output, "Failure must clear the output handle");
+    }
+
+    {
+        PackageFixture::enabled = true;
+        const auto resetFixture = wil::scope_exit([]() noexcept { PackageFixture::enabled = false; });
+        const auto localProxy = Protocol::details::GetExecutableLocalProxyPath();
+        PackageFixture::root = localProxy.substr(0, localProxy.find_last_of(L'\\'));
+        auto verifyLoad = [&](const HRESULT expected) {
+            wil::unique_hmodule output{ LoadLibraryExW(L"version.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32) };
+            THROW_LAST_ERROR_IF_NULL(output);
+            Check(Protocol::LoadAndVerifyLocalProxyDll(output) == expected, "Package fixture loader result");
+            Check(!!output == SUCCEEDED(expected), "Failed package load clears a prepopulated handle");
+            if (output)
+            {
+                const auto actual = wil::GetModuleFileNameW<std::wstring>(output.get());
+                Check(CompareStringOrdinal(localProxy.c_str(), -1, actual.c_str(), -1, TRUE) == CSTR_EQUAL, "Loaded the package fixture's real sibling DLL");
+            }
+        };
+        verifyLoad(S_OK);
+        CharUpperBuffW(PackageFixture::root.data(), static_cast<DWORD>(PackageFixture::root.size()));
+        verifyLoad(S_OK);
+        PackageFixture::root += L"\\other-package";
+        verifyLoad(E_ACCESSDENIED);
+        PackageFixture::root = localProxy.substr(0, localProxy.find_last_of(L'\\'));
+        PackageFixture::identityError = ERROR_BAD_ENVIRONMENT;
+        verifyLoad(HRESULT_FROM_WIN32(ERROR_BAD_ENVIRONMENT));
+        PackageFixture::identityError = ERROR_SUCCESS;
+        PackageFixture::probeError = ERROR_INVALID_DATA;
+        verifyLoad(HRESULT_FROM_WIN32(ERROR_INVALID_DATA));
+        PackageFixture::probeError = ERROR_SUCCESS;
+        PackageFixture::readError = ERROR_SHARING_VIOLATION;
+        verifyLoad(HRESULT_FROM_WIN32(ERROR_SHARING_VIOLATION));
+        PackageFixture::readError = ERROR_SUCCESS;
+        PackageFixture::invalidLength = true;
+        verifyLoad(E_UNEXPECTED);
+        PackageFixture::invalidLength = false;
+        verifyLoad(S_OK);
     }
 
     Protocol::details::ProxyRegistration registration;

@@ -107,7 +107,10 @@ registration. After an x64 Debug wtcli build, run
 from an x64 Visual Studio developer shell. They compile all four branding modes,
 check unpackaged path policy and failure handling, compare the registered factory
 with the explicitly loaded DLL's factory, and marshal an event callback across
-apartments. They do not substitute for installed-package coexistence validation.
+apartments. Test-only package API fixtures invoke the public loader with matching,
+case-varied, and mismatched package roots and failing API responses, while keeping
+the real executable path and DLL loader. They do not substitute for installed-package
+coexistence validation or verify package signatures.
 
 ### 2.3 Typical process tree
 
