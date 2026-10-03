@@ -3567,16 +3567,20 @@ void Pane::_UpdateAgentChipBackground()
 //   provided vector.
 // - If we're a leaf, place our own state into the vector.
 // Arguments:
-// - states: a vector that will receive all the states of all leaves in the tree
+// - states: a vector that will receive all the states and content IDs of all
+//   leaves in the tree
 // Return Value:
 // - <none>
-void Pane::CollectTaskbarStates(std::vector<winrt::TerminalApp::TaskbarState>& states)
+void Pane::CollectTaskbarStates(std::vector<TaskbarStateWithContentId>& states)
 {
     if (_content)
     {
         auto tbState{ winrt::make<winrt::TerminalApp::implementation::TaskbarState>(_content.TaskbarState(),
                                                                                     _content.TaskbarProgress()) };
-        states.push_back(tbState);
+        states.emplace_back(TaskbarStateWithContentId{
+            .CombinedState = std::move(tbState),
+            .ContentId = _contentId,
+        });
     }
     else if (_firstChild && _secondChild)
     {

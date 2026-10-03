@@ -7,6 +7,7 @@
 #include "TabStrip.h"
 
 #include <iomanip>
+#include <winrt/Windows.Globalization.NumberFormatting.h>
 
 #include <json/json.h>
 #include <TerminalCore/ControlKeyStates.hpp>
@@ -644,10 +645,22 @@ namespace winrt::TerminalApp::implementation
                 }
             }
         });
-        _tabStrip.TabFocusRequested([weakThis{ get_weak() }](auto&&, const auto&) {
+        winrt::get_self<implementation::TabStrip>(_tabStrip)->HeaderTitleChangeRequested([weakThis = get_weak()](const auto& item, const auto& title) {
             if (const auto page = weakThis.get())
             {
-                page->_FocusCurrentTab(false);
+                if (const auto tab = page->_GetTabByTabViewItem(item))
+                {
+                    page->_GetTabImpl(tab)->SetTabText(title);
+                }
+            }
+        });
+        _tabStrip.TabFocusRequested([weakThis{ get_weak() }](auto&&, const auto& args) {
+            if (const auto page = weakThis.get())
+            {
+                if (const auto tab = page->_GetTabByTabViewItem(args.Tab()))
+                {
+                    page->_GetTabImpl(tab)->RequestFocusActiveControl.raise();
+                }
             }
         });
         _tabStrip.PaneActivationRequested([weakThis{ get_weak() }](auto&&, const auto& args) {
@@ -1842,8 +1855,8 @@ namespace winrt::TerminalApp::implementation
     }
 
     // Resolve the effective UI language for wta.
-    // Priority: explicit settings.json "language" override → MRT's resolved
-    // language qualifier (matches what XAML actually renders) → empty (let
+    // Priority: explicit settings.json "language" override → MRT's first
+    // preferred language → empty (let
     // wta fall back to sys_locale).
     //
     // Without this, wta uses sys_locale::get_locale() (Windows
@@ -1862,10 +1875,10 @@ namespace winrt::TerminalApp::implementation
         try
         {
             const auto context{ winrt::Windows::ApplicationModel::Resources::Core::ResourceContext::GetForViewIndependentUse() };
-            const auto qualifiers{ context.QualifierValues() };
-            if (const auto language{ qualifiers.TryLookup(L"language") })
+            const auto languages = context.Languages();
+            if (languages.Size() > 0)
             {
-                return winrt::hstring{ *language };
+                return languages.GetAt(0);
             }
         }
         catch (...)
@@ -3478,7 +3491,7 @@ namespace winrt::TerminalApp::implementation
                             return false;
                         });
                     }
-                    _RefreshRichTabForTab(*tab, false);
+                    _RefreshRichTabForTab(*tab, false, false);
                 }
                 _RefreshTabStripPaneItems(tab);
             }
@@ -5890,16 +5903,17 @@ namespace winrt::TerminalApp::implementation
             if (_tabLayoutTransitionPreviousVertical)
             {
                 _tabStrip.IsRailCollapsed(false);
-                winrt::get_self<implementation::TabStrip>(_tabStrip)->BeginHeaderTransfer();
             }
             _tabStrip.TopChromeContent(nullptr);
+
+            winrt::get_self<implementation::TabStrip>(_tabStrip)->SetVerticalPresentation(targetVertical);
 
             const auto source = _tabLayoutTransitionPreviousVertical ?
                                     _tabStrip.TabItems().as<Windows::Foundation::Collections::IVector<IInspectable>>() :
                                     _tabView.TabItems();
             source.Clear();
 
-            // With no headers to detach, complete before startup can insert a
+            // With no tabs to move, complete before startup can insert a
             // tab into the old layout and lose its selection during the switch.
             if (_tabs.Size() == 0)
             {
@@ -5943,6 +5957,8 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_RebuildTabLayout(const bool vertical, const IInspectable& selectedItem, std::string& stage)
     {
+        winrt::get_self<implementation::TabStrip>(_tabStrip)->SetVerticalPresentation(vertical);
+
         std::vector<IInspectable> canonicalItems;
         canonicalItems.reserve(_tabs.Size());
         for (const auto& tab : _tabs)
@@ -5961,9 +5977,6 @@ namespace winrt::TerminalApp::implementation
         _tabRow.IsVerticalLayout(vertical);
         _isVerticalLayout = vertical;
         _newTabButton = vertical ? _verticalNewTabButton : _horizontalNewTabButton;
-
-        stage = "complete header transfer";
-        winrt::get_self<implementation::TabStrip>(_tabStrip)->CompleteHeaderTransfer();
 
         stage = "append tab items";
         auto destination = vertical ?
@@ -6007,7 +6020,7 @@ namespace winrt::TerminalApp::implementation
                 {
                     if (winrt::get_abi(_tabStrip.SelectedItem()) != winrt::get_abi(selectedItem))
                     {
-                        _tabStrip.SelectedIndex(index);
+                        _tabStrip.SelectedItem(selectedItem);
                     }
                 }
                 else if (winrt::get_abi(_tabView.SelectedItem()) != winrt::get_abi(selectedItem))
@@ -6215,6 +6228,10 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_FocusSidebarTerminalFallback()
     {
+        if (_TryFocusSidebarInput(_GetActiveControl()))
+        {
+            return;
+        }
         const auto tab = _GetFocusedTabImpl();
         const auto preferred = _SourceTerminalPaneForTab(tab);
         if (preferred && _TryFocusSidebarInput(preferred->GetTerminalControl()))
@@ -6611,6 +6628,47 @@ namespace winrt::TerminalApp::implementation
         return RS_(L"VerticalTabsHistoryStatusUnknown");
     }
 
+    static winrt::hstring _SidebarHistoryLanguageTag()
+    {
+        try
+        {
+            const auto context = winrt::Windows::ApplicationModel::Resources::Core::ResourceContext::GetForViewIndependentUse();
+            const auto languages = context.Languages();
+            if (languages.Size() > 0)
+            {
+                return languages.GetAt(0);
+            }
+        }
+        catch (...)
+        {
+            LOG_CAUGHT_EXCEPTION();
+        }
+
+        return {};
+    }
+
+    winrt::hstring TerminalPage::_FormatLocalizedPercentValue(const uint32_t progressValue,
+                                                              const std::wstring_view languageTag)
+    {
+        try
+        {
+            using namespace winrt::Windows::Globalization::NumberFormatting;
+
+            const auto effectiveLanguage = languageTag.empty() ? _SidebarHistoryLanguageTag() :
+                                                                 winrt::hstring{ languageTag };
+            const auto formatter = effectiveLanguage.empty() ?
+                                       PercentFormatter{} :
+                                       PercentFormatter(winrt::single_threaded_vector<winrt::hstring>({ effectiveLanguage }), L"ZZ");
+            return formatter.FormatDouble(static_cast<double>(progressValue) / 100.0);
+        }
+        catch (...)
+        {
+            LOG_CAUGHT_EXCEPTION();
+        }
+
+        return winrt::hstring{ fmt::format(FMT_COMPILE(L"{}%"), progressValue) };
+    }
+
     winrt::hstring TerminalPage::_SidebarHistoryAgeText(const std::optional<uint64_t> lastActivityAtMs, const uint64_t nowMs)
     {
         if (!lastActivityAtMs || *lastActivityAtMs == 0)
@@ -6658,9 +6716,7 @@ namespace winrt::TerminalApp::implementation
         time.wYear = static_cast<WORD>(static_cast<int>(date.year()));
         time.wMonth = static_cast<WORD>(static_cast<unsigned>(date.month()));
         time.wDay = static_cast<WORD>(static_cast<unsigned>(date.day()));
-        const auto context = winrt::Windows::ApplicationModel::Resources::Core::ResourceContext::GetForViewIndependentUse();
-        const auto language = context.QualifierValues().TryLookup(L"language");
-        const auto locale = language ? *language : winrt::hstring{};
+        const auto locale = _SidebarHistoryLanguageTag();
         wchar_t buffer[256]{};
         if (GetDateFormatEx(locale.empty() ? LOCALE_NAME_USER_DEFAULT : locale.c_str(),
                             DATE_LONGDATE,
@@ -11697,7 +11753,11 @@ namespace winrt::TerminalApp::implementation
                 }
                 else if ((propertyName == L"Icon" || propertyName == L"ToolTip") && page->_isVerticalLayout)
                 {
-                    page->_tabStrip.SetTabPresentation(tab->TabViewItem(), tab->Title(), tab->Icon());
+                    const auto strip = winrt::get_self<TabStrip>(page->_tabStrip);
+                    if (const auto display = strip->DisplayItemForTab(tab->TabViewItem()))
+                    {
+                        strip->SetTabPresentation(display, tab->Title(), tab->Icon(), true);
+                    }
                 }
                 else if (propertyName == L"Content")
                 {
@@ -12554,15 +12614,74 @@ namespace winrt::TerminalApp::implementation
         const auto activeSourceContentId = activeSourcePane && activeSourcePane->ContentId() ?
                                                activeSourcePane->ContentId() :
                                                std::nullopt;
+        const auto appendAutomationSegment = [](std::wstring& value, const std::wstring_view segment) {
+            if (segment.empty())
+            {
+                return;
+            }
+
+            if (!value.empty())
+            {
+                value.append(L", ");
+            }
+            value.append(segment);
+        };
+        const auto progressAutomationText = [&](const Tab::VisiblePaneSnapshot& pane) -> winrt::hstring {
+            if (pane.ProgressState == 0)
+            {
+                return {};
+            }
+
+            winrt::hstring status;
+            switch (pane.ProgressState)
+            {
+            case 1:
+                status = RS_(L"PaneProgressStatusNormal");
+                break;
+            case 2:
+                status = RS_(L"PaneProgressStatusError");
+                break;
+            case 3:
+                status = RS_(L"PaneProgressStatusIndeterminate");
+                break;
+            case 4:
+                status = RS_(L"PaneProgressStatusPaused");
+                break;
+            default:
+                return {};
+            }
+            if (pane.ProgressState == 3)
+            {
+                return status;
+            }
+
+            return winrt::hstring{ fmt::format(FMT_COMPILE(L"{}, {}"), status, _FormatLocalizedPercentValue(gsl::narrow<uint32_t>(pane.ProgressValue))) };
+        };
         size_t groupPaneCount = 0;
+        bool headerProgressProjectedToPaneRows = false;
+        const auto headerProgressSource = tab->GetCombinedTaskbarStateWithContentId();
+        const auto headerProgressState = headerProgressSource.CombinedState.State();
+        const auto headerProgressContentId = headerProgressSource.ContentId;
         std::vector<TerminalApp::TabStripPaneItem> items;
         for (const auto& pane : visiblePanes)
         {
+            const auto projectedPane = _IsPaneRowProjectionEligible(pane);
+
+            // Hidden or filtered panes still contribute to the tab aggregate,
+            // so only suppress the header when a projected row shows that
+            // exact winning content.
+            headerProgressProjectedToPaneRows =
+                headerProgressProjectedToPaneRows ||
+                (projectedPane &&
+                 headerProgressState != 0 &&
+                 headerProgressContentId.has_value() &&
+                 pane.ContentId == headerProgressContentId.value());
+
             if (!pane.IsAgentPane)
             {
                 ++groupPaneCount;
             }
-            if (!_IsPaneRowProjectionEligible(pane))
+            if (!projectedPane)
             {
                 continue;
             }
@@ -12574,6 +12693,12 @@ namespace winrt::TerminalApp::implementation
                 icon,
                 pane.Title,
                 pane.IsActive || activeSourceContentId == pane.ContentId);
+            const auto itemImpl = winrt::get_self<TabStripPaneItem>(item);
+            itemImpl->ProgressState(pane.ProgressState);
+            itemImpl->IsProgressRingActive(pane.ProgressState != 0);
+            itemImpl->IsProgressRingIndeterminate(pane.ProgressState == 3);
+            itemImpl->ProgressValue(gsl::narrow<uint32_t>(pane.ProgressValue));
+            std::wstring automationName{ pane.Title.c_str(), pane.Title.size() };
             if (pane.SessionId != winrt::guid{})
             {
                 const auto sessionId = _FormatRichTabSessionId(pane.SessionId);
@@ -12581,25 +12706,27 @@ namespace winrt::TerminalApp::implementation
                     presentation != _richTabPresentations.end() && presentation->second.presentation)
                 {
                     const auto& value = *presentation->second.presentation;
-                    const auto itemImpl = winrt::get_self<TabStripPaneItem>(item);
                     itemImpl->MetadataText(winrt::hstring{ value.text });
                     itemImpl->MetadataVisibility(value.text.empty() ? Visibility::Collapsed : Visibility::Visible);
                     if (!value.accessibilityText.empty())
                     {
-                        std::wstring automationName{ pane.Title };
-                        automationName.append(L", ");
-                        automationName.append(value.accessibilityText);
-                        itemImpl->AutomationName(winrt::hstring{ automationName });
+                        appendAutomationSegment(automationName, value.accessibilityText);
                     }
                 }
             }
+            if (const auto progressText = progressAutomationText(pane); !progressText.empty())
+            {
+                appendAutomationSegment(automationName, std::wstring_view{ progressText.c_str(), progressText.size() });
+            }
+            itemImpl->AutomationName(winrt::hstring{ automationName });
             items.emplace_back(std::move(item));
         }
-        tabStrip->SetTabPresentation(display, tab->Title(), tab->Icon());
+        tabStrip->SetTabPresentation(display, tab->Title(), tab->Icon(), true);
         tabStrip->SetPaneItems(
             display,
             single_threaded_vector<TerminalApp::TabStripPaneItem>(std::move(items)),
-            groupPaneCount > 1);
+            groupPaneCount > 1,
+            headerProgressProjectedToPaneRows);
     }
 
     void TerminalPage::_ActivatePaneFromTabStrip(const TerminalApp::TabStripPaneEventArgs& args)

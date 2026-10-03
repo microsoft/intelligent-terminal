@@ -118,6 +118,116 @@ counts as inside the sidebar for the keybinding's focus policy.
 
 - Use the localized labels **Expand sidebar** and **Collapse sidebar** for the
   tooltip and automation name, retaining the existing resource identifiers.
+
+## Tab-header ownership and rename focus
+
+The tab owns a data-only `TabHeaderPresentation` and the existing aggregate
+`TerminalTabStatus`. The canonical horizontal `TabViewItem` permanently retains
+its native `TabHeaderControl`. Each sidebar row template creates a separate
+`TabHeaderControl` bound to the same presentation; no header control is extracted,
+detached, or transferred during reorder or layout changes. Sidebar icon elements
+are also template-owned, with retained `IconSource` data rather than shared live
+elements. Pane rows and terminal/taskbar progress remain independent of this
+presentation contract.
+
+The localized tab accessibility name is computed once alongside pin and rich
+metadata state, stored in the shared presentation, and projected to the native
+tab and selectable sidebar row. The existing container-realization handler
+installs a one-way binding to observable presentation data and clears it on
+recycle. UWP does not evaluate bindings in style setters; the row does not bind
+through a nested attached-property path on the hidden horizontal control.
+The C++ presentation is marked `bindable` so runtime binding can resolve its
+properties through generated XAML metadata; compiled `x:Bind` alone does not
+provide that runtime lookup contract.
+
+Selection is restored by canonical tab identity mapped to the current sidebar
+descriptor, not by treating a canonical index as a display index. Existing
+focus fallback first retains the current visible terminal or Agent input, then
+uses the existing source-shell fallback; this adds no saved focus field,
+selection cache, timer, repair callback or view-model clock.
+
+Pin state remains shared model data. `TabHeaderControl.ShowPinnedIcon` is an
+appended, view-local property, defaulting to true: the canonical horizontal
+header sets it to false, while newly created sidebar headers retain the default.
+Only the horizontal visual pin glyph is hidden. Sidebar badges, accessibility
+labels, Pin/Unpin menus, ordering, first-ordinary unpin placement and cross-pin
+movement boundaries retain #1052 semantics. This does not clear `IsPinned`,
+restore original positions, introduce grouping UI or permit unrestricted
+movement across pinned/unpinned boundaries. The primary layout round trip
+verifies canonical owner and the sidebar selection pattern before secondary
+visual checks. Matched same-profile title-leading offsets measure reserved pin
+space; FontIcon peer counts are diagnostic only because UWP may not expose
+those peers. Small compositor crops include the full header and leading glyphs.
+Actual Sidebar pin presence and Horizontal pin absence require independent
+visual review; neither geometry nor peer absence proves rendered pixels.
+
+Indeterminate header, pane-row, and tab-switcher progress use the shared
+`IndeterminateProgressRing` control and its style in
+`IndeterminateProgressResources.xaml`. The control owns one compositor
+rotation animation on its current template visual and starts it only while loaded, active, and visible through its
+attached visual ancestry. Activity and ancestor-visibility callbacks stop or
+start the clock; unload stops it and releases weak ancestry observers, and load
+observes the new ancestry. Template replacement stops the old clock before
+attaching to the replacement visual. This is view-local rendering lifetime, not progress
+model state or per-move/layout repair; there is no XAML `Loaded` trigger or
+native `ActiveStates` group or XAML storyboard target competing with it.
+
+The rotation targets a renderer-owned child ShapeVisual, not the
+framework-owned XAML element visual that recycling/layout can reset.
+The control's `IsActive` property remains bound to status; the existing outer
+active gate and inner indeterminate gate control presentation. It is neither a
+keyboard tab stop nor a hit-test target, and its automation peer exposes
+`ProgressBar` without a numeric `RangeValue` pattern. The arc uses
+the resolved Foreground brush, including brush color and theme changes; MUX determinate/error/paused progress and the
+shared data/identity policy are unchanged. Product-host reload/animation
+acceptance still requires runtime integration validation.
+
+Identity and progress are separate: a profile or known live agent icon remains
+visible beside active progress in horizontal tabs, individual sidebar tabs,
+and pane rows. In the expanded sidebar, a collapsible group's chevron occupies
+the same leading slot as an individual tab's identity icon, without an
+additional profile icon; their top-level title positions remain aligned whether
+the group is expanded or collapsed. The compact rail hides the chevron and
+retains identity. Explicit hidden-icon styling remains hidden, including while busy.
+The sidebar uses the native tab's configured source, including monochrome
+styling; the existing agent-session projection still selects the provider icon.
+Selected-color contrast applies to monochrome identity, not colored bitmaps or
+extracted images.
+
+Metadata visibility and the aggregate-progress visibility gate belong to the
+individual view. Title, search text, rename width, metadata text/accessibility
+text, and aggregate status are shared data. A recycled view cancels an outstanding
+rename before rebinding without committing it or requesting focus for its new
+owner.
+
+Context-menu and palette rename commands resolve the realized row header, as
+does the color-picker anchor. Rename commits route through that row's current
+canonical tab to `SetTabText`; rename completion uses the existing focus-request
+path. Closing a context menu checks the real row's `InRename` before restoring
+terminal focus.
+Interactive requests reveal the actual row by closing History and expanding a
+collapsed rail through the existing view commands. Filter-hidden rows remain
+unavailable; no invisible native-header fallback is used.
+
+Existing WinRT methods retain their ordering and signatures. New members are
+appended. `TabStripDisplayItem.Header` retains its `Object` getter/setter slots,
+but now returns `TabHeaderPresentation`, never a visual; its setter accepts
+presentation data, a legacy header (extracting only its data), a boxed title,
+or null (creating an empty presentation). `Icon` retains its `IconElement`
+getter/setter slots on both tab and pane descriptors as a data-only compatibility
+adapter, not a promise of full legacy visual semantics: the getter creates a fresh,
+unparented native icon element, and the setter extracts source data from standard
+icon types. Unsupported inputs fail with `E_INVALIDARG`. Templates use the
+`Presentation` and validated, data-only `IconSource` properties instead. The
+`Object` icon-source slot contains a MUX `IconSource`; this avoids the XAML
+function-binding compiler default-constructing the abstract source base class.
+The icon-source
+factory creates a fresh element per template and retains EXE/DLL image sources,
+agent SVG geometry, bitmap and symbol sources, and font/RTL properties.
+Pane descriptors retain source data, content identity, and status, never live
+icon elements. Tab and pane adapters share the same conversion and element
+factory; simultaneous containers share geometry/image data but own distinct
+elements.
 - Show the label and dimmed effective shortcut on the same line with 8 units
   of spacing for both the collapsed **Expand sidebar** and expanded
   **Collapse sidebar** buttons. Keep Segoe UI Variable, `FontSize=12`, normal
