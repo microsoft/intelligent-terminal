@@ -371,6 +371,37 @@ To make a build selectable:
   `DeployAppRecipe.exe bin\x64\Debug\CascadiaPackage.build.appxrecipe`.
 - **Store**: install the shipped MSIX.
 
+`Start-Terminal` requires the selected package to be idle before changing its
+settings. It no longer treats every pre-existing same-package window or helper
+as a leftover test process: close your own window first, or use a dedicated test
+package. `Stop-Terminal` still tears down only the instance launched by the run.
+This keeps a live Dev or Store session from being closed implicitly by another
+test. A crashed test may leave a process behind; investigate its ownership
+instead of automatically force-killing it on the next run.
+
+For an opt-in **Dev PR package consistency check**, run the report driver against
+a clean worktree at the intended source HEAD and provide all four proof inputs:
+
+```powershell
+$env:ITE2E_PACKAGE = 'Dev'
+$sourceRoot = (Get-Location).Path # clean worktree for the PR head
+$expectedHead = '<FULL_40_CHARACTER_PR_HEAD>'
+$recipe = Join-Path $sourceRoot 'src\cascadia\CascadiaPackage\bin\x64\Debug\CascadiaPackage.build.appxrecipe'
+$msix = Join-Path $sourceRoot 'src\cascadia\CascadiaPackage\AppPackages\<FRESH_PACKAGE>.msix'
+pwsh -File test\e2e\Invoke-ItE2EReport.ps1 `
+  -Path test\e2e\tests\<Feature>.Tests.ps1 -RequireNoSkips `
+  -SourceRoot $sourceRoot -ExpectedHead $expectedHead `
+  -RecipePath $recipe -MsixPath $msix
+```
+
+The read-only `Verify-PackageProvenance.ps1` preflight checks the clean Git HEAD,
+recipe and MSIX identities, every recipe source/MSIX/installed payload hash, and
+the registered manifest. A missing or stale payload stops the run **before Pester**.
+Only scale-qualified profile icons may be absent from the MSIX; they still must
+match the recipe in the installed layout. Keep build-time source/command evidence
+separately: matching hashes do not themselves prove which source the compiler
+used. These options are not required for an explicitly requested Store baseline.
+
 A suite that asserts on diagnostics only present in a particular build should pin
 its `-Package` and **`-Skip`** itself when that package isn't installed (see
 `Feature.FreExecutionPolicy.Tests.ps1`, which targets `Dev` and skips when the
@@ -384,7 +415,7 @@ Invoke-Pester test/e2e/selftests -Tag Unit    # hermetic, no terminal needed
 Invoke-Pester test/e2e/selftests -Tag Live    # launches/closes the real terminal
 Invoke-Pester test/e2e/selftests -Tag AI      # AI oracle (needs an agent CLI, e.g. copilot)
 Invoke-Pester test/e2e/selftests -Tag Agent   # agent pane + autofix (needs copilot auth)
-Invoke-Pester test/e2e/selftests              # everything (30 tests)
+Invoke-Pester test/e2e/selftests              # all self-tests
 ```
 
 The self-tests are the framework's own proof: every primitive is exercised against a
@@ -550,6 +581,10 @@ Outputs (all under `test/e2e/artifacts/`):
   generate if no report exists yet). Or standalone after a run wrote `results.xml`:
   `pwsh -File test/e2e/Update-ReleaseReport.ps1`.
 - Console echo of the same precise failures; exit code `1` on any failure (CI-friendly).
+  Zero selected or passing cases and setup/report-generation errors are non-green,
+  even with no failing test assertion. A mixture of passes and externally gated
+  skips is reported as `PASSED WITH SKIPS`; use `-RequireNoSkips` for strict PR
+  acceptance. An all-skipped run never claims `ALL PASSED`.
 
 Every failure is precise because each `Assert-*` throws a descriptive message — e.g.
 `Assert-Pane: pane <id> never matched /git status/ within 12s. Screenshot: <path>` or

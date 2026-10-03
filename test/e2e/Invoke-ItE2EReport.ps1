@@ -15,8 +15,10 @@
       - release-report.md  Clean, jargon-free RELEASE CHECKLIST driven by the results
                            ([x] = automation verified it; plain [ ] = verify manually).
                            Generated via New-ReleaseReport.ps1; suppress with -SkipReleaseReport.
-    Prints the same failure blocks to the console and returns a CI exit code
-    (0 = all passed, 1 = any failure).
+    Prints the same failure blocks to the console and returns a CI exit code.
+    Zero selected/passed tests, setup failures, and report-generation errors are
+    non-green. Mixed external-prerequisite skips remain allowed unless -RequireNoSkips
+    is set for strict PR validation.
 
 .EXAMPLE
     pwsh -File test/e2e/Invoke-ItE2EReport.ps1 -Tag Feature
@@ -35,10 +37,26 @@ param(
     # item this run didn't cover), OVERLAY just this run's results onto the EXISTING report — only
     # the items this run covered change. Use for single-suite runs so you don't need a full-suite
     # run to refresh one area. No-op if the report doesn't exist yet (falls back to full generate).
-    [switch]$UpdateReport
+    [switch]$UpdateReport,
+    [switch]$RequireNoSkips,
+    [string]$SourceRoot,
+    [ValidatePattern('^[a-fA-F0-9]{40}$')][string]$ExpectedHead,
+    [string]$RecipePath,
+    [string]$MsixPath
 )
 
 $ErrorActionPreference = 'Stop'
+if ($SourceRoot -or $ExpectedHead -or $RecipePath -or $MsixPath) {
+    if (-not $SourceRoot -or -not $ExpectedHead -or -not $RecipePath -or -not $MsixPath) {
+        throw 'Provide -SourceRoot, -ExpectedHead, -RecipePath and -MsixPath together for package proof.'
+    }
+    if ($env:ITE2E_PACKAGE -notin @('Dev', 'IntelligentTerminal_rd9vj3e6a2mbr')) {
+        throw 'Package proof requires an explicitly selected Dev package (ITE2E_PACKAGE=Dev).'
+    }
+    $proof = & (Join-Path $PSScriptRoot 'Verify-PackageProvenance.ps1') `
+        -SourceRoot $SourceRoot -ExpectedHead $ExpectedHead -RecipePath $RecipePath -MsixPath $MsixPath
+    Write-Host "Package files match recipe/MSIX in clean source HEAD $($proof.SourceHead) ($($proof.RecipeEntryCount) payloads); confirm the build-time source receipt separately." -ForegroundColor Green
+}
 Import-Module Pester -MinimumVersion 5.5.0 -Force
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
@@ -57,6 +75,48 @@ $result = $pesterOutput |
     Select-Object -Last 1
 if (-not $result) {
     throw 'Pester did not return a test result object.'
+}
+
+$releaseReport = $null
+$releaseReportKind = $null
+if (-not $SkipReleaseReport) {
+    $releaseReport = Join-Path $OutDir 'release-report.md'
+    if ($UpdateReport -and (Test-Path $releaseReport)) {
+        & (Join-Path $PSScriptRoot 'Update-ReleaseReport.ps1') -Report $releaseReport -ResultsXml $cfg.TestResult.OutputPath.Value
+        $releaseReportKind = 'incrementally updated'
+    }
+    else {
+        if ($UpdateReport) { Write-Host "  (-UpdateReport: no existing report at $releaseReport; generating fresh)" -ForegroundColor DarkGray }
+        & (Join-Path $PSScriptRoot 'New-ReleaseReport.ps1') -ResultsXml $cfg.TestResult.OutputPath.Value -OutFile $releaseReport
+        $releaseReportKind = 'clean release checklist'
+    }
+}
+
+$setupFailures = @(@($result.FailedContainers) + @($result.FailedBlocks) | Where-Object { $_ })
+$noTests = ($result.TotalCount - $result.NotRunCount) -eq 0
+$unexpectedSkips = $RequireNoSkips -and $result.SkippedCount -gt 0
+$runFailed = $result.FailedCount -gt 0 -or $setupFailures.Count -gt 0 -or
+    $noTests -or $result.PassedCount -eq 0 -or $unexpectedSkips
+$bannerText = if ($result.FailedCount -gt 0) {
+    "$($result.FailedCount) FAILED"
+}
+elseif ($setupFailures.Count) {
+    'SETUP/CLEANUP FAILED'
+}
+elseif ($noTests) {
+    'NO TESTS SELECTED'
+}
+elseif ($result.PassedCount -eq 0) {
+    'NO TESTS PASSED'
+}
+elseif ($unexpectedSkips) {
+    'UNEXPECTED SKIPS'
+}
+elseif ($result.SkippedCount -gt 0) {
+    'PASSED WITH SKIPS'
+}
+else {
+    'ALL PASSED'
 }
 
 # ── Shared helpers ──────────────────────────────────────────────────────────
@@ -107,14 +167,15 @@ if ($failed) {
     [void]$md.AppendLine("")
     foreach ($t in $failed) { [void]$md.Append((Format-Failure $t)) }
 }
+elseif ($runFailed -or $result.SkippedCount -gt 0) {
+    [void]$md.AppendLine("## $bannerText")
+}
 else { [void]$md.AppendLine("## All tests passed ✅") }
 $summaryPath = Join-Path $OutDir 'summary.md'
 $md.ToString() | Set-Content -LiteralPath $summaryPath -Encoding utf8
 
 # ── HTML report ─────────────────────────────────────────────────────────────
-$allPass = ($result.FailedCount -eq 0)
-$bannerClass = if ($allPass) { 'ok' } else { 'bad' }
-$bannerText = if ($allPass) { "ALL PASSED" } else { "$($result.FailedCount) FAILED" }
+$bannerClass = if ($runFailed) { 'bad' } elseif ($result.SkippedCount -gt 0) { 'warn' } else { 'ok' }
 
 $h = [System.Text.StringBuilder]::new()
 [void]$h.AppendLine('<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">')
@@ -126,6 +187,7 @@ $h = [System.Text.StringBuilder]::new()
 .wrap{max-width:1100px;margin:0 auto;padding:24px}
 .banner{border-radius:10px;padding:18px 22px;color:#fff;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
 .banner.ok{background:var(--ok)}.banner.bad{background:var(--bad)}
+.banner.warn{background:var(--skip)}
 .banner h1{font-size:22px;margin:0}.banner .meta{opacity:.92;font-size:13px}
 .stats{display:flex;gap:10px;margin:18px 0;flex-wrap:wrap}
 .stat{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:10px 16px;min-width:96px}
@@ -208,27 +270,7 @@ Write-Host "ItE2E REPORT  Passed=$($result.PassedCount) Failed=$($result.FailedC
 Write-Host "  report.html : $htmlPath"
 Write-Host "  results.xml : $($cfg.TestResult.OutputPath.Value)"
 Write-Host "  summary.md  : $summaryPath"
-
-# ── Release checklist (clean, jargon-free) ──────────────────────────────────
-# Final workflow step: turn the raw test outcomes into doc/release-check-list.md with each
-# box filled by what automation verified ([x] = passed, plain [ ] = verify manually). This is
-# the human-facing "what's tested / what you still need to run" artifact.
-if (-not $SkipReleaseReport) {
-    $releaseReport = Join-Path $OutDir 'release-report.md'
-    try {
-        if ($UpdateReport -and (Test-Path $releaseReport)) {
-            # Incremental: overlay only this run's rows onto the existing report.
-            & (Join-Path $PSScriptRoot 'Update-ReleaseReport.ps1') -Report $releaseReport -ResultsXml $cfg.TestResult.OutputPath.Value
-            Write-Host "  release-report.md : $releaseReport (incrementally updated)" -ForegroundColor Green
-        }
-        else {
-            if ($UpdateReport) { Write-Host "  (-UpdateReport: no existing report at $releaseReport; generating fresh)" -ForegroundColor DarkGray }
-            & (Join-Path $PSScriptRoot 'New-ReleaseReport.ps1') -ResultsXml $cfg.TestResult.OutputPath.Value -OutFile $releaseReport
-            Write-Host "  release-report.md : $releaseReport (clean release checklist)" -ForegroundColor Green
-        }
-    }
-    catch { Write-Host "  release-report.md : SKIPPED ($($_.Exception.Message))" -ForegroundColor Yellow }
-}
+if ($releaseReport) { Write-Host "  release-report.md : $releaseReport ($releaseReportKind)" -ForegroundColor Green }
 if ($failed) {
     Write-Host ""
     Write-Host "PRECISE FAILURES:" -ForegroundColor Red
@@ -242,4 +284,4 @@ if ($failed) {
 }
 Write-Host ("=" * 70)
 
-exit ([int]($result.FailedCount -gt 0))
+exit ([int]$runFailed)

@@ -159,59 +159,18 @@ function Stop-AppInstances {
 function Stop-StaleItInstances {
     <#
     .SYNOPSIS
-        Close leftover Intelligent Terminal windows for the selected package before launch.
+        Refuse to launch while the selected package already has running processes.
     .DESCRIPTION
-        The harness owns windows for the package selected by ITE2E_PACKAGE for the duration of
-        a run. It closes stale windows from that package so the next activation is a cold start,
-        while preserving other Intelligent Terminal products and stock Windows Terminal.
-
-        Any IT window already running at launch is treated as a leftover from a previous test
-        whose AfterAll/Stop-Terminal didn't run (e.g. a BeforeAll that threw). Such a leftover
-        causes the package-specific AUMID launch to hand off to the stale (often
-        half-initialised) window instead of starting fresh, so the harness can attach to a
-        broken instance and `new-tab` returns CreateTab E_FAIL (0x80004005).
+        A same-package process may be the user's window, not a leftover test instance.
+        Refuse before backing up or modifying its settings instead of guessing ownership.
     #>
     [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]$App,
-        [int]$GraceSec = 6
-    )
-    $ancestorIds = [System.Collections.Generic.HashSet[int]]::new()
-    $ancestorId = $PID
-    while ($ancestorId -gt 0 -and $ancestorIds.Add($ancestorId)) {
-        $ancestor = Get-CimInstance Win32_Process -Filter "ProcessId=$ancestorId" -ErrorAction SilentlyContinue
-        if (-not $ancestor -or $ancestor.ParentProcessId -eq $ancestorId) { break }
-        $ancestorId = [int]$ancestor.ParentProcessId
+    param([Parameter(Mandatory)]$App)
+    $processes = @(Get-WtProcessesForApp -App $App -IncludePackageExecutables)
+    if ($processes.Count) {
+        $ids = ($processes | ForEach-Object Id) -join ','
+        throw "Refusing to close pre-existing $($App.Package) process(es) [$ids]. Close them yourself before running the test."
     }
-    $find = {
-        Get-WtProcessesForApp -App $App
-    }
-    $procs = @(& $find)
-    if (-not $procs.Count) { return }
-    $hostingAncestors = @($procs | Where-Object { $ancestorIds.Contains([int]$_.Id) })
-    if ($hostingAncestors.Count) {
-        $ids = ($hostingAncestors | ForEach-Object Id) -join ','
-        if ($env:ITE2E_PRESERVE_ANCESTOR_PID -ne $ids) {
-            throw "Refusing to run ItE2E from an Intelligent Terminal process tree because cold start would terminate the test runner (ancestor pid(s): $ids). Launch the suite from an independent conhost or stock Windows Terminal."
-        }
-        Write-ItLog -Level WARN -Message "Preserving explicitly protected Intelligent Terminal ancestor pid(s) [$ids]; shared COM registration may make the run fail safely."
-        $procs = @($procs | Where-Object { -not $ancestorIds.Contains([int]$_.Id) })
-    }
-    if (-not $procs.Count) { return }
-    $staleIds = @($procs | ForEach-Object { [int]$_.Id })
-    Write-ItLog -Level INFO -Message "Cleaning $($procs.Count) stale $($App.Package) instance(s) before launch: [$(($procs | ForEach-Object Id) -join ',')]"
-    foreach ($p in $procs) { try { $p.CloseMainWindow() | Out-Null } catch {} }
-    Test-Until -TimeoutSec $GraceSec -IntervalSec 0.5 -Condition {
-        -not @(Get-Process -Id $staleIds -ErrorAction SilentlyContinue).Count
-    } | Out-Null
-    foreach ($staleId in $staleIds) {
-        $stale = @(& $find) | Where-Object Id -eq $staleId | Select-Object -First 1
-        if ($stale) {
-            Stop-Process -InputObject $stale -Force -ErrorAction SilentlyContinue
-            Write-ItLog -Level WARN -Message "Force-killed stale IT straggler pid=$staleId"
-        }
-    }
-    Start-Sleep -Milliseconds 500   # let the OS tear down this package's COM registration
 }
 
 function Get-ItTestPackage {
@@ -244,9 +203,8 @@ function Start-Terminal {
                          cannot leak into a test that only patches a subset of keys (default
                          $true; ignored when Backup is $false).
     .PARAMETER ShowFre   Leave the agent FRE overlay SHOWING (writes agentFreCompleted=false).
-                         COM resolution is best-effort in this mode. A fresh monarch is always
-                         started (see Stop-StaleItInstances below), which is what lets the FRE
-                         re-read state.json — a running monarch caches ApplicationState.
+                         COM resolution is best-effort in this mode. A fresh monarch is required;
+                         a running selected package is refused before changing configuration.
     #>
     [CmdletBinding()]
     param(
@@ -267,13 +225,8 @@ function Start-Terminal {
     # Per-run framework log file under TEMP.
     $script:ItE2ELogFile = Join-Path $env:TEMP ("ite2e-{0}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
 
-    # Clear leftover instances of the selected package BEFORE writing config: a stale window
-    # from a crashed prior test would otherwise be attached-to in a broken state (new-tab ->
-    # CreateTab E_FAIL 0x80004005). Doing it before config write also stops a closing monarch's
-    # flush from clobbering the FRE/settings values we are about to write. Other Intelligent
-    # Terminal products have separate package identities and brand CLSIDs and remain running.
-    # This enforces a cold start for the selected package; -ShowFre separately controls whether
-    # the FRE overlay is left showing.
+    # A pre-existing package process may belong to the user. Require an idle selected package
+    # before touching its settings; an AUMID launch otherwise attaches to the existing monarch.
     Stop-StaleItInstances -App $app
     Initialize-LogOffsets -App $app | Out-Null
     $preLaunchLogStartOffset = if ($app.LogStartOffset) { $app.LogStartOffset.Clone() } else { @{} }
@@ -444,8 +397,8 @@ function Start-TerminalFre {
     <#
     .SYNOPSIS
         Launch with the agent FRE overlay SHOWING so the FRE flow can be driven via UIA.
-        Forces a COLD start (kills any running monarch) because a running monarch caches
-        ApplicationState and would otherwise just open a normal tab instead of the overlay.
+        Requires a COLD start (refuses an already-running selected package) because a
+        running monarch caches ApplicationState and would otherwise open a normal tab.
         Backs up config for restore on Stop-Terminal.
     #>
     [CmdletBinding()]
