@@ -7,6 +7,8 @@
 #include "TabStrip.h"
 #include "AgentIconUtils.h"
 #include "TabStripAutomationPeer.h"
+#include "TabHeaderControl.h"
+#include "Utils.h"
 
 #include "TabStrip.g.cpp"
 #include "TabStripSelectionChangedEventArgs.g.cpp"
@@ -51,26 +53,54 @@ namespace winrt::TerminalApp::implementation
 
     void TabStripPaneItem::SyncIcon(const hstring& iconPath)
     {
-        if (_iconPath == iconPath && Icon())
+        if (_iconPath == iconPath && IconSource())
         {
             return;
         }
 
+        _iconPath = iconPath;
         if (iconPath.empty())
         {
-            WUX::Controls::FontIcon fallback;
+            MUX::Controls::FontIconSource fallback;
             fallback.FontFamily(WUX::Media::FontFamily{ L"Segoe Fluent Icons, Segoe MDL2 Assets" });
             fallback.FontSize(12);
             fallback.Glyph(L"\xE756");
-            Icon(fallback);
+            IconSource(fallback);
         }
         else
         {
-            Icon(::Microsoft::Terminal::UI::AgentIcons::ElementForIconPath(iconPath));
+            IconSource(::Microsoft::Terminal::UI::AgentIcons::SourceForIconPath(iconPath, false));
         }
-        Icon().Width(16);
-        Icon().Height(16);
-        _iconPath = iconPath;
+    }
+
+    WUX::Controls::IconElement TabStripPaneItem::Icon() const
+    {
+        return CreateIcon(IconSource());
+    }
+
+    WUX::Controls::IconElement TabStripPaneItem::CreateIcon(IInspectable const& source) const
+    {
+        auto element = ::Microsoft::Terminal::UI::AgentIcons::ElementForIconSource(source.as<MUX::Controls::IconSource>(), _iconPath);
+        element.Width(16);
+        element.Height(16);
+        return element;
+    }
+
+    void TabStripPaneItem::IconSource(IInspectable const& value)
+    {
+        const auto source = value.try_as<MUX::Controls::IconSource>();
+        THROW_HR_IF(E_INVALIDARG, !source);
+        if (_iconSource != source)
+        {
+            _iconSource = source;
+            PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"IconSource" });
+            PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"Icon" });
+        }
+    }
+
+    void TabStripPaneItem::Icon(WUX::Controls::IconElement const& value)
+    {
+        IconSource(::Microsoft::Terminal::UI::AgentIcons::SourceForIconElement(value));
     }
 
     TabStripDisplayItem::TabStripDisplayItem(MUX::Controls::TabViewItem tab,
@@ -78,27 +108,91 @@ namespace winrt::TerminalApp::implementation
         _tab{ std::move(tab) },
         _paneItems{ single_threaded_observable_vector<TerminalApp::TabStripPaneItem>() }
     {
-        Header(std::move(header));
+        Header(header);
     }
 
-    void TabStripDisplayItem::SyncTabPresentation(bool railCollapsed)
+    void TabStripDisplayItem::Header(IInspectable const& value)
     {
-        if (const auto header = Header().try_as<TerminalApp::TabHeaderControl>())
+        TerminalApp::TabHeaderPresentation presentation{ nullptr };
+        if (const auto control = value.try_as<TerminalApp::TabHeaderControl>())
         {
-            Title(header.Title());
-            IsPinned(header.TabStatus().IsPinned());
-            header.IsMetadataVisible(!railCollapsed && !IsGroup() && !header.MetadataText().empty());
+            presentation = control.Presentation();
         }
-        else if (const auto headerText = Header().try_as<hstring>())
+        else if (const auto data = value.try_as<TerminalApp::TabHeaderPresentation>())
         {
-            Title(*headerText);
+            presentation = data;
         }
+        else if (!value || value.try_as<hstring>())
+        {
+            presentation = winrt::make<TabHeaderPresentation>();
+            if (const auto text = value.try_as<hstring>())
+            {
+                presentation.Title(*text);
+            }
+        }
+        else
+        {
+            THROW_HR(E_INVALIDARG);
+        }
+        if (_header != presentation)
+        {
+            _header = presentation;
+            PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"Header" });
+            PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"Presentation" });
+        }
+    }
+
+    WUX::Controls::IconElement TabStripDisplayItem::Icon() const
+    {
+        return CreateIcon(IconSource());
+    }
+
+    WUX::Controls::IconElement TabStripDisplayItem::CreateIcon(IInspectable const& source) const
+    {
+        return ::Microsoft::Terminal::UI::AgentIcons::ElementForIconSource(source.as<MUX::Controls::IconSource>(), _iconPath.value_or(winrt::hstring{}));
+    }
+
+    void TabStripDisplayItem::IconSource(IInspectable const& value)
+    {
+        _setIconSource(value, std::nullopt);
+    }
+
+    void TabStripDisplayItem::SyncIcon(hstring const& iconPath, MUX::Controls::IconSource const& source)
+    {
+        _setIconSource(source, iconPath);
+    }
+
+    void TabStripDisplayItem::_setIconSource(IInspectable const& value, std::optional<winrt::hstring> iconPath)
+    {
+        const auto source = value.try_as<MUX::Controls::IconSource>();
+        THROW_HR_IF(E_INVALIDARG, !source);
+        if (_iconSource != source || _iconPath != iconPath)
+        {
+            _iconSource = source;
+            _iconPath = std::move(iconPath);
+            PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"IconSource" });
+            PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"Icon" });
+        }
+    }
+
+    void TabStripDisplayItem::Icon(WUX::Controls::IconElement const& value)
+    {
+        IconSource(::Microsoft::Terminal::UI::AgentIcons::SourceForIconElement(value));
+    }
+
+    void TabStripDisplayItem::SyncTabPresentation(bool railCollapsed, bool verticalPresentation)
+    {
+        const auto presentation = Presentation();
+        Title(presentation.Title());
+        const auto status = presentation.TabStatus();
+        IsPinned(status && status.IsPinned());
+        IsMetadataVisible(!railCollapsed && !IsGroup() && !presentation.MetadataText().empty());
         ContextFlyout(_tab.ContextFlyout());
         ToolTipText(WUX::Automation::AutomationProperties::GetHelpText(_tab));
         AcceleratorKey(WUX::Automation::AutomationProperties::GetAcceleratorKey(_tab));
         HeaderVisibility(railCollapsed ? Visibility::Collapsed : Visibility::Visible);
         CloseVisibility(!railCollapsed && _tab.IsClosable() ? Visibility::Visible : Visibility::Collapsed);
-        UpdatePresentation(railCollapsed);
+        UpdatePresentation(railCollapsed, verticalPresentation);
     }
 
     void TabStripDisplayItem::SyncIcon(hstring const& iconPath)
@@ -110,24 +204,29 @@ namespace winrt::TerminalApp::implementation
 
         if (iconPath.empty())
         {
-            WUX::Controls::FontIcon fallback;
+            MUX::Controls::FontIconSource fallback;
             fallback.FontFamily(WUX::Media::FontFamily{ L"Segoe Fluent Icons" });
             fallback.Glyph(L"\xE756");
-            Icon(fallback);
+            SyncIcon(iconPath, fallback);
         }
         else
         {
-            Icon(::Microsoft::Terminal::UI::AgentIcons::ElementForIconPath(iconPath));
+            SyncIcon(iconPath, ::Microsoft::Terminal::UI::AgentIcons::SourceForIconPath(iconPath, false));
         }
-        _iconPath = iconPath;
     }
 
-    void TabStripDisplayItem::UpdatePresentation(bool railCollapsed)
+    void TabStripDisplayItem::UpdatePresentation(bool railCollapsed, bool verticalPresentation)
     {
         const auto isGroup = IsGroup();
+        const auto showPaneRows = verticalPresentation && isGroup && !railCollapsed && IsExpanded();
+        const auto showHeaderProgressRing = !showPaneRows || !HeaderProgressProjectedToPaneRows();
+
+        ShowProgressRing(showHeaderProgressRing);
+
         GroupVisibility(isGroup && !railCollapsed ? Visibility::Visible : Visibility::Collapsed);
-        ChildrenVisibility(isGroup && !railCollapsed && IsExpanded() ? Visibility::Visible : Visibility::Collapsed);
-        IconVisibility(isGroup && !railCollapsed ? Visibility::Collapsed : Visibility::Visible);
+        ChildrenVisibility(showPaneRows ? Visibility::Visible : Visibility::Collapsed);
+        const auto bitmap = IconSource().try_as<MUX::Controls::BitmapIconSource>();
+        IconVisibility((isGroup && !railCollapsed) || (bitmap && !bitmap.UriSource()) ? Visibility::Collapsed : Visibility::Visible);
         PinnedIconVisibility(railCollapsed && IsPinned() ? Visibility::Visible : Visibility::Collapsed);
         HeaderMinHeight(railCollapsed ? 32.0 : 40.0);
         LeadingContentMargin(railCollapsed ? WUX::Thickness{} : WUX::Thickness{ 6, 0, 10, 0 });
@@ -163,6 +262,58 @@ namespace winrt::TerminalApp::implementation
         }
 
         return nullptr;
+    }
+
+    static WUX::Media::Brush _paneProgressBrush(const WUX::ResourceDictionary& resources,
+                                                const WUX::ElementTheme requestedTheme,
+                                                const uint64_t progressState,
+                                                const bool highContrastActive)
+    {
+        std::wstring_view key;
+        switch (progressState)
+        {
+        case 1:
+        case 3:
+            key = L"PaneProgressAccentBrush";
+            break;
+        case 2:
+            key = L"PaneProgressCriticalBrush";
+            break;
+        case 4:
+            key = L"PaneProgressCautionBrush";
+            break;
+        default:
+            return nullptr;
+        }
+
+        const auto keyValue = winrt::box_value(key);
+        if (highContrastActive)
+        {
+            const auto highContrastKey = winrt::box_value(L"HighContrast");
+            for (const auto& dictionary : resources.MergedDictionaries())
+            {
+                if (dictionary.Source())
+                {
+                    continue;
+                }
+
+                const auto themeDictionaries = dictionary.ThemeDictionaries();
+                if (!themeDictionaries.HasKey(highContrastKey))
+                {
+                    continue;
+                }
+
+                const auto highContrastDictionary = themeDictionaries.Lookup(highContrastKey).as<WUX::ResourceDictionary>();
+                if (highContrastDictionary.HasKey(keyValue))
+                {
+                    return highContrastDictionary.Lookup(keyValue).try_as<WUX::Media::Brush>();
+                }
+            }
+
+            return resources.Lookup(keyValue).try_as<WUX::Media::Brush>();
+        }
+
+        return ThemeLookup(resources, requestedTheme, keyValue).try_as<WUX::Media::Brush>();
     }
 
     static bool _originatesFromHeaderControl(IInspectable const& source, WUX::DependencyObject const& root)
@@ -323,6 +474,12 @@ namespace winrt::TerminalApp::implementation
                 self->_updateSearchVisualState();
             }
         });
+        ActualThemeChanged([weakThis{ get_weak() }](auto&&, auto&&) {
+            if (const auto self = weakThis.get())
+            {
+                self->_refreshRealizedPaneRowVisuals(self->_highContrast);
+            }
+        });
         Unloaded([weakThis{ get_weak() }](auto&&, auto&&) {
             if (const auto self = weakThis.get())
             {
@@ -342,14 +499,14 @@ namespace winrt::TerminalApp::implementation
     {
         if (!value)
         {
-            ItemsList().SelectedIndex(-1);
+            ItemsList().SelectedItem(nullptr);
             return;
         }
 
         uint32_t index{};
         if (_tabItems.IndexOf(value, index))
         {
-            ItemsList().SelectedIndex(gsl::narrow_cast<int32_t>(index));
+            ItemsList().SelectedItem(_displayItems.GetAt(index));
         }
     }
     int32_t TabStrip::SelectedIndex()
@@ -413,15 +570,29 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::SetTabPresentation(TerminalApp::TabStripDisplayItem const& display,
                                       hstring const& title,
-                                      hstring const& iconPath)
+                                      hstring const& iconPath,
+                                      const bool useNativeIconSource)
     {
         display.Title(title);
-        if (const auto header = display.Header().try_as<TerminalApp::TabHeaderControl>())
+        display.Presentation().Title(title);
+        if (useNativeIconSource)
         {
-            header.Title(title);
+            const auto source = display.Tab().IconSource();
+            if (source)
+            {
+                winrt::get_self<TabStripDisplayItem>(display)->SyncIcon(iconPath, source);
+            }
+            else if (const auto empty = display.IconSource().try_as<MUX::Controls::BitmapIconSource>();
+                     !empty || empty.UriSource())
+            {
+                display.IconSource(MUX::Controls::BitmapIconSource{});
+            }
         }
-        winrt::get_self<TabStripDisplayItem>(display)->SyncIcon(iconPath);
-        winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed);
+        else
+        {
+            winrt::get_self<TabStripDisplayItem>(display)->SyncIcon(iconPath);
+        }
+        winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed, _isVerticalPresentation);
         _refreshDisplayItemVisuals(display);
     }
 
@@ -429,15 +600,31 @@ namespace winrt::TerminalApp::implementation
                                 IVector<TerminalApp::TabStripPaneItem> const& panes,
                                 bool isGroup)
     {
+        SetPaneItems(item, panes, isGroup, false);
+    }
+
+    void TabStrip::SetPaneItems(IInspectable const& item,
+                                IVector<TerminalApp::TabStripPaneItem> const& panes,
+                                bool isGroup,
+                                bool headerProgressProjectedToPaneRows)
+    {
         if (const auto display = DisplayItemForTab(item))
         {
-            SetPaneItems(display, panes, isGroup);
+            SetPaneItems(display, panes, isGroup, headerProgressProjectedToPaneRows);
         }
     }
 
     void TabStrip::SetPaneItems(TerminalApp::TabStripDisplayItem const& display,
                                 IVector<TerminalApp::TabStripPaneItem> const& panes,
                                 bool isGroup)
+    {
+        SetPaneItems(display, panes, isGroup, false);
+    }
+
+    void TabStrip::SetPaneItems(TerminalApp::TabStripDisplayItem const& display,
+                                IVector<TerminalApp::TabStripPaneItem> const& panes,
+                                bool isGroup,
+                                bool headerProgressProjectedToPaneRows)
     {
         const auto current = display.PaneItems();
         const auto count = panes ? panes.Size() : 0;
@@ -464,6 +651,10 @@ namespace winrt::TerminalApp::implementation
                 existing.MetadataText(pane.MetadataText());
                 existing.MetadataVisibility(pane.MetadataVisibility());
                 existing.AutomationName(pane.AutomationName());
+                existing.ProgressState(pane.ProgressState());
+                existing.IsProgressRingActive(pane.IsProgressRingActive());
+                existing.IsProgressRingIndeterminate(pane.IsProgressRingIndeterminate());
+                existing.ProgressValue(pane.ProgressValue());
                 if (match != index)
                 {
                     current.RemoveAt(match);
@@ -480,16 +671,57 @@ namespace winrt::TerminalApp::implementation
             pane.HighlightQuery(display.SearchText());
         }
         display.IsGroup(isGroup);
-        winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed);
+        winrt::get_self<TabStripDisplayItem>(display)->HeaderProgressProjectedToPaneRows(headerProgressProjectedToPaneRows);
+        winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed, _isVerticalPresentation);
+        _refreshPaneRowVisuals(display);
     }
 
-    IInspectable TabStrip::HeaderForTab(IInspectable const& item) const
+    IInspectable TabStrip::HeaderForTab(IInspectable const& item, const bool realize)
     {
         if (const auto tab = item.try_as<MUX::Controls::TabViewItem>())
         {
             if (const auto display = _displayItemForTab(tab))
             {
-                return display.Header();
+                if (const auto desired = _tabItemVisibility.find(winrt::get_abi(tab));
+                    desired != _tabItemVisibility.end() && desired->second.Item.get() == tab && !desired->second.Visible)
+                {
+                    return nullptr;
+                }
+                if (realize)
+                {
+                    if (_historyActive)
+                    {
+                        HistoryClosed.raise(*this, nullptr);
+                    }
+                    if (_isRailCollapsed)
+                    {
+                        RailCollapseRequested.raise(*this, nullptr);
+                    }
+                    ItemsList().ScrollIntoView(display);
+                    ItemsList().UpdateLayout();
+                }
+                if (_isRailCollapsed || _historyActive || ItemsList().Visibility() != Visibility::Visible ||
+                    Visibility() != WUX::Visibility::Visible)
+                {
+                    return nullptr;
+                }
+                if (const auto container = ItemsList().ContainerFromItem(display).try_as<ListViewItem>())
+                {
+                    if (const auto root = container.ContentTemplateRoot().try_as<FrameworkElement>();
+                        root && container.Visibility() == WUX::Visibility::Visible)
+                    {
+                        const auto header = _findNamedElement(root, L"TabHeaderPresenter").try_as<TerminalApp::TabHeaderControl>();
+                        for (auto current = header.try_as<DependencyObject>(); current; current = WUX::Media::VisualTreeHelper::GetParent(current))
+                        {
+                            if (const auto element = current.try_as<UIElement>();
+                                element && element.Visibility() != WUX::Visibility::Visible)
+                            {
+                                return nullptr;
+                            }
+                        }
+                        return header;
+                    }
+                }
             }
         }
         return nullptr;
@@ -513,7 +745,7 @@ namespace winrt::TerminalApp::implementation
     {
         if (display)
         {
-            winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed);
+            winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed, _isVerticalPresentation);
             _refreshDisplayItemVisuals(display);
         }
     }
@@ -525,10 +757,7 @@ namespace winrt::TerminalApp::implementation
             if (const auto display = _displayItemForTab(tab))
             {
                 display.SearchText(searchText);
-                if (const auto header = display.Header().try_as<TerminalApp::TabHeaderControl>())
-                {
-                    header.SearchText(searchText);
-                }
+                display.Presentation().SearchText(searchText);
                 for (const auto& pane : display.PaneItems())
                 {
                     pane.HighlightQuery(searchText);
@@ -645,8 +874,13 @@ namespace winrt::TerminalApp::implementation
                 selectionBackground.Background(brush);
             }
             grid.Background(WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
-            const auto header = display.Header().try_as<WUX::Controls::Control>();
+            const auto header = grid.FindName(L"TabHeaderPresenter").try_as<WUX::Controls::Control>();
             const auto close = grid.FindName(L"TabCloseButton").try_as<WUX::Controls::Control>();
+            const auto iconPresenter = grid.FindName(L"TabIconPresenter").try_as<ContentPresenter>();
+            const auto icon = iconPresenter ? iconPresenter.Content().try_as<IconElement>() : nullptr;
+            const auto bitmap = icon ? icon.try_as<BitmapIcon>() : nullptr;
+            const auto monochromeIcon = icon && !icon.try_as<MUX::Controls::ImageIcon>() &&
+                                        (!bitmap || bitmap.ShowAsMonochrome());
             if (tabColor && selected)
             {
                 const auto foreground = WUX::Media::SolidColorBrush{ _tabSelectionForeground(*tabColor) };
@@ -656,6 +890,10 @@ namespace winrt::TerminalApp::implementation
                     {
                         control.Foreground(foreground);
                     }
+                }
+                if (monochromeIcon)
+                {
+                    icon.Foreground(foreground);
                 }
             }
             else
@@ -667,7 +905,59 @@ namespace winrt::TerminalApp::implementation
                         control.ClearValue(WUX::Controls::Control::ForegroundProperty());
                     }
                 }
+                if (monochromeIcon)
+                {
+                    icon.ClearValue(IconElement::ForegroundProperty());
+                    if (const auto foreground = display.IconSource().as<MUX::Controls::IconSource>().Foreground())
+                    {
+                        icon.Foreground(foreground);
+                    }
+                }
             }
+        }
+    }
+
+    void TabStrip::_updatePaneRowVisuals(FrameworkElement const& root,
+                                         TerminalApp::TabStripPaneItem const& pane)
+    {
+        _updatePaneRowVisuals(root, pane, _highContrast);
+    }
+
+    void TabStrip::_updatePaneRowVisuals(FrameworkElement const& root,
+                                         TerminalApp::TabStripPaneItem const& pane,
+                                         const bool highContrastActive)
+    {
+        if (!root || !pane)
+        {
+            return;
+        }
+
+        const auto updateRing = [&](WUX::Controls::Control const& ring) {
+            if (!ring)
+            {
+                return;
+            }
+
+            if (const auto brush = _paneProgressBrush(Resources(), root.ActualTheme(), pane.ProgressState(), highContrastActive))
+            {
+                ring.Foreground(brush);
+            }
+            else
+            {
+                ring.ClearValue(WUX::Controls::Control::ForegroundProperty());
+            }
+
+            WUX::Automation::AutomationProperties::SetName(ring, pane.AutomationName());
+        };
+        updateRing(_findNamedElement(root, L"PaneProgressRing").try_as<WUX::Controls::Control>());
+        updateRing(_findNamedElement(root, L"PaneIndeterminateProgressRing").try_as<WUX::Controls::Control>());
+    }
+
+    void TabStrip::_refreshRealizedPaneRowVisuals(const bool highContrastActive)
+    {
+        for (uint32_t index = 0; index < _displayItems.Size(); ++index)
+        {
+            _refreshPaneRowVisuals(_displayItems.GetAt(index), highContrastActive);
         }
     }
 
@@ -684,6 +974,50 @@ namespace winrt::TerminalApp::implementation
             if (const auto container = ItemsList().ContainerFromIndex(index).try_as<FrameworkElement>())
             {
                 _updateDisplayItemVisuals(container, display);
+                _refreshPaneRowVisuals(display);
+            }
+        }
+    }
+
+    void TabStrip::_refreshPaneRowVisuals(TerminalApp::TabStripDisplayItem const& display)
+    {
+        _refreshPaneRowVisuals(display, _highContrast);
+    }
+
+    void TabStrip::_refreshPaneRowVisuals(TerminalApp::TabStripDisplayItem const& display,
+                                          const bool highContrastActive)
+    {
+        if (!display)
+        {
+            return;
+        }
+
+        uint32_t displayIndex{};
+        if (!_displayItems.IndexOf(display, displayIndex))
+        {
+            return;
+        }
+
+        const auto container = ItemsList().ContainerFromIndex(displayIndex).try_as<ListViewItem>();
+        const auto root = container ? container.ContentTemplateRoot().try_as<FrameworkElement>() : nullptr;
+        const auto paneList = root ? _findNamedElement(root, L"TabPaneItems").try_as<ItemsControl>() : nullptr;
+        if (!paneList)
+        {
+            return;
+        }
+
+        const auto panes = display.PaneItems();
+        for (uint32_t index = 0; index < panes.Size(); ++index)
+        {
+            const auto paneContainer = paneList.ContainerFromIndex(index).try_as<ContentPresenter>();
+            if (!paneContainer || WUX::Media::VisualTreeHelper::GetChildrenCount(paneContainer) == 0)
+            {
+                continue;
+            }
+
+            if (const auto paneRoot = WUX::Media::VisualTreeHelper::GetChild(paneContainer, 0).try_as<FrameworkElement>())
+            {
+                _updatePaneRowVisuals(paneRoot, panes.GetAt(index), highContrastActive);
             }
         }
     }
@@ -701,6 +1035,35 @@ namespace winrt::TerminalApp::implementation
                     ToolTipService::SetToolTip(close, box_value(RS_(L"TabCloseToolTip")));
                 }
             }
+        }
+    }
+
+    void TabStrip::OnRowHeaderLoaded(IInspectable const& sender, RoutedEventArgs const&)
+    {
+        const auto header = sender.as<TerminalApp::TabHeaderControl>();
+        const auto impl = winrt::get_self<TabHeaderControl>(header);
+        if (std::exchange(impl->SidebarEventsAttached, true))
+        {
+            return;
+        }
+        header.TitleChangeRequested([weakThis = get_weak(), weakHeader = winrt::make_weak(header)](const auto& title) {
+            const auto self = weakThis.get();
+            const auto view = weakHeader.get();
+            const auto display = view ? view.DataContext().try_as<TerminalApp::TabStripDisplayItem>() : nullptr;
+            if (self && display)
+            {
+                self->HeaderTitleChangeRequested.raise(display.Tab(), title);
+            }
+        });
+        header.RenameEnded({ get_weak(), &TabStrip::OnHeaderRenameEnded });
+    }
+
+    void TabStrip::OnHeaderRenameEnded(IInspectable const& sender, IInspectable const&)
+    {
+        const auto view = sender.try_as<FrameworkElement>();
+        if (const auto display = view ? view.DataContext().try_as<TerminalApp::TabStripDisplayItem>() : nullptr)
+        {
+            TabFocusRequested.raise(*this, winrt::make<TabStripCloseRequestedEventArgs>(display.Tab()));
         }
     }
 
@@ -724,6 +1087,8 @@ namespace winrt::TerminalApp::implementation
                     WUX::Automation::AutomationProperties::SetName(close, label);
                     ToolTipService::SetToolTip(close, box_value(label));
                 }
+
+                _updatePaneRowVisuals(root, pane);
             }
         }
     }
@@ -782,7 +1147,7 @@ namespace winrt::TerminalApp::implementation
     {
         if (const auto display = _displayItemForTab(item))
         {
-            winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed);
+            winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed, _isVerticalPresentation);
         }
     }
 
@@ -1064,6 +1429,18 @@ namespace winrt::TerminalApp::implementation
         _displayItems.InsertAt(to, display);
     }
 
+    void TabStrip::SetVerticalPresentation(const bool vertical)
+    {
+        if (_isVerticalPresentation != vertical)
+        {
+            _isVerticalPresentation = vertical;
+            for (const auto& display : _displayItems)
+            {
+                winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed, _isVerticalPresentation);
+            }
+        }
+    }
+
     void TabStrip::RestoreTabOrder(const std::vector<IInspectable>& items)
     {
         _syncingNativeReorder = true;
@@ -1079,27 +1456,8 @@ namespace winrt::TerminalApp::implementation
         if (const auto display = _displayItemForTab(item))
         {
             display.IsPinned(pinned);
-            winrt::get_self<TabStripDisplayItem>(display)->UpdatePresentation(_isRailCollapsed);
+            winrt::get_self<TabStripDisplayItem>(display)->UpdatePresentation(_isRailCollapsed, _isVerticalPresentation);
         }
-    }
-
-    void TabStrip::BeginHeaderTransfer()
-    {
-        _pendingHeaderTransfers.clear();
-        _deferringHeaderRestore = true;
-    }
-
-    void TabStrip::CompleteHeaderTransfer()
-    {
-        _deferringHeaderRestore = false;
-        for (const auto& [_, pending] : _pendingHeaderTransfers)
-        {
-            if (const auto tab = pending.Item.get(); tab && pending.Header && !tab.Header())
-            {
-                tab.Header(pending.Header);
-            }
-        }
-        _pendingHeaderTransfers.clear();
     }
 
     void TabStrip::RichTabRepositoryVisible(bool value)
@@ -1449,6 +1807,20 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
+        const auto display = e.InRecycleQueue() ? nullptr : e.Item().try_as<TerminalApp::TabStripDisplayItem>();
+        if (display)
+        {
+            WUX::Data::Binding nameBinding;
+            nameBinding.Source(display.Presentation());
+            nameBinding.Path(PropertyPath{ L"AutomationName" });
+            nameBinding.Mode(WUX::Data::BindingMode::OneWay);
+            container.SetBinding(WUX::Automation::AutomationProperties::NameProperty(), nameBinding);
+        }
+        else
+        {
+            container.ClearValue(WUX::Automation::AutomationProperties::NameProperty());
+        }
+
         if (e.InRecycleQueue())
         {
             _updateDisplayItemVisuals(container.ContentTemplateRoot().try_as<FrameworkElement>(), nullptr);
@@ -1465,7 +1837,7 @@ namespace winrt::TerminalApp::implementation
             container.Visibility(Visibility::Visible);
         }
         _updateDisplayItemVisuals(container.ContentTemplateRoot().try_as<FrameworkElement>(),
-                                  e.Item().try_as<TerminalApp::TabStripDisplayItem>());
+                                  display);
     }
 
     void TabStrip::_applyRailState()
@@ -1508,7 +1880,7 @@ namespace winrt::TerminalApp::implementation
             }
             if (const auto display = _displayItemAt(index))
             {
-                winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed);
+                winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed, _isVerticalPresentation);
             }
         }
 
@@ -1544,7 +1916,7 @@ namespace winrt::TerminalApp::implementation
         _refreshCloseButton(item);
         if (const auto display = _displayItemForTab(item))
         {
-            winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed);
+            winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed, _isVerticalPresentation);
         }
     }
 
@@ -1880,17 +2252,12 @@ namespace winrt::TerminalApp::implementation
         case CollectionChange::ItemRemoved:
             if (args.Index() < _displayItems.Size())
             {
-                _restoreDisplayItemHeader(_displayItems.GetAt(args.Index()));
                 _displayItems.RemoveAt(args.Index());
             }
             break;
         case CollectionChange::ItemChanged:
             if (const auto item = sender.GetAt(args.Index()).try_as<MUX::Controls::TabViewItem>())
             {
-                if (args.Index() < _displayItems.Size())
-                {
-                    _restoreDisplayItemHeader(_displayItems.GetAt(args.Index()));
-                }
                 _displayItems.SetAt(args.Index(), _makeDisplayItem(item));
                 _applyTabItemVisibility(item);
             }
@@ -1926,15 +2293,17 @@ namespace winrt::TerminalApp::implementation
 
     TerminalApp::TabStripDisplayItem TabStrip::_makeDisplayItem(MUX::Controls::TabViewItem const& tab)
     {
-        auto header = tab.Header();
-        tab.Header(nullptr);
-        auto display = winrt::make<TabStripDisplayItem>(tab, std::move(header));
+        auto display = winrt::make<TabStripDisplayItem>(tab, tab.Header());
         auto title = WUX::Automation::AutomationProperties::GetName(tab);
         if (title.empty())
         {
             title = RS_(L"VerticalTabsFallbackTabTitle");
         }
         display.Title(title);
+        if (!tab.Header())
+        {
+            display.Presentation().Title(title);
+        }
         winrt::get_self<TabStripDisplayItem>(display)->SyncIcon({});
         const auto key = winrt::get_abi(tab);
         if (const auto found = _groupExpansion.find(key);
@@ -1946,49 +2315,8 @@ namespace winrt::TerminalApp::implementation
         {
             _groupExpansion.insert_or_assign(key, GroupExpansionState{ winrt::make_weak(tab), true });
         }
-        winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed);
+        winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed, _isVerticalPresentation);
         return display;
-    }
-
-    void TabStrip::_restoreDisplayItemHeader(TerminalApp::TabStripDisplayItem const& display)
-    {
-        if (display)
-        {
-            const auto tab = display.Tab();
-            const auto header = display.Header();
-            if (tab && header && !tab.Header())
-            {
-                auto current = header.try_as<DependencyObject>();
-                while (current)
-                {
-                    const auto parent = WUX::Media::VisualTreeHelper::GetParent(current);
-                    if (const auto presenter = parent.try_as<ContentPresenter>())
-                    {
-                        if (winrt::get_abi(presenter.Content()) == winrt::get_abi(header))
-                        {
-                            presenter.Content(nullptr);
-                            break;
-                        }
-                    }
-                    current = parent;
-                }
-                display.Header(nullptr);
-                if (const auto headerControl = header.try_as<TerminalApp::TabHeaderControl>())
-                {
-                    headerControl.IsMetadataVisible(!headerControl.MetadataText().empty());
-                }
-                if (_deferringHeaderRestore)
-                {
-                    _pendingHeaderTransfers.insert_or_assign(
-                        winrt::get_abi(tab),
-                        PendingHeaderTransfer{ winrt::make_weak(tab), header });
-                }
-                else
-                {
-                    tab.Header(header);
-                }
-            }
-        }
     }
 
     MUX::Controls::TabViewItem TabStrip::_tabFromItem(IInspectable const& item)
@@ -2030,14 +2358,6 @@ namespace winrt::TerminalApp::implementation
                 {
                     next.emplace_back(_makeDisplayItem(tab));
                 }
-            }
-        }
-        for (const auto& [_, display] : existing)
-        {
-            uint32_t index{};
-            if (!_tabItems.IndexOf(display.Tab(), index))
-            {
-                _restoreDisplayItemHeader(display);
             }
         }
         _displayItems.ReplaceAll(next);
@@ -2308,7 +2628,7 @@ namespace winrt::TerminalApp::implementation
         _groupExpansion.insert_or_assign(
             winrt::get_abi(display.Tab()),
             GroupExpansionState{ winrt::make_weak(display.Tab()), display.IsExpanded() });
-        winrt::get_self<TabStripDisplayItem>(display)->UpdatePresentation(_isRailCollapsed);
+        winrt::get_self<TabStripDisplayItem>(display)->UpdatePresentation(_isRailCollapsed, _isVerticalPresentation);
         _refreshDisplayItemVisuals(display);
         GroupExpansionChanged.raise(*this, display.Tab());
     }

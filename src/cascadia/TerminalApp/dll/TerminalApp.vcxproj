@@ -36,6 +36,7 @@
     <ClInclude Include="../AppKeyBindings.h" />
     <ClInclude Include="../TitlebarControl.h" />
     <ClInclude Include="../TabRowControl.h" />
+    <ClInclude Include="../IndeterminateProgressRing.h" />
     <ClInclude Include="../App.h" />
   </ItemGroup>
   <!-- ========================= Cpp Files ======================== -->
