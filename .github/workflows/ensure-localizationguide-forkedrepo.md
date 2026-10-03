@@ -422,7 +422,7 @@ timeout-minutes: 15
 
 max-ai-credits: 500
 
-max-daily-ai-credits: 750
+max-daily-ai-credits: 5000
 
 concurrency:
 
