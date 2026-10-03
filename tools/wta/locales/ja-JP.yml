@@ -155,6 +155,7 @@ system.selection_copied: "コピーしました"  # Brief hint shown after selec
 system.cancelled: "キャンセルされました。"
 system.no_prompt_in_flight: "進行中のプロンプトはありません。"
 system.authentication_failed: "認証に失敗しました"
+system.localization_workflow_retest: "WTA ターミナルのローカライズ公開の再テスト メッセージです。"
 system.stopped_max_tokens: "モデルの出力上限に達したため、応答が途中で打ち切られました。"
 system.stopped_max_turn_requests: "このターンの要求上限に達したため、エージェントが停止しました。"
 system.stopped_refusal: "エージェントはこの要求の続行を拒否しました。"

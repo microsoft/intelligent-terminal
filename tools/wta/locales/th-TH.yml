@@ -159,6 +159,7 @@ system.selection_copied: "คัดลอกแล้ว"  # Brief hint shown af
 system.cancelled: "ยกเลิกแล้ว"
 system.no_prompt_in_flight: "ไม่มีพร้อมท์ที่กำลังดำเนินการ"
 system.authentication_failed: "การยืนยันตัวตนล้มเหลว"
+system.localization_workflow_retest: "ข้อความทดสอบซ้ำการเผยแพร่การแปลภาษาของเทอร์มินัล WTA"
 system.stopped_max_tokens: "การตอบกลับถูกตัดออกหลังจากถึงขีดจำกัดเอาต์พุตของโมเดล"
 system.stopped_max_turn_requests: "เอเจนต์หยุดลงหลังจากถึงขีดจำกัดคำขอสำหรับเทิร์นนี้"
 system.stopped_refusal: "เอเจนต์ปฏิเสธที่จะดำเนินการคำขอนี้ต่อ"

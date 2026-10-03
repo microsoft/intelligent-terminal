@@ -172,6 +172,7 @@ system.selection_copied: "Nusxalandi"  # Brief hint shown after selected termina
 system.cancelled: "Bekor qilindi."
 system.no_prompt_in_flight: "Bajarilayotgan soʻrov yoʻq."
 system.authentication_failed: "Autentifikatsiya amalga oshmadi"
+system.localization_workflow_retest: "WTA terminali lokalizatsiyasini nashr etishni qayta sinovdan o'tkazish xabari."
 system.stopped_max_tokens: "Javob model chiqish chegarasiga yetgach uzib qo'yildi."
 system.stopped_max_turn_requests: "Agent ushbu navbat uchun so'rov chegarasiga yetgach to'xtadi."
 system.stopped_refusal: "Agent ushbu so'rovni davom ettirishdan bosh tortdi."

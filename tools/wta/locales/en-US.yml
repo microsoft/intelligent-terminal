@@ -242,6 +242,7 @@ system.selection_copied: "Copied"  # Brief hint shown after selected terminal te
 system.cancelled: "Cancelled."
 system.no_prompt_in_flight: "No prompt in flight."
 system.authentication_failed: "Authentication failed"
+system.localization_workflow_retest: "WTA localization publication retest message."
 # Soft stops: the prompt turn succeeded at the protocol level but ended for a
 # reason worth telling the user about. Shown as a system line after the reply.
 system.stopped_max_tokens: "The response was cut off after reaching the model's output limit."

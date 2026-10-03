@@ -159,6 +159,7 @@ system.selection_copied: "Gekopieerd"  # Brief hint shown after selected termina
 system.cancelled: "Geannuleerd."
 system.no_prompt_in_flight: "Geen prompt actief."
 system.authentication_failed: "Verificatie mislukt"
+system.localization_workflow_retest: "Hertest-bericht voor publicatie van terminallokalisatie van WTA."
 system.stopped_max_tokens: "Het antwoord is afgekapt nadat de uitvoerlimiet van het model was bereikt."
 system.stopped_max_turn_requests: "De agent is gestopt nadat de aanvraaglimiet voor deze beurt was bereikt."
 system.stopped_refusal: "De agent heeft geweigerd door te gaan met deze aanvraag."

@@ -172,6 +172,7 @@ system.selection_copied: "ਕਾਪੀ ਕੀਤਾ"  # Brief hint shown after s
 system.cancelled: "ਰੱਦ ਕੀਤਾ ਗਿਆ।"
 system.no_prompt_in_flight: "ਕੋਈ ਪ੍ਰੋਮਪਟ ਚੱਲ ਨਹੀਂ ਰਿਹਾ।"
 system.authentication_failed: "ਪ੍ਰਮਾਣਿਕਤਾ ਅਸਫਲ"
+system.localization_workflow_retest: "WTA ਟਰਮੀਨਲ ਸਥਾਨੀਕਰਨ ਪ੍ਰਕਾਸ਼ਨ ਮੁੜ-ਜਾਂਚ ਸੁਨੇਹਾ।"
 system.stopped_max_tokens: "ਮਾਡਲ ਦੀ ਆਉਟਪੁੱਟ ਸੀਮਾ 'ਤੇ ਪਹੁੰਚਣ ਤੋਂ ਬਾਅਦ ਜਵਾਬ ਕੱਟ ਦਿੱਤਾ ਗਿਆ।"
 system.stopped_max_turn_requests: "ਇਸ ਵਾਰੀ ਲਈ ਆਪਣੀ ਬੇਨਤੀ ਸੀਮਾ 'ਤੇ ਪਹੁੰਚਣ ਤੋਂ ਬਾਅਦ ਏਜੰਟ ਰੁਕ ਗਿਆ।"
 system.stopped_refusal: "ਏਜੰਟ ਨੇ ਇਸ ਬੇਨਤੀ ਨੂੰ ਜਾਰੀ ਰੱਖਣ ਤੋਂ ਇਨਕਾਰ ਕਰ ਦਿੱਤਾ।"

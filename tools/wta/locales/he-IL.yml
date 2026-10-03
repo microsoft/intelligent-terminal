@@ -172,6 +172,7 @@ system.selection_copied: "הועתק"  # Brief hint shown after selected termina
 system.cancelled: "בוטל."
 system.no_prompt_in_flight: "אין בקשה בתהליך."
 system.authentication_failed: "האימות נכשל"
+system.localization_workflow_retest: "הודעת בדיקה חוזרת של פרסום לוקליזציה של מסוף WTA."
 system.stopped_max_tokens: "התגובה נקטעה לאחר שהגיעה למגבלת הפלט של המודל."
 system.stopped_max_turn_requests: "הסוכן נעצר לאחר שהגיע למגבלת הבקשות שלו לתור זה."
 system.stopped_refusal: "הסוכן סירב להמשיך בבקשה זו."

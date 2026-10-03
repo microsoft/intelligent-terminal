@@ -159,6 +159,7 @@ system.selection_copied: "Nakopya"  # Brief hint shown after selected terminal t
 system.cancelled: "Kinansela."
 system.no_prompt_in_flight: "Walang prompt na kasalukuyang pinapatakbo."
 system.authentication_failed: "Nabigo ang authentication"
+system.localization_workflow_retest: "Mensahe ng muling pagsubok sa paglalathala ng lokalisasyon ng terminal ng WTA."
 system.stopped_max_tokens: "Naputol ang tugon pagkatapos maabot ang limitasyon sa output ng modelo."
 system.stopped_max_turn_requests: "Huminto ang ahente pagkatapos maabot ang limitasyon nito sa kahilingan para sa pagliko na ito."
 system.stopped_refusal: "Tumanggi ang ahente na ipagpatuloy ang kahilingang ito."

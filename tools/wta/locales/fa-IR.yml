@@ -172,6 +172,7 @@ system.selection_copied: "کپی شد"  # Brief hint shown after selected termin
 system.cancelled: "لغو شد."
 system.no_prompt_in_flight: "هیچ درخواستی در حال اجرا نیست."
 system.authentication_failed: "احراز هویت ناموفق بود"
+system.localization_workflow_retest: "پیام آزمایش مجدد انتشار بومی‌سازی پایانه WTA."
 system.stopped_max_tokens: "پاسخ پس از رسیدن به حد خروجی مدل قطع شد."
 system.stopped_max_turn_requests: "عامل پس از رسیدن به حد درخواست خود برای این نوبت متوقف شد."
 system.stopped_refusal: "عامل از ادامه‌دادن این درخواست خودداری کرد."

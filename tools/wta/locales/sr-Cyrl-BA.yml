@@ -168,6 +168,7 @@ system.selection_copied: "Копирано"  # Brief hint shown after selected t
 system.cancelled: "Отказано."
 system.no_prompt_in_flight: "Нема активног захтјева."
 system.authentication_failed: "Аутентификација није успјела"
+system.localization_workflow_retest: "Порука поновног тестирања објављивања локализације WTA терминала."
 system.stopped_max_tokens: "Одговор је одсечен након достизања излазног ограничења модела."
 system.stopped_max_turn_requests: "Агент се зауставио након достизања ограничења захтева за овај потез."
 system.stopped_refusal: "Агент је одбио да настави са овим захтевом."

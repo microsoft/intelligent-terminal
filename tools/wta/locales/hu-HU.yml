@@ -159,6 +159,7 @@ system.selection_copied: "Másolva"  # Brief hint shown after selected terminal 
 system.cancelled: "Megszakítva."
 system.no_prompt_in_flight: "Nincs folyamatban lévő kérés."
 system.authentication_failed: "A hitelesítés sikertelen"
+system.localization_workflow_retest: "A WTA terminál lokalizációjának újbóli közzétételi tesztüzenete."
 system.stopped_max_tokens: "A válasz megszakadt, miután elérte a modell kimeneti korlátját."
 system.stopped_max_turn_requests: "Az ügynök leállt, miután elérte a kérési korlátját ehhez a fordulóhoz."
 system.stopped_refusal: "Az ügynök elutasította a kérés folytatását."

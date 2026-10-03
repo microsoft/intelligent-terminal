@@ -168,6 +168,7 @@ system.selection_copied: "Skopírované"  # Brief hint shown after selected term
 system.cancelled: "Zrušené."
 system.no_prompt_in_flight: "Žiadna prebiehajúca požiadavka."
 system.authentication_failed: "Overenie zlyhalo"
+system.localization_workflow_retest: "Správa o opakovanom teste publikácie lokalizácie terminálu WTA."
 system.stopped_max_tokens: "Odpoveď bola orezaná po dosiahnutí výstupného limitu modelu."
 system.stopped_max_turn_requests: "Agent sa zastavil po dosiahnutí limitu požiadaviek pre toto kolo."
 system.stopped_refusal: "Agent odmietol pokračovať v tejto požiadavke."

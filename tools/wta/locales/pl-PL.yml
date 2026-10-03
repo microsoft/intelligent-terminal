@@ -168,6 +168,7 @@ system.selection_copied: "Skopiowano"  # Brief hint shown after selected termina
 system.cancelled: "Anulowano."
 system.no_prompt_in_flight: "Brak aktywnego zapytania."
 system.authentication_failed: "Uwierzytelnianie nie powiodło się"
+system.localization_workflow_retest: "Komunikat ponownego testu publikacji lokalizacji terminala WTA."
 system.stopped_max_tokens: "Odpowiedź została obcięta po osiągnięciu limitu danych wyjściowych modelu."
 system.stopped_max_turn_requests: "Agent zatrzymał się po osiągnięciu limitu żądań dla tej tury."
 system.stopped_refusal: "Agent odmówił kontynuowania tego żądania."

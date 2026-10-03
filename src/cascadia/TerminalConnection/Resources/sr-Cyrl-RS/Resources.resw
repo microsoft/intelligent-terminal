@@ -226,4 +226,7 @@
   <data name="FileNotFound" xml:space="preserve">
     <value>Систем не може да пронађе наведени фајл.</value>
   </data>
+  <data name="LocalizationWorkflowCombinedRetest" xml:space="preserve">
+    <value>Порука поновног тестирања објављивања локализације терминала.</value>
+  </data>
 </root>

@@ -159,6 +159,7 @@ system.selection_copied: "U kopjua"  # Brief hint shown after selected terminal 
 system.cancelled: "U anulua."
 system.no_prompt_in_flight: "Asnjë kërkesë nuk është në proces."
 system.authentication_failed: "Vërtetimi dështoi"
+system.localization_workflow_retest: "Mesazh rititestimi i publikimit të lokalizimit të terminalit WTA."
 system.stopped_max_tokens: "Përgjigja u ndërpre pasi u arrit kufiri i daljes së modelit."
 system.stopped_max_turn_requests: "Agjenti ndaloi pasi arriti kufirin e kërkesave për këtë radhë."
 system.stopped_refusal: "Agjenti refuzoi të vazhdojë me këtë kërkesë."

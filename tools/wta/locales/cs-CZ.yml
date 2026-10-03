@@ -169,6 +169,7 @@ system.selection_copied: "Zkopírováno"  # Brief hint shown after selected term
 system.cancelled: "Zrušeno."
 system.no_prompt_in_flight: "Žádný dotaz neprobíhá."
 system.authentication_failed: "Ověření se nezdařilo"
+system.localization_workflow_retest: "Zpráva o opakovaném testu publikace lokalizace terminálu WTA."
 system.stopped_max_tokens: "Odpověď byla oříznuta po dosažení výstupního limitu modelu."
 system.stopped_max_turn_requests: "Agent se zastavil po dosažení limitu požadavků pro toto kolo."
 system.stopped_refusal: "Agent odmítl pokračovat v tomto požadavku."

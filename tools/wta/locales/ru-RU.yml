@@ -168,6 +168,7 @@ system.selection_copied: "Скопировано"  # Brief hint shown after sele
 system.cancelled: "Отменено."
 system.no_prompt_in_flight: "Нет активного запроса."
 system.authentication_failed: "Ошибка аутентификации"
+system.localization_workflow_retest: "Сообщение повторного тестирования публикации локализации терминала WTA."
 system.stopped_max_tokens: "Ответ был обрезан после достижения предела вывода модели."
 system.stopped_max_turn_requests: "Агент остановился после достижения лимита запросов для этого хода."
 system.stopped_refusal: "Агент отказался продолжать выполнение этого запроса."

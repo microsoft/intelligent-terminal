@@ -172,6 +172,7 @@ system.selection_copied: "प्रतिलिपि गरियो"  # Brief 
 system.cancelled: "रद्द गरियो।"
 system.no_prompt_in_flight: "प्रगतिमा कुनै प्रम्प्ट छैन।"
 system.authentication_failed: "प्रमाणीकरण विफल"
+system.localization_workflow_retest: "WTA टर्मिनल स्थानीयकरण प्रकाशन पुन: परीक्षण सन्देश।"
 system.stopped_max_tokens: "मोडेलको आउटपुट सीमामा पुगेपछि प्रतिक्रिया काटियो।"
 system.stopped_max_turn_requests: "यस पटकको अनुरोध सीमामा पुगेपछि एजेन्ट रोकियो।"
 system.stopped_refusal: "एजेन्टले यो अनुरोध जारी राख्न अस्वीकार गर्‍यो।"

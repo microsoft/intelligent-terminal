@@ -155,6 +155,7 @@ system.selection_copied: "已复制"  # 复制选中的终端文本后短暂显�
 system.cancelled: "已取消。"
 system.no_prompt_in_flight: "没有正在进行的提示。"
 system.authentication_failed: "身份验证失败"
+system.localization_workflow_retest: "WTA 终端本地化发布重新测试消息。"
 system.stopped_max_tokens: "达到模型的输出上限后，回复被截断。"
 system.stopped_max_turn_requests: "达到本轮的请求上限后，智能体已停止。"
 system.stopped_refusal: "智能体拒绝继续处理此请求。"

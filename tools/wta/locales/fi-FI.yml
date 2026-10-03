@@ -159,6 +159,7 @@ system.selection_copied: "Kopioitu"  # Brief hint shown after selected terminal 
 system.cancelled: "Peruutettu."
 system.no_prompt_in_flight: "Ei käynnissä olevaa kehotetta."
 system.authentication_failed: "Todennus epäonnistui"
+system.localization_workflow_retest: "WTA-päätteen lokalisoinnin julkaisun uudelleentestausviesti."
 system.stopped_max_tokens: "Vastaus katkaistiin mallin tulostusrajan saavuttamisen jälkeen."
 system.stopped_max_turn_requests: "Agentti pysähtyi saavutettuaan tämän vuoron pyyntörajan."
 system.stopped_refusal: "Agentti kieltäytyi jatkamasta tätä pyyntöä."

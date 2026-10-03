@@ -159,6 +159,7 @@ system.selection_copied: "Copiat"  # Brief hint shown after selected terminal te
 system.cancelled: "Anulat."
 system.no_prompt_in_flight: "Nicio solicitare în curs."
 system.authentication_failed: "Autentificarea a eșuat"
+system.localization_workflow_retest: "Mesaj de retestare a publicării localizării terminalului WTA."
 system.stopped_max_tokens: "Răspunsul a fost întrerupt după atingerea limitei de ieșire a modelului."
 system.stopped_max_turn_requests: "Agentul s-a oprit după atingerea limitei de solicitări pentru această tură."
 system.stopped_refusal: "Agentul a refuzat să continue cu această solicitare."

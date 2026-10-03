@@ -172,6 +172,7 @@ system.selection_copied: "പകർത്തി"  # Brief hint shown after selec
 system.cancelled: "റദ്ദാക്കി."
 system.no_prompt_in_flight: "പുരോഗതിയില്‍ പ്രോംപ്റ്റ് ഇല്ല."
 system.authentication_failed: "പ്രമാണീകരണം പരാജയപ്പെട്ടു"
+system.localization_workflow_retest: "WTA ടെർമിനൽ പ്രാദേശികവൽക്കരണ പ്രസിദ്ധീകരണ വീണ്ടും പരിശോധന സന്ദേശം."
 system.stopped_max_tokens: "മോഡലിന്റെ ഔട്ട്പുട്ട് പരിധിയിലെത്തിയ ശേഷം പ്രതികരണം മുറിച്ചുമാറ്റി."
 system.stopped_max_turn_requests: "ഈ ഊഴത്തിനായുള്ള അഭ്യർത്ഥനാ പരിധിയിലെത്തിയ ശേഷം ഏജന്റ് നിർത്തി."
 system.stopped_refusal: "ഈ അഭ്യർത്ഥന തുടരാൻ ഏജന്റ് വിസമ്മതിച്ചു."

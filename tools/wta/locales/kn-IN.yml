@@ -172,6 +172,7 @@ system.selection_copied: "ನಕಲಿಸಲಾಗಿದೆ"  # Brief hint shown
 system.cancelled: "ರದ್ದುಮಾಡಲಾಗಿದೆ."
 system.no_prompt_in_flight: "ಪ್ರಗತಿಯಲ್ಲಿ ಯಾವುದೇ ಪ್ರಾಂಪ್ಟ್ ಇಲ್ಲ."
 system.authentication_failed: "ದೃಢೀಕರಣ ವಿಫಲವಾಗಿದೆ"
+system.localization_workflow_retest: "WTA ಟರ್ಮಿನಲ್ ಸ್ಥಳೀಕರಣ ಪ್ರಕಟಣೆ ಮರುಪರೀಕ್ಷೆ ಸಂದೇಶ."
 system.stopped_max_tokens: "ಮಾದರಿಯ ಔಟ್‌ಪುಟ್ ಮಿತಿಯನ್ನು ತಲುಪಿದ ನಂತರ ಪ್ರತಿಕ್ರಿಯೆಯನ್ನು ಕತ್ತರಿಸಲಾಗಿದೆ."
 system.stopped_max_turn_requests: "ಈ ಸರದಿಗೆ ತನ್ನ ವಿನಂತಿ ಮಿತಿಯನ್ನು ತಲುಪಿದ ನಂತರ ಏಜೆಂಟ್ ನಿಂತಿತು."
 system.stopped_refusal: "ಏಜೆಂಟ್ ಈ ವಿನಂತಿಯನ್ನು ಮುಂದುವರಿಸಲು ನಿರಾಕರಿಸಿತು."

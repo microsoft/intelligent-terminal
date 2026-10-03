@@ -160,6 +160,7 @@ system.selection_copied: "Kopiert"  # Brief hint shown after selected terminal t
 system.cancelled: "Abgebrochen."
 system.no_prompt_in_flight: "Kein Prompt aktiv."
 system.authentication_failed: "Authentifizierung fehlgeschlagen"
+system.localization_workflow_retest: "Testnachricht für die erneute Veröffentlichungsprüfung der WTA-Terminal-Lokalisierung."
 system.stopped_max_tokens: "Die Antwort wurde abgeschnitten, nachdem das Ausgabelimit des Modells erreicht wurde."
 system.stopped_max_turn_requests: "Der Agent hat angehalten, nachdem sein Anfragelimit für diesen Zug erreicht wurde."
 system.stopped_refusal: "Der Agent hat es abgelehnt, mit dieser Anfrage fortzufahren."

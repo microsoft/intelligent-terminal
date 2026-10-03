@@ -159,6 +159,7 @@ system.selection_copied: "Air a chopaigeadh"  # Brief hint shown after selected 
 system.cancelled: "Air a sgur dheth."
 system.no_prompt_in_flight: "Chan eil brodadh air an t-slighe."
 system.authentication_failed: "Dh'fhàillig an dearbhadh"
+system.localization_workflow_retest: "Teachdaireachd ath-dhearbhaidh foillseachaidh ionadaileachd airson an teirmineal WTA."
 system.stopped_max_tokens: "Chaidh am freagairt a ghearradh às dèidh crìoch toraidh a' mhodail a ruighinn."
 system.stopped_max_turn_requests: "Stad an riochdaire às dèidh a chrìoch iarrtais airson a' chuairt seo a ruighinn."
 system.stopped_refusal: "Dhiùlt an riochdaire leantainn air adhart leis an iarrtas seo."

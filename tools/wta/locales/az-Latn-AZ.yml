@@ -173,6 +173,7 @@ system.selection_copied: "Kopyalandı"  # Brief hint shown after selected termin
 system.cancelled: "Ləğv edildi."
 system.no_prompt_in_flight: "İcra olunan sorğu yoxdur."
 system.authentication_failed: "Kimlik doğrulaması uğursuz oldu"
+system.localization_workflow_retest: "WTA terminalının lokallaşdırma nəşrinin yenidən test mesajı."
 system.stopped_max_tokens: "Cavab modelin çıxış həddinə çatdıqdan sonra kəsildi."
 system.stopped_max_turn_requests: "Agent bu növbə üçün sorğu həddinə çatdıqdan sonra dayandı."
 system.stopped_refusal: "Agent bu sorğunu davam etdirməkdən imtina etdi."

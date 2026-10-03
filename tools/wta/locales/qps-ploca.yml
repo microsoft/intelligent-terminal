@@ -159,6 +159,7 @@ system.selection_copied: "[!!_Copied_!!]"  # Brief hint shown after selected ter
 system.cancelled: "[!!_Cancelled._!!]"
 system.no_prompt_in_flight: "[!!_No prompt in flight._!!]"
 system.authentication_failed: "[!!_Authentication failed_!!]"
+system.localization_workflow_retest: "[!!_Ẃţá ţёŕмїñáĺ ĺőςáĺїзáţїőñ ρúвĺїςáţїőñ ŕёţёśţ мёśśáğё._!!]"
 system.stopped_max_tokens: "[!!_The response was cut off after reaching the model's output limit._!!]"
 system.stopped_max_turn_requests: "[!!_The agent stopped after reaching its request limit for this turn._!!]"
 system.stopped_refusal: "[!!_The agent declined to continue with this request._!!]"

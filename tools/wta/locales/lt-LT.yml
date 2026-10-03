@@ -159,6 +159,7 @@ system.selection_copied: "Nukopijuota"  # Brief hint shown after selected termin
 system.cancelled: "Atšaukta."
 system.no_prompt_in_flight: "Nėra vykdomos užklausos."
 system.authentication_failed: "Autentifikavimas nepavyko"
+system.localization_workflow_retest: "WTA terminalo lokalizacijos publikavimo pakartotinio testavimo pranešimas."
 system.stopped_max_tokens: "Atsakymas buvo nutrauktas pasiekus modelio išvesties ribą."
 system.stopped_max_turn_requests: "Agentas sustojo pasiekęs šio ėjimo užklausų ribą."
 system.stopped_refusal: "Agentas atsisakė tęsti šią užklausą."

@@ -159,6 +159,7 @@ system.selection_copied: "Kopiatuta"  # Brief hint shown after selected terminal
 system.cancelled: "Bertan behera utzia."
 system.no_prompt_in_flight: "Ez dago gonbidapenik abian."
 system.authentication_failed: "Autentifikazioak huts egin du"
+system.localization_workflow_retest: "WTA terminalaren lokalizazio-argitalpenaren berriz probatzeko mezua."
 system.stopped_max_tokens: "Erantzuna eten egin da modeloaren irteera-muga gainditu ondoren."
 system.stopped_max_turn_requests: "Agentea gelditu egin da txanda honetako eskaera-muga gainditu ondoren."
 system.stopped_refusal: "Agenteak eskaera honekin jarraitzeari uko egin dio."

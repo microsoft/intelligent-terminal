@@ -226,4 +226,7 @@
   <data name="FileNotFound" xml:space="preserve">
     <value>Impossibile trovare il file specificato.</value>
   </data>
+  <data name="LocalizationWorkflowCombinedRetest" xml:space="preserve">
+    <value>Messaggio di nuovo test di pubblicazione della localizzazione del terminale.</value>
+  </data>
 </root>

@@ -168,6 +168,7 @@ system.selection_copied: "Kopirano"  # Brief hint shown after selected terminal 
 system.cancelled: "Preklicano."
 system.no_prompt_in_flight: "Nobena zahteva ni v teku."
 system.authentication_failed: "Preverjanje pristnosti ni uspelo"
+system.localization_workflow_retest: "Sporočilo o ponovnem preizkusu objave lokalizacije terminala WTA."
 system.stopped_max_tokens: "Odgovor je bil odrezan po dosegu izhodne omejitve modela."
 system.stopped_max_turn_requests: "Agent se je ustavil po dosegu omejitve zahtev za to potezo."
 system.stopped_refusal: "Agent je zavrnil nadaljevanje te zahteve."

@@ -169,6 +169,7 @@ system.selection_copied: "Kopirano"  # Brief hint shown after selected terminal 
 system.cancelled: "Otkazano."
 system.no_prompt_in_flight: "Nema aktivnog zahtjeva."
 system.authentication_failed: "Autentifikacija nije uspjela"
+system.localization_workflow_retest: "Poruka za ponovno testiranje objave lokalizacije WTA terminala."
 system.stopped_max_tokens: "Odgovor je prekinut nakon dostizanja izlaznog ograničenja modela."
 system.stopped_max_turn_requests: "Agent se zaustavio nakon dostizanja ograničenja zahtjeva za ovaj potez."
 system.stopped_refusal: "Agent je odbio nastaviti s ovim zahtjevom."

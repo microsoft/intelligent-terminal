@@ -168,6 +168,7 @@ system.selection_copied: "Скопійовано"  # Brief hint shown after sele
 system.cancelled: "Скасовано."
 system.no_prompt_in_flight: "Немає активного запиту."
 system.authentication_failed: "Помилка автентифікації"
+system.localization_workflow_retest: "Повідомлення повторного тестування публікації локалізації термінала WTA."
 system.stopped_max_tokens: "Відповідь було обрізано після досягнення ліміту виводу моделі."
 system.stopped_max_turn_requests: "Агент зупинився після досягнення ліміту запитів для цього ходу."
 system.stopped_refusal: "Агент відмовився продовжувати цей запит."

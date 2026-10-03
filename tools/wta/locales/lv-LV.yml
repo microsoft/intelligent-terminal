@@ -159,6 +159,7 @@ system.selection_copied: "Nokopēts"  # Brief hint shown after selected terminal
 system.cancelled: "Atcelts."
 system.no_prompt_in_flight: "Nav aktīvu pieprasījumu."
 system.authentication_failed: "Autentifikācija neizdevās"
+system.localization_workflow_retest: "WTA termināļa lokalizācijas publicēšanas atkārtotas testēšanas ziņojums."
 system.stopped_max_tokens: "Atbilde tika apcirsta pēc modeļa izvades ierobežojuma sasniegšanas."
 system.stopped_max_turn_requests: "Aģents apstājās pēc tā pieprasījumu ierobežojuma sasniegšanas šim gājienam."
 system.stopped_refusal: "Aģents atteicās turpināt šo pieprasījumu."

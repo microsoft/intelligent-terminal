@@ -172,6 +172,7 @@ system.selection_copied: "कॉपी केले"  # Brief hint shown after s
 system.cancelled: "रद्द केले."
 system.no_prompt_in_flight: "प्रगतीत कोणताही प्रॉम्प्ट नाही."
 system.authentication_failed: "प्रमाणीकरण अयशस्वी"
+system.localization_workflow_retest: "WTA टर्मिनल स्थानिकीकरण प्रकाशन पुनर्चाचणी संदेश."
 system.stopped_max_tokens: "मॉडेलची आउटपुट मर्यादा गाठल्यानंतर प्रतिसाद कापला गेला."
 system.stopped_max_turn_requests: "या फेरीसाठी आपली विनंती मर्यादा गाठल्यानंतर एजंट थांबला."
 system.stopped_refusal: "एजंटने ही विनंती सुरू ठेवण्यास नकार दिला."
