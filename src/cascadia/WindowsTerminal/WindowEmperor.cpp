@@ -702,7 +702,16 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
                 .SummonBehavior = nullptr,
             });
         });
-        TerminalConnection::ConptyConnection::StartInboundListener();
+        // Do not expose handoff if the package-local proxy could not be
+        // established: ambient COM resolution could load another package's DLL.
+        if (!_comClsid.empty())
+        {
+            TerminalConnection::ConptyConnection::StartInboundListener();
+        }
+        else
+        {
+            LOG_HR_MSG(E_UNEXPECTED, "Handoff listener disabled: package-local COM proxy initialization failed.");
+        }
     }
 
     // Main message loop. It pumps all windows.

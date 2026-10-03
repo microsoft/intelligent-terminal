@@ -5,8 +5,12 @@
 
 #include <objbase.h>
 #include <objidl.h>
+#include <appmodel.h>
 #include "ITerminalProtocol.h"
+#include "ITerminalHandoff.h"
+#include "IConsoleHandoff.h"
 
+#include <array>
 #include <mutex>
 #include <string>
 
@@ -25,6 +29,22 @@ namespace Microsoft::Terminal::Protocol
         using GetProxyDllInfo = void(WINAPI*)(const tagProxyFileInfo***, const CLSID**);
         using DllGetClassObject = HRESULT(STDAPICALLTYPE*)(REFCLSID, REFIID, void**);
 
+        inline constexpr std::array ProxyInterfaces{
+            __uuidof(ITerminalProtocol),
+            __uuidof(ITerminalProtocolEventSink),
+            __uuidof(ITerminalHandoff),
+            __uuidof(ITerminalHandoff2),
+            __uuidof(ITerminalHandoff3),
+            __uuidof(IConsoleHandoff),
+            __uuidof(IDefaultTerminalMarker)
+        };
+
+#if defined(WT_BRANDING_RELEASE) || defined(WT_BRANDING_PREVIEW) || defined(WT_BRANDING_CANARY)
+        inline constexpr bool AllowDevelopmentProxy = false;
+#else
+        inline constexpr bool AllowDevelopmentProxy = true;
+#endif
+
         [[nodiscard]] inline std::wstring GetExecutableLocalProxyPath()
         {
             auto executablePath = wil::GetModuleFileNameW<std::wstring>(nullptr);
@@ -33,6 +53,33 @@ namespace Microsoft::Terminal::Protocol
             executablePath.resize(filenameOffset + 1);
             executablePath.append(L"OpenConsoleProxy.dll");
             return executablePath;
+        }
+
+        [[nodiscard]] inline std::wstring GetTrustedProxyPath()
+        {
+            UINT32 length = 0;
+            const auto identityResult = GetCurrentPackageFullName(&length, nullptr);
+            if (AllowDevelopmentProxy && identityResult == APPMODEL_ERROR_NO_PACKAGE)
+            {
+                return GetExecutableLocalProxyPath();
+            }
+            THROW_WIN32_IF(identityResult, identityResult != ERROR_INSUFFICIENT_BUFFER);
+
+            // Use the current package's original installation, inheriting its
+            // existing signing guarantees (including unsigned Dev deployment).
+            length = 0;
+            const auto pathResult = GetCurrentPackagePath(&length, nullptr);
+            THROW_WIN32_IF(pathResult, pathResult != ERROR_INSUFFICIENT_BUFFER);
+            THROW_HR_IF(E_UNEXPECTED, length < 2);
+            std::wstring expectedPath(length, L'\0');
+            THROW_IF_WIN32_ERROR(GetCurrentPackagePath(&length, expectedPath.data()));
+            expectedPath.resize(length - 1);
+            expectedPath.append(L"\\OpenConsoleProxy.dll");
+            // Reject external-location/sparse-package executables as well.
+            const auto executableLocalPath = GetExecutableLocalProxyPath();
+            THROW_HR_IF(E_ACCESSDENIED,
+                        CompareStringOrdinal(expectedPath.c_str(), -1, executableLocalPath.c_str(), -1, TRUE) != CSTR_EQUAL);
+            return expectedPath;
         }
 
         [[nodiscard]] inline wil::unique_hmodule LoadAndVerifyProxyDll(const std::wstring& expectedPath)
@@ -92,8 +139,12 @@ namespace Microsoft::Terminal::Protocol
                 auto revokeOnFailure = wil::scope_exit([&]() noexcept {
                     LOG_IF_FAILED(CoRevokeClassObject(cookie));
                 });
-                RETURN_IF_FAILED(CoRegisterPSClsid(__uuidof(ITerminalProtocol), *proxyClsid));
-                RETURN_IF_FAILED(CoRegisterPSClsid(__uuidof(ITerminalProtocolEventSink), *proxyClsid));
+                // Handoff uses this same DLL. Leaving its IIDs ambient would
+                // allow another package's proxy to be loaded in this process.
+                for (const auto& iid : ProxyInterfaces)
+                {
+                    RETURN_IF_FAILED(CoRegisterPSClsid(iid, *proxyClsid));
+                }
 
                 _cookie = cookie;
                 revokeOnFailure.release();
@@ -129,13 +180,15 @@ namespace Microsoft::Terminal::Protocol
         }
     }
 
-    // Returns the verified executable-adjacent DLL without changing COM registration.
-    // On failure the output handle is empty.
+    // Packaged execution uses the current package's DLL, not another publisher's
+    // or version's registration. Dev also permits an unpackaged sibling DLL.
+    // Neither mode falls back to registry/PATH or another package's proxy.
+    // On failure the output handle is empty and COM registration is unchanged.
     [[nodiscard]] inline HRESULT LoadAndVerifyLocalProxyDll(wil::unique_hmodule& proxyDll) noexcept
     try
     {
         proxyDll.reset();
-        proxyDll = details::LoadAndVerifyProxyDll(details::GetExecutableLocalProxyPath());
+        proxyDll = details::LoadAndVerifyProxyDll(details::GetTrustedProxyPath());
         return S_OK;
     }
     CATCH_RETURN()

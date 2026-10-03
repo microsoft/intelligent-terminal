@@ -71,6 +71,44 @@ Key security claim post-revert: shell input is **not** held behind a separate ca
 | **C-VT** | Shell <-> WT | ConPTY VT stream, including OSC marks | Not authenticated; pane output is attacker-controllable when the pane process is malicious. |
 | **C-FS** | Processes <-> disk | `settings.json`, diagnostic logs, Agent CLI hook config / bundles | NTFS ACLs and package-local storage layout. This is not a sandbox boundary. |
 
+#### Protocol proxy provenance
+
+Before exposing or consuming the private terminal-control COM protocol,
+WindowsTerminal and wtcli explicitly load `OpenConsoleProxy.dll` and register
+that module's proxy factory in-process. An interface IID or a matching proxy
+CLSID is not proof of the implementing DLL's provenance.
+
+For packaged execution, the DLL path comes from the current package's original
+installation directory and must also match the executable's sibling path.
+Signing remains the deploying package's responsibility: Store content retains
+its package signature guarantees, and an unsigned Debug deployment remains
+unsigned. The loader does not introduce a new signing policy, require a separate
+Authenticode signature on each DLL, or accept another package based on a matching
+publisher. External-location executables fail closed rather than borrowing a
+different package's proxy.
+
+Dev branding also allows unpackaged execution, but still loads only its own
+executable's sibling proxy. This compile-time exception does not apply to
+Release, Preview, or Canary processes, even when Dev is installed alongside them.
+No runtime environment variable enables it. Package-local files in a mutable
+Debug layout are not represented as tamper-proof.
+
+Both owned processes bind all interfaces implemented by this DLL, including
+the existing handoff interfaces, to the local factory. WindowsTerminal does not
+start its inbound handoff listener if local proxy initialization failed. This
+does not change any interface ABI or global handoff registration. It does not
+control proxy selection in external Windows processes, authenticate the remote
+COM peer, or unload an already-mapped DLL. Package-mutating coexistence tests must
+run separately in an approved isolated environment.
+
+The offline proxy tests run without activating Terminal or changing package
+registration. After an x64 Debug wtcli build, run
+`pwsh -File src\tools\wtcli\tests\Test-ProtocolProxyRegistration.ps1`
+from an x64 Visual Studio developer shell. They compile all four branding modes,
+check unpackaged path policy and failure handling, compare the registered factory
+with the explicitly loaded DLL's factory, and marshal an event callback across
+apartments. They do not substitute for installed-package coexistence validation.
+
 ### 2.3 Typical process tree
 
 ```text
