@@ -1040,7 +1040,7 @@ namespace winrt::TerminalApp::implementation
             State state{ State::Error };
             std::vector<TerminalApp::TabStripHistoryItem> items;
         };
-        static _SidebarHistorySnapshot _ParseSidebarHistorySnapshot(const std::string& output);
+        static _SidebarHistorySnapshot _ParseSidebarHistorySnapshot(const std::string& output, uint64_t currentWindowId = 0);
         safe_void_coroutine _LoadSidebarHistory(uint64_t generation);
         void _CompleteSidebarHistoryRefresh(uint64_t generation, _SidebarHistorySnapshot snapshot);
         struct _SidebarHistoryActivationRequest

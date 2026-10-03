@@ -3637,11 +3637,9 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        winrt::get_self<implementation::TabStrip>(_tabStrip)->ApplyHistoryStatusDelta(
-            winrt::to_hstring(sessionId),
-            winrt::to_hstring(paneSessionId),
-            winrt::to_hstring(status),
-            _SidebarHistoryStatusText(status));
+        // History needs canonical identity and authoritative window attribution,
+        // neither of which is carried by this delta. Its caller requests the
+        // existing throttled full snapshot rather than matching only session ID.
         return true;
     }
 
@@ -6872,7 +6870,7 @@ namespace winrt::TerminalApp::implementation
         return winrt::hstring{ fmt::format(L"{:04}-{:02}-{:02}", time.wYear, time.wMonth, time.wDay) };
     }
 
-    TerminalPage::_SidebarHistorySnapshot TerminalPage::_ParseSidebarHistorySnapshot(const std::string& output)
+    TerminalPage::_SidebarHistorySnapshot TerminalPage::_ParseSidebarHistorySnapshot(const std::string& output, const uint64_t currentWindowId)
     {
         _SidebarHistorySnapshot snapshot;
         snapshot.state = _SidebarHistorySnapshot::State::InvalidResponse;
@@ -7038,7 +7036,14 @@ namespace winrt::TerminalApp::implementation
             const auto& lastActivity = row["last_activity_at_ms"];
             const auto lastActivityAtMs = lastActivity.isUInt64() ? std::optional<uint64_t>{ lastActivity.asUInt64() } : std::nullopt;
             item.Subtitle(_SidebarHistoryAgeText(lastActivityAtMs, nowMs));
-            item.StatusText(_SidebarHistoryStatusText(status));
+            auto statusText = _SidebarHistoryStatusText(status);
+            const auto& ownerWindow = row["owner_window_id"];
+            if (isLive && currentWindowId != 0 && ownerWindow.isUInt64() &&
+                ownerWindow.asUInt64() != 0 && ownerWindow.asUInt64() != currentWindowId)
+            {
+                statusText = winrt::hstring{ RS_fmt(L"VerticalTabsHistoryOtherWindowStatusFormat", statusText) };
+            }
+            item.StatusText(statusText);
             item.Cwd(winrt::to_hstring(cwd));
             item.PaneSessionId(winrt::to_hstring(row.get("pane_session_id", "").asString()));
             item.AgentId(winrt::to_hstring(providerId));
@@ -7059,6 +7064,7 @@ namespace winrt::TerminalApp::implementation
     {
         const auto weakThis = get_weak();
         const auto dispatcher = Dispatcher();
+        const auto currentWindowId = _WindowProperties.WindowId();
         const auto cancellation = std::make_shared<std::atomic<bool>>(false);
         _historyRefreshCancellation = cancellation;
 
@@ -7084,7 +7090,7 @@ namespace winrt::TerminalApp::implementation
         }
         else if (result.completed && result.exitCode == 0)
         {
-            snapshot = _ParseSidebarHistorySnapshot(result.output);
+            snapshot = _ParseSidebarHistorySnapshot(result.output, currentWindowId);
         }
         else
         {

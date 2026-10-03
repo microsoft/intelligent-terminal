@@ -751,4 +751,8 @@
     <value>বিভাগগুলির আকার পরিবর্তন করতে উপরে ও নীচে তীরচিহ্নের কীগুলি ব্যবহার করুন।</value>
     <comment>Keyboard instructions for the divider between open AI-agent tabs and session History. Up reduces the upper section height; Down increases it. The lower section height adjusts oppositely.</comment>
   </data>
+  <data name="VerticalTabsHistoryOtherWindowStatusFormat" xml:space="preserve">
+    <value>{0} · অন্য উইন্ডো</value>
+    <comment>Status annotation for a live agent session attached to a different Intelligent Terminal window. {0} is the already-localized activity status, such as Working or Idle. Keep the status first. This does not mean another tab, WSL distro, historical session, or detached background tab.</comment>
+  </data>
 </root>

@@ -7423,6 +7423,84 @@ async fn handle_sessions_list(
     // its newly published Ready status.
     let history_status = *state.history_status.borrow();
     let mut sessions = state.registry.snapshot().await;
+    for row in &mut sessions {
+        row.owner_window_id = None;
+    }
+
+    // Enrich only the response copy; pane/window attribution is not registry state.
+    if let Some(wt) = state.wt.as_ref() {
+        use crate::agent_sessions::AgentStatus;
+        use futures::{stream, StreamExt};
+        let panes: std::collections::HashSet<uuid::Uuid> = sessions
+            .iter()
+            .filter(|row| {
+                matches!(
+                    row.status,
+                    Some(
+                        AgentStatus::Idle
+                            | AgentStatus::Working
+                            | AgentStatus::Attention
+                            | AgentStatus::Error
+                    )
+                )
+            })
+            .filter_map(|row| row.pane_session_id.as_deref())
+            .filter_map(|pane| uuid::Uuid::parse_str(pane).ok())
+            .filter(|pane| !pane.is_nil())
+            .collect();
+        let mut requests = stream::iter(panes)
+            .map(|pane| async move {
+                let result = wt
+                    .request(
+                        "get_pane_context",
+                        serde_json::json!({
+                            "session_id": pane.to_string(), "max_lines": 0, "max_chars": 0
+                        }),
+                    )
+                    .await;
+                (pane, result)
+            })
+            .buffer_unordered(8);
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+        let mut owners = std::collections::HashMap::new();
+        loop {
+            match tokio::time::timeout_at(deadline, requests.next()).await {
+                Ok(Some((pane, Ok(context)))) => {
+                    if let Some(window_id) = pane_context_owner_window(pane, &context) {
+                        owners.insert(pane, window_id);
+                    } else {
+                        tracing::warn!(target: "master_history", %pane, "pane ownership context invalid; retaining unattributed status");
+                    }
+                }
+                Ok(Some((pane, Err(error)))) => {
+                    tracing::debug!(target: "master_history", %pane, %error, "pane ownership unavailable; retaining unattributed status");
+                }
+                Ok(None) => break,
+                Err(_) => {
+                    tracing::warn!(target: "master_history", "pane ownership snapshot timed out; retaining unresolved statuses");
+                    break;
+                }
+            }
+        }
+        for row in &mut sessions {
+            if !matches!(
+                row.status,
+                Some(
+                    AgentStatus::Idle
+                        | AgentStatus::Working
+                        | AgentStatus::Attention
+                        | AgentStatus::Error
+                )
+            ) {
+                continue;
+            }
+            row.owner_window_id = row
+                .pane_session_id
+                .as_deref()
+                .and_then(|pane| uuid::Uuid::parse_str(pane).ok())
+                .and_then(|pane| owners.get(&pane).copied());
+        }
+    }
 
     sessions.sort_by(|l, r| l.session_id.0.cmp(&r.session_id.0));
     let raw = crate::session_registry::build_sessions_list_response(
@@ -7431,6 +7509,18 @@ async fn handle_sessions_list(
         history_status.error_kind,
     );
     Ok(acp::schema::v1::ExtResponse::new(raw.into()))
+}
+
+fn pane_context_owner_window(pane: uuid::Uuid, context: &serde_json::Value) -> Option<u64> {
+    let pane_context = context.get("pane")?.as_object()?;
+    let returned_pane = uuid::Uuid::parse_str(pane_context.get("session_id")?.as_str()?).ok()?;
+    if pane.is_nil() || returned_pane != pane {
+        return None;
+    }
+    pane_context
+        .get("window_id")?
+        .as_u64()
+        .filter(|window| *window != 0)
 }
 
 struct SessionActivationReceipt {
