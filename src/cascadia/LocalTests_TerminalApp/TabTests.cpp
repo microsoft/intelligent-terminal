@@ -5163,6 +5163,7 @@ namespace TerminalAppLocalTests
     {
         TestOnUIThread([&]() {
             winrt::TerminalApp::TabStrip strip;
+            strip.RichTabGitAvailable(true);
             const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
             const auto items = stripImpl->FilterTabsButton().Flyout().as<MenuFlyout>().Items();
             VERIFY_ARE_EQUAL(6u, items.Size());
@@ -10925,6 +10926,7 @@ namespace TerminalAppLocalTests
 
         TestOnUIThread([&]() {
             auto& tabStrip = page->_tabStrip;
+            tabStrip.RichTabGitAvailable(true);
             VERIFY_IS_TRUE(tabStrip.RichTabAgentStatusVisible());
             VERIFY_IS_TRUE(tabStrip.RichTabWorkingDirectoryVisible());
             VERIFY_IS_FALSE(tabStrip.RichTabRepositoryVisible());
