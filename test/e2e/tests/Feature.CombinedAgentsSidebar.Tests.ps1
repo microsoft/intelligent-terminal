@@ -769,7 +769,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         $sourceWindow = [string]$sourceApp.WindowId
         $sourceHwnds = @(Get-WtWindowHwnds -App $sourceApp | Where-Object pid -eq $sourceApp.Pid).hwnd
         $windowsBefore = @(Get-WtWindows -App $sourceApp).window_id
-        $folder = Join-Path $script:evidence 'other-window-native'
+        $folder = Join-Path $script:evidence "$script:marker-other-window-native"
         New-Item -ItemType Directory -Path $folder | Out-Null
         $shim = Join-Path $folder 'copilot.exe'
         $launchLog = Join-Path $folder 'launch.jsonl'
@@ -782,7 +782,11 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             Send-WtWindowKey -App $App -Vk 0x50 -Ctrl -Shift -RequireForeground | Out-Null
             Wait-Until -TimeoutSec 8 -Condition { Test-CommandPaletteOpen -App $App } | Out-Null
             Set-UiValue -App $App -Selector '_searchBox' -Value $Action | Out-Null
-            (Invoke-WinAppUi -App $App -UiArgs @('invoke', $Action)).ExitCode | Should -Be 0
+            $result = & (Get-Module ItE2E) {
+                param($Target, $Name)
+                Invoke-WinAppUi -App $Target -UiArgs @('invoke', $Name)
+            } $App $Action
+            $result.ExitCode | Should -Be 0
         }
         function Send-C388Hook {
             param([string]$Event)
@@ -871,9 +875,24 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 Wait-Until -TimeoutSec 15 -Condition { @(Get-CombinedRows HistoryList).Count -eq 1 } | Out-Null
                 Assert-CombinedHistoryMetadata -Title (Split-Path $folder -Leaf) -Status $state.Status -Provider Copilot -OtherWindow
                 Save-CombinedActionEvidence "other-window-$($state.Status)" -Screenshot
+                @{
+                    session_id = $sid; pane_session_id = $tab.session_id
+                    source_window_id = $sourceWindow; owner_window_id = $foreignWindow
+                    owner_context = $context
+                    session = @((Get-CombinedSnapshot).sessions | Where-Object session_id -eq $sid)
+                } | ConvertTo-Json -Depth 10 |
+                    Set-Content -LiteralPath (Join-Path $script:evidence "other-window-$($state.Status)-owner.json")
                 $script:app = $foreignApp
                 Set-CombinedView $true
                 Set-CombinedQuery (Split-Path $folder -Leaf)
+                try {
+                    Wait-Until -TimeoutSec 15 -Because 'the owner view finishes excluding its represented identity' -Condition {
+                        @(Get-CombinedRows HistoryList).Count -eq 0
+                    } | Out-Null
+                }
+                finally {
+                    Save-CombinedActionEvidence "owner-window-$($state.Status)" -Screenshot
+                }
                 @(Get-CombinedRows HistoryList).Count | Should -Be 0 -Because 'the owner window excludes its represented session'
             }
             $script:app = $sourceApp

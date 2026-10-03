@@ -13312,6 +13312,21 @@ namespace winrt::TerminalApp::implementation
             CATCH_LOG()
         }
         transfer.publication->store(true, std::memory_order_release);
+        // Replay the content-owned binding only after attachment commits, just
+        // as kept-group restoration does. Its pane identity resolves locally;
+        // the cached source window does not determine the destination owner.
+        for (const auto& control : transfer.controls)
+        {
+            try
+            {
+                const auto binding = _manager.AgentSessionEvent(control.ContentId());
+                if (!binding.empty())
+                {
+                    OnPaneAgentSessionChanged(binding);
+                }
+            }
+            CATCH_LOG()
+        }
         try
         {
             _NotifyAgentTabChanged(destinationTab->StableId());
