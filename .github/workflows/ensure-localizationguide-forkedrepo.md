@@ -104,7 +104,9 @@ permissions:
 
 
 
-engine: copilot
+engine:
+  id: copilot
+  model: gpt-5.6-luna
 
 imports:
 
