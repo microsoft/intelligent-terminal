@@ -7309,14 +7309,16 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(size_t{ 3 }, snapshot.items.size());
 
             const auto age = Page::_SidebarHistoryAgeText(std::nullopt, 0);
-            const auto hostMetadata = winrt::hstring{ L"Copilot \u00b7 " } + age + L" \u00b7 ";
-            const auto ubuntuMetadata = winrt::hstring{ L"Copilot \u00b7 Ubuntu-24.04 \u00b7 " } + age + L" \u00b7 ";
-            const auto debianMetadata = winrt::hstring{ L"Claude \u00b7 Debian \u00b7 " } + age + L" \u00b7 ";
+            const auto hostMetadata = age;
+            const auto ubuntuMetadata = age;
+            const auto debianMetadata = age;
             VERIFY_ARE_EQUAL(hostMetadata, snapshot.items[0].Subtitle());
             VERIFY_ARE_EQUAL(ubuntuMetadata, snapshot.items[1].Subtitle());
             VERIFY_ARE_EQUAL(debianMetadata, snapshot.items[2].Subtitle());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"wsl" }, snapshot.items[1].AgentSource());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Ubuntu-24.04" }, snapshot.items[1].WslDistro());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot" }, snapshot.items[1].AgentId());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Copilot" }, snapshot.items[1].ProviderDisplayName());
 
             winrt::TerminalApp::TabStrip strip;
             const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
@@ -7333,7 +7335,9 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(status, item.StatusText());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Ubuntu-24.04" }, item.WslDistro());
 
-            stripImpl->SearchTextBox().Text(ubuntuMetadata + status);
+            stripImpl->SearchTextBox().Text(winrt::hstring{ L"Copilot \u00b7 Ubuntu-24.04 \u00b7 " } + age + L" \u00b7 " + status);
+            VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
+            stripImpl->SearchTextBox().Text(ubuntuMetadata + L" \u00b7 " + status);
             VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"ubuntu" }, strip.HistoryItems().GetAt(0).SessionId());
             stripImpl->SearchTextBox().Text(L"debian");
@@ -7424,7 +7428,7 @@ namespace TerminalAppLocalTests
         view.Search(L"5 minutes ago");
         TestOnUIThread([&]() {
             VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"Copilot \u00b7 5 minutes ago \u00b7 " },
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"5 minutes ago" },
                              strip.HistoryItems().GetAt(0).Subtitle());
 
         });

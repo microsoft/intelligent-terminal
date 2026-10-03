@@ -7037,13 +7037,7 @@ namespace winrt::TerminalApp::implementation
             item.Title(winrt::to_hstring(title));
             const auto& lastActivity = row["last_activity_at_ms"];
             const auto lastActivityAtMs = lastActivity.isUInt64() ? std::optional<uint64_t>{ lastActivity.asUInt64() } : std::nullopt;
-            auto providerLabel = winrt::to_hstring(providerDisplayName);
-            if (agentSource == "wsl")
-            {
-                providerLabel = providerLabel + L" \u00b7 " + winrt::to_hstring(wslDistro);
-            }
-            item.Subtitle(providerLabel + L" \u00b7 " +
-                          _SidebarHistoryAgeText(lastActivityAtMs, nowMs) + L" \u00b7 ");
+            item.Subtitle(_SidebarHistoryAgeText(lastActivityAtMs, nowMs));
             item.StatusText(_SidebarHistoryStatusText(status));
             item.Cwd(winrt::to_hstring(cwd));
             item.PaneSessionId(winrt::to_hstring(row.get("pane_session_id", "").asString()));
