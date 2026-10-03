@@ -928,7 +928,7 @@ namespace winrt::TerminalApp::implementation
 
         if (updated)
         {
-            _applyHistoryProjection();
+            _applyHistoryProjection(true);
         }
         return updated;
     }
