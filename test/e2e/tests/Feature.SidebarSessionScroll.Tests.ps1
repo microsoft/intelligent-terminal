@@ -12,6 +12,7 @@ Describe 'Feature: Sidebar session status updates' -Tag @('Feature', 'SidebarSes
             throw 'Required localized Sidebar status resources were not found.'
         }
         $script:app = $null
+        $script:ownsConfigBackup = $false
         $script:target = Resolve-ItApp -Package (Get-ItTestPackage)
         if ((Get-ItTestPackage) -ne 'Dev') { throw 'This regression suite requires explicitly selected Dev.' }
         if (@(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables).Count) {
@@ -25,6 +26,14 @@ Describe 'Feature: Sidebar session status updates' -Tag @('Feature', 'SidebarSes
         (Get-FileHash -LiteralPath $script:target.WtaPath).Hash | Should -Be $env:ITE2E_EXPECTED_WTA_SHA256
         (Get-WtSetting -App $script:target -Key tabLayout) | Should -Be 'vertical' -Because 'this configuration-free suite requires Sidebar mode'
         $script:settingsHash = (Get-FileHash -LiteralPath $script:target.SettingsPath).Hash
+        $script:stateHash = if (Test-Path -LiteralPath $script:target.StatePath) {
+            (Get-FileHash -LiteralPath $script:target.StatePath).Hash
+        } else { $null }
+        foreach ($path in @($script:target.SettingsPath, $script:target.StatePath)) {
+            if ((Test-Path "$path.e2ebak") -or (Test-Path "$path.e2ebak.missing")) {
+                throw "Existing configuration backup requires manual recovery: $path"
+            }
+        }
         $root = if ($env:ITE2E_ARTIFACT_ROOT) { $env:ITE2E_ARTIFACT_ROOT } else { Join-Path $PSScriptRoot '..\artifacts' }
         $script:marker = 'sidebar-scroll-' + [guid]::NewGuid().ToString('N').Substring(0, 8)
         $script:evidence = Join-Path ([IO.Path]::GetFullPath($root)) $script:marker
@@ -68,6 +77,8 @@ namespace ItE2E
         if (@(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables).Count) {
             throw 'Dev was opened during preparation; refusing to adopt it.'
         }
+        $script:ownsConfigBackup = $true
+        Backup-WtConfig -App $script:target
         [ItE2E.SidebarScrollActivation]::Launch($script:target.AppUserModelId, $arguments)
         $window = Wait-Until -TimeoutSec 40 -Because 'the explicitly activated owned Dev window appears' -Condition {
             Get-WtWindowHwnds -App $script:target | Where-Object {
@@ -183,9 +194,19 @@ namespace ItE2E
             }
             finally { Stop-Terminal -App $script:app -RestoreSettings $false }
         }
-        if ($script:settingsHash) {
+        if ($script:ownsConfigBackup) {
+            if (@(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables).Count) {
+                throw 'Dev is still active; configuration backups are retained rather than racing a live writer.'
+            }
             (Get-FileHash -LiteralPath $script:target.SettingsPath).Hash |
                 Should -Be $script:settingsHash -Because 'the suite must not edit user settings'
+            Restore-WtConfig -App $script:target
+            $stateHash = if (Test-Path -LiteralPath $script:target.StatePath) {
+                (Get-FileHash -LiteralPath $script:target.StatePath).Hash
+            } else { $null }
+            $stateHash | Should -Be $script:stateHash -Because 'test window persistence must not replace user application state'
+            @{ settings_preserved = $true; state_preserved = $true } | ConvertTo-Json |
+                Set-Content -LiteralPath (Join-Path $script:evidence 'cleanup.json')
         }
     }
 
