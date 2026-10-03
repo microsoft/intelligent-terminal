@@ -6761,9 +6761,9 @@ namespace TerminalAppLocalTests
                     {"session_id":"same","provider_id":"claude","location":"Host","status":"Working","owner_window_id":2,"background_tab":false}]})", 1);
             VERIFY_ARE_EQUAL(size_t{ 2 }, collision.items.size());
             VERIFY_ARE_EQUAL(Page::_SidebarHistoryStatusText("Working"), collision.items[0].StatusText());
-            VERIFY_ARE_EQUAL(
-                winrt::hstring{ fmt::format(fmt::runtime(std::wstring_view{ ownerStatusFormat }), Page::_SidebarHistoryStatusText("Working")) },
-                collision.items[1].StatusText());
+            VERIFY_ARE_EQUAL(Page::_SidebarHistoryStatusText("Working"), collision.items[1].StatusText());
+            VERIFY_IS_FALSE(winrt::get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(collision.items[0])->OtherWindow());
+            VERIFY_IS_TRUE(winrt::get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(collision.items[1])->OtherWindow());
             for (const auto location : { R"("Unknown")", "null" })
             {
                 const auto response = std::string{ R"({"history_status":"ready","sessions":[
