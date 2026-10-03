@@ -182,15 +182,36 @@
             </Grid.ColumnDefinitions>
 
             <Button x:Name="VerticalTabsHeaderButton"
-                    Padding="0"
+                    Padding="8,4"
+                    HorizontalAlignment="Left"
                     HorizontalContentAlignment="Left"
-                    Background="Transparent"
-                    BorderThickness="0"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource SidebarTabCornerRadius}"
+                    UseSystemFocusVisuals="True"
                     Click="OnHeaderToggleClick">
-                <TextBlock x:Name="VerticalTabsHeader"
-                           x:Uid="VerticalTabsHeader"
-                           VerticalAlignment="Center"
-                           FontWeight="SemiBold" />
+                <Button.Resources>
+                    <StaticResource x:Key="ButtonBackgroundPointerOver"
+                                    ResourceKey="SubtleFillColorSecondaryBrush" />
+                    <StaticResource x:Key="ButtonBackgroundPressed"
+                                    ResourceKey="SubtleFillColorTertiaryBrush" />
+                    <StaticResource x:Key="ButtonBorderBrushPointerOver"
+                                    ResourceKey="CardStrokeColorDefaultBrush" />
+                    <StaticResource x:Key="ButtonBorderBrushPressed"
+                                    ResourceKey="CardStrokeColorDefaultBrush" />
+                </Button.Resources>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock x:Name="VerticalTabsHeader"
+                               x:Uid="VerticalTabsHeader"
+                               VerticalAlignment="Center"
+                               FontWeight="SemiBold" />
+                    <PathIcon x:Name="SidebarViewSwitchIcon"
+                              Width="12"
+                              Height="12"
+                              VerticalAlignment="Center"
+                              AutomationProperties.AccessibilityView="Raw"
+                              Data="M0,3 L3,0 L3,2 L10,2 L10,4 L3,4 L3,6 Z M12,9 L9,6 L9,8 L2,8 L2,10 L9,10 L9,12 Z" />
+                </StackPanel>
             </Button>
 
             <ToggleButton x:Name="SearchTabsButton"
@@ -718,17 +739,12 @@
                         <DataTemplate x:DataType="local:TabStripHistoryItem">
                             <Grid Padding="12,8"
                                   Loaded="OnHistoryRowLoaded">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
                                 <Border x:Name="HistorySelectionBackground"
                                         Grid.RowSpan="2"
-                                        Grid.ColumnSpan="2"
                                         Margin="-12,-8"
                                         Background="{ThemeResource ListViewItemBackgroundSelected}"
                                         CornerRadius="{StaticResource SidebarTabCornerRadius}"
@@ -744,29 +760,17 @@
                                                 CornerRadius="{StaticResource SidebarTabCornerRadius}" />
                                     </ContentControl>
                                 </Border>
-                                <ContentControl Grid.RowSpan="2"
-                                                Width="16"
-                                                Height="16"
-                                                Margin="0,0,12,0"
-                                                VerticalAlignment="Center"
-                                                HorizontalContentAlignment="Stretch"
-                                                VerticalContentAlignment="Stretch"
-                                                AutomationProperties.AccessibilityView="Raw"
-                                                Content="{Binding Foreground, ElementName=HistoryTitleText}"
-                                                ContentTemplate="{x:Bind IconTemplate}"
-                                                IsHitTestVisible="False"
-                                                IsTabStop="False" />
                                 <local:HighlightedTextControl x:Name="HistoryTitleText"
-                                                              Grid.Column="1"
                                                               Text="{x:Bind Title}"
                                                               SearchText="{x:Bind SearchQuery}"
                                                               TextBlockStyle="{StaticResource HistoryTitleTextStyle}" />
                                 <Grid Grid.Row="1"
-                                      Grid.Column="1"
+                                      x:Name="HistoryMetadata"
                                       Margin="0,2,0,0"
                                       HorizontalAlignment="Left">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <local:HighlightedTextControl x:Name="HistorySubtitleText"
@@ -778,7 +782,22 @@
                                                                   Margin="4,0,0,0"
                                                                   SearchText="{x:Bind SearchQuery}"
                                                                   Text="{x:Bind StatusText}"
+                                                                  Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(IsHistorical), Mode=OneWay}"
                                                                   TextBlockStyle="{x:Bind StatusTextStyle}" />
+                                    <ContentControl x:Name="HistoryProviderIcon"
+                                                    Grid.Column="2"
+                                                    Width="16"
+                                                    Height="16"
+                                                    Margin="8,0,0,0"
+                                                    VerticalAlignment="Center"
+                                                    HorizontalContentAlignment="Stretch"
+                                                    VerticalContentAlignment="Stretch"
+                                                    AutomationProperties.Name="{x:Bind ProviderDisplayName}"
+                                                    AutomationProperties.AccessibilityView="Content"
+                                                    Content="{Binding Foreground, ElementName=HistoryTitleText}"
+                                                    ContentTemplate="{x:Bind IconTemplate}"
+                                                    ToolTipService.ToolTip="{x:Bind ProviderDisplayName}"
+                                                    IsTabStop="False" />
                                 </Grid>
                             </Grid>
                         </DataTemplate>

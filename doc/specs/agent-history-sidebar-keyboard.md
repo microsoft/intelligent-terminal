@@ -47,7 +47,14 @@ and focuses ordinary tab search on entry.
 ## Combined Agents surface
 
 - The toolbar header toggles **Tabs** and **Agents** (reversible via header button
-  or shortcut). There is no separate redundant Agents icon in the toolbar.
+  or shortcut). A persistent swap icon and button border make the switch
+  discoverable; normal button hover, pressed, and keyboard-focus feedback remain.
+  There is no separate redundant Agents icon in the toolbar.
+- History rows keep the session title above metadata ordered as timestamp,
+  meaningful status, and provider icon. Ended/historical rows omit the redundant
+  Historical status; live Idle/Working/Attention/Error statuses remain visible.
+  Provider identity remains available through the icon tooltip and shared search,
+  even though repeated provider text is omitted from the metadata line.
 - The Agents view consists of two distinct upper and lower sections separated
   by a horizontal divider:
   - **Upper section (`AgentTabsHost`)**: contains live/open agent tabs hosting

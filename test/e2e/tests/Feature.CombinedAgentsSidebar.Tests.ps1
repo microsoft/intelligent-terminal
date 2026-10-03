@@ -236,6 +236,112 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 [Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition)) |
                 ForEach-Object { $_.Current.Name }) -join ' '
         }
+        function Get-CombinedRawChildren {
+            param($Element)
+            $walker = [Windows.Automation.TreeWalker]::RawViewWalker
+            $child = $walker.GetFirstChild($Element)
+            while ($child) {
+                $child
+                Get-CombinedRawChildren $child
+                $child = $walker.GetNextSibling($child)
+            }
+        }
+        function Get-CombinedVisiblePart {
+            param($Element, [string]$Id)
+            $parts = @(Get-CombinedRawChildren $Element | Where-Object {
+                $_.Current.AutomationId -eq $Id -and -not $_.Current.IsOffscreen -and
+                    $_.Current.BoundingRectangle.Width -gt 0 -and $_.Current.BoundingRectangle.Height -gt 0
+            })
+            $parts.Count | Should -Be 1 -Because "the rendered $Id must have one real UIA peer, including Raw view"
+            $parts[0]
+        }
+        function Assert-CombinedHeaderCue {
+            param([string]$Name)
+            $away = (Get-CombinedElement ItemsList).Current.BoundingRectangle
+            if (-not [ItE2E.ItWtWin32Input]::SetCursorPos(
+                [int]($away.Left + $away.Width / 2), [int]($away.Top + $away.Height / 2))) {
+                throw 'Cannot move the pointer away from the header to prove its persistent non-hover cue.'
+            }
+            Start-Sleep -Milliseconds 250
+            Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidence "header-cue-$Name.png") | Out-Null
+            Get-UiTree -App $script:app -Selector VerticalTabsHeaderButton -Depth 6 |
+                Set-Content -LiteralPath (Join-Path $script:evidence "header-cue-$Name.tree.txt")
+            $button = Get-CombinedElement VerticalTabsHeaderButton
+            $button.Current.IsOffscreen | Should -BeFalse
+            $button.Current.IsEnabled | Should -BeTrue
+            $label = Get-CombinedVisiblePart $button VerticalTabsHeader
+            $label.Current.Name | Should -Be $Name
+            $icon = Get-CombinedVisiblePart $button SidebarViewSwitchIcon
+            $bounds = $button.Current.BoundingRectangle
+            $textBounds = $label.Current.BoundingRectangle
+            $iconBounds = $icon.Current.BoundingRectangle
+            $iconBounds.Left | Should -BeGreaterOrEqual $textBounds.Right
+            $iconBounds.Right | Should -BeLessOrEqual $bounds.Right
+            $iconBounds.Top | Should -BeGreaterOrEqual $bounds.Top
+            $iconBounds.Bottom | Should -BeLessOrEqual $bounds.Bottom
+            $textBounds.Left | Should -BeGreaterOrEqual $bounds.Left
+            @{
+                name = $Name; button = $bounds.ToString()
+                label = $textBounds.ToString(); persistent_icon = $iconBounds.ToString()
+            } | ConvertTo-Json -Compress |
+                Add-Content -LiteralPath (Join-Path $script:evidence 'header-cue.jsonl')
+        }
+        function Assert-CombinedHistoryMetadata {
+            param([string]$Title, [string]$Status, [string]$Provider)
+            Save-CombinedActionEvidence "metadata-$($Status ?? 'Historical')" -Screenshot
+            $rows = @(Get-CombinedRows HistoryList)
+            $rows.Count | Should -Be 1
+            $row = $rows[0]
+            $parts = @(Get-CombinedRawChildren $row)
+            $visible = @($parts | Where-Object {
+                -not $_.Current.IsOffscreen -and $_.Current.BoundingRectangle.Height -gt 0 -and
+                    $_.Current.BoundingRectangle.Width -gt 0
+            })
+            $titlePart = Get-CombinedVisiblePart $row HistoryTitleText
+            $time = Get-CombinedVisiblePart $row HistorySubtitleText
+            $icon = Get-CombinedVisiblePart $row HistoryProviderIcon
+            (Get-CombinedRowText $row) | Should -Match ([regex]::Escape($Title))
+            $icon.Current.Name | Should -Be $Provider -Because 'icon-only provider identity remains accessible'
+            $timeText = @($time.Current.Name; Get-CombinedRawChildren $time |
+                ForEach-Object { $_.Current.Name }) -join ' '
+            $timeText | Should -Match '(just now|\d+ (minute|hour|day)s? ago)'
+            $timeText | Should -Not -Match ('Historical|Ended|' + [regex]::Escape($Provider))
+            @($visible | Where-Object {
+                $_.Current.ControlType -eq [Windows.Automation.ControlType]::Text -and
+                    $_.Current.Name -eq $Provider
+            }).Count | Should -Be 0 -Because 'provider must not be repeated as metadata text'
+            $titleBounds = $titlePart.Current.BoundingRectangle
+            $timeBounds = $time.Current.BoundingRectangle
+            $iconBounds = $icon.Current.BoundingRectangle
+            $titleBounds.Bottom | Should -BeLessOrEqual $timeBounds.Top
+            $titleBounds.Bottom | Should -BeLessOrEqual $iconBounds.Top
+            $titleBounds.Right | Should -BeGreaterOrEqual $iconBounds.Right -Because 'the provider icon must not consume a leading title slot'
+            $timeBounds.Right | Should -BeLessOrEqual $iconBounds.Left
+            $iconBounds.Top | Should -BeLessThan $timeBounds.Bottom
+            $iconBounds.Bottom | Should -BeGreaterThan $timeBounds.Top
+            if ($Status) {
+                $statusPart = Get-CombinedVisiblePart $row HistoryStatusText
+                $statusText = @($statusPart.Current.Name; Get-CombinedRawChildren $statusPart |
+                    ForEach-Object { $_.Current.Name }) -join ' '
+                $statusText | Should -Match ("(^|\s)$Status(\s|$)")
+                $statusBounds = $statusPart.Current.BoundingRectangle
+                $statusBounds.Left | Should -BeGreaterOrEqual $timeBounds.Right
+                $statusBounds.Right | Should -BeLessOrEqual $iconBounds.Left
+                $statusBounds.Top | Should -BeLessThan $iconBounds.Bottom
+                $statusBounds.Bottom | Should -BeGreaterThan $iconBounds.Top
+            } else {
+                @($visible | Where-Object {
+                    $_.Current.AutomationId -eq 'HistoryStatusText' -or $_.Current.Name -match '^(Historical|Ended)$'
+                }).Count | Should -Be 0 -Because 'redundant historical status is not rendered'
+            }
+            @{
+                title = $Title; status = $Status; provider = $icon.Current.Name
+                title_bounds = $titleBounds.ToString(); time_bounds = $timeBounds.ToString()
+                status_bounds = if ($Status) { $statusBounds.ToString() } else { $null }
+                icon_bounds = $iconBounds.ToString()
+            } | ConvertTo-Json -Compress |
+                Add-Content -LiteralPath (Join-Path $script:evidence 'history-metadata.jsonl')
+        }
         function Get-CombinedScroll {
             param([string]$Id)
             $list = Get-CombinedElement $Id
@@ -508,7 +614,9 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         Assert-CombinedSearchState $false
         Set-CombinedView $false
         Assert-CombinedSearchState $false
+        Assert-CombinedHeaderCue Tabs
         Set-CombinedView $true
+        Assert-CombinedHeaderCue Agents
         Assert-CombinedSearchState $false
         Assert-CombinedBounds
         foreach ($id in @('TabHistoryButton', 'HistoryCloseButton', 'HistorySearchTextBox')) {
@@ -528,6 +636,67 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
         Assert-CombinedSearchState $false
         Assert-CombinedBounds
+    }
+
+    It 'History metadata shows time useful status and trailing agent icon' {
+        $history = $script:history[0]
+        Set-CombinedQuery $history.title
+        Wait-Until -TimeoutSec 10 -Condition { @(Get-CombinedRows HistoryList).Count -eq 1 } | Out-Null
+        $historical = @((Get-CombinedSnapshot).sessions | Where-Object session_id -eq $history.sessionId)
+        $historical.Count | Should -Be 1
+        $historical[0].status | Should -BeIn @('Historical', 'Ended')
+        Assert-CombinedHistoryMetadata -Title $history.title -Provider 'custom:combined-sidebar-fixture'
+        foreach ($query in @('custom:combined-sidebar-fixture', 'combined-sidebar-fixture')) {
+            Set-CombinedQuery $query
+            Wait-Until -TimeoutSec 10 -Because 'icon-only history still matches canonical and display provider aliases' -Condition {
+                @((Get-CombinedRows HistoryList) | Where-Object {
+                    (Get-CombinedRowText $_).Contains($history.title)
+                }).Count -eq 1
+            } | Out-Null
+        }
+        $tab = $script:tabs[6]
+        $baseline = Get-AgentPaneSession -App $script:app -PaneSessionId $tab.FixtureSession.PaneSessionId
+        $shellPid = (Get-WtPaneStatus -App $script:app -SessionId $tab.session_id).pid
+        foreach ($status in @('Idle', 'Working')) {
+            $nativeId = "$script:marker-metadata-$status"
+            $title = "$script:marker-metadata-title-$status"
+            Set-WtPaneFocus -App $script:app -SessionId $tab.session_id
+            Invoke-CombinedNativeHook -Tab $tab -SessionId $nativeId -Cwd (Join-Path $script:evidence $title) -Status $status
+            Wait-Until -TimeoutSec 15 -Because 'the native root is bound before detaching its real tab' -Condition {
+                @((Get-CombinedSnapshot).sessions | Where-Object {
+                    $_.session_id -eq $nativeId -and $_.provider_id -eq 'copilot' -and $_.status -eq $status -and
+                        ([string]$_.pane_session_id).Trim('{}') -eq ([string]$tab.session_id).Trim('{}')
+                }).Count -eq 1
+            } | Out-Null
+            Set-CombinedView $false
+            Set-CombinedQuery ''
+            $count = Get-CombinedAttachedTabCount
+            try {
+                Invoke-CombinedTabContext "$script:marker-open-06"
+                Invoke-UiElement -App $script:app -Selector KeepTabRunningMenuItem | Out-Null
+                Invoke-CombinedTabContext "$script:marker-open-06"
+                Invoke-UiElement -App $script:app -Selector 'Close tab' | Out-Null
+                Wait-Until -TimeoutSec 10 -Condition { (Get-CombinedAttachedTabCount) -eq $count - 1 } | Out-Null
+                Set-CombinedView $true
+                Set-CombinedQuery $title
+                Wait-Until -TimeoutSec 15 -Condition { @(Get-CombinedRows HistoryList).Count -eq 1 } | Out-Null
+                Assert-CombinedHistoryMetadata -Title $title -Status $status -Provider Copilot
+                Set-CombinedQuery copilot
+                Wait-Until -TimeoutSec 10 -Because 'live provider search still finds the detached identity' -Condition {
+                    @((Get-CombinedRows HistoryList) | Where-Object {
+                        (Get-CombinedRowText $_).Contains($title)
+                    }).Count -eq 1
+                } | Out-Null
+            }
+            finally {
+                Set-WtPaneFocus -App $script:app -SessionId $tab.session_id
+                Wait-Until -TimeoutSec 20 -Condition { (Get-CombinedAttachedTabCount) -eq $count } | Out-Null
+            }
+            (Get-WtPaneStatus -App $script:app -SessionId $tab.session_id).pid | Should -Be $shellPid
+            $current = Get-AgentPaneSession -App $script:app -PaneSessionId $baseline.PaneSessionId
+            $current.AcpSessionId | Should -Be $baseline.AcpSessionId
+            $current.HelperProcessId | Should -Be $baseline.HelperProcessId
+        }
     }
 
     It 'Combined sidebar search filters both sections and preserves the query' {

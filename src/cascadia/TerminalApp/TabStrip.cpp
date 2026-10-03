@@ -2276,6 +2276,13 @@ namespace winrt::TerminalApp::implementation
 
         append(item.Title());
         append(item.Subtitle() + item.StatusText());
+        append(item.Subtitle() + L" \u00b7 " + item.StatusText());
+        auto providerLabel = item.ProviderDisplayName();
+        if (item.AgentSource() == L"wsl" && !item.WslDistro().empty())
+        {
+            providerLabel = providerLabel + L" \u00b7 " + item.WslDistro();
+        }
+        append(providerLabel + L" \u00b7 " + item.Subtitle() + L" \u00b7 " + item.StatusText());
         append(item.AgentId());
         append(item.ProviderDisplayName());
         append(item.AgentSource());
