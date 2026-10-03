@@ -6,11 +6,9 @@
     Runs `cargo llvm-cov` over `tools/wta` and emits an HTML report (and
     optionally lcov) plus a console summary.
 
-    Toolchain note: `tools/wta/rust-toolchain.toml` pins the MS-internal
-    `ms-prod-1.93` channel, which isn't installed on dev boxes. This script
-    forces `RUSTUP_TOOLCHAIN=stable` (the same bypass the third-party-notices
-    generator uses) and runs from the repo root with `--manifest-path`, so the
-    pin never kicks in. Stable has had source-based coverage since 1.60.
+    Toolchain note: this script intentionally uses the public stable channel
+    instead of the version pinned in `tools/wta/rust-toolchain.toml`. Stable
+    has had source-based coverage since 1.60.
 
     Prerequisites (auto-installed unless -NoInstall):
       * rustup component `llvm-tools-preview` (on the stable toolchain)
@@ -53,7 +51,7 @@ if (-not $OutputDir) {
 }
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
-# Bypass the ms-prod toolchain pin; use stable everywhere in this process.
+# Use stable everywhere in this process for coverage tooling.
 $env:RUSTUP_TOOLCHAIN = 'stable'
 
 function Test-Command([string]$Probe) {
@@ -69,7 +67,7 @@ function Test-Command([string]$Probe) {
 Write-Host "==> Coverage for WTA crate" -ForegroundColor Cyan
 Write-Host "    repo:   $RepoRoot"
 Write-Host "    output: $OutputDir"
-Write-Host "    toolchain: stable (pin bypassed)"
+Write-Host "    toolchain: stable"
 
 # Build rule (tools/wta/AGENTS.md): kill any live wta.exe first, or the
 # instrumented build can fail with 'Access is denied' on the locked binary.
