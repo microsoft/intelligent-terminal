@@ -6727,7 +6727,7 @@ namespace TerminalAppLocalTests
                                               winrt::hstring{ fmt::format(fmt::runtime(std::wstring_view{ ownerStatusFormat }), base) } :
                                               base;
                     VERIFY_ARE_EQUAL(expected, parsed.items.front().StatusText());
-                    const auto native = winrt::get_self<TerminalApp::implementation::TabStripHistoryItem>(parsed.items.front());
+                    const auto native = winrt::get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(parsed.items.front());
                     VERIFY_IS_FALSE(native->BackgroundTab());
                     VERIFY_ARE_EQUAL(foreignLive, native->OtherWindow());
                     const auto unknownCurrent = Page::_ParseSidebarHistorySnapshot(output);
@@ -6755,7 +6755,7 @@ namespace TerminalAppLocalTests
                 row.removeMember("background_tab");
                 const auto legacy = Page::_ParseSidebarHistorySnapshot(
                     Json::writeString(Json::StreamWriterBuilder{}, response), 1);
-                const auto nativeLegacy = winrt::get_self<TerminalApp::implementation::TabStripHistoryItem>(legacy.items.front());
+                const auto nativeLegacy = winrt::get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(legacy.items.front());
                 VERIFY_IS_FALSE(nativeLegacy->BackgroundTab());
                 VERIFY_IS_FALSE(nativeLegacy->OtherWindow());
             }
