@@ -5,6 +5,7 @@
 #include "TabHeaderControl.h"
 
 #include "TabHeaderControl.g.cpp"
+#include "TabHeaderPresentation.g.cpp"
 
 using namespace winrt;
 using namespace winrt::Microsoft::UI::Xaml;
@@ -13,6 +14,7 @@ namespace winrt::TerminalApp::implementation
 {
     TabHeaderControl::TabHeaderControl()
     {
+        Presentation(winrt::make<TabHeaderPresentation>());
         InitializeComponent();
 
         const auto keepRunningIcon = HeaderKeepRunningIcon();
@@ -67,6 +69,33 @@ namespace winrt::TerminalApp::implementation
         });
     }
 
+    void TabHeaderControl::Presentation(const TerminalApp::TabHeaderPresentation& value)
+    {
+        THROW_HR_IF(E_INVALIDARG, !value);
+        if (_presentation == value)
+        {
+            return;
+        }
+        if (_presentation)
+        {
+            // Recycling must not commit an old row's edit to its new data owner.
+            _renameCancelled = true;
+            _CloseRenameBox(false);
+        }
+        _presentationChanged.revoke();
+        _presentation = value;
+        _presentationChanged = value.PropertyChanged(winrt::auto_revoke, [weakThis = get_weak()](auto&&, const auto& args) {
+            if (const auto self = weakThis.get())
+            {
+                self->PropertyChanged.raise(*self, args);
+            }
+        });
+        for (const auto name : { L"Presentation", L"Title", L"SearchText", L"RenamerMaxWidth", L"TabStatus", L"MetadataText", L"MetadataAutomationName" })
+        {
+            PropertyChanged.raise(*this, Windows::UI::Xaml::Data::PropertyChangedEventArgs{ name });
+        }
+    }
+
     // Method Description:
     // - Returns true if we're in the middle of a tab rename. This is used to
     //   mitigate GH#10112.
@@ -92,6 +121,20 @@ namespace winrt::TerminalApp::implementation
             PropertyChanged.raise(*this, Windows::UI::Xaml::Data::PropertyChangedEventArgs{ L"IsMetadataVisible" });
         }
         _UpdateMetadataVisibility();
+    }
+
+    bool TabHeaderControl::ShowProgressRing() const noexcept
+    {
+        return _showProgressRing;
+    }
+
+    void TabHeaderControl::ShowProgressRing(const bool value)
+    {
+        if (_showProgressRing != value)
+        {
+            _showProgressRing = value;
+            PropertyChanged.raise(*this, Windows::UI::Xaml::Data::PropertyChangedEventArgs{ L"ShowProgressRing" });
+        }
     }
 
     void TabHeaderControl::_UpdateMetadataVisibility()
@@ -170,14 +213,17 @@ namespace winrt::TerminalApp::implementation
 
     // Method Description:
     // - Hides the rename box and displays the title text block
-    void TabHeaderControl::_CloseRenameBox()
+    void TabHeaderControl::_CloseRenameBox(const bool notify)
     {
         if (HeaderRenamerTextBox().Visibility() == Windows::UI::Xaml::Visibility::Visible)
         {
             HeaderRenamerTextBox().Visibility(Windows::UI::Xaml::Visibility::Collapsed);
             HeaderTextBlock().Visibility(Windows::UI::Xaml::Visibility::Visible);
             _UpdateMetadataVisibility();
-            RenameEnded.raise(*this, nullptr);
+            if (notify)
+            {
+                RenameEnded.raise(*this, nullptr);
+            }
         }
     }
 }

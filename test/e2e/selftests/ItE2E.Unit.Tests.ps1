@@ -59,6 +59,34 @@ Describe 'Wait-Until / Test-Until' -Tag 'Unit' {
 }
 
 Describe 'JSON helpers' -Tag 'Unit' {
+    It 'settings snapshot releases the read handle before parsing' {
+        $settingsPath = Join-Path $TestDrive 'atomic-settings.json'
+        $replacementPath = "$settingsPath.tmp"
+        [IO.File]::WriteAllText($settingsPath, '{"value":1}')
+        [IO.File]::WriteAllText($replacementPath, '{"value":2}')
+        InModuleScope ItE2E -Parameters @{ settingsPath = $settingsPath; replacementPath = $replacementPath } {
+            $originalParser = (Get-Command ConvertFrom-JsonC).ScriptBlock
+            $script:atomicSettingsPath = $settingsPath
+            $script:atomicReplacementPath = $replacementPath
+            try {
+                function script:ConvertFrom-JsonC {
+                    [CmdletBinding()] param([Parameter(ValueFromPipeline)][string]$Text)
+                    process {
+                        [IO.File]::Move($script:atomicReplacementPath, $script:atomicSettingsPath, $true)
+                        $Text | ConvertFrom-Json
+                    }
+                }
+                { Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-JsonC } | Should -Throw
+                (Get-WtSettingsObject -App ([pscustomobject]@{ SettingsPath = $settingsPath })).value | Should -Be 1
+                (Get-Content -LiteralPath $settingsPath -Raw) | Should -Be '{"value":2}'
+            }
+            finally {
+                Set-Item -Path function:script:ConvertFrom-JsonC -Value $originalParser
+                Remove-Variable atomicSettingsPath, atomicReplacementPath -Scope Script
+            }
+        }
+    }
+
     It 'ConvertFrom-JsonSafe returns $null on garbage' {
         ConvertFrom-JsonSafe -InputObject 'not json {' | Should -BeNullOrEmpty
         ConvertFrom-JsonSafe -InputObject '' | Should -BeNullOrEmpty
