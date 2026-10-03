@@ -12392,6 +12392,50 @@ fn controlled_history_agent(
     (agent, receiver)
 }
 
+#[test]
+fn pane_context_owner_requires_exact_bound_pane_and_positive_window() {
+    let pane = uuid::Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap();
+    assert_eq!(
+        pane_context_owner_window(
+            pane,
+            &serde_json::json!({
+                "pane": {
+                    "session_id": "{11111111-1111-1111-1111-111111111111}",
+                    "window_id": 42
+                },
+                "output_source": "metadata_only",
+                "content": ""
+            })
+        ),
+        Some(42)
+    );
+    for context in [
+        serde_json::json!({ "output_source": "metadata_only" }),
+        serde_json::json!({ "pane": null }),
+        serde_json::json!({ "pane": [] }),
+        serde_json::json!({ "pane": "invalid" }),
+        serde_json::json!({ "session_id": pane.to_string(), "window_id": 42 }),
+        serde_json::json!({ "pane": { "session_id": pane.to_string(), "window_id": 0 } }),
+        serde_json::json!({ "pane": { "session_id": pane.to_string(), "window_id": "42" } }),
+        serde_json::json!({ "pane": { "session_id": pane.to_string(), "window_id": -1 } }),
+        serde_json::json!({ "pane": { "session_id": pane.to_string() } }),
+        serde_json::json!({ "pane": { "window_id": 42 } }),
+        serde_json::json!({ "pane": { "session_id": "invalid", "window_id": 42 } }),
+        serde_json::json!({ "pane": { "session_id": "22222222-2222-2222-2222-222222222222", "window_id": 42 } }),
+    ] {
+        assert_eq!(pane_context_owner_window(pane, &context), None);
+    }
+    assert_eq!(
+        pane_context_owner_window(
+            uuid::Uuid::nil(),
+            &serde_json::json!({
+                "pane": { "session_id": uuid::Uuid::nil().to_string(), "window_id": 42 }
+            })
+        ),
+        None
+    );
+}
+
 fn history_row(id: &str, title: &str) -> acp::schema::v1::SessionInfo {
     let mut row = acp::schema::v1::SessionInfo::new(SessionId::new(id), PathBuf::from("C:\\repo"));
     row.title = Some(title.to_string());

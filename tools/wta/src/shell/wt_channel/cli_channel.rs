@@ -1122,7 +1122,12 @@ impl WtChannel for CliChannel {
                 let cmd_owned;
                 let dir_owned;
                 let profile_owned;
+                let size_owned;
                 let mut args = vec!["split-pane"];
+                if let Some(size) = params.get("size").and_then(|value| value.as_f64()) {
+                    size_owned = size.to_string();
+                    args.extend(["--size", &size_owned]);
+                }
                 if !pane_id.is_empty() {
                     args.extend(["-t", &pane_id]);
                 }

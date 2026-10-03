@@ -1,4 +1,4 @@
-# Agent History and Sidebar Keyboard Navigation
+﻿# Agent History and Sidebar Keyboard Navigation
 
 ## Status and scope
 
@@ -7,13 +7,15 @@ actions. It is not an acceptance report: build-specific results and remaining
 validation belong in the release checklist and validation evidence.
 
 The scenarios below cover the left sidebar in the **vertical** tab layout. The
-sidebar and the independent **Agent Pane** are different surfaces. This contract
-does not change `tabLayout`, horizontal agent-session behavior, or other
-agent/delegation shortcuts.
+sidebar and the independent **Agent Pane** are different surfaces. The **Agents**
+surface combines open agent tabs above the session history; **History** below
+refers to the existing view lifecycle, search, and focus state, not a page that
+replaces the tab list. This contract does not change `tabLayout`, horizontal
+agent-session behavior, or other agent/delegation shortcuts.
 
 | Default shortcut | Responsibility |
 |---|---|
-| `Ctrl+Shift+/` | Show/hide the Agent Session view in the sidebar, called **History** below. Opening History focuses its own search box. |
+| `Ctrl+Shift+/` | Show/hide **Agents** in the sidebar (the History view lifecycle below), preserving whether shared search is open. |
 | `Ctrl+Shift+S` | Enter the sidebar through **Search tabs**, or collapse it and return to the previous input when focus is already inside. |
 | `Ctrl+Shift+.` | Show/hide the independent Agent Pane; its behavior is unchanged. |
 
@@ -30,19 +32,78 @@ The two focus policies referenced here are defined separately below.
 | Sidebar collapsed | `Ctrl+Shift+S` | Expand the sidebar and open **Search tabs**. | Remember the current terminal or Agent input, then focus the tab-search box. |
 | Sidebar expanded, focus outside the sidebar | `Ctrl+Shift+S` | Keep the sidebar expanded and open **Search tabs**. | Remember the current input, then focus the tab-search box. |
 | Sidebar expanded, focus inside the sidebar | `Ctrl+Shift+S` | Collapse the sidebar and close tab search or History. | Best-effort return to the input used before entering the sidebar; fall back to a visible terminal. |
-| Sidebar expanded, History hidden | `Ctrl+Shift+/` | Show History; remember that the sidebar was expanded. | Remember focused tab search or the source input, then focus the History search box. |
-| Sidebar collapsed, History hidden | `Ctrl+Shift+/` | Expand the sidebar and show History; remember that the sidebar was originally collapsed. | Remember the source input, then focus the History search box. |
-| History visible; sidebar was collapsed before History opened | `Ctrl+Shift+/` or the History close button | Hide History **and collapse the sidebar**. | History source-restoration policy. |
-| History visible; sidebar was expanded before History opened | `Ctrl+Shift+/` or the History close button | Hide History; **keep the sidebar expanded**, displaying its ordinary page without History. | History source-restoration policy. |
+| Sidebar expanded, History hidden | `Ctrl+Shift+/` or the Tabs header | Show the combined Agents surface; remember that the sidebar was expanded. | Remember focused tab search or the source input. Focus shared search only if it was already open; never activate it as a side effect of navigation. |
+| Sidebar collapsed, History hidden | `Ctrl+Shift+/` | Expand the sidebar and show Agents; remember that the sidebar was originally collapsed. | Remember the source input and preserve search state; navigation alone does not open search. |
+| Agents visible; sidebar was collapsed before History opened | `Ctrl+Shift+/` or the Agents header toggle | Return to Tabs **and collapse the sidebar**. | History source-restoration policy. |
+| Agents visible; sidebar was expanded before History opened | `Ctrl+Shift+/` or the Agents header toggle | Return to Tabs; **keep the sidebar expanded**, with its ordinary tab list and no history section. | History source-restoration policy. |
 | Sidebar expanded with History visible and focus inside | `Ctrl+Shift+S` | Collapse the whole sidebar and hide History. | Use the sidebar-hotkey entry input if still available, not History's saved entry state. |
 | Sidebar expanded with History visible and focus outside | `Ctrl+Shift+S` | Hide History, keep the sidebar expanded, and open **Search tabs**. | Remember the current input, then focus tab search. |
 
-The History close shortcut and close button have the same behavior. By contrast,
-`Ctrl+Shift+S` intentionally opens and focuses ordinary tab search on entry.
+The History close shortcut and Agents header toggle have the same close
+behavior. The Tabs header opens Agents when the sidebar is expanded; it does
+not expand a collapsed sidebar. By contrast, `Ctrl+Shift+S` intentionally opens
+and focuses ordinary tab search on entry.
+
+## Combined Agents surface
+
+- The toolbar header toggles **Tabs** and **Agents** (reversible via header button
+  or shortcut). A persistent swap icon and button border make the switch
+  discoverable; normal button hover, pressed, and keyboard-focus feedback remain.
+  There is no separate redundant Agents icon in the toolbar.
+- History rows keep the session title above metadata ordered as timestamp,
+  meaningful status, and provider icon. Ended/historical rows omit the redundant
+  Historical status; live Idle/Working/Attention/Error statuses remain visible.
+  A live session bound to a pane in a confirmed different window appends a
+  localized "another window" indication within the status field. Ownership comes
+  from an explicit pane-context lookup, never absence from the current window.
+  Unknown ownership leaves the activity status visible without that indication.
+  Provider identity remains available through the icon tooltip and shared search,
+  even though repeated provider text is omitted from the metadata line.
+- The Agents view consists of two distinct upper and lower sections separated
+  by a horizontal divider:
+  - **Upper section (`AgentTabsHost`)**: contains live/open agent tabs hosting
+    `ItemsList` with its own independent vertical scrollbar
+    (`ScrollBarVisibility::Auto`).
+  - **Horizontal divider (`HistorySplitter`)**: an 8px draggable separator
+    that resizes the upper section height. Defaults to ~50/50 split with
+    an 80px minimum on both sections, adaptively reduced when a small window
+    cannot fit both minima and the divider. Supports mouse/pointer dragging
+    with `CoreCursorType::SizeNorthSouth` and keyboard resizing via `Up` and
+    `Down` arrow keys (16px per step).
+  - **Lower section (`HistoryList`)**: displays the History section heading
+    and resumable session rows, excluding represented sessions, with its own
+    independent vertical scrollbar.
+- **Unified Search**: There is no separate history search box. The single
+  `SearchTextBox` in the sidebar filters both the upper live agent tabs and the
+  lower history rows concurrently. Entering or leaving Agents does not discard
+  an active search query or activate a search that was closed. The shared search
+  action opens the box explicitly; selecting Agents does not imply searching.
+- In Agents, the search placeholder, automation names, and button tooltip read
+  **Search agents and history**; Tabs retains **Search tabs**. The header toggle
+  is disabled while projection controls are blocked, in either direction.
+- The focusable splitter has a localized automation name and keyboard-resizing
+  help text. Runtime Narrator/UIA behavior remains a separate validation step.
+- History errors and empty-state messages sit outside the scrolling rows so
+  retained sessions cannot scroll the status out of view. At small section
+  heights, the heading compacts or hides and status text truncates to leave a
+  list viewport; the tooltip retains the full message. This does not alter the
+  outer split ratio or introduce another scroll viewer.
+- Exclude only the represented history identity: provider, session ID, source
+  location (host or WSL distro), and session universe. The open-pane binding
+  supplies session ID, provider (when known), and pane ID; the matching history
+  row supplies location and universe. Pane ID disambiguates colliding history
+  identities, but an unambiguous session/provider remains represented after
+  rebinding to a new pane even if its history row still names the old pane.
+  A graceful connection close refreshes this projection even when the pane is
+  retained by `closeOnExit: never`; a failed connection retains its binding until
+  the pane closes.
+  If colliding rows cannot be disambiguated, retain them rather than hiding
+  an unrelated session. Status alone is not identity: an idle or working
+  session without a representing open pane remains in the lower section.
 
 ## History: restore the entry state and input, best effort
 
-When transitioning from hidden History to visible History, retain:
+When transitioning from Tabs to Agents, retain:
 
 - Whether the sidebar was collapsed **before** any expansion needed to show
   History.
@@ -50,8 +111,8 @@ When transitioning from hidden History to visible History, retain:
   pane, including its particular split.
 - Whether ordinary tab search had keyboard focus, retaining its query.
 
-Do not replace this entry context with the History search box when focus moves
-there. When History is closed by its shortcut or close button, restore the
+Do not replace this entry context with the search box when focus moves
+there. When Agents is closed by its shortcut or header toggle, restore the
 remembered sidebar expanded/collapsed state and attempt to restore the source
 input.
 
@@ -118,6 +179,116 @@ counts as inside the sidebar for the keybinding's focus policy.
 
 - Use the localized labels **Expand sidebar** and **Collapse sidebar** for the
   tooltip and automation name, retaining the existing resource identifiers.
+
+## Tab-header ownership and rename focus
+
+The tab owns a data-only `TabHeaderPresentation` and the existing aggregate
+`TerminalTabStatus`. The canonical horizontal `TabViewItem` permanently retains
+its native `TabHeaderControl`. Each sidebar row template creates a separate
+`TabHeaderControl` bound to the same presentation; no header control is extracted,
+detached, or transferred during reorder or layout changes. Sidebar icon elements
+are also template-owned, with retained `IconSource` data rather than shared live
+elements. Pane rows and terminal/taskbar progress remain independent of this
+presentation contract.
+
+The localized tab accessibility name is computed once alongside pin and rich
+metadata state, stored in the shared presentation, and projected to the native
+tab and selectable sidebar row. The existing container-realization handler
+installs a one-way binding to observable presentation data and clears it on
+recycle. UWP does not evaluate bindings in style setters; the row does not bind
+through a nested attached-property path on the hidden horizontal control.
+The C++ presentation is marked `bindable` so runtime binding can resolve its
+properties through generated XAML metadata; compiled `x:Bind` alone does not
+provide that runtime lookup contract.
+
+Selection is restored by canonical tab identity mapped to the current sidebar
+descriptor, not by treating a canonical index as a display index. Existing
+focus fallback first retains the current visible terminal or Agent input, then
+uses the existing source-shell fallback; this adds no saved focus field,
+selection cache, timer, repair callback or view-model clock.
+
+Pin state remains shared model data. `TabHeaderControl.ShowPinnedIcon` is an
+appended, view-local property, defaulting to true: the canonical horizontal
+header sets it to false, while newly created sidebar headers retain the default.
+Only the horizontal visual pin glyph is hidden. Sidebar badges, accessibility
+labels, Pin/Unpin menus, ordering, first-ordinary unpin placement and cross-pin
+movement boundaries retain #1052 semantics. This does not clear `IsPinned`,
+restore original positions, introduce grouping UI or permit unrestricted
+movement across pinned/unpinned boundaries. The primary layout round trip
+verifies canonical owner and the sidebar selection pattern before secondary
+visual checks. Matched same-profile title-leading offsets measure reserved pin
+space; FontIcon peer counts are diagnostic only because UWP may not expose
+those peers. Small compositor crops include the full header and leading glyphs.
+Actual Sidebar pin presence and Horizontal pin absence require independent
+visual review; neither geometry nor peer absence proves rendered pixels.
+
+Indeterminate header, pane-row, and tab-switcher progress use the shared
+`IndeterminateProgressRing` control and its style in
+`IndeterminateProgressResources.xaml`. The control owns one compositor
+rotation animation on its current template visual and starts it only while loaded, active, and visible through its
+attached visual ancestry. Activity and ancestor-visibility callbacks stop or
+start the clock; unload stops it and releases weak ancestry observers, and load
+observes the new ancestry. Template replacement stops the old clock before
+attaching to the replacement visual. This is view-local rendering lifetime, not progress
+model state or per-move/layout repair; there is no XAML `Loaded` trigger or
+native `ActiveStates` group or XAML storyboard target competing with it.
+
+The rotation targets a renderer-owned child ShapeVisual, not the
+framework-owned XAML element visual that recycling/layout can reset.
+The control's `IsActive` property remains bound to status; the existing outer
+active gate and inner indeterminate gate control presentation. It is neither a
+keyboard tab stop nor a hit-test target, and its automation peer exposes
+`ProgressBar` without a numeric `RangeValue` pattern. The arc uses
+the resolved Foreground brush, including brush color and theme changes; MUX determinate/error/paused progress and the
+shared data/identity policy are unchanged. Product-host reload/animation
+acceptance still requires runtime integration validation.
+
+Identity and progress are separate: a profile or known live agent icon remains
+visible beside active progress in horizontal tabs, individual sidebar tabs,
+and pane rows. In the expanded sidebar, a collapsible group's chevron occupies
+the same leading slot as an individual tab's identity icon, without an
+additional profile icon; their top-level title positions remain aligned whether
+the group is expanded or collapsed. The compact rail hides the chevron and
+retains identity. Explicit hidden-icon styling remains hidden, including while busy.
+The sidebar uses the native tab's configured source, including monochrome
+styling; the existing agent-session projection still selects the provider icon.
+Selected-color contrast applies to monochrome identity, not colored bitmaps or
+extracted images.
+
+Metadata visibility and the aggregate-progress visibility gate belong to the
+individual view. Title, search text, rename width, metadata text/accessibility
+text, and aggregate status are shared data. A recycled view cancels an outstanding
+rename before rebinding without committing it or requesting focus for its new
+owner.
+
+Context-menu and palette rename commands resolve the realized row header, as
+does the color-picker anchor. Rename commits route through that row's current
+canonical tab to `SetTabText`; rename completion uses the existing focus-request
+path. Closing a context menu checks the real row's `InRename` before restoring
+terminal focus.
+Interactive requests reveal the actual row by closing History and expanding a
+collapsed rail through the existing view commands. Filter-hidden rows remain
+unavailable; no invisible native-header fallback is used.
+
+Existing WinRT methods retain their ordering and signatures. New members are
+appended. `TabStripDisplayItem.Header` retains its `Object` getter/setter slots,
+but now returns `TabHeaderPresentation`, never a visual; its setter accepts
+presentation data, a legacy header (extracting only its data), a boxed title,
+or null (creating an empty presentation). `Icon` retains its `IconElement`
+getter/setter slots on both tab and pane descriptors as a data-only compatibility
+adapter, not a promise of full legacy visual semantics: the getter creates a fresh,
+unparented native icon element, and the setter extracts source data from standard
+icon types. Unsupported inputs fail with `E_INVALIDARG`. Templates use the
+`Presentation` and validated, data-only `IconSource` properties instead. The
+`Object` icon-source slot contains a MUX `IconSource`; this avoids the XAML
+function-binding compiler default-constructing the abstract source base class.
+The icon-source
+factory creates a fresh element per template and retains EXE/DLL image sources,
+agent SVG geometry, bitmap and symbol sources, and font/RTL properties.
+Pane descriptors retain source data, content identity, and status, never live
+icon elements. Tab and pane adapters share the same conversion and element
+factory; simultaneous containers share geometry/image data but own distinct
+elements.
 - Show the label and dimmed effective shortcut on the same line with 8 units
   of spacing for both the collapsed **Expand sidebar** and expanded
   **Collapse sidebar** buttons. Keep Segoe UI Variable, `FontSize=12`, normal
@@ -135,9 +306,15 @@ Opening Search tabs with `Ctrl+Shift+S` does not change the separate
 
 These are required checks for this contract, not claims of completed validation:
 
-- Exercise History open/close from both an initially expanded and an initially
-  collapsed sidebar, using both the second physical shortcut and the close
-  button.
+- Exercise Agents open/close from both an initially expanded and an initially
+  collapsed sidebar, using the shortcut and header toggle.
+- Check that open agent tabs stay in the upper scrollable section and history
+  stays in the lower scrollable section, separated by the draggable/keyboard-navigable
+  splitter.
+- Check that only identity-matched represented sessions are absent from history,
+  and unattached idle sessions remain available.
+- Check that entering search queries in the single sidebar search box filters
+  both open agent tabs and history rows concurrently.
 - For both entry states, verify restoration to Agent Pane chat and to the exact
   originating terminal split when each remains available.
 - Repeat with an unavailable source and verify the visible-terminal fallback,

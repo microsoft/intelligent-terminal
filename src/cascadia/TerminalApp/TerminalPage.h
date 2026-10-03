@@ -1019,6 +1019,7 @@ namespace winrt::TerminalApp::implementation
         void _RequestSidebarHistoryRefresh(bool initialLoad);
         void _UpdateSidebarHistoryCurrentSession();
         static winrt::hstring _SidebarHistoryStatusText(std::string_view status);
+        static winrt::hstring _FormatLocalizedPercentValue(uint32_t progressValue, std::wstring_view languageTag = {});
         bool _ApplyAgentSessionStatusDelta(std::string_view sessionId,
                                            std::string_view paneSessionId,
                                            std::string_view providerId,
@@ -1039,7 +1040,7 @@ namespace winrt::TerminalApp::implementation
             State state{ State::Error };
             std::vector<TerminalApp::TabStripHistoryItem> items;
         };
-        static _SidebarHistorySnapshot _ParseSidebarHistorySnapshot(const std::string& output);
+        static _SidebarHistorySnapshot _ParseSidebarHistorySnapshot(const std::string& output, uint64_t currentWindowId = 0);
         safe_void_coroutine _LoadSidebarHistory(uint64_t generation);
         void _CompleteSidebarHistoryRefresh(uint64_t generation, _SidebarHistorySnapshot snapshot);
         struct _SidebarHistoryActivationRequest
@@ -1331,8 +1332,12 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _DetectWtaPath() const;
         std::optional<uint32_t> _FindSourceOfAgentPaneId(const std::shared_ptr<Pane>& root);
         void _DelegatePromptToAgent(const winrt::hstring& prompt);
-        void _OpenBackgroundAgentTab();
-        void _LaunchDelegate(const std::optional<winrt::hstring>& prompt);
+        void _OpenDefaultNewTab();
+        std::optional<std::wstring> _BuildAgentSplitArguments(const winrt::com_ptr<Tab>& tab, Microsoft::Terminal::Settings::Model::SplitDirection direction, float size);
+        safe_void_coroutine _SplitAgentDelegate(winrt::com_ptr<Tab> tab, Microsoft::Terminal::Settings::Model::SplitDirection direction, float size);
+        safe_void_coroutine _RunSidebarDelegate(std::wstring wtaPath, std::wstring args);
+        void _OpenBackgroundAgentTab(bool preserveSidebarView = false);
+        void _LaunchDelegate(const std::optional<winrt::hstring>& prompt, bool preserveSidebarView = false);
 
         // Note (Phase 5): the per-pane wta-process watch + Job Object members
         // and their setup/teardown methods were removed when the legacy

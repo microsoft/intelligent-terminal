@@ -185,6 +185,13 @@ namespace winrt::TerminalApp::implementation
         // Don't capture a strong ref to the tab. If the tab is removed as this
         // is called, we don't really care anymore about handling the event.
         auto weakTab = make_weak(newTabImpl);
+        newTabImpl->SetHeaderResolver([weakTab, weakThis = get_weak()](const bool realize) -> TerminalApp::TabHeaderControl {
+            const auto page = weakThis.get();
+            const auto tab = weakTab.get();
+            return page && tab ?
+                       winrt::get_self<implementation::TabStrip>(page->_tabStrip)->HeaderForTab(tab->TabViewItem(), realize).try_as<TerminalApp::TabHeaderControl>() :
+                       nullptr;
+        });
 
         // When the tab's active pane changes, we'll want to lookup a new icon
         // for it. The Title change will be propagated upwards through the tab's
@@ -1343,7 +1350,11 @@ namespace winrt::TerminalApp::implementation
         {
             return _tabLayoutTransitionSelectedItem;
         }
-        return _isVerticalLayout ? _tabStrip.SelectedItem() : _tabView.SelectedItem();
+        if (_isVerticalLayout)
+        {
+            return _tabStrip.SelectedItem();
+        }
+        return _tabView.SelectedItem().try_as<MUX::Controls::TabViewItem>();
     }
 
     void TerminalPage::_selectedTabItem(const IInspectable& item)
@@ -2128,12 +2139,11 @@ namespace winrt::TerminalApp::implementation
             const auto item = tab.TabViewItem();
             const auto display = projectedDisplay ? projectedDisplay :
                                                     (tabStrip ? tabStrip->DisplayItemForTab(item) : nullptr);
-            auto header = display ?
-                              display.Header().try_as<TerminalApp::TabHeaderControl>() :
-                              item.Header().try_as<TerminalApp::TabHeaderControl>();
+            const auto header = item.Header().try_as<TerminalApp::TabHeaderControl>();
             if (display)
             {
                 display.SearchText(highlightQuery);
+                display.Presentation().SearchText(highlightQuery);
                 for (const auto& pane : display.PaneItems())
                 {
                     pane.HighlightQuery(highlightQuery);
@@ -2173,6 +2183,27 @@ namespace winrt::TerminalApp::implementation
             {
                 apply(_tabs.GetAt(index), tabStrip ? tabStrip->DisplayItemAt(index) : nullptr);
             }
+        }
+
+        if (tabStrip)
+        {
+            std::vector<implementation::TabStrip::RepresentedHistorySession> representedSessions;
+            for (const auto& tab : _tabs)
+            {
+                if (const auto impl = _GetTabImpl(tab); impl && impl->GetRootPane())
+                {
+                    impl->GetRootPane()->WalkTree([&](const auto& pane) {
+                        if (const auto binding = _paneAgentSessions.find(pane->GetSessionId());
+                            binding != _paneAgentSessions.end() && !binding->second.sessionId.empty())
+                        {
+                            representedSessions.push_back({ binding->second.sessionId,
+                                                            binding->second.agent,
+                                                            winrt::hstring{ ::Microsoft::Console::Utils::GuidToPlainString(pane->GetSessionId()) } });
+                        }
+                    });
+                }
+            }
+            tabStrip->SetRepresentedHistorySessions(std::move(representedSessions));
         }
 
         if (updateBookkeeping)
@@ -2261,12 +2292,11 @@ namespace winrt::TerminalApp::implementation
                                   nullptr;
         const auto display = projectedDisplay ? projectedDisplay :
                                                 (tabStrip ? tabStrip->DisplayItemForTab(tab.TabViewItem()) : nullptr);
-        const auto header = display ?
-                                display.Header().try_as<TerminalApp::TabHeaderControl>() :
-                                tab.TabViewItem().Header().try_as<TerminalApp::TabHeaderControl>();
-        if (header && header.IsMetadataVisible())
+        const auto header = tab.TabViewItem().Header().try_as<TerminalApp::TabHeaderControl>();
+        const auto metadataVisible = display ? display.IsMetadataVisible() : header && header.IsMetadataVisible();
+        if (metadataVisible)
         {
-            const auto metadata = header.MetadataText();
+            const auto metadata = display ? display.Presentation().MetadataText() : header.MetadataText();
             if (matches(std::wstring_view{ metadata.c_str(), metadata.size() }))
             {
                 return true;

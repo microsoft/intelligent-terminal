@@ -546,6 +546,10 @@
     <value>ഏജന്റുകൾ</value>
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
+  <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
+    <value>ചരിത്രം</value>
+    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+  </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>ഏജന്റുകൾ</value>
     <comment>Header of the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
@@ -719,5 +723,37 @@
   <data name="NotificationIconCloseAllKeptTabs" xml:space="preserve">
     <value>പശ്ചാത്തലത്തിൽ പ്രവർത്തിക്കുന്ന എല്ലാ ടാബുകളും അടയ്ക്കുക</value>
     <comment>Command below the background tabs in the notification-area menu. Closes all detached tabs retained by Keep tab running and terminates their panes and processes. Does not close tabs still in a window or only turn off keep running.</comment>
+  </data>
+  <data name="PaneProgressStatusNormal" xml:space="preserve">
+    <value>പുരോഗതി</value>
+    <comment>Accessibility status for normal determinate OSC 9;4 progress. A localized percentage is appended.</comment>
+  </data>
+  <data name="PaneProgressStatusError" xml:space="preserve">
+    <value>പിശക്</value>
+    <comment>Accessibility status for error OSC 9;4 progress. A localized percentage is appended.</comment>
+  </data>
+  <data name="PaneProgressStatusIndeterminate" xml:space="preserve">
+    <value>അനിശ്ചിത പുരോഗതി</value>
+    <comment>Accessibility status for OSC 9;4 progress with an unknown percentage. No percentage is appended.</comment>
+  </data>
+  <data name="PaneProgressStatusPaused" xml:space="preserve">
+    <value>താൽക്കാലികമായി നിർത്തി</value>
+    <comment>Accessibility status for temporarily paused OSC 9;4 progress. A localized percentage is appended; this does not mean waiting for user input or approval.</comment>
+  </data>
+  <data name="VerticalTabsAgentsSearch.Text" xml:space="preserve">
+    <value>ഏജന്റുകളും ചരിത്രവും തിരയുക</value>
+    <comment>Shared sidebar search field and button label in the Agents view. Filters both open AI-agent tabs and historical agent sessions. Agents means AI agents; history means prior agent sessions. Keep the separate Tabs view search labels unchanged.</comment>
+  </data>
+  <data name="VerticalTabsHistorySplitter.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>ഏജന്റ് ടാബുകളുടെയും ചരിത്രത്തിന്റെയും വലുപ്പം മാറ്റുക</value>
+    <comment>Accessible name for the adjustable horizontal divider between open AI-agent tabs and session History in the Agents sidebar.</comment>
+  </data>
+  <data name="VerticalTabsHistorySplitter.[using:Windows.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve">
+    <value>വിഭാഗങ്ങളുടെ വലുപ്പം മാറ്റാൻ മുകളിലേക്കും താഴേക്കുമുള്ള അമ്പടയാള കീകൾ ഉപയോഗിക്കുക.</value>
+    <comment>Keyboard instructions for the divider between open AI-agent tabs and session History. Up reduces the upper section height; Down increases it. The lower section height adjusts oppositely.</comment>
+  </data>
+  <data name="VerticalTabsHistoryOtherWindowStatusFormat" xml:space="preserve">
+    <value>{0} · മറ്റൊരു വിൻഡോ</value>
+    <comment>Status annotation for a live agent session attached to a different Intelligent Terminal window. {0} is the already-localized activity status, such as Working or Idle. Keep the status first. This does not mean another tab, WSL distro, historical session, or detached background tab.</comment>
   </data>
 </root>

@@ -298,6 +298,34 @@ Run or Insert. After the user chooses, history uses the localized
 a localized cancellation status on the same line, not on the conversation title.
 History has no suggestion counts, numbering, or recommendation checkmarks.
 
+## Interactive delegate tabs
+
+`wta delegate` without a prompt opens the configured interactive agent CLI in
+a fresh tab. The Agents sidebar's default `+` button uses this same delegation
+path, including provider, model, policy, and explicit host/WSL source selection;
+it does not open an assistant pane or resume a conversation. The normal Tabs
+`+`, explicit profile dropdown entries, and existing shortcuts are unchanged.
+
+The sidebar passes `--preserve-sidebar-view` to create the delegate tab in the
+background and then focus its returned pane through the existing protocol focus
+path. This preserves the selected sidebar page and search state. Other delegate
+calls retain ordinary foreground tab creation.
+
+In Agents, duplicate-split uses the target pane's live provider/session binding.
+`wta delegate --split-pane <pane> --split-session <current-session>
+--delegate-agent <provider>` validates that pair against one live master row
+and uses its exact host or WSL distro before launching a fresh interactive
+instance through the existing delegate builders. The old session ID is only a
+guard, never a resume argument. Missing, ambiguous, unknown-source, unavailable,
+and unsupported/custom targets fail rather than launching a default shell.
+Host splits carry the resolved project directory in an encoded PowerShell
+wrapper that starts the existing delegate command with an explicit native
+working directory; the split protocol itself has no cwd argument. The wrapper
+preserves native arguments and exit status, including paths with spaces and
+shell metacharacters. WSL retains its existing distro-specific `--cd` launch.
+Sidebar `+` and split launchers use bounded output capture and surface failures
+through the sidebar's existing error presentation.
+
 ## Debug Panel
 
 Press **F12** to open a side panel showing all JSON-RPC messages between WTA and Windows Terminal in real time.
@@ -325,7 +353,7 @@ packaged (or bare `%LOCALAPPDATA%\IntelligentTerminal\logs\` unpackaged):
 | `terminal-agent-pane.log` | Agent-pane chrome (C++ TerminalApp side) |
 | `wta-ensure-host.log` | Background host startup / COM connection / SharedWta lifecycle |
 | `wta-acp-debug.log` | ACP protocol debug trace |
-| `wta-delegate.<UTC-date>.log` | `?<prompt>` delegation flow |
+| `wta-delegate.<UTC-date>.log` | `?<prompt>` and interactive delegate creation |
 | `wta-probe.<UTC-date>.log` | Agent/model/session capability probes |
 | `wta-install-hooks.<UTC-date>.log` | Hook installation and upgrade diagnostics |
 | `wta-panic.<UTC-date>.log` | Synchronous panic backstop when the normal buffered record may not flush |

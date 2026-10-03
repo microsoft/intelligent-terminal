@@ -803,6 +803,43 @@ pub fn build_delegate_launch_commandline_with_session(
     build_delegate_launch_commandline(runtime, input, session_id)
 }
 
+pub(crate) fn with_windows_delegate_cwd(commandline: &str, cwd: &str) -> Result<String> {
+    anyhow::ensure!(
+        std::path::Path::new(cwd).is_absolute(),
+        "host split requires an absolute Windows working directory"
+    );
+    let executable = split_windows_commandline(commandline)
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow!("delegate command has no executable"))?;
+    let quoted = quote_windows_commandline_arg(&executable);
+    let always_quoted = format!("\"{executable}\"");
+    let arguments = commandline
+        .strip_prefix(&always_quoted)
+        .or_else(|| commandline.strip_prefix(&quoted))
+        .ok_or_else(|| anyhow!("delegate executable quoting is unsupported"))?
+        .trim_start();
+    // Keep the existing native argument string intact, including cmd /c shim
+    // quoting. Encoded script data bypasses WT's environment-string expansion.
+    let script = format!(
+        "$ErrorActionPreference='Stop';\
+         $p=New-Object System.Diagnostics.Process;\
+         $p.StartInfo.FileName={};\
+         $p.StartInfo.Arguments={};\
+         $p.StartInfo.WorkingDirectory={};\
+         $p.StartInfo.UseShellExecute=$false;\
+         [void]$p.Start();$p.WaitForExit();exit $p.ExitCode",
+        ps_single_quote(&executable),
+        ps_single_quote(arguments),
+        ps_single_quote(cwd),
+    );
+    let utf16: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    Ok(format!(
+        "powershell.exe -NoLogo -NoProfile -EncodedCommand {}",
+        crate::osc52::base64_encode(&utf16)
+    ))
+}
+
 fn build_delegate_launch_commandline(
     runtime: &DelegateAgentRuntime,
     input: Option<&str>,
@@ -3270,6 +3307,47 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn delegate_host_split_cwd_wrapper_rejects_missing_or_posix_cwd() {
+        assert!(super::with_windows_delegate_cwd("copilot", "").is_err());
+        assert!(super::with_windows_delegate_cwd("copilot", "/home/project").is_err());
+        assert!(super::with_windows_delegate_cwd("", "C:\\project").is_err());
+    }
+
+    #[test]
+    fn delegate_host_split_cwd_wrapper_launches_in_exact_special_character_directory() {
+        let root = std::env::temp_dir().join(format!(
+            "wta split cwd ' & ; %WTA_TEST_UNUSED% ! [x] {}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir(&root).expect("create cwd test directory");
+        let cwd = root.to_str().expect("test cwd is UTF-8");
+        let launch = super::with_windows_delegate_cwd(
+            "powershell.exe -NoLogo -NoProfile -Command \"Write-Output ([Environment]::CurrentDirectory); exit 7\"",
+            cwd,
+        ).expect("build cwd wrapper");
+        assert!(
+            !launch.contains('%'),
+            "cwd must bypass WT environment expansion"
+        );
+        let output = std::process::Command::new("powershell.exe")
+            .raw_arg(
+                launch
+                    .strip_prefix("powershell.exe ")
+                    .expect("wrapper prefix"),
+            )
+            .output();
+        std::fs::remove_dir(&root).expect("remove cwd test directory");
+        let output = output.expect("execute real host split payload");
+        assert_eq!(
+            output.status.code(),
+            Some(7),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), cwd);
     }
 
     #[test]
