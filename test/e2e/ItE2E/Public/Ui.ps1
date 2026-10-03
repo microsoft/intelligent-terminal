@@ -355,6 +355,23 @@ function Invoke-WinAppUi {
     $winapp = Get-WinAppPath
     $args = @('ui') + $UiArgs
     if (-not $NoTarget) { $args += (Get-UiTarget -App $App) }
+    if ($App.PSObject.Properties['RequireOwnedForeground'] -and $App.RequireOwnedForeground -and
+        $UiArgs[0] -in @('click', 'invoke', 'set-value')) {
+        if ($NoTarget -or -not $App.Launched -or -not $App.OwnedProcess -or
+            $App.OwnedProcess.HasExited -or $App.OwnedProcess.Id -ne $App.Pid) {
+            throw 'Physical UI input requires the captured live test-owned Terminal.'
+        }
+        Initialize-WtWin32Input
+        $hwnd = [IntPtr][int64]$App.Hwnd
+        if ([ItE2E.ItWtWin32Input]::GetWindowProcessId($hwnd) -ne $App.Pid) {
+            throw 'Physical UI target HWND no longer belongs to the owned Terminal.'
+        }
+        if (-not (Set-WtWindowForeground -App $App -Attempts 3 -DelayMs 150)) {
+            $foregroundPid = [ItE2E.ItWtWin32Input]::GetWindowProcessId(
+                [ItE2E.ItWtWin32Input]::GetForegroundWindow())
+            throw "Owned Terminal cannot acquire foreground; competing PID=$foregroundPid. No UI input sent."
+        }
+    }
     Invoke-Native -FilePath $winapp -Arguments $args -TimeoutSec $TimeoutSec -Environment @{ WINAPP_CLI_TELEMETRY_OPTOUT = '1' }
 }
 
