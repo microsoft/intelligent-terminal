@@ -205,7 +205,9 @@ namespace ItE2E
             finally { Stop-Terminal -App $script:app -RestoreSettings $false }
         }
         if ($script:ownsConfigBackup) {
-            if (@(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables).Count) {
+            if (-not (Test-Until -TimeoutSec 10 -IntervalSec 0.2 -Condition {
+                -not @(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables).Count
+            })) {
                 throw 'Dev is still active; configuration backups are retained rather than racing a live writer.'
             }
             (Get-FileHash -LiteralPath $script:target.SettingsPath).Hash |
