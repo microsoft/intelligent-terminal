@@ -160,6 +160,7 @@ function Get-WtProcessesForApp {
         foreach ($process in @(Get-Process -ErrorAction Stop)) {
             $path = $process.Path
             if (-not $path) {
+                if ($process.HasExited) { continue }
                 if (-not $process.ProcessName -or $process.ProcessName -in $executableNames) {
                     throw "Cannot establish package inactivity: executable path unavailable for pid=$($process.Id) ($($process.ProcessName))."
                 }

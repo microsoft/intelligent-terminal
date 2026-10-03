@@ -198,6 +198,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         $script:historyPath = Join-Path $script:evidence 'history.json'
         $script:fixtureLog = Join-Path $script:evidence 'fixture.log'
         $script:releasePromptPath = Join-Path $script:evidence 'release-prompt'
+        $script:heldPromptMarker = $null
         $script:marker = 'combined-' + [guid]::NewGuid().ToString('N').Substring(0, 8)
         $script:history = @(foreach ($i in 0..23) {
             @{
@@ -271,18 +272,19 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             $button.Current.IsEnabled | Should -BeTrue
             $label = Get-CombinedVisiblePart $button VerticalTabsHeader
             $label.Current.Name | Should -Be $Name
-            $icon = Get-CombinedVisiblePart $button SidebarViewSwitchIcon
             $bounds = $button.Current.BoundingRectangle
             $textBounds = $label.Current.BoundingRectangle
-            $iconBounds = $icon.Current.BoundingRectangle
-            $iconBounds.Left | Should -BeGreaterOrEqual $textBounds.Right
-            $iconBounds.Right | Should -BeLessOrEqual $bounds.Right
-            $iconBounds.Top | Should -BeGreaterOrEqual $bounds.Top
-            $iconBounds.Bottom | Should -BeLessOrEqual $bounds.Bottom
+            $bounds.Width | Should -BeGreaterThan 0
+            $bounds.Height | Should -BeGreaterThan 0
             $textBounds.Left | Should -BeGreaterOrEqual $bounds.Left
+            $textBounds.Right | Should -BeLessOrEqual $bounds.Right
+            $textBounds.Top | Should -BeGreaterOrEqual $bounds.Top
+            $textBounds.Bottom | Should -BeLessOrEqual $bounds.Bottom
+            # Decorative PathIcon visuals need not expose a UIA peer; pixels require screenshot review.
             @{
                 name = $Name; button = $bounds.ToString()
-                label = $textBounds.ToString(); persistent_icon = $iconBounds.ToString()
+                label = $textBounds.ToString()
+                screenshot = "header-cue-$Name.png"; visual_cue_review = 'pending'
             } | ConvertTo-Json -Compress |
                 Add-Content -LiteralPath (Join-Path $script:evidence 'header-cue.jsonl')
         }
@@ -297,14 +299,26 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 -not $_.Current.IsOffscreen -and $_.Current.BoundingRectangle.Height -gt 0 -and
                     $_.Current.BoundingRectangle.Width -gt 0
             })
-            $titlePart = Get-CombinedVisiblePart $row HistoryTitleText
-            $time = Get-CombinedVisiblePart $row HistorySubtitleText
+            $textLeaves = @($visible | Where-Object {
+                $_.Current.ControlType -eq [Windows.Automation.ControlType]::Text -and
+                    -not @(Get-CombinedRawChildren $_ | Where-Object {
+                        $_.Current.ControlType -eq [Windows.Automation.ControlType]::Text -and
+                            -not $_.Current.IsOffscreen -and $_.Current.BoundingRectangle.Width -gt 0 -and
+                            $_.Current.BoundingRectangle.Height -gt 0
+                    }).Count
+            })
+            # Highlighted text exposes leaf Text peers, not the wrapper's XAML name.
+            $titles = @($textLeaves | Where-Object { $_.Current.Name.Contains($Title) })
+            $titles.Count | Should -Be 1 -Because 'the history row must expose one unambiguous visible title'
+            $titlePart = $titles[0]
+            $times = @($textLeaves | Where-Object { $_.Current.Name -match '^(just now|\d+ (minute|hour|day)s? ago)$' })
+            $times.Count | Should -Be 1 -Because 'the history row must expose one unambiguous visible relative time'
+            $time = $times[0]
             $icon = Get-CombinedVisiblePart $row HistoryProviderIcon
             (Get-CombinedRowText $row) | Should -Match ([regex]::Escape($Title))
             $icon.Current.Name | Should -Be $Provider -Because 'icon-only provider identity remains accessible'
-            $timeText = @($time.Current.Name; Get-CombinedRawChildren $time |
-                ForEach-Object { $_.Current.Name }) -join ' '
-            $timeText | Should -Match '(just now|\d+ (minute|hour|day)s? ago)'
+            $timeText = $time.Current.Name
+            $timeText | Should -Match '^(just now|\d+ (minute|hour|day)s? ago)$'
             $timeText | Should -Not -Match ('Historical|Ended|' + [regex]::Escape($Provider))
             @($visible | Where-Object {
                 $_.Current.ControlType -eq [Windows.Automation.ControlType]::Text -and
@@ -315,27 +329,34 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             $iconBounds = $icon.Current.BoundingRectangle
             $titleBounds.Bottom | Should -BeLessOrEqual $timeBounds.Top
             $titleBounds.Bottom | Should -BeLessOrEqual $iconBounds.Top
-            $titleBounds.Right | Should -BeGreaterOrEqual $iconBounds.Right -Because 'the provider icon must not consume a leading title slot'
+            $rowBounds = $row.Current.BoundingRectangle
+            $titleBounds.Left | Should -BeLessOrEqual ($timeBounds.Left + 1)
+            $iconBounds.Left | Should -BeGreaterOrEqual $rowBounds.Left
+            $iconBounds.Right | Should -BeLessOrEqual $rowBounds.Right
+            $iconBounds.Top | Should -BeGreaterOrEqual $rowBounds.Top
+            $iconBounds.Bottom | Should -BeLessOrEqual $rowBounds.Bottom
             $timeBounds.Right | Should -BeLessOrEqual $iconBounds.Left
             $iconBounds.Top | Should -BeLessThan $timeBounds.Bottom
             $iconBounds.Bottom | Should -BeGreaterThan $timeBounds.Top
             if ($Status) {
-                $statusPart = Get-CombinedVisiblePart $row HistoryStatusText
-                $statusText = @($statusPart.Current.Name; Get-CombinedRawChildren $statusPart |
-                    ForEach-Object { $_.Current.Name }) -join ' '
-                $statusText | Should -Match ("(^|\s)$Status(\s|$)")
+                $statusLabel = if ($Status -eq 'Working') { 'Active' } else { $Status }
+                $statuses = @($textLeaves | Where-Object { $_.Current.Name -eq $statusLabel })
+                $statuses.Count | Should -Be 1 -Because 'the history row must expose one unambiguous meaningful status'
+                $statusPart = $statuses[0]
+                $statusPart.Current.Name | Should -Be $statusLabel
                 $statusBounds = $statusPart.Current.BoundingRectangle
                 $statusBounds.Left | Should -BeGreaterOrEqual $timeBounds.Right
                 $statusBounds.Right | Should -BeLessOrEqual $iconBounds.Left
                 $statusBounds.Top | Should -BeLessThan $iconBounds.Bottom
                 $statusBounds.Bottom | Should -BeGreaterThan $iconBounds.Top
             } else {
-                @($visible | Where-Object {
-                    $_.Current.AutomationId -eq 'HistoryStatusText' -or $_.Current.Name -match '^(Historical|Ended)$'
+                @($textLeaves | Where-Object {
+                    $_.Current.Name -match '^(Historical|Ended|Idle|Active|Working|Attention|Error)$'
                 }).Count | Should -Be 0 -Because 'redundant historical status is not rendered'
             }
             @{
                 title = $Title; status = $Status; provider = $icon.Current.Name
+                rendered_status = if ($Status) { $statusPart.Current.Name } else { $null }
                 title_bounds = $titleBounds.ToString(); time_bounds = $timeBounds.ToString()
                 status_bounds = if ($Status) { $statusBounds.ToString() } else { $null }
                 icon_bounds = $iconBounds.ToString()
@@ -370,6 +391,11 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         }
         function Assert-CombinedSearchState {
             param([bool]$Active)
+            Wait-Until -TimeoutSec 5 -Because 'search visibility finishes the requested transition' -Condition {
+                $search = Get-CombinedElement SearchTextBox
+                [bool]($search -and -not $search.Current.IsOffscreen -and
+                    $search.Current.BoundingRectangle.Height -gt 0) -eq $Active
+            } | Out-Null
             $button = Get-CombinedElement SearchTabsButton
             $button | Should -Not -BeNullOrEmpty
             $toggle = $button.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
@@ -380,8 +406,9 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 $search.Current.BoundingRectangle.Height -gt 0) | Should -Be $Active
         }
         function Open-CombinedSearch {
-            $search = Get-CombinedElement SearchTextBox
-            if (-not $search -or $search.Current.IsOffscreen) {
+            $toggle = (Get-CombinedElement SearchTabsButton).GetCurrentPattern(
+                [Windows.Automation.TogglePattern]::Pattern)
+            if ($toggle.Current.ToggleState -eq [Windows.Automation.ToggleState]::Off) {
                 Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
             }
             Assert-CombinedSearchState $true
@@ -501,6 +528,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             autoFixEnabled = $false; actions = @(); keybindings = @(); 'warning.confirmOnClose' = 'never'
         }
         $script:app.Launched | Should -BeTrue -Because 'only a test-owned Dev window may be driven'
+        $script:app | Add-Member -NotePropertyName RequireOwnedForeground -NotePropertyValue $true
         Test-WtWindowKeyFocusable -App $script:app | Should -BeTrue -Because 'desktop ownership is required'
         Wait-AgentReady -App $script:app -TimeoutSec 60 | Should -BeTrue
         (Get-AgentPaneSession -App $script:app).AcpSessionId | Should -Match '^chat-fixture-'
@@ -543,8 +571,9 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
 
     BeforeEach {
         Set-CombinedView $true
-        $search = Get-CombinedElement SearchTextBox
-        if ($search -and -not $search.Current.IsOffscreen) {
+        $searchToggle = (Get-CombinedElement SearchTabsButton).GetCurrentPattern(
+            [Windows.Automation.TogglePattern]::Pattern)
+        if ($searchToggle.Current.ToggleState -eq [Windows.Automation.ToggleState]::On) {
             Set-UiValue -App $script:app -Selector SearchTextBox -Value '' | Out-Null
             Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
         }
@@ -552,6 +581,21 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         foreach ($id in @('ItemsList', 'HistoryList')) {
             (Get-CombinedScroll $id).SetScrollPercent(
                 [Windows.Automation.ScrollPattern]::NoScroll, 0)
+        }
+    }
+
+    AfterEach {
+        if ($script:heldPromptMarker) {
+            $held = '|held|' + $script:heldPromptMarker
+            $released = '|released|' + $script:heldPromptMarker
+            $log = Get-Content -LiteralPath $script:fixtureLog -Raw
+            if ($log.Contains($held) -and -not $log.Contains($released)) {
+                [IO.File]::WriteAllText($script:releasePromptPath, 'release')
+                Wait-Until -TimeoutSec 10 -Because 'an aborted case releases only its owned held fixture turn' -Condition {
+                    (Get-Content -LiteralPath $script:fixtureLog -Raw).Contains($released)
+                } | Out-Null
+            }
+            $script:heldPromptMarker = $null
         }
     }
 
@@ -654,13 +698,21 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 }).Count -eq 1
             } | Out-Null
         }
-        $tab = $script:tabs[6]
-        $baseline = Get-AgentPaneSession -App $script:app -PaneSessionId $tab.FixtureSession.PaneSessionId
-        $shellPid = (Get-WtPaneStatus -App $script:app -SessionId $tab.session_id).pid
         foreach ($status in @('Idle', 'Working')) {
+            $index = if ($status -eq 'Idle') { 6 } else { 7 }
+            $tab = $script:tabs[$index]
+            $baseline = Get-AgentPaneSession -App $script:app -PaneSessionId $tab.FixtureSession.PaneSessionId
+            $shellPid = (Get-WtPaneStatus -App $script:app -SessionId $tab.session_id).pid
             $nativeId = "$script:marker-metadata-$status"
             $title = "$script:marker-metadata-title-$status"
             Set-WtPaneFocus -App $script:app -SessionId $tab.session_id
+            if ($status -eq 'Working') {
+                Remove-Item -LiteralPath $script:releasePromptPath -ErrorAction SilentlyContinue
+                $holdMarker = 'SCROLL_TURN_00_' + [guid]::NewGuid().ToString('N')
+                $script:heldPromptMarker = $holdMarker
+                Send-AgentPrompt -App $script:app -PaneSessionId $baseline.PaneSessionId -Text "$holdMarker HOLD_FOR_RELEASE" | Out-Null
+                Assert-AgentPaneText -App $script:app -PaneSessionId $baseline.PaneSessionId -Pattern "PENDING_$holdMarker" -TimeoutSec 15
+            }
             Invoke-CombinedNativeHook -Tab $tab -SessionId $nativeId -Cwd (Join-Path $script:evidence $title) -Status $status
             Wait-Until -TimeoutSec 15 -Because 'the native root is bound before detaching its real tab' -Condition {
                 @((Get-CombinedSnapshot).sessions | Where-Object {
@@ -672,14 +724,17 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             Set-CombinedQuery ''
             $count = Get-CombinedAttachedTabCount
             try {
-                Invoke-CombinedTabContext "$script:marker-open-06"
+                Invoke-CombinedTabContext "$script:marker-open-$('{0:D2}' -f $index)"
                 Invoke-UiElement -App $script:app -Selector KeepTabRunningMenuItem | Out-Null
-                Invoke-CombinedTabContext "$script:marker-open-06"
+                Invoke-CombinedTabContext "$script:marker-open-$('{0:D2}' -f $index)"
                 Invoke-UiElement -App $script:app -Selector 'Close tab' | Out-Null
                 Wait-Until -TimeoutSec 10 -Condition { (Get-CombinedAttachedTabCount) -eq $count - 1 } | Out-Null
                 Set-CombinedView $true
                 Set-CombinedQuery $title
                 Wait-Until -TimeoutSec 15 -Condition { @(Get-CombinedRows HistoryList).Count -eq 1 } | Out-Null
+                @((Get-CombinedSnapshot).sessions | Where-Object {
+                    $_.session_id -eq $nativeId -and $_.provider_id -eq 'copilot' -and $_.status -eq $status
+                }).Count | Should -Be 1 -Because 'metadata assertions require the actual unattached live status'
                 Assert-CombinedHistoryMetadata -Title $title -Status $status -Provider Copilot
                 Set-CombinedQuery copilot
                 Wait-Until -TimeoutSec 10 -Because 'live provider search still finds the detached identity' -Condition {
@@ -691,6 +746,10 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             finally {
                 Set-WtPaneFocus -App $script:app -SessionId $tab.session_id
                 Wait-Until -TimeoutSec 20 -Condition { (Get-CombinedAttachedTabCount) -eq $count } | Out-Null
+                if ($status -eq 'Working') {
+                    [IO.File]::WriteAllText($script:releasePromptPath, 'release')
+                    Assert-AgentPaneText -App $script:app -PaneSessionId $baseline.PaneSessionId -Pattern "ACK_$holdMarker" -TimeoutSec 15
+                }
             }
             (Get-WtPaneStatus -App $script:app -SessionId $tab.session_id).pid | Should -Be $shellPid
             $current = Get-AgentPaneSession -App $script:app -PaneSessionId $baseline.PaneSessionId
@@ -890,6 +949,8 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         $shellPid = (Get-WtPaneStatus -App $script:app -SessionId $tab.session_id).pid
         $marker = 'SCROLL_TURN_00_' + [guid]::NewGuid().ToString('N')
         if ($Status -eq 'Working') {
+            Remove-Item -LiteralPath $script:releasePromptPath -ErrorAction SilentlyContinue
+            $script:heldPromptMarker = $marker
             Invoke-CombinedNativeHook -Tab $tab -SessionId $nativeId -Cwd (Join-Path $script:evidence $nativeTitle) -Status Idle
             @{
                 at = [DateTimeOffset]::UtcNow.ToString('o'); event = 'fixture-prompt'

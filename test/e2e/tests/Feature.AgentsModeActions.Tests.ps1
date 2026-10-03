@@ -7,6 +7,21 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         Add-Type -AssemblyName UIAutomationClient
         Add-Type -AssemblyName UIAutomationTypes
+        $cleanupTokens = $null
+        $cleanupErrors = $null
+        $cleanupAst = [Management.Automation.Language.Parser]::ParseFile(
+            (Join-Path $PSScriptRoot 'Feature.CombinedAgentsSidebar.Tests.ps1'),
+            [ref]$cleanupTokens, [ref]$cleanupErrors)
+        if ($cleanupErrors.Count) { throw 'Shared owned headless cleanup helpers must parse.' }
+        foreach ($name in @('Initialize-CombinedCleanupNative', 'Get-CombinedVisibleProcessIds',
+            'Start-CombinedCleanupTab', 'Invoke-CombinedHeadlessRecovery')) {
+            $definition = $cleanupAst.Find({
+                param($node)
+                $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name
+            }, $true)
+            if (-not $definition) { throw "Missing existing cleanup helper: $name" }
+            . ([scriptblock]::Create($definition.Extent.Text))
+        }
         $script:app = $null
         $script:ownsConfig = $false
         $script:resolverShimOwned = $false
@@ -99,6 +114,7 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
             }
         }
         $script:app.Launched | Should -BeTrue
+        $script:app | Add-Member -NotePropertyName RequireOwnedForeground -NotePropertyValue $true
         Test-WtWindowKeyFocusable -App $script:app | Should -BeTrue
 
         function Get-ActionElement {
@@ -165,7 +181,9 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
             param([string]$PreviousError)
             Wait-Until -TimeoutSec 10 -Because 'successful retry removes the old error without closing Agents' -Condition {
                 $message = Get-ActionElement HistoryMessage
-                $message -and ($message.Current.IsOffscreen -or $message.Current.Name -ne $PreviousError)
+                -not $message -or $message.Current.IsOffscreen -or
+                    $message.Current.BoundingRectangle.Height -le 0 -or
+                    $message.Current.BoundingRectangle.Width -le 0
             } | Out-Null
             (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
         }
@@ -200,7 +218,14 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
     }
 
     AfterAll {
-        if ($script:app) { Stop-Terminal -App $script:app }
+        if ($script:app) {
+            Stop-Terminal -App $script:app -RestoreSettings $false
+            if (@(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables).Count) {
+                Invoke-CombinedHeadlessRecovery -App $script:app -Target $script:target -InitiallyInactive $true |
+                    ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:evidence 'headless-recovery.json')
+            }
+            Restore-WtConfig -App $script:target
+        }
         # A failed launch provides no owned host authority. Retain backups if Dev is active.
         elseif ($script:ownsConfig -and $script:target -and -not @(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables).Count) {
             Restore-WtConfig -App $script:target
