@@ -7,7 +7,10 @@ Describe 'Ensure localization repair workflow gate' -Tag 'Unit' {
         $script:repairLockPath = Resolve-Path (Join-Path $PSScriptRoot '..\..\..\workflows\ensure-localization.lock.yml')
 
         function Get-RepairGateScript {
-            $workflow = Get-Content -LiteralPath $script:workflowPath -Raw
+            param([switch]$Guide)
+
+            $path = if ($Guide) { $script:guideWorkflowPath } else { $script:workflowPath }
+            $workflow = Get-Content -LiteralPath $path -Raw
             $match = [regex]::Match(
                 $workflow,
                 "(?s)- name: Validate final localization checker report.*?node <<'NODE'\r?\n(?<script>.*?)\r?\n\s*NODE"
@@ -95,7 +98,9 @@ Describe 'Ensure localization repair workflow gate' -Tag 'Unit' {
         function Invoke-RepairGate {
             param(
                 [Parameter(Mandatory)]$QueuedOutput,
-                [bool]$CreateDirtyLocalizationChange = $false
+                [bool]$CreateDirtyLocalizationChange = $false,
+                [switch]$Guide,
+                [switch]$Fixable
             )
 
             $caseRoot = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
@@ -110,7 +115,19 @@ Describe 'Ensure localization repair workflow gate' -Tag 'Unit' {
             $scriptPath = Join-Path $caseRoot 'repair-gate.js'
 
             $jsonEncoding = [System.Text.UTF8Encoding]::new($false)
-            [System.IO.File]::WriteAllText($reportPath, ((New-PassReport) | ConvertTo-Json -Compress -Depth 8), $jsonEncoding)
+            $report = New-PassReport
+            if ($Guide) {
+                $report.mode = 'guide'
+            }
+            if ($Fixable) {
+                $report.bundles[0].status = 'FIXABLE'
+                $report.bundles[0].exitCode = 20
+                $report.bundles[0].results[0].status = 'FIXABLE'
+            }
+            if ($Guide) {
+                $report = @($report.bundles)
+            }
+            [System.IO.File]::WriteAllText($reportPath, (ConvertTo-Json -InputObject $report -Compress -Depth 8), $jsonEncoding)
             [System.IO.File]::WriteAllText($queuedOutputPath, ($QueuedOutput | ConvertTo-Json -Compress -Depth 8), $jsonEncoding)
 
             if ($CreateDirtyLocalizationChange) {
@@ -118,14 +135,14 @@ Describe 'Ensure localization repair workflow gate' -Tag 'Unit' {
                 [System.IO.File]::WriteAllText($resourcePath, '<root><data name="changed" /></root>', $jsonEncoding)
             }
 
-            $scriptContent = Get-RepairGateScript
+            $scriptContent = Get-RepairGateScript -Guide:$Guide
             $scriptRootLiteral = (($ghawRoot -replace '\\', '/') | ConvertTo-Json -Compress)
             $scriptContent = $scriptContent -replace "const root = '/tmp/gh-aw';", "const root = $scriptRootLiteral;"
             [System.IO.File]::WriteAllText($scriptPath, $scriptContent, $jsonEncoding)
 
             Push-Location $repoRoot
             try {
-                $env:LOCALIZATION_REPORT_MODE = 'repair'
+                $env:LOCALIZATION_REPORT_MODE = if ($Guide) { 'guide' } else { 'repair' }
                 $env:EXPECTED_HEAD_SHA = $head
                 $output = & node $scriptPath 2>&1
                 $exitCode = $LASTEXITCODE
@@ -138,6 +155,36 @@ Describe 'Ensure localization repair workflow gate' -Tag 'Unit' {
             return [pscustomobject]@{
                 ExitCode = $exitCode
                 Output = ($output | Out-String)
+            }
+        }
+
+        function Invoke-GuideSnapshots {
+            param(
+                [Parameter(Mandatory)][string]$Repository,
+                [Parameter(Mandatory)][string]$Base,
+                [Parameter(Mandatory)][string]$Head,
+                [Parameter(Mandatory)][string]$Destination
+            )
+
+            $workflow = Get-Content -LiteralPath $script:guideWorkflowPath -Raw
+            $match = [regex]::Match(
+                $workflow,
+                '(?s)- name: Prepare immutable localization snapshots.*?run: \|\r?\n(?<script>.*?)\r?\n\s*post-steps:'
+            )
+            if (-not $match.Success) { throw 'Cannot locate the native snapshot step.' }
+            $step = [scriptblock]::Create(($match.Groups['script'].Value -replace '(?m)^      ', ''))
+            $names = @('COMPARISON_BASE_SHA', 'EXPECTED_HEAD_SHA', 'LOCALIZATION_SNAPSHOT_ROOT')
+            $original = @{}
+            foreach ($name in $names) { $original[$name] = [Environment]::GetEnvironmentVariable($name) }
+            Push-Location $Repository
+            try {
+                $env:COMPARISON_BASE_SHA = $Base
+                $env:EXPECTED_HEAD_SHA = $Head
+                $env:LOCALIZATION_SNAPSHOT_ROOT = $Destination
+                & $step
+            } finally {
+                Pop-Location
+                foreach ($name in $names) { [Environment]::SetEnvironmentVariable($name, $original[$name]) }
             }
         }
     }
@@ -175,6 +222,70 @@ Describe 'Ensure localization repair workflow gate' -Tag 'Unit' {
 
         $result.ExitCode | Should -Be 1
         $result.Output | Should -Match 'noop acknowledgement cannot discard working localization repairs'
+    }
+
+    It 'accepts a guide report from the agent workspace independently of the safe-output queue' {
+        foreach ($type in @('noop', 'add_comment')) {
+            $result = Invoke-RepairGate -Guide -QueuedOutput (New-AgentOutput -Types @($type))
+            $result.ExitCode | Should -Be 0
+        }
+    }
+
+    It 'requires one guide comment for FIXABLE evidence and rejects multiple outputs' {
+        $result = Invoke-RepairGate -Guide -Fixable -QueuedOutput (New-AgentOutput -Types @('add_comment'))
+        $result.ExitCode | Should -Be 0
+
+        foreach ($types in @(
+            ,@('noop')
+            ,@('add_comment', 'noop')
+            ,@('noop', 'noop')
+        )) {
+            $result = Invoke-RepairGate -Guide -Fixable -QueuedOutput (New-AgentOutput -Types $types)
+            $result.ExitCode | Should -Be 1
+        }
+    }
+
+    It 'keeps the guide report upload and prompt on the same agent-workspace path' {
+        $workflow = Get-Content -LiteralPath $script:guideWorkflowPath -Raw
+        $workflow | Should -Match 'path: /tmp/gh-aw/agent/localization-final-checks\.json'
+        $workflow | Should -Match "readJson\('localization-final-checks.json', path.join\(root, 'agent'\)\)"
+        $workflow | Should -Not -Match '/tmp/gh-aw/localization-final-checks\.json'
+        $workflow | Should -Match "'git ls-tree:\*'"
+        $workflow | Should -Match 'report is a JSON array'
+        $workflow | Should -Not -Match 'report\.mode'
+    }
+
+    It 'prepares exact immutable resource bytes without exporting fork scripts or attributes' {
+        $repo = Join-Path $TestDrive 'snapshot-repo'
+        $base = Initialize-RepairGateRepo -Path $repo
+        $relativePath = 'src\cascadia\TerminalApp\Resources\fr-FR\Resources.resw'
+        $headBytes = [byte[]](@(0xEF, 0xBB, 0xBF) + [Text.Encoding]::UTF8.GetBytes('<root><data name="new"><value>value</value></data></root>'))
+        [IO.File]::WriteAllBytes((Join-Path $repo $relativePath), $headBytes)
+        [IO.File]::WriteAllText((Join-Path $repo '.gitattributes'), '*.resw export-ignore')
+        [IO.File]::WriteAllText((Join-Path $repo 'src\cascadia\TerminalApp\Resources\do-not-run.ps1'), 'throw "fork code must not run"')
+        & git -C $repo add .
+        & git -C $repo commit --quiet -m head
+        if ($LASTEXITCODE -ne 0) { throw 'Cannot create snapshot fixture head.' }
+        $head = (& git -C $repo rev-parse HEAD).Trim()
+        & git -C $repo checkout --quiet --detach $base
+        if ($LASTEXITCODE -ne 0) { throw 'Cannot restore trusted fixture checkout.' }
+
+        $destination = Join-Path $TestDrive 'snapshots'
+        Invoke-GuideSnapshots -Repository $repo -Base $base -Head $head -Destination $destination
+
+        [IO.File]::ReadAllText((Join-Path $destination "base\$relativePath")) | Should -Be '<root />'
+        [Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $destination "head\$relativePath"))) |
+            Should -Be ([Convert]::ToBase64String($headBytes))
+        Test-Path -LiteralPath (Join-Path $destination 'head\src\cascadia\TerminalApp\Resources\do-not-run.ps1') | Should -BeFalse
+        @(Get-ChildItem -LiteralPath $destination -Filter '*.zip').Count | Should -Be 0
+    }
+
+    It 'rejects non-immutable snapshot revisions before exporting files' {
+        $repo = Join-Path $TestDrive 'invalid-snapshot-repo'
+        $base = Initialize-RepairGateRepo -Path $repo
+        {
+            Invoke-GuideSnapshots -Repository $repo -Base 'main' -Head $base -Destination (Join-Path $TestDrive 'invalid-snapshots')
+        } | Should -Throw '*Invalid base snapshot revision*'
     }
 
     It 'compiles pull-request read access for repair publication branch resolution' {

@@ -134,6 +134,8 @@ tools:
 
     - 'git show:*'
 
+    - 'git ls-tree:*'
+
     - 'pwsh:*'
 
 
@@ -221,6 +223,55 @@ safe-outputs:
     hide-older-comments: true
 
 
+pre-agent-steps:
+  - name: Prepare immutable localization snapshots
+    shell: pwsh
+    env:
+      COMPARISON_BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}
+      EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+      LOCALIZATION_SNAPSHOT_ROOT: /tmp/gh-aw/agent/localization-snapshots
+    run: |
+      $ErrorActionPreference = 'Stop'
+      foreach ($revision in @(
+        @{ Name = 'base'; Sha = $env:COMPARISON_BASE_SHA }
+        @{ Name = 'head'; Sha = $env:EXPECTED_HEAD_SHA }
+      )) {
+        if ($revision.Sha -notmatch '^[0-9a-fA-F]{40}$') {
+          throw "Invalid $($revision.Name) snapshot revision."
+        }
+        $tree = @(git -c core.quotePath=false ls-tree -r $revision.Sha -- src/cascadia tools/wta/locales)
+        if ($LASTEXITCODE -ne 0) { throw "Cannot read $($revision.Name) resource tree." }
+        $resources = @($tree | Where-Object {
+          $_ -match "`t(src/cascadia/.+/Resources/(?:.+/)?[^/]+\.resw|tools/wta/locales/[^/]+\.yml)$"
+        })
+        if ($resources.Count -eq 0) { throw "No resources in $($revision.Name) snapshot." }
+        if (@($resources | Where-Object { $_ -notmatch '^100(644|755) blob ' }).Count -gt 0) {
+          throw 'Localization snapshots accept regular resource files only, not symlinks.'
+        }
+        $pathspecs = @()
+        if (@($resources | Where-Object { $_ -match "`tsrc/cascadia/" }).Count -gt 0) {
+          $pathspecs += ':(glob)src/cascadia/**/Resources/**/*.resw'
+        }
+        if (@($resources | Where-Object { $_ -match "`ttools/wta/" }).Count -gt 0) {
+          $pathspecs += ':(glob)tools/wta/locales/*.yml'
+        }
+        $destination = Join-Path $env:LOCALIZATION_SNAPSHOT_ROOT $revision.Name
+        [System.IO.Directory]::CreateDirectory($destination) | Out-Null
+        $archive = Join-Path $env:LOCALIZATION_SNAPSHOT_ROOT "$($revision.Name).zip"
+        # Use trusted checkout attributes, never fork-provided export-ignore/export-subst.
+        git archive --worktree-attributes --format=zip "--output=$archive" $revision.Sha -- @pathspecs
+        if ($LASTEXITCODE -ne 0) { throw "Cannot archive $($revision.Name) resources." }
+        try {
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($archive)
+          try {
+            if (@($zip.Entries | Where-Object { $_.Name }).Count -ne $resources.Count) {
+              throw 'Resource archive omitted files; refusing incomplete localization evidence.'
+            }
+          } finally { $zip.Dispose() }
+          [System.IO.Compression.ZipFile]::ExtractToDirectory($archive, $destination)
+        } finally { Remove-Item -LiteralPath $archive -Force }
+      }
+
 
 post-steps:
   - name: Reject stale worker output before publication
@@ -252,20 +303,17 @@ post-steps:
 
   - name: Validate final localization checker report
     shell: bash
-    env:
-      LOCALIZATION_REPORT_MODE: guide
     run: |
       set -euo pipefail
       node <<'NODE'
       const fs = require('fs');
       const path = require('path');
       const root = '/tmp/gh-aw';
-      const mode = process.env.LOCALIZATION_REPORT_MODE;
       const fail = message => { console.error(`::error::Final localization checker report rejected: ${message}`); process.exit(1); };
       const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
-      const readJson = filename => {
-        const filenamePath = path.join(root, filename);
+      const readJson = (filename, directory = root) => {
+        const filenamePath = path.join(directory, filename);
         let stat;
         try { stat = fs.lstatSync(filenamePath); } catch { fail(`${filename} is missing`); }
         if (stat.isSymbolicLink() || !stat.isFile() || stat.size < 2 || stat.size > 1024 * 1024) {
@@ -274,7 +322,7 @@ post-steps:
         let realRoot;
         let realFile;
         try {
-          realRoot = fs.realpathSync(root);
+          realRoot = fs.realpathSync(directory);
           realFile = fs.realpathSync(filenamePath);
         } catch {
           fail(`${filename} could not be resolved`);
@@ -286,9 +334,9 @@ post-steps:
         catch { fail(`${filename} is not valid JSON`); }
       };
 
-      const report = readJson('localization-final-checks.json');
-      if (!isObject(report) || report.version !== 1 || report.mode !== mode || !Array.isArray(report.bundles) || report.bundles.length === 0) {
-        fail('the report envelope is incomplete or has the wrong mode');
+      const report = readJson('localization-final-checks.json', path.join(root, 'agent'));
+      if (!Array.isArray(report) || report.length === 0) {
+        fail('the report must be a non-empty array of actual checker bundles');
       }
 
       const exitCodes = { PASS: 0, FIXABLE: 20, BLOCKED: 30, INVALID_INPUT: 64 };
@@ -297,7 +345,7 @@ post-steps:
         'Test-LockedContent', 'Test-ResourceEncoding', 'Test-PseudoLocale'
       ]);
       const resultStatuses = new Set(['PASS', 'FIXABLE', 'BLOCKED']);
-      const statuses = report.bundles.map((bundle, index) => {
+      const statuses = report.map((bundle, index) => {
         if (!isObject(bundle) || !checks.has(bundle.check)) {
           fail(`bundle ${index + 1} has an unknown check`);
         }
@@ -343,8 +391,8 @@ post-steps:
         fail('guide permits only its guidance comment and a non-mutating acknowledgement');
       }
       const addCommentCount = queuedTypes.filter(type => type === 'add_comment').length;
-      if (addCommentCount > 1) {
-        fail(`guide permits at most 1 queued add_comment item, found ${addCommentCount}`);
+      if (queuedTypes.length > 1) {
+        fail(`guide permits at most 1 queued safe output item, found ${queuedTypes.length}`);
       }
       if (hasFixable && addCommentCount !== 1) {
         fail(`guide checker outcome requires exactly 1 queued add_comment item when any final checker bundle is FIXABLE, found ${addCommentCount}`);
@@ -355,7 +403,7 @@ post-steps:
     uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
     with:
       name: localization-final-checks
-      path: /tmp/gh-aw/localization-final-checks.json
+      path: /tmp/gh-aw/agent/localization-final-checks.json
       if-no-files-found: error
       retention-days: 7
 
@@ -402,26 +450,34 @@ Expand removals to stale localized counterpart review for the removed keys or
 files. Localized-only edits or deletions do not independently create guidance
 scope. If the original patch yields no English-derived scope, keep the run
 read-only and do not promote localized-only edits into guidance scope just to
-manufacture work. When the fixed non-empty final report still needs checker
-evidence for that no-scope conclusion, run syntax and encoding checks on the
-immutable pre-change source-authority snapshots associated with the patch.
-Use those bundles as historical evidence only, not as proof of the current tree.
+manufacture work. For this no-scope conclusion, run syntax and encoding checks
+on the immutable pre-change source-authority snapshots associated with the
+patch. Use those bundles as historical evidence only, not as proof of the current tree.
 
-Materialize trusted file bytes in the workspace only as needed. You own the git
-inspection, scope discovery, final checker rerun, final report write, and the
-one allowed safe output for this read-only workflow. Preserve the exact
-English-derived keys, values, and surrounding context through the final rerun;
-do not replace them with guesses from unchanged source lines, file prefixes,
-samples, or PR summaries.
+## Execution discipline
+
+The native setup has already materialized every resource, including unchanged
+counterparts, under `/tmp/gh-aw/agent/localization-snapshots/base/` and `head/`.
+These preserve repository-relative paths and exact blob bytes. Use the `head/`
+files for checks and translated-value review; use `base/` files as `OriginalFile`
+for existing-file encoding checks and as historical evidence for deletions.
+Never use resources from the trusted checkout as though they were the PR head.
+Do not recreate snapshots, guess locale lists, or generate snapshot scripts.
+
+Run the shared checker's batch once after scope discovery. Reuse those actual
+bundles for the final report because this read-only worker makes no repairs.
+Read the scoped translated values for language quality, not every unrelated
+resource value. Do not create a second checker harness, repeat successful
+batches, or delegate another review. The existing checker owns validation;
+you own patch-derived scope, language judgment, and the safe-output decision.
 
 ## Output contract
 
-Remove `/tmp/gh-aw/localization-final-checks.json` at startup. After review,
+Remove `/tmp/gh-aw/agent/localization-final-checks.json` at startup. After review,
 write only actual final checker bundles to that fixed path:
 
-```json
-{"version":1,"mode":"guide","bundles":[/* actual final checker JSON bundles */]}
-```
+The report is a JSON array of actual checker bundles, with no mode/version
+wrapper. Its purpose is checker evidence, not another agent-authored protocol.
 
 Never hand-author bundle fields or include initial attempts. Final checker
 `PASS` bundles do not suppress concrete read-only review findings that stay
@@ -434,11 +490,24 @@ the independent read-only review finds a concrete human-language issue.
 Use the SKILL.md batching example for the final rerun: dot-source
 `.github/skills/ensure-localization/scripts/localization_checks.ps1` once in
 one `pwsh` process, collect the actual function-return bundles, and write the
-envelope with PowerShell file operations before emitting either `add-comment` or
+array with PowerShell file operations before emitting either `add-comment` or
 `noop`.
+Replace only the example's envelope-writing portion with:
+
+```powershell
+$json = ConvertTo-Json -InputObject @($bundles.ToArray()) -Compress -Depth 8
+[System.IO.File]::WriteAllText(
+    '/tmp/gh-aw/agent/localization-final-checks.json',
+    $json, [System.Text.UTF8Encoding]::new($false))
+```
+
+Do not print all bundles into the model context; inspect summaries and non-PASS
+findings only. `/tmp/gh-aw/agent_output.json` is the separate runtime-owned
+safe-output queue and must not be overwritten. Use PowerShell file operations;
+shell redirects, `mkdir`, `touch`, and the edit tool are not permitted.
 
 If the English-derived scope is deletion-only and the current tree no longer
-contains one or more removed source/target files, materialize immutable
+contains one or more removed source/target files, use the prepared immutable
 pre-deletion snapshots for exactly those files and run syntax and encoding
 checks on those snapshots so the report still contains actual
 checker bundles. Treat those bundles as historical evidence only, and use
