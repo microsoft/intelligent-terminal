@@ -2,12 +2,23 @@ param(
     [Parameter(Mandatory)][string]$LogPath,
     [Parameter(Mandatory)][string]$RunId,
     [switch]$Canonical,
+    [switch]$External,
+    [switch]$Resume,
     [string]$SessionId,
     [string]$WtcliPath
 )
 
 $ErrorActionPreference = 'Stop'
 $session = [guid]::NewGuid().ToString()
+if ($Resume -and -not $Canonical) { throw 'Resume fixture must run in a real Terminal pane.' }
+if ($External) {
+    $parsed = [guid]::Empty
+    if ($Canonical -or $env:WT_SESSION -or -not $env:ITE2E_SHIM_PID -or
+        -not [guid]::TryParse($SessionId, [ref]$parsed) -or $parsed -eq [guid]::Empty) {
+        throw 'External fixture requires an owned native process, explicit UUID and no Terminal pane.'
+    }
+    $session = $SessionId
+}
 if ($Canonical) {
     $parsed = [guid]::Empty
     if (-not [guid]::TryParse($SessionId, [ref]$parsed) -or $parsed -eq [guid]::Empty -or
@@ -24,9 +35,10 @@ $record = @{
     run_id = $RunId
     session_id = $session
     pid = $PID
-    native_pid = if ($Canonical) { [int]$env:ITE2E_SHIM_PID } else { $null }
-    native_command_line = if ($Canonical) { $env:ITE2E_SHIM_ARGS } else { $null }
-    provider = if ($Canonical) { 'copilot' } else { 'custom:agents-actions-cli' }
+    native_pid = if ($Canonical -or $External) { [int]$env:ITE2E_SHIM_PID } else { $null }
+    native_command_line = if ($Canonical -or $External) { $env:ITE2E_SHIM_ARGS } else { $null }
+    provider = if ($Canonical -or $External) { 'copilot' } else { 'custom:agents-actions-cli' }
+    mode = if ($External) { 'external' } elseif ($Resume) { 'resume' } else { 'fresh' }
     cwd = [IO.Directory]::GetCurrentDirectory()
     source = 'host'
     args = @($args | Where-Object { $null -ne $_ })

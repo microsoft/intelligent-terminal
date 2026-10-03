@@ -454,6 +454,7 @@ namespace winrt::TerminalApp::implementation
         ItemsList().AddHandler(WUX::UIElement::KeyDownEvent(),
                                winrt::box_value(WUX::Input::KeyEventHandler{ get_weak(), &TabStrip::_onListKeyDown }),
                                true);
+        HistoryList().PreviewKeyDown({ get_weak(), &TabStrip::_onHistoryPreviewKeyDown });
         _vectorChangedRevoker = _tabItems.VectorChanged(auto_revoke, { get_weak(), &TabStrip::_onItemsVectorChanged });
         _highContrast = _accessibilitySettings.HighContrast();
         _highContrastChangedRevoker = _accessibilitySettings.HighContrastChanged(auto_revoke, [weakThis{ get_weak() }, dispatcher{ Dispatcher() }](auto&&, auto&&) {
@@ -2844,6 +2845,49 @@ namespace winrt::TerminalApp::implementation
     WUX::Automation::Peers::AutomationPeer TabStrip::OnCreateAutomationPeer()
     {
         return winrt::make<TabStripAutomationPeer>(*this);
+    }
+
+    void TabStrip::_onHistoryPreviewKeyDown(IInspectable const&, WUX::Input::KeyRoutedEventArgs const& e)
+    {
+        if (e.Handled() || e.OriginalKey() != Windows::System::VirtualKey::Enter ||
+            _historyActivating || _historyLoading)
+        {
+            return;
+        }
+
+        const auto coreWindow = Windows::UI::Core::CoreWindow::GetForCurrentThread();
+        const auto root = XamlRoot();
+        if (!coreWindow || !root)
+        {
+            return;
+        }
+        constexpr auto down = Windows::UI::Core::CoreVirtualKeyStates::Down;
+        if (WI_IsFlagSet(coreWindow.GetKeyState(Windows::System::VirtualKey::Control), down) ||
+            WI_IsFlagSet(coreWindow.GetKeyState(Windows::System::VirtualKey::Menu), down) ||
+            WI_IsFlagSet(coreWindow.GetKeyState(Windows::System::VirtualKey::Shift), down))
+        {
+            return;
+        }
+
+        auto focused = WUX::Input::FocusManager::GetFocusedElement(root).try_as<DependencyObject>();
+        while (focused)
+        {
+            if (focused.try_as<WUX::Controls::Primitives::ButtonBase>())
+            {
+                return;
+            }
+            if (const auto container = focused.try_as<ListViewItem>())
+            {
+                const auto item = container.Content().try_as<TerminalApp::TabStripHistoryItem>();
+                if (item && HistoryList().ContainerFromItem(item) == container)
+                {
+                    e.Handled(true);
+                    HistoryActivationRequested.raise(*this, winrt::make<TabStripHistoryActivationEventArgs>(item));
+                }
+                return;
+            }
+            focused = WUX::Media::VisualTreeHelper::GetParent(focused);
+        }
     }
 
     void TabStrip::_onListKeyDown(IInspectable const&, WUX::Input::KeyRoutedEventArgs const& e)

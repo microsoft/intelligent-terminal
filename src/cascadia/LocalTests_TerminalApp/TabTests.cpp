@@ -6704,7 +6704,6 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(wsl.state == Page::_SidebarHistorySnapshot::State::Ready);
             VERIFY_ARE_EQUAL(size_t{ 1 }, wsl.items.size());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Ubuntu" }, wsl.items.front().WslDistro());
-            const auto ownerStatusFormat = ScopedResourceLoader{ L"TerminalApp/Resources" }.GetLocalizedString(L"VerticalTabsHistoryOtherWindowStatusFormat");
             for (const auto status : { "Idle", "Working", "Attention", "Error", "Ended", "Historical" })
             {
                 Json::Value response;
@@ -6723,10 +6722,7 @@ namespace TerminalAppLocalTests
                     VERIFY_ARE_EQUAL(size_t{ 1 }, parsed.items.size());
                     const auto base = Page::_SidebarHistoryStatusText(status);
                     const auto foreignLive = owner == 2 && parsed.items.front().IsLive();
-                    const auto expected = foreignLive ?
-                                              winrt::hstring{ fmt::format(fmt::runtime(std::wstring_view{ ownerStatusFormat }), base) } :
-                                              base;
-                    VERIFY_ARE_EQUAL(expected, parsed.items.front().StatusText());
+                    VERIFY_ARE_EQUAL(base, parsed.items.front().StatusText());
                     const auto native = winrt::get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(parsed.items.front());
                     VERIFY_IS_FALSE(native->BackgroundTab());
                     VERIFY_ARE_EQUAL(foreignLive, native->OtherWindow());

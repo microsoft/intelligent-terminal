@@ -7043,10 +7043,6 @@ namespace winrt::TerminalApp::implementation
             const auto otherWindow = isLive && backgroundTab.isBool() && !backgroundTab.asBool() &&
                 currentWindowId != 0 && ownerWindow.isUInt64() &&
                 ownerWindow.asUInt64() != 0 && ownerWindow.asUInt64() != currentWindowId;
-            if (otherWindow)
-            {
-                statusText = winrt::hstring{ RS_fmt(L"VerticalTabsHistoryOtherWindowStatusFormat", statusText) };
-            }
             item.StatusText(statusText);
             item.Cwd(winrt::to_hstring(cwd));
             item.PaneSessionId(winrt::to_hstring(row.get("pane_session_id", "").asString()));

@@ -7510,6 +7510,7 @@ async fn handle_sessions_list(
         }
     }
 
+    crate::session_watcher::copilot_status::enrich_snapshot(&mut sessions).await;
     sessions.sort_by(|l, r| l.session_id.0.cmp(&r.session_id.0));
     let raw = crate::session_registry::build_sessions_list_response(
         sessions,
@@ -9779,7 +9780,29 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
         .get("payload")
         .cloned()
         .unwrap_or(serde_json::Value::Null);
-    let facts = crate::app::AgentEventFacts { key, session_known };
+    let pane_key = crate::agent_sessions::pane_key(pane_id);
+    let pane_owned_by_other = !pane_key.is_empty()
+        && state.registry.snapshot().await.iter().any(|row| {
+            (row.session_id.0.as_ref() != key || row.cli_source.as_ref() != Some(&cli_source))
+                && matches!(
+                    row.status,
+                    Some(
+                        crate::agent_sessions::AgentStatus::Idle
+                            | crate::agent_sessions::AgentStatus::Working
+                            | crate::agent_sessions::AgentStatus::Attention
+                            | crate::agent_sessions::AgentStatus::Error
+                    )
+                )
+                && row
+                    .pane_session_id
+                    .as_deref()
+                    .is_some_and(|pane| crate::agent_sessions::pane_key(pane) == pane_key)
+        });
+    let facts = crate::app::AgentEventFacts {
+        key,
+        session_known,
+        pane_owned_by_other,
+    };
     let session_key = facts.key.clone();
     let plan = crate::app::plan_agent_event(event, &payload, pane_id, &cli_source, &facts);
     if plan.events.is_empty() {
@@ -9860,7 +9883,24 @@ async fn resolve_master_hook_key(
     };
 
     if !asid.is_empty() {
-        let known = snapshot.iter().any(|s| s.session_id.0.as_ref() == asid);
+        let candidates: Vec<_> = snapshot
+            .iter()
+            .filter(|row| row.session_id.0.as_ref() == asid)
+            .collect();
+        // Raw IDs alone are not canonical identity. Without a unique provider
+        // and source-qualified row, activity must not borrow another row's birth.
+        let known = candidates.len() == 1
+            && candidates[0].cli_source.as_ref() == Some(cli_source)
+            && candidates[0].session_universe.is_none()
+            && (candidates[0].location == crate::agent_sessions::SessionLocation::Host
+                || candidates[0]
+                    .pane_session_id
+                    .as_deref()
+                    .is_some_and(|pane| {
+                        !pane_session_id.is_empty()
+                            && crate::agent_sessions::pane_key(pane)
+                                == crate::agent_sessions::pane_key(pane_session_id)
+                    }));
         return Some((asid.to_string(), known));
     }
 

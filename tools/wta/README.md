@@ -90,6 +90,13 @@ The opt-in JSON object contains `sessions` and `history_status` (`loading`, `rea
 or `error`), with optional `history_error_kind` to distinguish timeout-only failures;
 ordinary `--json` output remains one session per line.
 
+An activity hook cannot claim or alter a pane owned by another live session,
+even if its raw session ID exists in another provider or source. Nested CLI
+workers can inherit the parent's pane identity; their synthetic session starts
+and errors must not end, unbind, or change the parent's status. Explicit
+session-start hooks still replace a pane's session, and activity in an
+unowned pane retains its normal discovery behavior.
+
 Live rows may also include response-only `owner_window_id` and `background_tab`
 fields from the exact bound pane's context. `background_tab: true` means the
 pane belongs to a kept-running whole tab; activating it restores that entire
@@ -97,6 +104,17 @@ tab. Only an explicit `false` with a different owning window enables the
 other-window action. Missing or malformed membership is unknown, not evidence
 that the pane is attached elsewhere. These fields are refreshed per response,
 not stored as registry ownership or lifecycle state.
+
+Historical/Ended native host Copilot rows may receive response-only activity
+from their exact default-universe SDK session directory. This requires a
+matching PID marker, a live native `copilot.exe` created before that marker,
+and an actively held `inuse.<pid>.hold` lease (observed with Copilot SDK
+1.0.80). A stale marker, released lease, inaccessible process, unknown phase,
+or nonmatching provider/source/universe leaves the original status unchanged.
+The existing turn classifier supplies activity; individual tool completion
+does not imply Idle. Reads use a bounded 4 MiB bootstrap tail and incremental
+cached appends under a two-second budget. This does not mutate registry state,
+infer a window/pane owner, or enable a running-location indicator.
 
 The initial
 discovery stays `loading` until all eligible host providers finish. Providers that

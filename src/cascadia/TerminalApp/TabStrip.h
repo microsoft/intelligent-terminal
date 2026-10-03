@@ -564,6 +564,8 @@ namespace winrt::TerminalApp::implementation
 
         void _onListKeyDown(winrt::Windows::Foundation::IInspectable const& sender,
                             winrt::Windows::UI::Xaml::Input::KeyRoutedEventArgs const& e);
+        void _onHistoryPreviewKeyDown(winrt::Windows::Foundation::IInspectable const& sender,
+                                      winrt::Windows::UI::Xaml::Input::KeyRoutedEventArgs const& e);
         void _onItemsVectorChanged(winrt::Windows::Foundation::Collections::IObservableVector<winrt::Windows::Foundation::IInspectable> const& sender,
                                      winrt::Windows::Foundation::Collections::IVectorChangedEventArgs const& args);
         TerminalApp::TabStripDisplayItem _displayItemAt(uint32_t index) const;

@@ -53,10 +53,19 @@ and focuses ordinary tab search on entry.
 - History rows keep the session title above metadata ordered as timestamp,
   meaningful status, and provider icon. Ended/historical rows omit the redundant
   Historical status; live Idle/Working/Attention/Error statuses remain visible.
-  A live session bound to a pane in a confirmed different window appends a
-  localized "another window" indication within the status field. Ownership comes
-  from an explicit pane-context lookup, never absence from the current window.
-  Unknown ownership leaves the activity status visible without that indication.
+  An outlined window with an upward restore arrow after the provider icon
+  identifies a confirmed background tab; clicking restores the whole original
+  tab. Two overlapping windows identify a session attached to another visible
+  window; clicking focuses its original tab and pane. The status remains plain
+  activity text. Kept-tab membership takes precedence over an old window ID.
+  Unknown ownership leaves the activity status visible without either indicator.
+  Enter uses the same activation: focus or restore an existing bound pane, or
+  attempt supported resume in the current window for an explicitly activated
+  known-provider shell session with no bound pane. A failed bound-pane focus
+  never falls back to creating a new resumed session.
+  Bare Enter activates the focused History row even with selection disabled;
+  modified Enter is ignored. A focused ownership button retains its native
+  activation, rather than also activating its containing row.
   Provider identity remains available through the icon tooltip and shared search,
   even though repeated provider text is omitted from the metadata line.
 - The Agents view consists of two distinct upper and lower sections separated

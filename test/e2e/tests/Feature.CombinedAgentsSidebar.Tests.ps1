@@ -341,13 +341,12 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             $iconBounds.Bottom | Should -BeGreaterThan $timeBounds.Top
             if ($Status) {
                 $statusLabel = if ($Status -eq 'Working') { 'Active' } else { $Status }
-                if ($OtherWindow) { $statusLabel += ' · another window' }
                 $statuses = @($textLeaves | Where-Object { $_.Current.Name -eq $statusLabel })
                 $statuses.Count | Should -Be 1 -Because 'the history row must expose one unambiguous meaningful status'
                 $statusPart = $statuses[0]
                 $statusPart.Current.Name | Should -Be $statusLabel
                 if ($OtherWindow) {
-                    @($textLeaves | Where-Object { $_.Current.Name }).Count | Should -Be 3 -Because 'title plus time and combined status must not add a fourth metadata field'
+                    @($textLeaves | Where-Object { $_.Current.Name }).Count | Should -Be 3 -Because 'ownership is conveyed by an icon, not repeated metadata text'
                 }
                 $statusBounds = $statusPart.Current.BoundingRectangle
                 $statusBounds.Left | Should -BeGreaterOrEqual $timeBounds.Right
@@ -358,6 +357,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 @($textLeaves | Where-Object {
                     $_.Current.Name -match '^(Historical|Ended|Idle|Active|Working|Attention|Error)$'
                 }).Count | Should -Be 0 -Because 'redundant historical status is not rendered'
+                Assert-CombinedOwnershipButton None
             }
             @{
                 title = $Title; status = $Status; provider = $icon.Current.Name
@@ -380,6 +380,114 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             }
             throw "No real UIA ScrollPattern in $Id."
         }
+            function Assert-CombinedOwnershipButton {
+                param([ValidateSet('Background', 'OtherWindow', 'None')][string]$Kind)
+                $rows = @(Get-CombinedRows HistoryList)
+                $rows.Count | Should -Be 1
+                $buttons = @(Get-CombinedRawChildren $rows[0] | Where-Object {
+                    $_.Current.AutomationId -eq 'HistoryOwnershipButton' -and -not $_.Current.IsOffscreen -and
+                        $_.Current.BoundingRectangle.Width -gt 0 -and $_.Current.BoundingRectangle.Height -gt 0
+                })
+                if ($Kind -eq 'None') {
+                    $buttons.Count | Should -Be 0 -Because 'unknown and historical ownership must not display an actionable location'
+                    return
+                }
+                $buttons.Count | Should -Be 1
+                $expected = if ($Kind -eq 'Background') { 'Restore background tab' } else { 'Switch to other window' }
+                $buttons[0].Current.Name | Should -Be $expected
+                $buttons[0].Current.IsEnabled | Should -BeTrue
+                $provider = Get-CombinedVisiblePart $rows[0] HistoryProviderIcon
+                $bounds = $buttons[0].Current.BoundingRectangle
+                $bounds.Left | Should -BeGreaterOrEqual $provider.Current.BoundingRectangle.Right
+                $bounds.Right | Should -BeLessOrEqual $rows[0].Current.BoundingRectangle.Right
+                Save-CombinedActionEvidence "ownership-$Kind" -Screenshot
+                $buttons[0]
+            }
+            function New-CombinedCliFixture {
+                param([string]$Purpose, [string]$SessionId = '', [string]$ResumeSession = '')
+                $sid = if ($ResumeSession) { $ResumeSession } elseif ($SessionId) { $SessionId } else { [guid]::NewGuid().ToString() }
+                $folder = Join-Path $script:evidence "$script:marker-$Purpose"
+                New-Item -ItemType Directory -Path $folder -Force | Out-Null
+                $shim = Join-Path $folder 'copilot.exe'
+                if (Test-Path -LiteralPath $shim) { throw 'Owned native fixture output already exists; never overwrite an executable.' }
+                $log = Join-Path $folder 'launch.jsonl'
+                $pwsh = (Get-Command pwsh.exe).Source
+                $config = @{
+                    ITE2E_SHIM_PWSH = $pwsh
+                    ITE2E_SHIM_FIXTURE = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-InteractiveDelegate.ps1')).Path
+                    ITE2E_SHIM_LOG = $log; ITE2E_SHIM_RUN = $sid; ITE2E_SHIM_WTCLI = $script:app.WtcliPath
+                }
+                if ($ResumeSession) { $config.ITE2E_SHIM_RESUME_SESSION = $ResumeSession }
+                $header = Join-Path $folder 'config.h'
+                @($config.Keys | ForEach-Object { "#define $_ LR`"ite2e($($config[$_]))ite2e`"" }) |
+                    Set-Content -LiteralPath $header -Encoding ascii
+                $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+                $vs = Invoke-Native -FilePath $vswhere -Arguments @('-latest', '-products', '*',
+                    '-requires', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', '-property', 'installationPath')
+                $vs.ExitCode | Should -Be 0
+                $vcvars = Join-Path $vs.StdOut.Trim() 'VC\Auxiliary\Build\vcvars64.bat'
+                $nativeSource = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-CopilotDelegate.cpp')).Path
+                $build = "call `"$vcvars`" >nul && cl /nologo /EHsc /std:c++17 /FI`"$header`" `"$nativeSource`" /Fe:`"$shim`" /Fo:`"$folder\copilot.obj`" /link /INCREMENTAL:NO"
+                $buildScript = "& `$env:ComSpec /d /c '$($build.Replace("'", "''"))'; exit `$LASTEXITCODE"
+                $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($buildScript))
+                (Invoke-Native -FilePath $pwsh -Arguments @('-NoProfile', '-EncodedCommand', $encoded) `
+                    -WorkingDirectory $folder -TimeoutSec 60).ExitCode | Should -Be 0
+                [pscustomobject]@{ SessionId = $sid; Folder = $folder; Shim = $shim; Log = $log }
+            }
+            function Send-CombinedCliHook {
+                param($Fixture, [string]$PaneSessionId, [string]$Event)
+                $json = @{ session_id = $Fixture.SessionId; cwd = $Fixture.Folder; tool_name = 'edit' } | ConvertTo-Json -Compress
+                $code = "'$($json.Replace("'", "''"))' | & '$($script:app.WtcliPath.Replace("'", "''"))' agent-hook --cli-source copilot --event $Event; exit `$LASTEXITCODE"
+                $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($code))
+                (Invoke-Native -FilePath (Get-Command pwsh.exe).Source -Arguments @('-NoProfile', '-EncodedCommand', $encoded) `
+                    -Environment @{ WT_SESSION = $PaneSessionId; WT_COM_CLSID = $script:app.ComClsid } -TimeoutSec 10).ExitCode | Should -Be 0
+            }
+            function Register-CombinedUnboundSession {
+                param($Fixture)
+                $name = $script:pipe -replace '^\\\\\.\\pipe\\', ''
+                $pipe = [IO.Pipes.NamedPipeClientStream]::new('.', $name, [IO.Pipes.PipeDirection]::InOut,
+                    [IO.Pipes.PipeOptions]::Asynchronous)
+                $reader = $null
+                $writer = $null
+                try {
+                    $pipe.Connect(5000)
+                    $reader = [IO.StreamReader]::new($pipe, [Text.UTF8Encoding]::new($false), $false, 1024, $true)
+                    $writer = [IO.StreamWriter]::new($pipe, [Text.UTF8Encoding]::new($false), 1024, $true)
+                    $writer.AutoFlush = $true
+                    $settings = Get-WtSettingsObject -App $script:app
+                    $requests = @(
+                        @{ jsonrpc = '2.0'; id = 1; method = 'initialize'; params = @{
+                            protocolVersion = 1; clientCapabilities = @{}
+                            clientInfo = @{ name = 'ite2e-owned-unbound-fixture'; version = '1' }
+                            _meta = @{ wta = @{ agent_id = $settings.acpAgent; agent_cmd = $settings.acpCustomCommand } }
+                        } },
+                        @{ jsonrpc = '2.0'; id = 2; method = '_intellterm.wta/session_hook'; params = @{
+                            kind = 'SessionStarted'; key = $Fixture.SessionId; cli_source = 'Copilot'
+                            pane_session_id = ''; cwd = $Fixture.Folder; title = (Split-Path $Fixture.Folder -Leaf)
+                        } }
+                    )
+                    foreach ($request in $requests) {
+                        $writer.WriteLine(($request | ConvertTo-Json -Depth 8 -Compress))
+                        $clock = [Diagnostics.Stopwatch]::StartNew()
+                        do {
+                            $read = $reader.ReadLineAsync()
+                            if (-not $read.Wait(5000)) { throw 'Owned master RPC response timed out.' }
+                            $line = $read.GetAwaiter().GetResult()
+                            if (-not $line) { throw 'Master closed the owned fixture RPC channel.' }
+                            $response = $line | ConvertFrom-Json
+                            if ($clock.Elapsed.TotalSeconds -gt 10) { throw 'Owned master RPC response exceeded its bound.' }
+                        } while ($response.id -ne $request.id)
+                        if ($response.error) { throw "Master rejected fixture admission: $($response.error | ConvertTo-Json -Compress -Depth 6)" }
+                        $response | ConvertTo-Json -Depth 8 |
+                            Set-Content (Join-Path $Fixture.Folder "master-rpc-$($request.id)-response.json")
+                    }
+                }
+                finally {
+                    if ($writer) { $writer.Dispose() }
+                    if ($reader) { $reader.Dispose() }
+                    $pipe.Dispose()
+                }
+            }
         function Set-CombinedView {
             param([bool]$Agents)
             $list = Get-CombinedElement HistoryList
@@ -507,6 +615,37 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             $matches.Count | Should -Be 1 -Because 'context actions must target exactly one Sidebar title, not terminal text'
             Invoke-UiClick -App $script:app -Selector $matches[0].Groups['Selector'].Value -Right | Out-Null
         }
+        function Invoke-CombinedOwnedGroupContext {
+            param($Tab, [string]$Title)
+            $owned = @(Get-WtTabs -App $script:app -WindowId $script:app.WindowId | Where-Object tab_id -eq $Tab.tab_id)
+            $owned.Count | Should -Be 1
+            $owned[0].title | Should -Be $Title
+            @(Get-WtPanes -App $script:app -WindowId $script:app.WindowId -TabId $Tab.tab_id).Count | Should -Be 2
+            $groups = @(Get-CombinedRows ItemsList | Where-Object {
+                @((Get-CombinedRawChildren $_) | Where-Object {
+                    $_.Current.AutomationId -eq 'TabGroupToggleButton' -and -not $_.Current.IsOffscreen
+                }).Count -eq 1 -and (Get-CombinedRowText $_).Contains($Title)
+            })
+            $groups.Count | Should -Be 1 -Because 'the owned two-pane tab has one canonical group header, not a pane title'
+            $toggle = @(Get-CombinedRawChildren $groups[0] | Where-Object {
+                $_.Current.AutomationId -eq 'TabGroupToggleButton' -and -not $_.Current.IsOffscreen
+            })[0].Current.BoundingRectangle
+            $titles = @(Get-CombinedRawChildren $groups[0] | Where-Object {
+                $_.Current.ControlType -eq [Windows.Automation.ControlType]::Text -and $_.Current.Name -eq $Title -and
+                    -not $_.Current.IsOffscreen -and $_.Current.BoundingRectangle.Height -gt 0 -and
+                    ($_.Current.BoundingRectangle.Top + $_.Current.BoundingRectangle.Height / 2) -ge $toggle.Top -and
+                    ($_.Current.BoundingRectangle.Top + $_.Current.BoundingRectangle.Height / 2) -le $toggle.Bottom
+            })
+            $titles.Count | Should -Be 1 -Because 'only the group title shares the canonical group toggle row'
+            $bounds = $titles[0].Current.BoundingRectangle
+            @{
+                tab_id = $Tab.tab_id; shell_pane_id = $Tab.session_id; window_id = $script:app.WindowId
+                group_runtime_id = @($groups[0].GetRuntimeId()); header_bounds = $bounds.ToString()
+                toggle_bounds = $toggle.ToString()
+            } | ConvertTo-Json | Set-Content (Join-Path $script:evidence 'background-owned-group-context.json')
+            Invoke-UiMouseDrag -App $script:app -FromX ([int]($bounds.X + $bounds.Width / 2)) -FromY ([int]($bounds.Y + $bounds.Height / 2)) `
+                -ToX ([int]($bounds.X + $bounds.Width / 2)) -ToY ([int]($bounds.Y + $bounds.Height / 2)) -Right -HoldMs 50 | Out-Null
+        }
         function Invoke-CombinedNativeHook {
             param($Tab, [string]$SessionId, [string]$Cwd, [string]$Status, [switch]$ToolOnly)
             New-Item -ItemType Directory -Path $Cwd -Force | Out-Null
@@ -544,7 +683,8 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
         Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidence 'startup-header.png') | Out-Null
         $survival = [Diagnostics.Stopwatch]::StartNew()
-        while ($survival.Elapsed.TotalSeconds -lt 30) {
+        $survivalSeconds = if ($env:ITE2E_HISTORY_INDICATORS_ONLY -eq '1') { 0 } else { 30 }
+        while ($survival.Elapsed.TotalSeconds -lt $survivalSeconds) {
             Get-Process -Id $script:app.Pid -ErrorAction Stop | Out-Null
             Start-Sleep -Milliseconds 500
         }
@@ -553,7 +693,8 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             pid = $script:app.Pid; hwnd = $script:app.Hwnd; observed_seconds = $survival.Elapsed.TotalSeconds
             header = 'Tabs'; agents_round_trip = $true
         } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:evidence 'startup-survival.json')
-        $script:tabs = @(foreach ($i in 0..7) {
+        $seedIndices = if ($env:ITE2E_HISTORY_INDICATORS_ONLY -eq '1') { @() } else { 0..7 }
+        $script:tabs = @(foreach ($i in $seedIndices) {
             $existingPaneIds = @(Get-AgentPaneSessions -App $script:app).PaneSessionId
             $tab = New-WtTab -App $script:app -Title "$script:marker-open-$('{0:D2}' -f $i)" -Command 'pwsh.exe -NoLogo -NoProfile -NoExit'
             $pane = Wait-NewAgentPaneSession -App $script:app -ExcludePaneSessionId $existingPaneIds -TimeoutSec 40
@@ -584,9 +725,12 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
         }
         Assert-CombinedSearchState $false
-        foreach ($id in @('ItemsList', 'HistoryList')) {
-            (Get-CombinedScroll $id).SetScrollPercent(
-                [Windows.Automation.ScrollPattern]::NoScroll, 0)
+        $scrollLists = if ($env:ITE2E_HISTORY_INDICATORS_ONLY -eq '1') { @() } else { @('ItemsList', 'HistoryList') }
+        foreach ($id in $scrollLists) {
+            $scroll = Get-CombinedScroll $id
+            if ($scroll.Current.VerticallyScrollable) {
+                $scroll.SetScrollPercent([Windows.Automation.ScrollPattern]::NoScroll, 0)
+            }
         }
     }
 
@@ -798,27 +942,10 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             $result.ExitCode | Should -Be 0
         }
         try {
-            # The same native, no-quota fixture used by AgentsModeActions runs inside the real pane.
-            $pwsh = (Get-Command pwsh.exe).Source
-            $config = @{
-                ITE2E_SHIM_PWSH = $pwsh
-                ITE2E_SHIM_FIXTURE = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-InteractiveDelegate.ps1')).Path
-                ITE2E_SHIM_LOG = $launchLog; ITE2E_SHIM_RUN = $sid; ITE2E_SHIM_WTCLI = $sourceApp.WtcliPath
-            }
-            $header = Join-Path $folder 'config.h'
-            @($config.Keys | ForEach-Object { "#define $_ LR`"ite2e($($config[$_]))ite2e`"" }) |
-                Set-Content -LiteralPath $header -Encoding ascii
-            $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
-            $vs = Invoke-Native -FilePath $vswhere -Arguments @('-latest', '-products', '*',
-                '-requires', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', '-property', 'installationPath')
-            $vs.ExitCode | Should -Be 0
-            $vcvars = Join-Path $vs.StdOut.Trim() 'VC\Auxiliary\Build\vcvars64.bat'
-            $nativeSource = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-CopilotDelegate.cpp')).Path
-            $build = "call `"$vcvars`" >nul && cl /nologo /EHsc /std:c++17 /FI`"$header`" `"$nativeSource`" /Fe:`"$shim`" /Fo:`"$folder\copilot.obj`" /link /INCREMENTAL:NO"
-            $buildScript = "& `$env:ComSpec /d /c '$($build.Replace("'", "''"))'; exit `$LASTEXITCODE"
-            $buildEncoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($buildScript))
-            (Invoke-Native -FilePath $pwsh -Arguments @('-NoProfile', '-EncodedCommand', $buildEncoded) `
-                -WorkingDirectory $folder -TimeoutSec 60).ExitCode | Should -Be 0
+            $cli = New-CombinedCliFixture 'other-window-native' -SessionId $sid
+            $folder = $cli.Folder
+            $shim = $cli.Shim
+            $launchLog = $cli.Log
             Set-CombinedView $false
             $tab = New-WtTab -App $sourceApp -Command "`"$shim`" --session-id $sid" -Cwd $folder -Title "$script:marker-other-window"
             Wait-Until -TimeoutSec 20 -Condition { Test-Path -LiteralPath $launchLog } | Out-Null
@@ -852,6 +979,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             $foreignApp = $sourceApp.PSObject.Copy()
             $foreignApp.WindowId = $foreignWindow
             $foreignApp.Hwnd = $foreignHwnd
+            [ItE2E.ItWtWin32Input]::GetWindowProcessId([IntPtr][long]$foreignHwnd) | Should -Be $sourceApp.Pid
             $context = Invoke-WtCli -App $foreignApp -Arguments @('get-pane-context', '--target', $tab.session_id)
             [string]$context.pane.session_id | Should -Be $tab.session_id
             [string]$context.pane.window_id | Should -Be $foreignWindow
@@ -862,7 +990,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             $foreignOwner = @((Get-CombinedSnapshot).sessions | Where-Object session_id -eq $sid)[0].owner_window_id
             [string]$foreignOwner | Should -Be $foreignWindow
             foreach ($state in @(@{ Status = 'Working'; Event = 'agent.tool.starting' },
-                @{ Status = 'Idle'; Event = 'agent.session.start' })) {
+                @{ Status = 'Idle'; Event = 'agent.stop' })) {
                 Send-C388Hook $state.Event
                 Wait-Until -TimeoutSec 20 -Condition {
                     @((Get-CombinedSnapshot).sessions | Where-Object {
@@ -874,6 +1002,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 Set-CombinedQuery (Split-Path $folder -Leaf)
                 Wait-Until -TimeoutSec 15 -Condition { @(Get-CombinedRows HistoryList).Count -eq 1 } | Out-Null
                 Assert-CombinedHistoryMetadata -Title (Split-Path $folder -Leaf) -Status $state.Status -Provider Copilot -OtherWindow
+                Assert-CombinedOwnershipButton OtherWindow | Out-Null
                 Save-CombinedActionEvidence "other-window-$($state.Status)" -Screenshot
                 @{
                     session_id = $sid; pane_session_id = $tab.session_id
@@ -898,11 +1027,47 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             $script:app = $sourceApp
             $windowCount = @(Get-WtWindows -App $sourceApp).Count
             $tabCount = @(Get-WtWindows -App $sourceApp | ForEach-Object { Get-WtTabs -App $sourceApp -WindowId $_.window_id }).Count
-            Invoke-CombinedHistoryRow
-            Wait-Until -TimeoutSec 15 -Condition {
-                $active = Get-ActivePane -App $sourceApp
-                $active.session_id -eq $tab.session_id -and [string]$active.window_id -eq $foreignWindow
+            $historyRows = @(Get-CombinedRows HistoryList)
+            $historyRows.Count | Should -Be 1
+            Set-WtWindowForeground -App $sourceApp -Attempts 3 -DelayMs 150 | Should -BeTrue
+            $ownershipButton = Assert-CombinedOwnershipButton OtherWindow
+            $buttonBounds = $ownershipButton.Current.BoundingRectangle
+            Invoke-UiMouseDrag -App $sourceApp -FromX ([int]($buttonBounds.X + $buttonBounds.Width / 2)) `
+                -FromY ([int]($buttonBounds.Y + $buttonBounds.Height / 2)) `
+                -ToX ([int]($buttonBounds.X + $buttonBounds.Width / 2)) `
+                -ToY ([int]($buttonBounds.Y + $buttonBounds.Height / 2)) -HoldMs 50 | Out-Null
+            Wait-Until -TimeoutSec 15 -Because 'the location button switches to the existing owner window' -Condition {
+                $foreground = [ItE2E.ItWtWin32Input]::GetForegroundWindow()
+                $foreground.ToInt64() -eq [long]$foreignHwnd -and
+                    [ItE2E.ItWtWin32Input]::GetWindowProcessId($foreground) -eq $sourceApp.Pid
             } | Out-Null
+            Set-WtWindowForeground -App $sourceApp -Attempts 3 -DelayMs 150 | Should -BeTrue
+            $historyRows = @(Get-CombinedRows HistoryList)
+            $historyRows.Count | Should -Be 1
+            $historyRows[0].SetFocus()
+            $historyRows[0].Current.HasKeyboardFocus | Should -BeTrue
+            try {
+                Send-WtWindowKey -App $sourceApp -Vk 0x0D -RequireForeground | Out-Null
+                Wait-Until -TimeoutSec 15 -Because 'physical History Enter focuses the existing owner window and native pane' -Condition {
+                    $foreground = [ItE2E.ItWtWin32Input]::GetForegroundWindow()
+                    if ($foreground.ToInt64() -ne [long]$foreignHwnd) { return $false }
+                    if ([ItE2E.ItWtWin32Input]::GetWindowProcessId($foreground) -ne $sourceApp.Pid) { return $false }
+                    $active = Invoke-WtCli -App $sourceApp -Arguments @('get-pane-context', '--target', $tab.session_id)
+                    $active.pane.session_id -eq $tab.session_id -and $active.pane.is_active -and
+                        [string]$active.pane.window_id -eq $foreignWindow -and $active.pane.pid -eq $context.pane.pid
+                } | Out-Null
+            }
+            finally {
+                $foreground = [ItE2E.ItWtWin32Input]::GetForegroundWindow()
+                @{
+                    trigger = 'physical Enter'; source_hwnd = $sourceApp.Hwnd; expected_owner_hwnd = $foreignHwnd
+                    actual_foreground_hwnd = $foreground.ToInt64()
+                    foreground_pid = [ItE2E.ItWtWin32Input]::GetWindowProcessId($foreground)
+                    expected_pid = $sourceApp.Pid; session_id = $sid; pane_session_id = $tab.session_id
+                    context = Invoke-WtCli -App $sourceApp -Arguments @('get-pane-context', '--target', $tab.session_id)
+                } | ConvertTo-Json -Depth 10 |
+                    Set-Content -LiteralPath (Join-Path $script:evidence 'other-window-physical-enter.json')
+            }
             @(Get-WtWindows -App $sourceApp).Count | Should -Be $windowCount
             @(Get-WtWindows -App $sourceApp | ForEach-Object { Get-WtTabs -App $sourceApp -WindowId $_.window_id }).Count | Should -Be $tabCount
             @(Get-Content -LiteralPath $launchLog).Count | Should -Be 1
@@ -928,7 +1093,8 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             (Get-CombinedRowText (Get-CombinedRows HistoryList)[0]) | Should -Not -Match 'another window'
             Invoke-CombinedHistoryRow
             Set-WtPaneFocus -App $sourceApp -SessionId $tab.session_id
-            Send-WtInput -App $sourceApp -SessionId $tab.session_id -Text "exit`n"
+            Send-WtInput -App $sourceApp -SessionId $tab.session_id -Text 'exit'
+            Send-WtKeys -App $sourceApp -SessionId $tab.session_id -Keys @('Enter')
             Wait-Until -TimeoutSec 20 -Condition { $nativeProcess.HasExited } | Out-Null
             Wait-Until -TimeoutSec 30 -Condition {
                 @((Get-CombinedSnapshot).sessions | Where-Object {
@@ -947,6 +1113,245 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 foreach ($name in @('copilot.exe', 'copilot.obj')) {
                     $path = Join-Path $folder $name
                     if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path }
+                }
+            }
+        }
+    }
+
+    It 'History background indicator restores the whole original tab (<Status>)' -ForEach @(
+        @{ Status = 'Idle' }, @{ Status = 'Working' }
+    ) {
+        $fixture = New-CombinedCliFixture "background-$Status"
+        $tab = $null
+        $native = $null
+        try {
+            Set-CombinedView $false
+            $tab = New-WtTab -App $script:app -Command "`"$($fixture.Shim)`" --session-id $($fixture.SessionId)" `
+                -Cwd $fixture.Folder -Title "$script:marker-background-$Status"
+            Wait-Until -TimeoutSec 20 -Condition { Test-Path $fixture.Log } | Out-Null
+            $launch = Get-Content $fixture.Log | Select-Object -First 1 | ConvertFrom-Json
+            $native = Get-Process -Id $launch.native_pid -ErrorAction Stop
+            $native.Path | Should -Be $fixture.Shim
+            $split = Split-WtPane -App $script:app -SessionId $tab.session_id -Direction right `
+                -Command 'pwsh.exe -NoLogo -NoProfile -NoExit'
+            $panes = @(Get-WtPanes -App $script:app -WindowId $script:app.WindowId -TabId $tab.tab_id)
+            $panes.Count | Should -Be 2
+            $identities = @($panes | ForEach-Object {
+                @{ sid = $_.session_id; pid = (Get-WtPaneStatus -App $script:app -SessionId $_.session_id).pid }
+            })
+            if ($Status -eq 'Working') {
+                Send-CombinedCliHook -Fixture $fixture -PaneSessionId $tab.session_id -Event 'agent.tool.starting'
+            }
+            Set-WtPaneFocus -App $script:app -SessionId $tab.session_id
+            $count = Get-CombinedAttachedTabCount
+            Invoke-CombinedOwnedGroupContext -Tab $tab -Title "$script:marker-background-$Status"
+            Invoke-UiElement -App $script:app -Selector KeepTabRunningMenuItem | Out-Null
+            Invoke-CombinedOwnedGroupContext -Tab $tab -Title "$script:marker-background-$Status"
+            Invoke-UiElement -App $script:app -Selector 'Close tab' | Out-Null
+            Wait-Until -TimeoutSec 10 -Condition { (Get-CombinedAttachedTabCount) -eq $count - 1 } | Out-Null
+            Set-CombinedView $true
+            Set-CombinedQuery (Split-Path $fixture.Folder -Leaf)
+            Wait-Until -TimeoutSec 15 -Condition {
+                @(Get-CombinedRows HistoryList).Count -eq 1 -and
+                    @((Get-CombinedSnapshot).sessions | Where-Object {
+                        $_.session_id -eq $fixture.SessionId -and $_.status -eq $Status -and $_.background_tab -eq $true
+                    }).Count -eq 1
+            } | Out-Null
+            $button = Assert-CombinedOwnershipButton Background
+            $bounds = $button.Current.BoundingRectangle
+            Invoke-UiMouseDrag -App $script:app -FromX ([int]($bounds.X + $bounds.Width / 2)) -FromY ([int]($bounds.Y + $bounds.Height / 2)) `
+                -ToX ([int]($bounds.X + $bounds.Width / 2)) -ToY ([int]($bounds.Y + $bounds.Height / 2)) -HoldMs 50 | Out-Null
+            Wait-Until -TimeoutSec 15 -Condition { (Get-CombinedAttachedTabCount) -eq $count } | Out-Null
+            $restored = @(Get-WtPanes -App $script:app -WindowId $script:app.WindowId -TabId $tab.tab_id)
+            $restored.Count | Should -Be 2
+            foreach ($identity in $identities) {
+                @($restored | Where-Object session_id -eq $identity.sid).Count | Should -Be 1
+                (Get-WtPaneStatus -App $script:app -SessionId $identity.sid).pid | Should -Be $identity.pid
+            }
+            $native.HasExited | Should -BeFalse
+            $launch.session_id | Should -Be $fixture.SessionId
+            @(Get-Content $fixture.Log).Count | Should -Be 1
+            Wait-Until -TimeoutSec 15 -Condition {
+                @((Get-CombinedSnapshot).sessions | Where-Object {
+                    $_.session_id -eq $fixture.SessionId -and
+                        ([string]$_.pane_session_id).Trim('{}') -eq ([string]$tab.session_id).Trim('{}') -and
+                        $_.background_tab -eq $false
+                }).Count -eq 1 -and @(Get-CombinedRows HistoryList).Count -eq 0
+            } | Out-Null
+            Set-CombinedView $false
+            Set-CombinedQuery ''
+            Invoke-CombinedOwnedGroupContext -Tab $tab -Title "$script:marker-background-$Status"
+            Invoke-UiElement -App $script:app -Selector 'Close tab' | Out-Null
+            Wait-Until -TimeoutSec 10 -Condition { (Get-CombinedAttachedTabCount) -eq $count - 1 } | Out-Null
+            Set-CombinedView $true
+            Set-CombinedQuery (Split-Path $fixture.Folder -Leaf)
+            Wait-Until -TimeoutSec 15 -Condition { @(Get-CombinedRows HistoryList).Count -eq 1 } | Out-Null
+            Assert-CombinedOwnershipButton Background | Out-Null
+            $historyRow = @(Get-CombinedRows HistoryList)[0]
+            Set-WtWindowForeground -App $script:app -Attempts 3 -DelayMs 150 | Should -BeTrue
+            $historyRow.SetFocus()
+            $historyRow.Current.HasKeyboardFocus | Should -BeTrue
+            Send-WtWindowKey -App $script:app -Vk 0x0D -RequireForeground | Out-Null
+            Wait-Until -TimeoutSec 15 -Condition { (Get-CombinedAttachedTabCount) -eq $count } | Out-Null
+            $restoredByEnter = @(Get-WtPanes -App $script:app -WindowId $script:app.WindowId -TabId $tab.tab_id)
+            $restoredByEnter.Count | Should -Be 2
+            foreach ($identity in $identities) {
+                @($restoredByEnter | Where-Object session_id -eq $identity.sid).Count | Should -Be 1
+                (Get-WtPaneStatus -App $script:app -SessionId $identity.sid).pid | Should -Be $identity.pid
+            }
+        }
+        finally {
+            if ($tab -and $native -and -not $native.HasExited) {
+                Set-WtPaneFocus -App $script:app -SessionId $tab.session_id
+                foreach ($pane in @(Get-WtPanes -App $script:app -WindowId $script:app.WindowId -TabId $tab.tab_id)) {
+                    Close-WtPane -App $script:app -SessionId $pane.session_id
+                }
+                Wait-Until -TimeoutSec 15 -Condition { $native.HasExited } | Out-Null
+            }
+            if (-not $native -or $native.HasExited) {
+                foreach ($name in @('copilot.exe', 'copilot.obj')) {
+                    $path = Join-Path $fixture.Folder $name
+                    if (Test-Path $path) { Remove-Item -LiteralPath $path }
+                }
+            }
+        }
+    }
+
+    It 'History Enter resumes an unbound native session in the current window' {
+        $sid = [guid]::NewGuid().ToString()
+        $fixture = New-CombinedCliFixture 'external-resume' -ResumeSession $sid
+        $external = $null
+        $resumePane = $null
+        $resolverOwned = $false
+        $resolver = $null
+        try {
+            if (-not $env:ITE2E_CANONICAL_SHIM_DIRECTORY) { throw 'External resume requires an approved existing resolver directory.' }
+            $directory = [IO.Path]::GetFullPath($env:ITE2E_CANONICAL_SHIM_DIRECTORY)
+            $paths = ([Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' +
+                [Environment]::GetEnvironmentVariable('PATH', 'User')).Split(';') |
+                Where-Object { $_ } | ForEach-Object { [IO.Path]::GetFullPath($_) }
+            $directory | Should -BeIn $paths
+            Test-Path $directory -PathType Container | Should -BeTrue
+            $resolver = Join-Path $directory 'copilot.exe'
+            if (Test-Path $resolver) { throw 'Never replace an installed Copilot executable.' }
+            $resolverHash = (Get-FileHash $fixture.Shim).Hash
+            [IO.File]::Copy($fixture.Shim, $resolver, $false)
+            $resolverOwned = $true
+            $start = [Diagnostics.ProcessStartInfo]::new($fixture.Shim)
+            $start.UseShellExecute = $false
+            $start.CreateNoWindow = $true
+            $start.RedirectStandardInput = $true
+            $start.RedirectStandardOutput = $true
+            $start.RedirectStandardError = $true
+            $start.WorkingDirectory = $fixture.Folder
+            $start.Environment.Remove('WT_SESSION') | Out-Null
+            $start.Environment.Remove('WT_COM_CLSID') | Out-Null
+            $start.ArgumentList.Add('--external-session')
+            $start.ArgumentList.Add($sid)
+            $external = [Diagnostics.Process]::Start($start)
+            $externalOutput = $external.StandardOutput.ReadToEndAsync()
+            $externalError = $external.StandardError.ReadToEndAsync()
+            Wait-Until -TimeoutSec 15 -Condition { Test-Path $fixture.Log } | Out-Null
+            $externalRecord = Get-Content $fixture.Log | Select-Object -First 1 | ConvertFrom-Json
+            $externalRecord.mode | Should -Be 'external'
+            $externalRecord.session_id | Should -Be $sid
+            $externalRecord.pane_session_id | Should -BeNullOrEmpty
+            $externalRecord.native_pid | Should -Be $external.Id
+            $external.HasExited | Should -BeFalse
+            Register-CombinedUnboundSession -Fixture $fixture
+            Wait-Until -TimeoutSec 20 -Condition {
+                @((Get-CombinedSnapshot).sessions | Where-Object {
+                    $_.session_id -eq $sid -and $_.provider_id -eq 'copilot' -and $_.status -eq 'Idle' -and
+                        -not $_.pane_session_id -and -not $_.owner_window_id -and -not $_.background_tab
+                }).Count -eq 1
+            } | Out-Null
+            Set-CombinedView $true
+            Set-CombinedQuery (Split-Path $fixture.Folder -Leaf)
+            Wait-Until -TimeoutSec 15 -Condition { @(Get-CombinedRows HistoryList).Count -eq 1 } | Out-Null
+            Assert-CombinedOwnershipButton None
+            Save-CombinedActionEvidence 'external-unbound-before-enter' -Screenshot
+            $window = [string]$script:app.WindowId
+            $beforeTabs = @(Get-WtTabs -App $script:app -WindowId $window)
+            $beforeWindows = @(Get-WtWindows -App $script:app).Count
+            $row = @(Get-CombinedRows HistoryList)[0]
+            Set-WtWindowForeground -App $script:app -Attempts 3 -DelayMs 150 | Should -BeTrue
+            $row.SetFocus()
+            $row.Current.HasKeyboardFocus | Should -BeTrue
+            @{
+                trigger = 'physical Enter'; expected_window_id = $window; expected_pid = $script:app.Pid
+                foreground_hwnd = [ItE2E.ItWtWin32Input]::GetForegroundWindow().ToInt64()
+                foreground_pid = [ItE2E.ItWtWin32Input]::GetWindowProcessId([ItE2E.ItWtWin32Input]::GetForegroundWindow())
+                focused_peer = @{
+                    name = $row.Current.Name; type = $row.Current.ControlType.ProgrammaticName
+                    runtime_id = @($row.GetRuntimeId()); has_keyboard_focus = $row.Current.HasKeyboardFocus
+                    bounds = $row.Current.BoundingRectangle.ToString()
+                }
+                session = @((Get-CombinedSnapshot).sessions | Where-Object session_id -eq $sid)
+            } | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $script:evidence 'external-focused-row-before-enter.json')
+            Send-WtWindowKey -App $script:app -Vk 0x0D -RequireForeground | Out-Null
+            try {
+                Wait-Until -TimeoutSec 20 -Condition {
+                    @(Get-Content $fixture.Log | ForEach-Object { $_ | ConvertFrom-Json } |
+                        Where-Object { $_.mode -eq 'resume' -and $_.session_id -eq $sid }).Count -eq 1
+                } | Out-Null
+            }
+            finally {
+                $errorPeer = Get-CombinedElement HistoryMessage
+                @{
+                    session_id = $sid
+                    focused_peer = [Windows.Automation.AutomationElement]::FocusedElement.Current.Name
+                    history_error = if ($errorPeer) { @{
+                        name = $errorPeer.Current.Name; is_offscreen = $errorPeer.Current.IsOffscreen
+                        bounds = $errorPeer.Current.BoundingRectangle.ToString()
+                    } } else { $null }
+                    windows = @(Get-WtWindows -App $script:app); tabs = @(Get-WtTabs -App $script:app -WindowId $window)
+                    launches = @(Get-Content $fixture.Log | ForEach-Object { $_ | ConvertFrom-Json })
+                    session = @((Get-CombinedSnapshot).sessions | Where-Object session_id -eq $sid)
+                } | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $script:evidence 'external-after-enter.json')
+                Get-UiTree -App $script:app -Depth 9 | Set-Content (Join-Path $script:evidence 'external-after-enter.tree.txt')
+                Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidence 'external-after-enter.png') | Out-Null
+                foreach ($name in @('wta-main_master.log', 'terminal-agent-pane.log')) {
+                    $log = Get-ItLogText -App $script:app -Name $name -SinceStart
+                    $lines = @($log -split "`n" | Where-Object { $_ -match [regex]::Escape($sid) -or $_ -match '(?i)session.*activat|resume.*command|History.*Enter' } |
+                        Select-Object -Last 80)
+                    [IO.File]::WriteAllLines((Join-Path $script:evidence "external-activation-$name.txt"), [string[]]$lines)
+                }
+            }
+            $resumed = @(Get-Content $fixture.Log | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object mode -eq 'resume')[0]
+            $resumePane = $resumed.pane_session_id
+            $resumePane | Should -Not -BeNullOrEmpty
+            $resumed.native_pid | Should -Not -Be $external.Id
+            $resumed.native_command_line | Should -Match ('--resume\s+"?' + [regex]::Escape($sid) + '"?(?:\s|$)')
+            (Get-Process -Id $resumed.native_pid -ErrorAction Stop).Path | Should -Be $resolver
+            $context = Invoke-WtCli -App $script:app -Arguments @('get-pane-context', '--target', $resumePane)
+            [string]$context.pane.window_id | Should -Be $window
+            @(Get-WtTabs -App $script:app -WindowId $window).Count | Should -Be ($beforeTabs.Count + 1)
+            @(Get-WtWindows -App $script:app).Count | Should -Be $beforeWindows
+            $external.HasExited | Should -BeFalse -Because 'explicit resume must not terminate the external original'
+            $resumed | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $script:evidence 'external-resume-proof.json')
+        }
+        finally {
+            if ($resumePane) { Close-WtPane -App $script:app -SessionId $resumePane }
+            if ($external -and -not $external.HasExited) {
+                $external.StandardInput.WriteLine('exit')
+                $external.StandardInput.Flush()
+                if (-not $external.WaitForExit(10000)) { throw 'Owned external fixture did not exit normally; retain executable.' }
+            }
+            if ($external -and $external.HasExited) {
+                $externalOutput.GetAwaiter().GetResult() | Set-Content (Join-Path $fixture.Folder 'external.stdout.log')
+                $externalError.GetAwaiter().GetResult() | Set-Content (Join-Path $fixture.Folder 'external.stderr.log')
+            }
+            if ($resolverOwned) {
+                (Get-FileHash $resolver).Hash | Should -Be $resolverHash
+                if (@(Get-Process -Name copilot -ErrorAction SilentlyContinue | Where-Object Path -eq $resolver).Count) {
+                    throw 'Owned resumed fixture remains active; retain executable.'
+                }
+                Remove-Item -LiteralPath $resolver
+            }
+            if (-not $external -or $external.HasExited) {
+                foreach ($name in @('copilot.exe', 'copilot.obj')) {
+                    $path = Join-Path $fixture.Folder $name
+                    if (Test-Path $path) { Remove-Item -LiteralPath $path }
                 }
             }
         }
@@ -1039,23 +1444,65 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
     }
 
     It 'Combined sidebar divider supports pointer and keyboard resizing' {
+        function Save-C383Measurement {
+            param([string]$Phase)
+            $grip = (Get-CombinedElement HistorySplitter).Current.BoundingRectangle
+            $cursor = [ItE2E.ItWtWin32Input]::GetCursorPosition()
+            @{
+                phase = $Phase; at = [DateTimeOffset]::UtcNow.ToString('o')
+                grip = @{ x = $grip.X; y = $grip.Y; width = $grip.Width; height = $grip.Height }
+                expected_pid = $script:app.Pid
+                foreground_pid = [ItE2E.ItWtWin32Input]::GetWindowProcessId(
+                    [ItE2E.ItWtWin32Input]::GetForegroundWindow())
+                cursor = @{ x = $cursor[0]; y = $cursor[1] }
+                from = @{ x = $fromX; y = $fromY }; to = @{ x = $fromX; y = $fromY + 40 }
+                focused_id = [Windows.Automation.AutomationElement]::FocusedElement.Current.AutomationId
+            } | ConvertTo-Json -Depth 5 |
+                Set-Content -LiteralPath (Join-Path $script:evidence "divider-$Phase.json")
+            Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidence "divider-$Phase.png") | Out-Null
+        }
+        Set-WtWindowForeground -App $script:app -Attempts 3 -DelayMs 150 | Should -BeTrue
+        [ItE2E.ItWtWin32Input]::GetWindowProcessId([IntPtr][long]$script:app.Hwnd) | Should -Be $script:app.Pid
         $divider = Get-CombinedElement HistorySplitter
+        $divider.Current.IsEnabled | Should -BeTrue
         $before = $divider.Current.BoundingRectangle
-        Invoke-UiMouseDrag -App $script:app -FromX ([int]($before.X + $before.Width / 2)) -FromY ([int]($before.Y + 4)) `
-            -ToX ([int]($before.X + $before.Width / 2)) -ToY ([int]($before.Y + 44)) -HoldMs 150 | Out-Null
-        Wait-Until -TimeoutSec 5 -Condition {
-            (Get-CombinedElement HistorySplitter).Current.BoundingRectangle.Y -gt $before.Y + 10
-        } | Out-Null
+        $windowBounds = [Windows.Automation.AutomationElement]::FromHandle(
+            [IntPtr][long]$script:app.Hwnd).Current.BoundingRectangle
+        $before.Width | Should -BeGreaterThan 0
+        $before.Height | Should -BeGreaterThan 0
+        $before.Left | Should -BeGreaterOrEqual $windowBounds.Left
+        $before.Right | Should -BeLessOrEqual $windowBounds.Right
+        $before.Top | Should -BeGreaterOrEqual $windowBounds.Top
+        $before.Bottom | Should -BeLessOrEqual $windowBounds.Bottom
+        $fromX = [int]($before.X + $before.Width / 2)
+        $fromY = [int]($before.Y + $before.Height / 2)
+        Save-C383Measurement before-pointer
+        try {
+            Invoke-UiMouseDrag -App $script:app -FromX $fromX -FromY $fromY `
+                -ToX $fromX -ToY ($fromY + 40) -HoldMs 150 | Out-Null
+            Wait-Until -TimeoutSec 5 -Condition {
+                (Get-CombinedElement HistorySplitter).Current.BoundingRectangle.Y -gt $before.Y + 10
+            } | Out-Null
+        }
+        finally {
+            Save-C383Measurement after-pointer
+            $pointerLog = Get-ItLogText -App $script:app -Name 'terminal-agent-pane.log' -SinceStart
+            $pointerLines = @($pointerLog -split "`n" | Where-Object { $_ -match '(?i)splitter|pointer|resize|drag' } |
+                Select-Object -Last 50)
+            [IO.File]::WriteAllLines((Join-Path $script:evidence 'divider-existing-pointer-log.txt'), [string[]]$pointerLines)
+        }
         Assert-CombinedBounds
         $divider.SetFocus()
         $divider.Current.HasKeyboardFocus | Should -BeTrue
         $beforeKey = $divider.Current.BoundingRectangle.Y
         Send-WtWindowKey -App $script:app -Vk 0x26 -RequireForeground | Out-Null
         Wait-Until -TimeoutSec 5 -Condition { $divider.Current.BoundingRectangle.Y -lt $beforeKey - 5 } | Out-Null
+        Save-C383Measurement after-up
         Send-WtWindowKey -App $script:app -Vk 0x28 -RequireForeground | Out-Null
         Wait-Until -TimeoutSec 5 -Condition {
             [Math]::Abs($divider.Current.BoundingRectangle.Y - $beforeKey) -lt 3
         } | Out-Null
+        Save-C383Measurement after-down
         Assert-CombinedBounds
         Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidence 'divider-resized.png') | Out-Null
     }

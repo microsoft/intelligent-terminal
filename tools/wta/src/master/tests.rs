@@ -15020,6 +15020,226 @@ async fn master_com_agent_event_routes_directly_into_the_registry() {
 }
 
 #[tokio::test]
+async fn worker_activity_raw_id_collisions_cannot_mutate_root_owner() {
+    use crate::agent_sessions::{AgentSessionRegistry, AgentStatus, CliSource, SessionLocation};
+
+    let root = "root-session";
+    let worker = "colliding-worker";
+    let pane = "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE";
+    for (cli, location, universe) in [
+        (CliSource::Claude, SessionLocation::Host, None),
+        (
+            CliSource::Copilot,
+            SessionLocation::Wsl {
+                distro: "Ubuntu".into(),
+            },
+            None,
+        ),
+        (
+            CliSource::Copilot,
+            SessionLocation::Host,
+            Some("other-universe".to_string()),
+        ),
+    ] {
+        let state = make_state();
+        let mut helper = AgentSessionRegistry::new();
+        let info = acp::schema::v1::SessionInfo::new(
+            SessionId::new(worker),
+            std::path::PathBuf::from("C:\\other"),
+        );
+        let historical =
+            crate::session_history::acp_session_to_agent_session(&info, location, &cli);
+        let mut collision = crate::session_registry::agent_session_to_session_info(&historical);
+        collision.session_universe = universe;
+        let identity = crate::session_registry::SessionIdentity {
+            session_id: collision.session_id.clone(),
+            history_key: collision.history_row_key(),
+        };
+        state.registry.upsert(collision.clone()).await;
+        helper.merge_historical(vec![historical]);
+        let hook = |event: &str, sid: &str| {
+            serde_json::json!({
+                "event": event, "cli_source": "copilot", "agent_session_id": sid,
+                "pane_id": pane, "payload": { "cwd": "C:\\repo", "error": "worker failed" }
+            })
+        };
+        for event in ["agent.session.start", "agent.prompt.submit"] {
+            let params = hook(event, root);
+            handle_master_agent_event(&state, &params).await;
+            crate::app::route_agent_event_to_registry(&mut helper, pane, &params);
+        }
+        for event in [
+            "agent.error",
+            "agent.prompt.submit",
+            "agent.tool.starting",
+            "agent.notification",
+        ] {
+            let params = hook(event, worker);
+            handle_master_agent_event(&state, &params).await;
+            crate::app::route_agent_event_to_registry(&mut helper, pane, &params);
+            let owner = state.registry.lookup(&SessionId::new(root)).await.unwrap();
+            assert_eq!(owner.status, Some(AgentStatus::Working), "{event}");
+            assert_eq!(
+                owner.pane_session_id.as_deref(),
+                Some(crate::agent_sessions::pane_key(pane).as_str())
+            );
+            assert_eq!(
+                state.registry.lookup_identity(&identity).await.unwrap(),
+                collision
+            );
+            assert_eq!(
+                helper.get(&root.to_string()).unwrap().status,
+                AgentStatus::Working
+            );
+            assert_eq!(
+                helper.get(&worker.to_string()).unwrap().status,
+                AgentStatus::Historical
+            );
+        }
+        let params = hook("agent.error", root);
+        handle_master_agent_event(&state, &params).await;
+        crate::app::route_agent_event_to_registry(&mut helper, pane, &params);
+        assert_eq!(
+            state
+                .registry
+                .lookup(&SessionId::new(root))
+                .await
+                .unwrap()
+                .status,
+            Some(AgentStatus::Error)
+        );
+        assert_eq!(
+            helper.get(&root.to_string()).unwrap().status,
+            AgentStatus::Error
+        );
+    }
+}
+
+#[tokio::test]
+async fn synthetic_worker_hooks_preserve_root_pane_in_master_and_helper() {
+    use crate::agent_sessions::{AgentSessionRegistry, AgentStatus};
+
+    let pane = "9731EAAE-1F56-408B-B80B-8C5302D421F4";
+    let normalized_pane = crate::agent_sessions::pane_key(pane);
+    let root = "b5086ce2-e9c2-4980-bee8-9f738a816c49";
+    let worker = "950efb6c-cb53-4e54-81e5-45c450eb9c13";
+    let root_sid = SessionId::new(root);
+    let worker_sid = SessionId::new(worker);
+
+    for provider in ["copilot", "claude", "codex", "gemini", "opencode"] {
+        let state = make_state();
+        let mut helper = AgentSessionRegistry::new();
+        let hook = |event: &str, sid: &str| {
+            serde_json::json!({
+                "event": event,
+                "cli_source": provider,
+                "agent_session_id": sid,
+                "pane_id": pane,
+                "payload": { "cwd": "C:\\repo", "tool_name": "edit" }
+            })
+        };
+        for event in ["agent.session.start", "agent.prompt.submit"] {
+            let params = hook(event, root);
+            handle_master_agent_event(&state, &params).await;
+            crate::app::route_agent_event_to_registry(&mut helper, pane, &params);
+        }
+
+        for event in [
+            "agent.prompt.submit",
+            "agent.tool.starting",
+            "agent.notification",
+            "agent.error",
+        ] {
+            let params = hook(event, worker);
+            handle_master_agent_event(&state, &params).await;
+            let mut published = Vec::new();
+            crate::app::route_agent_event_to_registry_with_hook_sink(
+                &mut helper,
+                pane,
+                &params,
+                |event| published.push(event),
+            );
+            assert!(
+                published.is_empty(),
+                "{provider}: {event} must not steal ownership"
+            );
+            assert!(state.registry.lookup(&worker_sid).await.is_none());
+            assert!(helper.get(&worker.to_string()).is_none());
+            let row = state.registry.lookup(&root_sid).await.unwrap();
+            assert_eq!(row.status, Some(AgentStatus::Working));
+            assert_eq!(
+                row.pane_session_id.as_deref(),
+                Some(normalized_pane.as_str())
+            );
+            let qualified = row.history_row_key().unwrap();
+            assert_eq!(qualified.provider_id, provider);
+            assert_eq!(qualified.session_id, root);
+            assert_eq!(helper.key_for_pane(pane).as_deref(), Some(root));
+            assert_eq!(
+                helper.get(&root.to_string()).unwrap().status,
+                AgentStatus::Working
+            );
+        }
+
+        for (event, status) in [
+            ("agent.stop", AgentStatus::Idle),
+            ("agent.prompt.submit", AgentStatus::Working),
+        ] {
+            let params = hook(event, root);
+            handle_master_agent_event(&state, &params).await;
+            crate::app::route_agent_event_to_registry(&mut helper, pane, &params);
+            assert_eq!(
+                state.registry.lookup(&root_sid).await.unwrap().status,
+                Some(status.clone())
+            );
+            assert_eq!(helper.get(&root.to_string()).unwrap().status, status);
+            assert_eq!(helper.key_for_pane(pane).as_deref(), Some(root));
+        }
+
+        // A real start, unlike a worker's activity hook, remains an explicit replacement.
+        let params = hook("agent.session.start", worker);
+        handle_master_agent_event(&state, &params).await;
+        crate::app::route_agent_event_to_registry(&mut helper, pane, &params);
+        let old = state.registry.lookup(&root_sid).await.unwrap();
+        assert_eq!(old.status, Some(AgentStatus::Ended));
+        assert!(old.pane_session_id.is_none());
+        assert_eq!(
+            helper.get(&root.to_string()).unwrap().status,
+            AgentStatus::Ended
+        );
+        assert_eq!(helper.key_for_pane(pane).as_deref(), Some(worker));
+        assert_eq!(
+            state
+                .registry
+                .lookup(&worker_sid)
+                .await
+                .unwrap()
+                .pane_session_id
+                .as_deref(),
+            Some(normalized_pane.as_str())
+        );
+
+        let mut params = hook("agent.session.end", worker);
+        params["payload"]["reason"] = serde_json::json!("user_exit");
+        handle_master_agent_event(&state, &params).await;
+        crate::app::route_agent_event_to_registry(&mut helper, pane, &params);
+        assert_eq!(
+            state.registry.lookup(&worker_sid).await.unwrap().status,
+            Some(AgentStatus::Ended)
+        );
+        assert!(helper.key_for_pane(pane).is_none());
+        let params = hook("agent.session.start", root);
+        handle_master_agent_event(&state, &params).await;
+        crate::app::route_agent_event_to_registry(&mut helper, pane, &params);
+        assert_eq!(
+            state.registry.lookup(&root_sid).await.unwrap().status,
+            Some(AgentStatus::Idle)
+        );
+        assert_eq!(helper.key_for_pane(pane).as_deref(), Some(root));
+    }
+}
+
+#[tokio::test]
 async fn opencode_question_hooks_keep_attention_in_either_arrival_order() {
     use crate::agent_sessions::{AgentSessionRegistry, AgentStatus, CliSource};
 

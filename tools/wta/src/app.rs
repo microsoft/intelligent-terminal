@@ -493,6 +493,8 @@ pub struct AgentEventFacts {
     pub key: String,
     /// Whether a row already exists for `key`.
     pub session_known: bool,
+    /// An existing live session other than `key` owns the hook's pane.
+    pub pane_owned_by_other: bool,
 }
 
 /// What one `agent_event` implies.
@@ -562,6 +564,13 @@ pub fn plan_agent_event(
             | "agent.session.stopped"
             | "agent.session.end"
     ) && !facts.session_known;
+    if facts.pane_owned_by_other
+        && !matches!(event, "agent.session.started" | "agent.session.start")
+    {
+        // Nested CLI workers inherit the parent's pane. Activity, including
+        // pane-targeted errors, cannot claim or alter another live owner.
+        return plan;
+    }
     if needs_synthetic_start {
         plan.events.push(SessionEvent::SessionStarted {
             key: key.clone(),
@@ -864,7 +873,15 @@ where
 
     let facts = AgentEventFacts {
         key: key.clone(),
-        session_known: reg.has_session(&key),
+        session_known: reg
+            .get(&key)
+            .is_some_and(|row| row.cli_source == cli_source),
+        pane_owned_by_other: reg.key_for_pane(pane_session_id).is_some_and(|owner| {
+            reg.get(&owner).is_some_and(|row| {
+                row.liveness() == crate::agent_sessions::LivenessState::Live
+                    && (owner != key || row.cli_source != cli_source)
+            })
+        }),
     };
     let plan = plan_agent_event(event, &payload, pane_session_id, &cli_source, &facts);
 
