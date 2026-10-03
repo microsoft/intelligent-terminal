@@ -6743,7 +6743,7 @@ namespace TerminalAppLocalTests
                     row["background_tab"] = membership;
                     const auto parsed = Page::_ParseSidebarHistorySnapshot(
                         Json::writeString(Json::StreamWriterBuilder{}, response), 1);
-                    const auto native = winrt::get_self<TerminalApp::implementation::TabStripHistoryItem>(parsed.items.front());
+                    const auto native = winrt::get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(parsed.items.front());
                     const auto live = parsed.items.front().IsLive();
                     VERIFY_ARE_EQUAL(live && membership.isBool() && membership.asBool(), native->BackgroundTab());
                     VERIFY_ARE_EQUAL(live && membership.isBool() && !membership.asBool(), native->OtherWindow());
