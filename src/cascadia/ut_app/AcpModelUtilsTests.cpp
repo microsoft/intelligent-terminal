@@ -18,6 +18,7 @@ namespace TerminalAppUnitTests
 
         TEST_METHOD(MapsAgentIdsToAcpCommands);
         TEST_METHOD(AppendsSupportedModelFlags);
+        TEST_METHOD(ModelProbeCommandsDoNotRequireASelectedModel);
         TEST_METHOD(SuppressesCustomSelectionModelFlags);
         TEST_METHOD(CustomProvidersSupportOnlyChatCompletionsAgents);
         TEST_METHOD(LiveModelSwitchRequiresKnownSupportedAgent);
@@ -50,6 +51,12 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(std::wstring{ L"npx -y @agentclientprotocol/codex-acp@1.1.13" }, BuildAgentCommandLine(L"codex", model));
         VERIFY_ARE_EQUAL(std::wstring{ L"opencode acp" }, BuildAgentCommandLine(L"opencode", model));
         VERIFY_ARE_EQUAL(std::wstring{ L"other-agent" }, BuildAgentCommandLine(L"other-agent", model));
+    }
+
+    void AcpModelUtilsTests::ModelProbeCommandsDoNotRequireASelectedModel()
+    {
+        VERIFY_ARE_EQUAL(std::wstring{ L"copilot --acp --stdio" }, BuildAgentModelProbeCommandLine(L"copilot"));
+        VERIFY_ARE_EQUAL(std::wstring{ L"gemini --acp" }, BuildAgentModelProbeCommandLine(L"gemini"));
     }
 
     void AcpModelUtilsTests::SuppressesCustomSelectionModelFlags()
