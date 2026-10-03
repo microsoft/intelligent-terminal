@@ -88,7 +88,17 @@ Each connection has one refresh in flight; history and title updates share its
 single response. Failed queries retain prior rows and back off up to 60 seconds.
 The opt-in JSON object contains `sessions` and `history_status` (`loading`, `ready`,
 or `error`), with optional `history_error_kind` to distinguish timeout-only failures;
-ordinary `--json` output remains one session per line. The initial
+ordinary `--json` output remains one session per line.
+
+Live rows may also include response-only `owner_window_id` and `background_tab`
+fields from the exact bound pane's context. `background_tab: true` means the
+pane belongs to a kept-running whole tab; activating it restores that entire
+tab. Only an explicit `false` with a different owning window enables the
+other-window action. Missing or malformed membership is unknown, not evidence
+that the pane is attached elsewhere. These fields are refreshed per response,
+not stored as registry ownership or lifecycle state.
+
+The initial
 discovery stays `loading` until all eligible host providers finish. Providers that
 do not support listing are skipped, while initialization or listing failures
 produce `error`. Later refreshes retain the last completed status until they finish.

@@ -7425,6 +7425,7 @@ async fn handle_sessions_list(
     let mut sessions = state.registry.snapshot().await;
     for row in &mut sessions {
         row.owner_window_id = None;
+        row.background_tab = None;
     }
 
     // Enrich only the response copy; pane/window attribution is not registry state.
@@ -7467,7 +7468,10 @@ async fn handle_sessions_list(
             match tokio::time::timeout_at(deadline, requests.next()).await {
                 Ok(Some((pane, Ok(context)))) => {
                     if let Some(window_id) = pane_context_owner_window(pane, &context) {
-                        owners.insert(pane, window_id);
+                        owners.insert(
+                            pane,
+                            (window_id, pane_context_background_tab(pane, &context)),
+                        );
                     } else {
                         tracing::warn!(target: "master_history", %pane, "pane ownership context invalid; retaining unattributed status");
                     }
@@ -7494,11 +7498,15 @@ async fn handle_sessions_list(
             ) {
                 continue;
             }
-            row.owner_window_id = row
+            if let Some((window_id, background_tab)) = row
                 .pane_session_id
                 .as_deref()
                 .and_then(|pane| uuid::Uuid::parse_str(pane).ok())
-                .and_then(|pane| owners.get(&pane).copied());
+                .and_then(|pane| owners.get(&pane).copied())
+            {
+                row.owner_window_id = Some(window_id);
+                row.background_tab = background_tab;
+            }
         }
     }
 
@@ -7523,6 +7531,44 @@ fn pane_context_owner_window(pane: uuid::Uuid, context: &serde_json::Value) -> O
         .filter(|window| *window != 0)
 }
 
+fn pane_context_background_tab(pane: uuid::Uuid, context: &serde_json::Value) -> Option<bool> {
+    pane_context_owner_window(pane, context)?;
+    context.get("pane")?.get("is_background_tab")?.as_bool()
+}
+
+#[cfg(test)]
+mod history_background_tests {
+    use super::pane_context_background_tab;
+
+    #[test]
+    fn membership_requires_bound_context_and_typed_boolean() {
+        let pane = uuid::Uuid::new_v4();
+        for expected in [true, false] {
+            let context = serde_json::json!({
+                "pane": { "session_id": pane.to_string(), "window_id": 42, "is_background_tab": expected }
+            });
+            assert_eq!(pane_context_background_tab(pane, &context), Some(expected));
+        }
+        for value in [
+            serde_json::Value::Null,
+            serde_json::json!("false"),
+            serde_json::json!(0),
+        ] {
+            let context = serde_json::json!({
+                "pane": { "session_id": pane.to_string(), "window_id": 42, "is_background_tab": value }
+            });
+            assert_eq!(pane_context_background_tab(pane, &context), None);
+        }
+        for context in [
+            serde_json::json!({"pane": { "session_id": pane.to_string(), "window_id": 42 }}),
+            serde_json::json!({"pane": { "session_id": uuid::Uuid::new_v4().to_string(), "window_id": 42, "is_background_tab": true }}),
+            serde_json::json!({"pane": { "session_id": pane.to_string(), "window_id": 0, "is_background_tab": true }}),
+            serde_json::json!({"is_background_tab": true}),
+        ] {
+            assert_eq!(pane_context_background_tab(pane, &context), None);
+        }
+    }
+}
 struct SessionActivationReceipt {
     params: crate::session_registry::SessionActivateParams,
     response: crate::session_registry::SessionActivateResponse,
@@ -7687,7 +7733,7 @@ async fn execute_session_activation(
         );
     }
     let status = row.status.clone().unwrap_or(AgentStatus::Historical);
-    let action = decide_enter_action(&RowSnapshot {
+    let mut action = decide_enter_action(&RowSnapshot {
         origin: row.origin.clone().unwrap_or(SessionOrigin::Unknown),
         liveness: liveness_from_status(&status, row.pane_session_id.clone()),
         key: row.session_id.to_string(),
@@ -7696,6 +7742,21 @@ async fn execute_session_activation(
         cli_supports_resume_flag: profile.is_some_and(|profile| !profile.resume_flag.is_empty()),
         is_wsl: row.location.is_wsl(),
     });
+    if matches!(
+        action,
+        EnterAction::NotResumable {
+            reason: crate::session_mgmt::NotResumableReason::LiveWithoutPane
+        }
+    ) && row.origin == Some(SessionOrigin::Unknown)
+        && profile.is_some_and(|profile| !profile.resume_flag.is_empty())
+    {
+        // This is an explicit sidebar activation, not evidence of external
+        // ownership. A bound pane always keeps the focus-only path.
+        action = EnterAction::ResumeCliFlag {
+            key: row.session_id.to_string(),
+            cli: cli_source.clone(),
+        };
+    }
 
     match action {
         EnterAction::Focus { pane_session_id } => {
@@ -7768,12 +7829,49 @@ async fn execute_session_activation(
                 );
             };
             let provider_id = provider_id.expect("known provider was checked above");
-            let profile = crate::agent_registry::lookup_profile_by_id(&provider_id);
-            let invocation = format!("{} {} {}", provider_id, profile.resume_flag, row.session_id);
+            if state
+                .allowed_agent_ids
+                .as_ref()
+                .is_some_and(|allowed| !allowed.contains(&provider_id))
+            {
+                return respond!(
+                    "resume_cli",
+                    false,
+                    Some("The selected session provider is blocked by policy.".to_string())
+                );
+            }
+            let runtimes =
+                crate::coordinator::default_delegate_agent_runtimes(Some(&provider_id), None, None);
+            let runtime = &runtimes[0];
             let commandline = match &row.location {
-                crate::agent_sessions::SessionLocation::Host => invocation,
+                crate::agent_sessions::SessionLocation::Host => {
+                    crate::coordinator::build_delegate_resume_commandline(
+                        runtime,
+                        &row.session_id.to_string(),
+                    )
+                }
                 crate::agent_sessions::SessionLocation::Wsl { distro } => {
-                    format!("wsl -d {distro} -- bash -lc \"{invocation}\"")
+                    if distro.trim().is_empty() || !row.cwd.to_string_lossy().starts_with('/') {
+                        return respond!(
+                            "resume_cli",
+                            false,
+                            Some("The selected WSL session has no valid distro or working directory.".to_string())
+                        );
+                    }
+                    crate::coordinator::build_wsl_delegate_resume_commandline(
+                        runtime,
+                        &row.session_id.to_string(),
+                    )
+                    .map(|command| {
+                        format!(
+                            "wsl.exe -d {} --cd {} -- bash -lc {}",
+                            crate::coordinator::quote_windows_commandline_arg(distro),
+                            crate::coordinator::quote_windows_commandline_arg(
+                                &row.cwd.to_string_lossy()
+                            ),
+                            crate::coordinator::quote_windows_commandline_arg(&command)
+                        )
+                    })
                 }
                 crate::agent_sessions::SessionLocation::Unknown => {
                     return respond!(
@@ -7783,9 +7881,13 @@ async fn execute_session_activation(
                     );
                 }
             };
+            let commandline = match commandline {
+                Ok(commandline) => commandline,
+                Err(error) => return failed("resume_cli", error),
+            };
             let mut params = serde_json::json!({
                 "window_id": parsed.window_id,
-                "commandline": format!("cmd /c {commandline}"),
+                "commandline": commandline,
                 "background": true,
             });
             if matches!(row.location, crate::agent_sessions::SessionLocation::Host)

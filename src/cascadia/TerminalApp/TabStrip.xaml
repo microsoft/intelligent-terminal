@@ -772,6 +772,7 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <local:HighlightedTextControl x:Name="HistorySubtitleText"
                                                                   SearchText="{x:Bind SearchQuery}"
@@ -798,6 +799,33 @@
                                                     ContentTemplate="{x:Bind IconTemplate}"
                                                     ToolTipService.ToolTip="{x:Bind ProviderDisplayName}"
                                                     IsTabStop="False" />
+                                    <Button x:Name="HistoryOwnershipButton"
+                                            Grid.Column="3"
+                                            Width="24"
+                                            Height="24"
+                                            MinWidth="0"
+                                            MinHeight="0"
+                                            Padding="2"
+                                            Margin="4,0,0,0"
+                                            VerticalAlignment="Center"
+                                            Foreground="{Binding Foreground, ElementName=HistoryTitleText}"
+                                            Visibility="Collapsed"
+                                            Click="OnHistoryOwnershipClick">
+                                        <Grid>
+                                            <PathIcon x:Name="HistoryBackgroundIcon"
+                                                      Width="16"
+                                                      Height="16"
+                                                      Visibility="Collapsed"
+                                                      AutomationProperties.AccessibilityView="Raw"
+                                                      Data="M 1,3 L 7,3 L 7,4 L 2,4 L 2,14 L 14,14 L 14,9 L 15,9 L 15,15 L 1,15 Z M 10,5 L 10,11 L 11,11 L 11,5 L 13.5,7.5 L 14.2,6.8 L 10.5,3.1 L 6.8,6.8 L 7.5,7.5 Z" />
+                                            <PathIcon x:Name="HistoryOtherWindowIcon"
+                                                      Width="16"
+                                                      Height="16"
+                                                      Visibility="Collapsed"
+                                                      AutomationProperties.AccessibilityView="Raw"
+                                                      Data="M 1,1 L 12,1 L 12,4 L 11,4 L 11,2 L 2,2 L 2,11 L 4,11 L 4,12 L 1,12 Z M 5,5 L 16,5 L 16,16 L 5,16 Z M 6,6 L 6,15 L 15,15 L 15,6 Z" />
+                                        </Grid>
+                                    </Button>
                                 </Grid>
                             </Grid>
                         </DataTemplate>

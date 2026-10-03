@@ -812,7 +812,10 @@ try
             if (context.Pane.SessionId != winrt::guid{})
             {
                 context.Pane.WindowId = page.WindowProperties().WindowId();
-                *json = _bstrFromJson(_toJson(context));
+                auto value = _toJson(context);
+                // Response-only membership avoids changing the protocol PaneContext ABI.
+                value["pane"]["is_background_tab"] = page.GetProtocolPaneIsBackground(context.Pane.SessionId).get();
+                *json = _bstrFromJson(value);
                 return S_OK;
             }
         }
@@ -832,7 +835,9 @@ try
         return fail("page_returned_no_pane", E_FAIL, host.get());
 
     context.Pane.WindowId = host->Logic().WindowProperties().WindowId();
-    *json = _bstrFromJson(_toJson(context));
+    auto value = _toJson(context);
+    value["pane"]["is_background_tab"] = page.GetProtocolPaneIsBackground(context.Pane.SessionId).get();
+    *json = _bstrFromJson(value);
     return S_OK;
 }
 CATCH_RETURN()

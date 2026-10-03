@@ -196,6 +196,13 @@ namespace winrt::TerminalApp::implementation
         co_return result;
     }
 
+    IAsyncOperation<bool> TerminalPage::GetProtocolPaneIsBackground(winrt::guid paneSessionId)
+    {
+        auto strong = get_strong();
+        co_await wil::resume_foreground(Dispatcher());
+        co_return paneSessionId != winrt::guid{} && _manager.KeptGroupForPane(paneSessionId) != winrt::guid{};
+    }
+
     IAsyncOperation<Protocol::PaneContext> TerminalPage::GetProtocolPaneContext(
         winrt::guid sourceSessionId,
         bool hasExplicitSource,

@@ -44,6 +44,8 @@ namespace winrt::TerminalApp::implementation
         WINRT_PROPERTY(bool, IsLive, false);
         WINRT_PROPERTY(bool, IsAgentPane, false);
         WINRT_PROPERTY(bool, IsHistorical, false);
+        WINRT_PROPERTY(bool, BackgroundTab, false);
+        WINRT_PROPERTY(bool, OtherWindow, false);
         WINRT_PROPERTY(winrt::hstring, StatusText);
         WINRT_PROPERTY(winrt::Windows::UI::Xaml::Style, StatusTextStyle, nullptr);
         WINRT_PROPERTY(winrt::Windows::UI::Xaml::DataTemplate, IconTemplate, nullptr);
@@ -406,6 +408,8 @@ namespace winrt::TerminalApp::implementation
                                          winrt::Windows::UI::Xaml::SizeChangedEventArgs const& e);
         void OnHistoryItemClick(winrt::Windows::Foundation::IInspectable const& sender,
                                 winrt::Windows::UI::Xaml::Controls::ItemClickEventArgs const& e);
+        void OnHistoryOwnershipClick(winrt::Windows::Foundation::IInspectable const& sender,
+                                     winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnHistoryRowLoaded(winrt::Windows::Foundation::IInspectable const& sender,
                                 winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnHistoryContainerContentChanging(winrt::Windows::UI::Xaml::Controls::ListViewBase const& sender,

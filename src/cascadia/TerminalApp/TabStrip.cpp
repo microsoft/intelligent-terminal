@@ -794,6 +794,27 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         const auto isCurrent = item && item.IsCurrent();
+        const auto nativeItem = item ? winrt::get_self<TabStripHistoryItem>(item) : nullptr;
+        const auto background = nativeItem && nativeItem->BackgroundTab();
+        const auto otherWindow = nativeItem && nativeItem->OtherWindow();
+        if (const auto button = root.FindName(L"HistoryOwnershipButton").try_as<Button>())
+        {
+            const auto label = background ? RS_(L"VerticalTabsHistoryRestoreBackgroundTab") :
+                               otherWindow ? RS_(L"VerticalTabsHistorySwitchOtherWindow") : winrt::hstring{};
+            button.Tag(background || otherWindow ? item : nullptr);
+            button.Visibility(background || otherWindow ? Visibility::Visible : Visibility::Collapsed);
+            button.IsEnabled(background || otherWindow);
+            WUX::Automation::AutomationProperties::SetName(button, label);
+            ToolTipService::SetToolTip(button, label.empty() ? nullptr : box_value(label));
+        }
+        for (const auto& [name, visible] : { std::pair{ L"HistoryBackgroundIcon", background },
+                                            std::pair{ L"HistoryOtherWindowIcon", otherWindow } })
+        {
+            if (const auto icon = root.FindName(name).try_as<UIElement>())
+            {
+                icon.Visibility(visible ? Visibility::Visible : Visibility::Collapsed);
+            }
+        }
         const auto foreground = isCurrent ? item.CurrentForeground() : nullptr;
         const auto palette = root.FindName(L"HistorySelectionPalette").try_as<Control>();
         for (const auto name : { L"HistoryTitleText", L"HistorySubtitleText", L"HistoryStatusText" })
@@ -1983,6 +2004,21 @@ namespace winrt::TerminalApp::implementation
         _applyHistoryRowForeground(root, item);
     }
 
+    void TabStrip::OnHistoryOwnershipClick(IInspectable const& sender, RoutedEventArgs const&)
+    {
+        if (_historyActivating || _historyLoading)
+        {
+            return;
+        }
+        if (const auto button = sender.try_as<Button>())
+        {
+            if (const auto item = button.Tag().try_as<TerminalApp::TabStripHistoryItem>())
+            {
+                HistoryActivationRequested.raise(*this, winrt::make<TabStripHistoryActivationEventArgs>(item));
+            }
+        }
+    }
+
     void TabStrip::OnHistoryContainerContentChanging(ListViewBase const&, ContainerContentChangingEventArgs const& e)
     {
         if (const auto container = e.ItemContainer())
@@ -2346,6 +2382,8 @@ namespace winrt::TerminalApp::implementation
                 left.IsLive() == right.IsLive() &&
                 left.IsAgentPane() == right.IsAgentPane() &&
                 left.IsHistorical() == right.IsHistorical() &&
+                winrt::get_self<TabStripHistoryItem>(left)->BackgroundTab() == winrt::get_self<TabStripHistoryItem>(right)->BackgroundTab() &&
+                winrt::get_self<TabStripHistoryItem>(left)->OtherWindow() == winrt::get_self<TabStripHistoryItem>(right)->OtherWindow() &&
                 left.StatusTextStyle() == right.StatusTextStyle() &&
                 left.IconTemplate() == right.IconTemplate());
     }

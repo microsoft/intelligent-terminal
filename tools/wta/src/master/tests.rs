@@ -10297,6 +10297,455 @@ async fn sidebar_activation_uses_exact_collision_row_and_replays_receipt() {
 }
 
 #[tokio::test]
+async fn sidebar_activation_explicit_live_unknown_origin_resumes_current_window_once() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
+    use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};
+    use std::path::PathBuf;
+
+    let mut supported_cases = 0;
+    let mut unsupported_cases = 0;
+    for (status, bound_pid) in [
+        (AgentStatus::Idle, None),
+        (AgentStatus::Working, None),
+        (AgentStatus::Attention, None),
+        (AgentStatus::Error, None),
+        (AgentStatus::Idle, Some(std::process::id())),
+        (AgentStatus::Working, Some(std::process::id())),
+        (AgentStatus::Attention, Some(std::process::id())),
+        (AgentStatus::Error, Some(std::process::id())),
+    ] {
+        for cli in [
+            CliSource::Copilot,
+            CliSource::Claude,
+            CliSource::Codex,
+            CliSource::Gemini,
+            CliSource::OpenCode,
+        ] {
+            let mock = Arc::new(MockWtChannel::responding(serde_json::json!({
+                "session_id": "{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}"
+            })));
+            let state = make_state_with_wt(mock.clone());
+            let mut row =
+                SessionInfo::new(SessionId::new("live-unbound"), PathBuf::from("C:\\repo"));
+            row.provider_id = cli.canonical_provider_id();
+            row.cli_source = Some(cli.clone());
+            row.location = SessionLocation::Host;
+            row.origin = Some(SessionOrigin::Unknown);
+            row.status = Some(status.clone());
+            // Explicit resume intent does not classify or take over the original process.
+            row.bound_pid = bound_pid;
+            let identity = SessionIdentity::from_info(&row);
+            state.registry.upsert(row.clone()).await;
+            let params = SessionActivateParams {
+                identity: identity.clone(),
+                window_id: 42,
+                activation_id: "unconfirmed-external".to_string(),
+            };
+            let provider = cli.canonical_provider_id().unwrap();
+            let runtimes =
+                crate::coordinator::default_delegate_agent_runtimes(Some(&provider), None, None);
+            let invocation =
+                crate::coordinator::build_delegate_resume_commandline(&runtimes[0], "live-unbound");
+            let response = tokio::task::LocalSet::new()
+                .run_until(handle_session_activate(&state, &params))
+                .await
+                .unwrap();
+            let response =
+                crate::session_registry::parse_session_activate_response(&response.0).unwrap();
+            assert_eq!(response.action, "resume_cli");
+            let invocation = match invocation {
+                Ok(invocation) => invocation,
+                Err(error) => {
+                    unsupported_cases += 1;
+                    assert!(!response.accepted, "{cli:?} {status:?}: {response:?}");
+                    assert_eq!(response.detail.as_deref(), Some(error.to_string().as_str()));
+                    assert!(mock.calls().is_empty());
+                    assert_eq!(
+                        state.registry.lookup_identity(&identity).await.unwrap(),
+                        row
+                    );
+                    let replay = handle_session_activate(&state, &params).await.unwrap();
+                    assert_eq!(
+                        response,
+                        crate::session_registry::parse_session_activate_response(&replay.0)
+                            .unwrap()
+                    );
+                    assert!(mock.calls().is_empty());
+                    assert_eq!(
+                        state.registry.lookup_identity(&identity).await.unwrap(),
+                        row
+                    );
+                    continue;
+                }
+            };
+            supported_cases += 1;
+            assert!(response.accepted, "{cli:?} {status:?}: {response:?}");
+            let expected_calls = vec![
+                (
+                    "create_tab".to_string(),
+                    serde_json::json!({
+                        "window_id": 42,
+                        "commandline": invocation,
+                        "background": true,
+                        "cwd": "C:\\repo",
+                    }),
+                ),
+                (
+                    "focus_pane".to_string(),
+                    serde_json::json!({
+                        "session_id": "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"
+                    }),
+                ),
+            ];
+            assert_eq!(mock.calls(), expected_calls);
+            let resumed = state.registry.lookup_identity(&identity).await.unwrap();
+            assert_eq!(resumed.session_id, identity.session_id);
+            assert_eq!(resumed.status, Some(status.clone()));
+            assert_eq!(resumed.origin, Some(SessionOrigin::Unknown));
+            assert_eq!(resumed.bound_pid, bound_pid);
+            assert!(resumed.born_bound_pane);
+            assert_eq!(
+                resumed.pane_session_id.as_deref(),
+                Some("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+            );
+            let replay = handle_session_activate(&state, &params).await.unwrap();
+            assert_eq!(
+                response,
+                crate::session_registry::parse_session_activate_response(&replay.0).unwrap()
+            );
+            assert_eq!(mock.calls(), expected_calls);
+        }
+    }
+    assert_eq!(supported_cases + unsupported_cases, 40);
+    eprintln!(
+        "Host capability matrix: {supported_cases} supported cases ({} providers), {unsupported_cases} unsupported negative cases",
+        supported_cases / 8
+    );
+}
+
+#[tokio::test]
+async fn sidebar_activation_resume_quotes_session_and_wsl_distro_through_registered_builders() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
+    use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};
+    use std::path::PathBuf;
+
+    let session_id = "session \"quoted\" & echo injected; $(echo injected) `echo injected` ' \\";
+    let mut supported_cases = 0;
+    let mut unsupported_cases = 0;
+    for cli in [
+        CliSource::Copilot,
+        CliSource::Claude,
+        CliSource::Codex,
+        CliSource::Gemini,
+        CliSource::OpenCode,
+    ] {
+        for location in [
+            SessionLocation::Host,
+            SessionLocation::Wsl {
+                distro: "Distro with spaces \" & echo injected".to_string(),
+            },
+        ] {
+            let mock = Arc::new(MockWtChannel::responding(serde_json::json!({
+                "session_id": "resumed-quoted-pane"
+            })));
+            let state = make_state_with_wt(mock.clone());
+            let provider = cli.canonical_provider_id().unwrap();
+            let runtimes =
+                crate::coordinator::default_delegate_agent_runtimes(Some(&provider), None, None);
+            let expected = match &location {
+                SessionLocation::Host => {
+                    crate::coordinator::build_delegate_resume_commandline(&runtimes[0], session_id)
+                }
+                SessionLocation::Wsl { distro } => {
+                    crate::coordinator::build_wsl_delegate_resume_commandline(
+                        &runtimes[0],
+                        session_id,
+                    )
+                    .map(|command| {
+                        assert!(command.contains("\\$"), "{command}");
+                        assert!(command.contains("\\`"), "{command}");
+                        format!(
+                            "wsl.exe -d {} --cd {} -- bash -lc {}",
+                            crate::coordinator::quote_windows_commandline_arg(distro),
+                            crate::coordinator::quote_windows_commandline_arg(
+                                "/home/user/project with spaces"
+                            ),
+                            crate::coordinator::quote_windows_commandline_arg(&command),
+                        )
+                    })
+                }
+                SessionLocation::Unknown => unreachable!(),
+            };
+            let cwd = if location.is_wsl() {
+                "/home/user/project with spaces"
+            } else {
+                "C:\\repo"
+            };
+            let mut row = SessionInfo::new(SessionId::new(session_id), PathBuf::from(cwd));
+            row.provider_id = Some(provider);
+            row.cli_source = Some(cli.clone());
+            row.location = location.clone();
+            row.origin = Some(SessionOrigin::Unknown);
+            row.status = Some(AgentStatus::Working);
+            let identity = SessionIdentity::from_info(&row);
+            state.registry.upsert(row.clone()).await;
+            let params = SessionActivateParams {
+                identity: identity.clone(),
+                window_id: 42,
+                activation_id: "quoted-resume".to_string(),
+            };
+            let response = tokio::task::LocalSet::new()
+                .run_until(handle_session_activate(&state, &params))
+                .await
+                .unwrap();
+            let response =
+                crate::session_registry::parse_session_activate_response(&response.0).unwrap();
+            assert_eq!(response.action, "resume_cli");
+            let expected = match expected {
+                Ok(expected) => expected,
+                Err(error) => {
+                    unsupported_cases += 1;
+                    assert!(!response.accepted, "{cli:?} {location:?}: {response:?}");
+                    assert_eq!(response.detail.as_deref(), Some(error.to_string().as_str()));
+                    assert!(mock.calls().is_empty());
+                    assert_eq!(
+                        state.registry.lookup_identity(&identity).await.unwrap(),
+                        row
+                    );
+                    let replay = handle_session_activate(&state, &params).await.unwrap();
+                    assert_eq!(
+                        response,
+                        crate::session_registry::parse_session_activate_response(&replay.0)
+                            .unwrap()
+                    );
+                    assert!(mock.calls().is_empty());
+                    assert_eq!(
+                        state.registry.lookup_identity(&identity).await.unwrap(),
+                        row
+                    );
+                    continue;
+                }
+            };
+            supported_cases += 1;
+            assert!(response.accepted, "{cli:?} {location:?}: {response:?}");
+            let calls = mock.calls();
+            assert_eq!(calls.len(), 2);
+            assert_eq!(calls[0].0, "create_tab");
+            assert_eq!(calls[0].1["commandline"], expected);
+            assert_eq!(calls[0].1["window_id"], 42);
+            assert_eq!(calls[1].0, "focus_pane");
+            assert_eq!(calls[1].1["session_id"], "resumed-quoted-pane");
+            if matches!(location, SessionLocation::Host) {
+                assert_eq!(calls[0].1["cwd"], "C:\\repo");
+            } else {
+                assert!(calls[0].1.get("cwd").is_none());
+            }
+            let resumed = state.registry.lookup_identity(&identity).await.unwrap();
+            assert_eq!(resumed.session_id, row.session_id);
+            assert_eq!(resumed.status, row.status);
+            assert_eq!(resumed.location, row.location);
+            assert_eq!(resumed.origin, row.origin);
+            assert_eq!(resumed.bound_pid, row.bound_pid);
+            assert_eq!(
+                resumed.pane_session_id.as_deref(),
+                Some("resumed-quoted-pane")
+            );
+            assert!(resumed.born_bound_pane);
+        }
+    }
+    assert_eq!(supported_cases + unsupported_cases, 10);
+    eprintln!(
+        "Quoting capability matrix: {supported_cases} supported cases, {unsupported_cases} unsupported negative cases"
+    );
+}
+
+#[tokio::test]
+async fn sidebar_activation_policy_denies_resume_without_terminal_calls() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
+    use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};
+    use std::path::PathBuf;
+
+    for cli in [
+        CliSource::Copilot,
+        CliSource::Claude,
+        CliSource::Codex,
+        CliSource::Gemini,
+        CliSource::OpenCode,
+    ] {
+        for location in [
+            SessionLocation::Host,
+            SessionLocation::Wsl {
+                distro: "Ubuntu with spaces".to_string(),
+            },
+        ] {
+            let mock = Arc::new(MockWtChannel::ok());
+            let mut state = make_state_with_wt(mock.clone());
+            Arc::get_mut(&mut state).unwrap().allowed_agent_ids = Some(HashSet::new());
+            let mut row =
+                SessionInfo::new(SessionId::new("policy-denied"), PathBuf::from("C:\\repo"));
+            row.provider_id = cli.canonical_provider_id();
+            row.cli_source = Some(cli.clone());
+            row.location = location;
+            row.origin = Some(SessionOrigin::Unknown);
+            row.status = Some(AgentStatus::Working);
+            let identity = SessionIdentity::from_info(&row);
+            state.registry.upsert(row.clone()).await;
+            let response = execute_session_activation(
+                &state,
+                &SessionActivateParams {
+                    identity: identity.clone(),
+                    window_id: 42,
+                    activation_id: "policy-denied".to_string(),
+                },
+            )
+            .await;
+            assert!(!response.accepted, "{cli:?}: {response:?}");
+            assert_eq!(response.action, "resume_cli");
+            assert!(response.detail.unwrap().contains("blocked by policy"));
+            assert!(mock.calls().is_empty());
+            assert_eq!(
+                state.registry.lookup_identity(&identity).await.unwrap(),
+                row
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn sidebar_activation_foreign_live_focus_failure_never_falls_back_to_resume() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
+    use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};
+    use std::path::PathBuf;
+
+    for (status, owner_window_id) in [
+        (AgentStatus::Idle, Some(17)),
+        (AgentStatus::Working, Some(42)),
+        (AgentStatus::Attention, None),
+        (AgentStatus::Error, Some(17)),
+    ] {
+        let mock = Arc::new(MockWtChannel {
+            fail_with: Some("pane lookup unavailable".to_string()),
+            fail_on_method: Some("focus_pane"),
+            ..MockWtChannel::ok()
+        });
+        let state = make_state_with_wt(mock.clone());
+        let mut row = SessionInfo::new(SessionId::new("foreign-live"), PathBuf::from("C:\\repo"));
+        row.provider_id = Some("copilot".to_string());
+        row.cli_source = Some(CliSource::Copilot);
+        row.location = SessionLocation::Host;
+        row.origin = Some(SessionOrigin::Unknown);
+        row.status = Some(status.clone());
+        row.pane_session_id = Some("foreign-pane".to_string());
+        row.owner_window_id = owner_window_id;
+        let identity = SessionIdentity::from_info(&row);
+        state.registry.upsert(row).await;
+        let params = SessionActivateParams {
+            identity: identity.clone(),
+            window_id: 42,
+            activation_id: "foreign-focus".to_string(),
+        };
+        let response = execute_session_activation(&state, &params).await;
+        assert!(!response.accepted);
+        assert_eq!(response.action, "focus");
+        assert_eq!(
+            mock.calls(),
+            vec![(
+                "focus_pane".to_string(),
+                serde_json::json!({ "session_id": "foreign-pane" })
+            )]
+        );
+        let unchanged = state.registry.lookup_identity(&identity).await.unwrap();
+        assert_eq!(unchanged.status, Some(status));
+        assert_eq!(unchanged.pane_session_id.as_deref(), Some("foreign-pane"));
+    }
+}
+
+#[tokio::test]
+async fn sidebar_activation_unbound_agent_pane_and_unspecified_origin_keep_live_guard() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
+    use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};
+    use std::path::PathBuf;
+
+    for origin in [Some(SessionOrigin::AgentPane), None] {
+        let mock = Arc::new(MockWtChannel::ok());
+        let state = make_state_with_wt(mock.clone());
+        let mut row = SessionInfo::new(SessionId::new("live-guard"), PathBuf::from("C:\\repo"));
+        row.provider_id = Some("copilot".to_string());
+        row.cli_source = Some(CliSource::Copilot);
+        row.location = SessionLocation::Host;
+        row.origin = origin;
+        row.status = Some(AgentStatus::Working);
+        let identity = SessionIdentity::from_info(&row);
+        state.registry.upsert(row.clone()).await;
+        let response = execute_session_activation(
+            &state,
+            &SessionActivateParams {
+                identity: identity.clone(),
+                window_id: 42,
+                activation_id: "live-guard".to_string(),
+            },
+        )
+        .await;
+        assert!(!response.accepted);
+        assert_eq!(response.action, "not_resumable");
+        assert!(response.detail.unwrap().contains("LiveWithoutPane"));
+        assert!(mock.calls().is_empty());
+        assert_eq!(
+            state.registry.lookup_identity(&identity).await.unwrap(),
+            row
+        );
+    }
+}
+
+#[tokio::test]
+async fn sidebar_activation_unknown_provider_or_location_never_creates_tab() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
+    use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};
+    use std::path::PathBuf;
+
+    for (cli, location, action) in [
+        (None, SessionLocation::Host, "not_resumable"),
+        (
+            Some(CliSource::Unknown("unsupported-provider".to_string())),
+            SessionLocation::Host,
+            "not_resumable",
+        ),
+        (
+            Some(CliSource::Copilot),
+            SessionLocation::Unknown,
+            "resume_cli",
+        ),
+    ] {
+        let mock = Arc::new(MockWtChannel::ok());
+        let state = make_state_with_wt(mock.clone());
+        let mut row = SessionInfo::new(SessionId::new("unknown-route"), PathBuf::from("C:\\repo"));
+        row.provider_id = cli.as_ref().and_then(CliSource::canonical_provider_id);
+        row.cli_source = cli;
+        row.location = location;
+        row.origin = Some(SessionOrigin::Unknown);
+        row.status = Some(AgentStatus::Working);
+        let identity = SessionIdentity::from_info(&row);
+        state.registry.upsert(row.clone()).await;
+        let response = execute_session_activation(
+            &state,
+            &SessionActivateParams {
+                identity: identity.clone(),
+                window_id: 42,
+                activation_id: "unknown-route".to_string(),
+            },
+        )
+        .await;
+        assert!(!response.accepted);
+        assert_eq!(response.action, action);
+        assert!(mock.calls().is_empty());
+        assert_eq!(
+            state.registry.lookup_identity(&identity).await.unwrap(),
+            row
+        );
+    }
+}
+
+#[tokio::test]
 async fn sidebar_cli_resume_binds_created_pane_for_agent_filtering() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
     use crate::session_registry::{

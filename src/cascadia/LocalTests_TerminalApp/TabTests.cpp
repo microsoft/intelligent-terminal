@@ -6714,6 +6714,7 @@ namespace TerminalAppLocalTests
                 row["provider_id"] = "copilot";
                 row["location"] = "Host";
                 row["status"] = status;
+                row["background_tab"] = false;
                 for (const auto owner : { uint64_t{ 0 }, uint64_t{ 1 }, uint64_t{ 2 } })
                 {
                     row["owner_window_id"] = Json::UInt64{ owner };
@@ -6726,6 +6727,9 @@ namespace TerminalAppLocalTests
                                               winrt::hstring{ fmt::format(fmt::runtime(std::wstring_view{ ownerStatusFormat }), base) } :
                                               base;
                     VERIFY_ARE_EQUAL(expected, parsed.items.front().StatusText());
+                    const auto native = winrt::get_self<TerminalApp::implementation::TabStripHistoryItem>(parsed.items.front());
+                    VERIFY_IS_FALSE(native->BackgroundTab());
+                    VERIFY_ARE_EQUAL(foreignLive, native->OtherWindow());
                     const auto unknownCurrent = Page::_ParseSidebarHistorySnapshot(output);
                     VERIFY_ARE_EQUAL(base, unknownCurrent.items.front().StatusText());
                 }
@@ -6733,11 +6737,32 @@ namespace TerminalAppLocalTests
                 const auto unknown = Page::_ParseSidebarHistorySnapshot(
                     Json::writeString(Json::StreamWriterBuilder{}, response), 1);
                 VERIFY_ARE_EQUAL(Page::_SidebarHistoryStatusText(status), unknown.items.front().StatusText());
+                row["owner_window_id"] = Json::UInt64{ 2 };
+                for (const auto& membership : { Json::Value{ true }, Json::Value{ false }, Json::Value{}, Json::Value{ "false" }, Json::Value{ 1 } })
+                {
+                    row["background_tab"] = membership;
+                    const auto parsed = Page::_ParseSidebarHistorySnapshot(
+                        Json::writeString(Json::StreamWriterBuilder{}, response), 1);
+                    const auto native = winrt::get_self<TerminalApp::implementation::TabStripHistoryItem>(parsed.items.front());
+                    const auto live = parsed.items.front().IsLive();
+                    VERIFY_ARE_EQUAL(live && membership.isBool() && membership.asBool(), native->BackgroundTab());
+                    VERIFY_ARE_EQUAL(live && membership.isBool() && !membership.asBool(), native->OtherWindow());
+                    if (native->BackgroundTab())
+                    {
+                        VERIFY_ARE_EQUAL(Page::_SidebarHistoryStatusText(status), parsed.items.front().StatusText());
+                    }
+                }
+                row.removeMember("background_tab");
+                const auto legacy = Page::_ParseSidebarHistorySnapshot(
+                    Json::writeString(Json::StreamWriterBuilder{}, response), 1);
+                const auto nativeLegacy = winrt::get_self<TerminalApp::implementation::TabStripHistoryItem>(legacy.items.front());
+                VERIFY_IS_FALSE(nativeLegacy->BackgroundTab());
+                VERIFY_IS_FALSE(nativeLegacy->OtherWindow());
             }
             const auto collision = Page::_ParseSidebarHistorySnapshot(
                 R"({"history_status":"ready","sessions":[
-                    {"session_id":"same","provider_id":"copilot","location":"Host","status":"Working","owner_window_id":1},
-                    {"session_id":"same","provider_id":"claude","location":"Host","status":"Working","owner_window_id":2}]})", 1);
+                    {"session_id":"same","provider_id":"copilot","location":"Host","status":"Working","owner_window_id":1,"background_tab":false},
+                    {"session_id":"same","provider_id":"claude","location":"Host","status":"Working","owner_window_id":2,"background_tab":false}]})", 1);
             VERIFY_ARE_EQUAL(size_t{ 2 }, collision.items.size());
             VERIFY_ARE_EQUAL(Page::_SidebarHistoryStatusText("Working"), collision.items[0].StatusText());
             VERIFY_ARE_EQUAL(

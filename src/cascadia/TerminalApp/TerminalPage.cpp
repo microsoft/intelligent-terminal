@@ -7038,8 +7038,12 @@ namespace winrt::TerminalApp::implementation
             item.Subtitle(_SidebarHistoryAgeText(lastActivityAtMs, nowMs));
             auto statusText = _SidebarHistoryStatusText(status);
             const auto& ownerWindow = row["owner_window_id"];
-            if (isLive && currentWindowId != 0 && ownerWindow.isUInt64() &&
-                ownerWindow.asUInt64() != 0 && ownerWindow.asUInt64() != currentWindowId)
+            const auto& backgroundTab = row["background_tab"];
+            const auto background = isLive && backgroundTab.isBool() && backgroundTab.asBool();
+            const auto otherWindow = isLive && backgroundTab.isBool() && !backgroundTab.asBool() &&
+                currentWindowId != 0 && ownerWindow.isUInt64() &&
+                ownerWindow.asUInt64() != 0 && ownerWindow.asUInt64() != currentWindowId;
+            if (otherWindow)
             {
                 statusText = winrt::hstring{ RS_fmt(L"VerticalTabsHistoryOtherWindowStatusFormat", statusText) };
             }
@@ -7055,6 +7059,9 @@ namespace winrt::TerminalApp::implementation
             item.IsLive(isLive);
             item.IsHistorical(isHistorical);
             item.IsAgentPane(isAgentPane);
+            const auto nativeItem = winrt::get_self<TerminalApp::implementation::TabStripHistoryItem>(item);
+            nativeItem->BackgroundTab(background);
+            nativeItem->OtherWindow(otherWindow);
             snapshot.items.emplace_back(std::move(item));
         }
         return snapshot;
