@@ -368,6 +368,17 @@ post-steps:
         fail('guide may continue only with PASS or FIXABLE checker bundles');
       }
 
+      const pseudoFiles = new Set(report
+        .filter(bundle => ['Test-PlaceholderParity', 'Test-LockedContent'].includes(bundle.check))
+        .flatMap(bundle => bundle.results.map(result => result.file))
+        .filter(file => typeof file === 'string' && /[/\\]qps-ploc(?:a|m)?[/\\]/.test(file)));
+      for (const file of pseudoFiles) {
+        if (!report.some(bundle => bundle.check === 'Test-PseudoLocale' &&
+            bundle.results.some(result => result.file === file))) {
+          fail(`comparable pseudo-locale keys require Test-PseudoLocale evidence for ${file}`);
+        }
+      }
+
       const hasFixable = statuses.some(status => status === 'FIXABLE');
       const queuedOutput = readJson('agent_output.json');
       if (!isObject(queuedOutput) || !Array.isArray(queuedOutput.items) ||
@@ -430,6 +441,11 @@ Imported runtime role: `localization-reviewer`.
 Fork localization guidance for PR #${{ github.event.inputs.pr_number }} in
 `${{ github.repository }}`.
 
+Use `pwsh` for programmatic file reads, XML/YAML processing, and report writes.
+Python, shell redirects, `touch`, and edit tools are unavailable in this worker.
+If a tool call is denied, switch directly to the permitted PowerShell operation;
+do not probe permissions or retry variants of the denied operation.
+
 ## Goal
 
 Stay read-only on the trusted workflow checkout; never check out or execute fork
@@ -466,6 +482,9 @@ Do not recreate snapshots, guess locale lists, or generate snapshot scripts.
 
 Run the shared checker's batch once after scope discovery. Reuse those actual
 bundles for the final report because this read-only worker makes no repairs.
+For comparable keys in `qps-ploc`, `qps-ploca`, and `qps-plocm`, include
+`Test-PseudoLocale` in that batch; the native gate rejects missing pseudo-locale
+evidence. Skipping it is not an acceptable way to finish under the credit cap.
 Read the scoped translated values for language quality, not every unrelated
 resource value. Do not create a second checker harness, repeat successful
 batches, or delegate another review. The existing checker owns validation;

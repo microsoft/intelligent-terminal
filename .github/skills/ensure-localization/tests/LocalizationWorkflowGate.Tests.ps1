@@ -100,7 +100,9 @@ Describe 'Ensure localization repair workflow gate' -Tag 'Unit' {
                 [Parameter(Mandatory)]$QueuedOutput,
                 [bool]$CreateDirtyLocalizationChange = $false,
                 [switch]$Guide,
-                [switch]$Fixable
+                [switch]$Fixable,
+                [switch]$ComparablePseudoLocale,
+                [switch]$IncludePseudoLocaleCheck
             )
 
             $caseRoot = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
@@ -123,6 +125,16 @@ Describe 'Ensure localization repair workflow gate' -Tag 'Unit' {
                 $report.bundles[0].status = 'FIXABLE'
                 $report.bundles[0].exitCode = 20
                 $report.bundles[0].results[0].status = 'FIXABLE'
+            }
+            if ($ComparablePseudoLocale) {
+                $report.bundles[0].check = 'Test-PlaceholderParity'
+                $report.bundles[0].results[0].file = 'src/cascadia/TerminalApp/Resources/qps-ploc/Resources.resw'
+                if ($IncludePseudoLocaleCheck) {
+                    $pseudo = (New-PassReport).bundles[0]
+                    $pseudo.check = 'Test-PseudoLocale'
+                    $pseudo.results[0].file = $report.bundles[0].results[0].file
+                    $report.bundles += @($pseudo)
+                }
             }
             if ($Guide) {
                 $report = @($report.bundles)
@@ -243,6 +255,15 @@ Describe 'Ensure localization repair workflow gate' -Tag 'Unit' {
             $result = Invoke-RepairGate -Guide -Fixable -QueuedOutput (New-AgentOutput -Types $types)
             $result.ExitCode | Should -Be 1
         }
+    }
+
+    It 'rejects omitted pseudo-locale checks for comparable keys' {
+        $result = Invoke-RepairGate -Guide -ComparablePseudoLocale -QueuedOutput (New-AgentOutput -Types @('noop'))
+        $result.ExitCode | Should -Be 1
+        $result.Output | Should -Match 'require Test-PseudoLocale evidence'
+
+        $result = Invoke-RepairGate -Guide -ComparablePseudoLocale -IncludePseudoLocaleCheck -QueuedOutput (New-AgentOutput -Types @('noop'))
+        $result.ExitCode | Should -Be 0
     }
 
     It 'keeps the guide report upload and prompt on the same agent-workspace path' {
