@@ -255,8 +255,12 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
     // Who decided that?
 #pragma warning(suppress : 26455) // Default constructor should not throw. Declare it 'noexcept' (f.6).
     ConptyConnection::ConptyConnection() :
+        _outputCloseEvent{ CreateEventExW(nullptr, nullptr, CREATE_EVENT_MANUAL_RESET, EVENT_ALL_ACCESS) },
+        _outputCallbacksDrainedEvent{ CreateEventExW(nullptr, nullptr, CREATE_EVENT_MANUAL_RESET, EVENT_ALL_ACCESS) },
         _writeOverlappedEvent{ CreateEventExW(nullptr, nullptr, CREATE_EVENT_MANUAL_RESET, EVENT_ALL_ACCESS) }
     {
+        THROW_LAST_ERROR_IF(!_outputCloseEvent);
+        THROW_LAST_ERROR_IF(!_outputCallbacksDrainedEvent);
         THROW_LAST_ERROR_IF(!_writeOverlappedEvent);
         _writeOverlapped.hEvent = _writeOverlappedEvent.get();
     }
@@ -735,20 +739,35 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
 
         if (_hOutputThread)
         {
-            // Loop around `CancelIoEx()` just in case the signal to shut down was missed.
-            for (;;)
-            {
-                // The output thread may be stuck waiting for the OVERLAPPED to be signaled.
-                CancelIoEx(_pipe.get(), nullptr);
+            _outputCloseEvent.SetEvent();
 
-                // Waiting for the output thread to exit ensures that all pending TerminalOutput.raise()
-                // calls have returned and won't notify our caller (ControlCore) anymore. This ensures that
-                // we don't call a destroyed event handler asynchronously from a background thread (GH#13880).
-                const auto result = WaitForSingleObject(_hOutputThread.get(), 1000);
-                if (result == WAIT_OBJECT_0)
+            // The output thread may be stuck waiting for the OVERLAPPED to be signaled.
+            // CancelIoEx is best-effort here. The close event above independently wakes
+            // the output thread so that a failed cancellation cannot hang this thread.
+            if (!CancelIoEx(_pipe.get(), nullptr))
+            {
+                const auto error = GetLastError();
+                if (error != ERROR_NOT_FOUND)
                 {
-                    break;
+                    LOG_WIN32(error);
                 }
+            }
+
+            // Waiting for the output thread to drain ensures that all pending TerminalOutput.raise()
+            // and StateChanged.raise() calls have returned and won't notify our caller (ControlCore)
+            // anymore (GH#13880). It does not require the pending pipe I/O to finish: once callbacks
+            // are drained, the output thread can safely finish cancellation in the background.
+            const HANDLE handles[]{ _hOutputThread.get(), _outputCallbacksDrainedEvent.get() };
+            const auto result = WaitForMultipleObjects(ARRAYSIZE(handles), handles, FALSE, INFINITE);
+            if (result == WAIT_FAILED)
+            {
+                LOG_WIN32(GetLastError());
+            }
+
+            if (result != WAIT_OBJECT_0)
+            {
+                _transitionToState(ConnectionState::Closed);
+                return;
             }
         }
 
@@ -800,8 +819,17 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
         // won't wait for us, and the known exit points _do_.
         auto strongThis{ get_strong() };
 
-        const auto cleanup = wil::scope_exit([this]() noexcept {
-            _LastConPtyClientDisconnected();
+        bool callbacksDrained = false;
+        const auto drainCallbacks = [this, &callbacksDrained]() noexcept {
+            if (!callbacksDrained)
+            {
+                _LastConPtyClientDisconnected();
+                _outputCallbacksDrainedEvent.SetEvent();
+                callbacksDrained = true;
+            }
+        };
+        const auto cleanup = wil::scope_exit([&drainCallbacks]() noexcept {
+            drainCallbacks();
         });
 
         const wil::unique_event overlappedEvent{ CreateEventExW(nullptr, nullptr, CREATE_EVENT_MANUAL_RESET, EVENT_ALL_ACCESS) };
@@ -819,6 +847,11 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
         // previous string, and finally converts the previous read to the next string.
         for (;;)
         {
+            if (_isStateAtOrBeyond(ConnectionState::Closing))
+            {
+                break;
+            }
+
             // When we have a `wstr` that's ready for processing we must do so without blocking.
             // Otherwise, whatever the user typed will be delayed until the next IO operation.
             // With overlapped IO that's not a problem because the ReadFile() calls won't block.
@@ -866,6 +899,30 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
             if (overlappedPending)
             {
                 overlappedPending = false;
+
+                const HANDLE handles[]{ _outputCloseEvent.get(), overlapped.hEvent };
+                const auto result = WaitForMultipleObjects(ARRAYSIZE(handles), handles, FALSE, INFINITE);
+                if (result == WAIT_OBJECT_0)
+                {
+                    // No callbacks can occur after this point. Let Close() return before
+                    // reaping the I/O in case the pipe provider fails to complete cancellation.
+                    drainCallbacks();
+
+                    if (!CancelIo(_pipe.get()))
+                    {
+                        const auto error = GetLastError();
+                        if (error != ERROR_NOT_FOUND)
+                        {
+                            LOG_WIN32(error);
+                        }
+                    }
+                }
+                else if (result == WAIT_FAILED)
+                {
+                    LOG_WIN32(GetLastError());
+                    break;
+                }
+
                 if (FAILED(Utils::GetOverlappedResultSameThread(&overlapped, &read)))
                 {
                     break;
