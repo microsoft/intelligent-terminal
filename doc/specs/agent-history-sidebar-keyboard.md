@@ -53,6 +53,10 @@ and focuses ordinary tab search on entry.
 - History rows keep the session title above metadata ordered as timestamp,
   meaningful status, and provider icon. Ended/historical rows omit the redundant
   Historical status; live Idle/Working/Attention/Error statuses remain visible.
+  A live session bound to a pane in a confirmed different window appends a
+  localized "another window" indication within the status field. Ownership comes
+  from an explicit pane-context lookup, never absence from the current window.
+  Unknown ownership leaves the activity status visible without that indication.
   Provider identity remains available through the icon tooltip and shared search,
   even though repeated provider text is omitted from the metadata line.
 - The Agents view consists of two distinct upper and lower sections separated

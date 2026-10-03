@@ -6704,6 +6704,45 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(wsl.state == Page::_SidebarHistorySnapshot::State::Ready);
             VERIFY_ARE_EQUAL(size_t{ 1 }, wsl.items.size());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Ubuntu" }, wsl.items.front().WslDistro());
+            const auto ownerStatusFormat = ScopedResourceLoader{ L"TerminalApp/Resources" }.GetLocalizedString(L"VerticalTabsHistoryOtherWindowStatusFormat");
+            for (const auto status : { "Idle", "Working", "Attention", "Error", "Ended", "Historical" })
+            {
+                Json::Value response;
+                response["history_status"] = "ready";
+                auto& row = response["sessions"][0];
+                row["session_id"] = "shared-id";
+                row["provider_id"] = "copilot";
+                row["location"] = "Host";
+                row["status"] = status;
+                for (const auto owner : { uint64_t{ 0 }, uint64_t{ 1 }, uint64_t{ 2 } })
+                {
+                    row["owner_window_id"] = Json::UInt64{ owner };
+                    const auto output = Json::writeString(Json::StreamWriterBuilder{}, response);
+                    const auto parsed = Page::_ParseSidebarHistorySnapshot(output, 1);
+                    VERIFY_ARE_EQUAL(size_t{ 1 }, parsed.items.size());
+                    const auto base = Page::_SidebarHistoryStatusText(status);
+                    const auto foreignLive = owner == 2 && parsed.items.front().IsLive();
+                    const auto expected = foreignLive ?
+                                              winrt::hstring{ fmt::format(fmt::runtime(std::wstring_view{ ownerStatusFormat }), base) } :
+                                              base;
+                    VERIFY_ARE_EQUAL(expected, parsed.items.front().StatusText());
+                    const auto unknownCurrent = Page::_ParseSidebarHistorySnapshot(output);
+                    VERIFY_ARE_EQUAL(base, unknownCurrent.items.front().StatusText());
+                }
+                row.removeMember("owner_window_id");
+                const auto unknown = Page::_ParseSidebarHistorySnapshot(
+                    Json::writeString(Json::StreamWriterBuilder{}, response), 1);
+                VERIFY_ARE_EQUAL(Page::_SidebarHistoryStatusText(status), unknown.items.front().StatusText());
+            }
+            const auto collision = Page::_ParseSidebarHistorySnapshot(
+                R"({"history_status":"ready","sessions":[
+                    {"session_id":"same","provider_id":"copilot","location":"Host","status":"Working","owner_window_id":1},
+                    {"session_id":"same","provider_id":"claude","location":"Host","status":"Working","owner_window_id":2}]})", 1);
+            VERIFY_ARE_EQUAL(size_t{ 2 }, collision.items.size());
+            VERIFY_ARE_EQUAL(Page::_SidebarHistoryStatusText("Working"), collision.items[0].StatusText());
+            VERIFY_ARE_EQUAL(
+                winrt::hstring{ fmt::format(fmt::runtime(std::wstring_view{ ownerStatusFormat }), Page::_SidebarHistoryStatusText("Working")) },
+                collision.items[1].StatusText());
             for (const auto location : { R"("Unknown")", "null" })
             {
                 const auto response = std::string{ R"({"history_status":"ready","sessions":[

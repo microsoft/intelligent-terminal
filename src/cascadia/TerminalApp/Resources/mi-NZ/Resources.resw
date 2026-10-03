@@ -636,4 +636,8 @@
     <value>Whakamahia ngā pātuhi pere whakarunga, whakararo hei huri i te rahi o ngā wāhanga.</value>
     <comment>Keyboard instructions for the divider between open AI-agent tabs and session History. Up reduces the upper section height; Down increases it. The lower section height adjusts oppositely.</comment>
   </data>
+  <data name="VerticalTabsHistoryOtherWindowStatusFormat" xml:space="preserve">
+    <value>{0} · tētahi atu matapihi</value>
+    <comment>Status annotation for a live agent session attached to a different Intelligent Terminal window. {0} is the already-localized activity status, such as Working or Idle. Keep the status first. This does not mean another tab, WSL distro, historical session, or detached background tab.</comment>
+  </data>
 </root>
