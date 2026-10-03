@@ -5,6 +5,12 @@ Describe 'Feature: Sidebar session status updates' -Tag @('Feature', 'SidebarSes
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         Add-Type -AssemblyName UIAutomationClient
         Add-Type -AssemblyName UIAutomationTypes
+        $script:workingLabel = Get-WtReswTextRegex -Key VerticalTabsHistoryStatusWorking
+        $script:attentionLabel = Get-WtReswTextRegex -Key VerticalTabsHistoryStatusAttention
+        $script:idleLabel = Get-WtReswTextRegex -Key VerticalTabsHistoryStatusIdle
+        if (-not $script:workingLabel -or -not $script:attentionLabel -or -not $script:idleLabel) {
+            throw 'Required localized Sidebar status resources were not found.'
+        }
         $script:app = $null
         $script:target = Resolve-ItApp -Package (Get-ItTestPackage)
         if ((Get-ItTestPackage) -ne 'Dev') { throw 'This regression suite requires explicitly selected Dev.' }
@@ -214,7 +220,7 @@ namespace ItE2E
         }
         Set-SessionQuery $script:liveTitle
         Wait-Until -TimeoutSec 10 -Because 'the final live status is actually rendered' -Condition {
-            @(Get-SessionRows | Where-Object { $_.Title -eq $script:liveTitle -and $_.Status -eq 'Active' }).Count -eq 1
+            @(Get-SessionRows | Where-Object { $_.Title -eq $script:liveTitle -and $_.Status -match $script:workingLabel }).Count -eq 1
         } | Out-Null
     }
 
@@ -223,7 +229,7 @@ namespace ItE2E
         Wait-LiveStatus Attention
         Set-SessionQuery attention
         Wait-Until -TimeoutSec 10 -Because 'the attention query includes the actual waiting row' -Condition {
-            @(Get-SessionRows | Where-Object { $_.Title -eq $script:liveTitle -and $_.Status -eq 'Waiting for input' }).Count -eq 1
+            @(Get-SessionRows | Where-Object { $_.Title -eq $script:liveTitle -and $_.Status -match $script:attentionLabel }).Count -eq 1
         } | Out-Null
         Send-Hooks -Events @((New-Hook -Event agent.stop))
         Wait-LiveStatus Idle
@@ -232,7 +238,7 @@ namespace ItE2E
         } | Out-Null
         Set-SessionQuery $script:liveTitle
         Wait-Until -TimeoutSec 10 -Because 'clearing the status filter recovers the live row' -Condition {
-            @(Get-SessionRows | Where-Object { $_.Title -eq $script:liveTitle -and $_.Status -eq 'Idle' }).Count -eq 1
+            @(Get-SessionRows | Where-Object { $_.Title -eq $script:liveTitle -and $_.Status -match $script:idleLabel }).Count -eq 1
         } | Out-Null
     }
 
