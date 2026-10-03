@@ -6118,6 +6118,17 @@ namespace TerminalAppLocalTests
                 changes.emplace_back(args.CollectionChange());
             });
 
+            auto refreshed = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            refreshed.SessionId(L"live-session");
+            refreshed.AgentId(L"copilot");
+            refreshed.Title(L"Live session");
+            refreshed.Status(L"Idle");
+            refreshed.StatusText(L"Idle");
+            refreshed.IsLive(true);
+            impl->CommitHistorySnapshot({ refreshed });
+            VERIFY_IS_TRUE(changes.empty());
+            VERIFY_IS_TRUE(items.GetAt(0) == live);
+
             VERIFY_IS_TRUE(impl->ApplyHistoryStatusDelta(L"live-session", L"live-pane", L"Working", L"Active"));
             VERIFY_IS_TRUE(changes.empty());
             VERIFY_IS_TRUE(items.GetAt(0) == live);

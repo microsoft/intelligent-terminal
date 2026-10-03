@@ -117,14 +117,19 @@ namespace ItE2E
                 [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::ListItem)
             $textCondition = [Windows.Automation.PropertyCondition]::new(
                 [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Text)
-            foreach ($row in $list.FindAll([Windows.Automation.TreeScope]::Children, $condition)) {
+            $viewport = $list.Current.BoundingRectangle
+            $rows = @(foreach ($row in $list.FindAll([Windows.Automation.TreeScope]::Children, $condition)) {
                 $texts = @($row.FindAll([Windows.Automation.TreeScope]::Descendants, $textCondition) |
                     ForEach-Object { $_.Current.Name })
+                $bounds = $row.Current.BoundingRectangle
                 [pscustomobject]@{
-                    Title = $texts[0]; Status = $texts[-1]; Offscreen = $row.Current.IsOffscreen
-                    Top = $row.Current.BoundingRectangle.Top
+                    Title = $texts[0]; Status = $texts[-1]
+                    Offscreen = $row.Current.IsOffscreen -or $bounds.Width -le 0 -or $bounds.Height -le 0 -or
+                        $bounds.Bottom -le $viewport.Top -or $bounds.Top -ge $viewport.Bottom
+                    Top = $bounds.Top
                 }
-            }
+            })
+            $rows | Sort-Object Offscreen, Top
         }
         function Read-Sessions {
             $result = Invoke-Wta -App $script:app -Arguments @(
@@ -172,7 +177,10 @@ namespace ItE2E
         )
         Send-Hooks -Events $seed
         Wait-Until -TimeoutSec 20 -Because 'all deterministic fixtures cross COM into the real registry' -Condition {
-            @(Read-Sessions | Where-Object session_id -Like "$script:marker*").Count -eq 49
+            $rows = @(Read-Sessions | Where-Object session_id -Like "$script:marker*")
+            $rows.Count -eq 49 -and
+                @($rows | Where-Object { $_.session_id -like "$script:marker-history-*" -and $_.status -in @('Ended', 'Historical') }).Count -eq 48 -and
+                @($rows | Where-Object { $_.session_id -eq $script:liveId -and $_.status -eq 'Idle' }).Count -eq 1
         } | Out-Null
         Invoke-UiElement -App $script:app -Selector TabHistoryButton | Out-Null
         Wait-UiElement -App $script:app -Selector HistoryLoadingIndicator -Gone -TimeoutSec 60 | Out-Null
@@ -184,6 +192,8 @@ namespace ItE2E
             package = $script:app.Package; version = $script:app.Version; source_commit = $env:ITE2E_SOURCE_COMMIT
             app_sha256 = $env:ITE2E_EXPECTED_APP_SHA256; wta_sha256 = $env:ITE2E_EXPECTED_WTA_SHA256
             fixture_id = $script:liveId; pane_id = $script:pane
+            loaded_app = @((Get-Process -Id $script:app.Pid).Modules |
+                Where-Object ModuleName -eq TerminalApp.dll | Select-Object ModuleName, FileName)
         } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:evidence 'package.json')
     }
 
@@ -218,12 +228,16 @@ namespace ItE2E
             (Get-SidebarElement HistorySearchTextBox).SetFocus()
             $scroll = (Get-SidebarElement HistoryList).GetCurrentPattern([Windows.Automation.ScrollPattern]::Pattern)
             $scroll.SetScrollPercent(-1, 65)
-            Start-Sleep -Seconds 1
+            Start-Sleep -Seconds 3
             $before = @(Get-SessionRows | Where-Object { -not $_.Offscreen })[0]
             $scroll.Current.VerticalScrollPercent | Should -BeGreaterThan 50
             $beforeOrder = @(Read-Sessions | Where-Object session_id -Like "$script:marker*" | ForEach-Object session_id)
+            Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidence "before-idle-$sample.png") | Out-Null
             Start-Sleep -Seconds 2
-            @(Get-SessionRows | Where-Object { -not $_.Offscreen })[0].Title |
+            $afterIdle = @(Get-SessionRows | Where-Object { -not $_.Offscreen })[0]
+            @{ before = $before; after = $afterIdle; scroll = $scroll.Current.VerticalScrollPercent } |
+                ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $script:evidence "idle-$sample.json")
+            $afterIdle.Title |
                 Should -Be $before.Title -Because 'an idle control must keep the viewport stable'
             Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidence "before-$sample.png") | Out-Null
 
@@ -233,7 +247,10 @@ namespace ItE2E
             $afterOrder = @(Read-Sessions | Where-Object session_id -Like "$script:marker*" | ForEach-Object session_id)
             ($afterOrder -join '|') | Should -Be ($beforeOrder -join '|') -Because 'the already-first live row must not change fixture ordering'
             $after = @(Get-SessionRows | Where-Object { -not $_.Offscreen })[0]
-            @{ sample = $sample; before = $before; after = $after; order = $afterOrder } |
+            $focus = [Windows.Automation.AutomationElement]::FocusedElement
+            @{ sample = $sample; before = $before; after = $after; order = $afterOrder
+                focus_id = $focus.Current.AutomationId; focus_type = $focus.Current.ControlType.ProgrammaticName
+                focus_name = $focus.Current.Name; scroll = $scroll.Current.VerticalScrollPercent } |
                 ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $script:evidence "viewport-$sample.json")
             Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidence "after-$sample.png") | Out-Null
             $after.Title | Should -Be $before.Title
