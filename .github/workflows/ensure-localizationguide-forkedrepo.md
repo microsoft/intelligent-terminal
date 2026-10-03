@@ -371,7 +371,7 @@ post-steps:
       const pseudoFiles = new Set(report
         .filter(bundle => ['Test-PlaceholderParity', 'Test-LockedContent'].includes(bundle.check))
         .flatMap(bundle => bundle.results.map(result => result.file))
-        .filter(file => typeof file === 'string' && /[/\\]qps-ploc(?:a|m)?[/\\]/.test(file)));
+        .filter(file => typeof file === 'string' && /[/\\]qps-ploc(?:a|m)?(?:[/\\]|\.yml$)/.test(file)));
       for (const file of pseudoFiles) {
         if (!report.some(bundle => bundle.check === 'Test-PseudoLocale' &&
             bundle.results.some(result => result.file === file))) {

@@ -102,7 +102,8 @@ Describe 'Ensure localization repair workflow gate' -Tag 'Unit' {
                 [switch]$Guide,
                 [switch]$Fixable,
                 [switch]$ComparablePseudoLocale,
-                [switch]$IncludePseudoLocaleCheck
+                [switch]$IncludePseudoLocaleCheck,
+                [string]$PseudoFile = 'src/cascadia/TerminalApp/Resources/qps-ploc/Resources.resw'
             )
 
             $caseRoot = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
@@ -128,7 +129,7 @@ Describe 'Ensure localization repair workflow gate' -Tag 'Unit' {
             }
             if ($ComparablePseudoLocale) {
                 $report.bundles[0].check = 'Test-PlaceholderParity'
-                $report.bundles[0].results[0].file = 'src/cascadia/TerminalApp/Resources/qps-ploc/Resources.resw'
+                $report.bundles[0].results[0].file = $PseudoFile
                 if ($IncludePseudoLocaleCheck) {
                     $pseudo = (New-PassReport).bundles[0]
                     $pseudo.check = 'Test-PseudoLocale'
@@ -264,6 +265,18 @@ Describe 'Ensure localization repair workflow gate' -Tag 'Unit' {
 
         $result = Invoke-RepairGate -Guide -ComparablePseudoLocale -IncludePseudoLocaleCheck -QueuedOutput (New-AgentOutput -Types @('noop'))
         $result.ExitCode | Should -Be 0
+    }
+
+    It 'requires pseudo-locale checks for YAML basenames as well as RESW directories' {
+        foreach ($locale in @('qps-ploc', 'qps-ploca', 'qps-plocm')) {
+            $file = "tools/wta/locales/$locale.yml"
+            $result = Invoke-RepairGate -Guide -ComparablePseudoLocale -PseudoFile $file -QueuedOutput (New-AgentOutput -Types @('noop'))
+            $result.ExitCode | Should -Be 1 -Because $file
+            $result.Output | Should -Match 'require Test-PseudoLocale evidence'
+
+            $result = Invoke-RepairGate -Guide -ComparablePseudoLocale -IncludePseudoLocaleCheck -PseudoFile $file -QueuedOutput (New-AgentOutput -Types @('noop'))
+            $result.ExitCode | Should -Be 0 -Because $file
+        }
     }
 
     It 'keeps the guide report upload and prompt on the same agent-workspace path' {
