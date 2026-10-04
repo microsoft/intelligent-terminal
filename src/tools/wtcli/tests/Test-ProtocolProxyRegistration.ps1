@@ -1,18 +1,39 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-# Run from an x64 Visual Studio developer shell after building wtcli in Debug.
+# Run from an x64 Visual Studio developer shell after building WindowsTerminal and wtcli in Debug.
 [CmdletBinding()]
 param()
 
 $ErrorActionPreference = 'Stop'
 $null = Get-Command cl.exe -ErrorAction Stop
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path
+$commonOutput = Join-Path $repo 'bin\x64\Debug'
+$proxy = Join-Path $commonOutput 'OpenConsoleProxy.dll'
+if (!(Test-Path -LiteralPath $proxy -PathType Leaf)) {
+    throw "Missing common output proxy: $proxy. Build WindowsTerminal and wtcli in Debug first."
+}
+$proxyHash = (Get-FileHash -LiteralPath $proxy -Algorithm SHA256).Hash
+foreach ($application in @('WindowsTerminal', 'wtcli')) {
+    $applicationOutput = Join-Path $commonOutput $application
+    $applicationExe = Join-Path $applicationOutput "$application.exe"
+    $applicationProxy = Join-Path $applicationOutput 'OpenConsoleProxy.dll'
+    if (!(Test-Path -LiteralPath $applicationExe -PathType Leaf)) {
+        throw "Missing actual executable: $applicationExe. Build $application in Debug first."
+    }
+    if (!(Test-Path -LiteralPath $applicationProxy -PathType Leaf)) {
+        throw "Missing adjacent proxy: $applicationProxy. Build $application in Debug first."
+    }
+    if ((Get-FileHash -LiteralPath $applicationProxy -Algorithm SHA256).Hash -ne $proxyHash) {
+        throw "Stale adjacent proxy: $applicationProxy. SHA256 does not match $proxy. Rebuild $application in Debug."
+    }
+    Write-Output "$application output proxy PASS (SHA256 matches common output)"
+}
+
 $output = Join-Path $repo 'obj\x64\Debug\ProtocolProxyTests'
 $null = New-Item -ItemType Directory -Path $output -Force
 $wil = Join-Path $repo 'packages\Microsoft.Windows.ImplementationLibrary.1.0.250325.1\include'
 $idl = Join-Path $repo 'obj\x64\Debug\OpenConsoleProxy'
-$proxy = (Resolve-Path (Join-Path $repo 'bin\x64\Debug\OpenConsoleProxy.dll')).Path
 $null = Copy-Item -LiteralPath $proxy -Destination (Join-Path $output 'OpenConsoleProxy.dll') -Force
 $source = Join-Path $PSScriptRoot 'ProtocolProxyRegistrationTests.cpp'
 

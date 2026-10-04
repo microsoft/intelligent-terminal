@@ -93,6 +93,10 @@
       <Project>{CA5CAD1A-039A-4929-BA2A-8BEB2E4106FE}</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
+    <ProjectReference Include="$(OpenConsoleDir)src\host\proxy\Host.Proxy.vcxproj">
+      <Project>{71CC9D78-BA29-4D93-946F-BEF5D9A3A6EF}</Project>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
   </ItemGroup>
 
   <!-- Manually add references to libs that produce .winmd files. Lib projects
@@ -207,5 +211,11 @@
 
   <Import Project="$(OpenConsoleDir)\build\rules\GenerateSxsManifestsFromWinmds.targets" />
   <Import Project="$(OpenConsoleDir)src\common.nugetversions.targets" />
+
+  <Target Name="CopyOpenConsoleProxy" AfterTargets="Build" Condition="'$(Configuration)'!='Fuzzing'">
+    <Copy SourceFiles="$(OpenConsoleCommonOutDir)OpenConsoleProxy.dll"
+          DestinationFolder="$(TargetDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

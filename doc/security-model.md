@@ -102,7 +102,7 @@ COM peer, or unload an already-mapped DLL. Package-mutating coexistence tests mu
 run separately in an approved isolated environment.
 
 The offline proxy tests run without activating Terminal or changing package
-registration. After an x64 Debug wtcli build, run
+registration. After x64 Debug builds of WindowsTerminal and wtcli, run
 `pwsh -File src\tools\wtcli\tests\Test-ProtocolProxyRegistration.ps1`
 from an x64 Visual Studio developer shell. They compile all four branding modes,
 check unpackaged path policy and failure handling, compare the registered factory
