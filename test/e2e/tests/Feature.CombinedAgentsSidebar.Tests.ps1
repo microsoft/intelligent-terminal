@@ -615,14 +615,89 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             }
         }
         function Invoke-CombinedHistoryRow {
-            $rows = @(Get-CombinedRows HistoryList)
-            $rows.Count | Should -Be 1 -Because 'a history action must have exactly one filtered target'
-            $bounds = $rows[0].Current.BoundingRectangle
-            $rows[0].Current.IsOffscreen | Should -BeFalse
-            $bounds.Height | Should -BeGreaterThan 0
-            $x = [int]($bounds.X + $bounds.Width / 2)
-            $y = [int]($bounds.Y + $bounds.Height / 2)
-            Invoke-UiMouseDrag -App $script:app -FromX $x -FromY $y -ToX $x -ToY $y -HoldMs 50 | Out-Null
+            param([string]$Title, [string]$SessionId, [string]$PaneId = '', [string]$Status = '')
+            $isReady = {
+                param($Row, $List)
+                $rectangle = $Row.Current.BoundingRectangle
+                $viewport = $List.Current.BoundingRectangle
+                -not $Row.Current.IsOffscreen -and -not $List.Current.IsOffscreen -and
+                    $rectangle.Width -gt 0 -and $rectangle.Height -gt 0 -and
+                    $viewport.Width -gt 0 -and $viewport.Height -gt 0 -and
+                    $rectangle.Left -ge $viewport.Left -and $rectangle.Right -le $viewport.Right -and
+                    $rectangle.Top -ge $viewport.Top -and $rectangle.Bottom -le $viewport.Bottom
+            }
+            $getTarget = {
+                (Get-UiValue -App $script:app -Selector SearchTextBox) | Should -Be $Title
+                $rows = @(Get-CombinedRows HistoryList)
+                $rows.Count | Should -Be 1 -Because 'a history action must have exactly one filtered target'
+                $rows[0].Current.ProcessId | Should -Be $script:app.Pid
+                @((Get-CombinedRawChildren $rows[0]) | Where-Object {
+                    $_.Current.ControlType -eq [Windows.Automation.ControlType]::Text -and $_.Current.Name -eq $Title
+                }).Count | Should -BeGreaterThan 0 -Because 'the controlled title identifies the intended row independently of age and status'
+                $rows[0]
+            }
+            try {
+                $sessions = @((Get-CombinedSnapshot).sessions | Where-Object session_id -eq $SessionId)
+                $sessions.Count | Should -Be 1
+                if ($PaneId) {
+                    ([string]$sessions[0].pane_session_id).Trim('{}') | Should -Be $PaneId.Trim('{}')
+                }
+                if ($Status) { $sessions[0].status | Should -Be $Status }
+                $row = & $getTarget
+                if (-not (& $isReady $row (Get-CombinedElement HistoryList))) {
+                    $pattern = $null
+                    if (-not $row.TryGetCurrentPattern([Windows.Automation.ScrollItemPattern]::Pattern, [ref]$pattern)) {
+                        $virtualized = $null
+                        if (-not $row.TryGetCurrentPattern([Windows.Automation.VirtualizedItemPattern]::Pattern, [ref]$virtualized)) {
+                            throw 'The intended History row exposes neither ScrollItemPattern nor VirtualizedItemPattern.'
+                        }
+                        ([Windows.Automation.VirtualizedItemPattern]$virtualized).Realize()
+                        $row = & $getTarget
+                        $pattern = $row.GetCurrentPattern([Windows.Automation.ScrollItemPattern]::Pattern)
+                    }
+                    ([Windows.Automation.ScrollItemPattern]$pattern).ScrollIntoView()
+                }
+                $row = Wait-Until -TimeoutSec 5 -Because 'the same intended History row finishes realization and layout' -Condition {
+                    $fresh = & $getTarget
+                    if (& $isReady $fresh (Get-CombinedElement HistoryList)) {
+                        $fresh
+                    }
+                }
+                $row = & $getTarget
+                (& $isReady $row (Get-CombinedElement HistoryList)) | Should -BeTrue -Because 'the fresh exact target must fit fully inside the fresh History viewport immediately before input'
+                $bounds = $row.Current.BoundingRectangle
+                $x = [int]($bounds.X + $bounds.Width / 2)
+                $y = [int]($bounds.Y + $bounds.Height / 2)
+                Invoke-UiMouseDrag -App $script:app -FromX $x -FromY $y -ToX $x -ToY $y -HoldMs 50 | Out-Null
+            }
+            catch {
+                $original = $_
+                try {
+                    $list = Get-CombinedElement HistoryList
+                    if (-not $list) { throw 'History viewport is unavailable during failure diagnostics.' }
+                    $scroll = $null
+                    $hasScroll = $list.TryGetCurrentPattern([Windows.Automation.ScrollPattern]::Pattern, [ref]$scroll)
+                    @{
+                        title = $Title; session_id = $SessionId; pane_id = $PaneId; status = $Status
+                        query = Get-UiValue -App $script:app -Selector SearchTextBox
+                        viewport = $list.Current.BoundingRectangle.ToString()
+                        scroll = if ($hasScroll) { ([Windows.Automation.ScrollPattern]$scroll).Current.VerticalScrollPercent }
+                        rows = @(Get-CombinedRows HistoryList | ForEach-Object {
+                            @{ name = $_.Current.Name; offscreen = $_.Current.IsOffscreen
+                                bounds = $_.Current.BoundingRectangle.ToString(); process_id = $_.Current.ProcessId }
+                        })
+                    } | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $script:evidence 'history-action-target-failure.json')
+                }
+                catch {
+                    $diagnosticError = $_
+                    try {
+                        @{ original_error = $original.ToString(); diagnostic_error = $diagnosticError.ToString() } |
+                            ConvertTo-Json | Set-Content (Join-Path $script:evidence 'history-action-diagnostic-error.json')
+                    }
+                    catch { Write-Warning "History diagnostics failed: $diagnosticError; recording failed: $_" }
+                }
+                throw $original
+            }
         }
         function Invoke-CombinedTabContext {
             param([string]$Title)
@@ -1273,7 +1348,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             Wait-Until -TimeoutSec 15 -Condition { @(Get-CombinedRows HistoryList).Count -eq 1 } | Out-Null
             Assert-CombinedHistoryMetadata -Title (Split-Path $folder -Leaf) -Status Idle -Provider Copilot
             (Get-CombinedRowText (Get-CombinedRows HistoryList)[0]) | Should -Not -Match 'another window'
-            Invoke-CombinedHistoryRow
+            Invoke-CombinedHistoryRow -Title (Split-Path $folder -Leaf) -SessionId $sid -PaneId $tab.session_id -Status Idle
             Set-WtPaneFocus -App $sourceApp -SessionId $tab.session_id
             Send-WtInput -App $sourceApp -SessionId $tab.session_id -Text 'exit'
             Send-WtKeys -App $sourceApp -SessionId $tab.session_id -Keys @('Enter')
@@ -2085,7 +2160,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         Set-CombinedQuery $history.title
         Wait-Until -TimeoutSec 10 -Condition { @(Get-CombinedRows HistoryList).Count -eq 1 } | Out-Null
         $beforeTabs = @(Get-WtTabs -App $script:app -WindowId ([string]$script:app.WindowId))
-        Invoke-CombinedHistoryRow
+        Invoke-CombinedHistoryRow -Title $history.title -SessionId $history.sessionId
         Wait-Until -TimeoutSec 30 -Because 'the real history action surfaces its unsupported-provider error' -Condition {
             $message = Get-CombinedElement HistoryMessage
             $message -and -not $message.Current.IsOffscreen -and
@@ -2138,7 +2213,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 Save-CombinedActionEvidence 'known-provider-action' -Screenshot
                 throw
             }
-            Invoke-CombinedHistoryRow
+            Invoke-CombinedHistoryRow -Title (Split-Path $script:evidence -Leaf) -SessionId $sid -PaneId $tab.session_id -Status Working
             Wait-Until -TimeoutSec 20 -Because 'the actual History click restores the original tab through master and COM' -Condition {
                 [string](Get-ActivePane -App $script:app).session_id -eq [string]$tab.session_id -and
                     (Get-CombinedAttachedTabCount) -eq $before

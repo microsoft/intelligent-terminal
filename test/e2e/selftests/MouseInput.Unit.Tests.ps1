@@ -53,6 +53,63 @@ Describe 'Combined cleanup failure preservation' -Tag 'Unit' {
     }
 }
 
+Describe 'Combined History target safety' -Tag @('Unit', 'CombinedHistoryTargetSafety') {
+    BeforeAll {
+        $historyFunction = $fixtureAst.FindAll({
+            param($node)
+            $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Invoke-CombinedHistoryRow'
+        }, $true)[0]
+        . ([scriptblock]::Create($historyFunction.Extent.Text))
+        foreach ($name in @('isReady', 'getTarget')) {
+            $assignment = $historyFunction.FindAll({
+                param($node)
+                $node -is [Management.Automation.Language.AssignmentStatementAst] -and
+                    $node.Left.Extent.Text -eq ('$' + $name)
+            }, $true)[0]
+            . ([scriptblock]::Create($assignment.Extent.Text))
+        }
+        function Get-CombinedSnapshot {}
+        function Get-CombinedElement {}
+        function Get-CombinedRows {}
+        function Get-CombinedRawChildren {}
+        $script:app = [pscustomobject]@{ Pid = 42 }
+        $script:evidence = $TestDrive
+    }
+    It 'rejects clipped rows even with a visible nonzero rectangle' {
+        $list = [pscustomobject]@{ Current = @{ IsOffscreen = $false; BoundingRectangle = @{
+            Left = 10; Top = 10; Right = 110; Bottom = 110; Width = 100; Height = 100
+        } } }
+        $row = [pscustomobject]@{ Current = @{ IsOffscreen = $false; BoundingRectangle = @{
+            Left = 10; Top = 100; Right = 110; Bottom = 130; Width = 100; Height = 30
+        } } }
+        (& $isReady $row $list) | Should -BeFalse
+        $row.Current.BoundingRectangle.Top = 80
+        $row.Current.BoundingRectangle.Bottom = 110
+        (& $isReady $row $list) | Should -BeTrue
+    }
+    It 'rejects a sole row with the wrong controlled title' {
+        $Title = 'intended'
+        Mock Get-UiValue { 'intended' }
+        Mock Get-CombinedRows { [pscustomobject]@{ Current = @{ ProcessId = 42 } } }
+        Mock Get-CombinedRawChildren { [pscustomobject]@{ Current = @{ ControlType = [Windows.Automation.ControlType]::Text; Name = 'other' } } }
+        { & $getTarget } | Should -Throw '*controlled title*'
+    }
+    It 'preserves the original failure when diagnostics see a <Kind> viewport' -ForEach @(
+        @{ Kind = 'null' }, @{ Kind = 'stale' }
+    ) {
+        Mock Get-CombinedSnapshot { throw 'original-target-failure' }
+        Mock Get-CombinedElement {
+            if ($Kind -eq 'stale') { throw 'stale-viewport' }
+            $null
+        }
+        Mock Set-Content {}
+        { Invoke-CombinedHistoryRow -Title intended -SessionId exact } | Should -Throw '*original-target-failure*'
+        Should -Invoke Set-Content -Times 1 -Exactly -ParameterFilter {
+            $Path -like '*history-action-diagnostic-error.json'
+        }
+    }
+}
+
 Describe 'Owned caption foreground safety' -Tag 'Unit' {
     It 'fails closed on an unknown owned popup without changing foreground' {
         InModuleScope ItE2E {
