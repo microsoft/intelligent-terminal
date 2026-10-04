@@ -113,6 +113,7 @@ class ValidationTests(unittest.TestCase):
         subprocess.run(["git", "init", "-q"], cwd=self.root, check=True)
         subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=self.root, check=True)
         subprocess.run(["git", "config", "user.name", "Test"], cwd=self.root, check=True)
+        subprocess.run(["git", "config", "core.autocrlf", "false"], cwd=self.root, check=True)
         path = self.root / "src/cascadia/TerminalApp/Test.xaml"
         path.parent.mkdir(parents=True)
         path.write_text(
@@ -169,6 +170,125 @@ class ValidationTests(unittest.TestCase):
             encoding="utf-8",
         )
         return report
+
+    def publication(self):
+        subprocess.run(["git", "checkout", "-qb", "fixture/head"], cwd=self.root, check=True)
+        path = self.root / "src/cascadia/TerminalApp/Test.xaml"
+        original = path.read_bytes().decode("utf-8")
+        path.write_bytes(MODULE._remove_raw_view_at_line(original, 1).encode("utf-8"))
+        subprocess.run(["git", "add", "."], cwd=self.root, check=True)
+        subprocess.run(["git", "commit", "-qm", "Restore UIA view [native-accessibility]"], cwd=self.root, check=True)
+        transport = self.workspace / "transport"
+        transport.mkdir()
+        patch = subprocess.check_output(["git", "format-patch", "-1", "--stdout"], cwd=self.root)
+        (transport / "aw-fixture-head.patch").write_bytes(patch)
+        prepared = json.loads(self.prepared.read_text())
+        prepared["publication"] = {"head_ref": "fixture/head", "repository": "test/accessibility", "pr_number": 1}
+        self.prepared.write_text(json.dumps(prepared))
+        queue = self.workspace / "safeoutputs.jsonl"
+        queue.write_text(json.dumps({
+            "type": "push_to_pull_request_branch", "branch": "fixture/head",
+            "head_repo": "test/accessibility", "pull_request_number": 1,
+            "base_commit": self.head,
+        }) + "\n")
+        return queue, transport
+
+    def test_publication_accepts_exact_captured_commit(self):
+        queue, transport = self.publication()
+        MODULE.validate(
+            self.root, self.head, self.head, True, self.prepared,
+            self.report([self.finding()], ["src/cascadia/TerminalApp/Test.xaml"]), queue, transport,
+        )
+
+    def test_publication_rejects_changes_after_capture(self):
+        queue, transport = self.publication()
+        path = self.root / "src/cascadia/TerminalApp/Test.xaml"
+        path.write_bytes(MODULE._git(self.root, "show", f"{self.head}:src/cascadia/TerminalApp/Test.xaml").encode("utf-8"))
+        with self.assertRaisesRegex(ValueError, "clean committed candidate"):
+            MODULE.validate(
+                self.root, self.head, self.head, True, self.prepared,
+                self.report([self.finding()], []), queue, transport,
+            )
+
+    def test_publication_rejects_tampered_patch_body(self):
+        queue, transport = self.publication()
+        patch = transport / "aw-fixture-head.patch"
+        patch.write_bytes(patch.read_bytes().replace(b'+<Button Content="Open"', b'+<Button Content="Altered"'))
+        with self.assertRaisesRegex(ValueError, "patch tree differs"):
+            MODULE.validate(
+                self.root, self.head, self.head, True, self.prepared,
+                self.report([self.finding()], ["src/cascadia/TerminalApp/Test.xaml"]), queue, transport,
+            )
+
+    def test_publication_rejects_stale_patch_commit_header(self):
+        queue, transport = self.publication()
+        patch = transport / "aw-fixture-head.patch"
+        candidate = MODULE._git(self.root, "rev-parse", "HEAD").strip()
+        patch.write_bytes(patch.read_bytes().replace(candidate.encode("ascii"), b"0" * 40, 1))
+        with self.assertRaisesRegex(ValueError, "does not identify the validated"):
+            MODULE.validate(
+                self.root, self.head, self.head, True, self.prepared,
+                self.report([self.finding()], ["src/cascadia/TerminalApp/Test.xaml"]), queue, transport,
+            )
+
+    def test_publication_rejects_alternate_bundle_transport(self):
+        queue, transport = self.publication()
+        (transport / "aw-fixture-head.bundle").write_bytes(b"unvalidated alternate transport")
+        with self.assertRaisesRegex(ValueError, "alternate bundle transport"):
+            MODULE.validate(
+                self.root, self.head, self.head, True, self.prepared,
+                self.report([self.finding()], ["src/cascadia/TerminalApp/Test.xaml"]), queue, transport,
+            )
+
+    def test_publication_rejects_foreign_repo_override(self):
+        queue, transport = self.publication()
+        entry = json.loads(queue.read_text())
+        entry["repo"] = "test/other"
+        queue.write_text(json.dumps(entry) + "\n")
+        with self.assertRaisesRegex(ValueError, "queued repair identity"):
+            MODULE.validate(
+                self.root, self.head, self.head, True, self.prepared,
+                self.report([self.finding()], ["src/cascadia/TerminalApp/Test.xaml"]), queue, transport,
+            )
+
+    def test_publication_rejects_multiple_commits(self):
+        queue, transport = self.publication()
+        subprocess.run(["git", "commit", "--allow-empty", "-qm", "Extra commit"], cwd=self.root, check=True)
+        with self.assertRaisesRegex(ValueError, "one repair commit directly"):
+            MODULE.validate(
+                self.root, self.head, self.head, True, self.prepared,
+                self.report([self.finding()], ["src/cascadia/TerminalApp/Test.xaml"]), queue, transport,
+            )
+
+    def test_publication_rejects_mixed_outputs(self):
+        queue, transport = self.publication()
+        with queue.open("a") as stream:
+            stream.write(json.dumps({"type": "noop", "message": "Also report"}) + "\n")
+        with self.assertRaisesRegex(ValueError, "exactly one push"):
+            MODULE.validate(
+                self.root, self.head, self.head, True, self.prepared,
+                self.report([self.finding()], ["src/cascadia/TerminalApp/Test.xaml"]), queue, transport,
+            )
+
+    def test_publication_noop_requires_no_push_request(self):
+        queue = self.workspace / "safeoutputs.jsonl"
+        queue.write_text(json.dumps({"type": "noop", "message": "No eligible repair"}) + "\n")
+        MODULE.validate(self.root, self.head, self.head, False, self.prepared, self.report(), queue, self.workspace)
+        queue.write_text(json.dumps({"type": "push_to_pull_request_branch"}) + "\n")
+        with self.assertRaisesRegex(ValueError, "exactly one noop"):
+            MODULE.validate(self.root, self.head, self.head, False, self.prepared, self.report(), queue, self.workspace)
+
+    def test_recipe_rejects_unrelated_line_ending_changes(self):
+        path = self.root / "src/cascadia/TerminalApp/Test.xaml"
+        original = MODULE._git(self.root, "show", f"{self.head}:src/cascadia/TerminalApp/Test.xaml")
+        expected = MODULE._remove_raw_view_at_line(original, 1)
+        changed = expected.replace("\r\n", "\n") if "\r\n" in expected else expected.replace("\n", "\r\n")
+        path.write_bytes(changed.encode("utf-8"))
+        with self.assertRaisesRegex(ValueError, "changes beyond the trusted"):
+            MODULE.validate(
+                self.root, self.head, self.head, True, self.prepared,
+                self.report([self.finding()], ["src/cascadia/TerminalApp/Test.xaml"]),
+            )
 
     def finding(self, **updates):
         item = {
@@ -404,7 +524,7 @@ class ValidationTests(unittest.TestCase):
     def test_literal_accessible_string_patch_is_rejected(self):
         path = self.root / "src/cascadia/TerminalApp/Test.xaml"
         path.write_text('<Button AutomationProperties.Name="Open" />\n', encoding="utf-8")
-        with self.assertRaisesRegex(ValueError, "literal accessible name"):
+        with self.assertRaisesRegex(ValueError, "changes beyond the trusted"):
             MODULE.validate(
                 self.root,
                 self.head,
@@ -413,6 +533,30 @@ class ValidationTests(unittest.TestCase):
                 self.prepared,
                 self.report([self.finding()], ["src/cascadia/TerminalApp/Test.xaml"]),
             )
+
+    def test_recipe_preserves_existing_literal_name_advice_on_same_line(self):
+        path = self.root / "src/cascadia/TerminalApp/Test.xaml"
+        original = '<Button Content="Open" AutomationProperties.AccessibilityView="Raw" AutomationProperties.Name="Open document" />\n'
+        path.write_bytes(original.encode("utf-8"))
+        subprocess.run(["git", "add", "."], cwd=self.root, check=True)
+        subprocess.run(["git", "commit", "-qm", "Review head has literal name"], cwd=self.root, check=True)
+        self.head = MODULE._git(self.root, "rev-parse", "HEAD").strip()
+        prepared = json.loads(self.prepared.read_text())
+        prepared["source_sha"] = self.head
+        self.prepared.write_text(json.dumps(prepared))
+        path.write_bytes(MODULE._remove_raw_view_at_line(original, 1).encode("utf-8"))
+        advice = self.finding(stable_id="AX-LITERAL-1", severity="MEDIUM", disposition="advice", repair_recipe=None)
+        MODULE.validate(
+            self.root, self.head, self.head, True, self.prepared,
+            self.report([self.finding(), advice], ["src/cascadia/TerminalApp/Test.xaml"]),
+        )
+
+    def test_stale_prepared_evidence_is_rejected(self):
+        prepared = json.loads(self.prepared.read_text())
+        prepared["source_sha"] = "0" * 40
+        self.prepared.write_text(json.dumps(prepared))
+        with self.assertRaisesRegex(ValueError, "prepared evidence does not match"):
+            MODULE.validate(self.root, self.head, self.head, True, self.prepared, self.report())
 
 
 class WorkflowContractTests(unittest.TestCase):
@@ -484,13 +628,21 @@ class WorkflowContractTests(unittest.TestCase):
         root = Path(__file__).parents[4]
         workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
         stage = workflow.index('git show "$BASE_SHA:.github/skills/pr-accessibility/SKILL.md"')
-        checkout = workflow.index('git checkout --detach "$HEAD_SHA"')
+        checkout = workflow.index('git checkout -B "$HEAD_REF" "$HEAD_SHA"')
         self.assertLess(stage, checkout)
         self.assertIn("Follow `$RUNNER_TEMP/gh-aw/accessibility-trusted/SKILL.md`", workflow)
         self.assertIn('--prepared "$TRUSTED_ACCESSIBILITY/prepared.json"', workflow)
         self.assertIn("--no-replace-objects", workflow)
         compiled = (root / ".github/workflows/ghaw-pr-accessibility.lock.yml").read_text(encoding="utf-8")
         self.assertIn('--mount "${RUNNER_TEMP}/gh-aw:${RUNNER_TEMP}/gh-aw:ro"', compiled)
+
+    def test_preparation_preserves_named_pr_branch_for_transport(self):
+        root = Path(__file__).parents[4]
+        workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
+        self.assertIn("HEAD_REF: ${{ github.event.pull_request.head.ref }}", workflow)
+        self.assertLess(workflow.index('git check-ref-format --branch "$HEAD_REF"'),
+                        workflow.index('git checkout -B "$HEAD_REF" "$HEAD_SHA"'))
+        self.assertIn("create\na real local Git commit", workflow)
 
     def test_compiled_source_review_does_not_wait_for_native_runtime(self):
         root = Path(__file__).parents[4]

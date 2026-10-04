@@ -14,6 +14,17 @@ head as a Git object and runs the base revision's
 head blobs. Only after deterministic preparation does it switch the worktree to
 the verified immutable head for model inspection. It never imports or executes
 pull-request code.
+The checkout uses the actual PR head branch name after validating its ref
+format. Repair commits therefore have a local branch for the production
+safe-output transport to pin; a detached commit is not sufficient.
+The agent commits one eligible repair directly on that head, then requests AM
+patch transport. The native gate validates the actual queued output mode and
+trusted PR identity, requires a clean single-commit candidate, and applies the
+captured patch to an isolated Git index. Its resulting tree must equal the
+candidate already verified by the exact static recipe. This rejects stale,
+tampered, mixed-output, or post-capture edits before publication.
+The gate also rejects alternate bundle artifacts: the pinned publisher prefers
+a present bundle, so an AM-only validated repair must not upload one.
 
 Preparation also stages the domain skill from the trusted base into
 `$RUNNER_TEMP/gh-aw/accessibility-trusted/SKILL.md`. The prepared evidence and

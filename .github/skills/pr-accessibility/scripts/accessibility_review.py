@@ -6,9 +6,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -63,19 +65,17 @@ REQUIRED_FINDING_FIELDS = {
 STATIC_RAW_VIEW_RECIPE = "AXSTATIC001-remove-raw-view"
 
 
-def _git(root: Path, *args: str) -> str:
+def _git(root: Path, *args: str, env: dict[str, str] | None = None) -> str:
     result = subprocess.run(
         ["git", "--no-replace-objects", "-c", "core.fsmonitor=false", *args],
         cwd=root,
         check=False,
         capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
+        env={**os.environ, **env} if env else None,
     )
     if result.returncode:
-        raise RuntimeError(f"git {' '.join(args)} failed ({result.returncode}): {result.stderr.strip()}")
-    return result.stdout
+        raise RuntimeError(f"git {' '.join(args)} failed ({result.returncode}): {result.stderr.decode('utf-8', errors='replace').strip()}")
+    return result.stdout.decode("utf-8", errors="replace")
 
 
 def _normalize(path: str) -> str:
@@ -278,7 +278,8 @@ def _verify_instruction_boundary(root: Path, base: str, head: str) -> None:
         )
 
 
-def prepare(root: Path, base: str, head: str, output: Path, changed_files: Path | None) -> None:
+def prepare(root: Path, base: str, head: str, output: Path, changed_files: Path | None,
+            publication: dict[str, Any] | None = None) -> None:
     if not re.fullmatch(r"[0-9a-fA-F]{40}", head):
         raise ValueError("head SHA must be an exact 40-character hexadecimal value")
     if changed_files:
@@ -336,6 +337,10 @@ def prepare(root: Path, base: str, head: str, output: Path, changed_files: Path 
             },
         ],
     }
+    if publication is not None:
+        if not publication.get("head_ref") or not publication.get("repository") or not isinstance(publication.get("pr_number"), int) or publication["pr_number"] < 1:
+            raise ValueError("publication context requires branch, repository, and positive PR number")
+        report["publication"] = publication
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
@@ -437,13 +442,65 @@ def _verify_static_repairs(
             expected = _git(root, "show", f"{expected_head}:{path}")
             for item in sorted(items, key=lambda value: value["line"], reverse=True):
                 expected = _remove_raw_view_at_line(expected, item["line"])
-            candidate = (root / path).read_text(encoding="utf-8-sig", errors="strict")
+            candidate = (root / path).read_bytes().decode("utf-8", errors="strict")
             if candidate != expected:
                 errors.append(
                     f"{path}: candidate contains changes beyond the trusted raw-view removal recipe"
                 )
         except (OSError, RuntimeError, UnicodeError, ValueError) as error:
             errors.append(f"{path}: trusted static repair verification failed: {error}")
+    return errors
+
+
+def _verify_publication(root: Path, expected_head: str, fixed: list[dict[str, Any]],
+                        prepared: dict[str, Any], queue: Path, transport_root: Path) -> list[str]:
+    errors: list[str] = []
+    try:
+        if queue.is_symlink() or not queue.is_file():
+            raise ValueError("safe-output queue must be a regular file")
+        entries = [json.loads(line) for line in queue.read_text(encoding="utf-8").splitlines() if line.strip()]
+        mode = "push_to_pull_request_branch" if fixed else "noop"
+        if len(entries) != 1 or not isinstance(entries[0], dict) or entries[0].get("type") != mode:
+            raise ValueError(f"publication requires exactly one {mode} request")
+        if not fixed:
+            return errors
+        context = prepared.get("publication", {})
+        entry = entries[0]
+        if (entry.get("branch") != context.get("head_ref")
+                or entry.get("head_repo") != context.get("repository")
+                or (entry.get("repo") is not None and entry["repo"] != context.get("repository"))
+                or str(entry.get("pull_request_number")) != str(context.get("pr_number"))
+                or entry.get("base_commit") != expected_head):
+            raise ValueError("queued repair identity does not match trusted PR context")
+        if _git(root, "symbolic-ref", "--short", "HEAD").strip() != context.get("head_ref"):
+            raise ValueError("repair must remain on the trusted PR head branch")
+        if _git(root, "diff", "--name-only", "HEAD", "--").strip():
+            raise ValueError("publication requires a clean committed candidate")
+        parents = _git(root, "rev-list", "--parents", "-n", "1", "HEAD").split()
+        if len(parents) != 2 or parents[1] != expected_head:
+            raise ValueError("publication requires one repair commit directly on the reviewed head")
+        candidate_head = parents[0]
+        if any(transport_root.glob("aw-*.bundle")):
+            raise ValueError("AM publication must not contain an alternate bundle transport")
+        patches = list(transport_root.glob("aw-*.patch"))
+        if len(patches) != 1 or patches[0].is_symlink() or not patches[0].is_file():
+            raise ValueError("publication requires exactly one regular captured repair patch")
+        patch = patches[0]
+        if patch.stat().st_size > 4 * 1024 * 1024:
+            raise ValueError("captured repair patch exceeds the publication size limit")
+        headers = re.findall(rb"(?m)^From ([0-9a-f]{40}) Mon Sep 17 00:00:00 2001\r?$", patch.read_bytes())
+        if headers != [candidate_head.encode("ascii")]:
+            raise ValueError("captured repair patch does not identify the validated single commit")
+        with tempfile.TemporaryDirectory(prefix="accessibility-patch-") as directory:
+            index_env = {"GIT_INDEX_FILE": str(Path(directory) / "index")}
+            _git(root, "read-tree", expected_head, env=index_env)
+            _git(root, "apply", "--cached", "--whitespace=nowarn", str(patch.resolve()), env=index_env)
+            captured_tree = _git(root, "write-tree", env=index_env).strip()
+        candidate_tree = _git(root, "rev-parse", "HEAD^{tree}").strip()
+        if captured_tree != candidate_tree:
+            raise ValueError("captured repair patch tree differs from the validated candidate")
+    except (OSError, RuntimeError, ValueError) as error:
+        errors.append(f"publication verification failed: {error}")
     return errors
 
 
@@ -454,10 +511,14 @@ def validate(
     same_repo: bool,
     prepared_path: Path,
     report_path: Path,
+    safe_output_queue: Path | None = None,
+    transport_root: Path | None = None,
 ) -> None:
     prepared = json.loads(prepared_path.read_text(encoding="utf-8"))
     report = json.loads(report_path.read_text(encoding="utf-8"))
     errors: list[str] = []
+    if str(prepared.get("source_sha", "")).lower() != expected_head.lower():
+        errors.append("prepared evidence does not match the immutable reviewed head")
     if report.get("version") != 1:
         errors.append("report version must be 1")
     if report.get("source_sha", "").lower() != expected_head.lower():
@@ -518,16 +579,13 @@ def validate(
             errors.append(f"patch path is outside the native UI/test allowlist: {path}")
         if path.endswith(".resw"):
             errors.append(f"resource edits must use the localization workflow, not accessibility auto-fix: {path}")
-    if patch_files:
-        patch = _git(root, "diff", "--unified=0", expected_head, "--", *patch_files)
-        for line in patch.splitlines():
-            if line.startswith("+") and not line.startswith("+++") and re.search(
-                r'AutomationProperties\.Name\s*=\s*["\'](?!\{)', line
-            ):
-                errors.append("patch introduces a literal accessible name; use the localization workflow")
-                break
     if fixed and patch_files:
         errors.extend(_verify_static_repairs(root, expected_head, fixed, prepared, patch_files))
+    if safe_output_queue is not None:
+        if transport_root is None:
+            errors.append("publication verification requires the transport directory")
+        else:
+            errors.extend(_verify_publication(root, expected_head, fixed, prepared, safe_output_queue, transport_root))
 
     known_files = set(prepared.get("changed_files", []))
     for item in findings:
@@ -540,7 +598,8 @@ def validate(
     for item in fixed:
         item["validation"] = [
             {
-                "command": f"accessibility_review.py validate --recipe {STATIC_RAW_VIEW_RECIPE}",
+                "command": "accessibility_review.py validate",
+                "recipe": STATIC_RAW_VIEW_RECIPE,
                 "result": "PASS",
                 "scope": "exact-candidate",
             }
@@ -581,6 +640,9 @@ def main() -> int:
     prepare_parser.add_argument("--head", required=True)
     prepare_parser.add_argument("--output", type=Path, required=True)
     prepare_parser.add_argument("--changed-files", type=Path)
+    prepare_parser.add_argument("--publication-branch")
+    prepare_parser.add_argument("--publication-repository")
+    prepare_parser.add_argument("--publication-pr-number", type=int)
     validate_parser = subparsers.add_parser("validate")
     validate_parser.add_argument("--root", type=Path, required=True)
     validate_parser.add_argument("--expected-head", required=True)
@@ -588,10 +650,16 @@ def main() -> int:
     validate_parser.add_argument("--same-repo", choices=("true", "false"), required=True)
     validate_parser.add_argument("--prepared", type=Path, required=True)
     validate_parser.add_argument("--report", type=Path, required=True)
+    validate_parser.add_argument("--safe-output-queue", type=Path)
+    validate_parser.add_argument("--transport-root", type=Path)
     args = parser.parse_args()
     try:
         if args.command == "prepare":
-            prepare(args.root, args.base, args.head, args.output, args.changed_files)
+            publication = None
+            if any(value is not None for value in (args.publication_branch, args.publication_repository, args.publication_pr_number)):
+                publication = {"head_ref": args.publication_branch, "repository": args.publication_repository,
+                               "pr_number": args.publication_pr_number}
+            prepare(args.root, args.base, args.head, args.output, args.changed_files, publication)
         else:
             validate(
                 args.root,
@@ -600,6 +668,8 @@ def main() -> int:
                 args.same_repo == "true",
                 args.prepared,
                 args.report,
+                args.safe_output_queue,
+                args.transport_root,
             )
     except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
         print(f"accessibility review contract failed: {error}", file=sys.stderr)

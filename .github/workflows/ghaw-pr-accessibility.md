@@ -237,6 +237,9 @@ steps:
     env:
       BASE_SHA: ${{ github.event.pull_request.base.sha }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      REPOSITORY: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
     run: |
       set -euo pipefail
       test "$BASE_SHA" = "$(git rev-parse HEAD)"
@@ -252,9 +255,13 @@ steps:
         --root "$GITHUB_WORKSPACE" \
         --base "$BASE_SHA" \
         --head "$HEAD_SHA" \
+        --publication-branch "$HEAD_REF" \
+        --publication-repository "$REPOSITORY" \
+        --publication-pr-number "$PR_NUMBER" \
         --output "$TRUSTED_ACCESSIBILITY/prepared.json"
       rm -f /tmp/gh-aw/accessibility/final.json
-      git checkout --detach "$HEAD_SHA"
+      git check-ref-format --branch "$HEAD_REF"
+      git checkout -B "$HEAD_REF" "$HEAD_SHA"
 
 safe-outputs:
   github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -279,6 +286,7 @@ safe-outputs:
       - 'src/cascadia/UIMarkdown/**/*.cpp'
       - 'src/cascadia/UIMarkdown/**/*.h'
     protected-files: blocked
+    patch-format: am
     if-no-changes: error
     fallback-as-pull-request: false
 
@@ -292,6 +300,7 @@ post-steps:
       GH_TOKEN: ${{ github.token }}
       PR_NUMBER: ${{ github.event.pull_request.number }}
       REPOSITORY: ${{ github.repository }}
+      GH_AW_SAFE_OUTPUTS: ${{ steps.set-runtime-paths.outputs.GH_AW_SAFE_OUTPUTS }}
     run: |
       set -euo pipefail
       test -f /tmp/gh-aw/accessibility/final.json
@@ -305,6 +314,8 @@ post-steps:
         --same-repo "$SAME_REPO" \
         --prepared "$TRUSTED_ACCESSIBILITY/prepared.json" \
         --report /tmp/gh-aw/accessibility/final.json \
+        --safe-output-queue "$GH_AW_SAFE_OUTPUTS" \
+        --transport-root /tmp/gh-aw \
         | tee -a "$GITHUB_STEP_SUMMARY"
 
   - name: Upload validated accessibility report
@@ -380,8 +391,10 @@ unrun test. Fork pull requests are strictly read-only.
 
 Immediately before requesting a branch write, re-read `git status` and the full
 diff from the immutable head. A patch must contain only fixes represented by
-`fixed` findings. Use `push-to-pull-request-branch` once, with a focused commit
-whose subject ends in `[native-accessibility]`. If there is no eligible patch,
+`fixed` findings. For an eligible patch, stage only the declared paths and create
+a real local Git commit on the checked-out PR head branch; its subject must end
+in `[native-accessibility]`. Do not switch to or create another branch.
+Then use `push-to-pull-request-branch` once. If there is no eligible patch,
 use `noop` once. The native post-step checks the live head SHA and validates the
 report and final diff before publication.
 

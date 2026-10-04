@@ -71,7 +71,8 @@ The source rules are intentionally conservative:
    recipe for it. The only current recipe is
    `AXSTATIC001-remove-raw-view`: remove exactly the raw-view property from the
    matching prepared standard interactive control, which must already have a
-   name source. Make no other hunk or file change. Set `repair_recipe` to that
+   name source. Make no other hunk or file change; preserve the original
+   encoding, BOM, and line endings. Set `repair_recipe` to that
    value and leave `validation` empty for the trusted validator to attest.
 10. Keep runtime-dependent fixes `remaining` or `blocked`. The agent cannot
     authenticate its own command/result JSON, and the Ubuntu workflow cannot
