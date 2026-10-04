@@ -777,6 +777,7 @@ namespace winrt::TerminalApp::implementation
                 _tabStrip.RichTabBranchVisible(contains("branch"));
                 _tabStrip.RichTabChangesVisible(contains("changes"));
             }
+            _LogSidebarRowFieldsTelemetry("Launch");
             _tabStrip.VisibleFieldsChanged([weakThis{ get_weak() }](const auto& sender, auto&&) {
                 std::vector<std::string> fields;
                 fields.reserve(2);
@@ -800,12 +801,18 @@ namespace winrt::TerminalApp::implementation
                 {
                     fields.emplace_back("changes");
                 }
-                ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance().SetVisibleFields(
+                auto& broker = ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance();
+                const auto previous = broker.VisibleFields("com.microsoft.intelligent-terminal.git-status");
+                const auto changed = !previous || *previous != fields;
+                broker.SetVisibleFields(
                     "com.microsoft.intelligent-terminal.git-status",
                     std::move(fields));
                 if (const auto page = weakThis.get())
                 {
-                    page->_LogSidebarRowFieldsTelemetry();
+                    if (changed)
+                    {
+                        page->_LogSidebarRowFieldsTelemetry("UserChange");
+                    }
                     if (sender.RichTabAgentStatusVisible())
                     {
                         page->_RequestRichTabAgentStatusRefresh();
@@ -2106,7 +2113,7 @@ namespace winrt::TerminalApp::implementation
             TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
     }
 
-    void TerminalPage::_LogSidebarRowFieldsTelemetry() const
+    void TerminalPage::_LogSidebarRowFieldsTelemetry(const char* source) const
     {
         if constexpr (Feature_RichTabProviders::IsEnabled())
         {
@@ -2133,6 +2140,7 @@ namespace winrt::TerminalApp::implementation
             TraceLoggingWrite(
                 g_hTerminalAppProvider,
                 "SidebarRowFieldsChanged",
+                TraceLoggingString(source, "Source"),
                 TraceLoggingDescription("Current sidebar tab metadata field selection"),
                 TraceLoggingString(fieldNames.c_str(), "fields"),
                 TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
@@ -9240,7 +9248,6 @@ namespace winrt::TerminalApp::implementation
                     TraceLoggingValue(distribution, "Distribution"),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
-                _LogSidebarRowFieldsTelemetry();
             }
         }
 

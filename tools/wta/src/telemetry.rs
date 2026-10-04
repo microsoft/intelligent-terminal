@@ -23,6 +23,8 @@
 //   - AgentSlashCommandUsed    (a built-in slash command is dispatched)
 //   - ErrorFixOffered          (a concrete autofix recommendation is displayed)
 //   - ErrorFixAccepted         (the user confirms running that recommendation)
+//   - ErrorFixRunStarted       (the executor dequeues a confirmed Run)
+//   - ErrorFixRunResult        (dispatch fails or execution remains unobserved)
 //   - SessionsViewOpened       (the agent sessions view is opened)
 //   - SessionResumeInvoked     (a session resume route is dispatched)
 //   - SessionMcpToolCalled     (a session MCP tool is invoked)
@@ -203,6 +205,25 @@ pub fn log_acp_load_session_complete(duration_ms: f64, success: bool) {
     );
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PromptIdentity {
+    pub session_id: uuid::Uuid,
+    pub turn_id: uuid::Uuid,
+    pub is_autofix: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RestoreIdentity {
+    pub keep_id: uuid::Uuid,
+    pub attempt_id: uuid::Uuid,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct FixRunIdentity {
+    pub offer_id: uuid::Uuid,
+    pub run_id: uuid::Uuid,
+}
+
 /// Emitted when WTA dispatches a prompt over the ACP stream to an agent.
 ///
 /// Covers the agent-pane prompt-entry route. The C++ side emits its own
@@ -217,6 +238,8 @@ pub fn log_agent_prompt_sent(
     agent_id: &str,
     reattached: bool,
     user_prompt_ordinal: &str,
+    identity: PromptIdentity,
+    restore: Option<RestoreIdentity>,
 ) {
     let is_autofix_i32: i32 = if is_autofix { 1 } else { 0 };
     let is_byok_i32: i32 = if is_byok { 1 } else { 0 };
@@ -224,6 +247,20 @@ pub fn log_agent_prompt_sent(
     tlg::write_event!(
         AGENT_PROVIDER,
         "AgentPromptSent",
+        str8("SessionId", &identity.session_id.to_string()),
+        str8("TurnId", &identity.turn_id.to_string()),
+        str8(
+            "KeepId",
+            &restore
+                .map(|r| r.keep_id.braced().to_string())
+                .unwrap_or_default()
+        ),
+        str8(
+            "AttemptId",
+            &restore
+                .map(|r| r.attempt_id.braced().to_string())
+                .unwrap_or_default()
+        ),
         level(Verbose),
         keyword(MICROSOFT_KEYWORD_MEASURES),
         u32("PromptLengthBytes", &prompt_byte_len),
@@ -278,12 +315,16 @@ pub fn log_agent_response_complete(
     success: bool,
     is_byok: bool,
     agent_id: &str,
+    identity: PromptIdentity,
 ) {
     let success_i32: i32 = if success { 1 } else { 0 };
     let is_byok_i32: i32 = if is_byok { 1 } else { 0 };
     tlg::write_event!(
         AGENT_PROVIDER,
         "AgentResponseComplete",
+        str8("SessionId", &identity.session_id.to_string()),
+        str8("TurnId", &identity.turn_id.to_string()),
+        bool32("IsAutofix", &i32::from(identity.is_autofix)),
         level(Verbose),
         keyword(MICROSOFT_KEYWORD_MEASURES),
         f64("TotalDurationMs", &total_duration_ms),
@@ -321,12 +362,13 @@ pub fn log_agent_slash_command_used(command: &str) {
 
 /// Emitted once after a concrete, turn-attributed autofix card is painted and
 /// flushed in an open agent pane. The ID is random, not agent-provided content.
-pub fn log_error_fix_offered(offer_id: uuid::Uuid) {
+pub fn log_error_fix_offered(offer_id: uuid::Uuid, source: &'static str) {
     #[cfg(test)]
     capture::record(capture::Event::ErrorFixOffered(offer_id));
     tlg::write_event!(
         AGENT_PROVIDER,
         "ErrorFixOffered",
+        str8("Source", source),
         level(Verbose),
         keyword(MICROSOFT_KEYWORD_MEASURES),
         str8("OfferId", &offer_id.to_string()),
@@ -334,14 +376,54 @@ pub fn log_error_fix_offered(offer_id: uuid::Uuid) {
     );
 }
 
+pub fn log_error_fix_run_started(identity: FixRunIdentity) {
+    #[cfg(test)]
+    capture::record(capture::Event::ErrorFixRunStarted(
+        identity.offer_id,
+        identity.run_id,
+    ));
+    tlg::write_event!(
+        AGENT_PROVIDER,
+        "ErrorFixRunStarted",
+        level(Verbose),
+        keyword(MICROSOFT_KEYWORD_MEASURES),
+        str8("OfferId", &identity.offer_id.to_string()),
+        str8("RunId", &identity.run_id.to_string()),
+        u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_USAGE),
+    );
+}
+
+/// Successful dispatch cannot establish command execution success.
+pub fn log_error_fix_run_result(offer_id: uuid::Uuid, run_id: uuid::Uuid, dispatched: bool) {
+    let outcome = if dispatched {
+        "unobservable"
+    } else {
+        "dispatchFailed"
+    };
+    #[cfg(test)]
+    capture::record(capture::Event::ErrorFixRunResult(offer_id, run_id, outcome));
+    tracing::info!(target: "telemetry", %offer_id, %run_id, outcome, "autofix Run result");
+    tlg::write_event!(
+        AGENT_PROVIDER,
+        "ErrorFixRunResult",
+        level(Verbose),
+        keyword(MICROSOFT_KEYWORD_MEASURES),
+        str8("OfferId", &offer_id.to_string()),
+        str8("RunId", &run_id.to_string()),
+        str8("Outcome", outcome),
+        u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_USAGE),
+    );
+}
+
 /// Emitted once when the user confirms Run for a previously displayed autofix
 /// card and its execution request is queued. Not Insert, analysis, or success.
-pub fn log_error_fix_accepted(offer_id: uuid::Uuid) {
+pub fn log_error_fix_accepted(offer_id: uuid::Uuid, source: &'static str) {
     #[cfg(test)]
     capture::record(capture::Event::ErrorFixAccepted(offer_id));
     tlg::write_event!(
         AGENT_PROVIDER,
         "ErrorFixAccepted",
+        str8("Source", source),
         level(Verbose),
         keyword(MICROSOFT_KEYWORD_MEASURES),
         str8("OfferId", &offer_id.to_string()),
@@ -461,6 +543,7 @@ pub fn log_error_detected(
     pane_id: &str,
     autofix_policy_state: AutoFixPolicyState,
     autofix_enabled: bool,
+    offer_id: uuid::Uuid,
 ) {
     let autofix_enabled_i32 = i32::from(autofix_enabled);
     #[cfg(test)]
@@ -471,6 +554,8 @@ pub fn log_error_detected(
     tlg::write_event!(
         AGENT_PROVIDER,
         "ErrorDetected",
+        str8("OfferId", &offer_id.to_string()),
+        str8("Source", "Detection"),
         level(Verbose),
         keyword(MICROSOFT_KEYWORD_MEASURES),
         str8("Severity", severity),
@@ -492,6 +577,8 @@ pub(crate) mod capture {
         AgentSlashCommandUsed(&'static str),
         ErrorFixOffered(uuid::Uuid),
         ErrorFixAccepted(uuid::Uuid),
+        ErrorFixRunStarted(uuid::Uuid, uuid::Uuid),
+        ErrorFixRunResult(uuid::Uuid, uuid::Uuid, &'static str),
         ErrorDetected {
             policy: AutoFixPolicyState,
             enabled: bool,

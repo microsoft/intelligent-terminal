@@ -2085,6 +2085,8 @@ fn kept_tab_reattachment_marks_only_the_owning_live_session() {
     app.owner_tab_id = Some("owned-tab".into());
     app.window_id = Some("owned-window".into());
     app.tab_mut("owned-tab").session_id = Some("original".into());
+    let keep_id = uuid::Uuid::new_v4();
+    let attempt_id = uuid::Uuid::new_v4();
 
     for (tab, window) in [("other-tab", "owned-window"), ("owned-tab", "other-window")] {
         app.handle_event(AppEvent::WtEvent {
@@ -2100,11 +2102,57 @@ fn kept_tab_reattachment_marks_only_the_owning_live_session() {
         method: "keep_running_reattached".into(),
         pane_id: String::new(),
         tab_id: None,
-        params: json!({"tab_id": "owned-tab", "window_id": "owned-window"}),
+        params: json!({"tab_id": "owned-tab", "window_id": "owned-window", "keep_id": keep_id.braced().to_string(), "attempt_id": attempt_id.braced().to_string()}),
     });
     let tab = app.tab_mut("owned-tab");
     assert_eq!(tab.reattached_session_id.as_deref(), Some("original"));
     assert!(tab.is_reattached_session());
+    assert_eq!(
+        tab.restore_identity(),
+        Some(crate::telemetry::RestoreIdentity {
+            keep_id,
+            attempt_id
+        })
+    );
+    let retry_id = uuid::Uuid::new_v4();
+    app.handle_event(AppEvent::WtEvent {
+        method: "keep_running_reattached".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({"tab_id": "owned-tab", "window_id": "owned-window", "keep_id": keep_id.braced().to_string(), "attempt_id": retry_id.braced().to_string()}),
+    });
+    assert_eq!(
+        app.tab_mut("owned-tab").restore_identity(),
+        Some(crate::telemetry::RestoreIdentity {
+            keep_id,
+            attempt_id: retry_id
+        })
+    );
+    for identity in [
+        json!({"keep_id": "invalid", "attempt_id": retry_id.to_string()}),
+        json!({"keep_id": keep_id.to_string(), "attempt_id": "invalid"}),
+        json!({}),
+    ] {
+        let mut params = identity;
+        params["tab_id"] = json!("owned-tab");
+        params["window_id"] = json!("owned-window");
+        app.handle_event(AppEvent::WtEvent {
+            method: "keep_running_reattached".into(),
+            pane_id: String::new(),
+            tab_id: None,
+            params,
+        });
+        let tab = app.tab_mut("owned-tab");
+        assert!(tab.is_reattached_session());
+        assert!(tab.restore_identity().is_none());
+    }
+    app.handle_event(AppEvent::WtEvent {
+        method: "keep_running_reattached".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({"tab_id": "owned-tab", "window_id": "owned-window", "keep_id": keep_id.to_string(), "attempt_id": retry_id.to_string()}),
+    });
+    assert!(app.tab_mut("owned-tab").restore_identity().is_some());
     app.handle_event(AppEvent::SessionAttached {
         tab_id: "owned-tab".into(),
         session_id: "new-session".into(),
@@ -2113,6 +2161,7 @@ fn kept_tab_reattachment_marks_only_the_owning_live_session() {
         current_model_id: None,
     });
     assert!(!app.tab_mut("owned-tab").is_reattached_session());
+    assert!(app.tab_mut("owned-tab").restore_identity().is_none());
     app.handle_event(AppEvent::SessionAttached {
         tab_id: "owned-tab".into(),
         session_id: "original".into(),
@@ -22226,14 +22275,19 @@ fn stage_error_fix_telemetry_proposal(
     app.state = ConnectionState::Connected;
     app.mode = AppMode::Chat;
     stage_proposal_session(app, "fix-telemetry");
-    submit_proposal_prompt(app, "fix-telemetry");
+    let generation = app.current_tab().autofix.generation;
+    app.turn_submit_prompt(
+        "fix-telemetry",
+        SubmittedPrompt {
+            id: 99,
+            text: "restart it".into(),
+            submitted_at_unix_s: 0.0,
+            context: TurnContext::with_target_pane("pane-9"),
+            autofix: is_autofix.then_some(AutofixContext { generation }),
+        },
+    );
     let tab = app.current_tab_mut();
     tab.pane_open = true;
-    if is_autofix {
-        tab.turn.prompt_mut().unwrap().autofix = Some(AutofixContext {
-            generation: tab.autofix.generation,
-        });
-    }
     let manager = Arc::new(ProposalChannelManager::new());
     app.set_proposal_channels(Arc::clone(&manager));
     let channel = manager
@@ -22544,6 +22598,30 @@ fn error_fix_telemetry_policy_is_independent_of_effective_setting() {
         );
         assert!(!app.autofix_enabled);
     }
+}
+
+#[test]
+fn error_fix_telemetry_detection_flow_is_not_replaced_by_a_busy_detection() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.autofix_enabled = true;
+    stage_proposal_session(&mut app, "fix-telemetry");
+    let failure = || AppEvent::WtEvent {
+        method: "vt_sequence".into(),
+        pane_id: "pane-9".into(),
+        tab_id: Some(DEFAULT_TAB_ID.into()),
+        params: json!({"sequence": "osc:133;D;1"}),
+    };
+    app.handle_event(failure());
+    let tab = app.current_tab();
+    let detected = tab.autofix.detected_offer.as_ref().unwrap().1;
+    let flow = tab.autofix.offer.as_ref().unwrap();
+    assert_eq!(flow.id, detected);
+    assert_eq!(flow.source, "Detection");
+    app.handle_event(failure());
+    let tab = app.current_tab();
+    assert_ne!(tab.autofix.detected_offer.as_ref().unwrap().1, detected);
+    assert_eq!(tab.autofix.offer.as_ref().unwrap().id, detected);
 }
 
 fn stage_direct_proposal(
