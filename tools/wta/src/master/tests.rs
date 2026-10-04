@@ -10612,6 +10612,116 @@ async fn sidebar_activation_policy_denies_resume_without_terminal_calls() {
 }
 
 #[tokio::test]
+async fn sidebar_activation_live_bound_focus_does_not_require_launchable_provider() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
+    use crate::session_registry::{
+        SessionActivateParams, SessionActivationState, SessionIdentity, SessionInfo,
+    };
+    use std::path::PathBuf;
+
+    for cli in [
+        None,
+        Some(CliSource::Unknown("custom:known".to_string())),
+        Some(CliSource::Unknown("unsupported-provider".to_string())),
+        Some(CliSource::Copilot),
+    ] {
+        for status in [
+            AgentStatus::Idle,
+            AgentStatus::Working,
+            AgentStatus::Attention,
+            AgentStatus::Error,
+        ] {
+            for fail in [false, true] {
+                let mock = Arc::new(if fail {
+                    MockWtChannel::failing("pane lookup unavailable")
+                } else {
+                    MockWtChannel::ok()
+                });
+                let mut state = make_state_with_wt(mock.clone());
+                Arc::get_mut(&mut state).unwrap().allowed_agent_ids = Some(HashSet::new());
+                let mut row =
+                    SessionInfo::new(SessionId::new("bound-provider"), PathBuf::from("C:\\repo"));
+                row.provider_id = Some(
+                    cli.as_ref()
+                        .and_then(CliSource::canonical_provider_id)
+                        .unwrap_or_else(|| "custom:missing-cli".to_string()),
+                );
+                row.cli_source = cli.clone();
+                row.location = SessionLocation::Unknown;
+                row.origin = Some(SessionOrigin::Unknown);
+                row.status = Some(status.clone());
+                row.pane_session_id = Some("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".to_string());
+                row.owner_window_id = Some(17);
+                let identity = SessionIdentity::from_info(&row);
+                state.registry.upsert(row.clone()).await;
+                let params = SessionActivateParams {
+                    identity: identity.clone(),
+                    window_id: 42,
+                    activation_id: "bound-provider-focus".to_string(),
+                };
+                let response = execute_session_activation(&state, &params).await;
+                assert_eq!(response.activation_id, params.activation_id);
+                assert_eq!(response.state, SessionActivationState::Complete);
+                assert_eq!(response.action, "focus", "{cli:?}: {response:?}");
+                assert_eq!(response.accepted, !fail);
+                assert_eq!(
+                    response.detail.as_deref(),
+                    fail.then_some("pane lookup unavailable")
+                );
+                assert_eq!(
+                    mock.calls(),
+                    vec![(
+                        "focus_pane".to_string(),
+                        serde_json::json!({
+                            "session_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+                        })
+                    )]
+                );
+                assert_eq!(
+                    state.registry.lookup_identity(&identity).await.unwrap(),
+                    row
+                );
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn sidebar_activation_missing_cli_bound_focus_requires_terminal_service() {
+    use crate::agent_sessions::AgentStatus;
+    use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};
+    use std::path::PathBuf;
+
+    let mut state = make_state_with_wt(Arc::new(MockWtChannel::ok()));
+    Arc::get_mut(&mut state).unwrap().wt = None;
+    let mut row = SessionInfo::new(SessionId::new("missing-cli"), PathBuf::from("C:\\repo"));
+    row.provider_id = Some("custom:missing-cli".to_string());
+    row.status = Some(AgentStatus::Working);
+    row.pane_session_id = Some("bound-pane".to_string());
+    let identity = SessionIdentity::from_info(&row);
+    state.registry.upsert(row.clone()).await;
+    let response = execute_session_activation(
+        &state,
+        &SessionActivateParams {
+            identity: identity.clone(),
+            window_id: 42,
+            activation_id: "missing-service".to_string(),
+        },
+    )
+    .await;
+    assert!(!response.accepted);
+    assert_eq!(response.action, "focus");
+    assert_eq!(
+        response.detail.as_deref(),
+        Some("Terminal activation service is unavailable.")
+    );
+    assert_eq!(
+        state.registry.lookup_identity(&identity).await.unwrap(),
+        row
+    );
+}
+
+#[tokio::test]
 async fn sidebar_activation_foreign_live_focus_failure_never_falls_back_to_resume() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
     use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};

@@ -7707,6 +7707,25 @@ async fn execute_session_activation(
         }
         response
     };
+    let focus = |pane_session_id: String| async move {
+        let Some(wt) = state.wt.as_ref() else {
+            return respond!(
+                "focus",
+                false,
+                Some("Terminal activation service is unavailable.".to_string())
+            );
+        };
+        match wt
+            .request(
+                "focus_pane",
+                serde_json::json!({ "session_id": pane_session_id }),
+            )
+            .await
+        {
+            Ok(_) => respond!("focus", true, None),
+            Err(error) => failed("focus", error),
+        }
+    };
 
     let Some(row) = state.registry.lookup_identity(&parsed.identity).await else {
         return respond!(
@@ -7715,6 +7734,17 @@ async fn execute_session_activation(
             Some("The selected session is no longer available.".to_string())
         );
     };
+    let status = row.status.clone().unwrap_or(AgentStatus::Historical);
+    let liveness = liveness_from_status(&status, row.pane_session_id.clone());
+    // Focusing an existing live pane does not require a launchable provider.
+    if let crate::session_mgmt::Liveness::Live {
+        pane_session_id: Some(pane_session_id),
+    } = &liveness
+    {
+        if !pane_session_id.is_empty() {
+            return focus(pane_session_id.clone()).await;
+        }
+    }
     let Some(cli_source) = row.cli_source.clone() else {
         return respond!(
             "not_resumable",
@@ -7733,10 +7763,9 @@ async fn execute_session_activation(
             Some("The selected session provider is unavailable.".to_string())
         );
     }
-    let status = row.status.clone().unwrap_or(AgentStatus::Historical);
     let mut action = decide_enter_action(&RowSnapshot {
         origin: row.origin.clone().unwrap_or(SessionOrigin::Unknown),
-        liveness: liveness_from_status(&status, row.pane_session_id.clone()),
+        liveness,
         key: row.session_id.to_string(),
         cli_source: cli_source.clone(),
         load_session_capability: crate::session_mgmt::LoadSessionCapability::Unknown,
@@ -7760,25 +7789,7 @@ async fn execute_session_activation(
     }
 
     match action {
-        EnterAction::Focus { pane_session_id } => {
-            let Some(wt) = state.wt.as_ref() else {
-                return respond!(
-                    "focus",
-                    false,
-                    Some("Terminal activation service is unavailable.".to_string())
-                );
-            };
-            match wt
-                .request(
-                    "focus_pane",
-                    serde_json::json!({ "session_id": pane_session_id }),
-                )
-                .await
-            {
-                Ok(_) => respond!("focus", true, None),
-                Err(error) => failed("focus", error),
-            }
-        }
+        EnterAction::Focus { pane_session_id } => focus(pane_session_id).await,
         EnterAction::ResumeInAgentPane { .. } => {
             let provider_id = provider_id.expect("known provider was checked above");
             let (agent_source, wsl_distro) = match &row.location {
