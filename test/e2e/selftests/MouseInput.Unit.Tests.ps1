@@ -26,6 +26,44 @@ BeforeAll {
     }
 }
 
+Describe 'Owned caption foreground safety' -Tag 'Unit' {
+    It 'rejects an invalid root without selecting a click point or changing foreground' {
+        InModuleScope ItE2E {
+            Initialize-WtWin32Input
+            $foreground = [ItE2E.ItWtWin32Input]::GetForegroundWindow()
+            [ItE2E.ItWtWin32Input]::ClickOwnedCaption([IntPtr]::Zero, 1) | Should -BeFalse
+            [ItE2E.ItWtWin32Input]::ClickOwnedPoint([IntPtr]::Zero, 1, 0, 0) | Should -BeFalse
+            [ItE2E.ItWtWin32Input]::LastCaptionPoint | Should -BeNullOrEmpty
+            [ItE2E.ItWtWin32Input]::GetForegroundWindow() | Should -Be $foreground
+        }
+    }
+    It 'rejects a mismatched target PID before acquiring foreground' {
+        $app = [pscustomobject]@{ Hwnd = 1; Pid = 1 }
+        { Set-WtWindowForeground -App $app -Attempts 1 } | Should -Throw '*no longer belongs*'
+    }
+    It 'has no caption injection bypass and guards the final paired mouse input' {
+        $source = Get-Content (Join-Path $PSScriptRoot '..\ItE2E\Public\Ui.ps1') -Raw
+        $caption = [regex]::Match($source, '(?s)public static bool ClickOwnedCaption\b.*?(?=\r?\n    // Attach only)').Value
+        $point = [regex]::Match($source, '(?s)public static bool ClickOwnedPoint\b.*?(?=\r?\n    // A real caption)').Value
+        $caption | Should -Not -BeNullOrEmpty
+        $point | Should -Not -BeNullOrEmpty
+        $caption | Should -Not -Match '\bSendInput\s*\('
+        $caption | Should -Match 'if \(!ClickOwnedPoint\(hWnd, pid, point\.X, point\.Y\)\)'
+        $caption.LastIndexOf('SendMessageTimeout(') | Should -BeLessThan $caption.IndexOf('ClickOwnedPoint(')
+        $point | Should -Match 'new int\[\] \{ 1, 2, 4, 5, 6, 16, 17, 18, 91, 92 \}'
+        $point | Should -Match 'if \(IsKeyDown\(key\)\) return false;'
+        $point | Should -Match 'GetWindowProcessId\(root\) != pid'
+        $point | Should -Match 'cursor\.X != x \|\| cursor\.Y != y'
+        $point | Should -Match 'GetAncestor\(pointWindow, 2\) != root \|\| GetWindowProcessId\(pointWindow\) != pid\) return false'
+        $point | Should -Match 'inputs\[0\]\.data\.mouse\.dwFlags = 2;'
+        $point | Should -Match 'inputs\[1\]\.data\.mouse\.dwFlags = 4;'
+        $point.IndexOf('IsKeyDown(') | Should -BeLessThan $point.IndexOf('GetCursorPos(')
+        $point.IndexOf('GetCursorPos(') | Should -BeLessThan $point.IndexOf('WindowFromPoint(')
+        $point.IndexOf('GetWindowProcessId(pointWindow)') | Should -BeLessThan $point.IndexOf('SendInput(')
+        ([regex]::Matches($point, '\bSendInput\s*\(')).Count | Should -Be 1
+    }
+}
+
 Describe 'Representative mouse helper regressions' -Tag 'Unit' {
     It 'finds exact Unicode text and trims a surplus glyph in provider units' -Tag 'UiTextBounds' {
         InModuleScope ItE2E {

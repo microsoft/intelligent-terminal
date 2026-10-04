@@ -57,6 +57,12 @@ function Initialize-WtWin32Input {
     [DllImport("user32.dll")] public static extern bool CloseDesktop(IntPtr desktop);
     [DllImport("user32.dll", SetLastError=true)] public static extern bool GetCursorPos(out POINT point);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+    [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(POINT point);
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
+    [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    [DllImport("user32.dll")] public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint message, UIntPtr wParam, IntPtr lParam, uint flags, uint timeout, out UIntPtr result);
     [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int virtualKey);
     [DllImport("user32.dll", SetLastError=true)] public static extern uint SendInput(uint count, INPUT[] inputs, int size);
     [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
@@ -79,6 +85,9 @@ function Initialize-WtWin32Input {
         public int X;
         public int Y;
     }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT { public int Left, Top, Right, Bottom; }
 
     [StructLayout(LayoutKind.Sequential)]
     public struct MOUSEINPUT {
@@ -128,6 +137,75 @@ function Initialize-WtWin32Input {
         return true;
     }
 
+    public static int[] LastCaptionPoint;
+    public static string CaptionActivationResult;
+
+    public static bool ClickOwnedPoint(IntPtr root, uint pid, int x, int y) {
+        var inputs = new INPUT[2];
+        inputs[0].data.mouse.dwFlags = 2;
+        inputs[1].data.mouse.dwFlags = 4;
+        foreach (int key in new int[] { 1, 2, 4, 5, 6, 16, 17, 18, 91, 92 })
+            if (IsKeyDown(key)) return false;
+        POINT cursor;
+        if (!IsWindow(root) || GetAncestor(root, 2) != root || GetWindowProcessId(root) != pid ||
+            !GetCursorPos(out cursor) || cursor.X != x || cursor.Y != y) return false;
+        IntPtr pointWindow = WindowFromPoint(cursor);
+        if (GetAncestor(pointWindow, 2) != root || GetWindowProcessId(pointWindow) != pid) return false;
+        return SendInput(2, inputs, Marshal.SizeOf(typeof(INPUT))) == 2;
+    }
+
+    // A real caption click can establish last-input ownership when background ASFW is denied.
+    // Never click a covered point or a titlebar control, and never send keys to the old foreground.
+    public static bool ClickOwnedCaption(IntPtr hWnd, uint pid) {
+        LastCaptionPoint = null;
+        CaptionActivationResult = "NoUncoveredOwnedCaption";
+        if (!IsWindow(hWnd) || GetAncestor(hWnd, 2) != hWnd || GetWindowProcessId(hWnd) != pid ||
+            !IsWindowVisible(hWnd) || IsIconic(hWnd)) return false;
+        foreach (int key in new int[] { 1, 2, 4, 16, 17, 18 })
+            if (IsKeyDown(key)) { CaptionActivationResult = "UserInputHeld"; return false; }
+        IntPtr dpi = SetThreadDpiAwarenessContext(new IntPtr(-4));
+        if (dpi == IntPtr.Zero) { CaptionActivationResult = "PhysicalCoordinateContextUnavailable"; return false; }
+        int[] original = null;
+        try {
+            RECT rect;
+            if (!GetWindowRect(hWnd, out rect)) return false;
+            if (!SetWindowPos(hWnd, IntPtr.Zero, 0, 0, 0, 0, 0x13)) return false; // NOACTIVATE | NOMOVE | NOSIZE
+            original = GetCursorPosition();
+            for (int yOffset = 8; yOffset <= 32; yOffset += 8) {
+                for (int fraction = 3; fraction <= 7; fraction++) {
+                    POINT point = new POINT {
+                        X = rect.Left + (rect.Right - rect.Left) * fraction / 10,
+                        Y = rect.Top + yOffset
+                    };
+                    if (point.X < -32768 || point.X > 32767 || point.Y < -32768 || point.Y > 32767) continue;
+                    if (GetAncestor(WindowFromPoint(point), 2) != hWnd) continue;
+                    UIntPtr hit;
+                    IntPtr packed = new IntPtr(unchecked((point.Y << 16) | (point.X & 0xffff)));
+                    if (SendMessageTimeout(hWnd, 0x84, UIntPtr.Zero, packed, 0x22, 500, out hit) == IntPtr.Zero ||
+                        hit.ToUInt64() != 2) continue; // WM_NCHITTEST must return HTCAPTION.
+                    if (!SetCursorPos(point.X, point.Y)) return false;
+                    if (!IsWindow(hWnd) || GetWindowProcessId(hWnd) != pid ||
+                        GetAncestor(WindowFromPoint(point), 2) != hWnd) return false;
+                    if (SendMessageTimeout(hWnd, 0x84, UIntPtr.Zero, packed, 0x22, 500, out hit) == IntPtr.Zero ||
+                        hit.ToUInt64() != 2) return false;
+                    LastCaptionPoint = new int[] { point.X, point.Y };
+                    if (!ClickOwnedPoint(hWnd, pid, point.X, point.Y)) {
+                        CaptionActivationResult = "OwnedPointOrInputRejected";
+                        return false;
+                    }
+                    System.Threading.Thread.Sleep(150);
+                    CaptionActivationResult = GetForegroundWindow() == hWnd ? "OwnedForegroundConfirmed" : "ClickDidNotAcquireForeground";
+                    return GetForegroundWindow() == hWnd;
+                }
+            }
+            return false;
+        }
+        finally {
+            if (original != null) SetCursorPos(original[0], original[1]);
+            if (dpi != IntPtr.Zero) SetThreadDpiAwarenessContext(dpi);
+        }
+    }
+
     // Attach only to the selected target. Never inject an ALT into an unrelated foreground app
     // or change the user's global foreground-lock settings.
     public static bool ForceForeground(IntPtr hWnd) {
@@ -157,6 +235,8 @@ function Set-WtWindowForeground {
         Ensure the WT window IS in the foreground so a subsequent window-level key send lands on it.
         Applies the full foreground-forcing combo (see ForceForeground) and RETRIES until the window
         actually holds the foreground or the attempts run out.
+        Explicit RequireOwnedForeground contexts may then use one identity-checked, uncovered
+        HTCAPTION mouse click, preserving the cursor. No input is sent to a foreign window.
     .OUTPUTS
         [bool] $true if the WT window is confirmed foreground; $false if it could not be forced
         (a competing foreground app is holding it — caller should treat as a precondition skip).
@@ -200,12 +280,22 @@ function Set-WtWindowForeground {
             if ([ItE2E.ItWtWin32Input]::ForceForeground($hwnd)) { return $true }
             Start-Sleep -Milliseconds $DelayMs
         }
+        if ($App.PSObject.Properties['RequireOwnedForeground'] -and $App.RequireOwnedForeground) {
+            $current = Get-Process -Id $App.Pid -ErrorAction Stop
+            if ($current.StartTime -ne $App.OwnedProcess.StartTime -or
+                $current.Path -ne $App.OwnedProcess.Path -or $App.OwnedProcess.HasExited) {
+                throw 'Caption activation requires the original live test-owned process/start-time identity.'
+            }
+            if ([ItE2E.ItWtWin32Input]::ClickOwnedCaption($hwnd, [uint32]$App.Pid)) { return $true }
+        }
         if ($env:ITE2E_INPUT_FAILURE_RECEIPT) {
             @{
                 reason = 'OwnedForegroundUnavailable'; at = [datetimeoffset]::UtcNow.ToString('o')
                 hwnd = $hwnd.ToInt64(); owned_pid = $App.Pid
                 foreground_hwnd = [ItE2E.ItWtWin32Input]::GetForegroundWindow().ToInt64()
                 foreground_pid = [ItE2E.ItWtWin32Input]::GetWindowProcessId([ItE2E.ItWtWin32Input]::GetForegroundWindow())
+                caption_activation = [ItE2E.ItWtWin32Input]::CaptionActivationResult
+                caption_point = [ItE2E.ItWtWin32Input]::LastCaptionPoint
             } | ConvertTo-Json | Set-Content -LiteralPath $env:ITE2E_INPUT_FAILURE_RECEIPT
         }
         $false
