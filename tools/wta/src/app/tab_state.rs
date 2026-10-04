@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::app_contracts::{PermOption, PlanEntry};
 use crate::commands::{CommandSpec, MovePositionSpec};
 
-use super::input_edit::InputHistory;
+use super::input_edit::{InputEditHistory, InputHistory};
 use super::{TabAutofixState, TurnState};
 
 pub(crate) const DEFAULT_TAB_ID: &str = "0";
@@ -108,6 +108,9 @@ pub enum ChatMessage {
         status: String,
         #[serde(default)]
         kind: ToolCallKind,
+        /// Bounded, verbatim search input, independent of the provider's short title.
+        #[serde(default)]
+        query: Option<ToolCallOutput>,
         /// Concise path/command hint pulled from the ACP tool call's
         /// `locations` or summarized `raw_input`. `None` when no useful
         /// target was reported or the title already states it verbatim.
@@ -375,6 +378,18 @@ pub(crate) struct CompletedTurnViewportAnchor {
     pub row_offset: usize,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ChatReadingPosition {
+    // The next completed-turn index denotes the active transcript. Message
+    // indices are remapped when messages are removed or the transcript is captured.
+    pub turn_index: usize,
+    pub message_index: Option<usize>,
+    pub row_offset: usize,
+    pub scroll_offset: usize,
+    // UTF-8 source boundary in this thought, independent of wrapping or head retention.
+    pub thought_source: Option<(ThoughtId, usize)>,
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct CompletedTurnLayoutState {
     height_cache: RefCell<CompletedTurnHeightCache>,
@@ -557,6 +572,8 @@ impl ConfigPickerState {
 /// mutating shared `App` fields.
 #[derive(Default)]
 pub struct TabSession {
+    pub(crate) last_telemetry_session_id: Option<String>,
+    pub(crate) telemetry_model_pending: Option<(String, uuid::Uuid)>,
     /// Per-tab autofix state machine (see `TabAutofixState`).
     pub autofix: TabAutofixState,
     pub(crate) pending_terminal_action_proposal: Option<PendingTerminalActionProposal>,
@@ -569,6 +586,8 @@ pub struct TabSession {
     pub completed_turns: Vec<CompletedTurn>,
     /// UI-only disclosure state keyed by the ACP session's tool-call IDs.
     pub(crate) expanded_completed_tool_calls: HashSet<String>,
+    pub(crate) active_tool_viewport_anchor: Option<(String, u16)>,
+    pub(crate) chat_reading_position: Option<ChatReadingPosition>,
     pub(crate) completed_turn_layout: CompletedTurnLayoutState,
     /// Latched after the first prompt or session/load. A pre-warmed session/new
     /// alone must not become resumable; `/clear` keeps the same session resumable.
@@ -646,7 +665,10 @@ pub struct TabSession {
     pub input: String,
     pub cursor_pos: usize,
     pub(super) input_history: InputHistory,
+    pub(super) input_edits: InputEditHistory,
     pub(crate) input_all_selected: bool,
+    /// Preferred display column, valid only for the same input-box width.
+    pub(super) input_vertical_goal: Option<(u16, usize)>,
     pub(crate) attachments: super::attachments::PendingAttachments,
     /// True while a host-triggered text paste is reading the clipboard on a
     /// blocking worker.
@@ -664,6 +686,7 @@ pub struct TabSession {
     // Filled in Milestone 2 once each tab has its own ACP SessionId.
     #[allow(dead_code)]
     pub session_id: Option<String>,
+    pub(crate) reattached_session_id: Option<String>,
 
     /// Per-pane ACP model override, set by the `/model` picker.
     pub model_override: Option<String>,
@@ -701,6 +724,16 @@ pub struct TabSession {
 
 impl TabSession {
     const MAX_STREAMING_THOUGHT_CHARS: usize = 4000;
+
+    pub(crate) fn is_reattached_session(&self) -> bool {
+        self.reattached_session_id().is_some()
+    }
+
+    pub(crate) fn reattached_session_id(&self) -> Option<&str> {
+        self.reattached_session_id
+            .as_deref()
+            .filter(|id| self.session_id.as_deref() == Some(*id))
+    }
 
     /// Returns the ACP session id only after the conversation is worth restoring.
     pub(crate) fn resumable_session_id(&self) -> Option<&str> {
@@ -834,6 +867,8 @@ impl TabSession {
     pub(crate) fn clear_completed_turns(&mut self) {
         self.completed_turns.clear();
         self.expanded_completed_tool_calls.clear();
+        self.active_tool_viewport_anchor = None;
+        self.chat_reading_position = None;
         self.completed_turn_layout = CompletedTurnLayoutState::default();
     }
 
@@ -915,6 +950,7 @@ impl TabSession {
             .completed_turns
             .iter()
             .flat_map(|turn| &turn.details)
+            .chain(&self.messages)
             .filter_map(|message| match message {
                 ChatMessage::ToolCall { id, .. } => Some(id.clone()),
                 _ => None,
@@ -943,6 +979,31 @@ impl TabSession {
         true
     }
 
+    pub(crate) fn toggle_active_tool_group(&mut self, start: usize, count: usize) -> bool {
+        let ids = self
+            .messages
+            .iter()
+            .skip(start)
+            .take(count)
+            .filter_map(|message| match message {
+                ChatMessage::ToolCall { id, .. } => Some(id.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        if ids.is_empty() || ids.len() != count {
+            return false;
+        }
+        let expand = ids.iter().any(|id| !self.completed_tool_call_expanded(id));
+        for id in ids {
+            if expand {
+                self.expanded_completed_tool_calls.insert(id);
+            } else {
+                self.expanded_completed_tool_calls.remove(&id);
+            }
+        }
+        true
+    }
+
     pub(crate) fn invalidate_pending_paste(&mut self) {
         self.paste_pending = false;
         self.paste_generation = self.paste_generation.wrapping_add(1);
@@ -950,6 +1011,7 @@ impl TabSession {
 
     pub fn scroll_to_bottom(&mut self) {
         self.chat_scroll.offset = 0;
+        self.chat_reading_position = None;
     }
 
     fn can_show_turn_activity(&self) -> bool {
@@ -1054,6 +1116,7 @@ impl TabSession {
         self.replay_user_buffer.clear();
         self.replay_user_message_id = None;
         self.chat_scroll.reset();
+        self.chat_reading_position = None;
         self.timing_note = None;
         self.selection_visible_pending = false;
         self.clear_completed_turn_selection();
@@ -1061,6 +1124,8 @@ impl TabSession {
             .map(|prompt_id| TurnState::Cancelling { prompt_id })
             .unwrap_or(TurnState::Idle);
         self.clear_recommendations();
+        self.reset_input_undo_history();
+        self.input_vertical_goal = None;
         self.attachments
             .remove_tokens_from_input(&mut self.input, &mut self.cursor_pos);
         self.clear_history_draft_attachments();
@@ -1111,7 +1176,10 @@ impl TabSession {
             self.streaming_thought = Some(std::time::Instant::now());
             index
         };
-        let Some(ChatMessage::Thought { text: current, .. }) = self.messages.get_mut(index) else {
+        let Some(ChatMessage::Thought {
+            id, text: current, ..
+        }) = self.messages.get_mut(index)
+        else {
             return;
         };
         current.push_str(text);
@@ -1123,6 +1191,17 @@ impl TabSession {
                 .nth(remove_chars)
                 .map_or(current.len(), |(index, _)| index);
             current.drain(..cut_at);
+            if let Some(position) = &mut self.chat_reading_position {
+                if position.turn_index == self.completed_turns.len()
+                    && position.message_index == Some(index)
+                {
+                    if let Some((anchor_id, byte)) = &mut position.thought_source {
+                        if anchor_id == id {
+                            *byte = byte.saturating_sub(cut_at);
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -1265,10 +1344,88 @@ impl TabSession {
 
     pub fn take_current_turn_details(&mut self) -> Vec<ChatMessage> {
         self.finish_thought();
+        // Capturing a turn removes its user bubble and renders a prompt header
+        // instead. Keep the reading anchor on the same surviving detail.
+        if let Some(position) = &mut self.chat_reading_position {
+            if position.turn_index == self.completed_turns.len() {
+                if let Some(index) = position.message_index {
+                    position.message_index = self.messages.get(index).and_then(|message| {
+                        (!matches!(message, ChatMessage::User(_))).then(|| {
+                            self.messages[..index]
+                                .iter()
+                                .filter(|message| !matches!(message, ChatMessage::User(_)))
+                                .count()
+                        })
+                    });
+                }
+            }
+        }
         std::mem::take(&mut self.messages)
             .into_iter()
             .filter(|message| !matches!(message, ChatMessage::User(_)))
             .collect()
+    }
+
+    pub(crate) fn hide_tool_call(&mut self, id: &str) {
+        self.retain_current_messages(
+            |message| !matches!(message, ChatMessage::ToolCall { id: message_id, .. } if message_id == id),
+        );
+    }
+
+    /// Remove active messages without rebinding a reading position to another
+    /// message. A deleted target falls forward, or back to the final survivor.
+    pub(crate) fn retain_current_messages(&mut self, mut keep: impl FnMut(&ChatMessage) -> bool) {
+        let streaming_thought_index = self.streaming_thought_message_index();
+        let mut original_index = 0;
+        let mut index = 0;
+        self.messages.retain(|message| {
+            let remove = !keep(message);
+            if remove {
+                if streaming_thought_index == Some(original_index) {
+                    self.streaming_thought = None;
+                }
+                if let Some(position) = &mut self.chat_reading_position {
+                    if position.turn_index == self.completed_turns.len() {
+                        if let Some(anchor_index) = &mut position.message_index {
+                            if *anchor_index > index {
+                                *anchor_index -= 1;
+                            } else if *anchor_index == index {
+                                position.row_offset = 0;
+                                position.thought_source = None;
+                            }
+                        }
+                    }
+                }
+            } else {
+                index += 1;
+            }
+            original_index += 1;
+            !remove
+        });
+        if self.messages.is_empty()
+            && self
+                .chat_reading_position
+                .is_some_and(|position| position.turn_index == self.completed_turns.len())
+        {
+            self.chat_reading_position = None;
+        }
+        if let Some(position) = &mut self.chat_reading_position {
+            if position.turn_index == self.completed_turns.len() {
+                position.message_index = position.message_index.and_then(|index| {
+                    self.messages
+                        .len()
+                        .checked_sub(1)
+                        .map(|last| index.min(last))
+                });
+            }
+        }
+        if self.active_tool_viewport_anchor.as_ref().is_some_and(|(id, _)| {
+            !self.messages.iter().any(
+                |message| matches!(message, ChatMessage::ToolCall { id: message_id, .. } if message_id == id),
+            )
+        }) {
+            self.active_tool_viewport_anchor = None;
+        }
     }
 
     pub fn pack_replayed_messages_into_turns(&mut self) {

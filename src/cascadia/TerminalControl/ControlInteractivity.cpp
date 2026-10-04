@@ -800,18 +800,23 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     try
     {
         const auto autoPeer = winrt::make_self<implementation::InteractivityAutomationPeer>(this);
-        if (_uiaEngine)
-        {
-            _core->DetachUiaEngine(_uiaEngine.get());
-        }
-        _uiaEngine = std::make_unique<::Microsoft::Console::Render::UiaEngine>(autoPeer.get());
-        _core->AttachUiaEngine(_uiaEngine.get());
+        AttachAutomationPeer(*autoPeer);
         return *autoPeer;
     }
     catch (...)
     {
         LOG_CAUGHT_EXCEPTION();
         return nullptr;
+    }
+
+    void ControlInteractivity::AttachAutomationPeer(const Control::InteractivityAutomationPeer& peer)
+    {
+        if (_uiaEngine)
+        {
+            _core->DetachUiaEngine(_uiaEngine.get());
+        }
+        _uiaEngine = std::make_unique<::Microsoft::Console::Render::UiaEngine>(winrt::get_self<implementation::InteractivityAutomationPeer>(peer));
+        _core->AttachUiaEngine(_uiaEngine.get());
     }
 
     ::Microsoft::Console::Render::IRenderData* ControlInteractivity::GetRenderData() const

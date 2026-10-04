@@ -4,6 +4,7 @@
 #pragma once
 #include "Pane.h"
 #include "ColorPickupFlyout.h"
+#include "../RichTabProvider/ProviderBroker.h"
 #include "Tab.h"
 #include "Tab.g.h"
 
@@ -18,7 +19,7 @@ namespace winrt::TerminalApp::implementation
     struct Tab : TabT<Tab>
     {
     public:
-        Tab(std::shared_ptr<Pane> rootPane);
+        Tab(std::shared_ptr<Pane> rootPane, winrt::hstring stableId = {});
 
         // Called after construction to perform the necessary setup, which relies on weak_ptr
         void Initialize();
@@ -32,7 +33,9 @@ namespace winrt::TerminalApp::implementation
         void Scroll(const int delta);
 
         std::shared_ptr<Pane> DetachRoot();
+        std::shared_ptr<Pane> TakeRootForTransfer();
         std::shared_ptr<Pane> DetachPane();
+        std::shared_ptr<Pane> DetachPane(const std::shared_ptr<Pane>& pane);
         void AttachPane(std::shared_ptr<Pane> pane);
 
         void AttachColorPicker(winrt::TerminalApp::ColorPickupFlyout& colorPicker);
@@ -64,6 +67,7 @@ namespace winrt::TerminalApp::implementation
 
         void UpdateSettings(const winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings& settings);
         void UpdateTitle();
+        void SetRichTabPresentation(const std::optional<::Microsoft::Terminal::RichTab::Provider::Presentation>& presentation);
 
         void Close();
         void Shutdown();
@@ -73,6 +77,8 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring GetTabText() const;
         void ResetTabText();
         void ActivateTabRenamer();
+        void CancelTabRename();
+        void SetHeaderResolver(std::function<winrt::TerminalApp::TabHeaderControl(bool)> resolver) { _headerResolver = std::move(resolver); }
 
         std::optional<winrt::Windows::UI::Color> GetTabColor();
         void SetRuntimeTabColor(const winrt::Windows::UI::Color& color);
@@ -99,9 +105,23 @@ namespace winrt::TerminalApp::implementation
 
         std::shared_ptr<Pane> GetActivePane() const;
         winrt::TerminalApp::TaskbarState GetCombinedTaskbarState() const;
+        Pane::TaskbarStateWithContentId GetCombinedTaskbarStateWithContentId() const;
 
         std::shared_ptr<Pane> GetRootPane() const { return _rootPane; }
         std::vector<uint32_t> GetMruPanes() const { return _mruPanes; }
+        struct VisiblePaneSnapshot
+        {
+            uint32_t ContentId{};
+            winrt::guid SessionId{};
+            winrt::hstring Title;
+            winrt::hstring Icon;
+            bool IsActive{};
+            bool IsAgentPane{};
+            uint64_t ProgressState{};
+            uint64_t ProgressValue{};
+        };
+        std::vector<VisiblePaneSnapshot> GetVisiblePaneSnapshot() const;
+        std::vector<std::shared_ptr<Pane>> GetPaneCloseScope(uint32_t contentId) const;
 
         // Returns the AgentPaneContent (if any) hosted in this tab's pane
         // tree. The presence of an AgentPaneContent IS the truth — a tab has
@@ -110,6 +130,14 @@ namespace winrt::TerminalApp::implementation
         winrt::TerminalApp::AgentPaneContent FindAgentPaneContent() const;
         // Returns the Pane node hosting the AgentPaneContent, or nullptr.
         std::shared_ptr<Pane> FindAgentPane() const;
+        bool IsAgentTab() const;
+        void SetTabListPositionOperationsRestricted(bool restricted)
+        {
+            _tabListPositionOperationsRestricted = restricted;
+            _EnableMenuItems();
+            _UpdatePinMenuItem();
+        }
+        void SetTabPointerInteractionRestricted(bool restricted);
 
         // Hide the agent pane without detaching it from the tree. The pane
         // stays alive (so TermControl + conpty + wta-helper survive), but
@@ -122,6 +150,9 @@ namespace winrt::TerminalApp::implementation
         // original orientation.
         bool RestoreStashedAgentPane(winrt::Microsoft::Terminal::Settings::Model::SplitDirection direction);
         bool HasStashedAgentPane() const;
+        void SuppressAgentPrewarm() noexcept { _agentPrewarmSuppressed = true; }
+        void AllowAgentPrewarm() noexcept { _agentPrewarmSuppressed = false; }
+        bool AgentPrewarmSuppressed() const noexcept { return _agentPrewarmSuppressed; }
 
         // Runtime-only position selected by `/move`. A missing override means
         // this tab follows the global AgentPanePosition setting.
@@ -139,6 +170,13 @@ namespace winrt::TerminalApp::implementation
         // flag on each pane.
         void SetAgentChipOverride(std::optional<winrt::guid> sessionId);
 
+        enum class AgentOverrideOrigin
+        {
+            User,
+            // Needed to load the saved session, not a user opt-out from Settings.
+            Restore,
+        };
+
         // Per-tab AI agent override (runtime-only; not persisted). When set,
         // this tab's agent pane runs the chosen agent/model instead of the
         // global `acpAgent`/`acpModel`. Empty agent id means "follow the
@@ -153,17 +191,24 @@ namespace winrt::TerminalApp::implementation
         std::optional<winrt::guid> AgentSourceProfileGuid() const noexcept { return _agentSourceProfileGuid; }
         void AgentSourceProfileGuid(const winrt::guid& value) noexcept { _agentSourceProfileGuid = value; }
         bool HasAgentOverride() const noexcept { return !_agentIdOverride.empty(); }
+        bool HasExplicitAgentOverride() const noexcept { return HasAgentOverride() && _agentOverrideOrigin == AgentOverrideOrigin::User; }
+        bool HasRestoredAgentOverride() const noexcept { return HasAgentOverride() && _agentOverrideOrigin == AgentOverrideOrigin::Restore; }
+        AgentOverrideOrigin GetAgentOverrideOrigin() const noexcept { return _agentOverrideOrigin; }
+        const winrt::hstring& AgentCurrentId() const noexcept { return _agentCurrentId; }
+        void AgentCurrentId(const winrt::hstring& value) { _agentCurrentId = value; }
         void SetAgentOverride(const winrt::hstring& agentId,
                               const winrt::hstring& model,
                               const winrt::hstring& customCommand,
                               const winrt::hstring& source = L"host",
-                              const winrt::hstring& wslDistro = {})
+                              const winrt::hstring& wslDistro = {},
+                              const AgentOverrideOrigin origin = AgentOverrideOrigin::User)
         {
             _agentIdOverride = agentId;
             _agentModelOverride = model;
             _agentCustomCommandOverride = customCommand;
             _agentSourceOverride = source;
             _agentWslDistroOverride = wslDistro;
+            _agentOverrideOrigin = origin;
         }
         void ClearAgentOverride() noexcept
         {
@@ -172,6 +217,7 @@ namespace winrt::TerminalApp::implementation
             _agentCustomCommandOverride = {};
             _agentSourceOverride = {};
             _agentWslDistroOverride = {};
+            _agentOverrideOrigin = AgentOverrideOrigin::User;
         }
 
         // Stable per-tab identifier (GUID string). Survives tab reordering
@@ -179,6 +225,14 @@ namespace winrt::TerminalApp::implementation
         // _tabs which is reused when tabs close. Used as the tab_id for
         // wta's per-tab TabSession routing.
         const winrt::hstring& StableId() const noexcept { return _stableId; }
+        bool CanKeepRunning() const;
+        bool KeepRunning() const noexcept { return _keepRunning; }
+        const winrt::hstring& KeepRunningTelemetryId() const noexcept { return _keepRunningTelemetryId; }
+        void KeepRunning(bool enabled);
+        void CopyKeepRunningState(const Tab& source);
+        bool IsPinned() const noexcept { return _isPinned; }
+        void IsPinned(bool pinned);
+        void RestoreKeptTabState(const Tab& source);
 
         winrt::TerminalApp::TerminalTabStatus TabStatus()
         {
@@ -187,8 +241,9 @@ namespace winrt::TerminalApp::implementation
 
         void SetDispatch(const winrt::TerminalApp::ShortcutActionDispatch& dispatch);
 
-        void UpdateTabViewIndex(const uint32_t idx, const uint32_t numTabs);
+        void UpdateTabViewIndex(uint32_t idx, uint32_t numTabs, uint32_t pinnedCount);
         void SetActionMap(const Microsoft::Terminal::Settings::Model::IActionMapView& actionMap);
+        void SetVerticalTabLayout(bool vertical);
 
         void ThemeColor(const winrt::Microsoft::Terminal::Settings::Model::ThemeColor& focused,
                         const winrt::Microsoft::Terminal::Settings::Model::ThemeColor& unfocused,
@@ -198,6 +253,9 @@ namespace winrt::TerminalApp::implementation
         void CloseButtonVisibility(Microsoft::Terminal::Settings::Model::TabCloseButtonVisibility visible);
 
         til::event<winrt::delegate<void()>> RequestFocusActiveControl;
+        til::typed_event<TerminalApp::Tab, winrt::Microsoft::Terminal::Settings::Model::TabLayout> TabLayoutChangeRequested;
+        til::event<winrt::delegate<>> KeepRunningEnabledByUser;
+        til::event<winrt::delegate<bool>> PinRequested;
 
         til::event<winrt::Windows::Foundation::EventHandler<winrt::Windows::Foundation::IInspectable>> Closed;
         til::event<winrt::Windows::Foundation::EventHandler<winrt::Windows::Foundation::IInspectable>> CloseRequested;
@@ -206,6 +264,8 @@ namespace winrt::TerminalApp::implementation
         til::typed_event<TerminalApp::TerminalPaneContent> RestartTerminalRequested;
 
         til::typed_event<TerminalApp::Tab, IInspectable> ActivePaneChanged;
+        til::event<winrt::delegate<>> PaneProjectionChanged;
+        til::event<winrt::delegate<>> TabColorChanged;
         til::event<winrt::delegate<>> TabRaiseVisualBell;
         til::event<winrt::delegate<winrt::hstring /*title*/, winrt::hstring /*body*/, winrt::TerminalApp::IPaneContent /*content*/>> TabToastNotificationRequested;
         til::typed_event<IInspectable, IInspectable> TaskbarProgressChanged;
@@ -227,15 +287,23 @@ namespace winrt::TerminalApp::implementation
         static constexpr double HeaderRenameBoxWidthTitleLength{ std::numeric_limits<double>::infinity() };
 
         winrt::Windows::UI::Xaml::FocusState _focusState{ winrt::Windows::UI::Xaml::FocusState::Unfocused };
+        winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _keepRunningMenuItem{};
+        winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _pinMenuItem{};
+        bool _isVerticalTabLayout{ false };
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _duplicateTabMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _splitTabMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _moveToNewWindowMenuItem{};
+        winrt::Windows::UI::Xaml::Controls::MenuFlyoutSubItem _moveSubMenu{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _moveRightMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _moveLeftMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _exportTabMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _findMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _restartConnectionMenuItem{};
+        winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _switchTabLayoutMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _closeOtherTabsMenuItem{};
+        bool _tabListPositionOperationsRestricted{ false };
+        bool _tabPointerInteractionRestricted{ false };
+        winrt::Windows::UI::Xaml::Controls::MenuFlyout _contextMenuFlyout{ nullptr };
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _closeTabsAfterMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _closePaneMenuItem{};
         winrt::TerminalApp::ShortcutActionDispatch _dispatch;
@@ -247,6 +315,8 @@ namespace winrt::TerminalApp::implementation
         til::color _tabRowColor;
 
         Microsoft::Terminal::Settings::Model::TabCloseButtonVisibility _closeButtonVisibility{ Microsoft::Terminal::Settings::Model::TabCloseButtonVisibility::Always };
+        winrt::Microsoft::Terminal::Settings::Model::TabLayout _switchTabLayoutTarget{ winrt::Microsoft::Terminal::Settings::Model::TabLayout::Vertical };
+        std::optional<winrt::Microsoft::Terminal::Settings::Model::TabLayout> _pendingTabLayoutChange;
 
         std::shared_ptr<Pane> _rootPane{ nullptr };
         std::shared_ptr<Pane> _activePane{ nullptr };
@@ -267,12 +337,16 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _agentCustomCommandOverride{};
         winrt::hstring _agentSourceOverride{};
         winrt::hstring _agentWslDistroOverride{};
+        AgentOverrideOrigin _agentOverrideOrigin{ AgentOverrideOrigin::User };
+        winrt::hstring _agentCurrentId{};
         std::optional<winrt::guid> _agentSourceProfileGuid;
 
         winrt::Microsoft::Terminal::Settings::Model::IconStyle _lastIconStyle;
         winrt::hstring _lastIconPath{};
         std::optional<winrt::Windows::UI::Color> _runtimeTabColor{};
         winrt::TerminalApp::TabHeaderControl _headerControl{};
+        std::function<winrt::TerminalApp::TabHeaderControl(bool)> _headerResolver;
+        winrt::TerminalApp::TabHeaderControl _HeaderControl(bool realize = false);
         winrt::TerminalApp::TerminalTabStatus _tabStatus{};
 
         winrt::TerminalApp::ColorPickupFlyout _tabColorPickup{ nullptr };
@@ -308,10 +382,18 @@ namespace winrt::TerminalApp::implementation
         bool _receivedKeyDown{ false };
         bool _iconHidden{ false };
         bool _changingActivePane{ false };
+        bool _agentPrewarmSuppressed{ false };
 
         winrt::hstring _stableId{};
+        bool _keepRunning{ false };
+        winrt::hstring _keepRunningTelemetryId{};
+        bool _isPinned{ false };
+        uint32_t _pinnedTabCount{ 0 };
 
         winrt::hstring _runtimeTabText{};
+        std::optional<::Microsoft::Terminal::RichTab::Provider::Presentation> _richTabPresentation;
+        winrt::hstring _richTabTooltipText{};
+        winrt::hstring _richTabAccessibilityText{};
         bool _inRename{ false };
         winrt::Windows::UI::Xaml::Controls::TextBox::LayoutUpdated_revoker _tabRenameBoxLayoutUpdatedRevoker;
 
@@ -323,6 +405,8 @@ namespace winrt::TerminalApp::implementation
         void _UpdateHeaderControlMaxWidth();
 
         void _CreateContextMenu();
+        void _UpdateKeepRunningMenuItem();
+        void _UpdatePinMenuItem();
         winrt::hstring _CreateToolTipTitle();
 
         void _DetachEventHandlersFromContent(const uint32_t paneId);
@@ -351,6 +435,8 @@ namespace winrt::TerminalApp::implementation
         void _EnableMenuItems();
         void _UpdateSwitchToTabKeyChord();
         void _UpdateToolTip();
+        void _UpdateRichTabPresentation();
+        void _UpdateAutomationName();
 
         void _RecalculateAndApplyTabColor();
         void _ApplyTabColorOnUIThread(const winrt::Windows::UI::Color& color);

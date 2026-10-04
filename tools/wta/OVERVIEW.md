@@ -80,7 +80,7 @@ wta list-windows                          # list all WT windows
 wta list-tabs                             # list tabs
 wta capture-pane -t 3 -l 50               # read the last 50 lines from pane 3
 wta new-tab -c "pwsh.exe" -n "Build"      # create a new tab
-wta split-pane -h                         # split the current pane horizontally
+wta split-pane -H                         # split the current pane horizontally
 wta delegate "fix this build"             # open a delegate agent in a new tab
 wta sessions list                         # inspect sessions known to master
 wta hooks install                         # ensure the agent-hook bridge is current

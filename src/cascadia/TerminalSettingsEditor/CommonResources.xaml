@@ -15,6 +15,19 @@
 
     <ResourceDictionary.ThemeDictionaries>
         <ResourceDictionary x:Key="Dark">
+            <Style x:Key="KeyChordBorderStyle"
+                   TargetType="Border">
+                <Setter Property="Padding" Value="8,4,8,4" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="{StaticResource ControlCornerRadius}" />
+                <Setter Property="Background" Value="{ThemeResource SystemAltMediumLowColor}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource SystemControlForegroundBaseMediumBrush}" />
+            </Style>
+            <Style x:Key="KeyChordTextBlockStyle"
+                   TargetType="TextBlock">
+                <Setter Property="FontSize" Value="14" />
+                <Setter Property="Foreground" Value="{ThemeResource SystemControlForegroundBaseMediumBrush}" />
+            </Style>
             <SolidColorBrush x:Key="DeleteButtonBackground"
                              Color="{ThemeResource DeleteButtonColor}" />
             <SolidColorBrush x:Key="DeleteButtonBackgroundPointerOver"
@@ -31,6 +44,19 @@
                              Color="#B3FFFFFF" />
         </ResourceDictionary>
         <ResourceDictionary x:Key="Light">
+            <Style x:Key="KeyChordBorderStyle"
+                   TargetType="Border">
+                <Setter Property="Padding" Value="8,4,8,4" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="{StaticResource ControlCornerRadius}" />
+                <Setter Property="Background" Value="{ThemeResource SystemAltMediumLowColor}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource SystemControlForegroundBaseMediumBrush}" />
+            </Style>
+            <Style x:Key="KeyChordTextBlockStyle"
+                   TargetType="TextBlock">
+                <Setter Property="FontSize" Value="14" />
+                <Setter Property="Foreground" Value="{ThemeResource SystemControlForegroundBaseMediumBrush}" />
+            </Style>
             <SolidColorBrush x:Key="DeleteButtonBackground"
                              Color="{ThemeResource DeleteButtonColor}" />
             <SolidColorBrush x:Key="DeleteButtonBackgroundPointerOver"
@@ -47,6 +73,14 @@
                              Color="#B3FFFFFF" />
         </ResourceDictionary>
         <ResourceDictionary x:Key="HighContrast">
+            <Style x:Key="KeyChordBorderStyle"
+                   TargetType="Border">
+                <Setter Property="Padding" Value="8,4,8,4" />
+            </Style>
+            <Style x:Key="KeyChordTextBlockStyle"
+                   TargetType="TextBlock">
+                <Setter Property="FontSize" Value="14" />
+            </Style>
             <SolidColorBrush x:Key="DeleteButtonBackground"
                              Color="{ThemeResource SystemColorButtonFaceColor}" />
             <SolidColorBrush x:Key="DeleteButtonBackgroundPointerOver"
@@ -61,6 +95,15 @@
                              Color="{ThemeResource SystemColorHighlightTextColor}" />
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
+
+    <DataTemplate x:Key="KeyChordLabelTemplate">
+        <Border Padding="4,2"
+                Style="{ThemeResource KeyChordBorderStyle}">
+            <TextBlock FontSize="12"
+                       Style="{ThemeResource KeyChordTextBlockStyle}"
+                       TextWrapping="WrapWholeWords" />
+        </Border>
+    </DataTemplate>
 
     <local:ColorToBrushConverter x:Key="ColorToBrushConverter" />
     <local:ColorToStringConverter x:Key="ColorToStringConverter" />

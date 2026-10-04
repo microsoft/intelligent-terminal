@@ -18,6 +18,7 @@ namespace TerminalApp
         // Initialize the wizard with settings so it can read defaults and
         // populate the agent dropdown. Must be called before showing.
         void Initialize(Microsoft.Terminal.Settings.Model.CascadiaSettings settings);
+        void UpdateSettings(Microsoft.Terminal.Settings.Model.CascadiaSettings settings);
 
         // Reset drag offset so the dialog appears centered.
         void ResetDragOffset();

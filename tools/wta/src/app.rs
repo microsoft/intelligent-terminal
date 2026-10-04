@@ -59,6 +59,14 @@ enum AuthRecoveryState {
     Connecting,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PendingAgentInstall {
+    request_id: u64,
+    agent_id: String,
+    binding_generation: u64,
+    agent_source: crate::agent_source::AgentSource,
+}
+
 fn agent_command_on_enter(input: &str, selected: Option<&AvailableAgent>) -> Option<ParsedCommand> {
     commands::agent_id_prefix(input)?;
     Some(ParsedCommand {
@@ -83,7 +91,7 @@ pub use tab_state::{
     RecommendationFocus, TabSession, ToolCallContent, ToolCallKind, ToolCallLocation,
     ToolCallOutput, UserInputState, View,
 };
-pub(crate) use tab_state::{CompletedTurnViewportAnchor, DEFAULT_TAB_ID};
+pub(crate) use tab_state::{ChatReadingPosition, CompletedTurnViewportAnchor, DEFAULT_TAB_ID};
 pub use turn_state::{AutofixContext, ChunkKind, SubmittedPrompt, TurnOutcome, TurnState};
 
 // ─── MVP sessions origin filter ────────────────────────────────────────────────────
@@ -238,8 +246,12 @@ pub enum SetupOption {
         agent_id: String,
         display_name: String,
     },
+    /// Re-run executable/prerequisite discovery without starting an installer.
+    Recheck,
     /// Preflight: retry connection (custom agent)
     Retry,
+    /// Retry a non-authentication startup or reconnect failure.
+    RetryConnection,
 }
 
 #[derive(Debug, Clone)]
@@ -248,18 +260,46 @@ pub struct SetupState {
     pub selected_index: usize,
     /// Preflight result populated from `preflight::check_agent`.
     pub preflight: PreflightResult,
-    /// True while a `winget install` task is running.
-    pub install_in_progress: bool,
-    /// Tail of the install command's output (last ~6 lines).
-    pub install_log: Vec<String>,
-    /// Error message from the most recent install attempt (cleared on retry).
-    pub install_error: Option<String>,
+    /// Installation-specific presentation state. Authentication setup keeps
+    /// using `Ready` and the existing login flow.
+    pub phase: SetupPhase,
     /// Unified options list for the setup screen.
     pub options: Vec<SetupOption>,
     /// Dynamic title for the setup screen.
     pub title: String,
     /// Dynamic subtitle for the setup screen.
     pub subtitle: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SetupPhase {
+    Ready,
+    Installing,
+    Reconnecting,
+    Failed {
+        kind: SetupFailureKind,
+        message: String,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SetupFailureKind {
+    Install,
+    Detection,
+    Connection,
+}
+
+impl SetupState {
+    pub(crate) fn is_busy(&self) -> bool {
+        matches!(
+            &self.phase,
+            SetupPhase::Installing | SetupPhase::Reconnecting
+        )
+    }
+
+    pub(crate) fn preserves_install_setup_on_disconnect(&self) -> bool {
+        !matches!(&self.phase, SetupPhase::Ready) || self.reason == SetupReason::AgentMissing
+    }
 }
 
 /// Decide whether a failed post-login reconnect should respawn the shared
@@ -286,16 +326,27 @@ pub fn build_setup_options(
     reason: &SetupReason,
     current_agent_status: Option<&crate::agent_check::AgentStatus>,
 ) -> Vec<SetupOption> {
+    let install_uncertain = current_agent_status
+        .is_some_and(|status| crate::agent_check::is_install_uncertain(&status.id));
+    build_setup_options_with_uncertainty(reason, current_agent_status, install_uncertain)
+}
+
+fn build_setup_options_with_uncertainty(
+    reason: &SetupReason,
+    current_agent_status: Option<&crate::agent_check::AgentStatus>,
+    install_uncertain: bool,
+) -> Vec<SetupOption> {
     let mut opts = Vec::new();
     if let Some(status) = current_agent_status {
         if !status.cli_found {
             // CLI not found — offer install options
-            if status.can_auto_install() {
+            if status.can_auto_install() && !install_uncertain {
                 opts.push(SetupOption::Install {
                     agent_id: status.id.clone(),
                     display_name: status.display_name.clone(),
                 });
             }
+            opts.push(SetupOption::Recheck);
         } else if *reason == SetupReason::AgentError {
             // CLI found but auth missing or known to have failed
             if status.id == "copilot" {
@@ -310,11 +361,15 @@ pub fn build_setup_options(
             }
         }
         // If custom/unknown agent, offer retry
-        if status.id == "unknown" || (!status.can_auto_install() && !status.cli_found) {
+        if status.id == "unknown" {
             opts.push(SetupOption::Retry);
         }
     } else {
-        opts.push(SetupOption::Retry);
+        opts.push(if *reason == SetupReason::AgentMissing {
+            SetupOption::Recheck
+        } else {
+            SetupOption::Retry
+        });
     }
     opts.push(SetupOption::ChooseAgentSource);
     opts
@@ -650,7 +705,32 @@ pub fn route_agent_event_to_registry(
     pane_session_id: &str,
     params: &serde_json::Value,
 ) -> bool {
-    route_agent_event_to_registry_with_hook_sink(reg, pane_session_id, params, |_| {})
+    route_agent_event_to_registry_scoped(reg, pane_session_id, params, None)
+}
+
+pub fn route_agent_event_to_registry_scoped(
+    reg: &mut crate::agent_sessions::AgentSessionRegistry,
+    pane_session_id: &str,
+    params: &serde_json::Value,
+    origin_scope: Option<&crate::agent_pane_origin::OriginScope>,
+) -> bool {
+    route_agent_event_to_registry_with_scope_and_hook_sink(
+        reg,
+        pane_session_id,
+        params,
+        origin_scope,
+        |_| {},
+    )
+}
+
+fn session_removed_matches_scope(
+    params: &crate::session_registry::SessionRemovedParams,
+    agent_id: &str,
+    location: &crate::agent_sessions::SessionLocation,
+) -> bool {
+    params.history_key.as_ref().is_none_or(|key| {
+        key.provider_id.eq_ignore_ascii_case(agent_id) && &key.location == location
+    })
 }
 
 /// As [`route_agent_event_to_registry`], but reports every event it applied.
@@ -659,6 +739,25 @@ pub fn route_agent_event_to_registry_with_hook_sink<F>(
     reg: &mut crate::agent_sessions::AgentSessionRegistry,
     pane_session_id: &str,
     params: &serde_json::Value,
+    mut hook_sink: F,
+) -> bool
+where
+    F: FnMut(crate::agent_sessions::SessionEvent),
+{
+    route_agent_event_to_registry_with_scope_and_hook_sink(
+        reg,
+        pane_session_id,
+        params,
+        None,
+        &mut hook_sink,
+    )
+}
+
+fn route_agent_event_to_registry_with_scope_and_hook_sink<F>(
+    reg: &mut crate::agent_sessions::AgentSessionRegistry,
+    pane_session_id: &str,
+    params: &serde_json::Value,
+    origin_scope: Option<&crate::agent_pane_origin::OriginScope>,
     mut hook_sink: F,
 ) -> bool
 where
@@ -790,8 +889,11 @@ where
     // event) rather than caching, to stay correct after a new session
     // is created while wta is already running.
     if !key_for_refresh.is_empty() {
-        let agent_pane_keys = crate::agent_pane_origin::load_default_set();
-        if agent_pane_keys.contains(&key_for_refresh) {
+        if origin_scope.is_some_and(|scope| {
+            scope.row_key(&key_for_refresh).is_some_and(|key| {
+                crate::agent_pane_origin::load_default_index().contains_key(&key)
+            })
+        }) {
             reg.set_origin(
                 &key_for_refresh,
                 crate::agent_sessions::SessionOrigin::AgentPane,
@@ -924,7 +1026,7 @@ pub fn classify_wt_event(
                 age_ticks: 100,
             }
         }
-        "set_agent_state" | "agent_paste_text" => {
+        "set_agent_state" | "agent_paste_text" | "agent_availability_changed" => {
             // handle_event consumes these at the top of WtEvent
             // before classification runs, so classify normally never sees
             // it. Add an explicit arm anyway so a future refactor that
@@ -1035,6 +1137,10 @@ pub struct App {
     pub auth: Option<AuthState>,
     /// Channel for spawning background tasks from event handlers.
     event_tx: Option<mpsc::UnboundedSender<AppEvent>>,
+    next_agent_install_request_id: u64,
+    pending_agent_install: Option<PendingAgentInstall>,
+    agent_binding_generation: u64,
+    pub(crate) auto_install_selected_agent: bool,
     /// Set after login completes — consumed by main loop to spawn ACP client.
     pub pending_acp_start: bool,
     /// Set by LoginComplete success — consumed once by try_start_acp to pass
@@ -1078,6 +1184,13 @@ pub struct App {
     /// latest accepted Agent binding.
     agent_reconnect_state: AgentReconnectState,
     suppress_next_failed_client_error: bool,
+    /// Whether startup/preflight results from the original boot connection
+    /// may still affect presentation.
+    initial_startup_presentation_eligible: bool,
+    initial_preflight_completed: bool,
+    /// Set when a replacement/rebind/restart makes later terminal events from
+    /// the boot client stale rather than failures of the active connection.
+    initial_transport_superseded: bool,
     /// Execution source paired with `current_agent_id`.
     pub current_agent_source: crate::agent_source::AgentSource,
     /// Agent ids supplied by Windows Terminal after GPO filtering.
@@ -1136,6 +1249,7 @@ pub struct App {
     /// `--yolo-mode`. Helper-owned policy is shared with the ACP client and
     /// the global default is hot-updatable.
     yolo_state: crate::app_contracts::SharedYoloState,
+    initial_yolo_control_owner: Option<InitialYoloControlOwner>,
     next_yolo_reconcile_id: u64,
     pending_yolo_reconciles: HashMap<u64, (HashSet<String>, bool)>,
     pending_yolo_session_tabs: HashSet<String>,
@@ -1152,8 +1266,9 @@ pub struct App {
     pub(crate) completed_turn_hits: Vec<CompletedTurnHitRegion>,
     pub(crate) pressed_completed_turn: Option<PressedCompletedTurn>,
     pub(crate) last_completed_turn_click: Option<CompletedTurnClickRecord>,
+    last_permission_snapshot: Option<(String, Option<String>)>,
     pub(crate) input_dialog_area: Option<Rect>,
-    pub(crate) pressed_input_dialog_tab: Option<String>,
+    pub(crate) pressed_input_dialog: Option<PressedInputDialog>,
     pub(crate) completed_turn_action_links: Vec<crate::action_links::CompletedTurnActionLink>,
     pub(crate) painted_completed_turn_action_links:
         Vec<crate::action_links::CompletedTurnActionLink>,
@@ -1169,6 +1284,7 @@ pub struct App {
     // AgentPaneContent / bottom bar window without fan-out.
     pub owner_tab_id: Option<String>,
     pub window_id: Option<String>,
+    pub(crate) sessions_in_sidebar: bool,
     // WT event notifications (global — affects bottom-bar / banner across tabs)
     pub wt_notifications: std::collections::VecDeque<WtNotification>,
     pub show_notification_banner: bool,
@@ -1176,6 +1292,8 @@ pub struct App {
     // generation, suggested_pane_id, armed_at, bar_snapshot) lives on
     // `TabSession.autofix`.
     pub autofix_enabled: bool,
+    pub(crate) autofix_policy_state: crate::telemetry::AutoFixPolicyState,
+    pub(crate) recommendation_rendered: bool,
     // Per-tab conversation sessions. Keyed by the stable tab GUID WT mints
     // at tab construction. The active tab is `tab_id` — seeded from the
     // `--owner-tab-id` CLI arg before ACP init in the WT-spawned path, or
@@ -1250,14 +1368,16 @@ pub struct App {
     /// lazy-first-prompt sessions stay on the configured model, not just the
     /// bootstrap one. None = "agent default" (no override).
     acp_model: Option<String>,
-    /// Whether this helper was created from the global ACP agent/model
-    /// settings. Per-tab/profile-pinned helpers keep this false so a hot
-    /// global model update cannot inject another tab's model into their CLI.
+    /// Whether the host's current binding inherits the matching global agent's
+    /// model. Seeded at spawn and refreshed by scoped host updates/rebinds;
+    /// choosing an agent alone does not create a pane-local model override.
     follows_global_acp_model: bool,
     /// True after the host has delivered its credential-free cloud/custom
     /// catalogs over `agent_config_changed`. Published in `agent_status` so
     /// C++ can send the catalog once after each helper reaches Connected.
     host_catalog_ready: bool,
+    /// Actual connected process binding, independent of the model picker/catalog.
+    telemetry_byok_binding: Option<bool>,
     /// Shared-provider selection id supplied directly to this helper by WT.
     /// Kept separate from the master-only provider environment because this
     /// process owns the `/model` UI but never receives provider credentials.
@@ -1319,6 +1439,12 @@ pub struct App {
     pub alive_loaded: std::sync::Arc<std::sync::atomic::AtomicBool>,
     pub proposal_channels:
         Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct InitialYoloControlOwner {
+    session_id: String,
+    owner: crate::app_contracts::YoloControlOwner,
 }
 
 /// How long the close-pane arm (localized via `system.close_pane_hint`) stays live. Long
@@ -1419,6 +1545,10 @@ impl App {
             auth: None,
             event_tx: None,
             pending_acp_start: false,
+            next_agent_install_request_id: 0,
+            pending_agent_install: None,
+            agent_binding_generation: 0,
+            auto_install_selected_agent: false,
             needs_post_login_authenticate: false,
             auth_recovery_generation: 0,
             auth_recovery_state: AuthRecoveryState::Idle,
@@ -1434,6 +1564,9 @@ impl App {
             last_agent_rebind_window_id: None,
             agent_reconnect_state: AgentReconnectState::Idle,
             suppress_next_failed_client_error: false,
+            initial_startup_presentation_eligible: true,
+            initial_preflight_completed: false,
+            initial_transport_superseded: false,
             current_agent_source: crate::agent_source::AgentSource::Host,
             allowed_agent_ids: Vec::new(),
             host_agent_allowlist_present: false,
@@ -1477,17 +1610,21 @@ impl App {
             completed_turn_hits: Vec::new(),
             pressed_completed_turn: None,
             last_completed_turn_click: None,
+            last_permission_snapshot: None,
             input_dialog_area: None,
-            pressed_input_dialog_tab: None,
+            pressed_input_dialog: None,
             completed_turn_action_links: Vec::new(),
             painted_completed_turn_action_links: Vec::new(),
             pane_id: None,
             tab_id: None,
             owner_tab_id: None,
             window_id: None,
+            sessions_in_sidebar: false,
             wt_notifications: VecDeque::new(),
             show_notification_banner: false,
             autofix_enabled,
+            autofix_policy_state: crate::telemetry::AutoFixPolicyState::default(),
+            recommendation_rendered: false,
             tab_sessions,
             pending_session_load: None,
             session_to_tab: HashMap::new(),
@@ -1502,6 +1639,7 @@ impl App {
             acp_model: None,
             follows_global_acp_model: false,
             host_catalog_ready: false,
+            telemetry_byok_binding: None,
             custom_model_selection: None,
             custom_model_catalog: Vec::new(),
             cloud_models: Vec::new(),
@@ -1522,6 +1660,7 @@ impl App {
             ),
             shell_mgr,
             yolo_state,
+            initial_yolo_control_owner: None,
         }
     }
 
@@ -1889,6 +2028,21 @@ impl App {
         self.follows_global_acp_model = follows_global_acp_model;
     }
 
+    pub fn set_initial_yolo_control_owner(
+        &mut self,
+        session_id: Option<&str>,
+        owner: Option<crate::app_contracts::YoloControlOwner>,
+    ) {
+        self.initial_yolo_control_owner = session_id
+            .map(str::trim)
+            .filter(|session_id| !session_id.is_empty())
+            .zip(owner)
+            .map(|(session_id, owner)| InitialYoloControlOwner {
+                session_id: session_id.to_string(),
+                owner,
+            });
+    }
+
     pub fn set_host_catalog_ready(&mut self, ready: bool) {
         self.host_catalog_ready = ready;
     }
@@ -2005,8 +2159,10 @@ impl App {
         });
         self.current_model_id = self.resolve_current_model_id(
             pane_override
-                .or_else(|| self.acp_model.clone())
                 .or_else(|| self.agent_current_model_id.clone())
+                // Settings is the requested default, not proof that a loaded
+                // session or an in-flight model switch is using that model.
+                .or_else(|| self.acp_model.clone())
                 .or(previous_current),
         );
     }
@@ -2086,17 +2242,28 @@ impl App {
     /// this helper owns. No-op on an empty/whitespace model — an empty
     /// override means "agent default", which `set_session_model` can't
     /// express.
-    fn send_session_model(&self, session_id: Option<String>, model: String, pane_override: bool) {
+    fn send_session_model(
+        &self,
+        session_id: Option<String>,
+        model: String,
+        pane_override: bool,
+    ) -> Option<uuid::Uuid> {
         if model.trim().is_empty() {
-            return;
+            return None;
         }
-        let _ = self.master_request_tx.send(
+        let request_id = uuid::Uuid::new_v4();
+        let result = self.master_request_tx.send(
             crate::protocol::acp::client::MasterExtRequest::SetSessionModel {
+                request_id,
                 session_id: session_id.map(agent_client_protocol::schema::v1::SessionId::new),
                 model,
                 pane_override,
             },
         );
+        if result.is_err() {
+            tracing::warn!(target: "acp", "model selection channel closed");
+        }
+        result.ok().map(|()| request_id)
     }
 
     /// The model a given tab should run on: its explicit per-pane override
@@ -2118,6 +2285,12 @@ impl App {
         };
         for tab in self.tab_sessions.values() {
             if tab.model_override.is_some() {
+                tracing::debug!(
+                    target: "acp",
+                    session_id = ?tab.session_id,
+                    model_override = ?tab.model_override,
+                    "keeping pane-local model override during Settings update"
+                );
                 continue;
             }
             if let Some(sid) = tab.session_id.clone() {
@@ -2127,14 +2300,20 @@ impl App {
     }
 
     /// Apply a global `acpModel` settings change only when this helper follows
-    /// that exact global agent. Pane/profile-pinned helpers and pane-local
-    /// `/model` overrides remain untouched. An empty value means "agent
-    /// default"; no live switch is sent because ACP has no portable reset
-    /// operation.
+    /// that exact global agent's model. Profile/explicit-model-pinned helpers
+    /// and pane-local `/model` overrides remain untouched. An empty value means
+    /// "agent default"; no live switch is sent because ACP has no portable reset operation.
     fn apply_global_acp_model(&mut self, target_agent_id: &str, new_model: Option<String>) -> bool {
         if !self.follows_global_acp_model
             || !self.current_agent_id.eq_ignore_ascii_case(target_agent_id)
         {
+            tracing::debug!(
+                target: "acp",
+                target_agent_id,
+                agent_id = %self.current_agent_id,
+                follows_global_acp_model = self.follows_global_acp_model,
+                "ignoring Settings model update outside this helper's model binding"
+            );
             return false;
         }
 
@@ -2802,7 +2981,8 @@ impl App {
     /// CLI's own resume flag/verb.
     fn activate_agent_session_routed(&mut self, s: &crate::agent_sessions::AgentSession) {
         use crate::session_mgmt::{
-            decide_enter_action, liveness_from_status, EnterAction, NotResumableReason, RowSnapshot,
+            decide_enter_action, liveness_from_status, EnterAction, LoadSessionCapability,
+            NotResumableReason, RowSnapshot,
         };
         // Ambient: load_session capability is set during ACP init;
         // resume-flag support is a per-CLI profile constant — true for
@@ -2816,12 +2996,25 @@ impl App {
                 .is_empty(),
             None => false,
         };
+        let selected_agent_id = known_cli_id(&s.cli_source);
+        let targets_current_agent = selected_agent_id
+            .is_some_and(|id| id.eq_ignore_ascii_case(&self.current_agent_id))
+            && s.location == self.current_agent_source.session_location();
+        let load_session_capability = if targets_current_agent {
+            if self.agent_supports_load_session {
+                LoadSessionCapability::Supported
+            } else {
+                LoadSessionCapability::Unsupported
+            }
+        } else {
+            LoadSessionCapability::Unknown
+        };
         let row = RowSnapshot {
             origin: s.origin.clone(),
             liveness: liveness_from_status(&s.status, s.pane_session_id.clone()),
             key: s.key.clone(),
             cli_source: s.cli_source.clone(),
-            load_session_supported: self.agent_supports_load_session,
+            load_session_capability,
             cli_supports_resume_flag,
             is_wsl: s.location.is_wsl(),
         };
@@ -2855,8 +3048,7 @@ impl App {
                 self.dispatch_focus_pane(&pane_session_id, &s.key);
             }
             EnterAction::ResumeInAgentPane { .. } => {
-                // dispatch_resume_in_agent_pane owns the loadSession
-                // capability gate (also re-checked),
+                // dispatch_resume_in_agent_pane owns target validation,
                 // optimistic ResumeDispatched, and emit
                 // resume_in_new_agent_tab to WT.
                 self.dispatch_resume_in_agent_pane(s);
@@ -2949,6 +3141,20 @@ impl App {
     ///      Host resumes also publish the known agent/session/pane identity to
     ///      Terminal's persistence map, independently of CLI hooks or banners.
     fn dispatch_resume(&mut self, s: &crate::agent_sessions::AgentSession) {
+        let Some(window_id) = self
+            .window_id
+            .as_deref()
+            .and_then(|value| value.parse::<u64>().ok())
+            .filter(|value| *value != 0)
+        else {
+            tracing::warn!(
+                target: "agents_view",
+                key = %s.key,
+                window_id = ?self.window_id,
+                "dispatch_resume: missing or invalid owner window id",
+            );
+            return;
+        };
         let cli_id = match known_cli_id(&s.cli_source) {
             Some(id) => id,
             None => {
@@ -2988,11 +3194,32 @@ impl App {
         //     found"). A login shell sources the profile that adds it.
         let login_invocation = format!("bash -lc \"{resume_invocation}\"");
         let commandline = match &s.location {
-            crate::agent_sessions::SessionLocation::Wsl { distro } => match linux_cwd_arg(&s.cwd) {
-                Some(cwd) => format!("wsl -d {distro} --cd \"{cwd}\" -- {login_invocation}"),
-                None => format!("wsl -d {distro} -- {login_invocation}"),
-            },
+            crate::agent_sessions::SessionLocation::Wsl { distro } => {
+                let distro = distro.trim();
+                if distro.is_empty() {
+                    tracing::warn!(
+                        target: "agents_view",
+                        key = %s.key,
+                        "dispatch_resume: WSL session has an empty distro",
+                    );
+                    return;
+                }
+                match linux_cwd_arg(&s.cwd) {
+                    Some(cwd) => {
+                        format!("wsl -d {distro} --cd \"{cwd}\" -- {login_invocation}")
+                    }
+                    None => format!("wsl -d {distro} -- {login_invocation}"),
+                }
+            }
             crate::agent_sessions::SessionLocation::Host => resume_invocation,
+            crate::agent_sessions::SessionLocation::Unknown => {
+                tracing::warn!(
+                    target: "agents_view",
+                    key = %s.key,
+                    "dispatch_resume: session location is unknown",
+                );
+                return;
+            }
         };
 
         // Per-CLI session stores are keyed by an encoding of the *current*
@@ -3059,10 +3286,13 @@ impl App {
             crate::agent_sessions::SessionLocation::Host => {
                 format!("Resuming {cli_id} session {short_key}...")
             }
+            crate::agent_sessions::SessionLocation::Unknown => return,
         };
         let launch_commandline = format!("cmd /c echo \x1b[2;37m{banner}\x1b[0m && {commandline}");
         let mut argv = vec![
             "new-tab".to_string(),
+            "--window-id".to_string(),
+            window_id.to_string(),
             "-c".to_string(),
             launch_commandline.clone(),
         ];
@@ -3178,45 +3408,52 @@ impl App {
             "dispatch_resume_in_agent_pane: Enter on row",
         );
 
-        // Capability gate. ACP's `session/load` is opt-in (initialize
-        // advertises `agentCapabilities.loadSession: bool`). Without it
-        // the agent will reject the call — and we'd burn a new WT tab
-        // to land on an error message. Short-circuit here instead and
-        // keep the session management view focused so the user can
-        // press plain Enter to fall back to the split-pane resume path.
-        if !self.agent_supports_load_session {
-            let agent: String = if self.agent_name.is_empty() {
-                t!("system.fallback.connected_agent").into_owned()
-            } else {
-                self.agent_name.clone()
-            };
-            let msg = t!(
-                "system.cannot_resume_no_load_session",
-                agent = agent.as_str()
-            )
-            .into_owned();
+        let Some(window_id) = self
+            .window_id
+            .as_deref()
+            .and_then(|value| value.parse::<u64>().ok())
+            .filter(|value| *value != 0)
+        else {
             tracing::warn!(
                 target: "agents_view",
                 key = %s.key,
-                agent = %self.agent_name,
-                "dispatch_resume_in_agent_pane: agent does not support loadSession",
+                window_id = ?self.window_id,
+                "dispatch_resume_in_agent_pane: missing or invalid owner window id",
             );
-            let tab = self.current_tab_mut();
-            tab.messages.push(ChatMessage::warning(msg));
-            tab.scroll_to_bottom();
-            #[cfg(test)]
-            {
-                self.last_dispatched_command = Some(DispatchedCommand {
-                    kind: DispatchedCommandKind::ResumeInAgentPane,
-                    session_id: Some(s.key.clone()),
-                    argv: vec![
-                        "resume_in_new_agent_tab".to_string(),
-                        "--unsupported".to_string(),
-                    ],
-                });
-            }
             return;
-        }
+        };
+        let Some(agent_id) = known_cli_id(&s.cli_source) else {
+            tracing::warn!(
+                target: "agents_view",
+                key = %s.key,
+                cli = ?s.cli_source,
+                "dispatch_resume_in_agent_pane: selected provider is not resumable",
+            );
+            return;
+        };
+        let (agent_source, wsl_distro) = match &s.location {
+            crate::agent_sessions::SessionLocation::Host => ("host", None),
+            crate::agent_sessions::SessionLocation::Wsl { distro } => {
+                let distro = distro.trim();
+                if distro.is_empty() {
+                    tracing::warn!(
+                        target: "agents_view",
+                        key = %s.key,
+                        "dispatch_resume_in_agent_pane: WSL session has an empty distro",
+                    );
+                    return;
+                }
+                ("wsl", Some(distro))
+            }
+            crate::agent_sessions::SessionLocation::Unknown => {
+                tracing::warn!(
+                    target: "agents_view",
+                    key = %s.key,
+                    "dispatch_resume_in_agent_pane: session location is unknown",
+                );
+                return;
+            }
+        };
 
         let key = s.key.clone();
         let raw_cwd_string = s.cwd.to_string_lossy().to_string();
@@ -3243,6 +3480,24 @@ impl App {
             "session_id".to_string(),
             serde_json::Value::String(key.clone()),
         );
+        params.insert(
+            "window_id".to_string(),
+            serde_json::Value::String(window_id.to_string()),
+        );
+        params.insert(
+            "agent_id".to_string(),
+            serde_json::Value::String(agent_id.to_string()),
+        );
+        params.insert(
+            "agent_source".to_string(),
+            serde_json::Value::String(agent_source.to_string()),
+        );
+        if let Some(distro) = wsl_distro {
+            params.insert(
+                "wsl_distro".to_string(),
+                serde_json::Value::String(distro.to_string()),
+            );
+        }
         if !cwd_string.is_empty() {
             params.insert(
                 "cwd".to_string(),
@@ -3266,6 +3521,8 @@ impl App {
         {
             let mut argv = vec![
                 "resume_in_new_agent_tab".to_string(),
+                "--window-id".to_string(),
+                window_id.to_string(),
                 "--session-id".to_string(),
                 s.key.clone(),
             ];
@@ -3331,6 +3588,9 @@ impl App {
         crate::telemetry::log_sessions_view_opened();
         {
             let tab = self.tab_mut(&tab_id);
+            if tab.current_view != View::Agents {
+                tab.break_input_undo_group();
+            }
             tab.agents_view.search_query.clear();
             tab.agents_view.search_focused = false;
         }
@@ -3356,6 +3616,9 @@ impl App {
 
     fn close_agents_view_for_tab(&mut self, tab_id: &str) {
         let tab = self.tab_mut(tab_id);
+        if tab.current_view != View::Chat {
+            tab.break_input_undo_group();
+        }
         tab.current_view = View::Chat;
         tab.agents_view.snapshot = None;
         tab.agents_view.refetch_in_flight = false;
@@ -3617,7 +3880,57 @@ impl App {
         self.pending_agent_selection = Some(agent_id.to_string());
     }
 
+    fn notify_confirmed_agent_available(&self, agent_id: &str) {
+        if matches!(
+            self.current_agent_source,
+            crate::agent_source::AgentSource::Host
+        ) {
+            crate::wt_protocol_events::send(
+                crate::wt_protocol_events::agent_availability_changed_event(
+                    agent_id,
+                    self.agent_routing_tab_id(),
+                    false,
+                ),
+            );
+        }
+    }
+
+    fn agent_routing_tab_id(&self) -> Option<&str> {
+        self.owner_tab_id
+            .as_deref()
+            .or_else(|| {
+                self.deferred_acp
+                    .as_ref()
+                    .and_then(|params| params.owner_tab_id.as_deref())
+            })
+            .or(self.tab_id.as_deref())
+    }
+
+    fn reconnect_confirmed_available_agent(&mut self, agent_id: &str) {
+        self.notify_confirmed_agent_available(agent_id);
+        self.initial_startup_presentation_eligible = false;
+        self.initial_transport_superseded = true;
+        self.update_deferred_acp_agent(agent_id);
+        self.state = ConnectionState::Connecting(t!("connection.reconnecting").into_owned());
+        self.preflight_setup_active = false;
+        if let Some(setup) = self.setup.as_mut() {
+            setup.phase = SetupPhase::Reconnecting;
+        }
+        if self.deferred_acp.is_some() {
+            if self.agent_transport_retirement_pending {
+                self.reconnect_after_transport_retired = true;
+            } else {
+                self.pending_acp_start = true;
+            }
+        } else {
+            let _ = self.restart_tx.send(AgentLifecycleRequest::RestartMaster);
+        }
+    }
+
     fn prepare_agent_reconnect(&mut self, request: &AgentReconnectRequest) {
+        self.initial_startup_presentation_eligible = false;
+        self.initial_transport_superseded = true;
+        self.agent_binding_generation = self.agent_binding_generation.wrapping_add(1);
         self.auth_recovery_generation = self.auth_recovery_generation.wrapping_add(1);
         self.auth_recovery_state = AuthRecoveryState::Idle;
         let new_cmd = self.build_agent_cmd(&request.agent_id);
@@ -3641,6 +3954,7 @@ impl App {
         self.custom_model_selection
             .clone_from(&request.custom_model_selection);
         self.pending_session_load = None;
+        self.initial_yolo_control_owner = None;
         self.reset_agent_scoped_state();
     }
 
@@ -3665,6 +3979,7 @@ impl App {
         self.agent_supports_load_session = false;
         self.agent_supports_image = false;
         self.host_catalog_ready = false;
+        self.telemetry_byok_binding = None;
         self.cloud_models.clear();
         self.session_id.clear();
         self.session_to_tab.clear();
@@ -3676,12 +3991,15 @@ impl App {
         self.pending_yolo_session_tabs.clear();
         let active_tab_id = self.active_tab_key().to_string();
         for tab in self.tab_sessions.values_mut() {
+            tab.telemetry_model_pending = None;
+            tab.last_telemetry_session_id = None;
             tab.clear_chat_history();
             tab.invalidate_active_prompt_attachment();
             tab.usage = None;
             tab.usage_staleness = crate::usage::UsageStaleness::default();
             tab.clear_completed_turns();
             tab.session_id = None;
+            tab.reattached_session_id = None;
             // The new agent starts with nothing to resume. Everything else
             // that constitutes a conversation is cleared just above, so this
             // flag has to go with it: `resumable_session_id` gates on it, and
@@ -3719,25 +4037,50 @@ impl App {
         self.publish_agent_status();
     }
 
-    fn pending_session_load_for_reconnect(&self) -> Option<(LoadSessionForTab, Option<bool>)> {
+    fn pending_session_load_for_reconnect(
+        &self,
+    ) -> Option<(
+        LoadSessionForTab,
+        Option<bool>,
+        crate::app_contracts::YoloControlOwner,
+    )> {
         let pending = self.pending_session_load.as_ref()?;
         let tab = self.tab_sessions.get(&pending.tab_id)?;
         (tab.loading_session
             && tab.loading_target_session_id.as_deref() == Some(pending.session_id.as_str()))
-        .then(|| (pending.clone(), tab.meaningful_conversation_before_load))
+        .then(|| {
+            let owner = self
+                .yolo_state
+                .lock()
+                .unwrap()
+                .owner(&pending.session_id)
+                .unwrap_or(crate::app_contracts::YoloControlOwner::ProviderRestored);
+            (
+                pending.clone(),
+                tab.meaningful_conversation_before_load,
+                owner,
+            )
+        })
     }
 
     fn restore_pending_session_load(
         &mut self,
         pending: LoadSessionForTab,
         prior_meaningful: Option<bool>,
+        owner: crate::app_contracts::YoloControlOwner,
     ) {
         self.pending_session_load = Some(pending.clone());
-        let tab = self.tab_mut(&pending.tab_id);
-        tab.loading_session = true;
-        tab.loading_target_session_id = Some(pending.session_id);
-        tab.has_meaningful_conversation = true;
-        tab.meaningful_conversation_before_load = prior_meaningful;
+        {
+            let tab = self.tab_mut(&pending.tab_id);
+            tab.loading_session = true;
+            tab.loading_target_session_id = Some(pending.session_id.clone());
+            tab.has_meaningful_conversation = true;
+            tab.meaningful_conversation_before_load = prior_meaningful;
+        }
+        self.yolo_state
+            .lock()
+            .unwrap()
+            .mark_owner(pending.session_id, owner);
     }
 
     fn begin_pending_agent_reconnect_preflight(&mut self) -> Option<AgentReconnectRequest> {
@@ -3749,6 +4092,7 @@ impl App {
             }
         };
         self.pending_session_load = None;
+        self.initial_yolo_control_owner = None;
         self.reset_agent_scoped_state();
         self.agent_reconnect_state = AgentReconnectState::Preflighting(latest.clone());
         if let Some(tx) = self.event_tx.clone() {
@@ -3806,13 +4150,50 @@ impl App {
             reason,
             preflight: result,
             selected_index: 0,
-            install_in_progress: false,
-            install_log: Vec::new(),
-            install_error: None,
+            phase: SetupPhase::Ready,
             options,
             title,
             subtitle,
         });
+    }
+
+    fn show_connection_failure_setup(&mut self, message: String) {
+        let agent_id = if self.current_agent_id.is_empty() {
+            "copilot".to_string()
+        } else {
+            self.current_agent_id.clone()
+        };
+        let profile = crate::agent_registry::lookup_profile(&agent_id);
+        let reason = SetupReason::AgentError;
+        self.mode = AppMode::Setup;
+        self.state = ConnectionState::Disconnected;
+        self.auth = None;
+        self.setup = Some(SetupState {
+            reason: reason.clone(),
+            selected_index: 0,
+            preflight: PreflightResult {
+                agent_id: profile.id.to_string(),
+                display_name: profile.display_name.to_string(),
+                cli_status: CheckStatus::Passed,
+                cli_path: None,
+                auth_status: CheckStatus::Skipped,
+                install_hint: profile.install_hint.to_string(),
+                install_url: String::new(),
+                auth_hint: profile.auth_hint.to_string(),
+            },
+            phase: SetupPhase::Failed {
+                kind: SetupFailureKind::Connection,
+                message,
+            },
+            options: vec![SetupOption::RetryConnection, SetupOption::ChooseAgentSource],
+            title: reason.title(),
+            subtitle: t!(
+                "setup.subtitle.connection_failed",
+                agent = profile.display_name
+            )
+            .into_owned(),
+        });
+        self.publish_agent_status();
     }
 
     pub fn set_event_tx(&mut self, tx: mpsc::UnboundedSender<AppEvent>) {
@@ -4032,9 +4413,10 @@ impl App {
     /// Diagnostic setup-mode key handler. Covers install, sign-in, and retry
     /// actions via the `SetupOption` variants.
     fn handle_setup_key(&mut self, key: KeyEvent) {
-        // Block all input during install (except Ctrl+C / Esc to quit)
-        let is_installing = self.setup.as_ref().map_or(false, |s| s.install_in_progress);
-        tracing::debug!(target: "setup_key", code = ?key.code, is_installing, selected = ?self.setup.as_ref().map(|s| s.selected_index), options_count = ?self.setup.as_ref().map(|s| s.options.len()), "handle_setup_key");
+        // Block setup actions while install/reconnect work is active. The
+        // input box remains visible as a connection-state indicator.
+        let is_busy = self.setup.as_ref().is_some_and(SetupState::is_busy);
+        tracing::debug!(target: "setup_key", code = ?key.code, is_busy, selected = ?self.setup.as_ref().map(|s| s.selected_index), options_count = ?self.setup.as_ref().map(|s| s.options.len()), "handle_setup_key");
 
         match key.code {
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -4043,8 +4425,8 @@ impl App {
             KeyCode::Esc => {
                 self.should_quit = true;
             }
-            _ if is_installing => {
-                return; // block all other keys during install
+            _ if is_busy => {
+                return;
             }
             KeyCode::Up => {
                 if let Some(ref mut setup) = self.setup {
@@ -4099,41 +4481,7 @@ impl App {
                 self.request_agent_source_picker();
             }
             SetupOption::Install { agent_id, .. } => {
-                if let Some(ref setup) = self.setup {
-                    if setup.install_in_progress {
-                        return;
-                    }
-                }
-                if let Some(ref mut setup) = self.setup {
-                    setup.install_in_progress = true;
-                    setup.install_error = None;
-                    setup.install_log.clear();
-                    setup.install_log.push(format!(
-                        "{} {}",
-                        t!("setup.status.installing"),
-                        agent_id
-                    ));
-                }
-                // Spawn async winget install via agent_check
-                if let Some(ref tx) = self.event_tx {
-                    let tx = tx.clone();
-                    let id = agent_id.clone();
-                    tokio::task::spawn_local(async move {
-                        let result = crate::agent_check::install(&id, |_line| {
-                            // Could send log lines as events, but keep simple for now
-                        })
-                        .await;
-                        match result {
-                            Ok(()) => {
-                                tracing::info!("Install {} succeeded", id);
-                            }
-                            Err(e) => {
-                                tracing::warn!("Install {} failed: {}", id, e);
-                            }
-                        }
-                        let _ = tx.send(AppEvent::AgentInstallComplete);
-                    });
-                }
+                self.start_agent_install(agent_id);
             }
             SetupOption::SignIn {
                 agent_id,
@@ -4149,7 +4497,7 @@ impl App {
                     );
                 }
             }
-            SetupOption::Retry => {
+            SetupOption::Recheck | SetupOption::Retry | SetupOption::RetryConnection => {
                 // Re-run preflight detection and try to reconnect
                 if let Some(ref setup) = self.setup {
                     let agent_id = setup.preflight.agent_id.clone();
@@ -4163,33 +4511,94 @@ impl App {
                                 t!("connection.reconnecting").into_owned(),
                             );
                             self.preflight_setup_active = false;
+                            if let Some(setup) = self.setup.as_mut() {
+                                setup.phase = SetupPhase::Reconnecting;
+                            }
                             if self.deferred_acp.is_some() {
                                 self.pending_acp_start = true;
                             }
                             return;
                         }
-                        let status = crate::agent_check::check_agent(&agent_id);
+                        let status = crate::agent_check::recheck_agent(&agent_id);
                         if status.cli_found {
                             // CLI found — try to connect (auth will be checked by ACP).
                             // Stay in Setup mode with "Connecting..." to avoid a flash
                             // of red error text in Chat if ACP fails immediately.
-                            self.update_deferred_acp_agent(&agent_id);
-                            self.state = ConnectionState::Connecting(
-                                t!("connection.reconnecting").into_owned(),
-                            );
-                            self.preflight_setup_active = false;
-                            if self.deferred_acp.is_some() {
-                                self.pending_acp_start = true;
-                            } else {
-                                let _ = self.restart_tx.send(AgentLifecycleRequest::RestartMaster);
-                            }
+                            self.reconnect_confirmed_available_agent(&agent_id);
                             // Don't clear setup yet — AgentConnected will transition to Chat,
                             // AgentError will update the Setup screen.
+                        } else if let Some(setup) = self.setup.as_mut() {
+                            setup.phase = SetupPhase::Ready;
+                            setup.options = build_setup_options(&setup.reason, Some(&status));
                         }
                     }
                 }
             }
         }
+    }
+
+    pub(crate) fn start_agent_install(&mut self, agent_id: String) {
+        if self.setup.as_ref().is_some_and(SetupState::is_busy) {
+            return;
+        }
+        if let Some(setup) = self.setup.as_mut() {
+            setup.phase = SetupPhase::Installing;
+        }
+        self.close_agent_picker();
+        self.agent_source_probe_generation = self.agent_source_probe_generation.wrapping_add(1);
+        self.next_agent_install_request_id = self.next_agent_install_request_id.wrapping_add(1);
+        let request_id = self.next_agent_install_request_id;
+        self.pending_agent_install = Some(PendingAgentInstall {
+            request_id,
+            agent_id: agent_id.clone(),
+            binding_generation: self.agent_binding_generation,
+            agent_source: self.current_agent_source.clone(),
+        });
+        if let Some(ref tx) = self.event_tx {
+            let tx = tx.clone();
+            tokio::task::spawn_local(async move {
+                let result = crate::agent_check::install(&agent_id, |_line| {}).await;
+                tracing::info!(agent = %agent_id, ?result, "agent install completed");
+                let _ = tx.send(AppEvent::AgentInstallComplete {
+                    request_id,
+                    agent_id,
+                    outcome: result,
+                });
+            });
+        } else {
+            self.pending_agent_install = None;
+            if let Some(setup) = self.setup.as_mut() {
+                setup.phase = SetupPhase::Failed {
+                    kind: SetupFailureKind::Install,
+                    message: t!("setup.error.install_start_failed").into_owned(),
+                };
+            }
+        }
+    }
+
+    pub(crate) fn try_start_fre_auto_install(&mut self) -> bool {
+        if !self.auto_install_selected_agent || self.pending_agent_install.is_some() {
+            return false;
+        }
+        let install_agent = self.setup.as_ref().and_then(|setup| {
+            if setup.is_busy() {
+                return None;
+            }
+            setup.options.iter().find_map(|option| match option {
+                SetupOption::Install { agent_id, .. }
+                    if agent_id.eq_ignore_ascii_case("copilot") =>
+                {
+                    Some(agent_id.clone())
+                }
+                _ => None,
+            })
+        });
+        let Some(agent_id) = install_agent else {
+            return false;
+        };
+        self.auto_install_selected_agent = false;
+        self.start_agent_install(agent_id);
+        true
     }
 
     /// Key used for lookup into `tab_sessions`. Falls back to
@@ -4337,6 +4746,7 @@ impl App {
                     let should_redraw = self.event_requires_redraw(&event);
                     let handle_started = std::time::Instant::now();
                     self.handle_event(event);
+                    self.log_permission_snapshot();
                     ui_trace::log_slow("ui_event_handle", handle_started.elapsed(), || {
                         format!("event={} {}", event_name, self.trace_state())
                     });
@@ -4384,6 +4794,7 @@ impl App {
                         )
                     });
 
+                    self.log_permission_snapshot();
                     if should_redraw_now {
                         let draw_started = std::time::Instant::now();
                         self.draw_frame(terminal)?;
@@ -4433,6 +4844,7 @@ impl App {
     fn draw_frame(&mut self, terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<()> {
         let total_started = std::time::Instant::now();
 
+        self.log_permission_snapshot();
         let mut frame = terminal.get_frame();
 
         let render_started = std::time::Instant::now();
@@ -4474,12 +4886,41 @@ impl App {
         );
 
         self.log_selection_visible_if_needed();
+        self.log_error_fix_offered_if_visible();
 
         ui_trace::log_slow("draw_frame_total", total_started.elapsed(), || {
             self.trace_state()
         });
 
         Ok(())
+    }
+
+    fn log_permission_snapshot(&mut self) {
+        let tab = self.current_tab();
+        let snapshot = (
+            tab.session_id.clone().unwrap_or_default(),
+            tab.permission
+                .front()
+                .filter(|permission| {
+                    permission
+                        .responder
+                        .as_ref()
+                        .is_some_and(|sender| !sender.is_closed())
+                        && (tab.turn.can_service_agent_request() || tab.loading_session)
+                })
+                .map(|permission| permission.tool_call_id.clone()),
+        );
+        if self.last_permission_snapshot.as_ref() != Some(&snapshot) {
+            tracing::info!(
+                target: "permission_ui",
+                snapshot = %serde_json::json!({
+                    "session_id": snapshot.0,
+                    "tool_call_id": snapshot.1,
+                }),
+                "current permission"
+            );
+            self.last_permission_snapshot = Some(snapshot);
+        }
     }
 
     fn event_name(event: &AppEvent) -> &'static str {
@@ -4499,6 +4940,7 @@ impl App {
             AppEvent::UsageCleared { .. } => "usage_cleared",
             AppEvent::ModelConfigUpdated { .. } => "model_config_updated",
             AppEvent::RuntimeYoloReconcileCompleted { .. } => "runtime_yolo_reconcile_completed",
+            AppEvent::YoloControlOwnerChanged { .. } => "yolo_control_owner_changed",
             AppEvent::ModelSetCompleted { .. } => "model_set_completed",
             AppEvent::ModelSetFailed { .. } => "model_set_failed",
             AppEvent::SessionConfigUpdated { .. } => "session_config_updated",
@@ -4513,6 +4955,7 @@ impl App {
             AppEvent::PromptTemplateLoaded { .. } => "prompt_template_loaded",
             AppEvent::PromptTargetResolved { .. } => "prompt_target_resolved",
             AppEvent::AgentError { .. } => "agent_error",
+            AppEvent::InitialAgentStartupFailed { .. } => "initial_agent_startup_failed",
             AppEvent::MasterDisconnected => "master_disconnected",
             AppEvent::AgentTransportRetired => "agent_transport_retired",
             AppEvent::AgentSoftStop { .. } => "agent_soft_stop",
@@ -4536,7 +4979,7 @@ impl App {
             AppEvent::SystemMessage(_) => "system_message",
             AppEvent::DebugPipeMessage(_) => "debug_pipe_message",
             AppEvent::WtEvent { .. } => "wt_event",
-            AppEvent::AgentInstallComplete => "agent_install_complete",
+            AppEvent::AgentInstallComplete { .. } => "agent_install_complete",
             AppEvent::LoginProgress { .. } => "login_progress",
             AppEvent::LoginComplete { .. } => "login_complete",
             AppEvent::PostLoginAuthRecovery { .. } => "post_login_auth_recovery",
@@ -4552,6 +4995,7 @@ impl App {
             AppEvent::AliveSessionRemoved(_) => "alive_session_removed",
             AppEvent::AliveJoinUpgrade(_) => "alive_join_upgrade",
             AppEvent::SessionsChanged => "sessions_changed",
+            AppEvent::SessionsFallbackTick => "sessions_fallback_tick",
             AppEvent::AgentsSnapshotLoaded { .. } => "agents_snapshot_loaded",
             AppEvent::AgentsSnapshotFailed { .. } => "agents_snapshot_failed",
             AppEvent::RegisterBornBoundSession { .. } => "register_born_bound_session",
@@ -4641,9 +5085,7 @@ impl App {
                 install_url: String::new(),
                 auth_hint: profile.auth_hint.to_string(),
             },
-            install_in_progress: false,
-            install_log: Vec::new(),
-            install_error: None,
+            phase: SetupPhase::Ready,
             options,
             title: t!("setup.title.sign_in").into_owned(),
             subtitle: if profile.id == "copilot" {
@@ -4653,7 +5095,7 @@ impl App {
             },
         });
         let tab = self.current_tab_mut();
-        tab.messages.retain(|m| !matches!(m, ChatMessage::Error(_)));
+        tab.retain_current_messages(|m| !matches!(m, ChatMessage::Error(_)));
     }
 
     fn handle_agent_paste_text(&mut self, params: &serde_json::Value) {
@@ -4844,6 +5286,13 @@ pub(crate) enum CompletedTurnHitKind {
     ToolCall {
         detail_index: usize,
     },
+    ActiveToolCall {
+        detail_index: usize,
+    },
+    ActiveToolGroup {
+        first_detail_index: usize,
+        detail_count: usize,
+    },
     ToolGroup {
         first_detail_index: usize,
         detail_count: usize,
@@ -4866,9 +5315,18 @@ impl CompletedTurnHitRegion {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PressedInputDialog {
+    pub(crate) tab_id: String,
+    pub(crate) column: u16,
+    pub(crate) row: u16,
+    pub(crate) modifiers: KeyModifiers,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PressedCompletedTurn {
     pub(crate) tab_id: String,
     pub(crate) hit: CompletedTurnHitRegion,
+    pub(crate) active_tool_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -5382,7 +5840,7 @@ impl App {
             let selected_agent = self.selected_agent_command_candidate();
             if let Some(parsed) = agent_command_on_enter(&self.current_tab().input, selected_agent)
             {
-                self.current_tab_mut().clear_input();
+                self.current_tab_mut().discard_input();
                 self.handle_slash_command(parsed);
                 return true;
             }
@@ -5393,7 +5851,7 @@ impl App {
                     spec,
                     rest: position.name.to_string(),
                 };
-                self.current_tab_mut().clear_input();
+                self.current_tab_mut().discard_input();
                 self.handle_slash_command(parsed);
                 return true;
             }
@@ -5401,18 +5859,12 @@ impl App {
                 let name = candidate.name().to_string();
                 if candidate.completion_behavior().prepares_free_text() {
                     let tab = self.current_tab_mut();
-                    tab.input = format!("/{name} ");
-                    tab.input_all_selected = false;
-                    tab.cursor_pos = tab.input.len();
-                    tab.refresh_command_popup();
+                    tab.replace_input(format!("/{name} "));
                     return true;
                 }
                 if matches!(candidate, crate::ui::CommandCandidate::Agent(_)) {
                     let tab = self.current_tab_mut();
-                    tab.input = format!("/{name}");
-                    tab.input_all_selected = false;
-                    tab.cursor_pos = tab.input.len();
-                    tab.refresh_command_popup();
+                    tab.replace_input(format!("/{name}"));
                     return false;
                 }
                 if let crate::ui::CommandCandidate::Client(spec) = candidate {
@@ -5421,13 +5873,13 @@ impl App {
                         spec,
                         rest: String::new(),
                     };
-                    self.current_tab_mut().clear_input();
+                    self.current_tab_mut().discard_input();
                     self.handle_slash_command(parsed);
                     return true;
                 }
             }
 
-            self.current_tab_mut().clear_input();
+            self.current_tab_mut().discard_input();
             return true;
         }
 
@@ -5437,7 +5889,7 @@ impl App {
         }
         match commands::classify(&self.current_tab().input) {
             ParseOutcome::Command(cmd) => {
-                self.current_tab_mut().clear_input();
+                self.current_tab_mut().discard_input();
                 self.handle_slash_command(cmd);
                 true
             }
@@ -5481,7 +5933,7 @@ impl App {
         let in_flight = self.current_tab().turn.is_in_flight();
         let cancelling = self.current_tab().turn.is_cancelling();
         let prompt_blocked = !self.current_tab().turn.accepts_new_prompt();
-        crate::telemetry::log_slash_command_invoked(cmd.spec.name);
+        crate::telemetry::log_agent_slash_command_used(cmd.spec.name);
         tracing::info!(
             target: "slash_cmd",
             name = cmd.spec.name,
@@ -5593,6 +6045,7 @@ impl App {
         tab.config_pending_id = None;
         tab.native_yolo_config_pending = false;
         let old_sid = tab.session_id.take();
+        tab.reattached_session_id = None;
         tab.has_meaningful_conversation = false;
         tab.meaningful_conversation_before_load = None;
         tab.loading_session = false;
@@ -5662,9 +6115,14 @@ impl App {
         };
 
         let hint = hint.trim().to_string();
+        let reattached_session_id = self
+            .tab_sessions
+            .get(&target_tab_id)
+            .and_then(|tab| tab.reattached_session_id().map(str::to_string));
         let prompt = PromptSubmission::new_autofix(hint.clone(), Some(pane_context))
             .with_byok(self.current_model_is_byok())
-            .with_agent_id(self.current_agent_id.clone());
+            .with_agent_id(self.current_agent_id.clone())
+            .with_reattached_session(reattached_session_id);
         let submitted = SubmittedPrompt {
             id: prompt.id,
             text: prompt.text.clone(),
@@ -5777,41 +6235,53 @@ impl App {
 
     pub(crate) fn apply_runtime_yolo_config(
         &mut self,
-        global_default: Option<bool>,
+        automatic_target: Option<bool>,
         policy_blocked: Option<bool>,
     ) {
-        if global_default.is_none() && policy_blocked.is_none() {
+        if automatic_target.is_none() && policy_blocked.is_none() {
             return;
         }
 
-        let (current_global, current_blocked) = {
+        let (current_target, current_blocked) = {
             let state = self.yolo_state.lock().unwrap();
-            (state.global_default(), state.policy_blocked())
+            (state.automatic_target(), state.policy_blocked())
         };
-        let global_default = global_default.unwrap_or(current_global);
+        let automatic_target = automatic_target.unwrap_or(current_target);
         let policy_blocked = policy_blocked.unwrap_or(current_blocked);
-        if global_default == current_global && policy_blocked == current_blocked {
+        if automatic_target == current_target && policy_blocked == current_blocked {
             return;
         }
 
         {
             let mut state = self.yolo_state.lock().unwrap();
-            state.update_runtime(global_default, policy_blocked);
+            state.update_runtime(automatic_target, policy_blocked);
         }
 
-        let sessions = {
-            let state = self.yolo_state.lock().unwrap();
-            self.session_to_tab
+        let (sessions, affected_tabs) = {
+            let mut state = self.yolo_state.lock().unwrap();
+            let mut affected_tabs = HashSet::new();
+            let sessions = self
+                .session_to_tab
                 .iter()
                 .filter(|(_, tab_id)| !self.pending_yolo_session_tabs.contains(*tab_id))
-                .map(|(session_id, _)| {
-                    (
+                .filter_map(|(session_id, tab_id)| {
+                    let enabled = state.automatic_directive(session_id).target()?;
+                    state.mark_automatic_if_unowned_or_automatic(session_id.clone());
+                    affected_tabs.insert(tab_id.clone());
+                    Some((
                         agent_client_protocol::schema::v1::SessionId::new(session_id.clone()),
-                        state.effective(session_id),
-                    )
+                        enabled,
+                    ))
                 })
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>();
+            (sessions, affected_tabs)
         };
+        if sessions.is_empty() {
+            return;
+        }
+        for tab_id in affected_tabs {
+            self.project_tab_state(&tab_id);
+        }
         let fail_closed = policy_blocked || sessions.iter().any(|(_, enabled)| !enabled);
         let reconcile_id = self.begin_yolo_reconcile(&sessions, fail_closed);
         let sent = self.master_request_tx.send(
@@ -5831,7 +6301,14 @@ impl App {
     }
 
     fn reconcile_session_yolo(&mut self, session_id: &str) {
-        let enabled = self.yolo_state.lock().unwrap().effective(session_id);
+        let enabled = {
+            let mut state = self.yolo_state.lock().unwrap();
+            let Some(enabled) = state.automatic_directive(session_id).target() else {
+                return;
+            };
+            state.mark_automatic_if_unowned_or_automatic(session_id);
+            enabled
+        };
         let fail_closed = !enabled;
         let sessions = vec![(
             agent_client_protocol::schema::v1::SessionId::new(session_id.to_string()),
@@ -5907,6 +6384,8 @@ impl App {
     /// CLI pool. Viable panes, ConPTYs, and helpers stay alive and reconnect
     /// over the stable master pipe with clean ACP sessions.
     fn cmd_restart(&mut self) {
+        self.initial_startup_presentation_eligible = false;
+        self.initial_transport_superseded = true;
         self.state = ConnectionState::Connecting(t!("connection.restarting").into_owned());
         self.pending_session_load = None;
         self.session_to_tab.clear();
@@ -5921,6 +6400,7 @@ impl App {
             tab.usage_staleness = crate::usage::UsageStaleness::default();
             tab.clear_completed_turns();
             tab.session_id = None;
+            tab.reattached_session_id = None;
             tab.has_meaningful_conversation = false;
             tab.meaningful_conversation_before_load = None;
             tab.loading_session = false;
@@ -5930,6 +6410,7 @@ impl App {
             self.project_tab_state(&tab_id);
         }
         self.yolo_state.lock().unwrap().clear_sessions();
+        self.initial_yolo_control_owner = None;
         self.pending_yolo_reconciles.clear();
         self.pending_yolo_session_tabs.clear();
         if self
@@ -5945,6 +6426,13 @@ impl App {
             crate::wt_protocol_events::send(crate::wt_protocol_events::restart_agent_stack_event());
         }
         self.publish_agent_status();
+    }
+
+    fn invalidate_input_layout(&mut self) {
+        self.input_dialog_area = None;
+        for tab in self.tab_sessions.values_mut() {
+            tab.input_vertical_goal = None;
+        }
     }
 
     /// Width of the main area (chat / recs / perm / input) — matches the
@@ -6033,7 +6521,7 @@ impl App {
     fn switch_tab_session(&mut self, new_tab_id: String) {
         self.pressed_completed_turn = None;
         self.last_completed_turn_click = None;
-        self.pressed_input_dialog_tab = None;
+        self.pressed_input_dialog = None;
         if let Some(owner) = self.owner_tab_id.as_deref() {
             if owner != new_tab_id {
                 tracing::debug!(
@@ -6046,8 +6534,15 @@ impl App {
             }
         }
 
+        let switching = self.active_tab_key() != new_tab_id.as_str();
+        if switching {
+            self.current_tab_mut().break_input_undo_group();
+        }
         let old_tab = self.tab_id.clone();
         let entry = self.tab_sessions.entry(new_tab_id.clone()).or_default();
+        if switching {
+            entry.break_input_undo_group();
+        }
         tracing::info!(
             target: "tab_session",
             from = ?old_tab,
@@ -6179,7 +6674,9 @@ impl App {
     /// re-projection so the bottom-bar autofix snapshot, agent-pane view,
     /// and pane_open flag are republished under the new identity.
     ///
-    /// No-op when `new_tab_id == old_tab_id`. If the old tab id is unknown,
+    /// An unchanged tab id can still move to another window after keep-running
+    /// restore; update the owner's window without rekeying its ACP session.
+    /// If the old tab id is unknown,
     /// still updates `self.tab_id` when it pointed there — this defends
     /// against a missed `tab_changed` race where WTA's view of the active
     /// tab and tab_sessions disagree.
@@ -6190,6 +6687,21 @@ impl App {
         new_window_id: Option<&str>,
     ) {
         if old_tab_id == new_tab_id {
+            if self.owner_tab_id.as_deref() == Some(old_tab_id) {
+                if let Some(window_id) = new_window_id.filter(|id| !id.is_empty()) {
+                    if self.window_id.as_deref() != Some(window_id) {
+                        tracing::info!(
+                            target: "helper",
+                            tab_id = old_tab_id,
+                            old_window_id = ?self.window_id,
+                            new_window_id = window_id,
+                            "restored kept tab in another window"
+                        );
+                        self.window_id = Some(window_id.to_string());
+                        self.project_active_tab_state();
+                    }
+                }
+            }
             tracing::debug!(
                 target: "helper",
                 old_tab_id,
@@ -6214,6 +6726,7 @@ impl App {
                 }
             }
             entry.invalidate_pending_paste();
+            entry.break_input_undo_group();
             self.tab_sessions.insert(new_tab_id.to_string(), entry);
             true
         } else {
@@ -6365,6 +6878,7 @@ impl App {
         // `clear_chat_history` deliberately leaves alone.
         if let Some(tab) = self.tab_sessions.get_mut(tab_id) {
             removed_session_id = tab.session_id.take();
+            tab.reattached_session_id = None;
             tab.config_picker = ConfigPickerState::Closed;
             tab.config_pending_id = None;
             tab.native_yolo_config_pending = false;

@@ -1,20 +1,26 @@
-use std::path::Path;
+use std::fs::{File, OpenOptions};
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
+use std::time::Instant;
+use time::{Date, OffsetDateTime};
 use tracing_appender::non_blocking::WorkerGuard;
-use tracing_appender::rolling;
 use tracing_subscriber::{
     filter::filter_fn, fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer,
     Registry,
 };
 
 /// Per-PID helper log file prefix. The `main_helper-{pid}` process label
-/// (see `main::process_label`) lands here, e.g. `wta-main_helper-12345.log`.
+/// (see `main::process_label`) lands here, e.g.
+/// `wta-main_helper-12345.<date>.log`.
 const HELPER_LOG_PREFIX: &str = "wta-main_helper-";
 /// Per-PID helper logs older than this are reclaimed by [`housekeeping`].
 const HELPER_RETENTION_DAYS: u64 = 3;
-/// Daily-rotated `wta-cli.log` files kept by the appender; older ones are
-/// deleted natively by `tracing_appender` (`Builder::max_log_files`).
-const CLI_MAX_LOG_FILES: usize = 3;
+/// Daily files kept for each Rust WTA log stream. Older matching files are
+/// pruned when the appender is opened or rolls over. This is a best-effort
+/// bound if concurrent writers race or filesystem deletion fails.
+const LOG_MAX_FILES: usize = 3;
+const ROLLOVER_RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// Holds the non-blocking appender's `WorkerGuard` for the whole process.
 ///
@@ -37,7 +43,8 @@ pub(crate) fn default_filter_directive(debug_assertions: bool) -> &'static str {
         // response twice via its actor spans (`send_raw_message` +
         // `outgoing_protocol_actor`). For the `sessions/list` poll that
         // response is the whole session-registry snapshot (~27 KB), so a
-        // routine debug session bloats `wta-main_master.log` to multiple GB, of
+        // routine debug session bloats `wta-main_master.<date>.log` to multiple
+        // GB, of
         // which ~99% is this one crate's wire trace. Capping at `info` drops
         // that debug/trace flood while still surfacing anything the crate logs
         // at info and above. Today the crate emits only `trace!`/`debug!` (no
@@ -119,6 +126,146 @@ pub(crate) fn log_dir() -> std::path::PathBuf {
     }
 }
 
+struct RolloverRetry {
+    target_date: Date,
+    retry_after: Instant,
+}
+
+enum LogWriter {
+    Daily {
+        file: File,
+        log_dir: PathBuf,
+        prefix: String,
+        active_date: Date,
+        rollover_retry: Option<RolloverRetry>,
+    },
+    Fixed(File),
+}
+
+impl LogWriter {
+    fn new(process: &str, log_dir: &Path) -> io::Result<Self> {
+        Self::daily(process, log_dir)
+            .or_else(|_| open_append(&log_dir.join(format!("wta-{process}.log"))).map(Self::Fixed))
+    }
+
+    fn daily(process: &str, log_dir: &Path) -> io::Result<Self> {
+        let active_date = OffsetDateTime::now_utc().date();
+        let prefix = format!("wta-{process}");
+        let active_path = dated_log_path(log_dir, &prefix, active_date);
+        let file = open_append(&active_path)?;
+        prune_log_stream(log_dir, &prefix, &active_path);
+        Ok(Self::Daily {
+            file,
+            log_dir: log_dir.to_path_buf(),
+            prefix,
+            active_date,
+            rollover_retry: None,
+        })
+    }
+}
+
+fn best_effort_stderr(args: std::fmt::Arguments<'_>) {
+    let _ = io::stderr().lock().write_fmt(args);
+}
+
+impl Write for LogWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        match self {
+            Self::Daily {
+                file,
+                log_dir,
+                prefix,
+                active_date,
+                rollover_retry,
+            } => {
+                let current_date = OffsetDateTime::now_utc().date();
+                if current_date != *active_date {
+                    let now = Instant::now();
+                    let should_retry = rollover_retry.as_ref().is_none_or(|retry| {
+                        retry.target_date != current_date || now >= retry.retry_after
+                    });
+                    if should_retry {
+                        let next_path = dated_log_path(log_dir, prefix, current_date);
+                        match open_append(&next_path) {
+                            Ok(next_file) => {
+                                *file = next_file;
+                                *active_date = current_date;
+                                *rollover_retry = None;
+                                prune_log_stream(log_dir, prefix, &next_path);
+                            }
+                            Err(error) => {
+                                *rollover_retry = Some(RolloverRetry {
+                                    target_date: current_date,
+                                    retry_after: now + ROLLOVER_RETRY_INTERVAL,
+                                });
+                                best_effort_stderr(format_args!("Log rollover failed: {error}\n"));
+                            }
+                        }
+                    }
+                }
+                file.write(buf)
+            }
+            Self::Fixed(file) => file.write(buf),
+        }
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        match self {
+            Self::Daily { file, .. } | Self::Fixed(file) => file.flush(),
+        }
+    }
+}
+
+fn open_append(path: &Path) -> io::Result<File> {
+    OpenOptions::new().create(true).append(true).open(path)
+}
+
+fn dated_log_path(log_dir: &Path, prefix: &str, date: Date) -> PathBuf {
+    log_dir.join(format!("{prefix}.{date}.log"))
+}
+
+fn exact_logs(dir: &Path, prefix: &str, active: &Path) -> io::Result<Vec<(Date, PathBuf)>> {
+    let format = time::format_description::parse("[year]-[month]-[day]").unwrap();
+    let mut files = Vec::new();
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if !entry.file_type()?.is_file() || path == active {
+            continue;
+        }
+        let name = entry.file_name();
+        let Some(date) = name
+            .to_str()
+            .and_then(|name| name.strip_prefix(prefix))
+            .and_then(|name| name.strip_prefix('.'))
+            .and_then(|name| name.strip_suffix(".log"))
+            .and_then(|date| Date::parse(date, &format).ok())
+        else {
+            continue;
+        };
+        files.push((date, path));
+    }
+    Ok(files)
+}
+
+fn prune_log_stream(log_dir: &Path, prefix: &str, active_path: &Path) {
+    let Ok(mut files) = exact_logs(log_dir, prefix, active_path).inspect_err(|error| {
+        best_effort_stderr(format_args!("Log retention scan failed: {error}\n"))
+    }) else {
+        return;
+    };
+    files.sort_by_key(|(date, _)| *date);
+    let remove_count = files.len().saturating_sub(LOG_MAX_FILES.saturating_sub(1));
+    for (_, path) in files.into_iter().take(remove_count) {
+        if let Err(error) = std::fs::remove_file(&path) {
+            best_effort_stderr(format_args!(
+                "Couldn't remove old log file {}: {error}\n",
+                path.display()
+            ));
+        }
+    }
+}
+
 pub fn init(process: &str) {
     let logs_root = logs_root();
 
@@ -142,24 +289,12 @@ pub fn init(process: &str) {
     // Reclaim disk BEFORE opening our own appender.
     housekeeping(&logs_root, &log_dir, version_dir.as_deref(), process);
 
-    // The short-lived `cli` process is the only high-frequency writer, so it
-    // gets daily rotation with native retention; every other process writes a
-    // single, never-rotated file (`wta-<process>.log`).
-    let (non_blocking, guard) = if process == "cli" {
-        let appender = rolling::Builder::new()
-            .rotation(rolling::Rotation::DAILY)
-            .filename_prefix("wta-cli")
-            .filename_suffix("log")
-            .max_log_files(CLI_MAX_LOG_FILES)
-            .build(&log_dir)
-            // Fall back to a single non-rotating file if the builder rejects
-            // the directory for any reason — logging must never panic startup.
-            .unwrap_or_else(|_| rolling::never(&log_dir, "wta-cli.log"));
-        tracing_appender::non_blocking(appender)
-    } else {
-        let file_name = format!("wta-{process}.log");
-        tracing_appender::non_blocking(rolling::never(&log_dir, &file_name))
-    };
+    // Every Rust WTA stream uses the same daily UTC naming and bounded
+    // retention. If the daily file cannot be initialized, keep the old
+    // fixed-name fallback in the same directory.
+    let writer =
+        LogWriter::new(process, &log_dir).expect("failed to initialize daily or fixed log file");
+    let (non_blocking, guard) = tracing_appender::non_blocking(writer);
 
     let default_level = default_filter_directive(cfg!(debug_assertions));
 
@@ -175,7 +310,6 @@ pub fn init(process: &str) {
                 .with_timer(fmt::time::SystemTime),
         )
         .init();
-
     // Stash the guard globally so `shutdown_flush` can drop it on exit.
     let _ = GUARD.set(Mutex::new(Some(guard)));
 }
@@ -353,8 +487,9 @@ pub fn install_ctrl_handler() {
 /// unchanged):
 ///   * a `tracing::error!` so the panic correlates in the normal log (this
 ///     drains fine for a *recovered* panic, e.g. behind a `catch_unwind`), and
-///   * a synchronous append to `wta-panic.log`, independent of the async
-///     appender, so the record reaches disk even when a fatal panic kills us.
+///   * a synchronous append to `wta-panic.<date>.log`, independent of the
+///     async appender, so the record reaches disk even when a fatal panic
+///     kills us.
 ///
 /// It deliberately does NOT call [`shutdown_flush`]: that drops the appender
 /// guard and would permanently kill logging after a recoverable panic. The
@@ -389,26 +524,27 @@ pub fn install_panic_hook() {
         // Guaranteed-on-disk backstop: a fatal main-thread panic unwinds past
         // main() without reaching any `shutdown_flush`, so the appender's
         // buffered tail (incl. the error above) can be lost. A synchronous
-        // append here does not depend on the appender being alive.
+        // write here does not depend on the normal appender being alive.
         let millis = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis())
             .unwrap_or(0);
-        if let Ok(mut f) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(log_dir().join("wta-panic.log"))
-        {
-            use std::io::Write;
-            let _ = writeln!(
-                f,
-                "[{millis}ms] pid={} thread={thread_name} panicked at {location}: {msg}",
-                std::process::id()
-            );
-        }
+        let log_dir = log_dir();
+        let record = format!(
+            "[{millis}ms] pid={} thread={thread_name} panicked at {location}: {msg}",
+            std::process::id()
+        );
+        let _ = write_panic_record(&log_dir, record.as_bytes());
 
         prev(info);
     }));
+}
+
+fn write_panic_record(log_dir: &Path, record: &[u8]) -> std::io::Result<()> {
+    let mut writer = LogWriter::new("panic", log_dir)?;
+    writer.write_all(record)?;
+    writer.write_all(b"\n")?;
+    writer.flush()
 }
 
 /// Filesystem upkeep run once per process at logging init, before our own
@@ -458,9 +594,13 @@ fn prune_old_version_dirs(logs_root: &Path, current: &str) {
 }
 
 /// Delete per-PID helper logs whose mtime is older than
-/// [`HELPER_RETENTION_DAYS`]. Per-PID filenames (`wta-main_helper-{pid}.log`)
-/// accumulate as tabs open/close and are not part of any appender's rotation
-/// set, so retention has to be done by hand.
+/// [`HELPER_RETENTION_DAYS`]. Each PID has its own daily-rotated
+/// `wta-main_helper-{pid}.<date>.log` stream, so appender retention cannot
+/// reclaim streams abandoned when helper processes exit.
+///
+/// Mtime is an activity heuristic, not a liveness check. A helper that stays
+/// idle beyond the retention window can match; removal failures are ignored.
+/// A liveness-aware policy belongs in a separate audit.
 fn prune_stale_helper_logs(log_dir: &Path) {
     let Some(cutoff) = std::time::SystemTime::now().checked_sub(std::time::Duration::from_secs(
         HELPER_RETENTION_DAYS * 24 * 60 * 60,
@@ -492,6 +632,7 @@ mod tests {
     use super::*;
     use std::io::Write;
     use std::sync::Arc;
+    use time::Duration;
     use tracing_subscriber::filter::LevelFilter;
 
     #[derive(Clone)]
@@ -714,6 +855,46 @@ mod tests {
         }
     }
 
+    fn test_log_dir(label: &str) -> std::path::PathBuf {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("{label}-{}-{nonce}", std::process::id()));
+        std::fs::create_dir_all(&path).unwrap();
+        path
+    }
+
+    fn daily_log_count(root: &Path, prefix: &str) -> usize {
+        exact_logs(root, prefix, root).unwrap().len()
+    }
+
+    fn daily_writer(root: &Path, date: Date, contents: &[u8]) -> (LogWriter, PathBuf) {
+        let prefix = "wta-main".to_string();
+        let path = dated_log_path(root, &prefix, date);
+        std::fs::write(&path, contents).unwrap();
+        let writer = LogWriter::Daily {
+            file: open_append(&path).unwrap(),
+            log_dir: root.to_path_buf(),
+            prefix,
+            active_date: date,
+            rollover_retry: None,
+        };
+        (writer, path)
+    }
+
+    fn seed_future_logs(root: &Path, today: Date) -> [PathBuf; 3] {
+        std::array::from_fn(|day| {
+            let path = dated_log_path(root, "wta-main", today + Duration::days(day as i64 + 1));
+            std::fs::write(&path, "future").unwrap();
+            path
+        })
+    }
+
+    fn read_log(path: impl AsRef<Path>) -> String {
+        std::fs::read_to_string(path).unwrap()
+    }
+
     #[test]
     fn debug_build_default_is_debug() {
         assert_eq!(
@@ -726,7 +907,7 @@ mod tests {
     fn debug_build_default_caps_acp_crate_at_info() {
         // The debug default keeps our own code at `debug` but must cap the
         // noisy `agent_client_protocol` wire trace, or a routine debug run
-        // balloons wta-main_master.log to multiple GB (see the directive doc).
+        // balloons wta-main_master.<date>.log to multiple GB (see the directive doc).
         let directive = default_filter_directive(true);
         assert!(directive.starts_with("debug"));
         assert!(directive.contains("agent_client_protocol=info"));
@@ -901,5 +1082,197 @@ mod tests {
         assert_eq!(dir_count, 1);
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn all_log_writers_use_daily_names_and_enforce_retention() {
+        let scratch = test_log_dir("wta-all-stream-retention");
+        const PROCESSES: &str = "main cli main_master main_helper-123 main_helper-1234 \
+            delegate probe install-hooks panic";
+        for process in PROCESSES.split_ascii_whitespace() {
+            let prefix = format!("wta-{process}");
+            for day in 1..=LOG_MAX_FILES + 2 {
+                let path = scratch.join(format!("{prefix}.2000-01-{day:02}.log"));
+                std::fs::write(path, "old").unwrap();
+            }
+        }
+        const PRESERVED: &str =
+            "wta-main.log wta-main.not-a-date.log wta-main.2000-01-01.extra.log";
+        for name in PRESERVED.split_ascii_whitespace() {
+            std::fs::write(scratch.join(name), "preserve").unwrap();
+        }
+        for process in PROCESSES.split_ascii_whitespace() {
+            let prefix = format!("wta-{process}");
+            let collision = match process {
+                "main" => Some("wta-main_master"),
+                "main_master" => Some("wta-main"),
+                "main_helper-123" => Some("wta-main_helper-1234"),
+                _ => None,
+            }
+            .map(|prefix| (prefix, daily_log_count(&scratch, prefix)));
+            let writer = LogWriter::new(process, &scratch).unwrap();
+            assert!(matches!(writer, LogWriter::Daily { .. }));
+            assert_eq!(daily_log_count(&scratch, &prefix), LOG_MAX_FILES);
+            if let Some((collision, count)) = collision {
+                assert_eq!(daily_log_count(&scratch, collision), count);
+            }
+        }
+        for name in PRESERVED.split_ascii_whitespace() {
+            assert!(scratch.join(name).is_file(), "{name}");
+        }
+
+        let _ = std::fs::remove_dir_all(scratch);
+    }
+
+    #[test]
+    fn writer_rollover_replaces_active_file_and_protects_new_file() {
+        let scratch = test_log_dir("wta-writer-rollover");
+        let today = OffsetDateTime::now_utc().date();
+        let current_path = dated_log_path(&scratch, "wta-main", today);
+        let (mut writer, old_path) =
+            daily_writer(&scratch, today - Duration::days(10), b"old record\n");
+        let future_logs = seed_future_logs(&scratch, today);
+        writer.write_all(b"rolled record\n").unwrap();
+        writer.flush().unwrap();
+        assert_eq!(read_log(&current_path), "rolled record\n");
+        assert!(!old_path.exists());
+        assert!(!future_logs[0].exists());
+        assert!(future_logs[1].is_file());
+        assert!(future_logs[2].is_file());
+        assert_eq!(daily_log_count(&scratch, "wta-main"), LOG_MAX_FILES);
+
+        drop(writer);
+        let _ = std::fs::remove_dir_all(scratch);
+    }
+
+    #[test]
+    fn failed_rollover_keeps_old_active_file_and_skips_pruning() {
+        let scratch = test_log_dir("wta-failed-rollover");
+        let today = OffsetDateTime::now_utc().date();
+        let old_date = today - Duration::days(10);
+        let (mut writer, old_path) = daily_writer(&scratch, old_date, b"before failure\n");
+        let current_path = dated_log_path(&scratch, "wta-main", today);
+        std::fs::create_dir(&current_path).unwrap();
+        let future_logs = seed_future_logs(&scratch, today);
+        writer.write_all(b"after failure\n").unwrap();
+        writer.flush().unwrap();
+        let retry_after = match &writer {
+            LogWriter::Daily {
+                active_date,
+                rollover_retry: Some(retry),
+                ..
+            } => {
+                assert_eq!(*active_date, old_date);
+                assert_eq!(retry.target_date, today);
+                retry.retry_after
+            }
+            _ => panic!("failed rollover should retain retry state"),
+        };
+        writer.write_all(b"while throttled\n").unwrap();
+        writer.flush().unwrap();
+        assert!(matches!(
+            &writer,
+            LogWriter::Daily {
+                rollover_retry: Some(retry),
+                ..
+            } if retry.retry_after == retry_after
+        ));
+        assert_eq!(
+            read_log(&old_path),
+            ["before failure", "after failure", "while throttled"].join("\n") + "\n"
+        );
+        assert!(future_logs.iter().all(|path| path.is_file()));
+        assert_eq!(daily_log_count(&scratch, "wta-main"), 4);
+        std::fs::remove_dir(&current_path).unwrap();
+        writer.write_all(b"still throttled\n").unwrap();
+        writer.flush().unwrap();
+        assert!(!current_path.exists());
+        assert_eq!(
+            read_log(&old_path),
+            [
+                "before failure",
+                "after failure",
+                "while throttled",
+                "still throttled",
+            ]
+            .join("\n")
+                + "\n"
+        );
+        match &mut writer {
+            LogWriter::Daily {
+                rollover_retry: Some(retry),
+                ..
+            } => retry.retry_after = Instant::now(),
+            _ => panic!("failed rollover should retain retry state"),
+        }
+        writer.write_all(b"after retry\n").unwrap();
+        writer.flush().unwrap();
+        assert_eq!(read_log(&current_path), "after retry\n");
+        assert!(matches!(
+            &writer,
+            LogWriter::Daily {
+                active_date,
+                rollover_retry: None,
+                ..
+            } if *active_date == today
+        ));
+
+        drop(writer);
+        let _ = std::fs::remove_dir_all(scratch);
+    }
+
+    #[test]
+    fn retry_throttle_does_not_block_a_new_target_date() {
+        let scratch = test_log_dir("wta-rollover-new-target");
+        let today = OffsetDateTime::now_utc().date();
+        let (mut writer, _) = daily_writer(&scratch, today - Duration::days(10), b"old record\n");
+        let current_path = dated_log_path(&scratch, "wta-main", today);
+        match &mut writer {
+            LogWriter::Daily { rollover_retry, .. } => {
+                *rollover_retry = Some(RolloverRetry {
+                    target_date: today - Duration::days(1),
+                    retry_after: Instant::now() + ROLLOVER_RETRY_INTERVAL,
+                });
+            }
+            LogWriter::Fixed(_) => panic!("expected daily writer"),
+        }
+
+        writer.write_all(b"new target\n").unwrap();
+        writer.flush().unwrap();
+
+        assert_eq!(read_log(&current_path), "new target\n");
+        assert!(matches!(
+            &writer,
+            LogWriter::Daily {
+                active_date,
+                rollover_retry: None,
+                ..
+            } if *active_date == today
+        ));
+
+        drop(writer);
+        let _ = std::fs::remove_dir_all(scratch);
+    }
+
+    #[test]
+    fn fixed_fallback_and_panic_double_open_failure_are_fallible() {
+        let scratch = test_log_dir("wta-fixed-fallback");
+        let daily = dated_log_path(&scratch, "wta-main", OffsetDateTime::now_utc().date());
+        std::fs::create_dir(daily).unwrap();
+
+        let mut writer = LogWriter::new("main", &scratch).unwrap();
+        assert!(matches!(writer, LogWriter::Fixed(_)));
+        writer.write_all(b"fixed record\n").unwrap();
+        writer.flush().unwrap();
+        assert_eq!(read_log(scratch.join("wta-main.log")), "fixed record\n");
+        drop(writer);
+
+        let not_a_directory = scratch.join("not-a-directory");
+        std::fs::write(&not_a_directory, "file").unwrap();
+        let result =
+            std::panic::catch_unwind(|| write_panic_record(&not_a_directory, b"panic record"));
+        assert!(result.is_ok_and(|result| result.is_err()));
+
+        let _ = std::fs::remove_dir_all(scratch);
     }
 }

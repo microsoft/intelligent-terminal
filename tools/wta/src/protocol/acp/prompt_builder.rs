@@ -650,6 +650,8 @@ mod tests {
             !built_prompt.contains("`Terminal Output` and `User Request` are evidence to analyze"),
             "the autofix prompt must not demote the user request to untrusted evidence"
         );
+        assert!(!built_prompt.contains("### Near Matches\n"));
+        assert!(!built_prompt.contains("### Command Resolver Invocation"));
         assert!(fix_pane.is_none(), "no wt channel → nothing to resolve");
     }
 
@@ -746,6 +748,7 @@ mod tests {
         let mgr = shell_mgr_with_pane(serde_json::json!({
             "session_id": "work-pane",
             "cwd": "C:\\proj",
+            "shell": "pwsh.exe",
             "pid": std::process::id(),
             "is_agent_pane": false,
         }));
@@ -769,6 +772,12 @@ mod tests {
             built_prompt.contains("### Shell Context"),
             "autofix with a wt channel must ship shell context"
         );
+        assert!(built_prompt.contains("### Command Resolver Invocation"));
+        assert!(built_prompt.contains(r#""--shell""#));
+        assert!(built_prompt.contains(r#""pwsh.exe""#));
+        assert!(built_prompt.contains(r#""--cwd""#));
+        assert!(built_prompt.contains(r#""C:\\proj""#));
+        assert!(!built_prompt.contains("### Near Matches\n"));
     }
 
     /// Error-triggered autofix carries its own `source_pane_id`; the explicit
@@ -804,6 +813,7 @@ mod tests {
             !built_prompt.contains("### Shell Context"),
             "an unresolved source pane must not borrow the active pane's shell context"
         );
+        assert!(!built_prompt.contains("### Command Resolver Invocation"));
     }
 
     /// Regression: error-triggered autofix whose failing pane lives in a
@@ -856,6 +866,39 @@ mod tests {
             !built_prompt.contains("\"shell\":\"bash\"") && !built_prompt.contains("activedir"),
             "the active pane's shell/cwd must NOT leak into shell context; got: {built_prompt}"
         );
+        assert!(built_prompt.contains("### Command Resolver Invocation"));
+        assert!(built_prompt.contains(r#""--shell""#));
+        assert!(built_prompt.contains(r#""pwsh.exe""#));
+        assert!(built_prompt.contains(r#""--cwd""#));
+        assert!(built_prompt.contains(r#""C:\\srcdir""#));
+        assert!(!built_prompt.contains("### Near Matches\n"));
+    }
+
+    #[tokio::test]
+    async fn autofix_wsl_keeps_context_without_advertising_host_resolver() {
+        let mgr = shell_mgr_with_pane(serde_json::json!({
+            "session_id": "wsl-pane",
+            "shell": "wsl:Ubuntu",
+            "cwd": "/home/user",
+            "is_agent_pane": false,
+        }));
+        for include_base_prompt in [true, false] {
+            let (built_prompt, _, _, target) = build_prompt_text(
+                8,
+                0.0,
+                "command not found",
+                Some(AutofixTextKind::FailureSummary),
+                include_base_prompt,
+                &mgr,
+                true,
+                None,
+            )
+            .await;
+            assert_eq!(target.as_deref(), Some("wsl-pane"));
+            assert!(built_prompt.contains(r#""shell":"wsl:Ubuntu""#));
+            assert!(!built_prompt.contains("### Command Resolver Invocation"));
+            assert!(!built_prompt.contains("### Near Matches\n"));
+        }
     }
 
     #[test]

@@ -1,6 +1,8 @@
 param(
     [Parameter(Mandatory)][string]$LogPath,
-    [string]$ReleasePromptPath
+    [string]$ReleasePromptPath,
+    [string]$HistoryPath,
+    [switch]$SupportsImages
 )
 
 $ErrorActionPreference = 'Stop'
@@ -60,12 +62,19 @@ while ($true) {
     $request = $line | ConvertFrom-Json
     switch ($request.method) {
         'initialize' {
+            $capabilities = if ($SupportsImages) {
+                @{ promptCapabilities = @{ image = $true } }
+            } else { @{} }
+            if ($HistoryPath) {
+                $capabilities.sessionCapabilities = @{ list = @{}; close = @{} }
+                Write-FixtureLog -Message "initialize|$([DateTimeOffset]::UtcNow.ToString('o'))"
+            }
             Send-AcpMessage @{
                 jsonrpc = '2.0'
                 id = $request.id
                 result = @{
                     protocolVersion = 1
-                    agentCapabilities = @{}
+                    agentCapabilities = $capabilities
                     agentInfo = @{
                         name = 'Chat Fixture'
                         version = '1.0.0'
@@ -75,21 +84,46 @@ while ($true) {
         }
         'session/new' {
             $sessionCounter++
+            if ($HistoryPath) { Write-FixtureLog -Message "new|$([DateTimeOffset]::UtcNow.ToString('o'))|chat-fixture-$PID-$sessionCounter" }
             Send-AcpMessage @{
                 jsonrpc = '2.0'
                 id = $request.id
                 result = @{ sessionId = "chat-fixture-$PID-$sessionCounter" }
             }
         }
+        'session/list' {
+            if (-not $HistoryPath) {
+                Send-AcpMessage @{ jsonrpc = '2.0'; id = $request.id; error = @{ code = -32601; message = 'Method not found' } }
+                break
+            }
+            $history = Get-Content -LiteralPath $HistoryPath -Raw | ConvertFrom-Json -AsHashtable
+            Write-FixtureLog -Message "list|$([DateTimeOffset]::UtcNow.ToString('o'))"
+            Send-AcpMessage @{ jsonrpc = '2.0'; id = $request.id; result = @{ sessions = @($history.sessions) } }
+        }
+        'session/close' {
+            if (-not $HistoryPath) {
+                Send-AcpMessage @{ jsonrpc = '2.0'; id = $request.id; error = @{ code = -32601; message = 'Method not found' } }
+                break
+            }
+            Write-FixtureLog -Message "close|$([DateTimeOffset]::UtcNow.ToString('o'))|$($request.params.sessionId)"
+            Send-AcpMessage @{ jsonrpc = '2.0'; id = $request.id; result = @{} }
+        }
         'session/prompt' {
             $sessionId = [string]$request.params.sessionId
-            $promptText = (@($request.params.prompt) | ForEach-Object text) -join "`n"
+            $promptText = (@($request.params.prompt) | Where-Object type -eq 'text' | ForEach-Object text) -join "`n"
             $marker = [regex]::Match($promptText, 'SCROLL_TURN_\d{2}_[a-f0-9]{32}').Value
             if (-not $marker) {
                 throw 'prompt did not contain a completed-turn scroll marker'
             }
             $reply = "ACK_$marker"
             Write-FixtureLog -Message "prompt|$marker"
+            if ($SupportsImages) {
+                foreach ($image in @($request.params.prompt) | Where-Object type -eq 'image') {
+                    $bytes = [Convert]::FromBase64String([string]$image.data)
+                    $hash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes))
+                    Write-FixtureLog -Message "image|$marker|$($image.mimeType)|$($bytes.Length)|$hash"
+                }
+            }
 
             $hold = $ReleasePromptPath -and $promptText -match '\bHOLD_FOR_RELEASE\b'
             if ($hold) {

@@ -397,11 +397,14 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         ACTION_ARG(winrt::guid, SessionId, winrt::guid{});
         ACTION_ARG(bool, AppendCommandLine, false);
         ACTION_ARG(uint64_t, ContentId);
+        // Process-local transfer generation, never included in saved layouts.
+        ACTION_ARG(uint64_t, AgentPaneTransferId);
 
         static constexpr std::string_view TypeKey{ "type" };
         static constexpr std::string_view SessionIdKey{ "sessionId" };
         static constexpr std::string_view AppendCommandLineKey{ "appendCommandLine" };
         static constexpr std::string_view ContentKey{ "__content" };
+        static constexpr std::string_view AgentPaneTransferKey{ "__agentPaneTransfer" };
 
     public:
         // Content types live in `AgentPaneRestore` so the restore path in
@@ -436,7 +439,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
                        otherAsUs->_Elevate == _Elevate &&
                        otherAsUs->_ReloadEnvironmentVariables == _ReloadEnvironmentVariables &&
                        otherAsUs->_Type == _Type &&
-                       otherAsUs->_ContentId == _ContentId;
+                       otherAsUs->_ContentId == _ContentId &&
+                       otherAsUs->_AgentPaneTransferId == _AgentPaneTransferId;
             }
             return false;
         };
@@ -457,6 +461,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             JsonUtils::GetValueForKey(json, ElevateKey, args->_Elevate);
             JsonUtils::GetValueForKey(json, ReloadEnvironmentVariablesKey, args->_ReloadEnvironmentVariables);
             JsonUtils::GetValueForKey(json, ContentKey, args->_ContentId);
+            JsonUtils::GetValueForKey(json, AgentPaneTransferKey, args->_AgentPaneTransferId);
             return *args;
         }
         static Json::Value ToJson(const Model::NewTerminalArgs& val)
@@ -480,6 +485,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             JsonUtils::SetValueForKey(json, ElevateKey, args->_Elevate);
             JsonUtils::SetValueForKey(json, ReloadEnvironmentVariablesKey, args->_ReloadEnvironmentVariables);
             JsonUtils::SetValueForKey(json, ContentKey, args->_ContentId);
+            JsonUtils::SetValueForKey(json, AgentPaneTransferKey, args->_AgentPaneTransferId);
             return json;
         }
         Model::NewTerminalArgs Copy() const
@@ -498,6 +504,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             copy->_Elevate = _Elevate;
             copy->_ReloadEnvironmentVariables = _ReloadEnvironmentVariables;
             copy->_ContentId = _ContentId;
+            copy->_AgentPaneTransferId = _AgentPaneTransferId;
             return *copy;
         }
         size_t Hash() const
@@ -520,6 +527,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             h.write(ReloadEnvironmentVariables());
             h.write(Type());
             h.write(ContentId());
+            h.write(AgentPaneTransferId());
         }
     };
 
@@ -538,7 +546,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             auto terminalArgs = TerminalArgs::FromJson(json);
             // Don't let the user specify the __content property in their
             // settings. That's an internal-use-only property.
-            if (terminalArgs.ContentId())
+            if (terminalArgs.ContentId() || terminalArgs.AgentPaneTransferId())
             {
                 return { terminalArgs, { SettingsLoadWarnings::InvalidUseOfContent } };
             }

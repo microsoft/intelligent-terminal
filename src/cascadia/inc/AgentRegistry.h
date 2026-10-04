@@ -34,7 +34,6 @@ namespace Microsoft::Terminal::Settings::Model::AgentRegistry
     enum class YoloSettingsNotice
     {
         None,
-        Unavailable,
         Conditional,
     };
 
@@ -111,20 +110,29 @@ namespace Microsoft::Terminal::Settings::Model::AgentRegistry
         return true;
     }
 
+    inline constexpr bool IsYoloSettingUnavailableForDefaultAgent(const std::wstring_view agentId) noexcept
+    {
+        return AgentIdEquals(agentId, L"opencode");
+    }
+
     inline constexpr YoloSettingsNotice GetYoloSettingsNotice(const std::wstring_view agentId,
                                                               const bool yoloModeEnabled,
                                                               const bool policyLocked,
                                                               const bool selectedProviderAvailable) noexcept
     {
-        if (!yoloModeEnabled || policyLocked || !selectedProviderAvailable)
+        if (policyLocked)
         {
             return YoloSettingsNotice::None;
         }
-        if (agentId == L"opencode")
+        if (IsYoloSettingUnavailableForDefaultAgent(agentId))
         {
-            return YoloSettingsNotice::Unavailable;
+            return YoloSettingsNotice::None;
         }
-        if (agentId == L"gemini")
+        if (!selectedProviderAvailable)
+        {
+            return YoloSettingsNotice::None;
+        }
+        if (yoloModeEnabled && AgentIdEquals(agentId, L"gemini"))
         {
             return YoloSettingsNotice::Conditional;
         }

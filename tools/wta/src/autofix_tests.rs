@@ -79,6 +79,71 @@ fn missing_tab_id_drops_autofix() {
     );
 }
 
+#[test]
+fn autofix_dismissal_does_not_report_unverified_fix_resolution() {
+    // Keep the retired schema/emitter absent as well as preserving the
+    // dismissal lifecycle exercised below. There is no production event sink
+    // to observe now that the unsupported success event has been removed.
+    assert!(!include_str!("telemetry.rs").contains("\"ErrorFixResolved\""));
+    assert!(!include_str!("telemetry.rs").contains("fn log_error_fix_resolved("));
+    assert!(!include_str!("app_events.rs").contains("log_error_fix_resolved("));
+
+    let pane = "pane-autofix";
+    let tab = "tab-autofix";
+    for (case, events, remains_pending) in [
+        ("trigger echo", vec![(pane, "osc:133;A")], true),
+        (
+            "fresh prompt without exit zero",
+            vec![(pane, "osc:133;A"), (pane, "osc:133;A")],
+            false,
+        ),
+        (
+            "unrelated pane exit zero",
+            vec![("other-pane", "osc:133;D;0")],
+            true,
+        ),
+        (
+            "same pane exit zero without fix execution",
+            vec![(pane, "osc:133;D;0")],
+            false,
+        ),
+    ] {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.autofix_enabled = true;
+        let vt_event = |pane: &str, sequence: &str| AppEvent::WtEvent {
+            method: "vt_sequence".to_string(),
+            pane_id: pane.to_string(),
+            tab_id: Some(tab.to_string()),
+            params: serde_json::json!({ "sequence": sequence }),
+        };
+        app.handle_event(vt_event(pane, "osc:133;D;1"));
+        assert!(app.tab_mut(tab).autofix.armed_at.is_some(), "{case}");
+        for (event_pane, sequence) in events {
+            app.handle_event(vt_event(event_pane, sequence));
+        }
+
+        assert_eq!(
+            app.tab_mut(tab).autofix.pane_id.is_some(),
+            remains_pending,
+            "{case}: preserve the existing UI dismissal behavior"
+        );
+        assert_eq!(
+            app.tab_mut(tab).autofix.armed_at.is_some(),
+            remains_pending,
+            "{case}: clear analysis timing only when dismissed"
+        );
+        assert_eq!(
+            matches!(
+                app.tab_mut(tab).autofix.bar_snapshot,
+                AutofixBarSnapshot::Pending { .. }
+            ),
+            remains_pending,
+            "{case}"
+        );
+    }
+}
+
 /// Auto-suggest off: a detected failure surfaces the Detected pill so the user
 /// can opt in, but the LLM is NOT called — no turn is submitted and the
 /// failing pane is not armed for execution (only the bar snapshot changes).

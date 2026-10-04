@@ -1,0 +1,18 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+namespace TerminalApp
+{
+    [default_interface] runtimeclass IndeterminateProgressRing : Windows.UI.Xaml.Controls.Control
+    {
+        IndeterminateProgressRing();
+
+        Boolean IsActive;
+        static Windows.UI.Xaml.DependencyProperty IsActiveProperty { get; };
+    }
+
+    [default_interface] runtimeclass IndeterminateProgressRingAutomationPeer : Windows.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer
+    {
+        IndeterminateProgressRingAutomationPeer(IndeterminateProgressRing owner);
+    }
+}

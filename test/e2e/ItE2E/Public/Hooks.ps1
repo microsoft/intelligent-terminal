@@ -1,7 +1,7 @@
 # Hooks.ps1 — inspect / snapshot the agent session-management hook install state ON DISK.
 #
 # The FRE "Session management" toggle, on Save, shells the IN-PACKAGE wta.exe to run
-# `wta hooks install --cli <agent>` (FreOverlay.cpp:1608-1618, 1169-1184). We can't run the
+# `wta hooks install --cli <agent>`. We can't run the
 # packaged `wta hooks status` externally (no package identity), but the install state is written
 # to the agent CLI's own config, which we CAN read directly:
 #   Copilot: ~/.copilot/config.json -> installedPlugins[] entry {name:"wt-agent-hooks", enabled}

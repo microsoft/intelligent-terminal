@@ -37,6 +37,9 @@ void NonClientIslandWindow::Close()
 {
     // Avoid further callbacks into XAML/WinUI-land after we've Close()d the DesktopWindowXamlSource
     // inside `IslandWindow::Close()`. XAML thanks us for doing that by not crashing. Thank you XAML.
+    _titlebarContentSizeChangedRevoker.revoke();
+    _titlebarContentLayoutUpdatedRevoker.revoke();
+    _contentDragArea = nullptr;
     SetWindowLongPtr(_dragBarWindow.get(), GWLP_USERDATA, 0);
     IslandWindow::Close();
 }
@@ -115,22 +118,24 @@ LRESULT NonClientIslandWindow::_dragBarNcHitTest(const til::point pointer)
 
     // make sure to account for the width of the window frame!
     const til::rect nonClientFrame{ GetNonClientFrame(_currentDpi) };
-    const auto rightBorder{ rcParent.right - nonClientFrame.right };
-    // From the right to the left,
+    const auto rtl = _titlebar.FlowDirection() == FlowDirection::RightToLeft;
+    const auto captionEdge = rtl ? rcParent.left - nonClientFrame.left : rcParent.right - nonClientFrame.right;
+    const auto distanceFromCaptionEdge = rtl ? pointer.x - captionEdge : captionEdge - pointer.x;
+    // From the outer edge toward the center,
     // * are we in the close button?
     // * the maximize button?
     // * the minimize button?
     // If we're not, then we're in either the top resize border, or just
     // generally in the titlebar.
-    if ((rightBorder - pointer.x) < (buttonWidthInPixels))
+    if (distanceFromCaptionEdge < buttonWidthInPixels)
     {
         return HTCLOSE;
     }
-    else if ((rightBorder - pointer.x) < (buttonWidthInPixels * 2))
+    else if (distanceFromCaptionEdge < (buttonWidthInPixels * 2))
     {
         return HTMAXBUTTON;
     }
-    else if ((rightBorder - pointer.x) < (buttonWidthInPixels * 3))
+    else if (distanceFromCaptionEdge < (buttonWidthInPixels * 3))
     {
         return HTMINBUTTON;
     }
@@ -310,16 +315,36 @@ LRESULT NonClientIslandWindow::_InputSinkMessageHandler(UINT const message,
 // - Resizes and shows/hides the drag bar input sink window.
 //   This window is used to capture clicks on the non-client area.
 void NonClientIslandWindow::_ResizeDragBarWindow() noexcept
+try
 {
     const til::rect rect{ _GetDragAreaRect() };
+    const auto contentRect = _GetContentDragAreaRect();
+    const auto bounds = rect | contentRect;
+    if (contentRect || _contentDragAreaRect)
+    {
+        // Keep button-shaped holes between the two drag areas. Extending a
+        // rectangular HWND over the entire titlebar would swallow XAML input.
+        wil::unique_hrgn region;
+        if (contentRect)
+        {
+            region.reset(CreateRectRgn(rect.left - bounds.left, rect.top - bounds.top, rect.right - bounds.left, rect.bottom - bounds.top));
+            THROW_IF_NULL_ALLOC(region);
+            wil::unique_hrgn contentRegion{ CreateRectRgn(contentRect.left - bounds.left, contentRect.top - bounds.top, contentRect.right - bounds.left, contentRect.bottom - bounds.top) };
+            THROW_IF_NULL_ALLOC(contentRegion);
+            THROW_HR_IF(E_FAIL, CombineRgn(region.get(), region.get(), contentRegion.get(), RGN_OR) == ERROR);
+        }
+        THROW_IF_WIN32_BOOL_FALSE(SetWindowRgn(_dragBarWindow.get(), region.get(), FALSE));
+        region.release(); // The window owns the region after SetWindowRgn succeeds.
+    }
+    _contentDragAreaRect = contentRect;
     if (_IsTitlebarVisible() && rect.size().area() > 0)
     {
         SetWindowPos(_dragBarWindow.get(),
                      HWND_TOP,
-                     rect.left,
-                     rect.top + _GetTopBorderHeight(),
-                     rect.width(),
-                     rect.height(),
+                     bounds.left,
+                     bounds.top + _GetTopBorderHeight(),
+                     bounds.width(),
+                     bounds.height(),
                      SWP_NOACTIVATE | SWP_SHOWWINDOW);
         SetLayeredWindowAttributes(_dragBarWindow.get(), 0, 255, LWA_ALPHA);
     }
@@ -328,6 +353,7 @@ void NonClientIslandWindow::_ResizeDragBarWindow() noexcept
         SetWindowPos(_dragBarWindow.get(), HWND_BOTTOM, 0, 0, 0, 0, SWP_HIDEWINDOW | SWP_NOMOVE | SWP_NOSIZE);
     }
 }
+CATCH_LOG()
 
 // Method Description:
 // - Called when the app's size changes. When that happens, the size of the drag
@@ -417,6 +443,9 @@ void NonClientIslandWindow::SetContent(winrt::Windows::UI::Xaml::UIElement conte
 // - <none>
 void NonClientIslandWindow::SetTitlebarContent(winrt::Windows::UI::Xaml::UIElement content)
 {
+    _titlebarContentSizeChangedRevoker.revoke();
+    _titlebarContentLayoutUpdatedRevoker.revoke();
+    _contentDragArea = nullptr;
     _titlebar.Content(content);
 
     // GH#4288 - add a SizeChanged handler to this content. It's possible that
@@ -426,8 +455,25 @@ void NonClientIslandWindow::SetTitlebarContent(winrt::Windows::UI::Xaml::UIEleme
     const auto fwe = content.try_as<winrt::Windows::UI::Xaml::FrameworkElement>();
     if (fwe)
     {
-        fwe.SizeChanged({ this, &NonClientIslandWindow::_OnDragBarSizeChanged });
+        // The custom titlebar is the window chrome boundary. Mirror it with
+        // the hosted titlebar content without cascading RTL into the client
+        // terminal, settings, or other internal pages.
+        _titlebar.FlowDirection(fwe.FlowDirection());
+        _titlebarContentSizeChangedRevoker = fwe.SizeChanged(winrt::auto_revoke, { this, &NonClientIslandWindow::_OnDragBarSizeChanged });
+        _contentDragArea = winrt::TerminalApp::TitlebarControl::GetContentDragArea(fwe);
+        if (_contentDragArea)
+        {
+            // Leading chrome can move the empty column without resizing the
+            // titlebar content. Update only when its actual bounds change.
+            _titlebarContentLayoutUpdatedRevoker = fwe.LayoutUpdated(winrt::auto_revoke, [this](auto&&, auto&&) {
+                if (_GetContentDragAreaRect() != _contentDragAreaRect)
+                {
+                    _ResizeDragBarWindow();
+                }
+            });
+        }
     }
+    _ResizeDragBarWindow();
 }
 
 // Method Description:
@@ -454,38 +500,65 @@ til::rect NonClientIslandWindow::_GetDragAreaRect() const noexcept
         const auto scale = GetCurrentDpiScale();
         const auto transform = _dragBar.TransformToVisual(_rootGrid);
 
-        // GH#9443: Previously, we'd only extend the drag bar from the left of
-        // the tabs to the right of the caption buttons. Now, we're extending it
-        // all the way to the right side of the window, covering the caption
-        // buttons. We'll manually handle input to those buttons, to make it
-        // seem like they're still getting XAML input. We do this so we can get
-        // snap layout support for the maximize button.
-        const auto logicalDragBarRect = winrt::Windows::Foundation::Rect{
+        const auto clientDragBarRect = transform.TransformBounds({
             0.0f,
             0.0f,
-            static_cast<float>(_rootGrid.ActualWidth()),
+            static_cast<float>(_dragBar.ActualWidth()),
             static_cast<float>(_dragBar.ActualHeight())
-        };
+        });
 
-        const auto clientDragBarRect = transform.TransformBounds(logicalDragBarRect);
-
-        // Make sure to trim the right side of the rectangle, so that it doesn't
-        // hang off the right side of the root window. This normally wouldn't
-        // matter, but UIA will still think its bounds can extend past the right
-        // of the parent HWND.
-        //
-        // x here is the width of the tabs.
-        const auto x = gsl::narrow_cast<til::CoordType>(clientDragBarRect.X * scale);
+        // Cover the drag area plus the caption buttons so the maximize button
+        // continues to expose HTMAXBUTTON for Snap Layouts. Leave the titlebar
+        // content side uncovered so its XAML controls remain interactive.
+        const auto rtl = _titlebar.FlowDirection() == FlowDirection::RightToLeft;
+        const auto left = rtl ? 0.0f : clientDragBarRect.X;
+        const auto right = rtl ? clientDragBarRect.X + clientDragBarRect.Width : static_cast<float>(_rootGrid.ActualWidth());
 
         return {
-            x,
-            gsl::narrow_cast<til::CoordType>(clientDragBarRect.Y * scale),
-            gsl::narrow_cast<til::CoordType>((clientDragBarRect.Width + clientDragBarRect.X) * scale) - x,
-            gsl::narrow_cast<til::CoordType>((clientDragBarRect.Height + clientDragBarRect.Y) * scale),
+            til::math::rounding,
+            left * scale,
+            clientDragBarRect.Y * scale,
+            right * scale,
+            (clientDragBarRect.Y + clientDragBarRect.Height) * scale,
         };
     }
 
     return {};
+}
+
+til::rect NonClientIslandWindow::_GetContentDragAreaRect() const
+{
+    if (!_contentDragArea || !_IsTitlebarVisible() || !_contentDragArea.IsLoaded())
+    {
+        return {};
+    }
+
+    auto ancestor = _contentDragArea.as<DependencyObject>();
+    while (ancestor != _titlebar)
+    {
+        if (!ancestor)
+        {
+            return {};
+        }
+        if (const auto element = ancestor.try_as<UIElement>(); element && element.Visibility() != Visibility::Visible)
+        {
+            return {};
+        }
+        ancestor = Media::VisualTreeHelper::GetParent(ancestor);
+    }
+
+    const auto transform = _contentDragArea.TransformToVisual(_rootGrid);
+    const auto area = transform.TransformBounds({ 0, 0, static_cast<float>(_contentDragArea.ActualWidth()), static_cast<float>(_contentDragArea.ActualHeight()) });
+    const auto titlebar = _titlebar.TransformToVisual(_rootGrid).TransformBounds({ 0, 0, static_cast<float>(_titlebar.ActualWidth()), static_cast<float>(_titlebar.ActualHeight()) });
+    const auto scale = GetCurrentDpiScale();
+    // Round inward so fractional DPI scaling cannot steal adjacent button pixels.
+    const til::rect rect{
+        til::math::ceiling.cast<til::CoordType>(area.X * scale),
+        til::math::ceiling.cast<til::CoordType>(area.Y * scale),
+        til::math::flooring.cast<til::CoordType>((area.X + area.Width) * scale),
+        til::math::flooring.cast<til::CoordType>((area.Y + area.Height) * scale),
+    };
+    return rect & til::rect{ til::math::rounding, titlebar.X * scale, titlebar.Y * scale, (titlebar.X + titlebar.Width) * scale, (titlebar.Y + titlebar.Height) * scale };
 }
 
 // Method Description:

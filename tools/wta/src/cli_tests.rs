@@ -1,5 +1,20 @@
 use super::*;
-use clap::Parser;
+use clap::{CommandFactory, Parser};
+
+#[test]
+fn cli_schema_has_no_duplicate_short_flags() {
+    Cli::command().debug_assert();
+}
+
+#[test]
+fn split_pane_horizontal_uses_uppercase_short_flag() {
+    let cli = Cli::try_parse_from(["wta", "split-pane", "-H"])
+        .expect("split-pane -H must parse without colliding with help");
+    match cli.command {
+        Some(Command::SplitPane { horizontal, .. }) => assert!(horizontal),
+        other => panic!("expected split-pane command, got {other:?}"),
+    }
+}
 
 // Plan-C boot-time initial-load flags: WT bundles a session resume
 // with helper spawn by passing `--initial-load-session-id` (and
@@ -22,10 +37,25 @@ fn cli_parses_initial_load_session_id() {
 }
 
 #[test]
+fn cli_parses_initial_yolo_control_owner() {
+    let cli = Cli::try_parse_from([
+        "wta",
+        "--initial-load-session-id",
+        "abc-123",
+        "--initial-yolo-control-owner",
+        "manual",
+    ])
+    .expect("saved Yolo owner must parse");
+    assert_eq!(cli.initial_yolo_control_owner.as_deref(), Some("manual"));
+    assert!(Cli::try_parse_from(["wta", "--initial-yolo-control-owner", "unknown"]).is_err());
+}
+
+#[test]
 fn cli_initial_load_session_id_defaults_to_none() {
     let cli = Cli::try_parse_from(["wta"]).expect("no flags must parse");
     assert!(cli.initial_load_session_id.is_none());
     assert!(cli.initial_load_cwd.is_none());
+    assert!(cli.initial_yolo_control_owner.is_none());
     assert!(cli.initial_pane_position.is_none());
     assert!(!cli.follows_global_acp_model);
 }
@@ -101,7 +131,12 @@ fn sessions_list_cli_parses_json_and_master_override() {
     assert!(cli.json);
     match cli.command {
         Some(Command::Sessions {
-            action: SessionsAction::List { master, origin },
+            action:
+                SessionsAction::List {
+                    master,
+                    origin,
+                    include_status,
+                },
         }) => {
             assert_eq!(master.as_deref(), Some(r"\\.\pipe\wta-master-test"));
             // Default keeps the historical debug behavior — show
@@ -110,9 +145,57 @@ fn sessions_list_cli_parses_json_and_master_override() {
             // intentionally divergent so `wta sessions list` is
             // the "see everything" debug tool.
             assert_eq!(origin, SessionsOriginArg::All);
+            assert!(!include_status, "plain JSON listing must remain JSONL");
         }
         other => panic!("expected sessions list command, got {other:?}"),
     }
+}
+
+#[test]
+fn sessions_list_cli_preserves_status_snapshot_without_discovery() {
+    let cli = Cli::try_parse_from([
+        "wta",
+        "sessions",
+        "list",
+        "--origin",
+        "shell",
+        "--json",
+        "--include-status",
+    ])
+    .expect("sidebar history invocation parses");
+    assert!(cli.json);
+    match cli.command {
+        Some(Command::Sessions {
+            action:
+                SessionsAction::List {
+                    origin,
+                    include_status,
+                    ..
+                },
+        }) => {
+            assert!(include_status);
+            assert_eq!(origin, SessionsOriginArg::Shell);
+        }
+        other => panic!("expected sessions list command, got {other:?}"),
+    }
+}
+
+#[test]
+fn sessions_refresh_is_explicit_and_removed_discovery_flag_is_rejected() {
+    assert!(Cli::try_parse_from(["wta", "sessions", "list", "--all-agents"]).is_err());
+    let cli = Cli::try_parse_from(["wta", "sessions", "refresh", "--json"]).unwrap();
+    assert!(cli.json);
+    assert!(matches!(
+        cli.command,
+        Some(Command::Sessions {
+            action: SessionsAction::Refresh { master: None }
+        })
+    ));
+}
+
+#[test]
+fn sessions_list_status_requires_json() {
+    assert!(Cli::try_parse_from(["wta", "sessions", "list", "--include-status"]).is_err());
 }
 
 #[test]
@@ -144,8 +227,89 @@ fn sessions_list_cli_parses_origin_agent_pane() {
                 agent_sessions::OriginFilter::AgentPaneOnly,
             );
         }
+
         other => panic!("expected sessions list command, got {other:?}"),
     }
+}
+
+#[test]
+fn sessions_activate_cli_parses_qualified_identity_and_target_window() {
+    let cli = Cli::try_parse_from([
+        "wta",
+        "sessions",
+        "activate",
+        "--session-id",
+        "same-raw-id",
+        "--provider",
+        "copilot",
+        "--location",
+        "wsl",
+        "--wsl-distro",
+        "Ubuntu",
+        "--universe",
+        "tenant-a",
+        "--window-id",
+        "42",
+        "--activation-id",
+        "activation-1",
+        "--json",
+    ])
+    .expect("sessions activate parses");
+
+    assert!(cli.json);
+    match cli.command {
+        Some(Command::Sessions {
+            action:
+                SessionsAction::Activate {
+                    session_id,
+                    provider,
+                    location,
+                    wsl_distro,
+                    universe,
+                    window_id,
+                    activation_id,
+                    status_only,
+                },
+        }) => {
+            assert_eq!(session_id, "same-raw-id");
+            assert_eq!(provider, "copilot");
+            assert_eq!(location, "wsl");
+            assert_eq!(wsl_distro.as_deref(), Some("Ubuntu"));
+            assert_eq!(universe.as_deref(), Some("tenant-a"));
+            assert_eq!(window_id, 42);
+            assert_eq!(activation_id, "activation-1");
+            assert!(!status_only);
+        }
+        other => panic!("expected sessions activate command, got {other:?}"),
+    }
+}
+
+#[test]
+fn sessions_activate_status_only_never_selects_a_new_operation() {
+    let cli = Cli::try_parse_from([
+        "wta",
+        "sessions",
+        "activate",
+        "--session-id",
+        "session",
+        "--provider",
+        "copilot",
+        "--location",
+        "host",
+        "--window-id",
+        "42",
+        "--activation-id",
+        "original-activation",
+        "--status-only",
+        "--json",
+    ])
+    .unwrap();
+    assert!(matches!(
+        cli.command,
+        Some(Command::Sessions {
+            action: SessionsAction::Activate { status_only: true, activation_id, .. }
+        }) if activation_id == "original-activation"
+    ));
 }
 
 // ── normalize_locale: OS-locale → bundled-locale affinity matching ──────────

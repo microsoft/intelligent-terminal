@@ -51,6 +51,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         void SetControlPadding(const Core::Padding padding);
         void RecordKeyEvent(const WORD vkey);
         void Close();
+        Control::InteractivityAutomationPeer InteractivityPeer() const noexcept { return _contentAutomationPeer; }
 
 #pragma region FrameworkElementAutomationPeer
         hstring GetClassNameCore() const;

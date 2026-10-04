@@ -19,7 +19,8 @@ function Initialize-LogOffsets {
         $App.LogStartOffset = @{}
         $dir = Get-ItLogDir -App $App
         if (-not $dir) { return $App }
-        foreach ($f in Get-ChildItem $dir -Filter *.log -ErrorAction SilentlyContinue) {
+        foreach ($f in Get-ChildItem $dir -Filter *.log -ErrorAction SilentlyContinue |
+            Where-Object { -not $_.PSIsContainer }) {
             $App.LogStartOffset[$f.Name] = $f.Length
         }
         $App
@@ -42,15 +43,56 @@ function Get-ItLogText {
         $dir = Get-ItLogDir -App $App
         if (-not $dir) { return '' }
         $sb = [System.Text.StringBuilder]::new()
-        foreach ($f in Get-ChildItem $dir -Filter *.log -ErrorAction SilentlyContinue | Where-Object Name -like $Name) {
+        $hasWildcard = [System.Management.Automation.WildcardPattern]::ContainsWildcardCharacters($Name)
+        $exactNameRegex = if (-not $hasWildcard -and $Name -match '^(.+)\.log$') {
+            $literalBase = [regex]::Escape($Matches[1])
+            $regexOptions = [System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor [System.Text.RegularExpressions.RegexOptions]::CultureInvariant
+            [regex]::new("^(?:$literalBase\.log|$literalBase\.(?<date>\d{4}-\d{2}-\d{2})\.log)$", $regexOptions)
+        }
+        else {
+            $null
+        }
+        $files = @(Get-ChildItem $dir -Filter *.log -ErrorAction SilentlyContinue |
+            Where-Object { -not $_.PSIsContainer })
+        $matchingFiles = if ($exactNameRegex) {
+            $candidates = @($files | Where-Object {
+                $match = $exactNameRegex.Match($_.Name)
+                if (-not $match.Success) {
+                    return $false
+                }
+                if (-not $match.Groups['date'].Success) {
+                    return $true
+                }
+                $parsedDate = [datetime]::MinValue
+                [datetime]::TryParseExact(
+                    $match.Groups['date'].Value,
+                    'yyyy-MM-dd',
+                    [System.Globalization.CultureInfo]::InvariantCulture,
+                    [System.Globalization.DateTimeStyles]::None,
+                    [ref]$parsedDate)
+            })
+            if ($SinceStart) {
+                @($candidates | Sort-Object LastWriteTime, Name)
+            }
+            else {
+                @($candidates | Sort-Object LastWriteTime, Name -Descending | Select-Object -First 1)
+            }
+        }
+        else {
+            @($files | Where-Object Name -like $Name)
+        }
+        foreach ($f in $matchingFiles) {
             $start = if ($SinceStart -and $App.LogStartOffset.ContainsKey($f.Name)) { [int64]$App.LogStartOffset[$f.Name] } else { 0 }
             try {
                 $fs = [System.IO.FileStream]::new($f.FullName, 'Open', 'Read', 'ReadWrite')
                 try {
                     if ($start -gt 0 -and $start -le $fs.Length) { $fs.Seek($start, 'Begin') | Out-Null }
                     $sr = [System.IO.StreamReader]::new($fs)
-                    [void]$sb.AppendLine("# ==== $($f.Name) ====")
-                    [void]$sb.Append($sr.ReadToEnd())
+                    $text = $sr.ReadToEnd()
+                    if ($text.Length -gt 0) {
+                        [void]$sb.AppendLine("# ==== $($f.Name) ====")
+                        [void]$sb.Append($text)
+                    }
                 }
                 finally { $fs.Dispose() }
             }
@@ -67,20 +109,26 @@ function Start-WtEventListener {
         Start a background `wtcli listen --json` and buffer parsed events into a
         synchronized list. Start this BEFORE the action you want to observe.
     .OUTPUTS
-        Listener object: @{ Process; Events; Reg; App }
+        Listener object: @{ Process; Events; Reg; SourceId; App; SubscriptionReady }
+    .PARAMETER WaitForReady
+        Wait for wtcli to confirm Subscribe before returning. The internal readiness
+        marker is removed from the buffered events so callers see only product events.
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory, ValueFromPipeline)]$App,
         [string]$EventFilter,
         [string]$SessionId,
-        [switch]$SkipAuthenticate
+        [switch]$SkipAuthenticate,
+        [switch]$WaitForReady
     )
     process {
         if (-not $App.ComClsid) { Resolve-WtComClsid -App $App | Out-Null }
         $args = @('--json')
         if ($SkipAuthenticate) { $args += '--skip-authenticate' }
         $args += 'listen'
+        $readyToken = [guid]::NewGuid().ToString('N')
+        if ($WaitForReady) { $args += @('--ready-token', $readyToken) }
         if ($SessionId) { $args += @('-t', $SessionId) }
         if ($EventFilter) { $args += @('--event', $EventFilter) }
 
@@ -104,9 +152,27 @@ function Start-WtEventListener {
         # deterministically (don't rely on the auto-generated job name).
         $sourceId = "ItE2E.WtEventListener.$([guid]::NewGuid())"
         $reg = Register-ObjectEvent -InputObject $p -EventName OutputDataReceived -Action $handler -MessageData $events -SourceIdentifier $sourceId
-        [void]$p.Start(); $p.BeginOutputReadLine(); $p.BeginErrorReadLine()
+        $listener = [pscustomobject]@{
+            Process = $p; Events = $events; Reg = $reg; SourceId = $sourceId; App = $App
+            SubscriptionReady = $false
+        }
+        try {
+            [void]$p.Start(); $p.BeginOutputReadLine(); $p.BeginErrorReadLine()
+            if ($WaitForReady) {
+                $ready = Wait-WtEvent -Listener $listener -TimeoutSec 10 -Predicate ({
+                    $_.PSObject.Properties.Name -contains '_wtcli' -and
+                    $_._wtcli -eq 'listener_ready' -and $_.token -eq $readyToken
+                }.GetNewClosure())
+                [void]$events.Remove($ready)
+                $listener.SubscriptionReady = $true
+            }
+        }
+        catch {
+            Stop-WtEventListener -Listener $listener
+            throw
+        }
         Write-ItLog -Level INFO -Message "Event listener started (filter='$EventFilter' session='$SessionId')."
-        [pscustomobject]@{ Process = $p; Events = $events; Reg = $reg; SourceId = $sourceId; App = $App }
+        $listener
     }
 }
 

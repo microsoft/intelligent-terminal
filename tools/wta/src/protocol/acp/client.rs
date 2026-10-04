@@ -91,6 +91,7 @@ pub struct PromptSubmission {
     pub images: Vec<crate::clipboard_image::PastedImage>,
     is_byok: bool,
     agent_id: String,
+    reattached_session_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -378,6 +379,7 @@ pub enum MasterExtRequest {
     /// helper's tabs); `session_id == None` fans out to every session this
     /// helper owns.
     SetSessionModel {
+        request_id: uuid::Uuid,
         session_id: Option<acp::schema::v1::SessionId>,
         model: String,
         pane_override: bool,
@@ -523,6 +525,7 @@ impl PromptSubmission {
             images: Vec::new(),
             is_byok: false,
             agent_id: String::new(),
+            reattached_session_id: None,
         }
     }
 
@@ -550,6 +553,15 @@ impl PromptSubmission {
 
     pub fn agent_id(&self) -> &str {
         &self.agent_id
+    }
+
+    pub fn with_reattached_session(mut self, session_id: Option<String>) -> Self {
+        self.reattached_session_id = session_id;
+        self
+    }
+
+    fn was_reattached_at_dispatch(&self, session_id: &str) -> bool {
+        self.reattached_session_id.as_deref() == Some(session_id)
     }
 
     pub fn cancellation_token(&self) -> CancellationToken {
@@ -682,6 +694,15 @@ struct ClientState {
     standard_usage_sessions: Mutex<HashSet<String>>,
     proposal_channels: Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     hidden_tool_calls: std::sync::Mutex<HashMap<(String, String), HiddenToolCall>>,
+    origin_scope: std::sync::OnceLock<crate::agent_pane_origin::OriginScope>,
+}
+
+fn record_agent_pane_origin(state: &ClientState, session_id: &str, pane_session_id: Option<&str>) {
+    if let Some(scope) = state.origin_scope.get() {
+        crate::agent_pane_origin::append_default_qualified(scope, session_id, pane_session_id);
+    } else {
+        crate::agent_pane_origin::append_default(session_id, pane_session_id);
+    }
 }
 
 #[derive(Default)]
@@ -959,6 +980,32 @@ fn tool_call_cwd(raw_input: Option<&serde_json::Value>) -> Option<String> {
         .map(str::to_string)
 }
 
+fn tool_call_query(
+    kind: Option<&acp::schema::v1::ToolKind>,
+    raw_input: Option<&serde_json::Value>,
+) -> Option<crate::app::ToolCallOutput> {
+    if kind.is_some_and(|kind| {
+        !matches!(
+            kind,
+            acp::schema::v1::ToolKind::Search | acp::schema::v1::ToolKind::Other
+        )
+    }) {
+        return None;
+    }
+    // Initial calls default to Other and updates can omit kind; Search may arrive later.
+    // Retain only the named query, never arbitrary input JSON.
+    let query = raw_input?.get("query")?.as_str()?;
+    if query.trim().is_empty() {
+        return None;
+    }
+    let mut chars = query.chars();
+    let text = chars.by_ref().take(TOOL_CALL_OUTPUT_MAX_CHARS).collect();
+    Some(crate::app::ToolCallOutput {
+        text,
+        truncated: chars.next().is_some(),
+    })
+}
+
 fn tool_call_exit_code(raw_output: Option<&serde_json::Value>) -> Option<i64> {
     let object = raw_output?.as_object()?;
     ["exitCode", "exit_code"]
@@ -1194,6 +1241,127 @@ enum HiddenToolCall {
     },
     // Hiding legacy proposal commands is not proof of Session MCP identity.
     Other,
+}
+
+// Diagnostic classification only: never grants permission or logs command contents.
+fn is_command_lookup_permission(command: &str) -> bool {
+    let command = command
+        .trim()
+        .strip_prefix('&')
+        .unwrap_or(command.trim())
+        .trim();
+    // Quoted paths can contain shell metacharacters. Reject operators outside
+    // quotes and command substitution inside double quotes, not single-quoted literals.
+    let mut quote = None;
+    let mut executable_end = None;
+    let mut chars = command.char_indices().peekable();
+    while let Some((index, ch)) = chars.next() {
+        if matches!(ch, '\n' | '\r')
+            || (quote != Some('\'')
+                && (ch == '`' || (ch == '$' && chars.peek().is_some_and(|(_, next)| *next == '('))))
+        {
+            return false;
+        }
+        if let Some(delimiter) = quote {
+            if ch == delimiter {
+                if chars.peek().is_some_and(|(_, next)| *next == delimiter) {
+                    chars.next();
+                } else {
+                    quote = None;
+                }
+            }
+            continue;
+        }
+        match ch {
+            '\'' | '"' => quote = Some(ch),
+            ';' | '|' | '&' | '>' | '<' | '(' | ')' | '{' | '}' => return false,
+            ch if ch.is_whitespace() => {
+                executable_end.get_or_insert(index);
+            }
+            _ => {}
+        }
+    }
+    if quote.is_some() {
+        return false;
+    }
+    let Some(end) = executable_end else {
+        return false;
+    };
+    let (executable, rest) = command.split_at(end);
+    let executable = if let Some(quote) = executable
+        .chars()
+        .next()
+        .filter(|c| *c == '"' || *c == '\'')
+    {
+        let Some(executable) = executable[1..].strip_suffix(quote) else {
+            return false;
+        };
+        executable
+    } else {
+        executable
+    };
+    let executable = executable.rsplit(['\\', '/']).next().unwrap_or(executable);
+    (executable.eq_ignore_ascii_case("wta")
+        || executable.eq_ignore_ascii_case("wta.exe")
+        || executable.eq_ignore_ascii_case("$env:WTA_CLI_PATH")
+        || executable == "$WTA_CLI_PATH")
+        && rest.split_whitespace().next() == Some("resolve-command")
+}
+
+#[test]
+fn command_lookup_permission_diagnostic_requires_an_invocation() {
+    for command in [
+        "wta resolve-command gti",
+        "& \"$env:WTA_CLI_PATH\" resolve-command gti",
+        "\"C:\\Program Files\\IT\\wta.exe\" resolve-command gti",
+    ] {
+        assert!(is_command_lookup_permission(command), "{command}");
+    }
+    for command in [
+        "echo resolve-command",
+        "wta run-command resolve-command",
+        "other.exe resolve-command gti",
+        "wta resolve-command-history",
+        "wta resolve-command gti; unrelated-command",
+        "wta resolve-command $(unrelated-command)",
+        "wta resolve-command gti | unrelated-command",
+        "'unterminated",
+    ] {
+        assert!(!is_command_lookup_permission(command), "{command}");
+    }
+}
+
+#[test]
+fn command_lookup_permission_preserves_quoted_path_literals() {
+    for command in [
+        r#"& 'wta.exe' resolve-command gti --cwd 'C:\R&D\src' --json"#,
+        r#"& "C:\R&D tools\wta.exe" resolve-command gti --cwd "C:\R&D\src""#,
+        r#"& 'wta.exe' resolve-command gti --cwd 'C:\src;archive' --json"#,
+        r#"& 'C:\owner''s\R&D\wta.exe' resolve-command gti --cwd 'C:\owner''s\src'"#,
+        r#"& 'wta.exe' resolve-command gti --cwd "C:\owner's\R&D""#,
+        r#"& 'wta.exe' resolve-command gti --cwd 'C:\$(archive)&src' --json"#,
+        r#"& 'wta.exe' resolve-command gti --cwd 'C:\src`archive' --json"#,
+    ] {
+        assert!(is_command_lookup_permission(command), "{command}");
+    }
+}
+
+#[test]
+fn command_lookup_permission_rejects_expressions_and_unbalanced_quotes() {
+    for command in [
+        r#"& 'wta.exe' resolve-command gti --cwd 'C:\R&D' & unrelated-command"#,
+        r#"& 'wta.exe' resolve-command gti --cwd "C:\R&D"; unrelated-command"#,
+        r#"& 'wta.exe' resolve-command gti --cwd 'C:\R&D' | unrelated-command"#,
+        r#"& 'wta.exe' resolve-command gti --cwd "$(unrelated-command)""#,
+        r#"& 'wta.exe' resolve-command (unrelated-command)"#,
+        r#"& 'wta.exe' resolve-command gti --cwd 'C:\owner''s"#,
+        r#"& 'wta.exe' resolve-command gti --cwd "C:\R&D"#,
+        concat!("& 'wta.exe'", "resolve-command gti"),
+        "wta resolve-command gti\nunrelated-command",
+        "wta resolve-command gti > output.txt",
+    ] {
+        assert!(!is_command_lookup_permission(command), "{command}");
+    }
 }
 
 fn looks_like_proposal_command(command: &str) -> bool {
@@ -1509,6 +1677,24 @@ impl WtaClient {
 
         let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
 
+        tracing::info!(
+            target: "permission_ui",
+            request = %serde_json::json!({
+                "session_id": session_id,
+                "tool_call_id": tool_call_id,
+                "kind": if matches!(session_mcp_tool, Some(SessionMcpTool::TerminalAction(_))) {
+                    "session_mcp"
+                } else if target_hint.as_ref().is_some_and(|(command, is_command)| {
+                    *is_command && is_command_lookup_permission(command)
+                }) {
+                    "command_lookup"
+                } else {
+                    "other"
+                },
+            }),
+            "permission queued for user selection"
+        );
+
         let (target, target_is_command) = match target_hint {
             Some((text, is_command)) => (Some(text), is_command),
             None => (None, false),
@@ -1666,6 +1852,7 @@ impl WtaClient {
                     title: tool_call.title.clone(),
                     status: format!("{:?}", tool_call.status),
                     kind: tool_call_kind(tool_call.kind),
+                    query: tool_call_query(Some(&tool_call.kind), tool_call.raw_input.as_ref()),
                     location,
                     location_is_command,
                     cwd: tool_call_cwd(tool_call.raw_input.as_ref()),
@@ -1759,6 +1946,10 @@ impl WtaClient {
                         (None, false)
                     };
                 let cwd = tool_call_cwd(update.fields.raw_input.as_ref());
+                let query = tool_call_query(
+                    update.fields.kind.as_ref(),
+                    update.fields.raw_input.as_ref(),
+                );
                 let exit_code = tool_call_exit_code(update.fields.raw_output.as_ref());
                 let content = update.fields.content.as_deref().map(tool_call_content);
                 let locations = update.fields.locations.as_deref().map(tool_call_locations);
@@ -1771,6 +1962,7 @@ impl WtaClient {
                     || exit_code.is_some()
                     || content.is_some()
                     || locations.is_some()
+                    || query.is_some()
                 {
                     let _ = self.state.event_tx.send(AppEvent::ToolCallUpdate {
                         session_id: sid,
@@ -1778,6 +1970,7 @@ impl WtaClient {
                         title: update.fields.title,
                         status,
                         kind: update.fields.kind.map(tool_call_kind),
+                        query,
                         location,
                         location_is_command,
                         output,
@@ -1910,6 +2103,7 @@ impl WtaClient {
                     title,
                     status: "running".to_string(),
                     kind: crate::app::ToolCallKind::Execute,
+                    query: None,
                     location,
                     location_is_command: false,
                     cwd: None,
@@ -1972,6 +2166,7 @@ impl WtaClient {
                     title: None,
                     status: Some(format!("exited ({})", code)),
                     kind: None,
+                    query: None,
                     location: None,
                     location_is_command: false,
                     output: None,
@@ -2288,8 +2483,11 @@ impl WtaClient {
             WtaExtNotification::SessionAdded(info) => {
                 let _ = self.state.event_tx.send(AppEvent::AliveSessionAdded(info));
             }
-            WtaExtNotification::SessionRemoved(sid) => {
-                let _ = self.state.event_tx.send(AppEvent::AliveSessionRemoved(sid));
+            WtaExtNotification::SessionRemoved(params) => {
+                let _ = self
+                    .state
+                    .event_tx
+                    .send(AppEvent::AliveSessionRemoved(params));
             }
             WtaExtNotification::SessionsChanged => {
                 let _ = self.state.event_tx.send(AppEvent::SessionsChanged);
@@ -2558,10 +2756,8 @@ fn log_acp_new_session_result(
     started: std::time::Instant,
     result: &acp::Result<acp::schema::v1::NewSessionResponse>,
 ) {
-    let session_id = result.as_ref().ok().map(|resp| resp.session_id.to_string());
     let (failure_kind, acp_error_code) = acp_result_failure_fields(result);
     crate::telemetry::log_acp_new_session_complete(
-        session_id.as_deref(),
         elapsed_ms_since(started),
         result.is_ok(),
         route,
@@ -2651,6 +2847,7 @@ async fn apply_native_yolo_checked(
 ///     was always created.
 async fn handle_load_failure(
     old_sid: Option<&acp::schema::v1::SessionId>,
+    failed_sid: String,
     tab_id: String,
     binding_generation: u64,
     cwd: std::path::PathBuf,
@@ -2672,6 +2869,12 @@ async fn handle_load_failure(
     ) else {
         return;
     };
+    let _ = event_tx.send(AppEvent::AgentSessionEvent(
+        crate::agent_sessions::SessionEvent::ResumeFailed {
+            key: failed_sid,
+            reason: error_message.clone(),
+        },
+    ));
     if let Some(old) = old_sid {
         // Mid-life session management load failure path: restore prior binding.
         let mut g = tab_to_session.lock().await;
@@ -2736,7 +2939,7 @@ async fn handle_load_failure(
             } else {
                 Some(pane_session_id.as_str())
             };
-            crate::agent_pane_origin::append_default(new_sid.0.as_ref(), pane_for_index);
+            record_agent_pane_origin(&client_state, new_sid.0.as_ref(), pane_for_index);
             let (available_models, current_model_id) =
                 crate::protocol::acp::model_select::models_from_new_session(&resp);
             record_native_yolo(&resp, &client_state);
@@ -2919,6 +3122,7 @@ pub async fn run_acp_client_over_pipe(
         standard_usage_sessions: Mutex::new(HashSet::new()),
         proposal_channels: Arc::clone(&proposal_channels),
         hidden_tool_calls: std::sync::Mutex::new(std::collections::HashMap::new()),
+        origin_scope: std::sync::OnceLock::new(),
     });
     let client = WtaClient {
         state: state.clone(),
@@ -3169,6 +3373,28 @@ pub async fn run_acp_client_over_pipe(
             .context("initialize over master pipe failed")
         })?;
     let wta_meta = crate::session_registry::extract_wta_meta(&mut init_resp.meta);
+    if let Some(scope) = wta_meta
+        .resolved_agent_id
+        .as_deref()
+        .or(agent_id.as_deref())
+        .and_then(|provider_id| {
+            crate::agent_pane_origin::OriginScope::new(
+                provider_id,
+                agent_source.session_location(),
+                None,
+            )
+        })
+    {
+        let _ = state.origin_scope.set(scope);
+    }
+    let telemetry_byok_binding = match wta_meta.resolved_model_source.as_deref() {
+        Some("byok") => Some(true),
+        Some("provider") => Some(false),
+        _ => {
+            tracing::debug!(target: "telemetry", "master did not report a known model binding category");
+            None
+        }
+    };
     state
         .native_yolo
         .set_resolved_agent_id(wta_meta.resolved_agent_id.as_deref());
@@ -3454,7 +3680,7 @@ pub async fn run_acp_client_over_pipe(
                     pane_session_id = %pane_session_id,
                     "recording agent-pane session origin (startup over pipe)",
                 );
-                crate::agent_pane_origin::append_default(session_id.0.as_ref(), pane_for_index);
+                record_agent_pane_origin(&state, session_id.0.as_ref(), pane_for_index);
             }
 
             let (available_models, current_model_id) =
@@ -3508,6 +3734,9 @@ pub async fn run_acp_client_over_pipe(
                             .unwrap_or_default();
                         session_config =
                             crate::protocol::acp::session_config::select_options(&config_options);
+                        current_model_id.get_or_insert_with(|| requested_model.clone());
+                    } else {
+                        current_model_id = Some(requested_model.clone());
                     }
                     startup_probe.log(&format!(
                         "ACP session model set to {} (over pipe)",
@@ -3524,6 +3753,7 @@ pub async fn run_acp_client_over_pipe(
                         "Gemini startup model {} already applied by launch command",
                         requested_model
                     ));
+                    current_model_id = Some(requested_model.clone());
                 }
                 Err(error) => {
                     return Err(anyhow::anyhow!(
@@ -3565,6 +3795,7 @@ pub async fn run_acp_client_over_pipe(
         load_session_supported,
         image_supported,
         session_capabilities_ready: has_bootstrap,
+        telemetry_byok_binding,
     });
     for option in &mut session_config {
         option.native_yolo = state
@@ -3600,12 +3831,9 @@ pub async fn run_acp_client_over_pipe(
 
     let conn = Arc::new(conn);
 
-    // Periodic 5s tick that fans out an AppEvent::SessionsChanged to
-    // force a refetch in any open session management view. Belt-and-suspenders against
-    // missed `intellterm.wta/sessions/changed` broadcasts. Cheap:
-    // refetch only fires for tabs whose snapshot.is_some() (i.e. session management view is
-    // currently open).
-    let mut periodic_refetch = tokio::time::interval(std::time::Duration::from_secs(5));
+    // The app applies this fallback only to open helper session views in
+    // nonvertical layouts. Master notifications remain independent of layout.
+    let mut periodic_refetch = tokio::time::interval(std::time::Duration::from_secs(60));
     periodic_refetch.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     // Burn the first tick (fires immediately on creation).
     periodic_refetch.tick().await;
@@ -3618,7 +3846,7 @@ pub async fn run_acp_client_over_pipe(
         tokio::select! {
             biased;
             _ = periodic_refetch.tick() => {
-                let _ = event_tx.send(AppEvent::SessionsChanged);
+                let _ = event_tx.send(AppEvent::SessionsFallbackTick);
             }
             Some(event) = session_hook_rx.recv() => {
                 let conn_for_hook = conn.clone();
@@ -3888,41 +4116,12 @@ fn dispatch_master_ext_request_with_yolo_timeout(
         match req {
             MasterExtRequest::SessionsList { request_id, rescan } => {
                 let wire = crate::session_registry::build_sessions_list_request(rescan);
-                // Bound the wait so a single dropped RPC response can't
-                // permanently strand the tab's `refetch_in_flight=true`.
-                //
-                // Root cause is in agent-client-protocol@0.10's
-                // `RpcConnection::handle_io`: `read_line` is *not*
-                // cancellation-safe, but it's polled in a
-                // `select_biased!` whose outgoing arm has priority. When
-                // a concurrent outgoing message preempts an in-progress
-                // `read_line`, BufReader bytes already pulled off the
-                // pipe vanish; the next read starts mid-message, JSON
-                // parse fails, and the pending response future for the
-                // request whose response was being read never resolves.
-                // From our side `conn.ext_method(...)` then awaits
-                // forever.
-                //
-                // Without this timeout the failure mode is: helper opens
-                // /sessions, fires `sessions/list`, response gets
-                // truncated → `refetch_in_flight` stuck `true` → every
-                // subsequent `sessions/changed` broadcast and 5s tick
-                // hits `if refetch_in_flight { dirty=true; return; }`
-                // and never refetches → the tab's row activity / status
-                // is frozen until the user toggles /sessions off and
-                // on (which calls `close_agents_view_for_tab` and
-                // resets the gate).
-                //
-                // 8s > the 5s periodic tick so a healthy in-flight
-                // request never gets cancelled spuriously; under the
-                // bug the worst-case visible staleness becomes
-                // ~timeout + tick ≈ 13s instead of "until next manual
-                // toggle".
-                //
-                // The proper fix lives upstream — ACP 0.12 rewrote
-                // `handle_io` into separate incoming/outgoing actors,
-                // which is cancellation-safe by construction. Until we
-                // upgrade, this timeout is the guardrail.
+                // Bound stalled responses so refetch_in_flight cannot suppress
+                // every later request indefinitely. Eight seconds allows the
+                // bound-agent rescan's five-second timeout plus local IPC overhead.
+                // Without a push, a nonvertical view may need this timeout plus
+                // the next 60-second fallback (up to about 68 seconds) to recover.
+                // Vertical helper views instead rely on pushes or explicit reads.
                 const SESSIONS_LIST_TIMEOUT: std::time::Duration =
                     std::time::Duration::from_secs(8);
                 let result =
@@ -3954,7 +4153,7 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                             timeout_secs = SESSIONS_LIST_TIMEOUT.as_secs(),
                             "sessions/list timed out — likely ACP-0.10 \
                              cancellation-safety bug; unblocking refetch_in_flight \
-                             so 5s tick can retry"
+                             so the fallback tick can retry"
                         );
                         let _ = event_tx.send(AppEvent::AgentsSnapshotFailed { request_id });
                     }
@@ -4011,6 +4210,7 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                 let _ = event_tx.send(AppEvent::MasterMutationCompleted { request_id });
             }
             MasterExtRequest::SetSessionModel {
+                request_id,
                 session_id,
                 model,
                 pane_override,
@@ -4040,6 +4240,7 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                             "set_session_model targeted an unknown/stale session; no live session updated"
                         );
                         let _ = event_tx.send(AppEvent::ModelSetFailed {
+                            request_id,
                             session_id: target.to_string(),
                             model: model.clone(),
                             pane_override,
@@ -4076,6 +4277,7 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                                 });
                             }
                             let _ = event_tx.send(AppEvent::ModelSetCompleted {
+                                request_id,
                                 session_id: sid.to_string(),
                                 model: model.clone(),
                                 pane_override,
@@ -4096,6 +4298,7 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                                 "model hot-update failed"
                             );
                             let _ = event_tx.send(AppEvent::ModelSetFailed {
+                                request_id,
                                 session_id: sid.to_string(),
                                 model: model.clone(),
                                 pane_override,
@@ -4257,6 +4460,16 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                                     restart_required: false,
                                 });
                             } else {
+                                let owner_changed = client_state
+                                    .yolo_state
+                                    .lock()
+                                    .unwrap()
+                                    .mark_manual_if_allowed(session_id.to_string());
+                                if owner_changed {
+                                    let _ = event_tx.send(AppEvent::YoloControlOwnerChanged {
+                                        session_id: session_id.to_string(),
+                                    });
+                                }
                                 let _ = event_tx.send(AppEvent::SessionConfigSetCompleted {
                                     session_id: session_id.to_string(),
                                     config_id,
@@ -4445,7 +4658,12 @@ fn dispatch_load_session_with_aliases(
         // `session/load` may replay history before returning, so on large
         // session stores the call can take a while; the timeout ceiling
         // keeps us from hanging forever if the agent never responds.
+        let load_started = std::time::Instant::now();
         let load_result = tokio::time::timeout(timeout, conn.load_session(load_req)).await;
+        crate::telemetry::log_acp_load_session_complete(
+            elapsed_ms_since(load_started),
+            matches!(load_result, Ok(Ok(_))),
+        );
 
         match load_result {
             Ok(Ok(mut resp)) => {
@@ -4482,6 +4700,7 @@ fn dispatch_load_session_with_aliases(
                 {
                     crate::protocol::acp::model_select::forget_session(old.0.as_ref());
                     client_state.native_yolo.forget_session(old);
+                    client_state.prompt_timing.forget_session(old.0.as_ref());
                 }
                 client_state
                     .native_yolo
@@ -4530,6 +4749,7 @@ fn dispatch_load_session_with_aliases(
                 dispatch_load_failure(
                     use_load_failure_handler,
                     old_sid.as_ref(),
+                    req.session_id.to_string(),
                     &request_tab_id,
                     binding_generation,
                     &cwd,
@@ -4564,6 +4784,7 @@ fn dispatch_load_session_with_aliases(
                 dispatch_load_failure(
                     use_load_failure_handler,
                     old_sid.as_ref(),
+                    req.session_id.to_string(),
                     &request_tab_id,
                     binding_generation,
                     &cwd,
@@ -4591,6 +4812,7 @@ fn dispatch_load_session_with_aliases(
 async fn dispatch_load_failure(
     use_load_failure_handler: bool,
     old_sid: Option<&acp::schema::v1::SessionId>,
+    failed_sid: String,
     tab_id: &str,
     binding_generation: u64,
     cwd: &std::path::Path,
@@ -4607,6 +4829,7 @@ async fn dispatch_load_failure(
     if use_load_failure_handler {
         handle_load_failure(
             old_sid,
+            failed_sid,
             tab_id.to_string(),
             binding_generation,
             cwd.to_path_buf(),
@@ -4693,6 +4916,7 @@ fn dispatch_new_session_with_aliases(
             let old_str = old.to_string();
             crate::protocol::acp::model_select::forget_session(&old_str);
             client_state.native_yolo.forget_session(old);
+            client_state.prompt_timing.forget_session(&old_str);
             template_memo.forget(&old_str).await;
         }
 
@@ -4758,7 +4982,7 @@ fn dispatch_new_session_with_aliases(
                 pane_session_id = %pane_session_id,
                 "recording agent-pane session origin (new_session_for_tab)",
             );
-            crate::agent_pane_origin::append_default(new_sid.0.as_ref(), pane_for_index);
+            record_agent_pane_origin(&client_state, new_sid.0.as_ref(), pane_for_index);
         }
         let (available_models, current_model_id) =
             crate::protocol::acp::model_select::models_from_new_session(&new_session);
@@ -4812,6 +5036,7 @@ async fn dispatch_drop_session_with_aliases(
         let old_str = old.to_string();
         crate::protocol::acp::model_select::forget_session(&old_str);
         client_state.native_yolo.forget_session(&old);
+        client_state.prompt_timing.forget_session(&old_str);
         template_memo.forget(&old_str).await;
     }
 
@@ -5402,27 +5627,25 @@ async fn dispatch_prompt_body(
                     pane_session_id = %pane_session_id,
                     "recording agent-pane session origin (lazy_create_on_first_prompt)",
                 );
-                crate::agent_pane_origin::append_default(new_sid.0.as_ref(), pane_for_index);
+                record_agent_pane_origin(&client_task.state, new_sid.0.as_ref(), pane_for_index);
             }
             let (available_models, current_model_id) =
                 crate::protocol::acp::model_select::models_from_new_session(&new_session);
             record_native_yolo(&new_session, &client_task.state);
-            let enabled = client_task
-                .state
-                .yolo_state
-                .lock()
-                .unwrap()
-                .effective(new_sid.0.as_ref());
+            let enabled = {
+                let mut state = client_task.state.yolo_state.lock().unwrap();
+                state.remove_session(new_sid.0.as_ref());
+                let enabled = state
+                    .automatic_directive(new_sid.0.as_ref())
+                    .target()
+                    .expect("a freshly-created session must have an automatic target");
+                state.mark_client_reconciled(new_sid.to_string(), enabled);
+                enabled
+            };
             let yolo_operation = client_task
                 .state
                 .native_yolo
                 .reserve_operation(new_sid.clone(), enabled);
-            client_task
-                .state
-                .yolo_state
-                .lock()
-                .unwrap()
-                .mark_client_reconciled(new_sid.to_string(), enabled);
             tab_to_session_task
                 .lock()
                 .await
@@ -5462,12 +5685,12 @@ async fn dispatch_prompt_body(
                 // As with config/reconcile, an ordinary ACP rejection
                 // cannot attest that a requested disable left privileged mode.
                 let restart_required = !enabled || error.restart_required();
-                let policy_blocked = client_task
+                let policy_blocked = !client_task
                     .state
                     .yolo_state
                     .lock()
                     .unwrap()
-                    .policy_blocked();
+                    .can_user_request_enable();
                 let error = error.to_string();
                 tracing::warn!(
                     target: "yolo",
@@ -5514,12 +5737,12 @@ async fn dispatch_prompt_body(
         return;
     }
 
-    let policy_blocked = client_task
+    let policy_blocked = !client_task
         .state
         .yolo_state
         .lock()
         .unwrap()
-        .policy_blocked();
+        .can_user_request_enable();
     if client_task
         .state
         .native_yolo
@@ -5542,12 +5765,12 @@ async fn dispatch_prompt_body(
         return;
     }
 
-    if client_task
+    if !client_task
         .state
         .yolo_state
         .lock()
         .unwrap()
-        .policy_blocked()
+        .can_user_request_enable()
     {
         if let Some(command_name) = client_task
             .state
@@ -5557,7 +5780,7 @@ async fn dispatch_prompt_body(
             tracing::warn!(
                 target: "yolo",
                 session_id = %prompt_session_id_str,
-                "AllowYoloMode blocked provider command /{}",
+                "AllowAutomaticApproval blocked provider command /{}",
                 command_name
             );
             let message = provider_command_blocked_by_policy(command_name);
@@ -5613,6 +5836,24 @@ async fn dispatch_prompt_body(
         let _ = prompt_timing_task.complete(&prompt_session_id_str, false, Some("cancelled"));
         publish_prompt_cancellation_settled(&mut cleanup, &event_tx_task, prompt_id, false);
         return;
+    }
+    let explicit_source = prompt
+        .pane_context
+        .as_ref()
+        .is_some_and(|c| c.source_pane_id.is_some());
+    // Autofix already binds an explicit source in App before dispatch.
+    if resolved_target_pane.is_none()
+        && !prompt.is_agent_command()
+        && wt_connected
+        && !(prompt.is_autofix() && explicit_source)
+    {
+        tracing::warn!(
+            target: "acp.terminal_context",
+            helper_pid = std::process::id(),
+            prompt_id = prompt.id,
+            explicit_source,
+            "prompt_has_no_bound_pane"
+        );
     }
     if proposal_commands_supported {
         match proposal_channels.issue(
@@ -5671,6 +5912,10 @@ async fn dispatch_prompt_body(
         .native_yolo
         .privileged_agent_command(&prompt.text)
         .map(str::to_string);
+    let prompt_yolo_generation = client_task
+        .state
+        .native_yolo
+        .session_generation(&prompt_session_id);
     let yolo_state = Arc::clone(&client_task.state.yolo_state);
     let native_yolo = Arc::clone(&client_task.state.native_yolo);
     let final_yolo_safety_error = Arc::new(Mutex::new(None::<(String, &'static str)>));
@@ -5685,10 +5930,12 @@ async fn dispatch_prompt_body(
     };
     let telemetry_is_byok = prompt.is_byok();
     let telemetry_agent_id = prompt.agent_id().to_string();
+    let telemetry_reattached = prompt.was_reattached_at_dispatch(&telemetry_session_id);
     let telemetry_prompt_id = prompt.id;
     let telemetry_is_agent_command = prompt.is_agent_command();
     let prompt_started = Arc::new(AtomicBool::new(false));
     let cancelled_at_send = Arc::new(AtomicBool::new(false));
+    let yolo_state_for_guard = Arc::clone(&yolo_state);
     let prompt_fut = conn_task.prompt_if(
         acp::schema::v1::PromptRequest::new(prompt_session_id.clone(), content),
         {
@@ -5703,8 +5950,13 @@ async fn dispatch_prompt_body(
                     cancelled_at_send.store(true, Ordering::Release);
                     return false;
                 }
-                let policy_blocked = yolo_state.lock().unwrap().policy_blocked();
-                let provider_command_blocked = privileged_agent_command.is_some() && policy_blocked;
+                let can_user_request_enable = yolo_state_for_guard
+                    .lock()
+                    .unwrap()
+                    .can_user_request_enable();
+                let policy_blocked = !can_user_request_enable;
+                let provider_command_blocked =
+                    privileged_agent_command.is_some() && !can_user_request_enable;
                 let yolo_safety_error = if provider_command_blocked {
                     None
                 } else if native_yolo
@@ -5730,13 +5982,16 @@ async fn dispatch_prompt_body(
                         );
                     }
                     telemetry_timing.mark_prompt_sent(&telemetry_session_id);
+                    let user_prompt_ordinal = telemetry_timing
+                        .record_user_prompt_dispatch(&telemetry_session_id, telemetry_is_autofix);
                     crate::telemetry::log_agent_prompt_sent(
-                        &telemetry_session_id,
                         telemetry_prompt_len,
                         telemetry_is_autofix,
                         telemetry_source,
                         telemetry_is_byok,
                         &telemetry_agent_id,
+                        telemetry_reattached,
+                        user_prompt_ordinal,
                     );
                 }
                 should_send
@@ -5816,7 +6071,7 @@ async fn dispatch_prompt_body(
                             tracing::warn!(
                                 target: "yolo",
                                 session_id = %prompt_session_id_str,
-                                "AllowYoloMode blocked provider command /{}",
+                                "AllowAutomaticApproval blocked provider command /{}",
                                 command_name
                             );
                             (
@@ -5843,6 +6098,34 @@ async fn dispatch_prompt_body(
                     let result = result.map(|response| {
                         response.expect("prompt guard returns None only when policy blocks")
                     });
+                    let accepted_privileged_command = privileged_agent_command.is_some()
+                        && result.as_ref().is_ok_and(|response| {
+                            response.stop_reason == acp::schema::v1::StopReason::EndTurn
+                        });
+                    if accepted_privileged_command {
+                        let session_is_current = {
+                            let sessions = tab_to_session_task.lock().await;
+                            let current_tab =
+                                resolve_tab_alias(&tab_aliases_task, &tab_key_task);
+                            sessions.get(&current_tab) == Some(&prompt_session_id)
+                        } && client_task
+                            .state
+                            .native_yolo
+                            .session_generation(&prompt_session_id)
+                            == prompt_yolo_generation;
+                        if session_is_current {
+                            let owner_changed = yolo_state
+                                .lock()
+                                .unwrap()
+                                .mark_manual_if_allowed(prompt_session_id_str.clone());
+                            if owner_changed {
+                                let _ =
+                                    event_tx_task.send(AppEvent::YoloControlOwnerChanged {
+                                        session_id: prompt_session_id_str.clone(),
+                                    });
+                            }
+                        }
+                    }
                     // Peek the successful turn's stop_reason (the response is consumed
                     // by `complete_prompt_request`). A soft stop is not an error; the
                     // Err arm is classified separately by `from_acp_error`.
@@ -6276,6 +6559,7 @@ mod tests {
             standard_usage_sessions: Mutex::new(HashSet::new()),
             proposal_channels: manager,
             hidden_tool_calls: Mutex::new(HashMap::new()),
+            origin_scope: std::sync::OnceLock::new(),
         });
         (WtaClient { state }, event_rx)
     }
@@ -7728,6 +8012,7 @@ mod tests {
                     crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
                 ),
                 hidden_tool_calls: std::sync::Mutex::new(std::collections::HashMap::new()),
+                origin_scope: std::sync::OnceLock::new(),
             });
             (WtaClient { state }, rx)
         }
@@ -7770,7 +8055,10 @@ mod tests {
             client.ext_notification(ext).await.unwrap();
 
             match rx.try_recv() {
-                Ok(AppEvent::AliveSessionRemoved(got)) => assert_eq!(got, sid),
+                Ok(AppEvent::AliveSessionRemoved(got)) => {
+                    assert_eq!(got.session_id, sid);
+                    assert!(got.history_key.is_none());
+                }
                 other => panic!(
                     "expected AliveSessionRemoved, got something else: {}",
                     match &other {

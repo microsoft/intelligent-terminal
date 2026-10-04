@@ -151,6 +151,8 @@ namespace winrt::TerminalApp::implementation
     {
         // Now that we know we can do XAML, build our page.
         _root = winrt::make_self<TerminalPage>(*_WindowProperties, _manager);
+        _root->SetStartupTransfer(_initialTransferId);
+        _root->SetStartupKeptGroups(_startupKeptGroups);
 
         // Pass in information about the initial state of the window.
         // * If we were supposed to start from serialized "content", do that,
@@ -158,7 +160,11 @@ namespace winrt::TerminalApp::implementation
         //   instead.
         // * if we have commandline arguments, Pass commandline args into the
         //   TerminalPage.
-        if (_startupConnection)
+        if (!_startupKeptGroups.empty())
+        {
+            // Live content restore must not create a default shell or replay snapshots.
+        }
+        else if (_startupConnection)
         {
             _root->SetStartupConnection(std::move(_startupConnection));
         }
@@ -200,6 +206,7 @@ namespace winrt::TerminalApp::implementation
         // Obviously, don't use the `startupActions` from the settings in the
         // case of a tear-out / reattach. GH#16050
         if (!_hasCommandLineArguments &&
+            _startupKeptGroups.empty() &&
             _initialContentArgs.empty() &&
             _gotSettingsStartupActions)
         {
@@ -644,6 +651,13 @@ namespace winrt::TerminalApp::implementation
                                                               dpi,
                                                               commandlineSize.width,
                                                               commandlineSize.height);
+        }
+
+        if (_startupKeptSize.Width > 0 && _startupKeptSize.Height > 0)
+        {
+            // Restore the usable size without changing normal window-position
+            // or maximize preferences as a drag/tear-out would.
+            return { _startupKeptSize.Width * scale, _startupKeptSize.Height * scale };
         }
 
         if (_contentBounds)
@@ -1104,9 +1118,11 @@ namespace winrt::TerminalApp::implementation
     }
 
     void TerminalWindow::SetStartupContent(const winrt::hstring& content,
-                                           const Windows::Foundation::IReference<Windows::Foundation::Rect>& bounds)
+                                           const Windows::Foundation::IReference<Windows::Foundation::Rect>& bounds,
+                                           uint64_t transferId)
     {
         _contentBounds = bounds;
+        _initialTransferId = transferId;
 
         const auto args = _contentStringToActions(content, true);
         _initialContentArgs = wil::to_vector(args);
@@ -1119,6 +1135,17 @@ namespace winrt::TerminalApp::implementation
     void TerminalWindow::SetStartupActions(const IVector<ActionAndArgs>& actions)
     {
         _initialContentArgs = wil::to_vector(actions);
+    }
+
+    void TerminalWindow::SetStartupKeptGroups(const IVectorView<winrt::guid>& groups,
+                                              const Windows::Foundation::IReference<Windows::Foundation::Rect>& bounds)
+    {
+        THROW_HR_IF(E_INVALIDARG, !groups || groups.Size() == 0);
+        _startupKeptGroups = wil::to_vector(groups);
+        if (bounds && bounds.Value().Width > 0 && bounds.Value().Height > 0)
+        {
+            _startupKeptSize = { bounds.Value().Width, bounds.Value().Height };
+        }
     }
 
     void TerminalWindow::SetPersistedLayout(const winrt::Microsoft::Terminal::Settings::Model::WindowLayout& layout)
@@ -1313,7 +1340,7 @@ namespace winrt::TerminalApp::implementation
         return nullptr;
     }
 
-    void TerminalWindow::AttachContent(winrt::hstring content, uint32_t tabIndex)
+    bool TerminalWindow::AttachContent(winrt::hstring content, uint32_t tabIndex, uint64_t transferId)
     {
         if (_root)
         {
@@ -1329,14 +1356,23 @@ namespace winrt::TerminalApp::implementation
 
             auto args = _contentStringToActions(content, replaceFirstWithNewTab);
 
-            _root->AttachContent(std::move(args), tabIndex);
+            return _root->AttachContent(std::move(args), tabIndex, transferId);
         }
+        return false;
     }
     void TerminalWindow::SendContentToOther(winrt::TerminalApp::RequestReceiveContentArgs args)
     {
         if (_root)
         {
             _root->SendContentToOther(args);
+        }
+    }
+
+    void TerminalWindow::ContentTransferReceiverReady()
+    {
+        if (_root)
+        {
+            _root->ContentTransferReceiverReady();
         }
     }
 

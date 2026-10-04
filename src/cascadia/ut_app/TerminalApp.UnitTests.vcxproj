@@ -26,12 +26,17 @@
     <ClCompile Include="AcpModelUtilsTests.cpp" />
     <ClCompile Include="AgentSourceUtilsTests.cpp" />
     <ClCompile Include="AgentUsageTests.cpp" />
+    <ClCompile Include="AgentSessionTelemetryTests.cpp" />
+    <ClCompile Include="CommandPaletteTelemetryTests.cpp" />
+    <ClCompile Include="AgentPaneTransferTests.cpp" />
     <ClCompile Include="AutofixStateTests.cpp" />
     <ClCompile Include="BoundedDispatchQueueTests.cpp" />
     <ClCompile Include="CustomAgentIdTests.cpp" />
     <ClCompile Include="ProtocolParsingTests.cpp" />
+    <ClCompile Include="RichTabProviderTests.cpp" />
     <ClCompile Include="RtlHelperTests.cpp" />
     <ClCompile Include="SharedWtaTests.cpp" />
+    <ClCompile Include="WtaProcessTests.cpp" />
     <ClCompile Include="precomp.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>
     </ClCompile>
@@ -105,6 +110,8 @@
         echo OutDir=$(OutDir)
         (xcopy /Y &quot;$(OpenConsoleDir)src\cascadia\ut_app\TerminalApp.Unit.Tests.manifest&quot; &quot;$(OutDir)\TerminalApp.Unit.Tests.manifest*&quot; )
         (xcopy /Y &quot;$(OpenConsoleDir)src\cascadia\ut_app\TerminalApp.Unit.Tests.AppxManifest.xml&quot; &quot;$(OutDir)\TerminalApp.Unit.Tests.AppxManifest.xml*&quot; )
+        (if not exist &quot;$(OutDir)\RichTabProviders\GitStatus&quot; mkdir &quot;$(OutDir)\RichTabProviders\GitStatus&quot; )
+        (xcopy /Y &quot;$(OpenConsoleDir)src\cascadia\RichTabProviders\GitStatus\provider.ps1&quot; &quot;$(OutDir)\RichTabProviders\GitStatus\provider.ps1*&quot; )
       </Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>

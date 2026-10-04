@@ -107,8 +107,17 @@ function Clear-WtConfig {
 }
 
 function Get-WtProcessesForApp {
-    [CmdletBinding()] param([Parameter(Mandatory)]$App)
+    [CmdletBinding()] param([Parameter(Mandatory)]$App, [switch]$IncludePackageExecutables)
     $loc = $App.InstallLocation
+    if ($IncludePackageExecutables) {
+        if (-not $loc) { throw 'Package-wide process discovery requires an installation directory.' }
+        $root = [IO.Path]::GetFullPath([string]$loc).TrimEnd('\') + '\'
+        # Refusal-only callers opt in; existing process-cleanup callers remain terminal-only.
+        Get-Process | Where-Object {
+            $_.Path -and [IO.Path]::GetFullPath($_.Path).StartsWith($root, [StringComparison]::OrdinalIgnoreCase)
+        }
+        return
+    }
     Get-Process -Name WindowsTerminal -ErrorAction SilentlyContinue | Where-Object {
         try { $loc -and $_.Path -and $_.Path.StartsWith($loc, [StringComparison]::OrdinalIgnoreCase) } catch { $false }
     }

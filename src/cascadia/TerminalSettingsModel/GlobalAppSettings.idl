@@ -196,5 +196,10 @@ namespace Microsoft.Terminal.Settings.Model
 
         INHERITABLE_SETTING(Boolean, AgentSessionManagementEnabled);
         Boolean EffectiveAgentSessionManagementEnabled { get; };
+
+        Boolean ClearAgentPaneYoloModeIfPolicyBlocked();
+        Boolean ClearAgentPaneYoloModeIfUnavailableDefault();
+        Boolean CanEnableAgentPaneYoloMode { get; };
+        Boolean CanEnableAgentPaneYoloModeForAgent(String agentId);
     }
 }

@@ -9,7 +9,7 @@ $VCToolsRoot = Join-Path $VSRoot "VC\Tools\MSVC"
 # We have observed a few instances where the VC tools package version actually
 # differs from the version on the files themselves. We might as well check
 # whether the version we just found _actually exists_ before we use it.
-# We'll use whichever highest version exists.
+# We'll use whichever highest revision (within the same major.minor version) exists.
 #
 # Some pool images report a package version (e.g. 14.44.35208) but ship only
 # package metadata, not the actual toolchain — the version folder either
@@ -20,13 +20,16 @@ $PackageVCBinPath = Join-Path $PackageVCToolPath "bin"
 $PackageIsValid = ($Null -Ne (Get-Item $PackageVCToolPath -ErrorAction:Ignore)) -And `
                   ($Null -Ne (Get-Item $PackageVCBinPath  -ErrorAction:Ignore))
 If (-Not $PackageIsValid) {
+    $LatestVCToolsVersionAsVersion = [Version]$LatestVCToolsVersion
     $VCToolsVersions = Get-ChildItem $VCToolsRoot -Directory -ErrorAction:Ignore | Where-Object {
         # Only consider directories that actually contain a populated `bin`.
         $binDir = Join-Path $_.FullName "bin"
         (Test-Path $binDir) -And ((Get-ChildItem $binDir -Recurse -File -ErrorAction:Ignore | Select-Object -First 1) -Ne $Null)
     } | ForEach-Object {
         [Version]$_.Name
-    } | Sort -Descending
+    } | Sort -Descending | Where-Object {
+        $_.Major -eq $LatestVCToolsVersionAsVersion.Major -and $_.Minor -eq $LatestVCToolsVersionAsVersion.Minor
+    }
     $LatestActualVCToolsVersion = $VCToolsVersions | Select -First 1
 
     If ($Null -Eq $LatestActualVCToolsVersion) {
@@ -34,7 +37,7 @@ If (-Not $PackageIsValid) {
         Exit 1
     }
 
-    If ([Version]$LatestVCToolsVersion -Ne $LatestActualVCToolsVersion) {
+    If ($LatestVCToolsVersionAsVersion -Ne $LatestActualVCToolsVersion) {
         Write-Output "VC Tools Mismatch: Directory = $LatestActualVCToolsVersion, Package = $LatestVCToolsVersion"
         $LatestVCToolsVersion = $LatestActualVCToolsVersion.ToString(3)
     }

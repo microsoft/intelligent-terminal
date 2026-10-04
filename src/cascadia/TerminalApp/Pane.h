@@ -243,7 +243,12 @@ public:
         });
     }
 
-    void CollectTaskbarStates(std::vector<winrt::TerminalApp::TaskbarState>& states);
+    struct TaskbarStateWithContentId
+    {
+        winrt::TerminalApp::TaskbarState CombinedState;
+        std::optional<uint32_t> ContentId;
+    };
+    void CollectTaskbarStates(std::vector<TaskbarStateWithContentId>& states);
 
     til::event<winrt::delegate<>> ClosedByParent;
     til::event<winrt::Windows::Foundation::EventHandler<winrt::Windows::Foundation::IInspectable>> Closed;
@@ -253,6 +258,7 @@ public:
     til::event<gotFocusArgs> GotFocus;
     til::event<winrt::delegate<std::shared_ptr<Pane>>> LostFocus;
     til::event<winrt::delegate<std::shared_ptr<Pane>>> Detached;
+    til::event<winrt::delegate<>> StructureChanged;
 
 private:
     struct PanePoint;

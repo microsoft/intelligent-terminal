@@ -197,6 +197,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         void ResolveMediaResources() { _validateMediaResources(); }
 
         void LogSettingChanges(bool isJsonLoad) const;
+        void LogAgentProviderChanges(const winrt::hstring& previousAcpAgent, const winrt::hstring& previousDelegateAgent) const noexcept;
 
     private:
         static const std::filesystem::path& _settingsPath();

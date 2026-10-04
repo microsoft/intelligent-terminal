@@ -6,6 +6,8 @@ Safely deploys an already-built Intelligent Terminal loose Debug package.
 Use this script after a Debug Terminal build produces
 CascadiaPackage.build.appxrecipe and the change requires package deployment
 (for example C++, XAML, IDL, wtcli, manifest, resource, or mixed changes).
+The generated Dev package version must not be older than the installed version;
+DeployAppRecipe.exe may unregister the existing package before a downgrade fails.
 
 The script targets only the dev-sideload package, verifies that its installed
 loose layout is the AppX directory next to the supplied Debug recipe, closes
@@ -140,10 +142,16 @@ function Get-AppxRecipeMetadata {
         return $node.InnerText.Trim()
     }
 
+    $manifestNode = $recipe.SelectSingleNode('/msb:Project/msb:ItemGroup/msb:AppXManifest', $namespace)
+    if ($null -eq $manifestNode -or [string]::IsNullOrWhiteSpace($manifestNode.GetAttribute('Include'))) {
+        throw "Appx recipe '$Path' does not define AppXManifest."
+    }
+
     return [pscustomobject]@{
         IdentityName = & $readProperty 'PackageIdentityName'
         Publisher = & $readProperty 'PackageIdentityPublisher'
         LayoutDir = & $readProperty 'LayoutDir'
+        ManifestPath = $manifestNode.GetAttribute('Include')
     }
 }
 
@@ -194,12 +202,27 @@ if (-not $recipeLayout.Equals($debugLayout, [System.StringComparison]::OrdinalIg
     throw "Appx recipe LayoutDir '$recipeLayout' does not match its adjacent Debug AppX directory '$debugLayout'."
 }
 
+$generatedManifestPath = [System.IO.Path]::GetFullPath((Join-Path (Split-Path $resolvedRecipePath -Parent) 'AppxManifest.xml'))
+if (-not [System.IO.Path]::GetFullPath($recipeMetadata.ManifestPath).Equals(
+    $generatedManifestPath,
+    [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Appx recipe manifest '$($recipeMetadata.ManifestPath)' does not match '$generatedManifestPath'."
+}
+[xml]$generatedManifest = Get-Content -LiteralPath $generatedManifestPath -Raw
+$identity = $generatedManifest.Package.Identity
+if ($identity.Name -cne $PackageIdentityName -or $identity.Publisher -cne $PackageIdentityPublisher) {
+    throw "Generated manifest identity '$($identity.Name)' / '$($identity.Publisher)' is not the Intelligent Terminal dev package."
+}
+$buildVersion = [version]::Parse($identity.Version)
 $package = Get-InstalledTargetPackage
 if ($package -and
     -not [System.IO.Path]::GetFullPath($package.InstallLocation).Equals(
         $debugLayout,
         [System.StringComparison]::OrdinalIgnoreCase)) {
     throw "The installed dev package points to '$($package.InstallLocation)', not this recipe's Debug layout '$debugLayout'."
+}
+if ($package -and $package.Version -gt $buildVersion) {
+    throw "Refusing to deploy Dev version $buildVersion over installed version $($package.Version). Rebuild with a newer Package-Dev.appxmanifest version to avoid unregistering the working package."
 }
 
 $resolvedDeployAppRecipePath = Get-DeployAppRecipePath -RequestedPath $DeployAppRecipePath

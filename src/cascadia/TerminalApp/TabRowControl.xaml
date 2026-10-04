@@ -44,7 +44,8 @@
                  TabWidthMode="Equal">
 
         <mux:TabView.TabStripHeader>
-            <StackPanel Orientation="Horizontal">
+            <StackPanel x:Name="HorizontalChromeHeader"
+                        Orientation="Horizontal">
                 <!--  EA18 is the "Shield" glyph  -->
                 <FontIcon x:Name="ElevationShieldIcon"
                           x:Uid="ElevationShield"
@@ -55,7 +56,7 @@
                           Glyph="&#xEA18;"
                           Visibility="{x:Bind ShowElevationShield, Mode=OneWay}" />
 
-                <!--  Workspace/windows button  -->
+                <!--  Keep this button collapsed regardless of showWorkspacesButton until the workspace feature is generally available.  -->
                 <Button x:Name="WorkspaceDropdown"
                         x:Uid="WorkspaceDropdown"
                         Margin="4,0,0,4"
@@ -63,7 +64,7 @@
                         VerticalAlignment="Stretch"
                         Background="Transparent"
                         BorderThickness="0"
-                        Visibility="{x:Bind ShowWorkspacesButton, Mode=OneWay}">
+                        Visibility="Collapsed">
                     <Button.Content>
                         <StackPanel Orientation="Horizontal"
                                     Spacing="8">
@@ -87,7 +88,7 @@
         </mux:TabView.TabStripHeader>
 
         <mux:TabView.TabStripFooter>
-            <Grid>
+            <Grid x:Name="HorizontalChromeFooter">
                 <!--  Remove this border after WinUI 2.8  -->
                 <Border Height="1"
                         VerticalAlignment="Bottom"
@@ -180,10 +181,8 @@
 
     <!--
         PROTOTYPE — visibility flipped by TabRowControl.IsVerticalLayout. The
-        vertical strip has no chrome slots wired in the prototype; the
-        elevation shield, workspaces button, and new-tab split button live in
-        TabView above. Wiring them to TabStrip.LeadingContent/TrailingContent
-        is Spec A work.
+        complete vertical chrome uses the titlebar when available, with
+        TabStrip.TopChromeContent as its no-titlebar fallback.
     -->
     <local:TabStrip x:Name="TabStrip"
                     HorizontalAlignment="Stretch"
