@@ -44,8 +44,8 @@ namespace winrt::TerminalApp::implementation
         WINRT_PROPERTY(bool, IsLive, false);
         WINRT_PROPERTY(bool, IsAgentPane, false);
         WINRT_PROPERTY(bool, IsHistorical, false);
-        WINRT_PROPERTY(winrt::hstring, StatusText);
-        WINRT_PROPERTY(winrt::Windows::UI::Xaml::Style, StatusTextStyle, nullptr);
+        WINRT_OBSERVABLE_PROPERTY(winrt::hstring, StatusText, PropertyChanged.raise);
+        WINRT_OBSERVABLE_PROPERTY(winrt::Windows::UI::Xaml::Style, StatusTextStyle, PropertyChanged.raise, nullptr);
         WINRT_PROPERTY(winrt::Windows::UI::Xaml::DataTemplate, IconTemplate, nullptr);
         WINRT_OBSERVABLE_PROPERTY(bool, IsCurrent, PropertyChanged.raise, false);
         WINRT_OBSERVABLE_PROPERTY(winrt::Windows::UI::Xaml::Media::Brush, CurrentBackground, PropertyChanged.raise, nullptr);

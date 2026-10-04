@@ -6511,16 +6511,49 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(changes.empty());
             VERIFY_IS_TRUE(items.GetAt(0) == live);
 
+            strip.Width(360);
+            strip.Height(400);
+            strip.UpdateLayout();
+            const auto container = impl->HistoryList().ContainerFromIndex(0).as<ListViewItem>();
+            const auto row = container.ContentTemplateRoot().as<Grid>();
+            const auto statusText = row.FindName(L"HistoryStatusText").as<winrt::TerminalApp::HighlightedTextControl>();
+            statusText.ApplyTemplate();
+            strip.UpdateLayout();
+            const auto textBlock = Media::VisualTreeHelper::GetChild(statusText, 0).as<TextBlock>();
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Idle" }, textBlock.Inlines().GetAt(0).as<Documents::Run>().Text());
+            VERIFY_IS_TRUE(textBlock.Style() == live.StatusTextStyle());
+            std::vector<winrt::hstring> propertyChanges;
+            const auto propertyChanged = live.PropertyChanged(winrt::auto_revoke, [&](auto&&, const auto& args) {
+                propertyChanges.emplace_back(args.PropertyName());
+            });
+
             VERIFY_IS_TRUE(impl->ApplyHistoryStatusDelta(L"live-session", L"live-pane", L"Working", L"Active"));
+            strip.UpdateLayout();
             VERIFY_IS_TRUE(changes.empty());
             VERIFY_IS_TRUE(items.GetAt(0) == live);
+            VERIFY_IS_TRUE(impl->HistoryList().ContainerFromIndex(0) == container);
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Active" }, live.StatusText());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"live-pane" }, live.PaneSessionId());
             VERIFY_IS_TRUE(live.IsLive());
+            VERIFY_ARE_EQUAL(2u, propertyChanges.size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"StatusText" }, propertyChanges[0]);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"StatusTextStyle" }, propertyChanges[1]);
+            const auto activeStyle = strip.Resources().Lookup(winrt::box_value(L"HistoryActiveTextStyle")).as<Style>();
+            VERIFY_IS_TRUE(statusText.TextBlockStyle() == activeStyle);
+            VERIFY_IS_TRUE(textBlock.Style() == activeStyle);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Active" }, textBlock.Inlines().GetAt(0).as<Documents::Run>().Text());
+
+            VERIFY_IS_TRUE(impl->ApplyHistoryStatusDelta(L"live-session", L"live-pane", L"Working", L"Active"));
+            VERIFY_IS_TRUE(changes.empty());
+            VERIFY_IS_TRUE(items.GetAt(0) == live);
+            VERIFY_ARE_EQUAL(2u, propertyChanges.size());
         });
         view.Search(L"Active");
         TestOnUIThread([&]() {
             VERIFY_ARE_EQUAL(1u, items.Size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"live-session" }, items.GetAt(0).SessionId());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Working" }, items.GetAt(0).Status());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Active" }, items.GetAt(0).StatusText());
             changes.clear();
             VERIFY_IS_TRUE(impl->ApplyHistoryStatusDelta(L"live-session", L"live-pane", L"Idle", L"Idle"));
             VERIFY_ARE_EQUAL(0u, items.Size());
@@ -6530,11 +6563,18 @@ namespace TerminalAppLocalTests
         view.Search(L"live");
         TestOnUIThread([&]() {
             VERIFY_ARE_EQUAL(1u, items.Size());
-            VERIFY_IS_TRUE(items.GetAt(0) == live);
+            const auto projected = items.GetAt(0);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"live-session" }, projected.SessionId());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Idle" }, projected.Status());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Idle" }, projected.StatusText());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"live-pane" }, projected.PaneSessionId());
+            VERIFY_IS_TRUE(projected.IsLive());
+            VERIFY_IS_TRUE(projected.StatusTextStyle() == strip.Resources().Lookup(winrt::box_value(L"HistorySubtitleTextStyle")).as<Style>());
             changes.clear();
             VERIFY_IS_FALSE(impl->ApplyHistoryStatusDelta(L"unknown-session", L"", L"Working", L"Active"));
             VERIFY_IS_TRUE(changes.empty());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"Idle" }, live.Status());
+            VERIFY_IS_TRUE(items.GetAt(0) == projected);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Idle" }, projected.Status());
         });
     }
 

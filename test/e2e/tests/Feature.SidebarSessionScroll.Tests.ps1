@@ -1,8 +1,9 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
 
-Describe 'Feature: Sidebar session status updates' -Tag @('Feature', 'SidebarSessionScroll') {
+Describe 'Feature: Sidebar Agents status updates preserve scroll' -Tag @('Feature', 'SidebarSessionScroll') {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        . (Join-Path $PSScriptRoot 'helpers\SidebarSessionCleanup.ps1')
         Add-Type -AssemblyName UIAutomationClient
         Add-Type -AssemblyName UIAutomationTypes
         $script:workingLabel = Get-WtReswTextRegex -Key VerticalTabsHistoryStatusWorking
@@ -124,6 +125,7 @@ namespace ItE2E
                 $bounds = $row.Current.BoundingRectangle
                 [pscustomobject]@{
                     Title = $texts[0]; Status = $texts[-1]
+                    RuntimeId = $row.GetRuntimeId() -join ','
                     Offscreen = $row.Current.IsOffscreen -or $bounds.Width -le 0 -or $bounds.Height -le 0 -or
                         $bounds.Bottom -le $viewport.Top -or $bounds.Top -ge $viewport.Bottom
                     Top = $bounds.Top
@@ -198,31 +200,12 @@ namespace ItE2E
     }
 
     AfterAll {
-        if ($script:app) {
-            try {
-                Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidence 'final.png') | Out-Null
-            }
-            finally { Stop-Terminal -App $script:app -RestoreSettings $false }
-        }
-        if ($script:ownsConfigBackup) {
-            if (-not (Test-Until -TimeoutSec 10 -IntervalSec 0.2 -Condition {
-                -not @(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables).Count
-            })) {
-                throw 'Dev is still active; configuration backups are retained rather than racing a live writer.'
-            }
-            (Get-FileHash -LiteralPath $script:target.SettingsPath).Hash |
-                Should -Be $script:settingsHash -Because 'the suite must not edit user settings'
-            Restore-WtConfig -App $script:target
-            $stateHash = if (Test-Path -LiteralPath $script:target.StatePath) {
-                (Get-FileHash -LiteralPath $script:target.StatePath).Hash
-            } else { $null }
-            $stateHash | Should -Be $script:stateHash -Because 'test window persistence must not replace user application state'
-            @{ settings_preserved = $true; state_preserved = $true } | ConvertTo-Json |
-                Set-Content -LiteralPath (Join-Path $script:evidence 'cleanup.json')
-        }
+        Invoke-SidebarSessionCleanup -App $script:app -Target $script:target `
+            -OwnsConfigBackup $script:ownsConfigBackup -SettingsHash $script:settingsHash `
+            -StateHash $script:stateHash -Evidence $script:evidence
     }
 
-    It 'Sidebar Agents status updates preserve scroll' {
+    It 'Status-only updates preserve the viewport and update the same visible row' {
         foreach ($sample in 1..3) {
             Send-Hooks -Events @((New-Hook -Event agent.stop))
             Wait-LiveStatus Idle
@@ -258,10 +241,31 @@ namespace ItE2E
             $after.Title | Should -Be $before.Title
             [Math]::Abs($after.Top - $before.Top) | Should -BeLessOrEqual 2 -Because 'a status-only update must not scroll a stable history ordering'
         }
-        Set-SessionQuery $script:liveTitle
-        Wait-Until -TimeoutSec 10 -Because 'the final live status is actually rendered' -Condition {
-            @(Get-SessionRows | Where-Object { $_.Title -eq $script:liveTitle -and $_.Status -match $script:workingLabel }).Count -eq 1
-        } | Out-Null
+        $scroll.SetScrollPercent(-1, 0)
+        $visible = Wait-Until -TimeoutSec 10 -Because 'the live row is visible without changing the query' -Condition {
+            Get-SessionRows | Where-Object { $_.Title -eq $script:liveTitle -and -not $_.Offscreen } |
+                Select-Object -First 1
+        }
+        $container = $visible.RuntimeId
+        foreach ($transition in @(
+            @{ Event = 'agent.stop'; Status = 'Idle'; Label = $script:idleLabel; Extra = @{} }
+            @{ Event = 'agent.tool.starting'; Status = 'Working'; Label = $script:workingLabel; Extra = @{ tool_name = 'edit' } }
+            @{ Event = 'agent.tool.starting'; Status = 'Attention'; Label = $script:attentionLabel; Extra = @{ tool_name = 'ask_user' } }
+            @{ Event = 'agent.stop'; Status = 'Idle'; Label = $script:idleLabel; Extra = @{} }
+        )) {
+            Send-Hooks -Events @((New-Hook -Event $transition.Event -Extra $transition.Extra))
+            Wait-LiveStatus $transition.Status
+            Wait-Until -TimeoutSec 10 -Because "the same visible row renders $($transition.Status) with an unchanged query" -Condition {
+                $query = (Get-SidebarElement HistorySearchTextBox).GetCurrentPattern(
+                    [Windows.Automation.ValuePattern]::Pattern).Current.Value
+                $query | Should -Be $script:marker
+                $row = @(Get-SessionRows | Where-Object Title -eq $script:liveTitle)
+                $row.Count | Should -Be 1
+                $row[0].Offscreen | Should -BeFalse
+                $row[0].RuntimeId | Should -Be $container
+                $row[0].Status -match $transition.Label
+            } | Out-Null
+        }
     }
 
     It 'Status filtering still reacts to live updates' {
