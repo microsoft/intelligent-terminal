@@ -583,14 +583,15 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             })[0].tab_count
         }
         function Save-CombinedActionEvidence {
-            param([string]$Phase, [switch]$Screenshot)
+            param([string]$Phase, [switch]$Screenshot, [string]$SessionId = '')
             $focused = [Windows.Automation.AutomationElement]::FocusedElement
             $history = Get-CombinedElement HistoryList
             $historyVisible = $history -and -not $history.Current.IsOffscreen
             @{
                 phase = $Phase; at = [DateTimeOffset]::UtcNow.ToString('o')
                 owned_sessions = @((Get-CombinedSnapshot).sessions | Where-Object {
-                    $_.session_id -like "$script:marker-*" -or $_.session_id -like 'chat-fixture-*'
+                    $_.session_id -like "$script:marker-*" -or $_.session_id -like 'chat-fixture-*' -or
+                        ($SessionId -and $_.session_id -eq $SessionId)
                 })
                 history_visible = [bool]$historyVisible
                 history_rows = if ($historyVisible) { @(Get-CombinedRows HistoryList | ForEach-Object { Get-CombinedRowText $_ }) } else { @() }
@@ -1373,7 +1374,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             Set-CombinedView $false
             Set-CombinedQuery "$script:marker-background-$Status"
             Wait-Until -TimeoutSec 10 -Condition { @(Get-CombinedRows ItemsList).Count -eq 1 } | Out-Null
-            Save-CombinedActionEvidence "background-$Status-before-second-close" -Screenshot
+            Save-CombinedActionEvidence "background-$Status-before-second-close" -Screenshot -SessionId $fixture.SessionId
             Invoke-CombinedOwnedGroupContext -Tab $tab -Title "$script:marker-background-$Status"
             Get-UiTree -App $script:app -Depth 9 |
                 Set-Content (Join-Path $script:evidence "background-$Status-second-close-menu.tree.txt")
@@ -1381,7 +1382,77 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             Wait-Until -TimeoutSec 10 -Condition { (Get-CombinedAttachedTabCount) -eq $count - 1 } | Out-Null
             Set-CombinedView $true
             Set-CombinedQuery (Split-Path $fixture.Folder -Leaf)
-            Wait-Until -TimeoutSec 15 -Condition { @(Get-CombinedRows HistoryList).Count -eq 1 } | Out-Null
+            Save-CombinedActionEvidence "background-$Status-second-detach-before-wait" -SessionId $fixture.SessionId
+            try {
+                Wait-Until -TimeoutSec 15 -Condition {
+                    $apiRows = @((Get-CombinedSnapshot).sessions | Where-Object session_id -eq $fixture.SessionId)
+                    $rows = @(Get-CombinedRows HistoryList)
+                    $rowStates = @($rows | ForEach-Object {
+                        $row = $_
+                        @{
+                            name = $row.Current.Name; offscreen = $row.Current.IsOffscreen
+                            bounds = $row.Current.BoundingRectangle.ToString()
+                            width = $row.Current.BoundingRectangle.Width
+                            height = $row.Current.BoundingRectangle.Height
+                            parts = @(Get-CombinedRawChildren $row | Where-Object {
+                                $_.Current.AutomationId -in @('HistoryOwnershipButton', 'HistoryProviderIcon')
+                            } | ForEach-Object {
+                                @{
+                                    id = $_.Current.AutomationId; name = $_.Current.Name
+                                    offscreen = $_.Current.IsOffscreen; enabled = $_.Current.IsEnabled
+                                    width = $_.Current.BoundingRectangle.Width
+                                    height = $_.Current.BoundingRectangle.Height
+                                }
+                            })
+                        }
+                    })
+                    @{
+                        at = [DateTimeOffset]::UtcNow.ToString('o')
+                        session_id = $fixture.SessionId; pane_session_id = $tab.session_id
+                        api_rows = $apiRows; visible_rows = $rowStates
+                        native_pid = $native.Id; native_alive = -not $native.HasExited
+                    } | ConvertTo-Json -Depth 12 |
+                        Set-Content (Join-Path $script:evidence "background-$Status-second-detach-readiness.json")
+                    $qualified = @($apiRows | Where-Object {
+                        $_.provider_id -eq 'copilot' -and $_.location -eq 'Host' -and
+                            -not $_.session_universe -and $_.status -eq $Status -and
+                            ([string]$_.pane_session_id).Trim('{}') -eq ([string]$tab.session_id).Trim('{}') -and
+                            $_.owner_window_id -eq $script:app.WindowId -and $_.background_tab -eq $true
+                    })
+                    $qualified.Count -eq 1 -and $rowStates.Count -eq 1 -and
+                        -not $rowStates[0].offscreen -and $rowStates[0].width -gt 0 -and $rowStates[0].height -gt 0 -and
+                        @($rowStates[0].parts | Where-Object {
+                            $_.id -eq 'HistoryOwnershipButton' -and $_.name -eq 'Restore background tab' -and
+                                -not $_.offscreen -and $_.enabled -and $_.width -gt 0 -and $_.height -gt 0
+                        }).Count -eq 1 -and
+                        @($rowStates[0].parts | Where-Object {
+                            $_.id -eq 'HistoryProviderIcon' -and $_.name -eq 'Copilot' -and
+                                -not $_.offscreen -and $_.width -gt 0 -and $_.height -gt 0
+                        }).Count -eq 1
+                } | Out-Null
+            }
+            finally {
+                try {
+                    Save-CombinedActionEvidence "background-$Status-second-detach-after-wait" -SessionId $fixture.SessionId
+                }
+                catch { Write-Warning "Second-detach diagnostic capture failed: $_" }
+                $context = $null
+                $contextError = $null
+                try {
+                    $context = Invoke-WtCli -App $script:app -Arguments @(
+                        'get-pane-context', '--target', $tab.session_id, '--max-lines', '0', '--max-chars', '0')
+                }
+                catch { $contextError = "$_" }
+                try {
+                    @{
+                        at = [DateTimeOffset]::UtcNow.ToString('o')
+                        native_pid = $native.Id; native_alive = -not $native.HasExited
+                        original_panes = $identities; pane_context = $context; pane_context_error = $contextError
+                    } | ConvertTo-Json -Depth 12 |
+                        Set-Content (Join-Path $script:evidence "background-$Status-second-detach-context.json")
+                }
+                catch { Write-Warning "Second-detach diagnostic capture failed: $_" }
+            }
             Assert-CombinedOwnershipButton Background | Out-Null
             $historyRow = @(Get-CombinedRows HistoryList)[0]
             Set-WtWindowForeground -App $script:app -Attempts 3 -DelayMs 150 | Should -BeTrue
