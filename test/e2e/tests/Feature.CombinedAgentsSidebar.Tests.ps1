@@ -638,10 +638,25 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             })
             $titles.Count | Should -Be 1 -Because 'only the group title shares the canonical group toggle row'
             $bounds = $titles[0].Current.BoundingRectangle
+            $viewport = (Get-CombinedElement ItemsList).Current.BoundingRectangle
+            $point = [Windows.Point]::new($bounds.X + $bounds.Width / 2, $bounds.Y + $bounds.Height / 2)
+            $viewport.Contains($point) | Should -BeTrue -Because 'a realized UIA title can still be clipped outside the list viewport'
+            $hit = [Windows.Automation.AutomationElement]::FromPoint($point)
+            $ancestor = $hit
+            $ownedHit = $false
+            while ($ancestor) {
+                if ([Windows.Automation.Automation]::Compare($ancestor, $groups[0])) {
+                    $ownedHit = $true
+                    break
+                }
+                $ancestor = [Windows.Automation.TreeWalker]::RawViewWalker.GetParent($ancestor)
+            }
+            $ownedHit | Should -BeTrue -Because 'physical context input must hit the owned group, not a stale or clipped title'
             @{
                 tab_id = $Tab.tab_id; shell_pane_id = $Tab.session_id; window_id = $script:app.WindowId
                 group_runtime_id = @($groups[0].GetRuntimeId()); header_bounds = $bounds.ToString()
-                toggle_bounds = $toggle.ToString()
+                toggle_bounds = $toggle.ToString(); viewport_bounds = $viewport.ToString()
+                hit_name = $hit.Current.Name; hit_runtime_id = @($hit.GetRuntimeId())
             } | ConvertTo-Json | Set-Content (Join-Path $script:evidence 'background-owned-group-context.json')
             Invoke-UiMouseDrag -App $script:app -FromX ([int]($bounds.X + $bounds.Width / 2)) -FromY ([int]($bounds.Y + $bounds.Height / 2)) `
                 -ToX ([int]($bounds.X + $bounds.Width / 2)) -ToY ([int]($bounds.Y + $bounds.Height / 2)) -Right -HoldMs 50 | Out-Null
@@ -717,6 +732,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
     }
 
     BeforeEach {
+        Test-WtWindowKeyFocusable -App $script:app | Should -BeTrue -Because 'the owned interactive desktop is a prerequisite, not a product oracle'
         Set-CombinedView $true
         $searchToggle = (Get-CombinedElement SearchTabsButton).GetCurrentPattern(
             [Windows.Automation.TogglePattern]::Pattern)
@@ -725,6 +741,10 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
         }
         Assert-CombinedSearchState $false
+        Wait-Until -TimeoutSec 5 -Because 'search close layout has settled before measuring the lists' -Condition {
+            $box = Get-CombinedElement SearchTextBox
+            -not ($box -and -not $box.Current.IsOffscreen -and $box.Current.BoundingRectangle.Height -gt 0)
+        } | Out-Null
         $scrollLists = if ($env:ITE2E_HISTORY_INDICATORS_ONLY -eq '1') { @() } else { @('ItemsList', 'HistoryList') }
         foreach ($id in $scrollLists) {
             $scroll = Get-CombinedScroll $id
@@ -1179,8 +1199,12 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 }).Count -eq 1 -and @(Get-CombinedRows HistoryList).Count -eq 0
             } | Out-Null
             Set-CombinedView $false
-            Set-CombinedQuery ''
+            Set-CombinedQuery "$script:marker-background-$Status"
+            Wait-Until -TimeoutSec 10 -Condition { @(Get-CombinedRows ItemsList).Count -eq 1 } | Out-Null
+            Save-CombinedActionEvidence "background-$Status-before-second-close" -Screenshot
             Invoke-CombinedOwnedGroupContext -Tab $tab -Title "$script:marker-background-$Status"
+            Get-UiTree -App $script:app -Depth 9 |
+                Set-Content (Join-Path $script:evidence "background-$Status-second-close-menu.tree.txt")
             Invoke-UiElement -App $script:app -Selector 'Close tab' | Out-Null
             Wait-Until -TimeoutSec 10 -Condition { (Get-CombinedAttachedTabCount) -eq $count - 1 } | Out-Null
             Set-CombinedView $true
@@ -1265,6 +1289,12 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                         -not $_.pane_session_id -and -not $_.owner_window_id -and -not $_.background_tab
                 }).Count -eq 1
             } | Out-Null
+            $admitted = @((Get-CombinedSnapshot).sessions | Where-Object session_id -eq $sid)
+            $admitted.Count | Should -Be 1
+            $admitted[0].origin | Should -BeIn @($null, 'Unknown') -Because 'native admission does not imply an AgentPane owner'
+            $admitted[0].location | Should -Be 'Host'
+            $admitted[0] | ConvertTo-Json -Depth 8 |
+                Set-Content (Join-Path $script:evidence 'external-master-admitted-row.json')
             Set-CombinedView $true
             Set-CombinedQuery (Split-Path $fixture.Folder -Leaf)
             Wait-Until -TimeoutSec 15 -Condition { @(Get-CombinedRows HistoryList).Count -eq 1 } | Out-Null
@@ -1508,29 +1538,102 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
     }
 
     It 'Combined sidebar keeps both sections usable after window resizing' {
-        $window = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]([long]$script:app.Hwnd))
-        $transform = $window.GetCurrentPattern([Windows.Automation.TransformPattern]::Pattern)
-        $transform.Current.CanResize | Should -BeTrue
-        $original = $window.Current.BoundingRectangle
+        if (-not ('ItE2E.CombinedPhysicalResize' -as [type])) {
+            Add-Type -Namespace ItE2E -Name CombinedPhysicalResize -MemberDefinition @'
+            [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; public int Width { get { return Right - Left; } } public int Height { get { return Bottom - Top; } } }
+            [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
+            [StructLayout(LayoutKind.Sequential)] public struct PLACEMENT { public uint length, flags, showCmd; public POINT minPosition, maxPosition; public RECT normalPosition; }
+            [DllImport("user32.dll", SetLastError=true)] public static extern bool GetWindowPlacement(IntPtr window, ref PLACEMENT placement);
+            [DllImport("user32.dll", SetLastError=true)] public static extern bool SetWindowPlacement(IntPtr window, ref PLACEMENT placement);
+            [DllImport("user32.dll", SetLastError=true)] static extern bool GetWindowRect(IntPtr window, out RECT rectangle);
+            [DllImport("user32.dll", SetLastError=true)] static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
+            [DllImport("user32.dll", SetLastError=true)] static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
+            [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr window);
+            [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr window);
+            [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr window);
+            public static RECT PhysicalBounds(IntPtr window) {
+                IntPtr previous = SetThreadDpiAwarenessContext(new IntPtr(-4));
+                if (previous == IntPtr.Zero) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+                try {
+                    RECT rectangle;
+                    if (!GetWindowRect(window, out rectangle)) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+                    return rectangle;
+                } finally { SetThreadDpiAwarenessContext(previous); }
+            }
+            public static void ResizePhysical(IntPtr window, int width, int height) {
+                IntPtr previous = SetThreadDpiAwarenessContext(new IntPtr(-4));
+                if (previous == IntPtr.Zero) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+                try {
+                    if (!SetWindowPos(window, IntPtr.Zero, 0, 0, width, height, 0x0016))
+                        throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+                } finally { SetThreadDpiAwarenessContext(previous); }
+            }
+'@
+        }
+        $hwnd = [IntPtr][long]$script:app.Hwnd
+        [ItE2E.ItWtWin32Input]::GetAncestor($hwnd, 2) | Should -Be $hwnd -Because 'only the exact owned root frame is resized'
+        [ItE2E.ItWtWin32Input]::GetWindowProcessId($hwnd) | Should -Be $script:app.Pid
+        $script:app.OwnedProcess.HasExited | Should -BeFalse
+        $script:app.OwnedProcess.Path | Should -Be (Join-Path $script:app.InstallLocation 'WindowsTerminal.exe')
+        $dpi = [ItE2E.CombinedPhysicalResize]::GetDpiForWindow($hwnd)
+        $dpi | Should -BeGreaterThan 0
+        $savedFrame = [ItE2E.CombinedPhysicalResize]::PhysicalBounds($hwnd)
+        $placement = [ItE2E.CombinedPhysicalResize+PLACEMENT]::new()
+        $placement.length = [Runtime.InteropServices.Marshal]::SizeOf($placement)
+        [ItE2E.CombinedPhysicalResize]::GetWindowPlacement($hwnd, [ref]$placement) | Should -BeTrue
         try {
-            $transform.Resize($original.Width, 640)
-            Wait-Until -TimeoutSec 10 -Because 'the actual window shrinks' -Condition {
-                $window.Current.BoundingRectangle.Height -lt $original.Height - 20 -and
+            $normalPlacement = $placement
+            $normalPlacement.showCmd = 1
+            $normalPlacement.flags = 0
+            [ItE2E.CombinedPhysicalResize]::SetWindowPlacement($hwnd, [ref]$normalPlacement) | Should -BeTrue
+            Wait-Until -TimeoutSec 10 -Because 'the owned frame restores to normal before physical resizing' -Condition {
+                -not [ItE2E.CombinedPhysicalResize]::IsZoomed($hwnd) -and
+                    -not [ItE2E.CombinedPhysicalResize]::IsIconic($hwnd)
+            } | Out-Null
+            $original = [ItE2E.CombinedPhysicalResize]::PhysicalBounds($hwnd)
+            $largeHeight = [Math]::Max(760, $original.Height + 160)
+            [ItE2E.CombinedPhysicalResize]::ResizePhysical($hwnd, $original.Width, $largeHeight)
+            Wait-Until -TimeoutSec 10 -Because 'establish a measured large window before testing shrink' -Condition {
+                [Math]::Abs([ItE2E.CombinedPhysicalResize]::PhysicalBounds($hwnd).Height - $largeHeight) -lt 3
+            } | Out-Null
+            $large = [ItE2E.CombinedPhysicalResize]::PhysicalBounds($hwnd)
+            $smallHeight = 640
+            [ItE2E.CombinedPhysicalResize]::ResizePhysical($hwnd, $large.Width, $smallHeight)
+            try {
+                Wait-Until -TimeoutSec 10 -Because 'the actual owned root frame reaches 640 physical pixels, strictly below 650' -Condition {
+                    $frame = [ItE2E.CombinedPhysicalResize]::PhysicalBounds($hwnd)
+                    $frame.Height -lt 650 -and [Math]::Abs($frame.Height - $smallHeight) -lt 3
+                } | Out-Null
+            }
+            finally {
+                $frame = [ItE2E.CombinedPhysicalResize]::PhysicalBounds($hwnd)
+                @{ dpi = $dpi; requested_physical_height = 640; actual_physical_height = $frame.Height
+                    large_physical_height = $large.Height; root_hwnd = $hwnd.ToInt64()
+                    below_650 = ($frame.Height -lt 650); resize_api = 'SetWindowPos with PER_MONITOR_AWARE_V2; no logical/UIA conversion'
+                    constraint_failure = ($frame.Height -ge 650)
+                } | ConvertTo-Json | Set-Content (Join-Path $script:evidence 'C384-physical-short-frame.json')
+            }
+            $frame.Height | Should -BeLessThan 650 -Because 'a tall original or OS-clamped minimum must never satisfy the short-window contract'
+            Wait-Until -TimeoutSec 10 -Because 'both viewports remain usable in the measured short frame' -Condition {
+                (Get-CombinedElement ItemsList).Current.BoundingRectangle.Height -gt 20 -and
                     (Get-CombinedElement HistoryList).Current.BoundingRectangle.Height -gt 20
             } | Out-Null
             Assert-CombinedBounds
             $small = (Get-CombinedElement HistorySplitter).Current.BoundingRectangle.Y
-            $transform.Resize($original.Width, [Math]::Max(760, $original.Height))
+            [ItE2E.CombinedPhysicalResize]::ResizePhysical($hwnd, $large.Width, $large.Height)
             Wait-Until -TimeoutSec 10 -Because 'the actual window grows and lays out both sections' -Condition {
-                $window.Current.BoundingRectangle.Height -ge 740 -and
+                [Math]::Abs([ItE2E.CombinedPhysicalResize]::PhysicalBounds($hwnd).Height - $large.Height) -lt 3 -and
                     (Get-CombinedElement HistorySplitter).Current.BoundingRectangle.Y -gt $small
             } | Out-Null
             Assert-CombinedBounds
         }
         finally {
-            $transform.Resize($original.Width, $original.Height)
+            [ItE2E.CombinedPhysicalResize]::SetWindowPlacement($hwnd, [ref]$placement) | Should -BeTrue
             Wait-Until -TimeoutSec 10 -Condition {
-                (Get-CombinedElement HistoryList).Current.BoundingRectangle.Height -gt 20
+                $restored = [ItE2E.CombinedPhysicalResize]::PhysicalBounds($hwnd)
+                [Math]::Abs($restored.Height - $savedFrame.Height) -lt 3 -and
+                    [Math]::Abs($restored.Width - $savedFrame.Width) -lt 3 -and
+                    (Get-CombinedElement HistoryList).Current.BoundingRectangle.Height -gt 20
             } | Out-Null
         }
     }

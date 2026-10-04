@@ -108,6 +108,16 @@ agents, WSL availability, hook or policy provisioning, and interactive-desktop i
 Unavailable external prerequisites may be skipped; product failures must remain failures.
 Manual release-sign-off items are not credited by unrelated unit or protocol checks.
 
+The focused UI controller checks both an absolute UTC deadline and monotonic elapsed
+time between short (500 ms) process waits. Windows handle waits alone do not include
+system sleep. A suspended controller cannot enforce a deadline while suspended; on
+resume an expired deadline aborts the run, not a successful timeout-compliance receipt.
+Loss of owned foreground or interactive cursor access stops the focused batch through
+an input-prerequisite receipt; remaining cases are unproven, not passed or skipped.
+Emergency cleanup accepts only the run-token receipt's exact executable/PID/start-time
+identity and its captured descendants. Foreground acquisition never taps ALT into an
+unrelated app or modifies the user's foreground-lock timeout.
+
 For **PR validation** of `Feature.AgentInputUndoRedo`, build/deploy the intended source revision
 and set `ITE2E_EXPECTED_WTA_SHA256` from that build's receipt before running the suite. Verify
 source-to-package freshness as well; copying the hash from an arbitrary installed binary is not

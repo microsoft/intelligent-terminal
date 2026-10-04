@@ -7777,11 +7777,16 @@ async fn execute_session_activation(
         EnterAction::NotResumable {
             reason: crate::session_mgmt::NotResumableReason::LiveWithoutPane
         }
-    ) && row.origin == Some(SessionOrigin::Unknown)
+    ) && row
+        .origin
+        .as_ref()
+        .is_none_or(|origin| *origin == SessionOrigin::Unknown)
         && profile.is_some_and(|profile| !profile.resume_flag.is_empty())
     {
         // This is an explicit sidebar activation, not evidence of external
-        // ownership. A bound pane always keeps the focus-only path.
+        // ownership. Native hook admission leaves origin unset, which has
+        // the same Unknown meaning as the routing snapshot above. A bound
+        // pane always keeps the focus-only path.
         action = EnterAction::ResumeCliFlag {
             key: row.session_id.to_string(),
             cli: cli_source.clone(),

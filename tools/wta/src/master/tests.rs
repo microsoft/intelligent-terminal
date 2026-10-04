@@ -10771,12 +10771,12 @@ async fn sidebar_activation_foreign_live_focus_failure_never_falls_back_to_resum
 }
 
 #[tokio::test]
-async fn sidebar_activation_unbound_agent_pane_and_unspecified_origin_keep_live_guard() {
+async fn sidebar_activation_unbound_agent_pane_keeps_live_guard() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
     use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};
     use std::path::PathBuf;
 
-    for origin in [Some(SessionOrigin::AgentPane), None] {
+    for origin in [Some(SessionOrigin::AgentPane)] {
         let mock = Arc::new(MockWtChannel::ok());
         let state = make_state_with_wt(mock.clone());
         let mut row = SessionInfo::new(SessionId::new("live-guard"), PathBuf::from("C:\\repo"));
@@ -10805,6 +10805,67 @@ async fn sidebar_activation_unbound_agent_pane_and_unspecified_origin_keep_live_
             row
         );
     }
+}
+
+#[tokio::test]
+async fn sidebar_activation_native_hook_unset_origin_resumes_without_reclassifying_owner() {
+    use crate::agent_sessions::{CliSource, SessionEvent};
+    use crate::session_registry::{SessionActivateParams, SessionIdentity};
+    use std::path::PathBuf;
+
+    let mock = Arc::new(MockWtChannel::responding(serde_json::json!({
+        "session_id": "resumed-native-pane"
+    })));
+    let state = make_state_with_wt(mock.clone());
+    state
+        .registry
+        .apply_event(SessionEvent::SessionStarted {
+            key: "native-hook-unbound".to_string(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: String::new(),
+            cwd: PathBuf::from("C:\\repo"),
+            title: "native-hook-unbound".to_string(),
+        })
+        .await;
+    let row = state
+        .registry
+        .lookup(&SessionId::new("native-hook-unbound"))
+        .await
+        .unwrap();
+    assert_eq!(row.origin, None);
+    assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Idle));
+    assert_eq!(row.pane_session_id, None);
+    let identity = SessionIdentity::from_info(&row);
+    let params = SessionActivateParams {
+        identity: identity.clone(),
+        window_id: 42,
+        activation_id: "native-hook-enter".to_string(),
+    };
+    let response = tokio::task::LocalSet::new()
+        .run_until(handle_session_activate(&state, &params))
+        .await
+        .unwrap();
+    let response = crate::session_registry::parse_session_activate_response(&response.0).unwrap();
+    assert!(response.accepted, "{response:?}");
+    assert_eq!(response.action, "resume_cli");
+    let calls = mock.calls();
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[0].0, "create_tab");
+    assert_eq!(calls[0].1["window_id"], 42);
+    assert!(calls[0].1["commandline"]
+        .as_str()
+        .unwrap()
+        .contains("--resume"));
+    assert_eq!(calls[1].0, "focus_pane");
+    let resumed = state.registry.lookup_identity(&identity).await.unwrap();
+    assert_eq!(resumed.origin, None);
+    assert_eq!(resumed.bound_pid, row.bound_pid);
+    assert_eq!(
+        resumed.pane_session_id.as_deref(),
+        Some("resumed-native-pane")
+    );
+    handle_session_activate(&state, &params).await.unwrap();
+    assert_eq!(mock.calls(), calls);
 }
 
 #[tokio::test]

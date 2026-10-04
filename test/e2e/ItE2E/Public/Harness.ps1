@@ -1,6 +1,26 @@
 # Harness.ps1 — lifecycle: resolve, (safely) configure, launch, attach, teardown.
 # Non-destructive by default: settings.json/state.json are backed up and restored.
 
+function Test-ItProcessDeadline {
+    param([datetimeoffset]$DeadlineUtc, [double]$ElapsedSeconds, [double]$TimeoutSeconds,
+        [datetimeoffset]$NowUtc = [datetimeoffset]::UtcNow)
+    $NowUtc -ge $DeadlineUtc -or $ElapsedSeconds -ge $TimeoutSeconds
+}
+
+function Wait-ItProcessDeadline {
+    param([Parameter(Mandatory)]$Process, [ValidateRange(1, 86400)][int]$TimeoutSec,
+        [datetimeoffset]$StartedUtc = [datetimeoffset]::UtcNow, [string]$PrerequisiteFailurePath)
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    $deadline = $StartedUtc.AddSeconds($TimeoutSec)
+    while ($true) {
+        if ($PrerequisiteFailurePath -and (Test-Path -LiteralPath $PrerequisiteFailurePath)) { return $false }
+        # Windows handle waits exclude system sleep; check UTC BEFORE accepting an exit.
+        if (Test-ItProcessDeadline $deadline $clock.Elapsed.TotalSeconds $TimeoutSec) { return $false }
+        if ($Process.HasExited) { return $true }
+        [void]$Process.WaitForExit(500)
+    }
+}
+
 function Backup-WtConfig {
     [CmdletBinding()] param([Parameter(Mandatory)]$App)
     foreach ($f in @($App.SettingsPath, $App.StatePath)) {
@@ -316,8 +336,9 @@ function Start-Terminal {
     $app = Resolve-ItApp -Package $Package
     Write-ItLog -Level INFO -Message "Resolved package $($app.Package) v$($app.Version); wtcli=$($app.WtcliPath)"
 
-    # Per-run framework log file under TEMP.
-    $script:ItE2ELogFile = Join-Path $env:TEMP ("ite2e-{0}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+    $logRoot = if ($env:ITE2E_ARTIFACT_ROOT) { $env:ITE2E_ARTIFACT_ROOT } else { Join-Path $PSScriptRoot '..\..\artifacts' }
+    New-Item -ItemType Directory -Path $logRoot -Force | Out-Null
+    $script:ItE2ELogFile = Join-Path $logRoot ("ite2e-{0}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
 
     # Clear leftover instances of the selected package BEFORE writing config: a stale window
     # from a crashed prior test would otherwise be attached-to in a broken state (new-tab ->
@@ -392,6 +413,12 @@ function Start-Terminal {
     $app | Add-Member -NotePropertyName Launched -NotePropertyValue ($app.Pid -notin $existing) -Force
     if (-not $app.Launched) {
         Write-ItLog -Level WARN -Message "Attached to a pre-existing WindowsTerminal (pid=$($app.Pid)); Stop-Terminal will NOT kill it."
+    }
+    if ($app.Launched -and $env:ITE2E_OWNED_PROCESS_RECEIPT) {
+        @{
+            pid = $proc.Id; start_utc = $proc.StartTime.ToUniversalTime().ToString('o')
+            path = $proc.Path; run_token = $env:ITE2E_RUN_TOKEN
+        } | ConvertTo-Json -Compress | Add-Content -LiteralPath $env:ITE2E_OWNED_PROCESS_RECEIPT
     }
     Write-ItLog -Level INFO -Message "WindowsTerminal pid=$($app.Pid) launched=$($app.Launched)"
 
