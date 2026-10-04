@@ -1,6 +1,18 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
 
 BeforeAll {
+function Invoke-CombinedCheckedCleanup {
+    param($PrimaryFailure, [Parameter(Mandatory)][scriptblock]$Action)
+    try { & $Action }
+    catch {
+        if ($PrimaryFailure) {
+            throw [AggregateException]::new('Original test failure and separate cleanup failure.',
+                [Exception[]]@($PrimaryFailure.Exception, $_.Exception))
+        }
+        throw
+    }
+}
+
 function Initialize-CombinedCleanupNative {
     if ('ItE2ECombinedCleanup.Native' -as [type]) { return }
     Add-Type @'
@@ -609,15 +621,43 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         }
         function Invoke-CombinedTabContext {
             param([string]$Title)
-            $tree = Get-UiTree -App $script:app -Selector ItemsList -Depth 8
-            $pattern = '(?m)^\s*(?<Selector>lbl-textview-\S+|TextView) Text "' + [regex]::Escape($Title) + '"'
-            $matches = @([regex]::Matches($tree, $pattern))
-            $matches.Count | Should -Be 1 -Because 'context actions must target exactly one Sidebar title, not terminal text'
-            Invoke-UiClick -App $script:app -Selector $matches[0].Groups['Selector'].Value -Right | Out-Null
+            $tabs = @(Get-WtTabs -App $script:app -WindowId $script:app.WindowId | Where-Object title -eq $Title)
+            $tabs.Count | Should -Be 1 -Because 'the exact title must resolve one canonical tab in the owned window'
+            $panes = @(Get-WtPanes -App $script:app -WindowId $script:app.WindowId -TabId $tabs[0].tab_id)
+            $panes.Count | Should -BeGreaterThan 0
+            $context = Invoke-WtCli -App $script:app -Arguments @('get-pane-context', '--target', $panes[0].session_id)
+            [string]$context.pane.tab_id | Should -Be ([string]$tabs[0].tab_id)
+            [string]$context.pane.window_id | Should -Be ([string]$script:app.WindowId)
+            # Header realization intentionally closes History. Resolve the visible projection
+            # afresh; do not reopen Agents or reset the search contract to reuse an old peer.
+            $rows = @(Get-CombinedRows ItemsList | Where-Object {
+                -not $_.Current.IsOffscreen -and @(Get-CombinedRawChildren $_ | Where-Object {
+                    $_.Current.Name -eq $Title -and -not $_.Current.IsOffscreen
+                }).Count -gt 0
+            })
+            $rows.Count | Should -Be 1
+            $titles = @(Get-CombinedRawChildren $rows[0] | Where-Object {
+                $_.Current.ControlType -eq [Windows.Automation.ControlType]::Text -and
+                    $_.Current.Name -eq $Title -and -not $_.Current.IsOffscreen
+            })
+            $titles.Count | Should -Be 1
+            $bounds = $titles[0].Current.BoundingRectangle
+            Invoke-UiMouseDrag -App $script:app -FromX ([int]($bounds.X + $bounds.Width / 2)) `
+                -FromY ([int]($bounds.Y + $bounds.Height / 2)) -ToX ([int]($bounds.X + $bounds.Width / 2)) `
+                -ToY ([int]($bounds.Y + $bounds.Height / 2)) -Right -HoldMs 50 | Out-Null
         }
         function Invoke-CombinedOwnedGroupContext {
             param($Tab, [string]$Title)
             $owned = @(Get-WtTabs -App $script:app -WindowId $script:app.WindowId | Where-Object tab_id -eq $Tab.tab_id)
+            @{
+                tab_id = $Tab.tab_id; pane_id = $Tab.session_id; window_id = $script:app.WindowId
+                header = (Get-CombinedElement VerticalTabsHeader).Current.Name
+                owned_tabs = $owned; foreground_hwnd = [ItE2E.ItWtWin32Input]::GetForegroundWindow().ToInt64()
+                rows = @(Get-CombinedRows ItemsList | ForEach-Object {
+                    @{ text = Get-CombinedRowText $_; runtime_id = @($_.GetRuntimeId())
+                        offscreen = $_.Current.IsOffscreen; bounds = $_.Current.BoundingRectangle.ToString() }
+                })
+            } | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $script:evidence 'background-owned-group-before-assert.json')
             $owned.Count | Should -Be 1
             $owned[0].title | Should -Be $Title
             @(Get-WtPanes -App $script:app -WindowId $script:app.WindowId -TabId $Tab.tab_id).Count | Should -Be 2
@@ -640,7 +680,6 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             $bounds = $titles[0].Current.BoundingRectangle
             $viewport = (Get-CombinedElement ItemsList).Current.BoundingRectangle
             $point = [Windows.Point]::new($bounds.X + $bounds.Width / 2, $bounds.Y + $bounds.Height / 2)
-            $viewport.Contains($point) | Should -BeTrue -Because 'a realized UIA title can still be clipped outside the list viewport'
             $hit = [Windows.Automation.AutomationElement]::FromPoint($point)
             $ancestor = $hit
             $ownedHit = $false
@@ -651,13 +690,23 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 }
                 $ancestor = [Windows.Automation.TreeWalker]::RawViewWalker.GetParent($ancestor)
             }
-            $ownedHit | Should -BeTrue -Because 'physical context input must hit the owned group, not a stale or clipped title'
             @{
                 tab_id = $Tab.tab_id; shell_pane_id = $Tab.session_id; window_id = $script:app.WindowId
                 group_runtime_id = @($groups[0].GetRuntimeId()); header_bounds = $bounds.ToString()
                 toggle_bounds = $toggle.ToString(); viewport_bounds = $viewport.ToString()
                 hit_name = $hit.Current.Name; hit_runtime_id = @($hit.GetRuntimeId())
-            } | ConvertTo-Json | Set-Content (Join-Path $script:evidence 'background-owned-group-context.json')
+                point = @{ x = $point.X; y = $point.Y }; owned_hit = $ownedHit
+                viewport_contains_point = $viewport.Contains($point)
+                hit_process_id = $hit.Current.ProcessId
+                foreground_hwnd = [ItE2E.ItWtWin32Input]::GetForegroundWindow().ToInt64()
+                raw_group = @(Get-CombinedRawChildren $groups[0] | ForEach-Object {
+                    @{ name = $_.Current.Name; id = $_.Current.AutomationId
+                        offscreen = $_.Current.IsOffscreen; bounds = $_.Current.BoundingRectangle.ToString() }
+                })
+                scroll_percent = (Get-CombinedScroll ItemsList).Current.VerticalScrollPercent
+            } | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $script:evidence 'background-owned-group-context.json')
+            $viewport.Contains($point) | Should -BeTrue -Because 'a realized UIA title can still be clipped outside the list viewport'
+            $ownedHit | Should -BeTrue -Because 'physical context input must hit the owned group, not a stale or clipped title'
             Invoke-UiMouseDrag -App $script:app -FromX ([int]($bounds.X + $bounds.Width / 2)) -FromY ([int]($bounds.Y + $bounds.Height / 2)) `
                 -ToX ([int]($bounds.X + $bounds.Width / 2)) -ToY ([int]($bounds.Y + $bounds.Height / 2)) -Right -HoldMs 50 | Out-Null
         }
@@ -773,6 +822,14 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         $cleanupError = $null
         try {
             if ($script:app) {
+                if ($script:heldPromptMarker) {
+                    [IO.File]::WriteAllText($script:releasePromptPath, 'release')
+                    $released = '|released|' + $script:heldPromptMarker
+                    Wait-Until -TimeoutSec 10 -Because 'release the recorded held turn before stopping its fixture host' -Condition {
+                        (Get-Content -LiteralPath $script:fixtureLog -Raw).Contains($released)
+                    } | Out-Null
+                    $script:heldPromptMarker = $null
+                }
                 $before = @(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables)
                 $started = [DateTimeOffset]::UtcNow.ToString('o')
                 try {
@@ -893,6 +950,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             Set-CombinedView $false
             Set-CombinedQuery ''
             $count = Get-CombinedAttachedTabCount
+            $primaryFailure = $null
             try {
                 Invoke-CombinedTabContext "$script:marker-open-$('{0:D2}' -f $index)"
                 Invoke-UiElement -App $script:app -Selector KeepTabRunningMenuItem | Out-Null
@@ -913,12 +971,18 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                     }).Count -eq 1
                 } | Out-Null
             }
+            catch { $primaryFailure = $_; throw }
             finally {
+                Invoke-CombinedCheckedCleanup -PrimaryFailure $primaryFailure -Action {
+                if ($status -eq 'Working') {
+                    [IO.File]::WriteAllText($script:releasePromptPath, 'release')
+                }
                 Set-WtPaneFocus -App $script:app -SessionId $tab.session_id
                 Wait-Until -TimeoutSec 20 -Condition { (Get-CombinedAttachedTabCount) -eq $count } | Out-Null
                 if ($status -eq 'Working') {
                     [IO.File]::WriteAllText($script:releasePromptPath, 'release')
                     Assert-AgentPaneText -App $script:app -PaneSessionId $baseline.PaneSessionId -Pattern "ACK_$holdMarker" -TimeoutSec 15
+                }
                 }
             }
             (Get-WtPaneStatus -App $script:app -SessionId $tab.session_id).pid | Should -Be $shellPid
@@ -940,6 +1004,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         $sid = [guid]::NewGuid().ToString()
         $tab = $null
         $nativeProcess = $null
+        $primaryFailure = $null
         $oldActions = (Get-WtSettingsObject -App $sourceApp).actions
         function Invoke-C388Move {
             param($App, [string]$Action)
@@ -1122,18 +1187,28 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 }).Count -eq 1
             } | Out-Null
         }
+        catch { $primaryFailure = $_; throw }
         finally {
+            Invoke-CombinedCheckedCleanup -PrimaryFailure $primaryFailure -Action {
             $script:app = $sourceApp
             if ($tab -and $nativeProcess -and -not $nativeProcess.HasExited) {
+                $currentNative = Get-Process -Id $nativeProcess.Id -ErrorAction Stop
+                if ($currentNative.StartTime -ne $nativeProcess.StartTime -or $currentNative.Path -ne $shim) {
+                    throw 'Cleanup refuses a changed native process/start-time/executable lease.'
+                }
                 Close-WtPane -App $sourceApp -SessionId $tab.session_id
                 Wait-Until -TimeoutSec 15 -Condition { $nativeProcess.HasExited } | Out-Null
             }
-            Set-WtSetting -App $sourceApp -Key actions -Value @($oldActions) | Out-Null
+            # Configuration backup restoration belongs to AfterAll, after package quiescence.
+            if ($tab -and -not $nativeProcess) {
+                throw 'Retaining fixture binaries: the launched native process lease was not captured.'
+            }
             if (-not $nativeProcess -or $nativeProcess.HasExited) {
                 foreach ($name in @('copilot.exe', 'copilot.obj')) {
                     $path = Join-Path $folder $name
                     if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path }
                 }
+            }
             }
         }
     }
@@ -1144,6 +1219,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         $fixture = New-CombinedCliFixture "background-$Status"
         $tab = $null
         $native = $null
+        $primaryFailure = $null
         try {
             Set-CombinedView $false
             $tab = New-WtTab -App $script:app -Command "`"$($fixture.Shim)`" --session-id $($fixture.SessionId)" `
@@ -1224,8 +1300,17 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 (Get-WtPaneStatus -App $script:app -SessionId $identity.sid).pid | Should -Be $identity.pid
             }
         }
+        catch { $primaryFailure = $_; throw }
         finally {
+            Invoke-CombinedCheckedCleanup -PrimaryFailure $primaryFailure -Action {
+            if ($tab -and -not $native) {
+                throw 'Retaining fixture binaries: the launched native process lease was not captured.'
+            }
             if ($tab -and $native -and -not $native.HasExited) {
+                $currentNative = Get-Process -Id $native.Id -ErrorAction Stop
+                if ($currentNative.StartTime -ne $native.StartTime -or $currentNative.Path -ne $fixture.Shim) {
+                    throw 'Cleanup refuses a changed native process/start-time/executable lease.'
+                }
                 Set-WtPaneFocus -App $script:app -SessionId $tab.session_id
                 foreach ($pane in @(Get-WtPanes -App $script:app -WindowId $script:app.WindowId -TabId $tab.tab_id)) {
                     Close-WtPane -App $script:app -SessionId $pane.session_id
@@ -1237,6 +1322,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                     $path = Join-Path $fixture.Folder $name
                     if (Test-Path $path) { Remove-Item -LiteralPath $path }
                 }
+            }
             }
         }
     }
@@ -1551,6 +1637,31 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr window);
             [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr window);
             [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr window);
+            [StructLayout(LayoutKind.Sequential)] public struct MONITORINFO { public uint size; public RECT monitor, work; public uint flags; }
+            [StructLayout(LayoutKind.Sequential)] public struct MINMAXINFO { public POINT reserved, maxSize, maxPosition, minTrack, maxTrack; }
+            [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr window, uint flags);
+            [DllImport("user32.dll", SetLastError=true)] static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFO info);
+            [DllImport("user32.dll", SetLastError=true)] static extern IntPtr SendMessageTimeout(IntPtr window, uint message, UIntPtr wp, ref MINMAXINFO info, uint flags, uint timeout, out UIntPtr result);
+            public static MONITORINFO MonitorInfo(IntPtr window) {
+                IntPtr previous = SetThreadDpiAwarenessContext(new IntPtr(-4));
+                if (previous == IntPtr.Zero) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+                try {
+                var info = new MONITORINFO(); info.size = (uint)Marshal.SizeOf(info);
+                if (!GetMonitorInfo(MonitorFromWindow(window, 2), ref info))
+                    throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+                return info;
+                } finally { SetThreadDpiAwarenessContext(previous); }
+            }
+            public static MINMAXINFO TrackingLimits(IntPtr window) {
+                IntPtr previous = SetThreadDpiAwarenessContext(new IntPtr(-4));
+                if (previous == IntPtr.Zero) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+                try {
+                var info = new MINMAXINFO(); UIntPtr result;
+                if (SendMessageTimeout(window, 0x24, UIntPtr.Zero, ref info, 0x22, 1000, out result) == IntPtr.Zero)
+                    throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+                return info;
+                } finally { SetThreadDpiAwarenessContext(previous); }
+            }
             public static RECT PhysicalBounds(IntPtr window) {
                 IntPtr previous = SetThreadDpiAwarenessContext(new IntPtr(-4));
                 if (previous == IntPtr.Zero) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
@@ -1591,12 +1702,30 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                     -not [ItE2E.CombinedPhysicalResize]::IsIconic($hwnd)
             } | Out-Null
             $original = [ItE2E.CombinedPhysicalResize]::PhysicalBounds($hwnd)
-            $largeHeight = [Math]::Max(760, $original.Height + 160)
+            $monitor = [ItE2E.CombinedPhysicalResize]::MonitorInfo($hwnd)
+            $limits = [ItE2E.CombinedPhysicalResize]::TrackingLimits($hwnd)
+            $largeHeight = [Math]::Min($monitor.work.Height, [Math]::Max(760, $original.Height + 160))
+            if ($limits.maxTrack.Y -gt 0) { $largeHeight = [Math]::Min($largeHeight, $limits.maxTrack.Y) }
             [ItE2E.CombinedPhysicalResize]::ResizePhysical($hwnd, $original.Width, $largeHeight)
-            Wait-Until -TimeoutSec 10 -Because 'establish a measured large window before testing shrink' -Condition {
-                [Math]::Abs([ItE2E.CombinedPhysicalResize]::PhysicalBounds($hwnd).Height - $largeHeight) -lt 3
-            } | Out-Null
+            try {
+                Wait-Until -TimeoutSec 10 -Because 'establish a measured attainable large window before testing shrink' -Condition {
+                    [Math]::Abs([ItE2E.CombinedPhysicalResize]::PhysicalBounds($hwnd).Height - $largeHeight) -lt 3
+                } | Out-Null
+            }
+            finally {
+                $actualPlacement = [ItE2E.CombinedPhysicalResize+PLACEMENT]::new()
+                $actualPlacement.length = [Runtime.InteropServices.Marshal]::SizeOf($actualPlacement)
+                $placementRead = [ItE2E.CombinedPhysicalResize]::GetWindowPlacement($hwnd, [ref]$actualPlacement)
+                @{ dpi = $dpi; requested_physical_height = $largeHeight
+                    actual_frame = [ItE2E.CombinedPhysicalResize]::PhysicalBounds($hwnd)
+                    placement_read = $placementRead; placement = $actualPlacement
+                    work_area = $monitor.work; tracking_limits = $limits
+                    short_constraint_failure = ($limits.minTrack.Y -gt 640)
+                } | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $script:evidence 'C384-physical-large-frame.json')
+            }
             $large = [ItE2E.CombinedPhysicalResize]::PhysicalBounds($hwnd)
+            $large.Height | Should -BeGreaterThan 640 -Because 'the large state must actually exceed the strict short state'
+            $limits.minTrack.Y | Should -BeLessOrEqual 640 -Because 'an OS minimum above 640 is an explicit constraint failure, not a skip'
             $smallHeight = 640
             [ItE2E.CombinedPhysicalResize]::ResizePhysical($hwnd, $large.Width, $smallHeight)
             try {
@@ -1721,6 +1850,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         Set-CombinedQuery ''
         $title = "$script:marker-open-$('{0:D2}' -f $Index)"
         $beforeCount = Get-CombinedAttachedTabCount
+        $primaryFailure = $null
         try {
             Invoke-CombinedTabContext $title
             Invoke-UiElement -App $script:app -Selector KeepTabRunningMenuItem | Out-Null
@@ -1766,11 +1896,14 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 throw
             }
         }
+        catch { $primaryFailure = $_; throw }
         finally {
+            Invoke-CombinedCheckedCleanup -PrimaryFailure $primaryFailure -Action {
             if ($Status -eq 'Working') {
                 [IO.File]::WriteAllText($script:releasePromptPath, 'release')
             }
             Set-WtPaneFocus -App $script:app -SessionId $tab.session_id
+            }
         }
         if ($Status -eq 'Working') {
             Open-AgentPane -App $script:app | Out-Null
@@ -1818,6 +1951,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         Set-CombinedQuery ''
         $title = "$script:marker-open-02"
         $before = Get-CombinedAttachedTabCount
+        $primaryFailure = $null
         try {
             Invoke-CombinedTabContext $title
             Invoke-UiElement -App $script:app -Selector KeepTabRunningMenuItem | Out-Null
@@ -1847,8 +1981,11 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             $current.AcpSessionId | Should -Be $tab.FixtureSession.AcpSessionId
             $current.HelperProcessId | Should -Be $tab.FixtureSession.HelperProcessId
         }
+        catch { $primaryFailure = $_; throw }
         finally {
+            Invoke-CombinedCheckedCleanup -PrimaryFailure $primaryFailure -Action {
             Set-WtPaneFocus -App $script:app -SessionId $tab.session_id
+            }
         }
     }
 }

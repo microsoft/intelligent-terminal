@@ -5,6 +5,13 @@ BeforeAll {
     . (Join-Path $PSScriptRoot '..\tests\helpers\TestTerminalCleanup.ps1')
     Add-Type -AssemblyName UIAutomationClient
     Add-Type -AssemblyName UIAutomationTypes
+    $fixtureAst = [Management.Automation.Language.Parser]::ParseFile(
+        (Join-Path $PSScriptRoot '..\tests\Feature.CombinedAgentsSidebar.Tests.ps1'), [ref]$null, [ref]$null)
+    $checkedCleanup = $fixtureAst.FindAll({
+        param($node)
+        $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Invoke-CombinedCheckedCleanup'
+    }, $true)[0]
+    . ([scriptblock]::Create($checkedCleanup.Extent.Text))
 
     function Get-FixtureCleanup([string]$File, [string]$DescribeName) {
         $tokens = $null
@@ -26,7 +33,43 @@ BeforeAll {
     }
 }
 
+Describe 'Combined cleanup failure preservation' -Tag 'Unit' {
+    It 'retains original and cleanup exceptions independently' {
+        $primary = [Management.Automation.ErrorRecord]::new([Exception]::new('original'),
+            'original', [Management.Automation.ErrorCategory]::NotSpecified, $null)
+        try {
+            Invoke-CombinedCheckedCleanup -PrimaryFailure $primary -Action { throw 'cleanup' }
+            throw 'Expected aggregate'
+        }
+        catch {
+            $_.Exception | Should -BeOfType ([AggregateException])
+            $_.Exception.InnerExceptions.Count | Should -Be 2
+            $_.Exception.InnerExceptions[0].Message | Should -Be 'original'
+            $_.Exception.InnerExceptions[1].Message | Should -Be 'cleanup'
+        }
+    }
+    It 'never suppresses cleanup failure without a primary failure' {
+        { Invoke-CombinedCheckedCleanup -Action { throw 'cleanup' } } | Should -Throw '*cleanup*'
+    }
+}
+
 Describe 'Owned caption foreground safety' -Tag 'Unit' {
+    It 'fails closed on an unknown owned popup without changing foreground' {
+        InModuleScope ItE2E {
+            Initialize-WtWin32Input
+            $foreground = [ItE2E.ItWtWin32Input]::GetForegroundWindow()
+            [ItE2E.ItWtWin32Input]::IsOwnedRootOrPopup([IntPtr]::Zero, [IntPtr]::Zero, 1) | Should -BeFalse
+            [ItE2E.ItWtWin32Input]::GetForegroundWindow() | Should -Be $foreground
+        }
+    }
+    It 'gates physical clicks but does not refocus UIA pattern operations' {
+        InModuleScope ItE2E {
+            $source = (Get-Command Invoke-WinAppUi).Definition
+            $source | Should -Match "\`$UiArgs\[0\] -eq 'click' -and -not \(Set-WtWindowForeground"
+            $source | Should -Match '\$current.StartTime -ne \$App.OwnedProcess.StartTime'
+            $source | Should -Match 'GetAncestor\(\$hwnd, 2\) -ne \$hwnd'
+        }
+    }
     It 'rejects an invalid root without selecting a click point or changing foreground' {
         InModuleScope ItE2E {
             Initialize-WtWin32Input

@@ -52,6 +52,7 @@ function Initialize-WtWin32Input {
     [DllImport("user32.dll")] public static extern bool AllowSetForegroundWindow(uint dwProcessId);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
     [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr hWnd, uint flags);
+    [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr hWnd, uint command);
     [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
     [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
     [DllImport("user32.dll")] public static extern bool CloseDesktop(IntPtr desktop);
@@ -114,6 +115,19 @@ function Initialize-WtWin32Input {
         uint pid;
         GetWindowThreadProcessId(hWnd, out pid);
         return pid;
+    }
+
+    public static bool IsOwnedRootOrPopup(IntPtr window, IntPtr root, uint pid) {
+        if (!IsWindow(root) || GetAncestor(root, 2) != root || GetWindowProcessId(root) != pid)
+            return false;
+        for (int depth = 0; window != IntPtr.Zero && depth < 32; depth++) {
+            if (!IsWindow(window) || GetWindowProcessId(window) != pid) return false;
+            window = GetAncestor(window, 2);
+            if (window == root) return true;
+            if (GetWindowProcessId(window) != pid) return false;
+            window = GetWindow(window, 4); // GW_OWNER, bounded and same-process at every hop.
+        }
+        return false;
     }
 
     public static int[] GetCursorPosition() {
@@ -260,6 +274,14 @@ function Set-WtWindowForeground {
                 $App.OwnedProcess.Id -ne $App.Pid -or
                 $App.OwnedProcess.Path -ne (Join-Path $App.InstallLocation 'WindowsTerminal.exe')) {
                 throw 'Foreground acquisition requires the original test-owned executable identity.'
+            }
+            $current = Get-Process -Id $App.Pid -ErrorAction Stop
+            if ($current.StartTime -ne $App.OwnedProcess.StartTime -or $current.Path -ne $App.OwnedProcess.Path) {
+                throw 'Foreground acquisition requires the captured process/start-time lease.'
+            }
+            if ([ItE2E.ItWtWin32Input]::IsOwnedRootOrPopup(
+                [ItE2E.ItWtWin32Input]::GetForegroundWindow(), $hwnd, [uint32]$App.Pid)) {
+                return $true
             }
         }
         try {
@@ -473,14 +495,21 @@ function Invoke-WinAppUi {
         $UiArgs[0] -in @('click', 'invoke', 'set-value')) {
         if ($NoTarget -or -not $App.Launched -or -not $App.OwnedProcess -or
             $App.OwnedProcess.HasExited -or $App.OwnedProcess.Id -ne $App.Pid) {
-            throw 'Physical UI input requires the captured live test-owned Terminal.'
+            throw 'UI input requires the captured live test-owned Terminal.'
         }
         Initialize-WtWin32Input
         $hwnd = [IntPtr][int64]$App.Hwnd
-        if ([ItE2E.ItWtWin32Input]::GetWindowProcessId($hwnd) -ne $App.Pid) {
-            throw 'Physical UI target HWND no longer belongs to the owned Terminal.'
+        $current = Get-Process -Id $App.Pid -ErrorAction Stop
+        if ($current.StartTime -ne $App.OwnedProcess.StartTime -or
+            $current.Path -ne (Join-Path $App.InstallLocation 'WindowsTerminal.exe') -or
+            [ItE2E.ItWtWin32Input]::GetAncestor($hwnd, 2) -ne $hwnd -or
+            [ItE2E.ItWtWin32Input]::GetWindowProcessId($hwnd) -ne $App.Pid -or
+            @($UiArgs | Where-Object { $_ -match '^(?:-a|-w|--app|--window)(?:=|$)' }).Count) {
+            throw 'UI input requires the original root-scoped HWND and process/start-time lease.'
         }
-        if (-not (Set-WtWindowForeground -App $App -Attempts 3 -DelayMs 150)) {
+        # invoke and set-value use UIA patterns, not physical input (winapp 0.6.1 help).
+        # Refocusing the root here can dismiss the owned popup containing the target.
+        if ($UiArgs[0] -eq 'click' -and -not (Set-WtWindowForeground -App $App -Attempts 3 -DelayMs 150)) {
             $foregroundPid = [ItE2E.ItWtWin32Input]::GetWindowProcessId(
                 [ItE2E.ItWtWin32Input]::GetForegroundWindow())
             throw "Owned Terminal cannot acquire foreground; competing PID=$foregroundPid. No UI input sent."
