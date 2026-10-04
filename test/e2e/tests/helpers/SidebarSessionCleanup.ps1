@@ -1,3 +1,22 @@
+function Assert-SidebarWindowOwnership {
+    param($App)
+    if (-not $App.Hwnd -or -not $App.Pid) { throw 'Missing owned HWND/PID.' }
+    $windows = @(Get-WtWindowHwnds -App $App | Where-Object { $_.hwnd -eq $App.Hwnd })
+    if ($windows.Count -ne 1 -or $windows[0].pid -ne $App.Pid) {
+        throw 'Owned window handle/PID no longer match; refusing teardown.'
+    }
+}
+
+function Get-SidebarWindowPanes {
+    param($App)
+    if (-not $App.WindowId) { throw 'Missing verified logical window identity.' }
+    foreach ($tab in @(Get-WtTabs -App $App -WindowId $App.WindowId)) {
+        if ($tab.window_id -ne $App.WindowId) { throw 'Tab discovery returned another window.' }
+        Get-WtPanes -App $App -TabId $tab.tab_id -WindowId $App.WindowId |
+            Where-Object { $_.window_id -eq $App.WindowId }
+    }
+}
+
 function Invoke-SidebarSessionCleanup {
     [CmdletBinding()]
     param($App, $Target, [bool]$OwnsConfigBackup, [string]$SettingsHash,
@@ -5,19 +24,34 @@ function Invoke-SidebarSessionCleanup {
 
     $ErrorActionPreference = 'Stop'
     $failures = [System.Collections.Generic.List[string]]::new()
+    $ownershipConfirmed = $false
     if ($App) {
         try {
             Save-UiScreenshot -App $App -Path (Join-Path $Evidence 'final.png') | Out-Null
         }
         catch { $failures.Add("Final screenshot failed: $($_.Exception.Message)") }
         try {
-            if (-not $App.Launched -or -not $App.Pid) {
-                throw 'Terminal shutdown requires an owned launch context.'
+            if (-not $App.OwnedPaneIds.Count) {
+                throw 'Window teardown requires recorded fixture pane identities.'
             }
-            Stop-Terminal -App $App -RestoreSettings $false
+            foreach ($paneId in @($App.OwnedPaneIds)) {
+                $ownershipConfirmed = $false
+                $panes = @(Get-SidebarWindowPanes -App $App | Where-Object session_id -EQ $paneId)
+                if ($panes.Count -ne 1) { throw "Owned pane $paneId is not in the verified window; refusing teardown." }
+                Assert-SidebarWindowOwnership -App $App
+                $ownershipConfirmed = $true
+                # Do not use Close-WtPane: its NoThrow path hides close failures.
+                Invoke-WtCli -App $App -Arguments @('kill-pane', '-t', $paneId) | Out-Null
+            }
+            if (-not (Test-Until -TimeoutSec 10 -IntervalSec 0.2 -Condition {
+                -not @(Get-WtWindowHwnds -App $App | Where-Object { $_.hwnd -eq $App.Hwnd }).Count
+            })) {
+                throw 'Owned window did not close; no process-wide fallback is permitted.'
+            }
         }
-        catch { $failures.Add("Owned terminal shutdown failed: $($_.Exception.Message)") }
+        catch { $failures.Add("Owned window teardown failed: $($_.Exception.Message)") }
     }
+    elseif ($OwnsConfigBackup) { $failures.Add('No verified fixture window was returned; refusing teardown.') }
     if ($OwnsConfigBackup) {
         $inactive = $false
         try {
@@ -27,7 +61,7 @@ function Invoke-SidebarSessionCleanup {
             if (-not $inactive) { throw 'Selected package is still active; all recovery backups are retained.' }
         }
         catch { $failures.Add("Package inactivity check failed: $($_.Exception.Message)") }
-        if ($inactive) {
+        if ($inactive -and $ownershipConfirmed) {
             $settingsPreserved = $false
             try {
                 $currentHash = (Get-FileHash -LiteralPath $Target.SettingsPath -ErrorAction Stop).Hash
@@ -38,7 +72,7 @@ function Invoke-SidebarSessionCleanup {
             }
             catch { $failures.Add("Settings preservation check failed: $($_.Exception.Message)") }
 
-            # State belongs to the test window; settings checks must not block its recovery.
+            # Recover package state only after inactivity; settings checks must not block it.
             $statePreserved = $false
             try {
                 $path = $Target.StatePath

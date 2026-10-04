@@ -89,11 +89,22 @@ namespace ItE2E
         $script:app = $script:target.PSObject.Copy()
         $script:app.Hwnd = $window.hwnd
         $script:app.Pid = $window.pid
-        $script:app | Add-Member -NotePropertyName Launched -NotePropertyValue $true
+        # A fixture HWND never grants ownership of its potentially shared process.
+        $script:app | Add-Member -NotePropertyName Launched -NotePropertyValue $false
+        $script:app | Add-Member -NotePropertyName OwnedPaneIds -NotePropertyValue ([Collections.Generic.List[string]]::new())
         Resolve-WtComClsid -App $script:app | Out-Null
-        $active = Get-ActivePane -App $script:app
+        Assert-SidebarWindowOwnership -App $script:app
+        $tabs = @(foreach ($protocolWindow in @(Get-WtWindows -App $script:app)) {
+            Get-WtTabs -App $script:app -WindowId $protocolWindow.window_id | Where-Object title -EQ $title
+        })
+        if ($tabs.Count -ne 1) { throw 'Cannot uniquely identify the fixture tab in the protocol.' }
+        $panes = @(Get-WtPanes -App $script:app -TabId $tabs[0].tab_id -WindowId $tabs[0].window_id |
+            Where-Object { $_.window_id -eq $tabs[0].window_id -and -not $_.is_agent_pane })
+        if ($panes.Count -ne 1) { throw 'Cannot uniquely identify the fixture pane in the protocol.' }
+        $active = $panes[0]
         $script:pane = $active.session_id
         $script:app | Add-Member -NotePropertyName WindowId -NotePropertyValue $active.window_id
+        $script:app.OwnedPaneIds.Add($script:pane)
         $script:pipe = (Get-Content -LiteralPath (Join-Path $script:app.LocalStateDir 'IntelligentTerminal\master-pipe.txt') -Raw).Trim()
         $script:liveId = "$script:marker-live"
         $script:liveTitle = "$script:marker-live"
@@ -287,7 +298,19 @@ namespace ItE2E
     }
 
     It 'Activity-time sorting still moves the newer live session first' {
-        $beta = New-WtTab -App $script:app -Title "$script:marker-beta" -Command 'pwsh -NoLogo -NoProfile -NoExit'
+        Assert-SidebarWindowOwnership -App $script:app
+        [ItE2E.SidebarScrollActivation]::Launch($script:app.AppUserModelId,
+            ('-w ' + $script:app.WindowId + ' new-tab --title "' + "$script:marker-beta" + '" pwsh -NoLogo -NoProfile -NoExit'))
+        $beta = Wait-Until -TimeoutSec 15 -Because 'the beta fixture appears in the owned logical window' -Condition {
+            $tabs = @(Get-WtTabs -App $script:app -WindowId $script:app.WindowId |
+                Where-Object title -EQ "$script:marker-beta")
+            if ($tabs.Count -eq 1) {
+                $panes = @(Get-WtPanes -App $script:app -TabId $tabs[0].tab_id -WindowId $script:app.WindowId |
+                    Where-Object { $_.window_id -eq $script:app.WindowId -and -not $_.is_agent_pane })
+                if ($panes.Count -eq 1) { $panes[0] }
+            }
+        }
+        $script:app.OwnedPaneIds.Add($beta.session_id)
         $betaId = "$script:marker-live-beta"
         Send-Hooks -Pane $beta.session_id -Events @((New-Hook -Event agent.session.start -Id $betaId))
         $search = Get-SidebarElement HistorySearchTextBox

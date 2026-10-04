@@ -18,15 +18,39 @@ Describe 'Sidebar scroll safe cleanup' -Tag Unit {
         Copy-Item $script:target.SettingsPath "$($script:target.SettingsPath).e2ebak" -Force
         Copy-Item $script:target.StatePath "$($script:target.StatePath).e2ebak" -Force
         'test state' | Set-Content -LiteralPath $script:target.StatePath
-        $script:owned = [pscustomobject]@{ Launched = $true; Pid = 123 }
+        $script:owned = [pscustomobject]@{ Launched = $false; Pid = 123; Hwnd = 456; WindowId = 7; OwnedPaneIds = @('pane-a', 'pane-b') }
+        $script:remaining = @('pane-a', 'pane-b')
         Mock Save-UiScreenshot {}
-        Mock Stop-Terminal {}
+        Mock Stop-Terminal { throw 'Process-wide shutdown is forbidden.' }
+        Mock Get-WtWindowHwnds {
+            if ($script:remaining.Count) { [pscustomobject]@{ hwnd = 456; pid = 123 } }
+            [pscustomobject]@{ hwnd = 999; pid = 123 }
+        }
+        Mock Get-WtTabs { [pscustomobject]@{ tab_id = 0; window_id = 7 } }
+        Mock Get-WtPanes {
+            foreach ($id in $script:remaining) { [pscustomobject]@{ session_id = $id; window_id = 7 } }
+            [pscustomobject]@{ session_id = 'unrelated'; window_id = 8 }
+        }
+        Mock Invoke-WtCli {
+            param($Arguments)
+            $Arguments[0] | Should -Be 'kill-pane'
+            $Arguments[2] | Should -BeIn @('pane-a', 'pane-b')
+            $script:remaining = @($script:remaining | Where-Object { $_ -ne $Arguments[2] })
+        }
         Mock Get-WtProcessesForApp { @() }
         Mock Test-Until { param($Condition) & $Condition }
         function Invoke-Cleanup {
             Invoke-SidebarSessionCleanup -App $script:owned -Target $script:target -OwnsConfigBackup $true `
                 -SettingsHash $script:settingsHash -StateHash $script:stateHash -Evidence $TestDrive
         }
+    }
+
+    AfterEach {
+        Should -Invoke Stop-Terminal -Exactly -Times 0
+        Should -Invoke Invoke-WtCli -Exactly -Times 0 -ParameterFilter {
+            $Arguments[2] -eq 'unrelated'
+        }
+        Should -Invoke Get-WtPanes -Exactly -Times 0 -ParameterFilter { $WindowId -ne 7 }
     }
 
     It 'recovers normal state without writing unchanged settings' {
@@ -38,13 +62,13 @@ Describe 'Sidebar scroll safe cleanup' -Tag Unit {
         (Get-FileHash $script:target.StatePath).Hash | Should -Be $script:stateHash
         Test-Path "$($script:target.SettingsPath).e2ebak" | Should -BeFalse
         Test-Path "$($script:target.StatePath).e2ebak" | Should -BeFalse
-        Should -Invoke Stop-Terminal -Exactly -Times 1 -ParameterFilter { -not $RestoreSettings }
+        Should -Invoke Invoke-WtCli -Exactly -Times 2
     }
 
     It 'reports screenshot failure after shutdown and state recovery' {
         Mock Save-UiScreenshot { throw 'screenshot unavailable' }
         { Invoke-Cleanup } | Should -Throw '*screenshot unavailable*'
-        Should -Invoke Stop-Terminal -Exactly -Times 1
+        Should -Invoke Invoke-WtCli -Exactly -Times 2
         (Get-FileHash $script:target.StatePath).Hash | Should -Be $script:stateHash
     }
 
@@ -54,7 +78,7 @@ Describe 'Sidebar scroll safe cleanup' -Tag Unit {
         $failure = try { Invoke-Cleanup; $null } catch { $_ }
         $failure.Exception.Message | Should -Match 'screenshot unavailable'
         $failure.Exception.Message | Should -Match 'Settings preservation check failed'
-        Should -Invoke Stop-Terminal -Exactly -Times 1
+        Should -Invoke Invoke-WtCli -Exactly -Times 2
         (Get-FileHash $script:target.StatePath).Hash | Should -Be $script:stateHash
         (Get-Content $script:target.SettingsPath -Raw).Trim() | Should -Be 'external edit'
         (Get-FileHash "$($script:target.SettingsPath).e2ebak").Hash | Should -Be $script:settingsHash
@@ -82,13 +106,73 @@ Describe 'Sidebar scroll safe cleanup' -Tag Unit {
     }
 
     It 'refuses all file recovery while the selected package remains active' {
-        Mock Get-WtProcessesForApp { [pscustomobject]@{ Id = 999 } }
+        Mock Get-WtProcessesForApp { [pscustomobject]@{ Id = 123 } }
         { Invoke-Cleanup } | Should -Throw '*still active*'
+        Should -Invoke Invoke-WtCli -Exactly -Times 2
         (Get-Content $script:target.StatePath -Raw).Trim() | Should -Be 'test state'
         Test-Path "$($script:target.SettingsPath).e2ebak" | Should -BeTrue
         Test-Path "$($script:target.StatePath).e2ebak" | Should -BeTrue
     }
 
+    It 'refuses teardown when the owned HWND has another PID' {
+        Mock Get-WtWindowHwnds { [pscustomobject]@{ hwnd = 456; pid = 999 } }
+        { Invoke-Cleanup } | Should -Throw '*handle/PID no longer match*'
+        Should -Invoke Invoke-WtCli -Exactly -Times 0
+        Test-Path "$($script:target.SettingsPath).e2ebak" | Should -BeTrue
+        Test-Path "$($script:target.StatePath).e2ebak" | Should -BeTrue
+    }
+
+    It 'retains backups when fixture pane ownership was never established' {
+        $script:owned.OwnedPaneIds = @()
+        { Invoke-Cleanup } | Should -Throw '*recorded fixture pane identities*'
+        Should -Invoke Invoke-WtCli -Exactly -Times 0
+        (Get-Content $script:target.StatePath -Raw).Trim() | Should -Be 'test state'
+        Test-Path "$($script:target.SettingsPath).e2ebak" | Should -BeTrue
+        Test-Path "$($script:target.StatePath).e2ebak" | Should -BeTrue
+    }
+
+    It 'reports failed activation without guessing process ownership' {
+        $script:owned = $null
+        { Invoke-Cleanup } | Should -Throw '*No verified fixture window*'
+        Should -Invoke Invoke-WtCli -Exactly -Times 0
+        Test-Path "$($script:target.SettingsPath).e2ebak" | Should -BeTrue
+        Test-Path "$($script:target.StatePath).e2ebak" | Should -BeTrue
+    }
+
+    It 'refuses to close a fixture pane moved to another shared-PID window' {
+        Mock Get-WtPanes { [pscustomobject]@{ session_id = 'pane-a'; window_id = 8 } }
+        Mock Get-WtProcessesForApp { [pscustomobject]@{ Id = 123 } }
+        { Invoke-Cleanup } | Should -Throw '*not in the verified window*'
+        Should -Invoke Invoke-WtCli -Exactly -Times 0
+        Test-Path "$($script:target.StatePath).e2ebak" | Should -BeTrue
+    }
+
+    It 'rechecks HWND/PID before closing the second fixture tab' {
+        Mock Get-WtWindowHwnds {
+            [pscustomobject]@{ hwnd = 456; pid = $(if ($script:remaining.Count -eq 2) { 123 } else { 999 }) }
+        }
+        { Invoke-Cleanup } | Should -Throw '*handle/PID no longer match*'
+        Should -Invoke Invoke-WtCli -Exactly -Times 1
+        $script:remaining | Should -Contain 'pane-b'
+        Test-Path "$($script:target.SettingsPath).e2ebak" | Should -BeTrue
+        Test-Path "$($script:target.StatePath).e2ebak" | Should -BeTrue
+    }
+
+    It 'never closes an unrecorded tab in the fixture window' {
+        Mock Get-WtWindowHwnds { [pscustomobject]@{ hwnd = 456; pid = 123 } }
+        Mock Get-WtProcessesForApp { [pscustomobject]@{ Id = 123 } }
+        { Invoke-Cleanup } | Should -Throw '*no process-wide fallback*'
+        Should -Invoke Invoke-WtCli -Exactly -Times 2
+        Test-Path "$($script:target.SettingsPath).e2ebak" | Should -BeTrue
+        Test-Path "$($script:target.StatePath).e2ebak" | Should -BeTrue
+    }
+
+    It 'reports close failure without a process-wide fallback' {
+        Mock Invoke-WtCli { throw 'pane close failed' }
+        Mock Get-WtProcessesForApp { [pscustomobject]@{ Id = 123 } }
+        { Invoke-Cleanup } | Should -Throw '*pane close failed*'
+        Test-Path "$($script:target.StatePath).e2ebak" | Should -BeTrue
+    }
     It 'retains both backups when package inactivity cannot be confirmed' {
         Mock Get-WtProcessesForApp { throw 'process discovery unavailable' }
         { Invoke-Cleanup } | Should -Throw '*process discovery unavailable*'
