@@ -4,7 +4,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('fre', 'agents')]
+    [ValidateSet('fre', 'fre-settings', 'agents')]
     [string]$Surface,
 
     [Parameter(Mandatory)]
@@ -64,6 +64,23 @@ namespace IntelligentTerminal.Accessibility
 
     public static class PackagedApp
     {
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool CloseDesktop(IntPtr desktop);
+
+        public static void VerifyInteractiveDesktop()
+        {
+            if (!Environment.UserInteractive || System.Diagnostics.Process.GetCurrentProcess().SessionId == 0)
+                throw new InvalidOperationException("Native accessibility requires an interactive user session, not session 0.");
+            var desktop = OpenInputDesktop(0, false, 1);
+            if (desktop == IntPtr.Zero)
+                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "Cannot access the input desktop.");
+            if (!CloseDesktop(desktop))
+                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "Cannot close the input desktop handle.");
+        }
+
         public static uint Activate(string appUserModelId, string arguments)
         {
             var manager = (IApplicationActivationManager)new ApplicationActivationManager();
@@ -113,6 +130,24 @@ $axeExitCode = $null
 
 try
 {
+    if (Test-Path -LiteralPath $axeResultPath)
+    {
+        Remove-Item -LiteralPath $axeResultPath -Force
+    }
+    [IntelligentTerminal.Accessibility.PackagedApp]::VerifyInteractiveDesktop()
+    [xml]$manifest = Get-Content -LiteralPath $resolvedManifest -Raw
+    foreach ($dependency in $manifest.Package.Dependencies.PackageDependency)
+    {
+        $installed = @(Get-AppxPackage -Name $dependency.Name | Where-Object {
+            $_.Architecture -eq 'X64' -and
+            [version]$_.Version -ge [version]$dependency.MinVersion -and
+            $_.Publisher -eq $dependency.Publisher
+        })
+        if ($installed.Count -eq 0)
+        {
+            throw "Required x64 framework is not installed for this user: $($dependency.Name) >= $($dependency.MinVersion)."
+        }
+    }
     Add-AppxPackage -Register $resolvedManifest -ForceApplicationShutdown
     $package = Get-AppxPackage -Name 'WindowsTerminal.TestHost' |
         Sort-Object Version -Descending |
@@ -123,9 +158,10 @@ try
     }
 
     $appUserModelId = "$($package.PackageFamilyName)!taef.executionengine.universal.App"
+    $launchSurface = if ($Surface -eq 'fre-settings') { 'fre' } else { $Surface }
     $processId = [IntelligentTerminal.Accessibility.PackagedApp]::Activate(
         $appUserModelId,
-        "--accessibility-page=$Surface")
+        "--accessibility-page=$launchSurface")
 
     $deadline = [DateTimeOffset]::UtcNow.AddSeconds($LaunchTimeoutSeconds)
     do
@@ -141,6 +177,10 @@ try
     if (-not $process -or -not $process.Responding)
     {
         throw "The $Surface accessibility surface did not become responsive within $LaunchTimeoutSeconds seconds."
+    }
+    if ($process.SessionId -ne (Get-Process -Id $PID).SessionId)
+    {
+        throw 'The test host and scanner are not in the same user session.'
     }
 
     Start-Sleep -Seconds 2
@@ -171,6 +211,10 @@ try
     {
         0
         {
+            if (-not (Test-Path -LiteralPath $axeResultPath))
+            {
+                throw 'Axe.Windows exited successfully without producing scan evidence.'
+            }
             $status = 'PASS'
             $reason = 'Axe.Windows completed and found no Error-level rules.'
         }

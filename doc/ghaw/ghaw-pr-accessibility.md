@@ -15,6 +15,18 @@ head blobs. Only after deterministic preparation does it switch the worktree to
 the verified immutable head for model inspection. It never imports or executes
 pull-request code.
 
+Preparation also stages the domain skill from the trusted base into
+`$RUNNER_TEMP/gh-aw/accessibility-trusted/SKILL.md`. The prepared evidence and
+validator live alongside it in gh-aw's read-only runtime mount, rather than
+the agent-writable output directory. Post-validation uses that staged validator,
+checks Git object integrity, and ignores replacement refs. The agent uses the
+trusted skill copy and Copilot bare
+mode disables automatic custom instructions. Preparation rejects PR changes
+to operating configuration directories or instruction/agent/skill files before
+head checkout or agent startup. This conservative policy intentionally blocks
+mixed UI-and-configuration PRs; they need a separate trusted review lane rather
+than loading their configuration as agent instructions.
+
 The model receives only read-only Git commands. Pull-request files, comments,
 logs, and attachments remain untrusted. A final deterministic gate verifies the
 structured report, exact source SHA, allowed patch paths, high-severity and
@@ -25,6 +37,11 @@ attestation only after the candidate matches. A separate post-step queries the
 current PR head immediately before safe-output publication. Workflow
 concurrency and that freshness check narrow, but cannot eliminate, the
 asynchronous race between the check and publication.
+
+The compiled safe-output job also requires the agent job to succeed, so a
+failed post-step validator cannot publish previously queued branch writes.
+Validated final JSON is retained as an artifact; advisory details are included
+in the job summary without introducing a second publication mode.
 
 Fork pull requests are review-only. The report validator rejects both `fixed`
 dispositions and worktree changes for forks. Same-repository fixes use
@@ -94,21 +111,47 @@ results.
 The same workflow also runs an independent `Native Axe.Windows smoke` job on
 an ephemeral GitHub-hosted Windows runner. It checks out the immutable PR head
 without persisted credentials, builds the existing packaged `TestHostApp`, and
-launches two real product surfaces:
+launches real product surfaces in three visible states:
 
 - `--accessibility-page=fre` hosts `TerminalApp::FreOverlay` initialized from
   default settings.
 - `--accessibility-page=agents` hosts the real Agents settings page and its
   production view model directly, avoiding unrelated full-settings startup.
+- The `fre-settings` scan launches FRE, invokes the real Next button through
+  UI Automation, and waits for the visible `TabModeComboBox` before scanning.
 
 The job downloads Axe.Windows 2.4.2, verifies the archive's pinned SHA-256,
 scans both host windows through its supported automation API, and uploads
 structured rule/element evidence and per-surface logs. The API uses
 `OutputFileFormat.None` because `.a11ytest` generation unconditionally captures
 a screenshot and can fail on CI desktops even when UI Automation is available.
+A UIA hierarchy JSON is retained for each state, including successful scans,
+with runtime/parent IDs, names, control types, and visibility/focusability.
+Each scan also records its visible state marker; window count alone is not a
+surface-readiness assertion.
 A blocked launch, scan failure, or Error-level Axe rule fails the native job.
 These results are deliberately separate from the model-authored report and
 cannot authorize an automatic repair.
+The scanner and launch harness are checked out from the immutable trusted base,
+not executed from PR-controlled script files. Enforcement requires all three
+structured results and matching source, process, state, and hierarchy evidence,
+rather than accepting successful step exit codes alone. The build and scan
+still share a runner: this is smoke evidence, not tamper-resistant attestation
+against hostile candidate build code. It must never authorize a runtime repair.
+
+The native job installs the framework packages listed in the generated
+TestHostApp appx recipe using the existing build helper and Windows PowerShell.
+The harness checks required x64 package identities/versions for the activating
+user, input-desktop access, and matching host/scanner user sessions. These are
+fail-closed prerequisites, not evidence that every hosted Windows image provides
+an interactive desktop.
+
+The source-review agent depends only on activation, not on the Windows job.
+The Windows job runs after the agent (including an agent failure), unless the
+run was cancelled or the agent was skipped.
+A missing Windows prerequisite therefore fails the native check without
+suppressing source review. A scan that returns zero windows is blocked rather
+than treated as a zero-error pass.
 
 The smallest repository-owned runtime extension is a focused test in
 `src/cascadia/WindowsTerminal_UIATests` that navigates to the affected state,
@@ -151,6 +194,13 @@ test\accessibility\Invoke-AxeWindowsTestHost.ps1 `
 
 test\accessibility\Invoke-AxeWindowsTestHost.ps1 `
     -Surface agents `
+    -ManifestPath bin\x64\Debug\TestHostApp\AppxManifest.xml `
+    -AxePath <path-to-AxeWindowsCLI.exe> `
+    -OutputDirectory <artifact-directory> `
+    -SourceSha (git rev-parse HEAD)
+
+test\accessibility\Invoke-AxeWindowsTestHost.ps1 `
+    -Surface fre-settings `
     -ManifestPath bin\x64\Debug\TestHostApp\AppxManifest.xml `
     -AxePath <path-to-AxeWindowsCLI.exe> `
     -OutputDirectory <artifact-directory> `

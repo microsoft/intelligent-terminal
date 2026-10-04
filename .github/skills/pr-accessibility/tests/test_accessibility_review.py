@@ -1,7 +1,13 @@
 import importlib.util
+import contextlib
+import io
 import json
+import os
+import re
+import shutil
 import subprocess
 import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 
@@ -345,6 +351,56 @@ class ValidationTests(unittest.TestCase):
         self.assertIn(".idl", MODULE.UI_SUFFIXES)
         self.assertNotIn(".idl", MODULE.PATCH_SUFFIXES)
 
+    def test_changed_ambient_configuration_blocks_preparation(self):
+        for relative in ("AGENTS.md", ".github/hooks/launch.json", "src/cascadia/TerminalApp/AGENTS.md"):
+            path = self.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("PR-controlled operating configuration\n", encoding="utf-8")
+        subprocess.run(["git", "add", "."], cwd=self.root, check=True)
+        subprocess.run(["git", "commit", "-qm", "Change ambient configuration"], cwd=self.root, check=True)
+        head = MODULE._git(self.root, "rev-parse", "HEAD").strip()
+        with self.assertRaisesRegex(ValueError, "blocked before agent startup"):
+            MODULE.prepare(self.root, self.head, head, self.workspace / "blocked.json", None)
+        self.assertFalse((self.workspace / "blocked.json").exists())
+
+    def test_source_only_changes_preserve_instruction_boundary(self):
+        path = self.root / "src/cascadia/TerminalApp/Test.xaml"
+        path.write_text('<Button Width="200" Content="Open" />\n', encoding="utf-8")
+        subprocess.run(["git", "add", "."], cwd=self.root, check=True)
+        subprocess.run(["git", "commit", "-qm", "Change only source"], cwd=self.root, check=True)
+        head = MODULE._git(self.root, "rev-parse", "HEAD").strip()
+        MODULE.prepare(self.root, self.head, head, self.workspace / "source-only.json", None)
+        self.assertTrue((self.workspace / "source-only.json").exists())
+
+    def test_git_replacement_refs_do_not_change_reviewed_blobs(self):
+        path = self.root / "src/cascadia/TerminalApp/Test.xaml"
+        path.write_text('<Button Content="Forged" />\n', encoding="utf-8")
+        subprocess.run(["git", "add", "."], cwd=self.root, check=True)
+        subprocess.run(["git", "commit", "-qm", "Create replacement candidate"], cwd=self.root, check=True)
+        replacement = MODULE._git(self.root, "rev-parse", "HEAD").strip()
+        subprocess.run(["git", "replace", self.head, replacement], cwd=self.root, check=True)
+        original = MODULE._git(self.root, "show", f"{self.head}:src/cascadia/TerminalApp/Test.xaml")
+        self.assertIn('AccessibilityView="Raw"', original)
+        self.assertNotIn("Forged", original)
+
+    def test_advisory_details_survive_in_summary(self):
+        finding = self.finding(
+            severity="MEDIUM",
+            disposition="advice",
+            observed="Observed advisory detail",
+            expected="Expected advisory detail",
+            evidence="Advisory source evidence",
+            proposed_fix="Suggested advisory fix",
+        )
+        summary = io.StringIO()
+        with contextlib.redirect_stdout(summary):
+            MODULE.validate(
+                self.root, self.head, self.head, True, self.prepared, self.report([finding])
+            )
+        for detail in ("Advisory findings", finding["file"], finding["observed"], finding["expected"],
+                       finding["evidence"], finding["proposed_fix"]):
+            self.assertIn(detail, summary.getvalue())
+
     def test_literal_accessible_string_patch_is_rejected(self):
         path = self.root / "src/cascadia/TerminalApp/Test.xaml"
         path.write_text('<Button AutomationProperties.Name="Open" />\n', encoding="utf-8")
@@ -360,6 +416,90 @@ class ValidationTests(unittest.TestCase):
 
 
 class WorkflowContractTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == "nt" and shutil.which("pwsh"), "Windows PowerShell host required")
+    def test_native_enforcement_rejects_success_without_state_evidence(self):
+        root = Path(__file__).parents[4]
+        workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
+        section = workflow.split("      - name: Enforce native scan results", 1)[1].split("\nsteps:", 1)[0]
+        script = textwrap.dedent(section.split("        run: |\n", 1)[1])
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            sha = "a" * 40
+            markers = {"fre": "NextButton", "fre-settings": "TabModeComboBox", "agents": "AcpAgentComboBox"}
+            for surface, marker in markers.items():
+                output = directory / "accessibility-results" / surface
+                output.mkdir(parents=True)
+                scan_path = output / "axe-results.json"
+                tree_path = output / "uia-tree.json"
+                (output / "result.json").write_text(json.dumps({
+                    "status": "PASS", "source_sha": sha, "surface": surface,
+                    "process_id": 42, "axe_results": str(scan_path),
+                }), encoding="utf-8")
+                scan_path.write_text(json.dumps({
+                    "scan_id": surface, "process_id": 42, "window_count": 1, "error_count": 0,
+                    "visible_state_marker": marker, "uia_tree": str(tree_path),
+                }), encoding="utf-8")
+                tree_path.write_text(json.dumps([{
+                    "automation_id": marker, "is_offscreen": False, "process_id": 42,
+                }]), encoding="utf-8")
+            environment = dict(os.environ, RUNNER_TEMP=temporary, SOURCE_SHA=sha,
+                               FRE_OUTCOME="success", AGENTS_OUTCOME="success", FRE_SETTINGS_OUTCOME="success")
+
+            def enforce():
+                return subprocess.run(
+                    ["pwsh", "-NoProfile", "-Command", script],
+                    env=environment, capture_output=True, text=True, timeout=30,
+                )
+
+            valid = enforce()
+            self.assertEqual(0, valid.returncode, valid.stderr)
+            tree_path.write_text("[]", encoding="utf-8")
+            empty = enforce()
+            self.assertNotEqual(0, empty.returncode)
+            self.assertIn("hierarchy lacks", empty.stderr)
+            (directory / "accessibility-results" / "fre" / "result.json").unlink()
+            missing = enforce()
+            self.assertNotEqual(0, missing.returncode)
+
+    def test_compiled_agent_disables_custom_instructions(self):
+        root = Path(__file__).parents[4]
+        compiled = (root / ".github/workflows/ghaw-pr-accessibility.lock.yml").read_text(encoding="utf-8")
+        self.assertIn("--no-custom-instructions", compiled)
+        self.assertIn("--agent pr-accessibility", compiled)
+
+    def test_failed_validation_blocks_compiled_publication(self):
+        root = Path(__file__).parents[4]
+        compiled = (root / ".github/workflows/ghaw-pr-accessibility.lock.yml").read_text(encoding="utf-8")
+        publication = re.split(r"\n  [a-zA-Z][\w-]*:\n", compiled.split("\n  safe_outputs:\n", 1)[1], maxsplit=1)[0]
+        condition = publication.split("\n    if:", 1)[1].split("\n    runs-on:", 1)[0]
+        self.assertIn("needs.agent.result == 'success'", condition)
+
+    def test_validated_report_is_uploaded_after_validation(self):
+        root = Path(__file__).parents[4]
+        workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
+        self.assertLess(workflow.index("name: Validate final findings"), workflow.index("name: Upload validated accessibility report"))
+        self.assertIn("path: /tmp/gh-aw/accessibility/final.json", workflow)
+
+    def test_skill_is_staged_from_trusted_base_before_head_checkout(self):
+        root = Path(__file__).parents[4]
+        workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
+        stage = workflow.index('git show "$BASE_SHA:.github/skills/pr-accessibility/SKILL.md"')
+        checkout = workflow.index('git checkout --detach "$HEAD_SHA"')
+        self.assertLess(stage, checkout)
+        self.assertIn("Follow `$RUNNER_TEMP/gh-aw/accessibility-trusted/SKILL.md`", workflow)
+        self.assertIn('--prepared "$TRUSTED_ACCESSIBILITY/prepared.json"', workflow)
+        self.assertIn("--no-replace-objects", workflow)
+        compiled = (root / ".github/workflows/ghaw-pr-accessibility.lock.yml").read_text(encoding="utf-8")
+        self.assertIn('--mount "${RUNNER_TEMP}/gh-aw:${RUNNER_TEMP}/gh-aw:ro"', compiled)
+
+    def test_compiled_source_review_does_not_wait_for_native_runtime(self):
+        root = Path(__file__).parents[4]
+        compiled = (root / ".github/workflows/ghaw-pr-accessibility.lock.yml").read_text(encoding="utf-8")
+        agent = re.split(r"\n  [a-zA-Z][\w-]*:\n", compiled.split("\n  agent:\n", 1)[1], maxsplit=1)[0]
+        self.assertRegex(agent, r"(?m)^    needs: activation$")
+        runtime = re.split(r"\n  [a-zA-Z][\w-]*:\n", compiled.split("\n  native-runtime:\n", 1)[1], maxsplit=1)[0]
+        self.assertRegex(runtime, r"(?m)^    needs: agent$")
+
     def test_pr_publication_is_single_mode_and_fail_closed(self):
         root = Path(__file__).parents[4]
         workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
@@ -378,6 +518,13 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("AECA43F41C89B3FFB1DB84011539E609ECD7CB3BADD6E78FADA2ADA327D10A64", workflow)
         self.assertIn("-Surface fre", workflow)
         self.assertIn("-Surface agents", workflow)
+        self.assertIn("-Surface fre-settings", workflow)
+        self.assertIn("Get-DependenciesFromAppxRecipe.ps1", workflow)
+        self.assertIn("shell: powershell", workflow)
+        self.assertIn("FRE_SETTINGS_OUTCOME", workflow)
+        self.assertIn("name: Checkout trusted native harness", workflow)
+        self.assertIn("trusted-accessibility\\test\\accessibility\\Invoke-AxeWindowsTestHost.ps1", workflow)
+        self.assertIn("hierarchy lacks its visible state marker", workflow)
         self.assertIn("Native accessibility scan failed or was blocked", workflow)
 
     def test_native_runtime_harness_targets_only_test_host_package(self):
@@ -391,6 +538,14 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("Failed to restore the previous WindowsTerminal.TestHost registration", harness)
         self.assertIn("OutputFileFormat]::None", scan)
         self.assertIn("Axe.Windows.Automation.ScannerFactory", scan)
+        self.assertIn("there is no runtime accessibility evidence", scan)
+        self.assertIn("VerifyInteractiveDesktop", harness)
+        self.assertIn("$process.SessionId", harness)
+        self.assertIn("$dependency.MinVersion", harness)
+        self.assertIn("[version]$_.Version -ge [version]$dependency.MinVersion", harness)
+        self.assertIn("Wait-VisibleElement", scan)
+        self.assertIn("'TabModeComboBox'", scan)
+        self.assertIn("'uia-tree.json'", scan)
 
 
 if __name__ == "__main__":

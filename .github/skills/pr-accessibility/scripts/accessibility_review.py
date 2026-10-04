@@ -65,7 +65,7 @@ STATIC_RAW_VIEW_RECIPE = "AXSTATIC001-remove-raw-view"
 
 def _git(root: Path, *args: str) -> str:
     result = subprocess.run(
-        ["git", *args],
+        ["git", "--no-replace-objects", "-c", "core.fsmonitor=false", *args],
         cwd=root,
         check=False,
         capture_output=True,
@@ -258,6 +258,26 @@ def _review_surfaces(path: str, text: str, changed: set[int]) -> list[str]:
     return [name for name, pattern in checks if re.search(pattern, selected, re.I)]
 
 
+def _verify_instruction_boundary(root: Path, base: str, head: str) -> None:
+    changed = _git(root, "diff", "--name-only", "-z", "--no-renames", base, head, "--").split("\0")
+    configuration_directories = {".github", ".claude", ".copilot", ".agents", ".gemini"}
+    instruction_names = {"agents.md", "claude.md", "gemini.md", "copilot-instructions.md", "skill.md", ".mcp.json"}
+    blocked = []
+    for path in changed:
+        if not path:
+            continue
+        parts = Path(path.lower()).parts
+        if (configuration_directories.intersection(parts)
+                or parts[-1] in instruction_names
+                or parts[-1].endswith((".instructions.md", ".agent.md"))):
+            blocked.append(path)
+    if blocked:
+        raise ValueError(
+            "PR changes operating instructions/configuration; source review is blocked before agent startup: "
+            + ", ".join(sorted(blocked))
+        )
+
+
 def prepare(root: Path, base: str, head: str, output: Path, changed_files: Path | None) -> None:
     if not re.fullmatch(r"[0-9a-fA-F]{40}", head):
         raise ValueError("head SHA must be an exact 40-character hexadecimal value")
@@ -266,6 +286,7 @@ def prepare(root: Path, base: str, head: str, output: Path, changed_files: Path 
     else:
         if not re.fullmatch(r"[0-9a-fA-F]{40}", base):
             raise ValueError("base SHA must be an exact 40-character hexadecimal value")
+        _verify_instruction_boundary(root, base, head)
         paths = _changed_paths(root, base, head)
 
     findings: list[dict[str, Any]] = []
@@ -541,6 +562,14 @@ def validate(
         print("### Must fix / blocked")
         for item in remaining:
             print(f"- `{item['stable_id']}` `{item['file']}:{item['line']}` — {item['impact']}")
+    advisory = [item for item in findings if item.get("disposition") in {"advice", "skipped"}]
+    if advisory:
+        print("")
+        print("### Advisory findings")
+        for item in advisory:
+            print(f"- `{item['stable_id']}` `{item['file']}:{item['line']}` — {item['impact']}")
+            for field in ("observed", "expected", "evidence", "proposed_fix"):
+                print(f"  {field}: {json.dumps(item[field], ensure_ascii=True)}")
 
 
 def main() -> int:
