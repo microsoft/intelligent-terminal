@@ -107,6 +107,55 @@ Describe 'Owned caption foreground safety' -Tag 'Unit' {
     }
 }
 
+Describe 'Background canonical header context source safety' -Tag 'Unit' {
+    BeforeAll {
+        $script:groupContextSource = $fixtureAst.FindAll({
+            param($node)
+            $node -is [Management.Automation.Language.FunctionDefinitionAst] -and
+                $node.Name -eq 'Invoke-CombinedOwnedGroupContext'
+        }, $true)[0].Extent.Text
+    }
+    It 'targets the unique canonical header rather than the expanded group container' {
+        $script:groupContextSource | Should -Match 'get-pane-context'
+        $script:groupContextSource | Should -Match '\$tabs \| Where-Object title -eq \$Title'
+        $script:groupContextSource | Should -Match 'BoundingRectangle.Height / 2\) -ge \$toggle.Top'
+        $script:groupContextSource | Should -Match 'BoundingRectangle.Height / 2\) -le \$toggle.Bottom'
+        $script:groupContextSource | Should -Match '\$bounds.Contains\(\$point\)'
+        $script:groupContextSource | Should -Match 'Canonical header geometry changed'
+        $script:groupContextSource | Should -Not -Match '\.SetFocus\(|-Vk 0x79|Invoke-UiMouseDrag'
+    }
+    It 'checks the original lease and immediate Win32 point ownership before paired right input' {
+        $source = $script:groupContextSource
+        $source | Should -Match '\$current.StartTime -ne \$script:app.OwnedProcess.StartTime'
+        $source | Should -Match 'GetForegroundWindow\(\) -ne \$root'
+        $source | Should -Match 'GetAncestor\(\$nativeHit, 2\) -ne \$root'
+        $source | Should -Match 'GetWindowProcessId\(\$nativeHit\) -ne \$script:app.Pid'
+        $source | Should -Match '@\(1, 2, 4, 5, 6, 16, 17, 18, 91, 92\)'
+        $source | Should -Match 'cursor.X -ne \$nativePoint.X'
+        $source | Should -Match 'cursor.Y -ne \$nativePoint.Y'
+        $source.IndexOf('original owned process lease') | Should -BeLessThan $source.IndexOf('::SetCursorPos(')
+        $source.IndexOf('refuses held input.') | Should -BeLessThan $source.IndexOf('::SetCursorPos(')
+        $source | Should -Match '\$cursorMoved -and -not \$clickDelivered'
+        $source | Should -Match 'Cursor restoration refused while a mouse button is held'
+        $source.LastIndexOf('WindowFromPoint(') | Should -BeLessThan $source.IndexOf('::SendInput(')
+        $source | Should -Match '\$mouse.dwFlags = 0x0008'
+        $source | Should -Match '\$mouse.dwFlags = 0x0010'
+        $source | Should -Match 'finally \{\s+\[void\].*SetThreadDpiAwarenessContext\(\$dpi\)'
+        ([regex]::Matches($source, '::SendInput\(')).Count | Should -Be 1
+    }
+    It 'constructs right-down and right-up structs without injecting input' {
+        & (Get-Module ItE2E) { Initialize-WtWin32Input }
+        $source = $script:groupContextSource
+        $start = $source.IndexOf('$down =')
+        $end = $source.IndexOf('$dpi =', $start)
+        . ([scriptblock]::Create($source.Substring($start, $end - $start)))
+        $inputs.Count | Should -Be 2
+        $inputs[0].type | Should -Be 0
+        $inputs[0].data.mouse.dwFlags | Should -Be 8
+        $inputs[1].data.mouse.dwFlags | Should -Be 16
+    }
+}
+
 Describe 'Representative mouse helper regressions' -Tag 'Unit' {
     It 'finds exact Unicode text and trims a surplus glyph in provider units' -Tag 'UiTextBounds' {
         InModuleScope ItE2E {

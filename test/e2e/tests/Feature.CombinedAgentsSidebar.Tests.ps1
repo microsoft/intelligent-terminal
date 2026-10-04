@@ -585,12 +585,15 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         function Save-CombinedActionEvidence {
             param([string]$Phase, [switch]$Screenshot)
             $focused = [Windows.Automation.AutomationElement]::FocusedElement
+            $history = Get-CombinedElement HistoryList
+            $historyVisible = $history -and -not $history.Current.IsOffscreen
             @{
                 phase = $Phase; at = [DateTimeOffset]::UtcNow.ToString('o')
                 owned_sessions = @((Get-CombinedSnapshot).sessions | Where-Object {
                     $_.session_id -like "$script:marker-*" -or $_.session_id -like 'chat-fixture-*'
                 })
-                history_rows = @(Get-CombinedRows HistoryList | ForEach-Object { Get-CombinedRowText $_ })
+                history_visible = [bool]$historyVisible
+                history_rows = if ($historyVisible) { @(Get-CombinedRows HistoryList | ForEach-Object { Get-CombinedRowText $_ }) } else { @() }
                 upper_rows = @(Get-CombinedRows ItemsList | ForEach-Object { Get-CombinedRowText $_ })
                 attached_tabs = Get-CombinedAttachedTabCount
                 search = Get-UiValue -App $script:app -Selector SearchTextBox
@@ -603,7 +606,8 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 } }
             } | ConvertTo-Json -Depth 12 |
                 Set-Content -LiteralPath (Join-Path $script:evidence "$Phase.json")
-            Get-UiTree -App $script:app -Selector HistoryList -Depth 6 |
+            $treeSelector = if ($historyVisible) { 'HistoryList' } else { 'ItemsList' }
+            Get-UiTree -App $script:app -Selector $treeSelector -Depth 6 |
                 Set-Content -LiteralPath (Join-Path $script:evidence "$Phase.tree.txt")
             if ($Screenshot) {
                 Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidence "$Phase.png") | Out-Null
@@ -648,7 +652,8 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         }
         function Invoke-CombinedOwnedGroupContext {
             param($Tab, [string]$Title)
-            $owned = @(Get-WtTabs -App $script:app -WindowId $script:app.WindowId | Where-Object tab_id -eq $Tab.tab_id)
+            $tabs = @(Get-WtTabs -App $script:app -WindowId $script:app.WindowId)
+            $owned = @($tabs | Where-Object tab_id -eq $Tab.tab_id)
             @{
                 tab_id = $Tab.tab_id; pane_id = $Tab.session_id; window_id = $script:app.WindowId
                 header = (Get-CombinedElement VerticalTabsHeader).Current.Name
@@ -660,7 +665,13 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             } | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $script:evidence 'background-owned-group-before-assert.json')
             $owned.Count | Should -Be 1
             $owned[0].title | Should -Be $Title
-            @(Get-WtPanes -App $script:app -WindowId $script:app.WindowId -TabId $Tab.tab_id).Count | Should -Be 2
+            @($tabs | Where-Object title -eq $Title).Count | Should -Be 1
+            $panes = @(Get-WtPanes -App $script:app -WindowId $script:app.WindowId -TabId $Tab.tab_id)
+            $panes.Count | Should -Be 2
+            @($panes | Where-Object session_id -eq $Tab.session_id).Count | Should -Be 1
+            $context = Invoke-WtCli -App $script:app -Arguments @('get-pane-context', '--target', $Tab.session_id)
+            [string]$context.pane.tab_id | Should -Be ([string]$Tab.tab_id)
+            [string]$context.pane.window_id | Should -Be ([string]$script:app.WindowId)
             $groups = @(Get-CombinedRows ItemsList | Where-Object {
                 @((Get-CombinedRawChildren $_) | Where-Object {
                     $_.Current.AutomationId -eq 'TabGroupToggleButton' -and -not $_.Current.IsOffscreen
@@ -679,8 +690,12 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             $titles.Count | Should -Be 1 -Because 'only the group title shares the canonical group toggle row'
             $bounds = $titles[0].Current.BoundingRectangle
             $viewport = (Get-CombinedElement ItemsList).Current.BoundingRectangle
-            $point = [Windows.Point]::new($bounds.X + $bounds.Width / 2, $bounds.Y + $bounds.Height / 2)
+            $point = [Windows.Point]::new([int]($bounds.X + $bounds.Width / 2), [int]($bounds.Y + $bounds.Height / 2))
             $hit = [Windows.Automation.AutomationElement]::FromPoint($point)
+            $nativePoint = [ItE2E.ItWtWin32Input+POINT]::new()
+            $nativePoint.X = [int]$point.X
+            $nativePoint.Y = [int]$point.Y
+            $nativeHit = [ItE2E.ItWtWin32Input]::WindowFromPoint($nativePoint)
             $ancestor = $hit
             $ownedHit = $false
             while ($ancestor) {
@@ -698,6 +713,9 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 point = @{ x = $point.X; y = $point.Y }; owned_hit = $ownedHit
                 viewport_contains_point = $viewport.Contains($point)
                 hit_process_id = $hit.Current.ProcessId
+                win32_hit_hwnd = $nativeHit.ToInt64()
+                win32_hit_root = [ItE2E.ItWtWin32Input]::GetAncestor($nativeHit, 2).ToInt64()
+                win32_hit_pid = [ItE2E.ItWtWin32Input]::GetWindowProcessId($nativeHit)
                 foreground_hwnd = [ItE2E.ItWtWin32Input]::GetForegroundWindow().ToInt64()
                 raw_group = @(Get-CombinedRawChildren $groups[0] | ForEach-Object {
                     @{ name = $_.Current.Name; id = $_.Current.AutomationId
@@ -706,9 +724,87 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 scroll_percent = (Get-CombinedScroll ItemsList).Current.VerticalScrollPercent
             } | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $script:evidence 'background-owned-group-context.json')
             $viewport.Contains($point) | Should -BeTrue -Because 'a realized UIA title can still be clipped outside the list viewport'
-            $ownedHit | Should -BeTrue -Because 'physical context input must hit the owned group, not a stale or clipped title'
-            Invoke-UiMouseDrag -App $script:app -FromX ([int]($bounds.X + $bounds.Width / 2)) -FromY ([int]($bounds.Y + $bounds.Height / 2)) `
-                -ToX ([int]($bounds.X + $bounds.Width / 2)) -ToY ([int]($bounds.Y + $bounds.Height / 2)) -Right -HoldMs 50 | Out-Null
+            $bounds.Contains($point) | Should -BeTrue
+            $groups[0].Current.ProcessId | Should -Be $script:app.Pid
+            $titles[0].Current.ProcessId | Should -Be $script:app.Pid
+            # The flyout belongs to TabHeaderGrid, not its ListViewItem container.
+            # Use the exact header title, as the progress/pinned fixtures do; never
+            # click the expanded group center, which can fall on a child pane.
+            Set-WtWindowForeground -App $script:app -Attempts 3 -DelayMs 150 | Should -BeTrue
+            $down = [ItE2E.ItWtWin32Input+INPUT]::new()
+            $up = [ItE2E.ItWtWin32Input+INPUT]::new()
+            $mouse = [ItE2E.ItWtWin32Input+MOUSEINPUT]::new()
+            $data = [ItE2E.ItWtWin32Input+INPUTUNION]::new()
+            $mouse.dwFlags = 0x0008
+            $data.mouse = $mouse
+            $down.data = $data
+            $mouse.dwFlags = 0x0010
+            $data.mouse = $mouse
+            $up.data = $data
+            $inputs = [ItE2E.ItWtWin32Input+INPUT[]]@($down, $up)
+            $dpi = [ItE2E.ItWtWin32Input]::SetThreadDpiAwarenessContext([IntPtr]::new(-4))
+            if ($dpi -eq [IntPtr]::Zero) { throw 'Physical header coordinate context unavailable.' }
+            $originalCursor = [ItE2E.ItWtWin32Input+POINT]::new()
+            $cursorMoved = $false
+            $clickDelivered = $false
+            try {
+                $current = Get-Process -Id $script:app.Pid -ErrorAction Stop
+                if (-not $script:app.Launched -or -not $script:app.OwnedProcess -or
+                    $script:app.OwnedProcess.HasExited -or $script:app.OwnedProcess.Id -ne $current.Id -or
+                    $current.StartTime -ne $script:app.OwnedProcess.StartTime -or
+                    $current.Path -ne (Join-Path $script:app.InstallLocation 'WindowsTerminal.exe')) {
+                    throw 'Header context input requires the original owned process lease.'
+                }
+                foreach ($key in @(1, 2, 4, 5, 6, 16, 17, 18, 91, 92)) {
+                    if ([ItE2E.ItWtWin32Input]::IsKeyDown($key)) { throw 'Header context input refuses held input.' }
+                }
+                if (-not [ItE2E.ItWtWin32Input]::GetCursorPos([ref]$originalCursor)) {
+                    throw 'Original cursor position unavailable before header context input.'
+                }
+                [ItE2E.ItWtWin32Input]::SetCursorPos($nativePoint.X, $nativePoint.Y) | Should -BeTrue
+                $cursorMoved = $true
+                if ($titles[0].Current.IsOffscreen -or $groups[0].Current.IsOffscreen -or
+                    $titles[0].Current.BoundingRectangle -ne $bounds -or
+                    -not (Get-CombinedElement ItemsList).Current.BoundingRectangle.Contains($point)) {
+                    throw 'Canonical header geometry changed before context input.'
+                }
+                $root = [IntPtr][long]$script:app.Hwnd
+                $cursor = [ItE2E.ItWtWin32Input+POINT]::new()
+                if (-not [ItE2E.ItWtWin32Input]::GetCursorPos([ref]$cursor) -or
+                    $cursor.X -ne $nativePoint.X -or $cursor.Y -ne $nativePoint.Y -or
+                    [ItE2E.ItWtWin32Input]::GetForegroundWindow() -ne $root -or
+                    [ItE2E.ItWtWin32Input]::GetAncestor($root, 2) -ne $root -or
+                    [ItE2E.ItWtWin32Input]::GetWindowProcessId($root) -ne $script:app.Pid) {
+                    throw 'Header context input requires the unchanged cursor and owned foreground root.'
+                }
+                $nativeHit = [ItE2E.ItWtWin32Input]::WindowFromPoint($cursor)
+                if ([ItE2E.ItWtWin32Input]::GetAncestor($nativeHit, 2) -ne $root -or
+                    [ItE2E.ItWtWin32Input]::GetWindowProcessId($nativeHit) -ne $script:app.Pid) {
+                    throw 'Header context input point is covered or outside the owned root.'
+                }
+                foreach ($key in @(1, 2, 4, 5, 6, 16, 17, 18, 91, 92)) {
+                    if ([ItE2E.ItWtWin32Input]::IsKeyDown($key)) { throw 'Header context input refuses held input before delivery.' }
+                }
+                if ([ItE2E.ItWtWin32Input]::SendInput(2, $inputs,
+                    [Runtime.InteropServices.Marshal]::SizeOf($down)) -ne 2) {
+                    throw 'Paired header right-click input was not delivered.'
+                }
+                $clickDelivered = $true
+            }
+            finally {
+                try {
+                    if ($cursorMoved -and -not $clickDelivered) {
+                        $mouseHeld = @(1, 2, 4, 5, 6) | Where-Object { [ItE2E.ItWtWin32Input]::IsKeyDown($_) }
+                        if ($mouseHeld) {
+                            Write-Warning 'Cursor restoration refused while a mouse button is held.'
+                        } elseif (-not [ItE2E.ItWtWin32Input]::SetCursorPos($originalCursor.X, $originalCursor.Y)) {
+                            Write-Warning 'Original cursor position could not be restored after header input failure.'
+                        }
+                    }
+                } finally {
+                    [void][ItE2E.ItWtWin32Input]::SetThreadDpiAwarenessContext($dpi)
+                }
+            }
         }
         function Invoke-CombinedNativeHook {
             param($Tab, [string]$SessionId, [string]$Cwd, [string]$Status, [switch]$ToolOnly)
