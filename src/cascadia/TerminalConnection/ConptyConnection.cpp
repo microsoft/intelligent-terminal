@@ -10,6 +10,7 @@
 #include "CTerminalHandoff.h"
 #include "../../types/inc/utils.hpp"
 #include "../inc/IntelligentTerminalPaths.h"
+#include "../inc/TerminalProtocolEnvironment.h"
 
 #include "ConptyConnection.g.cpp"
 
@@ -68,16 +69,6 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
             // needs an explicit host marker to avoid emitting our OSC sequences
             // in other terminals that launch the same shell.
             environment.as_map().insert_or_assign(L"INTELLIGENT_TERMINAL", L"1");
-
-            // Protocol server credentials — read from the Terminal process env
-            // (set by WindowEmperor::_initializeProtocolServer). These must be
-            // injected here because regenerate() builds _initialEnv from the
-            // registry, not the process environment block.
-            {
-                wchar_t buf[512];
-                if (GetEnvironmentVariableW(L"WT_COM_CLSID", buf, ARRAYSIZE(buf)))
-                    environment.as_map().insert_or_assign(L"WT_COM_CLSID", buf);
-            }
 
             // Directory hook integrations may write diagnostics into.
             //
@@ -207,6 +198,12 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
                 wslEnv.insert(0, additionalWslEnv);
             }
         }
+
+        // Host registration is authoritative over snapshots and profile overrides.
+        // Missing registration removes stale discovery data; other read failures
+        // abort the launch rather than silently selecting another server.
+        const auto hostClsid = wil::TryGetEnvironmentVariableW<std::wstring>(L"WT_COM_CLSID");
+        ::Microsoft::Terminal::Protocol::ApplyHostClsid(environment, hostClsid);
 
         auto newEnvVars = environment.to_string();
         const auto lpEnvironment = newEnvVars.empty() ? nullptr : newEnvVars.data();

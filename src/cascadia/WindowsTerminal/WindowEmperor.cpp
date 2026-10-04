@@ -16,6 +16,7 @@
 
 #include "AppHost.h"
 #include "TerminalProtocolComServer.h"
+#include "../inc/TerminalProtocolEnvironment.h"
 #include "resource.h"
 #include "VirtualDesktopUtils.h"
 #include "../../types/inc/User32Utils.hpp"
@@ -627,7 +628,7 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
     const auto isEmbedding = args.size() == 2 && args[1] == L"-Embedding";
 
     {
-        const wil::unique_environstrings_ptr envMem{ GetEnvironmentStringsW() };
+        const auto envMem = ::Microsoft::Terminal::Protocol::CaptureProtocolStartupEnvironment();
         _startupEnvironment = stringFromDoubleNullTerminated(envMem.get());
     }
     _startupCurrentDirectory = wil::GetCurrentDirectoryW<std::wstring>();
@@ -1878,15 +1879,15 @@ void WindowEmperor::_initializeProtocolServer()
     {
         // Stringify the CLSID so child processes can discover us via CoCreateInstance.
         wil::unique_cotaskmem_string clsidStr;
-        if (SUCCEEDED(StringFromCLSID(__uuidof(TerminalProtocolComServer), &clsidStr))
-            && clsidStr)
+        if (SUCCEEDED_LOG(StringFromCLSID(__uuidof(TerminalProtocolComServer), &clsidStr)))
         {
-            _comClsid = clsidStr.get();
-            SetEnvironmentVariableW(L"WT_COM_CLSID", _comClsid.c_str());
+            THROW_HR_IF_NULL(E_UNEXPECTED, clsidStr.get());
+            std::wstring comClsid{ clsidStr.get() };
+            THROW_IF_WIN32_BOOL_FALSE(SetEnvironmentVariableW(L"WT_COM_CLSID", comClsid.c_str()));
+            _comClsid.swap(comClsid);
+            OutputDebugStringA(fmt::format("WT Protocol Server started\n  WT_COM_CLSID={}\n",
+                                          winrt::to_string(_comClsid))
+                                   .c_str());
         }
     }
-
-    OutputDebugStringA(fmt::format("WT Protocol Server started\n  WT_COM_CLSID={}\n",
-                                   winrt::to_string(_comClsid))
-                           .c_str());
 }

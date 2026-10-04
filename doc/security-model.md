@@ -101,6 +101,18 @@ control proxy selection in external Windows processes, authenticate the remote
 COM peer, or unload an already-mapped DLL. Package-mutating coexistence tests must
 run separately in an approved isolated environment.
 
+Terminal clears inherited `WT_COM_CLSID` before capturing its startup environment
+and publishes its own CLSID only after protocol registration succeeds. Child
+connections apply the host's current value after profile environment overrides,
+removing stale discovery data when the host has no registered server. The
+`ProtocolParsingTests::HostClsidOverridesStaleEnvironment` unit test covers
+missing and replacement identities, case-insensitive keys, and repeated launches
+without disturbing unrelated variables.
+`ProtocolParsingTests::UnpublishedStartupRemovesInheritedClsid` seeds a real
+process environment value, uses the production clear-and-capture operation,
+and verifies that unpublished startup removes it from the snapshot and child
+environment. It restores the test process's prior value afterward.
+
 The offline proxy tests run without activating Terminal or changing package
 registration. After x64 Debug builds of WindowsTerminal and wtcli, run
 `pwsh -File src\tools\wtcli\tests\Test-ProtocolProxyRegistration.ps1`
