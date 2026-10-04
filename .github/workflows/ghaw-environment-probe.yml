@@ -23,6 +23,7 @@ jobs:
       run:
         shell: pwsh
     env:
+      PROBE_MODE: desktop
       RUSTUP_TOOLCHAIN: 1.93.0
       CARGO_TERM_COLOR: never
       WINDOWS_IMAGE: mcr.microsoft.com/windows/servercore@sha256:22505496dd4229dba63453ba0c6dc31c06fd3e11810e5b8e429aa6b16dab2457
@@ -50,12 +51,74 @@ jobs:
               runnerLabel = 'windows-2025-vs2026'
               imageVersion = $env:ImageVersion
               osVersion = [Environment]::OSVersion.Version.ToString()
-              rustToolchain = $env:RUSTUP_TOOLCHAIN
+              rustToolchainRequested = $env:RUSTUP_TOOLCHAIN
               sdk = '10.0.26100.0'
+              probeMode = $env:PROBE_MODE
           }
           $receipt | ConvertTo-Json | Tee-Object -FilePath (Join-Path $evidence 'runner.json')
 
+      - name: Inspect host desktop and UIA capabilities without deploying
+        id: desktop
+        if: env.PROBE_MODE == 'desktop'
+        shell: powershell
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Add-Type -TypeDefinition @'
+          using System;
+          using System.Runtime.InteropServices;
+          public static class DesktopProbe {
+              [StructLayout(LayoutKind.Sequential)]
+              public struct StationFlags { public int Inherit; public int Reserved; public uint Flags; }
+              [DllImport("user32.dll", SetLastError=true)]
+              public static extern IntPtr GetProcessWindowStation();
+              [DllImport("user32.dll", SetLastError=true)]
+              public static extern bool GetUserObjectInformation(IntPtr handle, int index, ref StationFlags flags, uint size, out uint needed);
+              [DllImport("user32.dll", SetLastError=true)]
+              public static extern IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
+              [DllImport("user32.dll", SetLastError=true)]
+              public static extern bool CloseDesktop(IntPtr handle);
+          }
+          '@
+          $flags = New-Object DesktopProbe+StationFlags
+          [uint32]$needed = 0
+          $station = [DesktopProbe]::GetProcessWindowStation()
+          if ($station -eq [IntPtr]::Zero) { throw 'No process window station.' }
+          if (-not [DesktopProbe]::GetUserObjectInformation($station, 1, [ref]$flags, 12, [ref]$needed)) {
+              throw "Window-station flags unavailable: $([Runtime.InteropServices.Marshal]::GetLastWin32Error())."
+          }
+          $desktop = [DesktopProbe]::OpenInputDesktop(0, $false, 0x41)
+          $desktopError = if ($desktop -eq [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::GetLastWin32Error() } else { 0 }
+          if ($desktop -ne [IntPtr]::Zero -and -not [DesktopProbe]::CloseDesktop($desktop)) { throw 'Could not close probe desktop handle.' }
+          Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+          $root = [System.Windows.Automation.AutomationElement]::RootElement
+          if ($null -eq $root) { throw 'UI Automation root is unavailable.' }
+          $children = $root.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
+          $packages = @(Get-AppxPackage -Name Microsoft.UI.Xaml.*; Get-AppxPackage -Name Microsoft.VCLibs.*)
+          $receipt = [ordered]@{
+              runId = $env:GITHUB_RUN_ID
+              sha = $env:GITHUB_SHA
+              sessionId = [Diagnostics.Process]::GetCurrentProcess().SessionId
+              userInteractive = [Environment]::UserInteractive
+              stationVisible = (($flags.Flags -band 1) -ne 0)
+              inputDesktopOpened = ($desktop -ne [IntPtr]::Zero)
+              inputDesktopError = $desktopError
+              uiaRootAvailable = ($null -ne $root)
+              desktopChildCount = $children.Count
+              frameworksForCurrentUser = @($packages | ForEach-Object {
+                  @{ name = $_.Name; version = $_.Version.ToString(); architecture = $_.Architecture.ToString() }
+              })
+              packageActivationTested = $false
+              productWindowTested = $false
+              axeScanTested = $false
+          }
+          $receipt | ConvertTo-Json -Depth 5 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'ghaw-environment-evidence\desktop.json')
+          if ($receipt.sessionId -eq 0 -or -not $receipt.stationVisible -or -not $receipt.inputDesktopOpened) {
+              throw 'Host does not satisfy basic interactive-desktop preconditions.'
+          }
+
       - name: Install public Rust toolchain
+        if: env.PROBE_MODE != 'desktop'
         timeout-minutes: 5
         run: |
           $ErrorActionPreference = 'Stop'
@@ -71,6 +134,7 @@ jobs:
 
       - name: Compile and execute native C++ and Rust
         id: native
+        if: env.PROBE_MODE != 'desktop'
         timeout-minutes: 3
         run: |
           $ErrorActionPreference = 'Stop'
@@ -107,7 +171,7 @@ jobs:
 
       - name: Probe pinned Windows container behavior
         id: container
-        if: always() && !cancelled()
+        if: always() && !cancelled() && env.PROBE_MODE != 'desktop'
         timeout-minutes: 10
         run: |
           $ErrorActionPreference = 'Stop'
@@ -178,7 +242,7 @@ jobs:
           }
 
       - name: Clean up only the owned probe container
-        if: always()
+        if: always() && env.PROBE_MODE != 'desktop'
         timeout-minutes: 2
         run: |
           $ErrorActionPreference = 'Stop'
@@ -216,10 +280,12 @@ jobs:
         env:
           CONTAINER_OUTCOME: ${{ steps.container.outcome }}
           WTA_OUTCOME: ${{ steps.wta.outcome }}
+          DESKTOP_OUTCOME: ${{ steps.desktop.outcome }}
         run: |
           @"
           ## Windows environment probe
-          - Public Rust toolchain: 1.93.0; no private ADO feed.
+          - Mode: $env:PROBE_MODE; requested Rust pin is not installed in desktop-only mode.
+          - Desktop/session/UIA step: $env:DESKTOP_OUTCOME
           - Windows container step: $env:CONTAINER_OUTCOME
           - Trusted WTA baseline: $env:WTA_OUTCOME
           - This does not validate C++ product packaging, UI tests, or untrusted automatic repairs.
