@@ -33,7 +33,7 @@ function bridgeCommand() {
 // went through wtcli or the protocol server would fail for the same reason.
 // Terminal already injects the directory, and the bug report tars that tree
 // recursively.
-function noteBridgeFailure(topic, error) {
+function noteFailure(topic, error, operation = "bridge spawn") {
   try {
     const dir = process.env.WTA_HOOK_LOG_DIR
     if (!dir) return
@@ -45,23 +45,28 @@ function noteBridgeFailure(topic, error) {
     // the catch below. Recursive mkdir is idempotent, so pay it every time.
     mkdirSync(dir, { recursive: true })
     const message = error && error.message ? error.message : String(error)
-    const line = `${new Date().toISOString()} opencode bridge spawn failed topic=${topic} cmd=${bridgeCommand()} err=${message}\n`
+    const line = `${new Date().toISOString()} opencode ${operation} failed topic=${topic} cmd=${bridgeCommand()} err=${message}\n`
     appendFileSync(`${dir}\\hook-trace.log`, line)
   } catch {
     // Diagnostics are best effort; never let them become the failure.
   }
 }
 
-export const WtAgentHooks = async ({ directory }) => {
-  const rootSessions = new Map()
-  const childSessions = new Set()
-  const enabled =
+function enabled() {
+  return (
     process.platform === "win32" &&
     Boolean(process.env.WT_COM_CLSID) &&
     Boolean(process.env.WT_SESSION) &&
     process.env.OPENCODE_CLIENT !== "acp"
+  )
+}
+
+const WtAgentHooks = async ({ directory, resolveSession }) => {
+  const rootSessions = new Map()
+  const childSessions = new Set()
+  const active = enabled()
   function emit(topic, sessionID, payload = {}) {
-    if (!enabled || !sessionID) return
+    if (!active || !sessionID) return
 
     try {
       const child = Bun.spawn({
@@ -87,7 +92,7 @@ export const WtAgentHooks = async ({ directory }) => {
       void child.exited.catch(() => {})
     } catch (error) {
       // Session tracking must never affect OpenCode's own execution.
-      noteBridgeFailure(topic, error)
+      noteFailure(topic, error)
     }
   }
 
@@ -119,12 +124,25 @@ export const WtAgentHooks = async ({ directory }) => {
     return rootSessions.has(sessionID) && !childSessions.has(sessionID)
   }
 
+  async function ensureSession(sessionID) {
+    if (!active || !sessionID || !resolveSession || rootSessions.has(sessionID) || childSessions.has(sessionID)) return
+    try {
+      const info = await resolveSession(sessionID)
+      rememberSession({ ...info, directory: info.location?.directory })
+    } catch (error) {
+      // Do not guess that a resumed session is a root when lookup fails.
+      noteFailure("session.get", error, "session lookup")
+    }
+  }
+
   return {
     "chat.message": async (input) => {
       const sessionID = input.sessionID
       if (!sessionID) return
 
-      if (!childSessions.has(sessionID) && !rootSessions.has(sessionID)) {
+      await ensureSession(sessionID)
+
+      if (!resolveSession && !childSessions.has(sessionID) && !rootSessions.has(sessionID)) {
         rootSessions.set(sessionID, { cwd: directory, title: "" })
       }
       if (isRootSession(sessionID)) {
@@ -137,6 +155,7 @@ export const WtAgentHooks = async ({ directory }) => {
     },
 
     "tool.execute.before": async (input, output) => {
+      await ensureSession(input.sessionID)
       if (!isRootSession(input.sessionID)) return
       emit("agent.tool.starting", input.sessionID, {
         tool_name: input.tool,
@@ -145,12 +164,22 @@ export const WtAgentHooks = async ({ directory }) => {
     },
 
     event: async ({ event }) => {
-      const properties = event.properties || {}
+      const properties = event.properties || event.data || {}
 
       switch (event.type) {
         case "session.created":
         case "session.updated":
-          rememberSession(properties.info)
+          rememberSession(properties.info || {
+            id: properties.sessionID,
+            parentID: properties.parentID,
+            directory: properties.location?.directory,
+            title: properties.title,
+          })
+          return
+        case "session.renamed":
+          if (isRootSession(properties.sessionID)) {
+            rememberSession({ id: properties.sessionID, title: properties.title })
+          }
           return
         case "session.status": {
           if (!isRootSession(properties.sessionID)) return
@@ -162,11 +191,14 @@ export const WtAgentHooks = async ({ directory }) => {
           return
         }
         case "session.idle":
+        case "session.execution.succeeded":
+        case "session.execution.interrupted":
           if (isRootSession(properties.sessionID)) {
             emit("agent.stop", properties.sessionID)
           }
           return
         case "session.error":
+        case "session.execution.failed":
           if (properties.sessionID && isRootSession(properties.sessionID)) {
             emit("agent.error", properties.sessionID, {
               error: eventMessage(properties.error) || "OpenCode session error",
@@ -174,7 +206,7 @@ export const WtAgentHooks = async ({ directory }) => {
           }
           return
         case "session.deleted": {
-          const sessionID = properties.info?.id
+          const sessionID = properties.info?.id || properties.sessionID
           if (sessionID && isRootSession(sessionID)) {
             emit("agent.session.end", sessionID, { reason: "deleted" })
           }
@@ -188,7 +220,7 @@ export const WtAgentHooks = async ({ directory }) => {
             emit("agent.notification", properties.sessionID, {
               message:
                 event.type === "permission.asked"
-                  ? `Permission required: ${properties.permission || "tool use"}`
+                  ? `Permission required: ${properties.permission || properties.action || "tool use"}`
                   : "OpenCode is waiting for input",
             })
           }
@@ -210,4 +242,48 @@ export const WtAgentHooks = async ({ directory }) => {
       childSessions.clear()
     },
   }
+}
+
+// V1 calls server(); V2 loads id + setup(). Keep this static
+// bundle dependency-free: Plugin.define() returns this same object shape.
+export default {
+  id: "wt-agent-hooks",
+  server: WtAgentHooks,
+  async setup(ctx) {
+    if (!enabled()) return
+
+    const directory = ctx.location.directory
+    const hooks = await WtAgentHooks({
+      directory,
+      resolveSession: (sessionID) => ctx.session.get({ sessionID }),
+    })
+    await ctx.session.hook("prompt", hooks["chat.message"])
+    await ctx.tool.hook("execute.before", (event) =>
+      hooks["tool.execute.before"](event, { args: event.input }),
+    )
+
+    const controller = new AbortController()
+    const events = (async () => {
+      try {
+        for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+          if (controller.signal.aborted) break
+          // The public stream can include events from other locations. Each
+          // plugin instance only owns sessions in its own location.
+          if (event.location && (
+            event.location.directory !== directory ||
+            event.location.workspaceID !== ctx.location.workspaceID
+          )) continue
+          await hooks.event({ event })
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) noteFailure("event.subscribe", error, "event subscription")
+      }
+    })()
+
+    return async () => {
+      controller.abort()
+      await events
+      await hooks.dispose()
+    }
+  },
 }
