@@ -1,0 +1,236 @@
+name: gh-aw Windows environment probe
+run-name: Windows environment probe ${{ github.run_id }}
+
+on:
+  push:
+    branches: [test/yeelam/ghaw-basic-env-20261004]
+    paths: [.github/workflows/ghaw-environment-probe.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ghaw-environment-probe-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  environment:
+    if: github.repository == 'microsoft/intelligent-terminal'
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      RUSTUP_TOOLCHAIN: 1.93.0
+      CARGO_TERM_COLOR: never
+      WINDOWS_IMAGE: mcr.microsoft.com/windows/servercore@sha256:22505496dd4229dba63453ba0c6dc31c06fd3e11810e5b8e429aa6b16dab2457
+
+    steps:
+      - name: Checkout trusted probe revision
+        timeout-minutes: 3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Record runner and SDK
+        timeout-minutes: 2
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'ghaw-environment-evidence'
+          New-Item -ItemType Directory -Path $evidence | Out-Null
+          $sdk = "${env:ProgramFiles(x86)}\Windows Kits\10\Include\10.0.26100.0\um\Windows.h"
+          if (-not (Test-Path -LiteralPath $sdk)) { throw 'Required Windows SDK 26100 is missing.' }
+          $receipt = @{
+              repository = $env:GITHUB_REPOSITORY
+              sha = $env:GITHUB_SHA
+              runId = $env:GITHUB_RUN_ID
+              runnerLabel = 'windows-2025-vs2026'
+              imageVersion = $env:ImageVersion
+              osVersion = [Environment]::OSVersion.Version.ToString()
+              rustToolchain = $env:RUSTUP_TOOLCHAIN
+              sdk = '10.0.26100.0'
+          }
+          $receipt | ConvertTo-Json | Tee-Object -FilePath (Join-Path $evidence 'runner.json')
+
+      - name: Install public Rust toolchain
+        timeout-minutes: 5
+        run: |
+          $ErrorActionPreference = 'Stop'
+          rustup toolchain install 1.93.0 --profile minimal --target x86_64-pc-windows-msvc
+          if ($LASTEXITCODE -ne 0) { throw 'Public Rust installation failed.' }
+          $version = rustc --version --verbose
+          if ($LASTEXITCODE -ne 0) { throw 'rustc version probe failed.' }
+          $version
+          if (-not ($version -match '^release: 1\.93\.0$')) { throw 'Unexpected Rust release.' }
+          if (-not ($version -match '^host: x86_64-pc-windows-msvc$')) { throw 'Unexpected Rust host.' }
+          cargo --version
+          if ($LASTEXITCODE -ne 0) { throw 'Cargo version probe failed.' }
+
+      - name: Compile and execute native C++ and Rust
+        id: native
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $smoke = Join-Path $env:RUNNER_TEMP 'ghaw-native-smoke'
+          New-Item -ItemType Directory -Path $smoke | Out-Null
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products '*' -version '[18.0,19.0)' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if ($LASTEXITCODE -ne 0 -or -not $vs) { throw 'Visual Studio 2026 C++ tools are missing.' }
+          $source = @'
+          #include <windows.h>
+          #include <cstdio>
+          int main() {
+              if (GetCurrentProcessId() == 0) return 1;
+              std::puts("cpp-environment-ok");
+              return 0;
+          }
+          '@
+          [IO.File]::WriteAllText((Join-Path $smoke 'probe.cpp'), $source)
+          $devcmd = Join-Path $vs 'Common7\Tools\VsDevCmd.bat'
+          $command = "call `"$devcmd`" -arch=amd64 -host_arch=amd64 >nul && cd /d `"$smoke`" && cl /nologo /std:c++20 /EHsc /MT /W4 /WX probe.cpp /Fe:probe.exe && probe.exe && msbuild -version -nologo"
+          & $env:ComSpec /d /c $command
+          if ($LASTEXITCODE -ne 0) { throw 'Native C++ compile/link/execute or MSBuild probe failed.' }
+          cargo new --bin --vcs none --edition 2021 (Join-Path $smoke 'rust-probe')
+          if ($LASTEXITCODE -ne 0) { throw 'Rust sample creation failed.' }
+          $manifest = Join-Path $smoke 'rust-probe\Cargo.toml'
+          $env:RUSTFLAGS = '-C target-feature=+crt-static'
+          cargo generate-lockfile --offline --manifest-path $manifest
+          if ($LASTEXITCODE -ne 0) { throw 'Rust sample lockfile creation failed.' }
+          cargo build --locked --offline --target x86_64-pc-windows-msvc --manifest-path $manifest
+          if ($LASTEXITCODE -ne 0) { throw 'Rust MSVC/static-CRT compile/link failed.' }
+          $output = & (Join-Path $smoke 'rust-probe\target\x86_64-pc-windows-msvc\debug\rust-probe.exe')
+          if ($LASTEXITCODE -ne 0 -or $output -ne 'Hello, world!') { throw 'Rust sample execution failed.' }
+          Remove-Item Env:RUSTFLAGS
+
+      - name: Probe pinned Windows container behavior
+        id: container
+        if: always() && !cancelled()
+        timeout-minutes: 10
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $osType = docker info --format '{{.OSType}}'
+          if ($LASTEXITCODE -ne 0 -or $osType -ne 'windows') { throw 'Windows Docker daemon is unavailable.' }
+          docker version
+          if ($LASTEXITCODE -ne 0) { throw 'Docker version probe failed.' }
+          docker pull $env:WINDOWS_IMAGE
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Windows image pull failed.' }
+          $inputDirectory = Join-Path $env:RUNNER_TEMP 'ghaw-container-input'
+          New-Item -ItemType Directory -Path $inputDirectory | Out-Null
+          $marker = [Guid]::NewGuid().ToString()
+          [IO.File]::WriteAllText((Join-Path $inputDirectory 'read-only.txt'), $marker)
+          $address = (Resolve-DnsName github.com -Type A -ErrorAction Stop | Where-Object Type -eq 'A' | Select-Object -First 1).IPAddress
+          $hostClient = [Net.Sockets.TcpClient]::new()
+          try {
+              if (-not $hostClient.ConnectAsync($address, 443).Wait(5000)) { throw 'Host egress positive control timed out.' }
+              if (-not $hostClient.Connected) { throw 'Host egress positive control failed.' }
+          } finally { $hostClient.Dispose() }
+          [IO.File]::WriteAllText((Join-Path $inputDirectory 'egress-target.txt'), $address)
+          $guest = @'
+          $ErrorActionPreference = 'Stop'
+          foreach ($name in @('GITHUB_TOKEN', 'COPILOT_GITHUB_TOKEN', 'ACTIONS_RUNTIME_TOKEN', 'GHA_ENV_PROBE_SENTINEL')) {
+              if (Test-Path "Env:$name") { throw "Host environment variable was exposed: $name" }
+          }
+          if (-not (Test-Path -LiteralPath 'C:\inputs\read-only.txt')) { throw 'Read-only input is missing.' }
+          $denied = $false
+          try { [IO.File]::WriteAllText('C:\inputs\read-only.txt', 'unexpected-write') }
+          catch [UnauthorizedAccessException] { $denied = $true }
+          if (-not $denied) { throw 'Read-only mount permitted a write.' }
+          [IO.File]::WriteAllText('C:\Windows\Temp\guest-write-control.txt', 'writable')
+          $address = [IO.File]::ReadAllText('C:\inputs\egress-target.txt')
+          $client = [Net.Sockets.TcpClient]::new()
+          try {
+              try { $null = $client.ConnectAsync($address, 443).Wait(3000) }
+              catch [AggregateException] {
+                  if (-not ($_.Exception.InnerException -is [Net.Sockets.SocketException])) { throw }
+              }
+              if ($client.Connected) { throw 'Network-none container reached the public egress target.' }
+          } finally { $client.Dispose() }
+          Write-Output 'container-readonly-environment-network-probes-ok'
+          '@
+          [IO.File]::WriteAllText((Join-Path $inputDirectory 'probe.ps1'), $guest)
+          $env:GHA_ENV_PROBE_SENTINEL = [Guid]::NewGuid().ToString()
+          $name = "ghaw-env-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $created = $false
+          try {
+              docker create --name $name --label "ghaw.environment.run=$env:GITHUB_RUN_ID" --label "ghaw.environment.attempt=$env:GITHUB_RUN_ATTEMPT" --isolation=process --network none --mount "type=bind,source=$inputDirectory,target=C:\inputs,readonly" $env:WINDOWS_IMAGE powershell.exe -NoLogo -NoProfile -NonInteractive -File C:\inputs\probe.ps1
+              if ($LASTEXITCODE -ne 0) { throw 'Windows container creation failed.' }
+              $created = $true
+              docker start --attach $name
+              if ($LASTEXITCODE -ne 0) { throw 'Windows container start failed.' }
+              $inspection = docker inspect $name
+              if ($LASTEXITCODE -ne 0) { throw 'Container inspection failed.' }
+              $inspection | Set-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'ghaw-environment-evidence\container.json')
+              $container = @($inspection | ConvertFrom-Json)[0]
+              if ($container.State.ExitCode -ne 0) { throw "Guest probe failed: exit $($container.State.ExitCode)." }
+              if ($container.HostConfig.NetworkMode -ne 'none') { throw 'Unexpected container network mode.' }
+              $mount = @($container.Mounts | Where-Object Destination -eq 'C:\inputs')
+              if ($mount.Count -ne 1 -or $mount[0].RW) { throw 'Input mount is not read-only.' }
+              if ([IO.File]::ReadAllText((Join-Path $inputDirectory 'read-only.txt')) -ne $marker) { throw 'Host input was modified.' }
+          } finally {
+              Remove-Item Env:GHA_ENV_PROBE_SENTINEL
+              if ($created) {
+                  docker rm --force $name
+                  if ($LASTEXITCODE -ne 0) { throw 'Owned probe container cleanup failed.' }
+              }
+          }
+
+      - name: Clean up only the owned probe container
+        if: always()
+        timeout-minutes: 2
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $name = "ghaw-env-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $names = @(docker container ls --all --filter "name=^$name$" --format '{{.Names}}')
+          if ($LASTEXITCODE -ne 0) { throw 'Could not query probe cleanup state.' }
+          if ($names.Count -eq 0) { Write-Output 'No probe container remains.'; return }
+          if ($names.Count -ne 1 -or $names[0] -ne $name) { throw 'Ambiguous cleanup ownership.' }
+          $inspection = docker inspect $name
+          if ($LASTEXITCODE -ne 0) { throw 'Could not inspect cleanup ownership.' }
+          $container = @($inspection | ConvertFrom-Json)[0]
+          if ($container.Config.Labels.'ghaw.environment.run' -ne $env:GITHUB_RUN_ID -or
+              $container.Config.Labels.'ghaw.environment.attempt' -ne $env:GITHUB_RUN_ATTEMPT) {
+              throw 'Refusing to remove a container without matching run ownership.'
+          }
+          docker rm --force $name
+          if ($LASTEXITCODE -ne 0) { throw 'Owned container cleanup failed.' }
+
+      - name: Build and test trusted WTA baseline
+        id: wta
+        if: always() && !cancelled() && steps.native.outcome == 'success'
+        timeout-minutes: 25
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cargo fetch --locked --target x86_64-pc-windows-msvc --manifest-path tools\wta\Cargo.toml
+          if ($LASTEXITCODE -ne 0) { throw 'Public WTA dependency fetch failed.' }
+          cargo build --locked --offline --target x86_64-pc-windows-msvc --manifest-path tools\wta\Cargo.toml
+          if ($LASTEXITCODE -ne 0) { throw 'Trusted WTA baseline build failed.' }
+          cargo test --locked --offline --target x86_64-pc-windows-msvc --manifest-path tools\wta\Cargo.toml
+          if ($LASTEXITCODE -ne 0) { throw 'Trusted WTA baseline tests failed.' }
+
+      - name: Report probe scope
+        if: always()
+        timeout-minutes: 1
+        env:
+          CONTAINER_OUTCOME: ${{ steps.container.outcome }}
+          WTA_OUTCOME: ${{ steps.wta.outcome }}
+        run: |
+          @"
+          ## Windows environment probe
+          - Public Rust toolchain: 1.93.0; no private ADO feed.
+          - Windows container step: $env:CONTAINER_OUTCOME
+          - Trusted WTA baseline: $env:WTA_OUTCOME
+          - This does not validate C++ product packaging, UI tests, or untrusted automatic repairs.
+          "@ | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+
+      - name: Preserve environment evidence
+        if: always()
+        timeout-minutes: 3
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ghaw-environment-${{ github.run_id }}
+          path: ${{ runner.temp }}\ghaw-environment-evidence
+          if-no-files-found: error
+          retention-days: 7
