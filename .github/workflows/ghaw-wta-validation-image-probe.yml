@@ -1,0 +1,216 @@
+name: Trusted WTA Windows image probe
+run-name: Trusted WTA image proof ${{ github.run_id }}
+
+on:
+  push:
+    branches: [test/yeelam/ghaw-rust-validation-image-20261006]
+    paths:
+      - build/containers/wta-validation/Dockerfile
+      - build/containers/wta-validation/Invoke-WtaContainerTests.ps1
+      - .github/workflows/ghaw-wta-validation-image-probe.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ghaw-wta-validation-image-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  image-proof:
+    if: github.repository == 'microsoft/intelligent-terminal'
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 100
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      RUSTUP_TOOLCHAIN: 1.93.0
+      CARGO_TERM_COLOR: never
+
+    steps:
+      - name: Checkout frozen image definition
+        timeout-minutes: 3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Checkout immutable trusted official baseline
+        timeout-minutes: 3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: microsoft/intelligent-terminal
+          ref: c40ab2727a3c5c498d320ffe90b761f2982c561f
+          path: trusted-source
+          persist-credentials: false
+
+      - name: Record immutable source and disk preflight
+        timeout-minutes: 2
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'wta-image-evidence'
+          New-Item -ItemType Directory -Path $evidence | Out-Null
+          $sourceSha = git -C trusted-source rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $sourceSha -notmatch '^[0-9a-f]{40}$') { throw 'Cannot identify trusted base HEAD.' }
+          $drive = Get-PSDrive -Name C
+          $receipt = [ordered]@{
+            definitionSha = $env:GITHUB_SHA
+            sourceRepository = 'microsoft/intelligent-terminal'
+            sourceRef = 'c40ab2727a3c5c498d320ffe90b761f2982c561f'
+            sourceSha = $sourceSha
+            runId = $env:GITHUB_RUN_ID
+            attempt = $env:GITHUB_RUN_ATTEMPT
+            runnerLabel = 'windows-2025-vs2026'
+            imageVersion = $env:ImageVersion
+            osVersion = [Environment]::OSVersion.Version.ToString()
+            baseDigest = 'sha256:22505496dd4229dba63453ba0c6dc31c06fd3e11810e5b8e429aa6b16dab2457'
+            baseOsVersion = '10.0.26100.33438'
+            diskFreeBytes = $drive.Free
+            diskRequiredBytes = 35GB
+            isolationClaim = 'process isolation only; shared host kernel, not hardware isolation'
+          }
+          $receipt | ConvertTo-Json | Set-Content (Join-Path $evidence 'source.json')
+          if ($drive.Free -lt 35GB) { throw 'Insufficient disk for bounded image proof; no broad pruning will be attempted.' }
+          if ($sourceSha -ne 'c40ab2727a3c5c498d320ffe90b761f2982c561f') { throw 'Unexpected trusted baseline commit.' }
+          if ([Environment]::OSVersion.Version.Build -ne 26100) { throw 'Runner Windows build no longer matches the pinned base.' }
+          $osType = docker info --format '{{.OSType}}'
+          if ($LASTEXITCODE -ne 0 -or $osType -ne 'windows') { throw 'Windows Docker daemon is unavailable.' }
+
+      - name: Fetch public locked dependencies from trusted base
+        timeout-minutes: 8
+        run: |
+          $ErrorActionPreference = 'Stop'
+          rustup toolchain install 1.93.0 --profile minimal --target x86_64-pc-windows-msvc
+          if ($LASTEXITCODE -ne 0) { throw 'Public Rust installation failed.' }
+          $version = rustc --version --verbose
+          if ($LASTEXITCODE -ne 0 -or $version -notcontains 'release: 1.93.0' -or $version -notcontains 'host: x86_64-pc-windows-msvc') {
+            throw 'Unexpected host Rust toolchain.'
+          }
+          $env:CARGO_HOME = Join-Path $env:RUNNER_TEMP 'wta-public-cargo'
+          New-Item -ItemType Directory -Path $env:CARGO_HOME | Out-Null
+          Set-Location trusted-source
+          $sources = @(Select-String -Path tools\wta\Cargo.lock -Pattern '^source = ' | ForEach-Object Line | Sort-Object -Unique)
+          if ($sources.Count -ne 1 -or $sources[0] -ne 'source = "registry+https://github.com/rust-lang/crates.io-index"') {
+            throw 'Trusted lockfile is not exclusively public crates.io dependencies.'
+          }
+          cargo fetch --locked --target x86_64-pc-windows-msvc --manifest-path tools\wta\Cargo.toml
+          if ($LASTEXITCODE -ne 0) { throw 'Public dependency fetch failed.' }
+          New-Item -ItemType Directory -Path (Join-Path $env:CARGO_HOME 'git') -Force | Out-Null
+          $version | Set-Content (Join-Path $env:RUNNER_TEMP 'wta-image-evidence\host-rust.txt')
+
+      - name: Build image from exact validation context
+        timeout-minutes: 45
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $context = Join-Path $env:GITHUB_WORKSPACE 'build\containers\wta-validation'
+          $files = @(Get-ChildItem -LiteralPath $context -Force -Recurse -File)
+          if ($files.Count -ne 2 -or @(Get-ChildItem -LiteralPath $context -Force -Directory).Count -ne 0 -or
+              @($files | Where-Object Name -notin @('Dockerfile', 'Invoke-WtaContainerTests.ps1')).Count -ne 0) {
+            throw 'Image context contains unexpected files.'
+          }
+          $iid = Join-Path $env:RUNNER_TEMP 'wta-image-evidence\image.id'
+          docker build --isolation=process --iidfile $iid $context 2>&1 |
+            Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'wta-image-evidence\build.log')
+          if ($LASTEXITCODE -ne 0) { throw 'Trusted validation image build failed.' }
+          $image = (Get-Content -LiteralPath $iid -Raw).Trim()
+          if ($image -notmatch '^sha256:[0-9a-f]{64}$') { throw 'Missing immutable image ID.' }
+          $manifest = docker image inspect $image
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot retain built image manifest.' }
+          $manifest | Set-Content (Join-Path $env:RUNNER_TEMP 'wta-image-evidence\image.json')
+
+      - name: Run full WTA tests offline inside image
+        timeout-minutes: 28
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'wta-image-evidence'
+          $image = (Get-Content (Join-Path $evidence 'image.id') -Raw).Trim()
+          if ($image -notmatch '^sha256:[0-9a-f]{64}$') { throw 'Invalid immutable image ID.' }
+          $name = "ghaw-wta-image-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $source = Join-Path $env:GITHUB_WORKSPACE 'trusted-source'
+          $cache = Join-Path $env:RUNNER_TEMP 'wta-public-cargo'
+          docker create --name $name --label "ghaw.wta.run=$env:GITHUB_RUN_ID" --label "ghaw.wta.attempt=$env:GITHUB_RUN_ATTEMPT" --isolation=process --network none --mount "type=bind,source=$source,target=C:\workspace,readonly" --mount "type=bind,source=$cache\registry,target=C:\cargo-cache\registry,readonly" --mount "type=bind,source=$cache\git,target=C:\cargo-cache\git,readonly" --env CARGO_NET_OFFLINE=true --env RUSTUP_TOOLCHAIN=1.93.0 $image
+          if ($LASTEXITCODE -ne 0) { throw 'Validation container creation failed.' }
+          $inspection = docker inspect $name
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect validation container.' }
+          $container = @($inspection | ConvertFrom-Json)[0]
+          $expectedMounts = @('C:\workspace', 'C:\cargo-cache\registry', 'C:\cargo-cache\git')
+          $imageManifest = @(Get-Content (Join-Path $evidence 'image.json') -Raw | ConvertFrom-Json)[0]
+          $expectedEnv = @($imageManifest.Config.Env | Where-Object { $_ -notmatch '^(CARGO_NET_OFFLINE|RUSTUP_TOOLCHAIN)=' }) +
+            @('CARGO_NET_OFFLINE=true', 'RUSTUP_TOOLCHAIN=1.93.0')
+          if ($container.Image -ne $image -or $container.HostConfig.NetworkMode -ne 'none' -or
+              $container.HostConfig.Isolation -ne 'process' -or $container.Mounts.Count -ne 3 -or
+              $container.Config.User -ne 'ContainerUser' -or
+              @($container.Mounts | Where-Object { $_.RW -or $_.Type -ne 'bind' -or $_.Destination -notin $expectedMounts }).Count -ne 0 -or
+              @(Compare-Object ($expectedEnv | Sort-Object) ($container.Config.Env | Sort-Object)).Count -ne 0) {
+            throw 'Container controls do not match the trusted proof contract.'
+          }
+          $inspection | Set-Content (Join-Path $evidence 'container-created.json')
+          docker start --attach $name 2>&1 | Tee-Object -FilePath (Join-Path $evidence 'tests.log')
+          $attachExit = $LASTEXITCODE
+          $inspection = docker inspect $name
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect final test exit.' }
+          $inspection | Set-Content (Join-Path $evidence 'container-final.json')
+          $container = @($inspection | ConvertFrom-Json)[0]
+          if ($attachExit -ne 0 -or $container.State.Running -or $container.State.ExitCode -ne 0 -or
+              $container.State.OOMKilled -or $container.State.Error) {
+            throw "WTA container tests failed: attach=$attachExit, exit=$($container.State.ExitCode)."
+          }
+          # Success is the host-observed exit and manifest, never parsed guest PASS text.
+          [ordered]@{
+            definitionSha = $env:GITHUB_SHA
+            sourceSha = (Get-Content (Join-Path $evidence 'source.json') -Raw | ConvertFrom-Json).sourceSha
+            imageId = $image
+            containerId = $container.Id
+            exitCode = $container.State.ExitCode
+            command = 'cargo test --locked --offline --target x86_64-pc-windows-msvc --manifest-path tools\wta\Cargo.toml'
+            scope = 'trusted full WTA tests; no final-patch or hardware-isolation proof'
+          } | ConvertTo-Json | Set-Content (Join-Path $evidence 'result.json')
+
+      - name: Retain logs and clean only the owned container
+        if: always()
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'wta-image-evidence'
+          # Preserve at most 2 MiB per streamed log, including build-failure paths.
+          foreach ($file in @(Get-ChildItem -LiteralPath $evidence -Filter '*.log' -ErrorAction SilentlyContinue)) {
+            if ($file.Length -gt 2MB) {
+              $stream = [IO.File]::OpenRead($file.FullName)
+              try {
+                $null = $stream.Seek(-2MB, [IO.SeekOrigin]::End)
+                $tail = [byte[]]::new(2MB)
+                $count = $stream.Read($tail, 0, $tail.Length)
+                if ($count -ne $tail.Length) { throw 'Incomplete evidence log read.' }
+              } finally { $stream.Dispose() }
+              [IO.File]::WriteAllBytes($file.FullName, $tail)
+            }
+          }
+          $name = "ghaw-wta-image-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $names = @(docker container ls --all --filter "name=^$name$" --format '{{.Names}}')
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot query cleanup ownership.' }
+          if ($names.Count -eq 0) { return }
+          if ($names.Count -ne 1 -or $names[0] -ne $name) { throw 'Ambiguous container ownership.' }
+          $inspection = docker inspect $name
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect cleanup ownership.' }
+          $container = @($inspection | ConvertFrom-Json)[0]
+          if ($container.Config.Labels.'ghaw.wta.run' -ne $env:GITHUB_RUN_ID -or
+              $container.Config.Labels.'ghaw.wta.attempt' -ne $env:GITHUB_RUN_ATTEMPT) {
+            throw 'Refusing cleanup of an unowned container.'
+          }
+          docker logs --tail 2000 $name 2>&1 | Set-Content (Join-Path $evidence 'container-tail.log')
+          $logsExit = $LASTEXITCODE
+          $inspection | Set-Content (Join-Path $evidence 'container-cleanup.json')
+          docker rm --force $container.Id
+          if ($LASTEXITCODE -ne 0) { throw 'Owned container cleanup failed.' }
+          if ($logsExit -ne 0) { throw 'Container log retention failed.' }
+
+      - name: Upload bounded proof evidence
+        if: always()
+        timeout-minutes: 3
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: wta-image-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}\wta-image-evidence
+          if-no-files-found: error
+          retention-days: 7
