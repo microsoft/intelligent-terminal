@@ -632,7 +632,7 @@ Keep running 是运行时选择，不以应用启动时大量未开启快照代�
   无效/缺失 ID 不沿用旧关联，以及 session 替换清除关联。
 - PowerShell shell integration 与本轮改动前版本完全一致，8 个原生单元测试通过；
   `execute_choice` 的签名和实现也恢复原样，旁路事件只留在执行器外围。
-- 专用 Run 通道及其 `Feature.PowerShellRun` live 测试、C367–C370 checklist 条目已撤回。
+- 专用 Run 通道及其 `Feature.PowerShellRun` live 测试、对应的未提交 checklist 条目已撤回。
   历史测试结果仅属于已撤回方案，不是当前能力或无兼容性问题的证明。
 - Dev 包已通过指定部署脚本更新；部署目标无运行中的进程，
   未卸载包、未终止当前 Copilot 宿主。Live 测试由 ItE2E 备份并恢复设置，
@@ -640,5 +640,44 @@ Keep running 是运行时选择，不以应用启动时大量未开启快照代�
 - 撤回通道后的 Debug 包重新构建并安全更新到 Dev，
   部署的 WTA / TerminalApp 哈希与当前构建产物一致；本次未修改用户 profile 或设置，
   未新增进程终止操作。之前的 live 记录不替代本次回归。
-- 尚未进行本轮新增事件的完整 live ETW 场景验收或后台入库/报表验证。
+- 本轮 live ETW 和包产物验收见下节；尚未进行后台入库/报表验证。
   查询文档不是后台查询已部署的证明。
+
+## 14. PR 验收结果与剩余阻塞
+
+PR：<https://github.com/microsoft/intelligent-terminal/pull/1077>。
+生产代码构建版本为 `a05d6c366a93b61fce4b2e7fe5155d9aa532e86b`；
+后续验收改动仅涉及测试、解码辅助和文档，没有改变生产代码。
+
+| 验证 | 实际结果 |
+| --- | --- |
+| Debug Dev | WTA 与包构建通过，安全部署；实际加载的 WTA、TerminalApp 哈希与构建产物一致 |
+| Release x64 MSIX | 构建和现有包验证脚本通过；包内 WTA、TerminalApp 及 13 个 hook 文件与源码/Release 产物逐一校验一致 |
+| WTA 单元测试 | 2447 passed、0 failed、1 ignored |
+| 原生回归 | Palette/daily activity 5/5；原有 PowerShell integration 8/8 |
+| ETW 验收辅助自测 | 33/33，包括类型解码、策略恢复和仅关闭测试所属进程 |
+| 完整 `Feature.TelemetryFunnels` | 18 passed、2 failed、0 skipped；失败为已有 HKCU 策略热更新问题，并未改成跳过或通过 |
+| 完整 `Feature.SidebarTelemetry` | 尚未通过；首轮 UI 自动化在搜索/历史视图切换处失败，后续重跑在 UAC 提示超时取消，未执行场景 |
+
+Release 产物为 Dev branding、版本 `0.8.0.9`、x64 的**未签名** MSIX，
+不是 Store 签名包，也没有将 Release 包安装为用户正在使用的 Dev。
+根目录打包 CMD 在本机解析失败后，使用相同顺序的 Settings Model、Settings Editor、
+CascadiaPackage MSBuild 步骤完成构建；不将旧日志中的成功状态当成本次证据。
+
+真实 ETW 已验证每日键盘活动、SessionId/TurnId 和 Autofix 分类关联、
+Detection/Offer/Acceptance/Run 关联，以及 palette EntryId。
+Run fixture 确实执行并生成预期文件，但遥测结果仍为 `unobservable`，
+没有把已派发伪装成命令或修复成功。
+首次 Sidebar 捕获也收到 2 个 `Launch` 和 10 个 `UserChange` 字段事件；
+这只是部分证据，不能替代完整 pin/restore 场景验收。
+
+策略热更新失败跟踪：<https://github.com/microsoft/intelligent-terminal/issues/991>。
+启动前设置策略的独立场景通过，但不用于冒充热更新成功。
+临时 HKCU 策略已恢复；设置和 state 已按原始哈希恢复，
+无待恢复备份、无剩余 Dev 测试窗口，未卸载包或终止当前 Copilot 宿主。
+
+完整与增量 release report 的条目状态一致：
+新条目 C369/C370 为通过，C367/C368 保留自动化失败/未完成状态；
+不复用已撤回 Run 通道的历史结果补齐验收。
+PR 保持 Draft，待 Sidebar 完整 live 验收完成并处理或明确接受已有策略问题。
+本地 ETW receipt 不能证明后台入库、查询部署或实际 D7/D28 cohort 已可用。
